@@ -2,31 +2,32 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import '../styles/main.css';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { DeckGLMap } from '../components/DeckGLMap';
+import { MILITARY_BASES } from '@/config/military-bases';
 import {
   SITE_VARIANT,
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
-  MILITARY_BASES,
-  UNDERSEA_CABLES,
-  NUCLEAR_FACILITIES,
   GAMMA_IRRADIATORS,
   PIPELINES,
   STRATEGIC_WATERWAYS,
-  ECONOMIC_CENTERS,
-  AI_DATA_CENTERS,
-  STARTUP_HUBS,
-  ACCELERATORS,
-  TECH_HQS,
-  CLOUD_REGIONS,
   PORTS,
-  SPACEPORTS,
   APT_GROUPS,
-  CRITICAL_MINERALS,
   STOCK_EXCHANGES,
   FINANCIAL_CENTERS,
   CENTRAL_BANKS,
   COMMODITY_HUBS,
+  MINING_SITES,
+  PROCESSING_PLANTS,
+  COMMODITY_PORTS,
 } from '../config';
+// Tech-geo + ai-datacenters + geo-map tables imported directly so they stay off the eager @/config barrel (#4404).
+import { STARTUP_HUBS, ACCELERATORS, TECH_HQS, CLOUD_REGIONS } from '../config/tech-geo';
+import { AI_DATA_CENTERS } from '../config/ai-datacenters';
+import { UNDERSEA_CABLES, NUCLEAR_FACILITIES, ECONOMIC_CENTERS, SPACEPORTS, CRITICAL_MINERALS } from '../config/geo-map';
+import type { PositiveGeoEvent } from '../services/positive-events-geo';
+import type { KindnessPoint } from '../services/kindness-data';
+import type { SpeciesRecovery } from '../services/conservation-data';
+import type { RenewableInstallation } from '../services/renewable-installations';
 import type {
   AisDensityZone,
   AisDisruptionEvent,
@@ -34,6 +35,7 @@ import type {
   CyberThreat,
   InternetOutage,
   MapLayers,
+  MilitaryBaseEnriched,
   MilitaryFlight,
   MilitaryFlightCluster,
   MilitaryVessel,
@@ -44,11 +46,18 @@ import type {
   SocialUnrestEvent,
 } from '../types';
 import type { AirportDelayAlert } from '../services/aviation';
+import type { ClimateAnomaly } from '../services/climate';
 import type { Earthquake } from '../services/earthquakes';
+import type { DiseaseOutbreakItem } from '../services/disease-outbreaks';
+import { I18N_RESOURCES_LOADED_EVENT, initI18n, t } from '../services/i18n';
+import { setCachedFuelShortageRegistry } from '../shared/fuel-shortage-registry-store';
+import { setCachedPipelineRegistries } from '../shared/pipeline-registry-store';
+import { setCachedStorageFacilityRegistry } from '../shared/storage-facility-registry-store';
 import type { WeatherAlert } from '../services/weather';
+import { CHINA_LOGISTICS_CORRIDORS } from '../../shared/china-logistics-corridors';
 
 type Scenario = 'alpha' | 'beta';
-type HarnessVariant = 'full' | 'tech' | 'finance';
+type HarnessVariant = 'full' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy';
 type HarnessLayerKey = keyof MapLayers;
 type PulseProtestScenario =
   | 'none'
@@ -76,6 +85,15 @@ type CameraState = {
   zoom: number;
 };
 
+type LiveTankerFixture = {
+  mmsi: string;
+  lat: number;
+  lon: number;
+  speed: number;
+  shipType: number;
+  name: string;
+};
+
 type VisualScenario = {
   id: string;
   variant: 'both' | HarnessVariant;
@@ -89,6 +107,71 @@ type VisualScenario = {
 type VisualScenarioSummary = {
   id: string;
   variant: 'both' | HarnessVariant;
+};
+
+type TradeAnimationProfileOptions = {
+  displayFrames?: number;
+  warmupFrames?: number;
+  zoom?: number;
+  enabledLayers?: HarnessLayerKey[];
+  includeNews?: boolean;
+};
+
+type TradeAnimationProfileSample = {
+  totalMs: number;
+  jsBuildMs: number;
+  updateLayersMs: number;
+  deckCommitMs: number;
+  layerCount: number;
+  nuclearIdentityChanged: boolean;
+  tripsIdentityChanged: boolean;
+};
+
+type TradeAnimationProfileResult = {
+  displayFrames: number;
+  warmupFrames: number;
+  zoom: number;
+  enabledLayers: HarnessLayerKey[];
+  buildCount: number;
+  hintCallCount: number;
+  hintScanCount: number;
+  samples: TradeAnimationProfileSample[];
+  rafIntervalsMs: number[];
+  longTasks: Array<{ name: string; duration: number; startTime: number }>;
+  fixture: {
+    nuclearCount: number;
+    datacenterCount: number;
+    routeSegments: number;
+    trips: number;
+    chokepoints: number;
+    newsMarkers: number;
+    layerIds: string[];
+  };
+  glRenderer: string | null;
+};
+
+type DeckLayerManager = {
+  updateLayers: () => void;
+};
+
+type MapInternal = {
+  updateLayers: (deferred?: boolean) => void;
+  buildLayers: (deferHeavy?: boolean) => Array<{ id: string }>;
+  updateZoomHints: () => void;
+  container: HTMLElement;
+  state: { layers: MapLayers };
+  maplibreMap?: MapLibreMap;
+  deckOverlay?: {
+    setProps: (props: { layers?: unknown }) => void;
+    _deck?: { layerManager?: DeckLayerManager };
+  };
+  tradeTrips: unknown[];
+  tradeRouteSegments: unknown[];
+  zoomHintGuard?: {
+    shouldScan: (inputs: { zoom: number; layers: MapLayers }, toggleList: Element) => boolean;
+  };
+  stopPulseAnimation?: () => void;
+  stopTradeAnimation: () => void;
 };
 
 type MapHarness = {
@@ -116,13 +199,27 @@ type MapHarness = {
   getProtestClusterCount: () => number;
   getOverlaySnapshot: () => OverlaySnapshot;
   getCyberTooltipHtml: (indicator: string) => string;
+  showChinaCorridor: (index?: number) => void;
+  runTradeAnimationProfile: (
+    options?: TradeAnimationProfileOptions,
+  ) => Promise<TradeAnimationProfileResult>;
   destroy: () => void;
 };
+
+const isEnergyHarnessVariant = SITE_VARIANT === 'energy';
 
 declare global {
   interface Window {
     __mapHarness?: MapHarness;
   }
+}
+
+const englishResourcesReady = new Promise<void>((resolve) => {
+  window.addEventListener(I18N_RESOURCES_LOADED_EVENT, () => resolve(), { once: true });
+});
+await initI18n();
+if (t('components.deckgl.layerWarningTitle').startsWith('components.')) {
+  await englishResourcesReady;
 }
 
 const app = document.getElementById('app');
@@ -150,6 +247,8 @@ const allLayersEnabled: MapLayers = {
   irradiators: true,
   sanctions: true,
   weather: true,
+  canadaRoads: true,
+  canadaAlerts: true,
   economic: true,
   waterways: true,
   outages: true,
@@ -183,12 +282,16 @@ const allLayersEnabled: MapLayers = {
   tradeRoutes: true,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: true,
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: true,
+  diseaseOutbreaks: true,
+  storageFacilities: false,
+  fuelShortages: false,
+  liveTankers: false,
 };
 
 const allLayersDisabled: MapLayers = {
@@ -206,6 +309,8 @@ const allLayersDisabled: MapLayers = {
   irradiators: false,
   sanctions: false,
   weather: false,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: false,
   waterways: false,
   outages: false,
@@ -239,12 +344,16 @@ const allLayersDisabled: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: true,
+  diseaseOutbreaks: false,
+  storageFacilities: false,
+  fuelShortages: false,
+  liveTankers: false,
 };
 
 const SEEDED_NEWS_LOCATIONS: Array<{
@@ -261,11 +370,151 @@ const SEEDED_NEWS_LOCATIONS: Array<{
   },
 ];
 
+const SEEDED_LIVE_TANKERS: LiveTankerFixture[] = [
+  {
+    mmsi: '111000111',
+    lat: 26.45,
+    lon: 56.22,
+    speed: 0.2,
+    shipType: 80,
+    name: 'Harness VLCC Alpha',
+  },
+  {
+    mmsi: '222000222',
+    lat: 12.72,
+    lon: 43.5,
+    speed: 12.4,
+    shipType: 82,
+    name: 'Harness Aframax Beta',
+  },
+];
+
+const SEEDED_POSITIVE_EVENTS: PositiveGeoEvent[] = [
+  {
+    lat: 37.77,
+    lon: -122.42,
+    name: 'Harness breakthrough expands clean water access',
+    category: 'humanity-kindness',
+    count: 12,
+    timestamp: Date.now(),
+  },
+];
+
+const SEEDED_KINDNESS_POINTS: KindnessPoint[] = [
+  {
+    lat: 51.5,
+    lon: -0.12,
+    name: 'Harness community aid network',
+    description: 'Local volunteers coordinated emergency support.',
+    intensity: 0.9,
+    type: 'real',
+    timestamp: Date.now(),
+  },
+];
+
+const SEEDED_SPECIES_RECOVERY: SpeciesRecovery[] = [
+  {
+    id: 'e2e-species-recovery',
+    commonName: 'Harness Falcon',
+    scientificName: 'Falco harnessus',
+    photoUrl: 'https://example.com/falcon.jpg',
+    iucnCategory: 'Least Concern',
+    populationTrend: 'increasing',
+    recoveryStatus: 'recovering',
+    populationData: [
+      { year: 2015, value: 120 },
+      { year: 2025, value: 420 },
+    ],
+    summaryText: 'Harness conservation recovery fixture.',
+    source: 'e2e',
+    region: 'Harness Reserve',
+    lastUpdated: '2026-02-01',
+    recoveryZone: {
+      name: 'Harness Reserve',
+      lat: -1.29,
+      lon: 36.82,
+    },
+  },
+];
+
+const SEEDED_RENEWABLE_INSTALLATIONS: RenewableInstallation[] = [
+  {
+    id: 'e2e-renewable-installation',
+    name: 'Harness Solar Park',
+    type: 'solar',
+    capacityMW: 500,
+    country: 'US',
+    lat: 34.05,
+    lon: -117.2,
+    status: 'operational',
+    year: 2026,
+  },
+];
+
+const SEEDED_DISEASE_OUTBREAKS: DiseaseOutbreakItem[] = [
+  {
+    id: 'e2e-disease-outbreak',
+    disease: 'Harness Fever',
+    location: 'Harness Province',
+    countryCode: 'KE',
+    alertLevel: 'warning',
+    summary: 'Deterministic outbreak fixture for map smoke coverage.',
+    sourceUrl: 'https://example.com/outbreak',
+    publishedAt: Date.parse('2026-02-01T12:00:00.000Z'),
+    sourceName: 'E2E Health Desk',
+    lat: -1.29,
+    lng: 36.82,
+    cases: 37,
+  },
+];
+
+const SEEDED_MILITARY_BASES: MilitaryBaseEnriched[] = (MILITARY_BASES as MilitaryBaseEnriched[])
+  .map((base) => ({ ...base }));
+
+const commodityAllLayersEnabled: MapLayers = {
+  ...allLayersEnabled,
+  miningSites: true,
+  processingPlants: true,
+  commodityPorts: true,
+};
+
+const energyAllLayersEnabled: MapLayers = {
+  ...allLayersEnabled,
+  // commodityPorts is base-false in allLayersEnabled post-#3925 isolation
+  // refactor (was true in an earlier snapshot Greptile reviewed) — energy
+  // explicitly enables it because the energy harness ships seeded port
+  // fixtures; e2e/map-harness.spec.ts (npm run test:e2e:energy) expects
+  // the Atlas deck layers these flags enable.
+  commodityPorts: true,
+  storageFacilities: true,
+  fuelShortages: true,
+  liveTankers: true,
+};
+
+const happyAllLayersEnabled: MapLayers = {
+  ...allLayersEnabled,
+  speciesRecovery: true,
+  renewableInstallations: true,
+};
+
+const seededAllLayers: MapLayers = isEnergyHarnessVariant
+  ? energyAllLayersEnabled
+  : SITE_VARIANT === 'commodity'
+  ? commodityAllLayersEnabled
+  : SITE_VARIANT === 'happy'
+  ? happyAllLayersEnabled
+  : allLayersEnabled;
+
+const initialLayers: MapLayers = {
+  ...seededAllLayers,
+  liveTankers: false,
+};
+
 const map = new DeckGLMap(app, {
   zoom: 5,
   pan: { x: 0, y: 0 },
   view: 'global',
-  layers: allLayersEnabled,
+  layers: initialLayers,
   // Keep harness deterministic regardless of wall-clock date.
   timeRange: 'all',
 });
@@ -280,7 +529,42 @@ const internals = map as unknown as {
   newsPulseIntervalId?: ReturnType<typeof setInterval> | null;
   startupTime?: number;
   stopPulseAnimation?: () => void;
+  liveTankers?: LiveTankerFixture[];
+  loadLiveTankers?: () => Promise<void>;
+  serverBases?: MilitaryBaseEnriched[];
+  serverBaseClusters?: unknown[];
+  serverBasesLoaded?: boolean;
+  fetchServerBases?: () => void;
+  aptGroups?: typeof APT_GROUPS;
+  aptGroupsLoaded?: boolean;
 };
+
+internals.loadLiveTankers = async (): Promise<void> => {
+  internals.liveTankers = SEEDED_LIVE_TANKERS.map((tanker) => ({ ...tanker }));
+};
+
+const seedHarnessBases = (): void => {
+  internals.serverBases = SEEDED_MILITARY_BASES.map((base) => ({ ...base }));
+  internals.serverBaseClusters = [];
+  internals.serverBasesLoaded = true;
+};
+
+const seedHarnessAptGroups = (): void => {
+  internals.aptGroups = APT_GROUPS;
+  internals.aptGroupsLoaded = true;
+};
+
+// Keep the harness deterministic: the live RPC path can legitimately return an
+// empty viewport payload in local/dev runs, which would wipe the shared
+// `bases-layer` snapshot even though the harness is meant to exercise the
+// renderer with seeded fixture data.
+if (new URLSearchParams(window.location.search).get('serverBases') !== '1') {
+  internals.fetchServerBases = (): void => {
+    seedHarnessBases();
+  };
+  seedHarnessBases();
+}
+seedHarnessAptGroups();
 
 const buildLayerState = (enabledLayers: HarnessLayerKey[]): MapLayers => {
   const next: MapLayers = { ...allLayersDisabled };
@@ -327,16 +611,252 @@ const getDataCount = (data: unknown): number => {
   return data ? 1 : 0;
 };
 
+const normalizeLayerSnapshotId = (layerId: string): string =>
+  layerId === 'conflict-zones-layer-country-geometry'
+    ? 'conflict-zones-layer'
+    : layerId;
+
 const getDeckLayerSnapshot = (): LayerSnapshot[] => {
   const layers = internals.buildLayers?.() ?? [];
-  return layers.map((layer) => ({
-    id: layer.id,
-    dataCount: getDataCount(layer.props?.data),
-  }));
+  const counts = new Map<string, number>();
+
+  for (const layer of layers) {
+    const layerId = normalizeLayerSnapshotId(layer.id);
+    const dataCount = getDataCount(layer.props?.data);
+    const previous = counts.get(layerId) ?? 0;
+    if (dataCount > previous) {
+      counts.set(layerId, dataCount);
+    }
+  }
+
+  return [...counts.entries()].map(([id, dataCount]) => ({ id, dataCount }));
 };
 
 const getLayerDataCount = (layerId: string): number => {
   return getDeckLayerSnapshot().find((layer) => layer.id === layerId)?.dataCount ?? 0;
+};
+
+const waitAnimationFrames = (count: number, onFrame?: (now: number) => void): Promise<void> => {
+  return new Promise((resolve) => {
+    let seen = 0;
+    const tick = (now: number) => {
+      onFrame?.(now);
+      seen += 1;
+      if (seen >= count) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+};
+
+const readGlRenderer = (): string | null => {
+  const canvas = document.querySelector('#deckgl-basemap canvas') as HTMLCanvasElement | null;
+  const gl = canvas?.getContext('webgl2') ?? canvas?.getContext('webgl');
+  if (!gl) return null;
+  const ext = gl.getExtension('WEBGL_debug_renderer_info');
+  if (!ext) return gl.getParameter(gl.RENDERER);
+  return gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+};
+
+const TRADE_ANIMATION_PROFILE_LAYERS: HarnessLayerKey[] = ['nuclear', 'datacenters', 'tradeRoutes'];
+
+const runTradeAnimationProfile = async (
+  options: TradeAnimationProfileOptions = {},
+): Promise<TradeAnimationProfileResult> => {
+  const displayFrames = options.displayFrames ?? 61;
+  const warmupFrames = options.warmupFrames ?? 20;
+  const zoom = options.zoom ?? 5;
+  const enabledLayers = options.enabledLayers ?? TRADE_ANIMATION_PROFILE_LAYERS;
+  const includeNews = options.includeNews ?? true;
+
+  const mapInternal = map as unknown as MapInternal;
+  mapInternal.stopPulseAnimation?.();
+  map.setProtests([]);
+  map.updateHotspotActivity([]);
+  setLayersForSnapshot(enabledLayers);
+  map.setNewsLocations(includeNews ? SEEDED_NEWS_LOCATIONS : []);
+  if (includeNews) makeNewsLocationsNonRecent();
+  else internals.newsLocationFirstSeen?.clear();
+  mapInternal.stopPulseAnimation?.();
+  // Europe/Mediterranean keeps facilities, a news marker and trade routes in view.
+  setCamera({ lon: 15, lat: 42, zoom });
+  map.setRenderPaused(false);
+  map.render();
+
+  const origUpdate = mapInternal.updateLayers;
+  const origBuild = mapInternal.buildLayers;
+  const origHints = mapInternal.updateZoomHints;
+  const overlay = mapInternal.deckOverlay;
+  const layerManager = overlay?._deck?.layerManager;
+  const origLayerUpdate = layerManager?.updateLayers;
+  if (!layerManager || !origLayerUpdate) throw new Error('deck.gl layer manager unavailable: profile is not valid');
+  const layerManagerPrototype = Object.getPrototypeOf(layerManager) as DeckLayerManager;
+  const hintGuard = mapInternal.zoomHintGuard;
+  const origShouldScan = hintGuard?.shouldScan;
+  if (!hintGuard || !origShouldScan) throw new Error('Zoom hint guard unavailable: profile is not valid');
+
+  let inUpdate = false;
+  let lastJsBuild = 0;
+  let lastDeckCommit = 0;
+  let lastLayerCount = 0;
+  let lastNuclear: { id: string } | null = null;
+  let lastTrips: { id: string } | null = null;
+  let buildCount = 0;
+  let hintCallCount = 0;
+  let hintScanCount = 0;
+  const samples: TradeAnimationProfileSample[] = [];
+  const rafIntervalsMs: number[] = [];
+  const longTasks: Array<{ name: string; duration: number; startTime: number }> = [];
+
+  let observer: PerformanceObserver | null = null;
+  try {
+    observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        longTasks.push({
+          name: entry.name,
+          duration: entry.duration,
+          startTime: entry.startTime,
+        });
+      }
+    });
+    observer.observe({ type: 'longtask', buffered: true });
+  } catch {
+    observer = null;
+  }
+
+  mapInternal.buildLayers = function wrappedBuildLayers(deferHeavy?: boolean) {
+    const started = performance.now();
+    const layers = origBuild.call(this, deferHeavy);
+    if (inUpdate) {
+      lastJsBuild = performance.now() - started;
+      lastLayerCount = layers.length;
+      buildCount += 1;
+      const nuclear = layers.find((layer) => layer.id === 'nuclear-layer') ?? null;
+      const trips = layers.find((layer) => layer.id === 'trade-route-trips-layer') ?? null;
+      lastNuclear = nuclear;
+      lastTrips = trips;
+    }
+    return layers;
+  };
+
+  const applyDeckCommit = (elapsed: number): void => {
+    const last = samples[samples.length - 1];
+    if (last) {
+      last.deckCommitMs += elapsed;
+      last.totalMs = last.updateLayersMs + last.deckCommitMs;
+      return;
+    }
+    lastDeckCommit += elapsed;
+  };
+
+  if (layerManager && origLayerUpdate) {
+    // deck.gl queues layers in setProps; matching, lifecycle, and attribute
+    // rebuilds run later in LayerManager.updateLayers during the map render.
+    layerManagerPrototype.updateLayers = function wrappedLayerManagerUpdate() {
+      if (this !== layerManager) return origLayerUpdate.call(this);
+      const started = performance.now();
+      origLayerUpdate.call(layerManager);
+      applyDeckCommit(performance.now() - started);
+    };
+  }
+
+  hintGuard.shouldScan = function wrappedShouldScan(inputs, toggleList) {
+    const shouldScan = origShouldScan.call(this, inputs, toggleList);
+    if (shouldScan) hintScanCount += 1;
+    return shouldScan;
+  };
+  mapInternal.updateZoomHints = function wrappedUpdateZoomHints() {
+    hintCallCount += 1;
+    origHints.call(this);
+  };
+
+  mapInternal.updateLayers = function wrappedUpdateLayers(deferred?: boolean) {
+    inUpdate = true;
+    const previousNuclear = lastNuclear;
+    const previousTrips = lastTrips;
+    lastJsBuild = 0;
+    lastLayerCount = 0;
+    const sample: TradeAnimationProfileSample = {
+      totalMs: 0,
+      jsBuildMs: 0,
+      updateLayersMs: 0,
+      deckCommitMs: lastDeckCommit,
+      layerCount: 0,
+      nuclearIdentityChanged: false,
+      tripsIdentityChanged: false,
+    };
+    lastDeckCommit = 0;
+    samples.push(sample);
+    const updateStarted = performance.now();
+    try {
+      origUpdate.call(this, deferred);
+    } finally {
+      inUpdate = false;
+    }
+    sample.updateLayersMs = performance.now() - updateStarted;
+    sample.jsBuildMs = lastJsBuild;
+    sample.layerCount = lastLayerCount;
+    sample.nuclearIdentityChanged = Boolean(lastNuclear) && lastNuclear !== previousNuclear;
+    sample.tripsIdentityChanged = Boolean(lastTrips) && lastTrips !== previousTrips;
+    sample.totalMs = sample.updateLayersMs + sample.deckCommitMs;
+  };
+
+  try {
+    await waitAnimationFrames(warmupFrames);
+    buildCount = 0;
+    hintCallCount = 0;
+    hintScanCount = 0;
+    samples.length = 0;
+    longTasks.length = 0;
+    lastDeckCommit = 0;
+    lastJsBuild = 0;
+    lastNuclear = null;
+    lastTrips = null;
+
+    let previousRaf = 0;
+    await waitAnimationFrames(displayFrames, (now) => {
+      if (previousRaf > 0) rafIntervalsMs.push(now - previousRaf);
+      previousRaf = now;
+    });
+    mapInternal.stopTradeAnimation();
+    // Flush a deferred LayerManager.updateLayers that is still queued after
+    // the last animation-driven setProps.
+    await waitAnimationFrames(2);
+
+    const snapshot = getDeckLayerSnapshot();
+    return {
+      displayFrames,
+      warmupFrames,
+      zoom,
+      enabledLayers,
+      buildCount,
+      hintCallCount,
+      hintScanCount,
+      samples,
+      rafIntervalsMs,
+      longTasks,
+      fixture: {
+        nuclearCount: getLayerDataCount('nuclear-layer'),
+        datacenterCount: getLayerDataCount('datacenters-layer'),
+        routeSegments: enabledLayers.includes('tradeRoutes') ? mapInternal.tradeRouteSegments.length : 0,
+        trips: enabledLayers.includes('tradeRoutes') ? mapInternal.tradeTrips.length : 0,
+        chokepoints: getLayerDataCount('trade-chokepoints-layer'),
+        newsMarkers: getLayerDataCount('news-locations-layer'),
+        layerIds: snapshot.map((layer) => layer.id),
+      },
+      glRenderer: readGlRenderer(),
+    };
+  } finally {
+    observer?.disconnect();
+    mapInternal.updateLayers = origUpdate;
+    mapInternal.buildLayers = origBuild;
+    mapInternal.updateZoomHints = origHints;
+    hintGuard.shouldScan = origShouldScan;
+    layerManagerPrototype.updateLayers = origLayerUpdate;
+  }
 };
 
 const getLayerFirstScreenTransform = (layerId: string): string | null => {
@@ -344,7 +864,7 @@ const getLayerFirstScreenTransform = (layerId: string): string | null => {
   if (!maplibreMap) return null;
 
   const layers = internals.buildLayers?.() ?? [];
-  const target = layers.find((layer) => layer.id === layerId);
+  const target = layers.find((layer) => normalizeLayerSnapshotId(layer.id) === layerId);
   const data = target?.props?.data;
   if (!Array.isArray(data) || data.length === 0) return null;
 
@@ -429,6 +949,11 @@ const seededCameras = {
   fires: toCamera(-60.1, -5.4, 5.0),
   techEvents: toCamera(-122.42, 37.77, 5.2),
   news: toCamera(2.35, 48.85, 5.0),
+  positiveEvents: toCamera(-122.42, 37.77, 5.2),
+  kindness: toCamera(-0.12, 51.5, 5.2),
+  speciesRecovery: toCamera(36.82, -1.29, 5.2),
+  renewableInstallations: toCamera(-117.2, 34.05, 5.2),
+  diseaseOutbreaks: toCamera(36.82, -1.29, 5.2),
 };
 
 const [conflictLon, conflictLat] = firstConflictPoint([36.0, 35.0]);
@@ -453,6 +978,9 @@ const [exchangeLon, exchangeLat] = firstLatLon(STOCK_EXCHANGES, [-74.0, 40.7]);
 const [financialCenterLon, financialCenterLat] = firstLatLon(FINANCIAL_CENTERS, [-74.0, 40.7]);
 const [centralBankLon, centralBankLat] = firstLatLon(CENTRAL_BANKS, [-77.0, 38.9]);
 const [commodityHubLon, commodityHubLat] = firstLatLon(COMMODITY_HUBS, [-87.6, 41.8]);
+const [miningSiteLon, miningSiteLat] = firstLatLon(MINING_SITES, [-116.12, 40.73]);
+const [processingPlantLon, processingPlantLat] = firstLatLon(PROCESSING_PLANTS, [121.5, -30.7]);
+const [commodityPortLon, commodityPortLat] = firstLatLon(COMMODITY_PORTS, [32.5, 29.9]);
 
 const VISUAL_SCENARIOS: VisualScenario[] = [
   {
@@ -656,7 +1184,8 @@ const VISUAL_SCENARIOS: VisualScenario[] = [
   {
     id: 'apt-groups-z5',
     variant: 'full',
-    enabledLayers: [],
+    // APT markers are gated on cyberThreats in DeckGLMap (lazy-loaded).
+    enabledLayers: ['cyberThreats'],
     camera: toCamera(aptLon, aptLat, 5.1),
     expectedDeckLayers: ['apt-groups-layer'],
     expectedSelectors: [],
@@ -733,6 +1262,70 @@ const VISUAL_SCENARIOS: VisualScenario[] = [
     expectedDeckLayers: ['commodity-hubs-layer'],
     expectedSelectors: [],
   },
+  {
+    id: 'mining-sites-z5',
+    variant: 'commodity',
+    enabledLayers: ['miningSites'],
+    camera: toCamera(miningSiteLon, miningSiteLat, 5.2),
+    expectedDeckLayers: ['mining-sites-layer'],
+    expectedSelectors: [],
+  },
+  {
+    id: 'processing-plants-z5',
+    variant: 'commodity',
+    enabledLayers: ['processingPlants'],
+    camera: toCamera(processingPlantLon, processingPlantLat, 5.2),
+    expectedDeckLayers: ['processing-plants-layer'],
+    expectedSelectors: [],
+  },
+  {
+    id: 'commodity-ports-z5',
+    variant: 'commodity',
+    enabledLayers: ['commodityPorts'],
+    camera: toCamera(commodityPortLon, commodityPortLat, 5.2),
+    expectedDeckLayers: ['commodity-ports-layer'],
+    expectedSelectors: [],
+  },
+  {
+    id: 'positive-events-z5',
+    variant: 'happy',
+    enabledLayers: ['positiveEvents'],
+    camera: seededCameras.positiveEvents,
+    expectedDeckLayers: ['positive-events-layer'],
+    expectedSelectors: [],
+  },
+  {
+    id: 'kindness-z5',
+    variant: 'happy',
+    enabledLayers: ['kindness'],
+    camera: seededCameras.kindness,
+    expectedDeckLayers: ['kindness-layer'],
+    expectedSelectors: [],
+  },
+  {
+    id: 'species-recovery-z5',
+    variant: 'happy',
+    enabledLayers: ['speciesRecovery'],
+    camera: seededCameras.speciesRecovery,
+    expectedDeckLayers: ['species-recovery-layer'],
+    expectedSelectors: [],
+  },
+  {
+    id: 'renewable-installations-z5',
+    variant: 'happy',
+    enabledLayers: ['renewableInstallations'],
+    camera: seededCameras.renewableInstallations,
+    expectedDeckLayers: ['renewable-installations-layer'],
+    expectedSelectors: [],
+  },
+  {
+    id: 'disease-outbreaks-z5',
+    variant: 'full',
+    enabledLayers: ['diseaseOutbreaks'],
+    camera: seededCameras.diseaseOutbreaks,
+    expectedDeckLayers: ['disease-outbreaks-layer'],
+    expectedSelectors: [],
+  },
   // Note: `sanctions` has no map renderer in DeckGLMap today; excluded from visual scenarios.
 ];
 
@@ -746,8 +1339,14 @@ const filterScenariosForVariant = (variant: HarnessVariant): VisualScenario[] =>
 
 const currentHarnessVariant: HarnessVariant = SITE_VARIANT === 'tech'
   ? 'tech'
+  : SITE_VARIANT === 'energy'
+  ? 'energy'
   : SITE_VARIANT === 'finance'
   ? 'finance'
+  : SITE_VARIANT === 'commodity'
+  ? 'commodity'
+  : SITE_VARIANT === 'happy'
+  ? 'happy'
   : 'full';
 
 const buildProtests = (scenario: Scenario): SocialUnrestEvent[] => {
@@ -830,6 +1429,68 @@ const buildHotspotActivityNews = (
 };
 
 const seedAllDynamicData = (): void => {
+  setCachedPipelineRegistries({
+    gas: {
+      pipelines: {
+        'e2e-gas-pipeline': {
+          id: 'e2e-gas-pipeline',
+          name: 'Harness Gas Trunkline',
+          operator: 'Harness Gas Co.',
+          commodityType: 'gas',
+          startPoint: { lat: 25.28, lon: 55.3 },
+          endPoint: { lat: 26.12, lon: 50.57 },
+        },
+      },
+      classifierVersion: 'e2e-harness-v1',
+      updatedAt: '2026-02-01T12:00:00.000Z',
+    },
+    oil: {
+      pipelines: {
+        'e2e-oil-pipeline': {
+          id: 'e2e-oil-pipeline',
+          name: 'Harness Crude Link',
+          operator: 'Harness Oil Co.',
+          commodityType: 'oil',
+          startPoint: { lat: 29.37, lon: 47.98 },
+          endPoint: { lat: 25.27, lon: 51.53 },
+        },
+      },
+      classifierVersion: 'e2e-harness-v1',
+      updatedAt: '2026-02-01T12:00:00.000Z',
+    },
+  });
+
+  setCachedStorageFacilityRegistry({
+    facilities: {
+      'e2e-storage-facility': {
+        id: 'e2e-storage-facility',
+        name: 'Harness LNG Export Terminal',
+        operator: 'Harness LNG',
+        facilityType: 'lng_export',
+        country: 'QA',
+        location: { lat: 25.98, lon: 51.61 },
+        capacityMtpa: 32.5,
+      },
+    },
+    classifierVersion: 'e2e-harness-v1',
+    updatedAt: '2026-02-01T12:00:00.000Z',
+  });
+
+  setCachedFuelShortageRegistry({
+    shortages: {
+      'e2e-fuel-shortage': {
+        id: 'e2e-fuel-shortage',
+        country: 'EG',
+        product: 'diesel',
+        severity: 'confirmed',
+        shortDescription: 'Harness shortage alert',
+        resolvedAt: null,
+      },
+    },
+    classifierVersion: 'e2e-harness-v1',
+    updatedAt: '2026-02-01T12:00:00.000Z',
+  });
+
   const earthquakes: Earthquake[] = [
     {
       id: 'e2e-eq-1',
@@ -843,6 +1504,8 @@ const seedAllDynamicData = (): void => {
       testSiteName: '',
       concernScore: 0,
       concernLevel: '',
+      source: 'usgs',
+      category: '',
     },
   ];
 
@@ -1042,8 +1705,21 @@ const seedAllDynamicData = (): void => {
     },
   ];
 
+  const climateAnomalies: ClimateAnomaly[] = [
+    {
+      zone: 'Harness Heat Belt',
+      lat: 24.8,
+      lon: 54.9,
+      tempDelta: 3.2,
+      precipDelta: -12,
+      severity: 'extreme',
+      type: 'warm',
+      period: '2026-02',
+    },
+  ];
+
   map.setRenderPaused(true);
-  map.setLayers(allLayersEnabled);
+  map.setLayers(seededAllLayers);
   map.setZoom(5);
   map.setEarthquakes(earthquakes);
   map.setWeatherAlerts(weather);
@@ -1056,6 +1732,12 @@ const seedAllDynamicData = (): void => {
   map.setMilitaryFlights(militaryFlights, militaryFlightClusters);
   map.setMilitaryVessels(militaryVessels, militaryVesselClusters);
   map.setNaturalEvents(naturalEvents);
+  map.setClimateAnomalies(climateAnomalies);
+  map.setDiseaseOutbreaks(SEEDED_DISEASE_OUTBREAKS);
+  map.setPositiveEvents(SEEDED_POSITIVE_EVENTS);
+  map.setKindnessData(SEEDED_KINDNESS_POINTS);
+  map.setSpeciesRecoveryZones(SEEDED_SPECIES_RECOVERY);
+  map.setRenewableInstallations(SEEDED_RENEWABLE_INSTALLATIONS);
   map.setFires([
     {
       lat: -5.4,
@@ -1095,6 +1777,7 @@ const seedAllDynamicData = (): void => {
     },
   ]);
   map.setNewsLocations(SEEDED_NEWS_LOCATIONS);
+  seedHarnessAptGroups();
   map.setRenderPaused(false);
   map.render();
 };
@@ -1310,6 +1993,15 @@ window.__mapHarness = {
   getProtestClusterCount,
   getOverlaySnapshot,
   getCyberTooltipHtml,
+  runTradeAnimationProfile,
+  showChinaCorridor: (index = 0): void => {
+    const definition = CHINA_LOGISTICS_CORRIDORS[index] ?? CHINA_LOGISTICS_CORRIDORS[0]!;
+    map.setChinaCorridorSelection({
+      ...definition,
+      availability: 'partial',
+      conditions: [],
+    });
+  },
   destroy: (): void => {
     map.destroy();
   },

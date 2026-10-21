@@ -1,0 +1,18 @@
+name = "railway-reconcile-control"
+main = "src/index.js"
+compatibility_date = "2025-05-01"
+
+[[routes]]
+pattern = "railway-reconcile-control.worldmonitor.app"
+custom_domain = true
+
+[[durable_objects.bindings]]
+name = "RAILWAY_RECONCILE_CONTROL"
+class_name = "RailwayReconcileControl"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RailwayReconcileControl"]
+
+[observability]
+enabled = true

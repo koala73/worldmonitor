@@ -2,7 +2,145 @@ openapi: 3.1.0
 info:
     title: AviationService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
+    /api/aviation/v1/list-aircraft-emergencies:
+        get:
+            tags:
+                - AviationService
+            summary: ListAircraftEmergencies
+            description: |-
+                ListAircraftEmergencies returns reported 7500, 7600 and 7700 signals independently of military classification.
+                 The 200 schema describes the unprojected response. With jmespath, the result may instead be any JSON value, including an array, scalar, or null.
+            operationId: ListAircraftEmergencies
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "feeds":
+                                    - "fetchedAt": 1717200000000
+                                      "message": "Synthetic example."
+                                      "source": "adsb.lol"
+                                      "squawk": "7500"
+                                      "status": "available"
+                                    - "fetchedAt": 1717200000000
+                                      "message": "Synthetic example."
+                                      "source": "adsb.lol"
+                                      "squawk": "7600"
+                                      "status": "available"
+                                    - "fetchedAt": 1717200000000
+                                      "message": "Synthetic example."
+                                      "source": "adsb.lol"
+                                      "squawk": "7700"
+                                      "status": "available"
+                                "observations":
+                                    - "address": "a00001"
+                                      "callsign": "SYNTHETIC"
+                                      "description": "Synthetic example. No observed incident."
+                                      "militaryFlag": "unknown"
+                                      "observedAt": 0
+                                      "source": "adsb.lol"
+                                      "squawk": "7500"
+                            schema:
+                                $ref: '#/components/schemas/ListAircraftEmergenciesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/aviation/v1/list-airport-delays:
         get:
             tags:
@@ -13,27 +151,60 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: region
                   in: query
-                  description: Optional region filter.
+                  description: |-
+                    Optional region filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "AIRPORT_REGION_AMERICAS"
                   schema:
                     type: string
+                    enum:
+                        - 'AIRPORT_REGION_AMERICAS'
+                        - 'AIRPORT_REGION_EUROPE'
+                        - 'AIRPORT_REGION_APAC'
+                        - 'AIRPORT_REGION_MENA'
+                        - 'AIRPORT_REGION_AFRICA'
                 - name: min_severity
                   in: query
-                  description: Optional minimum severity filter.
+                  description: |-
+                    Optional minimum severity filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "FLIGHT_DELAY_SEVERITY_NORMAL"
+                  schema:
+                    type: string
+                    enum:
+                        - 'FLIGHT_DELAY_SEVERITY_NORMAL'
+                        - 'FLIGHT_DELAY_SEVERITY_MINOR'
+                        - 'FLIGHT_DELAY_SEVERITY_MODERATE'
+                        - 'FLIGHT_DELAY_SEVERITY_MAJOR'
+                        - 'FLIGHT_DELAY_SEVERITY_SEVERE'
+                        - 'FLIGHT_DELAY_SEVERITY_UNKNOWN'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -41,6 +212,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "alerts":
+                                    - "avgDelayMinutes": 1
+                                      "cancelledFlights": 1
+                                      "city": "example"
+                                      "country": "US"
+                                      "delayType": "FLIGHT_DELAY_TYPE_GROUND_STOP"
+                                      "id": "example-id"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListAirportDelaysResponse'
                 "400":
@@ -48,25 +230,110 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/aviation/v1/get-airport-ops-summary:
         get:
             tags:
                 - AviationService
             summary: GetAirportOpsSummary
-            description: GetAirportOpsSummary returns operational health metrics for watched airports.
+            description: GetAirportOpsSummary returns watched-airport operational health, including delay percentages, average delay minutes, cancellation rates and closure status.
             operationId: GetAirportOpsSummary
             parameters:
                 - name: airports
                   in: query
                   description: IATA airport codes to query (e.g., ["IST", "ESB", "LHR"]).
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "JFK"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -74,6 +341,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "cacheHit": true
+                                "summaries":
+                                    - "avgDelayMinutes": 1
+                                      "cancellationRate": 75.25
+                                      "closureStatus": true
+                                      "delayPct": 1.5
+                                      "iata": "JFK"
                             schema:
                                 $ref: '#/components/schemas/GetAirportOpsSummaryResponse'
                 "400":
@@ -81,45 +356,145 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/aviation/v1/list-airport-flights:
         get:
             tags:
                 - AviationService
             summary: ListAirportFlights
-            description: ListAirportFlights retrieves recent flights at a specific airport.
+            description: ListAirportFlights returns recent arrivals and departures with direction and limit filters, status and carrier. PRO-gated. Requires an active Pro subscription.
             operationId: ListAirportFlights
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: airport
                   in: query
                   description: IATA airport code (e.g., "IST").
-                  required: false
+                  required: true
+                  example: "JFK"
                   schema:
                     type: string
                 - name: direction
                   in: query
                   description: Direction filter.
                   required: false
+                  example: "FLIGHT_DIRECTION_DEPARTURE"
                   schema:
                     type: string
+                    enum:
+                        - 'FLIGHT_DIRECTION_DEPARTURE'
+                        - 'FLIGHT_DIRECTION_ARRIVAL'
+                        - 'FLIGHT_DIRECTION_BOTH'
                 - name: limit
                   in: query
                   description: Maximum number of flights to return (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "flights":
+                                    - "actualArrival": 1
+                                      "actualDeparture": 1
+                                      "aircraftIcao24": "a835af"
+                                      "aircraftType": "all"
+                                      "cancelled": true
+                                "source": "example"
+                                "totalAvailable": 1
+                                "updatedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/ListAirportFlightsResponse'
                 "400":
@@ -127,39 +502,145 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/aviation/v1/get-carrier-ops:
         get:
             tags:
                 - AviationService
             summary: GetCarrierOps
-            description: GetCarrierOps returns delay and cancellation metrics grouped by carrier.
+            description: GetCarrierOps returns delay and cancellation metrics grouped by carrier. PRO-gated. Requires an active Pro subscription.
             operationId: GetCarrierOps
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: airports
                   in: query
                   description: IATA airport codes to aggregate carrier metrics from.
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "JFK"
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: min_flights
                   in: query
-                  description: 'Minimum number of flights required to include a carrier (default: 1).'
+                  description: |-
+                    Minimum number of flights required to include a carrier (default: 3).
+                     The generated GET decoder emits 0 when the query param is absent, and 0
+                     means "use the default" in the handler — an explicit 0 is not a usable
+                     filter (every group has >= 1 flight).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "carriers":
+                                    - "airport": "JFK"
+                                      "avgDelayMinutes": 1
+                                      "cancellationRate": 75.25
+                                      "cancelledCount": 1
+                                      "carrier":
+                                          "iataCode": "JFK"
+                                          "icaoCode": "example"
+                                          "name": "WorldMonitor Analyst"
+                                "source": "example"
+                                "updatedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/GetCarrierOpsResponse'
                 "400":
@@ -167,37 +648,123 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/aviation/v1/get-flight-status:
         get:
             tags:
                 - AviationService
             summary: GetFlightStatus
-            description: GetFlightStatus looks up the current status of a specific flight.
+            description: GetFlightStatus looks up the current status of a specific flight. PRO-gated. Requires an active Pro subscription.
             operationId: GetFlightStatus
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: flight_number
                   in: query
                   description: IATA flight number (e.g., "TK1952").
-                  required: false
+                  required: true
+                  example: "JFK"
                   schema:
                     type: string
                 - name: date
                   in: query
                   description: Departure date in ISO 8601 format (e.g., "2026-03-05").
-                  required: false
+                  required: true
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: origin
                   in: query
                   description: Optional origin airport IATA code to disambiguate.
                   required: false
+                  example: "JFK"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -205,6 +772,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "cacheHit": true
+                                "flights":
+                                    - "actualArrival": 1
+                                      "actualDeparture": 1
+                                      "aircraftIcao24": "a835af"
+                                      "aircraftType": "all"
+                                      "cancelled": true
+                                "source": "example"
                             schema:
                                 $ref: '#/components/schemas/GetFlightStatusResponse'
                 "400":
@@ -212,37 +788,111 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/aviation/v1/track-aircraft:
         get:
             tags:
                 - AviationService
             summary: TrackAircraft
-            description: TrackAircraft retrieves live position stream for a specific aircraft hex.
+            description: Track an aircraft by ICAO24 hex or callsign within map bounds, returning position observations, altitude, speed, source and update time for flight monitoring.
             operationId: TrackAircraft
             parameters:
                 - name: icao24
                   in: query
                   description: ICAO 24-bit transponder address (hex, e.g., "4b1805").
                   required: false
+                  example: "a835af"
                   schema:
                     type: string
                 - name: callsign
                   in: query
                   description: ATC callsign (e.g., "THY7CX").
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: sw_lat
                   in: query
                   description: Optional bounding box south-west latitude.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
@@ -250,6 +900,7 @@ paths:
                   in: query
                   description: Optional bounding box south-west longitude.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -257,6 +908,7 @@ paths:
                   in: query
                   description: Optional bounding box north-east latitude.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
@@ -264,14 +916,32 @@ paths:
                   in: query
                   description: Optional bounding box north-east longitude.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "positions":
+                                    - "altitudeM": 1.5
+                                      "callsign": "example"
+                                      "groundSpeedKts": 1.5
+                                      "icao24": "a835af"
+                                      "lat": 40.7128
+                                "source": "example"
+                                "updatedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/TrackAircraftResponse'
                 "400":
@@ -279,31 +949,113 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/aviation/v1/get-youtube-live-stream-info:
         get:
             tags:
                 - AviationService
             summary: GetYoutubeLiveStreamInfo
-            description: GetYoutubeLiveStreamInfo retrieves information about a YouTube live stream (status, title, etc).
+            description: 'GetYoutubeLiveStreamInfo names a YouTube video (title and channel name) through YouTube oEmbed. Channel live detection is retired: a channel-only query returns error "channel_live_detection_retired", and the channel, is_live and hls_url fields are deprecated.'
             operationId: GetYoutubeLiveStreamInfo
             parameters:
                 - name: channel
+                  deprecated: true
                   in: query
-                  description: YouTube channel handle or ID.
+                  description: 'Deprecated: YouTube channel handle or ID. Channel live detection is retired; a channel-only query returns error "channel_live_detection_retired".'
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: video_id
                   in: query
-                  description: Specific video ID to check.
+                  description: YouTube video ID to name.
                   required: false
+                  example: "example-id"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -311,6 +1063,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "channelExists": true
+                                "channelName": "DW News"
+                                "error": ""
+                                "hlsUrl": ""
+                                "isLive": false
+                                "title": "DW News livestream"
+                                "videoId": "LuKwFajn37U"
                             schema:
                                 $ref: '#/components/schemas/GetYoutubeLiveStreamInfoResponse'
                 "400":
@@ -318,49 +1078,131 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/aviation/v1/search-flight-prices:
         get:
             tags:
                 - AviationService
             summary: SearchFlightPrices
-            description: SearchFlightPrices searches for flight price offers on a route.
+            description: Search per-person flight price offers by route, dates and cabin, with indicative-price and provider status. PRO-gated. Requires an active Pro subscription.
             operationId: SearchFlightPrices
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: origin
                   in: query
                   description: Origin airport IATA code.
-                  required: false
+                  required: true
+                  example: "JFK"
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Destination airport IATA code.
-                  required: false
+                  required: true
+                  example: "LHR"
                   schema:
                     type: string
                 - name: departure_date
                   in: query
                   description: Outbound departure date (ISO 8601).
-                  required: false
+                  required: true
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: return_date
                   in: query
                   description: Return date (ISO 8601), empty for one-way.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: adults
                   in: query
-                  description: Number of adult passengers (1-9).
+                  description: |-
+                    Number of adult passengers (1-9).
+                     Accepted but currently ignored; quotes are per-person and the count does not filter.
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -368,18 +1210,26 @@ paths:
                   in: query
                   description: Desired cabin class.
                   required: false
+                  example: "CABIN_CLASS_ECONOMY"
                   schema:
                     type: string
+                    enum:
+                        - 'CABIN_CLASS_ECONOMY'
+                        - 'CABIN_CLASS_PREMIUM_ECONOMY'
+                        - 'CABIN_CLASS_BUSINESS'
+                        - 'CABIN_CLASS_FIRST'
                 - name: nonstop_only
                   in: query
                   description: Whether to restrict to nonstop flights only.
                   required: false
+                  example: true
                   schema:
                     type: boolean
                 - name: max_results
                   in: query
                   description: Maximum number of quotes to return (1-50).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -387,12 +1237,22 @@ paths:
                   in: query
                   description: ISO 4217 currency code for prices (e.g., "usd", "eur", "try").
                   required: false
+                  example: "USD"
                   schema:
                     type: string
                 - name: market
                   in: query
                   description: Market/locale code (e.g., "us", "tr").
                   required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -400,6 +1260,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "degraded": true
+                                "error": "example"
+                                "isDemoMode": true
+                                "isIndicative": true
+                                "provider": "worldmonitor"
                             schema:
                                 $ref: '#/components/schemas/SearchFlightPricesResponse'
                 "400":
@@ -407,13 +1273,84 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/aviation/v1/list-aviation-news:
         get:
             tags:
@@ -426,12 +1363,19 @@ paths:
                   in: query
                   description: Entities to filter by (airline names, airport codes, route strings).
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "example"
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: window_hours
                   in: query
                   description: Time window in hours to look back (1-168).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -439,14 +1383,33 @@ paths:
                   in: query
                   description: Maximum number of news items to return (1-50).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "items":
+                                    - "id": "example-id"
+                                      "imageUrl": "https://example.com/worldmonitor"
+                                      "matchedEntities":
+                                          - "example"
+                                      "publishedAt": 1717200000000
+                                      "snippet": "example"
+                                "source": "example"
+                                "updatedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/ListAviationNewsResponse'
                 "400":
@@ -454,87 +1417,194 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/aviation/v1/search-google-flights:
         get:
             tags:
                 - AviationService
             summary: SearchGoogleFlights
-            description: SearchGoogleFlights searches Google Flights for available itineraries on a specific date.
+            description: Search Google Flights itineraries by route and dates, with cabin, stops, airline and passenger filters, returning flight legs, duration and availability status.
             operationId: SearchGoogleFlights
             parameters:
                 - name: origin
                   in: query
                   description: Departure airport IATA code (e.g. "JFK").
                   required: false
+                  example: "JFK"
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Arrival airport IATA code (e.g. "LHR").
                   required: false
+                  example: "LHR"
                   schema:
                     type: string
                 - name: departure_date
                   in: query
                   description: Departure date in YYYY-MM-DD format.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: return_date
                   in: query
                   description: Return date in YYYY-MM-DD format; omit for one-way.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: cabin_class
                   in: query
                   description: 'Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST.'
                   required: false
+                  example: "ECONOMY"
                   schema:
                     type: string
                 - name: max_stops
                   in: query
                   description: 'Stop filter: ANY, NON_STOP, ONE_STOP, or TWO_PLUS_STOPS.'
                   required: false
+                  example: "ANY"
                   schema:
                     type: string
                 - name: departure_window
                   in: query
                   description: Departure time window in HH-HH format (e.g. "6-20").
                   required: false
+                  example: "6-20"
                   schema:
                     type: string
                 - name: airlines
                   in: query
                   description: Airline IATA codes to filter by (e.g. ["BA", "AA"]).
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "BA"
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: sort_by
                   in: query
                   description: 'Sort order: CHEAPEST, DURATION, DEPARTURE_TIME, or ARRIVAL_TIME.'
                   required: false
+                  example: "CHEAPEST"
                   schema:
                     type: string
                 - name: passengers
                   in: query
                   description: Number of adult passengers (1-9).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "degraded": true
+                                "error": "example"
+                                "flights":
+                                    - "durationMinutes": 42
+                                      "legs":
+                                          - "airlineCode": "example"
+                                            "arrivalAirport": "example"
+                                            "arrivalDatetime": "2026-01-15"
+                                            "departureAirport": "example"
+                                            "departureDatetime": "2026-01-15"
+                                      "price": 75.25
+                                      "stops": 1
                             schema:
                                 $ref: '#/components/schemas/SearchGoogleFlightsResponse'
                 "400":
@@ -542,13 +1612,84 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/aviation/v1/search-google-dates:
         get:
             tags:
@@ -561,30 +1702,35 @@ paths:
                   in: query
                   description: Departure airport IATA code (e.g. "JFK").
                   required: false
+                  example: "JFK"
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Arrival airport IATA code (e.g. "LHR").
                   required: false
+                  example: "LHR"
                   schema:
                     type: string
                 - name: start_date
                   in: query
                   description: Start of date range in YYYY-MM-DD format.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: end_date
                   in: query
                   description: End of date range in YYYY-MM-DD format.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: trip_duration
                   in: query
                   description: Trip duration in days (required for round-trip searches).
                   required: false
+                  example: 42
                   schema:
                     type: integer
                     format: int32
@@ -592,50 +1738,77 @@ paths:
                   in: query
                   description: Whether to search for round-trip flights.
                   required: false
+                  example: true
                   schema:
                     type: boolean
                 - name: cabin_class
                   in: query
                   description: 'Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST.'
                   required: false
+                  example: "ECONOMY"
                   schema:
                     type: string
                 - name: max_stops
                   in: query
                   description: 'Stop filter: ANY, NON_STOP, ONE_STOP, or TWO_PLUS_STOPS.'
                   required: false
+                  example: "ANY"
                   schema:
                     type: string
                 - name: departure_window
                   in: query
                   description: Departure time window in HH-HH format (e.g. "6-20").
                   required: false
+                  example: "6-20"
                   schema:
                     type: string
                 - name: airlines
                   in: query
                   description: Airline IATA codes to filter by (e.g. ["BA", "AA"]).
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "BA"
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: sort_by_price
                   in: query
                   description: Whether to sort results by price (lowest first).
                   required: false
+                  example: true
                   schema:
                     type: boolean
                 - name: passengers
                   in: query
                   description: Number of adult passengers (1-9).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "dates":
+                                    - "date": "2026-01-15"
+                                      "price": 75.25
+                                      "returnDate": "2026-01-15"
+                                "degraded": true
+                                "error": "example"
                             schema:
                                 $ref: '#/components/schemas/SearchGoogleDatesResponse'
                 "400":
@@ -643,15 +1816,125 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+        BearerAuth:
+            type: http
+            scheme: bearer
+            description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:
@@ -659,6 +1942,82 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        BillingVerificationError:
+            type: object
+            description: "Returned with HTTP 503 when paid access cannot be confirmed right now: the billing provider is re-verifying a recently expired subscription, or the entitlement backend is unreachable. Retryable — honor Retry-After."
+            properties:
+                error:
+                    type: string
+                    description: Human-readable billing-verification failure reason.
+                code:
+                    type: string
+                    enum:
+                        - renewal_verification_pending
+                        - renewal_verification_failed
+                        - entitlement_verification_unavailable
+                    description: Machine-readable billing-verification state, mirrored in the X-Billing-Verification response header.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint, when the denial came from a tier gate.
+            required:
+                - error
+                - code
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                code:
+                    type: string
+                    enum:
+                        - subscription_lapsed
+                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -683,16 +2042,113 @@ components:
             required:
                 - violations
             description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListAircraftEmergenciesRequest:
+            type: object
+            description: ListAircraftEmergenciesRequest has no filters. Coverage is provider reception.
+        ListAircraftEmergenciesResponse:
+            type: object
+            properties:
+                observations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EmergencyObservation'
+                feeds:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EmergencyFeed'
+            description: ListAircraftEmergenciesResponse preserves observations and per-query availability.
+        EmergencyObservation:
+            type: object
+            properties:
+                address:
+                    type: string
+                    description: Provider address, including a non-ICAO prefix when present.
+                squawk:
+                    type: string
+                    description: Exact four-character transponder code.
+                source:
+                    type: string
+                    description: Observation provider.
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last message time in epoch milliseconds, not squawk selection time. Zero means unknown.. Warning: Values > 2^53 may lose precision in JavaScript'
+                position:
+                    $ref: '#/components/schemas/EmergencyPosition'
+                callsign:
+                    type: string
+                    description: Reported callsign, empty when unknown.
+                registration:
+                    type: string
+                    description: Provider registration, empty when unknown.
+                aircraftType:
+                    type: string
+                    description: Provider type code, empty when unknown.
+                description:
+                    type: string
+                    description: Provider aircraft description, empty when unknown.
+                militaryFlag:
+                    type: string
+                    description: Military database bit, set, not_set, or unknown. This is not admission criteria.
+                altitudeFt:
+                    type: number
+                    format: double
+                    description: Barometric altitude in feet, absent when unknown or reported as ground.
+                groundSpeedKts:
+                    type: number
+                    format: double
+                    description: Ground speed in knots, absent when unknown.
+            description: EmergencyObservation is a reported Mode A code, not a confirmed incident.
+        EmergencyPosition:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                    description: Latitude in degrees.
+                lon:
+                    type: number
+                    format: double
+                    description: Longitude in degrees.
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Provider position time in epoch milliseconds. Zero means unknown.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: EmergencyPosition keeps the position clock separate from last contact.
+        EmergencyFeed:
+            type: object
+            properties:
+                source:
+                    type: string
+                    description: Provider name.
+                squawk:
+                    type: string
+                    description: Requested squawk.
+                status:
+                    type: string
+                    description: available, unavailable, or stale.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Retrieval time in epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                message:
+                    type: string
+                    description: Safe status explanation.
+            description: EmergencyFeed records success and failure separately for each exact code query.
         ListAirportDelaysRequest:
             type: object
             properties:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 region:
                     type: string
                     enum:
@@ -712,9 +2168,10 @@ components:
                         - FLIGHT_DELAY_SEVERITY_MODERATE
                         - FLIGHT_DELAY_SEVERITY_MAJOR
                         - FLIGHT_DELAY_SEVERITY_SEVERE
+                        - FLIGHT_DELAY_SEVERITY_UNKNOWN
                     description: |-
                         FlightDelaySeverity represents the severity of flight delays at an airport.
-                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
+                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe' | 'unknown'.
             description: ListAirportDelaysRequest specifies filters for retrieving airport delay alerts.
         ListAirportDelaysResponse:
             type: object
@@ -780,9 +2237,10 @@ components:
                         - FLIGHT_DELAY_SEVERITY_MODERATE
                         - FLIGHT_DELAY_SEVERITY_MAJOR
                         - FLIGHT_DELAY_SEVERITY_SEVERE
+                        - FLIGHT_DELAY_SEVERITY_UNKNOWN
                     description: |-
                         FlightDelaySeverity represents the severity of flight delays at an airport.
-                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
+                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe' | 'unknown'.
                 avgDelayMinutes:
                     type: integer
                     format: int32
@@ -920,9 +2378,10 @@ components:
                         - FLIGHT_DELAY_SEVERITY_MODERATE
                         - FLIGHT_DELAY_SEVERITY_MAJOR
                         - FLIGHT_DELAY_SEVERITY_SEVERE
+                        - FLIGHT_DELAY_SEVERITY_UNKNOWN
                     description: |-
                         FlightDelaySeverity represents the severity of flight delays at an airport.
-                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
+                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe' | 'unknown'.
                 topDelayReasons:
                     type: array
                     items:
@@ -1113,7 +2572,11 @@ components:
                     type: integer
                     minimum: 0
                     format: int32
-                    description: 'Minimum number of flights required to include a carrier (default: 1).'
+                    description: |-
+                        Minimum number of flights required to include a carrier (default: 3).
+                         The generated GET decoder emits 0 when the query param is absent, and 0
+                         means "use the default" in the handler — an explicit 0 is not a usable
+                         filter (every group has >= 1 flight).
             description: GetCarrierOpsRequest specifies parameters for carrier operations metrics.
         GetCarrierOpsResponse:
             type: object
@@ -1280,7 +2743,6 @@ components:
                     type: string
                     enum:
                         - POSITION_SOURCE_UNSPECIFIED
-                        - POSITION_SOURCE_OPENSKY
                         - POSITION_SOURCE_WINGBITS
                         - POSITION_SOURCE_SIMULATED
                     description: PositionSource identifies the provider of aircraft position data.
@@ -1293,37 +2755,41 @@ components:
             type: object
             properties:
                 channel:
+                    deprecated: true
                     type: string
-                    description: YouTube channel handle or ID.
+                    description: 'Deprecated: YouTube channel handle or ID. Channel live detection is retired; a channel-only query returns error "channel_live_detection_retired".'
                 videoId:
                     type: string
-                    description: Specific video ID to check.
-            description: GetYoutubeLiveStreamInfoRequest parameters for detecting live status.
+                    description: YouTube video ID to name.
+            description: GetYoutubeLiveStreamInfoRequest names the YouTube video to look up.
         GetYoutubeLiveStreamInfoResponse:
             type: object
             properties:
                 videoId:
                     type: string
-                    description: Video ID of the live stream (if found).
+                    description: Video ID that was looked up.
                 isLive:
+                    deprecated: true
                     type: boolean
-                    description: Whether the stream is currently live.
+                    description: 'Always false: oEmbed does not report whether a video is live.'
                 channelExists:
+                    deprecated: true
                     type: boolean
-                    description: Whether the channel exists.
+                    description: 'Deprecated: true only when the oEmbed lookup succeeded, so it now carries exactly error == "".'
                 channelName:
                     type: string
                     description: Human-readable channel name.
                 hlsUrl:
+                    deprecated: true
                     type: string
-                    description: HLS manifest URL (if available).
+                    description: 'Always empty: YouTube manifest URLs are no longer returned.'
                 title:
                     type: string
-                    description: Stream title.
+                    description: Video title.
                 error:
                     type: string
-                    description: Optional error message.
-            description: GetYoutubeLiveStreamInfoResponse containing detection results.
+                    description: '"channel_live_detection_retired" for a channel-only query, or why the video lookup failed.'
+            description: GetYoutubeLiveStreamInfoResponse containing the oEmbed lookup result.
         SearchFlightPricesRequest:
             type: object
             properties:
@@ -1348,7 +2814,9 @@ components:
                     maximum: 9
                     minimum: 1
                     format: int32
-                    description: Number of adult passengers (1-9).
+                    description: |-
+                        Number of adult passengers (1-9).
+                         Accepted but currently ignored; quotes are per-person and the count does not filter.
                 cabin:
                     type: string
                     enum:
@@ -1387,10 +2855,15 @@ components:
                         $ref: '#/components/schemas/PriceQuote'
                 provider:
                     type: string
-                    description: Provider name (e.g., "amadeus", "demo").
+                    description: |-
+                        Provider name: "travelpayouts_data", "demo", or "none" when no live
+                         provider is configured.
                 isDemoMode:
                     type: boolean
-                    description: Whether results are from demo/simulated mode.
+                    description: |-
+                        Whether results are from demo/simulated mode. Requires explicit
+                         AVIATION_DEMO_PRICES=1 opt-in on the server. Never true in default
+                         self-host / production runs. See issue #3756.
                 updatedAt:
                     type: integer
                     format: int64
@@ -1398,6 +2871,19 @@ components:
                 isIndicative:
                     type: boolean
                     description: Whether returned prices are indicative (subject to change).
+                degraded:
+                    type: boolean
+                    description: |-
+                        True when the live provider could not satisfy the request — missing
+                         credentials, upstream failure, or zero results. Mirrors the
+                         searchGoogleFlights pattern so clients can render distinct messages
+                         for each error class.
+                error:
+                    type: string
+                    description: |-
+                        Discriminator for the degraded state: "" (ok), "missing_credentials"
+                         (TRAVELPAYOUTS_API_TOKEN unset), "upstream_error" (provider call
+                         threw), "no_results" (provider returned empty for this route).
             description: SearchFlightPricesResponse contains flight price offers.
         PriceQuote:
             type: object

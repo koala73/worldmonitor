@@ -5,6 +5,7 @@ package worldmonitor.webcam.v1;
 import "sebuf/http/annotations.proto";
 
 message GetWebcamImageRequest {
+  // Webcam identifier to resolve into image and player URLs.
   string webcam_id = 1 [(sebuf.http.query) = {name: "webcam_id"}];
 }
 
@@ -13,6 +14,10 @@ message GetWebcamImageResponse {
   string player_url = 2;
   string title = 3;
   string windy_url = 4;
-  int64 last_updated = 5;
+  // ISO-8601 datetime string of the webcam's most recent update
+  // (e.g. "2026-07-03T12:00:00.000Z"); empty string when unknown or unavailable.
+  // String (not int64): the handler emits new Date(...).toISOString(), so the
+  // field carries a datetime string, never epoch milliseconds.
+  string last_updated = 5;
   string error = 6;
 }

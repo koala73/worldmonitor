@@ -1,6 +1,6 @@
 /**
  * ListClimateAnomalies RPC -- reads seeded climate data from Railway seed cache.
- * All external Open-Meteo API calls happen in seed-climate.mjs on Railway.
+ * All external Open-Meteo API calls happen in the climate seed scripts on Railway.
  */
 
 import type {
@@ -10,18 +10,16 @@ import type {
   ListClimateAnomaliesResponse,
 } from '../../../../src/generated/server/worldmonitor/climate/v1/service_server';
 
-import { getCachedJson } from '../../../_shared/redis';
-
-const SEED_CACHE_KEY = 'climate:anomalies:v1';
+import { readRequiredSeed } from '../../../_shared/required-seed';
+import { CLIMATE_ANOMALIES_KEY } from '../../../_shared/cache-keys';
 
 export const listClimateAnomalies: ClimateServiceHandler['listClimateAnomalies'] = async (
   _ctx: ServerContext,
   _req: ListClimateAnomaliesRequest,
 ): Promise<ListClimateAnomaliesResponse> => {
-  try {
-    const result = await getCachedJson(SEED_CACHE_KEY, true) as ListClimateAnomaliesResponse | null;
-    return { anomalies: result?.anomalies || [], pagination: undefined };
-  } catch {
-    return { anomalies: [], pagination: undefined };
-  }
+  const result = await readRequiredSeed(CLIMATE_ANOMALIES_KEY, value => {
+    const data = value as ListClimateAnomaliesResponse | null;
+    return data && Array.isArray(data.anomalies) ? data : undefined;
+  });
+  return { anomalies: result.anomalies, pagination: result.pagination };
 };

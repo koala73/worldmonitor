@@ -1,0 +1,111 @@
+import type {
+  ServerContext,
+  RunScenarioRequest,
+  RunScenarioResponse,
+} from '../../../../src/generated/server/worldmonitor/scenario/v1/service_server';
+import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/scenario/v1/service_server';
+
+import {
+  requirePremiumRpcAccess,
+} from '../../../_shared/premium-check';
+import { runRedisPipeline, runRedisTransaction } from '../../../_shared/redis';
+import { setResponseHeader, setSuccessStatusOverride } from '../../../_shared/response-headers';
+import { getScenarioTemplate } from '../../supply-chain/v1/scenario-templates';
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
+import {
+  SCENARIO_RESULT_TTL_SECONDS,
+  generateScenarioJobId,
+  scenarioOwnerKey,
+  scenarioOwnerToken,
+} from './scenario-job';
+
+const QUEUE_KEY = 'scenario-queue:pending';
+const MAX_QUEUE_DEPTH = 100;
+
+export async function runScenario(
+  ctx: ServerContext,
+  req: RunScenarioRequest,
+): Promise<RunScenarioResponse> {
+  const identity = await requirePremiumRpcAccess(ctx.request, ApiError, 'PRO subscription required');
+
+  const scenarioId = (req.scenarioId ?? '').trim();
+  if (!scenarioId) {
+    throw new ValidationError([{ field: 'scenarioId', description: 'scenarioId is required' }]);
+  }
+  const template = getScenarioTemplate(scenarioId);
+  if (!template) {
+    throw new ValidationError([{ field: 'scenarioId', description: `Unknown scenario: ${scenarioId}` }]);
+  }
+
+  const disruptionPct = req.disruptionPct;
+  if (disruptionPct !== undefined && (
+    !Number.isInteger(disruptionPct) || disruptionPct < 0 || disruptionPct > 100
+    || template.affectedChokepointIds.length === 0
+  )) {
+    throw new ValidationError([{ field: 'disruptionPct', description: 'disruptionPct must be an integer from 0 to 100 for a physical scenario' }]);
+  }
+
+  // Empty iso2 scopes the scenario to all countries. The proto checks shape
+  // only; an unassigned code such as ZZ would otherwise be queued for the worker.
+  const iso2 = req.iso2 ? req.iso2.trim() : '';
+  if (iso2 && !isAssignedCountryCode(iso2)) {
+    throw new ValidationError([{ field: 'iso2', description: 'iso2 must be empty or an assigned uppercase ISO 3166-1 alpha-2 code, e.g. "IQ".' }]);
+  }
+
+  // Queue-depth backpressure. Raw key: worker reads it unprefixed, so we must too.
+  const [depthEntry] = await runRedisPipeline([['LLEN', QUEUE_KEY]], true);
+  const depth = typeof depthEntry?.result === 'number' ? depthEntry.result : 0;
+  if (depth > MAX_QUEUE_DEPTH) {
+    throw new ApiError(429, 'Scenario queue is at capacity, please try again later', '');
+  }
+
+  const owner = await scenarioOwnerToken(identity, ctx.request);
+  if (!owner) {
+    throw new ApiError(403, 'PRO subscription required', '');
+  }
+
+  const jobId = generateScenarioJobId();
+  const payload = JSON.stringify({
+    jobId,
+    scenarioId,
+    iso2: iso2 || null,
+    disruptionPct,
+    enqueuedAt: Date.now(),
+    owner,
+  });
+
+  // Bind the owner and enqueue in one MULTI/EXEC. A pipeline could RPUSH a
+  // job whose owner SET failed, leaving an unpollable job on the worker queue
+  // behind a 502. A transaction that does not confirm both writes must not
+  // return a job id: SET 'OK' is the owner record, RPUSH's length the enqueue.
+  const [setEntry, pushEntry] = await runRedisTransaction([
+    ['SET', scenarioOwnerKey(jobId), JSON.stringify(owner), 'EX', String(SCENARIO_RESULT_TTL_SECONDS)],
+    ['RPUSH', QUEUE_KEY, payload],
+  ], true);
+  if (
+    !setEntry || setEntry.error || setEntry.result !== 'OK'
+    || !pushEntry || pushEntry.error || typeof pushEntry.result !== 'number'
+  ) {
+    throw new ApiError(502, 'Failed to enqueue scenario job', '');
+  }
+
+  // statusUrl is a server-computed convenience URL preserved from the legacy
+  // /api/scenario/v1/run contract so external callers can keep polling via the
+  // response body rather than hardcoding the status path. See the proto comment
+  // on RunScenarioResponse for why this matters on a v1 → v1 migration.
+  const statusUrl = `/api/scenario/v1/get-scenario-status?jobId=${encodeURIComponent(jobId)}`;
+
+  // Async-enqueue contract: the job is accepted, not complete. Restore the
+  // legacy 202 Accepted status (lost in the sebuf migration — the generated
+  // server hardcodes 200) and point at the poller via Location. The gateway
+  // applies the override on POST-200 only, so the thrown 403/429/502 paths
+  // above keep their status.
+  setSuccessStatusOverride(ctx.request, 202);
+  setResponseHeader(ctx.request, 'Location', statusUrl);
+
+  return {
+    jobId,
+    status: 'pending',
+    statusUrl,
+  };
+}

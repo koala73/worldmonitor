@@ -1,0 +1,31 @@
+{
+  "methodologyVersion": "1.0.0",
+  "description": "Independently frozen heterogeneous source-input table for ten synthetic country labels. It is not production evidence.",
+  "inputIds": [
+    "food.productionBalance",
+    "food.waterSecurity",
+    "energy.productionBalance",
+    "demographics.totalDependency",
+    "demographics.workingAgeProjection",
+    "demographics.tertiaryEnrollment",
+    "demographics.researchersPerMillion",
+    "technology.internetUse",
+    "technology.mobileSubscriptions",
+    "technology.rdSpend",
+    "technology.stemGraduateShare",
+    "defense.expenditureUsd",
+    "defense.industrialBalance"
+  ],
+  "countries": [
+    { "countryCode": "US", "rawValues": [1.2125, 37, 1.1, 61, 1.085, 76, 3530, 87.5, 125, 3.81, 29.5, 87096358995.60806, 0.55], "expected": { "food": [89.64, 5], "energy": [85, 5], "demographics": [76.43, 4], "technology": [82.81, 5], "defense": [72.2, 4] }, "reviewNote": "Strong overall, with defense below technology and food." },
+    { "countryCode": "DE", "rawValues": [1.025, 19, 0.9, 44.75, 0.98, 72.5, 4412, 81.5, 120, 2.67, 37, 10964781961.431854, 0.85], "expected": { "food": [74.29, 4], "energy": [65, 4], "demographics": [76.86, 4], "technology": [77.31, 4], "defense": [78.2, 4] }, "reviewNote": "Consistent high capability without a band-five pillar." },
+    { "countryCode": "JP", "rawValues": [0.9125, 28, 0.65, 41.5, 0.905, 79.5, 3530, 89, 128, 3.05, 28, 2238721138.56834, 0.8], "expected": { "food": [60.36, 4], "energy": [40, 3], "demographics": [66.07, 4], "technology": [76.81, 4], "defense": [66, 4] }, "reviewNote": "Technology strength contrasts with a mixed energy balance." },
+    { "countryCode": "IN", "rawValues": [1.0625, 73, 0.8, 74, 1.04, 44.5, 2550, 53.75, 140, 1.34, 35.5, 12589254117.941668, 0.35], "expected": { "food": [65.36, 4], "energy": [55, 3], "demographics": [58.21, 3], "technology": [51.88, 3], "defense": [49, 3] }, "reviewNote": "Food capability leads otherwise mixed pillars." },
+    { "countryCode": "BR", "rawValues": [1.1375, 77.5, 1.2, 70.75, 0.965, 55, 1080, 68.75, 90, 1.15, 31, 1122018454.301963, 0.9], "expected": { "food": [72.14, 4], "energy": [95, 5], "demographics": [48.93, 3], "technology": [41.56, 3], "defense": [68, 4] }, "reviewNote": "Energy and food strength contrast with capability inputs." },
+    { "countryCode": "ZA", "rawValues": [0.7625, 41.5, 0.5, 80.5, 0.935, 69, 2795, 50, 110, 2.1, 16, 17782794100.38923, 0.25], "expected": { "food": [41.43, 3], "energy": [25, 2], "demographics": [45, 3], "technology": [45.94, 3], "defense": [45, 3] }, "reviewNote": "Energy is the sole material-deficit pillar." },
+    { "countryCode": "AE", "rawValues": [0.65, 86.5, 1.25, 64.25, 0.875, 83, 590, 93.5, 135, 1.91, 25, 25118864315.095806, 0.95], "expected": { "food": [18.93, 1], "energy": [100, 5], "demographics": [46.79, 3], "technology": [57.31, 3], "defense": [89, 5] }, "reviewNote": "High energy and defense coexist with a severe food deficit." },
+    { "countryCode": "MX", "rawValues": [0.95, 64, 0.45, 57.75, 0.89, 51.5, 1815, 61.25, 120, 0.77, 22, 3162277660.16838, 0.45], "expected": { "food": [55.71, 3], "energy": [20, 1], "demographics": [42.86, 3], "technology": [38.75, 2], "defense": [47, 3] }, "reviewNote": "Mixed food, demographics, and defense with weaker energy and technology; the source-derived energy ratio is infinitesimally below the unrounded 20-point boundary." },
+    { "countryCode": "ID", "rawValues": [0.9125, 82, 0.95, 77.25, 0.995, 37.5, 835, 57.5, 130, 0.58, 32.5, 398107170.553497, 0.3], "expected": { "food": [47.5, 3], "energy": [70, 4], "demographics": [44.29, 3], "technology": [37.81, 2], "defense": [26, 2] }, "reviewNote": "Energy leads while technology and defense remain material deficits." },
+    { "countryCode": "ZW", "rawValues": [0.6125, 91, 0.3, 87, 0.83, 30.5, 345, 29, 75, 0.276, 16, 141253754.462275, 0.1], "expected": { "food": [13.93, 1], "energy": [5, 1], "demographics": [13.93, 1], "technology": [10.19, 1], "defense": [8, 1] }, "reviewNote": "All five pillars remain in the severe-deficit band." }
+  ]
+}

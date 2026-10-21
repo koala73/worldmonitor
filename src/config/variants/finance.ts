@@ -162,6 +162,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 1 },
   'fear-greed': { name: 'Fear & Greed', enabled: true, priority: 1 },
+  'market-breadth': { name: 'Market Breadth', enabled: true, priority: 1 },
   derivatives: { name: 'Derivatives & Options', enabled: true, priority: 2 },
   fintech: { name: 'Fintech & Trading Tech', enabled: true, priority: 2 },
   regulation: { name: 'Financial Regulation', enabled: true, priority: 2 },
@@ -191,6 +192,8 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: true,
   weather: true,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: true,
   waterways: true,
   outages: true,
@@ -227,13 +230,14 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   tradeRoutes: true,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity variant layers (disabled in finance variant)
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 // Mobile defaults for finance variant
@@ -252,6 +256,8 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: false,
   weather: false,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: true,
   waterways: false,
   outages: true,
@@ -288,13 +294,14 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity variant layers (disabled in finance variant)
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

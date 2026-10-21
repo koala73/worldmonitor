@@ -18,7 +18,9 @@ async function fetchData() {
   if (cached && now - cachedAt < CACHE_TTL) return cached;
   if (now < negUntil) return null;
   let data;
-  try { data = await readJsonFromUpstash(REDIS_KEY); } catch { data = null; }
+  // Seeder-owned key (#7674): scripts/seed-hormuz.mjs publishes it bare —
+  // read raw in every environment so preview sees the fleet row.
+  try { data = await readJsonFromUpstash(REDIS_KEY, 3_000, true); } catch { data = null; }
   if (!data) {
     negUntil = now + NEG_TTL;
     return null;

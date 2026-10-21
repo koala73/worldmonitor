@@ -8,109 +8,163 @@
  * - listTrendingRepos (python, javascript, typescript daily)
  */
 
+import ARXIV_CATEGORIES from './shared/research-arxiv-categories.json' with { type: 'json' };
+
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
-const ARXIV_TTL = 3600;
-const HN_TTL = 600;
+// The canonical key's staleness gate. Exported so the TTL invariant below is pinned by a test.
+export const RESEARCH_MAX_STALE_MIN = 150;
+// 3h. MUST outlive the health staleness gate (RESEARCH_MAX_STALE_MIN → 9000s) so a merely-late
+// tick degrades to STALE_SEED (last-good still served) instead of an EMPTY crit, and it is ≈3×
+// the ~hourly cron so a single arXiv blip stays a graceful exit-0 RETRY rather than exit-1 +
+// `researchArxivHnTrending` EMPTY in prod (issue #5409). Was 3600 (≈1× cron, BELOW the gate).
+export const ARXIV_TTL = 10800;
+// ≈3× the hourly cron, like ARXIV_TTL: 600s left every HN feed EMPTY for ~50 min of each hour.
+export const HN_TTL = 10800;
 const TECH_EVENTS_TTL = 28800; // 8h — outlives maxStaleMin:480 for health buffer
-const TRENDING_TTL = 3600;
+// Distinct seed-meta key for this seeder's tech-events mirror. MUST NOT share
+// seed-meta:research:tech-events with scripts/ais-relay.cjs: the relay writes
+// research:tech-events-bootstrap:v1 (the payload /api/health counts and
+// bootstrap hydration serves) plus that meta, and defers its boot seed while
+// the meta is younger than its 6h interval. The default meta-key derivation
+// strips ':v1', so this file's extra-key write used to refresh the relay's
+// meta on every hourly seed-research run (Railway cron 0 */1 * * *; two live
+// meta writes on 2026-09-23 were 62min apart) while never writing the
+// bootstrap payload — the relay then postponed its first seed on every restart
+// (age always < 6h), the bootstrap key silently expired, and health reported
+// EMPTY records=0 next to a fresh seedAge. seed-health intervalMin 240 is the
+// declared expected interval, not this seeder's real write cadence. See
+// incident 2026-09-23.
+export const TECH_EVENTS_SEED_META_KEY = 'seed-meta:research:tech-events:seeder';
+// ≈3× the hourly cron, like ARXIV_TTL and HN_TTL.
+export const TRENDING_TTL = 10800;
 
 // ─── arXiv Papers ───
 
-async function fetchArxivPapers() {
-  const categories = ['cs.AI', 'cs.CL', 'cs.CR'];
+
+// Parse arXiv Atom XML into paper records. Pure — split out so the fetch path stays testable.
+function parseArxivEntries(xml) {
+  const papers = [];
+  const entryBlocks = xml.split('<entry>').slice(1);
+  for (const block of entryBlocks) {
+    const id = (block.match(/<id>([\s\S]*?)<\/id>/)?.[1] || '').trim().split('/').pop() || '';
+    const title = (block.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '').trim().replace(/\s+/g, ' ');
+    const summary = (block.match(/<summary>([\s\S]*?)<\/summary>/)?.[1] || '').trim().replace(/\s+/g, ' ');
+    const published = block.match(/<published>([\s\S]*?)<\/published>/)?.[1]?.trim() || '';
+    const publishedAt = published ? new Date(published).getTime() : 0;
+    const urlMatch = block.match(/<link[^>]*rel="alternate"[^>]*href="([^"]+)"/);
+    const paperUrl = urlMatch?.[1] || `https://arxiv.org/abs/${id}`;
+
+    const authors = [];
+    const authorMatches = block.matchAll(/<author>\s*<name>([\s\S]*?)<\/name>/g);
+    for (const m of authorMatches) authors.push(m[1].trim());
+
+    const cats = [];
+    const catMatches = block.matchAll(/<category[^>]*term="([^"]+)"/g);
+    for (const m of catMatches) cats.push(m[1]);
+
+    if (title && id) papers.push({ id, title, summary, authors, categories: cats, publishedAt, url: paperUrl });
+  }
+  return papers;
+}
+
+// Fetch ONE arXiv category with a bounded retry. arXiv intermittently times out (#5409); a
+// single transient timeout on the PRIMARY category (cs.AI) used to zero the whole record set,
+// so retry once before giving up. Returns [] on a non-retryable HTTP error; throws only if
+// every attempt failed (the caller isolates that per-category). `fetchFn`/`sleepFn` injectable
+// for tests.
+export async function fetchArxivCategory(cat, { fetchFn = fetch, retries = 1, sleepFn = sleep } = {}) {
+  const url = `https://export.arxiv.org/api/query?search_query=cat:${cat}&sortBy=submittedDate&sortOrder=descending&start=0&max_results=50`;
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const resp = await fetchFn(url, {
+        headers: { Accept: 'application/xml', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) { console.warn(`  arXiv ${cat}: HTTP ${resp.status}`); return []; }
+      return parseArxivEntries(await resp.text());
+    } catch (e) {
+      lastErr = e;
+      if (attempt < retries) await sleepFn(2000); // brief backoff before the retry
+    }
+  }
+  throw lastErr;
+}
+
+// Fetch all arXiv categories with PER-CATEGORY ISOLATION (#5409). A timeout on one category
+// must not discard the others — in particular a good cs.AI (the primary record key that drives
+// declareRecords) must survive a cs.CL/cs.CR blip. Previously the loop let any category error
+// reject the whole function, so a single arXiv timeout zeroed the primary record set → exit 1 +
+// `researchArxivHnTrending` EMPTY in prod. Never throws: a total outage returns {} so the caller's
+// Promise.allSettled stays fulfilled and runSeed takes the graceful last-good RETRY path.
+export async function fetchArxivPapers({ fetchFn = fetch, retries = 1, sleepFn = sleep } = {}) {
   const results = {};
-
-  for (const cat of categories) {
-    const url = `https://export.arxiv.org/api/query?search_query=cat:${cat}&start=0&max_results=50`;
-    const resp = await fetch(url, {
-      headers: { Accept: 'application/xml', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) { console.warn(`  arXiv ${cat}: HTTP ${resp.status}`); continue; }
-    const xml = await resp.text();
-
-    // Simple XML parse for arXiv entries
-    const papers = [];
-    const entryBlocks = xml.split('<entry>').slice(1);
-    for (const block of entryBlocks) {
-      const id = (block.match(/<id>([\s\S]*?)<\/id>/)?.[1] || '').trim().split('/').pop() || '';
-      const title = (block.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '').trim().replace(/\s+/g, ' ');
-      const summary = (block.match(/<summary>([\s\S]*?)<\/summary>/)?.[1] || '').trim().replace(/\s+/g, ' ');
-      const published = block.match(/<published>([\s\S]*?)<\/published>/)?.[1]?.trim() || '';
-      const publishedAt = published ? new Date(published).getTime() : 0;
-      const urlMatch = block.match(/<link[^>]*rel="alternate"[^>]*href="([^"]+)"/);
-      const paperUrl = urlMatch?.[1] || `https://arxiv.org/abs/${id}`;
-
-      const authors = [];
-      const authorMatches = block.matchAll(/<author>\s*<name>([\s\S]*?)<\/name>/g);
-      for (const m of authorMatches) authors.push(m[1].trim());
-
-      const cats = [];
-      const catMatches = block.matchAll(/<category[^>]*term="([^"]+)"/g);
-      for (const m of catMatches) cats.push(m[1]);
-
-      if (title && id) papers.push({ id, title, summary, authors, categories: cats, publishedAt, url: paperUrl });
+  for (const cat of ARXIV_CATEGORIES) {
+    try {
+      const papers = await fetchArxivCategory(cat, { fetchFn, retries, sleepFn });
+      if (papers.length > 0) results[`research:arxiv:v1:${cat}::50`] = { papers, pagination: undefined };
+      console.log(`  arXiv ${cat}: ${papers.length} papers`);
+    } catch (e) {
+      console.warn(`  arXiv ${cat} failed: ${e?.message || e} — other categories unaffected`);
     }
-
-    const cacheKey = `research:arxiv:v1:${cat}::50`;
-    if (papers.length > 0) {
-      results[cacheKey] = { papers, pagination: undefined };
-    }
-    console.log(`  arXiv ${cat}: ${papers.length} papers`);
-    await sleep(3000); // arXiv rate limit: 1 req/3s
+    await sleepFn(3000); // arXiv rate limit: 1 req/3s
   }
   return results;
 }
 
 // ─── Hacker News ───
 
-async function fetchHackerNews() {
-  const feeds = ['top', 'best'];
+export async function fetchHackerNews() {
+  const feeds = ['top', 'new', 'best', 'ask', 'show', 'job'];
   const results = {};
 
   for (const feed of feeds) {
-    const idsResp = await fetch(`https://hacker-news.firebaseio.com/v0/${feed}stories.json`, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!idsResp.ok) { console.warn(`  HN ${feed}: HTTP ${idsResp.status}`); continue; }
-    const allIds = await idsResp.json();
-    if (!Array.isArray(allIds)) continue;
+    try {
+      const idsResp = await fetch(`https://hacker-news.firebaseio.com/v0/${feed}stories.json`, {
+        headers: { 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!idsResp.ok) { console.warn(`  HN ${feed}: HTTP ${idsResp.status}`); continue; }
+      const allIds = await idsResp.json();
+      if (!Array.isArray(allIds)) continue;
 
-    const ids = allIds.slice(0, 30);
-    const items = [];
+      const ids = allIds.slice(0, 30);
+      const items = [];
 
-    for (let i = 0; i < ids.length; i += 10) {
-      const batch = ids.slice(i, i + 10);
-      const batchResults = await Promise.all(
-        batch.map(async (id) => {
-          try {
-            const res = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`, {
-              headers: { 'User-Agent': CHROME_UA },
-              signal: AbortSignal.timeout(5_000),
-            });
-            if (!res.ok) return null;
-            const raw = await res.json();
-            if (!raw || raw.type !== 'story') return null;
-            return {
-              id: raw.id || 0, title: raw.title || '', url: raw.url || '',
-              score: raw.score || 0, commentCount: raw.descendants || 0,
-              by: raw.by || '', submittedAt: (raw.time || 0) * 1000,
-            };
-          } catch { return null; }
-        }),
-      );
-      items.push(...batchResults.filter(Boolean));
+      for (let i = 0; i < ids.length; i += 10) {
+        const batch = ids.slice(i, i + 10);
+        const batchResults = await Promise.all(
+          batch.map(async (id) => {
+            try {
+              const res = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`, {
+                headers: { 'User-Agent': CHROME_UA },
+                signal: AbortSignal.timeout(5_000),
+              });
+              if (!res.ok) return null;
+              const raw = await res.json();
+              if (!raw || (raw.type !== 'story' && raw.type !== 'job')) return null;
+              return {
+                id: raw.id || 0, title: raw.title || '', url: raw.url || '',
+                score: raw.score || 0, commentCount: raw.descendants || 0,
+                by: raw.by || '', submittedAt: (raw.time || 0) * 1000,
+              };
+            } catch { return null; }
+          }),
+        );
+        items.push(...batchResults.filter(Boolean));
+      }
+
+      const cacheKey = `research:hackernews:v1:${feed}:30`;
+      if (items.length > 0) {
+        results[cacheKey] = { items, pagination: undefined };
+      }
+      console.log(`  HN ${feed}: ${items.length} stories`);
+    } catch (error) {
+      console.warn(`  HN ${feed} failed: ${error?.message || error}`);
     }
-
-    const cacheKey = `research:hackernews:v1:${feed}:30`;
-    if (items.length > 0) {
-      results[cacheKey] = { items, pagination: undefined };
-    }
-    console.log(`  HN ${feed}: ${items.length} stories`);
   }
   return results;
 }
@@ -188,25 +242,6 @@ async function fetchTechEvents() {
     }
   } catch (e) { console.warn(`  dev.events RSS: ${e.message}`); }
 
-  // Curated major conferences (must match list-tech-events.ts CURATED_EVENTS)
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const CURATED = [
-    { id: 'gitex-global-2026', title: 'GITEX Global 2026', type: 'conference', location: 'Dubai World Trade Centre, Dubai',
-      coords: { lat: 25.2285, lng: 55.2867, country: 'UAE', original: 'Dubai World Trade Centre, Dubai', virtual: false },
-      startDate: '2026-12-07', endDate: '2026-12-11', url: 'https://www.gitex.com', source: 'curated', description: "World's largest tech & startup show" },
-    { id: 'token2049-dubai-2026', title: 'TOKEN2049 Dubai 2026', type: 'conference', location: 'Dubai, UAE',
-      coords: { lat: 25.2048, lng: 55.2708, country: 'UAE', original: 'Dubai, UAE', virtual: false },
-      startDate: '2026-04-29', endDate: '2026-04-30', url: 'https://www.token2049.com', source: 'curated', description: 'Premier crypto event in Dubai' },
-    { id: 'collision-2026', title: 'Collision 2026', type: 'conference', location: 'Toronto, Canada',
-      coords: { lat: 43.6532, lng: -79.3832, country: 'Canada', original: 'Toronto, Canada', virtual: false },
-      startDate: '2026-06-22', endDate: '2026-06-25', url: 'https://collisionconf.com', source: 'curated', description: "North America's fastest growing tech conference" },
-    { id: 'web-summit-2026', title: 'Web Summit 2026', type: 'conference', location: 'Lisbon, Portugal',
-      coords: { lat: 38.7223, lng: -9.1393, country: 'Portugal', original: 'Lisbon, Portugal', virtual: false },
-      startDate: '2026-11-02', endDate: '2026-11-05', url: 'https://websummit.com', source: 'curated', description: "The world's premier tech conference" },
-  ];
-  for (const c of CURATED) { if (new Date(c.startDate) >= now) events.push(c); }
-
   // Deduplicate
   const seen = new Set();
   const deduped = events.filter(e => {
@@ -270,14 +305,14 @@ async function fetchTrendingFromGitHubSearch(lang) {
   }));
 }
 
-async function fetchTrendingRepos() {
+export async function fetchTrendingRepos() {
   const languages = ['python', 'javascript', 'typescript'];
   const results = {};
 
   for (const lang of languages) {
     try {
       let repos = await fetchTrendingFromOSSInsight(lang);
-      if (!repos) repos = await fetchTrendingFromGitHubSearch(lang);
+      if (!repos?.length) repos = await fetchTrendingFromGitHubSearch(lang);
       if (!repos || repos.length === 0) { console.warn(`  Trending ${lang}: no data from any source`); continue; }
 
       const cacheKey = `research:trending:v1:${lang}:daily:50`;
@@ -325,22 +360,45 @@ async function fetchAll() {
     }
   }
   if (allData.hn) { for (const [key, data] of Object.entries(allData.hn)) await writeExtraKeyWithMeta(key, data, HN_TTL, data.items?.length ?? 0); }
-  if (allData.techEvents?.events?.length > 0) await writeExtraKeyWithMeta('research:tech-events:v1', allData.techEvents, TECH_EVENTS_TTL, allData.techEvents.events.length);
+  if (allData.techEvents?.events?.length > 0) await writeTechEventsMirror(allData.techEvents);
   if (allData.trending) { for (const [key, data] of Object.entries(allData.trending)) await writeExtraKeyWithMeta(key, data, TRENDING_TTL, data.repos?.length ?? 0); }
 
   const primaryKey = allData.arxiv?.['research:arxiv:v1:cs.AI::50'];
   return primaryKey || { papers: [], pagination: undefined };
 }
 
+// Persist the tech-events mirror under the SEEDER-owned meta key. Extracted so
+// the write path stays behaviorally testable (see
+// tests/seed-research-tech-events-meta-ownership.test.mjs): the meta key
+// override is load-bearing — the default derivation would collide with the
+// relay-owned seed-meta:research:tech-events and starve the bootstrap payload.
+export async function writeTechEventsMirror(techEvents, deps = {}) {
+  if (!techEvents.events.some(event => event.source !== 'curated')) return;
+  const write = deps.writeExtraKeyWithMeta ?? writeExtraKeyWithMeta;
+  await write('research:tech-events:v1', techEvents, TECH_EVENTS_TTL, techEvents.events.length, TECH_EVENTS_SEED_META_KEY);
+}
+
 function validate(data) {
   return data?.papers?.length > 0;
 }
 
-runSeed('research', 'arxiv-hn-trending', 'research:arxiv:v1:cs.AI::50', fetchAll, {
-  validateFn: validate,
-  ttlSeconds: ARXIV_TTL,
-  sourceVersion: 'arxiv-hn-gitter',
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+export function declareRecords(data) {
+  return data?.papers?.length ?? 0;
+}
+
+// Only run the seeder when invoked directly, so tests can import the fetch helpers above
+// without the top-level runSeed firing (mirrors seed-economy.mjs). `.endsWith` avoids the
+// import.meta.url-vs-argv symlink realpath fail-open (see test-ci-gotchas).
+if (process.argv[1]?.endsWith('seed-research.mjs')) {
+  runSeed('research', 'arxiv-hn-trending', 'research:arxiv:v1:cs.AI::50', fetchAll, {
+    validateFn: validate,
+    ttlSeconds: ARXIV_TTL,
+    sourceVersion: 'arxiv-hn-gitter',
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: RESEARCH_MAX_STALE_MIN,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

@@ -28,6 +28,10 @@ enum CrossSourceSignalType {
   CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME = 19;
   CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION = 20;
   CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE = 21;
+  // A gold or silver physical-premium regime changed on fresh inputs.
+  CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION = 22;
+  // A monitored authority published a material regulatory action.
+  CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION = 23;
 }
 
 // CrossSourceSignalSeverity indicates the urgency tier of a detected signal.

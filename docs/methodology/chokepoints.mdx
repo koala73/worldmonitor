@@ -1,0 +1,298 @@
+---
+title: "Chokepoint Methodology"
+description: "How World Monitor scores 13 monitored maritime chokepoints, including the seven-item live-flow subset backed by EIA energy baseline volumes."
+---
+
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+
+## Start here
+
+A handful of narrow waterways carry a wildly disproportionate share of world
+trade. The Strait of Hormuz alone runs at a baseline of about 21 million barrels
+a day — comparable to a fifth of global petroleum liquids consumption. Close one
+of these, and the effects reach every continent within weeks.
+
+WorldMonitor watches 13 of them and answers, continuously: **is anything wrong
+here, and who would feel it?**
+
+### What a chokepoint row tells you
+
+Open the [Strait of Hormuz tracker](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) for a worked example. Read its published disruption score, available inputs, and observation dates alongside the method below.
+
+Each waterway carries four separate readings, and it is worth keeping them
+apart:
+
+| Reading | The question it answers |
+|---|---|
+| **Flow** | Is traffic actually down? Measured against this strait's own 90-day norm, not a global average. |
+| **Threat** | What kind of problem is it — weather, war risk, mechanical, congestion? |
+| **Disruption score** | How bad, on one scale, so waterways can be ranked. |
+| **Country exposure** | Which countries' trade routes through here, so a closure has named victims. |
+
+<Warning>
+**Only 7 of the 13 carry a live flow estimate.** Hormuz, Malacca, Suez, Bab
+el-Mandeb, Dover, Bosporus, and Panama have an EIA energy baseline to measure
+against. The other six get transit summaries, threat classification, disruption
+scoring, and war-risk tiers, but `flowEstimate` is simply absent — not zero, not
+"normal." Do not read a missing flow as calm water.
+</Warning>
+
+### How "flow is down" is decided
+
+Traffic is compared against itself. The last 7 days of shipping activity are
+measured against the previous 90 — so a quiet week in a normally quiet strait
+does not register, while the same drop in a busy one does. That ratio is then
+applied to the strait's known baseline oil volume to express the shortfall in
+barrels per day.
+
+Two consequences worth internalizing: the number is a **modelled estimate** from
+vessel movement, not a metered measurement of oil; and it is deliberately
+capped, so a traffic surge cannot report more flow than the waterway plausibly
+carries.
+
+## What we track
+
+WorldMonitor has **13 monitored waterways** in the canonical chokepoint registry and the
+`GetChokepointStatus` RPC. The status RPC returns one row for each canonical id:
+`suez`, `malacca_strait`, `hormuz_strait`, `bab_el_mandeb`, `panama`,
+`taiwan_strait`, `cape_of_good_hope`, `gibraltar`, `bosphorus`,
+`korea_strait`, `dover_strait`, `kerch_strait`, and `lombok_strait`.
+
+Only **seven** of those 13 currently carry a live oil/gas flow estimate from
+`energy:chokepoint-flows:v1`, because only those seven have an EIA baseline id
+in the current seeder:
+
+| Canonical id | Public name | EIA baseline id | Baseline flow (mb/d) |
+|---|---|---|---:|
+| `hormuz_strait` | Strait of Hormuz | `hormuz` | 21.0 |
+| `malacca_strait` | Strait of Malacca | `malacca` | 17.2 |
+| `suez` | Suez Canal / SUMED | `suez` | 7.6 |
+| `bab_el_mandeb` | Bab el-Mandeb | `babelm` | 6.2 |
+| `dover_strait` | Dover Strait | `danish` | 3.0 |
+| `bosphorus` | Bosporus Strait | `turkish` | 2.9 |
+| `panama` | Panama Canal | `panama` | 0.9 |
+
+The other six canonical waterways still receive transit summaries, warnings,
+AIS-disruption matching, threat classification, disruption score, and war-risk
+tier, but `flowEstimate` is absent until a baseline-backed flow model is added.
+
+## Live transit counts and coverage
+
+The live transit counter uses AIS entry and exit reports for the same vessel.
+The vessel must remain inside the monitored area for at least five minutes.
+A crossing is recorded at the first report outside the area that arrives
+within six hours of the vessel's last report inside it. Reports often arrive in
+bursts, so a vessel can be silent for most of that time.
+Counts cover the preceding 24 hours. They are observed crossings, not a census
+of all traffic. Missing entry or exit reports prevent a measurement.
+PortWatch history and week-over-week movement are separate inputs and do not
+fill a missing live count.
+
+Completed crossings are saved to a Redis event window at each transit publish,
+normally every ten minutes. Deployments read this window before publishing.
+Each observation expires at its original 24-hour deadline. A failed window read
+leaves the previous publication unchanged. An abrupt restart can still lose
+observations since the last successful save and journeys that have not yet exited.
+
+The Strait of Hormuz page explains this measurement requirement when its count
+is absent. An absent count does not establish zero traffic or a closed strait.
+There is no claim that AIS coverage is permanently unavailable there.
+
+The `chokepointTransits` health check counts canonical waterways with observed
+crossings, out of 13. Its floor is five, the coverage in the September 9, 2026
+published pulse. Fewer than five produces `COVERAGE_PARTIAL`; zero produces
+`EMPTY_DATA`. The existing Seed Freshness Monitor checks every 15 minutes and
+reports incident transitions. A fresh write of 13 empty rows cannot satisfy
+this coverage check. The raw cache and seed metadata include the missing ids.
+
+## Live Flow
+
+Live flow is computed by `scripts/seed-chokepoint-flows.mjs` on the seven-item
+subset above:
+
+1. Read PortWatch history from `supply_chain:portwatch:v1`.
+2. Choose the signal: use `capTanker` deadweight tonnage when at least half of
+   the prior-window days have DWT coverage; otherwise use tanker counts.
+3. Compute `current7d` as the average of the latest seven days.
+4. Compute `baseline90d` as the average of the previous window, up to 90 days
+   (`history.slice(-97, -7)`), requiring at least 20 baseline days.
+5. Compute `flowRatio = clamp(current7d / baseline90d, 0, 1.5)`.
+6. Compute `currentMbd = baselineMbd * flowRatio`, rounded to one decimal.
+
+The published ratio is therefore a recent 7-day average against a prior
+up-to-90-day rolling baseline. The `baselineMbd` field is the annual EIA 2023
+reference level; it is used to convert the observed ratio into mb/d. Flow ratios
+can publish from 0% to 150% of baseline after the clamp.
+
+Live flow is eligible only when the PortWatch series has at least 40 total days
+of history. After that gate, the seeder still requires at least three recent
+days, at least 20 prior-window baseline days, and a non-thin baseline: at least
+1 DWT-day when using tanker deadweight tonnage, or at least 0.5 tanker-count
+when using vessel counts. Rows below those floors are omitted rather than
+reported as zero flow.
+
+The `disrupted` boolean is separate from the color badge: it is true when each
+of the latest three individual days is below 85% of the same `baseline90d`.
+
+Each published flow estimate may also include live hazard context from
+`portwatch:disruptions:active:v1`. The seeder looks for the nearest active
+GDACS `RED` or `ORANGE` alert within 500 km of the supported chokepoint and
+surfaces it as `hazardAlertLevel` and `hazardAlertName`. This is annotation
+only: hazard enrichment does not change `currentMbd`, `flowRatio`, or the
+`disrupted` calculation.
+
+## Score Badge
+
+The public `status` field on `ChokepointInfo` is a traffic-light score badge:
+`green`, `yellow`, or `red`. It summarizes disruption risk; it is not an
+operational declaration that a waterway is open, restricted, or closed. Detail
+pages report observed transit activity when it is available and state when
+source coverage is too partial to verify operational passage status.
+
+The score is:
+
+```text
+disruptionScore = min(
+  100,
+  threatLevelWeight + warningComponent + aisComponent + anomalyBonus
+)
+```
+
+Where:
+
+- `threatLevelWeight` is the geopolitical baseline weight in the taxonomy below.
+- `warningComponent = min(15, activeWarnings * 5)`.
+- `aisComponent = min(15, maxCongestionSeverity * 5)`, where low/elevated/high
+  AIS congestion severity maps to 1/2/3.
+- `anomalyBonus = 10` only when PortWatch daily transit history shows a 50% or
+  larger traffic drop against the prior 30-day transit-count baseline and the
+  threat level is `war_zone` or `critical`.
+
+Those four terms are the whole formula. AIS event counts, relay transit counts,
+and PortWatch week-over-week movement are published as context and never enter
+the score. PortWatch feeds both sides: `anomalyBonus` reads its daily transit
+history through `supply_chain:portwatch:v1`, while the week-over-week figure is
+presentation only.
+
+The score badge thresholds are:
+
+| Score range | `status` |
+|---:|---|
+| `< 20` | `green` |
+| `20-49` | `yellow` |
+| `>= 50` | `red` |
+
+## Threat Taxonomy
+
+The geopolitical threat baseline is assigned per chokepoint in
+`server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts` and weighted in
+`server/worldmonitor/supply-chain/v1/_scoring.mjs`.
+
+| Threat level | Weight | Meaning |
+|---|---:|---|
+| `war_zone` | 70 | Active naval conflict, blockade, or strait closure |
+| `critical` | 40 | Active attacks on commercial shipping |
+| `high` | 30 | Military seizure risk or armed escort zone |
+| `elevated` | 15 | Military tensions or disputed waters |
+| `normal` | 0 | No significant military threat |
+
+Current assignments:
+
+| Canonical id | Public name | Threat level | Weight | War-risk enum |
+|---|---|---|---:|---|
+| `suez` | Suez Canal | `high` | 30 | `WAR_RISK_TIER_HIGH` |
+| `malacca_strait` | Strait of Malacca | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+| `hormuz_strait` | Strait of Hormuz | `war_zone` | 70 | `WAR_RISK_TIER_WAR_ZONE` |
+| `bab_el_mandeb` | Bab el-Mandeb | `critical` | 40 | `WAR_RISK_TIER_CRITICAL` |
+| `panama` | Panama Canal | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+| `taiwan_strait` | Taiwan Strait | `elevated` | 15 | `WAR_RISK_TIER_ELEVATED` |
+| `cape_of_good_hope` | Cape of Good Hope | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+| `gibraltar` | Strait of Gibraltar | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+| `bosphorus` | Bosporus Strait | `elevated` | 15 | `WAR_RISK_TIER_ELEVATED` |
+| `korea_strait` | Korea Strait | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+| `dover_strait` | Dover Strait | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+| `kerch_strait` | Kerch Strait | `war_zone` | 70 | `WAR_RISK_TIER_WAR_ZONE` |
+| `lombok_strait` | Lombok Strait | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+
+## Transit Anomaly
+
+Transit anomaly detection for `anomalyBonus` is based on compact transit-count
+history, not the live mb/d flow model. It compares the latest seven transit
+counts with the preceding 30 days converted to a seven-day baseline:
+
+```text
+baselineAvg7 = (sum(days -37..-8) / availableBaselineDays) * 7
+dropPct = round((baselineAvg7 - recent7) / baselineAvg7 * 100)
+signal = dropPct >= 50 AND threatLevel in {war_zone, critical}
+```
+
+If signalled, the handler appends a description such as
+`Traffic down 55% vs 30-day baseline, vessels may be transiting dark (AIS off)`.
+The anomaly path is gated before that comparison: it requires at least 37 days
+of compact transit-count history, and the normalized seven-day baseline must be
+at least 14 transits. Thin baselines return no anomaly signal.
+
+## Country Exposure
+
+`GetCountryChokepointIndex` returns a separate exposure model for a country and
+HS2 chapter. It is PRO-gated and cached at
+`supply-chain:exposure:{ISO2}:{HS2}:v1`.
+
+When bilateral HS4 import products are available, exposure is computed as:
+
+```text
+productWeight = product.totalValue / totalSectorValue
+routeCoverage = overlappingRouteIds / chokepoint.routeIds.length
+contribution = routeCoverage * exporter.share * productWeight * 100
+```
+
+Contributions are summed per chokepoint across matching products and top
+exporters. For HS2 `27`, chokepoints with `shockModelSupported = true` receive a
+1.5x energy-model boost capped at 100.
+
+When bilateral product data is unavailable, the fallback score is:
+
+```text
+exposureScore = overlappingCountryRouteIds / chokepoint.routeIds.length * 100
+```
+
+with the same HS2 `27` supported-energy boost and 100 cap. The
+`vulnerabilityIndex` is the weighted top-three score:
+
+```text
+top1 * 0.5 + top2 * 0.3 + top3 * 0.2
+```
+
+## Provenance
+
+Chokepoint status combines Redis-backed transit summaries, flow estimates,
+navigational warnings, AIS disruption matching, and the static threat taxonomy.
+If a canonical chokepoint lacks upstream transit coverage for the current cycle,
+`transitSummary.dataAvailable` is false and the response-level
+`upstreamUnavailable` flag is set so clients can render partial-coverage UI.
+
+Refresh cadence:
+
+- `energy:chokepoint-flows:v1`: Railway seed loop every 6 hours.
+- `supply_chain:chokepoints:v4`: status warm-ping every 6 minutes.
+- `supply_chain:transit-summaries:v1`: AIS relay compact transit summary.
+
+## Known Limits
+
+- The seven live-flow rows are energy-baseline-backed; the other six monitored
+  waterways do not yet publish mb/d estimates.
+- The [Dover Strait](https://www.worldmonitor.app/chokepoints/dover-strait/) live-flow row currently maps to the EIA `danish` baseline id.
+  Treat `baselineMbd` as the source reference and `id` as the canonical
+  WorldMonitor row id.
+- AIS and PortWatch coverage can degrade near heavily jammed or conflict-heavy
+  regions. Missing upstream coverage is surfaced as unavailable data, not
+  synthesized as zero traffic.
+- Baselines are annual EIA reference levels used for mb/d conversion. The live
+  ratio itself uses recent PortWatch observations against the prior rolling
+  baseline window described above.
+
+## Corrections
+
+See [`/corrections`](/corrections) for the planned revision-log shape. If you
+spot a wrong number today, open a GitHub issue at the
+[public repository](https://github.com/koala73/worldmonitor/issues).

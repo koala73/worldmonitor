@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+    <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2"
+    xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.opengis.net/kml/2.2 ogckml22.xsd">
+    <NetworkLink>
+      <name>BC Wildfire Fire Locations - Current</name>
+      <open>1</open>
+      <LookAt>
+        <longitude>-125.790485103603</longitude>
+        <latitude>54.53529082074053</latitude>
+        <altitude>0</altitude>
+        <heading>-0.5347266315948855</heading>
+        <tilt>0</tilt>
+        <range>1826047.023906531</range>
+        <altitudeMode>relativeToGround</altitudeMode>
+        <gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+      </LookAt>
+      <refreshVisibility>1</refreshVisibility>
+      <flyToView>1</flyToView>
+      <Link>
+        <href>https://openmaps.gov.bc.ca/kml/geo/layers/WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP.kml</href>
+      </Link>
+    </NetworkLink>
+    </kml>

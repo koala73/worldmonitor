@@ -1,10 +1,45 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/services/forecast';
+import { escapeHtml, fetchForecastScorecard } from '@/services/forecast';
 import type { Forecast } from '@/services/forecast';
 import { t } from '@/services/i18n';
+import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
+import { unsafeRawHtml } from '@/utils/sanitize';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
+import { accuracyAuditOverride, type ForecastAccuracyAudit } from '../../shared/forecast-accuracy-audit';
+import { panelAccuracyAudit, projectFamilyHistory, projectForecastRecord, projectReliability, renderForecastRecord, renderReliabilityBadge, renderResolutionChips, type FamilyHistory, type ForecastRecord, type ReliabilityTable } from './forecast-record';
+import { bindActivationKeys } from '@/utils/activation';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
 const PANEL_MIN_PROBABILITY = 0.1;
+// Scored-horizon labels in display order (#7075).
+const HORIZON_LABELS = { h24: '24h', d7: '7d', d30: '30d' } as const;
+
+interface ForecastSourceState {
+  generatedAt: number;
+  degraded: boolean;
+  stale: boolean;
+  error: string;
+}
+
+// Macro region pill values. Each non-empty id matches an entry in the
+// ForecastMacroRegionId union emitted by getForecastMacroRegion() (see
+// shared/forecast-macro-regions.js). Filtering is entirely client-side:
+// this.forecasts stays the full unfiltered set, and the render pipeline
+// applies the active macro region on every render so the filter survives
+// refresh-time updateForecasts() calls. The '' (empty) id means
+// "All Regions" — no filter applied. Forecasts whose region does not
+// classify (unknown or 'global') only appear under "All Regions".
+const FORECAST_REGIONS = [
+  { id: '', label: 'All Regions' },
+  { id: 'mena', label: 'MENA' },
+  { id: 'east-asia', label: 'East Asia' },
+  { id: 'europe', label: 'Europe' },
+  { id: 'south-asia', label: 'South Asia' },
+  { id: 'sub-saharan-africa', label: 'Africa' },
+  { id: 'latam', label: 'LatAm' },
+  { id: 'north-america', label: 'N. America' },
+] as const;
 
 const DOMAIN_LABELS: Record<string, string> = {
   all: 'All',
@@ -83,9 +118,9 @@ function injectStyles(): void {
   _styleInjected = true;
   const style = document.createElement('style');
   style.textContent = `
-    .fc-panel { font-size: 12px; }
+    .fc-panel { font-size: calc(12px * var(--wm-panel-effective-scale, 1)); }
     .fc-filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border-color, #333); }
-    .fc-filter { background: transparent; border: 1px solid var(--border-color, #444); color: var(--text-secondary, #aaa); padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; font-family: inherit; }
+    .fc-filter { background: transparent; border: 1px solid var(--border-color, #444); color: var(--text-secondary, #aaa); padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); font-family: inherit; }
     .fc-filter.fc-active { background: var(--accent-color, #3b82f6); color: #fff; border-color: var(--accent-color, #3b82f6); }
 
     /* ── NEXUS: theater grid ─────────────────────────────────────────────── */
@@ -111,19 +146,19 @@ function injectStyles(): void {
     .fc-theater-card:hover { border-color: #40464f; transform: translateY(-1px); }
     .fc-theater-card.fc-theater-selected { border-color: var(--accent-color, #58a6ff); background: rgba(88,166,255,0.04); }
     .fc-theater-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
-    .fc-theater-name { font-size: 11px; font-weight: 700; line-height: 1.3; color: var(--text-primary, #e6edf3); flex: 1; padding-right: 8px; }
+    .fc-theater-name { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); font-weight: 700; line-height: 1.3; color: var(--text-primary, #e6edf3); flex: 1; padding-right: 8px; }
     .fc-gauge-wrap { position: relative; width: 38px; height: 38px; flex-shrink: 0; }
     .fc-gauge-svg { width: 38px; height: 38px; transform: rotate(-90deg); }
     .fc-gauge-bg { fill: none; stroke: var(--border-color, #30363d); stroke-width: 4; }
     .fc-gauge-fill { fill: none; stroke-width: 4; stroke-linecap: round; }
-    .fc-gauge-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 9px; font-weight: 700; }
-    .fc-theater-path { font-size: 9px; color: var(--text-secondary, #7d8590); line-height: 1.4; margin-top: 4px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-    .fc-path-type { font-size: 8px; padding: 1px 4px; border-radius: 2px; font-weight: 600; letter-spacing: 0.03em; opacity: 0.75; white-space: nowrap; }
+    .fc-gauge-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; }
+    .fc-theater-path { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); line-height: 1.4; margin-top: 4px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .fc-path-type { font-size: calc(8px * var(--wm-panel-effective-scale, 1)); padding: 1px 4px; border-radius: 2px; font-weight: 600; letter-spacing: 0.03em; opacity: 0.75; white-space: nowrap; }
     .fc-path-type-escalation    { background: rgba(224,82,82,0.2); color: #e05252; border: 1px solid rgba(224,82,82,0.3); }
     .fc-path-type-containment   { background: rgba(63,185,80,0.15); color: #3fb950; border: 1px solid rgba(63,185,80,0.25); }
     .fc-path-type-market_cascade { background: rgba(210,153,34,0.15); color: #d29922; border: 1px solid rgba(210,153,34,0.25); }
     .fc-cat-tag {
-      font-size: 9px; padding: 1px 5px; border-radius: 3px; white-space: nowrap;
+      font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding: 1px 5px; border-radius: 3px; white-space: nowrap;
       flex-shrink: 0; font-weight: 500; display: inline-block;
     }
 
@@ -136,69 +171,89 @@ function injectStyles(): void {
       overflow: hidden;
     }
     .fc-theater-detail-hdr { padding: 10px 12px; border-bottom: 1px solid var(--border-color, #30363d); display: flex; align-items: center; gap: 8px; }
-    .fc-theater-detail-name { font-size: 12px; font-weight: 700; color: var(--text-primary, #e6edf3); }
+    .fc-theater-detail-name { font-size: calc(12px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: var(--text-primary, #e6edf3); }
     .fc-theater-paths { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 12px; }
     @media (max-width: 480px) { .fc-theater-paths { grid-template-columns: 1fr; } }
     .fc-path-card { background: rgba(0,0,0,0.25); border: 1px solid var(--border-color, #30363d); border-radius: 4px; padding: 9px 10px; }
-    .fc-path-label { font-size: 10px; font-weight: 700; color: var(--text-primary, #e6edf3); margin-bottom: 2px; }
-    .fc-path-conf { font-size: 9px; color: var(--text-secondary, #7d8590); margin-bottom: 5px; }
+    .fc-path-label { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: var(--text-primary, #e6edf3); margin-bottom: 2px; }
+    .fc-path-conf { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); margin-bottom: 5px; }
     .fc-path-bar { height: 2px; border-radius: 1px; margin: 4px 0; }
-    .fc-path-summary { font-size: 10px; color: var(--text-secondary, #7d8590); line-height: 1.5; }
+    .fc-path-summary { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); line-height: 1.5; }
     .fc-path-actors { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
-    .fc-actor-chip { font-size: 9px; padding: 1px 5px; border: 1px solid var(--border-color, #30363d); border-radius: 2px; color: var(--text-secondary, #7d8590); background: rgba(255,255,255,0.02); }
+    .fc-actor-chip { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding: 1px 5px; border: 1px solid var(--border-color, #30363d); border-radius: 2px; color: var(--text-secondary, #7d8590); background: rgba(255,255,255,0.02); }
     .fc-theater-footer { padding: 8px 12px; border-top: 1px solid var(--border-color, #30363d); display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
     .fc-theater-footer-section { }
-    .fc-footer-title { font-size: 9px; color: var(--text-secondary, #7d8590); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
-    .fc-footer-item { font-size: 9px; color: var(--text-secondary, #7d8590); padding: 2px 0; line-height: 1.4; }
+    .fc-footer-title { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+    .fc-footer-item { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); padding: 2px 0; line-height: 1.4; }
     .fc-footer-item::before { content: '›'; margin-right: 4px; }
     .fc-stab-item::before { color: #3fb950; }
     .fc-inval-item::before { color: #e05252; }
     .fc-react-item::before { color: #58a6ff; }
 
     /* ── Section label ───────────────────────────────────────────────────── */
-    .fc-section-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary, #7d8590); padding: 6px 8px 4px; }
+    .fc-section-label { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary, #7d8590); padding: 6px 8px 4px; }
 
     /* ── Forecast probability table ──────────────────────────────────────── */
     .fc-prob-table { border: 1px solid var(--border-color, #30363d); border-radius: 4px; overflow: hidden; margin: 0 8px 8px; }
     .fc-prob-hdr { display: grid; grid-template-columns: 1fr 80px 100px 60px; padding: 8px 14px; border-bottom: 1px solid var(--border-color, #30363d); }
-    .fc-prob-hdr span { font-size: 9px; color: var(--text-secondary, #7d8590); text-transform: uppercase; letter-spacing: 0.08em; }
+    .fc-prob-hdr span { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-transform: uppercase; letter-spacing: 0.08em; }
     .fc-prob-item { border-bottom: 1px solid var(--border-color, #30363d); }
+    .fc-prob-item:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
     .fc-prob-item:last-child { border-bottom: none; }
     .fc-prob-row { display: grid; grid-template-columns: 1fr 80px 100px 60px; align-items: center; padding: 9px 14px; cursor: pointer; transition: background 0.1s; }
     .fc-prob-item:hover .fc-prob-row { background: rgba(255,255,255,0.02); }
-    .fc-prob-label { font-size: 10px; color: var(--text-secondary, #7d8590); line-height: 1.4; }
+    .fc-prob-label { min-width: 0; container-type: inline-size; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); line-height: 1.4; }
     .fc-bar-wrap { display: flex; align-items: center; gap: 8px; }
     .fc-prob-bar-track { flex: 1; height: 4px; background: var(--border-color, #30363d); border-radius: 2px; overflow: hidden; min-width: 40px; }
     .fc-prob-bar-fill { height: 100%; border-radius: 2px; }
-    .fc-prob-pct { font-size: 11px; font-weight: 700; min-width: 30px; text-align: right; }
-    .fc-trend-text { font-size: 10px; }
-    .fc-domain-tag { font-size: 9px; padding: 2px 6px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fc-prob-pct { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); font-weight: 700; min-width: 30px; text-align: right; }
+    .fc-trend-text { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
+    .fc-domain-tag { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding: 2px 6px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* The four-column row needs 278px of fixed width beside the label, and the card meta goes single-line at 160px (see the 159px query below). Below 440px of table width the row stacks: title block on top, data on one wrapping line beneath (#8984). */
+    .fc-prob-table { container: fc-table / inline-size; }
+    @container fc-table (max-width: 439px) {
+      .fc-prob-hdr span:not(:first-child) { display: none; }
+      .fc-prob-row { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+      .fc-prob-label { flex: 1 0 100%; }
+      .fc-label-inner { flex-wrap: wrap; }
+      .fc-sim-chip { max-width: 100%; overflow: hidden; }
+      .fc-bar-wrap { flex: 1 1 80px; min-width: 0; }
+      .fc-prob-bar-track { min-width: 0; }
+      .fc-trend-text { white-space: nowrap; }
+      .fc-domain-tag { min-width: 0; max-width: 100%; }
+    }
+    @container fc-table (max-width: 199px) {
+      .fc-prob-hdr, .fc-prob-row { padding-left: 8px; padding-right: 8px; }
+    }
 
     /* ── Detail toggle (hidden by default; shown on item hover) ──────────── */
     .fc-hidden { display: none; }
     .fc-toggle-row { display: none; flex-wrap: wrap; gap: 8px; padding: 0 14px 8px; }
-    .fc-prob-item:hover .fc-toggle-row { display: flex; }
-    .fc-toggle { cursor: pointer; color: var(--text-secondary, #7d8590); font-size: 11px; }
+    .fc-prob-item:hover .fc-toggle-row,
+    .fc-prob-item:focus-within .fc-toggle-row { display: flex; }
+    .fc-toggle:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+    .fc-toggle { cursor: pointer; color: var(--text-secondary, #7d8590); font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
     .fc-toggle:hover { color: var(--text-primary, #e6edf3); }
     .fc-detail { padding: 8px 14px 4px; border-top: 1px solid var(--border-color, #2a2a2a); }
     .fc-detail-grid { display: grid; gap: 8px; }
     .fc-section { display: grid; gap: 4px; }
-    .fc-section-title { color: var(--text-secondary, #888); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
-    .fc-section-copy { font-size: 11px; color: var(--text-primary, #d3d3d3); line-height: 1.45; }
+    .fc-section-title { color: var(--text-secondary, #888); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.08em; }
+    .fc-section-copy { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-primary, #d3d3d3); line-height: 1.45; }
     .fc-list-block { display: grid; gap: 4px; }
-    .fc-list-item { font-size: 11px; color: var(--text-secondary, #a0a0a0); line-height: 1.4; }
+    .fc-list-item { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #a0a0a0); line-height: 1.4; }
     .fc-list-item::before { content: ''; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #666); margin-right: 6px; vertical-align: middle; }
     .fc-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
-    .fc-chip { border: 1px solid var(--border-color, #363636); border-radius: 999px; padding: 2px 8px; font-size: 10px; color: var(--text-secondary, #9a9a9a); background: rgba(255,255,255,0.02); }
+    .fc-chip { border: 1px solid var(--border-color, #363636); border-radius: 999px; padding: 2px 8px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #9a9a9a); background: rgba(255,255,255,0.02); }
     .fc-perspectives { margin-top: 2px; }
-    .fc-perspective { font-size: 11px; color: var(--text-secondary, #999); padding: 2px 0; line-height: 1.4; }
+    .fc-perspective { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #999); padding: 2px 0; line-height: 1.4; }
     .fc-perspective strong { color: var(--text-primary, #ccc); font-weight: 600; }
     .fc-scenario { font-style: italic; }
     .fc-signals { padding: 8px 14px 4px; border-top: 1px solid var(--border-color, #2a2a2a); }
-    .fc-signals-title { color: var(--text-secondary, #888); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
-    .fc-signal { color: var(--text-secondary, #a0a0a0); font-size: 11px; padding: 3px 0 3px 12px; line-height: 1.45; position: relative; margin-top: 2px; }
+    .fc-signals-title { color: var(--text-secondary, #888); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+    .fc-signal { color: var(--text-secondary, #a0a0a0); font-size: calc(11px * var(--wm-panel-effective-scale, 1)); padding: 3px 0 3px 12px; line-height: 1.45; position: relative; margin-top: 2px; }
     .fc-signal::before { content: ''; position: absolute; left: 0; top: 9px; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #555); }
     .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
+    .fc-source-notice { margin: 6px 8px 0; padding: 6px 8px; border: 1px solid rgba(210,153,34,0.35); border-radius: 4px; color: #d29922; background: rgba(210,153,34,0.08); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); line-height: 1.35; }
 
     /* ── Simulation confidence sub-bar (Option D) ────────────────────────── */
     /* Thin colored underbar below the forecast title. Width encodes sim       */
@@ -207,27 +262,147 @@ function injectStyles(): void {
     .fc-sim-bar-wrap { margin-top: 4px; }
     .fc-sim-bar { height: 2px; border-radius: 1px; opacity: 0.45; transition: opacity 0.15s; }
     .fc-prob-item:hover .fc-sim-bar { opacity: 0.9; }
-    .fc-sim-label { font-size: 9px; display: none; margin-top: 2px; line-height: 1.2; }
+    .fc-sim-label { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); display: none; margin-top: 2px; line-height: 1.2; }
     .fc-prob-item:hover .fc-sim-label { display: block; }
+
+    /* ── Simulation verdict chip ─────────────────────────────────────────── */
+    .fc-sim-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 3px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 600; letter-spacing: 0.03em; white-space: nowrap; flex-shrink: 0; line-height: 1.6; }
+    .fc-sim-chip::before { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0; }
+    .fc-sim-chip--backed   { background: rgba(63,185,80,0.12);  color: #3fb950; border: 1px solid rgba(63,185,80,0.28); }
+    .fc-sim-chip--backed::before   { background: #3fb950; }
+    .fc-sim-chip--flagged  { background: rgba(210,153,34,0.12); color: #d29922; border: 1px solid rgba(210,153,34,0.28); }
+    .fc-sim-chip--flagged::before  { background: #d29922; }
+    .fc-sim-chip--skeptical { background: rgba(224,82,82,0.10); color: #e05252; border: 1px solid rgba(224,82,82,0.28); }
+    .fc-sim-chip--skeptical::before { background: #e05252; }
+    .fc-label-inner { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .fc-forecast-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Track record strip (#7074) ──────────────────────────────────────── */
+    .fc-record { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 10px; margin: 6px 8px 0; padding: 5px 8px; border: 1px solid var(--border-color, #30363d); border-radius: 4px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); line-height: 1.4; color: var(--text-secondary, #7d8590); }
+    .fc-record-label { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
+    .fc-record-label[title] { cursor: help; }
+    .fc-record-item { color: var(--text-primary, #e6edf3); white-space: nowrap; text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
+    .fc-record-stale { color: #d29922; border: 1px solid rgba(210,153,34,0.35); border-radius: 3px; padding: 0 5px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+    .fc-record-stale[title] { cursor: help; }
+    .fc-reliability, .fc-reliability-placeholder { display: block; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-decoration: underline dotted; text-underline-offset: 2px; }
+    .fc-reliability { width: fit-content; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fc-reliability-placeholder { visibility: hidden; }
+    .fc-card-meta { display: flex; align-items: baseline; column-gap: 6px; min-width: 0; contain: inline-size; }
+    .fc-card-meta .fc-reliability { flex: 1 1 5em; min-width: 0; max-width: max-content; }
+    .fc-res-slot { display: contents; }
+    .fc-res-chip, .fc-res-history, .fc-res-gap { flex: 0 1 auto; min-width: 0; overflow: hidden; margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); white-space: nowrap; }
+    .fc-res-gap { display: none; visibility: hidden; }
+    .fc-res-chip { box-sizing: border-box; text-overflow: ellipsis; padding: 0 5px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--border-color, #30363d); color: var(--text-primary, #e6edf3); }
+    .fc-res-void { flex: 0 1 auto; min-width: 0; }
+    .fc-res-void > summary { display: flex; align-items: baseline; column-gap: 6px; min-width: 0; list-style: none; cursor: pointer; }
+    .fc-res-void > summary::-webkit-details-marker { display: none; }
+    .fc-res-void > summary .fc-res-chip { text-decoration: underline dotted; text-underline-offset: 2px; }
+    .fc-card-meta:has(.fc-res-void[open]) { flex-wrap: wrap; }
+    .fc-res-void[open] { flex-basis: 100%; }
+    /* Narrow cards stack a fixed set of line boxes (badge, then chip and history), so loading, history and no history share one height. */
+    @container (max-width: 159px) {
+      .fc-card-meta { flex-direction: column; align-items: flex-start; }
+      .fc-card-meta .fc-reliability, .fc-card-meta .fc-reliability-placeholder { order: -1; flex: none; max-width: 100%; }
+      .fc-res-slot { display: flex; align-items: baseline; column-gap: 6px; min-width: 0; max-width: 100%; }
+      .fc-res-gap { display: block; }
+      .fc-res-void[open] { flex-basis: auto; }
+    }
+    @container (max-width: 109px) {
+      .fc-res-slot, .fc-res-void > summary { flex-direction: column; align-items: flex-start; }
+      .fc-res-slot > *, .fc-res-void > summary > * { max-width: 100%; }
+    }
+    .fc-res-reasons { margin: 2px 0 0; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); white-space: normal; }
+    .fc-res-chip[data-outcome="YES"], .fc-res-mark[data-outcome="YES"] { color: #3fb950; }
+    .fc-res-chip[data-outcome="NO"], .fc-res-mark[data-outcome="NO"] { color: #e05252; }
+    .fc-res-chip[data-outcome="VOID"], .fc-res-mark[data-outcome="VOID"] { color: var(--text-secondary, #7d8590); }
+    .fc-res-slot[data-unverified] .fc-res-chip, .fc-res-slot[data-unverified] .fc-res-mark { color: var(--text-secondary, #7d8590); }
+    .fc-res-history { display: inline-flex; gap: 2px; letter-spacing: 0.02em; }
+    .fc-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+    .fc-horizons { margin-top: 2px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); }
+    .fc-horizons > summary { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; list-style: none; text-decoration: underline dotted; text-underline-offset: 2px; }
+    .fc-horizons > summary::-webkit-details-marker { display: none; }
+    .fc-horizons-hint { margin: 2px 0 0; white-space: normal; line-height: 1.4; }
+    .fc-reliability:hover { color: var(--accent-color, #58a6ff); }
+    .fc-record-link { margin-left: auto; color: var(--accent-color, #58a6ff); text-decoration: none; white-space: nowrap; }
+    .fc-record-link:hover, .fc-record-link:focus-visible { text-decoration: underline; }
   `;
   document.head.appendChild(style);
 }
 
 export class ForecastPanel extends Panel {
+  // Full unfiltered set from the server. The region + domain filters are
+  // applied on every render() — never mutate this by filtering, or refresh
+  // updates from data-loader will wipe the filter state.
   private forecasts: Forecast[] = [];
+  /** De-dupe guard for the dossier fetch. Cleared when a refresh brings a forecast we've never fetched. */
+  private caseFilesPromise: Promise<void> | null = null;
+  /**
+   * Dossiers already fetched, by forecast id. Survives refresh ticks: the bootstrap
+   * feed carries the LIST only, so without this cache a refresh would drop the dossier
+   * the user just opened and re-render the pane empty (#5300).
+   */
+  private caseFilesById = new Map<string, NonNullable<Forecast['caseFile']>>();
+  /**
+   * Every forecast id a completed fetch covered — including those that legitimately have
+   * no dossier. Tracked separately from `caseFilesById` so a dossier-less forecast counts
+   * as resolved: keying the refetch decision off a missing `caseFile` alone would refetch
+   * the whole feed on every click of such a pane.
+   */
+  private caseFilesFetchedIds = new Set<string>();
+  /** True once a fetch has completed successfully — so a refresh never cancels an in-flight one. */
+  private caseFilesSettled = false;
+  private sourceState: ForecastSourceState = { generatedAt: 0, degraded: false, stale: false, error: '' };
+  /** Track-record strip state (#7074). Refreshed on every updateForecasts() tick. */
+  private record: ForecastRecord = { kind: 'loading' };
+  private recordPromise: Promise<void> | null = null;
+  /** Per-domain card badges (#5092), from the same scorecard response as the strip. */
+  private reliability: ReliabilityTable | null = null;
+
+  /** The accuracy audit for the last scorecard (#8990); before one answers, only a manual override is known. */
+  private audit: ForecastAccuracyAudit | null = accuracyAuditOverride();
+  /** Per-card resolution chips (#5092): each family's earlier resolved windows. */
+  private familyHistory: FamilyHistory | null = null;
+  /** Forecast ids whose VOID disclosure the reader left open; re-renders restore them. */
+  private readonly openDisclosures = new Set<string>();
   private activeDomain: string = 'all';
+  private selectedRegion: string = '';
   private theaters: SimulationTheater[] = [];
   private expandedTheaterId: string | null = null;
 
   constructor() {
     super({ id: 'forecast', title: 'AI Forecasts', showCount: true, infoTooltip: t('components.forecast.infoTooltip') });
     injectStyles();
+    bindActivationKeys(this.content, '[data-fc-toggle]');
+    // `toggle` does not bubble, so listen in the capture phase.
+    this.content.addEventListener('toggle', (e) => {
+      const details = e.target;
+      if (!(details instanceof HTMLDetailsElement) || !details.classList.contains('fc-res-void')) return;
+      const forecastId = details.closest<HTMLElement>('[data-fc-forecast]')?.dataset.fcForecast;
+      if (!forecastId) return;
+      if (details.open) this.openDisclosures.add(forecastId);
+      else this.openDisclosures.delete(forecastId);
+    }, true);
+
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+      if (target.closest('a.fc-reliability, .fc-res-void, .fc-horizons')) return;
 
       const filterBtn = target.closest('[data-fc-domain]') as HTMLElement | null;
       if (filterBtn) {
         this.activeDomain = filterBtn.dataset.fcDomain || 'all';
+        this.render();
+        return;
+      }
+
+      const regionBtn = target.closest('[data-fc-region]') as HTMLElement | null;
+      if (regionBtn) {
+        const nextRegion = regionBtn.dataset.fcRegion ?? '';
+        if (nextRegion === this.selectedRegion) return;
+        this.selectedRegion = nextRegion;
+        // Client-side filter only — no RPC fires. The next render() pulls
+        // from the full this.forecasts set and applies the macro region
+        // filter in getVisibleForecasts().
+        this.setCount(this.getVisibleForecasts().length);
         this.render();
         return;
       }
@@ -245,7 +420,18 @@ export class ForecastPanel extends Panel {
         const item = toggle.closest('.fc-prob-item');
         const panelId = toggle.dataset.fcToggle;
         const detail = panelId ? item?.querySelector(`[data-fc-panel="${panelId}"]`) as HTMLElement | null : null;
-        if (detail) detail.classList.toggle('fc-hidden');
+        if (detail) {
+          detail.classList.toggle('fc-hidden');
+          toggle.setAttribute('aria-expanded', String(!detail.classList.contains('fc-hidden')));
+        }
+        // The bootstrap payload carries the LIST, not the dossiers — 78% of the old
+        // key was caseFile prose nobody expands (#5300). Fetch them the first time
+        // someone actually opens one; the feed is CDN-shielded, so this is cheap.
+        const forecastId = panelId?.startsWith('detail-') ? panelId.slice('detail-'.length) : '';
+        const forecast = forecastId ? this.forecasts.find((f) => f.id === forecastId) : undefined;
+        if (detail && shouldFetchCaseFile(forecast, !detail.classList.contains('fc-hidden'), !detail.innerHTML.trim())) {
+          void this.loadCaseFiles();
+        }
         return;
       }
 
@@ -260,12 +446,143 @@ export class ForecastPanel extends Panel {
     });
   }
 
-  updateForecasts(forecasts: Forecast[]): void {
-    this.forecasts = forecasts;
+  /**
+   * Fetch the evidence dossiers on first expand (#5300).
+   *
+   * The bootstrap payload is the dashboard LIST: `caseFile` was 78% of the old key —
+   * ~19,000 words of prose that were shipped to every visitor, downloaded on every
+   * page load, and parsed into hidden DOM during the LCP window, for content almost
+   * nobody opens. The full feed still carries them, and it is now CDN-shielded, so
+   * pulling it once when a user actually clicks "Analysis" is cheap.
+   *
+   * Failure is non-fatal: the detail pane just stays empty, exactly as it would if
+   * the seeder had produced no case file.
+   */
+  private async loadCaseFiles(): Promise<void> {
+    if (this.caseFilesPromise) return this.caseFilesPromise;
+
+    this.caseFilesPromise = (async () => {
+      try {
+        const { fetchForecastFeed } = await import('@/services/forecast');
+        const feed = await fetchForecastFeed();
+        for (const f of feed.forecasts) {
+          this.caseFilesFetchedIds.add(f.id);
+          if (f.caseFile) this.caseFilesById.set(f.id, f.caseFile);
+        }
+        this.caseFilesSettled = true;
+        this.forecasts = this.forecasts.map((f) => {
+          const caseFile = this.caseFilesById.get(f.id);
+          return !f.caseFile && caseFile ? { ...f, caseFile } : f;
+        });
+
+        // Patch the panes in place rather than calling render(). A full re-render
+        // rebuilds every detail div with its default `fc-hidden` class and would
+        // slam shut the pane the user just opened.
+        for (const f of this.forecasts) {
+          if (!f.caseFile) continue;
+          const pane = this.element.querySelector(
+            `[data-fc-panel="detail-${CSS.escape(f.id)}"]`,
+          ) as HTMLElement | null;
+          if (pane && !pane.innerHTML.trim()) {
+            // renderDetailBody() escapes every interpolated value (escapeHtml/renderList),
+            // exactly as it does on the eager path this replaces.
+            setTrustedHtml(pane, trustedHtml(this.renderDetailBody(f), 'ForecastPanel case-file detail; same escaped markup as the eager render path (#5300)'));
+          }
+        }
+      } catch {
+        // Leave the pane empty and allow a later retry.
+        this.caseFilesPromise = null;
+      }
+    })();
+
+    return this.caseFilesPromise;
+  }
+
+  updateForecasts(forecasts: Forecast[], sourceState?: Partial<ForecastSourceState>): void {
+    // Refresh ticks re-hydrate from the bootstrap feed, which carries the LIST without
+    // the dossiers (#5300). Re-merge anything already fetched, or the dossier the user
+    // has open would vanish on the next tick and re-render as an empty pane.
+    this.forecasts = mergeCachedCaseFiles(forecasts, this.caseFilesById);
+    // A refreshed list can introduce a forecast no completed fetch covered — drop the
+    // de-dupe latch so the next expand re-fetches it.
+    if (needsCaseFileRefetch(this.forecasts, this.caseFilesFetchedIds, this.caseFilesSettled)) {
+      this.caseFilesPromise = null;
+      this.caseFilesSettled = false;
+    }
+    this.sourceState = {
+      generatedAt: sourceState?.generatedAt ?? this.sourceState.generatedAt,
+      degraded: sourceState?.degraded === true,
+      stale: sourceState?.stale === true,
+      error: sourceState?.error || '',
+    };
     const visible = this.getVisibleForecasts();
     this.setCount(visible.length);
-    this.setDataBadge(visible.length > 0 ? 'live' : 'unavailable');
+    // Badge reflects fetch success (this.forecasts.length), not the filtered
+    // result. A user who picks a region with zero matches should still see
+    // the feed as "live" — the empty-state copy inside the panel communicates
+    // the filter miss. Tying the badge to the filter caused the panel to
+    // flip to "unavailable" on any empty region pill.
+    this.setDataBadge(this.forecasts.length > 0 && !this.sourceState.degraded ? 'live' : 'unavailable');
+    this.loadRecord();
     this.render();
+  }
+
+  /**
+   * Fetch the scorecard behind the track-record strip (#7074). One request in
+   * flight at a time; a failure shows the strip as unavailable rather than
+   * keeping numbers the backend can no longer vouch for.
+   */
+  private loadRecord(): void {
+    if (this.recordPromise) return;
+    this.recordPromise = fetchForecastScorecard(this.signal)
+      .then(
+        (resp) => {
+          // The audit first (#8990): a projection that throws must not leave scores showing without it.
+          this.audit = panelAccuracyAudit(resp);
+          try {
+            this.record = projectForecastRecord(resp);
+            this.reliability = projectReliability(resp);
+            this.familyHistory = projectFamilyHistory(resp);
+          } catch {
+            this.record = { kind: 'unavailable' };
+            this.reliability = null;
+            this.familyHistory = null;
+          }
+        },
+        (err: unknown) => {
+          if (this.isAbortError(err)) return;
+          this.record = { kind: 'unavailable' };
+          this.reliability = null;
+          this.familyHistory = null;
+          this.audit = panelAccuracyAudit(null);
+        },
+      )
+      .then(() => {
+        if (this.signal.aborted) return;
+        // Patch the strip in place: render() rebuilds the table and would close
+        // any Analysis or Signals pane the user opened. No slot yet means the
+        // content has not committed, so nothing can be open and render() is safe.
+        const slot = this.content.querySelector<HTMLElement>('[data-fc-record-slot]');
+        if (!slot) {
+          this.render();
+          return;
+        }
+        // renderForecastRecord() escapes every interpolated value.
+        setTrustedHtml(slot, trustedHtml(renderForecastRecord(this.record, this.audit), 'ForecastPanel track-record strip; escaped markup from renderForecastRecord (#7074)'));
+        for (const badgeSlot of this.content.querySelectorAll<HTMLElement>('[data-fc-reliability]')) {
+          const domain = badgeSlot.dataset.fcReliability ?? '';
+          badgeSlot.classList.remove('fc-reliability-pending');
+          // Both renderers escape every interpolated value.
+          setTrustedHtml(badgeSlot, trustedHtml(this.cardMeta(badgeSlot.dataset.fcForecast ?? '', domain), 'ForecastPanel resolution chips and reliability badge; escaped markup (#5092)'));
+        }
+      })
+      .finally(() => {
+        this.recordPromise = null;
+      });
+  }
+
+  private cardMeta(forecastId: string, domain: string): string {
+    return `${renderResolutionChips(this.familyHistory, forecastId, this.openDisclosures.has(forecastId), this.audit)}${renderReliabilityBadge(this.reliability, domain, DOMAIN_LABELS[domain] || domain, this.audit)}`;
   }
 
   updateSimulation(theaterSummariesJson: string): void {
@@ -276,14 +593,55 @@ export class ForecastPanel extends Panel {
     if (this.forecasts.length > 0) this.render();
   }
 
+  // Returns forecasts that pass the probability AND region filters. Domain
+  // filter is applied later in render() so the count reflects the prob+region
+  // view (matching what the user sees with 'All' domains selected). Keep this
+  // pure and idempotent — it reads from this.forecasts + this.selectedRegion
+  // and must survive arbitrary refresh-time updateForecasts() calls.
   private getVisibleForecasts(): Forecast[] {
-    return this.forecasts.filter(f => (f.probability || 0) >= PANEL_MIN_PROBABILITY);
+    const probFiltered = this.forecasts.filter(
+      f => (f.probability || 0) >= PANEL_MIN_PROBABILITY,
+    );
+    if (!this.selectedRegion) return probFiltered;
+    return probFiltered.filter(
+      f => getForecastMacroRegion(f.region) === this.selectedRegion,
+    );
   }
 
   private render(): void {
     const visibleForecasts = this.getVisibleForecasts();
+    const filtersHtml = DOMAINS.map(d =>
+      `<button class="fc-filter${d === this.activeDomain ? ' fc-active' : ''}" data-fc-domain="${d}">${DOMAIN_LABELS[d]}</button>`
+    ).join('');
+    const regionsHtml = FORECAST_REGIONS.map(r =>
+      `<button class="fc-filter${r.id === this.selectedRegion ? ' fc-active' : ''}" data-fc-region="${escapeHtml(r.id)}">${escapeHtml(r.label)}</button>`
+    ).join('');
+
     if (visibleForecasts.length === 0) {
-      this.setContent('<div class="fc-empty">No forecasts available</div>');
+      // Differentiate fetch-miss (this.forecasts.length === 0) from
+      // filter-miss (this.forecasts has rows but none match the current
+      // region/probability filter). The badge already reflects fetch success
+      // independently; this copy just helps the user understand why the
+      // list is empty so they can adjust the pill without thinking the feed
+      // is broken.
+      const hasAnyForecasts = this.forecasts.length > 0;
+      const emptyCopy = hasAnyForecasts
+        ? 'No forecasts match the current filter'
+        : this.sourceState.degraded
+          ? 'Forecast backend unavailable'
+          : this.sourceState.error
+            ? 'Forecast request failed'
+            : 'No forecasts available';
+      const sourceHtml = this.renderSourceNotice();
+      this.setSafeContent(unsafeRawHtml(`
+        <div class="fc-panel">
+          <div class="fc-filters">${filtersHtml}</div>
+          <div class="fc-filters">${regionsHtml}</div>
+          ${sourceHtml}
+          <div data-fc-record-slot>${renderForecastRecord(this.record, this.audit)}</div>
+          <div class="fc-empty">${escapeHtml(emptyCopy)}</div>
+        </div>
+      `, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -291,22 +649,33 @@ export class ForecastPanel extends Panel {
       ? visibleForecasts
       : visibleForecasts.filter(f => f.domain === this.activeDomain);
 
-    const filtersHtml = DOMAINS.map(d =>
-      `<button class="fc-filter${d === this.activeDomain ? ' fc-active' : ''}" data-fc-domain="${d}">${DOMAIN_LABELS[d]}</button>`
-    ).join('');
-
     const nexusHtml = this.theaters.length > 0
       ? `<div class="fc-nexus">${this.renderNexus()}</div><div class="fc-section-label">Probability Bets</div>`
       : '';
     const tableHtml = this.renderProbTable(filtered);
+    const sourceHtml = this.renderSourceNotice();
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="fc-panel">
         <div class="fc-filters">${filtersHtml}</div>
+        <div class="fc-filters">${regionsHtml}</div>
+        ${sourceHtml}
+        <div data-fc-record-slot>${renderForecastRecord(this.record, this.audit)}</div>
         ${nexusHtml}
         ${tableHtml}
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
+  }
+
+  private renderSourceNotice(): string {
+    if (!this.sourceState.degraded && !this.sourceState.stale && !this.sourceState.error) return '';
+    const errorDetail = this.sourceState.degraded ? '' : this.sourceState.error.replace(/_/g, ' ');
+    const parts = [
+      this.sourceState.degraded ? 'Forecast source degraded' : '',
+      this.sourceState.stale ? 'stale cache' : '',
+      errorDetail,
+    ].filter(Boolean);
+    return `<div class="fc-source-notice">${escapeHtml(parts.join(' · '))}</div>`;
   }
 
   // ── NEXUS theater grid + expandable detail ──────────────────────────────
@@ -371,7 +740,7 @@ export class ForecastPanel extends Panel {
       const pctColor = p.confidence >= 0.65 ? '#3fb950' : p.confidence >= 0.45 ? '#d29922' : '#e05252';
       const actors = p.keyActors.map(a => `<span class="fc-actor-chip">${escapeHtml(a)}</span>`).join('');
       const typeTag = p.pathId ? `<span class="fc-path-type fc-path-type-${escapeHtml(p.pathId)}">${escapeHtml(PATH_ID_LABELS[p.pathId] ?? p.pathId)}</span>` : '';
-      const confText = p.confidence > 0 ? `${Math.round(p.confidence * 100)}% probability` : '—';
+      const confText = p.confidence > 0 ? `${Math.round(p.confidence * 100)}% confidence` : '—';
       return `
         <div class="fc-path-card">
           <div class="fc-path-label">${typeTag}${escapeHtml(p.label)}</div>
@@ -438,6 +807,8 @@ export class ForecastPanel extends Panel {
     const domain   = f.domain || 'conflict';
     const catColor = DOMAIN_COLORS[domain] || '#7d8590';
     const catLabel = DOMAIN_LABELS[domain] || domain;
+    // An overridden audit needs no scorecard data (#8990); any other badge waits for the request.
+    const badgePending = this.record.kind === 'loading' && !this.audit;
     const probColor = pct >= 60 ? '#3fb950' : pct >= 40 ? '#d29922' : '#e05252';
     const trendText  = f.trend === 'rising' ? '↑ rising' : f.trend === 'falling' ? '↓ falling' : '→ stable';
     const trendColor = f.trend === 'rising' ? '#3fb950' : f.trend === 'falling' ? '#e05252' : '#7d8590';
@@ -445,20 +816,26 @@ export class ForecastPanel extends Panel {
     const sigs = f.signals || [];
     const signalsHtml = sigs.length > 0
       ? sigs.map(s =>
-          `<div class="fc-signal">${escapeHtml(s.value.replace(/^[\s\u2013\u2014\-]+/, ''))}</div>`
+          `<div class="fc-signal">${escapeHtml(s.value.replace(/^[\s\u2013\u2014-]+/, ''))}</div>`
         ).join('')
       : '';
 
     const simBarHtml = this.renderSimBar(f);
+    const simChipHtml = this.renderSimChip(f);
     const demoted = f.demotedBySimulation ?? false;
 
     return `
-      <div class="fc-prob-item">
+      <div class="fc-prob-item" tabindex="0">
         <div class="fc-prob-row"${demoted ? ' style="opacity:0.5"' : ''}>
           <div class="fc-prob-label"
                style="border-left:2px solid ${catColor}47;padding-left:6px">
-            ${escapeHtml(f.title)}
+            <div class="fc-label-inner">
+              <span class="fc-forecast-title">${escapeHtml(f.title)}</span>
+              ${simChipHtml}
+            </div>
             ${simBarHtml}
+            ${this.renderScoredHorizons(f)}
+            <div class="fc-card-meta${badgePending ? ' fc-reliability-pending' : ''}" data-fc-reliability="${escapeHtml(domain)}" data-fc-forecast="${escapeHtml(f.id)}">${badgePending ? `${renderResolutionChips(null, f.id, false, this.audit)}<span class="fc-reliability-placeholder" aria-hidden="true">&nbsp;</span>` : this.cardMeta(f.id, domain)}</div>
           </div>
           <div class="fc-bar-wrap">
             <div class="fc-prob-bar-track">
@@ -473,13 +850,29 @@ export class ForecastPanel extends Panel {
           </span>
         </div>
         <div class="fc-toggle-row">
-          <span class="fc-toggle" data-fc-toggle="detail-${escapeHtml(f.id)}">Analysis</span>
-          ${sigs.length > 0 ? `<span class="fc-toggle" data-fc-toggle="signals-${escapeHtml(f.id)}">Signals (${sigs.length})</span>` : ''}
+          <span class="fc-toggle" data-fc-toggle="detail-${escapeHtml(f.id)}" role="button" tabindex="0" aria-expanded="false">Analysis</span>
+          ${sigs.length > 0 ? `<span class="fc-toggle" data-fc-toggle="signals-${escapeHtml(f.id)}" role="button" tabindex="0" aria-expanded="false">Signals (${sigs.length})</span>` : ''}
         </div>
-        <div class="fc-detail fc-hidden" data-fc-panel="detail-${escapeHtml(f.id)}">${this.renderDetailBody(f)}</div>
+        <div class="fc-detail fc-hidden" data-fc-panel="detail-${escapeHtml(f.id)}">${f.caseFile ? this.renderDetailBody(f) : ''}</div>
         ${signalsHtml ? `<div class="fc-signals fc-hidden" data-fc-panel="signals-${escapeHtml(f.id)}">${signalsHtml}</div>` : ''}
       </div>
     `;
+  }
+
+  /**
+   * Names the horizons the resolver grades (#7075). No projection value is
+   * shown: the ledger grades the value first published for each window, and
+   * the payload carries the current projection, which can differ.
+   */
+  private renderScoredHorizons(f: Forecast): string {
+    const scored = new Set(f.scoredHorizons ?? []);
+    const names = (Object.keys(HORIZON_LABELS) as (keyof typeof HORIZON_LABELS)[])
+      .filter((h) => scored.has(h))
+      .map((h) => HORIZON_LABELS[h]);
+    if (!names.length) return '';
+    const text = t('components.forecast.horizons.label', { list: names.join(', ') });
+    // A native disclosure, so the grading note opens on tap and from the keyboard.
+    return `<details class="fc-horizons"><summary>${escapeHtml(text)}</summary><p class="fc-horizons-hint">${escapeHtml(t('components.forecast.horizons.hint'))}</p></details>`;
   }
 
   // ── Simulation confidence sub-bar ───────────────────────────────────────
@@ -514,6 +907,21 @@ export class ForecastPanel extends Panel {
       <div class="fc-sim-bar" style="width:${barWidthPct}%;background:${barColor}"></div>
       <span class="fc-sim-label" style="color:${barColor}">${escapeHtml(labelText)}</span>
     </div>`;
+  }
+
+  // ── Simulation verdict chip ──────────────────────────────────────────────
+
+  private renderSimChip(f: Forecast): string {
+    const adj = f.simulationAdjustment ?? 0;
+    const demoted = f.demotedBySimulation ?? false;
+    if (demoted) {
+      return `<span class="fc-sim-chip fc-sim-chip--skeptical">AI skeptical</span>`;
+    }
+    if (adj === 0) return '';
+    if (adj > 0) {
+      return `<span class="fc-sim-chip fc-sim-chip--backed">AI backed</span>`;
+    }
+    return `<span class="fc-sim-chip fc-sim-chip--flagged">AI flagged</span>`;
   }
 
   // ── Detail sections (shared by rows) ────────────────────────────────────

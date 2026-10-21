@@ -8,9 +8,28 @@ retailer:
   enabled: true
 
   searchConfig:
-    numResults: 5
-    queryTemplate: "{canonicalName} grocery {market} {currency} price"
-    urlPathContains: /p/
+    # Exa's neural index points overwhelmingly at the retired route (0 live
+    # URLs across 5 sampled items) while keyword search matches JioMart's
+    # current pages (33 live across the same 5), so the MODE is what reaches
+    # the live route. The live `/product/` URLs still rank below the top 5,
+    # so discovery has to look wider — but extraction must not: unbounded,
+    # a 10-result search cost up to 16 provider calls on items that never
+    # price. Search wide, extract from at most 4.
+    numResults: 10
+    searchType: keyword
+    maxExtractionCandidates: 4
+    # JioMart serves live product pages from `/product/<slug>-<id>`. The
+    # `/p/groceries/<slug>/<id>` shape Exa still has indexed is RETIRED: it
+    # answers 200 with a 3.6KB SPA shell reading "We couldn't find the page"
+    # (5/5 sampled URLs, 2026-08-05), so pointing discovery there produced a
+    # healthy "N passed host/path check" log and then `missing-price` on every
+    # candidate. Exa returns both shapes; only `/product/` is fetchable.
+    queryTemplate: "{canonicalName} {category} grocery food {market} {currency} price"
+    allowedHosts:
+      - www.jiomart.com
+    urlPathContains: /product/
+    extractionFallback: exa
+    requireStrictValidator: true
 
   rateLimit:
     requestsPerMinute: 10

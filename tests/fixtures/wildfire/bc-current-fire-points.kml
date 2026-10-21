@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Captured/derived 2026-08-14 (UTC+4) from live openmaps.gov.bc.ca WFS
+     pub:WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP
+     (catalogue loader KML is a NetworkLink/GroundOverlay; vector points live
+     on the same host/layer). Coordinates and statuses from live GetFeature.
+     RX-DEMO is a prescribed-burn placemark for parser coverage (live layer
+     returned 0 prescribed rows). -->
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>PROT_CURRENT_FIRE_PNTS_SP</name>
+    <Placemark id="WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP.V10742">
+      <name>V10742</name>
+      <Point><coordinates>-121.4548,49.8935,0</coordinates></Point>
+      <ExtendedData>
+        <Data name="FIRE_NUMBER"><value>V10742</value></Data>
+        <Data name="FIRE_YEAR"><value>2026</value></Data>
+        <Data name="FIRE_STATUS"><value>Fire of Note</value></Data>
+        <Data name="FIRE_TYPE"><value>Fire</value></Data>
+        <Data name="FIRE_CAUSE"><value>Person</value></Data>
+        <Data name="IGNITION_DATE"><value>2026-07-02Z</value></Data>
+        <Data name="LATITUDE"><value>49.8935</value></Data>
+        <Data name="LONGITUDE"><value>-121.4548</value></Data>
+        <Data name="CURRENT_SIZE"><value>8890.4</value></Data>
+        <Data name="INCIDENT_NAME"><value>Brunswick Creek</value></Data>
+        <Data name="GEOGRAPHIC_DESCRIPTION"><value>Brunswick Creek</value></Data>
+        <Data name="FIRE_URL"><value>https://wildfiresituation.nrs.gov.bc.ca/incidents?fireYear=2026&amp;incidentNumber=V10742</value></Data>
+        <Data name="FIRE_OF_NOTE_IND"><value>Y</value></Data>
+      </ExtendedData>
+    </Placemark>
+    <Placemark id="WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP.C41588">
+      <name>C41588</name>
+      <Point><coordinates>-121.8707,51.5189,0</coordinates></Point>
+      <ExtendedData>
+        <Data name="FIRE_NUMBER"><value>C41588</value></Data>
+        <Data name="FIRE_YEAR"><value>2026</value></Data>
+        <Data name="FIRE_STATUS"><value>Under Control</value></Data>
+        <Data name="FIRE_TYPE"><value>Fire</value></Data>
+        <Data name="IGNITION_DATE"><value>2026-08-13Z</value></Data>
+        <Data name="LATITUDE"><value>51.5189</value></Data>
+        <Data name="LONGITUDE"><value>-121.8707</value></Data>
+        <Data name="CURRENT_SIZE"><value>0.009</value></Data>
+        <Data name="INCIDENT_NAME"><value>C41588</value></Data>
+      </ExtendedData>
+    </Placemark>
+    <Placemark id="WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP.C31543">
+      <name>C31543</name>
+      <Point><coordinates>-121.02,52.6489,0</coordinates></Point>
+      <ExtendedData>
+        <Data name="FIRE_NUMBER"><value>C31543</value></Data>
+        <Data name="FIRE_YEAR"><value>2026</value></Data>
+        <Data name="FIRE_STATUS"><value>Out of Control</value></Data>
+        <Data name="FIRE_TYPE"><value>Fire</value></Data>
+        <Data name="IGNITION_DATE"><value>2026-08-11Z</value></Data>
+        <Data name="LATITUDE"><value>52.6489</value></Data>
+        <Data name="LONGITUDE"><value>-121.02</value></Data>
+        <Data name="CURRENT_SIZE"><value>0.009</value></Data>
+      </ExtendedData>
+    </Placemark>
+    <Placemark id="WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP.C20125">
+      <name>C20125</name>
+      <Point><coordinates>-121.8296,52.0234,0</coordinates></Point>
+      <ExtendedData>
+        <Data name="FIRE_NUMBER"><value>C20125</value></Data>
+        <Data name="FIRE_YEAR"><value>2026</value></Data>
+        <Data name="FIRE_STATUS"><value>Out</value></Data>
+        <Data name="FIRE_TYPE"><value>Fire</value></Data>
+        <Data name="IGNITION_DATE"><value>2026-04-24Z</value></Data>
+        <Data name="LATITUDE"><value>52.0234</value></Data>
+        <Data name="LONGITUDE"><value>-121.8296</value></Data>
+        <Data name="CURRENT_SIZE"><value>0.1</value></Data>
+      </ExtendedData>
+    </Placemark>
+    <Placemark id="WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP.RX-DEMO">
+      <name>RX-DEMO</name>
+      <Point><coordinates>-123.1000,53.2000,0</coordinates></Point>
+      <ExtendedData>
+        <Data name="FIRE_NUMBER"><value>RX-DEMO</value></Data>
+        <Data name="FIRE_YEAR"><value>2026</value></Data>
+        <Data name="FIRE_STATUS"><value>Prescribed</value></Data>
+        <Data name="FIRE_TYPE"><value>Prescribed Fire</value></Data>
+        <Data name="IGNITION_DATE"><value>2026-08-01Z</value></Data>
+        <Data name="LATITUDE"><value>53.2000</value></Data>
+        <Data name="LONGITUDE"><value>-123.1000</value></Data>
+        <Data name="CURRENT_SIZE"><value>12.5</value></Data>
+      </ExtendedData>
+    </Placemark>
+  </Document>
+</kml>

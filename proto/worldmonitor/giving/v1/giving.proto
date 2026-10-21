@@ -4,24 +4,94 @@ package worldmonitor.giving.v1;
 
 import "buf/validate/validate.proto";
 
-// GivingSummary represents a global overview of personal giving activity across platforms.
+// GivingSummary is a cacheable snapshot of published giving claims. Source
+// reference periods live in provenance; generated_at is only the time this
+// response snapshot was materialized.
 message GivingSummary {
-  // Timestamp of the summary generation (ISO 8601).
+  // Response summary generation time (ISO 8601). This is a transport/cache
+  // timestamp, not a source publication or observation time.
   string generated_at = 1;
-  // Global giving activity index (0-100 composite score).
+  // Legacy numeric compatibility sentinel. Corrected snapshots emit 0 and
+  // activity_index_available=false; this is not a measured score.
   double activity_index = 2;
-  // Index trend direction.
-  string trend = 3; // "rising" | "stable" | "falling"
-  // Estimated daily global giving flow in USD (directional, not precise).
+  // Legacy string compatibility sentinel. Corrected snapshots retain "stable"
+  // with trend_available=false; this is not a measured directional trend.
+  string trend = 3;
+  // Daily USD equivalent of only aggregate-eligible, verified annual or
+  // defensibly annualized tracked-platform claims. It is not a live daily
+  // observation or an estimate of all global giving.
   double estimated_daily_flow_usd = 4;
-  // Per-platform aggregates.
+  // Per-platform projections from the full published-claim snapshot.
   repeated PlatformGiving platforms = 5;
-  // Per-category breakdown of campaign activity.
+  // Compatibility category projections. Unsupported values remain zero
+  // sentinels and their provenance status explains that they are unverified or
+  // not collected.
   repeated CategoryBreakdown categories = 6;
-  // Crypto philanthropy wallet summary.
+  // Compatibility crypto projection. Corrected snapshots do not imply that a
+  // live on-chain collector exists.
   CryptoGivingSummary crypto = 7;
-  // Institutional / ODA data points.
+  // Verified institutional context, kept separate from personal-platform flow.
   InstitutionalGiving institutional = 8;
+  // Evidence mode: "published_estimate" or "partial_estimate". If absent in an
+  // older payload, consumers must treat the payload as legacy/unknown, never as
+  // a published estimate by proto scalar default.
+  string data_mode = 9;
+  // True only when trend contains a measured directional trend. Corrected
+  // published-claim snapshots emit false.
+  bool trend_available = 10;
+  // Claim-level source evidence for the full snapshot, including claims outside
+  // any platform/category array projection.
+  repeated GivingProvenance provenance = 11;
+  // True only when activity_index contains a measured score. Corrected
+  // published-claim snapshots emit false.
+  bool activity_index_available = 12;
+}
+
+// GivingProvenance records one auditable published claim or one explicit
+// collection/compatibility status. No field represents a source observation
+// time; source reference periods and verified publication dates stay separate
+// from response/cache timestamps.
+message GivingProvenance {
+  // Human-readable subject of the claim or collection-status record.
+  string subject = 1;
+  // Publisher or authority responsible for the referenced claim.
+  string source_name = 2;
+  // HTTPS URL for the source or stable audit record.
+  string source_url = 3;
+  // Period covered by the source claim (for example, "2024" or "25 years cumulative").
+  string reference_period = 4;
+  // Verified source publication date when known. Empty means not verified; it
+  // must never fall back to generated_at, fetched_at, or access time.
+  string source_published_at = 5;
+  // What the reported number measures (annual, weekly average, cumulative,
+  // institutional context, compatibility sentinel, or collection status).
+  string measurement_basis = 6;
+  // Verification status. Allowed values: "verified", "partially_verified",
+  // "unverified", "not_collected", "not_applicable". Consumers must treat
+  // unknown future values as "unverified".
+  string status = 7;
+  // Stable proto response field paths covered by this evidence record. Field
+  // names use the proto snake_case spelling (for example,
+  // "summary.estimated_daily_flow_usd").
+  repeated string covered_metric_paths = 8;
+  // Whether this claim contributes to the highlighted tracked-platform aggregate.
+  bool included_in_highlighted_aggregate = 9;
+  // Numeric value exactly as reported or recorded for the compatibility status.
+  double reported_value = 10;
+  // Unit attached to reported_value without implicit currency conversion.
+  string reported_unit = 11;
+  // Exact-claim text and any limitations needed to audit the record.
+  string notes = 12;
+  // Source qualifier such as "more_than", "about", "reported", or "not_measured".
+  string value_qualifier = 13;
+  // Stable location within the source where the claim can be found.
+  string source_locator = 14;
+  // Date the source was checked (YYYY-MM-DD); not a source observation time.
+  string accessed_at = 15;
+  // Time/value denominator used by the source claim.
+  string denominator = 16;
+  // Explicit derivation applied to the claim, or why no derivation is allowed.
+  string derivation = 17;
 }
 
 // PlatformGiving represents aggregated giving data from a single crowdfunding platform.
@@ -31,45 +101,54 @@ message PlatformGiving {
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1
   ];
-  // Estimated daily donation volume in USD.
+  // Daily USD equivalent derived from an aggregate-eligible published claim.
+  // Zero means no eligible conversion, not measured zero giving.
   double daily_volume_usd = 2;
-  // Number of active campaigns being sampled.
+  // Legacy live-sampling field. Zero is a not-collected compatibility sentinel
+  // unless provenance says otherwise.
   int32 active_campaigns_sampled = 3;
-  // New campaigns created in the last 24 hours.
+  // Legacy 24-hour field. Zero is a not-collected compatibility sentinel unless
+  // provenance says otherwise.
   int32 new_campaigns_24h = 4;
-  // Average donation velocity (donations per hour).
+  // Legacy live-velocity field. Zero is a not-collected compatibility sentinel
+  // unless provenance says otherwise.
   double donation_velocity = 5;
-  // Data freshness: "live", "daily", "weekly", "annual".
+  // Legacy source basis/cadence ("annual", "cumulative", or "unknown"), not
+  // response freshness or source age.
   string data_freshness = 6;
-  // Last data update timestamp (ISO 8601).
+  // Verified source publication date only. Empty when no publication date was
+  // verified; request/cache time must never be substituted.
   string last_updated = 7;
 }
 
-// CategoryBreakdown represents giving activity within a specific cause category.
+// CategoryBreakdown retains the legacy wire shape for category claims.
 message CategoryBreakdown {
   // Category name (e.g., "Medical", "Disaster Relief", "Education").
   string category = 1;
-  // Share of total giving activity (0-1).
+  // Published share (0-1) when verified. Zero is an unavailable sentinel when
+  // the category evidence is unverified.
   double share = 2;
-  // 24-hour change in share percentage points.
+  // Legacy 24-hour change. Zero is a not-collected compatibility sentinel.
   double change_24h = 3;
-  // Number of active campaigns in this category.
+  // Legacy live campaign count. Zero is a not-collected compatibility sentinel.
   int32 active_campaigns = 4;
-  // Trending indicator.
+  // Legacy live trending indicator. Corrected static snapshots emit false.
   bool trending = 5;
 }
 
-// CryptoGivingSummary tracks transparent on-chain philanthropy.
+// CryptoGivingSummary retains the legacy wire shape. Corrected snapshots expose
+// only verified values; zero/empty fields are unavailable compatibility
+// sentinels, not measured on-chain activity.
 message CryptoGivingSummary {
-  // Total 24h inflow to tracked charity wallets (USD equivalent).
+  // Daily USD equivalent from a verified annual claim, if available.
   double daily_inflow_usd = 1;
-  // Number of tracked charity wallets.
+  // Verified tracked-wallet count, if available.
   int32 tracked_wallets = 2;
-  // Number of transactions in the last 24 hours.
+  // Measured transactions in the last 24 hours, if a collector exists.
   int32 transactions_24h = 3;
-  // Top receiving platforms / DAOs.
+  // Verified receiving platforms or organizations, if available.
   repeated string top_receivers = 4;
-  // Percentage of total giving that is on-chain.
+  // Verified on-chain share of the relevant giving denominator, if available.
   double pct_of_total = 5;
 }
 

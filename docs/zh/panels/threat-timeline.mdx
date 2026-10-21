@@ -1,0 +1,46 @@
+---
+title: "威胁时间线"
+description: "面向情报洞察的七天威胁等级分布面板，包含多档严重性分桶、动态趋势解读、按类别分组的警报列表以及每条事件的完整来源溯源链路，帮助分析师快速把握威胁走势、识别升级模式、追溯每一次警报背后的原始情报供稿与信号强度，并结合关联的地理与主题标签形成清晰的时序化情报视图与预警面板。"
+---
+
+**Threat Timeline（威胁时间线）** 面板（内部 id `threat-timeline`）将已附加到情报洞察上的威胁等级元数据，转化为短期分布视图。它帮助分析师看清当前环境是在恶化、缓和，还是仅仅充满噪声，而无需逐条阅读威胁标签。
+
+## 面板显示的内容
+
+一条七天堆叠时间线，按规范的威胁等级分组：`critical`、`high`、`medium`、`low` 和 `info`。
+
+- **分布图** - 过去七天（含今天）每个 UTC 日一根堆叠条形。
+- **趋势摘要** - critical/high 计数、活跃的高严重性天数，以及一个简单的近期与早期对比趋势标签。
+- **分组警报** - 当前条目先按威胁严重性、再按新近程度排序，每个严重性通道下显示排名靠前的条目。
+- **来源溯源** - 每个条目在可用时保留其来源标签和来源计数徽章。当威胁标签来自本地分类器时，回退的聚类报道可能会显示 `Keyword fallback`。
+- **降级状态** - 如果带时间戳的威胁等级数据不可用，面板会显示等待/降级消息，而不是凭空生成趋势。
+
+面板 id 为 `threat-timeline`；规范组件为 `src/components/ThreatTimelinePanel.ts`。分桶和回退归一化逻辑位于 `src/components/threat-timeline-utils.ts`。
+
+## 如何访问
+
+- **Cmd+K**：输入 *threat timeline*、*threat levels* 或 *threat trend*。
+- **各变体的可用性**：仅在 **full/geopolitical** 变体中注册并默认启用。它不存在于 tech、finance、commodity 或 happy 变体中。来源：`src/config/panels.ts` 中 `FULL_PANELS` 内的 `'threat-timeline'`。
+
+## 数据源
+
+主要来源是通过 `@/services/insights-loader` 读取的现有情报洞察快照：
+
+- Bootstrap 键：来自 `/api/bootstrap?keys=insights` 的 `insights`
+- Redis 来源：`intelligence:insights:v1`
+- 消费的条目字段：`topStories[].threatLevel`、`topStories[].pubDate`、标题、来源、链接和来源计数
+
+当服务器端的洞察快照不可用时，面板可以回退到仪表盘数据加载器已持有的当前聚类新闻事件。该回退在设计上是降级的，仅用于在洞察快照重新可用之前保留有用的本地上下文。
+
+## 刷新频率
+
+底层的洞察种子由情报 cron 生成。面板在仪表盘数据加载期间读取缓存的 bootstrap 快照，并与现有的 AI Insights 面板一起刷新，而不是新增单独的上游管道。
+
+## 层级与门控
+
+Threat Timeline 在网页端是**免费**的。它在 full 变体的面板注册中没有 `premium` 标志。
+
+## API 参考
+
+- [AI 情报](/zh/ai-intelligence) - 威胁分类和 AI 辅助情报接口的概览。
+- [API 平台](/zh/api-platform) - bootstrap 水合，包括按键过滤的读取。

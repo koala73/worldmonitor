@@ -1,0 +1,10 @@
+# Adding or modifying api-route-exceptions.json opts an endpoint out of the
+# sebuf contract. The CI gate validates an entry's shape, not whether the
+# exception is justified, so the manifest needs a human. Ownership sits with
+# the repo owner: GitHub skips the review request when the code owner is the
+# PR author, so this fires only when someone else opens the escape hatch.
+/api/api-route-exceptions.json @koala73
+
+# The enforcement script is the teeth behind the manifest, so a change to it
+# cannot be policed by the gate it defines. Same ownership rule applies.
+/scripts/enforce-sebuf-api-contract.mjs @koala73

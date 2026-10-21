@@ -10,10 +10,13 @@ export const CACHE_TTL_SECONDS = 86400; // 24 hours
 
 export {
   CACHE_VERSION,
+  MAX_BODY_LEN,
   canonicalizeSummaryInputs,
   buildSummaryCacheKey,
   buildSummaryCacheKey as getCacheKey,
+  selectUniqueHeadlinePairs,
 } from '../../../../src/utils/summary-cache-key';
+import { MAX_BODY_LEN } from '../../../../src/utils/summary-cache-key';
 
 // ========================================================================
 // Hash utility (unified FNV-1a 52-bit -- H-7 fix)
@@ -26,7 +29,6 @@ export { hashString };
 // Headline deduplication (used by SummarizeArticle)
 // ========================================================================
 
-// @ts-expect-error -- plain JS module, no .d.mts needed for this pure function
 export { deduplicateHeadlines } from './dedup.mjs';
 
 // ========================================================================
@@ -36,11 +38,41 @@ export { deduplicateHeadlines } from './dedup.mjs';
 export function buildArticlePrompts(
   headlines: string[],
   uniqueHeadlines: string[],
-  opts: { mode: string; geoContext: string; variant: string; lang: string },
+  opts: {
+    mode: string;
+    geoContext: string;
+    variant: string;
+    lang: string;
+    // Optional article bodies paired 1:1 with uniqueHeadlines. When a body is
+    // non-empty, the prompt interleaves it as `    Context: <body>` under its
+    // headline so the LLM grounds on the article instead of hallucinating
+    // from the headline metadata. Bodies must be pre-sanitised by the caller
+    // (summarize-article.ts runs them through sanitizeForPrompt). Skipped
+    // entirely in translate mode — that path is headline[0]-only.
+    bodies?: string[];
+  },
 ): { systemPrompt: string; userPrompt: string } {
-  const headlineText = uniqueHeadlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
+  // When bodies are provided and this mode interpolates them, render each
+  // numbered headline with its Context line beneath. Otherwise render the
+  // original headline-only format (byte-identical prompt to pre-fix — R6).
+  const interpolateBodies = opts.mode !== 'translate'
+    && Array.isArray(opts.bodies)
+    && opts.bodies.some((b) => typeof b === 'string' && b.length > 0);
+  const headlineText = interpolateBodies
+    ? uniqueHeadlines.map((h, i) => {
+        // typeof check was redundant: ?? '' handles undefined; string-only
+        // input contract is enforced by the caller (summarize-article.ts
+        // sanitises bodies into string values before passing here).
+        const rawBody = opts.bodies?.[i] ?? '';
+        const clipped = rawBody.slice(0, MAX_BODY_LEN);
+        return clipped.length > 0
+          ? `${i + 1}. ${h}\n    Context: ${clipped}`
+          : `${i + 1}. ${h}`;
+      }).join('\n')
+    : uniqueHeadlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
   const intelSection = opts.geoContext ? `\n\n${opts.geoContext}` : '';
-  const isTechVariant = opts.variant === 'tech';
+  // Case-folded to match buildSummaryCacheKey: one cache row, one prompt.
+  const isTechVariant = opts.variant.toLowerCase() === 'tech';
   const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}.${isTechVariant ? '' : ' Provide geopolitical context appropriate for the current date.'}`;
   const langInstruction = opts.lang && opts.lang !== 'en' ? `\nIMPORTANT: Output the summary in ${opts.lang.toUpperCase()} language.` : '';
 

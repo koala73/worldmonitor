@@ -1,0 +1,51 @@
+---
+title: "代理与原始数据直通"
+description: "面向上游第三方 API 的轻量级服务端代理端点完整参考，World Monitor 仪表盘借助它们规避浏览器 CORS 限制、隐藏敏感凭据与商业 API 密钥，并统一添加速率限制、边缘缓存、失败重试、熔断与降级策略，全面保障数据流的稳定性、安全性、成本控制与可观测性。"
+---
+
+这些端点将调用者请求直通到上游数据源。它们的存在是为了：
+
+1. 在服务端隐藏上游 API 密钥
+2. 绕过 CORS
+3. 添加缓存 + 按 IP 速率限制
+4. 标准化响应形状
+
+<Warning>
+大多数代理面向**我们自己的仪表盘**且门控较轻。它们不是公共 API 合约的一部分，可能随时更改或移除。对于稳定集成，请优先使用领域 RPC 服务（`/api/<domain>/v1/*`）。
+</Warning>
+
+## 原始数据直通
+
+| 端点 | 上游 | 用途 |
+|----------|----------|---------|
+| `GET /api/polymarket` | Polymarket gamma-api | 活动事件合约。 |
+| `GET /api/gpsjam` | gpsjam.org | GPS 干扰热点报告。 |
+| `GET /api/oref-alerts` | OREF（以色列后方司令部） | Tzeva Adom 火箭弹警报镜像。 |
+| `GET /api/supply-chain/hormuz-tracker` | 内部 AIS + 注册表 | 实时霍尔木兹通行仪表盘数据。 |
+
+所有代理：
+- 遵守源 CORS 允许列表。
+- 在处理函数显式启用的前提下，通过 `api/_rate-limit.js` 或 `server/_shared/rate-limit.ts` 应用按 IP 速率限制（默认 600 请求/分钟/IP），更严格的按路由额度在 `ENDPOINT_RATE_POLICIES` 中声明 — 参见[速率限制](/usage-rate-limits)。速率限制按路由启用，而非平台级统一应用：`/api/polymarket` 已启用，而 `/api/gpsjam` 和 `/api/oref-alerts` 目前未计量。
+- 积极缓存（`s-maxage` 因上游而异）。
+
+## 内容代理
+
+### `GET /api/rss-proxy?url=<allowed-feed>`
+
+获取 RSS/Atom 源并返回解析后的 JSON。URL 必须匹配 `_rss-allowed-domains.js` 中的模式之一 — 拒绝任意 URL 以防止 SSRF。
+
+## Skills 注册表
+
+### `POST /api/skills/fetch-agentskills`
+
+获取单个 agentskills.io 技能定义 — 在 JSON 请求体中传入 `url` 或 `id` — 返回其名称、描述和指令，指令截断为 2,000 个字符。仅接受三个 `agentskills.io` 主机并拒绝重定向，因此该路由无法用于访问任意主机。由设置中的技能导入器使用。限制为 30 请求/分钟/IP；成功的查询会在 Redis 中缓存一小时。
+
+## 遗留/内部
+
+### `GET /api/fwdstart`
+
+抓取 FwdStart 通讯归档并以 RSS 2.0 XML 订阅源重新发布（缓存 30 分钟）。内部订阅源垫片，不是 JSON API。
+
+### `GET|POST /api/mcp-proxy`
+
+Pro 门控的出站 MCP 代理：将 MCP 流量转发到调用方指定的第三方 MCP 服务器，带 SSRF 防护（拒绝私网/链路本地目标）和独立的每 IP 每分钟 30 次限流。它**不会**转发到 WorldMonitor 自己的 [`/api/mcp`](/zh/mcp-overview) —— 请直接调用后者。

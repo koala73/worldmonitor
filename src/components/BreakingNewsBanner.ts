@@ -2,6 +2,11 @@ import type { BreakingAlert } from '@/services/breaking-news-alerts';
 import { getAlertSettings } from '@/services/breaking-news-alerts';
 import { getSourcePanelId } from '@/config/feeds';
 import { t } from '@/services/i18n';
+import { isMobileDevice } from '@/utils';
+import { rawHtml, trustedHtml } from '@/utils/dom-utils';
+import { sanitizeUrl } from '@/utils/sanitize';
+import { corroborationFlag } from '@/utils/corroboration-flag';
+import { renderPrimarySourceProvenance } from './news/source-provenance';
 
 const MAX_ALERTS = 3;
 const CRITICAL_DISMISS_MS = 60_000;
@@ -29,11 +34,26 @@ export class BreakingNewsBanner {
   private boundOnResize: () => void;
   private dismissed = new Map<string, number>();
   private highlightTimers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
+  private readonly inFlow: boolean;
 
   constructor() {
     this.container = document.createElement('div');
     this.container.className = 'breaking-news-container';
-    document.body.appendChild(this.container);
+    // Live region must exist in the tree before alerts are injected, or the
+    // injected content is never announced (same subtlety as PanelTabBar).
+    this.container.setAttribute('role', 'log');
+    this.container.setAttribute('aria-live', 'assertive');
+    this.container.setAttribute('aria-label', t('components.breakingNews.alertsRegion'));
+    // Desktop: fixed body-level overlay. Mobile: join the app flex column
+    // below the header (same slot as the critical posture banner, which
+    // stays above when both are present) so alerts push content down
+    // instead of covering the sticky chip nav / map header band.
+    const anchor = isMobileDevice()
+      ? document.querySelector('.critical-posture-banner') ?? document.querySelector('.header')
+      : null;
+    this.inFlow = !!anchor;
+    if (anchor) anchor.insertAdjacentElement('afterend', this.container);
+    else document.body.appendChild(this.container);
 
     this.initAudio();
     this.updatePosition();
@@ -57,6 +77,10 @@ export class BreakingNewsBanner {
         if (id) this.dismissAlert(id);
         return;
       }
+
+      // Let the headline anchor keep its native navigation behavior instead of
+      // also triggering the row's panel-scroll action.
+      if (target.closest('.breaking-alert-headline-link')) return;
 
       const panelId = alertEl.getAttribute('data-target-panel');
       if (panelId) this.scrollToPanel(panelId);
@@ -97,6 +121,12 @@ export class BreakingNewsBanner {
   }
 
   private updatePosition(): void {
+    // In-flow (mobile) container: document flow handles stacking under the
+    // header/posture banner; inline `top` is meaningless on static position.
+    if (this.inFlow) {
+      this.updateOffset();
+      return;
+    }
     let top = 50;
     if (document.body?.classList.contains('has-critical-banner')) {
       this.attachResizeObserverIfNeeded();
@@ -177,6 +207,9 @@ export class BreakingNewsBanner {
   }
 
   private scrollToPanel(panelId: string): void {
+    // Synchronous: lets the mobile category nav clear a filter that would
+    // leave the target display:none (scrollIntoView would silently no-op).
+    window.dispatchEvent(new CustomEvent('wm:reveal-panel', { detail: { panelId } }));
     const panel = document.querySelector(`[data-panel="${panelId}"]`);
     if (!panel) return;
     panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -207,6 +240,7 @@ export class BreakingNewsBanner {
     const iconSpan = document.createElement('span');
     iconSpan.className = 'breaking-alert-icon';
     iconSpan.textContent = icon;
+    iconSpan.setAttribute('aria-hidden', 'true');
 
     const content = document.createElement('div');
     content.className = 'breaking-alert-content';
@@ -215,28 +249,82 @@ export class BreakingNewsBanner {
     levelSpan.className = 'breaking-alert-level';
     levelSpan.textContent = levelText;
 
-    const headlineSpan = document.createElement('span');
-    headlineSpan.className = 'breaking-alert-headline';
-    headlineSpan.textContent = alert.headline;
+    const articleUrl = alert.link?.trim() ?? '';
+    const safeLink = sanitizeUrl(articleUrl);
+    let headlineElement: HTMLAnchorElement | HTMLSpanElement;
+    if (safeLink) {
+      const headlineLink = document.createElement('a');
+      headlineLink.className = 'breaking-alert-headline breaking-alert-headline-link';
+      // sanitizeUrl gates the protocol; assigning through the DOM API keeps
+      // query-string characters intact without HTML-string interpolation.
+      headlineLink.href = articleUrl;
+      headlineLink.target = '_blank';
+      headlineLink.rel = 'noopener';
+      headlineElement = headlineLink;
+    } else {
+      headlineElement = document.createElement('span');
+      headlineElement.className = 'breaking-alert-headline';
+    }
+    headlineElement.textContent = alert.headline;
 
     const metaSpan = document.createElement('span');
     metaSpan.className = 'breaking-alert-meta';
-    metaSpan.textContent = `${alert.source} · ${timeAgo}`;
+
+    const provenance = document.createElement('span');
+    provenance.className = 'breaking-alert-provenance';
+    const { riskBadge, tierBadge, facts } = renderPrimarySourceProvenance(alert.source);
+    this.appendProvenanceBadge(provenance, tierBadge, 'breaking-news banner source tier badge');
+    const sourceName = document.createElement('span');
+    sourceName.className = 'breaking-alert-source';
+    sourceName.textContent = alert.source;
+    provenance.appendChild(sourceName);
+    this.appendProvenanceBadge(provenance, riskBadge, 'breaking-news banner source propaganda badge');
+    this.appendProvenanceBadge(provenance, facts, 'breaking-news banner source provenance facts');
+    const flag = corroborationFlag(alert.corroboration);
+    if (flag) {
+      const pill = document.createElement('span');
+      pill.className = 'corroboration-flag';
+      pill.title = flag.hint;
+      pill.textContent = flag.text;
+      provenance.appendChild(pill);
+    }
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'breaking-alert-time';
+    timeSpan.textContent = `· ${timeAgo}`;
+
+    metaSpan.appendChild(provenance);
+    metaSpan.appendChild(timeSpan);
 
     content.appendChild(levelSpan);
-    content.appendChild(headlineSpan);
+    content.appendChild(headlineElement);
     content.appendChild(metaSpan);
 
     const dismissBtn = document.createElement('button');
     dismissBtn.className = 'breaking-alert-dismiss';
+    dismissBtn.type = 'button';
     dismissBtn.textContent = '×';
     dismissBtn.title = t('components.breakingNews.dismiss');
+    dismissBtn.setAttribute('aria-label', t('components.breakingNews.dismiss'));
+
+    const viewPanelBtn = document.createElement('button');
+    viewPanelBtn.className = 'breaking-alert-view-panel';
+    viewPanelBtn.type = 'button';
+    viewPanelBtn.textContent = '→';
+    viewPanelBtn.title = t('components.breakingNews.viewPanel');
+    viewPanelBtn.setAttribute('aria-label', t('components.breakingNews.viewPanel'));
 
     el.appendChild(iconSpan);
     el.appendChild(content);
+    el.appendChild(viewPanelBtn);
     el.appendChild(dismissBtn);
 
     return el;
+  }
+
+  private appendProvenanceBadge(parent: HTMLElement, html: string, reason: string): void {
+    if (!html) return;
+    parent.appendChild(rawHtml(trustedHtml(html, reason)));
   }
 
   private formatTimeAgo(date: Date): string {

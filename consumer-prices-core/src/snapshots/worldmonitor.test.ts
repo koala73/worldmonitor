@@ -1,0 +1,164 @@
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+
+const mockQuery = vi.fn();
+vi.mock('../db/client.js', () => ({ query: mockQuery }));
+
+const {
+  buildMoversSnapshot,
+  isPlausiblePriceMove,
+  MAX_MOVE_RATIO,
+  MIN_PARSE_BREAK_SAMPLE,
+  MOVERS_PER_DIRECTION,
+} = await import('./worldmonitor.js');
+
+describe('isPlausiblePriceMove', () => {
+  it('rejects the parse-artifact movers reported in #5445', () => {
+    expect(isPlausiblePriceMove(874.68)).toBe(false); // White Sugar 1kg, lulu_ae
+    expect(isPlausiblePriceMove(608.86)).toBe(false); // Whole Chicken, spinneys_ae
+    expect(isPlausiblePriceMove(-99.25)).toBe(false); // Yaumi bread
+  });
+
+  it('keeps realistic weekly moves', () => {
+    expect(isPlausiblePriceMove(0)).toBe(true);
+    expect(isPlausiblePriceMove(12.5)).toBe(true);
+    expect(isPlausiblePriceMove(-40)).toBe(true);
+  });
+
+  it('gates exactly at the bilateral MAX_MOVE_RATIO bound', () => {
+    expect(MAX_MOVE_RATIO).toBe(4);
+    // upper bound: new price = 4x past -> +300%
+    expect(isPlausiblePriceMove(300)).toBe(true);
+    expect(isPlausiblePriceMove(300.1)).toBe(false);
+    // lower bound: new price = 0.25x past -> -75%
+    expect(isPlausiblePriceMove(-75)).toBe(true);
+    expect(isPlausiblePriceMove(-75.1)).toBe(false);
+  });
+
+  it('rejects non-finite change values', () => {
+    expect(isPlausiblePriceMove(Number.NaN)).toBe(false);
+    expect(isPlausiblePriceMove(Number.POSITIVE_INFINITY)).toBe(false);
+  });
+});
+
+describe('buildMoversSnapshot', () => {
+  const row = (id: string, changePct: string) => ({
+    product_id: id,
+    raw_title: `Product ${id}`,
+    category_text: 'grocery',
+    retailer_slug: 'lulu_ae',
+    current_price: '10.00',
+    currency_code: 'AED',
+    change_pct: changePct,
+  });
+
+  let warn: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    mockQuery.mockReset();
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it('uses the requested 90-day observation window and labels it correctly', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [row('riser', '12.5'), row('faller', '-10')] });
+    const snapshot = await buildMoversSnapshot('ae', 90);
+    expect(mockQuery.mock.calls[0][1]).toEqual(['ae', 90]);
+    expect(snapshot).toMatchObject({ range: '90d', risers: [{ productId: 'riser' }], fallers: [{ productId: 'faller' }] });
+  });
+
+  it('ranks risers/fallers over the gated set, not the raw rows (#5445)', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        row('1', '874.68'), // White Sugar 1kg artifact — must be dropped
+        row('2', '-99.25'), // Yaumi bread artifact — must be dropped
+        row('3', '12.5'),
+        row('4', '-40'),
+      ],
+    });
+
+    const snap = await buildMoversSnapshot('ae', 7);
+
+    expect(snap!.risers.map((m) => m.productId)).toEqual(['3']);
+    expect(snap!.fallers.map((m) => m.productId)).toEqual(['4']);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('dropped 2/4');
+    // the gate is bilateral — the warn must not claim only the >4x direction
+    expect(String(warn.mock.calls[0][0])).toContain('outside 0.25x-4x');
+  });
+
+  const artifactRows = (n: number) =>
+    Array.from({ length: n }, (_, i) => row(String(i + 1), '874.68'));
+
+  it('throws instead of publishing an empty snapshot when every row is gated', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: artifactRows(MIN_PARSE_BREAK_SAMPLE) });
+
+    // A full window of artifacts is a parse break, so the run goes red.
+    await expect(buildMoversSnapshot('ae', 7)).rejects.toThrow(
+      /all 5 candidates gated as implausible/,
+    );
+    expect(String(warn.mock.calls[0][0])).toContain('dropped 5/5');
+  });
+
+  it('separates the alarm threshold from the published column size', async () => {
+    // Retuning how many movers the UI shows must not move the alarm floor, and
+    // the floor is a safety value: changing it should fail here, deliberately.
+    // It is sized against a candidate universe of 24-48 (12 basket items x 2-4
+    // enabled retailers), not the query's LIMIT 200.
+    expect(MIN_PARSE_BREAK_SAMPLE).toBe(5);
+    expect(MOVERS_PER_DIRECTION).toBe(10);
+
+    mockQuery.mockResolvedValueOnce({ rows: artifactRows(MIN_PARSE_BREAK_SAMPLE - 1) });
+    expect(await buildMoversSnapshot('ae', 7)).toBeNull();
+
+    mockQuery.mockResolvedValueOnce({ rows: artifactRows(MIN_PARSE_BREAK_SAMPLE) });
+    await expect(buildMoversSnapshot('ae', 7)).rejects.toThrow(/gated as implausible/);
+  });
+
+  it('does not fail a sparse market whose only candidate is an artifact', async () => {
+    // Production repro (seed-consumer-prices-publish, 2026-09-04): market `in`
+    // over 30d returned a single candidate, it was gated, and the whole publish
+    // job exited 1 while every other market published fine. One artifact is no
+    // evidence of a systemic parse break, so the run must stay green.
+    mockQuery.mockResolvedValueOnce({ rows: [row('1', '874.68')] });
+
+    expect(await buildMoversSnapshot('in', 30)).toBeNull();
+
+    expect(String(warn.mock.calls[0][0])).toContain('dropped 1/1');
+  });
+
+  it('returns an empty snapshot when the window has no movers at all', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const snap = await buildMoversSnapshot('ae', 7);
+
+    // Zero candidates is a genuine "no movers", not the all-gated skip.
+    expect(snap).not.toBeNull();
+    expect(snap!.risers).toEqual([]);
+    expect(snap!.fallers).toEqual([]);
+    expect(snap!.upstreamUnavailable).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('fetches a 200-row candidate window so the gate cannot starve the top-10 lists', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await buildMoversSnapshot('ae', 7);
+
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain('LIMIT 200');
+    expect(sql).toContain('ORDER BY ABS');
+  });
+
+  it('does not warn when every mover is plausible', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [row('1', '12.5'), row('2', '-40')] });
+
+    const snap = await buildMoversSnapshot('ae', 7);
+
+    expect(snap!.risers).toHaveLength(1);
+    expect(snap!.fallers).toHaveLength(1);
+    expect(warn).not.toHaveBeenCalled();
+  });
+});

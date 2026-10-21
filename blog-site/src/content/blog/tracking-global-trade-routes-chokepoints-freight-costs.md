@@ -1,18 +1,19 @@
 ---
-title: "Tracking Global Trade Routes, Chokepoints, and Freight Costs in Real Time"
-description: "Track 8 maritime chokepoints, freight indices (BDI, SCFI), trade policy, and critical mineral risks in real time. Free supply chain intelligence dashboard."
-metaTitle: "Real-Time Chokepoint & Freight Index Monitoring | World Monitor"
+title: "Track Trade Routes, Chokepoints, and Freight Costs"
+description: "Track 13 maritime chokepoints, freight indices (BDI, SCFI), trade policy, and critical mineral risks in real time. Free supply chain intelligence dashboard."
+metaTitle: "Chokepoint and Freight Index Monitoring | World Monitor"
 keywords: "chokepoint monitoring, Strait of Hormuz shipping, freight index dashboard, BDI Baltic Dry Index, SCFI container rates, supply chain disruption tracker, trade route intelligence"
 audience: "Supply chain professionals, commodity traders, logistics analysts, maritime intelligence, geopolitical risk analysts"
 heroImage: "/blog/images/blog/hormuz-chokepoint-crisis.png"
 pubDate: "2026-03-15"
+modifiedDate: "2026-10-18"
 ---
 
-> **Key Takeaways:** Strait of Hormuz traffic down 94.4%. World Monitor tracks 8 corridors, 9 freight indices, WTO trade policy, and critical mineral concentration across one free dashboard. Data updates in real time.
+> **Key Takeaways:** In the March 15, 2026 snapshot, Strait of Hormuz traffic was down 94.4%. World Monitor combines its canonical waterway registry, freight indices, WTO trade policy, and critical-mineral concentration in one dashboard.
 
-The Strait of Hormuz carries 20% of the world's oil. Right now, [World Monitor's](https://worldmonitor.app) live chokepoint tracker shows traffic has dropped 94.4% week-over-week. Tanker transits have collapsed from 60+ daily to single digits. The disruption score is 99%.
+The Strait of Hormuz carries about 20% of global petroleum liquids consumption. In the March 15, 2026 snapshot, [World Monitor's](https://www.worldmonitor.app) chokepoint tracker showed traffic down 94.4% week-over-week, with tanker transits falling from 60+ daily to single digits and a 99% disruption score.
 
-This is not a hypothetical scenario for a risk assessment deck. This is happening right now, and World Monitor is tracking it live.
+This was not a hypothetical scenario for a risk assessment deck. The dashboard continues to track live conditions, while the figures below remain an explicitly dated case study.
 
 *Data as of March 15, 2026. Values update in real time on the dashboard.*
 
@@ -30,22 +31,22 @@ World Monitor's Supply Chain panel shows this in one view:
 
 The chart tells the story: tanker and cargo traffic that had been steady at 40-70 vessels daily suddenly dropped to near zero. This is not a gradual decline. It is a sudden shutdown of one of the world's most important trade arteries.
 
-## Eight Maritime Chokepoints Monitored in Real Time
+## Thirteen Maritime Chokepoints Monitored in Real Time
 
-The Hormuz crisis is the most severe, but it is not the only corridor under pressure. World Monitor tracks eight critical maritime chokepoints, each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
+The Hormuz crisis was the most severe in this snapshot, but it was not the only corridor under pressure. World Monitor tracks 13 critical maritime chokepoints, each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
 
-The following table shows the current status of all eight corridors as of mid-March 2026:
+The following table highlights eight of the 13 monitored corridors as of mid-March 2026. Open a corridor name to check its latest published observations; the table remains a dated case study:
 
 | Corridor | Status | Key Risk |
 |----------|--------|----------|
-| **Strait of Hormuz** | Critical | Iran-Israel war, naval blockade, mines |
-| **Kerch Strait** | Red | Russia controls Kerch Bridge, Azov grain exports restricted |
-| **Bab el-Mandeb** | Yellow | Houthi attacks on commercial shipping |
-| **Suez Canal** | Yellow | Red Sea conflict spillover, Iran-Israel war adjacency |
-| **Bosporus Strait** | Elevated | Black Sea grain corridor tensions |
-| **Taiwan Strait** | Yellow | PLA military exercises, semiconductor supply risk |
-| **Cape of Good Hope** | Green | Rerouting destination for Hormuz/Suez diversions |
-| **Dover Strait** | Green | Europe's busiest shipping lane, currently stable |
+| **[Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/)** | Critical | Iran-Israel war, naval blockade, mines |
+| **[Kerch Strait](https://www.worldmonitor.app/chokepoints/kerch-strait/)** | Red | Russia controls Kerch Bridge, Azov grain exports restricted |
+| **[Bab el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/)** | Yellow | Houthi attacks on commercial shipping |
+| **[Suez Canal](https://www.worldmonitor.app/chokepoints/suez-canal/)** | Yellow | Red Sea conflict spillover, Iran-Israel war adjacency |
+| **[Bosporus Strait](https://www.worldmonitor.app/chokepoints/bosporus-strait/)** | Elevated | Black Sea grain corridor tensions |
+| **[Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/)** | Yellow | PLA military exercises, semiconductor supply risk |
+| **[Cape of Good Hope](https://www.worldmonitor.app/chokepoints/cape-of-good-hope/)** | Green | Rerouting destination for Hormuz/Suez diversions |
+| **[Dover Strait](https://www.worldmonitor.app/chokepoints/dover-strait/)** | Green | Europe's busiest shipping lane, currently stable |
 
 Each corridor shows live vessel counts, week-over-week traffic changes, disruption percentages, and risk levels. When you click a corridor, you get the full AI-generated situation assessment with specific shipping recommendations.
 
@@ -118,20 +119,20 @@ Consider the current Hormuz crisis through all four dimensions:
 3. **Trade Policy**: Gulf oil exports affected by the conflict, alternative suppliers face their own trade barriers
 4. **Critical Minerals**: Qatar LNG exports transit Hormuz. Disruption affects downstream petrochemical inputs for battery manufacturing
 
-No single data source shows this full picture. World Monitor puts chokepoint status, freight indices, trade policy, and mineral supply risk in one panel, updated in real time. Combined with [AI-powered forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/), you can see not just what is happening, but where the situation is heading.
+No single data source shows this full picture. World Monitor puts chokepoint status, freight indices, trade policy, and mineral supply risk in one panel, updated in real time. Combined with [AI-powered forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/), you can see not just what is happening, but where the situation is heading. And if you want these signals in your own systems rather than a dashboard, the API exposes the same data: here is [how to build a supply-chain early-warning system](/blog/posts/build-supply-chain-early-warning-system-api/) with route scoring and disruption webhooks.
 
 ## The Data Sources
 
 Transparency matters. Here is where the data comes from:
 
 - **Vessel transit data**: AIS (Automatic Identification System) feeds, cross-referenced with historical baselines
-- **Conflict events**: ACLED (Armed Conflict Location & Event Data Project), 7-day rolling windows
+- **Conflict events**: [UCDP](https://ucdp.uu.se/) coded conflict events and [GDELT](https://www.gdeltproject.org/) event reporting
 - **Shipping advisories**: AI-generated from combined conflict, navigational, and AIS disruption signals
-- **Container indices**: Shanghai Shipping Exchange (SSE) public JSON API
-- **Bulk indices**: Baltic Exchange via HandyBulk daily reports
-- **Economic indices**: FRED (Federal Reserve Economic Data)
-- **Trade policy**: WTO I-TIP (Integrated Trade Intelligence Portal)
-- **Critical minerals**: USGS mineral commodity data with HHI calculations
+- **Container indices**: [Shanghai Shipping Exchange (SSE)](https://en.sse.net.cn/) public JSON API
+- **Bulk indices**: [Baltic Exchange](https://www.balticexchange.com/) via HandyBulk daily reports
+- **Economic indices**: [FRED](https://fred.stlouisfed.org/) (Federal Reserve Economic Data)
+- **Trade policy**: [WTO I-TIP](https://i-tip.wto.org/) (Integrated Trade Intelligence Portal)
+- **Critical minerals**: [USGS](https://www.usgs.gov/centers/national-minerals-information-center) mineral commodity data with HHI calculations
 
 All sources are public. No proprietary data feeds. No paywall.
 
@@ -143,12 +144,12 @@ The BDI measures the cost of shipping dry bulk commodities (iron ore, coal, grai
 
 **How does the Strait of Hormuz affect oil prices?**
 
-Roughly 20% of the world's oil supply and 25% of global LNG passes through Hormuz. When traffic drops or the strait is threatened, energy markets price in supply disruption risk. The current 94.4% traffic decline is one of the most severe disruptions in the strait's history.
+About 20% of global petroleum liquids consumption and a major share of LNG trade pass through Hormuz. When traffic drops or the strait is threatened, energy markets price in supply-disruption risk. The 94.4% decline cited in this article is a dated March 15, 2026 snapshot, not a current reading.
 
 **What are the world's most critical shipping chokepoints?**
 
-The eight most strategically important chokepoints are: Strait of Hormuz (oil/LNG), Strait of Malacca (Asia-Europe trade), Suez Canal (Mediterranean access), Bab el-Mandeb (Red Sea entry), Panama Canal (Atlantic-Pacific), Bosporus Strait (Black Sea grain), Taiwan Strait (semiconductors), and Dover Strait (North Sea). World Monitor tracks all of these except Malacca and Panama, which are currently low-risk.
+World Monitor monitors its canonical waterway registry, including Hormuz, Malacca, Suez/SUMED, Bab el-Mandeb, Panama, Taiwan, Cape of Good Hope, [Gibraltar](https://www.worldmonitor.app/chokepoints/strait-of-gibraltar/), Bosporus, Korea, Dover, Kerch, and Lombok. Entries with EIA-backed oil or gas baselines publish flow estimates; every entry can carry traffic, warning, threat, and disruption context. See the [maritime chokepoint methodology](/blog/posts/what-is-a-maritime-chokepoint/) for the registry and coverage limits.
 
 ---
 
-**Open the Supply Chain panel at [worldmonitor.app](https://worldmonitor.app) and click "Chokepoints" for live corridor disruption scores, or "Shipping Rates" to see real-time freight indices. Free for everyone.**
+**Open the Supply Chain panel at [worldmonitor.app](https://www.worldmonitor.app) and click "Chokepoints" for live corridor disruption scores, or "Shipping Rates" to see real-time freight indices. Free for everyone.**

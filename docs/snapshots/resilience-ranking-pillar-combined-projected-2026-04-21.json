@@ -1,0 +1,537 @@
+{
+  "capturedAt": "2026-04-21",
+  "source": "Projected from scripts/compare-resilience-current-vs-proposed.mjs against the 52-country live-Redis sensitivity sample, regenerated after the comparison script was corrected to use the production buildPillarList aggregation (coverage-weighted across member-domain average dimension coverage). This is NOT a full live-universe capture \u2014 the pillar-combined flag is off in production, so a real 217-country ranking under the new formula does not exist yet. When activation ships, run scripts/freeze-resilience-ranking.mjs against the flag-enabled deployment to produce the authoritative capture; this file is the best available preview until then.",
+  "commitSha": "048bb8bb525393dc4a9c1998b9877c1f8cc8c011",
+  "schemaVersion": "2.0",
+  "methodologyFormula": "pillar-combined-penalized-v1",
+  "methodology": {
+    "overallScoreFormula": "penalizedPillarScore(pillars): \u03a3 pillar.score \u00d7 pillar.weight multiplied by (1 \u2212 0.5 \u00d7 (1 \u2212 min_pillar/100)). Pillar weights: structural-readiness=0.40, live-shock-exposure=0.35, recovery-capacity=0.25.",
+    "penaltyAlpha": 0.5,
+    "domainCount": 6,
+    "dimensionCount": 19,
+    "pillarCount": 3,
+    "coverageLabel": "Dimension coverage (mean of 19 per-dimension coverage values).",
+    "greyOutThreshold": 0.4,
+    "notes": [
+      "Every score is lower than the 6-domain equivalent because the penalty factor is always \u2264 1. Rank order is preserved (Spearman 0.9863 on this sample).",
+      "Sample size is 52 \u2014 the true live ranking has ~217 countries. Rank numbers here are in-sample; the true global rank for each country will likely be larger.",
+      "This snapshot informs the activation PR\u2019s release-gate re-anchoring but is NOT a substitute for the post-activation live capture."
+    ]
+  },
+  "sampleSize": 52,
+  "sampleCountries": [
+    "CH",
+    "IS",
+    "DK",
+    "NO",
+    "SE",
+    "FI",
+    "NZ",
+    "JP",
+    "DE",
+    "AU",
+    "GB",
+    "FR",
+    "ES",
+    "CA",
+    "PL",
+    "IT",
+    "KR",
+    "BR",
+    "US",
+    "MY",
+    "CN",
+    "ID",
+    "TH",
+    "PH",
+    "UA",
+    "IN",
+    "RU",
+    "VN",
+    "EG",
+    "IQ",
+    "TR",
+    "MX",
+    "ZA",
+    "BD",
+    "KE",
+    "HT",
+    "AF",
+    "PK",
+    "CF",
+    "MM",
+    "NG",
+    "ET",
+    "NE",
+    "SS",
+    "ML",
+    "TD",
+    "IR",
+    "VE",
+    "SY",
+    "YE",
+    "SO",
+    "SD"
+  ],
+  "tables": {
+    "topTenInSample": [
+      {
+        "rankInSample": 1,
+        "countryCode": "CH",
+        "countryName": "Switzerland",
+        "proposedOverallScore": 73.17,
+        "currentOverallScore": 78.78,
+        "scoreDelta": -5.61,
+        "pillars": {
+          "structuralReadiness": 82.34,
+          "liveShockExposure": 78.94,
+          "recoveryCapacity": 84.86,
+          "minPillar": 78.94
+        }
+      },
+      {
+        "rankInSample": 2,
+        "countryCode": "IS",
+        "countryName": "Iceland",
+        "proposedOverallScore": 72.76,
+        "currentOverallScore": 79.49,
+        "scoreDelta": -6.73,
+        "pillars": {
+          "structuralReadiness": 86.38,
+          "liveShockExposure": 88.09,
+          "recoveryCapacity": 73.65,
+          "minPillar": 73.65
+        }
+      },
+      {
+        "rankInSample": 3,
+        "countryCode": "DK",
+        "countryName": "Denmark",
+        "proposedOverallScore": 72.59,
+        "currentOverallScore": 78.55,
+        "scoreDelta": -5.96,
+        "pillars": {
+          "structuralReadiness": 87.81,
+          "liveShockExposure": 76.9,
+          "recoveryCapacity": 80.14,
+          "minPillar": 76.9
+        }
+      },
+      {
+        "rankInSample": 4,
+        "countryCode": "NO",
+        "countryName": "Norway",
+        "proposedOverallScore": 71.59,
+        "currentOverallScore": 79.03,
+        "scoreDelta": -7.44,
+        "pillars": {
+          "structuralReadiness": 85.85,
+          "liveShockExposure": 90.02,
+          "recoveryCapacity": 71.18,
+          "minPillar": 71.18
+        }
+      },
+      {
+        "rankInSample": 5,
+        "countryCode": "SE",
+        "countryName": "Sweden",
+        "proposedOverallScore": 70.13,
+        "currentOverallScore": 75.6,
+        "scoreDelta": -5.47,
+        "pillars": {
+          "structuralReadiness": 79.2,
+          "liveShockExposure": 81.3,
+          "recoveryCapacity": 76.79,
+          "minPillar": 76.79
+        }
+      },
+      {
+        "rankInSample": 6,
+        "countryCode": "FI",
+        "countryName": "Finland",
+        "proposedOverallScore": 68.6,
+        "currentOverallScore": 75.64,
+        "scoreDelta": -7.04,
+        "pillars": {
+          "structuralReadiness": 81.97,
+          "liveShockExposure": 78.42,
+          "recoveryCapacity": 74.17,
+          "minPillar": 74.17
+        }
+      },
+      {
+        "rankInSample": 7,
+        "countryCode": "NZ",
+        "countryName": "New Zealand",
+        "proposedOverallScore": 67.93,
+        "currentOverallScore": 76.26,
+        "scoreDelta": -8.33,
+        "pillars": {
+          "structuralReadiness": 82.9,
+          "liveShockExposure": 82.91,
+          "recoveryCapacity": 70.34,
+          "minPillar": 70.34
+        }
+      },
+      {
+        "rankInSample": 8,
+        "countryCode": "JP",
+        "countryName": "Japan",
+        "proposedOverallScore": 64.45,
+        "currentOverallScore": 73.33,
+        "scoreDelta": -8.88,
+        "pillars": {
+          "structuralReadiness": 77.74,
+          "liveShockExposure": 69.7,
+          "recoveryCapacity": 81.86,
+          "minPillar": 69.7
+        }
+      },
+      {
+        "rankInSample": 9,
+        "countryCode": "DE",
+        "countryName": "Germany",
+        "proposedOverallScore": 63.6,
+        "currentOverallScore": 72.42,
+        "scoreDelta": -8.82,
+        "pillars": {
+          "structuralReadiness": 77.74,
+          "liveShockExposure": 70.33,
+          "recoveryCapacity": 75.86,
+          "minPillar": 70.33
+        }
+      },
+      {
+        "rankInSample": 10,
+        "countryCode": "AU",
+        "countryName": "Australia",
+        "proposedOverallScore": 62.48,
+        "currentOverallScore": 73.63,
+        "scoreDelta": -11.15,
+        "pillars": {
+          "structuralReadiness": 78.77,
+          "liveShockExposure": 84.73,
+          "recoveryCapacity": 62.66,
+          "minPillar": 62.66
+        }
+      }
+    ],
+    "bottomTenInSample": [
+      {
+        "rankInSample": 43,
+        "countryCode": "NE",
+        "countryName": "Niger",
+        "proposedOverallScore": 34.11,
+        "currentOverallScore": 46.6,
+        "scoreDelta": -12.49,
+        "pillars": {
+          "structuralReadiness": 56.94,
+          "liveShockExposure": 35.95,
+          "recoveryCapacity": 59.3,
+          "minPillar": 35.95
+        }
+      },
+      {
+        "rankInSample": 44,
+        "countryCode": "SS",
+        "countryName": "South Sudan",
+        "proposedOverallScore": 34.06,
+        "currentOverallScore": 45.54,
+        "scoreDelta": -11.48,
+        "pillars": {
+          "structuralReadiness": 52.61,
+          "liveShockExposure": 40.59,
+          "recoveryCapacity": 52.82,
+          "minPillar": 40.59
+        }
+      },
+      {
+        "rankInSample": 45,
+        "countryCode": "ML",
+        "countryName": "Mali",
+        "proposedOverallScore": 33.67,
+        "currentOverallScore": 44.91,
+        "scoreDelta": -11.24,
+        "pillars": {
+          "structuralReadiness": 54.6,
+          "liveShockExposure": 38.77,
+          "recoveryCapacity": 52.47,
+          "minPillar": 38.77
+        }
+      },
+      {
+        "rankInSample": 46,
+        "countryCode": "TD",
+        "countryName": "Chad",
+        "proposedOverallScore": 32.27,
+        "currentOverallScore": 43.85,
+        "scoreDelta": -11.58,
+        "pillars": {
+          "structuralReadiness": 54.34,
+          "liveShockExposure": 35.93,
+          "recoveryCapacity": 52.68,
+          "minPillar": 35.93
+        }
+      },
+      {
+        "rankInSample": 47,
+        "countryCode": "IR",
+        "countryName": "Iran",
+        "proposedOverallScore": 31.45,
+        "currentOverallScore": 46.48,
+        "scoreDelta": -15.03,
+        "pillars": {
+          "structuralReadiness": 37.08,
+          "liveShockExposure": 58.09,
+          "recoveryCapacity": 42.86,
+          "minPillar": 37.08
+        }
+      },
+      {
+        "rankInSample": 48,
+        "countryCode": "VE",
+        "countryName": "Venezuela",
+        "proposedOverallScore": 31.18,
+        "currentOverallScore": 47.7,
+        "scoreDelta": -16.52,
+        "pillars": {
+          "structuralReadiness": 37.87,
+          "liveShockExposure": 65.59,
+          "recoveryCapacity": 33.89,
+          "minPillar": 33.89
+        }
+      },
+      {
+        "rankInSample": 49,
+        "countryCode": "SY",
+        "countryName": "Syria",
+        "proposedOverallScore": 30.55,
+        "currentOverallScore": 49.64,
+        "scoreDelta": -19.09,
+        "pillars": {
+          "structuralReadiness": 32.1,
+          "liveShockExposure": 57.79,
+          "recoveryCapacity": 52.73,
+          "minPillar": 32.1
+        }
+      },
+      {
+        "rankInSample": 50,
+        "countryCode": "YE",
+        "countryName": "Yemen",
+        "proposedOverallScore": 27.36,
+        "currentOverallScore": 42.51,
+        "scoreDelta": -15.15,
+        "pillars": {
+          "structuralReadiness": 39.36,
+          "liveShockExposure": 38.13,
+          "recoveryCapacity": 42.09,
+          "minPillar": 38.13
+        }
+      },
+      {
+        "rankInSample": 51,
+        "countryCode": "SO",
+        "countryName": "Somalia",
+        "proposedOverallScore": 26.8,
+        "currentOverallScore": 36.47,
+        "scoreDelta": -9.67,
+        "pillars": {
+          "structuralReadiness": 40.25,
+          "liveShockExposure": 35.72,
+          "recoveryCapacity": 43.56,
+          "minPillar": 35.72
+        }
+      },
+      {
+        "rankInSample": 52,
+        "countryCode": "SD",
+        "countryName": "Sudan",
+        "proposedOverallScore": 19.45,
+        "currentOverallScore": 29.69,
+        "scoreDelta": -10.24,
+        "pillars": {
+          "structuralReadiness": 31.15,
+          "liveShockExposure": 32.3,
+          "recoveryCapacity": 27.24,
+          "minPillar": 27.24
+        }
+      }
+    ],
+    "majorEconomiesInSample": [
+      {
+        "rankInSample": 8,
+        "countryCode": "JP",
+        "countryName": "Japan",
+        "proposedOverallScore": 64.45,
+        "currentOverallScore": 73.33,
+        "scoreDelta": -8.88,
+        "pillars": {
+          "structuralReadiness": 77.74,
+          "liveShockExposure": 69.7,
+          "recoveryCapacity": 81.86,
+          "minPillar": 69.7
+        }
+      },
+      {
+        "rankInSample": 9,
+        "countryCode": "DE",
+        "countryName": "Germany",
+        "proposedOverallScore": 63.6,
+        "currentOverallScore": 72.42,
+        "scoreDelta": -8.82,
+        "pillars": {
+          "structuralReadiness": 77.74,
+          "liveShockExposure": 70.33,
+          "recoveryCapacity": 75.86,
+          "minPillar": 70.33
+        }
+      },
+      {
+        "rankInSample": 10,
+        "countryCode": "AU",
+        "countryName": "Australia",
+        "proposedOverallScore": 62.48,
+        "currentOverallScore": 73.63,
+        "scoreDelta": -11.15,
+        "pillars": {
+          "structuralReadiness": 78.77,
+          "liveShockExposure": 84.73,
+          "recoveryCapacity": 62.66,
+          "minPillar": 62.66
+        }
+      },
+      {
+        "rankInSample": 11,
+        "countryCode": "GB",
+        "countryName": "United Kingdom",
+        "proposedOverallScore": 62.42,
+        "currentOverallScore": 70.1,
+        "scoreDelta": -7.68,
+        "pillars": {
+          "structuralReadiness": 73.86,
+          "liveShockExposure": 71.7,
+          "recoveryCapacity": 72.28,
+          "minPillar": 71.7
+        }
+      },
+      {
+        "rankInSample": 12,
+        "countryCode": "FR",
+        "countryName": "France",
+        "proposedOverallScore": 61.45,
+        "currentOverallScore": 70.06,
+        "scoreDelta": -8.61,
+        "pillars": {
+          "structuralReadiness": 74.96,
+          "liveShockExposure": 74.85,
+          "recoveryCapacity": 67.96,
+          "minPillar": 67.96
+        }
+      },
+      {
+        "rankInSample": 17,
+        "countryCode": "KR",
+        "countryName": "South Korea",
+        "proposedOverallScore": 60.43,
+        "currentOverallScore": 69.85,
+        "scoreDelta": -9.42,
+        "pillars": {
+          "structuralReadiness": 75.8,
+          "liveShockExposure": 66.77,
+          "recoveryCapacity": 75.14,
+          "minPillar": 66.77
+        }
+      },
+      {
+        "rankInSample": 18,
+        "countryCode": "BR",
+        "countryName": "Brazil",
+        "proposedOverallScore": 58.99,
+        "currentOverallScore": 68.34,
+        "scoreDelta": -9.35,
+        "pillars": {
+          "structuralReadiness": 68.69,
+          "liveShockExposure": 76.52,
+          "recoveryCapacity": 66.47,
+          "minPillar": 66.47
+        }
+      },
+      {
+        "rankInSample": 19,
+        "countryCode": "US",
+        "countryName": "United States",
+        "proposedOverallScore": 54.5,
+        "currentOverallScore": 68.26,
+        "scoreDelta": -13.76,
+        "pillars": {
+          "structuralReadiness": 68.55,
+          "liveShockExposure": 83.83,
+          "recoveryCapacity": 54.73,
+          "minPillar": 54.73
+        }
+      },
+      {
+        "rankInSample": 21,
+        "countryCode": "CN",
+        "countryName": "China",
+        "proposedOverallScore": 52.57,
+        "currentOverallScore": 63.73,
+        "scoreDelta": -11.16,
+        "pillars": {
+          "structuralReadiness": 58.25,
+          "liveShockExposure": 74.1,
+          "recoveryCapacity": 68.82,
+          "minPillar": 58.25
+        }
+      },
+      {
+        "rankInSample": 26,
+        "countryCode": "IN",
+        "countryName": "India",
+        "proposedOverallScore": 46.82,
+        "currentOverallScore": 59.3,
+        "scoreDelta": -12.48,
+        "pillars": {
+          "structuralReadiness": 63.51,
+          "liveShockExposure": 54.34,
+          "recoveryCapacity": 64.98,
+          "minPillar": 54.34
+        }
+      },
+      {
+        "rankInSample": 27,
+        "countryCode": "RU",
+        "countryName": "Russia",
+        "proposedOverallScore": 46.28,
+        "currentOverallScore": 61.08,
+        "scoreDelta": -14.8,
+        "pillars": {
+          "structuralReadiness": 47.95,
+          "liveShockExposure": 68.43,
+          "recoveryCapacity": 77.73,
+          "minPillar": 47.95
+        }
+      },
+      {
+        "rankInSample": 31,
+        "countryCode": "TR",
+        "countryName": "Turkey",
+        "proposedOverallScore": 43.66,
+        "currentOverallScore": 56.49,
+        "scoreDelta": -12.83,
+        "pillars": {
+          "structuralReadiness": 50.94,
+          "liveShockExposure": 59.84,
+          "recoveryCapacity": 66.14,
+          "minPillar": 50.94
+        }
+      }
+    ]
+  },
+  "totals": {
+    "rankedCountriesInSample": 52,
+    "sgInSample": false
+  },
+  "comparisonArtifactRef": "docs/snapshots/resilience-pillar-sensitivity-2026-04-21.json"
+}

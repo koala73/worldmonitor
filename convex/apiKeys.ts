@@ -1,0 +1,306 @@
+import { assertAccountWritable } from "./accountDeletion/guard";
+import { ConvexError, v } from "convex/values";
+import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
+import { requireUserId, resolveUserId } from "./lib/auth";
+import { activeAccountForOwner } from "./companyMonitoring/_shared";
+import { ensureActiveAccount } from "./companyMonitoring/accounts";
+import {
+  COMPANY_MONITORING_RPC_SCOPES,
+  type CompanyMonitoringApiScope,
+} from "../shared/company-monitoring-contract";
+
+/** Maximum number of active (non-revoked) API keys per user. */
+const MAX_KEYS_PER_USER = 5;
+const COMPANY_MONITORING_SCOPES = [
+  ...new Set(Object.values(COMPANY_MONITORING_RPC_SCOPES)),
+] as CompanyMonitoringApiScope[];
+
+function normalizeCompanyMonitoringScopes(scopes: string[] | undefined) {
+  if (!scopes || scopes.length === 0) return undefined;
+  if (scopes.length > COMPANY_MONITORING_SCOPES.length || new Set(scopes).size !== scopes.length) {
+    throw new ConvexError("INVALID_API_KEY_SCOPES");
+  }
+  if (scopes.some((scope) => !(COMPANY_MONITORING_SCOPES as readonly string[]).includes(scope))) {
+    throw new ConvexError("INVALID_API_KEY_SCOPES");
+  }
+  return [...scopes].sort() as CompanyMonitoringApiScope[];
+}
+
+// ---------------------------------------------------------------------------
+// Public mutations & queries (require Clerk JWT via ctx.auth)
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a new API key.
+ *
+ * The caller must generate the random key client-side (or in the HTTP action)
+ * and pass the SHA-256 hex hash + the first 8 chars (prefix) here.
+ * The plaintext key is NEVER stored in Convex.
+ *
+ * Requires an active entitlement with apiAccess=true (API_STARTER+ plans).
+ * Pro plans (tier 1) have apiAccess=false and cannot create keys.
+ */
+/**
+ * Source columns for a new key: the owner's sign-up source, stamped on the
+ * users row when the account was created. Read server-side so a key is
+ * credited to the agent link that brought its owner in, never to a ref some
+ * other account left in the same browser.
+ */
+async function keySourceFields(
+  ctx: MutationCtx,
+  userId: string,
+): Promise<{ sourceRef?: string; source?: string }> {
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .unique();
+  if (!user?.signupRef) return {};
+  return { sourceRef: user.signupRef, ...(user.signupSource ? { source: user.signupSource } : {}) };
+}
+
+export const createApiKey = mutation({
+  args: {
+    name: v.string(),
+    keyPrefix: v.string(),
+    keyHash: v.string(),
+    scopes: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
+
+    // Entitlement gate: only users with apiAccess may create API keys.
+    // This is catalog-driven — Pro (tier 1) has apiAccess=false;
+    // API_STARTER+ (tier 2+) have apiAccess=true.
+    const entitlement = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (
+      !entitlement ||
+      entitlement.validUntil < Date.now() ||
+      !entitlement.features.apiAccess
+    ) {
+      throw new ConvexError("API_ACCESS_REQUIRED");
+    }
+
+    const scopes = normalizeCompanyMonitoringScopes(args.scopes);
+    // Issuing a scoped key is a first-use entry point, so it provisions the
+    // root. Requesting no scopes must stay entirely off Company Monitoring.
+    const companyMonitoringAccount = scopes
+      ? await ensureActiveAccount(ctx, userId, entitlement)
+      : null;
+    if (scopes && !companyMonitoringAccount) {
+      throw new ConvexError("COMPANY_MONITORING_ACCESS_DENIED");
+    }
+
+    if (!args.name.trim()) {
+      throw new ConvexError("INVALID_NAME");
+    }
+    if (!/^wm_[a-f0-9]{5}$/.test(args.keyPrefix)) {
+      throw new ConvexError("INVALID_PREFIX");
+    }
+    if (!/^[a-f0-9]{64}$/.test(args.keyHash)) {
+      throw new ConvexError("INVALID_HASH");
+    }
+
+    // Enforce per-user key limit (count only non-revoked keys).
+    //
+    // API keys intentionally reject at the cap instead of silently rotating a
+    // valid key. If a prior race left too many active rows, converge by
+    // revoking enough oldest overflow rows to make room for this create.
+    const existing = await ctx.db
+      .query("userApiKeys")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .collect();
+    const active = existing.filter((k) => !k.revokedAt);
+    let activeCount = active.length;
+    if (active.length > MAX_KEYS_PER_USER) {
+      active.sort((a, b) => a.createdAt - b.createdAt);
+      const toRevoke = active.slice(0, active.length - (MAX_KEYS_PER_USER - 1));
+      const now = Date.now();
+      for (const key of toRevoke) {
+        await ctx.db.patch(key._id, { revokedAt: now });
+      }
+      // After revoking overflow keys there is always exactly one slot free.
+      activeCount = MAX_KEYS_PER_USER - 1;
+    }
+    if (activeCount >= MAX_KEYS_PER_USER) {
+      throw new ConvexError("KEY_LIMIT_REACHED");
+    }
+
+    // Guard against duplicate hash (astronomically unlikely, but belt-and-suspenders)
+    const dup = await ctx.db
+      .query("userApiKeys")
+      .withIndex("by_keyHash", (q) => q.eq("keyHash", args.keyHash))
+      .first();
+    if (dup) {
+      throw new ConvexError("DUPLICATE_KEY");
+    }
+
+    const id = await ctx.db.insert("userApiKeys", {
+      userId,
+      name: args.name.trim(),
+      keyPrefix: args.keyPrefix,
+      keyHash: args.keyHash,
+      scopes,
+      companyMonitoringAccountId: companyMonitoringAccount?.logicalAccountId,
+      createdAt: Date.now(),
+      ...(await keySourceFields(ctx, userId)),
+    });
+
+    return {
+      id,
+      name: args.name.trim(),
+      keyPrefix: args.keyPrefix,
+      scopes,
+      companyMonitoringAccountId: companyMonitoringAccount?.logicalAccountId,
+    };
+  },
+});
+
+/** List all API keys for the current user (active + revoked). */
+export const listApiKeys = query({
+  args: {},
+  handler: async (ctx) => {
+    // This query is called from the settings UI after a best-effort auth
+    // readiness wait, but the Convex WebSocket can still observe a brief
+    // unauthenticated window during sign-out, initial auth, or token rotation.
+    // Throwing AUTH_REQUIRED from that race pages through Convex auto-Sentry
+    // (WORLDMONITOR-XM). The UI already gates this query behind a signed-in
+    // shell, so [] is the honest transient result and cannot expose another
+    // user's keys.
+    const userId = await resolveUserId(ctx);
+    if (!userId) return [];
+    const keys = await ctx.db
+      .query("userApiKeys")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .collect();
+
+    return keys.map((k) => ({
+      id: k._id,
+      name: k.name,
+      keyPrefix: k.keyPrefix,
+      createdAt: k.createdAt,
+      lastUsedAt: k.lastUsedAt,
+      revokedAt: k.revokedAt,
+      scopes: k.scopes,
+      companyMonitoringAccountId: k.companyMonitoringAccountId,
+    }));
+  },
+});
+
+/** Revoke a key owned by the current user. */
+export const revokeApiKey = mutation({
+  args: { keyId: v.id("userApiKeys") },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const key = await ctx.db.get(args.keyId);
+
+    if (!key || key.userId !== userId) {
+      throw new ConvexError("NOT_FOUND");
+    }
+    if (key.revokedAt) {
+      throw new ConvexError("ALREADY_REVOKED");
+    }
+
+    await ctx.db.patch(args.keyId, { revokedAt: Date.now() });
+    return { ok: true, keyHash: key.keyHash };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Internal (service-to-service) — called from HTTP actions / middleware
+// ---------------------------------------------------------------------------
+
+/**
+ * Look up an API key by its SHA-256 hash.
+ * Returns the key row (with userId) if found and not revoked, else null.
+ * Used by the edge gateway to validate incoming API keys.
+ */
+export const validateKeyByHash = internalQuery({
+  args: { keyHash: v.string() },
+  handler: async (ctx, args) => {
+    const key = await ctx.db
+      .query("userApiKeys")
+      .withIndex("by_keyHash", (q) => q.eq("keyHash", args.keyHash))
+      .first();
+
+    if (!key || key.revokedAt) return null;
+
+    if (key.scopes && key.scopes.length > 0) {
+      let scopes: string[] | undefined;
+      try {
+        scopes = normalizeCompanyMonitoringScopes(key.scopes);
+      } catch {
+        return null;
+      }
+      const account = await activeAccountForOwner(ctx, key.userId);
+      if (
+        !scopes ||
+        !account ||
+        !key.companyMonitoringAccountId ||
+        account.logicalAccountId !== key.companyMonitoringAccountId
+      ) {
+        return null;
+      }
+    } else if (key.companyMonitoringAccountId) {
+      // A binding without issued scopes is malformed/ownerless credential
+      // state and must never authenticate through a legacy fallback.
+      return null;
+    }
+
+    return {
+      id: key._id,
+      userId: key.userId,
+      name: key.name,
+      scopes: key.scopes,
+      companyMonitoringAccountId: key.companyMonitoringAccountId,
+      // Consumed ONLY by the /api/internal-validate-api-key route to decide
+      // whether scheduling touchKeyLastUsed is worthwhile; the route strips
+      // it before responding, so the gateway cache blob is unchanged.
+      lastUsedAt: key.lastUsedAt,
+    };
+  },
+});
+
+/**
+ * Look up the owner of a key by its hash, regardless of revoked status.
+ * Used by the cache-invalidation endpoint to verify tenancy.
+ */
+export const getKeyOwner = internalQuery({
+  args: { keyHash: v.string() },
+  handler: async (ctx, args) => {
+    const key = await ctx.db
+      .query("userApiKeys")
+      .withIndex("by_keyHash", (q) => q.eq("keyHash", args.keyHash))
+      .first();
+    return key ? { userId: key.userId } : null;
+  },
+});
+
+/**
+ * Bump lastUsedAt for a key (fire-and-forget from the gateway).
+ * Skips the write if lastUsedAt was updated within the last 5 minutes
+ * to reduce Convex write load for hot keys.
+ *
+ * Exported because the debounce check ALSO runs in http.ts before the touch
+ * is even scheduled. The in-mutation check alone was a read-then-write race:
+ * every validation scheduled a touch, and at each debounce boundary all
+ * concurrently scheduled touches read the same stale lastUsedAt and patched
+ * the same hot document — 1,036 OCC write conflicts on userApiKeys in 14
+ * days, reaching retry depth 3 (Convex Insights, 2026-08). Gating at the
+ * schedule site keeps the herd from forming; this in-mutation check stays as
+ * the second line, making any touch that does race a no-op on retry.
+ */
+export const TOUCH_DEBOUNCE_MS = 5 * 60 * 1000;
+
+export const touchKeyLastUsed = internalMutation({
+  args: { keyId: v.id("userApiKeys") },
+  handler: async (ctx, args) => {
+    const key = await ctx.db.get(args.keyId);
+    if (!key || key.revokedAt) return;
+    if (key.lastUsedAt && key.lastUsedAt > Date.now() - TOUCH_DEBOUNCE_MS) return;
+    await ctx.db.patch(args.keyId, { lastUsedAt: Date.now() });
+  },
+});

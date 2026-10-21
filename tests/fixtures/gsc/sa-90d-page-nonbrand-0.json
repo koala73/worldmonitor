@@ -1,0 +1,23 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "https://www.worldmonitor.app/"
+      ],
+      "clicks": 5,
+      "impressions": 400,
+      "ctr": 0.0125,
+      "position": 19.2
+    },
+    {
+      "keys": [
+        "https://www.worldmonitor.app/compare/worldmonitor-vs-acled/"
+      ],
+      "clicks": 3,
+      "impressions": 190,
+      "ctr": 0.015789,
+      "position": 27.4
+    }
+  ],
+  "responseAggregationType": "byPage"
+}

@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/intelligence/v1/intel_history_record.proto";
+
+// GetSimilarEventsRequest asks "has anything like this happened before?".
+//
+// Same vector search as SearchIntelHistory, different input: `situation` is a
+// description of a developing situation rather than a search phrase, and the
+// result set is deliberately small because it is read as a precedent list —
+// by a human or an LLM — not scrolled.
+message GetSimilarEventsRequest {
+  // Free-text description of the situation to find precedents for, e.g.
+  // "a naval blockade closes a major grain export corridor for weeks".
+  // Longer than a search query on purpose: more context ranks better.
+  string situation = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 10,
+    (buf.validate.field).string.max_len = 1000
+  ];
+
+  // Restrict precedents to one producing domain. Empty searches every domain.
+  string domain = 2 [
+    (buf.validate.field).string.pattern = "^(conflict|military|energy)?$"
+  ];
+
+  // Restrict precedents to one ISO 3166-1 alpha-2 country. Empty searches
+  // every country.
+  string country = 3 [
+    (buf.validate.field).string.pattern = "^([A-Z]{2})?$"
+  ];
+
+  // Maximum precedents to return. Defaults to 10 server-side when omitted or
+  // <= 0, capped at 32 by the handler.
+  int32 limit = 4 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 32
+  ];
+}
+
+// GetSimilarEventsResponse returns historical precedents for the described
+// situation, most similar first.
+message GetSimilarEventsResponse {
+  // Precedents ordered by descending similarity. Empty means nothing stored
+  // resembles the situation — check upstream_unavailable to tell that apart
+  // from a failed lookup.
+  repeated IntelHistoryRecord records = 1;
+  // Echo of the situation text, so a caller multiplexing requests can pair a
+  // response back to its input.
+  string situation = 2;
+  // True when a bounded candidate window may omit further precedents.
+  bool partial = 3;
+  // True when the embedding provider or the history store could not be
+  // reached. The gateway reads this flag out of the body and switches the
+  // response to Cache-Control: no-store, so a transient outage is never
+  // pinned as a false-empty precedent list for the tier's full TTL.
+  bool upstream_unavailable = 4;
+}

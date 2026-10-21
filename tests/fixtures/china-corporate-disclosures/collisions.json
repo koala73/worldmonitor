@@ -1,0 +1,30 @@
+[
+  {
+    "title": "关于召开2025年度业绩说明会的公告",
+    "expected": null
+  },
+  {
+    "title": "2026年半年度报告",
+    "expected": null
+  },
+  {
+    "title": "关于股东解除股份质押的公告",
+    "expected": "share_pledge"
+  },
+  {
+    "title": "关于筹划重大资产重组停牌的公告",
+    "expected": "halt"
+  },
+  {
+    "title": "关于终止重大资产重组事项的公告",
+    "expected": "restructuring"
+  },
+  {
+    "title": "关于收到立案告知书的公告",
+    "expected": "investigation"
+  },
+  {
+    "title": "关于股票交易异常波动的公告",
+    "expected": "exchange_risk_alert"
+  }
+]

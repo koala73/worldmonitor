@@ -1,18 +1,59 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url';
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 loadEnvFile(import.meta.url);
 
 // ECB SDMX REST API — free, no auth required.
-// CISS: Composite Indicator of Systemic Stress (0–1 range, higher = more systemic stress).
-// Weekly frequency, Euro area aggregate; ECB publishes each Friday (SDMX series key uses 'D' but only Friday observations are present).
-const ECB_CISS_URL =
-  'https://data-api.ecb.europa.eu/service/data/CISS/D.U2.Z0Z.4F.EC.SS_CI.IDX?format=jsondata&lastNObservations=52';
+// CISS (NEW): Composite Indicator of Systemic Stress (0–1 range, higher = more
+// systemic stress). Daily frequency, Euro area aggregate.
+//
+// The legacy SS_CI series stopped publishing in May 2025 (issue #3845) while
+// the endpoint kept returning HTTP 200 with the frozen final observation — so
+// the seeder ran cleanly for ~12 months and republished a year-old value.
+// SS_CIN ("NEW CISS" per ECB metadata) is the actively-maintained successor.
+// See https://data.ecb.europa.eu/data/datasets/CISS.
+//
+// Window: trailing 1 year via startPeriod (~260 daily observations).
+function buildCissUrl() {
+  const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  return `https://data-api.ecb.europa.eu/service/data/CISS/D.U2.Z0Z.4F.EC.SS_CIN.IDX?format=jsondata&startPeriod=${oneYearAgo}`;
+}
 
 const FSI_EU_KEY = 'economic:fsi-eu:v1';
-// Weekly cron (Saturday) — 864000s (10 days) matches other weekly seeds (bigmac, groceryBasket,
-// fuelPrices) and provides a 3-day buffer against cron-drift or missed runs.
-const FSI_EU_TTL = 864000;
+// Daily cron — 259200s (3 days) TTL gives a 3× safety margin against
+// cron-drift or missed runs (hits the seeder-canonical-ttl-vs-cron SAFETY_FACTOR).
+const FSI_EU_TTL = 259200;
+// Health staleness budgets:
+//  - maxStaleMin 5760 (96h) tracks SEEDER liveness — covers an Easter Wed→Mon
+//    gap on the daily cron. Mirrored in api/health.js SEED_META.euFsi.
+//  - CISS_MAX_CONTENT_AGE_MIN (14 days) tracks DATA freshness via the
+//    content-age contract: if the NEW series ever freezes the way SS_CI did,
+//    /api/health flips to STALE_CONTENT instead of staying green for a year.
+//    The budget absorbs a weekend + ECB holiday cluster + one missed cron
+//    without false-positiving.
+//
+// CANONICAL source of the 14-day threshold. The server RPC + panel mirror it
+// via src/shared/ciss-staleness.ts (the seeder is plain .mjs and cannot be
+// imported by TS code); tests/ciss-stale-threshold-consistency.test.mjs
+// asserts the two never drift.
+//
+// 14 days, not 10. Verified 2026-08-17: the ECB's own newest CISS observation
+// was 2026-08-04, exactly what the seeder held — it was in sync, and the ECB
+// had simply not published its daily index for 13 days. A 10-day budget called
+// that STALE_CONTENT while the seeder was doing everything right.
+//
+// 14 is a deliberately chosen FLOOR — "two weeks is the accepted publication
+// gap before the alarm means something" — NOT a computed peak+margin like the
+// China (60d vs ~51d) and StatCan (90d vs ~79d) budgets. It clears the observed
+// 13-day gap by only ~1 day on purpose: two weeks is the shortest silence we
+// are willing to treat as normal for a daily index. If the ECB opens a longer
+// publication gap and this false-positives again, raise the floor deliberately
+// — do not read 14 as a measured ceiling.
+const CISS_MAX_CONTENT_AGE_MIN = 14 * DAY_MIN;
 
 function classifyLabel(value) {
   if (value < 0.2) return 'Low';
@@ -22,7 +63,8 @@ function classifyLabel(value) {
 }
 
 async function fetchEcbCiss() {
-  const resp = await fetch(ECB_CISS_URL, {
+  const url = buildCissUrl();
+  const resp = await fetch(url, {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     signal: AbortSignal.timeout(15_000),
   });
@@ -78,6 +120,21 @@ async function fetchEcbCiss() {
   };
 }
 
+// Contract opt-in: canonical record count for envelope + health.
+// FSI-EU payload is `{latestValue, latestDate, label, history[], ...}`.
+// Records = daily CISS observations in the history array (~260 for a 1y window).
+export function declareRecords(data) {
+  return Array.isArray(data?.history) ? data.history.length : 0;
+}
+
+// Content-age contract: report the date span of the CISS history so
+// /api/health can detect an upstream FREEZE (the SS_CI failure mode). The
+// history is sorted ascending, so the last entry is the newest observation.
+// Returns null when there are no datable observations → STALE_CONTENT.
+export function cissContentMeta(data) {
+  return tokensToContentMeta((Array.isArray(data?.history) ? data.history : []).map((h) => h?.date));
+}
+
 function validate(data) {
   return (
     data?.latestValue != null &&
@@ -91,12 +148,17 @@ function validate(data) {
 
 // isMain guard — required for scripts that export AND call runSeed at top level.
 // Prevents runSeed() from firing when this module is imported in tests or CI.
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   runSeed('economic', 'fsi-eu', FSI_EU_KEY, fetchEcbCiss, {
     validateFn: validate,
     ttlSeconds: FSI_EU_TTL,
     sourceVersion: 'ecb-ciss-sdmx-v1',
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 5760, // 4 days — matches api/health.js SEED_META threshold
+    contentMeta: cissContentMeta,
+    maxContentAgeMin: CISS_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     console.error('FATAL:', err.message || err);
     process.exit(1);

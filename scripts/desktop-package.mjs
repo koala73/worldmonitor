@@ -14,26 +14,34 @@ const getArg = (name) => {
 const hasFlag = (name) => args.includes(`--${name}`);
 
 const os = getArg('os');
-const variant = getArg('variant') ?? 'full';
 const sign = hasFlag('sign');
 const skipNodeRuntime = hasFlag('skip-node-runtime');
 const showHelp = hasFlag('help') || hasFlag('h');
 
 const validOs = new Set(['macos', 'windows', 'linux']);
-const validVariants = new Set(['full', 'tech']);
+const USAGE = 'Usage: npm run desktop:package -- --os <macos|windows|linux> [--sign] [--skip-node-runtime]';
 
 if (showHelp) {
-  console.log('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech> [--sign] [--skip-node-runtime]');
+  console.log(USAGE);
+  console.log('');
+  console.log('Packages the single World Monitor desktop binary. Variants (tech,');
+  console.log('finance, commodity, energy, happy) are selected in-app after install —');
+  console.log('there is no per-variant package (#5908).');
   process.exit(0);
 }
 
 if (!validOs.has(os)) {
-  console.error('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech> [--sign] [--skip-node-runtime]');
+  console.error(USAGE);
   process.exit(1);
 }
 
-if (!validVariants.has(variant)) {
-  console.error('Invalid variant. Use --variant full or --variant tech.');
+// #5908: a stale `--variant tech` invocation must fail loudly rather than
+// silently produce an unbranded full build the caller did not ask for.
+// `hasFlag`, not `getArg`: a trailing bare `--variant` must not slip through.
+if (hasFlag('variant')) {
+  console.error(
+    'The --variant flag was removed: one desktop binary ships and variants are selected in-app (#5908).'
+  );
   process.exit(1);
 }
 
@@ -51,7 +59,7 @@ if ((syncVersionsResult.status ?? 1) !== 0) {
 const bundles = os === 'macos' ? 'app,dmg' : os === 'linux' ? 'appimage' : 'nsis,msi';
 const env = {
   ...process.env,
-  VITE_VARIANT: variant,
+  VITE_VARIANT: 'full',
   VITE_DESKTOP_RUNTIME: '1',
 };
 const cliArgs = ['build', '--bundles', bundles];
@@ -62,10 +70,6 @@ if (!existsSync(tauriBin)) {
     `Local Tauri CLI not found at ${tauriBin}. Run "npm ci" to install dependencies before desktop packaging.`
   );
   process.exit(1);
-}
-
-if (variant === 'tech') {
-  cliArgs.push('--config', 'src-tauri/tauri.tech.conf.json');
 }
 
 const resolveNodeTarget = () => {
@@ -135,7 +139,7 @@ if (!skipNodeRuntime) {
   }
 }
 
-console.log(`[desktop-package] OS=${os} VARIANT=${variant} BUNDLES=${bundles} SIGN=${sign ? 'on' : 'off'}`);
+console.log(`[desktop-package] OS=${os} BUNDLES=${bundles} SIGN=${sign ? 'on' : 'off'}`);
 
 const result = spawnSync(tauriBin, cliArgs, {
   env,

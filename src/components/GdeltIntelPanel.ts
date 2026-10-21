@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
-import { h, replaceChildren } from '@/utils/dom-utils';
+import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { miniSparkline } from '@/utils/sparkline';
 import {
   getIntelTopics,
@@ -64,8 +64,14 @@ export class GdeltIntelPanel extends Panel {
 
     const cached = this.topicData.get(topic.id);
     if (cached && Date.now() - cached.fetchedAt.getTime() < 5 * 60 * 1000) {
-      this.renderTopicSummary(this.timelineData.get(topic.id) ?? null);
-      this.renderArticles(cached.articles);
+      // Cache replay, not a proven recovery (#6679 instance A). The topic
+      // tabs are siblings of this.content, so they stay clickable while a
+      // topic is in an error state — switching to a cached topic must not
+      // reset the failing topic's backoff rung to the 15s floor.
+      this.withRetryBackoffPreserved(() => {
+        this.renderTopicSummary(this.timelineData.get(topic.id) ?? null);
+        this.renderArticles(cached.articles);
+      });
     } else {
       this.loadActiveTopic();
     }
@@ -107,30 +113,49 @@ export class GdeltIntelPanel extends Panel {
     const tonePrefix = lastTone < -1.5 ? '▼ ' : lastTone > 1.5 ? '▲ ' : '';
 
     const toneGroup = h('div', { className: 'gdelt-trend-group' });
-    toneGroup.innerHTML = miniSparkline(toneVals, toneChange, 60, 18);
+    setTrustedHtml(toneGroup, trustedHtml(miniSparkline(toneVals, toneChange, 60, 18), "legacy direct innerHTML migration"));
     toneGroup.appendChild(h('span', { className: `gdelt-trend-value ${toneBadgeClass}`.trim() }, `${tonePrefix}${lastTone.toFixed(1)}`));
     toneGroup.appendChild(h('span', { className: 'gdelt-trend-label' }, 'Tone'));
 
     const volGroup = h('div', { className: 'gdelt-trend-group' });
     if (volVals.length >= 2) {
-      volGroup.innerHTML = miniSparkline(volVals, 1, 60, 18);
+      setTrustedHtml(volGroup, trustedHtml(miniSparkline(volVals, 1, 60, 18), "legacy direct innerHTML migration"));
       const lastVol = volVals[volVals.length - 1] ?? 0;
       volGroup.appendChild(h('span', { className: 'gdelt-trend-value' }, String(Math.round(lastVol))));
       volGroup.appendChild(h('span', { className: 'gdelt-trend-label' }, 'Volume'));
     }
 
     this.summaryEl = h('div', { className: 'gdelt-topic-summary' }, toneGroup, volGroup);
+    // Deliberately NOT migrated to a Panel content helper (#6678). This inserts a
+    // SIBLING before `this.content`, never a child of it, so it cannot latch the
+    // header chip and the sanctioned helpers — which WIPE content — would destroy
+    // the articles it is meant to sit above. The guard tracks it as `positional`
+    // for inventory completeness only; see scripts/enforce-panel-content-writes.mjs
+    // (DIRECT_WRITE_PATTERNS doc). Its allowlist entry stays for the same reason.
     this.content.insertAdjacentElement('beforebegin', this.summaryEl);
+
+    // Staying off the helper costs the lock bail, so honour the lock by hand.
+    // `showLocked` hides header→content siblings ONCE, at lock time, so a summary
+    // inserted after that sweep would paint above the "Upgrade to Pro" CTA — the
+    // exact leak the migrated writes now refuse. `unlockPanel` re-shows every
+    // sibling in that same range, so this hide clears itself on unlock rather
+    // than stranding the summary hidden. Uses the base-class lock accessor
+    // (#6714) instead of the former class-name proxy.
+    if (this.isLocked) {
+      this.summaryEl.style.display = 'none';
+    }
   }
 
   private renderArticles(articles: GdeltArticle[]): void {
-    this.setErrorState(false);
     if (articles.length === 0) {
-      replaceChildren(this.content, h('div', { className: 'empty-state' }, t('components.gdelt.empty')));
+      // An empty article response is an authoritative settled state. It must
+      // clear any visible error and its pending retry just like a non-empty
+      // response does.
+      this.setContentNodes(h('div', { className: 'empty-state' }, t('components.gdelt.empty')));
       return;
     }
 
-    replaceChildren(this.content,
+    this.setContentNodes(
       h('div', { className: 'gdelt-intel-articles' },
         ...articles.map(article => this.buildArticle(article)),
       ),

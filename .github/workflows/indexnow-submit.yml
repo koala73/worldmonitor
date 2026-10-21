@@ -1,0 +1,44 @@
+name: IndexNow Submission
+
+# Docs can publish independently without a Vercel build. The daily run
+# catches publication missed by production deployment events.
+on:
+  deployment_status:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: indexnow-${{ github.event_name == 'deployment_status' && github.event.deployment.environment || github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  submit-indexnow:
+    if: >-
+      (
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        (
+          github.event.deployment_status.state == 'success' &&
+          github.event.deployment.environment == 'Production' &&
+          github.event.deployment.creator.login == 'vercel[bot]'
+        )
+      ) && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    runs-on: ubuntu-latest
+    # Seven hosts are now submitted sequentially rather than two; each request
+    # carries its own 15s deadline (REQUEST_TIMEOUT_MS), so this bounds a stuck
+    # run rather than being the only thing that ever stops one.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event_name == 'deployment_status' && github.event.deployment.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Submit every published host and page
+        run: node scripts/seo-indexnow-submit.mjs

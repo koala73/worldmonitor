@@ -4,18 +4,22 @@
  * Mintlify parses all .md and .mdx files as MDX, which means:
  * 1. `<foo` is interpreted as a JSX tag (bare angle brackets)
  * 2. `{expr}` is interpreted as a JSX expression (bare curly braces)
+ * 3. `<https://example.com>` autolinks are not valid MDX
  *
- * Both cause deploy failures when used outside fenced code blocks or
+ * All cause deploy failures when used outside fenced code blocks or
  * inline code spans. Fix: use `&lt;` / `&#123;` or wrap in backticks.
  *
+ * Mintlify parses every non-ignored file on disk, not just the pages
+ * reachable from docs.json navigation, so this walks the whole tree.
  * Files listed in docs/.mintignore are excluded from these checks.
  */
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 
-const DOCS_DIR = new URL('../docs/', import.meta.url).pathname;
+const DOCS_DIR = fileURLToPath(new URL('../docs/', import.meta.url));
 
 // Parse .mintignore for excluded files/dirs
 const mintignorePath = join(DOCS_DIR, '.mintignore');
@@ -26,25 +30,59 @@ const ignored = existsSync(mintignorePath)
       .filter(l => l && !l.startsWith('#'))
   : [];
 
-function isIgnored(filename) {
+function isIgnored(relPath) {
+  const posix = relPath.split(sep).join('/');
   return ignored.some(pattern => {
-    if (pattern.endsWith('/')) return filename.startsWith(pattern);
-    return filename === pattern;
+    if (pattern.endsWith('/')) {
+      const dir = pattern.slice(0, -1);
+      return posix === dir || posix.startsWith(pattern);
+    }
+    return posix === pattern;
   });
 }
 
-const docFiles = readdirSync(DOCS_DIR)
-  .filter(f => (f.endsWith('.mdx') || f.endsWith('.md')) && !isIgnored(f))
-  .map(f => join(DOCS_DIR, f));
+/**
+ * Mintlify parses every .md/.mdx file it finds under docs/, not only the
+ * pages wired into docs.json. Anything unreachable from navigation still
+ * fails the build the moment its path is in a deployment's changed set.
+ */
+function collectDocFiles(dir, found = []) {
+  for (const entry of readdirSync(dir).sort()) {
+    const abs = join(dir, entry);
+    if (isIgnored(relative(DOCS_DIR, abs))) continue;
+    if (statSync(abs).isDirectory()) collectDocFiles(abs, found);
+    else if (entry.endsWith('.mdx') || entry.endsWith('.md')) found.push(abs);
+  }
+  return found;
+}
 
-/** Strip fenced code blocks and inline code spans from content. */
+const docFiles = collectDocFiles(DOCS_DIR);
+
+/** Length of the leading YAML frontmatter block, in lines (0 when absent). */
+function frontmatterLength(lines) {
+  if (lines[0]?.trim() !== '---') return 0;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === '---') return i + 1;
+  }
+  return 0;
+}
+
+/** Strip frontmatter, fenced code blocks and inline code spans from content. */
 function stripCode(content) {
   const lines = content.split('\n');
   let inFence = false;
   const result = [];
+  // Frontmatter is YAML, not MDX — Mintlify never parses it as content.
+  const bodyStart = frontmatterLength(lines);
 
-  for (const line of lines) {
-    if (/^```/.test(line)) {
+  for (let i = 0; i < lines.length; i++) {
+    if (i < bodyStart) {
+      result.push('');
+      continue;
+    }
+    const line = lines[i];
+    // Fences inside list items are indented, so anchor on leading whitespace.
+    if (/^\s*```/.test(line)) {
       inFence = !inFence;
       result.push('');
       continue;
@@ -59,11 +97,11 @@ function stripCode(content) {
   return result;
 }
 
-/** Find bare angle brackets: < followed by digit or hyphen. */
+/** Find bare angle brackets: < followed by syntax Mintlify treats as JSX. */
 function findBareAngleBrackets(lines) {
   const issues = [];
   for (let i = 0; i < lines.length; i++) {
-    const match = lines[i].match(/<[\d-]/);
+    const match = lines[i].match(/<[=\d-]|<https?:|\b[A-Za-z_$][\w$.-]*<(?!\/)[^>\n]+>/);
     if (match) {
       issues.push({ line: i + 1, text: lines[i].trim(), type: 'angle bracket' });
     }
@@ -85,10 +123,60 @@ function findBareCurlyBraces(lines) {
   return issues;
 }
 
+describe('MDX lint covers the whole published tree', () => {
+  it('includes nested public sources and excludes engineering records', () => {
+    const names = docFiles.map(f => relative(DOCS_DIR, f).split(sep).join('/'));
+    for (const page of ['documentation.mdx', 'methodology/financial-system-exposure.md', 'zh/panels/telegram-intel.mdx']) {
+      assert.ok(names.includes(page), `published source missing from MDX lint: ${page}`);
+    }
+    for (const page of ['local-backend-audit.md', 'methodology/financial-system-exposure-flag-flip-runbook.md']) {
+      assert.ok(!names.includes(page), `excluded source still in MDX lint: ${page}`);
+    }
+  });
+
+  it('flags the syntax classes that have broken real deploys', () => {
+    const cases = [
+      'BIS claims <5% GDP',
+      '| `gate-2-country-drift` | <= 15 |',
+      'Report: <https://www.worldmonitor.app/research/>',
+    ];
+    for (const line of cases) {
+      assert.equal(
+        findBareAngleBrackets(stripCode(line)).length,
+        1,
+        `detector missed a known Mintlify parse failure: ${line}`
+      );
+    }
+    assert.equal(
+      findBareCurlyBraces(stripCode('GET returns {purged:true} for the caller')).length,
+      1,
+      'detector missed a bare JSX expression'
+    );
+  });
+
+  it('does not flag the escaped and fenced forms docs actually use', () => {
+    const clean = [
+      'BIS claims &lt;5% GDP',
+      'the anchor sits at < 20 points',
+      '`elapsed < intervalMs * 0.8`',
+      '---\napplies_when: "returns {purged:true} but GET is stale"\n---\nbody',
+      'Steps:\n\n  ```bash\n  NAME=resilience-${CAPTURE_DATE}.json\n  ```\n',
+    ];
+    for (const sample of clean) {
+      const lines = stripCode(sample);
+      assert.deepEqual(
+        [...findBareAngleBrackets(lines), ...findBareCurlyBraces(lines)],
+        [],
+        `false positive on valid MDX: ${JSON.stringify(sample)}`
+      );
+    }
+  });
+});
+
 describe('MDX files have no bare angle brackets', () => {
   for (const file of docFiles) {
-    const name = file.split('/').pop();
-    it(`${name} has no bare <digit or <hyphen outside code`, () => {
+    const name = relative(DOCS_DIR, file).split(sep).join('/');
+    it(`${name} has no bare <equals, <digit, <hyphen, or autolink outside code`, () => {
       const content = readFileSync(file, 'utf8');
       const lines = stripCode(content);
       const issues = findBareAngleBrackets(lines);
@@ -104,7 +192,7 @@ describe('MDX files have no bare angle brackets', () => {
 
 describe('MDX files have no bare curly braces', () => {
   for (const file of docFiles) {
-    const name = file.split('/').pop();
+    const name = relative(DOCS_DIR, file).split(sep).join('/');
     it(`${name} has no bare {expression} outside code`, () => {
       const content = readFileSync(file, 'utf8');
       const lines = stripCode(content);

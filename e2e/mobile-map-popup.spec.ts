@@ -1,4 +1,5 @@
 import { devices, expect, test } from '@playwright/test';
+import type { CrossBorderData } from '../src/services/displacement';
 
 type HarnessWindow = Window & {
   __mobileMapHarness?: {
@@ -20,6 +21,14 @@ type HarnessWindow = Window & {
   };
   __mobileMapIntegrationHarness?: {
     ready: boolean;
+    setCrossBorderArrivals: (data: CrossBorderData) => void;
+    toggleCrossBorderLayer: () => void;
+    pendingDeferredCallbacks: number;
+    flushDeferredCallbacks: () => void;
+    destroyMap: () => void;
+    getDynamicLayerChildCount: () => number;
+    getInitialDynamicRendered: () => boolean;
+    getWrapperTransform: () => string;
     getPopupRect: () => {
       left: number;
       top: number;
@@ -44,6 +53,56 @@ for (const deviceConfig of MOBILE_DEVICE_MATRIX) {
   test.describe(`Mobile SVG popup QA (${deviceConfig.label})`, () => {
     const { defaultBrowserType: _defaultBrowserType, ...contextOptions } = deviceConfig.use;
     test.use(contextOptions);
+
+    test('shows separate cross-border markers and clickable details above the fullscreen map', async ({ page }) => {
+      await page.goto('/tests/mobile-map-integration-harness.html?mobile=1');
+      await page.waitForFunction(() => (window as HarnessWindow).__mobileMapIntegrationHarness?.ready);
+      await page.evaluate(() => (window as HarnessWindow).__mobileMapIntegrationHarness!.toggleCrossBorderLayer());
+      await page.evaluate(() => {
+        const point = {
+          situation: 'test', label: 'Controlled arrivals', kind: 'arrival' as const, country: 'ES',
+          individuals: 2300, date: '2026-10-19', change: null, changeSince: '', lastMonth: null,
+          accelerating: true, lat: 40, lon: -4, measure: 'daily', last30Days: 2300,
+          source: 'Controlled publisher', sourceUrl: 'https://example.com/report',
+        };
+        (window as HarnessWindow).__mobileMapIntegrationHarness!.setCrossBorderArrivals({
+          situations: [], points: [point], deaths: [{ ...point, kind: 'death', label: 'Controlled deaths', individuals: 17, accelerating: false }],
+        });
+        document.body.classList.add('live-news-fullscreen-active');
+        document.getElementById('app')!.classList.add('live-news-fullscreen');
+      });
+      const popup = page.locator('.map-popup.map-popup-sheet');
+      const arrivalBox = await page.locator('.cross-border-point').boundingBox();
+      const deathBox = await page.locator('.cross-border-death').boundingBox();
+      expect(arrivalBox).not.toBeNull();
+      expect(deathBox).not.toBeNull();
+      expect(deathBox!.x + deathBox!.width).toBeLessThanOrEqual(arrivalBox!.x);
+      const arrivalDot = await page.locator('.cross-border-point .cross-border-dot').boundingBox();
+      const deathDot = await page.locator('.cross-border-death .cross-border-dot').boundingBox();
+      expect(deathBox!.width).toBeGreaterThan(deathDot!.width);
+      expect(deathDot!.width).toBeLessThan(arrivalDot!.width);
+      await page.locator('.cross-border-point').tap();
+      await expect(popup).toContainText('2,300');
+      await expect(popup).toContainText('2026-10-19');
+      await expect(popup).toContainText('Controlled publisher');
+      await expect(popup.locator('a')).toHaveAttribute('href', 'https://example.com/report');
+      await popup.locator('.popup-close').tap();
+      await expect(popup).toHaveCount(0);
+      await page.locator('.cross-border-death').tap();
+      await expect(popup).toContainText('Controlled deaths');
+      await expect(popup).toContainText('17');
+      await popup.locator('.popup-close').tap();
+      await page.evaluate(() => {
+        document.body.classList.remove('live-news-fullscreen-active');
+        document.getElementById('app')!.classList.remove('live-news-fullscreen');
+      });
+      await page.evaluate(() => (window as HarnessWindow).__mobileMapIntegrationHarness!.toggleCrossBorderLayer());
+      await expect(page.locator('.cross-border-marker')).toHaveCount(0);
+      await page.evaluate(() => (window as HarnessWindow).__mobileMapIntegrationHarness!.toggleCrossBorderLayer());
+      await expect(page.locator('.cross-border-marker')).toHaveCount(2);
+      await page.evaluate(() => (window as HarnessWindow).__mobileMapIntegrationHarness!.setCrossBorderArrivals({ situations: [], points: [], deaths: [] }));
+      await expect(page.locator('.cross-border-marker')).toHaveCount(0);
+    });
 
     test('keeps popup in viewport and supports dismissal patterns', async ({ page }) => {
       const pageErrors: string[] = [];
@@ -74,6 +133,13 @@ for (const deviceConfig of MOBILE_DEVICE_MATRIX) {
       await hotspot.tap();
 
       const popup = page.locator('.map-popup.map-popup-sheet');
+      await expect(popup).toBeVisible();
+      await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('map-popup');
+      await page.evaluate(() => history.back());
+      await expect(popup).toHaveCount(0);
+      await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBeNull();
+
+      await hotspot.tap();
       await expect(popup).toBeVisible();
 
       await expect
@@ -178,17 +244,20 @@ for (const deviceConfig of MOBILE_DEVICE_MATRIX) {
 
       await dragPopupBy(150);
       await expect(page.locator('.map-popup')).toHaveCount(0);
+      await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBeNull();
 
       await hotspot.tap();
       await expect(page.locator('.map-popup.map-popup-sheet')).toBeVisible();
       await page.locator('.popup-close').first().tap();
       await expect(page.locator('.map-popup')).toHaveCount(0);
+      await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBeNull();
 
       await hotspot.tap();
       await expect(page.locator('.map-popup.map-popup-sheet')).toBeVisible();
 
       await page.touchscreen.tap(6, 6);
       await expect(page.locator('.map-popup')).toHaveCount(0);
+      await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBeNull();
 
       expect(pageErrors).toEqual([]);
     });
@@ -265,6 +334,53 @@ test.describe('Mobile SVG popup integration path', () => {
     await popup.locator('.popup-close').first().tap();
     await expect(page.locator('.map-popup')).toHaveCount(0);
 
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('defers overlays while preserving transform and guarding destroy', async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    await page.goto('/tests/mobile-map-integration-harness.html?defer-control=1');
+
+    await expect
+      .poll(async () => {
+        return await page.evaluate(() => document.querySelectorAll('.country').length);
+      }, { timeout: 30000 })
+      .toBeGreaterThan(0);
+
+    await expect
+      .poll(async () => {
+        return await page.evaluate(() => {
+          const w = window as HarnessWindow;
+          return w.__mobileMapIntegrationHarness?.pendingDeferredCallbacks ?? 0;
+        });
+      }, { timeout: 10000 })
+      .toBeGreaterThan(0);
+
+    const transformBeforeFlush = await page.evaluate(() => {
+      const w = window as HarnessWindow;
+      return w.__mobileMapIntegrationHarness?.getWrapperTransform() ?? '';
+    });
+    expect(transformBeforeFlush).toContain('scale(2.7)');
+
+    const dynamicBeforeFlush = await page.evaluate(() => {
+      const w = window as HarnessWindow;
+      return w.__mobileMapIntegrationHarness?.getDynamicLayerChildCount() ?? -1;
+    });
+    expect(dynamicBeforeFlush).toBe(0);
+
+    await page.evaluate(() => {
+      const w = window as HarnessWindow;
+      w.__mobileMapIntegrationHarness?.destroyMap();
+      w.__mobileMapIntegrationHarness?.flushDeferredCallbacks();
+    });
+
+    const initialDynamicRendered = await page.evaluate(() => {
+      const w = window as HarnessWindow;
+      return w.__mobileMapIntegrationHarness?.getInitialDynamicRendered() ?? true;
+    });
+    expect(initialDynamicRendered).toBe(false);
     expect(pageErrors).toEqual([]);
   });
 });

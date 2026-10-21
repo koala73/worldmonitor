@@ -6,9 +6,9 @@ import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/geo.proto";
 
-// Earthquake represents a seismic event from USGS GeoJSON feed.
+// Earthquake represents a seismic event from USGS and Earthquakes Canada (NRCan).
 message Earthquake {
-  // Unique USGS event identifier (e.g., "us7000abcd").
+  // Event identifier: USGS id (e.g. "us7000abcd") or namespaced NRCan id (e.g. "nrcan:20260813.0954001").
   string id = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
@@ -24,7 +24,7 @@ message Earthquake {
   worldmonitor.core.v1.GeoCoordinates location = 5;
   // Time the earthquake occurred, as Unix epoch milliseconds.
   int64 occurred_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // URL to the USGS event detail page.
+  // URL to the USGS or Earthquakes Canada event detail page.
   string source_url = 7;
   // True when epicenter is within 100 km of a known nuclear test site.
   optional bool near_test_site = 8;
@@ -34,4 +34,8 @@ message Earthquake {
   optional double concern_score = 10;
   // Human-readable concern level: "low" | "moderate" | "elevated" | "critical".
   optional string concern_level = 11;
+  // Reporting agency: "usgs" (USGS) or "nrcan" (Earthquakes Canada / NRCan).
+  string source = 12;
+  // NRCan event category when present (e.g. "known earthquake", "suspected industry-related"). Empty for USGS.
+  string category = 13;
 }

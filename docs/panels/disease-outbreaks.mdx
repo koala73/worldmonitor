@@ -1,0 +1,54 @@
+---
+title: "Disease Outbreaks"
+description: "Active disease-outbreak alerts worldwide, severity-ranked and searchable — aggregated from WHO DON, CDC HAN, ECDC, CIDRAP, and ProMED."
+---
+
+The **Disease Outbreaks** panel shows active outbreak alerts worldwide — confirmed cases, affected regions, case counts, and a per-event threat level. It is the public-health signal layer of the dashboard.
+
+## What the panel shows
+
+A severity-ranked list of active outbreak events. Each row shows the disease, the affected country/region, the alert level, the case count (when reported), and a relative timestamp. The list is sorted by severity (alerts first) and then by recency.
+
+- **Alert-level pills** at the top let you filter by severity: `ALERT` (red), `WARNING` (orange), `WATCH` (yellow). Click a pill to toggle the filter; click again to clear.
+- **Search** — free-text match against country / region / disease. Lowercased substring match.
+- **Source link in-row** — each row renders the upstream source name as an inline link (sanitised URL, `target="_blank"`). Clicking the source-name link opens the upstream advisory. The row itself has no click handler — only the inline link is active.
+
+Panel id is `disease-outbreaks`; canonical component is `src/components/DiseaseOutbreaksPanel.ts`.
+
+## How you reach it
+
+- **Cmd+K**: type *disease* or *outbreak*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only. Not present in the tech, finance, commodity, or happy variants. Source: `FULL_PANELS` in `src/config/panels.ts`.
+
+## Data sources
+
+A single RPC backs the panel:
+
+- `GET /api/health/v1/list-disease-outbreaks`
+
+The seeder (`scripts/seed-disease-outbreaks.mjs`) fans out across:
+
+- **WHO Disease Outbreak News** — official WHO DON JSON API. Primary source for globally significant outbreaks.
+- **WHO press briefings** — WHO statements from the UN Geneva newsroom feed (entries titled "… - WHO"). WHO sometimes gives its first risk assessment at a Geneva briefing before any Disease Outbreak News post.
+- **CDC newsroom** — US-centric feed that supplements WHO for North American events. The feed also carries obituaries and conference notes and its archive reaches back years, so a CDC item counts only when it names a known disease and is under 90 days old.
+- **ECDC epidemiological updates and news** — the European Centre for Disease Prevention and Control's outbreak updates and its statements on events it is monitoring, including events outside the EU/EEA.
+- **CIDRAP disease news** — University of Minnesota CIDRAP feeds for Ebola, viral hemorrhagic fever, avian influenza, mpox, cholera, measles, dengue, polio, foodborne disease, and plague. A story counts only when it names a known disease and a country and is under 90 days old; multi-story "Quick takes" roundups are skipped.
+- **ThinkGlobalHealth disease tracker** — open bundle of ~1,600+ ProMED-sourced real-time alerts with lat/lng (kept to a 90-day lookback so the map isn't flooded with old events).
+
+ECDC, CIDRAP and WHO briefing summaries start with the story's headline. A report of pneumonia of unknown cause is listed under that name until a health authority names the pathogen.
+
+These sources give no coordinates. When the story names a city or first-level region inside its country (for example, Irkutsk), the item is placed there; otherwise it sits at the country's centroid. Place names come from [GeoNames](https://www.geonames.org/) (CC BY 4.0): cities of at least 100,000 people and first-level regions at their administrative seat.
+
+Note: the in-panel info tooltip summarises this as "WHO, ProMED, and health ministries" for brevity. The above is the full upstream list as implemented in the seeder. Results are normalised, deduplicated (each source keeps its newest item per disease and country, so every source that reports an event appears), and written to `health:disease-outbreaks:v1` in Redis with a 72-hour TTL (3× the daily cron interval).
+
+## Refresh cadence
+
+The seeder runs on a **daily** cadence. The key is allowed up to 48 hours in `api/health.js` (`maxStaleMin: 2880`) before the health surface escalates — 2× the nominal interval — to absorb transient upstream flakiness without triggering false-positive alerts.
+
+## Tier & gating
+
+Disease Outbreaks is **free**. No `premium` flag in `src/config/panels.ts`; the RPC is public.
+
+## API reference
+
+- [Health service](https://github.com/koala73/worldmonitor/blob/main/docs/api/HealthService.openapi.yaml) — covers `list-disease-outbreaks` and `list-air-quality-alerts`.

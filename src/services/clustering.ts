@@ -6,20 +6,91 @@
 
 import type { NewsItem, ClusteredEvent } from '@/types';
 import { getSourceTier } from '@/config';
-import { clusterNewsCore } from './analysis-core';
+import { clusterPublisherCount } from '../../shared/news-clustering-core.js';
+import { analysisWorker } from './analysis-worker';
+import { aggregateThreats, clusterNewsCore } from './analysis-core';
 import { mlWorker } from './ml-worker';
 import { ML_THRESHOLDS } from '@/config/ml-config';
+
+export const MAX_SEMANTIC_CLUSTER_INPUT = 250;
+
+interface HybridClusteringOptions {
+  shouldContinue?: () => boolean;
+}
 
 export function clusterNews(items: NewsItem[]): ClusteredEvent[] {
   return clusterNewsCore(items, getSourceTier) as ClusteredEvent[];
 }
 
+function mergedLocation(items: NewsItem[]): Pick<ClusteredEvent, 'lat' | 'lon'> {
+  const locations = new Map<string, { lat: number; lon: number; count: number }>();
+  for (const item of items) {
+    if (item.lat == null || item.lon == null) continue;
+    const key = `${item.lat},${item.lon}`;
+    const location = locations.get(key) ?? { lat: item.lat, lon: item.lon, count: 0 };
+    location.count += 1;
+    locations.set(key, location);
+  }
+  const winner = [...locations.values()].sort((a, b) => b.count - a.count)[0];
+  return winner ? { lat: winner.lat, lon: winner.lon } : {};
+}
+
+function compareClustersForSemanticCandidate(a: ClusteredEvent, b: ClusteredEvent): number {
+  const alertDelta = Number(b.isAlert) - Number(a.isAlert);
+  if (alertDelta !== 0) return alertDelta;
+
+  const sourceDelta = b.sourceCount - a.sourceCount;
+  if (sourceDelta !== 0) return sourceDelta;
+
+  const tierDelta = getSourceTier(a.primarySource) - getSourceTier(b.primarySource);
+  if (tierDelta !== 0) return tierDelta;
+
+  return b.lastUpdated.getTime() - a.lastUpdated.getTime()
+    || a.id.localeCompare(b.id);
+}
+
+export async function clusterNewsWithWorkerFallback(
+  items: NewsItem[],
+  options: HybridClusteringOptions = {},
+): Promise<ClusteredEvent[]> {
+  const shouldContinue = options.shouldContinue ?? (() => true);
+  if (items.length === 0) return [];
+
+  try {
+    const clusters = await analysisWorker.clusterNews(items);
+    if (!shouldContinue()) return [];
+    if (clusters.length > 0) return clusters;
+    console.warn('[Clustering] Analysis worker returned no clusters, using local fallback');
+  } catch (error) {
+    if (!shouldContinue()) return [];
+    console.warn('[Clustering] Analysis worker failed, using local fallback:', error);
+  }
+
+  if (!shouldContinue()) return [];
+  return clusterNews(items);
+}
+
 /**
  * Hybrid clustering: Jaccard first, then semantic refinement if ML available
  */
-export async function clusterNewsHybrid(items: NewsItem[]): Promise<ClusteredEvent[]> {
-  // Step 1: Fast Jaccard clustering
-  const jaccardClusters = clusterNewsCore(items, getSourceTier) as ClusteredEvent[];
+export async function clusterNewsHybrid(
+  items: NewsItem[],
+  options: HybridClusteringOptions = {},
+): Promise<ClusteredEvent[]> {
+  const shouldContinue = options.shouldContinue ?? (() => true);
+  const coreStartedAt = import.meta.env.VITE_E2E === '1' ? performance.now() : 0;
+  const jaccardClusters = await clusterNewsWithWorkerFallback(items, { shouldContinue });
+  if (import.meta.env.VITE_E2E === '1') {
+    performance.measure('wm:news-clustering:hybrid-core', {
+      start: coreStartedAt,
+      end: performance.now(),
+      detail: {
+        itemCount: items.length,
+        clusterCount: jaccardClusters.length,
+      },
+    });
+  }
+  if (!shouldContinue()) return [];
 
   // Step 2: If ML unavailable or too few clusters, return Jaccard results
   if (!mlWorker.isAvailable || jaccardClusters.length < ML_THRESHOLDS.minClustersForML) {
@@ -27,8 +98,12 @@ export async function clusterNewsHybrid(items: NewsItem[]): Promise<ClusteredEve
   }
 
   try {
+    const rankedSemanticInput = [...jaccardClusters].sort(compareClustersForSemanticCandidate);
+    const semanticCandidates = rankedSemanticInput.slice(0, MAX_SEMANTIC_CLUSTER_INPUT);
+    const overflowClusters = rankedSemanticInput.slice(MAX_SEMANTIC_CLUSTER_INPUT);
+
     // Get cluster primary titles for embedding
-    const clusterTexts = jaccardClusters.map(c => ({
+    const clusterTexts = semanticCandidates.map(c => ({
       id: c.id,
       text: c.primaryTitle,
     }));
@@ -38,10 +113,14 @@ export async function clusterNewsHybrid(items: NewsItem[]): Promise<ClusteredEve
       clusterTexts,
       ML_THRESHOLDS.semanticClusterThreshold
     );
+    if (!shouldContinue()) return [];
 
     // Merge semantically similar clusters
-    return mergeSemanticallySimilarClusters(jaccardClusters, semanticGroups);
+    const mergedSemanticClusters = mergeSemanticallySimilarClusters(semanticCandidates, semanticGroups);
+    return [...mergedSemanticClusters, ...overflowClusters]
+      .sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
   } catch (error) {
+    if (!shouldContinue()) return [];
     console.warn('[Clustering] Semantic clustering failed, using Jaccard only:', error);
     return jaccardClusters;
   }
@@ -123,14 +202,22 @@ function mergeSemanticallySimilarClusters(
       primaryLink: primary.primaryLink,
       primarySource: primary.primarySource,
       sourceCount: allItems.length,
+      // #6428: recomputed over the MERGED item list, not summed from the
+      // parts — two merged clusters can share a publisher, and adding their
+      // counts would re-create the double-count this field exists to prevent.
+      // #9095: same detector as clusterNewsCore, so reprints stay counted once.
+      uniquePublisherCount: clusterPublisherCount(allItems),
       topSources: sortedTopSources,
       allItems,
       firstSeen,
       lastUpdated,
       isAlert: allItems.some(i => i.isAlert),
-      monitorColor: primary.monitorColor,
+      monitorColor: allItems.find(item => item.monitorColor)?.monitorColor,
       velocity: primary.velocity,
-      threat: primary.threat,
+      threat: aggregateThreats(allItems),
+      lang: primary.lang,
+      ...(Number.isFinite(primary.credibilityScore) ? { credibilityScore: primary.credibilityScore } : {}),
+      ...mergedLocation(allItems),
     };
     merged.push(mergedCluster);
   }

@@ -22,30 +22,39 @@ services:
       - "${WM_PORT:-3000}:8080"
     environment:
       UPSTASH_REDIS_REST_URL: "http://redis-rest:80"
-      UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:-wm-local-token}"
+      UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:?REDIS_TOKEN required — generate with: openssl rand -hex 32}"
+      WM_SESSION_SECRET: "${WM_SESSION_SECRET:?WM_SESSION_SECRET required — generate with: openssl rand -hex 32}"
       LOCAL_API_PORT: "46123"
       LOCAL_API_MODE: "docker"
       LOCAL_API_CLOUD_FALLBACK: "false"
+      WM_TRUSTED_PROXY_CIDRS: "${WM_TRUSTED_PROXY_CIDRS:-}"
       WS_RELAY_URL: "http://ais-relay:3004"
+      # Operator keys accepted by MCP and REST through X-WorldMonitor-Key.
+      WORLDMONITOR_VALID_KEYS: "${WORLDMONITOR_VALID_KEYS:-}"
+      RELAY_SHARED_SECRET: "${RELAY_SHARED_SECRET:?RELAY_SHARED_SECRET required — generate with: openssl rand -hex 32}"
+      WORLDMONITOR_RELAY_KEY: "${WORLDMONITOR_RELAY_KEY:-}"
       # LLM provider (any OpenAI-compatible endpoint)
       LLM_API_URL: "${LLM_API_URL:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
       LLM_MODEL: "${LLM_MODEL:-}"
-      GROQ_API_KEY: "${GROQ_API_KEY:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       # Data source API keys (optional — features degrade gracefully)
       AISSTREAM_API_KEY: "${AISSTREAM_API_KEY:-}"
       FINNHUB_API_KEY: "${FINNHUB_API_KEY:-}"
       EIA_API_KEY: "${EIA_API_KEY:-}"
       FRED_API_KEY: "${FRED_API_KEY:-}"
+      ACLED_EMAIL: "${ACLED_EMAIL:-}"
+      ACLED_PASSWORD: "${ACLED_PASSWORD:-}"
       ACLED_ACCESS_TOKEN: "${ACLED_ACCESS_TOKEN:-}"
       NASA_FIRMS_API_KEY: "${NASA_FIRMS_API_KEY:-}"
       CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
       AVIATIONSTACK_API: "${AVIATIONSTACK_API:-}"
+      TRAVELPAYOUTS_API_TOKEN: "${TRAVELPAYOUTS_API_TOKEN:-}"
     # Docker secrets (recommended for API keys — keeps them out of docker inspect).
     # Create secrets/ dir with one file per key, then uncomment below.
     # See SELF_HOSTING.md or docker-compose.override.yml for details.
     # secrets:
-    #   - GROQ_API_KEY
+    #   - OPENROUTER_API_KEY
     #   - AISSTREAM_API_KEY
     #   - FINNHUB_API_KEY
     #   - FRED_API_KEY
@@ -65,14 +74,39 @@ services:
     image: worldmonitor-ais-relay:latest
     container_name: worldmonitor-ais-relay
     environment:
+      RELAY_SHARED_SECRET: "${RELAY_SHARED_SECRET:?RELAY_SHARED_SECRET required — generate with: openssl rand -hex 32}"
       AISSTREAM_API_KEY: "${AISSTREAM_API_KEY:-}"
+      FINNHUB_API_KEY: "${FINNHUB_API_KEY:-}"
+      MARKET_YAHOO_REFRESH_INTERVAL_MS: "${MARKET_YAHOO_REFRESH_INTERVAL_MS:-900000}"
+      UPSTASH_REDIS_REST_URL: "http://redis-rest:80"
+      UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:?REDIS_TOKEN required — generate with: openssl rand -hex 32}"
+      UPSTASH_ALLOW_INSECURE_HTTP: "true"
+      UCDP_ACCESS_TOKEN: "${UCDP_ACCESS_TOKEN:-}"
+      # Optional: Jev shadows the classify seed and records disagreements; it decides nothing.
+      TYPESAFE_API_KEY: "${TYPESAFE_API_KEY:-}"
+      TYPESAFE_BASE_URL: "${TYPESAFE_BASE_URL:-}"
+      # Classify reads list-feed-digest from this install, not production (#7437).
+      # Do not depends_on worldmonitor here — the app already depends_on ais-relay.
+      # Transient connection retries cover the compose boot race instead.
+      API_BASE_URL: "${API_BASE_URL:-http://worldmonitor:8080}"
+      WORLDMONITOR_RELAY_KEY: "${WORLDMONITOR_RELAY_KEY:-}"
       PORT: "3004"
+    depends_on:
+      redis-rest:
+        condition: service_started
     restart: unless-stopped
 
   redis:
     image: docker.io/redis:7-alpine
     container_name: worldmonitor-redis
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # --requirepass closes off the network so any future sidecar / compromised
+    # dependency added to the worldmonitor network can't read or write cache
+    # entries without the password. Defense-in-depth alongside the REST token.
+    command: >
+      redis-server
+      --requirepass "${REDIS_PASSWORD:?REDIS_PASSWORD required — generate with: openssl rand -hex 32}"
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
     volumes:
       - redis-data:/data
     restart: unless-stopped
@@ -83,20 +117,31 @@ services:
       dockerfile: Dockerfile.redis-rest
     image: worldmonitor-redis-rest:latest
     container_name: worldmonitor-redis-rest
+    # The proxy buffers each accepted request body in full (SRH_MAX_BODY_BYTES,
+    # 16MB default), so concurrent large publishes multiply. Measured: 64
+    # concurrent 16MB POSTs reached ~933MB RSS. Buffers are off-heap, so a Node
+    # heap flag would not contain them — bound it at the container, the same way
+    # the redis service is bounded by --maxmemory. 512m leaves ~7x headroom over
+    # one max-size publish (16MB body + concat + UTF-16 string ≈ 64MB transient).
+    mem_limit: 512m
     ports:
       - "127.0.0.1:8079:80"
     environment:
-      SRH_TOKEN: "${REDIS_TOKEN:-wm-local-token}"
-      SRH_CONNECTION_STRING: "redis://redis:6379"
+      SRH_TOKEN: "${REDIS_TOKEN:?REDIS_TOKEN required — generate with: openssl rand -hex 32}"
+      # Defense-in-depth: the redis service's --requirepass already fails
+      # compose validation if REDIS_PASSWORD is unset, but the explicit
+      # :? here protects against a future PR removing --requirepass or
+      # copying this connection string into a new service.
+      SRH_CONNECTION_STRING: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD required — generate with: openssl rand -hex 32}@redis:6379"
     depends_on:
       - redis
     restart: unless-stopped
 
 # Docker secrets — uncomment and point to your secret files.
-# Example: echo "gsk_abc123" > secrets/groq_api_key.txt
+# Example: echo "sk-or-abc123" > secrets/openrouter_api_key.txt
 # secrets:
-#   GROQ_API_KEY:
-#     file: ./secrets/groq_api_key.txt
+#   OPENROUTER_API_KEY:
+#     file: ./secrets/openrouter_api_key.txt
 #   AISSTREAM_API_KEY:
 #     file: ./secrets/aisstream_api_key.txt
 #   FINNHUB_API_KEY:

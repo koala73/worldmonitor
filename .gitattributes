@@ -1,0 +1,24 @@
+# Source files check in with LF endings.
+#
+# Without this, an editor configured for CRLF rewrites a whole source file on
+# save: every line shows as removed and re-added, git blame is destroyed, and
+# the real change hides inside the noise. src/components/StatusPanel.ts landed
+# that way — a 54-line addition was reported as +175/-123.
+#
+# Scoped to source extensions on purpose. A repo-wide `* text=auto` would also
+# renormalize CSV fixtures whose CRLF bytes are part of what they fixture
+# (scripts/need-work.csv, tests/fixtures/mineral-production/mcs-sample.csv).
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.mts  text eol=lf
+*.mjs  text eol=lf
+*.js   text eol=lf
+*.jsx  text eol=lf
+*.cjs  text eol=lf
+
+# sebuf's generated TypeScript ends with one structural blank line. Keep Git's
+# whitespace gate focused on hand-authored code while preserving generator bytes.
+src/generated/**/*.ts whitespace=-blank-at-eof
+
+# Preserve the byte-identical upstream Umami patch, including its indented blank lines.
+docker/umami/session-data-upsert.patch -whitespace

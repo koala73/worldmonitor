@@ -1,25 +1,70 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, getRedisCredentials } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, getRedisCredentials, loadSharedConfig } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { resolveIso2, normalizeCountryToken } from './_country-resolver.mjs';
+import {
+  CORRELATION_RUNTIME_MODE_KEY,
+  resolveCorrelationRuntimeMode,
+} from './shared/correlation-runtime-mode.js';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'correlation:cards-bootstrap:v1';
 const CACHE_TTL = 1200; // 20min — outlives maxStaleMin:15 with buffer (cron runs every 5min)
+const MIN_CORRELATION_CARDS = 1;
+const CORRELATION_CARD_DOMAINS = ['military', 'escalation', 'economic', 'disaster'];
 
-const INPUT_KEYS = [
-  'military:flights:v1',
-  'military:flights:stale:v1',
-  'unrest:events:v1',
-  'infra:outages:v1',
-  'seismology:earthquakes:v1',
-  'market:stocks-bootstrap:v1',
-  'market:commodities-bootstrap:v1',
-  'market:crypto:v1',
-  'news:insights:v1',
-];
+// Reject preserved contract envelopes past the age each source seeder itself
+// declares. runSeed extends a last-good key on an upstream failure without
+// advancing `_seed.fetchedAt` (scripts/_seed-utils.mjs), so unwrapping without
+// this gate would revive stale observations and stamp them into cards dated
+// `computedAt: Date.now()`. Every value here is that source's own
+// `maxStaleMin`, not a number chosen at this call site; the five keys shared
+// with seed-cross-source-signals.mjs carry the same budgets it uses.
+//
+const INPUT_POLICIES = Object.freeze([
+  { key: 'military:flights:v1', arrayField: 'flights', maxAgeMin: 30, allowLegacyArray: true, usePayloadFetchedAt: true },
+  { key: 'military:flights:stale:v1', arrayField: 'flights', maxAgeMin: 30, allowLegacyArray: true, usePayloadFetchedAt: true },
+  { key: 'unrest:events:v1', arrayField: 'events', maxAgeMin: 120, allowLegacyArray: true },
+  { key: 'infra:outages:v1', arrayField: 'outages', maxAgeMin: 30, allowLegacyArray: true },
+  { key: 'seismology:earthquakes:v1', arrayField: 'earthquakes', maxAgeMin: 30, allowLegacyArray: true },
+  { key: 'market:stocks-bootstrap:v1', arrayField: 'quotes', maxAgeMin: 30 },
+  { key: 'market:commodities-bootstrap:v1', arrayField: 'quotes', maxAgeMin: 30 },
+  { key: 'market:crypto:v1', arrayField: 'quotes', maxAgeMin: 30 },
+  { key: 'news:insights:v1', arrayField: 'topStories', maxAgeMin: 30 },
+]);
 
-async function fetchInputData() {
+export const INPUT_KEYS = INPUT_POLICIES.map(({ key }) => key);
+
+function hasExpectedInputShape(policy, payload) {
+  let records;
+  if (Array.isArray(payload)) {
+    if (!policy.allowLegacyArray) return false;
+    records = payload;
+  } else {
+    if (payload == null || typeof payload !== 'object') return false;
+    records = payload[policy.arrayField];
+    if (!Array.isArray(records)) return false;
+  }
+  return records.every(record => (
+    record != null && typeof record === 'object' && !Array.isArray(record)
+  ));
+}
+
+function summarizeDiscardedInputs(discarded) {
+  const byReason = {};
+  for (const { reason } of discarded) {
+    byReason[reason] = (byReason[reason] ?? 0) + 1;
+  }
+  return {
+    total: discarded.length,
+    byReason,
+    inputs: discarded,
+  };
+}
+
+export async function fetchInputData() {
   const { url, token } = getRedisCredentials();
   const pipeline = INPUT_KEYS.map(k => ['GET', k]);
   const resp = await fetch(`${url}/pipeline`, {
@@ -31,13 +76,130 @@ async function fetchInputData() {
   if (!resp.ok) throw new Error(`Redis pipeline: HTTP ${resp.status}`);
   const results = await resp.json();
   const data = {};
-  for (let i = 0; i < INPUT_KEYS.length; i++) {
-    const raw = results[i]?.result;
-    if (raw) {
-      try { data[INPUT_KEYS[i]] = JSON.parse(raw); } catch { /* skip */ }
+  const discarded = [];
+  const discard = (key, reason) => discarded.push({ key, reason });
+  if (!Array.isArray(results)) {
+    for (const key of INPUT_KEYS) discard(key, 'invalid_pipeline_shape');
+    console.warn('  [Correlation] discarded Redis inputs', summarizeDiscardedInputs(discarded));
+    return data;
+  }
+  for (let i = 0; i < INPUT_POLICIES.length; i++) {
+    const policy = INPUT_POLICIES[i];
+    const { key } = policy;
+    const result = results[i];
+    if (result?.error != null) {
+      discard(key, 'pipeline_error');
+      continue;
+    }
+    const raw = result?.result;
+    if (raw == null) {
+      discard(key, 'missing');
+      continue;
+    }
+    try {
+      // Seven of these nine keys are written by contract-mode seeders, which
+      // store `{ _seed, data }` (scripts/_seed-utils.mjs). Parsing without
+      // unwrapping handed computeCorrelation the envelope, so every
+      // `payload.<field>` read below was undefined and three of the four
+      // domains silently produced no signals at all — #5870 is the same defect
+      // one seeder over. unwrapEnvelope only unwraps when `_seed.fetchedAt` is
+      // a number, so the bare `military:flights` keys pass through unchanged.
+      //
+      // JSON.parse stays outside unwrapEnvelope on purpose: it accepts a raw
+      // string, but on a parse failure it returns that string as `data`, which
+      // would register a malformed value as a found key and defeat the
+      // "no input data" tripwire in computeCorrelation.
+      const { _seed, data: payload } = unwrapEnvelope(JSON.parse(raw));
+      if (payload == null) {
+        discard(key, 'null_payload');
+        continue;
+      }
+      if (!hasExpectedInputShape(policy, payload)) {
+        discard(key, 'invalid_shape');
+        continue;
+      }
+      // Contract envelopes carry `_seed.fetchedAt`. The military flight
+      // producer still writes a bare object, so object-shaped military
+      // payloads must carry their equivalent top-level timestamp. Explicitly
+      // supported legacy arrays remain timestamp-free.
+      const now = Date.now();
+      let fetchedAt = _seed?.fetchedAt;
+      if (policy.usePayloadFetchedAt && !Array.isArray(payload)) {
+        if (!Number.isFinite(payload.fetchedAt) || payload.fetchedAt > now) {
+          discard(key, 'invalid_fetched_at');
+          continue;
+        }
+        fetchedAt = payload.fetchedAt;
+      }
+      if (
+        typeof fetchedAt === 'number' &&
+        now - fetchedAt > policy.maxAgeMin * 60_000
+      ) {
+        discard(key, 'stale');
+        continue;
+      }
+      data[key] = payload;
+    } catch {
+      discard(key, 'malformed_json');
     }
   }
+  if (discarded.length > 0) {
+    // Do not include raw values or parse errors here. Redis payloads can carry
+    // sensitive source data, and keys plus bounded reason codes are enough to
+    // diagnose a partial correlation cycle.
+    console.warn('  [Correlation] discarded Redis inputs', summarizeDiscardedInputs(discarded));
+  }
   return data;
+}
+
+/**
+ * Read the staged runtime control for one correlation compute cycle.
+ *
+ * This intentionally uses the raw Redis key rather than a cached input
+ * pipeline: an operator rollback must be visible to the next cycle. Any
+ * missing credentials, transport failure, malformed Redis response, or
+ * malformed value resolves to the existing legacy behavior.
+ */
+export async function readCorrelationRuntimeMode({
+  fetchImpl = (...args) => globalThis.fetch(...args),
+  env = process.env,
+  timeoutMs = 3_000,
+} = {}) {
+  const url = env.UPSTASH_REDIS_REST_URL;
+  const token = env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return 'legacy';
+
+  try {
+    const response = await fetchImpl(`${url}/get/${encodeURIComponent(CORRELATION_RUNTIME_MODE_KEY)}`, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+        'User-Agent': 'worldmonitor-seeder/1.0',
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      console.warn(`  [Correlation] control plane returned HTTP ${response.status}; using legacy`);
+      return 'legacy';
+    }
+
+    const payload = await response.json();
+    if (
+      !payload
+      || typeof payload !== 'object'
+      || Array.isArray(payload)
+      || !Object.prototype.hasOwnProperty.call(payload, 'result')
+      || payload.result == null
+    ) return 'legacy';
+
+    const raw = typeof payload.result === 'string'
+      ? JSON.parse(payload.result)
+      : payload.result;
+    return resolveCorrelationRuntimeMode(raw);
+  } catch (error) {
+    console.warn('  [Correlation] control-plane read failed; using legacy:', error?.message || error);
+    return 'legacy';
+  }
 }
 
 // ── Haversine ───────────────────────────────────────────────
@@ -53,86 +215,8 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ── Country Name Resolution ─────────────────────────────────
-const COUNTRY_NAME_TO_ISO2 = {
-  'afghanistan': 'AF', 'albania': 'AL', 'algeria': 'DZ', 'angola': 'AO',
-  'argentina': 'AR', 'armenia': 'AM', 'australia': 'AU', 'austria': 'AT',
-  'azerbaijan': 'AZ', 'bahrain': 'BH', 'bangladesh': 'BD', 'belarus': 'BY',
-  'belgium': 'BE', 'bolivia': 'BO', 'bosnia and herzegovina': 'BA',
-  'brazil': 'BR', 'bulgaria': 'BG', 'burkina faso': 'BF', 'burma': 'MM',
-  'cambodia': 'KH', 'cameroon': 'CM', 'canada': 'CA', 'chad': 'TD',
-  'chile': 'CL', 'china': 'CN', 'colombia': 'CO', 'congo': 'CG',
-  'costa rica': 'CR', 'croatia': 'HR', 'cuba': 'CU', 'cyprus': 'CY',
-  'czech republic': 'CZ', 'czechia': 'CZ',
-  'democratic republic of the congo': 'CD', 'dr congo': 'CD', 'drc': 'CD',
-  'denmark': 'DK', 'djibouti': 'DJ', 'dominican republic': 'DO',
-  'ecuador': 'EC', 'egypt': 'EG', 'el salvador': 'SV', 'eritrea': 'ER',
-  'estonia': 'EE', 'ethiopia': 'ET', 'finland': 'FI', 'france': 'FR',
-  'gabon': 'GA', 'georgia': 'GE', 'germany': 'DE', 'ghana': 'GH',
-  'greece': 'GR', 'guatemala': 'GT', 'guinea': 'GN', 'haiti': 'HT',
-  'honduras': 'HN', 'hungary': 'HU', 'iceland': 'IS', 'india': 'IN',
-  'indonesia': 'ID', 'iran': 'IR', 'iraq': 'IQ', 'ireland': 'IE',
-  'israel': 'IL', 'italy': 'IT', 'ivory coast': 'CI', "cote d'ivoire": 'CI',
-  'jamaica': 'JM', 'japan': 'JP', 'jordan': 'JO', 'kazakhstan': 'KZ',
-  'kenya': 'KE', 'kosovo': 'XK', 'kuwait': 'KW', 'kyrgyzstan': 'KG',
-  'laos': 'LA', 'latvia': 'LV', 'lebanon': 'LB', 'libya': 'LY',
-  'lithuania': 'LT', 'madagascar': 'MG', 'malawi': 'MW', 'malaysia': 'MY',
-  'mali': 'ML', 'mauritania': 'MR', 'mexico': 'MX', 'moldova': 'MD',
-  'mongolia': 'MN', 'montenegro': 'ME', 'morocco': 'MA', 'mozambique': 'MZ',
-  'myanmar': 'MM', 'namibia': 'NA', 'nepal': 'NP', 'netherlands': 'NL',
-  'new zealand': 'NZ', 'nicaragua': 'NI', 'niger': 'NE', 'nigeria': 'NG',
-  'north korea': 'KP', 'north macedonia': 'MK', 'norway': 'NO',
-  'oman': 'OM', 'pakistan': 'PK', 'palestine': 'PS', 'panama': 'PA',
-  'papua new guinea': 'PG', 'paraguay': 'PY', 'peru': 'PE',
-  'philippines': 'PH', 'poland': 'PL', 'portugal': 'PT', 'qatar': 'QA',
-  'romania': 'RO', 'russia': 'RU', 'rwanda': 'RW', 'saudi arabia': 'SA',
-  'senegal': 'SN', 'serbia': 'RS', 'sierra leone': 'SL', 'singapore': 'SG',
-  'slovakia': 'SK', 'slovenia': 'SI', 'somalia': 'SO', 'south africa': 'ZA',
-  'south korea': 'KR', 'south sudan': 'SS', 'spain': 'ES',
-  'sri lanka': 'LK', 'sudan': 'SD', 'sweden': 'SE', 'switzerland': 'CH',
-  'syria': 'SY', 'taiwan': 'TW', 'tajikistan': 'TJ', 'tanzania': 'TZ',
-  'thailand': 'TH', 'togo': 'TG', 'trinidad and tobago': 'TT',
-  'tunisia': 'TN', 'turkey': 'TR', 'turkmenistan': 'TM', 'uganda': 'UG',
-  'ukraine': 'UA', 'united arab emirates': 'AE', 'uae': 'AE',
-  'united kingdom': 'GB', 'uk': 'GB', 'united states': 'US', 'usa': 'US',
-  'uruguay': 'UY', 'uzbekistan': 'UZ', 'venezuela': 'VE', 'vietnam': 'VN',
-  'yemen': 'YE', 'zambia': 'ZM', 'zimbabwe': 'ZW',
-  'east timor': 'TL', 'cape verde': 'CV', 'swaziland': 'SZ',
-  'republic of the congo': 'CG',
-};
-
-const ISO3_TO_ISO2 = {
-  'AFG': 'AF', 'ALB': 'AL', 'DZA': 'DZ', 'AGO': 'AO', 'ARG': 'AR',
-  'ARM': 'AM', 'AUS': 'AU', 'AUT': 'AT', 'AZE': 'AZ', 'BHR': 'BH',
-  'BGD': 'BD', 'BLR': 'BY', 'BEL': 'BE', 'BOL': 'BO', 'BIH': 'BA',
-  'BRA': 'BR', 'BGR': 'BG', 'BFA': 'BF', 'KHM': 'KH', 'CMR': 'CM',
-  'CAN': 'CA', 'TCD': 'TD', 'CHL': 'CL', 'CHN': 'CN', 'COL': 'CO',
-  'COG': 'CG', 'CRI': 'CR', 'HRV': 'HR', 'CUB': 'CU', 'CYP': 'CY',
-  'CZE': 'CZ', 'COD': 'CD', 'DNK': 'DK', 'DJI': 'DJ', 'DOM': 'DO',
-  'ECU': 'EC', 'EGY': 'EG', 'SLV': 'SV', 'ERI': 'ER', 'EST': 'EE',
-  'ETH': 'ET', 'FIN': 'FI', 'FRA': 'FR', 'GAB': 'GA', 'GEO': 'GE',
-  'DEU': 'DE', 'GHA': 'GH', 'GRC': 'GR', 'GTM': 'GT', 'GIN': 'GN',
-  'HTI': 'HT', 'HND': 'HN', 'HUN': 'HU', 'ISL': 'IS', 'IND': 'IN',
-  'IDN': 'ID', 'IRN': 'IR', 'IRQ': 'IQ', 'IRL': 'IE', 'ISR': 'IL',
-  'ITA': 'IT', 'CIV': 'CI', 'JAM': 'JM', 'JPN': 'JP', 'JOR': 'JO',
-  'KAZ': 'KZ', 'KEN': 'KE', 'XKX': 'XK', 'KWT': 'KW', 'KGZ': 'KG',
-  'LAO': 'LA', 'LVA': 'LV', 'LBN': 'LB', 'LBY': 'LY', 'LTU': 'LT',
-  'MDG': 'MG', 'MWI': 'MW', 'MYS': 'MY', 'MLI': 'ML', 'MRT': 'MR',
-  'MEX': 'MX', 'MDA': 'MD', 'MNG': 'MN', 'MNE': 'ME', 'MAR': 'MA',
-  'MOZ': 'MZ', 'MMR': 'MM', 'NAM': 'NA', 'NPL': 'NP', 'NLD': 'NL',
-  'NZL': 'NZ', 'NIC': 'NI', 'NER': 'NE', 'NGA': 'NG', 'PRK': 'KP',
-  'MKD': 'MK', 'NOR': 'NO', 'OMN': 'OM', 'PAK': 'PK', 'PSE': 'PS',
-  'PAN': 'PA', 'PNG': 'PG', 'PRY': 'PY', 'PER': 'PE', 'PHL': 'PH',
-  'POL': 'PL', 'PRT': 'PT', 'QAT': 'QA', 'ROU': 'RO', 'RUS': 'RU',
-  'RWA': 'RW', 'SAU': 'SA', 'SEN': 'SN', 'SRB': 'RS', 'SLE': 'SL',
-  'SGP': 'SG', 'SVK': 'SK', 'SVN': 'SI', 'SOM': 'SO', 'ZAF': 'ZA',
-  'KOR': 'KR', 'SSD': 'SS', 'ESP': 'ES', 'LKA': 'LK', 'SDN': 'SD',
-  'SWE': 'SE', 'CHE': 'CH', 'SYR': 'SY', 'TWN': 'TW', 'TJK': 'TJ',
-  'TZA': 'TZ', 'THA': 'TH', 'TGO': 'TG', 'TTO': 'TT', 'TUN': 'TN',
-  'TUR': 'TR', 'TKM': 'TM', 'UGA': 'UG', 'UKR': 'UA', 'ARE': 'AE',
-  'GBR': 'GB', 'USA': 'US', 'URY': 'UY', 'UZB': 'UZ', 'VEN': 'VE',
-  'VNM': 'VN', 'YEM': 'YE', 'ZMB': 'ZM', 'ZWE': 'ZW',
-};
+const COUNTRY_NAME_TO_ISO2 = loadSharedConfig('country-names.json');
+const ISO3_TO_ISO2 = loadSharedConfig('iso3-to-iso2.json');
 
 const COUNTRY_CENTROIDS = {
   'AF':[33.9,67.7],'AL':[41.2,20.2],'DZ':[28.0,1.7],'AO':[-11.2,17.9],'AR':[-38.4,-63.6],
@@ -181,23 +265,21 @@ function nearestCountryByCoords(lat, lon) {
 
 function normalizeToCode(country, lat, lon) {
   if (country) {
-    const t = country.trim();
-    if (t.length === 2) return t.toUpperCase();
-    if (t.length === 3) return ISO3_TO_ISO2[t.toUpperCase()] ?? undefined;
-    const fromName = COUNTRY_NAME_TO_ISO2[t.toLowerCase()];
-    if (fromName) return fromName;
+    const resolved = resolveIso2({ iso2: country, iso3: country, name: country });
+    if (resolved) return resolved;
   }
   return nearestCountryByCoords(lat, lon);
 }
 
 const COUNTRY_NAME_ENTRIES = Object.entries(COUNTRY_NAME_TO_ISO2)
-  .filter(([name]) => name.length >= 4)
+  .filter(([name]) => name.length >= 2)
   .sort((a, b) => b[0].length - a[0].length)
   .map(([name, code]) => ({ name, code, regex: new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') }));
 
-function matchCountryNamesInText(text) {
+export function matchCountryNamesInText(text) {
   const matched = [];
-  let remaining = text.toLowerCase();
+  let remaining = text.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+    .replace(/['.(),/-]/g, ' ').replace(/\s+/g, ' ');
   for (const { code, regex } of COUNTRY_NAME_ENTRIES) {
     if (regex.test(remaining)) {
       matched.push(code);
@@ -211,13 +293,26 @@ function matchCountryNamesInText(text) {
 const STRIKE_TYPES = new Set(['fighter', 'bomber', 'attack']);
 const SUPPORT_TYPES = new Set(['tanker', 'awacs', 'surveillance', 'electronic_warfare']);
 
-function collectMilitarySignals(flights) {
+export function collectMilitarySignals(flights) {
   const signals = [];
   const now = Date.now();
   const windowMs = 24 * 60 * 60 * 1000;
   for (const f of flights) {
-    const ts = typeof f.lastSeen === 'number' ? f.lastSeen : (f.lastSeen ? new Date(f.lastSeen).getTime() : now);
-    if (now - ts > windowMs) continue;
+    let ts = now;
+    if (Object.hasOwn(f, 'lastSeenMs')) {
+      const raw = f.lastSeenMs;
+      const parsed = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
+      if (!Number.isFinite(parsed)) continue;
+      ts = parsed;
+    } else if (Object.hasOwn(f, 'lastSeen')) {
+      const raw = f.lastSeen;
+      const parsed = typeof raw === 'number'
+        ? raw
+        : (typeof raw === 'string' && raw.trim() !== '' ? new Date(raw).getTime() : NaN);
+      if (!Number.isFinite(parsed)) continue;
+      ts = parsed;
+    }
+    if (ts > now || now - ts > windowMs) continue;
     const isStrike = STRIKE_TYPES.has(f.aircraftType);
     const isSupport = SUPPORT_TYPES.has(f.aircraftType);
     const severity = isStrike ? 80 : isSupport ? 60 : 55;
@@ -344,13 +439,13 @@ const SANCTIONS_KEYWORDS = /\b(sanction|tariff|embargo|trade\s+war|ban|restrict|
 const COMMODITY_SYMBOLS = new Set(['CL=F', 'GC=F', 'NG=F', 'SI=F', 'HG=F', 'ZW=F', 'BTC-USD', 'BZ=F', 'ETH-USD', 'KC=F', 'SB=F', 'CT=F', 'CC=F']);
 const SIGNIFICANT_CHANGE_PCT = 1.5;
 
-function collectEconomicSignals(markets, newsClusters) {
+export function collectEconomicSignals(markets, newsClusters) {
   const signals = [];
   const now = Date.now();
   const windowMs = 24 * 60 * 60 * 1000;
 
   for (const m of markets) {
-    if (m.change == null || m.price == null) continue;
+    if (!Number.isFinite(m.price) || !Number.isFinite(m.change)) continue;
     const absPct = Math.abs(m.change);
     if (absPct < SIGNIFICANT_CHANGE_PCT) continue;
     const isCommodity = COMMODITY_SYMBOLS.has(m.symbol);
@@ -440,16 +535,18 @@ function collectDisasterSignals(earthquakes, outages, protests) {
   const windowMs = 96 * 60 * 60 * 1000;
 
   for (const q of earthquakes) {
+    const qLat = q.location?.latitude;
+    const qLon = q.location?.longitude;
+    if (!Number.isFinite(q.magnitude) || !Number.isFinite(qLat) || !Number.isFinite(qLon)) continue;
     const ts = q.occurredAt ?? now;
     if (now - ts > windowMs) continue;
-    if (q.location?.latitude == null || q.location?.longitude == null) continue;
     const severity = Math.min(100, Math.max(10, (q.magnitude - 1.5) * 17));
     signals.push({
       type: 'earthquake',
       source: 'usgs',
       severity,
-      lat: q.location.latitude,
-      lon: q.location.longitude,
+      lat: qLat,
+      lon: qLon,
       timestamp: ts,
       label: `M${q.magnitude.toFixed(1)} \u2014 ${q.place}`,
       magnitude: q.magnitude,
@@ -472,7 +569,7 @@ function collectDisasterSignals(earthquakes, outages, protests) {
     if (o.country && conflictCountries.has(o.country)) continue;
     const oLat = o.location?.latitude ?? o.lat;
     const oLon = o.location?.longitude ?? o.lon;
-    if (oLat == null || oLon == null || (oLat === 0 && oLon === 0)) continue;
+    if (!Number.isFinite(oLat) || !Number.isFinite(oLon) || (oLat === 0 && oLon === 0)) continue;
     const severityMap = { OUTAGE_SEVERITY_TOTAL: 90, OUTAGE_SEVERITY_MAJOR: 70, OUTAGE_SEVERITY_PARTIAL: 40, total: 90, major: 70, partial: 40 };
     signals.push({
       type: 'infra_outage',
@@ -612,7 +709,11 @@ function clusterByEntity(signals) {
 }
 
 // ── Scoring ─────────────────────────────────────────────────
-function scoreClusters(clusters, weights, threshold) {
+// Returns ALL scored clusters (un-thresholded). Callers apply the threshold
+// filter so observability logs can report `topScore` even when zero cards
+// pass — distinguishing "clusters formed, score below threshold" from
+// "no clusters formed at all" without re-running the scoring pass.
+function scoreClusters(clusters, weights, _threshold) {
   return clusters
     .map(cluster => {
       const perType = new Map();
@@ -644,8 +745,7 @@ function scoreClusters(clusters, weights, threshold) {
       const key = cluster.country ?? cluster.entityKey ?? `${centroidLat?.toFixed(1)},${centroidLon?.toFixed(1)}`;
 
       return { cluster, score, countries, centroidLat, centroidLon, key };
-    })
-    .filter(c => c.score >= threshold);
+    });
 }
 
 // ── Card Generation ─────────────────────────────────────────
@@ -711,6 +811,9 @@ const DOMAINS = {
 
 // ── Main ────────────────────────────────────────────────────
 async function computeCorrelation() {
+  const runtimeMode = await readCorrelationRuntimeMode();
+  console.log(`  [Correlation] runtime mode=${runtimeMode}`);
+
   const data = await fetchInputData();
 
   const hasAnyData = INPUT_KEYS.some(k => data[k] != null);
@@ -744,50 +847,102 @@ async function computeCorrelation() {
     lon: s.lon,
   }));
 
+  // Observability — raw inputs at the seam between fetchInputData and the
+  // per-domain pipelines. Without this it was impossible to tell whether
+  // 0-card domains meant "no input signals" vs "scored too low against
+  // threshold" vs "no clusters formed". news-with-coords is broken out
+  // because escalation/disaster spatial paths depend on it.
+  const newsWithCoords = newsClusters.filter(c => c.lat != null && c.lon != null).length;
+  console.log(
+    `  [Correlation] inputs: flights=${rawFlights.length} protests=${protests.length} ` +
+    `outages=${outages.length} quakes=${earthquakes.length} markets=${allMarkets.length} ` +
+    `news=${newsClusters.length} (${newsWithCoords} with lat/lon)`,
+  );
+
   const result = { military: [], escalation: [], economic: [], disaster: [], computedAt: Date.now() };
+
+  // Helper — apply threshold + emit one diagnostic line per domain.
+  // Logs signals, clusters, topScore (max regardless of threshold), and
+  // cards (count clearing threshold). topScore=0 when no clusters formed,
+  // distinguishing "scoring rejected everything" from "nothing to score".
+  const buildDomain = (domain, signals, _clusters, scored, threshold, titleFn) => {
+    const topScore = scored.length > 0
+      ? Math.round(Math.max(...scored.map(s => s.score)))
+      : 0;
+    const passing = scored.filter(s => s.score >= threshold);
+    const cards = passing.map(s => toCard(s, domain, titleFn)).sort((a, b) => b.score - a.score);
+    console.log(
+      `  [Correlation] ${domain.padEnd(10)} signals=${signals.length} ` +
+      `clusters=${scored.length} topScore=${topScore} threshold=${threshold} cards=${cards.length}`,
+    );
+    return cards;
+  };
 
   // Military
   const milSignals = collectMilitarySignals(rawFlights);
   const milClusters = clusterByProximity(milSignals, 500);
   const milScored = scoreClusters(milClusters, DOMAINS.military.weights, DOMAINS.military.threshold);
-  result.military = milScored.map(s => toCard(s, 'military', generateMilitaryTitle)).sort((a, b) => b.score - a.score);
+  result.military = buildDomain('military', milSignals, milClusters, milScored, DOMAINS.military.threshold, generateMilitaryTitle);
 
   // Escalation
   const escSignals = collectEscalationSignals(protests, outages, newsClusters);
   const escClusters = clusterByCountry(escSignals);
   const escScored = scoreClusters(escClusters, DOMAINS.escalation.weights, DOMAINS.escalation.threshold);
-  result.escalation = escScored.map(s => toCard(s, 'escalation', generateEscalationTitle)).sort((a, b) => b.score - a.score);
+  result.escalation = buildDomain('escalation', escSignals, escClusters, escScored, DOMAINS.escalation.threshold, generateEscalationTitle);
 
   // Economic
   const ecoSignals = collectEconomicSignals(allMarkets, newsClusters);
   const ecoClusters = clusterByEntity(ecoSignals);
   const ecoScored = scoreClusters(ecoClusters, DOMAINS.economic.weights, DOMAINS.economic.threshold);
-  result.economic = ecoScored.map(s => toCard(s, 'economic', generateEconomicTitle)).sort((a, b) => b.score - a.score);
+  result.economic = buildDomain('economic', ecoSignals, ecoClusters, ecoScored, DOMAINS.economic.threshold, generateEconomicTitle);
 
   // Disaster
   const disSignals = collectDisasterSignals(earthquakes, outages, protests);
   const disClusters = clusterByProximity(disSignals, 500);
   const disScored = scoreClusters(disClusters, DOMAINS.disaster.weights, DOMAINS.disaster.threshold);
-  result.disaster = disScored.map(s => toCard(s, 'disaster', generateDisasterTitle)).sort((a, b) => b.score - a.score);
+  result.disaster = buildDomain('disaster', disSignals, disClusters, disScored, DOMAINS.disaster.threshold, generateDisasterTitle);
 
   return result;
 }
 
-runSeed('correlation', 'cards', CANONICAL_KEY, computeCorrelation, {
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'correlation-engine-v1',
-  recordCount: (data) => (data.military?.length ?? 0) + (data.escalation?.length ?? 0) + (data.economic?.length ?? 0) + (data.disaster?.length ?? 0),
-  extraKeys: [
-    { key: 'correlation:military:v1', ttl: CACHE_TTL },
-    { key: 'correlation:escalation:v1', ttl: CACHE_TTL },
-    { key: 'correlation:economic:v1', ttl: CACHE_TTL },
-    { key: 'correlation:disaster:v1', ttl: CACHE_TTL },
-  ].map(ek => ({
-    key: ek.key,
-    ttl: ek.ttl,
-    transform: (data) => data[ek.key.split(':')[1]],
-  })),
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+export function declareRecords(data) {
+  return CORRELATION_CARD_DOMAINS.reduce((total, domain) => {
+    const cards = data?.[domain];
+    return total + (Array.isArray(cards) ? cards.length : 0);
+  }, 0);
+}
+
+export function validateFn(data) {
+  return (
+    data != null &&
+    typeof data === 'object' &&
+    CORRELATION_CARD_DOMAINS.every((domain) => Array.isArray(data[domain])) &&
+    declareRecords(data) >= MIN_CORRELATION_CARDS
+  );
+}
+
+if (process.argv[1]?.endsWith('seed-correlation.mjs')) {
+  runSeed('correlation', 'cards', CANONICAL_KEY, computeCorrelation, {
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'correlation-engine-v1',
+    validateFn,
+    recordCount: declareRecords,
+    extraKeys: [
+      { key: 'correlation:military:v1', ttl: CACHE_TTL },
+      { key: 'correlation:escalation:v1', ttl: CACHE_TTL },
+      { key: 'correlation:economic:v1', ttl: CACHE_TTL },
+      { key: 'correlation:disaster:v1', ttl: CACHE_TTL },
+    ].map(ek => ({
+      key: ek.key,
+      ttl: ek.ttl,
+      transform: (data) => data[ek.key.split(':')[1]],
+    })),
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 15,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

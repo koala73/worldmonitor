@@ -295,10 +295,54 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
   };
 }
 
+// A shelf-price change beyond a 4x ratio in either direction is far more likely
+// a unit/pack-size parse artifact (single vs multipack, per-kg vs per-100g,
+// currency drift) than a real move. Gating these keeps movers trustworthy
+// (#5445); the 4x bilateral bound mirrors the grocery-basket outlier gate
+// (#2322).
+export const MAX_MOVE_RATIO = 4;
+
+// How many movers each direction publishes. Presentation only.
+export const MOVERS_PER_DIRECTION = 10;
+
+// How many candidates an all-gated window needs before it is loud enough to
+// fail the run. Deliberately NOT MOVERS_PER_DIRECTION: retuning how many
+// movers the UI shows must not move an alarm threshold. Sample size governs
+// only the severity of an all-gated window, never whether it is trustworthy —
+// too few candidates to tell a systemic parse break from a thin market means
+// stay quiet, not publish anyway.
+//
+// Sized against the real candidate universe, which is far smaller than the
+// query's LIMIT 200 suggests: scrape targets come from basket items
+// (adapters/search.ts discoverTargets), baskets hold 12 items, and enabled
+// retailers per market run 2 to 4. The ceiling is therefore 24 to 48 rows,
+// and a row also needs a current in-stock price AND an observation inside the
+// one-day slot rangeDays back, so live counts sit far below it — market `in`
+// produced 1. A floor of 10 would be 42% of the smallest ceiling and would
+// leave this alarm effectively unreachable. 5 stays above the thin-window
+// noise that caused the #5445 gate to fail the cron while remaining reachable
+// for a market with real coverage.
+//
+// This wants a distribution query against production candidate counts to
+// confirm; it is currently reasoned from the config ceilings, not measured.
+export const MIN_PARSE_BREAK_SAMPLE = 5;
+
+export function isPlausiblePriceMove(changePct: number): boolean {
+  if (!Number.isFinite(changePct)) return false;
+  const ratio = 1 + changePct / 100; // newPrice / pastPrice
+  return ratio >= 1 / MAX_MOVE_RATIO && ratio <= MAX_MOVE_RATIO;
+}
+
+// Null means "candidates existed but none survived the plausibility gate", a
+// third outcome distinct from both a real snapshot and an empty window. The
+// caller must skip the write so the last good snapshot lives out its TTL:
+// publishing zero movers here would overwrite it and, because recordCount()
+// floors movers at 1, stamp the envelope OK — a market whose every candidate
+// failed validation would read as fresh, valid and quiet.
 export async function buildMoversSnapshot(
   marketCode: string,
   rangeDays: number,
-): Promise<WMMoversSnapshot> {
+): Promise<WMMoversSnapshot | null> {
   const now = Date.now();
   const range = `${rangeDays}d`;
 
@@ -317,7 +361,7 @@ export async function buildMoversSnapshot(
        FROM retailer_products rp
        JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $1 AND r.active = true
        JOIN price_observations po ON po.retailer_product_id = rp.id AND po.in_stock = true
-       ORDER BY rp.id, po.observed_at DESC
+       ORDER BY rp.id, po.observed_at DESC, po.id DESC
      ),
      past AS (
        SELECT DISTINCT ON (rp.id) rp.id, po.price AS past_price
@@ -326,7 +370,7 @@ export async function buildMoversSnapshot(
        JOIN price_observations po ON po.retailer_product_id = rp.id
          AND po.observed_at BETWEEN NOW() - ($2 || ' days')::INTERVAL - INTERVAL '1 day'
                                  AND NOW() - ($2 || ' days')::INTERVAL
-       ORDER BY rp.id, po.observed_at DESC
+       ORDER BY rp.id, po.observed_at DESC, po.id DESC
      )
      SELECT l.id AS product_id, l.raw_title, l.category_text, l.retailer_slug,
             l.price AS current_price, l.currency_code,
@@ -335,7 +379,10 @@ export async function buildMoversSnapshot(
      JOIN past p ON p.id = l.id
      WHERE p.past_price > 0
      ORDER BY ABS((l.price - p.past_price) / p.past_price) DESC
-     LIMIT 30`,
+     -- 200 (not 30): the biggest-magnitude rows are exactly the ones the
+     -- plausibility gate below rejects, so the window needs headroom or
+     -- artifacts starve the top-10 lists (#5445)
+     LIMIT 200`,
     [marketCode, rangeDays],
   );
 
@@ -349,12 +396,39 @@ export async function buildMoversSnapshot(
     changePct: parseFloat(r.change_pct),
   }));
 
+  // Drop implausible movers (unit/pack-size parse artifacts) before ranking so
+  // the published risers/fallers stay trustworthy (#5445).
+  const plausible = all.filter((r) => isPlausiblePriceMove(r.changePct));
+  const dropped = all.length - plausible.length;
+  if (dropped > 0) {
+    console.warn(
+      `[movers] ${marketCode} ${range}: dropped ${dropped}/${all.length} implausible movers (outside ${1 / MAX_MOVE_RATIO}x-${MAX_MOVE_RATIO}x — likely unit/parse artifacts)`,
+    );
+  }
+  if (all.length > 0 && plausible.length === 0) {
+    // Nothing here is publishable either way — the caller skips the write and
+    // the last good snapshot stands (#5445). Only the alarm level depends on
+    // how much evidence there is: a full window of artifacts means the parser
+    // broke, so fail the run. Too thin to make that call and the run stays
+    // green, because one chronically sparse market must not exit the whole
+    // publish job 1 while every other market publishes fine.
+    if (all.length >= MIN_PARSE_BREAK_SAMPLE) {
+      throw new Error(
+        `[movers] ${marketCode} ${range}: all ${all.length} candidates gated as implausible — refusing to publish an empty movers snapshot`,
+      );
+    }
+    console.warn(
+      `[movers] ${marketCode} ${range}: all ${all.length} candidate(s) gated as implausible — too few to call a parse break; skipping the write and keeping the last good snapshot`,
+    );
+    return null;
+  }
+
   return {
     marketCode,
     asOf: String(now),
     range,
-    risers: all.filter((r) => r.changePct > 0).slice(0, 10),
-    fallers: all.filter((r) => r.changePct < 0).slice(0, 10),
+    risers: plausible.filter((r) => r.changePct > 0).slice(0, MOVERS_PER_DIRECTION),
+    fallers: plausible.filter((r) => r.changePct < 0).slice(0, MOVERS_PER_DIRECTION),
     upstreamUnavailable: false,
   };
 }
@@ -389,7 +463,7 @@ export async function buildRetailerSpreadSnapshot(
          SELECT price, observed_at
          FROM price_observations
          WHERE retailer_product_id = rp.id AND in_stock = true
-         ORDER BY observed_at DESC LIMIT 1
+         ORDER BY observed_at DESC, id DESC LIMIT 1
        ) po ON true
        WHERE b.slug = $1
        GROUP BY r.id, r.slug, r.name, r.currency_code, bi.id

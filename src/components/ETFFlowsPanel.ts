@@ -1,10 +1,11 @@
 import { Panel } from './Panel';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
-import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
+
 import type { ListEtfFlowsResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { getHydratedData } from '@/services/bootstrap';
+import { MarketServiceClient } from '@/services/generated-rpc-clients';
 
 type ETFFlowsResult = ListEtfFlowsResponse;
 
@@ -19,6 +20,21 @@ function flowClass(direction: string): string {
   if (direction === 'inflow') return 'flow-inflow';
   if (direction === 'outflow') return 'flow-outflow';
   return 'flow-neutral';
+}
+
+type NetFlowKind = 'inflow' | 'outflow' | 'neutral';
+
+function netFlowKind(direction: string): NetFlowKind {
+  if (direction.includes('INFLOW')) return 'inflow';
+  if (direction.includes('OUTFLOW')) return 'outflow';
+  return 'neutral';
+}
+
+export function etfNetFlowLabel(direction: string): string {
+  const kind = netFlowKind(direction);
+  if (kind === 'inflow') return t('components.etfFlows.netInflow');
+  if (kind === 'outflow') return t('components.etfFlows.netOutflow');
+  return t('components.etfFlows.netNeutral');
 }
 
 function changeClass(val: number): string {
@@ -85,12 +101,12 @@ export class ETFFlowsPanel extends Panel {
     const d = this.data;
     if (!d.etfs?.length) {
       const msg = d.rateLimited ? t('components.etfFlows.rateLimited') : t('components.etfFlows.unavailable');
-      this.setContent(`<div class="panel-loading-text">${msg}</div>`);
+      this.setSafeContent(unsafeRawHtml(`<div class="panel-loading-text">${msg}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
     const s = d.summary || { etfCount: 0, totalVolume: 0, totalEstFlow: 0, netDirection: 'NEUTRAL', inflowCount: 0, outflowCount: 0 };
-    const dirClass = s.netDirection.includes('INFLOW') ? 'flow-inflow' : s.netDirection.includes('OUTFLOW') ? 'flow-outflow' : 'flow-neutral';
+    const dirClass = `flow-${netFlowKind(s.netDirection)}`;
 
     const rows = d.etfs.map(etf => `
       <tr class="etf-row ${flowClass(etf.direction)}">
@@ -107,7 +123,7 @@ export class ETFFlowsPanel extends Panel {
         <div class="etf-summary ${dirClass}">
           <div class="etf-summary-item">
             <span class="etf-summary-label">${t('components.etfFlows.netFlow')}</span>
-            <span class="etf-summary-value ${dirClass}">${s.netDirection.includes('INFLOW') ? t('components.etfFlows.netInflow') : t('components.etfFlows.netOutflow')}</span>
+            <span class="etf-summary-value ${dirClass}">${etfNetFlowLabel(s.netDirection)}</span>
           </div>
           <div class="etf-summary-item">
             <span class="etf-summary-label">${t('components.etfFlows.estFlow')}</span>
@@ -126,11 +142,11 @@ export class ETFFlowsPanel extends Panel {
           <table class="etf-table">
             <thead>
               <tr>
-                <th>${t('components.etfFlows.table.ticker')}</th>
-                <th>${t('components.etfFlows.table.issuer')}</th>
-                <th>${t('components.etfFlows.table.estFlow')}</th>
-                <th>${t('components.etfFlows.table.volume')}</th>
-                <th>${t('components.etfFlows.table.change')}</th>
+                <th scope="col">${t('components.etfFlows.table.ticker')}</th>
+                <th scope="col">${t('components.etfFlows.table.issuer')}</th>
+                <th scope="col">${t('components.etfFlows.table.estFlow')}</th>
+                <th scope="col">${t('components.etfFlows.table.volume')}</th>
+                <th scope="col">${t('components.etfFlows.table.change')}</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -139,6 +155,6 @@ export class ETFFlowsPanel extends Panel {
       </div>
     `;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

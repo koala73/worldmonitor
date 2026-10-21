@@ -1,0 +1,94 @@
+[
+{
+"htsno": "7208.10",
+"indent": "1",
+"description": "In coils, not further worked than hot-rolled, with patterns in relief:",
+"superior": null,
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": "",
+"additionalDuties": "",
+"addiitionalDuties": null
+},
+{
+"htsno": "7208.10.15.00",
+"indent": "2",
+"description": "Pickled",
+"superior": null,
+"units": [
+"kg"
+],
+"general": "Free",
+"special": "",
+"other": "0.4¢/kg + 20%",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "2",
+"description": "Other:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "7208.10.30.00",
+"indent": "3",
+"description": "Of a thickness of 4.75 mm or more",
+"superior": null,
+"units": [
+"kg"
+],
+"general": "Free",
+"special": "",
+"other": "20%",
+"footnotes": [
+{
+"columns": [
+"other"
+],
+"value": "See 9903.90.09. ",
+"type": "endnote"
+}
+],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "7208.10.60.00",
+"indent": "3",
+"description": "Of a thickness of less than 4.75 mm",
+"superior": null,
+"units": [
+"kg"
+],
+"general": "Free",
+"special": "",
+"other": "20%",
+"footnotes": [
+{
+"columns": [
+"other"
+],
+"value": "See 9903.90.09. ",
+"type": "endnote"
+}
+],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+}
+]

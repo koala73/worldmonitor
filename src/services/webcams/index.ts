@@ -1,11 +1,6 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  WebcamServiceClient,
-  type WebcamEntry,
-  type WebcamCluster,
-  type ListWebcamsResponse,
-  type GetWebcamImageResponse,
-} from '@/generated/client/worldmonitor/webcam/v1/service_client';
+import type { WebcamEntry, WebcamCluster, ListWebcamsResponse, GetWebcamImageResponse } from '@/generated/client/worldmonitor/webcam/v1/service_client';
+import { WebcamServiceClient } from '@/services/generated-rpc-clients';
 
 const client = new WebcamServiceClient(getRpcBaseUrl(), {
   fetch: (...args) => globalThis.fetch(...args),

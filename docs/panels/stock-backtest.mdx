@@ -1,0 +1,41 @@
+---
+title: "Premium Backtesting"
+description: "Historical return and percent-change visualisation for the technical stock signal model."
+---
+
+The **Premium Backtesting** panel (internal id `stock-backtest`) renders a compact list of technical-signal backtests — one row per ticker. Point-in-time fundamentals are not available in the historical Yahoo bars, so this panel does not replay the fundamentals-blended rating shown by [Premium Stock Analysis](/panels/stock-analysis).
+
+## What the panel shows
+
+A list of `StockBacktestResult[]` rows — one per symbol. Each row shows the ticker and percent-change / return figures formatted via `fmtPct()`, with positive values rendered in a bullish tint (`#8df0b2`) and negative values in a bearish tint (`#ff8c8c`) via `tone()`.
+
+Source state is tracked — `'live' | 'cached'` — so the panel's data badge shows whether the render came from a fresh fetch or a cached snapshot. Empty result sets render a "No stock backtests available yet." retry state via `showRetrying()`.
+
+Panel id is `stock-backtest`; canonical component is `src/components/StockBacktestPanel.ts`. Title "Premium Backtesting" per the panel's `super({...})` call.
+
+## How you reach it
+
+- **Cmd+K**: type *backtest* or *backtesting*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** and **finance** variants — locked in both. Not present in the tech, commodity, or happy variants. Source: `'stock-backtest'` entries in `FULL_PANELS` (`:50`) and `FINANCE_PANELS`.
+
+## Data sources
+
+Backtests are produced by a Railway cron that reconstructs technical-only signals from historical price series and evaluates them against later bars. Responses declare `ratingBasis: "technical_only"` and use a distinct engine version. Results are stored in the premium-stock store and fetched via `@/services/stock-backtest`; stale or missing stored rows can be recomputed on demand.
+
+| Method + route | Feeds |
+|---|---|
+| `GET /api/market/v1/list-stored-stock-backtests` | Stored premium backtest snapshots rendered first when fresh. |
+| `GET /api/market/v1/backtest-stock` | On-demand per-symbol backtest recomputation for missing or stale rows. |
+
+## Refresh cadence
+
+Backtest results update with the premium-stock cron. Freshness is signalled by the data badge (`live` vs `cached`).
+
+## Tier & gating
+
+**PRO (hard-locked).** `premium: 'locked'` in the panel's constructor and in variant registrations. `isPanelEntitled` unlocks it when **either** a valid `WORLDMONITOR_API_KEY` is present **or** `isPro` is true (`stock-backtest` is in the `apiKeyPanels` allowlist at `src/config/panels.ts:973`).
+
+## API reference
+
+- [Markets service](https://github.com/koala73/worldmonitor/blob/main/docs/api/MarketService.openapi.yaml) — schemas and parameters for `list-stored-stock-backtests` and `backtest-stock`.
+- Related: [Premium Stock Analysis](/panels/stock-analysis) — per-ticker deep dive that seeds the backtest input.

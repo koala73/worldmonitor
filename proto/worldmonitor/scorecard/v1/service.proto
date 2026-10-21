@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package worldmonitor.scorecard.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/scorecard/v1/get_bloc_scorecard.proto";
+import "worldmonitor/scorecard/v1/get_five_factor_scorecard.proto";
+import "worldmonitor/scorecard/v1/list_five_factor_scorecards.proto";
+
+service ScorecardService {
+  option (sebuf.http.service_config) = {base_path: "/api/scorecard/v1"};
+
+  rpc GetFiveFactorScorecard(GetFiveFactorScorecardRequest) returns (GetFiveFactorScorecardResponse) {
+    option (sebuf.http.config) = {path: "/get-five-factor-scorecard", method: HTTP_METHOD_GET};
+  }
+
+  rpc ListFiveFactorScorecards(ListFiveFactorScorecardsRequest) returns (ListFiveFactorScorecardsResponse) {
+    option (sebuf.http.config) = {path: "/list-five-factor-scorecards", method: HTTP_METHOD_GET};
+  }
+
+  rpc GetBlocScorecard(GetBlocScorecardRequest) returns (GetBlocScorecardResponse) {
+    option (sebuf.http.config) = {path: "/get-bloc-scorecard", method: HTTP_METHOD_GET};
+  }
+}

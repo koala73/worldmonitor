@@ -1,0 +1,119 @@
+{
+  "pageHelp": {
+    "pageNo": 1,
+    "pageSize": 25,
+    "total": 11
+  },
+  "result": [
+    {
+      "ADDDATE": "2026-07-01 18:00:00",
+      "BULLETIN_HEADING": "临时公告",
+      "BULLETIN_TYPE": "其它",
+      "SECURITY_CODE": "600519",
+      "SECURITY_NAME": "贵州茅台",
+      "SSEDATE": "2026-07-01",
+      "TITLE": "贵州茅台关于控股股东部分股份质押的公告",
+      "URL": "/disclosure/listedinfo/announcement/c/new/2026-07-01/600519_20260701_P001.pdf"
+    },
+    {
+      "ADDDATE": "2026-07-02 18:00:00",
+      "BULLETIN_HEADING": "临时公告",
+      "BULLETIN_TYPE": "其它",
+      "SECURITY_CODE": "600519",
+      "SECURITY_NAME": "贵州茅台",
+      "SSEDATE": "2026-07-02",
+      "TITLE": "贵州茅台关于对《贵州茅台关于控股股东部分股份质押的公告》的更正公告",
+      "URL": "/disclosure/listedinfo/announcement/c/new/2026-07-02/600519_20260702_P002.pdf"
+    },
+    {
+      "ADDDATE": "2026-07-03 18:00:00",
+      "BULLETIN_HEADING": "临时公告",
+      "BULLETIN_TYPE": "其它",
+      "SECURITY_CODE": "600519",
+      "SECURITY_NAME": "贵州茅台",
+      "SSEDATE": "2026-07-03",
+      "TITLE": "贵州茅台关于撤回《贵州茅台关于控股股东部分股份质押的公告》的公告",
+      "URL": "/disclosure/listedinfo/announcement/c/new/2026-07-03/600519_20260703_P003.pdf"
+    },
+    {
+      "ADDDATE": "2026-07-04 18:00:00",
+      "BULLETIN_HEADING": "临时公告",
+      "BULLETIN_TYPE": "其它",
+      "SECURITY_CODE": "600519",
+      "SECURITY_NAME": "贵州茅台",
+      "SSEDATE": "2026-07-04",
+      "TITLE": "贵州茅台关于收到中国证监会立案告知书的公告",
+      "URL": "/disclosure/listedinfo/announcement/c/new/2026-07-04/600519_20260704_I001.pdf"
+    },
+    {
+      "ADDDATE": "2026-07-05 18:00:00",
+      "BULLETIN_HEADING": "临时公告",
+      "BULLETIN_TYPE": "其它",
+      "SECURITY_CODE": "600519",
+      "SECURITY_NAME": "贵州茅台",
+      "SSEDATE": "2026-07-05",
+      "TITLE": "贵州茅台2026年半年度业绩预告",
+      "URL": "/disclosure/listedinfo/announcement/c/new/2026-07-05/600519_20260705_E001.pdf"
+    },
+    {
+      "ADDDATE": "2026-07-06 18:00:00",
+      "BULLETIN_HEADING": "临时公告",
+      "BULLETIN_TYPE": "其它",
+      "SECURITY_CODE": "600519",
+      "SECURITY_NAME": "贵州茅台",
+      "SSEDATE": "2026-07-06",
+      "TITLE": "贵州茅台关于重大资产重组进展的公告",
+      "URL": "/disclosure/listedinfo/announcement/c/new/2026-07-06/600519_20260706_R001.pdf"
+    },
+    {
+      "ADDDATE": "2026-07-07 18:00:00",
+      "BULLETIN_HEADING": "临时公告",
+      "BULLETIN_TYPE": "其它",
+      "SECURITY_CODE": "600519",
+      "SECURITY_NAME": "贵州茅台",
+      "SSEDATE": "2026-07-07",
+      "TITLE": "贵州茅台关于筹划重大事项停牌的公告",
+      "URL": "/disclosure/listedinfo/announcement/c/new/2026-07-07/600519_20260707_H001.pdf"
+    },
+    {
+      "ADDDATE": "2026-07-08 18:00:00",
+      "BULLETIN_HEADING": "临时公告",
+      "BULLETIN_TYPE": "其它",
+      "SECURITY_CODE": "600519",
+      "SECURITY_NAME": "贵州茅台",
+      "SSEDATE": "2026-07-08",
+      "TITLE": "贵州茅台关于公司股票复牌的公告",
+      "URL": "/disclosure/listedinfo/announcement/c/new/2026-07-08/600519_20260708_H002.pdf"
+    },
+    {
+      "ADDDATE": "2026-07-09 18:00:00",
+      "BULLETIN_HEADING": "临时公告",
+      "BULLETIN_TYPE": "其它",
+      "SECURITY_CODE": "600519",
+      "SECURITY_NAME": "贵州茅台",
+      "SSEDATE": "2026-07-09",
+      "TITLE": "贵州茅台关于股票交易异常波动的风险提示公告",
+      "URL": "/disclosure/listedinfo/announcement/c/new/2026-07-09/600519_20260709_W001.pdf"
+    },
+    {
+      "ADDDATE": "2026-07-10 18:00:00",
+      "BULLETIN_HEADING": "临时公告",
+      "BULLETIN_TYPE": "其它",
+      "SECURITY_CODE": "600519",
+      "SECURITY_NAME": "贵州茅台",
+      "SSEDATE": "2026-07-10",
+      "TITLE": "贵州茅台关于召开2025年度业绩说明会的公告",
+      "URL": "/disclosure/listedinfo/announcement/c/new/2026-07-10/600519_20260710_C001.pdf"
+    },
+    {
+      "ADDDATE": "2026-07-11 18:00:00",
+      "BULLETIN_HEADING": "临时公告",
+      "BULLETIN_TYPE": "其它",
+      "SECURITY_CODE": "999999",
+      "SECURITY_NAME": "未审查公司",
+      "SSEDATE": "2026-07-11",
+      "TITLE": "未审查公司关于股票停牌的公告",
+      "URL": "/disclosure/listedinfo/announcement/c/new/2026-07-11/999999_20260711_X001.pdf"
+    }
+  ]
+}

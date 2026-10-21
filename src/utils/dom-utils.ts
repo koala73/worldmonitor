@@ -1,6 +1,14 @@
 /** Anything that can appear as a child of h() / fragment(). */
 export type DomChild = Node | string | number | null | undefined | false;
 
+declare const trustedHtmlBrand: unique symbol;
+
+/**
+ * HTML that has already been sanitized, escaped, or proven static by its
+ * caller. Direct `innerHTML` writes outside this module are lint-guarded.
+ */
+export type TrustedHtml = string & { readonly [trustedHtmlBrand]: true };
+
 /** Props accepted by h(). */
 export interface DomProps {
   className?: string;
@@ -54,7 +62,18 @@ export function replaceChildren(el: Element, ...children: DomChild[]): void {
   el.appendChild(frag);
 }
 
-export function rawHtml(html: string): DocumentFragment {
+export function trustedHtml(html: string, reason: string): TrustedHtml {
+  if (!reason.trim()) {
+    throw new Error('trustedHtml() requires an audit reason');
+  }
+  return html as TrustedHtml;
+}
+
+export function setTrustedHtml(el: Element, html: TrustedHtml): void {
+  el.innerHTML = html;
+}
+
+export function rawHtml(html: TrustedHtml): DocumentFragment {
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
   return tpl.content;
@@ -69,19 +88,48 @@ const SAFE_ATTRS = new Set(['class', 'href', 'target', 'rel', 'style']);
 // Blocks url(), expression(), javascript:, data: and other CSS injection vectors.
 const SAFE_STYLE_RE = /^color:\s*(#[0-9a-fA-F]{3,8}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|[a-zA-Z]+|var\(--[\w-]+\))\s*;?\s*$/;
 
+export function ensureNoopenerRel(rel: string | null): string {
+  const tokens = new Set(
+    (rel ?? '')
+      .split(/\s+/)
+      .map((token) => token.trim().toLowerCase())
+      .filter((token) => token && token !== 'opener'),
+  );
+  tokens.add('noopener');
+  tokens.add('noreferrer');
+  return Array.from(tokens).join(' ');
+}
+
+// Resolve against a sentinel origin: a genuine path keeps it, anything the
+// parser reads as scheme-relative or host-bearing leaves it. Same test-only
+// origin as src/shared/public-rpc-cache.ts (source-attribution manifest).
+const SAME_ORIGIN_SENTINEL = 'https://worldmonitor.invalid';
+function isSameOriginPath(href: string): boolean {
+  if (!href.startsWith('/')) return false;
+  try {
+    return new URL(href, `${SAME_ORIGIN_SENTINEL}/`).origin === SAME_ORIGIN_SENTINEL;
+  } catch {
+    return false;
+  }
+}
+
 /** Like rawHtml() but strips tags and attributes not in the allowlist. */
 export function safeHtml(html: string): DocumentFragment {
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
   const walk = (parent: Element | DocumentFragment) => {
-    const children = Array.from(parent.childNodes);
-    for (const node of children) {
+    let index = 0;
+    while (index < parent.childNodes.length) {
+      const node = parent.childNodes[index];
+      if (!node) break;
       if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as Element;
         if (!SAFE_TAGS.has(el.tagName.toLowerCase())) {
           // Unwrap: keep children, remove the element itself
           while (el.firstChild) parent.insertBefore(el.firstChild, el);
           parent.removeChild(el);
+          // Promoted children now occupy this index. Visit them before moving
+          // on so nested rejected wrappers cannot hide unsafe descendants.
           continue;
         }
         // Strip unsafe attributes
@@ -90,10 +138,12 @@ export function safeHtml(html: string): DocumentFragment {
             el.removeAttribute(attr.name);
           }
         }
-        // Sanitize href to prevent javascript: URIs
+        // Sanitize href to prevent javascript: URIs. A leading "/" is only a
+        // same-origin path if the URL parser agrees: "//host", "/\host" and
+        // "/\t/host" all resolve to another origin.
         if (el.hasAttribute('href')) {
           const href = el.getAttribute('href') || '';
-          if (!/^https?:\/\//i.test(href) && !href.startsWith('/') && !href.startsWith('#')) {
+          if (!/^https?:\/\//i.test(href) && !isSameOriginPath(href) && !href.startsWith('#')) {
             el.removeAttribute('href');
           }
         }
@@ -104,8 +154,15 @@ export function safeHtml(html: string): DocumentFragment {
             el.removeAttribute('style');
           }
         }
+        if (
+          el.tagName.toLowerCase() === 'a' &&
+          el.getAttribute('target')?.toLowerCase() === '_blank'
+        ) {
+          el.setAttribute('rel', ensureNoopenerRel(el.getAttribute('rel')));
+        }
         walk(el);
       }
+      index += 1;
     }
   };
   walk(tpl.content);
@@ -155,4 +212,26 @@ function appendChildren(
       parent.appendChild(document.createTextNode(String(child)));
     }
   }
+}
+
+/**
+ * Focusable elements within a modal/overlay root, for focus-trap Tab cycling.
+ * Filters out disabled, hidden, aria-hidden, and undisplayed (offsetParent-less)
+ * matches so the trap never focuses something the user can't see.
+ *
+ * Form controls are included: a dialog that traps Tab must be able to reach its
+ * own inputs, so this is the single definition every trap shares.
+ */
+export function getFocusableElements(root: ParentNode): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter(
+    (el) =>
+      !el.hasAttribute('disabled') &&
+      !el.hasAttribute('hidden') &&
+      el.getAttribute('aria-hidden') !== 'true' &&
+      el.offsetParent !== null,
+  );
 }

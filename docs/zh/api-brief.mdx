@@ -1,0 +1,92 @@
+---
+title: "AI 简报端点"
+description: "读取、分享、渲染并分页 AI 生成的 World Monitor 每日全球情报简报——涵盖公开分享链接、轮播卡片、分享 URL 生成、订阅推送与嵌入端点的完整参考，适合将简报无缝接入你的网站、新闻邮件、Slack 频道、Discord 服务器、企业门户或自定义仪表盘展示。"
+---
+
+WorldMonitor 在 Railway 上为每个用户生成情报简报，将每一期存储在 Redis 的 `brief:{userId}:{issueSlot}` 中，并在 `brief:latest:{userId}` 写入最新指针，暴露以下路由用于仪表盘回读、公开分享以及 Telegram/Slack 轮播渲染。默认节奏为每日，但每条告警规则的 `digestMode` 可调度每日、每日两次或每周的版本。
+
+关于来源选择、过滤、去重、LLM 接地和偏见控制，请参见 [新闻摘要与简报方法论](/zh/methodology/news-digest-and-briefing)。
+
+<Info>
+所有读取路由都需要有效的 Clerk 会话和 PRO 层级，公开分享路由（`/api/brief/public/{hash}`）除外。
+</Info>
+
+## 最新简报（已认证）
+
+### `GET /api/latest-brief`
+
+返回调用者最近生成简报的摘要，如果所请求/当前时段尚未生成简报，则返回 `{ status: "composing" }`。
+
+| 状态 | 响应 |
+|--------|----------|
+| 200 OK | `{ status: "ready", issueDate, issueSlot, dateLong, greeting, threadCount, magazineUrl }` |
+| 200 OK | `{ status: "composing", issueDate, issueSlot? }` — 当前/所请求时段尚无简报 |
+| 401 | 缺失/无效的 Clerk JWT |
+| 403 | `pro_required`（权益被确认为非 Pro）/ `subscription_lapsed`（已与计费提供方确认失效，并设置 `X-Billing-Verification`） |
+| 503 | `BRIEF_URL_SIGNING_SECRET` 未配置 —— **或**权益校验本身处于不确定状态：`entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`，并携带 `Retry-After` 与 `X-Billing-Verification`。请依据 `code` 字段区分。参见[错误处理](/zh/usage-errors) |
+
+`issueDate` 仍是显示/日期字段（`YYYY-MM-DD`）。`issueSlot` 是冻结的版本键（`YYYY-MM-DD-HHMM`），用于 Redis 查找和 HMAC 绑定；它出现在 ready 响应中，以及显式请求时段的未命中响应中。`magazineUrl` 针对 `{userId, issueSlot}` 重新签名，因此仅对已认证的所有者有效。
+
+### `GET /api/brief/{userId}/{issueSlot}`
+
+`issueSlot`（`YYYY-MM-DD-HHMM`）的完整杂志阅读器。需要 HMAC 签名 URL。时段格式允许两次同日摘要投递产生不同的冻结版本。
+
+## 分享
+
+### `POST /api/brief/share-url?slot=YYYY-MM-DD-HHMM`
+
+为调用者在 `slot` 的简报物化一个公开分享指针。若省略 slot，该路由解析 `brief:latest:{userId}`。幂等 — hash 是 `{userId, issueSlot, BRIEF_SHARE_SECRET}` 的纯函数。
+
+| 状态 | 响应 |
+|--------|----------|
+| 200 | `{ shareUrl, hash, issueSlot }` |
+| 400 | `invalid_slot_shape` / `invalid_payload` |
+| 401 | `UNAUTHENTICATED` |
+| 403 | `pro_required`（权益被确认为非 Pro）/ `subscription_lapsed`（已与计费提供方确认失效，并设置 `X-Billing-Verification`） |
+| 404 | `brief_not_found` — 阅读器无法分享不存在的内容 |
+| 503 | `service_unavailable` —— **或**权益校验本身处于不确定状态：`entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`，并携带 `Retry-After` 与 `X-Billing-Verification`。请依据 `code` 字段区分。参见[错误处理](/zh/usage-errors) |
+
+### `GET /api/brief/public/{hash}`
+
+**无需认证**的公开读取，用于之前分享的简报。该 hash 解析为 `brief:public:{hash} → {userId, issueSlot}` Redis 指针；如果不存在，则该简报从未被分享。分享指针是惰性写入的（在分享时，而非生成时）。
+
+## 轮播（社交媒体图片）
+
+### `GET /api/brief/carousel/{userId}/{issueDate}/{page}.png?t={token}`
+
+服务器渲染的简报 PNG 页面，用于 Telegram `sendMediaGroup`、Slack `chat.postMessage`、LinkedIn 等。
+
+- `page` 只能是 **0、1 或 2**，分别表示 `cover`、`threads`和 `story`；其他值返回 `404 invalid_page`。
+- 通过 `@vercel/og` 渲染。
+- `Content-Type: image/png`，1200×630。
+- HMAC 能力令牌必须放在 `?t=` 查询参数中；缺失或无效令牌均返回 `403`。
+
+## 辅助
+
+### `GET /api/story?c={ISO2}&t={type}`
+
+面向社交媒体爬虫的公开只读 HTML 页面，展示一个**国家故事**（默认类型 `ciianalysis`）。参数：`c`（国家，必填）、`t`（故事类型）、`ts`（时间戳）、`s`（分数）、`l`（级别）。它不是简报阅读器，也不接受 `date` 参数。
+
+### `GET /api/og-story?c={ISO2}&t={type}`
+
+`/api/story` 的 Open Graph 预览图，接受相同的 `c`/`t`/`s`/`l` 参数。返回 `image/png`，激进缓存。
+
+### `POST /api/chat-analyst`
+
+仪表盘内"询问分析师"助手的流式聊天端点。接收用户提示+近期信号上下文；返回 SSE token。
+
+- 认证：Clerk JWT + PRO
+- 流式：`text/event-stream`
+- 后端：`intelligence/v1/chat-analyst-*` 处理器组合上下文+提示
+
+拒绝响应与上文简报端点采用同一套三分法，便于客户端区分"套餐判定"、"会话失效"与"服务故障"：
+
+| 状态 | 响应 |
+|--------|------|
+| 401 | `UNAUTHENTICATED` —— 未提供凭据，或凭据校验失败。请登录，重试无效 |
+| 403 | `Pro subscription required`（已确认非 Pro 套餐）/ `Subscription lapsed`（已向支付方确认订阅失效，设置 `X-Billing-Verification`） |
+| 503 | 权限校验无法完成：`entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`，携带 `Retry-After` 与 `X-Billing-Verification`。参见[错误处理](/usage-errors) |
+
+### `POST /api/widget-agent`
+
+嵌入式 widget iframe 使用的单次完成端点。通过 `X-WorldMonitor-Key`（合作伙伴密钥）认证。按密钥限流。

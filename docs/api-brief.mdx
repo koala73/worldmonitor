@@ -1,0 +1,109 @@
+---
+title: "AI Brief Endpoints"
+description: "Read, share, render, and paginate the AI-composed World Monitor intelligence brief — endpoints for public shares, carousels, and share URLs."
+---
+
+WorldMonitor composes a per-user intelligence brief on Railway, stores each
+edition in Redis at `brief:{userId}:{issueSlot}`, writes a latest pointer at
+`brief:latest:{userId}`, and exposes these routes for dashboard readback,
+public sharing, and Telegram/Slack carousel rendering. Default cadence is
+daily, but each alert rule's `digestMode` can schedule daily, twice-daily, or
+weekly editions.
+
+For source selection, filtering, deduplication, LLM grounding, and bias
+controls, see [News Digest and Briefing Methodology](/methodology/news-digest-and-briefing).
+
+<Info>
+All read routes require a valid Clerk session and a PRO tier, except the public share route (`/api/brief/public/{hash}`).
+</Info>
+
+## Latest brief (authenticated)
+
+### `GET /api/latest-brief`
+
+Returns a short summary of the caller's most recent composed brief, or
+`{ status: "composing" }` if the requested/current slot has not produced a
+brief yet.
+
+| Status | Response |
+|--------|----------|
+| 200 OK | `{ status: "ready", issueDate, issueSlot, dateLong, greeting, threadCount, magazineUrl }` |
+| 200 OK | `{ status: "composing", issueDate, issueSlot? }` — no brief for the current/requested slot yet |
+| 401 | Missing / invalid Clerk JWT |
+| 403 | `pro_required` (entitlement confirmed non-Pro) / `subscription_lapsed` (lapse confirmed with the provider, `X-Billing-Verification` set) |
+| 503 | `BRIEF_URL_SIGNING_SECRET` not configured — **or** entitlement verification in doubt: `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, with `Retry-After` and `X-Billing-Verification`. Distinguish on the `code` field. See [Error handling](/usage-errors) |
+
+`issueDate` remains the display/date field (`YYYY-MM-DD`). `issueSlot` is the
+frozen edition key (`YYYY-MM-DD-HHMM`) used for Redis lookup and HMAC binding;
+it is present on ready responses and on misses for an explicitly requested
+slot. The `magazineUrl` is freshly signed against `{userId, issueSlot}` so it
+only works for the authenticated owner.
+
+### `GET /api/brief/{userId}/{issueSlot}`
+
+Full magazine reader for `issueSlot` (`YYYY-MM-DD-HHMM`). HMAC-signed URL
+required. The slot format lets two same-day digest sends produce distinct
+frozen editions.
+
+## Sharing
+
+### `POST /api/brief/share-url?slot=YYYY-MM-DD-HHMM`
+
+Materialises a public share pointer for the caller's brief on `slot`. If the
+slot is omitted, the route resolves `brief:latest:{userId}`. Idempotent — hash
+is a pure function of `{userId, issueSlot, BRIEF_SHARE_SECRET}`.
+
+| Status | Response |
+|--------|----------|
+| 200 | `{ shareUrl, hash, issueSlot }` |
+| 400 | `invalid_slot_shape` / `invalid_payload` |
+| 401 | `UNAUTHENTICATED` |
+| 403 | `pro_required` (entitlement confirmed non-Pro) / `subscription_lapsed` (lapse confirmed with the provider, `X-Billing-Verification` set) |
+| 404 | `brief_not_found` — reader can't share what doesn't exist |
+| 503 | `service_unavailable` — **or** entitlement verification in doubt: `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, with `Retry-After` and `X-Billing-Verification`. Distinguish on the `code` field. See [Error handling](/usage-errors) |
+
+### `GET /api/brief/public/{hash}`
+
+**Unauthenticated** public read of a previously-shared brief. The hash resolves to a `brief:public:{hash} → {userId, issueSlot}` Redis pointer; if absent, the brief was never shared. Share pointers are written lazily (on share, not on compose).
+
+## Carousel (images for social)
+
+### `GET /api/brief/carousel/{userId}/{issueDate}/{page}.png?t={token}`
+
+Server-rendered PNG page of the brief, intended for Telegram `sendMediaGroup`, Slack `chat.postMessage`, LinkedIn, etc.
+
+- `page` is **0, 1, or 2** (`cover`, `threads`, `story`); anything else is `404 invalid_page`.
+- Rendered via `@vercel/og`.
+- `Content-Type: image/png`, 1200×630.
+- Gated by an HMAC capability **token in the `?t=` query parameter** — a missing or wrong token returns `403`.
+
+## Ancillary
+
+### `GET /api/story?c={ISO2}&t={type}`
+
+Public read-only HTML page for a shared **country story** (default type `ciianalysis`), built for social-media crawlers. Parameters: `c` (country, required), `t` (story type), `ts` (timestamp), `s` (score), `l` (level). It is not a brief reader and takes no `date` parameter.
+
+### `GET /api/og-story?c={ISO2}&t={type}`
+
+Open Graph preview image for `/api/story`, taking the same `c`/`t`/`s`/`l` parameters. Returns `image/png`, cached aggressively.
+
+### `POST /api/chat-analyst`
+
+Streaming chat endpoint for the "Ask the analyst" in-dashboard assistant. Takes a user prompt + recent-signal context; returns SSE tokens.
+
+- Auth: Clerk JWT + PRO
+- Streams: `text/event-stream`
+- Back-end: `intelligence/v1/chat-analyst-*` handlers compose context + prompt
+
+Denials carry the same three-way split as the brief endpoints above, so a
+client can tell a plan verdict from a session problem from an outage:
+
+| Status | Response |
+|--------|----------|
+| 401 | `UNAUTHENTICATED` — no credential, or one that did not validate. Sign in; retrying is futile |
+| 403 | `Pro subscription required` (entitlement confirmed non-Pro) / `Subscription lapsed` (lapse confirmed with the provider, `X-Billing-Verification` set) |
+| 503 | Entitlement verification in doubt: `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, with `Retry-After` and `X-Billing-Verification`. See [Error handling](/usage-errors) |
+
+### `POST /api/widget-agent`
+
+Single-shot completion endpoint used by embedded widget iframes. Auth via `X-WorldMonitor-Key` (partner keys); the legacy `X-Widget-Key` / `X-Pro-Key` headers and the `wm-widget-key` cookie are also accepted. Rate-limited per key.

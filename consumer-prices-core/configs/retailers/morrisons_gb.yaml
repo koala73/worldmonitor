@@ -1,0 +1,31 @@
+retailer:
+  slug: morrisons_gb
+  name: Morrisons UK
+  marketCode: gb
+  currencyCode: GBP
+  adapter: search
+  # added 2026-08-10 (#6358) replacing the anti-bot-blocked tesco_gb. Probed live:
+  # Exa discovery ranks exact-match /products/ pages first and Firecrawl extraction
+  # returns priced, in-stock renders (~13k chars markdown).
+  baseUrl: https://groceries.morrisons.com
+  enabled: true
+
+  searchConfig:
+    numResults: 5
+    urlPathContains: /products/
+    queryTemplate: "{canonicalName} grocery {market} {currency} price"
+    # Strict from day one (like jiomart_in): the 2026-08-10 shadow-mode probe
+    # accepted Kohinoor 10kg basmati for the 1kg item and 2L oil for 1L —
+    # counted as succeeded pages while their candidate matches never enter
+    # aggregates. Strict rejects wrong sizes and tries the next candidate URL.
+    requireStrictValidator: true
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

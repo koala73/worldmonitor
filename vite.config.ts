@@ -1,17 +1,206 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
-import { resolve, dirname, extname } from 'path';
+import type { OutputBundle } from 'rollup';
+import { resolve, dirname, extname, basename } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
+import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
+import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
+import {
+  WEB_DASHBOARD_VARIANTS,
+  renderVariantDashboardHtml,
+  variantDashboardFileName,
+} from './src/config/variant-dashboard-html';
+// Single source of truth for the RSS proxy allowlist — the dev-server proxy
+// below reuses the SAME www-tolerant predicate the Edge handler enforces
+// (api/rss-proxy.js) so dev and prod agree on allow/deny. Previously a
+// hand-maintained Set here had drifted ~138 domains from prod.
+import { isAllowedDomain } from './api/_rss-allowed-domain-match.js';
+import { rssFetchHeadersForHost } from './api/_rss-fetch-headers.js';
+import { validateGeneratedRequest } from './server/request-validator';
+import {
+  getChunkSizeWarning,
+  isExpectedEmptyRpcClientWarning,
+} from './scripts/vite-build-warning-policy.mts';
 
 // Env-dependent constants moved inside defineConfig function
 
 
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
+const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
+
+// @clerk/clerk-js is loaded as a UMD bundle from the Clerk Frontend API at
+// runtime (src/services/clerk.ts), not bundled. Resolve the version from
+// package.json so the runtime SDK matches the @clerk/clerk-js types we compile
+// against, and inject it via `define` (__CLERK_JS_VERSION__). Fall back to
+// devDependencies in case the (types-only) dep is moved there, and fail the
+// build loudly if it can't be resolved — an empty version yields a `.../@/dist`
+// URL that 404s and silently breaks auth in production.
+const CLERK_DEPS = pkg.dependencies as Record<string, string>;
+const CLERK_DEV_DEPS = (pkg.devDependencies ?? {}) as Record<string, string>;
+const CLERK_JS_VERSION = (CLERK_DEPS['@clerk/clerk-js'] || CLERK_DEV_DEPS['@clerk/clerk-js'] || '')
+  .replace(/^[\^~>=<\s]*/, '');
+if (!CLERK_JS_VERSION) {
+  throw new Error('[vite] @clerk/clerk-js not found in package.json — __CLERK_JS_VERSION__ would be empty and 404 the Clerk Frontend API script URL.');
+}
+// @clerk/ui (the runtime UI controller, pinned by CLERK_UI_VERSION in
+// src/services/clerk.ts) is major 1, which pairs with @clerk/clerk-js major 6.
+// Fail the build if the SDK major drifts so the pairing is updated deliberately
+// rather than loading an incompatible UI controller and breaking auth at runtime.
+if (CLERK_JS_VERSION.split('.')[0] !== '6') {
+  throw new Error(`[vite] @clerk/clerk-js major is ${CLERK_JS_VERSION.split('.')[0]}, expected 6 — update CLERK_UI_VERSION in src/services/clerk.ts to the paired @clerk/ui major, then bump this guard.`);
+}
+
+const PANEL_CHUNK_NAMES = [
+  'panels-markets',
+  'panels-energy',
+  'panels-defense',
+  'panels-news',
+  'panels-economy',
+  'panels-intel',
+  'panels-risk',
+] as const;
+type PanelChunkName = typeof PANEL_CHUNK_NAMES[number];
+const PANEL_SUPPORT_CHUNK_NAMES = ['panel-support'] as const;
+type PanelSupportChunkName = typeof PANEL_SUPPORT_CHUNK_NAMES[number];
+type PanelManualChunkName = PanelChunkName | PanelSupportChunkName;
+
+// Single source of truth for chunk names that must NOT be hoisted into the
+// entry HTML's modulepreload list. Used by both `manualChunks` (return values
+// must literally match these strings) and `modulePreload.resolveDependencies`
+// (filter regex is built from this list). Keeping them tied prevents the
+// silent-breakage failure mode where renaming a chunk in `manualChunks`
+// re-eagerises the WebGL stack without any build-time error.
+//   - maplibre, deck-stack, protomaps: heavy WebGL deps, only reachable via MapContainer
+//   - MapContainer: the dynamic-import target itself
+//   - panels-*: panel domain chunks; keep them out of the entry HTML preload
+//   - UnifiedSettings, settings-window, checkout: secondary interaction flows;
+//     first paint only needs their header buttons and cheap event wiring
+const LAZY_HTML_PRELOAD_CHUNKS = [
+  'maplibre',
+  'deck-stack',
+  'protomaps',
+  'h3-js',
+  'MapContainer',
+  'UnifiedSettings',
+  'settings-window',
+  'checkout',
+  ...PANEL_CHUNK_NAMES,
+  ...PANEL_SUPPORT_CHUNK_NAMES,
+] as const;
+const LAZY_HTML_PRELOAD_RE = new RegExp(
+  `/(?:${LAZY_HTML_PRELOAD_CHUNKS.join('|')}|rpc-client-[A-Za-z0-9_-]+)-[A-Za-z0-9_-]+\\.js$`,
+);
+
+// Panel-cluster manualChunks map. Splits the previously monolithic ~2.3MB
+// `panels` chunk into per-domain chunks so cache invalidation is local to
+// the cluster a panel lives in and per-variant builds can prune unused
+// clusters. New panel files must be assigned here before the build can split
+// them; otherwise they would silently fall back into an eager catch-all chunk.
+const PANEL_CLUSTER: Record<string, PanelChunkName> = {
+  // Markets / equities / crypto positioning
+  AAIISentiment: 'panels-markets', CotPositioning: 'panels-markets',
+  ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets', MaterialEvents: 'panels-markets',
+  EconomicCalendar: 'panels-markets', FearGreed: 'panels-markets',
+  Fx: 'panels-markets',
+  GoldIntelligence: 'panels-markets', LiquidityShifts: 'panels-markets',
+  MacroSignals: 'panels-markets', Market: 'panels-markets',
+  MarketBreadth: 'panels-markets', MarketImplications: 'panels-markets',
+  NewsMarketCorrelation: 'panels-markets',
+  NqCatalysts: 'panels-markets', NqPulse: 'panels-markets',
+  Positioning: 'panels-markets', Stablecoin: 'panels-markets',
+  StockAnalysis: 'panels-markets', StockBacktest: 'panels-markets',
+  WsbTickerScanner: 'panels-markets', YieldCurve: 'panels-markets',
+  // Energy / commodities / supply infra
+  ChokepointStrip: 'panels-energy', EnergyComplex: 'panels-energy',
+  EnergyCrisis: 'panels-energy', EnergyDisruptions: 'panels-energy',
+  EnergyRiskOverview: 'panels-energy', FuelPrices: 'panels-energy',
+  FuelShortage: 'panels-energy', Hormuz: 'panels-energy',
+  OilInventories: 'panels-energy', PipelineStatus: 'panels-energy',
+  StorageFacilityMap: 'panels-energy', RenewableEnergy: 'panels-energy',
+  // Defense / military / aviation
+  AirlineIntel: 'panels-defense', DefensePatents: 'panels-defense',
+  OrefSirens: 'panels-defense', StrategicPosture: 'panels-defense',
+  StrategicRisk: 'panels-defense', ThermalEscalation: 'panels-defense',
+  UcdpEvents: 'panels-defense',
+  // News / feeds / briefs
+  BreakthroughsTicker: 'panels-news', ClimateNews: 'panels-news',
+  DailyMarketBrief: 'panels-news', GdeltIntel: 'panels-news',
+  GoodThingsDigest: 'panels-news', LatestBrief: 'panels-news',
+  LiveNews: 'panels-news', News: 'panels-news',
+  PositiveNewsFeed: 'panels-news', TelegramIntel: 'panels-news', XIntel: 'panels-news',
+  // Macro / prices / trade
+  BigMac: 'panels-economy', ConsumerPrices: 'panels-economy',
+  Economic: 'panels-economy', GlobalProcurement: 'panels-economy',
+  FaoFoodPriceIndex: 'panels-economy', FSI: 'panels-economy',
+  GroceryBasket: 'panels-economy', GulfEconomies: 'panels-economy',
+  Investments: 'panels-economy', MacroTiles: 'panels-economy',
+  NationalDebt: 'panels-economy', SanctionsPressure: 'panels-economy',
+  ChinaActivityNowcast: 'panels-economy', ChinaCorridor: 'panels-economy',
+  SupplyChain: 'panels-economy',
+  TradePolicy: 'panels-economy',
+  // Country briefs / signals / monitors / agent surfaces.
+  // CorrelationPanel base lives here, so all *Correlation consumers MUST stay
+  // in this cluster — splitting them across clusters caused TDZ on init.
+  ChatAnalyst: 'panels-intel', CII: 'panels-intel',
+  Cascade: 'panels-intel', Correlation: 'panels-intel',
+  CountryBrief: 'panels-intel', CountryBriefPage: 'panels-intel',
+  CountryDeepDive: 'panels-intel',
+  CrossSourceSignals: 'panels-intel', CustomWidget: 'panels-intel',
+  Deduction: 'panels-intel',
+  DisasterCorrelation: 'panels-intel',
+  EconomicCorrelation: 'panels-intel',
+  EscalationCorrelation: 'panels-intel',
+  MilitaryCorrelation: 'panels-intel',
+  Forecast: 'panels-intel',
+  HeroSpotlight: 'panels-intel', Insights: 'panels-intel',
+  LiveWebcams: 'panels-intel', McpData: 'panels-intel',
+  Monitor: 'panels-intel', PinnedWebcams: 'panels-intel',
+  Prediction: 'panels-intel', ProgressCharts: 'panels-intel',
+  RegionalIntelligenceBoard: 'panels-intel',
+  Regulation: 'panels-intel',
+  // Disasters / climate / connectivity / society
+  ClimateAnomaly: 'panels-risk', Counters: 'panels-risk',
+  DiseaseOutbreaks: 'panels-risk',
+  Displacement: 'panels-risk', GeoHubs: 'panels-risk',
+  Giving: 'panels-risk', InternetDisruptions: 'panels-risk',
+  PopulationExposure: 'panels-risk', RadiationWatch: 'panels-risk',
+  RuntimeConfig: 'panels-risk', SatelliteFires: 'panels-risk',
+  SecurityAdvisories: 'panels-risk', ServiceStatus: 'panels-risk',
+  SocialVelocity: 'panels-risk', SpeciesComeback: 'panels-risk',
+  TechEvents: 'panels-risk',
+  ThreatTimeline: 'panels-risk',
+  TechHubs: 'panels-risk', TechReadiness: 'panels-risk', TorontoSafety: 'panels-risk',
+  WorldClock: 'panels-risk',
+};
+
+const PANEL_SUPPORT_CLUSTER: Record<string, PanelSupportChunkName> = {
+  Status: 'panel-support',
+};
+
+function panelKeyForComponentId(id: string): string | null {
+  if (!id.includes('/src/components/') || !id.endsWith('.ts')) return null;
+  const match = id.match(/\/([^/]+)\.ts$/);
+  if (!match) return null;
+  const fileBase = match[1];
+  if (fileBase === 'Panel') return null;
+  if (fileBase === 'CountryBriefPage' || fileBase === 'RegionalIntelligenceBoard') return fileBase;
+  if (fileBase.endsWith('Panel')) return fileBase.slice(0, -'Panel'.length);
+  return null;
+}
+
+function panelChunkForComponentId(id: string): PanelManualChunkName | null {
+  const panelKey = panelKeyForComponentId(id);
+  if (!panelKey) return null;
+  const chunkName = PANEL_SUPPORT_CLUSTER[panelKey] ?? PANEL_CLUSTER[panelKey];
+  if (chunkName) return chunkName;
+  throw new Error(`[manualChunks] Unassigned panel component ${panelKey}. Add it to PANEL_CLUSTER or PANEL_SUPPORT_CLUSTER in vite.config.ts.`);
+}
 
 function brotliPrecompressPlugin(): Plugin {
   return {
@@ -38,11 +227,16 @@ function brotliPrecompressPlugin(): Plugin {
   };
 }
 
+// Pages whose title, description and canonical are their own; the dashboard
+// brand meta below would otherwise mark them duplicates of /dashboard, or title
+// the desktop sign-in tab as the dashboard.
+const PAGES_WITH_OWN_HEAD_META = new Set(['verify.html', 'desktop-sign-in.html']);
+
 function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDesktopBuild: boolean): Plugin {
   return {
     name: 'html-variant',
-    transformIndexHtml(html) {
-      let result = html
+    transformIndexHtml(html, ctx) {
+      let result = PAGES_WITH_OWN_HEAD_META.has(basename(ctx.filename)) ? html : html
         .replace(/<title>.*?<\/title>/, `<title>${activeMeta.title}</title>`)
         .replace(/<meta name="title" content=".*?" \/>/, `<meta name="title" content="${activeMeta.title}" />`)
         .replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${activeMeta.description}" />`)
@@ -108,6 +302,146 @@ function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDes
       return result;
     },
   };
+}
+
+function dashboardHtmlOutputPlugin(): Plugin {
+  return {
+    name: 'wm-dashboard-html-output',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      const dashboardEntry = Object.entries(bundle).find(([, output]) =>
+        output.type === 'asset' && output.fileName === 'index.html'
+      );
+      if (!dashboardEntry) {
+        throw new Error('[vite] expected dashboard HTML entry index.html before renaming it to dashboard.html');
+      }
+
+      const [bundleKey, dashboardHtml] = dashboardEntry;
+      delete bundle[bundleKey];
+      dashboardHtml.fileName = 'dashboard.html';
+      if (typeof dashboardHtml.source === 'string') {
+        dashboardHtml.source = deferDashboardStylesheetLinks(dashboardHtml.source, bundle);
+      }
+      bundle['dashboard.html'] = dashboardHtml;
+    },
+  };
+}
+
+// Stamp each emitted chunk with its own ownership so `beforeSend` can stop
+// guessing from the filename. See shared/chunk-ownership.ts for why a name
+// cannot answer the question. Runs at `enforce: 'post'` so the chunk bodies are
+// final, and appends (never prepends) so sourcemap columns stay valid.
+//
+// Web workers (`*.worker-<hash>.js`, `maplibre-gl-worker-<hash>.js`) go through
+// a separate Vite build and never reach this hook. That is correct, not a gap:
+// a worker has its own `globalThis`, so a registration there could never reach
+// the manifest the main thread's `beforeSend` reads. Worker frames stay
+// unregistered and fall back to the legacy name regex.
+function firstPartyChunkManifestPlugin(): Plugin {
+  return {
+    name: 'wm-first-party-chunk-manifest',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue;
+        const basename = output.fileName.split('/').pop();
+        if (!basename) continue;
+        output.code = appendChunkOwnership(
+          output.code,
+          basename,
+          chunkHasFirstPartyModule(output.moduleIds ?? []),
+        );
+      }
+    },
+  };
+}
+
+function chunkSizeWarningPolicyPlugin(): Plugin {
+  return {
+    name: 'wm-chunk-size-warning-policy',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue;
+        const warning = getChunkSizeWarning({
+          name: output.name,
+          fileName: output.fileName,
+          sizeBytes: Buffer.byteLength(output.code),
+        });
+        if (warning) this.warn(warning);
+      }
+    },
+  };
+}
+
+// Emit dashboard-<variant>.html siblings of dashboard.html for the variant
+// subdomains (#4996). The web deployment serves the 'full' build to every
+// host, so tech/finance/commodity/happy/energy.worldmonitor.app/dashboard
+// shipped full-brand meta and a cross-host canonical pointing at www —
+// crawlers saw five duplicate pages that all declared themselves NOT to be
+// the sitemap URL they were fetched from. vercel.json host-based rewrites
+// map each variant host's /dashboard to its generated file. Runs in
+// generateBundle AFTER dashboardHtmlOutputPlugin (both enforce: 'post',
+// registered later in the plugins array) so it reads the final renamed +
+// stylesheet-deferred dashboard.html; emitted via emitFile so
+// brotliPrecompressPlugin picks the files up like any other asset.
+function variantDashboardHtmlPlugin(): Plugin {
+  return {
+    name: 'wm-variant-dashboard-html',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      const dashboard = bundle['dashboard.html'];
+      if (!dashboard || dashboard.type !== 'asset' || typeof dashboard.source !== 'string') {
+        throw new Error('[vite] wm-variant-dashboard-html expected dashboard.html asset (must run after wm-dashboard-html-output)');
+      }
+      for (const variant of WEB_DASHBOARD_VARIANTS) {
+        this.emitFile({
+          type: 'asset',
+          fileName: variantDashboardFileName(variant),
+          source: renderVariantDashboardHtml(dashboard.source, variant),
+        });
+      }
+    },
+  };
+}
+
+function shouldDeferDashboardStylesheet(tag: string, bundle: OutputBundle): boolean {
+  const href = tag.match(/\bhref=["']([^"']+\.css)["']/i)?.[1];
+  if (!href) return false;
+
+  const bundleKey = href.replace(/^\//, '');
+  const asset = bundle[bundleKey];
+  if (!asset || asset.type !== 'asset') return false;
+
+  const sourceLength = typeof asset.source === 'string'
+    ? Buffer.byteLength(asset.source)
+    : asset.source.byteLength;
+  return sourceLength >= 100 * 1024;
+}
+
+// Rewrite large render-blocking dashboard <link rel=stylesheet> tags into a
+// deferred form (media="print" + data-wm-deferred-style="dashboard") plus a
+// <noscript> copy of the original blocking link, so the ~492KB app CSS no
+// longer blocks first paint. src/main.ts activateDeferredDashboardStyles()
+// flips media -> "all" at startup; the attribute name + values written here MUST
+// stay in lockstep with that runtime selector. Only assets >=100KB are deferred
+// (shouldDeferDashboardStylesheet) so small stylesheets stay blocking; links
+// that already set media= (an intentionally print/screen-scoped sheet) or are
+// already deferred are skipped. NOTE: during the defer window only the UNLAYERED
+// inline critical CSS in index.html applies (the bundle is @layer base), so any
+// future *unconditional* inline rule will beat the bundle (see PR #4346) — keep
+// inline rules scoped to a transient/closed state.
+function deferDashboardStylesheetLinks(html: string, bundle: OutputBundle): string {
+  return html.replace(/<link\b(?=[^>]*\brel=["']stylesheet["'])(?=[^>]*\bhref=["'][^"']+\.css["'])[^>]*>/gi, (tag) => {
+    if (/\bdata-wm-deferred-style=/.test(tag) || /\bmedia=/.test(tag)) return tag;
+    if (!shouldDeferDashboardStylesheet(tag, bundle)) return tag;
+    const deferredTag = tag.replace(/\s*\/?>$/, ' media="print" data-wm-deferred-style="dashboard">');
+    return `${deferredTag}\n    <noscript>${tag}</noscript>`;
+  });
 }
 
 function polymarketPlugin(): Plugin {
@@ -194,6 +528,10 @@ function sebufApiPlugin(): Plugin {
       tradeServerMod, tradeHandlerMod,
       supplyChainServerMod, supplyChainHandlerMod,
       naturalServerMod, naturalHandlerMod,
+      resilienceServerMod, resilienceHandlerMod,
+      leadsServerMod, leadsHandlerMod,
+      scenarioServerMod, scenarioHandlerMod,
+      shippingV2ServerMod, shippingV2HandlerMod,
     ] = await Promise.all([
         import('./server/router'),
         import('./server/cors'),
@@ -242,9 +580,20 @@ function sebufApiPlugin(): Plugin {
         import('./server/worldmonitor/supply-chain/v1/handler'),
         import('./src/generated/server/worldmonitor/natural/v1/service_server'),
         import('./server/worldmonitor/natural/v1/handler'),
+        import('./src/generated/server/worldmonitor/resilience/v1/service_server'),
+        import('./server/worldmonitor/resilience/v1/handler'),
+        import('./src/generated/server/worldmonitor/leads/v1/service_server'),
+        import('./server/worldmonitor/leads/v1/handler'),
+        import('./src/generated/server/worldmonitor/scenario/v1/service_server'),
+        import('./server/worldmonitor/scenario/v1/handler'),
+        import('./src/generated/server/worldmonitor/shipping/v2/service_server'),
+        import('./server/worldmonitor/shipping/v2/handler'),
       ]);
 
-    const serverOptions = { onError: errorMod.mapErrorToResponse };
+    const serverOptions = {
+      onError: errorMod.mapErrorToResponse,
+      validateRequest: validateGeneratedRequest,
+    };
     const allRoutes = [
       ...seismologyServerMod.createSeismologyServiceRoutes(seismologyHandlerMod.seismologyHandler, serverOptions),
       ...wildfireServerMod.createWildfireServiceRoutes(wildfireHandlerMod.wildfireHandler, serverOptions),
@@ -268,6 +617,10 @@ function sebufApiPlugin(): Plugin {
       ...tradeServerMod.createTradeServiceRoutes(tradeHandlerMod.tradeHandler, serverOptions),
       ...supplyChainServerMod.createSupplyChainServiceRoutes(supplyChainHandlerMod.supplyChainHandler, serverOptions),
       ...naturalServerMod.createNaturalServiceRoutes(naturalHandlerMod.naturalHandler, serverOptions),
+      ...resilienceServerMod.createResilienceServiceRoutes(resilienceHandlerMod.resilienceHandler, serverOptions),
+      ...leadsServerMod.createLeadsServiceRoutes(leadsHandlerMod.leadsHandler, serverOptions),
+      ...scenarioServerMod.createScenarioServiceRoutes(scenarioHandlerMod.scenarioHandler, serverOptions),
+      ...shippingV2ServerMod.createShippingV2ServiceRoutes(shippingV2HandlerMod.shippingV2Handler, serverOptions),
     ];
     cachedCorsMod = corsMod;
     return routerMod.createRouter(allRoutes);
@@ -283,10 +636,33 @@ function sebufApiPlugin(): Plugin {
         }
       });
 
+      // Legacy v1 URL aliases → new sebuf RPC paths (mirror of the alias files
+      // in api/scenario/v1/ + api/supply-chain/v1/). Vercel serves the alias
+      // files directly; vite dev has no file-based routing for api/, so we
+      // rewrite the pathname here before the router lookup.
+      const V1_ALIASES: Record<string, string> = {
+        '/api/scenario/v1/run': '/api/scenario/v1/run-scenario',
+        '/api/scenario/v1/status': '/api/scenario/v1/get-scenario-status',
+        '/api/scenario/v1/templates': '/api/scenario/v1/list-scenario-templates',
+        '/api/supply-chain/v1/country-products': '/api/supply-chain/v1/get-country-products',
+        '/api/supply-chain/v1/multi-sector-cost-shock': '/api/supply-chain/v1/get-multi-sector-cost-shock',
+      };
+
       server.middlewares.use(async (req, res, next) => {
-        // Only intercept sebuf routes: /api/{domain}/v1/* (domain may contain hyphens)
-        if (!req.url || !/^\/api\/[a-z-]+\/v1\//.test(req.url)) {
+        // Intercept sebuf routes in two forms:
+        //  - standard /api/{domain}/v{N}/* (domain-first, e.g. /api/market/v1/...)
+        //  - partner-URL-preservation /api/v{N}/{domain}/* (version-first, e.g.
+        //    /api/v2/shipping/...). Only the second form applies when the
+        //    external contract already uses a reversed layout.
+        if (!req.url || !/^\/api\/(?:[a-z][a-z0-9-]*\/v\d+|v\d+\/[a-z][a-z0-9-]*)\//.test(req.url)) {
           return next();
+        }
+
+        // Rewrite documented v1 URL → new sebuf path if this is an alias.
+        const [pathOnly, queryOnly] = req.url.split('?', 2);
+        const aliasTarget = pathOnly ? V1_ALIASES[pathOnly] : undefined;
+        if (aliasTarget) {
+          req.url = queryOnly ? `${aliasTarget}?${queryOnly}` : aliasTarget;
         }
 
         try {
@@ -372,13 +748,20 @@ function sebufApiPlugin(): Plugin {
           // Execute handler
           const response = await matchedHandler(webRequest);
 
-          // Write response
+          // Write response. HEAD is GET without a payload (#7275).
           res.statusCode = response.status;
           response.headers.forEach((value, key) => {
             res.setHeader(key, value);
           });
           for (const [key, value] of Object.entries(corsHeaders)) {
             res.setHeader(key, value);
+          }
+          if (req.method === 'HEAD') {
+            if (response.body) {
+              try { void response.body.cancel(); } catch { /* already consumed */ }
+            }
+            res.end();
+            return;
           }
           res.end(await response.text());
         } catch (err) {
@@ -392,61 +775,34 @@ function sebufApiPlugin(): Plugin {
   };
 }
 
-// RSS proxy allowlist — duplicated from api/rss-proxy.js for dev mode.
-// Keep in sync when adding new domains.
-const RSS_PROXY_ALLOWED_DOMAINS = new Set([
-  'feeds.bbci.co.uk', 'www.theguardian.com', 'feeds.npr.org', 'news.google.com',
-  'www.aljazeera.com', 'rss.cnn.com', 'hnrss.org', 'feeds.arstechnica.com',
-  'www.theverge.com', 'www.cnbc.com', 'feeds.marketwatch.com', 'www.defenseone.com',
-  'breakingdefense.com', 'www.bellingcat.com', 'techcrunch.com', 'huggingface.co',
-  'www.technologyreview.com', 'rss.arxiv.org', 'export.arxiv.org',
-  'www.federalreserve.gov', 'www.sec.gov', 'www.whitehouse.gov', 'www.state.gov',
-  'www.defense.gov', 'home.treasury.gov', 'www.justice.gov', 'tools.cdc.gov',
-  'www.fema.gov', 'www.dhs.gov', 'www.thedrive.com', 'krebsonsecurity.com',
-  'finance.yahoo.com', 'thediplomat.com', 'venturebeat.com', 'foreignpolicy.com',
-  'www.ft.com', 'openai.com', 'www.reutersagency.com', 'feeds.reuters.com',
-  'asia.nikkei.com', 'www.cfr.org', 'www.csis.org', 'www.politico.com',
-  'www.brookings.edu', 'layoffs.fyi', 'www.defensenews.com', 'www.militarytimes.com',
-  'taskandpurpose.com', 'news.usni.org', 'www.oryxspioenkop.com', 'www.gov.uk',
-  'www.foreignaffairs.com', 'www.atlanticcouncil.org',
-  // Tech variant
-  'www.zdnet.com', 'www.techmeme.com', 'www.darkreading.com', 'www.schneier.com',
-  'rss.politico.com', 'www.anandtech.com', 'www.tomshardware.com', 'www.semianalysis.com',
-  'feed.infoq.com', 'thenewstack.io', 'devops.com', 'dev.to', 'lobste.rs', 'changelog.com',
-  'seekingalpha.com', 'news.crunchbase.com', 'www.saastr.com', 'feeds.feedburner.com',
-  'www.producthunt.com', 'www.axios.com', 'api.axios.com', 'github.blog', 'githubnext.com',
-  'mshibanami.github.io', 'www.engadget.com', 'news.mit.edu', 'dev.events',
-  'www.ycombinator.com', 'a16z.com', 'review.firstround.com', 'www.sequoiacap.com',
-  'www.nfx.com', 'www.aaronsw.com', 'bothsidesofthetable.com', 'www.lennysnewsletter.com',
-  'stratechery.com', 'www.eu-startups.com', 'tech.eu', 'sifted.eu', 'www.techinasia.com',
-  'kr-asia.com', 'techcabal.com', 'disrupt-africa.com', 'lavca.org', 'contxto.com',
-  'inc42.com', 'yourstory.com', 'pitchbook.com', 'www.cbinsights.com', 'www.techstars.com',
-  // Regional & international
-  'english.alarabiya.net', 'www.arabnews.com', 'www.timesofisrael.com', 'www.haaretz.com',
-  'www.scmp.com', 'kyivindependent.com', 'www.themoscowtimes.com', 'feeds.24.com',
-  'feeds.capi24.com', 'www.france24.com', 'www.euronews.com', 'www.lemonde.fr',
-  'rss.dw.com', 'www.africanews.com', 'www.lasillavacia.com', 'www.channelnewsasia.com',
-  'www.thehindu.com', 'news.un.org', 'www.iaea.org', 'www.who.int', 'www.cisa.gov',
-  'www.crisisgroup.org',
-  // Think tanks
-  'rusi.org', 'warontherocks.com', 'www.aei.org', 'responsiblestatecraft.org',
-  'www.fpri.org', 'jamestown.org', 'www.chathamhouse.org', 'ecfr.eu', 'www.gmfus.org',
-  'www.wilsoncenter.org', 'www.lowyinstitute.org', 'www.mei.edu', 'www.stimson.org',
-  'www.cnas.org', 'carnegieendowment.org', 'www.rand.org', 'fas.org',
-  'www.armscontrol.org', 'www.nti.org', 'thebulletin.org', 'www.iss.europa.eu',
-  // Economic & Food Security
-  'www.fao.org', 'worldbank.org', 'www.imf.org',
-  // Regional locale feeds
-  'www.hurriyet.com.tr', 'tvn24.pl', 'www.polsatnews.pl', 'www.rp.pl', 'meduza.io',
-  'novayagazeta.eu', 'www.bangkokpost.com', 'vnexpress.net', 'www.abc.net.au',
-  'news.ycombinator.com',
-  // Finance variant
-  'www.coindesk.com', 'cointelegraph.com',
-  // Happy variant — positive news sources
-  'www.goodnewsnetwork.org', 'www.positive.news', 'reasonstobecheerful.world',
-  'www.optimistdaily.com', 'www.sunnyskyz.com', 'www.huffpost.com',
-  'www.sciencedaily.com', 'feeds.nature.com', 'www.livescience.com', 'www.newscientist.com',
-]);
+function miitNewsPlugin(): Plugin {
+  return {
+    name: 'miit-news',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url?.split('?')[0] !== '/api/miit-news') return next();
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          res.statusCode = 405;
+          res.end();
+          return;
+        }
+        try {
+          const { default: handler } = await server.ssrLoadModule('/api/miit-news.js');
+          const headers = new Headers();
+          if (typeof req.headers.origin === 'string') headers.set('Origin', req.headers.origin);
+          const response: Response = await handler(new Request(`http://localhost${req.url}`, { headers }));
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(req.method === 'HEAD' ? undefined : await response.text());
+        } catch (error) {
+          console.error('[miit-news]', error);
+          res.statusCode = 502;
+          res.end();
+        }
+      });
+    },
+  };
+}
 
 function rssProxyPlugin(): Plugin {
   return {
@@ -468,7 +824,7 @@ function rssProxyPlugin(): Plugin {
 
         try {
           const parsed = new URL(feedUrl);
-          if (!RSS_PROXY_ALLOWED_DOMAINS.has(parsed.hostname)) {
+          if (!isAllowedDomain(parsed.hostname)) {
             res.statusCode = 403;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ error: `Domain not allowed: ${parsed.hostname}` }));
@@ -481,10 +837,7 @@ function rssProxyPlugin(): Plugin {
 
           const response = await fetch(feedUrl, {
             signal: controller.signal,
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-            },
+            headers: rssFetchHeadersForHost(parsed.hostname),
             redirect: 'follow',
           });
           clearTimeout(timer);
@@ -500,72 +853,6 @@ function rssProxyPlugin(): Plugin {
           res.statusCode = error.name === 'AbortError' ? 504 : 502;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ error: error.name === 'AbortError' ? 'Feed timeout' : 'Failed to fetch feed' }));
-        }
-      });
-    },
-  };
-}
-
-function youtubeLivePlugin(): Plugin {
-  return {
-    name: 'youtube-live',
-    configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
-        if (!req.url?.startsWith('/api/youtube/live')) {
-          return next();
-        }
-
-        const url = new URL(req.url, 'http://localhost');
-        const channel = url.searchParams.get('channel');
-
-        if (!channel) {
-          res.statusCode = 400;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Missing channel parameter' }));
-          return;
-        }
-
-        try {
-          const channelHandle = channel.startsWith('@') ? channel : `@${channel}`;
-          const liveUrl = `https://www.youtube.com/${channelHandle}/live`;
-
-          const ytRes = await fetch(liveUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            },
-            redirect: 'follow',
-          });
-
-          if (!ytRes.ok) {
-            res.setHeader('Content-Type', 'application/json');
-            res.setHeader('Cache-Control', 'public, max-age=300');
-            res.end(JSON.stringify({ videoId: null, channel }));
-            return;
-          }
-
-          const html = await ytRes.text();
-
-          // Scope both fields to the same videoDetails block so we don't
-          // combine a videoId from one object with isLive from another.
-          let videoId: string | null = null;
-          const detailsIdx = html.indexOf('"videoDetails"');
-          if (detailsIdx !== -1) {
-            const block = html.substring(detailsIdx, detailsIdx + 5000);
-            const vidMatch = block.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-            const liveMatch = block.match(/"isLive"\s*:\s*true/);
-            if (vidMatch && liveMatch) {
-              videoId = vidMatch[1];
-            }
-          }
-
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'public, max-age=300');
-          res.end(JSON.stringify({ videoId, isLive: videoId !== null, channel }));
-        } catch (error) {
-          console.error(`[YouTube Live] Error:`, error);
-          res.statusCode = 500;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Failed to fetch', videoId: null }));
         }
       });
     },
@@ -597,6 +884,27 @@ function gpsjamDevPlugin(): Plugin {
   };
 }
 
+// Mirror the WebMCP security gates during local development. Chrome's
+// #enable-webmcp-testing flag bypasses origin-trial enrollment, but it does not
+// bypass origin isolation or Permissions Policy. Keeping these headers in the
+// dev server makes the documented local smoke meaningful while preserving the
+// production boundary: no Origin-Trial token is ever served locally.
+function webMcpDevSecurityHeadersPlugin(): Plugin {
+  return {
+    name: 'wm-webmcp-dev-security-headers',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+        const isEmbedDocument = pathname === '/embed' || pathname === '/embed.html';
+        res.setHeader('Origin-Agent-Cluster', '?1');
+        res.setHeader('Permissions-Policy', isEmbedDocument ? 'tools=()' : 'tools=(self)');
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   // Inject environment variables from .env files into process.env.
@@ -604,20 +912,100 @@ export default defineConfig(({ mode }) => {
   // available to the dev server plugins and server-side handlers.
   Object.assign(process.env, env);
 
+  // Dev-server port: DEV_PORT overrides the 3000 default. Reject non-integer or
+  // out-of-range values (fall back to 3000) so a typo can't crash Vite's listen()
+  // with ERR_SOCKET_BAD_PORT. Not VITE_-prefixed, so it never reaches the client bundle.
+  const parsedDevPort = Number(env.DEV_PORT);
+  const devPort =
+    Number.isInteger(parsedDevPort) && parsedDevPort >= 1 && parsedDevPort <= 65535
+      ? parsedDevPort
+      : 3000;
+
   const isE2E = process.env.VITE_E2E === '1';
   const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
   const activeVariant = process.env.VITE_VARIANT || 'full';
   const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
+  const emitPublicSourceMaps = process.env.WM_EMIT_SOURCEMAPS === '1'
+    || process.env.VERCEL_ENV === 'preview';
+  // Sentry source-map upload. Gated on the token so a build without it (local,
+  // fork, CI) behaves exactly as before rather than failing. Matching is by
+  // debug ID — the plugin stamps the same id into the bundle and its map.
+  const uploadSourceMapsToSentry = Boolean(process.env.SENTRY_AUTH_TOKEN);
+  const sentryBuild = getSentryBuildMetadata(pkg.version, process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev');
+  const publishSentryRelease = process.env.VERCEL_ENV === 'production' && Boolean(sentryBuild.dist);
 
   return {
+    html: {
+      cspNonce: STATIC_SCRIPT_NONCE,
+    },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
+      // Resolved + build-time validated above (devDependencies fallback +
+      // non-empty + major-pairing guards).
+      __CLERK_JS_VERSION__: JSON.stringify(CLERK_JS_VERSION),
+      // Vercel sets VERCEL_GIT_COMMIT_SHA on production + preview builds.
+      // Local `vite build` falls back to 'dev' — installStaleBundleCheck
+      // detects the marker and skips the comparison so dev tabs don't
+      // reload on every focus.
+      __BUILD_HASH__: JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev'),
     },
     plugins: [
+      // Ship readable dashboard stack traces to Sentry. Without this every
+      // browser frame arrives minified (`Rs.loadNews`, `BO`, `v`), which is why
+      // triage has had to infer call sites from Vite chunk names.
+      ...(uploadSourceMapsToSentry
+        ? [sentryVitePlugin({
+            org: 'elie-habib',
+            project: 'worldmonitor',
+            authToken: process.env.SENTRY_AUTH_TOKEN,
+            telemetry: false,
+            release: {
+              name: sentryBuild.release,
+              inject: false,
+              dist: sentryBuild.dist,
+              // Preview/local uploads must not resolve shared production issues.
+              create: publishSentryRelease,
+              finalize: publishSentryRelease,
+              // Preserve the plugin's Vercel-aware commit detection in production.
+              setCommits: publishSentryRelease ? undefined : false,
+              deploy: publishSentryRelease ? undefined : false,
+            },
+            sourcemaps: {
+              // Previews deliberately serve public maps (emitPublicSourceMaps);
+              // leave those in place and only sweep them when production built
+              // them solely to upload.
+              filesToDeleteAfterUpload: emitPublicSourceMaps ? [] : ['dist/**/*.map'],
+            },
+          })]
+        : []),
+      // Emit dist/build-hash.txt with the deployed SHA so the running bundle
+      // can fetch /build-hash.txt at tab-focus time and force-reload itself
+      // if it's running an older bundle (see src/bootstrap/stale-bundle-check.ts).
+      // Same-origin static asset, NOT under /api/* — installWebApiRedirect
+      // doesn't touch it, so the comparison reflects the web deployment.
+      {
+        name: 'wm-emit-build-hash',
+        apply: 'build',
+        generateBundle() {
+          this.emitFile({
+            type: 'asset',
+            fileName: 'build-hash.txt',
+            source: process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev',
+          });
+        },
+      },
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
+      firstPartyChunkManifestPlugin(),
+      chunkSizeWarningPolicyPlugin(),
+      !isDesktopBuild && dashboardHtmlOutputPlugin(),
+      // Variant subdomain SEO pages only make sense on the web deployment,
+      // which is always the 'full' build (variant selection is runtime by
+      // hostname). Desktop and dedicated VITE_VARIANT builds skip it.
+      !isDesktopBuild && activeVariant === 'full' && variantDashboardHtmlPlugin(),
+      webMcpDevSecurityHeadersPlugin(),
       polymarketPlugin(),
       rssProxyPlugin(),
-      youtubeLivePlugin(),
+      miitNewsPlugin(),
       gpsjamDevPlugin(),
       sebufApiPlugin(),
       brotliPrecompressPlugin(),
@@ -626,16 +1014,21 @@ export default defineConfig(({ mode }) => {
         injectRegister: false,
 
         includeAssets: [
+          'offline.html',
           'favico/favicon.ico',
           'favico/apple-touch-icon.png',
           'favico/favicon-32x32.png',
         ],
+        // Manifest install icons stay advertised in manifest.webmanifest, but
+        // they are fetched on demand instead of forced into first-visit SW
+        // precache with the rest of the dashboard shell.
+        includeManifestIcons: false,
 
         manifest: {
           name: `${activeMeta.siteName} - ${activeMeta.subject}`,
           short_name: activeMeta.shortName,
           description: activeMeta.description,
-          start_url: '/',
+          start_url: '/dashboard',
           scope: '/',
           display: 'standalone',
           orientation: 'any',
@@ -651,24 +1044,46 @@ export default defineConfig(({ mode }) => {
 
         workbox: {
           globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
-          globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
+          globIgnores: [
+            '**/ml*.js',
+            '**/onnx*.wasm',
+            '**/locale-*.js',
+            '**/clerk-*.js',
+            // Fonts are fetched only when their stylesheet applies. Precache
+            // would pull every local weight into the first mobile visit.
+            '**/*.woff2',
+            // Keep off-page/static-heavy public assets out of the dashboard's
+            // first-visit precache. The small root favicons above remain
+            // explicit includeAssets entries.
+            'pro/**',
+            'favico/**',
+            'textures/**',
+            // #4891: blog OG covers + post images are generated into the prod
+            // build (absent locally), and the png glob was precaching all ~40
+            // of them (~700KB) on every first dashboard visit — and again on
+            // each SW update after a blog deploy. Blog pages fetch their own
+            // images on demand; the dashboard never needs them.
+            'blog/**',
+          ],
           // globe.gl + three.js grows main bundle past the 2 MiB default limit
           maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
           navigateFallback: null,
           skipWaiting: true,
           clientsClaim: true,
           cleanupOutdatedCaches: true,
+          // Web Push handler (Phase 6). importScripts runs in the SW
+          // context; /push-handler.js is a static file copied from
+          // public/ and attaches 'push' + 'notificationclick' listeners.
+          // /link-suppression-check.js must load BEFORE the push handler
+          // so notificationclick can consult the operator block set (#8401).
+          importScripts: ['/link-suppression-check.js', '/push-handler.js', '/sw-navigation.js'],
 
+          // Navigations are handled by public/sw-navigation.js (network-first
+          // with an offline.html fallback), NOT by a runtime cache: a cached
+          // index.html survives cleanupOutdatedCaches while its hashed chunks
+          // are purged with the old precache, so an offline reload after any
+          // deploy used to 404 the bundle and blank the dashboard.
           runtimeCaching: [
-            {
-              urlPattern: ({ request }: { request: Request }) => request.mode === 'navigate',
-              handler: 'NetworkFirst',
-              options: {
-                cacheName: 'html-navigation',
-                networkTimeoutSeconds: 5,
-                cacheableResponse: { statuses: [200] },
-              },
-            },
             {
               urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
                 sameOrigin && /^\/api\//.test(url.pathname),
@@ -705,23 +1120,6 @@ export default defineConfig(({ mode }) => {
               options: {
                 cacheName: 'protomaps-assets',
                 expiration: { maxEntries: 100, maxAgeSeconds: 365 * 24 * 60 * 60 },
-                cacheableResponse: { statuses: [0, 200] },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
-              handler: 'StaleWhileRevalidate',
-              options: {
-                cacheName: 'google-fonts-css',
-                expiration: { maxEntries: 10, maxAgeSeconds: 365 * 24 * 60 * 60 },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.gstatic\.com\//,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'google-fonts-woff',
-                expiration: { maxEntries: 30, maxAgeSeconds: 365 * 24 * 60 * 60 },
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
@@ -765,9 +1163,26 @@ export default defineConfig(({ mode }) => {
       format: 'es',
     },
     build: {
-      // Geospatial bundles (maplibre/deck) are expected to be large even when split.
-      // Raise warning threshold to reduce noisy false alarms in CI.
-      chunkSizeWarningLimit: 1200,
+      // Uploading requires the maps to exist. When they are not also being
+      // published deliberately, the Sentry plugin deletes them after upload so
+      // production keeps shipping no public maps.
+      sourcemap: emitPublicSourceMaps || uploadSourceMapsToSentry,
+      // Vite's global threshold accommodates the known lazy GlobeMap bundle.
+      // wm-chunk-size-warning-policy keeps the 1200 kB default for every other
+      // chunk so unrelated regressions between 1200 and 2000 kB remain visible.
+      chunkSizeWarningLimit: 2000,
+      // Vite 6 hoists every dynamic chunk's STATIC deps into the entry HTML's
+      // modulepreload list to avoid latency on the first dynamic import. For the
+      // map stack that defeats the whole point of dynamic-importing MapContainer:
+      // ~3MB of WebGL deps would still download at parse time. Strip them here so
+      // they only load when MapContainer's `await import(...)` actually fires
+      // (still preloaded in parallel via __vitePreload at that moment).
+      modulePreload: {
+        resolveDependencies: (_filename, deps, { hostType }) => {
+          if (hostType !== 'html') return deps;
+          return deps.filter(d => !LAZY_HTML_PRELOAD_RE.test(d));
+        },
+      },
       rollupOptions: {
         onwarn(warning, warn) {
           // onnxruntime-web ships a minified browser bundle that intentionally uses eval.
@@ -780,15 +1195,56 @@ export default defineConfig(({ mode }) => {
             return;
           }
 
+          // The cyber client legitimately tree-shakes to nothing while its
+          // feature flag is off. Keep every other empty RPC chunk visible: an
+          // enabled client disappearing is a build regression, not noise.
+          if (isExpectedEmptyRpcClientWarning(
+            warning,
+            process.env.VITE_ENABLE_CYBER_LAYER === 'true',
+          )) {
+            return;
+          }
+
           warn(warning);
         },
         input: {
           main: resolve(__dirname, 'index.html'),
+          embed: resolve(__dirname, 'embed.html'),
           settings: resolve(__dirname, 'settings.html'),
           liveChannels: resolve(__dirname, 'live-channels.html'),
+          mcpGrant: resolve(__dirname, 'mcp-grant.html'),
+          verify: resolve(__dirname, 'verify.html'),
+          desktopSignIn: resolve(__dirname, 'desktop-sign-in.html'),
         },
         output: {
+          // onlyExplicitManualChunks keeps the panel clusters from forming
+          // cross-chunk cycles. Its side effect: a manual chunk's unmatched
+          // static deps get pulled into the importer chunk — which created a
+          // circular DeckGLMap -> deck-stack -> DeckGLMap chunk (runtime TDZ
+          // "Cannot access 'X' before initialization" that crashed the WebGL map
+          // into the SVG fallback). Fixed by co-locating the DeckGLMap renderer
+          // into the 'deck-stack' chunk below so deck deps never split across the
+          // DeckGLMap boundary.
+          onlyExplicitManualChunks: true,
           manualChunks(id) {
+            // Keep the existing secondary-flow chunk stable when standalone
+            // entries stop sharing panel dependencies with the dashboard.
+            if (id.endsWith('/src/services/checkout.ts')) {
+              return 'checkout';
+            }
+            // Give the layered dashboard stylesheet a CSS-only chunk. Vite folds a
+            // CSS-only chunk into each importing entry's own CSS, so dashboard.html
+            // links it. Left inside a shared JavaScript chunk it inherited that
+            // chunk's name (debugbear-rum-*.css) and could lose its link: Vite 6
+            // caches each chunk's CSS list across HTML entries, and the main entry
+            // chunk is also imported by App and live-channels, so the cached list
+            // can omit CSS another entry reached first. The preload helper then
+            // fetched the stylesheet for import('./App'), and a failed download
+            // aborted the dashboard boot (WORLDMONITOR-XT). Guarded by
+            // tests/dashboard-critical-css.test.mjs.
+            if (id.endsWith('/src/styles/base-layer.css')) {
+              return 'dashboard-styles';
+            }
             if (id.includes('node_modules')) {
               if (id.includes('/@xenova/transformers/')) {
                 return 'transformers';
@@ -796,15 +1252,24 @@ export default defineConfig(({ mode }) => {
               if (id.includes('/onnxruntime-web/')) {
                 return 'onnxruntime';
               }
-              if (id.includes('/maplibre-gl/') || id.includes('/pmtiles/') || id.includes('/@protomaps/basemaps/')) {
+              // NOTE: chunk names below MUST match entries in LAZY_HTML_PRELOAD_CHUNKS
+              // (top of file). The resolveDependencies filter relies on this string
+              // identity; renaming here without updating the constant silently
+              // re-eagerises the WebGL stack into the entry HTML's modulepreload list.
+              if (id.includes('/maplibre-gl/')) {
                 return 'maplibre';
+              }
+              if (id.includes('/pmtiles/') || id.includes('/@protomaps/basemaps/')) {
+                return 'protomaps';
+              }
+              if (id.includes('/h3-js/')) {
+                return 'h3-js';
               }
               if (
                 id.includes('/@deck.gl/')
                 || id.includes('/@luma.gl/')
                 || id.includes('/@loaders.gl/')
                 || id.includes('/@math.gl/')
-                || id.includes('/h3-js/')
               ) {
                 return 'deck-stack';
               }
@@ -817,12 +1282,120 @@ export default defineConfig(({ mode }) => {
               if (id.includes('/i18next')) {
                 return 'i18n';
               }
-              if (id.includes('/@sentry/')) {
+              if (id.includes('/@sentry/') || id.includes('/@sentry-internal/')) {
                 return 'sentry';
               }
+              if (id.includes('/@clerk/clerk-js/')) {
+                // Clerk remains a runtime dynamic import; the stable chunk name
+                // lets Workbox keep the large auth SDK out of precache.
+                return 'clerk';
+              }
             }
-            if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {
-              return 'panels';
+            // Large static config DATA TABLE (~62KB) with only lazy consumers
+            // (search/map/globe/tech-hub services). Isolating it keeps it off the
+            // eager entry now that the @/config barrel no longer re-exports its
+            // values and data-loader lazy-loads the tech-activity chain. Pure
+            // data (type-only imports) → no unmatched-static-dep circular risk. (#4404)
+            if (id.endsWith('/src/config/tech-geo.ts')) {
+              return 'tech-geo-data';
+            }
+            // airports table (~14KB) — only consumer is the lazy AviationCommandBar
+            // (imports directly); kept off the eager @/config barrel above. (#4404)
+            if (id.endsWith('/src/config/airports.ts')) {
+              return 'airports-data';
+            }
+            // ai-datacenters table (~86KB) — consumers (map/globe/search) import
+            // directly and are lazy; related-assets lazy-imports it. Kept off the
+            // eager @/config barrel above. (#4404)
+            if (id.endsWith('/src/config/ai-datacenters.ts')) {
+              return 'ai-datacenters-data';
+            }
+            // geo-map table bulk (~150KB: UNDERSEA_CABLES + NUCLEAR_FACILITIES +
+            // ECONOMIC_CENTERS/SPACEPORTS/CRITICAL_MINERALS/SANCTIONED_*/MAP_URLS).
+            // Map/globe/search consumers import directly (lazy); the eager
+            // related-assets/infrastructure-cascade/cable-activity chains
+            // lazy-cache it. Kept off the eager @/config barrel above. (#4404)
+            if (id.endsWith('/src/config/geo-map.ts')) {
+              return 'geo-map-data';
+            }
+            // Military-bases bulk (~48KB MILITARY_BASES_EXPANDED + merged
+            // MILITARY_BASES). geo.ts no longer imports it; eager consumers
+            // (country-intel, related-assets, data-loader→military-surge)
+            // lazy-load it via dynamic import. Kept off the eager @/config
+            // barrel. Co-chunk both files so the merged list and its raw data
+            // ship together off the entry chunk. (#4478)
+            if (id.endsWith('/src/config/military-bases.ts') || id.endsWith('/src/config/bases-expanded.ts')
+                || id.endsWith('/shared/military-bases-data.ts')) {
+              return 'military-bases-data';
+            }
+            // Correlation engine (engine + 4 adapters) is dynamic-imported at its
+            // post-loadAllData run site in App.ts (#4486), so it already forms a lazy
+            // chunk; this rule only gives that chunk a STABLE name — the dir-index
+            // would otherwise emit an ambiguous `index-*.js` the eager-chunk guard
+            // can't pin. Naming only; the deferral is the call-site import().
+            if (id.includes('/src/services/correlation-engine/')) {
+              return 'correlation-engine';
+            }
+            // Post-paint service tail split (#4487). These files are dynamic-imported
+            // from data-loader/country-intel/SignalModal; stable names let the
+            // dist guard prove they stay out of main rather than merely grepping src.
+            // Keep the product catalog independent from its shared cache and
+            // entitlement dependencies. Before this split, Rollup named the shared
+            // cache group `products`, making the post-hydration product task parse
+            // unrelated IndexedDB code alongside the tiny checkout catalog. (#5165)
+            if (id.endsWith('/src/config/products.ts') || id.endsWith('/src/config/products.generated.ts')) {
+              return 'products';
+            }
+            if (id.endsWith('/src/services/persistent-cache.ts')) {
+              return 'persistent-cache';
+            }
+            if (id.endsWith('/src/services/rss.ts')) {
+              return 'rss';
+            }
+            if (id.endsWith('/src/services/trending-keywords.ts')) {
+              return 'trending-keywords';
+            }
+            if (id.endsWith('/src/services/daily-market-brief.ts')) {
+              return 'daily-market-brief';
+            }
+            if (id.endsWith('/src/services/signal-aggregator.ts')) {
+              return 'signal-aggregator';
+            }
+            if (id.endsWith('/src/services/military-vessels.ts')) {
+              return 'military-vessels';
+            }
+            if (id.endsWith('/src/services/cross-module-integration.ts')) {
+              return 'cross-module-integration';
+            }
+            // Generated protobuf/RPC client modules are loaded through
+            // src/services/generated-rpc-clients.ts so real constructors parse only
+            // on first RPC use. Stable names let the eager-chunk guard prove they
+            // stay out of the dashboard entry and HTML modulepreload list. (#4493)
+            const rpcClientMatch = id.match(/\/src\/generated\/client\/worldmonitor\/(.+)\/service_client\.ts$/);
+            if (rpcClientMatch) {
+              return `rpc-client-${rpcClientMatch[1].replace(/_/g, '-').replace(/\//g, '-')}`;
+            }
+            // Co-locate the deck.gl renderer with the deck vendor chunk so
+            // onlyExplicitManualChunks cannot split deck's transitive deps
+            // across the DeckGLMap boundary (which formed a circular chunk →
+            // runtime TDZ that crashed the WebGL map into the SVG fallback).
+            if (id.endsWith('/src/components/DeckGLMap.ts')) {
+              return 'deck-stack';
+            }
+            // Co-locate ResilienceWidget with its only runtime importer
+            // (CountryDeepDivePanel, panels-intel). As a standalone chunk its
+            // import() was a second network hop on every deep-dive open, and
+            // filtering middleboxes that stub the *Widget*-named chunk URL with
+            // an empty 200 made the import resolve WITHOUT the export
+            // (Sentry WORLDMONITOR-T6). In-chunk resolution removes that
+            // surface and the waterfall hop; shared deps (resilience-widget-
+            // utils, services/resilience) already live in shared chunks.
+            if (id.endsWith('/src/components/ResilienceWidget.ts')) {
+              return 'panels-intel';
+            }
+            if (id.includes('/src/components/') && id.endsWith('.ts')) {
+              const panelChunk = panelChunkForComponentId(id);
+              if (panelChunk) return panelChunk;
             }
             // Give lazy-loaded locale chunks a recognizable prefix so the
             // service worker can exclude them from precache (en.json is
@@ -837,7 +1410,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 3000,
+      port: devPort,
       open: !isE2E,
       hmr: isE2E ? false : undefined,
       watch: {
@@ -1193,12 +1766,15 @@ export default defineConfig(({ mode }) => {
             });
           },
         },
-        // OpenSky Network - Aircraft tracking (military flight detection)
+        // OpenSky Network - Aircraft tracking (military flight detection).
+        // Prod routes /api/opensky through the relay (api/opensky.js), which calls
+        // OpenSky's states/all endpoint. Dev has no relay, so proxy straight to
+        // states/all — stripping the prefix to '' would hit the invalid /api root (404).
         '/api/opensky': {
           target: 'https://opensky-network.org/api',
           changeOrigin: true,
           secure: true,
-          rewrite: (path) => path.replace(/^\/api\/opensky/, ''),
+          rewrite: (path) => path.replace(/^\/api\/opensky/, '/states/all'),
           configure: (proxy) => {
             proxy.on('error', (err) => {
               console.log('OpenSky proxy error:', err.message);

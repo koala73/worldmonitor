@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package worldmonitor.scenario.v1;
+
+import "buf/validate/validate.proto";
+
+// RunScenarioRequest enqueues a scenario job on the scenario-queue:pending
+// Upstash list for the async scenario-worker to pick up.
+message RunScenarioRequest {
+  // Scenario template id — must match an entry in SCENARIO_TEMPLATES.
+  string scenario_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 128
+  ];
+  // Optional 2-letter ISO country code to scope the impact computation.
+  // When absent, use the bounded country/sector manifest in existing seed metadata.
+  // Missing or old manifest means unknown coverage.
+  string iso2 = 2 [
+    (buf.validate.field).string.pattern = "^([A-Z]{2})?$"
+  ];
+  // Physical scenarios only. Omitted preserves the template default; zero is valid.
+  optional int32 disruption_pct = 3 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 100
+  ];
+}
+
+// The sebuf-generated server still emits 200 for every success (no per-RPC
+// status-code annotation exists), so the gateway upgrades the status via the
+// setSuccessStatusOverride side-channel (server/_shared/response-headers.ts).
+// (Detached: kept out of the public spec.)
+
+// RunScenarioResponse carries the enqueued job id. Clients poll
+// GetScenarioStatus with this id until status is "done" or "failed". A successful
+// enqueue returns HTTP 202 Accepted with a Location header pointing at
+// GetScenarioStatus; treat any 2xx as success.
+message RunScenarioResponse {
+  // Generated job id of the form `scenario:{epoch_ms}:{8-char-suffix}`.
+  string job_id = 1;
+  // Always "pending" at enqueue time.
+  string status = 2;
+  // Convenience URL the caller can use to poll this job's status.
+  // Server-computed as `/api/scenario/v1/get-scenario-status?jobId=<job_id>`.
+  // Restored after the v1 → v1 sebuf migration because external callers
+  // may key off this field.
+  string status_url = 3;
+}

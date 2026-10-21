@@ -1,0 +1,168 @@
+// Membership here is an ANONYMOUS-ACCESS decision, not a caching one: the
+// gateway consults isPublicSharedRpcRequest() before the tier gate, so a path
+// listed here is reachable with no credential whatever ENDPOINT_ENTITLEMENTS
+// says. Never add a path that is (or may become) tier-gated —
+// tests/public-shared-rpc-not-tier-gated.test.mts fails the build if the two
+// sets ever intersect.
+//
+// `/api/military/v1/get-defense-industrial-base` was removed when the arms-
+// supplier data became Pro (#6438): its `public=1` shape was a standing
+// bypass of the new gate. The CDN shield it bought is gone with it, which is
+// the accepted cost of the paywall.
+//
+// Readings published on the /tools/<slug>/ live data pages
+// (scripts/live-pages/index.mjs). Each takes no request fields and is already
+// shown to anonymous dashboard visitors; the routing middleware reads the bare
+// `public=1` shape to put the current reading into the page HTML. Each is a
+// Redis seed read. tests/live-topic-pages.test.mjs keeps this list equal to
+// the page registry.
+export const LIVE_TOPIC_RPC_PATHS = Object.freeze([
+  '/api/market/v1/get-fear-greed-index',
+  '/api/infrastructure/v1/list-internet-outages',
+  '/api/prediction/v1/list-prediction-markets',
+  '/api/economic/v1/get-national-debt',
+  '/api/economic/v1/get-us-treasury-par-yield-curve',
+  '/api/economic/v1/get-oil-inventories',
+]);
+const LIVE_TOPIC_PUBLIC_SEARCH = 'public=1';
+
+const PUBLIC_SHARED_RPC_PATHS = new Set([
+  '/api/news/v1/list-feed-digest',
+  '/api/displacement/v1/get-displacement-summary',
+  '/api/displacement/v1/get-cross-border-movements',
+  '/api/forecast/v1/get-forecasts',
+  '/api/supply-chain/v1/get-chokepoint-status',
+  ...LIVE_TOPIC_RPC_PATHS,
+]);
+
+const NEWS_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity', 'energy']);
+// The ONE list of digest languages. list-feed-digest.ts rejects any other lang
+// with a 400 (#8360); a hand-copied second list would let the handler and this
+// public-shape classifier drift apart.
+export const NEWS_LANGUAGES = new Set([
+  'en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl',
+  'sv', 'sw', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi',
+]);
+const NEWS_QUERY_KEYS = new Set(['variant', 'lang', 'public']);
+// Exact raw-query contract (no leading `?`): exactly one public displacement shape,
+// so the CDN key space stays at one entry. Compared against the raw search string —
+// order- and encoding-sensitive by design (see stripRouterInjectedRpcEcho).
+const DISPLACEMENT_PUBLIC_SEARCH = 'flow_limit=50&public=1';
+
+// The forecast feed the dashboard refreshes every 30 minutes. The client sends no
+// filters (domain/region are empty and the generated client omits zero values), so
+// the ONE public shape is the bare marker. A caller that filters by domain/region
+// gets a per-caller response and must use the credentialed URL — keeping the CDN key
+// space at a single entry.
+//
+// This refresh is why the key is expensive: getHydratedData() is one-shot, so every
+// 30-minute tick fell through to this RPC, which had no CDN shield — ~17.5k uncached
+// origin reads/day of a 188 KB payload (#5300).
+const FORECASTS_PUBLIC_SEARCH = 'public=1';
+
+// Chokepoint status takes no request fields, and its readings are already
+// published on every /chokepoints/<slug>/ page. The routing middleware reads
+// this shape to put the current reading into those pages' HTML for crawlers,
+// which run no hydrate script and hold no session. Origin load stays bounded:
+// the handler caches in Redis for 5 minutes behind a single-flight fetch.
+const CHOKEPOINT_STATUS_PUBLIC_SEARCH = 'public=1';
+
+function hasSingleValue(params: URLSearchParams, key: string): boolean {
+  return params.getAll(key).length === 1;
+}
+
+/**
+ * Vercel serves these routes through `api/<domain>/v1/[rpc].ts` and its filesystem router
+ * echoes the matched segment back as `?rpc=<lastPathSegment>`. The function therefore
+ * sees a query the caller never sent, which fails the exhaustive shape checks below
+ * and silently 401'd every public RPC in production (#5285). `server/_shared/
+ * mcp-internal-hmac.ts` strips the same echo before signing, for the same reason.
+ *
+ * Returns the RAW search string (no leading `?`) with the echo removed. Raw, not a
+ * re-serialised URLSearchParams, because the displacement contract is an exact-string
+ * compare: re-encoding would normalise `flow_limit=%35%30` into `flow_limit=50` and
+ * silently widen the accepted shape.
+ *
+ * Strips `rpc` ONLY when every value equals the final path segment — i.e. only the
+ * router's own echo. A caller-appended `?rpc=<anything-else>` is left in place and
+ * still fails the shape check, so this is not a bypass vector.
+ */
+function stripRouterInjectedRpcEcho(url: URL): string {
+  const raw = url.search.startsWith('?') ? url.search.slice(1) : url.search;
+  if (!raw) return '';
+
+  const segments = url.pathname.split('/').filter(Boolean);
+  const lastSegment = segments[segments.length - 1] ?? '';
+  const echo = `rpc=${lastSegment}`;
+
+  const parts = raw.split('&');
+  const rpcParts = parts.filter((part) => part === 'rpc' || part.startsWith('rpc='));
+  if (rpcParts.length === 0) return raw;
+  if (!rpcParts.every((part) => part === echo)) return raw;
+
+  return parts.filter((part) => part !== echo).join('&');
+}
+
+function hasOnlyKeys(params: URLSearchParams, allowed: Set<string>): boolean {
+  return Array.from(params.keys()).every((key) => allowed.has(key));
+}
+
+function isNewsDigestShape(params: URLSearchParams): boolean {
+  return hasOnlyKeys(params, NEWS_QUERY_KEYS)
+    && hasSingleValue(params, 'variant')
+    && hasSingleValue(params, 'lang')
+    && NEWS_VARIANTS.has(params.get('variant') ?? '')
+    && NEWS_LANGUAGES.has(params.get('lang') ?? '');
+}
+
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
+export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'): boolean {
+  const normalizedMethod = method.toUpperCase();
+  if (normalizedMethod !== 'GET' && normalizedMethod !== 'HEAD') return false;
+
+  let url: URL;
+  try {
+    url = urlLike instanceof URL
+      ? urlLike
+      : new URL(urlLike, 'https://worldmonitor.invalid');
+  } catch {
+    return false;
+  }
+
+  const pathname = stripTrailingSlashes(url.pathname);
+  if (!PUBLIC_SHARED_RPC_PATHS.has(pathname)) return false;
+
+  // Shape-check the caller's query, not the router's echo of the path segment.
+  const search = stripRouterInjectedRpcEcho(url);
+  const params = new URLSearchParams(search);
+  if (!hasSingleValue(params, 'public') || params.get('public') !== '1') return false;
+
+  if (pathname === '/api/news/v1/list-feed-digest') return isNewsDigestShape(params);
+  if (pathname === '/api/displacement/v1/get-cross-border-movements') return search === 'public=1';
+  if (pathname === '/api/forecast/v1/get-forecasts') return search === FORECASTS_PUBLIC_SEARCH;
+  if (pathname === '/api/supply-chain/v1/get-chokepoint-status') return search === CHOKEPOINT_STATUS_PUBLIC_SEARCH;
+  if (LIVE_TOPIC_RPC_PATHS.includes(pathname)) return search === LIVE_TOPIC_PUBLIC_SEARCH;
+  return search === DISPLACEMENT_PUBLIC_SEARCH;
+}
+
+export function addPublicSharedRpcMarker(urlLike: string | URL): string {
+  const original = String(urlLike);
+  const relative = original.startsWith('/');
+  const base = typeof location === 'undefined' ? 'https://worldmonitor.invalid' : location.href;
+  const url = new URL(original, base);
+
+  if (!PUBLIC_SHARED_RPC_PATHS.has(url.pathname)) {
+    throw new Error(`not an allowlisted public RPC: ${url.pathname}`);
+  }
+  url.searchParams.set('public', '1');
+  if (!isPublicSharedRpcRequest(url)) {
+    throw new Error(`not an allowlisted public RPC shape: ${url.pathname}${url.search}`);
+  }
+
+  return relative ? `${url.pathname}${url.search}${url.hash}` : url.toString();
+}

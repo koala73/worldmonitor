@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Check a claim — WorldMonitor</title>
+    <meta name="description" content="Paste a claim or headline and see which publishers are reporting it, how independent they are, and which of its numbers they state. Coverage, not accuracy." />
+    <link rel="canonical" href="https://www.worldmonitor.app/verify" />
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      :root{--bg:#0a0a0a;--card:#111;--line:#1e1e1e;--text:#e8e8e8;--muted:#8a8a8a;--faint:#5a5a5a;--accent:#2d8a6e;--ok:#3fb68b;--warn:#e0a63a;--bad:#e5534b}
+      :root[data-theme="light"]{--bg:#f6f6f4;--card:#fff;--line:#e2e2de;--text:#151515;--muted:#5c5c5c;--faint:#8a8a8a;--accent:#1f6f57;--ok:#1d8a62;--warn:#a86a00;--bad:#c2372f}
+      body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:2rem 1rem 3rem;line-height:1.5}
+      .wrap{max-width:720px;margin:0 auto}
+      .wm-logo{display:inline-flex;align-items:center;gap:.5rem;margin-bottom:1.75rem;text-decoration:none;color:var(--accent)}
+      .wm-logo-text{font-family:ui-monospace,'SF Mono',monospace;font-size:.72rem;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+      h1{font-size:1.6rem;font-weight:650;letter-spacing:-.01em;margin-bottom:.4rem}
+      .lede{color:var(--muted);font-size:.95rem;margin-bottom:1.25rem}
+      form{display:flex;flex-direction:column;gap:.6rem}
+      label{font-size:.8rem;color:var(--muted)}
+      textarea{width:100%;min-height:5.5rem;resize:vertical;padding:.75rem .85rem;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit;font-size:1rem}
+      textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+      .row{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
+      button{padding:.65rem 1.2rem;background:var(--accent);color:#fff;border:none;border-radius:8px;font:inherit;font-weight:600;cursor:pointer}
+      button:disabled{opacity:.55;cursor:default}
+      .status{font-size:.78rem;color:var(--faint)}
+      #result{margin-top:1.5rem}
+      .vc-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.25rem;border-left:4px solid var(--faint)}
+      .vc-corroborated{border-left-color:var(--ok)}
+      .vc-single,.vc-low-tier{border-left-color:var(--warn)}
+      .vc-claim{font-size:1.05rem;font-style:italic;color:var(--muted);margin-bottom:.9rem;overflow-wrap:anywhere}
+      .vc-verdict-title{font-size:1.2rem;font-weight:650;margin-bottom:.25rem}
+      .vc-corroborated .vc-verdict-title{color:var(--ok)}
+      .vc-single .vc-verdict-title,.vc-low-tier .vc-verdict-title{color:var(--warn)}
+      .vc-verdict p{color:var(--muted);font-size:.9rem}
+      .vc-seen{margin-top:.35rem;font-size:.8rem}
+      .vc-section{margin-top:1.15rem;padding-top:1rem;border-top:1px solid var(--line)}
+      .vc-section h2{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin-bottom:.55rem}
+      .vc-note{font-size:.76rem;color:var(--faint);margin-top:.5rem}
+      .vc-note a{color:var(--accent)}
+      ul{list-style:none}
+      .fig-list li{font-size:.88rem;margin:.2rem 0}
+      .fig-ungrounded strong{color:var(--warn)}
+      .fig-grounded strong{color:var(--ok)}
+      code{font-family:ui-monospace,'SF Mono',monospace;font-size:.85em;background:var(--line);padding:.05rem .35rem;border-radius:4px}
+      .pub-list{display:flex;flex-wrap:wrap;gap:.4rem .9rem}
+      .pub-list li{display:flex;align-items:center;gap:.35rem;font-size:.88rem}
+      .pub-feeds,.pub-more{color:var(--faint);font-size:.76rem}
+      .tier-chip{display:inline-block;min-width:1.7rem;text-align:center;font-family:ui-monospace,monospace;font-size:.68rem;font-weight:700;padding:.05rem .3rem;border-radius:4px;border:1px solid var(--line);color:var(--muted)}
+      .tier-1{color:var(--ok);border-color:var(--ok)}
+      .tier-2{color:var(--accent);border-color:var(--accent)}
+      .tier-4{color:var(--warn);border-color:var(--warn)}
+      .hl-list li{padding:.55rem 0;border-bottom:1px solid var(--line)}
+      .hl-list li:last-child{border-bottom:none}
+      .hl-title{font-size:.95rem;overflow-wrap:anywhere}
+      .hl-title a{color:var(--text);text-decoration:none}
+      .hl-title a:hover{text-decoration:underline}
+      .hl-meta{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem;font-size:.76rem;color:var(--muted);margin-top:.2rem}
+      .hl-time{color:var(--faint)}
+      .prov-badge{font-size:.68rem;font-weight:600;padding:.05rem .4rem;border-radius:999px;border:1px solid currentColor}
+      .prov-high{color:var(--bad)}
+      .prov-medium{color:var(--warn)}
+      .prov-unknown{color:var(--faint)}
+      .vc-caveat{margin-top:1.1rem;font-size:.76rem;color:var(--faint);border-top:1px dashed var(--line);padding-top:.75rem}
+      .vc-error{color:var(--bad);font-size:.9rem}
+      .vc-factchecks{margin-top:1rem;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.25rem}
+      .fc-title{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin-bottom:.55rem}
+      .fc-list li{padding:.6rem 0;border-bottom:1px solid var(--line)}
+      .fc-list li:last-child{border-bottom:none}
+      .fc-label{font-size:.72rem;color:var(--faint)}
+      .fc-rating{font-size:.95rem;overflow-wrap:anywhere}
+      .fc-rating a{color:var(--accent)}
+      .fc-claim{font-size:.82rem;color:var(--muted);font-style:italic;overflow-wrap:anywhere;margin-top:.15rem}
+      .how{margin-top:2rem;font-size:.82rem;color:var(--muted)}
+      .how h2{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin-bottom:.4rem}
+      .how li{margin:.3rem 0 .3rem 1rem;list-style:disc}
+      .how a,.footer a{color:var(--accent);text-decoration:none}
+      .footer{margin-top:2rem;font-size:.75rem;color:var(--faint)}
+      @media (max-width:520px){body{padding:1.25rem 1rem 2rem}h1{font-size:1.35rem}button{width:100%}}
+    </style>
+    <!-- No inline scripts: the global CSP is hash-based. src/verify-main.ts applies the saved theme. -->
+  </head>
+  <body>
+    <div class="wrap">
+      <a href="/" class="wm-logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span class="wm-logo-text">WorldMonitor · Verify</span>
+      </a>
+      <main>
+        <h1>Who is reporting this?</h1>
+        <p class="lede">Paste a claim or headline. WorldMonitor shows which publishers carry it, whether they are independent of each other, and which of its numbers they state. It describes coverage, not truth.</p>
+        <form id="verifyForm" role="search">
+          <label for="claimInput">Claim or headline</label>
+          <textarea id="claimInput" name="claim" placeholder="e.g. Russia agrees to supply diesel to the US" autocomplete="off" spellcheck="true" required></textarea>
+          <div class="row">
+            <button type="submit" id="verifySubmit">Check coverage</button>
+            <p class="status" id="digestStatus">Loading live headlines…</p>
+          </div>
+        </form>
+        <div id="result"></div>
+        <section class="how" aria-labelledby="how-title">
+          <h2 id="how-title">How this works</h2>
+          <ul>
+            <li>WorldMonitor matches your text against the live headlines it has collected from its curated feeds.</li>
+            <li>Feeds that belong to one newsroom (Reuters and Reuters World, say) count as one publisher.</li>
+            <li>Each source carries a declared tier and, where reviewed, a state-media or caution label.</li>
+            <li>“Not found” means not in WorldMonitor’s current sources. It never means false.</li>
+            <li>Below the coverage, WorldMonitor quotes ratings that IFCN-verified fact-checkers have published about a similar claim, with their name, date and link. The rating is theirs; WorldMonitor does not rate claims, and a rating never changes the coverage result.</li>
+          </ul>
+        </section>
+      </main>
+      <p class="footer"><a href="/">Open the dashboard</a> · <a href="https://www.worldmonitor.app/docs/mcp-tools-reference#verify_claim">verify_claim for agents (MCP)</a></p>
+    </div>
+    <script type="module" src="/src/verify-main.ts" nonce="wm-static-bootstrap"></script>
+  </body>
+</html>

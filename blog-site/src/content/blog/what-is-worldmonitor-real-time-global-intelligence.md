@@ -1,113 +1,102 @@
 ---
 title: "What Is World Monitor? The Free Real-Time Global Intelligence Dashboard"
-description: "World Monitor is a free, open-source intelligence dashboard aggregating news, markets, conflicts, and infrastructure into one real-time view. No login required."
+description: "World Monitor is a free, open-source intelligence dashboard correlating conflicts, markets, shipping, infrastructure, and live news on one map."
 metaTitle: "What Is World Monitor? Free Global Intelligence Dashboard"
 keywords: "global intelligence dashboard, real-time intelligence platform, OSINT dashboard, open source intelligence tool, geopolitical monitoring"
 audience: "General tech audience, OSINT researchers, analysts, journalists"
 heroImage: "/blog/images/blog/what-is-worldmonitor-real-time-global-intelligence.jpg"
 pubDate: "2026-02-10"
+modifiedDate: "2026-08-05"
 ---
 
-Imagine opening 100 browser tabs every morning: one for Reuters, another for flight tracking, a third for earthquake monitors, a fourth for stock markets, a fifth for military ship positions. Now imagine replacing all of them with a single dashboard.
+World Monitor is a **free, open-source, real-time global intelligence dashboard** that correlates conflicts, markets, shipping, aviation, infrastructure, cyber threats, natural hazards, and live news on one map. The public dashboard requires no signup; paid Pro, API, and Enterprise plans add analyst, automation, programmatic, and team workflows.
 
-That's World Monitor.
+## What Does World Monitor Do?
 
-## A Bloomberg Terminal for the Rest of Us
+World Monitor turns many public signals into one situational-awareness view. Instead of reading a conflict map, ship tracker, market terminal, disaster feed, and news dashboard separately, an analyst can inspect where those signals overlap and then follow the underlying sources.
 
-World Monitor is a **free, open-source, real-time global intelligence dashboard** that pulls together news, financial markets, military movements, natural disasters, cyber threats, and geopolitical risk scoring into one interactive map.
+| Signal family | What World Monitor shows | Example primary sources |
+| --- | --- | --- |
+| Conflict and geopolitical risk | Conflict events, instability, sanctions, protests, and escalation signals | [UCDP](https://ucdp.uu.se/), government advisories, and documented public feeds |
+| Maritime and supply chains | Vessel activity, chokepoint flow, ports, cables, pipelines, and congestion | [IMF PortWatch](https://portwatch.imf.org/) and public AIS data |
+| Aviation and military activity | Aircraft positions, airspace disruption, military flights, and GPS interference | [OpenSky Network](https://opensky-network.org/) and public ADS-B data |
+| Markets and macroeconomics | Equities, commodities, currencies, crypto, policy rates, and economic indicators | [FRED](https://fred.stlouisfed.org/), central banks, exchanges, and market-data providers |
+| Natural hazards | Earthquakes, fires, volcanoes, floods, weather, and radiation signals | [USGS](https://earthquake.usgs.gov/), [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/), and official alert feeds |
+| Cyber and infrastructure | Outages, malicious infrastructure, datacenters, nuclear sites, and dependency cascades | Cloudflare Radar, abuse.ch feeds, and public infrastructure datasets |
 
-It's the kind of tool that used to be locked behind six-figure enterprise contracts. Now it's available to anyone with a browser. No login. No paywall. No data collection.
+The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) documents provider, cadence, license posture, and provenance details for 578+ observed upstream hosts. A source being present does not make every observation equally fresh or authoritative; each feed retains its own reporting delay and revision policy.
 
-## What You See When You Open World Monitor
+## How Is It Different From a News Dashboard?
 
-The first thing you notice is the globe. A 3D interactive map powered by globe.gl and Three.js, dotted with live data points: conflict zones pulsing red, military bases marked by operator, undersea cables tracing the ocean floor, and ADS-B aircraft positions updating in real time.
+A news dashboard organizes stories. World Monitor also organizes the physical and economic systems those stories may affect. A conflict near a port can be inspected beside vessel flow, energy prices, airspace restrictions, infrastructure exposure, and country-risk movement rather than as an isolated headline.
 
-On the left, a panel system lets you pull up any combination of 45+ data layers:
+That correlation layer is the product's central idea: separate weak signals become more useful when they converge in the same place, time window, or transmission path. The [global intelligence glossary](/blog/glossary/) defines the platform's scoring, convergence, chokepoint, and provenance terms as standalone references.
 
-- **Geopolitical:** Active conflicts, protests, hotspot escalation scores, strategic theater posture assessments across 9 operational theaters (Taiwan Strait, Persian Gulf, Baltic, and more)
-- **Military:** 210+ military bases, live flight tracking, naval vessel positions merged with USNI fleet reports, GPS jamming detection zones
-- **Infrastructure:** Nuclear facilities, AI datacenters (111 mapped), undersea cables, pipelines, strategic ports (83), and airports (107)
-- **Financial:** 92 stock exchanges, 13 central bank policy trackers, commodity prices, Fear & Greed Index, Bitcoin ETF flows, stablecoin peg monitoring
-- **Natural Disasters:** USGS earthquakes (M4.5+), NASA satellite fire detection, volcanic activity, flood alerts
-- **Cyber Threats:** Feodo Tracker botnet C2 servers, URLhaus malicious URLs, internet outage detection via Cloudflare Radar
+## What Is Included in the Free Dashboard?
 
-Every data point is sourced from public, verifiable feeds: 435+ RSS sources, government APIs, satellite data, and open maritime/aviation transponders.
+The public dashboard exposes a shared map-layer catalog, curated news feeds backed by observed upstream hosts, country briefs, instability scores, chokepoints, infrastructure, markets, disasters, and watchlists. Every layer except the Resilience layer is available on the free plan, and the dashboard can be opened without an account.
 
-## Five Dashboards, One Codebase
+World Monitor currently maintains:
 
-World Monitor isn't one dashboard. It's five:
+- The Tier-1 country registry in the high-frequency Country Instability Index
+- The public Country Resilience Index universe
+- Stock exchanges and central-bank or supranational institutions in the generated market catalog
+- Interface languages, including right-to-left Arabic
+- Dashboard variants (registry keys): `full`, `tech`, `finance`, `commodity`, `happy`, and `energy`
 
-| Dashboard | Focus | URL |
-|-----------|-------|-----|
-| **World Monitor** | Geopolitics, conflicts, military, infrastructure | worldmonitor.app |
-| **Tech Monitor** | AI labs, startups, cybersecurity, cloud infrastructure | tech.worldmonitor.app |
-| **Finance Monitor** | Markets, central banks, forex, Gulf FDI | finance.worldmonitor.app |
-| **Commodity Monitor** | Mining, metals, energy, supply chain disruption | commodity.worldmonitor.app |
-| **Happy Monitor** | Good news, breakthroughs, conservation, renewable energy | happy.worldmonitor.app |
+These counts are generated from the repository rather than estimated in editorial copy. The current plans, limits, and capability summary are also published in [machine-readable pricing](https://www.worldmonitor.app/pricing.md).
 
-Switch between them with a single click. Each variant curates panels and layers for its specific audience while sharing the same underlying intelligence engine. Read more about each variant in [Five Dashboards, One Platform](/blog/posts/five-dashboards-one-platform-worldmonitor-variants/).
+## How Do the Country Risk Scores Work?
 
-## AI That Runs on Your Machine
+The **Country Instability Index (CII)** is a high-frequency 0–100 score for the Tier-1 country registry. It blends a curated editorial baseline with live event pressure from unrest, conflict, security, and information signals, and publishes a signed 24-hour movement delta. It is a triage signal, not a probability or a substitute for source review.
 
-Here's where World Monitor gets interesting for privacy-conscious users. The platform includes a **4-tier AI fallback chain**:
-
-1. **Local LLMs** (Ollama or LM Studio) for fully offline, private analysis
-2. **Groq** (Llama 3.1 8B) for fast cloud inference
-3. **OpenRouter** as a fallback provider
-4. **Browser-based T5** (Transformers.js) that runs entirely in your browser via Web Workers
-
-This means you can generate intelligence briefs, classify threats, and run sentiment analysis without sending a single byte to external servers. The desktop app (built with Tauri for macOS, Windows, and Linux) takes this further with OS keychain integration and a local Node.js sidecar for complete offline operation.
-
-## The Country Intelligence Dossier
-
-Click any country on the map and you get a full intelligence dossier:
-
-- **Country Instability Index (CII):** A real-time 0-100 score calculated from baseline risk (40%), unrest indicators (20%), security events (20%), and information velocity (20%)
-- **AI-generated analysis** with inline citations from current headlines
-- **Active signals:** Protests, conflicts, natural disasters, and cyber incidents
-- **7-day timeline:** What happened this week
-- **Prediction markets:** What Polymarket bettors think happens next
-- **Infrastructure exposure:** Pipelines, cables, and datacenters within 600km
+The **Country Resilience Index (CRI)** measures a different question: how well a country can absorb and recover from shocks. It covers 72 indicators across 21 active dimensions and six weighted domains for the public rankable universe, with coverage and imputation provenance exposed alongside the score. Read the [CII methodology](https://www.worldmonitor.app/docs/country-instability-index) and [CRI methodology](https://www.worldmonitor.app/docs/methodology/country-resilience-index) before using either index in a decision workflow.
 
 ## Who Uses World Monitor?
 
-The dashboard serves a surprisingly wide audience:
+World Monitor is designed for people who need cross-domain context but should not have to assemble it from dozens of tabs:
 
-- **OSINT researchers** who need a unified view instead of 100 tabs
-- **Financial analysts** tracking macro signals across 92 exchanges
-- **Journalists** who need instant context for breaking stories
-- **Supply chain managers** monitoring disruption risk at ports and commodity hubs
-- **Policy researchers** studying government spending and trade policy
-- **Developers** who want to build on top of open, typed APIs (92 proto files, 22 services). See the [Developer API and Open Source guide](/blog/posts/build-on-worldmonitor-developer-api-open-source/) for details.
+- **OSINT researchers and journalists** verifying fast-moving events against source material
+- **Country-risk and security analysts** watching instability, conflict, sanctions, and infrastructure exposure
+- **Energy, commodity, and macro analysts** connecting physical disruption to market transmission paths
+- **Supply-chain teams** monitoring chokepoints, ports, trade routes, weather, and country risk
+- **Developers and AI-agent builders** consuming structured intelligence through REST, SDKs, or MCP
+- **Curious citizens and students** who want a transparent, inspectable view of global events
 
-## Available Everywhere
+The dashboard supports triage and context. It does not replace a licensed terminal for trade execution, a classified intelligence system, or a primary source. The [comparison with traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/) explains those boundaries in more detail.
 
-World Monitor works as:
+## Can Developers and AI Agents Use the Data?
 
-- A **web app** at worldmonitor.app (no install needed)
-- A **Progressive Web App** you can install on any device with offline map caching
-- A **native desktop app** via Tauri for macOS, Windows, and Linux
-- Fully **mobile-optimized** with touch gestures, pinch-to-zoom, and bottom-sheet panels
+Yes. World Monitor's public interface is generated from Protocol Buffer definitions into REST service specifications, alongside a Model Context Protocol server with a live tool registry. Public metadata and discovery surfaces are open; data-bearing API, MCP tool, and resource calls require the appropriate Pro/API OAuth session or API key.
 
-It supports **21 languages** including Arabic (with full RTL layout), Japanese, Chinese, and all major European languages. RSS feeds are localized per language, and AI analysis can be generated in your preferred language. See the full language breakdown in [World Monitor in 21 Languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
+Developers can start with the [API reference](https://www.worldmonitor.app/docs/api-reference), [MCP quickstart](https://www.worldmonitor.app/docs/mcp-quickstart), or [OpenAPI specification](https://www.worldmonitor.app/openapi.json). AI agents can also read the concise [agent briefing](https://www.worldmonitor.app/llms.txt) and the fuller [platform reference](https://www.worldmonitor.app/llms-full.txt).
 
-## Open Source, No Strings
+## Is World Monitor Open Source?
 
-World Monitor is released under AGPL-3.0. The entire codebase, every data source, every algorithm, is open for inspection, contribution, and self-hosting. There's no "enterprise tier" waiting behind the free version. This is the product.
+Yes. The platform source is published under AGPL-3.0 on [GitHub](https://github.com/koala73/worldmonitor). The web app uses Preact, TypeScript, and Vite; the desktop shell uses Tauri with a Node.js sidecar. The hosted service also offers paid Pro, API, and Enterprise plans with separate subscription-license terms.
 
-The tech stack is modern and approachable: React + TypeScript + Vite on the frontend, Vercel Edge Functions for the API layer, and Tauri for the desktop app.
+Open source makes the implementation inspectable, but it does not eliminate source limitations. Public feeds can be delayed, revised, rate-limited, unavailable, or wrong. World Monitor preserves timestamps and provenance so users can distinguish an observed fact from an analytical inference and return to the original publisher.
 
 ## Frequently Asked Questions
 
-**Do I need to create an account to use World Monitor?**
-No. World Monitor requires no login, no signup, and collects no personal data. Open worldmonitor.app in any browser and start using it immediately.
+**What is a global intelligence dashboard?**
+A global intelligence dashboard combines signals from multiple domains — such as conflicts, markets, shipping, aviation, infrastructure, hazards, and news — into one interface so users can spot relationships and verify the underlying sources.
 
-**Can I run World Monitor completely offline?**
-Yes. The Tauri desktop app (macOS, Windows, Linux) includes a local Node.js sidecar and supports local LLMs via Ollama or LM Studio. You can also install the PWA for offline map caching.
+**Is World Monitor free?**
+The public dashboard is free and requires no signup. Pro, Pro Business, API, API Business, and Enterprise plans add analyst, automation, commercial-use, programmatic, and organization features; current prices and limits are published at [pricing.md](https://www.worldmonitor.app/pricing.md).
 
-**How does World Monitor compare to paid intelligence tools?**
-World Monitor covers geopolitics, markets, military tracking, and infrastructure in a single free dashboard. Paid tools like Bloomberg or Palantir offer deeper coverage in specific domains but cost thousands to millions per year. See the [full comparison](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
+**Is every data point real time?**
+No. "Real time" describes the continuously updated dashboard, not a promise that every provider updates instantly. Aircraft, markets, earthquakes, official statistics, sanctions, and conflict datasets all have different publication cadences and revision policies.
+
+**Can World Monitor replace Bloomberg, Palantir, Dataminr, or Recorded Future?**
+Not universally. World Monitor is strongest as an open, multi-domain public-intelligence and correlation layer. Specialized commercial platforms can provide proprietary data, execution, enterprise workflows, classified deployment, SLAs, or deeper domain coverage that World Monitor does not claim to replace.
+
+**Can World Monitor run private AI analysis?**
+The desktop app supports local or bring-your-own-key AI providers, including Ollama and LM Studio. Live data still depends on the relevant public or hosted sources, so local inference should not be confused with a fully offline global-data feed.
+
+**How should I cite World Monitor?**
+Link to the specific methodology, report, country, chokepoint, or source-backed page you used, include the observation time, and retain the original-source links. Stable research reports publish downloadable data and per-figure provenance under the [research section](https://www.worldmonitor.app/research/).
 
 ---
 
-**Try World Monitor now at [worldmonitor.app](https://worldmonitor.app). No signup required.**
+**[Open the free dashboard](https://www.worldmonitor.app/dashboard) or review [plans and API access](https://www.worldmonitor.app/pricing.md).**

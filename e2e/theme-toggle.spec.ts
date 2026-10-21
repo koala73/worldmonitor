@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { captureScreenshot } from './capture-screenshot';
 
 /**
  * Theme toggle E2E tests for the happy variant.
@@ -167,19 +168,16 @@ test.describe('theme toggle (happy variant)', () => {
     expect(theme).toBe('dark');
   });
 
-  test('screenshot comparison: light vs dark', async ({ page }) => {
+  test('screenshot comparison: light vs dark', async ({ page }, testInfo) => {
     await page.goto('/');
     await page.waitForSelector('.panel', { timeout: 20000 });
     await page.waitForTimeout(2000); // let panels render
 
-    // Screenshot in light mode
-    await page.screenshot({ path: '/tmp/happy-light.png', fullPage: false });
+    await captureScreenshot(page, testInfo, 'happy-light', { fullPage: false });
 
-    // Toggle to dark
     await page.click('#headerThemeToggle');
     await page.waitForTimeout(1000);
 
-    // Screenshot in dark mode
-    await page.screenshot({ path: '/tmp/happy-dark.png', fullPage: false });
+    await captureScreenshot(page, testInfo, 'happy-dark', { fullPage: false });
   });
 });

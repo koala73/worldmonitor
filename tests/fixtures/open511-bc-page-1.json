@@ -1,0 +1,57 @@
+{
+  "events": [
+    {
+      "jurisdiction_url": "https://api.open511.gov.bc.ca/jurisdiction",
+      "url": "https://api.open511.gov.bc.ca/events/drivebc.ca/DBC-47311",
+      "id": "drivebc.ca/DBC-47311",
+      "headline": "INCIDENT",
+      "status": "ACTIVE",
+      "created": "2022-12-07T12:19:21-08:00",
+      "updated": "2026-06-03T14:14:14-07:00",
+      "description": "Johnston Bridge, in both directions. Travel advisory in effect at Front St. In Quesnel. Bridge is closed. Industrial traffic and heavy commercial traffic must detour via Plywood Rd and Maple Drive. Industrial traffic is not allowed to detour through Johnston Subdivision. Next update time Mon Oct 19 at 9:00 AM PDT. Last updated Wed Jun 3 at 2:14 PM PDT. (DBC-47311)",
+      "+ivr_message": "Johnston Bridge, in both directions. Travel advisory in effect at Front St. In Quesnel. Bridge is closed. Industrial traffic and heavy commercial traffic must detour via Plywood Rd and Maple Drive. Industrial traffic is not allowed to detour through Johnston Subdivision. Next update time Monday, October 19 at 9:00 AM. Last updated Wednesday, June 3 at 2:14 PM.",
+      "+linear_reference_km": -1,
+      "schedule": {
+        "intervals": [
+          "2022-12-07T20:19/"
+        ]
+      },
+      "event_type": "INCIDENT",
+      "event_subtypes": [
+        "HAZARD"
+      ],
+      "severity": "MAJOR",
+      "geography": {
+        "type": "Point",
+        "coordinates": [
+          -122.489194,
+          52.972914
+        ]
+      },
+      "roads": [
+        {
+          "name": "Other Roads",
+          "from": "at Front St. in Quesnel",
+          "to": "in Quesnel",
+          "direction": "BOTH"
+        }
+      ],
+      "areas": [
+        {
+          "url": "http://www.geonames.org/8630134",
+          "name": "Cariboo District",
+          "id": "drivebc.ca/7"
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "offset": 0,
+    "next_url": "https://api.open511.gov.bc.ca/events?status=ACTIVE&limit=500&offset=500"
+  },
+  "meta": {
+    "url": "/events",
+    "up_url": "",
+    "version": "v1"
+  }
+}

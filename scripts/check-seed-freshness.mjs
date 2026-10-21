@@ -1,0 +1,706 @@
+#!/usr/bin/env node
+
+import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
+
+import { CONTENT_AGE_PREWARNING_RATIO } from '../api/_content-age.js';
+
+const DEFAULT_HEALTH_URL = 'https://api.worldmonitor.app/api/health?compact=1';
+const BASELINE_URL = new URL('./seed-freshness-baseline.json', import.meta.url);
+// api/health.js only serves a cached verdict for 60 seconds. Allow its maximum
+// 20-second request timeout too, so a valid snapshot cannot be rejected solely
+// because the response arrived at the end of the monitor's fetch window.
+export const MAX_HEALTH_OBSERVATION_AGE_MS = 80 * 1000;
+
+export function validateCompactHealthPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Compact health payload must be an object');
+  }
+  if (Object.hasOwn(payload, 'pending')) {
+    if (!payload.pending || typeof payload.pending !== 'object' || Array.isArray(payload.pending)) {
+      throw new Error('Compact health pending must be an object');
+    }
+    for (const entry of Object.values(payload.pending)) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        throw new Error('Compact health pending entries must be objects');
+      }
+    }
+  }
+  // Compact health omits `problems` entirely when every check is healthy.
+  if (payload.problems == null && payload.status === 'HEALTHY') return payload;
+  if (!payload.problems || typeof payload.problems !== 'object' || Array.isArray(payload.problems)) {
+    throw new Error('Compact health payload must contain a problems object');
+  }
+  return payload;
+}
+
+// The ONLY states being on-demand actually explains: nothing has requested the
+// key yet, or the producer has not run for the first time. Absence is expected
+// for an RPC-populated cache or a deployment-order bridge, so it must not page.
+//
+// Everything else must stay strict even for an on-demand source. `SEED_ERROR`
+// means the producer ran and failed; a long `STALE_SEED` means it stopped
+// running. Neither is explained by "nobody asked for it yet", and softening
+// them is a known-bad trade: api/health.js's ON_DEMAND_KEYS policy block
+// records `marketImplications` sitting at 8.2x its staleness budget for 16+
+// hours undetected for exactly this reason, which is why that key was removed
+// from the set. Do not widen this list to cover fault statuses — a genuinely
+// accepted degradation belongs in seed-freshness-baseline.json, where it
+// carries an owner issue and an expiry.
+const ON_DEMAND_SOFT_STATUSES = new Set(['EMPTY_ON_DEMAND', 'EMPTY', 'EMPTY_DATA']);
+
+// `/api/health` marks on-demand sources with `onDemand: true` on every status
+// (api/health.js classifyKey). The status-suffix test is retained as a fallback
+// for compact snapshots cached before that marker shipped, and is self-limiting:
+// `EMPTY_ON_DEMAND` is the only `_ON_DEMAND` status, so it covers only the
+// absent/zero-record branches — the same set the marker path allows.
+export function isOnDemandProblem(problem) {
+  if (typeof problem?.status === 'string' && problem.status.endsWith('_ON_DEMAND')) return true;
+  return problem?.onDemand === true && ON_DEMAND_SOFT_STATUSES.has(problem?.status);
+}
+
+// Content-age pre-warning (CONTENT_AGE_PREWARNING in api/health.js): the
+// reader's 80%-of-budget lead-time flag. Advisory only — the hard
+// STALE_CONTENT path stays the fail-closed authority, so this predicate is
+// excluded from operational problems UNCONDITIONALLY: a malformed advisory
+// entry is dropped, never promoted into a blocking false alarm. Validity is
+// checked separately for reporting; it must not gate the exclusion.
+export function isContentAgePreWarningProblem(problem) {
+  return problem?.status === 'CONTENT_AGE_PREWARNING';
+}
+
+// Full wire-field validation for reporting. Runs against the FENCED
+// observation time (checkedAt), not the monitor's wall clock: a valid
+// snapshot can cross its breach instant between snapshot and read, and that
+// must not invalidate the diagnostic. Returns null for any malformed shape.
+export function contentAgePreWarningDiagnostic(name, problem, observedAtMs) {
+  if (!isContentAgePreWarningProblem(problem)) return null;
+  const age = problem.contentAgeMin;
+  const budget = problem.maxContentAgeMin;
+  const warnAt = problem.warnAtContentAgeMin;
+  const remaining = problem.contentAgeRemainingMin;
+  const breachMs = Date.parse(typeof problem.contentAgeBreachAt === 'string' ? problem.contentAgeBreachAt : '');
+  if (!Number.isFinite(age) || age < 0) return null;
+  if (!Number.isFinite(budget) || budget <= 0) return null;
+  // Read the policy ratio from the shared assessor module so a future
+  // policy change cannot silently desynchronize the monitor's validation.
+  if (warnAt !== Math.ceil(budget * CONTENT_AGE_PREWARNING_RATIO)) return null;
+  if (age < warnAt || age > budget) return null;
+  if (remaining !== budget - age) return null;
+  if (!Number.isFinite(breachMs)) return null;
+  return {
+    name,
+    status: problem.status,
+    graceUntil: null,
+    contentAgeMin: age,
+    maxContentAgeMin: budget,
+    usedPercent: Math.round((age / budget) * 1000) / 10,
+    remainingMin: remaining,
+    breachAt: problem.contentAgeBreachAt,
+    breachObserved: observedAtMs != null && Number.isFinite(observedAtMs) ? observedAtMs >= breachMs : null,
+  };
+}
+
+// #6059 — a schema whose producer has not reached its first scheduled run yet.
+// Softened for the SAME reason as on-demand (absence is explained, not a
+// fault), but on strictly tighter terms: /api/health emits the deadline it
+// compiled into the payload, and this gate re-checks it against the wall clock
+// rather than trusting the status string. So it fails CLOSED three ways —
+// a missing/unparseable deadline, an already-expired one, and a compact
+// snapshot cached from before the deadline all report the problem normally.
+// That is why this does not need a baseline entry with an owner and expiry:
+// the expiry is in the payload and this function enforces it.
+// One complete daily scrape/aggregate/publish window, the longest rollout the
+// health registry is allowed to declare. Bounding it HERE too is deliberate
+// defence in depth: this gate consumes a payload over the network, so it must
+// not accept an arbitrarily distant deadline as a licence to stay quiet. Without
+// this, a single bad `rolloutPendingUntil` — a registry bug, a bad merge, a
+// tampered response — would silence these keys in CI effectively forever.
+export const MAX_ROLLOUT_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Mirrors STALE_CONTENT_GRACE_MS in api/health.js (the publisher), plus slack.
+// tests/seed-freshness-monitor.test.mjs pins the relationship so the two cannot
+// silently drift apart.
+//
+// The slack is load-bearing, not padding. The publisher stamps a deadline at
+// most exactly one window ahead of ITS clock; this gate compares that value
+// against a DIFFERENT machine's clock. With a bare 3h ceiling the entire
+// tolerance for skew is network latency, so a CI runner a few seconds behind
+// Vercel would reject a perfectly legitimate grace and report it as blocking.
+// Five minutes absorbs realistic skew while still refusing the thing the
+// ceiling exists to refuse: a registry bug or tampered response claiming a
+// window far longer than the publisher can legally mint.
+export const STALE_CONTENT_GRACE_SKEW_SLACK_MS = 5 * 60 * 1000;
+export const MAX_STALE_CONTENT_GRACE_MS = 3 * 60 * 60 * 1000 + STALE_CONTENT_GRACE_SKEW_SLACK_MS;
+// Mirrors CHINA_DECISION_SIGNALS_PENDING_MS in api/health.js, with the same
+// cross-machine clock-skew allowance used for stale-content grace. The API
+// keeps health pending for three hours after proven full operational coverage
+// while producer retries remain diagnostic-only. This monitor must consume the
+// bounded verdict instead of turning it back into an operational failure.
+export const CHINA_COVERAGE_PENDING_SKEW_SLACK_MS = 5 * 60 * 1000;
+export const MAX_CHINA_COVERAGE_PENDING_MS = 3 * 60 * 60 * 1000
+  + CHINA_COVERAGE_PENDING_SKEW_SLACK_MS;
+
+function hasActiveBoundedDeadline(raw, now, maxWindowMs) {
+  const until = Date.parse(typeof raw === 'string' ? raw : '');
+  if (!Number.isFinite(until)) return false;
+  if (until - now > maxWindowMs) return false;
+  return now < until;
+}
+
+export function isRolloutPendingProblem(problem, now = Date.now()) {
+  if (problem?.status !== 'ROLLOUT_PENDING') return false;
+  return hasActiveBoundedDeadline(problem.rolloutPendingUntil, now, MAX_ROLLOUT_WINDOW_MS);
+}
+
+export function isStaleContentGraceProblem(problem, now = Date.now()) {
+  if (problem?.status !== 'STALE_CONTENT') return false;
+  return hasActiveBoundedDeadline(
+    problem.staleContentGraceUntil,
+    now,
+    MAX_STALE_CONTENT_GRACE_MS,
+  );
+}
+
+// Mirrors RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS in api/health.js, plus the
+// same clock-skew slack the other bounded deadlines carry. A first
+// RELAY_GATE_UNREACHABLE sighting (one relay timeout or 5xx) is pending, not
+// operational, until the publisher's deadline passes; a stall that outlives
+// it pages as usual.
+export const RELAY_GATE_TRANSPORT_GRACE_SKEW_SLACK_MS = 5 * 60 * 1000;
+export const MAX_RELAY_GATE_TRANSPORT_GRACE_MS = 3 * 60 * 1000 + RELAY_GATE_TRANSPORT_GRACE_SKEW_SLACK_MS;
+
+export function isRelayGateGraceProblem(problem, now = Date.now()) {
+  if (problem?.status !== 'RELAY_GATE_UNREACHABLE') return false;
+  return hasActiveBoundedDeadline(problem.transportGraceUntil, now, MAX_RELAY_GATE_TRANSPORT_GRACE_MS);
+}
+
+export function isChinaCoveragePendingProblem(problem, now = Date.now()) {
+  if (!['COVERAGE_PARTIAL', 'CHINA_DEGRADED'].includes(problem?.status)) return false;
+  return hasActiveBoundedDeadline(
+    problem.chinaCoveragePendingUntil,
+    now,
+    MAX_CHINA_COVERAGE_PENDING_MS,
+  );
+}
+
+export function isSourceFailurePendingProblem(problem, now = Date.now()) {
+  const earthquake = problem?.errorCode === 'EARTHQUAKE_UPSTREAM_INCOMPLETE';
+  const nhc = /^NHC_(POINT_REQUEST_FAILED|POINT_RESPONSE_INVALID)$/.test(problem?.errorCode || '');
+  const mnd = /^MND_[A-Z0-9_]{1,60}$/.test(problem?.errorCode || '');
+  return problem?.status === 'SEED_ERROR'
+    && Number.isFinite(problem.records) && problem.records > 0
+    && Number.isFinite(problem.seedAgeMin) && problem.seedAgeMin >= 0
+    && Number.isFinite(problem.maxStaleMin) && problem.seedAgeMin <= problem.maxStaleMin
+    && problem.consecutiveSourceFailures === 1
+    && typeof problem.errorCode === 'string' && (earthquake || nhc || mnd)
+    && problem.errorCode === problem.lastSourceFailureCode
+    && hasActiveBoundedDeadline(problem.sourceFailurePendingUntil, now, (earthquake ? 15 : 215) * 60_000);
+}
+
+function isWorkerControlPendingProblem(name, problem, now) {
+  const control = problem?.workerControl;
+  const failure = control?.subsystems?.scan?.claimFailure;
+  return name === 'companyMonitoringWorker' && problem?.status === 'SEED_ERROR'
+    && Number.isFinite(problem.records) && problem.records > 0 && problem.maxStaleMin === 5
+    && control?.status === 'error' && control.outcome === 'claim_error'
+    && control.subsystems?.scan?.status === 'error' && control.subsystems.scan.outcome === 'claim_error'
+    && control.subsystems.admission?.status === 'ok'
+    && ['disabled', 'idle', 'admission_recorded', 'admission_replayed'].includes(control.subsystems.admission.outcome)
+    && Number.isInteger(failure?.consecutiveFailures) && failure.consecutiveFailures >= 1 && failure.consecutiveFailures < 3
+    && ((['timeout', 'network'].includes(failure.kind) && failure.httpStatus === null)
+      || (failure.kind === 'http_transient' && [408, 429, 500, 502, 503, 504].includes(failure.httpStatus)))
+    && Number.isSafeInteger(failure.lastHealthyAt) && failure.lastHealthyAt > 0 && failure.lastHealthyAt <= now
+    && typeof problem.workerControlPendingUntil === 'string'
+    && Date.parse(problem.workerControlPendingUntil) === failure.lastHealthyAt + 300_000
+    && hasActiveBoundedDeadline(problem.workerControlPendingUntil, now, 300_000);
+}
+
+export function findPendingDiagnostics(payload, now = Date.now()) {
+  const observedAtMs = Date.parse(payload?.checkedAt);
+  return compactHealthEntries(payload)
+    .filter(([name, problem]) => (
+      // Pre-warnings are reported only when the full wire shape validates;
+      // malformed ones are dropped here AND excluded from operational
+      // problems unconditionally, so they vanish rather than false-alarm.
+      (isContentAgePreWarningProblem(problem)
+        && contentAgePreWarningDiagnostic(name, problem, observedAtMs) !== null)
+      || isStaleContentGraceProblem(problem, now)
+      || isSourceFailurePendingProblem(problem, now)
+      || isChinaCoveragePendingProblem(problem, now)
+      || isRelayGateGraceProblem(problem, now)
+      || isWorkerControlPendingProblem(name, problem, now)
+    ))
+    .map(([name, problem]) => ({
+      ...(
+        contentAgePreWarningDiagnostic(name, problem, observedAtMs)
+        ?? {
+          name,
+          status: problem?.status ?? 'UNKNOWN',
+          graceUntil: problem?.staleContentGraceUntil
+            ?? problem?.sourceFailurePendingUntil
+            ?? problem?.chinaCoveragePendingUntil
+            ?? problem?.transportGraceUntil
+            ?? problem?.workerControlPendingUntil
+            ?? null,
+        }
+      ),
+    }))
+    .sort((a, b) => (b.usedPercent ?? -1) - (a.usedPercent ?? -1) || a.name.localeCompare(b.name));
+}
+
+function compactHealthEntries(payload) {
+  validateCompactHealthPayload(payload);
+  return Object.entries({ ...(payload.pending ?? {}), ...(payload.problems ?? {}) });
+}
+
+export function findOperationalProblems(payload, now = Date.now()) {
+  return compactHealthEntries(payload)
+    .filter(([name, problem]) => (
+      !isContentAgePreWarningProblem(problem)
+      &&
+      !isOnDemandProblem(problem)
+      && !isRolloutPendingProblem(problem, now)
+      && !isStaleContentGraceProblem(problem, now)
+      && !isSourceFailurePendingProblem(problem, now)
+      && !isChinaCoveragePendingProblem(problem, now)
+      && !isRelayGateGraceProblem(problem, now)
+      && !isWorkerControlPendingProblem(name, problem, now)
+    ))
+    .map(([name, problem]) => ({
+      name,
+      status: problem?.status ?? 'UNKNOWN',
+      records: problem?.records,
+      ...(typeof problem?.errorCode === 'string' && /^[A-Z0-9_:-]{1,100}$/.test(problem.errorCode)
+        ? { errorCode: problem.errorCode }
+        : {}),
+      ...(Number.isFinite(problem?.seedAgeMin)
+        ? { seedAgeMin: problem.seedAgeMin }
+        : {}),
+      ...(Number.isFinite(problem?.maxStaleMin)
+        ? { maxStaleMin: problem.maxStaleMin }
+        : {}),
+      // The content clock, carried so the report can name the pair that
+      // actually fired. Without these a STALE_CONTENT line could only print
+      // the SEED pair, which is by definition inside budget for that status —
+      // the reader sees `age=1200m max=5760m` on a problem row and reasonably
+      // concludes the monitor is broken.
+      ...(Number.isFinite(problem?.contentAgeMin)
+        ? { contentAgeMin: problem.contentAgeMin }
+        : {}),
+      ...(Number.isFinite(problem?.maxContentAgeMin)
+        ? { maxContentAgeMin: problem.maxContentAgeMin }
+        : {}),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Return true for a real ISO calendar instant with an explicit Z or numeric timezone.
+ * Date.parse alone is insufficient because it normalizes impossible dates such as February 30.
+ */
+export function isUtcIsoInstant(value) {
+  if (typeof value !== 'string') return false;
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-](\d{2}):(\d{2}))$/,
+  );
+  if (!match) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, , zone, offsetHourText, offsetMinuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth[month - 1]) return false;
+  if (hour > 23 || minute > 59 || second > 59) return false;
+  if (
+    zone !== 'Z'
+    && (Number(offsetHourText) > 23 || Number(offsetMinuteText) > 59)
+  ) return false;
+  return Number.isFinite(Date.parse(value));
+}
+
+export function validateAcceptanceBaseline(baseline) {
+  if (!baseline || typeof baseline !== 'object' || Array.isArray(baseline)) {
+    throw new Error('Acceptance baseline must be an object');
+  }
+  if (typeof baseline.expiresAt !== 'string' || Number.isNaN(Date.parse(baseline.expiresAt))) {
+    throw new Error('Acceptance baseline must carry an ISO expiresAt date');
+  }
+  if (!Array.isArray(baseline.acknowledged)) {
+    throw new Error('Acceptance baseline must contain an acknowledged array');
+  }
+  const seen = new Set();
+  for (const entry of baseline.acknowledged) {
+    if (!entry?.name || !entry?.status) {
+      throw new Error('Each acknowledged baseline entry needs name and status');
+    }
+    const key = `${entry.name}:${entry.status}`;
+    if (seen.has(key)) {
+      throw new Error(`Acceptance baseline contains duplicate entry ${key}`);
+    }
+    seen.add(key);
+    if (!Number.isInteger(entry.issue)) {
+      throw new Error(`Acknowledged baseline entry ${entry.name} needs an owner issue number`);
+    }
+    if (
+      Object.hasOwn(entry, 'expiresAt')
+      && !isUtcIsoInstant(entry.expiresAt)
+    ) {
+      throw new Error(`Acknowledged baseline entry ${entry.name} needs a valid UTC ISO expiresAt instant`);
+    }
+    // Optional rejection cohort: when present it must be a non-empty list of
+    // non-empty strings, or the cohort guard in applyAcceptanceBaseline would
+    // silently scope the acknowledgment to nothing.
+    if (Object.hasOwn(entry, 'rejectedShas')
+      && (!Array.isArray(entry.rejectedShas)
+        || entry.rejectedShas.length === 0
+        || entry.rejectedShas.some((sha) => typeof sha !== 'string' || sha.length === 0))) {
+      throw new Error(`Acknowledged baseline entry ${entry.name} needs rejectedShas to be a non-empty array of commit SHAs`);
+    }
+    if (Object.hasOwn(entry, 'cutover')) {
+      if (!entry.cutover || typeof entry.cutover !== 'object' || Array.isArray(entry.cutover)) {
+        throw new Error(`Acknowledged baseline entry ${entry.name} needs a cutover object`);
+      }
+      if (typeof entry.expiresAt !== 'string') {
+        throw new Error(`Cutover acknowledgement ${entry.name} needs an entry-level expiresAt`);
+      }
+      if (typeof entry.cutover.probeKey !== 'string' || entry.cutover.probeKey.length === 0) {
+        throw new Error(`Cutover acknowledgement ${entry.name} needs a probeKey`);
+      }
+      if (!isUtcIsoInstant(entry.cutover.activatedAt)) {
+        throw new Error(`Cutover acknowledgement ${entry.name} needs a valid UTC ISO activatedAt instant`);
+      }
+      if (!isUtcIsoInstant(entry.cutover.firstScheduledRunAt)) {
+        throw new Error(`Cutover acknowledgement ${entry.name} needs a valid UTC ISO firstScheduledRunAt instant`);
+      }
+      const activatedAt = Date.parse(entry.cutover.activatedAt);
+      const firstScheduledRunAt = Date.parse(entry.cutover.firstScheduledRunAt);
+      const expiresAt = Date.parse(entry.expiresAt);
+      if (firstScheduledRunAt <= activatedAt) {
+        throw new Error(`Cutover acknowledgement ${entry.name} first scheduled run must follow activation`);
+      }
+      if (firstScheduledRunAt - activatedAt > MAX_ROLLOUT_WINDOW_MS) {
+        throw new Error(`Cutover acknowledgement ${entry.name} first scheduled run must be within 24 hours`);
+      }
+      if (expiresAt <= activatedAt) {
+        throw new Error(`Cutover acknowledgement ${entry.name} must expire after activation`);
+      }
+      if (expiresAt > firstScheduledRunAt) {
+        throw new Error(`Cutover acknowledgement ${entry.name} must expire by its first scheduled run`);
+      }
+    }
+  }
+  return baseline;
+}
+
+/**
+ * Split live problems against the acknowledged baseline.
+ *
+ * `blocking` fails the gate. `acknowledged` is a known-degraded source with an
+ * owner issue, reported but not fatal. `cleared` is a baseline entry that no
+ * longer appears in health at all — reported as a prompt to prune, but
+ * deliberately NOT fatal, because several of these sources flap between polls
+ * and a clear-on-recovery failure would make the monitor red on exactly the
+ * runs that prove things improved. The root `expiresAt` is the baseline-wide
+ * anti-rot mechanism: the whole baseline must be re-reviewed on a date, or the
+ * gate fails. An entry may carry its own tighter `expiresAt`; its exact live
+ * problem returns to `blocking` at that instant without expiring other entries.
+ *
+ * The expiry governs SUPPRESSIONS, so a baseline that acknowledges nothing
+ * cannot expire — there is no suppression left to outlive its cause, and a
+ * date-triggered failure over an empty list is a red monitor with nothing to
+ * review. That case is reachable: pruning the last recovered entry empties the
+ * file, and this repository has already watched a permanently-red monitor hide
+ * live drift (#6087).
+ *
+ * `escalated` is the third case, and it exists because the other two are not
+ * exhaustive. Acknowledgment is keyed on `name:status`, so a source that gets
+ * WORSE stops matching its entry exactly like one that recovers — and folding
+ * both into `cleared` told the operator to delete a suppression for a source
+ * that is still broken, in the same run that failed the gate on its new status.
+ * #6263 made that reachable fleet-wide: a faulting key whose data key also
+ * expires now moves SEED_ERROR -> EMPTY. The worse status still lands in
+ * `blocking` (an escalation is never suppressed); this bucket only stops the
+ * report from calling it a recovery.
+ */
+export function applyAcceptanceBaseline(problems, baseline, now = Date.now()) {
+  validateAcceptanceBaseline(baseline);
+  const accepted = new Map(
+    baseline.acknowledged.map((entry) => [`${entry.name}:${entry.status}`, entry]),
+  );
+  const observedByName = new Map(problems.map((problem) => [problem.name, problem.status]));
+  const seen = new Set();
+  const blocking = [];
+  const acknowledged = [];
+  for (const problem of problems) {
+    const key = `${problem.name}:${problem.status}`;
+    const entry = accepted.get(key);
+    if (entry) {
+      seen.add(key);
+      // An entry may scope its acknowledgment to an explicit rejection cohort
+      // (entry.rejectedShas). A problem carrying any SHA outside that cohort
+      // is NEW information wearing the acknowledged name:status — the exact
+      // shape a recovered service's next, unrelated rejection takes — and must
+      // block (#6483 cross-model review, verified by execution). Additive:
+      // callers whose problems or entries carry no rejectedShas are unchanged.
+      const novelRejections = Array.isArray(entry.rejectedShas) && Array.isArray(problem.rejectedShas)
+        ? problem.rejectedShas.filter((sha) => !entry.rejectedShas.includes(sha))
+        : [];
+      if (novelRejections.length > 0) {
+        blocking.push({ ...problem, novelRejections, issue: entry.issue });
+      } else if (!Object.hasOwn(entry, 'expiresAt') || now < Date.parse(entry.expiresAt)) {
+        acknowledged.push({ ...problem, issue: entry.issue });
+      } else {
+        // Carry the expired entry's identity so the report can attribute the
+        // red line to a scheduled re-page instead of a fresh outage.
+        blocking.push({ ...problem, expiredEntry: entry.expiresAt, issue: entry.issue });
+      }
+    } else {
+      blocking.push(problem);
+    }
+  }
+  const unmatched = baseline.acknowledged.filter((entry) => !seen.has(`${entry.name}:${entry.status}`));
+  const cleared = unmatched
+    .filter((entry) => !observedByName.has(entry.name))
+    .map((entry) => ({ name: entry.name, status: entry.status, issue: entry.issue }));
+  const escalated = unmatched
+    .filter((entry) => observedByName.has(entry.name))
+    .map((entry) => ({
+      name: entry.name,
+      status: entry.status,
+      observedStatus: observedByName.get(entry.name),
+      issue: entry.issue,
+    }));
+  const expired = baseline.acknowledged.length > 0 && Date.parse(baseline.expiresAt) < now;
+  return { blocking, acknowledged, cleared, escalated, expired, expiresAt: baseline.expiresAt };
+}
+
+function readAcceptanceBaseline() {
+  return JSON.parse(readFileSync(BASELINE_URL, 'utf8'));
+}
+
+/**
+ * Health decides STALE_CONTENT on a different clock from STALE_SEED, and this
+ * line has to print the one that actually fired.
+ *
+ *   seed     seedAgeMin vs maxStaleMin         "is the seeder running"  -> STALE_SEED
+ *   content  contentAgeMin vs maxContentAgeMin "is the data advancing"  -> STALE_CONTENT
+ *
+ * This printed the seed pair unconditionally, so every STALE_CONTENT line read
+ * as a contradiction: euFsi showed `age=1200m max=5760m` — comfortably inside
+ * budget — while the breach was contentAgeMin 19230 against maxContentAgeMin
+ * 14400. A reader can only conclude the monitor is wrong.
+ *
+ * The seed pair is by definition INSIDE budget on a STALE_CONTENT row, so it is
+ * never the reason and must never be printed as though it were. That holds even
+ * when the content numbers are missing, which happens two different ways:
+ *
+ *   contentAgeMin === null   health fail-closes on an unreadable content clock,
+ *                            so the source is stale because nothing in the
+ *                            payload carries a date (jodiGas).
+ *   no content fields at all health also reaches STALE_CONTENT via
+ *                            requireContentFreshness — a per-country verdict
+ *                            (portwatchPortActivity). That detail names WHICH
+ *                            country is stale, so api/health.js strips it from
+ *                            the public compact shape (#6060) that this monitor
+ *                            reads. The numbers are operator-only by design and
+ *                            are not coming; say so and point at where they live.
+ */
+function describeProblem(problem) {
+  const seedClock = Number.isFinite(problem.seedAgeMin)
+    ? ` age=${problem.seedAgeMin}m max=${problem.maxStaleMin ?? 'unknown'}m`
+    : '';
+
+  if (problem.status !== 'STALE_CONTENT') {
+    return `${problem.name}: status=${problem.status} records=${problem.records ?? 'unknown'}${seedClock}`;
+  }
+
+  // Marked `ok` so the healthy clock is never mistaken for the failing one.
+  const seedAside = Number.isFinite(problem.seedAgeMin)
+    ? ` (seed age=${problem.seedAgeMin}m ok)`
+    : '';
+  const contentClock = Number.isFinite(problem.maxContentAgeMin)
+    ? ` contentAge=${Number.isFinite(problem.contentAgeMin)
+      ? `${problem.contentAgeMin}m`
+      : 'unknown (no dated item; scored stale)'} maxContentAge=${problem.maxContentAgeMin}m`
+    : ' contentAge=operator-only (per-country freshness; see detailed /api/health)';
+
+  return `${problem.name}: status=${problem.status} records=${problem.records ?? 'unknown'}${contentClock}${seedAside}`;
+}
+
+/**
+ * Pure renderer for one acceptance run. Kept separate from main() so the
+ * ORDER of the report is testable without a network round trip — the bug this
+ * shape closes was an early `return` on expiry that suppressed the blocking
+ * list, and no assertion over the pure split functions could have seen it.
+ */
+export function formatAcceptanceReport(
+  { blocking, acknowledged, cleared, escalated = [], expired, expiresAt },
+  checkedAt,
+) {
+  const info = [
+    ...acknowledged.map((problem) => `- acknowledged (#${problem.issue}): ${describeProblem(problem)}`),
+    // Deliberately carries NO pruning advice. The suppression is still live —
+    // its source got worse, not better — and the new status is already in
+    // `blocking` above. Telling an operator to delete the entry here would
+    // retire the owner record for an active fault.
+    ...escalated.map((entry) =>
+      `- escalated (#${entry.issue}): ${entry.name} ${entry.status} -> ${entry.observedStatus}; the baselined status is no longer what this source reports. Re-review the suppression against the worse state before changing it.`),
+    ...cleared.map((entry) =>
+      `- recovered: ${entry.name}:${entry.status} no longer reported; remove it from scripts/seed-freshness-baseline.json (#${entry.issue}).`),
+  ];
+  const errors = [];
+
+  // The actionable list comes BEFORE any terminal condition. Expiry is the run
+  // where an operator most needs to see what is actually broken.
+  if (blocking.length > 0) {
+    errors.push(`Ingestion operational acceptance failed: ${blocking.length} unacknowledged problem(s).`);
+    errors.push(...blocking.map((problem) => `- ${describeProblem(problem)}`));
+  }
+  if (expired) {
+    errors.push(
+      `Ingestion operational acceptance failed: the accepted-problem baseline expired on ${expiresAt}. Re-review scripts/seed-freshness-baseline.json and set a new expiresAt.`,
+    );
+  }
+  if (errors.length === 0) {
+    info.push(
+      `Ingestion operational acceptance passed at ${checkedAt || 'unknown time'}: no unacknowledged health problems (${acknowledged.length} acknowledged).`,
+    );
+  }
+  return { info, errors, failed: errors.length > 0 };
+}
+
+export function normalizeCheckedAt(checkedAt, now = Date.now()) {
+  if (!isUtcIsoInstant(checkedAt)) {
+    throw new Error('Compact health payload checkedAt must be a valid UTC ISO instant');
+  }
+  const checkedAtMs = Date.parse(checkedAt);
+  const ageMs = now - checkedAtMs;
+  if (ageMs < 0 || ageMs > MAX_HEALTH_OBSERVATION_AGE_MS) {
+    throw new Error('Compact health payload checkedAt is outside the accepted observation window');
+  }
+  return new Date(checkedAtMs).toISOString();
+}
+
+/**
+ * One machine-readable observation, built from the exact same fail-closed split
+ * and report as the human log. The workflow status publisher consumes this;
+ * keeping it here prevents the text and machine verdicts from drifting apart.
+ */
+export function buildAcceptanceObservation(payload, baseline, now = Date.now()) {
+  const checkedAt = normalizeCheckedAt(payload?.checkedAt, now);
+  const acceptance = applyAcceptanceBaseline(findOperationalProblems(payload, now), baseline, now);
+  return {
+    version: 1,
+    checkedAt,
+    acceptance,
+    graced: findPendingDiagnostics(payload, now),
+    report: formatAcceptanceReport(acceptance, checkedAt),
+  };
+}
+
+function markdownCell(value) {
+  return String(value ?? 'unknown').slice(0, 500)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/[\r\n]/g, ' ').replace(/\|/g, '&#124;')
+    .replace(/[\\`*_[\]()]/g, '\\$&');
+}
+
+export function formatAcceptanceMarkdown({ checkedAt, acceptance, report, graced = [] }) {
+  const { blocking, acknowledged, cleared, expired, expiresAt } = acceptance;
+  const verdict = report.failed ? 'Failed' : acknowledged.length || graced.length
+    ? 'Passed with acknowledged degradation or active grace' : 'Passed';
+  const lines = [
+    '## Production ingestion acceptance', '',
+    `**${verdict}.** Observed ${markdownCell(checkedAt)}.`, '',
+    'Workflow success can mean the observation completed without a new incident alert. It does not prove source recovery.', '',
+    '| Source | State | Detail |', '| --- | --- | --- |',
+  ];
+  for (const [state, problems] of [['Active', blocking], ['Acknowledged', acknowledged]]) {
+    for (const problem of problems) {
+      const code = problem.errorCode ? `; ${problem.errorCode}` : '';
+      const owner = problem.issue ? `; tracking issue #${problem.issue}` : '';
+      lines.push(`| ${markdownCell(problem.name)} | ${state} | ${markdownCell(describeProblem(problem) + code + owner)} |`);
+    }
+  }
+  for (const problem of graced) {
+    lines.push(`| ${markdownCell(problem.name)} | In grace | Alerts at ${markdownCell(problem.graceUntil)} |`);
+  }
+  for (const problem of cleared) {
+    lines.push(`| ${markdownCell(problem.name)} | Baseline entry cleared | No longer reported; review tracking issue #${markdownCell(problem.issue)} |`);
+  }
+  if (!blocking.length && !acknowledged.length && !graced.length && !cleared.length) {
+    lines.push('| None | No active source incidents | Current observation |');
+  }
+  if (expired) lines.push('', `Accepted-problem baseline expired at ${markdownCell(expiresAt)}. Acceptance remains failed.`);
+  return `${lines.join('\n')}\n`;
+}
+
+// Cover an abandoned 30s refresh lease plus its replacement sweep, without
+// turning a persistent outage into an unbounded scheduled job.
+export async function fetchCompactHealth(healthUrl, {
+  fetchFn = (...args) => globalThis.fetch(...args),
+  now = () => Date.now(),
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  const deadline = now() + 45_000;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const remainingMs = deadline - now();
+    if (remainingMs <= 0) break;
+    const response = await fetchFn(healthUrl, {
+      headers: { 'User-Agent': 'worldmonitor-seed-freshness-monitor/1.0' },
+      signal: AbortSignal.timeout(Math.min(20_000, remainingMs)),
+    });
+    if (response.ok) return response.json();
+    const payload = response.status === 503 ? await response.json() : null;
+    if (payload?.status !== 'REFRESH_PENDING') {
+      throw new Error(`Compact health request failed: HTTP ${response.status}`);
+    }
+    const retryAfter = response.headers.get('Retry-After');
+    let delayMs = 3_000;
+    if (retryAfter && /^\d+$/.test(retryAfter)) delayMs = Number(retryAfter) * 1_000;
+    else if (retryAfter && /^[A-Za-z]{3}, \d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(retryAfter)
+      && Number.isFinite(Date.parse(retryAfter))) delayMs = Date.parse(retryAfter) - now();
+    delayMs = Math.max(100, delayMs);
+    if (attempt === 11 || delayMs >= deadline - now()) break;
+    await sleep(delayMs);
+  }
+  throw new Error('Compact health refresh remained pending within the retry budget');
+}
+
+async function main() {
+  const { values } = parseArgs({
+    args: process.argv.slice(2),
+    options: {
+      'json-output': { type: 'string' },
+      'markdown-output': { type: 'string' },
+    },
+    strict: true,
+  });
+  const healthUrl = process.env.HEALTH_URL || DEFAULT_HEALTH_URL;
+  const payload = await fetchCompactHealth(healthUrl);
+  const observation = buildAcceptanceObservation(payload, readAcceptanceBaseline());
+  const outputPath = values['json-output'];
+  if (outputPath) writeFileSync(outputPath, `${JSON.stringify(observation, null, 2)}\n`);
+  if (values['markdown-output']) writeFileSync(values['markdown-output'], formatAcceptanceMarkdown(observation));
+  const { report } = observation;
+  for (const line of report.info) console.log(line);
+  // Non-blocking, but never silent: a green run should still say which feeds
+  // are mid-grace and when they start counting as warnings.
+  for (const graced of observation.graced) {
+    console.log(`in grace: ${graced.name} (${graced.status}, alerting at ${graced.graceUntil})`);
+  }
+  for (const line of report.errors) console.error(line);
+  if (report.failed) process.exitCode = 1;
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

@@ -5,13 +5,21 @@ package worldmonitor.military.v1;
 import "sebuf/http/annotations.proto";
 
 message ListMilitaryBasesRequest {
+  // North-east corner latitude of the map bounding box.
   double ne_lat = 1 [(sebuf.http.query) = { name: "ne_lat" }];
+  // North-east corner longitude of the map bounding box.
   double ne_lon = 2 [(sebuf.http.query) = { name: "ne_lon" }];
+  // South-west corner latitude of the map bounding box.
   double sw_lat = 3 [(sebuf.http.query) = { name: "sw_lat" }];
+  // South-west corner longitude of the map bounding box.
   double sw_lon = 4 [(sebuf.http.query) = { name: "sw_lon" }];
+  // Map zoom level used to decide whether to return bases or clusters.
   int32 zoom = 5 [(sebuf.http.query) = { name: "zoom" }];
+  // Optional military base type filter.
   string type = 6 [(sebuf.http.query) = { name: "type" }];
+  // Optional military base kind filter.
   string kind = 7 [(sebuf.http.query) = { name: "kind" }];
+  // Optional country filter for military bases.
   string country = 8 [(sebuf.http.query) = { name: "country" }];
 }
 

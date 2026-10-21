@@ -1,18 +1,14 @@
 import type { PizzIntStatus, PizzIntLocation, PizzIntDefconLevel, GdeltTensionPair } from '@/types';
-import { getRpcBaseUrl } from '@/services/rpc-client';
-import { createCircuitBreaker } from '@/utils';
+import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
+import { getHydratedData } from '@/services/bootstrap';
 import { t } from '@/services/i18n';
-import {
-  IntelligenceServiceClient,
-  type GetPizzintStatusResponse,
-  type PizzintStatus as ProtoPizzintStatus,
-  type PizzintLocation as ProtoLocation,
-  type GdeltTensionPair as ProtoTensionPair,
-} from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import type { GetPizzintStatusResponse, PizzintStatus as ProtoPizzintStatus, PizzintLocation as ProtoLocation, GdeltTensionPair as ProtoTensionPair } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Sebuf client ----
 
-const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const getClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) }));
 
 // ---- Circuit breakers ----
 
@@ -22,14 +18,15 @@ const pizzintBreaker = createCircuitBreaker<PizzIntStatus>({
   cooldownMs: 5 * 60 * 1000,
   cacheTtlMs: 30 * 60 * 1000,
   persistCache: true,
+  revivePersistedData: revivePizzIntStatus,
 });
 
 const gdeltBreaker = createCircuitBreaker<GdeltTensionPair[]>({
-  name: 'GDELT Tensions',
+  name: 'WM GDELT Dyad Tensions v1',
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000,
-  cacheTtlMs: 15 * 60 * 1000,
-  persistCache: true,
+  cacheTtlMs: 0,
+  persistCache: false,
 });
 
 // ---- Proto → legacy adapters ----
@@ -59,9 +56,10 @@ function toLocation(proto: ProtoLocation): PizzIntLocation {
     name: proto.name,
     address: proto.address,
     current_popularity: proto.currentPopularity,
-    percentage_of_usual: proto.percentageOfUsual || null,
+    percentage_of_usual: proto.hasBaseline ? proto.percentageOfUsual : proto.percentageOfUsual || null,
+    no_live_signal: proto.noLiveSignal,
     is_spike: proto.isSpike,
-    spike_magnitude: proto.spikeMagnitude || null,
+    spike_magnitude: typeof proto.spikeMagnitude === 'number' ? proto.spikeMagnitude : null,
     data_source: proto.dataSource,
     recorded_at: proto.recordedAt,
     data_freshness: FRESHNESS_REVERSE[proto.dataFreshness] || 'stale',
@@ -112,21 +110,45 @@ const defaultStatus: PizzIntStatus = {
   locations: []
 };
 
+function revivePizzIntStatus(status: PizzIntStatus): PizzIntStatus {
+  if (status.lastUpdate instanceof Date) return status;
+  const revived = new Date(status.lastUpdate as unknown as string | number);
+  return {
+    ...status,
+    lastUpdate: Number.isNaN(revived.getTime()) ? new Date(0) : revived,
+  };
+}
+
+function isCacheablePizzIntStatus(status: PizzIntStatus): boolean {
+  return status.dataFreshness === 'fresh';
+}
+
 // ---- Public API ----
 
 export async function fetchPizzIntStatus(): Promise<PizzIntStatus> {
+  const hydrated = getHydratedData('pizzint') as GetPizzintStatusResponse | undefined;
+  if (hydrated?.pizzint) {
+    // Warm the breaker under the same key a later recurring call reads
+    // (#7048); a bare return drained the consume-once slot and forced a
+    // refetch. Stale hydration can serve this render, but must not suppress
+    // the next live recovery attempt.
+    const status = toStatus(hydrated.pizzint);
+    if (isCacheablePizzIntStatus(status)) pizzintBreaker.recordSuccess(status);
+    return status;
+  }
+
   return pizzintBreaker.execute(async () => {
-    const resp: GetPizzintStatusResponse = await client.getPizzintStatus({ includeGdelt: false });
+    const resp: GetPizzintStatusResponse = await getClient().getPizzintStatus({ includeGdelt: false });
     if (!resp.pizzint) throw new Error('No PizzINT data');
     return toStatus(resp.pizzint);
-  }, defaultStatus);
+  }, defaultStatus, { shouldCache: isCacheablePizzIntStatus });
 }
 
 export async function fetchGdeltTensions(): Promise<GdeltTensionPair[]> {
   return gdeltBreaker.execute(async () => {
-    const resp: GetPizzintStatusResponse = await client.getPizzintStatus({ includeGdelt: true });
+    const resp: GetPizzintStatusResponse = await getClient().getPizzintStatus({ includeGdelt: true });
     return resp.tensionPairs.map(toTensionPair);
-  }, []);
+  }, [], { shouldCache: () => false });
 }
 
 export function getPizzIntStatus(): string {

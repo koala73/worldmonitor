@@ -2,17 +2,63 @@ syntax = "proto3";
 
 package worldmonitor.trade.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 import "worldmonitor/trade/v1/trade_data.proto";
 
-// Request for bilateral trade flow data.
+// TradeFlowUnavailableReason says why no rows were returned. The distinction
+// that matters is NOT_COVERED — a contract answer, nothing is broken and a
+// retry cannot help — against every other member, which names a fault.
+enum TradeFlowUnavailableReason {
+  // Rows were served.
+  TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED = 0;
+  // Request codes were malformed. Only reachable where request validation is
+  // bypassed; the gateway rejects these with HTTP 400 before the handler runs.
+  TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST = 1;
+  // Well-formed, but this reporter/partner pair is outside seeded coverage.
+  TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED = 2;
+  // The pair is inside coverage but its cache entry is absent.
+  TRADE_FLOW_UNAVAILABLE_REASON_SEED_MISSING = 3;
+  // The coverage manifest could not be read, so neither of the two above can
+  // be ruled out.
+  TRADE_FLOW_UNAVAILABLE_REASON_COVERAGE_UNKNOWN = 4;
+  // The cache read itself failed.
+  TRADE_FLOW_UNAVAILABLE_REASON_CACHE_UNAVAILABLE = 5;
+}
+
+// Request for merchandise trade flow data, reporter versus World.
+//
+// Coverage is seed-backed: Railway pre-fetches a fixed set of
+// reporter/partner pairs from WTO and this API serves slices of that history.
+// It never calls WTO per request, so a well-formed combination outside the
+// seeded set is reported as uncovered (see GetTradeFlowsResponse.
+// unavailable_reason) rather than fetched on demand.
 message GetTradeFlowsRequest {
-  // WTO member code of reporting country.
-  string reporting_country = 1 [(sebuf.http.query) = { name: "reporting_country" }];
-  // WTO member code of partner country.
-  string partner_country = 2 [(sebuf.http.query) = { name: "partner_country" }];
-  // Number of years to look back (default 10, max 30).
-  int32 years = 3 [(sebuf.http.query) = { name: "years" }];
+  // WTO member code of reporting country, as a 3-digit UN M49 code
+  // (for example "840" = United States). Empty selects the "840" default.
+  string reporting_country = 1 [
+    (buf.validate.field).string.pattern = "^([0-9]{3})?$",
+    (sebuf.http.query) = { name: "reporting_country" }
+  ];
+  // WTO member code of partner country, as a 3-digit UN M49 code.
+  // Empty selects "000" = World, which is the only partner currently covered:
+  // the WTO indicators behind these flows (ITS_MTV_AX, ITS_MTV_AM) publish a
+  // World total and answer 204 for every named partner. Any other code is
+  // accepted by validation and answered with unavailable_reason
+  // TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED, so coverage can widen without a
+  // contract change.
+  string partner_country = 2 [
+    (buf.validate.field).string.pattern = "^([0-9]{3})?$",
+    (sebuf.http.query) = { name: "partner_country" }
+  ];
+  // Number of years to look back from the newest seeded year, inclusive of
+  // both endpoints (years = 10 returns 11 calendar years). 0 selects the
+  // default of 10; the maximum is 30, which is the full seeded window.
+  int32 years = 3 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 30,
+    (sebuf.http.query) = { name: "years" }
+  ];
 }
 
 // Response containing trade flow records.
@@ -21,6 +67,17 @@ message GetTradeFlowsResponse {
   repeated TradeFlowRecord flows = 1;
   // ISO 8601 timestamp when data was fetched from WTO.
   string fetched_at = 2;
-  // True if upstream fetch failed and results may be stale/empty.
+  // True when flows could not be served because of a fault — a seeded pair
+  // whose cache entry is gone, or a cache read that failed. False when flows
+  // are served AND when the request names a combination that is simply not
+  // part of seeded coverage, which is a contract answer rather than an outage.
   bool upstream_unavailable = 3;
+  // UNSPECIFIED when flows are served; otherwise why they are not, so a caller
+  // can tell a coverage gap from a fault without parsing prose.
+  TradeFlowUnavailableReason unavailable_reason = 4;
+  // First and last calendar year covered by `flows`. Both are 0 when no flows
+  // are returned. This is the effective window after slicing to `years`, which
+  // may be narrower than the requested lookback when the seed starts later.
+  int32 coverage_start_year = 5;
+  int32 coverage_end_year = 6;
 }

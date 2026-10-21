@@ -1,29 +1,35 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
-import { extractCountryCode } from './shared/geo-extract.mjs';
-
-loadEnvFile(import.meta.url);
-
-// WHO DON uses multi-word or hyphenated country names that the bigram scanner misses.
-// These override extractCountryCode for exact substring matches (checked first, case-insensitive).
-const WHO_NAME_OVERRIDES = {
-  'democratic republic of the congo': 'CD',
-  'dr congo': 'CD',
-  'timor-leste': 'TL',
-  'east timor': 'TL',
-  'papua new guinea': 'PG',
-  'kingdom of saudi arabia': 'SA',
-  'united kingdom': 'GB',
-};
-
-function extractCountryCodeFull(text) {
-  const lower = text.toLowerCase();
-  for (const [name, iso2] of Object.entries(WHO_NAME_OVERRIDES)) {
-    if (lower.includes(name)) return iso2;
-  }
-  return extractCountryCode(text) ?? '';
-}
+import { loadEnvFile, CHROME_UA, httpRetryError, runSeed, withRetry } from './_seed-utils.mjs';
+import { isMainModule } from './lib/main-module.mjs';
+import { decodeHtmlEntities } from './_html-entities.mjs';
+// Reuse the battle-tested schema-anchored parser from seed-vpd-tracker.mjs.
+// The 2026-04 webpack rebuild changed the TGH bundle from the legacy
+// `var a=[{Alert_ID:"..."}]` shape (unquoted keys) to `eval("var res = [...]")`
+// blocks with JSON-quoted keys. This seeder's homegrown regex no longer
+// matches the new shape — pre-fix it returned 0 records and silently
+// dropped the only geo-rich disease source. Importing vpd-tracker is safe:
+// its top-level runSeed is guarded by `if (process.argv[1]?.endsWith(...))`,
+// so importing as a module just exposes the parsers.
+import { parseRealtimeAlerts } from './seed-vpd-tracker.mjs';
+// Pure helpers (parsers/mappers/contentMeta/publishTransform) live in their
+// own module so tests can import the real code instead of replicating it.
+// See `scripts/_disease-outbreaks-helpers.mjs` for the shape contract.
+import {
+  whoNormalizeItem,
+  rssNormalizeItem,
+  tghNormalizeItem,
+  mapItem,
+  isRoundupHeadline,
+  isReportableHeadline,
+  detectDisease,
+  UNEXPLAINED_PNEUMONIA_RE,
+  diseaseContentMeta,
+  diseasePublishTransform,
+  cleanRssDescription,
+  DISEASE_MAX_CONTENT_AGE_MIN,
+  ALERT_LEVEL_METHODOLOGY_VERSION,
+} from './_disease-outbreaks-helpers.mjs';
 
 const CANONICAL_KEY = 'health:disease-outbreaks:v1';
 const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold standard; survives 2 consecutive missed runs
@@ -32,112 +38,113 @@ const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold s
 const WHO_DON_API = 'https://www.who.int/api/emergencies/diseaseoutbreaknews?sf_provider=dynamicProvider372&sf_culture=en&$orderby=PublicationDateAndTime%20desc&$select=Title,ItemDefaultUrl,PublicationDateAndTime&$top=30';
 // CDC Health Alert Network RSS (US-centric; supplements WHO for North American events)
 const CDC_FEED = 'https://tools.cdc.gov/api/v2/resources/media/132608.rss';
-// Outbreak News Today — aggregates WHO, CDC, and regional health ministry alerts
-const OUTBREAK_NEWS_FEED = 'https://outbreaknewstoday.com/feed/';
-// ThinkGlobalHealth disease tracker — 1,600+ ProMED-sourced real-time alerts with lat/lng
-const THINKGLOBALHEALTH_BUNDLE = 'https://raw.githubusercontent.com/thinkglobalhealth/disease_tracker/main/index_bundle.js';
+// ECDC epidemiological updates: outbreak-only items (Ebola, MERS, hantavirus,
+// chikungunya, ...), including events outside the EU/EEA.
+const ECDC_EPI_UPDATES_FEED = 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed';
+// ECDC news and press releases: its statements on events it is monitoring
+// (the 2026-10-06 Irkutsk pneumonia statement appeared only here).
+const ECDC_NEWS_FEED = 'https://www.ecdc.europa.eu/en/taxonomy/term/1307/feed';
+// UN Geneva newsroom (Atom): WHO's Geneva press-briefing statements, titled
+// "<story> - WHO" among other UN agencies' items. WHO's 2026-10-06 risk
+// assessment of the Irkutsk case came only from a briefing, not a DON post.
+// Fetched over https so no on-path host can forge WHO entries; /feed and the
+// http URL both answer 301 to this one (2026-10-19).
+const UNOG_NEWSROOM_FEED = 'https://www.unognewsroom.org/rss';
+// CIDRAP publishes per-disease feeds only (a combined `/news/64+49/rss` returns
+// just the first topic), so each outbreak-prone disease is its own request:
+// Ebola, viral hemorrhagic fever, avian influenza, mpox, cholera, measles,
+// dengue, polio, foodborne disease, plague.
+const CIDRAP_TOPIC_IDS = [64, 102, 49, 230556, 58, 78, 61, 90, 66, 88];
+// ThinkGlobalHealth disease tracker — 1,600+ ProMED-sourced real-time alerts
+// with lat/lng. Default branch is `master` (NOT `main`) — using `main` returns
+// HTTP 404 and silently zeroes out this source, which is the only one that
+// publishes precise coordinates (WHO/CDC/ONT only have country names → map
+// falls back to country centroids). Verified 2026-05-04.
+const THINKGLOBALHEALTH_BUNDLE = 'https://raw.githubusercontent.com/thinkglobalhealth/disease_tracker/master/index_bundle.js';
 // Keep alerts within this many days; avoids flooding the map with old events
 const TGH_LOOKBACK_DAYS = 90;
 
 const RSS_MAX_BYTES = 500_000; // guard against oversized responses before regex
 
-
-function stableHash(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
-  return Math.abs(h).toString(36);
-}
-
-/**
- * Extract location string from WHO-style titles.
- * Handles: "Disease – Country" (em-dash), "Disease - Country" (hyphen), "Disease in Country".
- */
-function extractLocationFromTitle(title) {
-  // WHO DON pattern: "Disease – Country" or "Disease - Country" (one or more dash-separated segments)
-  // Split on em-dash, en-dash, or " - " / " – " to get all segments, then take the last capitalized one.
-  const segments = title.split(/\s*[–—]\s*|\s+-\s+/);
-  if (segments.length >= 2) {
-    const last = segments[segments.length - 1].trim();
-    if (/^[A-Z]/.test(last)) return last;
-  }
-  // Fallback: "... in <Country/Region>"
-  const inMatch = title.match(/\bin\s+([A-Z][^,.(]+)/);
-  if (inMatch) return inMatch[1].trim();
-  return '';
-}
-
-function detectAlertLevel(title, desc) {
-  const text = `${title} ${desc}`.toLowerCase();
-  if (text.includes('outbreak') || text.includes('emergency') || text.includes('epidemic') || text.includes('pandemic')) return 'alert';
-  if (text.includes('warning') || text.includes('spread') || text.includes('cases increasing')) return 'warning';
-  return 'watch';
-}
-
-function detectDisease(title) {
-  const lower = title.toLowerCase();
-  const known = ['mpox', 'monkeypox', 'ebola', 'cholera', 'covid', 'dengue', 'measles',
-    'polio', 'marburg', 'lassa', 'plague', 'yellow fever', 'typhoid', 'influenza',
-    'avian flu', 'h5n1', 'h5n2', 'anthrax', 'rabies', 'meningitis', 'hepatitis',
-    'nipah', 'rift valley', 'crimean-congo', 'leishmaniasis', 'malaria', 'diphtheria',
-    'chikungunya', 'botulism', 'brucellosis', 'salmonella', 'listeria', 'e. coli',
-    'norovirus', 'legionella', 'campylobacter'];
-  for (const d of known) {
-    if (lower.includes(d)) return d.charAt(0).toUpperCase() + d.slice(1);
-  }
-  return 'Unknown Disease';
-}
-
 /**
  * Fetch WHO Disease Outbreak News via their JSON API (RSS feed is dead since 2024).
  * Returns normalized items array.
  */
-async function fetchWhoDonApi() {
+export async function fetchWhoDonApi({
+  fetchImpl = globalThis.fetch,
+  timeoutMs = 15000,
+  retryDelayMs = 1000,
+} = {}) {
   try {
-    const resp = await fetch(WHO_DON_API, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!resp.ok) { console.warn(`[Disease] WHO DON API HTTP ${resp.status}`); return []; }
-    const data = await resp.json();
+    const data = await withRetry(async () => {
+      const resp = await fetchImpl(WHO_DON_API, {
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!resp.ok) {
+        const error = httpRetryError(resp);
+        await resp.body?.cancel().catch(() => {});
+        throw error;
+      }
+      return resp.json();
+    }, 1, retryDelayMs);
     const items = data?.value;
     if (!Array.isArray(items)) { console.warn('[Disease] WHO DON API: unexpected response shape'); return []; }
-    return items.map((item) => ({
-      title: (item.Title || '').trim(),
-      link: item.ItemDefaultUrl ? `https://www.who.int${item.ItemDefaultUrl}` : '',
-      desc: '',
-      publishedMs: item.PublicationDateAndTime ? new Date(item.PublicationDateAndTime).getTime() : Date.now(),
-      sourceName: 'WHO',
-    })).filter(i => i.title && !isNaN(i.publishedMs));
+    // Per-item synthetic-tag normalization lives in _disease-outbreaks-helpers.mjs
+    // so tests can verify the exact contract without duplicating logic.
+    return items.map((item) => whoNormalizeItem(item))
+      .filter(i => i.title && Number.isFinite(i.publishedMs));
   } catch (e) {
+    if (Number.isFinite(e?.status)) {
+      console.warn(`[Disease] WHO DON API HTTP ${e.status}`);
+      return [];
+    }
     console.warn('[Disease] WHO DON API fetch error:', e?.message || e);
     return [];
   }
 }
 
-async function fetchRssItems(url, sourceName) {
+export const DISEASE_RSS_FEEDS = [
+  { url: CDC_FEED, sourceName: 'CDC' },
+  { url: ECDC_EPI_UPDATES_FEED, sourceName: 'ECDC' },
+  { url: ECDC_NEWS_FEED, sourceName: 'ECDC' },
+  { url: UNOG_NEWSROOM_FEED, sourceName: 'WHO briefing', titleSuffix: ' - WHO' },
+  ...CIDRAP_TOPIC_IDS.map((id) => ({ url: `https://www.cidrap.umn.edu/news/${id}/rss`, sourceName: 'CIDRAP' })),
+];
+
+// Parses RSS <item> and Atom <entry> blocks. With `titleSuffix`, keeps only
+// items whose title ends with it and drops the suffix from the title.
+export async function fetchRssItems(url, sourceName, { fetchImpl = globalThis.fetch, titleSuffix = '' } = {}) {
   try {
-    const resp = await fetch(url, {
-      headers: { Accept: 'application/rss+xml, application/xml, text/xml', 'User-Agent': CHROME_UA },
+    const resp = await fetchImpl(url, {
+      headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) { console.warn(`[Disease] ${sourceName} HTTP ${resp.status}`); return []; }
+    // fetch follows a redirect from https to http; a cleartext body could be forged.
+    if (resp.url && !resp.url.startsWith('https:')) { console.warn(`[Disease] ${sourceName} redirected to non-https ${resp.url}`); return []; }
     const xml = await resp.text();
     const bounded = xml.length > RSS_MAX_BYTES ? xml.slice(0, RSS_MAX_BYTES) : xml;
     const items = [];
-    const itemRe = /<item>([\s\S]*?)<\/item>/g;
+    const itemRe = /<(item|entry)\b[^>]*>([\s\S]*?)<\/\1>/g;
     let match;
     while ((match = itemRe.exec(bounded)) !== null) {
-      const block = match[1];
-      const title = (block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1]?.trim() || '';
-      const link = (block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/) || [])[1]?.trim() || '';
-      const rawDesc = (block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/) || [])[1] || '';
-      const desc = rawDesc
-        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
-        .replace(/<[^>]+>/g, '').trim().slice(0, 300);
-      const pubDate = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1]?.trim() || '';
-      const publishedMs = pubDate ? new Date(pubDate).getTime() : Date.now();
-      if (!title || isNaN(publishedMs)) continue;
-      items.push({ title, link, desc, publishedMs, sourceName });
+      const block = match[2];
+      let title = decodeHtmlEntities((block.match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1] || '').trim();
+      if (titleSuffix) {
+        if (!title.endsWith(titleSuffix)) continue;
+        title = title.slice(0, -titleSuffix.length).trim();
+      }
+      const link = (block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/) || [])[1]?.trim()
+        || (block.match(/<link\b[^>]*\bhref=(["'])(.*?)\1/) || [])[2]?.trim() || '';
+      const rawDesc = (block.match(/<(description|summary|content)\b[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/) || [])[2] || '';
+      const desc = cleanRssDescription(rawDesc);
+      const pubDate = (block.match(/<(pubDate|published|updated)>(.*?)<\/\1>/) || [])[2]?.trim() || '';
+      // Per-item synthetic-tag normalization lives in _disease-outbreaks-helpers.mjs
+      // (rssNormalizeItem) so tests verify the exact contract without duplicating logic.
+      const normalized = rssNormalizeItem({ title, link, desc, pubDate, sourceName });
+      if (!normalized.title || !Number.isFinite(normalized.publishedMs)) continue;
+      items.push(normalized);
     }
     return items;
   } catch (e) {
@@ -148,10 +155,17 @@ async function fetchRssItems(url, sourceName) {
 
 /**
  * Fetch ThinkGlobalHealth disease tracker data.
- * The site (https://thinkglobalhealth.github.io/disease_tracker/) embeds all ProMED-reviewed
- * disease alerts directly in index_bundle.js as a JS object literal array:
- *   var a=[{Alert_ID:"...",lat:"...",lng:"...",diseases:"...",country:"...",date:"M/D/YYYY",...}]
- * ~1,600 records with exact lat/lng coordinates. We filter to last TGH_LOOKBACK_DAYS days.
+ *
+ * The site (https://thinkglobalhealth.github.io/disease_tracker/) embeds
+ * ~1,600 ProMED-reviewed disease alerts in index_bundle.js. After their
+ * 2026-04 webpack rebuild the data shape changed from a JS object literal
+ * (`var a=[{Alert_ID:"..."}]` — unquoted keys) to JSON-quoted records
+ * inside `eval("var res = [...]")` blocks. parseRealtimeAlerts (lifted
+ * from seed-vpd-tracker.mjs) handles the new format with a
+ * schema-anchored scanner that survives further bundler upgrades as long
+ * as the field names (Alert_ID, lat, lng, diseases) are stable.
+ *
+ * We filter to last TGH_LOOKBACK_DAYS days post-parse.
  */
 async function fetchThinkGlobalHealth() {
   try {
@@ -162,54 +176,23 @@ async function fetchThinkGlobalHealth() {
     if (!resp.ok) { console.warn(`[Disease] ThinkGlobalHealth HTTP ${resp.status}`); return []; }
     const bundle = await resp.text();
 
-    // Extract the data array: "var a=[{Alert_ID:"
-    const marker = 'var a=[{Alert_ID:';
-    const startIdx = bundle.indexOf(marker);
-    if (startIdx === -1) { console.warn('[Disease] ThinkGlobalHealth: data marker not found'); return []; }
-
-    // Find the end of the array by counting brackets from the [ position
-    const arrStart = startIdx + 'var a='.length;
-    let depth = 0, end = arrStart;
-    for (; end < bundle.length; end++) {
-      if (bundle[end] === '[' || bundle[end] === '{') depth++;
-      else if (bundle[end] === ']' || bundle[end] === '}') { depth--; if (depth === 0) { end++; break; } }
-    }
-    const arrayStr = bundle.slice(arrStart, end);
-
-    // Parse JS object literals (keys are unquoted identifiers, all values are strings).
-    // Pattern: {Key:"value",...} — flat objects only.
-    const records = [];
-    const objRe = /\{([^{}]+)\}/g;
-    let m;
-    while ((m = objRe.exec(arrayStr)) !== null) {
-      const obj = {};
-      const pairRe = /(\w+):"((?:[^"\\]|\\.)*)"/g;
-      let p;
-      while ((p = pairRe.exec(m[1])) !== null) obj[p[1]] = p[2];
-      if (obj.Alert_ID) records.push(obj);
+    let records;
+    try {
+      records = parseRealtimeAlerts(bundle);
+    } catch (e) {
+      console.warn(`[Disease] ThinkGlobalHealth parse error: ${e?.message || e}`);
+      return [];
     }
 
     const cutoff = Date.now() - TGH_LOOKBACK_DAYS * 86400_000;
     const items = [];
     for (const rec of records) {
-      if (!rec.lat || !rec.lng || !rec.diseases || !rec.date) continue;
+      if (rec.lat == null || rec.lng == null || !rec.disease || !rec.date) continue;
       const publishedMs = new Date(rec.date).getTime();
-      if (isNaN(publishedMs) || publishedMs < cutoff) continue;
-      // place_name from TGH is often "City, District, Country" — take only the first segment for display.
-      const cityName = (rec.place_name || '').split(',')[0].trim() || rec.country || '';
-      items.push({
-        title: `${rec.diseases}${rec.country ? ` - ${rec.country}` : ''}`,
-        link: rec.link || '',
-        desc: rec.summary ? rec.summary.slice(0, 300) : '',
-        publishedMs,
-        sourceName: 'ThinkGlobalHealth',
-        _country: rec.country || '',
-        _disease: rec.diseases || '',
-        _location: cityName,
-        _lat: Number.isFinite(parseFloat(rec.lat)) ? parseFloat(rec.lat) : null,
-        _lng: Number.isFinite(parseFloat(rec.lng)) ? parseFloat(rec.lng) : null,
-        _cases: parseInt(rec.cases_count || rec.cases || '0', 10) || 0,
-      });
+      if (Number.isNaN(publishedMs) || publishedMs < cutoff) continue;
+      // Per-item normalization lives in _disease-outbreaks-helpers.mjs
+      // (tghNormalizeItem) so tests verify the exact contract without duplicating logic.
+      items.push(tghNormalizeItem(rec));
     }
     console.log(`[Disease] ThinkGlobalHealth: ${records.length} total, ${items.length} in last ${TGH_LOOKBACK_DAYS}d`);
     return items;
@@ -219,41 +202,23 @@ async function fetchThinkGlobalHealth() {
   }
 }
 
-function mapItem(item) {
-  const location = item._location || extractLocationFromTitle(item.title)
-    || (item.sourceName === 'CDC' ? 'United States' : '');
-  const disease = item._disease || detectDisease(item.title);
-  const countryCode = item._country
-    ? (extractCountryCodeFull(item._country) || extractCountryCodeFull(location || item.title))
-    : extractCountryCodeFull(location || `${item.title} ${item.desc}`);
-  return {
-    id: `${item.sourceName.toLowerCase()}-${stableHash(item.link || item.title)}-${item.publishedMs}`,
-    disease,
-    location,
-    countryCode,
-    alertLevel: detectAlertLevel(item.title, item.desc),
-    summary: item.desc,
-    sourceUrl: item.link,
-    publishedAt: item.publishedMs,
-    sourceName: item.sourceName,
-    lat: item._lat ?? 0,
-    lng: item._lng ?? 0,
-    cases: item._cases || 0,
-  };
-}
-
-async function fetchDiseaseOutbreaks() {
-  const [whoItems, cdcItems, outbreakNewsItems, tghItems] = await Promise.all([
+export async function fetchDiseaseOutbreaks() {
+  const [whoItems, rssBatches, tghItems] = await Promise.all([
     fetchWhoDonApi(),
-    fetchRssItems(CDC_FEED, 'CDC'),
-    fetchRssItems(OUTBREAK_NEWS_FEED, 'Outbreak News Today'),
+    Promise.all(DISEASE_RSS_FEEDS.map(({ url, sourceName, titleSuffix }) => fetchRssItems(url, sourceName, { titleSuffix }))),
     fetchThinkGlobalHealth(),
   ]);
-  console.log(`[Disease] Sources: WHO=${whoItems.length} CDC=${cdcItems.length} ONT=${outbreakNewsItems.length} TGH=${tghItems.length}`);
+  const rssItems = rssBatches.flat();
+  const rssCounts = {};
+  for (const { sourceName } of DISEASE_RSS_FEEDS) rssCounts[sourceName] = 0;
+  for (const item of rssItems) rssCounts[item.sourceName] += 1;
+  const rssSummary = Object.entries(rssCounts).map(([name, count]) => `${name}=${count}`).join(' ');
+  console.log(`[Disease] Sources: WHO=${whoItems.length} ${rssSummary} TGH=${tghItems.length}`);
 
   // TGH items are already disease-curated with exact lat/lng — skip keyword filter,
   // preserve all geo-located alerts, and don't collapse by disease+country.
-  const tghOutbreaks = tghItems.map(mapItem);
+  // The bundle repeats some rows verbatim; those share an id and publish once.
+  const tghOutbreaks = [...new Map(tghItems.map(mapItem).map((o) => [o.id, o])).values()];
 
   const diseaseKeywords = ['outbreak', 'disease', 'virus', 'fever', 'flu', 'ebola', 'mpox',
     'cholera', 'dengue', 'measles', 'polio', 'plague', 'avian', 'h5n1', 'epidemic',
@@ -261,21 +226,28 @@ async function fetchDiseaseOutbreaks() {
     'diphtheria', 'chikungunya', 'rift valley', 'influenza', 'botulism',
     'salmonella', 'listeria', 'e. coli', 'norovirus', 'legionella', 'campylobacter'];
 
-  const otherOutbreaks = [...whoItems, ...cdcItems, ...outbreakNewsItems]
+  const otherOutbreaks = [...whoItems, ...rssItems]
     .filter(item => {
+      if (isRoundupHeadline(item.title)) return false;
       const text = `${item.title} ${item.desc}`.toLowerCase();
-      return diseaseKeywords.some(k => text.includes(k));
+      // A title naming a detected disease ("Two MERS cases ...") needs no generic keyword.
+      return diseaseKeywords.some(k => text.includes(k)) || UNEXPLAINED_PNEUMONIA_RE.test(text)
+        || detectDisease(item.title) !== 'Unknown Disease';
     })
-    .map(mapItem);
+    .map(mapItem)
+    .filter((outbreak) => isReportableHeadline(outbreak));
 
   // Sort before dedup so the first occurrence is always the most recent.
   otherOutbreaks.sort((a, b) => b.publishedAt - a.publishedAt);
 
-  // Deduplicate non-TGH items by disease+country (keep most recent per pair).
+  // Deduplicate non-TGH items by source+disease+country (keep most recent per
+  // triple). Two sources on one event are two reports: the 2026-10-06 WHO
+  // briefing otherwise hid CIDRAP's Irkutsk story. ECDC's epi-update and news
+  // feeds share a source name, so their overlap still collapses.
   // TGH items each represent a distinct geo-located event — never collapse them.
   const seen = new Set();
   const dedupedOthers = otherOutbreaks.filter(o => {
-    const key = o.disease === 'Unknown Disease' ? o.id : `${o.disease}:${o.countryCode || o.location}`;
+    const key = o.disease === 'Unknown Disease' ? o.id : `${o.sourceName}:${o.disease}:${o.countryCode || o.location}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -287,19 +259,56 @@ async function fetchDiseaseOutbreaks() {
   // Up to 150 TGH geo-pinned alerts + up to 50 from other authoritative sources.
   const outbreaks = [...tghSorted.slice(0, 150), ...dedupedOthers.slice(0, 50)];
 
-  return { outbreaks, fetchedAt: Date.now() };
+  // Stamp the editorial-classifier version onto the wire payload so the field
+  // bumps observably when ALERT_LEVEL_METHODOLOGY_VERSION moves per the change
+  // protocol in docs/methodology/disease-alert-level.mdx. Without this, the
+  // constant exists but nothing consumes it — bumping it has no observable
+  // effect on clients or the canonical key.
+  return {
+    outbreaks,
+    fetchedAt: Date.now(),
+    alertLevelMethodologyVersion: ALERT_LEVEL_METHODOLOGY_VERSION,
+  };
 }
 
 function validate(data) {
   return Array.isArray(data?.outbreaks) && data.outbreaks.length >= 1;
 }
 
-runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'who-api-cdc-ont-v6',
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
-  console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+export function declareRecords(data) {
+  return Array.isArray(data?.outbreaks) ? data.outbreaks.length : 0;
+}
+
+async function main() {
+  loadEnvFile(import.meta.url);
+  await runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'who-api-cdc-ont-v6',
+
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 2880,
+
+    // ── Content-age contract (Sprint 2 of the 2026-05-04 health-readiness plan) ──
+    //
+    // TGH releases its bundle about weekly, and the newest event commonly trails
+    // release by 3 to 5 days. Valid content can therefore approach 12 days old
+    // before the next release.
+    //
+    // diseaseContentMeta + diseasePublishTransform live in
+    // `_disease-outbreaks-helpers.mjs` so the test suite imports the same code
+    // the seeder runs (no drift). See helpers module header for their semantics.
+    contentMeta: diseaseContentMeta,
+    maxContentAgeMin: DISEASE_MAX_CONTENT_AGE_MIN,
+    publishTransform: diseasePublishTransform,
+  });
+}
+
+if (isMainModule(import.meta.url, process.argv[1])) {
+  main().catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

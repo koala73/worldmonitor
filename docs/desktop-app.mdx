@@ -1,33 +1,39 @@
 ---
 title: "Desktop Application"
-description: "Tauri desktop architecture, sidecar management, secret storage, cloud fallback, and multi-platform build details."
+description: "Tauri desktop architecture for World Monitor — sidecar process management, secret storage, cloud fallback, and multi-platform build pipelines."
 ---
+
+## License
+
+The desktop app is built from the World Monitor source and **the binary is licensed to you under AGPL-3.0-only** — run it, study it, modify it, redistribute it under the AGPL's terms. Source: [github.com/koala73/worldmonitor](https://github.com/koala73/worldmonitor). Every packaged build ships `resources/notices/THIRD-PARTY-NOTICES.md`, generated at build time, with the verbatim notices for the npm packages and Rust crates it contains; the bundled Node.js runtime carries its own `LICENSE` alongside it.
+
+Running the app entirely against your own API keys and local sources needs no plan from us. The moment it fetches World Monitor data — cloud fallback, entitlement checks, or our API — that use is governed by the [End User License Agreement](/eula), which covers desktop and web as one license rather than two.
 
 ## Overview
 
 ### Desktop Application (Tauri)
 
-- **Native desktop app** for macOS, Windows, and Linux — packages the full dashboard with a local Node.js sidecar that runs all 60+ API handlers locally
-- **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager), never in plaintext files
+- **Native desktop app** for macOS, Windows, and Linux — packages the full dashboard with a local Node.js sidecar that runs the supported API handler catalog locally
+- **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager, Linux Secret Service, or the kernel session keyring when no Secret Service is running), never in plaintext files
 - **Token-authenticated sidecar** — a unique session token prevents other local processes from accessing the sidecar on localhost. Generated per launch using randomized hashing
 - **Cloud fallback** — when a local API handler fails or is missing, requests transparently fall through to the cloud deployment (worldmonitor.app) with origin headers stripped
-- **Settings window** — dedicated configuration UI (Cmd+,) with three tabs: **LLMs** (Ollama endpoint, model selection, Groq, OpenRouter), **API Keys** (12+ data source credentials with per-key validation), and **Debug & Logs** (traffic log, verbose mode, log files). Each tab runs an independent verification pipeline — saving in the LLMs tab doesn't block API Keys validation
+- **Settings window** — dedicated configuration UI (Cmd+,) with three tabs: **LLMs** (Ollama endpoint, model selection, OpenRouter), **API Keys** (the supported data-source credential catalog with per-key validation), and **Debug & Logs** (traffic log, verbose mode, log files). Each tab runs an independent verification pipeline — saving in the LLMs tab doesn't block API Keys validation
 - **Automatic model discovery** — when you set an Ollama or LM Studio endpoint URL in the LLMs tab, the settings panel immediately queries it for available models (tries Ollama native `/api/tags` first, then OpenAI-compatible `/v1/models`) and populates a dropdown. Embedding models are filtered out. If discovery fails, a manual text input appears as fallback
 - **Cross-window secret sync** — the main dashboard and settings window run in separate webviews with independent JS contexts. Saving a secret in Settings writes to the OS keychain and broadcasts a `localStorage` change event. The main window listens for this event and hot-reloads all secrets without requiring an app restart
 - **Consolidated keychain vault** — all secrets are stored as a single JSON blob in one keychain entry (`secrets-vault`) rather than individual entries per key. This reduces macOS Keychain authorization prompts from 20+ to exactly 1 on each app launch. A one-time migration reads any existing individual entries, consolidates them, and cleans up the old format
 - **Verbose debug mode** — toggle traffic logging with persistent state across restarts. View the last 200 requests with timing, status codes, and error details
 - **DevTools toggle** — Cmd+Alt+I opens the embedded web inspector for debugging
-- **Auto-update checker** — polls the cloud API for new versions every 6 hours. Displays a non-intrusive update badge with direct download link and per-version dismiss. Variant-aware — a Tech Monitor desktop app links to the correct Tech Monitor release asset
+- **Auto-update checker** — polls the cloud API for new versions every 6 hours. Displays a non-intrusive update badge with direct download link and per-version dismiss. The download link is chosen by OS and architecture; one binary serves every variant, so there is no per-variant asset to pick between
 
 ## Multi-Platform Architecture
 
-All five variants run on three platforms that work together:
+All published variants run on three platforms that work together:
 
 ```
 ┌─────────────────────────────────────┐
 │          Vercel (Edge)              │
-│  60+ edge functions · static SPA    │
-│  Proto gateway (24 typed services)  │
+│  edge functions · static SPA        │
+│  Proto gateway (typed services)     │
 │  CORS allowlist · Redis cache       │
 │  AI pipeline · market analytics     │
 │  CDN caching (s-maxage) · PWA host  │
@@ -37,7 +43,7 @@ All five variants run on three platforms that work together:
            │  ┌───────────────────────────────────┐
            │  │     Tauri Desktop (Rust + Node)   │
            │  │  OS keychain · Token-auth sidecar │
-           │  │  60+ local API handlers · br/gzip    │
+           │  │  local API handlers · br/gzip        │
            │  │  Cloud fallback · Traffic logging │
            │  └───────────────────────────────────┘
            │
@@ -47,18 +53,18 @@ All five variants run on three platforms that work together:
 ┌──────────────────────────────────────────┐
 │        Railway (Relay Server)            │
 │  AIS WebSocket · OpenSky OAuth2          │
-│  Telegram MTProto (26 OSINT channels)    │
+│  Telegram MTProto (reviewed channels)    │
 │  OREF rocket alerts (residential proxy)  │
 │  Polymarket proxy (queue backpressure)   │
 │  ICAO NOTAM · RSS proxy · gzip all resp │
 └──────────────────────────────────────────┘
 ```
 
-**Why two platforms?** Several upstream APIs (OpenSky Network, CNN RSS, UN News, CISA, IAEA) actively block requests from Vercel's IP ranges, and some require persistent connections or protocols that edge functions cannot support. The Railway relay server acts as an alternate origin, handling:
+**Why two platforms?** Several upstream APIs (OpenSky Network, CNN RSS, UN News, CISA, IAEA) actively block requests from Vercel's IP ranges, and some require persistent connections or protocols that edge functions cannot support. The [Railway relay server](/relay-parameters) acts as an alternate origin, handling:
 
 - **AIS vessel tracking** — maintains a persistent WebSocket connection to AISStream.io and multiplexes it to all connected browser clients, avoiding per-user connection limits
 - **OpenSky aircraft data** — authenticates via OAuth2 client credentials flow (Vercel IPs get 403'd by OpenSky without auth tokens)
-- **Telegram intelligence** — a GramJS MTProto client polls 26 OSINT channels on a 60-second cycle with per-channel timeouts and FLOOD_WAIT handling
+- **Telegram intelligence** — a GramJS MTProto client polls the reviewed OSINT channel registry on a 60-second cycle with per-channel timeouts and FLOOD_WAIT handling
 - **OREF rocket alerts** — polls Israel's Home Front Command alert system via `curl` through a residential proxy (Akamai WAF blocks datacenter TLS fingerprints)
 - **Polymarket proxy** — fetches from Gamma API with concurrent upstream limiting (max 3 simultaneous, queue backpressure at 20), in-flight deduplication, and 10-minute caching to prevent stampedes from 11 parallel tag queries
 - **ICAO NOTAM proxy** — routes NOTAM closure queries through the relay for MENA airports, bypassing Vercel IP restrictions on ICAO's API
@@ -84,7 +90,7 @@ The Tauri desktop app wraps the dashboard in a native window (macOS, Windows, Li
                       ▼
 ┌─────────────────────────────────────────────────┐
 │      Node.js Sidecar (dynamic port)             │
-│  60+ API handlers · Local RSS proxy             │
+│  API handler catalog · Local RSS proxy          │
 │  Brotli/Gzip compression · Cloud fallback       │
 │  Traffic logging · Verbose debug mode           │
 └─────────────────────┬───────────────────────────┘
@@ -98,11 +104,11 @@ The Tauri desktop app wraps the dashboard in a native window (macOS, Windows, Li
 
 ## Secret Management
 
-API keys are stored in the operating system's credential manager (macOS Keychain, Windows Credential Manager) — never in plaintext config files. All secrets are consolidated into a single JSON vault entry in the keychain, so app startup requires exactly one OS authorization prompt regardless of how many keys are configured.
+API keys are stored in the operating system's credential manager (macOS Keychain, Windows Credential Manager, or the Secret Service such as GNOME Keyring or KWallet on Linux) — never in plaintext config files. On Linux sessions with no Secret Service provider, keys are kept in the kernel session keyring instead, which lasts only until reboot (a warning is written to `desktop.log`). All secrets are consolidated into a single JSON vault entry in the keychain, so app startup requires exactly one OS authorization prompt regardless of how many keys are configured.
 
 At sidecar launch, the vault is read, parsed, and injected as environment variables. Empty or whitespace-only values are skipped. Secrets can also be updated at runtime without restarting the sidecar: saving a key in the Settings window triggers a `POST /api/local-env-update` call that hot-patches `process.env` so handlers pick up the new value immediately.
 
-**Verification pipeline** — when you enter a credential in Settings, the app validates it against the actual provider API (Groq → `/openai/v1/models`, Ollama → `/api/tags`, FRED → GDP test query, NASA FIRMS → fire data fetch, etc.). Network errors (timeouts, DNS failures, unreachable hosts) are treated as soft passes — the key is saved with a "could not verify" notice rather than blocking. Only explicit 401/403 responses from the provider mark a key as invalid. This prevents transient network issues from locking users out of their own credentials.
+**Verification pipeline** — when you enter a credential in Settings, the app validates it against the actual provider API (OpenRouter → `/api/v1/models`, Ollama → `/api/tags`, FRED → GDP test query, NASA FIRMS → fire data fetch, etc.). Network errors (timeouts, DNS failures, unreachable hosts) are treated as soft passes — the key is saved with a "could not verify" notice rather than blocking. Only explicit 401/403 responses from the provider mark a key as invalid. This prevents transient network issues from locking users out of their own credentials.
 
 **Smart re-verification** — when saving settings, the verification pipeline skips keys that haven't been modified since their last successful verification. This prevents unnecessary round-trips to provider APIs when a user changes one key but has 15 others already configured and validated. Only newly entered or modified keys trigger verification requests.
 
@@ -114,9 +120,8 @@ World Monitor desktop uses a runtime configuration schema with per-feature toggl
 
 ### Secret keys
 
-The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 25 keys:
+The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following keys:
 
-- `GROQ_API_KEY`
 - `OPENROUTER_API_KEY`
 - `FRED_API_KEY`
 - `EIA_API_KEY`
@@ -136,7 +141,7 @@ The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 2
 - `AISSTREAM_API_KEY`
 - `OLLAMA_API_URL`
 - `OLLAMA_MODEL`
-- `WORLDMONITOR_API_KEY` — gates cloud fallback access (min 16 chars)
+- `WORLDMONITOR_API_KEY` — forwarded on cloud requests for API-key access (min 16 chars). Without it, cloud requests use an anonymous session (see [Cloud Fallback](#cloud-fallback))
 - `WTO_API_KEY`
 - `AVIATIONSTACK_API`
 - `ICAO_API_KEY`
@@ -162,14 +167,15 @@ Secrets are **not stored in plaintext files** by the frontend.
 
 If required secrets are missing/disabled:
 
-- Summarization: Groq/OpenRouter disabled, browser model fallback.
-- FRED / EIA / Finnhub: economic, oil analytics, and stock data return empty state.
-- Cloudflare / ACLED: outages/conflicts return empty state.
+- Summarization: OpenRouter disabled, browser model fallback.
+- FRED, EIA, Cloudflare outages, WTO trade policy, and shipping rates need no local key on desktop. The sidecar always reads them from the cloud seed cache, so a local vendor key is never used for them.
+- Finnhub: stock data returns empty state.
+- ACLED: conflicts return empty state.
 - Cyber threat feeds (URLhaus, OTX, AbuseIPDB): cyber threat layer returns empty state.
 - NASA FIRMS: satellite fire detection returns empty state.
 - Wingbits: flight enrichment disabled, heuristic-only flight classification remains.
 - AIS / OpenSky relay: live tracking features are disabled cleanly.
-- World Monitor API key: cloud fallback is blocked; desktop operates local-only.
+- World Monitor API key and no Pro sign-in: cloud requests use an anonymous session, so the desktop sees what a signed-out browser sees. Tier-gated and premium routes stay unavailable.
 
 ## Sidecar
 
@@ -189,7 +195,7 @@ The sidecar defaults to port 46123 but handles `EADDRINUSE` gracefully — if th
 
 ### Local RSS Proxy
 
-The sidecar includes a built-in RSS proxy handler that fetches news feeds directly from source domains, bypassing the cloud RSS proxy entirely. This means the desktop app can load all 435+ RSS feeds without any cloud dependency — the same domain allowlist used by the Vercel edge proxy is enforced locally. Combined with the local API handlers, this enables the desktop app to operate as a fully self-contained intelligence aggregation platform.
+The sidecar includes a built-in RSS proxy handler that fetches the registered news feeds directly from source domains, bypassing the cloud RSS proxy entirely. This means the desktop app can load the complete feed catalog without any cloud dependency — the same domain allowlist used by the Vercel edge proxy is enforced locally. Combined with the local API handlers, this enables the desktop app to operate as a fully self-contained intelligence aggregation platform.
 
 ### Sidecar Resilience
 
@@ -205,18 +211,22 @@ The sidecar employs multiple resilience patterns to maintain data availability w
 
 When a local API handler is missing, throws an error, or returns a 5xx status, the sidecar transparently proxies the request to the cloud deployment. Endpoints that fail are marked as `cloudPreferred` — subsequent requests skip the local handler and go directly to the cloud until the sidecar is restarted. Origin and Referer headers are stripped before proxying to maintain server-to-server parity.
 
+Cloud requests carry the strongest credential the desktop has. A configured `WORLDMONITOR_API_KEY` is sent as `X-WorldMonitor-Key`, and a signed-in Pro desktop also forwards its session bearer. A request with no API key carries an anonymous session that the sidecar mints and caches, the same kind a browser holds. The gateway accepts it on public routes and refuses it on tier-gated and premium ones, so a signed-out desktop reaches exactly what a signed-out browser reaches.
+
 ## Observability
 
 - **Traffic log** — a ring buffer of the last 200 requests with method, path, status, and duration (ms), accessible via `GET /api/local-traffic-log`
 - **Verbose mode** — togglable via `POST /api/local-debug-toggle`, persists across sidecar restarts in `verbose-mode.json`
 - **Dual log files** — `desktop.log` captures Rust-side events (startup, secret injection counts, menu actions), while `local-api.log` captures Node.js stdout/stderr
-- **IPv4-forced fetch** — the sidecar patches `globalThis.fetch` to force IPv4 for all outbound requests. Government APIs (NASA FIRMS, EIA, FRED) publish AAAA DNS records but their IPv6 endpoints frequently timeout. The patch uses `node:https` with `family: 4` to bypass Happy Eyeballs and avoid cascading ETIMEDOUT failures
+- **IPv4-forced fetch** — the sidecar patches `globalThis.fetch` to force IPv4 for all outbound requests. Government APIs (NASA FIRMS, EIA, FRED) publish AAAA DNS records but their IPv6 endpoints frequently time out. The patch uses `node:https` with `family: 4` to bypass Happy Eyeballs and avoid cascading ETIMEDOUT failures
 - **DevTools** — `Cmd+Alt+I` toggles the embedded web inspector
 
 ## Auto-Update
 
 The desktop app checks for new versions by polling `worldmonitor.app/api/version` — once at startup (after a 5-second delay) and then every 6 hours. When a newer version is detected (semver comparison), a non-intrusive update badge appears with a direct link to the GitHub Release page.
 
-Update prompts are dismissable per-version — dismissing v2.5.0 won't suppress v2.6.0 notifications. The updater is variant-aware: a Tech Monitor desktop build links to the Tech Monitor release asset, not the full variant.
+Update prompts are dismissable per-version — dismissing v2.5.0 won't suppress v2.6.0 notifications. One World Monitor binary ships and every variant is selected in-app, so the updater resolves the download by OS and architecture alone (`/api/download?platform=…`) rather than by variant.
+
+A version the updater cannot parse is reported as `version_unparsable` and never treated as "up to date" — silently concluding "no update" from an unreadable version is exactly how a single malformed release tag could stop every client updating (#5908).
 
 The `/api/version` endpoint reads the latest GitHub Release tag and caches the result for 1 hour, so version checks don't hit the GitHub API on every request.

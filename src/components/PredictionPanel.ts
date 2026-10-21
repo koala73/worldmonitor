@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import type { PredictionMarket } from '@/services/prediction';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 
 export class PredictionPanel extends Panel {
@@ -37,7 +37,7 @@ export class PredictionPanel extends Panel {
         const noPercent = 100 - yesPercent;
         const volumeStr = this.formatVolume(p.volume);
 
-        const safeUrl = sanitizeUrl(p.url || '');
+        const safeUrl = sanitizeUrl((p.source === 'kalshi' ? p.displayUrl ?? p.url : p.url) || '');
         const titleHtml = safeUrl
           ? `<a href="${safeUrl}" target="_blank" rel="noopener" class="prediction-question prediction-link">${escapeHtml(p.title)}</a>`
           : `<div class="prediction-question">${escapeHtml(p.title)}</div>`;
@@ -80,6 +80,6 @@ export class PredictionPanel extends Panel {
       })
       .join('');
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

@@ -74,7 +74,13 @@ export function sidecarCacheGet(key: string): unknown | null {
   return JSON.parse(entry.value);
 }
 
-export function sidecarCacheSet(key: string, value: unknown, ttlSeconds: number): void {
+export function sidecarCacheSetIfAbsent(key: string, value: unknown, ttlSeconds: number): boolean {
+  const existing = store.get(key);
+  if (existing && existing.expiresAt > Date.now()) return false;
+  return sidecarCacheSet(key, value, ttlSeconds);
+}
+
+export function sidecarCacheSet(key: string, value: unknown, ttlSeconds: number): boolean {
   const clamped = Math.max(MIN_TTL_S, Math.min(MAX_TTL_S, ttlSeconds));
   const json = JSON.stringify(value);
   // Rough byte estimate: JS strings are UTF-16 (2 bytes per code unit).
@@ -83,7 +89,7 @@ export function sidecarCacheSet(key: string, value: unknown, ttlSeconds: number)
 
   if (size > MAX_SINGLE_VALUE_BYTES) {
     console.warn(`[sidecar-cache] rejecting key "${key}": ${(size / 1024 / 1024).toFixed(1)} MB exceeds 2 MB limit`);
-    return;
+    return false;
   }
 
   // Remove old entry if exists
@@ -106,6 +112,7 @@ export function sidecarCacheSet(key: string, value: unknown, ttlSeconds: number)
   totalBytes += size;
 
   startSweepIfNeeded();
+  return true;
 }
 
 export function sidecarCacheStats(): { entries: number; bytes: number; hits: number; misses: number } {

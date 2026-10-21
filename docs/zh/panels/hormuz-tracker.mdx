@@ -1,0 +1,49 @@
+---
+title: "霍尔木兹贸易追踪器"
+description: "霍尔木兹贸易追踪器基于实时 AIS 船舶定位数据，逐日统计通过海峡的原油油轮、成品油船、LNG 运输船与散货货轮数量，标记航运中断事件、GPS 电子干扰与伊朗扣船行动，并计算每周流量同比与环比变化，为全球最关键的石油咽喉要道提供供应链风险监测与地缘政治紧张态势的量化情报视图。"
+---
+
+**Hormuz Trade Tracker** 面板（内部 id `hormuz-tracker`）是聚焦于单一咽喉要道的深度分析：霍尔木兹海峡。全球约 20% 的石油每日通过该海峡，因此一个专用的实时视图 — 状态、油轮计数、每周流量变化、中断事件 — 比通用咽喉要道表格中的一行更有用。
+
+## 面板显示内容
+
+一个状态着色的标题和按序列的柱状图：
+
+- **状态指示器** — `normal`（绿色 `#2ecc71`）、`restricted`（琥珀色 `#f39c12`）、`disrupted`（橙色 `#e67e22`）、`closed`（红色 `#e74c3c`）。颜色在 `src/components/HormuzPanel.ts:10` 的 `statusColor()` 中定义。
+- **按序列柱状图** — 每个跟踪序列一个图表（油轮类型、流量类别）。每个图表渲染最近的数据点；零值柱以柔和的红色渲染，使空缺可见而非不可见。4 色调色板循环 `#e67e22` / `#1abc9c` / `#9b59b6` / `#27ae60`。
+- **悬停工具提示** — 悬停柱面显示日期、值和单位（通过带数据属性的不可见命中区域 `.hbar`）。
+
+序列类型来自 `HormuzSeries[]`，捆绑在 `HormuzTrackerData` 载荷的 `HormuzChart[]` 块中。
+
+面板 id 为 `hormuz-tracker`；规范组件为 `src/components/HormuzPanel.ts`。标题见 `src/config/panels.ts`："Hormuz Trade Tracker"。
+
+## 如何访问
+
+- **Cmd+K**：输入 *hormuz* 或 *strait*。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册并默认启用（`priority: 2`）。在 tech、finance、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts` 中 `FULL_PANELS` 的 `'hormuz-tracker'`。
+
+## 数据来源
+
+`@/services/hormuz-tracker` 中的 `fetchHormuzTracker()` 由统计通过海峡的 AIS 船舶通行的 Railway AIS relay 支持。种子器产出实时油轮计数和每周流量差值；中断事件通过状态字段展示。
+
+本面板使用一个遗留/专用平台代理，而非生成的 `SupplyChainService` RPC：
+
+| 方法 + 路由 | 数据供给 |
+|---|---|
+| `GET /api/supply-chain/hormuz-tracker` | 实时霍尔木兹状态、油轮通行序列、每周流量差值和中断事件。 |
+
+代理目录条目请参见 [Proxies](/zh/api-proxies)。生成的咽喉要道和航线风险 RPC，请参见 [供应链](/zh/panels/supply-chain) 和 [Route Explorer](/zh/route-explorer)。
+
+## 刷新频率
+
+AIS 驱动；relay 近实时写入更新。面板在挂载和手动刷新时读取 — 不积极轮询。
+
+## 层级与门控
+
+**免费。** `src/config/panels.ts` 中无 `premium` 标志。后端代理是公开的。
+
+## 相关
+
+- [海事情报](/zh/maritime-intelligence) — 更广泛的 AIS + 咽喉要道上下文（霍尔木兹是 13 个受监测水域之一）。
+- [Route Explorer](/zh/route-explorer) — 经常通过霍尔木兹为 AE 起运油轮货物进行按航线分析。
+- [Scenario Engine](/zh/scenario-engine) — `hormuz-tanker-blockade` 模板模拟霍尔木兹全面关闭 14 天。

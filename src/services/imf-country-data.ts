@@ -1,0 +1,367 @@
+/**
+ * IMF WEO per-country data — fetches the four IMF SDMX-3.0 seeded keys
+ * (macro, growth, labor, external) via /api/bootstrap and returns the
+ * subset for one country. Used by CountryDeepDivePanel Economic
+ * Indicators + Country Facts cards (issue #3027).
+ *
+ * Network policy: four public on-demand bootstrap reads; the validated bundle
+ * is memoised for ~10 min.
+ */
+
+import { ensureHydrated } from '@/services/bootstrap';
+
+export interface ImfMacroEntry {
+  periods?: Partial<Record<'inflationPct' | 'primaryBalancePct' | 'govExpenditurePct' | 'govRevenuePct', number | null>>;
+  inflationPct: number | null;
+  currentAccountPct: number | null;
+  govRevenuePct: number | null;
+  cpiIndex: number | null;
+  cpiEopPct: number | null;
+  govExpenditurePct: number | null;
+  primaryBalancePct: number | null;
+  year: number | null;
+}
+
+export interface ImfGrowthEntry {
+  periods?: Partial<Record<'realGdpGrowthPct' | 'gdpPerCapitaUsd', number | null>>;
+  realGdpGrowthPct: number | null;
+  gdpPerCapitaUsd: number | null;
+  realGdpLcuB: number | null;
+  /** Deprecated bootstrap alias; use realGdpLcuB for new code. */
+  realGdp?: number | null;
+  gdpPerCapitaPpp: number | null;
+  gdpPpp: number | null;
+  investmentPct: number | null;
+  savingsPct: number | null;
+  savingsInvestmentGap: number | null;
+  year: number | null;
+}
+
+export interface ImfLaborEntry {
+  periods?: Partial<Record<'unemploymentPct', number | null>>;
+  unemploymentPct: number | null;
+  populationMillions: number | null;
+  year: number | null;
+}
+
+export interface ImfExternalEntry {
+  exportsUsd: number | null;
+  importsUsd: number | null;
+  tradeBalanceUsd: number | null;
+  currentAccountUsd: number | null;
+  importVolumePctChg: number | null;
+  exportVolumePctChg: number | null;
+  year: number | null;
+}
+
+/** Dataset dates IMF attached to one indicator response. Neither names a WEO edition. */
+export interface ImfRelease {
+  publishedAt: string | null;
+  updatedAt: string | null;
+}
+
+export type ImfReleases = Partial<Record<string, ImfRelease>>;
+
+export interface ImfCountryBundle {
+  macro: ImfMacroEntry | null;
+  growth: ImfGrowthEntry | null;
+  labor: ImfLaborEntry | null;
+  external: ImfExternalEntry | null;
+  releases?: { macro: ImfReleases; growth: ImfReleases; labor: ImfReleases };
+  fetchedAt: number;
+}
+
+interface ImfBootstrapData {
+  imfMacro: { countries: Record<string, ImfMacroEntry>; releases?: unknown };
+  imfGrowth: { countries: Record<string, ImfGrowthEntry>; releases?: unknown };
+  imfLabor: { countries: Record<string, ImfLaborEntry>; releases?: unknown };
+  imfExternal: { countries: Record<string, ImfExternalEntry> };
+}
+
+export type ImfBootstrapPayload = { [K in keyof ImfBootstrapData]?: Partial<ImfBootstrapData[K]> };
+
+const CACHE_TTL_MS = 10 * 60 * 1000;
+let cachedBundle: { fetchedAt: number; payload: ImfBootstrapData } | null = null;
+let inFlight: Promise<Partial<ImfBootstrapData> | undefined> | null = null;
+
+function hasCountries(value: unknown): value is { countries: Record<string, never> } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const countries = (value as { countries?: unknown }).countries;
+  return Boolean(countries && typeof countries === 'object' && !Array.isArray(countries));
+}
+
+async function fetchBundle(): Promise<Partial<ImfBootstrapData> | undefined> {
+  if (cachedBundle && Date.now() - cachedBundle.fetchedAt < CACHE_TTL_MS) {
+    return cachedBundle.payload;
+  }
+  if (inFlight) return inFlight;
+
+  inFlight = (async () => {
+    try {
+      const [imfMacro, imfGrowth, imfLabor, imfExternal] = await Promise.all([
+        ensureHydrated('imfMacro'),
+        ensureHydrated('imfGrowth'),
+        ensureHydrated('imfLabor'),
+        ensureHydrated('imfExternal'),
+      ]);
+      if (![imfMacro, imfGrowth, imfLabor, imfExternal].every(hasCountries)) {
+        return cachedBundle?.payload ?? {
+          ...(hasCountries(imfMacro) ? { imfMacro } : {}),
+          ...(hasCountries(imfGrowth) ? { imfGrowth } : {}),
+          ...(hasCountries(imfLabor) ? { imfLabor } : {}),
+          ...(hasCountries(imfExternal) ? { imfExternal } : {}),
+        };
+      }
+      const payload = { imfMacro, imfGrowth, imfLabor, imfExternal } as ImfBootstrapData;
+      cachedBundle = { fetchedAt: Date.now(), payload };
+      return payload;
+    } catch {
+      return cachedBundle?.payload;
+    } finally {
+      inFlight = null;
+    }
+  })();
+  return inFlight;
+}
+
+/**
+ * One per-country inflation reading for the all-countries "World" view.
+ * `inflationPct` is IMF WEO period-average CPI inflation (PCPIPCH);
+ * `cpiEopPct` is the end-of-period reading (PCPIEPCH).
+ */
+export interface CountryInflationRow {
+  iso2: string;
+  name: string;
+  inflationPct: number | null;
+  cpiEopPct: number | null;
+  year: number | null;
+}
+
+function numOrNull(v: unknown): number | null {
+  if (v == null || v === '') return null; // Number(null) === 0 — guard it
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+let countryNameFmt: Intl.DisplayNames | null = null;
+function resolveCountryName(iso2: string): string {
+  try {
+    if (!countryNameFmt) countryNameFmt = new Intl.DisplayNames(['en'], { type: 'region' });
+    return countryNameFmt.of(iso2) ?? iso2;
+  } catch {
+    return iso2;
+  }
+}
+
+/**
+ * Pure transform — turns the IMF macro `countries` map into a sorted list of
+ * inflation rows, dropping countries with no inflation reading at all. Sorted
+ * by year-over-year inflation descending (highest first); rows with a null YoY
+ * reading sort last, name-ascending as a stable tiebreak. Exported so unit
+ * tests don't need to mock the network (mirrors buildImfEconomicIndicators).
+ */
+export function buildCountryInflationRows(
+  countries: Record<string, Partial<ImfMacroEntry>> | undefined,
+): CountryInflationRow[] {
+  const rows: CountryInflationRow[] = [];
+  for (const [code, entry] of Object.entries(countries ?? {})) {
+    const inflationPct = numOrNull(entry?.inflationPct);
+    const cpiEopPct = numOrNull(entry?.cpiEopPct);
+    if (inflationPct == null && cpiEopPct == null) continue;
+    const iso2 = code.toUpperCase();
+    rows.push({
+      iso2,
+      name: resolveCountryName(iso2),
+      inflationPct,
+      cpiEopPct,
+      year: numOrNull(entry?.year),
+    });
+  }
+  rows.sort((a, b) => {
+    if (a.inflationPct == null && b.inflationPct == null) return a.name.localeCompare(b.name);
+    if (a.inflationPct == null) return 1;
+    if (b.inflationPct == null) return -1;
+    if (b.inflationPct !== a.inflationPct) return b.inflationPct - a.inflationPct;
+    return a.name.localeCompare(b.name);
+  });
+  return rows;
+}
+
+/**
+ * All-countries inflation snapshot from the IMF WEO macro bundle. Reuses the
+ * same memoised bootstrap fetch as getImfCountryBundle (no extra network) and
+ * never throws — returns an empty list when the seeder is offline.
+ */
+export async function getAllCountriesInflation(): Promise<CountryInflationRow[]> {
+  const data = await fetchBundle();
+  return buildCountryInflationRows(data?.imfMacro?.countries);
+}
+
+/**
+ * Look up a country's IMF data across all four themed seeders.
+ * Returns null entries for any theme that has no data for this country
+ * (or whose seeder is offline). Never throws.
+ */
+export async function getImfCountryBundle(iso2Code: string): Promise<ImfCountryBundle> {
+  const data = await fetchBundle();
+  return selectImfCountryBundle(data, iso2Code, cachedBundle?.fetchedAt ?? Date.now());
+}
+
+const RELEASE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?)?$/;
+
+function releaseDate(value: unknown): string | null {
+  const match = typeof value === 'string' ? RELEASE_DATE_RE.exec(value) : null;
+  if (!match) return null;
+  const [y, m, d] = match.slice(1, 4).map(Number) as [number, number, number];
+  const day = new Date(Date.UTC(y, m - 1, d));
+  return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d ? value as string : null;
+}
+
+function parseImfReleases(value: unknown): ImfReleases {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const releases: ImfReleases = {};
+  for (const [metric, release] of Object.entries(value)) {
+    if (!release || typeof release !== 'object' || Array.isArray(release)) continue;
+    const { publishedAt, updatedAt } = release as Record<string, unknown>;
+    releases[metric] = { publishedAt: releaseDate(publishedAt), updatedAt: releaseDate(updatedAt) };
+  }
+  return releases;
+}
+
+export function selectImfCountryBundle(data: ImfBootstrapPayload | undefined, iso2Code: string, fetchedAt: number): ImfCountryBundle {
+  const code = iso2Code.toUpperCase();
+  return {
+    macro: data?.imfMacro?.countries?.[code] ?? null,
+    growth: data?.imfGrowth?.countries?.[code] ?? null,
+    labor: data?.imfLabor?.countries?.[code] ?? null,
+    external: data?.imfExternal?.countries?.[code] ?? null,
+    releases: {
+      macro: parseImfReleases(data?.imfMacro?.releases),
+      growth: parseImfReleases(data?.imfGrowth?.releases),
+      labor: parseImfReleases(data?.imfLabor?.releases),
+    },
+    fetchedAt,
+  };
+}
+
+function releaseText(release: ImfRelease | undefined): string {
+  const published = release?.publishedAt?.slice(0, 10);
+  const updated = release?.updatedAt?.slice(0, 10);
+  if (published && updated && updated !== published) return `IMF published ${published}, updated ${updated}`;
+  if (published) return `IMF published ${published}`;
+  if (updated) return `IMF updated ${updated}, publication date not supplied`;
+  return 'IMF release not supplied';
+}
+
+function imfSource(periods: unknown, releases: ImfReleases | undefined, metric: string): string {
+  const year = periods && typeof periods === 'object' && !Array.isArray(periods)
+    ? (periods as Record<string, unknown>)[metric] : undefined;
+  const period = typeof year === 'number' && Number.isInteger(year) && year >= 1900 && year <= 2200
+    ? `Year ${year}` : 'Year not supplied';
+  return `IMF WEO · ${period} · ${releaseText(releases?.[metric])}`;
+}
+
+/**
+ * Pure helper — selects up to N IMF-derived indicators ranked by
+ * highest-signal-first ordering for the Economic Indicators card.
+ * Exported so unit tests don't need to mock the network.
+ */
+export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
+  label: string;
+  value: string;
+  trend: 'up' | 'down' | 'flat';
+  source: string;
+}[] {
+  const out: { label: string; value: string; trend: 'up' | 'down' | 'flat'; source: string }[] = [];
+
+  const growth = bundle.growth?.realGdpGrowthPct;
+  if (growth != null && Number.isFinite(growth)) {
+    out.push({
+      label: 'Real GDP Growth',
+      value: `${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`,
+      trend: growth > 0.5 ? 'up' : growth < -0.5 ? 'down' : 'flat',
+      source: imfSource(bundle.growth?.periods, bundle.releases?.growth, 'realGdpGrowthPct'),
+    });
+  }
+
+  const inflation = bundle.macro?.inflationPct;
+  if (inflation != null && Number.isFinite(inflation)) {
+    out.push({
+      label: 'CPI Inflation',
+      value: `${inflation >= 0 ? '+' : ''}${inflation.toFixed(1)}%`,
+      // High inflation = bad for stability; flag downward trend on >5%.
+      trend: inflation > 5 ? 'down' : inflation < 1 ? 'flat' : 'up',
+      source: imfSource(bundle.macro?.periods, bundle.releases?.macro, 'inflationPct'),
+    });
+  }
+
+  const lur = bundle.labor?.unemploymentPct;
+  if (lur != null && Number.isFinite(lur)) {
+    out.push({
+      label: 'Unemployment',
+      value: `${lur.toFixed(1)}%`,
+      trend: lur > 10 ? 'down' : lur < 5 ? 'up' : 'flat',
+      source: imfSource(bundle.labor?.periods, bundle.releases?.labor, 'unemploymentPct'),
+    });
+  }
+
+  // Primary balance %GDP (IMF GGXONLB_NGDP). Directional: a surplus is
+  // unambiguously good, sustained deficit drains fiscal space. Thresholds
+  // tuned around the IMF DSA noise floor — anything within ±1pp of zero is
+  // structural noise; meaningful signal is >+1 surplus or <-3 deficit.
+  // Ordered with the other directional macro rows (growth / inflation /
+  // unemployment) so it survives the caller's 6-row slice. Two slice sites
+  // gate visibility — keep both in mind when changing row count or order:
+  //   - src/app/country-intel.ts:1288 (combined producer → consumer cap)
+  //   - src/components/CountryDeepDivePanel.ts:2240 (post-stock-prepend cap)
+  // The flat context rows below are emitted last because losing them is the
+  // right tradeoff when the card is full.
+  const primaryBalance = bundle.macro?.primaryBalancePct;
+  if (primaryBalance != null && Number.isFinite(primaryBalance)) {
+    out.push({
+      label: 'Primary Balance',
+      value: `${primaryBalance >= 0 ? '+' : ''}${primaryBalance.toFixed(1)}% GDP`,
+      trend: primaryBalance > 1 ? 'up' : primaryBalance < -3 ? 'down' : 'flat',
+      source: imfSource(bundle.macro?.periods, bundle.releases?.macro, 'primaryBalancePct'),
+    });
+  }
+
+  const gdpPc = bundle.growth?.gdpPerCapitaUsd;
+  if (gdpPc != null && Number.isFinite(gdpPc)) {
+    const formatted = gdpPc >= 1000
+      ? `$${(gdpPc / 1000).toFixed(1)}k`
+      : `$${gdpPc.toFixed(0)}`;
+    out.push({
+      label: 'GDP / Capita',
+      value: formatted,
+      trend: 'flat',
+      source: imfSource(bundle.growth?.periods, bundle.releases?.growth, 'gdpPerCapitaUsd'),
+    });
+  }
+
+  // Public spending as % of GDP (IMF GGX_NGDP). Level is descriptive context,
+  // not directional — Nordics sit at 50%+ with strong stability scores while
+  // some low-spending states are fragile. Trend stays flat to avoid baking
+  // a "high = bad" signal into the indicator card.
+  const govExp = bundle.macro?.govExpenditurePct;
+  if (govExp != null && Number.isFinite(govExp)) {
+    out.push({
+      label: 'Public Spending',
+      value: `${govExp.toFixed(1)}% GDP`,
+      trend: 'flat',
+      source: imfSource(bundle.macro?.periods, bundle.releases?.macro, 'govExpenditurePct'),
+    });
+  }
+
+  const govRev = bundle.macro?.govRevenuePct;
+  if (govRev != null && Number.isFinite(govRev)) {
+    out.push({
+      label: 'Gov Revenue',
+      value: `${govRev.toFixed(1)}% GDP`,
+      trend: 'flat',
+      source: imfSource(bundle.macro?.periods, bundle.releases?.macro, 'govRevenuePct'),
+    });
+  }
+
+  return out;
+}

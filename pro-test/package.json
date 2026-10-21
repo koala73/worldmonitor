@@ -2,6 +2,16 @@
   "name": "worldmonitor-pro",
   "private": true,
   "version": "0.1.0",
+  "allowScripts": {
+    "@clerk/shared": false,
+    "@sentry/cli": true,
+    "browser-tabs-lock": false,
+    "bufferutil": false,
+    "core-js": false,
+    "esbuild": true,
+    "fsevents": false,
+    "utf-8-validate": false
+  },
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000",
@@ -10,19 +20,36 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/clerk-js": "^5.125.10",
+    "@sentry/react": "^10.47.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
+    "braces": "file:../vendor/braces",
+    "hls.js": "^1.6.15",
     "i18next": "^25.8.14",
     "i18next-browser-languagedetector": "^8.2.1",
     "lucide-react": "^0.546.0",
+    "mailcheck": "^1.1.1",
     "motion": "^12.23.24",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "vite": "^6.2.0"
+    "stream-json": "file:../vendor/stream-json",
+    "vite": "^7.3.7"
   },
   "devDependencies": {
+    "@sentry/vite-plugin": "^5.4.0",
     "@types/node": "^22.14.0",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2"
+  },
+  "overrides": {
+    "braces": "$braces",
+    "esbuild": "0.28.1",
+    "postcss": "8.5.23",
+    "ws": "8.21.0",
+    "shell-quote": "1.12.0",
+    "metro": "0.84.6",
+    "brace-expansion@5": "^5.0.12",
+    "stream-json": "$stream-json"
   }
 }

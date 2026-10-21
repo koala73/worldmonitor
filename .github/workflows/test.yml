@@ -5,25 +5,1236 @@ on:
   push:
     branches: [main]
 
+# A superseded PR run owes nobody a verdict. Branch protection and
+# deploy-gate.sh both evaluate the head SHA only. Letting it finish burned
+# 59% of this workflow's runs on dead commits and queued the live commit
+# behind them. Cancellation is pull_request-only. A push to main still owes
+# the deploy gate a verdict, and `github.run_id` gives it a group of one so
+# nothing can evict it (#8443).
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
 jobs:
-  unit:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+      browser: ${{ steps.diff.outputs.browser }}
+      digest: ${{ steps.diff.outputs.digest }}
+      validation: ${{ steps.diff.outputs.validation }}
+      umami: ${{ steps.diff.outputs.umami }}
+      consumer_prices: ${{ steps.diff.outputs.consumer_prices }}
+      desktop_config: ${{ steps.diff.outputs.desktop_config }}
+      desktop_rust: ${{ steps.diff.outputs.desktop_rust }}
+    steps:
+      - id: diff
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Specialized jobs (desktop-rust, umami, digest, …) are path-filtered
+          # on PRs. Do the same on push to main. Forcing them true here used to
+          # compile the Tauri crate and rebuild Umami images on every merge —
+          # weather, news, embed — which is not a desktop or analytics gate.
+          # Fail open (run everything) only when we cannot see the file list:
+          # a zero parent SHA, a compare error, or GitHub's 300-file cap.
+          emit_all_true() {
+            echo "browser=true" >> "$GITHUB_OUTPUT"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "digest=true" >> "$GITHUB_OUTPUT"
+            echo "validation=true" >> "$GITHUB_OUTPUT"
+            echo "umami=true" >> "$GITHUB_OUTPUT"
+            echo "consumer_prices=true" >> "$GITHUB_OUTPUT"
+            echo "desktop_config=true" >> "$GITHUB_OUTPUT"
+            echo "desktop_rust=true" >> "$GITHUB_OUTPUT"
+          }
+          ZERO=0000000000000000000000000000000000000000
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "$ZERO" ]; then
+              echo "No usable parent SHA; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            if ! COMPARE_JSON=$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${{ github.sha }}"); then
+              echo "Compare API failed; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            if ! FILES_JSON=$(jq -ce '.files | arrays' <<< "$COMPARE_JSON"); then
+              emit_all_true
+              exit 0
+            fi
+            FILE_COUNT=$(jq 'length' <<< "$FILES_JSON")
+            if [ "$FILE_COUNT" -ge 300 ]; then
+              echo "Compare listing is truncated at 300 files; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+          else
+            if ! PR_JSON=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}") ||
+               ! FILES_JSON=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" --paginate --slurp | jq -ce 'add | arrays'); then
+              echo "PR file lookup failed; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            FILE_COUNT=$(jq 'length' <<< "$FILES_JSON")
+            if ! jq -e --arg head "${{ github.event.pull_request.head.sha }}" \
+              --arg base "${{ github.event.pull_request.base.sha }}" --argjson count "$FILE_COUNT" \
+              '.head.sha == $head and .base.sha == $base and .changed_files == $count and $count < 3000' <<< "$PR_JSON" >/dev/null; then
+              echo "PR metadata moved or its file list is incomplete; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+          fi
+          # Include both sides of renames. A deleted file is still an input.
+          # Refuse line-delimiter characters before passing paths to awk.
+          if [ "$FILE_COUNT" -eq 0 ] || ! FILES=$(jq -er '
+            [.[] | .filename, (.previous_filename // empty)]
+            | if all(.[]; type == "string" and length > 0 and (explode | all(. != 0 and . != 10 and . != 13)))
+              then .[] else error("invalid path listing") end
+          ' <<< "$FILES_JSON"); then
+            echo "Unusable file list; running every Test job."
+            emit_all_true
+            exit 0
+          fi
+          CODE=$(printf '%s\n' "$FILES" | awk '
+            /^docs\/research\/seo-ai-visibility\// { count++; next }
+            # Committed resilience acceptance artifacts are docs-path data that
+            # tests/dry-run-resilience-education-flip.test.mts validates —
+            # recomputing gates, checking provenance, and rejecting a
+            # self-declared verdict. That validator lives in the `unit` job, so
+            # without this rule the guard skips on exactly the PR that commits
+            # an artifact and can only ever fire on unrelated changes.
+            /^docs\/snapshots\/resilience-.*-acceptance-.*\.json$/ { count++; next }
+            # Per-service OpenAPI specs are generated machine artifacts consumed
+            # by tests/openapi-filter-param-schemas.test.mjs, which enumerates
+            # every JSON spec. Keep the JSON/YAML siblings on the same `unit`
+            # job when a PR changes only docs/api output (#6650).
+            /^docs\/api\/[^\/]+Service\.openapi\.(json|yaml)$/ { count++; next }
+            # The generated OpenAPI bundle sits under docs/ but is the INPUT to
+            # the served public/openapi.json. Its <= 950,000-byte scanner guard
+            # (tests/openapi-json-dedup.test.mjs) and the capacity report that
+            # tracks the approach to it both run in `unit`, so without this
+            # carve-out a PR that only regenerates the bundle sets code=false
+            # and skips the one gate that measures the artifact it changed
+            # (#6558).
+            /^docs\/api\/worldmonitor\.openapi\.yaml$/ { count++; next }
+            # The Data Coverage block in public/ai-search.md is generated from
+            # the inventory registries, and the docs-stats volatile-claim gate
+            # exempts that block precisely because
+            # tests/ai-search-product-facts.test.mjs fails when it drifts from
+            # the generator. That test lives in the `unit` job, so without this
+            # rule the only gate on a fabricated figure skips on exactly the PR
+            # that edits the file (#6038). NOTE: no apostrophes in this awk
+            # program - it is single-quoted in the shell, so one would end it.
+            /^public\/ai-search\.md$/ { count++; next }
+            # A published ranking snapshot is the source of the ranked-country
+            # figure and captured date in public/ai-search.md. A snapshot-only
+            # PR would otherwise set code=false, skip the byte test, and land a
+            # snapshot whose figures the committed page no longer matches -
+            # surfacing later as a confusing failure on an unrelated PR.
+            /^docs\/snapshots\/resilience-ranking-[0-9-]+\.json$/ { count++; next }
+            /^blog-site\/src\/content\/blog\/.*\.md$/ { count++; next }
+            /^blog-site\/src\/content\/guides\/.*\.md$/ { count++; next }
+            # public/home.md is the agent-mode homepage and the residue guard
+            # asserts it links the comparison hub (#7746). Without this rule a
+            # home.md-only PR sets code=false and that guard never runs.
+            /^public\/home\.md$/ { count++; next }
+            /\.md$/ { next }
+            /^docs\// { next }
+            # A src-tauri node suite is run by sidecar and policed by
+            # tests/package-test-command-paths.test.mjs inside unit; both are
+            # gated on code, so the exclusion below must not swallow it (#7772).
+            /^src-tauri\/.*\.test\.(mjs|mts|cjs|js|ts|tsx)$/ { count++; next }
+            /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// && $0 !~ /^src-tauri\/.*\.json$/ { next }
+            /^CHANGELOG\.md$/ { next }
+            /^LICENSE$/ { next }
+            /^\.github\/workflows\/docker-publish\.yml$/ { next }
+            { count++ }
+            END { print count + 0 }
+          ')
+          echo "code=$( [ "$CODE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Only proven non-browser inputs may skip this job. New paths run it
+          # until their owner can establish that they cannot affect the smoke.
+          BROWSER=$(printf '%s\n' "$FILES" | awk '
+            /^(src\/|api\/|server\/|shared\/|public\/|pro-test\/|e2e\/)/ { count++; next }
+            /^docs\// { next }
+            /^tests\/.*\.test\.(mjs|mts)$/ { next }
+            /^scripts\/(audit-railway-watch-paths|run-railway-registry-sync|railway-services)\.(mjs|json)$/ { next }
+            /^\.github\/workflows\/(railway-registry-sync|seed-freshness)\.yml$/ { next }
+            /^\.husky\// { next }
+            /\.md$/ || /^LICENSE$/ { next }
+            /^src-tauri\// { next }
+            { count++ }
+            END { print count + 0 }
+          ')
+          echo "browser=$( [ "$BROWSER" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # digest-image job: build Dockerfile.digest-notifications when a PR
+          # touches its inputs (scripts/, shared/, server/_shared/, api/, the
+          # Dockerfile itself, or the root package manifest). Catches the
+          # cross-directory-import + native-dep breakage class documented in
+          # tests/dockerfile-digest-notifications-imports.test.mjs.
+          DIGEST=$(printf '%s\n' "$FILES" | awk '
+            /^(scripts\/|shared\/|server\/_shared\/|api\/|\.dockerignore$|Dockerfile\.digest-notifications|package\.json|package-lock\.json)/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "digest=$( [ "$DIGEST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # resilience-validation-smoke job: run the no-secrets artifact/schema
+          # and script-contract gate when the validation bundle, its Dockerfile,
+          # its committed artifacts, or its focused tests change.
+          VALIDATION=$(printf '%s\n' "$FILES" | awk '
+            /^Dockerfile\.seed-bundle-resilience-validation$/ { count++ }
+            /^docs\/methodology\/country-resilience-index\/validation\// { count++ }
+            /^package\.json$/ || /^package-lock\.json$/ { count++ }
+            /^scripts\/benchmark-resilience-external\.mjs$/ { count++ }
+            /^scripts\/backtest-resilience-outcomes\.mjs$/ { count++ }
+            /^scripts\/validate-resilience-sensitivity\.mjs$/ { count++ }
+            /^scripts\/seed-bundle-resilience-validation\.mjs$/ { count++ }
+            /^scripts\/_bundle-runner\.mjs$/ { count++ }
+            /^tests\/(resilience-validation-artifacts-schema|benchmark-resilience-external|backtest-resilience-outcomes|resilience-sensitivity-v2|seed-bundle-resilience-validation)\.test\.(mjs|mts)$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "validation=$( [ "$VALIDATION" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Umami's database race cannot be covered by the normal no-Docker
+          # unit suite. Run a real PostgreSQL gate only when its managed image,
+          # migration, patch, or focused tests change. Do not trigger on every
+          # Test workflow edit: unit already pins the job shape, and rebuilding
+          # two Umami images is the cost that made this look like a per-PR tax.
+          UMAMI=$(printf '%s\n' "$FILES" | awk '
+            /^\.dockerignore$/ { count++ }
+            /^Dockerfile\.umami$/ { count++ }
+            /^Dockerfile\.umami-retention$/ { count++ }
+            /^docker\/umami\// { count++ }
+            /^scripts\/umami-retention\.sql$/ { count++ }
+            /^tests\/umami-(runtime-remediation\.test|postgres-integration|runtime-write-probe)\.mjs$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "umami=$( [ "$UMAMI" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Consumer-prices-core has its own lockfile and Vitest suite, so run
+          # it whenever package code, tests, or its CI definition changes.
+          CONSUMER_PRICES=$(printf '%s\n' "$FILES" | awk '
+            /^consumer-prices-core\// { count++ }
+            /^\.github\/workflows\/test\.yml$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "consumer_prices=$( [ "$CONSUMER_PRICES" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Desktop drift gates (#5902). The `code` filter above deliberately
+          # skips src-tauri/ (non-sidecar), so before these outputs existed a
+          # Rust/Tauri-config change ran zero PR CI and desktop breakage
+          # surfaced only at the next release build — months later.
+          # Any `src-tauri/**/*.json` is carved back into `code`:
+          # tests/desktop-one-binary-model.test.mjs asserts on the set of Tauri
+          # bundle configs (#5908) and runs in `unit`. Without the carve-out,
+          # adding a per-variant config would skip its own gate — and the
+          # carve-out covers every JSON path, not just `tauri*.conf.json`, so a
+          # config parked at e.g. `src-tauri/profiles/commodity.json` cannot
+          # sneak past it either.
+          # The sidecar handler bundle build lives in the `unit` job (gated on
+          # `code`), NOT here: the bundled api/{domain}/v1/[rpc].ts handlers
+          # import from src/ and server/ via the @/ alias, so the bundle's
+          # real input graph is the whole code surface, and `code` is the
+          # filter that already tracks it.
+          DESKTOP_CONFIG=$(printf '%s\n' "$FILES" | awk '
+            /^src-tauri\// { count++; next }
+            /^package\.json$/ { count++; next }
+            /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
+            /^scripts\/check-desktop-build-env\.mjs$/ { count++; next }
+            /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
+            /^scripts\/check-rust-security-floors\.mjs$/ { count++; next }
+            /^\.github\/workflows\/.*\.ya?ml$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "desktop_config=$( [ "$DESKTOP_CONFIG" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Compile the Tauri crate only when the crate itself changes.
+          # Workflow edits are covered by desktop-config (cheap) and by the
+          # unit contract that pins this job's shape — they must not pay
+          # cargo test --locked (45 min budget) the way test.yml used to.
+          DESKTOP_RUST=$(printf '%s\n' "$FILES" | awk '
+            /^src-tauri\/sidecar\// { next }
+            /^src-tauri\// { count++ }
+            END { print count + 0 }
+          ')
+          echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+
+  docs-stats:
+    # Always-on: derives build-owned inventory facts and validates fixed or
+    # semantic documentation contracts. Runs on every PR/push (docs-only PRs
+    # set changes.code=false and skip `unit`, so this must not gate on it).
+    # Docs date generation uses the existing YAML parser for OpenAPI pages.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          node-version: '22'
+          # Docs page dates derive from git history; a shallow checkout would
+          # resolve every file to HEAD instead of its last content change.
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
           cache: 'npm'
-      - run: npm ci
-      - run: npm run test:data
-      - name: Edge function bundle check
+      - uses: ./.github/actions/install-root-deps
+      - name: Generate and validate build-owned inventory facts
         run: |
-          find api/ -name "*.js" -not -name "_*" | while read f; do
-            npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null || {
-              echo "ERROR: esbuild failed to bundle $f"
-              exit 1
+          node scripts/generate-inventory-facts.mjs
+          node scripts/generate-inventory-facts.mjs --check
+      - name: Doc claims match code
+        run: node scripts/docs-stats.mjs --check
+      - name: Generate and validate docs page dates for this revision
+        run: |
+          node scripts/generate-docs-page-dates.mjs
+          node scripts/generate-docs-page-dates.mjs --check
+          node --test tests/docs-page-dates.test.mjs
+      - name: Every English docs page has a zh translation
+        # Docs-only PRs skip the unit shards, so without this step a missing
+        # docs/zh mirror surfaces only as a red main after merge (#8968).
+        run: node --test tests/docs-i18n-parity.test.mjs
+      - name: Published internal links resolve without redirects
+        run: node --import tsx --test tests/internal-link-redirects.test.mjs
+      - name: Source attribution inventory is current
+        run: node scripts/source-attribution.mjs --check
+      - name: Homepage teaser strip matches the committed pulse snapshot
+        # Belongs in this always-on job, not `unit`: a PR that touches only
+        # docs/snapshots/ sets changes.code=false and skips `unit` entirely, so
+        # the snapshot could move out from under the generated teaser strip
+        # without any gate running. Pure Node builtins, no install required.
+        run: node scripts/build-welcome-teasers.mjs --check
+      - name: Every entitlement gate is classified
+        # Fails when a new free-vs-paid gate ships without a capability id or a
+        # documented exclusion (exit 1), or when the tree is missing a source the
+        # sweep expects (exit 2) — a partial sweep must never certify as complete.
+        run: node scripts/generate-entitlement-crosswalk.mjs --check
+
+  unit-shards:
+    name: unit-shard (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Three shards, not two (#7805): after #7769 split the browser job,
+        # unit-shard (2) became the Test wall at 5m45s, of which ~2 min is
+        # setup and builds every shard repeated and ~3 min is test:data. The
+        # builds now run once in unit-built-output. Four, not three: the
+        # test:data step saturates the runner's CPU, so a fourth runner is the
+        # cheapest way to get more parallelism. Three paired benchmark runs took
+        # the slowest shard from 236-269s to 176-186s. The
+        # sharder balances by measured durations and is generic in the count,
+        # so the denominator on the test:data step below is the only other
+        # place this number lives. tests/ci-test-selection.test.mjs pins that
+        # denominator to this matrix's length, and tests/data-test-shards.test.mjs
+        # reads the matrix and proves the shards together run the inventory
+        # exactly once.
+        shard: [1, 2, 3, 4]
+    timeout-minutes: 15
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Suites such as crawlable-corpus and docs-page-dates read commit
+          # history (last-modified dates, base drift), so the graph stays
+          # complete. Blobless: file contents outside the checked-out tree are
+          # fetched only if a suite asks for one, which cuts the clone ~3x.
+          fetch-depth: 0
+          filter: blob:none
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            pro-test/package-lock.json
+            blog-site/package-lock.json
+      # The dependency restore is a cache download and the Redis install is an
+      # apt pass. Neither reads the other's output, so they run side by side.
+      - parallel:
+          - uses: ./.github/actions/install-root-deps
+          # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
+          # archive's Lua runs against a real server: the relay harness stubs the
+          # EVAL and the proxy command-gate test only matches the script TEXT. That
+          # suite self-skips when the binaries are absent, so without this step the
+          # capacity refusal, newest-capture-wins compare, EXPIREAT and atomic
+          # seed-meta update were verified by nothing in CI. ubuntu-latest does not
+          # ship redis-server. Cheap (~2s) and shard-agnostic, so every shard gets it.
+          # The runner image package index goes stale when Ubuntu supersedes a
+          # redis build: the pinned .deb then 404s and every shard fails before
+          # tests run (2026-10-08, 7.0.15-1ubuntu0.24.04.4). Refresh the index
+          # and retry only when the fast install fails.
+          - name: Install Redis for the archive Lua suite
+            run: |
+              sudo apt-get install -y --no-install-recommends redis-server redis-tools \
+                || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends redis-server redis-tools; }
+      - name: Install blog-site deps for SEO contract tests
+        # Unit-only nested install; keeps postinstall free of blog-site.
+        # Needed so blog-seo-contract can load astro.config.mjs.
+        run: npm run ci:blog-site
+      - name: Data tests without built output
+        # No build here: the unit-built-output job builds dist/ and public/pro/
+        # once and runs every suite that names them. The marker stays set, so a
+        # guarded suite that lands in a shard fails instead of skipping.
+        env:
+          WM_EXPECT_BUILT_OUTPUT: '1'
+        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/4 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
+      - name: Upload data test timings
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: data-test-timings-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/data-test-timings.jsonl
+          if-no-files-found: warn
+          retention-days: 14
+
+  # Everything the shards would otherwise repeat three times: the /pro and
+  # dashboard builds, the bundle budgets that read them, the suites that need
+  # built output (scripts/run-data-tests.mjs --built-output=only), and the
+  # tree-wide checks that do not depend on a shard.
+  unit-built-output:
+    timeout-minutes: 15
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # The health-probe cutover gate compares the exact PR base with the
+          # candidate tree. A shallow checkout would make that gate vacuous.
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            pro-test/package-lock.json
+            blog-site/package-lock.json
+      - uses: ./.github/actions/install-root-deps
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: zh-TW catalogues reproduce from their Simplified source (#6555)
+        # The zh-TW catalogues are generated from zh.json, not translated from
+        # en.json, so the EN baseline in translate-locales.mjs is the wrong
+        # instrument for them and reports them separately. That leaves this as
+        # the only check that fails when zh.json moves and nobody reran the
+        # generator — without it, key-existence stays green while the values
+        # rot, which is the #5645 blindspot on this catalogue.
+        #
+        # Version-pinned deliberately: a different OpenCC build shifts terms no
+        # override pins, and reporting both catalogues stale at once is the
+        # intended loud failure rather than a silent reformat.
+        run: |
+          pip install opencc-python-reimplemented==0.1.7
+          python3 scripts/convert-zh-tw.py --check
+      - name: Enforce health-probe cutovers
+        env:
+          # NOT github.event.pull_request.base.sha. GitHub pins that SHA when the
+          # PR is opened and never advances it as main moves, but actions/checkout
+          # builds refs/pull/N/merge — this PR merged onto main's CURRENT tip. So
+          # the pinned SHA diffs today's tree against a base that can be weeks old,
+          # and every probe added to main after the PR opened reads as brand-new
+          # on every run, re-litigating a cutover the PR never touched. That stays
+          # invisible until the probe's acknowledgement is legitimately pruned —
+          # then the PR fails outright demanding an entry nobody should restore,
+          # owned by an issue that is already closed (#7021 on tpsMci/#7035).
+          #
+          # The merge commit's FIRST parent is the base tip this tree was merged
+          # onto, so it tracks what is actually under test. The pre-push hook
+          # compares against origin/main for the same reason.
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            if git rev-parse --verify --quiet HEAD^2 >/dev/null 2>&1; then
+              base="$(git rev-parse HEAD^1)"
+            else
+              # Unmergeable PR: checkout fell back to the head commit, whose
+              # first parent is the PR's own history, not the base branch.
+              base="origin/$BASE_REF"
+            fi
+          else
+            base="$PUSH_BEFORE"
+          fi
+          echo "health-probe cutover base: $base"
+          node --import tsx scripts/check-health-probe-cutovers.mts "$base"
+      - name: OpenAPI bundle capacity (#6558)
+        # The <= 950,000-byte scanner guard lives in
+        # tests/openapi-json-dedup.test.mjs and stays the gate. This step
+        # publishes what that guard is silent about on the way to the wall:
+        # served bytes, remaining headroom, and how many more operations fit.
+        # The last three crossings were each discovered by a red build on
+        # whichever PR happened to be last in line; the number belongs in front
+        # of a reviewer before that.
+        #
+        # Exits nonzero only when the artifact is over budget or could not be
+        # measured at all — a breached reserve warns, because a second hard
+        # failure at the same wall would just be the same red build one commit
+        # earlier. Placed before the suite on purpose: an over-budget artifact
+        # fails test:data anyway, and failing here costs 30s instead of 10min
+        # while the upload step below still publishes the breakdown.
+        #
+        # Written to RUNNER_TEMP, not the workspace: a CI-only artifact dropped
+        # in the repo root is untracked state that a later `git status` gate
+        # would trip over.
+        run: node scripts/openapi-capacity-report.mjs --out "$RUNNER_TEMP/openapi-capacity.json"
+      - name: Upload OpenAPI capacity report
+        # `!cancelled()` rather than `always()`: an over-budget run is exactly
+        # when the breakdown is worth reading, and a cancelled job has nothing
+        # to say. run_attempt in the name because upload-artifact v6 rejects a
+        # duplicate name within a run, which collides on the re-run someone
+        # starts to chase the failure.
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: openapi-capacity-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/openapi-capacity.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Build and verify buying guides
+        run: |
+          npm run ci:blog-site
+          npm --prefix blog-site run build
+          npm --prefix blog-site run verify:guides
+      - name: Build /pro artifacts for built-output tests
+        # public/pro/ stopped being committed in #6898, so the suites that read
+        # it need the same treatment dist/ already gets. Ordered before the
+        # dashboard build to mirror production: root `vite build` copies
+        # public/ into dist/, so /pro must exist by then.
+        run: npm run build:pro
+      - name: Build dashboard artifacts for built-output tests
+        run: VITE_VARIANT=full ./node_modules/.bin/vite build
+      - name: Client bundle size budget (#7111, #7119)
+        # The dashboard JS payload grew +151 KB in five weeks with no CI
+        # signal. Compares the build above against the committed snapshots in
+        # scripts/shared/bundle-budgets*.json; on an intended size change run
+        # the matching `npm run bundle:budgets*` command against the same build
+        # and commit the diff. Ordered before the suite so a budget breach costs
+        # seconds, not the full test:data run.
+        run: |
+          npm run bundle:check
+          npm run bundle:check:pro
+          npm run bundle:check:embed
+      - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --built-output=only --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
+      - name: Upload data test timings
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: data-test-timings-built-output-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/data-test-timings.jsonl
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Edge function bundle check
+        # Shared checker with caller-specific profiles. Tracked files are the
+        # deployable contract, so ignored Node sidecar bundles left by local
+        # builds are never inputs.
+        run: node scripts/check-edge-function-bundles.mjs --caller=ci
+      - name: Sidecar handler bundles build (#5902)
+        # The desktop sidecar loads esbuild-bundled api/{domain}/v1/[rpc].js
+        # handlers whose import graph spans src/ and server/ (via the @/
+        # alias) — before this step, that build ran only inside release
+        # builds, so a bundle-breaking change surfaced months later. The
+        # count assertion guards the vacuous-pass case: the build script
+        # exits 0 when its glob finds zero entry points, so "green" must
+        # also mean "every discovered domain actually produced a bundle".
+        run: |
+          node scripts/build-sidecar-sebuf.mjs
+          node scripts/build-sidecar-handlers.mjs
+          node -e '
+            const { readdirSync, existsSync } = require("node:fs");
+            const domains = readdirSync("api", { withFileTypes: true })
+              .filter((d) => d.isDirectory() && !["[domain]", "[[...path]]"].includes(d.name))
+              .filter((d) => existsSync(`api/${d.name}/v1/[rpc].ts`))
+              .map((d) => d.name);
+            const missing = domains.filter((d) => !existsSync(`api/${d}/v1/[rpc].js`));
+            if (domains.length === 0) {
+              console.error("::error::sidecar handler build found ZERO api/{domain}/v1/[rpc].ts entry points — the discovery glob is broken (vacuous pass)");
+              process.exit(1);
             }
+            if (missing.length > 0) {
+              console.error(`::error::sidecar handler build produced no bundle for: ${missing.join(", ")}`);
+              process.exit(1);
+            }
+            console.log(`sidecar handler bundles ok: ${domains.length} domains`);
+          '
+      - name: Desktop build env parity (#5905)
+        # Twin of the desktop-config leg: here it fires when src/ gains a new
+        # import.meta.env.VITE_ read (code=true), forcing the author to
+        # classify it for desktop builds before it can silently miss them.
+        run: node scripts/check-desktop-build-env.mjs
+
+  unit:
+    needs: [changes, unit-shards, unit-built-output]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every selected unit shard
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CODE_CHANGED: ${{ needs.changes.outputs.code }}
+          SHARDS_RESULT: ${{ needs.unit-shards.result }}
+          BUILT_OUTPUT_RESULT: ${{ needs.unit-built-output.result }}
+        run: |
+          if [ "$CHANGES_RESULT" = success ] && {
+            { [ "$CODE_CHANGED" = true ] && [ "$SHARDS_RESULT" = success ] && [ "$BUILT_OUTPUT_RESULT" = success ]; } ||
+            { [ "$CODE_CHANGED" = false ] && [ "$SHARDS_RESULT" = skipped ] && [ "$BUILT_OUTPUT_RESULT" = skipped ]; }
+          }; then
+            echo "All selected unit shards passed."
+          else
+            echo "Unit shards did not satisfy the change selection."
+            exit 1
+          fi
+
+  consumer-prices:
+    needs: changes
+    if: needs.changes.outputs.consumer_prices == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: consumer-prices-core/package-lock.json
+      - run: npm ci --prefix consumer-prices-core
+      - run: npm test --prefix consumer-prices-core
+
+  umami-postgres:
+    needs: changes
+    if: needs.changes.outputs.umami == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_DB: umami_integration
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username=postgres --dbname=umami_integration"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+      - name: Build managed Umami images
+        run: |
+          docker build --file Dockerfile.umami --tag worldmonitor/umami:ci .
+          docker build --file Dockerfile.umami-retention --tag worldmonitor/umami-retention:ci .
+      - name: Exercise Umami migration and concurrent upserts
+        env:
+          UMAMI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/umami_integration
+        run: node tests/umami-postgres-integration.mjs
+      - name: Probe the running image's write path (identify, concurrent upsert, event)
+        env:
+          UMAMI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/umami_integration
+        run: node tests/umami-runtime-write-probe.mjs
+
+  sidecar:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - uses: ./.github/actions/install-root-deps
+      - run: npm run test:sidecar
+
+  # Desktop drift gates (#5902): path-conditional so unrelated PRs skip them
+  # (deploy-gate counts "skipped" as passing). desktop-config is the cheap
+  # install-free surface — version consistency, release packaging script
+  # syntax, and Tauri config/capability parse (the sidecar bundle build lives
+  # in `unit`, whose `code` filter tracks the bundle's real src/server/api
+  # import graph).
+  # desktop-rust compiles and unit-tests the Tauri crate, which was
+  # previously untested until a release build.
+  desktop-config:
+    needs: changes
+    if: needs.changes.outputs.desktop_config == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Desktop version consistency
+        run: |
+          node scripts/sync-desktop-version.mjs --check || {
+            echo '::error::Desktop versions out of sync — run `npm run version:sync` and commit the result.'
+            exit 1
+          }
+      - name: Linux AppImage post-processing script parses
+        run: bash -n scripts/repack-linux-appimage.sh
+      - name: Desktop build env parity (#5905)
+        # A VITE_ key missing from the Tauri build steps silently disables the
+        # capability in every shipped build (sign-in, Pro, Cyber Threats were
+        # all dark this way). Also runs in `unit`: this leg is the one that
+        # fires for src-tauri/ Rust and capability edits, which the `code`
+        # filter skips (it carves back only `tauri*.conf.json`), while the unit
+        # leg covers new import.meta.env.VITE_ reads added under src/.
+        run: node scripts/check-desktop-build-env.mjs
+      - name: Tauri config and capability files parse
+        # One desktop binary ships (#5908), so there is exactly one tauri conf —
+        # the per-variant `tauri.tech/finance.conf.json` files were retired with
+        # the build legs that never published them. The floor still guards the
+        # vacuous-pass case where a broken glob finds nothing to validate.
+        run: |
+          node -e '
+            const { readFileSync, readdirSync } = require("node:fs");
+            const confs = readdirSync("src-tauri").filter((f) => /^tauri.*\.conf\.json$/.test(f));
+            const capabilities = readdirSync("src-tauri/capabilities");
+            const files = [
+              ...confs.map((f) => `src-tauri/${f}`),
+              ...capabilities.map((f) => `src-tauri/capabilities/${f}`),
+            ];
+            if (confs.length !== 1 || capabilities.length < 3) {
+              console.error(`::error::expected exactly 1 tauri conf file (one published binary, #5908) and at least 3 capability files, found ${confs.length} conf + ${capabilities.length} capabilities: ${files.join(", ")}`);
+              process.exit(1);
+            }
+            let failed = false;
+            for (const f of files) {
+              try {
+                JSON.parse(readFileSync(f, "utf8"));
+                console.log(`ok ${f}`);
+              } catch (e) {
+                console.error(`::error file=${f}::invalid JSON in ${f}: ${e.message}`);
+                failed = true;
+              }
+            }
+            if (failed) process.exit(1);
+          '
+      - name: Rust dependency security floors (#5518)
+        # Cargo.lock decides what actually ships; the manifest constraint only
+        # bounds resolution. Nothing else in CI inspects it (security-audit
+        # covers npm lockfiles only), so without this a cargo update could
+        # silently drop the desktop app back onto a crate version with a known
+        # advisory.
+        run: node scripts/check-rust-security-floors.mjs
+
+  desktop-rust:
+    needs: changes
+    if: needs.changes.outputs.desktop_rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
+        with:
+          toolchain: stable
+      - name: Rust cache
+        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: './src-tauri -> target'
+          cache-on-failure: true
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+      - name: cargo test
+        working-directory: src-tauri
+        # tauri-build's generate_context! requires frontendDist (../dist) to
+        # exist at compile time; an empty dir is sufficient for unit tests.
+        run: |
+          mkdir -p ../dist
+          cargo test --locked || {
+            echo '::error::desktop Rust tests failed — repro locally with: mkdir -p dist && cd src-tauri && cargo test --locked (the mkdir is required: tauri-build embeds ../dist at compile time).'
+            exit 1
+          }
+
+  convex-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - uses: ./.github/actions/install-root-deps
+      - run: npm run test:convex
+
+  # DOM-behavioral gate tests (#5634). Kept OUT of the `unit` job's tsx glob:
+  # the components under test import `@/services/i18n`, which uses
+  # `import.meta.glob` and therefore needs a Vite pipeline, and `test:data`
+  # already runs ~390 files in one tsx process.
+  dom-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - uses: ./.github/actions/install-root-deps
+      # `npm run typecheck` only covers src/, so these files would otherwise
+      # never be type-checked — the first run of this config caught four real
+      # type errors in them.
+      - run: npm run typecheck:dom-tests
+      - run: npm run test:dom
+
+  variant-smoke-shards:
+    name: variant-smoke (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Four shards. The specs run with two Playwright workers that keep the
+        # runner's CPU 81-85% busy, and four workers only bought ~15% with more
+        # flaky retries, so more runners is where the time comes from. The spec
+        # lists in package.json (test:e2e:ci-smoke:1..4) are balanced by
+        # measured test-seconds, ~197s each. Re-balance them from the per-test
+        # durations in the list reporter output when a spec grows.
+        shard: [1, 2, 3, 4]
+    timeout-minutes: 20
+    needs: changes
+    if: needs.changes.outputs.browser == 'true'
+    runs-on: ubuntu-latest
+    # No secrets are injected here. The smoke allows provider-level
+    # unavailable/stale states and gates app-level boot, variant, 401,
+    # page-error, and expected-panel invariants.
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Use Ubuntu repositories for browser OS libraries
+        # Playwright needs Ubuntu libraries. Unrelated Chrome repository index
+        # failures must not prevent their installation on this disposable runner.
+        run: |
+          test -s /etc/apt/sources.list.d/ubuntu.sources
+          printf '%s\n' \
+            'Dir::Etc::sourcelist "/etc/apt/sources.list.d/ubuntu.sources";' \
+            'Dir::Etc::sourceparts "-";' \
+            | sudo tee /etc/apt/apt.conf.d/99-playwright-sources
+      # The dependency restore and the font install run side by side. Neither
+      # reads the other's output.
+      - parallel:
+          - uses: ./.github/actions/install-root-deps
+          - name: Install browser fonts
+            # Fonts change only how non-Latin text renders in the evidence
+            # screenshots, so a failed font install warns instead of failing.
+            uses: ./.github/actions/install-browser-fonts
+            timeout-minutes: 4
+            continue-on-error: true
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright chromium
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ steps.playwright-version.outputs.version }}
+      - run: npx playwright install chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+      # The cache restores only browser binaries (~/.cache/ms-playwright), not
+      # OS libraries, and runners are fresh VMs. The hosted image already
+      # resolves every library the browsers link, so install-deps (~32 MB of
+      # fonts and Mesa upgrades, once 158s on a slow mirror) runs only when a
+      # browser binary is missing one, e.g. after an image change. The fonts the
+      # shipped locales need come from install-browser-fonts.
+      #
+      # install-deps has hung on apt for the full 15-minute job budget (PR
+      # #6923 run 32156387036), cancelling the smoke tests before they started.
+      # Cap the apt step and fall back to a full --with-deps install instead of
+      # letting a stuck mirror redden the required gate.
+      - name: Install Playwright OS libraries a browser is missing
+        id: playwright-install-deps
+        timeout-minutes: 8
+        continue-on-error: true
+        run: |
+          shopt -s nullglob
+          browsers=(
+            ~/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell
+            ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome
+          )
+          missing=""
+          [ "${#browsers[@]}" -gt 0 ] || missing="no Playwright browser binary found"
+          for browser in "${browsers[@]}"; do
+            missing+="$(ldd "$browser" | grep 'not found' || true)"
           done
+          if [ -z "$missing" ]; then
+            echo "Every Playwright browser library resolves on this image; install-deps skipped."
+            exit 0
+          fi
+          echo "::warning title=Playwright OS libraries::Installing OS libraries for: $missing"
+          npx playwright install-deps chromium
+      - name: Repair Playwright install after OS-deps timeout
+        if: steps.playwright-install-deps.outcome == 'failure'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          # Run 32161039934: GHA timed out install-deps after 8m, but apt-get
+          # (pid 2500) still held /var/lib/apt/lists/lock. The immediate
+          # --with-deps fallback then exited 100 on that lock.
+          sudo pkill -9 -f 'playwright install-deps' || true
+          sudo pkill -9 apt-get || true
+          for _ in $(seq 1 20); do
+            if command -v fuser >/dev/null 2>&1 \
+              && sudo fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+              sleep 1
+              continue
+            fi
+            sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend
+            break
+          done
+          sudo dpkg --configure -a || true
+          npx playwright install --with-deps chromium
+      # Capture outside outputDir: Playwright clears it at startup. Collect
+      # stderr once at the parent, since DEBUG_FILE is truncated by each worker.
+      - name: Run ci-smoke with browser-loss diagnostics
+        env:
+          DEBUG: 'pw:browser'
+          DEBUG_COLORS: '0'
+        run: |
+          set -euo pipefail
+          unset DEBUG_FILE
+          DIAGNOSTICS_DIR=$(mktemp -d)
+          sample_memory() {
+            date -u +%FT%TZ
+            free -m
+            if [ -r /sys/fs/cgroup/memory.events ]; then
+              cat /sys/fs/cgroup/memory.events
+            fi
+          }
+          sample_memory > "$DIAGNOSTICS_DIR/memory-samples.log"
+          ( while sleep 5; do sample_memory; done ) >> "$DIAGNOSTICS_DIR/memory-samples.log" 2>&1 &
+          MEM_SAMPLER_PID=$!
+          collect_diagnostics() {
+            SMOKE_STATUS=$?
+            kill "$MEM_SAMPLER_PID" 2>/dev/null || true
+            wait "$MEM_SAMPLER_PID" 2>/dev/null || true
+            sample_memory >> "$DIAGNOSTICS_DIR/memory-samples.log"
+            mkdir -p test-results/browser-loss
+            cp "$DIAGNOSTICS_DIR/"*.log test-results/browser-loss/
+            # A browser crash is not a flake. With retries at 1 a single crash
+            # is absorbed and the job reports `flaky`, which is how these went
+            # unnoticed from #5685 until #8447. Report every crash whatever the
+            # job outcome, and do not change the exit code while the rate is
+            # still around one crash per run.
+            CRASHES=$(grep -ac "signal=SIGTRAP" "$DIAGNOSTICS_DIR/playwright.log" 2>/dev/null || true)
+            if [ "${CRASHES:-0}" -gt 0 ]; then
+              echo "::error title=Browser crashed::chrome-headless-shell exited with SIGTRAP ${CRASHES} time(s) on ci-smoke shard ${{ matrix.shard }}. A green job does not mean no crash. See the browser-loss artifact."
+              {
+                echo "### Browser crashes, ci-smoke shard ${{ matrix.shard }}"
+                echo ""
+                echo "SIGTRAP exits: ${CRASHES}"
+                echo ""
+                echo '```'
+                # Bounded because GITHUB_STEP_SUMMARY caps at 1 MiB and an
+                # oversized write is dropped whole, which would lose the count
+                # above too. Say so when it bites: a silent cut reads as if
+                # these were all of them.
+                grep -an "signal=SIGTRAP" "$DIAGNOSTICS_DIR/playwright.log" | head -50 || true
+                echo '```'
+                if [ "${CRASHES:-0}" -gt 50 ]; then
+                  echo ""
+                  echo "Showing the first 50. The other $((CRASHES - 50)) are in the browser-loss artifact."
+                fi
+              } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+            fi
+            return "$SMOKE_STATUS"
+          }
+          trap collect_diagnostics EXIT
+          npm run test:e2e:ci-smoke:${{ matrix.shard }} 2>&1 | tee "$DIAGNOSTICS_DIR/playwright.log"
+
+      - name: Upload ci-smoke Playwright artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-ci-smoke-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  variant-smoke-pro-webmcp:
+    needs: changes
+    if: needs.changes.outputs.browser == 'true'
+    runs-on: ubuntu-latest
+    # No secrets are injected here. The smoke allows provider-level
+    # unavailable/stale states and gates app-level boot, variant, 401,
+    # page-error, and expected-panel invariants.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - uses: ./.github/actions/install-root-deps
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright chromium
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ steps.playwright-version.outputs.version }}
+      - name: Use Ubuntu repositories for browser OS libraries
+        # Playwright needs Ubuntu libraries. Unrelated Chrome repository index
+        # failures must not prevent their installation on this disposable runner.
+        run: |
+          test -s /etc/apt/sources.list.d/ubuntu.sources
+          printf '%s\n' \
+            'Dir::Etc::sourcelist "/etc/apt/sources.list.d/ubuntu.sources";' \
+            'Dir::Etc::sourceparts "-";' \
+            | sudo tee /etc/apt/apt.conf.d/99-playwright-sources
+      - run: npx playwright install chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+      # The cache restores only browser binaries (~/.cache/ms-playwright), not
+      # OS libraries, and runners are fresh VMs. The hosted image already
+      # resolves every library the browsers link, so install-deps (~32 MB of
+      # fonts and Mesa upgrades, once 158s on a slow mirror) runs only when a
+      # browser binary is missing one, e.g. after an image change. The fonts the
+      # shipped locales need come from install-browser-fonts.
+      #
+      # install-deps has hung on apt for the full 15-minute job budget (PR
+      # #6923 run 32156387036), cancelling the smoke tests before they started.
+      # Cap the apt step and fall back to a full --with-deps install instead of
+      # letting a stuck mirror redden the required gate.
+      - name: Install Playwright OS libraries a browser is missing
+        id: playwright-install-deps
+        timeout-minutes: 8
+        continue-on-error: true
+        run: |
+          shopt -s nullglob
+          browsers=(
+            ~/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell
+            ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome
+          )
+          missing=""
+          [ "${#browsers[@]}" -gt 0 ] || missing="no Playwright browser binary found"
+          for browser in "${browsers[@]}"; do
+            missing+="$(ldd "$browser" | grep 'not found' || true)"
+          done
+          if [ -z "$missing" ]; then
+            echo "Every Playwright browser library resolves on this image; install-deps skipped."
+            exit 0
+          fi
+          echo "::warning title=Playwright OS libraries::Installing OS libraries for: $missing"
+          npx playwright install-deps chromium
+      - name: Repair Playwright install after OS-deps timeout
+        if: steps.playwright-install-deps.outcome == 'failure'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          # Run 32161039934: GHA timed out install-deps after 8m, but apt-get
+          # (pid 2500) still held /var/lib/apt/lists/lock. The immediate
+          # --with-deps fallback then exited 100 on that lock.
+          sudo pkill -9 -f 'playwright install-deps' || true
+          sudo pkill -9 apt-get || true
+          for _ in $(seq 1 20); do
+            if command -v fuser >/dev/null 2>&1 \
+              && sudo fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+              sleep 1
+              continue
+            fi
+            sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend
+            break
+          done
+          sudo dpkg --configure -a || true
+          npx playwright install --with-deps chromium
+      # The font install runs beside the /pro build, which takes ~29s of CPU
+      # while the font step mostly waits on the cache or the network.
+      - parallel:
+          - name: Install browser fonts
+            # Fonts change only how non-Latin text renders in the evidence
+            # screenshots, so a failed font install warns instead of failing.
+            uses: ./.github/actions/install-browser-fonts
+            timeout-minutes: 4
+            continue-on-error: true
+          - name: Build /pro artifacts for prehydration browser checks
+            # public/pro/ is built output since #6898. Keep this explicit and
+            # immediately before the focused specs so the browser checks cannot
+            # run against missing or stale bytes from another build.
+            run: npm run build:pro
+      - name: Run fail-closed prehydration browser checks
+        id: prehydration
+        run: npm run test:e2e:prehydration
+      - name: Upload prehydration Playwright artifacts
+        if: ${{ !cancelled() && steps.prehydration.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-prehydration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      # Named explicitly for the same reason as the ci-smoke set above: nothing
+      # runs the e2e/ glob, so this gate reported green while never executing.
+      # It reads the same public/pro/ bytes the build step above produced, and
+      # nothing between here and there rebuilds them -- it sits after the
+      # prehydration upload rather than beside its build because
+      # dashboard-build-guards.test.mjs pins that build/prehydration pair as
+      # literally adjacent text.
+      - name: Run critical-CSS layout-shift gate
+        id: pro-cls
+        run: npm run test:e2e:pro-cls
+      # Its own upload, per the rule above: Playwright clears test-results/ when
+      # the next run starts, so the WebMCP step would otherwise delete this
+      # gate's failure trace before anyone could read it.
+      - name: Upload critical-CSS CLS Playwright artifacts
+        if: ${{ !cancelled() && steps.pro-cls.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-pro-cls-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      # Named explicitly for the same reason as the gates above. It reads the
+      # same public/pro/ bytes and proves mounted /pro fits phone viewports.
+      - name: Run /pro mobile overflow gate
+        id: pro-overflow
+        run: npm run test:e2e:pro-overflow
+      - name: Upload /pro mobile overflow Playwright artifacts
+        if: ${{ !cancelled() && steps.pro-overflow.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-pro-overflow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      # Named explicitly for the same reason as the gates above: nothing runs
+      # the e2e/ glob, so an unnamed spec would never execute. It reads the same
+      # public/pro/ bytes the build step above produced.
+      - name: Run /pro hero native-animation gate
+        id: pro-hero
+        run: npm run test:e2e:pro-hero
+      # Its own upload: Playwright clears test-results/ when the next run
+      # starts, so a later step would delete this gate's failure trace.
+      - name: Upload /pro hero animation Playwright artifacts
+        if: ${{ !cancelled() && steps.pro-hero.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-pro-hero-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      # Named explicitly for the same reason as the gates above. It reads the
+      # same public/pro/ bytes and proves the prerendered hero, not the React
+      # mount, owns the /pro LCP entry.
+      - name: Run /pro hero LCP gate
+        id: pro-lcp
+        run: npm run test:e2e:pro-lcp
+      - name: Upload /pro hero LCP Playwright artifacts
+        if: ${{ !cancelled() && steps.pro-lcp.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-pro-lcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      # WebMCP is exposed only by an enabled Chrome milestone. Keep this probe
+      # separate from the bundled-Chromium smoke so an unavailable or stale
+      # system Chrome fails the required PR job instead of silently skipping.
+      - name: Run strict WebMCP iframe smoke in Chrome
+        id: webmcp
+        run: npm run test:e2e:webmcp
+      # Gated on the WebMCP step having actually run: if an earlier tail step
+      # fails, this step is skipped, and without the guard this upload would
+      # re-publish that earlier Playwright output under a second name.
+      # embed.spec.ts attaches screenshots on success, so unlike the ci-smoke
+      # artifact this one appears on green runs too — its presence is not by
+      # itself a failure signal.
+      - name: Upload WebMCP Playwright artifacts
+        if: ${{ !cancelled() && steps.webmcp.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-webmcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  variant-smoke-full:
+    needs: [changes, variant-smoke-shards, variant-smoke-pro-webmcp]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every selected variant smoke job
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BROWSER_CHANGED: ${{ needs.changes.outputs.browser }}
+          SHARDS_RESULT: ${{ needs.variant-smoke-shards.result }}
+          PRO_WEBMCP_RESULT: ${{ needs.variant-smoke-pro-webmcp.result }}
+        run: |
+          if [ "$CHANGES_RESULT" = success ] && {
+            { [ "$BROWSER_CHANGED" = true ] && [ "$SHARDS_RESULT" = success ] && [ "$PRO_WEBMCP_RESULT" = success ]; } ||
+            { [ "$BROWSER_CHANGED" = false ] && [ "$SHARDS_RESULT" = skipped ] && [ "$PRO_WEBMCP_RESULT" = skipped ]; }
+          }; then
+            echo "All selected variant smoke jobs passed."
+          else
+            echo "Variant smoke jobs did not satisfy the change selection."
+            exit 1
+          fi
+
+  # The focused suite is already inside `unit` / test:data. This job exists
+  # only for validation-docs PRs that skip `unit` (docs/ is carved out of
+  # `code`). `validation` alone also fired on every code PR and push, paying
+  # a second npm ci for files unit had just run, so it is gated on `code` as
+  # well (#7772); deploy-gate counts the resulting skip as passing.
+  resilience-validation-smoke:
+    needs: changes
+    if: needs.changes.outputs.validation == 'true' && needs.changes.outputs.code != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - uses: ./.github/actions/install-root-deps
+      - run: npm run test:resilience-validation-smoke
+
+  digest-image:
+    needs: changes
+    if: needs.changes.outputs.digest == 'true'
+    runs-on: ubuntu-latest
+    # docker build with the warm runner cache typically lands in ~90s.
+    # 20min cap catches base-image-pull stalls, npm-registry flakes, and
+    # native-dep compile failures without letting one bad PR check block
+    # the queue for an hour. The static BFS import test in test:data
+    # remains the load-bearing gate; this job is the integration smoke.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Build digest-notifications image (smoke)
+        # No push, no tag publish. Catches cross-directory-import breakage
+        # before it reaches main. Pairs with the BFS import test in
+        # tests/dockerfile-digest-notifications-imports.test.mjs — that test
+        # walks the import graph statically; this job actually executes the
+        # COPY+install steps and surfaces native-dep / package-lock issues
+        # the static walk can't see.
+        run: docker build -f Dockerfile.digest-notifications -t wm-digest .

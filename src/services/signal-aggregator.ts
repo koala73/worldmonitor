@@ -14,6 +14,9 @@ import type {
 import type { CountrySanctionsPressure } from './sanctions-pressure';
 import type { RadiationObservation } from './radiation';
 import { getCountryAtCoordinates, getCountryNameByCode, nameToCountryCode, ME_STRIKE_BOUNDS, resolveCountryFromBounds } from './country-geometry';
+import countryNames from '../../shared/country-names.json';
+
+export const SIGNAL_AGGREGATOR_MAX_SIGNALS = 1000;
 
 export type SignalType =
   | 'internet_outage'
@@ -94,9 +97,16 @@ const REGION_DEFINITIONS: Record<string, { countries: string[]; name: string }> 
   },
 };
 
+// Cached feeds are not replayed after geometry loads, so resolve bundled names immediately.
+const fallbackCountryCodes = new Map<string, string>(Object.entries(countryNames));
+
 function normalizeCountryCode(country: string): string {
-  if (country.length === 2) return country.toUpperCase();
-  return nameToCountryCode(country) || country.slice(0, 2).toUpperCase();
+  const trimmed = country.trim();
+  if (!trimmed) return '';
+  const fromCatalog = nameToCountryCode(trimmed) ?? fallbackCountryCodes.get(trimmed.toLowerCase());
+  if (fromCatalog) return fromCatalog;
+  if (/^[a-z]{2}$/i.test(trimmed)) return trimmed.toUpperCase();
+  return '';
 }
 
 function getCountryName(code: string): string {
@@ -113,12 +123,33 @@ class SignalAggregator {
 
   private clearSignalType(type: SignalType): void {
     this.signals = this.signals.filter(s => s.type !== type);
+    this.syncTheaterPostureReferences();
+  }
+
+  private enforceSignalCap(): void {
+    if (this.signals.length <= SIGNAL_AGGREGATOR_MAX_SIGNALS) return;
+
+    const keep = new Set(
+      this.signals
+        .map((signal, index) => ({ signal, index }))
+        .sort((a, b) => b.signal.timestamp.getTime() - a.signal.timestamp.getTime() || b.index - a.index)
+        .slice(0, SIGNAL_AGGREGATOR_MAX_SIGNALS)
+        .map((entry) => entry.signal)
+    );
+    this.signals = this.signals.filter(s => keep.has(s));
+    this.syncTheaterPostureReferences();
+  }
+
+  private syncTheaterPostureReferences(): void {
+    if (this.theaterPostureSignals.length === 0) return;
+    const retained = new Set(this.signals);
+    this.theaterPostureSignals = this.theaterPostureSignals.filter(s => retained.has(s));
   }
 
   ingestOutages(outages: InternetOutage[]): void {
     this.clearSignalType('internet_outage');
     for (const o of outages) {
-      const code = normalizeCountryCode(o.country);
+      const code = normalizeCountryCode(o.country) || this.coordsToCountry(o.lat, o.lon);
       this.signals.push({
         type: 'internet_outage',
         country: code,
@@ -252,7 +283,7 @@ class SignalAggregator {
     this.clearSignalType('satellite_fire');
     
     for (const fire of fires) {
-      const code = this.coordsToCountry(fire.lat, fire.lon) || normalizeCountryCode(fire.region);
+      const code = getCountryAtCoordinates(fire.lat, fire.lon)?.code || normalizeCountryCode(fire.region) || 'XX';
       const severity = fire.brightness > 360 ? 'high' : fire.brightness > 320 ? 'medium' : 'low';
       
       this.signals.push({
@@ -336,7 +367,7 @@ class SignalAggregator {
     this.clearSignalType('sanctions_pressure');
 
     for (const country of countries) {
-      const code = normalizeCountryCode(country.countryCode || country.countryName);
+      const code = normalizeCountryCode(country.countryCode) || normalizeCountryCode(country.countryName) || 'XX';
       const severity: 'low' | 'medium' | 'high' =
         country.newEntryCount >= 5 || country.entryCount >= 50
           ? 'high'
@@ -353,8 +384,8 @@ class SignalAggregator {
         lon: 0,
         severity,
         title: country.newEntryCount > 0
-          ? `${country.newEntryCount} new OFAC designation${country.newEntryCount === 1 ? '' : 's'} tied to ${country.countryName}`
-          : `${country.entryCount} OFAC-linked designations tied to ${country.countryName}`,
+          ? `${country.newEntryCount} designation ID${country.newEntryCount === 1 ? '' : 's'} added since the prior snapshot for ${country.countryName} (OFAC / Canada SEMA)`
+          : `${country.entryCount} sanctions designations tied to ${country.countryName} (OFAC / Canada SEMA)`,
         timestamp: new Date(),
       });
     }
@@ -486,6 +517,7 @@ class SignalAggregator {
         this.theaterPostureSignals.push(sig);
       }
     }
+    this.pruneOld();
   }
 
   private coordsToCountry(lat: number, lon: number): string {
@@ -502,6 +534,8 @@ class SignalAggregator {
   private pruneOld(): void {
     const cutoff = Date.now() - this.WINDOW_MS;
     this.signals = this.signals.filter(s => s.timestamp.getTime() > cutoff);
+    this.syncTheaterPostureReferences();
+    this.enforceSignalCap();
   }
 
   getCountryClusters(): CountrySignalCluster[] {
@@ -642,6 +676,8 @@ class SignalAggregator {
 
   clear(): void {
     this.signals = [];
+    this.temporalSourceMap = new WeakMap<GeoSignal, string>();
+    this.theaterPostureSignals = [];
   }
 
   getSignalCount(): number {

@@ -1,0 +1,69 @@
+{
+  "recordedAt": "2026-09-24T00:00:00Z",
+  "recordedFrom": "Search Console API responses, hand-trimmed to the named fields plus one payload field the collector must not copy",
+  "propertyKind": "domain",
+  "rowLimit": 3,
+  "sitemaps": [
+    {
+      "url": "https://www.worldmonitor.app/sitemap-main.xml",
+      "file": "sitemap-main.xml"
+    }
+  ],
+  "reportedTotals": {
+    "Crawled - currently not indexed": 1486,
+    "Not found (404)": 1
+  },
+  "searchAnalytics": {
+    "28d": {
+      "page": [
+        "sa-28d-page-0.json",
+        "sa-28d-page-1.json"
+      ],
+      "query": [
+        "sa-28d-query-0.json"
+      ],
+      "pageNonBrand": [
+        "sa-28d-page-nonbrand-0.json",
+        "sa-28d-page-nonbrand-1.json"
+      ],
+      "site": [
+        "sa-28d-site.json"
+      ],
+      "siteBrand": [
+        "sa-28d-site-brand.json"
+      ],
+      "siteNonBrand": [
+        "sa-28d-site-nonbrand.json"
+      ]
+    },
+    "90d": {
+      "page": [
+        "sa-90d-page-0.json"
+      ],
+      "query": [
+        "sa-90d-query-0.json",
+        "sa-90d-query-1.json"
+      ],
+      "pageNonBrand": [
+        "sa-90d-page-nonbrand-0.json"
+      ],
+      "site": [
+        "sa-90d-site.json"
+      ],
+      "siteBrand": [
+        "sa-90d-site-brand.json"
+      ],
+      "siteNonBrand": [
+        "sa-90d-site-nonbrand.json"
+      ],
+      "daily": [
+        "sa-90d-daily.json"
+      ],
+      "dailyNonBrand": [
+        "sa-90d-daily-nonbrand.json"
+      ]
+    }
+  },
+  "urlInspection": "url-inspection.json",
+  "liveProbes": "live-probes.json"
+}

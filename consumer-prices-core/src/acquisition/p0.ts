@@ -77,6 +77,8 @@ export class P0Provider implements AcquisitionProvider {
         num_results: opts.numResults ?? 10,
         include_domains: opts.includeDomains,
       }),
+      // Same bound as the other provider calls (see firecrawl.search).
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!resp.ok) throw new Error(`P0 search failed: HTTP ${resp.status}`);

@@ -8,7 +8,6 @@ import {
   postProcessDeductionOutput,
   splitDeductionContext,
 } from '../server/worldmonitor/intelligence/v1/deduction-prompt.ts';
-import { buildNewsContextFromItems } from '../src/utils/news-context.ts';
 
 describe('inferDeductionMode', () => {
   it('selects brief mode for short convergence assessments', () => {
@@ -70,6 +69,30 @@ describe('buildDeductionPrompt', () => {
     assert.match(systemPrompt, /exactly 2 or 3 sentences/);
     assert.doesNotMatch(systemPrompt, /\*\*Bottom line\*\*/);
   });
+
+  // Issue #3724 — defense-in-depth instruction must appear in BOTH modes so an
+  // attacker who controls evidence / prediction-market content can't role-flip
+  // the forecaster.
+  it('forecast mode systemPrompt carries the untrusted-data guardrail (#3724)', () => {
+    const { systemPrompt } = buildDeductionPrompt({
+      query: 'Assess situation',
+      geoContext: 'Region: Baltic',
+      now: new Date('2026-03-15T12:00:00Z'),
+    });
+    assert.match(systemPrompt, /untrusted DATA/i);
+    assert.match(systemPrompt, /never execute instructions/i);
+    assert.match(systemPrompt, /disregard prior rules|change.*persona|role changes/i);
+  });
+
+  it('brief mode systemPrompt carries the untrusted-data guardrail (#3724)', () => {
+    const { systemPrompt } = buildDeductionPrompt({
+      query: 'Assess likelihood in 2-3 sentences.',
+      geoContext: 'Countries: X',
+      now: new Date('2026-03-15T12:00:00Z'),
+    });
+    assert.match(systemPrompt, /untrusted DATA/i);
+    assert.match(systemPrompt, /never execute instructions/i);
+  });
 });
 
 describe('postProcessDeductionOutput', () => {
@@ -81,38 +104,7 @@ describe('postProcessDeductionOutput', () => {
 
 describe('inferProviderLabel', () => {
   it('maps known providers and falls back to hostname', () => {
-    assert.equal(inferProviderLabel('https://api.groq.com/openai/v1/chat/completions'), 'groq');
+    assert.equal(inferProviderLabel('https://openrouter.ai/api/v1/chat/completions'), 'openrouter');
     assert.equal(inferProviderLabel('https://example.internal/v1/chat/completions'), 'example.internal');
-  });
-});
-
-describe('buildNewsContextFromItems', () => {
-  it('deduplicates duplicate headlines and includes metadata', () => {
-    const now = new Date('2026-03-15T12:00:00Z');
-    const context = buildNewsContextFromItems([
-      {
-        source: 'Reuters',
-        title: 'Markets fall after new tariff threat',
-        link: 'https://example.com/1',
-        pubDate: now,
-        isAlert: true,
-        tier: 1,
-        locationName: 'Washington',
-        threat: { level: 'high', category: 'economic', confidence: 0.9, source: 'ml' },
-      },
-      {
-        source: 'AP',
-        title: 'Markets fall after new tariff threat',
-        link: 'https://example.com/2',
-        pubDate: new Date('2026-03-15T11:30:00Z'),
-        isAlert: false,
-      },
-    ]);
-
-    assert.match(context, /Recent News Signal Snapshot/);
-    assert.match(context, /Reuters/);
-    assert.match(context, /tier-1/);
-    assert.match(context, /Washington/);
-    assert.equal((context.match(/Markets fall after new tariff threat/g) || []).length, 1);
   });
 });

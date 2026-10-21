@@ -27,16 +27,23 @@ export class ServiceStatusPanel extends Panel {
   private error: string | null = null;
   private filter: CategoryFilter = 'all';
   constructor() {
-    super({ id: 'service-status', title: t('panels.serviceStatus'), showCount: false });
+    super({ id: 'service-status', title: t('panels.serviceStatus'), showCount: false, infoTooltip: t('components.serviceStatus.infoTooltip') });
   }
 
   private lastServicesJson = '';
 
   public async fetchStatus(): Promise<boolean> {
+    let keptLastGood = false;
     try {
       const data = await fetchServiceStatuses();
       if (!this.element?.isConnected) return false;
-      if (!data.success) throw new Error('Failed to load status');
+      if (!data.success || data.services.length === 0) {
+        if (this.services.length > 0) {
+          keptLastGood = true;
+          return false;
+        }
+        throw new Error('Failed to load status');
+      }
 
       const fingerprint = data.services.map(s => `${s.name}:${s.status}`).join(',');
       const changed = fingerprint !== this.lastServicesJson;
@@ -52,7 +59,7 @@ export class ServiceStatusPanel extends Panel {
       return true;
     } finally {
       this.loading = false;
-      if (this.element?.isConnected) {
+      if (this.element?.isConnected && !keptLastGood) {
         this.render();
       }
     }
@@ -84,17 +91,17 @@ export class ServiceStatusPanel extends Panel {
       return;
     }
 
-    this.setErrorState(false);
     const filtered = this.getFilteredServices();
     const issues = filtered.filter(s => s.status !== 'operational');
 
-    replaceChildren(this.content,
+    this.setContentNodes(
       this.buildSummary(filtered),
       this.buildFilters(),
       h('div', { className: 'service-status-list' },
         ...this.buildServiceItems(filtered),
       ),
-      issues.length === 0 ? h('div', { className: 'all-operational' }, t('components.serviceStatus.allOperational')) : false,
+      filtered.length === 0 ? h('div', { className: 'panel-empty' }, t('common.noDataAvailable')) : false,
+      filtered.length > 0 && issues.length === 0 ? h('div', { className: 'all-operational' }, t('components.serviceStatus.allOperational')) : false,
     );
   }
 

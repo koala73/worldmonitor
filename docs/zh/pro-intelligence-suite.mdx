@@ -1,0 +1,155 @@
+---
+title: "Pro 情报套件"
+description: "仅限 Pro 的衍生数据集——实物金属溢价与背离、矿产集中度、国防工业基础、人口结构、粮食库存、韧性指标、供应脆弱性与五因子记分卡——附每个数据集的 REST 路由、种子节奏，以及存在时的 MCP 表面。"
+---
+
+一组衍生数据集位于 Pro 层之后。每一个都回答原始数据源无法回答的问题：不是"黄金价格是多少"，而是"当前黄金的实物溢价是否异常"；不是"钴在哪里"，而是"谁在精炼它，集中度有多高"。
+
+它们共享只读契约，而不是同一条流水线。种子节奏与对外表面按数据集而不同：实物溢价每日刷新并驱动背离指数；矿产产量每 60 天；国防工业基础的世界银行快照每 10 天、SIPRI 供应份额每 14 天；人口结构每 20 天；粮食库存每 30 天；供应脆弱性与五因子记分卡按日投影衍生快照；韧性指标在请求时从分数追踪构建。每次读取都由 sebuf RPC 提供。多数路由还有 MCP 封装，但并非全部——`list-vulnerability-rankings` 仅有 REST。它们都不接受写入。所有数据集都携带明确的来源信息和明确的缺失数据信号，因此缺失的数值永远不必被读作零。
+
+## 访问权限
+
+以下每条路由都需要 **tier 1（Pro）或更高等级**。不存在匿名或免费账户读取。
+
+| 调用方 | 认证方式 |
+| --- | --- |
+| 浏览器（已登录 Pro） | 自动——客户端附加你的 Clerk 会话 |
+| REST / SDK | `Authorization: Bearer <token>`，或 `X-WorldMonitor-Key: <api key>` |
+| MCP | 使用 Pro 账户连接；以下每个工具都报告 `_meta["worldmonitor/access"]: "subscription"` |
+
+REST 与 SDK 调用方使用 HTTP 信封。未认证的调用返回 `401` 及 `{"error":"Pro authentication required"}`。已登录的免费账户返回 `403`，其顶层载荷类似 `{"error":"Upgrade required","requiredTier":1,"currentTier":0,"planKey":"pro"}`。MCP 调用方改用 JSON-RPC 信封：同一权限拒绝出现在 `error.data.reason = "upgrade-required"` 下，并且可以包含 `upgradeUrl`。两类拒绝都是最终答复而非临时故障——不要重试。携带 `X-Billing-Verification` 的 `503` **可以**重试；请遵守 `Retry-After`。参见[使用错误](/zh/usage-errors)。
+
+<Note>
+一个刻意保留的狭窄例外：`get_market_data` MCP 工具是基于缓存的数据包，已登录的免费账户可在其小额每日配额内使用，其中两个数据集（`physical-premium`、`physical-divergence`）与下文的金属路由重叠。专用 REST 路由以及本页表格中的每个工具仍然仅限 Pro。
+</Note>
+
+## 实物与纸面贵金属
+
+一个种子程序供给一对路由。第一条发布测量值；第二条判断该测量值是否异常。
+
+### 溢价序列
+
+`GET /api/market/v1/get-physical-premiums`
+
+将上海黄金交易所的黄金与白银实物基准价与 COMEX 期货快照进行比较，并返回全部换算输入而不仅是结果——以原生货币和单位表示的实物端、纸面端、所用汇率，以及两个数据源时钟。
+
+```bash
+curl -H "Authorization: Bearer $WM_TOKEN" \
+  "https://www.worldmonitor.app/api/market/v1/get-physical-premiums"
+```
+
+两端可能携带不同的 `asOf` 日期。在将溢价视为同日数据之前请先比较它们。
+
+### 背离指数
+
+`GET /api/market/v1/get-physical-divergence-index`
+
+将当前溢价与其自身的历史序列进行分类——稳健 z 分数（中位数/MAD，而非均值/标准差，因为该序列具有厚尾）、百分位排名、状态区间，以及全金属综合指数。
+
+状态字段至关重要。有效历史点少于 60 个时分类器拒绝评级：`state` 变为 `PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY`，`reason` 说明缺口，`index` 从 JSON 中省略而非返回 `null`。客户端应检查字段是否存在并读取 `state`/`reason`，而不是用 `=== null` 判断。请在读取任何数值字段之前先读 `state`。
+
+区间阈值、窗口大小、综合权重与版本变更记录见[实物背离指数方法论](/zh/methodology/physical-divergence-index)。
+
+## 矿产生产与加工
+
+`GET /api/supply-chain/v1/get-mineral-production` · MCP `get_mineral_production`
+
+谁开采某种商品、谁精炼它，以国家份额及每个阶段的 HHI 集中度评分表示。现有的关键矿产图层显示矿藏*所在位置*；本数据集显示生产*实际发生*的位置，这是一张不同且通常更为集中的地图。
+
+三个筛选参数均为可选：`commodity`、`iso2`、`stage`（`mine` 或 `refinery`）。省略它们可获取完整快照。
+
+两个字段决定某一行是否可用。`withheld` 标记来源方压制了其数值的国家——其份额是未知，而非零。`residual` 标记 USGS 的"其他国家"合计项，它不是生产国，排名前必须剔除；保留它会使其超过真实国家。每个商品-阶段还各自选择自己的 `year`，可能落后于快照的 `dataYear`。
+
+参见[矿产生产方法论](/zh/methodology/mineral-production)。
+
+## 国防工业基础
+
+`GET /api/military/v1/get-defense-industrial-base?country_code=UA` · MCP `get_defense_industrial_base`
+
+一个国家的世界银行军事能力指标（`MS.MIL.*`——军费占 GDP 比重、以美元计的军费、人员、武器出口与进口），以及源自 SIPRI 的五年武器供应国份额和供应国 HHI。
+
+TIV 是转让量指标，不是货币。不要用货币符号呈现它。
+
+`supplierHhi` 基于完整的 TIV 分母计算，而 `suppliers` 仅列出能映射到 ISO-2 国家的行。`supplierMappingCoverage` 是已映射的份额——在将所列供应国视为全貌之前请先读取它。`supplierRetained: true` 表示该进口国此前已发布的记录在本轮未被刷新。保留通常是分片结转；进口国请求失败只是可能原因之一。
+
+SIPRI 的许可允许衍生合计值，不允许再分发完整数据库，因此提供的是各国供应国份额而非贸易登记册本身。参见[国防工业基础方法论](/zh/methodology/defense-industrial-base)。
+
+## 人口结构与劳动力能力
+
+`GET /api/resilience/v1/get-demographics-capability?countryCode=DE` · MCP `get_demographics_capability`
+
+一个国家的三个独立组别：年龄结构（联合国世界人口展望）、教育管道（UNESCO UIS 与世界银行 WDI）、工业劳动力构成（ILOSTAT）。
+
+每项指标都携带自己的观测年份、来源、单位与 `available` 标志，三个组别各自独立解析——一个国家可能拥有最新的年龄结构而完全没有 ILOSTAT 覆盖。请在读取数值前先读每项指标的 `available`；这些组别不共享同一时钟。
+
+参见[人口结构能力方法论](/zh/methodology/demographics-capability)。
+
+## 粮食库存
+
+`GET /api/resilience/v1/get-food-stocks?countryCode=WORLD` · MCP `get_food_stocks`
+
+USDA PSD 谷物期末库存、产量、消费量以及库存消费比，按国家与商品划分。`countryCode=WORLD` 返回全球平衡表。`commodity` 接受 `wheat`、`corn`、`rice`、`soybeans`、`barley`、`palmOil`。当 PSD 没有完整平衡表时，FAOSTAT 粮食平衡表提供同一日历年的产量与国内供应量。FAOSTAT 行没有库存测量值，因此在使用库存数字之前，请先读 `hasEndingStocks` 与 `hasStocksToUse`。
+
+销售年度不是日历年度，且因国家与商品而异。两个国家标注为"2025/26"的数据可能覆盖不同月份——切勿当作同一时期比较。每一行都注明自己的销售年度正是出于此因。
+
+参见[粮食库存方法论](/zh/methodology/food-stocks)。
+
+## 韧性指标
+
+`GET /api/resilience/v1/get-resilience-indicators?countryCode=DE` · MCP `get_resilience_indicators`
+
+国家韧性评分之下的可解释层：全部 72 项注册指标及其归一化得分、完整状态分类、运行时权重、按维度对账的贡献值、观测时效与来源出处。状态包括 `observed`、`imputed`、`missing`、`fallback`、`not-applicable`、`source-failure`、`inactive` 与 `retired`；读取数值前请先读对应的可用性标志。
+
+原始数据值仅在上游许可允许再分发时出现；其他情况下仅提供归一化得分而不含底层数字。这是许可边界，而非数据缺失——参见[韧性指标许可](/zh/methodology/resilience-indicator-licensing)。
+
+此路由没有仪表盘界面。它面向需要审计评分而非阅读评分的 API 与 MCP 调用方。参见[韧性指标方法论](/zh/methodology/resilience-indicators)与[国家韧性指数](/zh/methodology/country-resilience-index)。
+
+## 商品供应脆弱性
+
+按国家读取、按咽喉要道读取以及一个排名列表——全部基于同一快照。
+
+| 路由 | MCP 工具 | 返回内容 |
+| --- | --- | --- |
+| `GET /api/supply-chain/v1/get-country-vulnerabilities?iso2=JP` | `get_supply_vulnerabilities` | 单一国家的商品组合 |
+| `GET /api/supply-chain/v1/get-chokepoint-dependencies?chokepointId=hormuz_strait` | `get_chokepoint_dependencies` | 对某一咽喉要道依赖度最高的国家与商品 |
+| `GET /api/supply-chain/v1/list-vulnerability-rankings` | — | 跨国排名，可按 `commodityId`、`band`、`state` 筛选 |
+
+每个评分将供应商集中度、海运过境风险敞口与可用战略缓冲合并为绝对 0–100 区间。
+
+**评分缺失意味着证据不足，绝不意味着零风险。** 请先读 `state` 与 `reasons`；覆盖稀薄的国家不返回评分并说明原因。`list-vulnerability-rankings` 没有 MCP 工具——智能体应使用按国家或按咽喉要道的工具，它们携带同一快照。
+
+参见[供应脆弱性方法论](/zh/methodology/supply-vulnerability)。
+
+## 五因子国家记分卡
+
+按国家读取、按集团读取以及一个队列列表。前两者共用同一个 MCP 工具。
+
+| 路由 | MCP 工具 | 返回内容 |
+| --- | --- | --- |
+| `GET /api/scorecard/v1/get-five-factor-scorecard?countryCode=DE` | `get_five_factor_scorecard` | 单一国家，完整证据账 |
+| `GET /api/scorecard/v1/get-bloc-scorecard?preset=NATO` | `get_five_factor_scorecard` | 单一集团——预设或自定义 `members` |
+| `GET /api/scorecard/v1/list-five-factor-scorecards` | `list_five_factor_scorecards` | 整个队列的紧凑记分卡 |
+
+五项支柱评分——粮食、能源、人口、技术、国防——投射于韧性引擎之上，并附各支柱子分数、区间、输入覆盖率与机器可读的数据不足原因。
+
+解析这些响应时唯一要紧的规则：**在读取任何数值字段之前，先读 `hasScore`、`available` 与 `hasValue`。** 这些是 proto3 消息，缺失的数字会序列化为 `0`。`hasScore: false` 且 `subScore: 0` 的支柱表示数据不足——并不是某国国防得零分。`get_five_factor_scorecard` 携带来源出处与原始观测值；`list_five_factor_scorecards` 舍弃证据账以换取紧凑的队列读取。
+
+降级的快照返回 `unavailable: true` 及 `unavailableReason: "scorecard-snapshot-unavailable"`，而非陈旧或不完整的记分卡。
+
+参见[五因子记分卡方法论](/zh/methodology/five-factor-scorecard)。
+
+## 阅读这些响应
+
+四条习惯贯穿整个套件。
+
+1. **先看可用性标志，再看数值。** 此处每个数据集都区分"我们测得为零"与"我们没有数据"——通过 `available`、`hasScore`、`hasValue`、`state` 或 `unavailable`。只有标志能区分二者；数值字段做不到。
+2. **读取行上的时钟，而非响应的时钟。** 各数据源按自己的日程发布。行级的 `year`、`asOf` 或销售年度优先于外层信封所示。
+3. **将缺失的评分视为缺失，而非安全。** 覆盖不足与低风险产生的 `reasons` 截然不同，留下的却是同样的空白。
+4. **不要重试 401 或 403。** 那是权限答复。只有携带 `Retry-After` 的 `503` 值得重试。
+
+## 相关
+
+- [MCP 工具参考](/zh/mcp-tools-reference)——此处提及的每个工具的完整 schema
+- [认证](/zh/authentication)——如何获取并发送令牌
+- [使用错误](/zh/usage-errors)——结构化错误信封
+- [定价](/zh/pricing)——各套餐包含的内容

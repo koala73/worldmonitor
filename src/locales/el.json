@@ -1,8 +1,4 @@
 {
-  "app": {
-    "title": "World Monitor",
-    "description": "Παγκόσμια Κατάσταση με Αναλύσεις AI"
-  },
   "countryBrief": {
     "identifying": "Αναγνώριση χώρας...",
     "locating": "Εντοπισμός περιοχής...",
@@ -11,7 +7,7 @@
     "closeBtn": "Κλείσιμο",
     "limitedCoverage": "Περιορισμένη κάλυψη",
     "instabilityIndex": "Δείκτης Αστάθειας",
-    "notTracked": "Δεν παρακολουθείται — η {{country}} δεν είναι στη λίστα CII tier-1",
+    "notTracked": "Δεν παρακολουθείται — {{country}} δεν περιλαμβάνεται στη λίστα tier-1 του Country Instability Index",
     "intelBrief": "Ενημέρωση Πληροφοριών",
     "generatingBrief": "Δημιουργία ενημέρωσης πληροφοριών...",
     "topNews": "Κορυφαίες Ειδήσεις",
@@ -20,7 +16,7 @@
     "predictionMarkets": "Αγορές Προβλέψεων",
     "loadingMarkets": "Φόρτωση αγορών προβλέψεων...",
     "infrastructure": "Έκθεση Υποδομών",
-    "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το GROQ_API_KEY στις Ρυθμίσεις.",
+    "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το OPENROUTER_API_KEY στις Ρυθμίσεις.",
     "cached": "Αποθηκευμένο",
     "fresh": "Πρόσφατο",
     "noMarkets": "Δεν βρέθηκαν αγορές προβλέψεων",
@@ -28,7 +24,7 @@
     "components": {
       "unrest": "Αναταραχή",
       "conflict": "Σύγκρουση",
-      "security": "Ασφάλεια",
+      "security": "Στρατιωτική δραστηριότητα",
       "information": "Πληροφορίες"
     },
     "signals": {
@@ -42,7 +38,7 @@
       "conflictEvents": "συγκρούσεις",
       "activeStrikes": "ενεργές απεργίες",
       "aviationDisruptions": "διαταραχές αεροδρομίων",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "Ζώνες παρεμβολής πλοήγησης"
     },
     "timeAgo": {
       "m": "{{count}}λ πριν",
@@ -71,6 +67,20 @@
       "stable": "Σταθερό"
     },
     "militaryActivity": "Στρατιωτική δραστηριότητα",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Δείκτης συγκέντρωσης προμηθευτών",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Πηγές: Παγκόσμια Τράπεζα και SIPRI Arms Transfers Database. Ο δείκτης όγκου μεταφοράς μετρά σχετικές μεταφορές όπλων, όχι χρηματικό αντάλλαγμα.",
+      "sourceWorldBank": "Source: World Bank.",
+      "snapshotAssembled": "Το στιγμιότυπο {{source}} συντάχθηκε στις {{time}}",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Οικονομικοί δείκτες",
     "ownFlights": "Ιδίες πτήσεις",
     "foreignFlights": "Ξένες πτήσεις",
@@ -87,14 +97,14 @@
     "nearbyPorts": "Κοντινά λιμάνια",
     "detected": "Ανιχνεύθηκε",
     "notDetected": "Όχι",
-    "ciiUnavailable": "Ο δείκτης CII δεν είναι διαθέσιμος για αυτή τη χώρα.",
+    "ciiUnavailable": "Η βαθμολογία Country Instability Index δεν είναι διαθέσιμη για αυτή τη χώρα.",
     "chips": {
       "criticalNews": "Κρίσιμες ειδήσεις",
       "protests": "Διαμαρτυρίες",
       "militaryAir": "Στρατιωτική αεροπορία",
       "navalVessels": "Πολεμικά πλοία",
       "outages": "Διακοπές",
-      "aisDisruptions": "Διαταραχές AIS",
+      "aisDisruptions": "Διαταραχές παρακολούθησης πλοίων",
       "satelliteFires": "Δορυφορικές πυρκαγιές",
       "temporalAnomalies": "Χρονικές ανωμαλίες",
       "cyberThreats": "Κυβερνοαπειλές",
@@ -106,11 +116,13 @@
       "doNotTravel": "Μην ταξιδεύετε",
       "reconsiderTravel": "Επανεξετάστε το ταξίδι",
       "exerciseCaution": "Επιδείξτε προσοχή",
+      "normalPrecautions": "Συνήθεις προφυλάξεις",
       "advisory": "Ταξιδιωτική σύσταση",
       "activeSirens": "Ενεργές σειρήνες",
       "sirens24h": "Σειρήνες / 24ώρο",
       "aviationDisruptions": "Αεροπορικές αναταράξεις",
-      "gpsJammingZones": "Ζώνες παρεμβολής GPS"
+      "gpsJammingZones": "Ζώνες παρεμβολής πλοήγησης",
+      "temporalUnavailable": "Οι χρονικές παρατηρήσεις δεν είναι διαθέσιμες"
     },
     "fallback": {
       "instabilityIndex": "**Δείκτης Αστάθειας: {{score}}/100** ({{level}}, {{trend}})",
@@ -120,7 +132,6 @@
       "internetOutages": "{{count}} διακοπές διαδικτύου",
       "recentEarthquakes": "{{count}} πρόσφατοι σεισμοί",
       "stockIndex": "Χρηματιστηριακός δείκτης: {{value}}",
-      "recentHeadlines": "**Πρόσφατοι τίτλοι:**",
       "activeStrikes": "{{count}} ενεργές απεργίες ανιχνεύθηκαν"
     },
     "countryFacts": "Στοιχεία χώρας",
@@ -133,6 +144,163 @@
       "languages": "Γλώσσες",
       "currencies": "Νομίσματα",
       "area": "Έκταση"
+    },
+    "loadingResilienceScore": "Φόρτωση βαθμολογίας ανθεκτικότητας…",
+    "resilienceScoreUnavailable": "Η βαθμολογία ανθεκτικότητας δεν είναι διαθέσιμη.",
+    "china": {
+      "title": "Επισκόπηση χώρας: Κίνα",
+      "description": "Τρέχουσα εικόνα μακροοικονομίας, αγοράς, εμπορίου, ενέργειας και επιχειρησιακής διαθεσιμότητας από τα υφιστάμενα δημόσια συμβόλαια δεδομένων.",
+      "policyEvents": "Πολιτική και εφαρμογή",
+      "energy": "Ενέργεια",
+      "availability": "Κίνδυνοι & Αεροπορία",
+      "observed": "Έως:",
+      "published": "Δημοσιεύτηκε:",
+      "effective": "Σε ισχύ:",
+      "sectors": "Τομείς:",
+      "entities": "Οντότητες:",
+      "translation": "Μετάφραση:",
+      "source": "Πηγή:",
+      "imfGrowth": "Πρόβλεψη ανάπτυξης του Διεθνούς Νομισματικού Ταμείου",
+      "creditGdp": "Πίστη σε σχέση με τη οικονομική παραγωγή",
+      "strategicTrade": "Στρατηγική εμπορική έκθεση",
+      "crudeImports": "Εισαγωγές αργού πετρελαίου",
+      "gasDemand": "Ζήτηση φυσικού αερίου",
+      "energyMix": "Μείγμα ηλεκτροπαραγωγής",
+      "coal": "άνθρακας",
+      "noMajorDisruptions": "Δεν αναφέρθηκαν σημαντικές διαταραχές",
+      "activeDisruptions_one": "{{count}} ενεργή διαταραχή",
+      "activeDisruptions_other": "{{count}} ενεργές διαταραχές",
+      "activeSignals_one": "{{count}} ενεργό σήμα",
+      "activeSignals_other": "{{count}} ενεργά σήματα",
+      "aviationSource": "Παρακολούθηση αεροπορίας",
+      "hazardSource": "Σήματα πληροφοριών χώρας",
+      "marketSource": "Εθνικός χρηματιστηριακός δείκτης",
+      "ccfiSource": "Ναυτιλιακό Χρηματιστήριο της Σαγκάης",
+      "comtradeSource": "UN Comtrade, δηλούσα χώρα 156",
+      "sourceUnavailable": "Μη διαθέσιμη πηγή",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
+      "status": {
+        "loading": "Φόρτωση",
+        "available": "Διαθέσιμο",
+        "partial": "Μερικό",
+        "stale": "Παρωχημένο",
+        "unavailable": "Μη διαθέσιμο"
+      },
+      "macroSignals": "Μακροσήματα",
+      "crossStraitActivity": "Δραστηριότητα διαμέσου του πορθμού",
+      "corporateDisclosures": "Εταιρικές γνωστοποιήσεις",
+      "corridorConditions": "Συνθήκες διαδρόμου",
+      "activityNowcast": "Nowcast δραστηριότητας",
+      "decisionSignalsUnavailable": "Το στιγμιότυπο σημάτων απόφασης της Κίνας δεν είναι διαθέσιμο αυτή τη στιγμή."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "Παραγωγή USDA, Παροχή και Διανομή αποθεμάτων εμπορευμάτων προς χρήση κατά έτος μάρκετινγκ, με τον παγκόσμιο λόγο ως αναφορά. Τα Food Balances του FAOSTAT παρέχουν παραγωγή και εγχώρια εφοδιασμό όταν η Παραγωγή, Παροχή και Διανομή δεν έχουν πλήρες ισοζύγιο χώρας.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Δομή ηλικίας, αγωγή εκπαίδευσης και δυνατότητα βιομηχανικού εργατικού δυναμικού από τις Προσδοκίες Παγκόσμιου Πληθυσμού του ΟΗΕ, το Ινστιτούτο Στατιστικής της UNESCO και τους Παγκόσμιους Δείκτες Ανάπτυξης της Παγκόσμιας Τράπεζας και ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "Απόφοιτοι επιστήμης, τεχνολογίας, μηχανικής και μαθηματικών",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Δεν παρέχεται κατάσταση εκτίμησης και συμπλήρωσης τιμών"
+    },
+    "fiveFactorScorecard": {
+      "title": "Σκορκαρντ Ανθεκτικότητας Πέντε Παράγοντων",
+      "help": "Σταθεροποιημένες βαθμολογίες αποδείξεων v1 για τροφή, ενέργεια, δημογραφία, τεχνολογία και άμυνα. Επεκτείνετε μια γραμμή για να εξετάσετε τις εισόδους, την προέλευση των πηγών και τους λόγους έλλειψης δεδομένων.",
+      "loading": "Φόρτωση του σκορκαρντ πέντε παραγόντων…",
+      "unavailable": "Το σκορκαρντ πέντε παραγόντων δεν είναι διαθέσιμο.",
+      "proLocked": "Αναβαθμίστε σε PRO για το σκορκαρντ ανθεκτικότητας πέντε παραγόντων",
+      "insufficient": "Ανεπαρκή δεδομένα",
+      "notAvailable": "Δεν είναι διαθέσιμο",
+      "noEvidence": "Δεν υπάρχουν διαθέσιμες αποδείξεις για αυτόν τον πυλώνα.",
+      "score": "{{score}}/5",
+      "coverage": "Κάλυψη {{coverage}}%",
+      "methodologyVersion": "Μεθοδολογία v{{version}}",
+      "methodologyLink": "Προβολή μεθοδολογίας",
+      "pillars": {
+        "food": "Τρόφιμα",
+        "energy": "Ενέργεια",
+        "demographics": "Δημογραφία",
+        "technology": "Τεχνολογία",
+        "defense": "Άμυνα"
+      },
+      "reasons": {
+        "source-unavailable": "Η πηγή δεν είναι διαθέσιμη",
+        "country-unavailable": "Η χώρα δεν είναι διαθέσιμη",
+        "invalid-value": "Μη έγκυρη τιμή πηγής",
+        "stale": "Τα αποδεικτικά στοιχεία είναι παρωχημένα",
+        "coverage-below-floor": "Κάλυψη κάτω από το όριο βαθμολογίας",
+        "required-group-missing": "Λείπει απαιτούμενη ομάδα αποδεικτικών στοιχείων",
+        "missing-population": "Η πληθυσμιακή πληροφορία δεν είναι διαθέσιμη",
+        "redistribution-blocked": "Η αναδιανομή πηγής δεν επιτρέπεται",
+        "pillar-unavailable": "Η στήλη δεν είναι διαθέσιμη"
+      },
+      "inputs": {
+        "population": "Πληθυσμός",
+        "food_productionBalance": "Ισορροπία παραγωγής τροφίμων",
+        "food_stocksToUse": "Αποθέματα προς χρήση",
+        "food_waterSecurity": "Ασφάλεια νερού",
+        "food_importDiversity": "Ποικιλία εισαγωγών",
+        "energy_productionBalance": "Ισορροπία παραγωγής",
+        "energy_lowCarbonShare": "Κεφάλαιο χαμηλού άνθρακα",
+        "energy_gridEfficiency": "Αποδοτικότητα δικτύου",
+        "demographics_totalDependency": "Συνολική εξάρτηση",
+        "demographics_oldAgeDependency": "Εξάρτηση ηλικιωμένων",
+        "demographics_workingAgeProjection": "Προβλέψεις εργαζομένων",
+        "demographics_tertiaryEnrollment": "Εγγραφή τριτοβάθμιας εκπαίδευσης",
+        "demographics_researchersPerMillion": "Ερευνητές ανά εκατομμύριο",
+        "demographics_stemGraduateShare": "Ποσοστό αποφοίτων επιστήμης, τεχνολογίας, μηχανικής και μαθηματικών",
+        "demographics_trainedIndustrialShare": "Ποσοστό εκπαιδευμένης βιομηχανικής εργατικότητας",
+        "demographics_manufacturingEmploymentShare": "Ποσοστό απασχόλησης στην παραγωγή",
+        "technology_internetUse": "Χρήση διαδικτύου",
+        "technology_mobileSubscriptions": "Συνδρομές κινητής τηλεφωνίας",
+        "technology_fixedBroadband": "Σταθερή ευρυζωνική σύνδεση",
+        "technology_rdSpend": "Δαπάνες Έρευνας & Ανάπτυξης",
+        "technology_researchersPerMillion": "Ερευνητές ανά εκατομμύριο",
+        "technology_stemGraduateShare": "Ποσοστό αποφοίτων επιστήμης, τεχνολογίας, μηχανικής και μαθηματικών",
+        "technology_electricityAccess": "Πρόσβαση σε ηλεκτρικό ρεύμα",
+        "defense_expenditureUsd": "Στρατιωτική δαπάνη",
+        "defense_expenditurePctGdp": "Στρατιωτικό βάρος",
+        "defense_personnel": "Προσωπικό ενόπλων δυνάμεων",
+        "defense_industrialBalance": "Ισορροπία βιομηχανίας άμυνας",
+        "defense_supplierDiversity": "Ποικιλία προμηθευτών όπλων"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Αναβαθμίστε σε PRO για εξάρτηση προμηθευτών όπλων και στρατιωτική ικανότητα"
     }
   },
   "header": {
@@ -151,9 +319,7 @@
     "filterSources": "Φιλτράρισμα πηγών...",
     "sourcesEnabled": "{{enabled}}/{{total}} ενεργές",
     "finance": "ΧΡΗΜΑΤΟΟΙΚΟΝΟΜΙΚΑ",
-    "toggleTheme": "Εναλλαγή σκοτεινής/φωτεινής λειτουργίας",
     "panelDisplayCaption": "Επιλέξτε ποια πάνελ θα εμφανίζονται στον πίνακα ελέγχου",
-    "tabGeneral": "Γενικά",
     "tabSettings": "Ρυθμίσεις",
     "tabPanels": "Πάνελ",
     "tabSources": "Πηγές",
@@ -169,21 +335,21 @@
     "sourceRegionTopical": "Θεματικά",
     "sourceRegionIntel": "Πληροφορίες",
     "sourceRegionTechNews": "Tech News",
-    "sourceRegionAiMl": "AI & ML",
-    "sourceRegionStartupsVc": "Startups & VC",
+    "sourceRegionAiMl": "AI & Machine learning",
+    "sourceRegionStartupsVc": "Startups & Venture capital",
     "sourceRegionRegionalTech": "Regional Ecosystems",
     "sourceRegionDeveloper": "Developer",
     "sourceRegionCybersecurity": "Cybersecurity",
     "sourceRegionTechPolicy": "Policy & Research",
     "sourceRegionTechMedia": "Media & Podcasts",
     "sourceRegionMarkets": "Markets & Analysis",
-    "sourceRegionFixedIncomeFx": "Fixed Income & FX",
+    "sourceRegionFixedIncomeFx": "Fixed Income & Foreign exchange",
     "sourceRegionCommodities": "Commodities",
     "sourceRegionCryptoDigital": "Crypto & Digital",
     "sourceRegionCentralBanks": "Central Banks & Economy",
     "sourceRegionDeals": "Deals & Corporate",
     "sourceRegionFinRegulation": "Financial Regulation",
-    "sourceRegionGulfMena": "Κόλπος & ΜΕΝΑ",
+    "sourceRegionGulfMena": "Κόλπος & Μέση Ανατολή και Βόρεια Αφρική",
     "filterPanels": "Φιλτράρισμα πάνελ...",
     "resetLayout": "Επαναφορά διάταξης",
     "resetLayoutTooltip": "Επαναφορά προεπιλεγμένης διάταξης πάνελ",
@@ -195,16 +361,27 @@
     "panelCatTopical": "Θεματικά",
     "panelCatDataTracking": "Δεδομένα & Παρακολούθηση",
     "panelCatTechAi": "Τεχνολογία & AI",
-    "panelCatStartupsVc": "Startups & VC",
+    "panelCatStartupsVc": "Startups & Venture capital",
     "panelCatSecurityPolicy": "Ασφάλεια & Πολιτική",
     "panelCatMarkets": "Αγορές",
-    "panelCatFixedIncomeFx": "Σταθερό Εισόδημα & Συνάλλαγμα",
+    "panelCatFixedIncomeFx": "Fixed Income & Foreign exchange",
     "panelCatCommodities": "Εμπορεύματα",
     "panelCatCryptoDigital": "Κρύπτο & Ψηφιακά",
     "panelCatCentralBanks": "Κεντρικές Τράπεζες & Οικονομία",
     "panelCatDeals": "Συμφωνίες & Θεσμικά",
-    "panelCatGulfMena": "Κόλπος & ΜΕΝΑ",
-    "panelCatTradePolicy": "Εμπορική Πολιτική"
+    "panelCatGulfMena": "Κόλπος & Μέση Ανατολή και Βόρεια Αφρική",
+    "cached": "CACHED",
+    "unavailable": "UNAVAILABLE",
+    "commodity": "COMMODITY",
+    "energy": "ENERGY",
+    "tabNotifications": "Ειδοποιήσεις",
+    "panelCatCorrelation": "Συσχέτιση",
+    "panelCatCommodityPrices": "Τιμές & Αγορές",
+    "panelCatMining": "Εξόρυξη & Αλυσίδα Εφοδιασμού",
+    "panelCatCommodityEcon": "Οικονομία & Εμπόριο",
+    "panelCatHappyNews": "Καλές Ειδήσεις",
+    "panelCatHappyPlanet": "Πλανήτης & Δωρεές",
+    "embed": "Ενσωμάτωση"
   },
   "panels": {
     "liveNews": "Ζωντανές Ειδήσεις",
@@ -230,6 +407,7 @@
     "energy": "Ενέργεια & Πόροι",
     "gov": "Κυβέρνηση",
     "thinktanks": "Think Tanks",
+    "science": "Επιστήμη",
     "polymarket": "Προβλέψεις",
     "commodities": "Εμπορεύματα",
     "economic": "Οικονομικοί Δείκτες",
@@ -239,49 +417,82 @@
     "tech": "Τεχνολογία",
     "crypto": "Crypto",
     "heatmap": "Θερμικός Χάρτης Τομέων",
-    "ai": "AI/ML",
+    "ai": "AI & machine learning",
     "layoffs": "Ανιχνευτής Απολύσεων",
     "monitors": "Οι Παρακολουθήσεις μου",
     "satelliteFires": "Πυρκαγιές",
-    "macroSignals": "Ραντάρ Αγορών",
-    "etfFlows": "BTC ETF Tracker",
+    "macroSignals": "Συνθήκες αγοράς Bitcoin",
+    "etfFlows": "Ροές κεφαλαίων Bitcoin",
     "stablecoins": "Stablecoins",
     "deduction": "Εκτίμηση κατάστασης",
     "ucdpEvents": "Συγκρούσεις UCDP",
     "giving": "Παγκόσμιες Δωρεές",
-    "displacement": "Εκτοπισμοί UNHCR",
+    "displacement": "Πρόσφυγες και εκτοπισμός",
     "climate": "Κλιματικές Ανωμαλίες",
     "populationExposure": "Έκθεση Πληθυσμού",
     "securityAdvisories": "Προειδοποιήσεις Ασφαλείας",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Πληροφορίες Telegram",
-    "startups": "Startups & VC",
-    "vcblogs": "Αναλύσεις & Άρθρα VC",
+    "xIntel": "X News Accounts",
+    "startups": "Startups & venture capital",
+    "vcblogs": "Venture capital insights & essays",
     "regionalStartups": "Παγκόσμια Νέα Startups",
     "unicorns": "Ανιχνευτής Unicorns",
     "accelerators": "Accelerators & Demo Days",
     "security": "Κυβερνοασφάλεια",
     "policy": "Πολιτική & Ρύθμιση AI",
     "regulation": "Πίνακας Ρύθμισης AI",
+    "finRegulation": "Χρηματοοικονομική Ρύθμιση",
     "hardware": "Ημιαγωγοί & Υλικό",
     "cloud": "Cloud & Υποδομές",
     "dev": "Κοινότητα Προγραμματιστών",
     "github": "GitHub Trending",
-    "ipo": "IPO & SPAC",
-    "funding": "Χρηματοδότηση & VC",
+    "ipo": "Public listings & shell-company mergers",
+    "funding": "Funding & venture capital",
     "producthunt": "Product Hunt",
     "events": "Tech Εκδηλώσεις",
     "serviceStatus": "Κατάσταση Υπηρεσιών",
     "techReadiness": "Δείκτης Τεχνολογικής Ετοιμότητας",
-    "gccInvestments": "Επενδύσεις GCC",
+    "gccInvestments": "Gulf Cooperation Council investments",
     "geoHubs": "Γεωπολιτικά Κέντρα",
-    "liveYouTube": "Ζωντανές Κάμερες",
-    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "Οικονομίες Κόλπου",
     "gulfIndices": "Δείκτες Κόλπου",
     "gulfCurrencies": "Νομίσματα Κόλπου",
     "gulfOil": "Πετρέλαιο Κόλπου",
-    "bigmac": "Real Big Mac Index"
+    "bigmac": "Real Big Mac Index",
+    "marketImplications": "Επιπτώσεις AI στην Αγορά",
+    "energyComplex": "Ενεργειακό Σύμπλεγμα",
+    "oilInventories": "Αποθέματα Πετρελαίου",
+    "energyCrisis": "Tracker Ενεργειακής Κρίσης",
+    "goldIntelligence": "Gold Intelligence",
+    "wsbTickerScanner": "WallStreetBets ticker scanner",
+    "internetDisruptions": "Διακοπές Διαδικτύου",
+    "internetDisruptionsTabs": {
+      "outages": "Διακοπές",
+      "ddos": "DDoS",
+      "anomalies": "Ανωμαλίες"
+    },
+    "liveWebcams": "Live Webcams",
+    "windyWebcams": "Windy Live Webcam",
+    "groceryBasket": "Grocery Index",
+    "groceryItem": "Είδος",
+    "bigmacDesc": "Τιμές Big Mac σε χώρες της Μέσης Ανατολής (Big Mac Index)",
+    "bigmacWow": "Εβδομαδιαία μεταβολή",
+    "bigmacCountry": "Χώρα",
+    "faoFoodPriceIndex": "FAO Food Price Index",
+    "fuelPrices": "Τιμές Καυσίμων",
+    "fuelPricesDesc": "Τιμές λιανικής βενζίνης και ντίζελ σε 30+ χώρες παγκοσμίως",
+    "fuelPricesCountry": "Χώρα",
+    "fuelPricesGasoline": "Βενζίνη",
+    "fuelPricesDiesel": "Ντίζελ",
+    "fuelPricesSource": "Πηγή",
+    "groceryBasketDesc": "Σύγκριση τιμών καλαθιού παντοπωλείου σε 24 χώρες παγκοσμίως",
+    "airlineIntel": "✈️ Airline Intelligence",
+    "consumerPrices": "Τιμές Καταναλωτή",
+    "fearGreed": "Fear & Greed",
+    "marketBreadth": "Market Breadth",
+    "climateNews": "Ειδήσεις για το Κλίμα",
+    "fx": "Ισοτιμίες συναλλάγματος"
   },
   "commands": {
     "prefixes": {
@@ -319,7 +530,9 @@
       "briefExample": "brief china",
       "layersExample": "military layers",
       "timeExample": "24h",
-      "settingsExample": "dark mode"
+      "settingsExample": "dark mode",
+      "flight": "Αναζήτηση ζωντανών πτήσεων κατά callsign (PRO)",
+      "flightExample": "UAE528"
     },
     "keywords": {
       "military": "στρατιωτικό",
@@ -344,7 +557,7 @@
         "minimal": "Ελάχιστα επίπεδα (συγκρούσεις + θερμά σημεία)"
       },
       "layer": {
-        "ais": "Εναλλαγή παρακολούθησης πλοίων AIS",
+        "ais": "Εναλλαγή παρακολούθησης πλοίων",
         "flights": "Εναλλαγή στρατιωτικών πτήσεων",
         "conflicts": "Εναλλαγή ζωνών σύγκρουσης",
         "hotspots": "Εναλλαγή θερμών σημείων",
@@ -359,7 +572,9 @@
         "displacement": "Εναλλαγή ροών εκτοπισμένων",
         "climate": "Εναλλαγή κλιματικών ανωμαλιών",
         "outages": "Εναλλαγή διακοπών ίντερνετ",
-        "tradeRoutes": "Εναλλαγή εμπορικών δρόμων"
+        "tradeRoutes": "Εναλλαγή εμπορικών δρόμων",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Μετάβαση σε σκοτεινή λειτουργία",
@@ -380,14 +595,13 @@
   "modals": {
     "search": {
       "placeholder": "Αναζήτηση ή πληκτρολογήστε εντολή...",
-      "hint": "Αναζήτηση • Χώρες • Επίπεδα • Πάνελ • Πλοήγηση • Ρυθμίσεις",
       "placeholderTech": "Αναζήτηση ή πληκτρολογήστε εντολή...",
-      "hintTech": "Αναζήτηση • Εταιρείες • AI Labs • Επίπεδα • Πλοήγηση • Ρυθμίσεις",
       "placeholderFinance": "Αναζήτηση ή πληκτρολογήστε εντολή...",
-      "hintFinance": "Αναζήτηση • Χρηματιστήρια • Αγορές • Επίπεδα • Πλοήγηση • Ρυθμίσεις",
       "recent": "Πρόσφατες Αναζητήσεις",
       "empty": "Αναζήτηση δεδομένων ή εκτέλεση εντολών",
       "noResults": "Κανένα αποτέλεσμα",
+      "resultAnnouncement_one": "{{count}} αποτέλεσμα για {{query}}",
+      "resultAnnouncement_other": "{{count}} αποτελέσματα για {{query}}",
       "commands": "Εντολές",
       "results": "Αποτελέσματα",
       "seeAllCommands": "Εμφάνιση όλων των εντολών",
@@ -415,8 +629,16 @@
         "startup": "Startup",
         "techevent": "Tech Εκδήλωση",
         "techhq": "Tech Έδρα",
-        "accelerator": "Accelerator"
-      }
+        "accelerator": "Accelerator",
+        "flight": "Πτήση"
+      },
+      "flightOnGround": "Στο έδαφος",
+      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightMilitary": "Στρατιωτική · {{type}} · FL{{fl}}",
+      "flightMilitaryOnGround": "Στρατιωτική · {{type}} · στο έδαφος",
+      "flightSearchHint": "Πατήστε Enter ή κάντε κλικ για αναζήτηση ζωντανής θέσης",
+      "flightNotFound": "Δεν βρέθηκε ζωντανή θέση για {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "ΕΥΡΗΜΑ ΠΛΗΡΟΦΟΡΙΩΝ",
@@ -441,7 +663,6 @@
       "action": "Ενέργεια:",
       "note": "Σημείωση:",
       "suppress": "Απόκρυψη αυτού του όρου",
-      "suppressed": "Αποκρύφθηκε",
       "predictionLeading": "Πρόβλεψη Προηγείται",
       "newsLeading": "Ειδήσεις Προηγούνται",
       "silentDivergence": "Σιωπηλή Απόκλιση",
@@ -472,31 +693,28 @@
     },
     "mobileWarning": {
       "title": "Προβολή Κινητού",
-      "description": "Βλέπετε μια απλοποιημένη έκδοση κινητού εστιασμένη στην περιοχή MENA με ενεργοποιημένα τα βασικά επίπεδα.",
-      "tip": "Συμβουλή: Χρησιμοποιήστε τα κουμπιά προβολής (GLOBAL/US/MENA) για εναλλαγή περιοχών. Πατήστε δείκτες για λεπτομέρειες.",
+      "description": "Προβάλλετε μια απλοποιημένη έκδοση κινητού με εστίαση στην περιοχή Μέσης Ανατολής και Βόρειας Αφρικής με ενεργοποιημένα βασικά στρώματα.",
+      "tip": "Συμβουλή: Χρησιμοποιήστε τα κουμπιά προβολής (GLOBAL/US/Middle East and North Africa) για να αλλάξετε περιοχές. Πατήστε δείκτες για να δείτε λεπτομέρειες.",
       "dontShowAgain": "Να μην εμφανιστεί ξανά",
       "gotIt": "Κατάλαβα"
     },
     "downloadBanner": {
-      "title": "Διαθέσιμη Εφαρμογή Desktop",
       "description": "Εγγενής απόδοση, ασφαλής τοπική αποθήκευση κλειδιών, offline πλακίδια χάρτη.",
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
       "windows": "Windows (.exe)",
       "linux": "Linux (.AppImage)",
       "showAllPlatforms": "Εμφάνιση όλων των πλατφορμών",
-      "showLess": "Εμφάνιση λιγότερων",
-      "dismiss": "Απόρριψη"
+      "showLess": "Εμφάνιση λιγότερων"
     },
     "runtimeConfig": {
       "title": "Ρύθμιση Desktop",
       "alertTitle": {
         "configured": "Ρυθμίσεις desktop διαμορφώθηκαν",
         "needsKeys": "Ρυθμίστε API keys για ξεκλείδωμα λειτουργιών",
-        "some": "Ορισμένες λειτουργίες χρειάζονται API keys"
+        "some": "Ορισμένες λειτουργίες χρειάζονται API keys",
+        "pro": "Το World Monitor Pro είναι ενεργό"
       },
-      "openSettings": "Άνοιγμα Ρυθμίσεων",
-      "skipSetup": "Παραλείψτε τη ρύθμιση — μία μόνο άδεια World Monitor ξεκλειδώνει τα πάντα. Γραφτείτε στη λίστα αναμονής για πρώιμη πρόσβαση.",
       "summary": {
         "desktop": "Λειτουργία desktop",
         "web": "Λειτουργία web (μόνο ανάγνωση, διαχειριζόμενα διαπιστευτήρια)",
@@ -520,11 +738,14 @@
         "URLHAUS_AUTH_KEY": "Χρησιμοποιείται για τα APIs URLhaus και ThreatFox.",
         "OTX_API_KEY": "Προαιρετική πηγή εμπλουτισμού για το επίπεδο κυβερνοαπειλών.",
         "ABUSEIPDB_API_KEY": "Προαιρετική πηγή εμπλουτισμού για φήμη κακόβουλων IP.",
-        "FINNHUB_API_KEY": "Τιμές μετοχών σε πραγματικό χρόνο και δεδομένα αγοράς.",
+        "FINNHUB_API_KEY": "Καθυστερημένες ή προφορτωμένες τιμές μετοχών και δεδομένα αγοράς. Ένα κλειδί δεν είναι ζωντανή ροή.",
         "NASA_FIRMS_API_KEY": "Σύστημα Πληροφοριών Πυρκαγιών για Διαχείριση Πόρων.",
         "OLLAMA_API_URL": "π.χ. http://127.0.0.1:11434 (Ollama) ή http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-συμβατό endpoint.",
         "OLLAMA_MODEL": "π.χ. llama3.1:8b — ετικέτα μοντέλου για περίληψη."
-      }
+      },
+      "proCloud": "Τα χαρακτηριστικά χωρίς τοπικό κλειδί API χρησιμοποιούν δεδομένα από το cloud του World Monitor.",
+      "skipSetupPro": "Παραλείψτε την ρύθμιση: συνδεθείτε με το World Monitor Pro για να χρησιμοποιήσετε δεδομένα από το cloud αντί για τα δικά σας κλειδιά API.",
+      "getPro": "Αποκτήστε το World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Επικύρωση API keys...",
@@ -541,30 +762,17 @@
       "sidecarUnreachable": "Το sidecar δεν είναι προσβάσιμο.",
       "logCleared": "Το αρχείο καταγραφής καθαρίστηκε.",
       "worldMonitor": {
-        "tabLabel": "World Monitor",
-        "heroTitle": "Ένα κλειδί. Τα πάντα περιλαμβάνονται.",
-        "heroDescription": "Μία μόνο άδεια World Monitor αντικαθιστά κάθε API key και πάροχο LLM που θα ρυθμίζατε μόνοι σας. Περιλήψεις AI, πληροφορίες σε πραγματικό χρόνο, δεδομένα αγοράς, παρακολούθηση συγκρούσεων, ανίχνευση πυρκαγιών, δορυφορικές εικόνες — όλα ενεργοποιημένα, όλα διαχειριζόμενα, μηδενική ρύθμιση.",
         "apiKey": {
-          "title": "Κλειδί Άδειας",
+          "title": "Κλειδί άδειας / API",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Επικολλήστε την άδειά σας για άμεσο ξεκλείδωμα κάθε πηγής δεδομένων και λειτουργίας AI.",
-          "statusValid": "ΑΔΕΙΟΔΟΤΗΜΕΝΟ",
-          "statusMissing": "ΧΩΡΙΣ ΑΔΕΙΑ"
+          "description": "Οι συνδρομητές API Starter και API Business δημιουργούν αυτό το κλειδί στον διαδικτυακό πίνακα από Settings → API Keys. Αν χαθεί το πλήρες κλειδί, ανακαλέστε το και δημιουργήστε ένα νέο."
         },
         "dividerOr": "Ή",
         "register": {
-          "title": "Κρατήστε τη Θέση σας",
-          "description": "Ετοιμαζόμαστε να λανσάρουμε τις άδειες World Monitor. Εγγραφείτε τώρα και γίνετε πρώτοι στη σειρά — τα πρώτα μέλη λαμβάνουν προτεραιότητα πρόσβασης και τιμολόγηση ιδρυτικού μέλους.",
-          "emailPlaceholder": "your@email.com",
-          "submitBtn": "Εγγραφή στη Λίστα",
-          "submitting": "Υποβολή...",
-          "success": "Είστε στη λίστα! Θα σας ειδοποιήσουμε πρώτους.",
-          "alreadyRegistered": "Είστε ήδη στη λίστα αναμονής.",
-          "error": "Η εγγραφή απέτυχε. Παρακαλώ δοκιμάστε ξανά.",
-          "invalidEmail": "Παρακαλώ εισάγετε μια έγκυρη διεύθυνση email."
-        },
-        "byokTitle": "Ή χρησιμοποιήστε τα δικά σας keys",
-        "byokDescription": "Προτιμάτε πλήρη έλεγχο; Μεταβείτε στις καρτέλες API Keys και LLMs για να ρυθμίσετε κάθε πηγή δεδομένων και πάροχο AI ξεχωριστά."
+          "title": "Χρειάζεστε κλειδί API;",
+          "description": "Δείτε το worldmonitor.app/docs/api-keys για οδηγίες βήμα προς βήμα. Τα μη αυτόματα κλειδιά API απαιτούν πρόγραμμα API Starter ή API Business.",
+          "submitBtn": "Προβολή προγραμμάτων API"
+        }
       },
       "table": {
         "time": "Χρόνος",
@@ -572,7 +780,13 @@
         "path": "Διαδρομή",
         "status": "Κατάσταση",
         "duration": "Διάρκεια"
-      }
+      },
+      "shellTitle": "Ρυθμίσεις World Monitor",
+      "shellSearchPlaceholder": "Αναζήτηση ρυθμίσεων...",
+      "shellCancel": "Ακύρωση",
+      "shellSaveClose": "Αποθήκευση & Κλείσιμο",
+      "freePanelLimit": "Δωρεάν πλάνο: έως {{max}} πάνελ. Αναβαθμίστε σε PRO για απεριόριστα.",
+      "freeSourceLimit": "Δωρεάν πλάνο: έως {{max}} πηγές. Αναβαθμίστε σε PRO για απεριόριστες."
     },
     "countryIntel": {
       "identifying": "Αναγνώριση χώρας...",
@@ -590,14 +804,14 @@
       "fresh": "Πρόσφατο",
       "noMarkets": "Δεν βρέθηκαν αγορές προβλέψεων",
       "predictionMarkets": "Αγορές Προβλέψεων",
-      "unavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το GROQ_API_KEY στις Ρυθμίσεις."
+      "unavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το OPENROUTER_API_KEY στις Ρυθμίσεις."
     },
     "countryBrief": {
       "identifying": "Αναγνώριση χώρας...",
       "locating": "Εντοπισμός περιοχής...",
       "limitedCoverage": "Περιορισμένη κάλυψη",
       "instabilityIndex": "Δείκτης Αστάθειας",
-      "notTracked": "Δεν παρακολουθείται — η {{country}} δεν είναι στη λίστα CII tier-1",
+      "notTracked": "Δεν παρακολουθείται — {{country}} δεν περιλαμβάνεται στη λίστα tier-1 του Country Instability Index",
       "intelBrief": "Ενημέρωση Πληροφοριών",
       "generatingBrief": "Δημιουργία ενημέρωσης πληροφοριών...",
       "topNews": "Κορυφαίες Ειδήσεις",
@@ -606,7 +820,7 @@
       "predictionMarkets": "Αγορές Προβλέψεων",
       "loadingMarkets": "Φόρτωση αγορών προβλέψεων...",
       "infrastructure": "Έκθεση Υποδομών",
-      "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το GROQ_API_KEY στις Ρυθμίσεις.",
+      "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το OPENROUTER_API_KEY στις Ρυθμίσεις.",
       "cached": "Αποθηκευμένο",
       "fresh": "Πρόσφατο",
       "noMarkets": "Δεν βρέθηκαν αγορές προβλέψεων",
@@ -614,7 +828,7 @@
       "components": {
         "unrest": "Αναταραχή",
         "conflict": "Σύγκρουση",
-        "security": "Ασφάλεια",
+        "security": "Στρατιωτική δραστηριότητα",
         "information": "Πληροφορίες"
       },
       "signals": {
@@ -628,7 +842,7 @@
         "conflictEvents": "συγκρούσεις",
         "activeStrikes": "ενεργές απεργίες",
         "aviationDisruptions": "διαταραχές αεροδρομίων",
-        "gpsJammingZones": "GPS Jamming Zones"
+        "gpsJammingZones": "Ζώνες παρεμβολής πλοήγησης"
       },
       "timeAgo": {
         "m": "{{count}}λ πριν",
@@ -642,47 +856,26 @@
         "base": "Στρατιωτικές Βάσεις",
         "nuclear": "Κοντινά Πυρηνικά",
         "port": "Λιμάνια"
-      },
-      "levels": {
-        "critical": "Κρίσιμο",
-        "high": "Υψηλό",
-        "elevated": "Αυξημένο",
-        "moderate": "Μέτριο",
-        "normal": "Κανονικό",
-        "low": "Χαμηλό"
-      },
-      "trends": {
-        "rising": "Ανοδικά",
-        "falling": "Πτωτικά",
-        "stable": "Σταθερό"
-      },
-      "fallback": {
-        "instabilityIndex": "**Δείκτης Αστάθειας: {{score}}/100** ({{level}}, {{trend}})",
-        "protestsDetected": "{{count}} ενεργές διαμαρτυρίες ανιχνεύθηκαν",
-        "aircraftTracked": "{{count}} στρατιωτικά αεροσκάφη παρακολουθούνται",
-        "vesselsTracked": "{{count}} στρατιωτικά πλοία παρακολουθούνται",
-        "activeStrikes": "{{count}} ενεργές απεργίες ανιχνεύθηκαν",
-        "internetOutages": "{{count}} διακοπές διαδικτύου",
-        "recentEarthquakes": "{{count}} πρόσφατοι σεισμοί",
-        "stockIndex": "Χρηματιστηριακός δείκτης: {{value}}",
-        "recentHeadlines": "**Πρόσφατοι τίτλοι:**"
       }
     }
   },
   "components": {
     "webcams": {
-      "expand": "Ανάπτυξη",
       "paused": "Κάμερες σε παύση",
-      "pausedIdle": "Κάμερες σε παύση — μετακινήστε το ποντίκι για συνέχεια",
       "regions": {
-        "iran": "IRAN ATTACKS",
         "all": "ΟΛΑ",
         "mideast": "Μ. ΑΝΑΤΟΛΗ",
         "europe": "ΕΥΡΩΠΗ",
         "americas": "ΑΜΕΡΙΚΗ",
         "asia": "ΑΣΙΑ",
         "space": "ΔΙΑΣΤΗΜΑ"
-      }
+      },
+      "play": "Αναπαραγωγή",
+      "previewStatus": "Έτοιμο για αναπαραγωγή",
+      "connecting": "Σύνδεση…",
+      "unverified": "Δεν είναι δυνατή η επιβεβαίωση ότι αυτή η ροή είναι ζωντανή",
+      "offline": "Η {{city}} είναι εκτός σύνδεσης αυτή τη στιγμή",
+      "noFeeds": "Δεν υπάρχουν ζωντανές κάμερες ιστού σε αυτήν την περιοχή αυτή τη στιγμή"
     },
     "positiveNewsFeed": {
       "noStories": "Δεν υπάρχουν ακόμα ιστορίες σε αυτή την κατηγορία"
@@ -692,7 +885,9 @@
       "summarizing": "Δημιουργία περίληψης…"
     },
     "progressCharts": {
-      "noData": "Δεν υπάρχουν δεδομένα προόδου"
+      "noData": "Δεν υπάρχουν δεδομένα προόδου",
+      "fallbackBadge": "Εμφάνιση στατικών δεδομένων εφεδρείας — ζωντανή σειρά μη διαθέσιμη",
+      "fallbackTooltip": "Δεν ήταν δυνατή η πρόσβαση στο live World Bank seed. Αυτά τα γραφήματα αποδίδονται από ένα κωδικοποιημένο στιγμιότυπο που επαληθεύθηκε τελευταία τον Φεβρουάριο 2026."
     },
     "monitor": {
       "placeholder": "Λέξεις-κλειδιά (διαχωρισμένες με κόμμα)",
@@ -711,8 +906,6 @@
       "countries": "Χώρες",
       "recentActions": "Πρόσφατες Ρυθμιστικές Ενέργειες (Τελευταίοι 12 Μήνες)",
       "upcomingDeadlines": "Επερχόμενες Προθεσμίες Συμμόρφωσης",
-      "activeRegulations": "Ενεργοί Κανονισμοί",
-      "proposedRegulations": "Προτεινόμενοι Κανονισμοί",
       "globalLandscape": "Παγκόσμιο Ρυθμιστικό Τοπίο",
       "emptyActions": "Δεν υπάρχουν πρόσφατες ρυθμιστικές ενέργειες",
       "emptyDeadlines": "Δεν υπάρχουν επερχόμενες προθεσμίες συμμόρφωσης τους επόμενους 12 μήνες",
@@ -733,34 +926,37 @@
         "moderate": "Μέτριος",
         "permissive": "Επιτρεπτικός",
         "undefined": "Απροσδιόριστος"
-      }
+      },
+      "infoTooltip": "<strong>Ρυθμίσεις</strong> Ρυθμιστικές ενέργειες, αλλαγές πολιτικής και ενημερώσεις επιβολής από παγκόσμιους ρυθμιστές: χρηματοοικονομικές, τεχνολογικές, ενεργειακές και εμπορικές αρχές. Πηγή: επίσημες κυβερνητικές και ρυθμιστικές δημοσιεύσεις."
     },
     "economic": {
       "indicators": "Δείκτες",
-      "oil": "Πετρέλαιο",
       "gov": "Κυβ.",
-      "noData": "Δεν υπάρχουν οικονομικά δεδομένα",
-      "noOilData": "Δεδομένα πετρελαίου μη διαθέσιμα",
-      "noOilMetrics": "Δεν υπάρχουν μετρήσεις πετρελαίου. Προσθέστε EIA_API_KEY για ενεργοποίηση.",
       "noSpending": "Δεν υπάρχουν πρόσφατες κρατικές αναθέσεις",
       "awards": "αναθέσεις",
-      "noIndicatorData": "Δεν υπάρχουν δεδομένα δεικτών ακόμα - το FRED φορτώνει",
-      "fredKeyMissing": "Απαιτείται FRED API key — προσθέστε το στις Ρυθμίσεις για ενεργοποίηση οικονομικών δεικτών",
-      "noOilDataRetry": "Δεδομένα πετρελαίου προσωρινά μη διαθέσιμα - θα γίνει επανάληψη",
-      "vsPreviousWeek": "σε σχέση με την προηγούμενη εβδομάδα",
+      "noIndicatorData": "Δεν υπάρχουν ακόμη δεδομένα δείκτη - Τα Federal Reserve Economic Data ενδέχεται να φορτώνονται",
+      "fredKeyMissing": "Απαιτείται κλειδί API Federal Reserve Economic Data. Προσθέστε το στις Ρυθμίσεις για ενεργοποίηση οικονομικών δεικτών.",
       "in": "σε",
       "centralBanks": "Κεντρικές Τράπεζες",
       "laborMarket": "Labor Market",
       "metroUnemployment": "Metro Unemployment",
-      "noBisData": "Δεδομένα BIS προσωρινά μη διαθέσιμα - θα γίνει επανάληψη",
+      "noBisData": "Τα δεδομένα της Τράπεζας Διεθνών Διακανονισμών είναι προσωρινά μη διαθέσιμα - θα δοκιμάσει ξανά",
       "policyRate": "Επιτόκιο Πολιτικής",
-      "exchangeRate": "Συναλλαγματική Ισοτιμία",
-      "creditToGdp": "Πίστωση / ΑΕΠ",
-      "realEer": "Πραγματική Σταθμισμένη Ισοτιμία",
-      "change": "Μεταβολή",
+      "creditToGdp": "Πίστη σε σχέση με τη οικονομική παραγωγή",
+      "realEer": "Πραγματικό ενεργό ισοτίμιο ανταλλαγής",
       "cut": "μείωση",
       "hike": "αύξηση",
-      "hold": "διατήρηση"
+      "hold": "διατήρηση",
+      "pressure": {
+        "label": "Μακροπίεση",
+        "stress": "Πίεση",
+        "watch": "Επιτήρηση",
+        "steady": "Σταθερό",
+        "stressDetail": "Η μεταβλητότητα και η πίεση της καμπύλης είναι υψηλές.",
+        "watchDetail": "Οι συνθήκες διατμηματικής αγοράς χρειάζονται στενότερη παρακολούθηση.",
+        "steadyDetail": "Οι μακροοικονομικές συνθήκες είναι σταθερές προς το παρόν."
+      },
+      "infoTooltip": "<strong>Macro Stress</strong> Μακροοικονομικές μετρήσεις, δαπάνες κυβέρνησης και δεδομένα κεντρικής τράπεζας:<ul><li><strong>Δείκτες</strong>: VIX, επιτόκια, καμπύλη αποδόσεων, εργασία, πληθωρισμός</li><li><strong>Gov</strong>: Πρόσφατες ανάθεσης κρατικών συμβάσεων των ΗΠΑ</li><li><strong>Central Banks</strong>: Δεδομένα επιτοκίων πολιτικής και ισοτιμίας ανταλλάγματος της Τράπεζας Διεθνών Διακανονισμών</li></ul>"
     },
     "supplyChain": {
       "chokepoints": "Σημεία Ελέγχου",
@@ -769,12 +965,10 @@
       "noChokepoints": "Φόρτωση δεδομένων σημείων ελέγχου...",
       "noShipping": "Δεδομένα ναυτιλιακών τιμών μη διαθέσιμα",
       "noMinerals": "Φόρτωση δεδομένων ορυκτών...",
-      "fredKeyMissing": "Απαιτείται FRED API key για ναυτιλιακές τιμές — προσθέστε το στις Ρυθμίσεις. Σημεία ελέγχου και ορυκτά διαθέσιμα χωρίς κλειδί.",
       "upstreamUnavailable": "Δεδομένα εφοδιαστικής αλυσίδας προσωρινά μη διαθέσιμα — εμφάνιση αποθηκευμένων δεδομένων",
       "spikeAlert": "Ανιχνεύθηκε κορύφωση — τιμή σημαντικά πάνω από τον μέσο όρο 52 εβδομάδων (εβδομαδιαία)",
       "warnings": "προειδοποίηση(-εις)",
-      "aisDisruptions": "Διαταραχή(ές) AIS",
-      "routingAction": "Routing",
+      "aisDisruptions": "Διαταραχές παρακολούθησης πλοίων",
       "disruption": "Disruption",
       "vessels": "vessels",
       "incidents7d": "incidents (7d)",
@@ -784,46 +978,84 @@
       "mineral": "Ορυκτό",
       "topProducers": "Κορυφαίοι Παραγωγοί",
       "risk": "Κίνδυνος",
-      "sources": "FRED / NGA / USGS"
+      "wowChange": "Εβδομαδιαία μεταβολή",
+      "riskLevel": "Επίπεδο κινδύνου",
+      "flowUnavailable": "Δεδομένα ροής μη διαθέσιμα",
+      "containerRates": "Τιμές εμπορευματοκιβωτίων",
+      "bulkShipping": "Χύδην Ναυτιλία",
+      "economicIndicators": "Οικονομικοί Δείκτες",
+      "loadingHistory": "Φόρτωση ιστορικού διέλευσης…",
+      "historyUnavailable": "Ιστορικό διέλευσης μη διαθέσιμο",
+      "transitDataUnavailable": "Δεδομένα διέλευσης μη διαθέσιμα (upstream μερικό)",
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Παγκόσμια παρακολούθηση logistics και πόρων:<ul><li><strong>Σημεία συμφόρησης</strong>: Κατάσταση θαλάσσιας διαδρομής, δείκτες διαταραχής και πλήθος πλοίων</li><li><strong>Ναυτιλία</strong>: Δείκτης Baltic Dry Index και τάσεις ναύλων</li><li><strong>Ορυκτά</strong>: Κίνδυνος συγκέντρωσης κρίσιμων ορυκτών (δείκτης συγκέντρωσης παραγωγών) και κορυφαίοι παραγωγοί</li></ul>Κάντε κλικ σε κάρτα σημείου συμφόρησης για να ανοίξετε το γράφημα ιστορικού διαδρομής.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Αναβάθμιση σε PRO για μετοχές χώρας ορυχείου και διυλιστηρίου με συγκέντρωση (δείκτης συγκέντρωσης παραγωγού) ανά στάδιο."
     },
     "tradePolicy": {
-      "restrictions": "Περιορισμοί",
       "tariffs": "Δασμοί",
       "flows": "Εμπορικές Ροές",
       "barriers": "Εμπόδια",
-      "noRestrictions": "Δεν υπάρχουν ενεργοί εμπορικοί περιορισμοί",
       "noTariffData": "Δεν υπάρχουν διαθέσιμα δεδομένα δασμών",
       "noFlowData": "Δεν υπάρχουν διαθέσιμα δεδομένα εμπορικών ροών",
       "noBarriers": "Δεν αναφέρθηκαν εμπορικά εμπόδια",
-      "apiKeyMissing": "Απαιτείται κλειδί WTO API — προσθέστε το στις Ρυθμίσεις",
-      "upstreamUnavailable": "Δεδομένα WTO προσωρινά μη διαθέσιμα — εμφάνιση αποθηκευμένων δεδομένων",
-      "appliedRate": "Εφαρμοζόμενος Συντελεστής",
-      "boundRate": "Δεσμευμένος Συντελεστής",
+      "apiKeyMissing": "Απαιτείται κλειδί API του Παγκόσμιου Οργανισμού Εμπορίου — προσθέστε το στις Ρυθμίσεις",
+      "upstreamUnavailable": "Τα δεδομένα του Παγκόσμιου Οργανισμού Εμπορίου δεν είναι προς το παρόν διαθέσιμα — εμφάνιση αποθηκευμένων δεδομένων",
       "exports": "Εξαγωγές",
       "imports": "Εισαγωγές",
-      "yoyChange": "Ετήσια Μεταβολή",
+      "yoyChange": "Μεταβολή Έτους προς Έτος",
       "highTariff": "Υψηλό",
       "moderateTariff": "Μέτριο",
-      "lowTariff": "Χαμηλό"
+      "lowTariff": "Χαμηλό",
+      "overview": "Επισκόπηση",
+      "noOverviewData": "Δεν υπάρχουν διαθέσιμα δεδομένα επισκόπησης δασμών",
+      "mfnAppliedRate": "Γενικός μη προτιμησιακός δασμός",
+      "baselineMfnTariff": "Γενικό δασμολόγιο αναφοράς",
+      "effectiveTariffRateLabel": "Ενεργός ποσοστό δασμού",
+      "gapLabel": "Κενό",
+      "gapVsMfnLabel": "Διαφορά από γενικό δασμό",
+      "noEffectiveCoverageForCountry": "Δεν υπάρχει κάλυψη ενεργού ποσοστού για αυτή τη χώρα",
+      "effectiveMinusBaseline": "Ισχύον ποσοστό μείον γενικό δασμολόγιο αναφοράς",
+      "wtoBaselineMeta": "Παγκόσμιος Οργανισμός Εμπορίου γενικός δασμός | {{year}}",
+      "overviewNoteNoEffective": "Αυτά τα στοιχεία είναι τα ποσοστά αναφοράς του Παγκόσμιου Οργανισμού Εμπορίου για τις περισσότερες προτιμήσεις, όχι το τρέχον δασμικό βάρος από μονομερείς δασμικές ενέργειες.",
+      "usBaselineLabel": "Γενικό δασμολόγιο αναφοράς ΗΠΑ",
+      "overviewNoteTail": "Αυτές οι κάρτες εμφανίζουν τους γενικούς βασικούς δασμολογικούς συντελεστές, όχι την τρέχουσα πραγματική δασμολογική επιβάρυνση.",
+      "revenue": "Έσοδα ΗΠΑ",
+      "noRevenueData": "Δεν υπάρχουν διαθέσιμα δεδομένα τελωνιακών εσόδων",
+      "treasuryUnavailable": "Δεδομένα Υπουργείου Οικονομικών προσωρινά μη διαθέσιμα",
+      "fytdLabel": "Έτος οικονομικής χρήσης {{year}} μέχρι σήμερα",
+      "vsPriorFy": "vs FY{{year}}",
+      "sourceWto": "Παγκόσμιος Οργανισμός Εμπορίου",
+      "sourceTreasury": "Υπουργείο Οικονομικών ΗΠΑ",
+      "colDate": "Ημερομηνία",
+      "colMonthly": "Μηνιαία",
+      "colFytd": "Έτος οικονομικής χρήσης μέχρι σήμερα",
+      "strategicFlows": "Στρατηγικές Ροές",
+      "noComtradeData": "Δεν υπάρχουν διαθέσιμα δεδομένα στρατηγικής ροής",
+      "comtradeUnavailable": "Δεδομένα UN Comtrade προσωρινά μη διαθέσιμα",
+      "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
+      "anomalyBadge": "Ανωμαλία",
+      "colReporter": "Χώρα",
+      "colCommodity": "Εμπόρευμα",
+      "colTradeValue": "Αξία Εμπορίου",
+      "infoTooltip": "<strong>Εμπορική πολιτική</strong> Γενικά μη προτιμησιακά δασμολόγια αναφοράς από τον Παγκόσμιο Οργανισμό Εμπορίου, με ισχύοντα ποσοστά ΗΠΑ όπου διατίθενται. Περιλαμβάνει τάσεις δασμών, ροές εμπορίου, τεχνικά και φυτοϋγειονομικά εμπόδια και μηνιαία δασμολογικά έσοδα των ΗΠΑ."
     },
     "gdelt": {
       "empty": "Δεν υπάρχουν πρόσφατα άρθρα για αυτό το θέμα"
     },
     "geoHubs": {
-      "tooltip": "<strong>Γεωπολιτικά Κέντρα Δραστηριότητας</strong><br>Εμφανίζει περιοχές με τη μεγαλύτερη ειδησεογραφική δραστηριότητα.<br><br><em>Τύποι κέντρων:</em><br>• 🏛️ Πρωτεύουσες — Παγκόσμιες πρωτεύουσες και κυβερνητικά κέντρα<br>• ⚔️ Ζώνες Σύγκρουσης — Ενεργές περιοχές σύγκρουσης<br>• ⚓ Στρατηγικά — Σημεία ελέγχου και κρίσιμες περιοχές<br>• 🏢 Οργανισμοί — UN, NATO, IAEA, κ.λπ.<br><br><em>Επίπεδα δραστηριότητας:</em><br>• <span style=\"color: #ff4444\">Υψηλό</span> — Έκτακτες ειδήσεις ή βαθμολογία 70+<br>• <span style=\"color: #ff8844\">Αυξημένο</span> — Βαθμολογία 40-69<br>• <span style=\"color: #888\">Χαμηλό</span> — Βαθμολογία κάτω από 40<br><br>Κάντε κλικ σε ένα κέντρο για μεγέθυνση στην τοποθεσία του.",
-      "noActive": "Δεν υπάρχουν ενεργά γεωπολιτικά κέντρα",
       "story": "ιστορία",
       "stories": "ιστορίες",
       "infoTooltip": "<strong>Γεωπολιτικά Κέντρα Δραστηριότητας</strong><br>Εμφανίζει περιοχές με τη μεγαλύτερη ειδησεογραφική δραστηριότητα.<br><br><em>Τύποι κέντρων:</em><br>• 🏛️ Πρωτεύουσες — Παγκόσμιες πρωτεύουσες και κυβερνητικά κέντρα<br>• ⚔️ Ζώνες Σύγκρουσης — Ενεργές περιοχές σύγκρουσης<br>• ⚓ Στρατηγικά — Σημεία ελέγχου και κρίσιμες περιοχές<br>• 🏢 Οργανισμοί — UN, NATO, IAEA, κ.λπ.<br><br><em>Επίπεδα δραστηριότητας:</em><br>• <span style=\"color: {{highColor}}\">Υψηλό</span> — Έκτακτες ειδήσεις ή βαθμολογία 70+<br>• <span style=\"color: {{elevatedColor}}\">Αυξημένο</span> — Βαθμολογία 40-69<br>• <span style=\"color: {{lowColor}}\">Χαμηλό</span> — Βαθμολογία κάτω από 40<br><br>Κάντε κλικ σε ένα κέντρο για μεγέθυνση στην τοποθεσία του."
     },
     "techHubs": {
-      "tooltip": "<strong>Δραστηριότητα Tech Hubs</strong><br>Εμφανίζει tech hubs με τη μεγαλύτερη ειδησεογραφική δραστηριότητα.<br><br><em>Επίπεδα δραστηριότητας:</em><br>• <span style=\"color: #00ff88\">Υψηλό</span> — Έκτακτες ειδήσεις ή βαθμολογία 50+<br>• <span style=\"color: #ffc800\">Αυξημένο</span> — Βαθμολογία 20-49<br>• <span style=\"color: #888\">Χαμηλό</span> — Βαθμολογία κάτω από 20<br><br>Κάντε κλικ σε ένα hub για μεγέθυνση στην τοποθεσία του.",
-      "noActive": "Δεν υπάρχουν ενεργά tech hubs",
       "infoTooltip": "<strong>Δραστηριότητα Tech Hubs</strong><br>Εμφανίζει tech hubs με τη μεγαλύτερη ειδησεογραφική δραστηριότητα.<br><br><em>Επίπεδα δραστηριότητας:</em><br>• <span style=\"color: {{highColor}}\">Υψηλό</span> — Έκτακτες ειδήσεις ή βαθμολογία 50+<br>• <span style=\"color: {{elevatedColor}}\">Αυξημένο</span> — Βαθμολογία 20-49<br>• <span style=\"color: {{lowColor}}\">Χαμηλό</span> — Βαθμολογία κάτω από 20<br><br>Κάντε κλικ σε ένα hub για μεγέθυνση στην τοποθεσία του."
     },
     "predictions": {
-      "tooltip": "<strong>Αγορές Προβλέψεων</strong><br>Αγορές πρόβλεψης με πραγματικό χρήμα:<br><ul><li>Οι τιμές αντικατοπτρίζουν εκτιμήσεις πιθανότητας πλήθους</li><li>Υψηλότερος όγκος = πιο αξιόπιστο σήμα</li><li>Εστίαση σε γεωπολιτικά και τρέχοντα γεγονότα</li></ul>Πηγή: Polymarket (polymarket.com)",
-      "error": "Αποτυχία φόρτωσης προβλέψεων",
       "yes": "Ναι",
       "no": "Όχι",
       "vol": "Όγκ",
@@ -835,7 +1067,6 @@
     "stablecoins": {
       "pegHealth": "Υγεία Σύνδεσης",
       "supplyVolume": "Προσφορά & Όγκος",
-      "unavailable": "Δεδομένα stablecoin προσωρινά μη διαθέσιμα",
       "token": "Token",
       "mcap": "Κεφ/ποίηση",
       "vol24h": "Όγκος 24ω",
@@ -843,13 +1074,7 @@
       "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
     },
     "status": {
-      "dataFeeds": "Ροές Δεδομένων",
-      "apiStatus": "Κατάσταση API",
-      "storage": "Αποθήκευση",
-      "systemStatus": "Κατάσταση Συστήματος",
-      "updatedJustNow": "Ενημερώθηκε μόλις τώρα",
-      "updatedAt": "Ενημερώθηκε {{time}}",
-      "storageUnavailable": "Πληροφορίες αποθήκευσης μη διαθέσιμες"
+      "updatedAt": "Ενημερώθηκε {{time}}"
     },
     "playback": {
       "toggleMode": "Εναλλαγή Λειτουργίας Αναπαραγωγής",
@@ -862,10 +1087,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Δείκτης: World Monitor · δεδομένα καταστημάτων:",
+      "statusNormal": "ΚΑΝΟΝΙΚΟ",
+      "statusNoData": "ΧΩΡΙΣ ΔΕΔΟΜΕΝΑ",
+      "statusNoBaseline": "ΧΩΡΙΣ ΒΑΣΗ",
+      "vsUsual": "σε σχέση με το σύνηθες",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Ενημερώθηκε {{timeAgo}}",
       "tensionsTitle": "Γεωπολιτικές Εντάσεις",
+      "tensionsSource": "Εντάσεις: World Monitor με βάση συμβάντα GDELT",
+      "insufficientData": "Ανεπαρκή δεδομένα",
+      "pizzaUnavailable": "Η δραστηριότητα των πιτσαριών δεν είναι διαθέσιμη",
       "source": "Πηγή:",
       "statusClosed": "ΚΛΕΙΣΤΟ",
       "statusSpike": "ΚΟΡΥΦΩΣΗ",
@@ -877,11 +1110,11 @@
       "minutesAgo": "{{m}}λ πριν",
       "hoursAgo": "{{h}}ω πριν",
       "defconLabels": {
-        "1": "COCKED PISTOL - ΜΕΓΙΣΤΗ ΕΤΟΙΜΟΤΗΤΑ",
-        "2": "FAST PACE - ΕΝΟΠΛΕΣ ΔΥΝΑΜΕΙΣ ΕΤΟΙΜΕΣ",
-        "3": "ROUND HOUSE - ΑΥΞΗΣΗ ΕΤΟΙΜΟΤΗΤΑΣ ΔΥΝΑΜΕΩΝ",
-        "4": "DOUBLE TAKE - ΑΥΞΗΜΕΝΗ ΕΠΙΤΗΡΗΣΗ ΠΛΗΡΟΦΟΡΙΩΝ",
-        "5": "FADE OUT - ΧΑΜΗΛΟΤΕΡΗ ΕΤΟΙΜΟΤΗΤΑ"
+        "1": "Μέγιστη Δραστηριότητα",
+        "2": "Υψηλή Δραστηριότητα",
+        "3": "Αυξημένη Δραστηριότητα",
+        "4": "Πάνω από το Κανονικό",
+        "5": "Κανονική Δραστηριότητα"
       }
     },
     "strategicPosture": {
@@ -892,7 +1125,7 @@
       "units": {
         "fighters": "Μαχητικά",
         "tankers": "Εναέριοι Τάνκερ",
-        "awacs": "AWACS",
+        "awacs": "Αερομεταφερόμενη έγκαιρη προειδοποίηση",
         "recon": "Αναγνώριση",
         "transport": "Μεταφορά",
         "bombers": "Βομβαρδιστικά",
@@ -906,17 +1139,17 @@
         "auxiliary": "Βοηθητικά",
         "navalVessels": "Πολεμικά Πλοία"
       },
-      "infoTooltip": "<strong>Μεθοδολογία</strong><p>Συγκεντρώνει στρατιωτικά αεροσκάφη και πολεμικά πλοία ανά θέατρο.</p><ul><li><strong>Κανονικό:</strong> Δραστηριότητα βάσης</li><li><strong>Αυξημένο:</strong> Πάνω από όριο (50+ αεροσκάφη)</li><li><strong>Κρίσιμο:</strong> Υψηλή συγκέντρωση (100+ αεροσκάφη)</li></ul><p><strong>Ικανότητα Κρούσης:</strong> Τάνκερ + AWACS + Μαχητικά παρόντα σε επαρκείς αριθμούς για παρατεταμένες επιχειρήσεις.</p>",
+      "infoTooltip": "<strong>Μεθοδολογία</strong><p>Συγκεντρώνει στρατιωτικά αεροσκάφη και ναυτικά πλοία ανά θέατρο.</p><ul><li><strong>Κανονικό:</strong> Δραστηριότητα αναφοράς</li><li><strong>Ανυψωμένο:</strong> Πάνω από όριο (50+ αεροσκάφη)</li><li><strong>Κρίσιμο:</strong> Υψηλή συγκέντρωση (100+ αεροσκάφη)</li></ul><p><strong>Ικανότητα αεροπορικής επίθεσης:</strong> Δεξαμενές καυσίμου + Αερομεταφερόμενη έγκαιρη προειδοποίηση + Μαχητικά αεροσκάφη παρόντα σε επαρκείς αριθμούς για συντεταγμένες επιχειρήσεις.</p>",
       "scanningTheaters": "Σάρωση Θεάτρων",
       "positions": "Θέσεις αεροσκαφών",
       "navalVesselsLoading": "Πολεμικά πλοία",
       "theaterAnalysis": "Ανάλυση θεάτρου",
-      "connectingStreams": "Σύνδεση σε ζωντανές ροές ADS-B & AIS...",
+      "connectingStreams": "Σύνδεση με ζωντανές ροές αναγνώρισης αεροσκαφών και παρακολούθησης πλοίων...",
       "initialLoadNote": "Η αρχική φόρτωση χρειάζεται 30-60 δευτερόλεπτα καθώς συγκεντρώνονται δεδομένα",
       "acquiringData": "Λήψη Δεδομένων",
-      "acquiringDesc": "Σύνδεση στο δίκτυο ADS-B για δεδομένα στρατιωτικών πτήσεων. Μπορεί να χρειαστούν 30-60 δευτερόλεπτα στην πρώτη φόρτωση.",
-      "openSkyAdsb": "OpenSky ADS-B",
-      "aisVesselStream": "Ροή Πλοίων AIS",
+      "acquiringDesc": "Σύνδεση με δίκτυο αναγνώρισης αεροσκαφών για δεδομένα στρατιωτικών πτήσεων. Αυτό μπορεί να διαρκέσει 30-60 δευτερόλεπτα κατά την πρώτη φόρτωση.",
+      "openSkyAdsb": "Αναγνώριση αεροσκαφών OpenSky",
+      "aisVesselStream": "Ροή παρακολούθησης πλοίων",
       "retryNow": "Επανάληψη Τώρα",
       "feedRateLimited": "Περιορισμός Ρυθμού Ροής",
       "rateLimitedDesc": "Το OpenSky API έχει όρια αιτημάτων. Ο πίνακας θα επαναλάβει αυτόματα σε λίγα λεπτά, ή μπορείτε να δοκιμάσετε τώρα.",
@@ -945,14 +1178,16 @@
         "east-med-theater": "Ανατολική Μεσόγειος",
         "israel-gaza-theater": "Ισραήλ/Γάζα",
         "yemen-redsea-theater": "Υεμένη/Ερυθρά Θάλασσα"
-      }
+      },
+      "emojiKeyLabel": "Κλειδί Emoji",
+      "emojiKeyAir": "Αεροπορικά Περιουσιακά Στοιχεία",
+      "emojiKeyNaval": "Ναυτικά Περιουσιακά Στοιχεία"
     },
     "countryBrief": {
       "shareLink": "Κοινοποίηση συνδέσμου",
       "shareStory": "Κοινοποίηση ιστορίας",
       "printPdf": "Εκτύπωση / PDF",
-      "exportData": "Εξαγωγή δεδομένων",
-      "sourceRef": "Πηγή [{{n}}]"
+      "exportData": "Εξαγωγή δεδομένων"
     },
     "relatedAssets": {
       "pipeline": "Αγωγός",
@@ -960,12 +1195,6 @@
       "datacenter": "Κέντρο Δεδομένων",
       "base": "Βάση",
       "nuclear": "Πυρηνικό"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next",
-      "openDiscussion": "Join Discord",
-      "dontShowAgain": "Να μην εμφανιστεί ξανά",
-      "sectionLabel": "Κοινότητα"
     },
     "threatLabels": {
       "critical": "ΚΡΙΣ",
@@ -996,11 +1225,14 @@
         "base": "Βάση",
         "nuclear": "Πυρηνικό",
         "aircraft": "Αεροσκάφος",
-        "ciiLow": "Χαμηλό (0–30)",
-        "ciiNormal": "Κανονικό (31–50)",
-        "ciiElevated": "Αυξημένο (51–65)",
-        "ciiHigh": "Υψηλό (66–80)",
-        "ciiCritical": "Κρίσιμο (81–100)"
+        "miningSite": "Ορυχείο",
+        "commodityPort": "Λιμάνι Εμπορευμάτων",
+        "pipeline": "Αγωγός",
+        "processingPlant": "Εγκατάσταση Επεξεργασίας",
+        "conflict": "Ζώνη Σύγκρουσης",
+        "diseaseAlert": "Προειδοποίηση Νόσου",
+        "diseaseWarning": "Προειδοποίηση Νόσου",
+        "diseaseWatch": "Παρακολούθηση Νόσου"
       },
       "layerGuide": "Οδηγός Επιπέδων",
       "layerWarningTitle": "Σημείωση απόδοσης",
@@ -1013,7 +1245,7 @@
       "views": {
         "global": "Παγκόσμια",
         "americas": "Αμερική",
-        "mena": "MENA",
+        "mena": "Μέση Ανατολή και Βόρεια Αφρική",
         "europe": "Ευρώπη",
         "asia": "Ασία",
         "latam": "Λατινική Αμερική",
@@ -1047,7 +1279,7 @@
         "ucdpEvents": "Συμβάντα UCDP",
         "displacementFlows": "Ροές Εκτοπισμού",
         "climateAnomalies": "Κλιματικές Ανωμαλίες",
-        "weatherAlerts": "Καιρικές Προειδοποιήσεις",
+        "weatherAlerts": "Προειδοποιήσεις έντονων καιρικών φαινομένων (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Στρατηγικές Υδάτινες Οδοί",
         "economicCenters": "Οικονομικά Κέντρα",
         "criticalMinerals": "Κρίσιμα Ορυκτά",
@@ -1055,17 +1287,21 @@
         "financialCenters": "Χρηματοπιστωτικά Κέντρα",
         "centralBanks": "Κεντρικές Τράπεζες",
         "commodityHubs": "Κέντρα Εμπορευμάτων",
-        "gulfInvestments": "Επενδύσεις GCC",
+        "gulfInvestments": "Επενδύσεις Συμβουλίου Συνεργασίας του Κόλπου",
         "tradeRoutes": "Εμπορικές Διαδρομές",
-        "iranAttacks": "Επιθέσεις Ιράν",
-        "gpsJamming": "GPS JAMMING",
-        "ciiChoropleth": "Αστάθεια CII",
+        "iranAttacks": "Πλήγματα στη Μέση Ανατολή",
+        "gpsJamming": "Παρεμβολή πλοήγησης",
+        "ciiChoropleth": "Ασταθμότητα χώρας",
         "dayNight": "Ημέρα/Νύχτα",
         "positiveEvents": "Θετικά γεγονότα",
         "kindness": "Πράξεις καλοσύνης",
         "happiness": "Παγκόσμια ευτυχία",
         "speciesRecovery": "Ανάκαμψη ειδών",
-        "renewableInstallations": "Καθαρή ενέργεια"
+        "renewableInstallations": "Καθαρή ενέργεια",
+        "radiationSpike": "Αιχμή ραδιενέργειας",
+        "radiationElevated": "Αυξημένη ραδιενέργεια",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Σεισμός",
@@ -1092,7 +1328,14 @@
         "medium": "μέτριο",
         "news": "Ειδήσεις",
         "undisclosed": "Αδιευκρίνιστο",
-        "stake": "μερίδιο"
+        "stake": "μερίδιο",
+        "internallyDisplaced": "εσωτερικά εκτοπισμένοι",
+        "sourceIomDtm": "Πηγή: IOM DTM",
+        "sinceDate": "από {{date}}",
+        "lastMonth": "τον προηγούμενο μήνα",
+        "sourceUnhcrOdp": "Πηγή: Πύλη Επιχειρησιακών Δεδομένων της Ύπατης Αρμοστείας",
+        "displaced": "εκτοπισμένοι",
+        "sourceIdmc": "Πηγή: IDMC"
       },
       "layerHelp": {
         "title": "Οδηγός Επιπέδων Χάρτη",
@@ -1126,7 +1369,7 @@
           "infraDatacenters": "Συστοιχίες υπολογιστών AI >=10.000 GPUs",
           "infraOutages": "Blackout διαδικτύου και διακοπές υπηρεσιών",
           "naturalEventsTech": "Σεισμοί, καταιγίδες, πυρκαγιές (μπορεί να επηρεάσουν κέντρα δεδομένων)",
-          "weatherAlerts": "Σοβαρές καιρικές προειδοποιήσεις",
+          "weatherAlerts": "Επίσημες προειδοποιήσεις έντονων καιρικών φαινομένων από εθνικές μετεωρολογικές υπηρεσίες (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Χρηματιστήρια & κεντρικές τράπεζες",
           "countriesOverlay": "Επικαλύψεις ονομάτων χωρών",
           "financeExchanges": "Σημαντικά παγκόσμια χρηματιστήρια ανά βαθμίδα αγοράς",
@@ -1138,7 +1381,7 @@
           "financeOutages": "Διακοπές διαδικτύου που μπορούν να επηρεάσουν τις λειτουργίες αγοράς",
           "financeCyberThreats": "Γεγονότα ασφαλείας γύρω από χρηματοπιστωτικές υποδομές",
           "macroWaterways": "Στρατηγικά σημεία ελέγχου για ναυτιλία εμπορευμάτων",
-          "weatherAlertsMarket": "Σοβαρά καιρικά φαινόμενα με σημασία για τις αγορές",
+          "weatherAlertsMarket": "Επίσημες προειδοποιήσεις έντονων καιρικών φαινομένων με σημασία για τις αγορές (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Σεισμοί, πυρκαγιές, πλημμύρες και άλλες φυσικές καταστροφές",
           "timeRecent": "Φιλτράρισμα χρονικών δεδομένων σε πρόσφατες ώρες",
           "timeExtended": "Εμφάνιση δεδομένων από την προηγούμενη εβδομάδα, μήνα ή όλα",
@@ -1153,7 +1396,7 @@
           "infraCablesFull": "Σημαντικά υποθαλάσσια καλώδια οπτικών ινών (20 κύριες διαδρομές)",
           "infraPipelinesFull": "Αγωγοί πετρελαίου/αερίου (Nord Stream, TAPI, κ.λπ.)",
           "infraDatacentersFull": "Συστοιχίες υπολογιστών AI μόνο >=10.000 GPUs",
-          "transportShipping": "Ζωντανή παρακολούθηση πλοίων μέσω AIS (θέσεις πλοίων)",
+          "transportShipping": "Ζωντανές θέσεις πλοίων από πομπούς πλοίων",
           "transportDelays": "Καθυστερήσεις αεροδρομίων και αναστολές εδάφους (FAA)",
           "naturalEventsFull": "Σεισμοί (USGS) + καταιγίδες, πυρκαγιές, ηφαίστεια, πλημμύρες (NASA EONET)",
           "firesFull": "Ενεργές πυρκαγιές και περίμετροι φωτιάς (NASA FIRMS)",
@@ -1167,11 +1410,13 @@
           "techCyberThreats": "Κυβερνοεπιθέσεις και γεγονότα ασφαλείας",
           "techEvents": "Σημαντικά συνέδρια τεχνολογίας και εκδηλώσεις",
           "techFires": "Ενεργές πυρκαγιές κοντά σε τεχνολογικές υποδομές",
-          "financeGulfInvestments": "Επενδύσεις κρατικών ταμείων πλούτου GCC και ΑΞΕ",
+          "financeGulfInvestments": "Επενδύσεις κυριαρχικών ταμείων του Συμβουλίου Συνεργασίας του Κόλπου και άμεσες ξένες επενδύσεις",
           "tradeRoutes": "Κύριες παγκόσμιες ναυτιλιακές γραμμές που συνδέουν λιμάνια μέσω στρατηγικών σημείων",
           "dayNight": "Ηλιακός τερματισμός σε πραγματικό χρόνο που δείχνει ζώνες ημέρας και νύχτας",
           "geoBoundaries": "Αποστρατικοποιημένες ζώνες, γραμμές εκεχειρίας και αμφισβητούμενα σύνορα",
-          "ciiChoropleth": "Θερμικός χάρτης αστάθειας χωρών — χρωματισμός κατά CII (πράσινο=σταθερό, κόκκινο=κρίσιμο)"
+          "ciiChoropleth": "Θερμικός χάρτης Country Instability Index — χρώματα χώρες κατά βαθμό (πράσινο=σταθερή, κόκκινο=κρίσιμη)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Επηρεάζει: Σεισμούς, Καιρό, Διαμαρτυρίες, Διακοπές"
@@ -1179,9 +1424,16 @@
       }
     },
     "cii": {
-      "shareStory": "Κοινοποίηση ιστορίας",
       "noSignals": "Δεν ανιχνεύθηκαν σήματα αστάθειας",
-      "infoTooltip": "<strong>Μεθοδολογία</strong><ul><li><strong>Α</strong>ναταραχή: πολιτική αναταραχή & διαμαρτυρίες</li><li><strong>Σ</strong>ύγκρουση: ένταση ένοπλων συγκρούσεων</li><li><strong>Α</strong>σφάλεια: στρατιωτικές πτήσεις/πλοία πάνω από επικράτεια</li><li><strong>Π</strong>ληροφορίες: ταχύτητα ειδήσεων και συσχέτιση εστιακών σημείων</li><li>Ενίσχυση εγγύτητας σε εστίες (στρατηγικές τοποθεσίες)</li></ul><em>Οι τιμές Α:Σ:Α:Π δείχνουν βαθμολογίες συνιστωσών.</em> Η Ανίχνευση Εστιακών Σημείων συσχετίζει οντότητες ειδήσεων με σήματα χάρτη για ακριβή βαθμολόγηση."
+      "infoTooltip": "<strong>Μεθοδολογία</strong><ul><li><strong>Α</strong>ναταραχή: πολιτική αναταραχή & διαμαρτυρίες</li><li><strong>Σ</strong>ύγκρουση: ένταση ένοπλων συγκρούσεων</li><li><strong>Α</strong>σφάλεια: στρατιωτικές πτήσεις/πλοία πάνω από επικράτεια</li><li><strong>Π</strong>ληροφορίες: ταχύτητα ειδήσεων και συσχέτιση εστιακών σημείων</li><li>Ενίσχυση εγγύτητας σε εστίες (στρατηγικές τοποθεσίες)</li></ul><em>Οι τιμές Α:Σ:Α:Π δείχνουν βαθμολογίες συνιστωσών.</em> Η Ανίχνευση Εστιακών Σημείων συσχετίζει οντότητες ειδήσεων με σήματα χάρτη για ακριβή βαθμολόγηση.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Περιλαμβάνει βάση αναφοράς ανά χώρα + πολλαπλασιαστή συμβάντος — δείτε /docs/methodology/cii-risk-scores για τον δημοσιευμένο πίνακα",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "υποβαθμισμένο",
+        "stale": "παρωχημένο"
+      }
     },
     "insights": {
       "noStories": "Δεν υπάρχουν ακόμα έκτακτες ή πολυπηγές ιστορίες",
@@ -1190,15 +1442,9 @@
       "rankingStories": "Κατάταξη σημαντικών ιστοριών...",
       "analyzingSentiment": "Ανάλυση συναισθήματος...",
       "generatingBrief": "Δημιουργία παγκόσμιας ενημέρωσης...",
-      "infoTooltip": "<strong>Ανάλυση με AI</strong><br>• <strong>Παγκόσμια Ενημέρωση</strong>: Περίληψη AI (Groq/OpenRouter)<br>• <strong>Συναίσθημα</strong>: Ανάλυση τόνου ειδήσεων<br>• <strong>Ταχύτητα</strong>: Ταχέως εξελισσόμενες ιστορίες<br>• <strong>Εστιακά Σημεία</strong>: Συσχετίζει οντότητες ειδήσεων με σήματα χάρτη (στρατιωτικά, διαμαρτυρίες, διακοπές)<br><em>Μόνο desktop • Τροφοδοτείται από Llama 3.3 + Ανίχνευση Εστιακών Σημείων</em>",
-      "settingsTitle": "Ρυθμίσεις",
-      "sectionMap": "Χάρτης",
-      "sectionAi": "Ανάλυση AI",
-      "sectionStreaming": "Streaming",
+      "infoTooltip": "<strong>Ανάλυση με AI</strong><br>• <strong>Παγκόσμια Ενημέρωση</strong>: Περίληψη AI (OpenRouter)<br>• <strong>Συναίσθημα</strong>: Ανάλυση τόνου ειδήσεων<br>• <strong>Ταχύτητα</strong>: Ταχέως εξελισσόμενες ιστορίες<br>• <strong>Εστιακά Σημεία</strong>: Συσχετίζει οντότητες ειδήσεων με σήματα χάρτη (στρατιωτικά, διαμαρτυρίες, διακοπές)<br><em>Μόνο desktop • Τροφοδοτείται από Llama 3.3 + Ανίχνευση Εστιακών Σημείων</em>",
       "streamQualityLabel": "Ποιότητα Βίντεο",
       "streamQualityDesc": "Ρύθμιση ποιότητας για όλες τις ζωντανές ροές (χαμηλότερη εξοικονομεί εύρος ζώνης)",
-      "globeRenderQualityLabel": "Ποιότητα απόδοσης υδρογείου",
-      "globeRenderQualityDesc": "Ελέγχει την ανάλυση του καμβά της υδρογείου. Υψηλότερες τιμές δείχνουν καθαρότερα σε οθόνες 4K αλλά μπορεί να υπερφορτώσουν τη GPU.",
       "globeRenderScaleOptions": {
         "1": "Οικο (1x)",
         "2": "4K (2x)",
@@ -1208,8 +1454,7 @@
       },
       "mapFlashLabel": "Παλμός Ζωντανών Γεγονότων",
       "mapFlashDesc": "Φωτίζει τοποθεσίες στον χάρτη όταν φτάνουν έκτακτα νέα",
-      "aiFlowTitle": "Ρυθμίσεις",
-      "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "Cloud AI (OpenRouter)",
       "aiFlowCloudDesc": "Αποστολή τίτλων στο cloud για σύνοψη AI (συνιστάται)",
       "aiFlowBrowserLabel": "Τοπικό Μοντέλο Περιηγητή",
       "aiFlowBrowserDesc": "Εκτέλεση AI τοπικά στον περιηγητή σας",
@@ -1223,17 +1468,56 @@
       "aiFlowStatusDisabled": "Κανένας πάροχος AI ενεργοποιημένος",
       "insightsDisabledTitle": "Η ανάλυση AI είναι απενεργοποιημένη",
       "insightsDisabledHint": "Ενεργοποιήστε παρόχους μέσω του γραναζιού ρυθμίσεων στην κεφαλίδα του χάρτη",
-      "sectionPanels": "Πάνελ",
       "badgeAnimLabel": "Κινούμενα σήματα",
       "badgeAnimDesc": "Κίνηση σημάτων ενημέρωσης στις κεφαλίδες πάνελ",
-      "sectionIntelligence": "Πληροφορίες",
       "headlineMemoryLabel": "Μνήμη τίτλων",
       "headlineMemoryDesc": "Αποθήκευση τίτλων που είδατε για επισήμανση νέων",
-      "streamAlwaysOnLabel": "Διατήρηση ζωντανών ροών σε λειτουργία",
-      "streamAlwaysOnDesc": "Αποτρέπει την αυτόματη παύση των Live Cams και Live News όταν είστε ανενεργοί. Συνιστάται για χρήση σε δεύτερη οθόνη / wallboard. Απενεργοποιήστε το (Eco) για εξοικονόμηση CPU/εύρους ζώνης."
+      "streamAlwaysOnLabel": "Αυτόματη αναπαραγωγή ζωντανών ροών στον πίνακα ελέγχου",
+      "streamAlwaysOnDesc": "Ξεκινά αυτόματα το Live News και το Live Webcams όταν είναι ορατά. Αφήστε το απενεργοποιημένο για φόρτωση βίντεο μόνο αφού κάνετε κλικ στην Αναπαραγωγή.",
+      "analysisFrameworksLabel": "Πλαίσια Ανάλυσης",
+      "analysisFrameworksActivePerPanel": "Ενεργό ανά πίνακα",
+      "analysisFrameworksSkillLibrary": "Βιβλιοθήκη Δεξιοτήτων",
+      "analysisFrameworksImportBtn": "Εισαγωγή πλαισίου",
+      "analysisFrameworksDefaultNeutral": "Προεπιλογή (Ουδέτερο)",
+      "analysisFrameworksImportTitle": "Εισαγωγή Πλαισίου",
+      "analysisFrameworksFromAgentskills": "Από agentskills.io",
+      "analysisFrameworksPasteJson": "Επικόλληση JSON",
+      "analysisFrameworksSaveToLibrary": "Αποθήκευση στη Βιβλιοθήκη",
+      "frameworkNote": "Ισχύει μόνο για ανάλυση που δημιουργείται από τον πελάτη",
+      "loadingServerInsights": "Φόρτωση πληροφοριών διακομιστή...",
+      "usingCachedBrief": "Χρήση αποθηκευμένης σύνοψης...",
+      "multiPerspectiveAnalysis": "Ανάλυση από πολλές οπτικές γωνίες...",
+      "generatingBriefSub": "Δημιουργία σύνοψης: {{msg}}",
+      "breakingConfirmed": "BREAKING & CONFIRMED",
+      "multiSource": "Πολλαπλές πηγές",
+      "fastMoving": "Ταχέως κινούμενο",
+      "clusters": "Συστάδες",
+      "alertsLabel": "Ειδοποιήσεις",
+      "alert": "ALERT",
+      "sources_one": "{{count}} πηγή",
+      "sources_other": "{{count}} πηγές",
+      "briefTech": "TECH BRIEF",
+      "briefCommodity": "COMMODITY BRIEF",
+      "briefEnergy": "ENERGY BRIEF",
+      "briefWorld": "WORLD BRIEF",
+      "mlDetected": "Η μηχανική μάθηση ΑΝΙΧΝΕΥΣΕ",
+      "geographicConvergence": "GEOGRAPHIC CONVERGENCE",
+      "focalPoints": "FOCAL POINTS",
+      "toneMixed": "Μικτό",
+      "toneNegative": "Αρνητικό",
+      "tonePositive": "Θετικό",
+      "overall": "Συνολικά: {{tone}}",
+      "signalTypesEvents": "{{types}} τύποι σήματος • {{events}} συμβάντα",
+      "newsSignals": "{{news}} ειδήσεις • {{signals}} σήματα",
+      "provenanceTitle": "Προέλευση κάλυψης: πόσες καταχωρημένες ιστορίες και διακριτές πηγές επιλέχθησαν για αυτή τη σύνοψη",
+      "compiledFrom": "Συντάχθηκε από {{stories}} ιστορίες σε {{sources}} πηγές",
+      "briefFreshness": "Δημιουργήθηκε πριν {{minutes}}λ · νεότερη πηγή {{hours}}ώ παλιά",
+      "briefStoryDetails": "Λεπτομέρειες είδησης ({{count}})",
+      "streamIdleStopLabel": "Διακοπή ζωντανού βίντεο όταν είναι αδρανές",
+      "streamIdleStopDesc": "Διακόπτει τα Live News και τις Live Webcams μετά από αυτή τη διάρκεια χωρίς δραστηριότητα και εμφανίζει ένα σημείωμα στο panel.",
+      "streamIdleStopNever": "Ποτέ"
     },
     "settings": {
-      "dataManagementLabel": "Διαχείριση δεδομένων",
       "exportSettings": "Εξαγωγή ρυθμίσεων",
       "importSettings": "Εισαγωγή ρυθμίσεων",
       "exportSuccess": "Οι ρυθμίσεις εξήχθησαν επιτυχώς",
@@ -1243,7 +1527,6 @@
       "reloadNow": "Επαναφόρτωση τώρα"
     },
     "cascade": {
-      "noImpacts": "Δεν ανιχνεύθηκαν επιπτώσεις σε χώρες",
       "filters": {
         "cables": "Καλώδια",
         "pipelines": "Αγωγοί",
@@ -1268,6 +1551,8 @@
       "capacityPercent": "{{percent}}% χωρητικότητα",
       "noCountryImpacts": "Δεν ανιχνεύθηκαν επιπτώσεις σε χώρες",
       "alternativeRoutes": "Εναλλακτικές Διαδρομές",
+      "sharesCutZone": "ίδιο στενό",
+      "estimateNote": "Εκτίμηση: η χωρητικότητα και η εφεδρεία των καλωδίων είναι προσεγγιστικές, όχι μετρημένες.",
       "countriesAffected": "Χώρες που Επηρεάζονται ({{count}})",
       "links": "σύνδεσμοι",
       "selectInfrastructureHint": "Επιλέξτε υποδομή για ανάλυση αλυσιδωτής επίπτωσης",
@@ -1276,9 +1561,8 @@
     "strategicRisk": {
       "noRisks": "Δεν ανιχνεύθηκαν σημαντικοί κίνδυνοι",
       "levels": {
-        "critical": "Κρίσιμο",
-        "elevated": "Αυξημένο",
-        "moderate": "Μέτριο",
+        "high": "Υψηλό",
+        "medium": "Μεσαίο",
         "low": "Χαμηλό"
       },
       "trend": "Τάση",
@@ -1299,7 +1583,7 @@
       "noData": "χωρίς δεδομένα",
       "enable": "Ενεργοποίηση",
       "convergenceMetric": "Σύγκλιση",
-      "ciiDeviation": "Απόκλιση CII",
+      "ciiDeviation": "Απόκλιση Country Instability Index",
       "infraEvents": "Συμβάντα Υποδομών",
       "highAlerts": "Υψηλοί Συναγερμοί",
       "topRisks": "Κορυφαίοι Κίνδυνοι",
@@ -1310,14 +1594,20 @@
         "minutesAgo": "{{count}}λ πριν",
         "hoursAgo": "{{count}}ω πριν"
       },
-      "infoTooltip": "<strong>Μεθοδολογία</strong> Σύνθετη βαθμολογία (0-100) που συνδυάζει:<ul><li>50% Αστάθεια Χωρών (κορυφαίες 5 σταθμισμένες)</li><li>30% Ζώνες γεωγραφικής σύγκλισης</li><li>20% Συμβάντα υποδομών</li></ul>Αυτόματη ανανέωση κάθε 5 λεπτά."
+      "infoTooltip": "<strong>Μεθοδολογία</strong> Σύνθετη βαθμολογία (0-100) που συνδυάζει:<ul><li>50% Αστάθεια Χωρών (κορυφαίες 5 σταθμισμένες)</li><li>30% Ζώνες γεωγραφικής σύγκλισης</li><li>20% Συμβάντα υποδομών</li></ul>Αυτόματη ανανέωση κάθε 5 λεπτά.",
+      "cachedCiiStatus": "Αποθηκευμένο Country Instability Index {{states}}",
+      "sourceStates": {
+        "degraded": "υποβαθμισμένο",
+        "stale": "παρωχημένο"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "Φόρτωση tech εκδηλώσεων...",
       "noEvents": "Δεν υπάρχουν εκδηλώσεις",
       "showOnMap": "Εμφάνιση στον χάρτη",
       "moreInfo": "Περισσότερα",
-      "retry": "Επανάληψη",
       "upcoming": "Επερχόμενες",
       "conferences": "Συνέδρια",
       "earnings": "Οικονομικά Αποτελέσματα",
@@ -1326,24 +1616,25 @@
       "onMap": "{{count}} στον χάρτη",
       "techmemeEvents": "Εκδηλώσεις Techmeme ↗",
       "today": "ΣΗΜΕΡΑ",
-      "soon": "ΣΥΝΤΟΜΑ"
+      "soon": "ΣΥΝΤΟΜΑ",
+      "infoTooltip": "<strong>Τεχνολογικά Γεγονότα</strong> Επερχόμενα και πρόσφατα τεχνολογικά γεγονότα: συνέδρια, παρουσιάσεις προϊόντων, ρυθμιστικές ακροάσεις και κλήσεις κερδών. Συγκεντρωμένα από επίσημα ημερολόγια εκδηλώσεων και πηγές του κλάδου."
     },
     "techReadiness": {
       "internetUsers": "Χρήστες Διαδικτύου",
       "mobileSubscriptions": "Συνδρομές Κινητών",
-      "rdSpending": "Δαπάνες Ε&Α",
+      "rdSpending": "Δαπάνη έρευνας και ανάπτυξης",
       "fetchingData": "Ανάκτηση Δεδομένων World Bank",
       "internetUsersIndicator": "Χρήστες Διαδικτύου",
       "mobileSubscriptionsIndicator": "Συνδρομές Κινητών",
       "broadbandAccess": "Πρόσβαση Ευρυζωνικού",
-      "rdExpenditure": "Δαπάνες Ε&Α",
+      "rdExpenditure": "Δαπάνη έρευνας και ανάπτυξης",
       "analyzingCountries": "Ανάλυση 200+ χωρών...",
       "source": "Πηγή: World Bank",
       "updated": "Ενημερώθηκε: {{date}}",
-      "infoTooltip": "<strong>Παγκόσμια Τεχνολογική Ετοιμότητα</strong><br>Σύνθετη βαθμολογία (0-100) βασισμένη σε δεδομένα World Bank:<br><br><strong>Μετρήσεις:</strong><br>🌐 Χρήστες Διαδικτύου (% πληθυσμού)<br>📱 Συνδρομές Κινητών (ανά 100 άτομα)<br>🔬 Δαπάνες Ε&Α (% ΑΕΠ)<br><br><strong>Βάρη:</strong> Ε&Α (35%), Διαδίκτυο (30%), Ευρυζωνικό (20%), Κινητά (15%)<br><br><em>— = Δεν υπάρχουν πρόσφατα δεδομένα</em><br><em>Πηγή: World Bank Open Data (2019-2024)</em>"
+      "infoTooltip": "<strong>Ετοιμότητα τεχνολογίας</strong> Σύνθετος δείκτης της Παγκόσμιας Τράπεζας, 0–100. Τα βάρη είναι έρευνα και ανάπτυξη 35%, διαδίκτυο 30%, ευρυζωνικό 20% και κινητό 15%. Χρήστες διαδικτύου είναι ένα ποσοστό του πληθυσμού· οι συνδρομές κινητής τηλεφωνίας ανά 100 ανθρώπους· η δαπάνη έρευνας είναι ένα μερίδιο της οικονομικής απόδοσης. Οι ελλιπείς τιμές εμφανίζουν ένα διαστολή. Τα δεδομένα περιλαμβάνουν 2019–2024.",
+      "dataPreparing": "Ανανέωση δεδομένων τεχνικής ετοιμότητας — θα εμφανιστούν σύντομα."
     },
     "populationExposure": {
-      "noData": "Δεν υπάρχουν δεδομένα έκθεσης",
       "totalAffected": "Σύνολο Επηρεαζόμενων",
       "affectedCount": "{{count}} επηρεαζόμενοι",
       "radiusKm": "{{km}}χλμ ακτίνα",
@@ -1354,7 +1645,7 @@
       "noMatching": "Δεν βρέθηκαν οδηγίες για αυτό το φίλτρο",
       "critical": "Κρίσιμο",
       "health": "Υγεία",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Ανανέωση",
       "levels": {
         "doNotTravel": "Μην ταξιδεύετε",
@@ -1376,16 +1667,12 @@
       "noAlerts": "Χωρίς ενεργές σειρήνες — ήσυχα",
       "notConfigured": "Η υπηρεσία σειρήνων δεν έχει ρυθμιστεί",
       "activeSirens": "{{count}} ενεργή(-ές) σειρήνα(-ες)",
-      "area": "Περιοχή",
-      "time": "Χρόνος",
       "justNow": "μόλις τώρα",
-      "historyCount": "{{count}} ειδοποιήσεις τις τελευταίες 24ω",
       "historySummary": "{{count}} ειδοποιήσεις σε 24ω — {{waves}} κύματα",
       "loadingHistory": "Φόρτωση ιστορικού...",
       "infoTooltip": "<strong>Σειρήνες Ισραήλ</strong><br>Ειδοποιήσεις σειρήνων πυραύλων σε πραγματικό χρόνο από τη Διοίκηση Εσωτερικού Μετώπου του Ισραήλ.<br><br>Τα δεδομένα ελέγχονται κάθε 10 δευτερόλεπτα. Ένας παλλόμενος κόκκινος δείκτης σημαίνει ενεργές σειρήνες."
     },
     "satelliteFires": {
-      "noData": "Δεν υπάρχουν δεδομένα πυρκαγιών",
       "region": "Περιοχή",
       "fires": "Πυρκαγιές",
       "high": "Υψηλό",
@@ -1396,7 +1683,9 @@
         "minutesAgo": "{{count}}λ πριν",
         "hoursAgo": "{{count}}ω πριν"
       },
-      "infoTooltip": "Θερμικές ανιχνεύσεις δορυφόρου NASA FIRMS VIIRS σε παρακολουθούμενες περιοχές σύγκρουσης. Υψηλής έντασης = φωτεινότητα >360K & βεβαιότητα >80%."
+      "infoTooltip": "Θερμικές ανιχνεύσεις δορυφόρου NASA FIRMS VIIRS σε παρακολουθούμενες περιοχές σύγκρουσης. Υψηλής έντασης = φωτεινότητα >360K & βεβαιότητα >80%.",
+      "possibleExplosions": "{{count}} πιθανή(-ές) έκρηξη(-εις) ανιχνεύθηκε(-αν)",
+      "explosionTooltip": "Θερμική υπογραφή συνεπής με έκρηξη (θερμική ακτινοβολία πυρκαϊάς >80 MW, λαμπρότητα >380 K)"
     },
     "ucdpEvents": {
       "stateBased": "Κρατικές",
@@ -1408,7 +1697,6 @@
       "actors": "Δρώντες",
       "deathsCount": "{{count}} θάνατοι",
       "moreNotShown": "{{count}} ακόμη συμβάντα δεν εμφανίζονται",
-      "noEvents": "Δεν υπάρχουν συμβάντα σε αυτή την κατηγορία",
       "infoTooltip": "<strong>Γεωαναφερόμενα Συμβάντα UCDP</strong> Δεδομένα συγκρούσεων σε επίπεδο συμβάντος από το Πανεπιστήμιο Uppsala.<ul><li><strong>Κρατικές</strong>: Κυβέρνηση εναντίον ανταρτών</li><li><strong>Μη Κρατικές</strong>: Ένοπλη ομάδα εναντίον ένοπλης ομάδας</li><li><strong>Μονόπλευρες</strong>: Βία κατά αμάχων</li></ul>Οι θάνατοι εμφανίζονται ως βέλτιστη εκτίμηση (εύρος χαμηλό-υψηλό). Τα αντίγραφα ACLED φιλτράρονται αυτόματα."
     },
     "giving": {
@@ -1433,20 +1721,39 @@
       "wallets": "Πορτοφόλια",
       "ofTotal": "% του Συνόλου",
       "topReceivers": "Κορυφαίοι Αποδέκτες",
-      "oecdOda": "OECD ODA",
+      "oecdOda": "Επίσημη βοήθεια ανάπτυξης του Οργανισμού Οικονομικής Συνεργασίας και Ανάπτυξης",
       "cafIndex": "Δείκτης CAF",
       "candidGrants": "Επιχορηγήσεις Candid",
       "dataLag": "Καθυστέρηση Δεδομένων",
-      "infoTooltip": "<strong>Δείκτης Παγκόσμιας Φιλανθρωπικής Δραστηριότητας</strong> Σύνθετος δείκτης που παρακολουθεί προσωπικές δωρεές μέσω πλατφορμών crowdfunding και crypto πορτοφολιών.<ul><li><strong>Πλατφόρμες</strong>: Δειγματοληψία καμπανιών GoFundMe, GlobalGiving, JustGiving</li><li><strong>Crypto</strong>: On-chain εισροές φιλανθρωπικών πορτοφολιών (Endaoment, Giving Block)</li><li><strong>Θεσμικά</strong>: OECD ODA, Δείκτης CAF World Giving, Επιχορηγήσεις Candid</li></ul>Ο δείκτης είναι κατευθυντικός (όχι ακριβή ποσά). Συνδυάζει ζωντανή δειγματοληψία με δημοσιευμένες ετήσιες εκθέσεις."
+      "infoTooltip": "<strong>Δείκτης Παγκόσμιας Φιλανθρωπικής Δραστηριότητας</strong> Σύνθετος δείκτης που παρακολουθεί προσωπικές δωρεές μέσω πλατφορμών crowdfunding και crypto πορτοφολιών.<ul><li><strong>Πλατφόρμες</strong>: Δειγματοληψία καμπανιών GoFundMe, GlobalGiving, JustGiving</li><li><strong>Crypto</strong>: On-chain εισροές φιλανθρωπικών πορτοφολιών (Endaoment, Giving Block)</li><li><strong>Θεσμικά</strong>: OECD ODA, Δείκτης CAF World Giving, Επιχορηγήσεις Candid</li></ul>Ο δείκτης είναι κατευθυντικός (όχι ακριβή ποσά). Συνδυάζει ζωντανή δειγματοληψία με δημοσιευμένες ετήσιες εκθέσεις.",
+      "benchmarkTitle": "Παγκόσμια σημεία αναφοράς δωρεών",
+      "benchmarkInfoTooltip": "<strong>Παγκόσμια σημεία αναφοράς δωρεών</strong> Δημοσιευμένοι ισχυρισμοί πλατφορμών και ιδρυμάτων με περιόδους πηγής και κατάσταση επαλήθευσης. Οι εξετικοί αριθμοί είναι εκτιμήσεις, όχι ζωντανή δραστηριότητα.",
+      "status": {
+        "published": "Δημοσιευμένα σημεία αναφοράς με επαληθευμένη κάλυψη πηγής.",
+        "partial": "Δημοσιευμένα σημεία αναφοράς με μερική κάλυψη πηγής.",
+        "legacy": "Παλαιό στιγμιότυπο· λεπτομέρειες πηγής μη διαθέσιμες.",
+        "cached": "Εμφάνιση αποθηκευμένου στιγμιότυπου· η ανανέωση δεν είναι διαθέσιμη."
+      },
+      "trackedAnnualized": "Παρακολουθούμενες δωρεές πλατφόρμας — εξετική εκτίμηση",
+      "annualizedDaily": "Ημερήσια εξετική εκτίμηση",
+      "atLeast": "Τουλάχιστον",
+      "about": "Περίπου",
+      "sourceNotVerified": "Πηγή μη επαληθευμένη",
+      "reportedCumulative": "Αναφερόμενο σωρευτικό σύνολο",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Δημοσιευμένο σημείο αναφοράς",
+      "sourcesMethodology": "Πηγές και μεθοδολογία",
+      "methodologyIntro": "Μόνο επαληθευμένοι ετήσιοι ή υπεράσιμα εξετικοί ισχυρισμοί πλατφορμών εισέρχονται στον τίτλο. Τα σωρευτικά και θεσμικά στοιχεία παραμένουν ξεχωριστό πλαίσιο.",
+      "partialEstimate": "Μερικώς επαληθευμένη εκτίμηση"
     },
     "displacement": {
-      "noData": "Χωρίς δεδομένα",
       "refugees": "Πρόσφυγες",
       "asylumSeekers": "Αιτούντες Άσυλο",
       "idps": "Εσωτερικά Εκτοπισμένοι",
       "total": "Σύνολο",
       "origins": "Προέλευση",
       "hosts": "Υποδοχή",
+      "internal": "Εσωτερικοί",
       "badges": {
         "crisis": "ΚΡΙΣΗ",
         "high": "ΥΨΗΛΟ",
@@ -1455,7 +1762,29 @@
       "country": "Χώρα",
       "status": "Κατάσταση",
       "count": "Αριθμός",
-      "infoTooltip": "<strong>Δεδομένα Εκτοπισμού UNHCR</strong> Παγκόσμιοι αριθμοί προσφύγων, αιτούντων ασύλου και εσωτερικά εκτοπισμένων από UNHCR.<ul><li><strong>Προέλευση</strong>: Χώρες από τις οποίες φεύγουν</li><li><strong>Υποδοχή</strong>: Χώρες που φιλοξενούν πρόσφυγες</li><li>Σήματα κρίσης: >1Μ | Υψηλό: >500Κ εκτοπισμένοι</li></ul>Τα δεδομένα ενημερώνονται ετησίως. Άδεια CC BY 4.0."
+      "latestRound": "Τελευταίος γύρος",
+      "internalNote": "IOM DTM: εσωτερικά εκτοπισμένοι, τελευταίος γύρος έρευνας ανά επιχείρηση. Οι επιχειρήσεις σε μία χώρα μπορεί να επικαλύπτονται, γι' αυτό δεν αθροίζονται.",
+      "infoTooltip": "<strong>Εκτοπισμός</strong> Πρόσφυγες, αιτητές ασύλου και άτομα που εκτοπίστηκαν στη χώρα τους. Οι απόψεις προέλευσης και υποδοχής δείχνουν από πού φεύγουν και πού πηγαίνουν οι άνθρωποι. Σήματα κρίσης σημειώνουν πάνω από ένα εκατομμύριο εκτοπισθέντες· ψηλά σημάδια πάνω από 500.000. Ετήσια δεδομένα του Γραφείου ΟΗΕ για τους Πρόσφυγες, άδεια CC BY 4.0.",
+      "crossBorder": "Διασυνοριακά",
+      "situation": "Κατάσταση",
+      "latestChange": "Τελευταία μεταβολή",
+      "accelerating": "Επιταχύνεται",
+      "inDays": "σε {{days}} ημέρες",
+      "crossBorderNote": "Πύλη λειτουργικών δεδομένων του Γραφείου ΟΗΕ για τους Πρόσφυγες: άτομα που διέσχισαν σύνορα σε κάθε κρίση, από τις τελευταίες εκθέσεις χωρών. Οι καταστάσεις επικαλύπτονται, οπότε δεν προστίθενται.",
+      "last7And30": "Τελευταίες 7 / 30 ημέρες",
+      "staleReport": "Παρωχημένη αναφορά",
+      "reported": "Πλήθος",
+      "period": "Περίοδος",
+      "movementNote": "Κάθε γραμμή διατηρεί την πηγή, την ημερομηνία αναφοράς και το μέτρο της. Οι πληθυσμοί, οι αφίξεις και τα περιστατικά συνοριακού ελέγχου είναι διαφορετικά μέτρα. Οι πηγές ενδέχεται να αλληλεπικαλύπτονται· μην αθροίζετε τα πλήθη τους. Το WorldMonitor παράγει αυτή την προβολή από τις συνδεδεμένες πηγές· δεν υπονοείται έγκριση από τους παρόχους.",
+      "recent": "Πρόσφατα",
+      "last30Days": "Τελευταίες 30 ημέρες",
+      "newThisWeek": "Νέα αυτήν την εβδομάδα",
+      "conflict": "Σύγκρουση",
+      "disaster": "Καταστροφή",
+      "surge": "Αιχμή",
+      "recentNote": "IDMC: άνθρωποι εκτοπισμένοι εντός της χώρας τους τις τελευταίες 30 ημέρες. Το IDMC δημοσιεύει ένα στοιχείο κατά μέσο όρο τρεις εβδομάδες μετά τον εκτοπισμό, επομένως οι πρόσφατες εβδομάδες συμπληρώνονται αργά. Τα νέα αυτήν την εβδομάδα μετρούν στοιχεία που δημοσιεύθηκαν τις τελευταίες 7 ημέρες. Αιχμή: τουλάχιστον 5.000 άνθρωποι και τρεις φορές ο μηνιαίος μέσος όρος των προηγούμενων πέντε μηνών.",
+      "recentAsOf": "Δεδομένα κατά {{date}}.",
+      "recentMissing": "Χωρίς δεδομένα αυτή τη φορά από {{countries}}· τα αρχεία τους δεν φορτώθηκαν, που δεν σημαίνει μηδενική μετακίνηση."
     },
     "climate": {
       "noAnomalies": "Δεν ανιχνεύθηκαν σημαντικές ανωμαλίες",
@@ -1477,19 +1806,20 @@
       "summaryError": "Δεν ήταν δυνατή η δημιουργία περίληψης",
       "summaryFailed": "Αποτυχία περίληψης",
       "sources": "{{count}} πηγές",
-      "relatedAssetsNear": "Σχετικά στοιχεία κοντά σε {{location}}"
-    },
-    "export": {
-      "exportData": "Εξαγωγή Δεδομένων"
-    },
-    "runtimeConfig": {
-      "getApiKey": "Λήψη API key"
+      "relatedAssetsNear": "Σχετικά στοιχεία κοντά σε {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} πηγές",
+      "sourceCoverageHint": "Εμφανίζονται {{covered}} από {{total}} ενεργές πηγές — αυτός ο πίνακας εναλλάσσει τις πηγές του σε κάθε ανανέωση",
+      "sortBy": "Ταξινόμηση κατά",
+      "sortNewest": "Πιο πρόσφατα",
+      "sortRelevance": "Σχετικότητα",
+      "translationUnavailable": "Η μετάφραση δεν είναι διαθέσιμη. Ελέγξτε τις ρυθμίσεις του παρόχου AI και δοκιμάστε ξανά."
     },
     "breakingNews": {
       "critical": "ΚΡΙΣΙΜΟ",
       "high": "ΥΨΗΛΟ",
       "dismiss": "Απόρριψη",
-      "enableNotifications": "Ενεργοποίηση ειδοποιήσεων desktop"
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Έκτακτες Ειδοποιήσεις",
@@ -1536,21 +1866,44 @@
       "infoTooltip": "<strong>Ειδησεογραφική Υπηρεσία Πληροφοριών</strong> Παρακολούθηση παγκόσμιων ειδήσεων σε πραγματικό χρόνο:<ul><li>Επιμελημένες κατηγορίες θεμάτων (συγκρούσεις, κυβερνοαπειλές, κ.λπ.)</li><li>Άρθρα από 100+ γλώσσες μεταφρασμένα</li><li>Ενημερώσεις κάθε 15 λεπτά</li><li>14-day media tone &amp; volume trend per topic</li></ul>Πηγή: GDELT Project (gdeltproject.org)"
     },
     "telegramIntel": {
-      "infoTooltip": "Σήματα σε πραγματικό χρόνο από παρακολουθούμενα κανάλια OSINT στο Telegram",
+      "infoTooltip": "Σήματα πραγματικού χρόνου από παρακολουθούμενα κανάλια OSINT ανοιχτού κώδικα Telegram",
       "loading": "Σύνδεση στο αναμεταδότη Telegram...",
       "empty": "Δεν υπάρχουν μηνύματα",
       "disabled": "Ο αναμεταδότης Telegram δεν είναι ενεργός",
+      "watchlistPlaceholder": "Προσθήκη δημόσιου καναλιού με @username",
+      "resolving": "Έλεγχος καναλιού...",
+      "invalidUsername": "Χρησιμοποιήστε ένα δημόσιο @username στο Telegram",
+      "resolveFailed": "Δεν ήταν δυνατή η εύρεση του καναλιού",
+      "watchlistLimit": "Μπορείτε να ακολουθείτε έως {{count}} προσαρμοσμένα κανάλια",
+      "previewMembers": "{{count}} μέλη",
+      "addChannel": "Προσθήκη καναλιού",
+      "added": "Προστέθηκε",
+      "remove": "Αφαίρεση",
+      "custom": "Προσαρμοσμένο",
       "filterAll": "Όλα",
       "filterBreaking": "Έκτακτο",
       "filterConflict": "Συγκρούσεις",
-      "filterAlerts": "Ειδοποιήσεις",
       "filterOsint": "OSINT",
-      "filterPolitics": "Πολιτική",
       "filterMiddleeast": "Μέση Ανατολή",
       "live": "ΖΩΝΤΑΝΑ",
       "viewSource": "Προβολή πηγής",
       "filterGeopolitics": "Γεωπολιτική",
       "filterCyber": "Κυβερνο"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Βάση δεδομένων άμεσων ξένων επενδύσεων Σαουδικής Αραβίας και ΗΑΕ σε παγκόσμιες κρίσιμες υποδομές. Κάντε κλικ σε μια γραμμή για μετάβαση στην επένδυση στον χάρτη.",
@@ -1569,7 +1922,6 @@
       "asset": "Στοιχείο",
       "country": "Χώρα",
       "sector": "Τομέας",
-      "status": "Κατάσταση",
       "investment": "Επένδυση",
       "year": "Έτος",
       "noMatch": "Δεν βρέθηκαν επενδύσεις με τα φίλτρα",
@@ -1593,21 +1945,23 @@
       "infoTooltip": "<strong>Αγορές Προβλέψεων</strong> Αγορές πρόβλεψης με πραγματικό χρήμα:<ul><li>Οι τιμές αντικατοπτρίζουν εκτιμήσεις πιθανότητας πλήθους</li><li>Υψηλότερος όγκος = πιο αξιόπιστο σήμα</li><li>Εστίαση σε γεωπολιτικά και τρέχοντα γεγονότα</li></ul>Πηγή: Polymarket (polymarket.com)"
     },
     "etfFlows": {
-      "unavailable": "Δεδομένα ETF προσωρινά μη διαθέσιμα",
-      "rateLimited": "Δεδομένα ETF προσωρινά μη διαθέσιμα (περιορισμός ρυθμού) — επανάληψη σύντομα",
+      "unavailable": "δεδομένα ταμείων που διαπραγματεύονται σε χρηματιστήριο προς το παρόν δεν διατίθενται",
+      "rateLimited": "δεδομένα ταμείων που διαπραγματεύονται σε χρηματιστήριο προς το παρόν δεν διατίθενται (ρυθμός περιορισμένος) — νέα προσπάθεια σε λίγο",
       "netFlow": "Καθαρή Ροή",
       "estFlow": "Εκτ. Ροή",
       "totalVol": "Συνολ. Όγκος",
-      "etfs": "ETFs",
+      "etfs": "Ταμεία που διαπραγματεύονται σε χρηματιστήριο",
       "netInflow": "ΚΑΘΑΡΗ ΕΙΣΡΟΗ",
       "netOutflow": "ΚΑΘΑΡΗ ΕΚΡΟΗ",
+      "netNeutral": "ΚΑΘΑΡΗ ΟΥΔΕΤΕΡΗ ΡΟΗ",
       "table": {
         "ticker": "Ticker",
         "issuer": "Εκδότης",
         "estFlow": "Εκτ. Ροή",
         "volume": "Όγκος",
         "change": "Μεταβολή"
-      }
+      },
+      "infoTooltip": "<strong>Ροές Bitcoin fund</strong> Παρακολουθεί τις εκτιμώμενες καθημερινές ροές κεφαλαίων για ταμεία ΗΠΑ που διαπραγματεύονται σε χρηματιστήριο με Bitcoin spot:<ul><li>Κατεύθυνση και μέγεθος εισροής/εκροής</li><li>Όγκος και μεταβολή τιμής ανά ταμείο</li><li>Καθαρή συγκεντρωτική ροή σε όλα τα παρακολουθούμενα ταμεία</li></ul>"
     },
     "macroSignals": {
       "overall": "Συνολικά",
@@ -1624,15 +1978,19 @@
         "hashRate": "Hash Rate",
         "momentum": "Momentum",
         "fearGreed": "Φόβος & Απληστία"
-      }
+      },
+      "infoTooltip": "<strong>Συνθήκες αγοράς Bitcoin</strong> Σύνθετη σήμανση πίνακα ελέγχου για τη θέση Bitcoin και την όρεξη κινδύνου:<ul><li><strong>Ρευστότητα</strong>: Διακομιστής καθαρής ρευστότητας Fed</li><li><strong>Ροή</strong>: Αποδόσεις 5 ημερών BTC vs QQQ</li><li><strong>Καθεστώς</strong>: Περιστροφή QQQ vs XLP (risk-on/off)</li><li><strong>Τάση BTC</strong>: Τιμή vs SMA50/200, Mayer Multiple</li><li><strong>Ποσοστό Hash</strong>: Μεταβολή δικτύου hash 30 ημερών</li><li><strong>Φόβος & Άπληστεία</strong>: Δείκτης συναισθήματος αγοράς</li></ul>Αυτός ο πίνακας ελέγχου είναι για καθεστώς και τοποθέτηση, όχι ευρέα δεδομένα μακροοικονομικής ανάλυσης."
     },
     "panel": {
       "showMethodologyInfo": "Εμφάνιση πληροφοριών μεθοδολογίας",
       "dragToResize": "Σύρετε για αλλαγή μεγέθους (διπλό κλικ για επαναφορά)",
-      "openSettings": "Άνοιγμα Ρυθμίσεων"
+      "openSettings": "Άνοιγμα Ρυθμίσεων",
+      "closePanel": "Κλείσιμο πίνακα",
+      "collapsePanel": "Σύμπτυξη πίνακα",
+      "expandPanel": "Ανάπτυξη πίνακα",
+      "addPanel": "Προσθήκη πίνακα"
     },
     "languageSelector": {
-      "selectLanguage": "Επιλογή Γλώσσας",
       "mapLabelsFallbackVi": "Οι ετικέτες χάρτη εμφανίζονται στα αγγλικά για τα βιετναμέζικα."
     },
     "serviceStatus": {
@@ -1641,10 +1999,6 @@
       "ok": "OK",
       "degraded": "Υποβαθμισμένη",
       "outage": "Διακοπή",
-      "backendUnavailable": "Τοπικό backend desktop μη διαθέσιμο. Εναλλαγή σε cloud API.",
-      "desktopReadiness": "Ετοιμότητα desktop",
-      "acceptanceChecks": "Έλεγχοι αποδοχής: {{ready}}/{{total}} έτοιμα · λειτουργίες με κλειδί {{available}}/{{featureTotal}}",
-      "nonParityFallbacks": "Εναλλακτικές χωρίς ισοτιμία ({{count}})",
       "categories": {
         "all": "Όλα",
         "cloud": "Cloud",
@@ -1652,7 +2006,8 @@
         "comm": "Επικοινωνίες",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>Κατάσταση Υπηρεσιών</strong> Ζωντανή λειτουργική κατάσταση μεγάλων πλατφορμών cloud, χρηματοοικονομικής υποδομής και κρίσιμων υπηρεσιών internet. Πηγή: επίσημες σελίδες κατάστασης (AWS, Azure, GCP, Cloudflare, χρηματιστήρια). Τα περιστατικά μπορεί να υποδεικνύουν ευρύτερα γεγονότα διαταραχής."
     },
     "verification": {
       "title": "Λίστα Ελέγχου Επαλήθευσης Πληροφοριών",
@@ -1680,29 +2035,20 @@
       }
     },
     "liveNews": {
-      "retry": "Επανάληψη",
       "notLive": "Το {{name}} δεν είναι ζωντανά αυτή τη στιγμή",
-      "cannotEmbed": "Το {{name}} δεν μπορεί να αναπαραχθεί εδώ — ενδέχεται να είναι περιορισμένο στην περιοχή σας (σφάλμα {{code}})",
-      "botCheck": "Το YouTube ζητάει σύνδεση για αναπαραγωγή {{name}}",
       "signInToYouTube": "Σύνδεση στο YouTube",
       "openOnYouTube": "Άνοιγμα στο YouTube",
       "manage": "Διαχείριση καναλιών",
       "addChannel": "Προσθήκη καναλιού",
       "remove": "Αφαίρεση",
-      "youtubeHandle": "YouTube handle (π.χ. @Channel)",
-      "youtubeHandleOrUrl": "YouTube handle ή URL",
       "displayName": "Εμφανιζόμενο όνομα (προαιρετικό)",
-      "openPanelSettings": "Ρυθμίσεις εμφάνισης πάνελ",
       "channelSettings": "Ρυθμίσεις Καναλιού",
       "save": "Αποθήκευση",
       "cancel": "Ακύρωση",
-      "confirmDelete": "Διαγραφή αυτού του καναλιού;",
-      "confirmTitle": "Επιβεβαίωση",
       "restoreDefaults": "Επαναφορά προεπιλεγμένων καναλιών",
       "availableChannels": "Διαθέσιμα κανάλια",
       "noResults": "Δεν βρέθηκαν κανάλια για «{{term}}»",
       "customChannel": "Προσαρμοσμένο κανάλι",
-      "regionAll": "Όλα",
       "regionNorthAmerica": "Βόρεια Αμερική",
       "regionEurope": "Ευρώπη",
       "regionLatinAmerica": "Λατινική Αμερική",
@@ -1710,30 +2056,76 @@
       "regionMiddleEast": "Μέση Ανατολή",
       "regionAfrica": "Αφρική",
       "regionOceania": "Ωκεανία",
-      "invalidHandle": "Εισάγετε ένα έγκυρο YouTube handle (π.χ. @ChannelName)",
-      "channelNotFound": "Δεν βρέθηκε κανάλι YouTube",
       "verifying": "Επαλήθευση…",
       "hlsUrl": "URL ροής HLS (προαιρετικό)",
-      "invalidHlsUrl": "Εισάγετε ένα έγκυρο URL ροής HLS (.m3u8)"
+      "invalidHlsUrl": "Εισάγετε ένα έγκυρο URL ροής HLS (.m3u8)",
+      "playLiveFeed": "Αναπαραγωγή ζωντανής ροής",
+      "readyStatus": "Έτοιμο όταν είστε",
+      "embedBlocked": "Το YouTube δεν αναπαράγει το {{name}} σε άλλες σελίδες αυτή τη στιγμή",
+      "unavailable": "Δεν είναι δυνατή η αναπαραγωγή του {{name}} αυτή τη στιγμή",
+      "noStream": "Δεν έχει ρυθμιστεί ακόμη live stream για το {{name}}",
+      "needsChannelUrl": "Προσθέστε το {{name}} ξανά με τη διεύθυνση URL του καναλιού του (youtube.com/channel/UC…) ή με τη διεύθυνση URL ενός live βίντεο",
+      "insecureStream": "Το {{name}} χρησιμοποιεί ένα μη ασφαλές stream (http), το οποίο φραγμένο από τους περιηγητές. Προσθέστε το ξανά με μια ασφαλή διεύθυνση URL stream (https)",
+      "connecting": "Σύνδεση στο {{name}}…",
+      "recording": "Εγγραφή",
+      "unverified": "Δεν είναι δυνατή η επιβεβαίωση ότι αυτό το stream είναι live",
+      "playNextChannel": "Αναπαραγωγή του επόμενου καναλιού",
+      "channelOrVideoUrl": "Κανάλι YouTube ή διεύθυνση URL βίντεο",
+      "channelUrlHint": "Επικολλήστε μια διεύθυνση URL καναλιού (youtube.com/channel/UC…) ή μια διεύθυνση URL live βίντεο",
+      "youtubeChannel": "Κανάλι YouTube",
+      "httpsStreamHint": "Οι περιηγητές μπλοκάρουν τα μη ασφαλή streams (http). Επικολλήστε μια ασφαλή διεύθυνση URL stream (https)"
     },
     "map": {
       "showMap": "Εμφάνιση χάρτη",
-      "hideMap": "Απόκρυψη χάρτη"
+      "hideMap": "Απόκρυψη χάρτη",
+      "clearTrails": "Εκκαθάριση ιχνών"
     },
     "internetDisruptions": {
-      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>"
+      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>",
+      "noOutages": "Δεν εντοπίστηκαν ενεργές διακοπές",
+      "noDdos": "Δεν υπάρχουν διαθέσιμα δεδομένα DDoS",
+      "noAnomalies": "Δεν εντοπίστηκαν ανωμαλίες κίνησης",
+      "byProtocol": "Πρωτόκολλο Επίθεσης",
+      "byVector": "Διάνυσμα Επίθεσης",
+      "topTargets": "Κορυφαίες Χώρες-Στόχοι"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Δείκτης φυσικής πίεσης: {{value}} / 100",
+        "fiveDayTrend": "Τάση ασφαλίστρου πέντε ημερών διαπραγμάτευσης",
+        "regimes": {
+          "normal": "Κανονικό",
+          "elevated": "Υψηλό",
+          "stressed": "Επιβαρυμένο",
+          "extreme": "Ακραίο"
+        },
+        "states": {
+          "insufficientHistory": "Προθέρμανση: {{count}} / {{required}} σημεία διαπραγμάτευσης",
+          "staleInput": "Φυσικό σημείο αναφοράς ανενημέρωτο",
+          "missingInput": "Σήμα απόκλισης μη διαθέσιμο"
+        },
+        "twentyDayTrend": "Τάση premium είκοσι ημερών διαπραγμάτευσης"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Δείκτες χρηματιστηρίων του Κόλπου, συναλλαγματικές ισοτιμίες και τιμές πετρελαίου για τις οικονομίες του Συμβουλίου Συνεργασίας του Κόλπου (Σαουδική Αραβία, ΗAE, Κουβέιτ, Κατάρ, Μπαχρέιν, Ομάν)."
     },
     "groceryBasket": {
-      "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
+      "infoTooltip": "<strong>Grocery Index</strong> Παγκόσμια σύγκριση τιμών καλαθιού τροφίμων σε 24 χώρες — παρακολουθεί τον πραγματικό πληθωρισμό καταναλωτικών αγαθών πέρα από τον τίτλο του δείκτη τιμών καταναλωτή."
     },
     "bigmac": {
       "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
@@ -1757,12 +2149,837 @@
       "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
     },
     "centralBankWatch": {
-      "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+      "infoTooltip": "<strong>Central Bank Watch</strong> Τελευταίες δηλώσεις, αποφάσεις επιτοκίων και επικοινωνίες από την Ομοσπονδιακή Τράπεζα, την Ευρωπαϊκή Κεντρική Τράπεζα, την Τράπεζα της Αγγλίας και άλλες μεγάλες κεντρικές τράπεζες παγκοσμίως."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>Αεροπορικές Πληροφορίες</strong> Επιχειρησιακά δεδομένα αεροπορικών εταιρειών σε πραγματικό χρόνο: αναστολές δρομολογίων, κλείσιμο εναέριου χώρου, ειδοποιήσεις μεταφορέων και εκτροπές έκτακτης ανάγκης. Πηγή: NOTAM αεροπορικών αρχών και δελτία μεταφορέων.",
+      "noOpsData": "Χωρίς δεδομένα λειτουργίας — φόρτωση…",
+      "noFlights": "Χωρίς πτήσεις — επιλέξτε αεροδρόμιο στις ρυθμίσεις.",
+      "noCarrierData": "Χωρίς δεδομένα φορέα ακόμα.",
+      "noTrackingData": "Χωρίς δεδομένα παρακολούθησης αεροσκάφους.",
+      "noNews": "Χωρίς αεροπορικές ειδήσεις.",
+      "enterRoute": "Εισάγετε διαδρομή και αναζητήστε τιμές.",
+      "searchFlights": "Αναζήτηση Πτήσεων",
+      "bestDates": "Καλύτερες Ημερομηνίες",
+      "enterRouteAndDate": "Εισάγετε διαδρομή και ημερομηνία για αναζήτηση",
+      "enterDateRange": "Εισάγετε διαδρομή και εύρος ημερομηνιών",
+      "degradedResults": "Ορισμένα αποτελέσματα ενδέχεται να είναι ελλιπή",
+      "nonstop": "χωρίς στάση",
+      "roundTrip": "Στρογγυλή διαδρομή",
+      "tripDays": "Ημέρες ταξιδιού"
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>WM Αναλυτής</strong> Αναλυτής AI με ζωντανό πλαίσιο σε γεωπολιτικούς, αγοραίους, στρατιωτικούς και οικονομικούς τομείς. Τροφοδοτείται από Claude με δεδομένα πραγματικού χρόνου από ενεργές ροές WorldMonitor."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>Futures positioning</strong> Εβδομαδιαίες καθαρές θέσεις για εμπορικούς διαπραγματευτές, μεγάλους κερδοσκόπους και μικρούς διαπραγματευτές σε αγορές εμπορευμάτων και χρηματοοικονομικών futures. Η πηγή είναι η έκθεση Commitments of Traders της Επιτροπής Εμπορίας Εμπορευμάτων Futures, που δημοσιεύεται τις Παρασκευές."
+    },
+    "counters": {
+      "infoTooltip": "<strong>Ζωντανοί Μετρητές</strong> Εξαγόμενοι μετρητές πραγματικού χρόνου για παγκόσμιες μετρήσεις: στρατιωτικές δαπάνες, φυσικές καταστροφές, επιβάρυνση ασθενειών και άλλα. Τα νούμερα είναι στατιστικές εκτιμήσεις βάσει ετήσιων ρυθμών δεδομένων."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>Επιδημικές Εξάρσεις</strong> Ενεργές ειδοποιήσεις εξάρσεων από WHO, ProMED και υπουργεία υγείας. Παρακολουθεί επιβεβαιωμένες εξάρσεις, πληγείσες περιοχές, αριθμούς κρουσμάτων και επίπεδα απειλής. Ενημερώνεται κατά τη δημοσίευση νέων αναφορών.",
+      "title": "Ξεσπάσματα Νοσημάτων",
+      "empty": "Δεν υπάρχουν ξεσπάσματα που ταιριάζουν με το φίλτρο",
+      "sourceFallback": "Πηγή",
+      "attribution": "ΠΟΥ · ProMED · HealthMap",
+      "levels": {
+        "alert": "ALERT",
+        "warning": "WARNING",
+        "watch": "WATCH"
+      },
+      "time": {
+        "justNow": "μόλις τώρα",
+        "hoursAgo_one": "{{count}}h πριν",
+        "hoursAgo_other": "{{count}}h πριν",
+        "daysAgo_one": "{{count}}d πριν",
+        "daysAgo_other": "{{count}}d πριν"
+      },
+      "filters": {
+        "alert_one": "{{count}} Ειδοποίηση",
+        "alert_other": "{{count}} Ειδοποιήσεις",
+        "warning_one": "{{count}} Προειδοποίηση",
+        "warning_other": "{{count}} Προειδοποιήσεις",
+        "watch_one": "{{count}} Παρακολούθηση",
+        "watch_other": "{{count}} Παρακολουθήσεις"
+      },
+      "errors": {
+        "noData": "Δεν υπάρχουν διαθέσιμα δεδομένα ξεσπάσματος",
+        "failedToLoad": "Αποτυχία φόρτωσης"
+      },
+      "methodologyNote": "Τα επίπεδα Alert / Warning / Watch προέρχονται από έναν ταξινομητή επεξεργασίας λέξεων-κλειδιών — δείτε /docs/methodology/disease-alert-level για τον πίνακα λέξεων-κλειδιών και τους περιορισμούς."
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>Earnings Calendar</strong> Επικείμενες και πρόσφατες ανακοινώσεις κερδών για μεγάλες δημόσιες εταιρείες. Εμφανίζει εκτιμήσεις κερδών ανά μετοχή έναντι πραγματικών, έσοδα και ταξινόμηση επιτυχίας/αποτυχίας. Πηγή: παρέχοντες χρηματοοικονομικών δεδομένων.",
+      "title": "Ημερολόγιο Κερδών",
+      "today": "ΣΗΜΕΡΑ · {{date}}",
+      "tomorrow": "ΑΥΡΙΟ · {{date}}",
+      "epsActual": "κέρδη ανά μετοχή {{value}}",
+      "epsEstimate": "κέρδη ανά μετοχή εκτίμηση {{value}}",
+      "revenueActual": "{{value}} έσοδα",
+      "revenueEstimate": "{{value}} εκτίμηση",
+      "surprise": {
+        "beat": "BEAT",
+        "miss": "MISS",
+        "inLine": "IN LINE"
+      },
+      "errors": {
+        "noData": "Δεν υπάρχουν δεδομένα κερδών",
+        "failedToLoad": "Αποτυχία φόρτωσης"
+      }
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>Economic Calendar</strong> Προγραμματισμένες κυκλοφορίες μακροοικονομικών δεδομένων: δείκτης τιμών καταναλωτή, μη-γεωργικές θέσεις εργασίας, ακαθάριστο εγχώριο προϊόν, δείκτης διευθυντών αγορών, και αποφάσεις κεντρικών τραπεζών. Εμφανίζει πρόγνωση έναντι πραγματικών έναντι προηγούμενου. Επισημαίνονται τα γεγονότα υψηλού αντικτύπου. Πηγή: παρέχοντες μακροοικονομικών δεδομένων."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>Financial Stress Indicator</strong> Αναλογία World Monitor υψηλής απόδοσης πιστώσεων προς μακροπρόθεσμα ομόλογα θησαυρού, προσαρμοσμένη για μεταβλητότητα ιδιοκτησίας και το spread υψηλής απόδοσης: (HYG / TLT) / (VIX × High-yield spread / 100). Αυτό δεν είναι ο Financial Stress Index της Kansas City Fed. Η ένδειξη 1,5 ή υψηλότερη είναι χαμηλής πίεσης· κάτω από 0,3 είναι υψηλής πίεσης.",
+      "title": "Δείκτης Χρηματοοικονομικού Στρες",
+      "usFsiValue": "Τιμή δείκτη χρηματοοικονομικής πίεσης ΗΠΑ",
+      "cissTitle": "EU CISS (Συστημικό Στρες Ευρωζώνης)",
+      "notAvailable": "Μ/Δ",
+      "interpretation": {
+        "low": "Οι αγορές πίστης λειτουργούν κανονικά, λόγος μετοχών/ομολόγων υγιής.",
+        "moderate": "Κάποια επιδείνωση των συνθηκών πίστης, παρακολουθήστε στενά.",
+        "elevated": "Σημαντικό στρες αγορών πίστης, απαιτείται αμυντική θέση.",
+        "severe": "Σοβαρό χρηματοοικονομικό στρες, αυξημένος συστημικός κίνδυνος."
+      },
+      "labels": {
+        "lowStress": "Χαμηλό Στρες",
+        "moderateStress": "Μέτριο Στρες",
+        "elevatedStress": "Αυξημένο Stress",
+        "severeStress": "Σοβαρό Stress"
+      },
+      "cissLabels": {
+        "low": "Χαμηλό",
+        "moderate": "Μέτριο",
+        "elevated": "Αυξημένο",
+        "high": "Υψηλό"
+      },
+      "scale": {
+        "noStress": "0 — Χωρίς stress",
+        "extremeStress": "1 — Ακραίο stress",
+        "highStress": "Υψηλό Stress",
+        "lowStress": "Χαμηλό Stress"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "Spread υψηλής απόδοσης",
+        "hygPrice": "HYG Price",
+        "tltPrice": "TLT Price"
+      },
+      "errors": {
+        "unavailable": "Δεδομένα δείκτη χρηματοοικονομικής πίεσης δεν διατίθενται",
+        "failedToLoad": "Αποτυχία φόρτωσης"
+      },
+      "cissStale": "Η Ευρωπαϊκή Κεντρική Τράπεζα δεν έχει δημοσιεύσει νεότερη τιμή — αυτή η ένδειξη ενδέχεται να είναι ξεπερασμένη."
+    },
+    "supplyVulnerability": {
+      "title": "Τρωτότητα εμπορευμάτων",
+      "help": "Έκθεση χώρας ανά εμπόρευμα από τη συγκέντρωση προμηθευτών, τη θαλάσσια διέλευση και τα διαθέσιμα στρατηγικά αποθέματα.",
+      "loading": "Φόρτωση τρωτότητας εμπορευμάτων…",
+      "unavailable": "Τα δεδομένα τρωτότητας εμπορευμάτων δεν είναι διαθέσιμα",
+      "noCoverage": "Ανεπαρκή στοιχεία για αυτή τη χώρα",
+      "unknown": "Άγνωστο",
+      "concentration": "Συγκέντρωση",
+      "transit": "Διέλευση",
+      "buffer": "Απόθεμα",
+      "sources": "Πηγές",
+      "methodology": "Μεθοδολογία",
+      "hormuzTitle": "Εξαρτήσεις εμπορευμάτων",
+      "dependentCountries": "Εξαρτώμενες χώρες",
+      "dependentCommodities": "Εξαρτώμενα εμπορεύματα",
+      "stateOk": "Τρέχον",
+      "stateStale": "Παρωχημένη είσοδος",
+      "stateInsufficient": "Ανεπαρκή δεδομένα",
+      "proLocked": "Αναβαθμίστε σε PRO για βαθμολόγηση ευπάθειας εμπορευμάτων"
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Παρακολούθηση ζωντανής πορείας πλοίων διαμέσου του Στενού του Ορμούζ, του κρισιμότερου σημείου ασφυξίας πετρελαίου του κόσμου. Παρακολουθεί μετρήσεις δεξαμενοπλοίων, γεγονότα διακοπής και εβδομαδιαίες αλλαγές ροής. Περίπου το 20% της παγκόσμιας προσφοράς πετρελαίου διέρχεται καθημερινά εδώ.",
+      "title": "Hormuz Trade Tracker",
+      "noData": "Δεν υπάρχουν δεδομένα",
+      "notAvailable": "N/A",
+      "chartUnavailable": "Τα δεδομένα γραφήματος δεν είναι διαθέσιμα",
+      "sourcePrefix": "Πηγή:",
+      "units": {
+        "ktPerDay": "kt/day",
+        "generic": "units"
+      },
+      "errors": {
+        "unavailable": "Τα δεδομένα Hormuz δεν είναι διαθέσιμα",
+        "failedToLoad": "Αποτυχία φόρτωσης"
+      }
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>Ζωντανές Κάμερες</strong> Ζωντανές ροές από γεωπολιτικά σημαντικές τοποθεσίες παγκοσμίως: ζώνες σύγκρουσης, πρωτεύουσες, συνοριακά περάσματα και στρατηγικά σημεία συμφόρησης. Ροές από YouTube και δημόσια δίκτυα."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>Macro indicators</strong> Δείκτες τιμών, δραστηριότητας, πολιτικής και νομίσματος των ΗΠΑ, ευρωζώνης και Κίνας. Η Κίνα απαιτεί τρέχουσα κάλυψη. Κάθε πλακίδιο εμφανίζει την πηγή και ημερομηνία παρατήρησης."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>Παρακολούθηση Λέξεων-Κλειδιών</strong> Προσθέστε οποιονδήποτε όρο για παρακολούθηση αναφορών σε ειδήσεις σε πραγματικό χρόνο από όλες τις πηγές WorldMonitor. Τα αποτελέσματα ενημερώνονται καθώς αντιστοιχισμένα άρθρα εισάγονται."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>Renewable Energy</strong> Μερίδιο δημιουργίας ηλεκτρικής ενέργειας από ανανεώσιμες πηγές κατά περιοχή και έτος, συν εγκατεστημένη χωρητικότητα ΗΠΑ για ηλιακή, αιολική και γαιάνθρακα (MW). Πηγές: Παγκόσμια Τράπεζα (EG.ELC.RNEW.ZS) και Υπηρεσία Πληροφοριών Ενέργειας ΗΠΑ."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>Κοινωνική Ταχύτητα</strong> Θέματα που κάνουν τάση και viral περιεχόμενο με γεωπολιτική σημασία. Μετρά την ταχύτητα στα κοινωνικά μέσα: πόσο γρήγορα εξαπλώνεται μια ιστορία σε σχέση με τη βασική γραμμή. Βοηθά στην ανάδειξη αναδυόμενων αφηγήσεων πριν φτάσουν στα mainstream μέσα."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>Επιτυχίες Διατήρησης</strong> Θετικά νέα για τη διατήρηση: ανάκαμψη πληθυσμών ειδών, ορόσημα αποκατάστασης οικοτόπων και προσπάθειες αντι-εξαφάνισης. Πηγή: IUCN, WWF και δημοσιεύσεις έρευνας διατήρησης."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>Παγκόσμιο Ρολόι</strong> Τοπικές ώρες σε πραγματικό χρόνο και κατάσταση συνεδριών αγοράς για τα κύρια παγκόσμια χρηματοοικονομικά κέντρα. Εμφανίζει κατάσταση ανοιχτό/κλειστό για NYSE, LSE, TSE, SGX και άλλα χρηματιστήρια."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>Yield Curve &amp; Rates</strong> Η καμπύλη απόδοσης του αμερικανικού θησαυρού (2Y, 5Y, 10Y, 30Y) και κύρια spreads επιτοκίων συμπεριλαμβανομένου του δείκτη αντιστροφής 10Y-2Y. Εμφανίζει επίσης επιτόκια ευρωζώνης (EURIBOR, ESTR). Μια αντεστραμμένη καμπύλη ιστορικά προηγείται ύφεσης. Πηγή: Ομοσπονδιακά Οικονομικά Δεδομένα."
+    },
+    "pinnedWebcams": {
+      "pinFromMap": "Καρφιτσώστε μια κάμερα από τον χάρτη"
+    },
+    "breakthroughsTicker": {
+      "noData": "Κανένα επιστημονικό ανακάλυψη ακόμα"
+    },
+    "oilInventories": {
+      "infoTooltip": "<strong>Oil inventories</strong> Εμπορικά αποθέματα αργού και στρατηγικά αποθέματα ΗΠΑ, αποθέματα φυσικού αερίου, ευρωπαϊκή αποθήκευση φυσικού αερίου και κάλυψη αποθεμάτων πετρελαίου. Οι πηγές περιλαμβάνουν τη Διοίκηση Πληροφοριών Ενέργειας των ΗΠΑ και τη Διεθνή Οργανισμό Ενέργειας."
+    },
+    "energyComplex": {
+      "noData": "Δεδομένα ενέργειας προσωρινά μη διαθέσιμα - θα δοκιμάσει ξανά",
+      "liveTape": "Ζωντανή Ταινία",
+      "liveTapeSource": "Τιμές αγοράς",
+      "infoTooltip": "<strong>Energy Complex</strong> Φυσικά και εμπορεύσιμα σήματα ενέργειας σε ένα μέρος:<ul><li><strong>Μετρήσεις Διοίκησης Πληροφοριών Ενέργειας ΗΠΑ</strong>: WTI, Brent, παραγωγή ΗΠΑ και αποθέματα</li><li><strong>Live tape</strong>: Εμπορεύσιμες τιμές ενέργειας όπως αργό και φυσικό αέριο</li><li><strong>Σκοπός</strong>: Διαχωρισμός φυσικής ενεργειακής πίεσης από ευρύτερα μακρο και πάνελ εμπορευμάτων</li></ul>"
+    },
+    "consumerPrices": {
+      "tabs": {
+        "overview": "Επισκόπηση",
+        "categories": "Κατηγορίες",
+        "movers": "Κινούμενες Τιμές",
+        "spread": "Διαφορά Λιανοπωλητή",
+        "health": "Υγεία Δεδομένων",
+        "world": "World"
+      },
+      "infoTooltip": "<strong>Τιμές καταναλωτή</strong> Ζωντανά καλάθια παντοπωλείου, εβδομαδιαίες αλλαγές, τάσεις κατηγορίας, κινούμενες τιμές και διαφορές μεταξύ λιανοπωλητών. Η παγκόσμια άποψη χρησιμοποιεί ετήσιο πληθωρισμό από τις Παγκόσμιες Οικονομικές Προοπτικές του Διεθνούς Νομισματικού Ταμείου.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Ετήσιος πληθωρισμός",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Πηγή: Διεθνές Νομισματικό Ταμείο Παγκόσμιες Οικονομικές Προοπτικές · ετήσιος δείκτης τιμών καταναλωτή, όλες οι οικονομίες που αναφέρουν",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
+    },
+    "marketImplications": {
+      "infoTooltip": "<strong>AI Συνέπειες για την Αγορά</strong> Σήματα συναλλαγών που παράγονται από LLM προερχόμενα από ζωντανή γεωπολιτική, εμπορεύματα και κατάσταση μακροοικονομικών δεδομένων μετά από κάθε κύκλο πρόβλεψης.<ul><li><strong>Κατεύθυνση</strong>: LONG / SHORT / HEDGE</li><li><strong>Χρονικό Διάστημα</strong>: Ορίζοντας 1W, 2W, 1M ή 3M</li><li><strong>Κίνητρο</strong>: Βασικός καταλύτης πίσω από το σήμα</li><li><strong>Κίνδυνος</strong>: Προειδοποίηση ή συνθήκη ακύρωσης</li></ul><em>Μόνο για ενημερωτικούς σκοπούς. Δεν αποτελεί επενδυτική συμβουλή.</em>",
+      "title": "Επιπτώσεις AI στην Αγορά",
+      "directions": {
+        "long": "LONG",
+        "short": "SHORT",
+        "hedge": "HEDGE"
+      },
+      "rationale": "Αιτιολόγηση:",
+      "driver": "Παράγοντας:",
+      "appliesToNext": "Ισχύει για την επόμενη ανανέωση AI",
+      "signals_one": "{{count}} σήμα",
+      "signals_other": "{{count}} σήματα",
+      "disclaimer": "Σήματα συναλλαγών που δημιουργούνται από AI για ενημερωτικούς σκοπούς μόνο. Δεν αποτελούν επενδυτική συμβουλή. Πάντα κάντε τη δική σας έρευνα.",
+      "unavailable": "Οι επιπτώσεις AI στην αγορά δημιουργούνται μετά από κάθε πρόγνωση. Ελέγξτε ξανά σύντομα.",
+      "unscored": "Αφηγηματικά σενάρια, χωρίς αξιολόγηση ακρίβειας."
+    },
+    "forecast": {
+      "infoTooltip": "<strong>AI Forecasts</strong> Εκτιμήσεις πιθανότητας που δημιουργούνται από AI για γεωπολιτικά και οικονομικά συμβάντα:<ul><li>Κάλυψη διαφόρων τομέων: σύγκρουση, αγορές, αλυσίδα εφοδιασμού, cyber, πολιτικά</li><li>Κάθε πρόβλεψη δείχνει εκτιμώμενη πιθανότητα, επίπεδο εμπιστοσύνης και ορίζοντα χρόνου</li></ul>Οι προβλέψεις ενημερώνονται καθώς φτάνουν νέα σήματα ευφυΐας. Φιλτράρετε κατά τομέα χρησιμοποιώντας τις καρτέλες παραπάνω.",
+      "record": {
+        "label": "Ιστορικό επιδόσεων",
+        "labelHint": "Πώς βαθμολογήθηκαν οι δημοσιευμένες προβλέψεις αφού επιλύθηκαν, τις τελευταίες {{days}} ημέρες. Περάστε τον δείκτη πάνω από έναν αριθμό για να δείτε τι σημαίνει.",
+        "unavailable": "Μη διαθέσιμο αυτή τη στιγμή",
+        "insufficient": "Ακόμη πολύ λίγες ανεξάρτητες προβλέψεις",
+        "brier": "Βαθμολογία Brier {{score}} (n={{n}})",
+        "brierHint": "Βαθμολογία Brier σε {{n}} βαθμολογημένες προβλέψεις: η μέση τετραγωνική απόκλιση μεταξύ της προβλεπόμενης πιθανότητας και του αποτελέσματος. Το 0 είναι τέλειο, το 0,25 ισοδυναμεί με ρίψη νομίσματος, χαμηλότερη τιμή είναι καλύτερη.",
+        "baseRate": "Πραγματικό ποσοστό {{score}} (n={{n}})",
+        "baseRateHint": "Τι θα είχε σημειώσει η πάντα πρόβλεψη του πόσο συχνά πραγματοποιήθηκαν αυτές οι {{n}} προβλέψεις ({{pct}}% επιλύθηκαν θετικά). Το ποσοστό αυτό γίνεται γνωστό μόνο αργότερα.",
+        "void": "Άκυρες {{pct}}% ({{count}} από {{resolved}})",
+        "voidHint": "Προβλέψεις που επιλύθηκαν αλλά δεν μπόρεσαν να βαθμολογηθούν, από {{resolved}} επιλυμένες στο διάστημα.",
+        "stale": "Μη ενημερωμένο",
+        "staleHint": "Τελευταία βαθμολόγηση {{date}}. Ο βαθμολογητής δεν έχει τρέξει έκτοτε, οπότε αυτοί οι αριθμοί είναι παλαιότεροι από όσο θα έπρεπε.",
+        "fullRecord": "Πλήρες ιστορικό",
+        "skill": "Δεξιότητα {{score}} έναντι πραγματικού ποσοστού",
+        "skillHint": "Δεξιότητα στις ίδιες {{n}} βαθμολογημένες προβλέψεις, έναντι της πάντα πρόβλεψης του πόσο συχνά πραγματοποιήθηκαν: 0 σημαίνει το ίδιο σφάλμα με εκείνο το ποσοστό, 1 είναι τέλειο, και κάτω από 0 σημαίνει μεγαλύτερο σφάλμα. Το πλήρες ιστορικό δείχνει εάν η διαφορά είναι σαφής."
+      },
+      "reliability": {
+        "measured": "{{domain}} n={{n}} · δεξιότητα {{skill}} έναντι πραγματικού ποσοστού",
+        "measuredHint": "Πώς οι δημοσιευμένες προβλέψεις {{domain}} σημείωσαν πόντους σε {{n}} βαθμολογημένες προβλέψεις τις τελευταίες {{days}} ημέρες, έναντι της πάντα πρόβλεψης του πόσο συχνά πραγματοποιήθηκαν οι προβλέψεις του τομέα: 0 σημαίνει το ίδιο σφάλμα με εκείνο το ποσοστό, 1 είναι τέλειο, και κάτω από 0 σημαίνει μεγαλύτερο σφάλμα. Brier {{score}} έναντι {{base}} για το ποσοστό αυτό, όπου χαμηλότερο είναι καλύτερο. Ένα σκορ τομέα δεν έχει ακόμη διάστημα αβεβαιότητας. Αυτό είναι το ιστορικό του τομέα, όχι αυτής της πρόβλεψης.",
+        "unmeasured": "Δεν έχει ακόμη μετρηθεί",
+        "unmeasuredHint": "Οι προβλέψεις {{domain}} έχουν {{n}} βαθμολογημένα αποτελέσματα τις τελευταίες {{days}} ημέρες. Η ακρίβεια ενός τομέα εμφανίζεται μόλις τα αποτελέσματά του προέρχονται από τουλάχιστον {{min}} οικογένειες προβλέψεων, με τουλάχιστον {{outcomes}} που πραγματοποιήθηκαν και τόσα όσα δεν πραγματοποιήθηκαν."
+      },
+      "resolution": {
+        "last": "Τελευταίο: {{outcome}}",
+        "lastSr": "Το προηγούμενο χρονικό διάστημα αυτής της πρόβλεψης επιλύθηκε ως {{outcome}}.",
+        "history": "Πρόσφατα χρονικά διαστήματα, νεότερα πρώτα: {{list}}",
+        "outcome": {
+          "yes": "ΝΑΙ",
+          "no": "ΟΧΙ",
+          "void": "ΑΚΥΡΟ"
+        },
+        "void": {
+          "no_establishable_metric": "Η πηγή δεδομένων δεν είχε ανάγνωση για αυτήν την ερώτηση",
+          "value_source_never_settled": "Η πηγή δεδομένων δεν δημοσίευσε ποτέ μια τελική τιμή",
+          "count_source_window_not_retained": "Η πηγή δεδομένων δεν διατήρησε πλέον το χρονικό διάστημα της ερώτησης",
+          "unsupported_window": "Η ερώτηση δεν μπορούσε να ελεγχθεί με βάση την πηγή δεδομένων της",
+          "unsupported_metric_key": "Η ερώτηση δεν μπορούσε να ελεγχθεί με βάση την πηγή δεδομένων της",
+          "not_hard_spec": "Η ερώτηση δεν μπορούσε να ελεγχθεί με βάση την πηγή δεδομένων της",
+          "missing_threshold": "Η ερώτηση δεν είχε κατώφλι",
+          "missing_deadline": "Η ερώτηση δεν είχε προθεσμία",
+          "missing_generated_at": "Η πρόβλεψη δεν είχε ημερομηνία έναρξης",
+          "beyond_archive_horizon": "Το αρχείο ειδήσεων δεν κάλυπτε πλέον το χρονικό διάστημα της ερώτησης",
+          "no_archive_evidence": "Το αρχείο ειδήσεων δεν είχε καμία πληροφορία για το θέμα",
+          "all_judges_void": "Και οι δύο κριτές θεώρησαν τα στοιχεία ανεπαρκή",
+          "judge_disagreement": "Οι κριτές διαφώνησαν",
+          "judge_retry_exhausted": "Οι κριτές δεν εξέδωσαν απόφαση",
+          "withheld_unpublished": "Αυτό το είδος πρόβλεψης δεν δημοσιεύεται πλέον",
+          "resolver_envelope_bug": "Βαθμολογήθηκε με βάση μια πηγή δεδομένων που δεν μπορέσαμε να διαβάσουμε σωστά",
+          "market_price_not_outcome": "Η πηγή έδειχνε την τιμή της αγοράς, όχι πώς επιλύθηκε η αγορά",
+          "judged_evidence_unreliable": "Εξαιρείται από τη βαθμολόγηση όσο διορθώνονται τα στοιχεία των κριτών",
+          "other": "Δεν ήταν δυνατή η επίλυση",
+          "judged_old_selection": "Αξιολογήθηκε με μέθοδο επιλογής στοιχείων που αργότερα κρίθηκε αναξιόπιστη",
+          "late_read": "Η πηγή δεδομένων δεν διαβάστηκε αρκετά κοντά στην προθεσμία",
+          "feed_unavailable": "Η τροφοδοσία δεδομένων δεν ήταν διαθέσιμη μετά την προθεσμία",
+          "resolver_could_not_read_feed": "Το σύστημα επίλυσής μας δεν μπόρεσε να διαβάσει σωστά αυτή την πηγή δεδομένων",
+          "base_rate_placeholder": "Άνοιξε με προσωρινή τιμή βασικού ποσοστού, όχι με πρόβλεψη του μοντέλου"
+        }
+      },
+      "horizons": {
+        "label": "Βαθμολογήθηκε επίσης σε: {{list}}",
+        "hint": "Η πιθανότητα της κύριας πρόβλεψης βαθμολογείται στο δικό της ορίζοντα. Η προβολή σε καθέναν από αυτούς τους ορίζοντες βαθμολογείται επίσης, έναντι της πηγής τροφοδοσίας της, χρησιμοποιώντας την τιμή που δημοσιεύτηκε πρώτη για αυτήν την πρόβλεψη. Οι τιμές προβολής δεν εμφανίζονται επειδή η τρέχουσα τιμή μπορεί να διαφέρει από την βαθμολογημένη."
+      },
+      "audit": {
+        "label": "Ακρίβεια υπό έλεγχο",
+        "hint": "Υπό έλεγχο από {{date}}. Ένας έλεγχος βρήκε σφάλματα στον τρόπο βαθμολόγησης των προβλέψεων. Οι βαθμολογίες έχουν αποσυρθεί ενώ γίνονται διορθώσεις. Οι προβλέψεις εξακολουθούν να δημοσιεύονται και να καταγράφονται.",
+        "unverified": "Καταγεγραμμένο αποτέλεσμα, δεν επαληθεύθηκε ενώ η ακρίβεια είναι υπό έλεγχο."
+      }
+    },
+    "escalationCorrelation": {
+      "infoTooltip": "<strong>Escalation Monitor</strong> Ανιχνεύει συγκλίνοντα γεωπολιτικά σήματα:<ul><li>Συσχετίζει στρατιωτικές κινήσεις, συμβάντα σύγκρουσης και αιχμές ειδήσεων</li><li>Βαθμολογεί ζώνες σύγκλισης κατά σοβαρότητα (κρίσιμη/υψηλή/μεσαία/χαμηλή)</li><li>Παρακολουθεί τάσεις κλιμάκωσης ή αποκλιμάκωσης με την πάροδο του χρόνου</li></ul>Κάντε κλικ σε μια κάρτα για μεγέθυνση στην περιοχή στο χάρτη."
+    },
+    "economicCorrelation": {
+      "infoTooltip": "<strong>Economic Warfare</strong> Ανιχνεύει συγκλίνοντα σήματα οικονομικής πίεσης:<ul><li>Κυρώσεις, περιορισμοί εμπορίου και κινήσεις νομισμάτων</li><li>Διακοπές εμπορευμάτων που συνδέονται με γεωπολιτικούς παίκτες</li><li>Διαπεδιακή συσχέτιση μεταξύ οικονομικών και σχετικών με την ασφάλεια συμβάντων</li></ul>Κάντε κλικ σε μια κάρτα για μεγέθυνση στην πληγείσα περιοχή."
+    },
+    "militaryCorrelation": {
+      "infoTooltip": "<strong>Force Posture</strong> Συσχετίζει στρατιωτική δραστηριότητα με γεωπολιτικό πλαίσιο:<ul><li>Συγκεντρώσεις στρατιωτικών αεροσκαφών και πολεμικών πλοίων κατά περιοχή</li><li>Διασταυρωτικές αναφορές με ενεργές ζώνες σύγκρουσης και αιχμές ειδήσεων</li><li>Επισημαίνει ασυνήθιστες συγκεντρώσεις ή αναθέσεις δυνάμεων</li></ul>Κάντε κλικ σε μια κάρτα για μεγέθυνση στην περιοχή στο χάρτη."
+    },
+    "disasterCorrelation": {
+      "infoTooltip": "<strong>Disaster Cascade</strong> Ανιχνεύει συγκλίνοντα σήματα φυσικής καταστροφής και υποδομής:<ul><li>Συσχετίζει σεισμούς, δασικές πυρκαγιές, πλημμύρες και ακραία καιρικά φαινόμενα</li><li>Παρακολουθεί κασκαδικές επιπτώσεις στην υποδομή και την αλυσίδα εφοδιασμού</li><li>Επισημαίνει περιοχές με σύνθετο κίνδυνο καταστροφής</li></ul>Κάντε κλικ σε μια κάρτα για μεγέθυνση στην πληγείσα περιοχή."
+    },
+    "markets": {
+      "infoTooltip": "<strong>Markets</strong> Καθυστερημένοι ή προφορτωμένοι δείκτες αγοράς, μετοχές και τιμές κρυπτογράφησης. Προσαρμόστε τη λίστα παρακολούθησής σας με το κουμπί Watchlist. Τα sparklines δείχνουν την πρόσφατη τάση τιμής.",
+      "chart": {
+        "title": "Γράφημα τιμής {{symbol}}",
+        "close": "Κλείσιμο γραφήματος"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
+      }
+    },
+    "heatmap": {
+      "infoTooltip": "<strong>Sector Heatmap</strong> Απόδοση του τομέα S&P 500 με μια ματιά. Η ένταση χρώματος αντανακλά το μέγεθος της ημερήσιας αλλαγής. Πράσινο = κέρδη, Κόκκινο = ζημιές."
+    },
+    "fuelPrices": {
+      "infoTooltip": "<strong>Fuel Prices</strong> Τιμές λιανικής αντλίας για βενζίνη και ντίζελ σε 30+ χώρες, κανονικοποιημένες σε USD/λίτρο για σύγκριση. Οι τιμές προέρχονται από επίσημα κυβερνητικά προγράμματα ανοικτών δεδομένων και ενημερώνονται εβδομαδιαία. Επισημαίνονται οι φθηνότερες και πιο ακριβές χώρες. Εμφανίζεται η αλλαγή από εβδομάδα σε εβδομάδα όταν διατίθενται δεδομένα προηγούμενης εβδομάδας.",
+      "countries": "χώρες"
+    },
+    "faoFoodPriceIndex": {
+      "infoTooltip": "<strong>FAO Food Price Index</strong> Ο Δείκτης Τιμών Τροφίμων της Οργάνωσης Τροφίμων και Γεωργίας του ΟΗΕ παρακολουθεί τις διεθνείς τιμές εξαγωγής για ένα καλάθι αγροτικών εμπορευμάτων (Δημητριακά, Γαλακτοκομικά, Κρέας, Λάδια, Ζάχαρη), βάση 2014-2016=100. Ενημερώνεται μηνιαία την πρώτη Παρασκευή του κάθε μήνα.",
+      "indexLabel": "Τιμές τροφίμων (2014–2016 = 100)",
+      "mom": "Μήνα προς μήνα",
+      "yoy": "Χρόνο προς χρόνο",
+      "asOf": "Κατά την ημερομηνία",
+      "baseNote": "Βάση: 2014–2016 = 100 | Πηγή: Οργάνωση Τροφίμων και Γεωργίας του ΟΗΕ",
+      "ffpi": "Τροφή",
+      "cereals": "Δημητριακά",
+      "meat": "Κρέας",
+      "dairy": "Γαλακτοκομικά",
+      "oils": "Έλαια",
+      "sugar": "Ζάχαρη"
+    },
+    "climateNews": {
+      "infoTooltip": "<strong>Climate News</strong> Τελευταίες πληροφορίες περιβάλλοντος και κλίματος από το Carbon Brief, UNEP, NASA, The Guardian και άλλες αξιόπιστες πηγές. Ενημέρωση κάθε 30 λεπτά.",
+      "loadError": "Το Climate News δεν είναι προσωρινά διαθέσιμο"
+    },
+    "liquidityShifts": {
+      "title": "Μετατοπίσεις Ρευστότητας",
+      "infoTooltip": "<strong>Liquidity Shifts</strong> Παρακολούθηση θέσεων υψηλής ρευστότητας και καθημερινών μεταβολών για πετρέλαιο, χρυσό, ασήμι, futures δεικτών ιδιοκτησίας και κορυφαίες αμερικανικές μετοχές. Commitments of Traders καθαρό asset-manager και καθαρό leveraged-funds έναντι καθημερινής μεταβολής τιμής.",
+      "cotSection": "Positioning Πετρελαίου / Χρυσού / Ασημιού + Δεικτών (Commitments of Traders)",
+      "stocksSection": "Κορυφαίες Αμερικανικές Μετοχές: Ημερήσια Μετατόπιση",
+      "longShort": "Long {{long}} / Short {{short}}",
+      "lev": "Lev",
+      "noCot": "Δεν υπάρχουν διαθέσιμες σειρές Commitments of Traders.",
+      "noStocks": "Δεν υπάρχουν διαθέσιμα κορυφαία στοιχεία μετοχών.",
+      "reportDate": "Ημερομηνία έκθεσης Commitments of Traders: {{date}}",
+      "unavailable": "Δεδομένα ρευστότητας μη διαθέσιμα",
+      "failed": "Αποτυχία φόρτωσης"
+    },
+    "positioning247": {
+      "title": "Θέσεις 24/7",
+      "infoTooltip": "<strong>24/7 Positioning</strong> Πίεση θέσεων perpetual συμβολαίων από το Hyperliquid. Συναλλαγές όλο το εικοσιτετράωρο, δείχνουν τι δημιουργείται όταν οι παραδοσιακές αγορές είναι κλειστές. Σύνθετη βαθμολογία (0-100) από επιτόκιο χρηματοδότησης, όγκο, ανοικτό ενδιαφέρον και βάση spot-perp. Πράσινο = longs συσσωρευμένα (bullish κλίση), κόκκινο = shorts συσσωρευμένα (bearish κλίση).",
+      "commodities": "ΕΜΠΟΡΕΥΜΑΤΑ",
+      "crypto": "CRYPTO",
+      "fx": "Συναλλαγματικές ισοτιμίες",
+      "warmup": "Δημιουργία βάσης αναφοράς. Το ιστορικό όγκου και ανοικτού ενδιαφέροντος θα συμπληρωθεί την επόμενη ώρα.",
+      "footer": "5min · Hyperliquid perps · 24/7"
+    },
+    "goldIntelligence": {
+      "infoTooltip": "<strong>Gold intelligence</strong> Τιμές χρυσού σε διάφορα νομίσματα, αναλογίες χρυσού/ασημιού και χρυσού/λευκόχρυσου, και θέσεις managed-money futures. Οι πηγές περιλαμβάνουν το Yahoo Finance και την Επιτροπή Εμπορίας Εμπορευμάτων Futures."
+    },
+    "wsbTickerScanner": {
+      "infoTooltip": "<strong>WallStreetBets Ticker Scanner</strong> Αναφορές τίκερ σε πραγματικό χρόνο από r/wallstreetbets, r/stocks και r/investing. Κατάταξη κατά συχνότητα αναφοράς και δέσμευσης. Η ταχύτητα μετρά πόσο γρήγορα ένας τίκερ κερδίζει ορμή σε όλες τις αναρτήσεις."
+    },
+    "proBanner": {
+      "badge": "PRO",
+      "headline": "Το Pro είναι ενεργό",
+      "tagline": "Περισσότερο σήμα, λιγότερος θόρυβος. Περισσότερες AI Briefings. Ένας γεωπολιτικός και ερευνητής μετοχών μόνο για εσάς.",
+      "cta": "Αναβάθμιση σε Pro →",
+      "dismiss": "Απόρριψη"
+    },
+    "billingState": {
+      "onHoldDesc": "Η πληρωμή απέτυχε. Ενημερώστε τη μέθοδο πληρωμής σας για να επαναφέρετε την premium πρόσβαση.",
+      "onHoldBannerMessage": "Η πληρωμή απέτυχε. Ενημερώστε τη μέθοδο πληρωμής σας για να παραμείνει ενεργή η συνδρομή σας.",
+      "updatePayment": "Ενημέρωση πληρωμής",
+      "renewalPendingDesc": "Επαληθεύουμε την ανανέωση της συνδρομής σας. Η premium πρόσβαση θα αποκατασταθεί αυτόματα μόλις επιβεβαιωθεί.",
+      "refreshStatus": "Ανανέωση κατάστασης",
+      "renewalFailedDesc": "Δεν ήταν δυνατή η επαλήθευση της ανανέωσης της συνδρομής σας. Διαχειριστείτε τη χρέωση ή επικοινωνήστε με την υποστήριξη αν το πρόβλημα επιμένει.",
+      "manageBilling": "Διαχείριση χρέωσης",
+      "lapsedDesc": "Η συνδρομή σας Pro έληξε. Εγγραφείτε ξανά για να ανακτήσετε την premium πρόσβαση.",
+      "resubscribe": "Επανεγγραφή"
+    },
+    "checkoutFailureBanner": {
+      "message": "Η πληρωμή δεν μπορούσε να ολοκληρωθεί. Δεν χρεώθηκε κανένα ποσό.",
+      "retry": "Δοκιμάστε ξανά",
+      "retrying": "Γίνεται νέα προσπάθεια…",
+      "dismiss": "Απόρριψη"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Βήμα {{current}} από {{total}}",
+      "closeLabel": "Παράλειψη ρύθμισης",
+      "ariaLabel": "Ρύθμιση ενεργοποίησης Pro",
+      "signedInAs": "Συνδεδεμένος ως {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Η καθημερινή σας ενημέρωση, κάθε πρωί",
+          "body": "Μια επιμελημένη ενημέρωση πληροφοριών στα εισερχόμενά σας κάθε πρωί — τα σήματα της νύχτας που έχουν σημασία, συμπυκνωμένα σε ανάγνωση πέντε λεπτών.",
+          "confirmCta": "Ενεργοποίηση της πρωινής μου ενημέρωσης",
+          "confirming": "Ενεργοποίηση…",
+          "doneNote": "Η πρωινή σας ενημέρωση εκτελείται ήδη.",
+          "scheduleNote": "Θα διατηρήσουμε την τρέχουσα ώρα παράδοσής σας.",
+          "summaryLabel": "Πρωινή ενημέρωση",
+          "summaryVerified": "Ενεργή — ξεκινά με την επόμενη πρωινή σας ενημέρωση.",
+          "deliverAt": "Παράδοση στις",
+          "previewLoading": "Προετοιμασία προεπισκόπησης της πρώτης σας ενημέρωσης…",
+          "previewLabel": "Η σημερινή πρωινή ενημέρωση"
+        },
+        "alerts": {
+          "heading": "Κρίσιμες ειδοποιήσεις",
+          "body": "Λάβετε ειδοποίηση στο πρόγραμμα περιήγησής σας όταν συμβεί κάτι σημαντικό — κλιμακώσεις συγκρούσεων, κραδασμοί αγοράς, νέες κυρώσεις. Προσαρμόστε τη συχνότητα ανά πάσα στιγμή στις Ρυθμίσεις.",
+          "confirmCta": "Ενεργοποίηση ειδοποιήσεων",
+          "confirming": "Ενεργοποίηση…",
+          "doneNote": "Οι ειδοποιήσεις προγράμματος περιήγησης είναι ήδη ενεργές.",
+          "blockedNote": "Οι ειδοποιήσεις είναι αποκλεισμένες στο πρόγραμμα περιήγησής σας. Ενεργοποιήστε τις στις ρυθμίσεις ιστότοπου του προγράμματος περιήγησής σας για να λαμβάνετε ειδοποιήσεις.",
+          "declinedNote": "Κανένα πρόβλημα — δεν θα στείλουμε ειδοποιήσεις προγράμματος περιήγησης. Μπορείτε να τις ενεργοποιήσετε αργότερα από τις ρυθμίσεις ιστότοπου του προγράμματος περιήγησής σας.",
+          "summaryLabel": "Κρίσιμες ειδοποιήσεις",
+          "summaryVerified": "Ενεργές — τα κρίσιμα σήματα θα φτάνουν στο πρόγραμμα περιήγησής σας."
+        },
+        "power": {
+          "heading": "Το σετ εργαλείων Pro σας",
+          "body": "Προσαρμοσμένα widgets, συνδέσεις MCP και ο ερευνητής AI έχουν ξεκλειδωθεί. Φτιάξτε τον πίνακα που πραγματικά θέλετε να παρακολουθείτε.",
+          "confirmCta": "Εξερεύνηση εργαλείων Pro",
+          "confirming": "Άνοιγμα…",
+          "doneNote": "Ήδη χρησιμοποιείτε τα εργαλεία Pro σας.",
+          "summaryLabel": "Σετ εργαλείων Pro",
+          "summaryVerified": "Ξεκλειδωμένο και έτοιμο όποτε είστε κι εσείς.",
+          "channelsNote": "Προτιμάτε Telegram, Slack, Discord ή ένα webhook;",
+          "pointers": {
+            "search": "Αναζήτηση σε ολόκληρο τον πίνακα",
+            "widgets": "Δημιουργία προσαρμοσμένου widget",
+            "analyst": "Ρωτήστε τον αναλυτή AI",
+            "mcpClients": "Ρύθμιση MCP",
+            "channels": "Ρυθμίστε τα στις ρυθμίσεις ειδοποιήσεων"
+          }
+        }
+      },
+      "status": {
+        "pending": "Δεν έχει ρυθμιστεί",
+        "inFlight": "Ρύθμιση…",
+        "verified": "Έτοιμο",
+        "failed": "Δεν λειτούργησε",
+        "blocked": "Αποκλεισμένο",
+        "unavailable": "Μη διαθέσιμο",
+        "blockedNote": "Αυτό δεν είναι διαθέσιμο αυτήν τη στιγμή — μπορείτε να το ρυθμίσετε αργότερα από τις ρυθμίσεις.",
+        "unavailableNote": "Αυτό δεν είναι διαθέσιμο στη συσκευή σας — μπορείτε να το ρυθμίσετε αργότερα.",
+        "failedBody": "Κάτι πήγε στραβά. Μπορείτε να δοκιμάσετε ξανά ή να το ρυθμίσετε αργότερα από τις ρυθμίσεις.",
+        "retry": "Δοκιμάστε ξανά"
+      },
+      "actions": {
+        "skip": "Παράλειψη προς το παρόν",
+        "continue": "Συνέχεια"
+      },
+      "summary": {
+        "heading": "Όλα είναι έτοιμα",
+        "subVerified": "Δείτε τι λειτουργεί στον λογαριασμό σας.",
+        "subPending": "Μπορείτε να ολοκληρώσετε τη ρύθμιση ανά πάσα στιγμή από τις ρυθμίσεις.",
+        "linePending": "Δεν έχει ρυθμιστεί ακόμα — ολοκληρώστε το όποτε θέλετε στις ρυθμίσεις.",
+        "lineFailed": "Δεν μπορέσαμε να το ρυθμίσουμε — δοκιμάστε ξανά από τις ρυθμίσεις.",
+        "finish": "Μετάβαση στον πίνακά μου"
+      },
+      "chip": {
+        "message": "Ολοκληρώστε τη ρύθμιση του λογαριασμού σας Pro.",
+        "action": "Ολοκλήρωση ρύθμισης",
+        "dismissLabel": "Απόρριψη"
+      }
+    },
+    "frameworkSelector": {
+      "label": "Πλαίσιο Ανάλυσης",
+      "defaultNeutral": "Προεπιλογή (Ουδέτερο)",
+      "titlePrefix": "Πλαίσιο: {{name}}",
+      "titleNone": "Πλαίσιο ανάλυσης"
+    },
+    "sanctionsPressure": {
+      "title": "Κυρώσεις & Χαρακτηρισμοί",
+      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals and Consolidated Lists συν Global Affairs Canada SEMA/JVCFOA designations. Εμφανίζει ποιες χώρες αντιμετωπίζουν την υψηλότερη πίεση designations, τι προγράμματα την οδηγούν, και τι έχει προστεθεί πρόσφατα από την τελευταία ενημέρωση.",
+      "loading": "Φόρτωση δεδομένων κυρώσεων...",
+      "unavailable": "Τα δεδομένα κυρώσεων δεν είναι διαθέσιμα.",
+      "summary": {
+        "new": "Νέο",
+        "vessels": "Σκάφη",
+        "aircraft": "Αεροσκάφη",
+        "sema": "SEMA"
+      },
+      "sections": {
+        "countries": "Χώρες υπό κυρώσεις",
+        "entries": "Πρόσφατοι χαρακτηρισμοί",
+        "programs": "Προγράμματα"
+      },
+      "empty": {
+        "countries": "Δεν υπάρχει διαθέσιμη αποδοχή χώρας.",
+        "entries": "Δεν υπάρχουν πρόσφατοι χαρακτηρισμοί.",
+        "programs": "Δεν υπάρχει ανάλυση προγράμματος."
+      },
+      "footer": {
+        "updated": "Ενημερώθηκε {{time}}",
+        "dataset": "σύνολο δεδομένων {{date}}",
+        "source": "Πηγή: Office of Foreign Assets Control · GAC SEMA"
+      },
+      "pills": {
+        "newCount": "+{{count}} νέα",
+        "new": "νέο",
+        "sema": "sema-ca"
+      },
+      "designations_one": "{{count}} χαρακτηρισμός",
+      "designations_other": "{{count}} χαρακτηρισμοί",
+      "fallbacks": {
+        "unattributed": "Μη αποδιδόμενο",
+        "program": "Πρόγραμμα",
+        "undated": "χωρίς ημερομηνία"
+      }
+    },
+    "radiationWatch": {
+      "title": "Radiation Watch",
+      "infoTooltip": "Σεδιασμένες EPA RadNet και Safecast ενδείξεις με βαθμολόγηση ανωμαλιών και σύνθεση εμπιστοσύνης πηγής. Αυτό το πάνελ απαντά στο τι είναι κανονικό, τι είναι αυξημένο και ποιες ανωμαλίες είναι επιβεβαιωμένες έναντι προσωρινών.",
+      "loading": "Φόρτωση δεδομένων ακτινοβολίας...",
+      "empty": "Δεν υπάρχουν διαθέσιμες παρατηρήσεις ακτινοβολίας.",
+      "baseline": "{{value}} baseline",
+      "flags": {
+        "confirmed": "επιβεβαιωμένη",
+        "conflict": "σύγκρουση",
+        "cpmDerived": "CPM-derived"
+      },
+      "headers": {
+        "station": "Σταθμός",
+        "reading": "Ένδειξη",
+        "delta": "Διαφορά",
+        "status": "Κατάσταση",
+        "observed": "Παρατηρήθηκε"
+      },
+      "summary": {
+        "anomalies": "Ανωμαλίες",
+        "elevated": "Υψηλή",
+        "confirmed": "Επιβεβαιωμένη",
+        "lowConfidence": "Χαμηλή Εμπιστοσύνη",
+        "conflicts": "Συγκρούσεις",
+        "spikes": "Άλματα"
+      },
+      "footer": {
+        "updated": "Ενημερώθηκε {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}h πριν",
+        "hoursAgo_other": "{{count}}h πριν",
+        "daysAgo_one": "{{count}}d πριν",
+        "daysAgo_other": "{{count}}d πριν"
+      },
+      "confidence": {
+        "high": "υψηλή εμπιστοσύνη",
+        "medium": "μεσαία εμπιστοσύνη",
+        "low": "χαμηλή εμπιστοσύνη"
+      }
+    },
+    "defensePatents": {
+      "title": "Σήματα έρευνας και ανάπτυξης",
+      "infoTooltip": "Εβδομαδιαία αρχεία άμυνας και διπλής χρήσης από Raytheon, Lockheed, Huawei, DARPA και άλλους στρατηγικούς οργανισμούς. Κατηγορίες: H04B (επικοινωνίες), H01L (ημιαγωγοί), F42B (πυρομαχικά), G06N (AI), C12N (βιοτεχνολογία). Πηγή: USPTO Open Data Portal.",
+      "loading": "Φόρτωση αρχείων έρευνας και ανάπτυξης…",
+      "error": "Αποτυχία φόρτωσης δεδομένων διπλωμάτων ευρεσιτεχνίας.",
+      "empty": "Κανένα αρχείο σε αυτήν την κατηγορία.",
+      "viewOnUspto": "Προβολή στο USPTO",
+      "tabs": {
+        "all": "Όλα"
+      },
+      "cpcLabels": {
+        "H04B": "Επικοινωνίες",
+        "H01L": "Ημιαγωγοί",
+        "F42B": "Πυρομαχικά",
+        "G06N": "AI",
+        "C12N": "Βιοτεχνολογία"
+      }
+    },
+    "correlation": {
+      "loading": "Αναμονή δεδομένων...",
+      "empty": "Δεν ανιχνεύθηκε ενεργή σύγκλιση",
+      "signals_one": "{{count}} σήμα",
+      "signals_other": "{{count}} σήματα",
+      "analyzing": "Ανάλυση...",
+      "viewOnMap": "Προβολή στον χάρτη",
+      "waiting": "Αναμονή για την επόμενη ενημέρωση δεδομένων. Αυτός ο πίνακας ενημερώνεται αυτόματα.",
+      "offline": "Αναμονή για σύνδεση. Αυτός ο πίνακας ενημερώνεται αυτόματα όταν συνδεθείτε ξανά.",
+      "updated": "Ενημερώθηκε {{time}}",
+      "saved": "Τελευταία γνωστή ενημέρωση {{time}} · Έλεγχος για ενημερώσεις",
+      "savedOffline": "Τελευταία γνωστή ενημέρωση {{time}} · Εκτός σύνδεσης",
+      "localSignals": "Με βάση τα σήματα που έχουν φορτωθεί στον πίνακα ελέγχου",
+      "emptySaved": "Δεν υπήρχε σύγκλιση στην τελευταία γνωστή ενημέρωση."
+    },
+    "thermalEscalation": {
+      "title": "Θερμική Κλιμάκωση",
+      "infoTooltip": "Σύμπλεγματα θερμικών ανωμαλιών FIRMS/VIIRS με σύγκριση baseline, παρακολούθηση διαρκείας και στρατηγικό πλαίσιο. Αυτή η σελίδα δείχνει πού η θερμική δραστηριότητα είναι ανώμαλη και ποια σύμπλεγματα μπορεί να σηματοδοτούν σύγκρουση, βιομηχανική διατάραξη ή κλιμάκωση.",
+      "loading": "Φόρτωση θερμικών δεδομένων...",
+      "empty": "Δεν ανιχνεύθηκαν σύμπλεγματα θερμικής κλιμάκωσης.",
+      "footer": {
+        "updated": "Ενημερώθηκε {{time}}"
+      },
+      "summary": {
+        "total": "Σύνολο",
+        "elevated": "Υψηλή",
+        "spikes": "Αιχμές",
+        "persist": "Διατήρηση",
+        "conflict": "Σύγκρουση",
+        "strategic": "Στρατηγικό"
+      },
+      "badges": {
+        "conflictAdjacent": "conflict-adj",
+        "energyAdjacent": "energy-adj",
+        "industrial": "industrial",
+        "strategic": "strategic"
+      },
+      "observations_one": "{{count}} obs",
+      "observations_other": "{{count}} obs",
+      "sources_one": "{{count}} src",
+      "sources_other": "{{count}} src",
+      "age": {
+        "minutesAgo_one": "{{count}}m ago",
+        "minutesAgo_other": "{{count}}m ago",
+        "hoursAgo_one": "{{count}}h ago",
+        "hoursAgo_other": "{{count}}h ago",
+        "daysAgo_one": "{{count}}d ago",
+        "daysAgo_other": "{{count}}d ago"
+      }
+    },
+    "chokepointStrip": {
+      "title": "Κατάσταση Σημείου Συμφόρησης",
+      "infoTooltip": "Κατάσταση ζωντανής σύνδεσης για τα επτά παγκόσμια σημεία ασφυξίας πετρελαίου και φυσικού αερίου. Εκτιμήσεις ροής βαθμονομημένες από τη χωρητικότητα πλοίων Portwatch + παρατηρήσεις παρακολούθησης πλοίων. Δείτε /docs/methodology/chokepoints για μεθοδολογία.",
+      "unknown": "άγνωστο",
+      "shortName": {
+        "hormuzStrait": "Hormuz",
+        "malaccaStrait": "Malacca",
+        "suez": "Suez",
+        "babElMandeb": "Bab el-Mandeb",
+        "bosphorus": "Τουρκικά Στενά",
+        "panama": "Panama",
+        "danishStraits": "Δανικά Στενά"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/d",
+        "pctOfBaseline": "{{pct}}% of baseline"
+      },
+      "errors": {
+        "unavailable": "Η κατάσταση σημείου συμφόρησης δεν είναι διαθέσιμη",
+        "noData": "Καμία δεδομένα σημείου συμφόρησης ακόμα"
+      },
+      "attribution": {
+        "method": "Χωρητικότητα πλοίων Portwatch + βαθμονόμηση παρακολούθησης πλοίων",
+        "sampleLabel": "σήματα διακοπής παρακολούθησης πλοίων",
+        "creditName": "Παγκόσμια σημεία ασφυξίας διαμετακόμισης πετρελαίου της Υπηρεσίας Πληροφοριών Ενέργειας ΗΠΑ"
+      }
+    },
+    "mobileNav": {
+      "panelCategories": "Κατηγορίες πίνακα"
+    },
+    "panelFreshness": {
+      "status": {
+        "fresh": "Ενημερωμένο",
+        "stale": "Παρωχημένο",
+        "veryStale": "Πολύ παρωχημένο",
+        "noData": "Χωρίς δεδομένα",
+        "disabled": "Απενεργοποιημένο",
+        "error": "Σφάλμα"
+      },
+      "labelWithAge": "{{status}} {{age}}",
+      "title": "Επικαιρότητα δεδομένων: {{status}}. {{sources}}",
+      "sourceDetail": "{{name}}: {{status}}, {{update}}",
+      "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
+      "lastUpdated": "τελευταία ενημέρωση {{time}}",
+      "neverUpdated": "ποτέ δεν ενημερώθηκε",
+      "health": {
+        "partialCoverage": "μερική κάλυψη",
+        "contentStale": "περιεχόμενο παρωχημένο",
+        "seedStale": "seed παρωχημένο",
+        "noSourceData": "χωρίς δεδομένα πηγής",
+        "sourceErrorReported": "αναφέρθηκε σφάλμα πηγής",
+        "freshnessStoreUnavailable": "αποθήκη επικαιρότητας μη διαθέσιμη",
+        "freshnessStoreDegraded": "αποθήκη επικαιρότητας υποβαθμισμένη"
+      },
+      "time": {
+        "never": "ποτέ",
+        "justNow": "μόλις τώρα",
+        "minutesAgo": "πριν {{count}}λ",
+        "hoursAgo": "πριν {{count}}ω",
+        "daysAgo": "πριν {{count}}η",
+        "compactNow": "τώρα",
+        "compactMinutes": "{{count}}λ",
+        "compactHours": "{{count}}ω",
+        "compactDays": "{{count}}η"
+      }
+    },
+    "exportGate": {
+      "signedOutDesc": "Συνδεθείτε για εξαγωγή δεδομένων πίνακα ελέγχου ως CSV, JSON ή PDF.",
+      "upgradeDesc": "Η εξαγωγή δεδομένων (CSV, JSON, PDF) περιλαμβάνεται στο Pro Business.",
+      "upgradeCta": "Αναβάθμιση σε Pro Business",
+      "lockedAriaLabel": "Εξαγωγή δεδομένων — κλειδωμένο. {{reason}}",
+      "unlockedAnnouncement": "Η εξαγωγή δεδομένων ξεκλειδώθηκε.",
+      "preparingPdf": "Προετοιμασία PDF…",
+      "pdfFailed": "Η αναφορά PDF δεν ήταν δυνατό να δημιουργηθεί. Δοκιμάστε ξανά ή χρησιμοποιήστε την εξαγωγή JSON."
+    },
+    "tabCap": {
+      "signedOutDesc": "Οι χώροι εργασίας χωρίς σύνδεση περιορίζονται σε {{cap}} καρτέλες. Συνδεθείτε για να προσθέσετε περισσότερες.",
+      "upgradeDesc": "Έχετε φτάσει το όριο {{cap}} καρτελών πίνακα ελέγχου.",
+      "upgradeCta": "Αναβάθμιση για περισσότερα",
+      "lockedAriaLabel": "Προσθήκη καρτέλας — κλειδωμένο. {{reason}}",
+      "unlockedAnnouncement": "Το όριο καρτελών πίνακα ελέγχου αρθρώθηκε."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Currency rates</strong> Η πίεση κατατάσσει 45 νομίσματα κατά τη μεγαλύτερη πτώση τους σε 24 μήνες, με τη μεταβολή 12 μηνών. Οι spot rates χρησιμοποιούν ξεχωριστές βάσεις δολαρίου ΗΠΑ και ευρώ. Οι τιμές ρούβλι Ρωσίας είναι ρούβλια ανά μονάδα. Οι πηγές περιλαμβάνουν Yahoo Finance, την Ευρωπαϊκή Κεντρική Τράπεζα και την Τράπεζα της Ρωσίας.",
+      "tabs": {
+        "stress": "Πίεση νομίσματος",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "Νόμισμα",
+      "pair": "Ζεύγος",
+      "rate": "Ισοτιμία",
+      "yoy": "12m",
+      "drawdown": "Πτώση 24m",
+      "peakToTrough": "Κορυφή → Κατώφλι",
+      "change1d": "1d",
+      "perUsd": "Ανά 1 USD",
+      "usdPerUnit": "USD ανά μονάδα",
+      "usdBase": "Έναντι του δολαρίου ΗΠΑ",
+      "eurBase": "Συναλλαγματικές ισοτιμίες αναφοράς ευρώ της Ευρωπαϊκής Κεντρικής Τράπεζας",
+      "stressedCount": "{{stressed}} από {{total}} νομίσματα κάτω του {{threshold}}",
+      "sourceYahoo": "Πηγή: Yahoo Finance",
+      "sourceEcb": "Πηγή: Ευρωπαϊκή Κεντρική Τράπεζα",
+      "degraded": "Προς το παρόν μη διαθέσιμο: {{sources}}. Επανάληψη σε λίγο.",
+      "source": {
+        "stress": "Πίεση συναλλαγματικών ισοτιμιών",
+        "usd": "Ισοτιμίες δολαρίου ΗΠΑ",
+        "eur": "Συναλλαγματικές ισοτιμίες ευρώ της Ευρωπαϊκής Κεντρικής Τράπεζας",
+        "rub": "Ισοτιμίες της Τράπεζας της Ρωσίας"
+      },
+      "rubBase": "Τράπεζα της Ρωσίας — ρούβλια ανά 1 μονάδα",
+      "rubPerUnit": "Ρούβλια ανά μονάδα",
+      "sourceCbr": "Πηγή: Τράπεζα της Ρωσίας"
+    },
+    "passkeyOffer": {
+      "title": "Να αποθηκευθεί ένα κλειδί πρόσβασης;",
+      "body": "Συνδέσου την επόμενη φορά με το δακτυλικό σου αποτύπωμα, το πρόσωπό σου ή το PIN της συσκευής σου — χωρίς κωδικό πρόσβασης να θυμάσαι.",
+      "accept": "Αποθήκευση κλειδιού πρόσβασης",
+      "dismiss": "Όχι τώρα",
+      "close": "Κλείσιμο",
+      "announce": "Αποθήκευσε ένα κλειδί πρόσβασης για να συνδεθείς πιο γρήγορα την επόμενη φορά.",
+      "busy": "Αναμονή της συσκευής σου…",
+      "succeeded": "Το κλειδί πρόσβασης αποθηκεύτηκε. Μπορείς να το χρησιμοποιήσεις την επόμενη φορά που θα συνδεθείς.",
+      "retryable": "Δεν ολοκληρώθηκε. Μπορείς να προσπαθήσεις ξανά.",
+      "failed": "Δεν μπορέσαμε να αποθηκεύσουμε ένα κλειδί πρόσβασης σε αυτήν τη συσκευή."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Ενημέρωση αποφάσεων για εμπορεύματα",
+      "commodity": "Εμπόρευμα / προϊόν",
+      "blockedChokepoint": "Στενό που θεωρείται αποκλεισμένο",
+      "commodityCapture": "Καταγραφή σύγκρισης εμπορευμάτων",
+      "title": "Σύνοψη απόφασης",
+      "fuel": "Καύσιμο",
+      "chokepoint": "Στενό πέρασμα",
+      "baseline": "Διακοπή αναφοράς",
+      "comparison": "Διακοπή σύγκρισης",
+      "capture": "Λήψη / ανανέωση και των δύο",
+      "downloadHtml": "Λήψη σύνοψης σε HTML",
+      "downloadJson": "Λήψη σύνοψης σε JSON",
+      "back": "← Επιστροφή στη σύνοψη χώρας",
+      "select": "Επιλέξτε μια διακοπή ενεργειακού εφοδιασμού και λάβετε τα δύο σενάρια.",
+      "changed": "Η επιλογή άλλαξε. Λάβετε τα δύο σενάρια πριν από την εξαγωγή.",
+      "loading": "Λήψη των δύο σεναρίων…",
+      "captured": "Η λήψη ολοκληρώθηκε. Ελέγξτε τις ημερομηνίες παρατήρησης και τους περιορισμούς πριν κατεβάσετε το αρχείο.",
+      "failed": "Δεν ήταν δυνατή η λήψη των σεναρίων. Ελέγξτε την πρόσβασή σας και δοκιμάστε ξανά. Δεν υπάρχει αποτέλεσμα για εξαγωγή.",
+      "locked": "Η σύνοψη απόφασης είναι διαθέσιμη με Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Σε παύση λόγω αδράνειας",
+      "idleBody": "Το ζωντανό βίντεο σταμάτησε μετά από {{duration}} χωρίς δραστηριότητα ποντικιού, πληκτρολογίου ή αφής.",
+      "idleResume": "Συνέχεια",
+      "idleKeepPlaying": "Συνέχιση αναπαραγωγής όταν είναι αδρανές",
+      "idleSettingsHint": "Αλλάξτε αυτό ανά πάσα στιγμή στο Ρυθμίσεις › Μέσα.",
+      "idleKeepPlayingToast": "Το ζωντανό βίντεο θα συνεχίσει να παίζει όταν είναι αδρανές. Αλλάξτε στο Ρυθμίσεις › Μέσα."
+    },
+    "corroboration": {
+      "singlePublisher": "Μόνο ένας δημοσιογράφος",
+      "singlePublisherHint": "Μόνο ένας δημοσιογράφος αναφέρει αυτό προς το παρόν. Αυτό περιγράφει την κάλυψη, όχι την ακρίβεια.",
+      "tier4Only": "Μόνο πηγές χαμηλής βαθμίδας",
+      "tier4OnlyHint": "Κάθε μέσο που αναφέρει αυτό είναι μια πηγή tier-4 (συγκεντρωτές και ιστολόγια). Αυτό περιγράφει την κάλυψη, όχι την ακρίβεια.",
+      "rosterListed": "({{listed}} καταχωρημένα)",
+      "rosterFeeds": "Ροές που εντοπίστηκαν: {{labels}}",
+      "rosterSameCopy": "Ίδιο κείμενο, μετράει μία φορά",
+      "rosterLegend": "Τα επίπεδα κατατάσσουν τις πηγές· δεν κρίνουν αυτόν τον ισχυρισμό.",
+      "tierDocsLink": "Πώς αποδίδονται τα επίπεδα",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "Επίπεδο 1: Υπηρεσίες ειδήσεων και επίσημοι οργανισμοί",
+      "tierTitle2": "Επίπεδο 2: Μεγάλα μέσα ενημέρωσης",
+      "tierTitle3": "Επίπεδο 3: Εξειδικευμένες και περιφερειακές πηγές και δεξαμενές σκέψης",
+      "tierTitle4": "Επίπεδο 4: Συγκεντρωτές και ιστολόγια",
+      "tierTitleUndeclared": "Επίπεδο μη δηλωμένο: δεν έχει εξεταστεί ακόμη",
+      "rosterSummary": "Αναφέρθηκε από {{publishers}}",
+      "rosterSummaryTier1": "Αναφέρθηκε από {{publishers}}, συμπεριλαμβανομένων {{tier1}} επιπέδου 1",
+      "rosterPublishers_one": "{{count}} εκδότης",
+      "rosterPublishers_other": "{{count}} εκδότες"
     }
   },
   "popups": {
     "startDate": "ΗΜΕΡΟΜΗΝΙΑ ΕΝΑΡΞΗΣ",
-    "endDate": "ΗΜΕΡΟΜΗΝΙΑ ΛΗΞΗΣ",
     "magnitude": "Μέγεθος",
     "depth": "Βάθος",
     "intensity": "Ένταση",
@@ -1777,20 +2994,9 @@
     "keyDevelopments": "ΒΑΣΙΚΕΣ ΕΞΕΛΙΞΕΙΣ",
     "unknown": "Άγνωστο",
     "source": "Πηγή",
-    "target": "Στόχος",
     "events": "Συμβάντα",
-    "impact": "Επίπτωση",
     "capacity": "Χωρητικότητα",
-    "alerts": "Ενεργοί Συναγερμοί",
     "updated": "Ενημερώθηκε",
-    "common": {
-      "start": "ΕΝΑΡΞΗ",
-      "end": "ΛΗΞΗ",
-      "updated": "ΕΝΗΜΕΡΩΘΗΚΕ"
-    },
-    "conflict": {
-      "title": "ΖΩΝΗ ΣΥΓΚΡΟΥΣΗΣ"
-    },
     "earthquake": {
       "levels": {
         "major": "ΜΕΓΑΛΟΣ",
@@ -1808,14 +3014,18 @@
     "protest": {
       "acledVerified": "ACLED (επαληθευμένο)",
       "gdelt": "GDELT",
+      "records": "εγγραφές",
+      "mediaSignal": "Μη επαληθευμένη αναφορά μέσων",
+      "relatedArticle": "Σχετικό άρθρο",
+      "mediaSignalDetail": "Αυτή η τοποθεσία αναφέρεται σε άρθρα για αναταραχές. Δεν έχει επαληθευτεί τοπικό συμβάν.",
       "riots": "Ταραχές",
       "highSeverity": "Υψηλή Σοβαρότητα"
     },
     "gpsJamming": {
-      "title": "Παρεμβολή GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "title": "Παρεμβολή δορυφορικής πλοήγησης",
+      "navPerformance": "Επηρεαζόμενα αεροσκάφη",
+      "samples": "Αριθμός επηρεαζόμενων αεροσκαφών",
+      "aircraft": "Εντοπισμένα αεροσκάφη",
       "h3Hex": "H3 Hex"
     },
     "flight": {
@@ -1841,7 +3051,9 @@
         "apac": "Ασία-Ειρηνικός",
         "mena": "Μέση Ανατολή",
         "africa": "Αφρική"
-      }
+      },
+      "scheduled": "Προγρ.",
+      "estimated": "Εκτ."
     },
     "aircraft": {
       "altitude": "Υψόμετρο",
@@ -1851,9 +3063,6 @@
       "ground": "Στο έδαφος",
       "airborne": "Εν πτήσει"
     },
-    "apt": {
-      "description": "Ομάδα Προηγμένης Επίμονης Απειλής με δυνατότητες κρατικού επιπέδου. Γνωστή για εξελιγμένες κυβερνοεπιχειρήσεις που στοχεύουν κρίσιμες υποδομές, κυβερνητικούς και αμυντικούς τομείς."
-    },
     "cyberThreat": {
       "title": "ΚΥΒΕΡΝΟΑΠΕΙΛΗ"
     },
@@ -1862,7 +3071,9 @@
         "plant": "ΣΤΑΘΜΟΣ ΠΑΡΑΓΩΓΗΣ",
         "enrichment": "ΕΜΠΛΟΥΤΙΣΜΟΣ",
         "weapons": "ΣΥΓΚΡΟΤΗΜΑ ΟΠΛΩΝ",
-        "research": "ΕΡΕΥΝΑ"
+        "research": "ΕΡΕΥΝΑ",
+        "reprocessing": "ΕΡΓΟΣΤΑΣΙΟ ΕΠΑΝΕΠΕΞΕΡΓΑΣΙΑΣ",
+        "testSite": "ΧΩΡΟΣ ΠΥΡΗΝΙΚΩΝ ΔΟΚΙΜΩΝ"
       },
       "description": "Πυρηνική εγκατάσταση υπό παρακολούθηση. Στρατηγική σημασία για την περιφερειακή ασφάλεια και τις ανησυχίες μη διάδοσης."
     },
@@ -1928,9 +3139,7 @@
     "sampledList": "Εμφάνιση δειγματοληπτικής λίστας {{count}} συμβάντων.",
     "reason": "ΑΙΤΙΑ",
     "threat": "ΑΠΕΙΛΗ",
-    "aka": "Επίσης γνωστός ως",
     "sponsor": "ΧΟΡΗΓΟΣ",
-    "origin": "ΠΡΟΕΛΕΥΣΗ",
     "country": "ΧΩΡΑ",
     "malware": "MALWARE",
     "lastSeen": "ΤΕΛΕΥΤΑΙΑ ΕΜΦΑΝΙΣΗ",
@@ -1942,7 +3151,7 @@
     "operator": "ΔΙΑΧΕΙΡΙΣΤΗΣ",
     "countries": "ΧΩΡΕΣ",
     "waypoints": "ΣΗΜΕΙΑ ΔΙΑΔΡΟΜΗΣ",
-    "repairEta": "ΕΚΤΙΜΩΜΕΝΗ ΑΦΙΞΗ ΕΠΙΣΚΕΥΗΣ",
+    "repairEta": "Εκτιμώμενος χρόνος επισκευής",
     "timeUnits": {
       "m": "λ",
       "h": "ω",
@@ -1951,11 +3160,9 @@
     "hotspot": {
       "escalation": "ΑΞΙΟΛΟΓΗΣΗ ΚΛΙΜΑΚΩΣΗΣ",
       "baseline": "Βάση",
-      "score": "Βαθμολογία",
-      "trend": "Τάση",
       "components": {
         "news": "Ειδήσεις",
-        "cii": "CII",
+        "cii": "Country Instability Index",
         "geo": "Γεω",
         "military": "Στρατιωτικά"
       },
@@ -1966,10 +3173,6 @@
         "high": "ΥΨΗΛΟ",
         "critical": "ΚΡΙΣΙΜΟ"
       }
-    },
-    "buttons": {
-      "track": "Παρακολούθηση Ζητήματος",
-      "details": "Προβολή Λεπτομερειών"
     },
     "historicalContext": "ΙΣΤΟΡΙΚΟ ΠΛΑΙΣΙΟ",
     "lastMajorEvent": "Τελευταίο Σημαντικό Γεγονός",
@@ -1984,7 +3187,7 @@
     "time": "Χρόνος",
     "area": "Περιοχή",
     "expires": "Λήγει",
-    "aisGapSpike": "ΚΟΡΥΦΩΣΗ ΚΕΝΟΥ AIS",
+    "aisGapSpike": "Αύξηση κενών παρακολούθησης πλοίων",
     "chokepointCongestion": "ΣΥΜΦΟΡΗΣΗ ΣΗΜΕΙΟΥ ΕΛΕΓΧΟΥ",
     "darkening": "ΣΚΟΤΕΙΝΑΣΜΑ",
     "density": "ΠΥΚΝΟΤΗΤΑ",
@@ -1998,6 +3201,7 @@
     "moreEvents": "περισσότερα συμβάντα",
     "monitoring": "Παρακολούθηση",
     "viewUSGS": "Προβολή στο USGS",
+    "viewNRCan": "Προβολή στο Earthquakes Canada",
     "expired": "Έληξε",
     "timeAgo": {
       "s": "{{count}}δ πριν",
@@ -2008,7 +3212,7 @@
     "cableAdvisory": {
       "reported": "ΑΝΑΦΕΡΘΗΚΕ",
       "impact": "ΕΠΙΠΤΩΣΗ",
-      "eta": "ETA"
+      "eta": "Εκτιμώμενη ώρα άφιξης"
     },
     "outage": {
       "levels": {
@@ -2103,10 +3307,10 @@
         "bomber": "Βομβαρδιστικό",
         "transport": "Μεταφορικό",
         "tanker": "Εναέριος Τάνκερ",
-        "awacs": "AWACS/AEW",
+        "awacs": "Αεροφερόμενη προειδοποίηση",
         "reconnaissance": "Αναγνωριστικό",
         "helicopter": "Ελικόπτερο",
-        "drone": "UAV/Drone",
+        "drone": "Μη επανδρωμένο αεροσκάφος/Drone",
         "patrol": "Περιπολικό",
         "specialOps": "Ειδικές Επιχειρήσεις",
         "vip": "VIP Μεταφορά"
@@ -2117,27 +3321,31 @@
       "heading": "ΠΟΡΕΙΑ",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Πηγή: OpenSky Network"
+      "attribution": "Πηγή: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "ΡΥΘΜΟΣ ΑΝΟΔΟΥ",
+      "manufacturer": "ΚΑΤΑΣΚΕΥΑΣΤΗΣ",
+      "owner": "ΙΔΙΟΚΤΗΤΗΣ",
+      "builtYear": "ΕΤΟ ΚΑΤΑΣΚΕΥΗΣ"
     },
     "militaryVessel": {
-      "aisDark": "AIS ΣΚΟΤΕΙΝΟ",
+      "aisDark": "Απώλεια παρακολούθησης πλοίου",
       "vessel": "Πλοίο",
       "speed": "ΤΑΧΥΤΗΤΑ",
       "heading": "ΠΟΡΕΙΑ",
-      "mmsi": "MMSI",
-      "hull": "ΑΡΙΘΜΟΣ ΣΚΑΦΟΥΣ",
+      "mmsi": "Ταυτότητα Κινητής Θαλάσσιας Υπηρεσίας",
       "region": "ΠΕΡΙΟΧΗ",
       "strikeGroup": "ΟΜΑΔΑ ΚΡΟΥΣΗΣ",
-      "deploymentStatus": "ΚΑΤΑΣΤΑΣΗ",
-      "usniIntel": "USNI Intel",
-      "usniSource": "Πηγή: USNI News Fleet Tracker",
-      "approximatePosition": "Κατά προσέγγιση θέση — βασίζεται στην εβδομαδιαία αναφορά USNI, όχι σε AIS πραγματικού χρόνου.",
-      "darkDescription": "⚠ Το πλοίο έχει σκοτεινιάσει - χάθηκε σήμα AIS. Μπορεί να υποδεικνύει ευαίσθητες επιχειρήσεις.",
+      "usniIntel": "Πληροφορίες US Naval Institute",
+      "usniSource": "Πηγή: US Naval Institute News Fleet Tracker",
+      "approximatePosition": "Θέση κατά προσέγγιση — βάσει εβδομαδιαίας έκθεσης US Naval Institute, όχι παρακολούθηση πλοίου σε πραγματικό χρόνο.",
+      "darkDescription": "⚠ Το πλοίο έχει χαθεί — σήμα παρακολούθησης πλοίου απώλεια. Μπορεί να υποδηλώνει ευαίσθητες επιχειρήσεις.",
       "recentTracking": "Recent Tracking",
       "lastReport": "LATEST",
       "nearChokepoint": "NEAR CHOKEPOINT",
       "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN"
+      "lastSeen": "LAST SEEN",
+      "estPosition": "ΕΚΤ. ΘΕΣΗ",
+      "aisLive": "Παρακολούθηση πλοίου σε πραγματικό χρόνο"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2162,20 +3370,27 @@
       "moreVessels": "+{{count}} ακόμη πλοία",
       "vesselsCount": "{{count}} ΠΛΟΙΑ",
       "vessels": "ΠΛΟΙΑ",
-      "trackedVessels": "ΠΑΡΑΚΟΛΟΥΘΟΥΜΕΝΑ ΠΛΟΙΑ"
+      "trackedVessels": "ΠΑΡΑΚΟΛΟΥΘΟΥΜΕΝΑ ΠΛΟΙΑ",
+      "showLess": "Εμφάνιση λιγότερων"
     },
     "naturalEvent": {
       "closed": "ΚΛΕΙΣΤΟ",
       "active": "ΕΝΕΡΓΟ",
       "reported": "ΑΝΑΦΕΡΘΗΚΕ",
       "viewOnSource": "Προβολή στο {{source}}",
-      "attribution": "Δεδομένα: NASA EONET"
+      "attribution": "Δεδομένα: NASA EONET",
+      "storm": "Θύελλα",
+      "classification": "Ταξινόμηση",
+      "maxWind": "Μέγιστος Άνεμος",
+      "pressure": "Πίεση",
+      "movement": "Κίνηση",
+      "tropicalSystem": "Τροπικό Σύστημα"
     },
     "port": {
       "types": {
         "container": "ΕΜΠΟΡΕΥΜΑΤΟΚΙΒΩΤΙΩΝ",
         "oil": "ΤΕΡΜΑΤΙΚΟΣ ΣΤΑΘΜΟΣ ΠΕΤΡΕΛΑΙΟΥ",
-        "lng": "ΤΕΡΜΑΤΙΚΟΣ ΣΤΑΘΜΟΣ LNG",
+        "lng": "τερματικό υγροποιημένου φυσικού αερίου",
         "naval": "ΝΑΥΤΙΚΟ ΛΙΜΑΝΙ",
         "mixed": "ΜΙΚΤΟ",
         "bulk": "ΧΥΔΗΝ"
@@ -2248,8 +3463,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Οι αγορές προβλέψεων συχνά αποτιμούν πληροφορίες πριν γίνουν είδηση — οι traders μπορεί να έχουν πρώιμη πρόσβαση σε εξελίξεις.",
-        "actionableInsight": "Παρακολουθήστε για έκτακτες ειδήσεις τις επόμενες 1-6 ώρες που θα μπορούσαν να εξηγήσουν την κίνηση αγοράς.",
+        "whyItMatters": "Μια αγορά πρόβλεψης κινήθηκε ενώ η κάλυψη ειδήσεων του θέματος παρέμεινε χαμηλή—η αγορά μπορεί να αντιδρά σε πληροφορίες που δεν έχουν ακόμη αναφερθεί.",
+        "actionableInsight": "Παρακολουθήστε έκτακτες ειδήσεις που θα μπορούσαν να εξηγήσουν την κίνηση της αγοράς.",
         "confidenceNote": "Υψηλότερη βεβαιότητα αν πολλαπλές αγορές προβλέψεων κινούνται στην ίδια κατεύθυνση."
       },
       "news_leads_markets": {
@@ -2294,7 +3509,7 @@
       },
       "geo_convergence": {
         "whyItMatters": "Πολλαπλά ειδησεογραφικά γεγονότα συγκεντρώνονται γύρω από την ίδια γεωγραφική τοποθεσία — πιθανή κλιμάκωση ή συντονισμένη δραστηριότητα.",
-        "actionableInsight": "Αυξήστε την προτεραιότητα παρακολούθησης για αυτή την περιοχή· συσχετίστε με δορυφορικά/AIS δεδομένα αν είναι διαθέσιμα.",
+        "actionableInsight": "Αυξήστε την προτεραιότητα παρακολούθησης για αυτήν την περιοχή· συσχετίστε με δεδομένα δορυφόρου/πλοίου εάν είναι διαθέσιμα.",
         "confidenceNote": "Υψηλότερη βεβαιότητα αν τα γεγονότα εκτείνονται σε πολλαπλούς τύπους πηγών και χρονικές περιόδους."
       },
       "explained_market_move": {
@@ -2371,8 +3586,6 @@
     "error": "Σφάλμα",
     "noData": "Δεν υπάρχουν δεδομένα",
     "noDataAvailable": "Δεν υπάρχουν διαθέσιμα δεδομένα",
-    "updated": "Ενημερώθηκε μόλις τώρα",
-    "ago": "{{time}} πριν",
     "retrying": "Επανάληψη...",
     "failedToLoad": "Αποτυχία φόρτωσης δεδομένων",
     "noDataShort": "Χωρίς δεδομένα",
@@ -2382,14 +3595,14 @@
     "scanningThermalData": "Σάρωση θερμικών δεδομένων",
     "calculatingExposure": "Υπολογισμός έκθεσης",
     "computingSignals": "Υπολογισμός σημάτων...",
-    "loadingEtfData": "Φόρτωση δεδομένων ETF...",
+    "loadingEtfData": "Φόρτωση δεδομένων ταμείου ανταλλαγής...",
     "loadingGiving": "Φόρτωση δεδομένων παγκόσμιας αρωγής",
     "loadingDisplacement": "Φόρτωση δεδομένων εκτοπισμού",
     "loadingClimateData": "Φόρτωση κλιματικών δεδομένων",
     "failedTechReadiness": "Αποτυχία φόρτωσης δεδομένων τεχνολογικής ετοιμότητας",
     "failedRiskOverview": "Αποτυχία υπολογισμού επισκόπησης κινδύνου",
     "failedPredictions": "Αποτυχία φόρτωσης προβλέψεων",
-    "failedCII": "Αποτυχία υπολογισμού CII",
+    "failedCII": "Δεδομένα Country Instability Index προσωρινά μη διαθέσιμα",
     "failedDependencyGraph": "Αποτυχία δημιουργίας γραφήματος εξαρτήσεων",
     "failedIntelFeed": "Αποτυχία φόρτωσης ροής πληροφοριών",
     "failedMarketData": "Αποτυχία φόρτωσης δεδομένων αγοράς",
@@ -2397,7 +3610,6 @@
     "failedCommodities": "Αποτυχία φόρτωσης εμπορευμάτων",
     "failedCryptoData": "Αποτυχία φόρτωσης δεδομένων crypto",
     "rateLimitedMarket": "Τα δεδομένα αγοράς δεν είναι προσωρινά διαθέσιμα (περιορισμός ρυθμού) — επανάληψη σύντομα",
-    "failedClusterNews": "Αποτυχία ομαδοποίησης ειδήσεων",
     "noNewsAvailable": "Δεν υπάρχουν διαθέσιμες ειδήσεις",
     "noActiveTechHubs": "Δεν υπάρχουν ενεργά tech hubs",
     "noActiveGeoHubs": "Δεν υπάρχουν ενεργά γεωπολιτικά κέντρα",
@@ -2411,7 +3623,7 @@
     "selectNone": "Αποεπιλογή Όλων",
     "unrest": "Αναταραχή",
     "conflict": "Σύγκρουση",
-    "security": "Ασφάλεια",
+    "security": "Στρατιωτική δραστηριότητα",
     "information": "Πληροφορίες",
     "shareStory": "Κοινοποίηση ιστορίας",
     "exportImage": "Εξαγωγή Εικόνας",
@@ -2424,7 +3636,9 @@
     "currentVariant": "(τρέχον)",
     "retry": "Επανάληψη",
     "refresh": "Ανανέωση",
-    "all": "Όλα"
+    "all": "Όλα",
+    "cancel": "Ακύρωση",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "Οθόνη",
@@ -2442,10 +3656,203 @@
     "mapTheme": "Θέμα χάρτη",
     "mapThemeDesc": "Οπτικό στυλ των πλακιδίων χάρτη.",
     "globePreset": "Οπτική προεπιλογή",
-    "globePresetDesc": "Εναλλαγή μεταξύ κλασικής και βελτιωμένης απεικόνισης."
+    "globePresetDesc": "Εναλλαγή μεταξύ κλασικής και βελτιωμένης απεικόνισης.",
+    "fontFamily": "Οικογένεια Γραμματοσειράς",
+    "fontFamilyDesc": "Monospace για τεχνικό περιβάλλον, προεπιλογή συστήματος για ευκολότερη ανάγνωση.",
+    "fontMono": "Monospace",
+    "fontSystem": "Προεπιλογή Συστήματος",
+    "panelFontScale": "Μέγεθος κειμένου",
+    "followGlobalFontScale": "Χρήση παγκόσμιας"
   },
   "contextMenu": {
     "openCountryBrief": "Άνοιγμα επισκόπησης χώρας",
     "copyCoordinates": "Αντιγραφή συντεταγμένων"
+  },
+  "shell": {
+    "documentTitle": "World Monitor — Πίνακας Ελέγχου Παγκόσμιας Νοημοσύνης σε Πραγματικό Χρόνο",
+    "metaDescription": "Πλατφόρμα παγκόσμιας κατάστασης σε πραγματικό χρόνο. Δημοσιεύθηκε στο WIRED. Χρησιμοποιείται από 2M+ ανθρώπους σε 190 χώρες. Συγκρούσεις, αγορές, στρατιωτικά, πληροφορίες ανοικτών πηγών σε μία άποψη.",
+    "offlineTitle": "Είστε Χωρίς Σύνδεση",
+    "offlineMessage": "Το World Monitor απαιτεί σύνδεση στο διαδίκτυο για δεδομένα πραγματικού χρόνου.",
+    "offlineRetry": "Δοκιμάστε Ξανά"
+  },
+  "widgets": {
+    "confirmDelete": "Αφαίρεση του widget μόνιμα;",
+    "chatTitle": "Δημιουργός Widget",
+    "modifyTitle": "Τροποποίηση Widget",
+    "inputPlaceholder": "Περιγράψτε το widget σας...",
+    "addToDashboard": "Προσθήκη στον Πίνακα Ελέγχου",
+    "applyChanges": "Εφαρμογή Αλλαγών",
+    "send": "Αποστολή",
+    "modifyWithAi": "Τροποποίηση widget με AI",
+    "ready": "Widget έτοιμο: {{title}}",
+    "fetching": "Λήψη {{target}}...",
+    "requestTimedOut": "Λήψη ορίου χρόνου. Προspathήστε ξανά.",
+    "serverError": "Σφάλμα διακομιστή: {{status}}",
+    "unknownError": "Άγνωστο σφάλμα",
+    "generatedWidget": "Δημιουργημένο widget: {{title}}",
+    "saveFailed": "Δεν ήταν δυνατή η αποθήκευση του γραφικού στοιχείου. Δοκιμάστε ξανά.",
+    "checkingConnection": "Έλεγχος πρόσβασης widget…",
+    "preflightConnected": "Συνδεδεμένο με τον παράγοντα widget",
+    "preflightInvalidKey": "Κλειδί widget απορρίφθηκε. Ενημερώστε wm-widget-key και επαναφορτώστε.",
+    "preflightUnavailable": "Ο παράγοντας widget είναι προσωρινά μη διαθέσιμος.",
+    "preflightAiUnavailable": "Το backend AI είναι μη διαθέσιμο. Προspathήστε ξανά αργότερα.",
+    "readyToGenerate": "Έτοιμο για δημιουργία. Επιλέξτε ένα παράδειγμα ή περιγράψτε το widget σας.",
+    "readyToApply": "Προεπισκόπηση έτοιμη για {{title}}. Ελέγξτε το και προσθέστε το στον πίνακα ελέγχου.",
+    "modifyHint": "Προεπισκόπηση του τρέχοντος widget. Υποβάλετε αίτημα αλλαγής για τροποποίηση.",
+    "generating": "Δημιουργία…",
+    "examplesTitle": "Ιδέες προτροπής",
+    "previewTitle": "Ζωντανή Προεπισκόπηση",
+    "phaseChecking": "Έλεγχος",
+    "phaseReadyToPrompt": "Έτοιμο",
+    "phaseFetching": "Λήψη",
+    "phaseComposing": "Σύνθεση",
+    "phaseComplete": "Έτοιμο",
+    "phaseError": "Σφάλμα",
+    "previewCheckingHeading": "Σύνδεση του δημιουργού widget",
+    "previewReadyHeading": "Περιγράψτε το widget που θέλετε",
+    "previewFetchingHeading": "Λήψη ζωντανών δεδομένων WorldMonitor",
+    "previewComposingHeading": "Σύνθεση της διάταξης του widget",
+    "previewErrorHeading": "Η προεπισκόπηση χρειάζεται προσοχή",
+    "previewCheckingCopy": "Επικυρώνουμε το κλειδί widget και τη διαθεσιμότητα backend πριν από την ενεργοποίηση της δημιουργίας.",
+    "previewReadyCopy": "Χρησιμοποιήστε ένα παράδειγμα προτροπής ή περιγράψτε την ακριβή ζωντανή προβολή που θέλετε. Η προεπισκόπηση θα ενημερωθεί εδώ πριν την αποθήκευση.",
+    "previewFetchingCopy": "Ο παράγοντας καλεί εγκεκριμένα τελικά σημεία WorldMonitor και διαμορφώνει το σύνολο δεδομένων για το widget.",
+    "previewComposingCopy": "Η προεπισκόπηση αποδίδεται με τα τελευταία ζωντανά δεδομένα και τη διαμόρφωση του πίνακα ελέγχου.",
+    "previewErrorCopy": "Διορθώστε το πρόβλημα και δοκιμάστε ξανά. Τα υπάρχοντα widget δεν επηρεάζονται.",
+    "createInteractive": "Δημιουργία Διαδραστικού Widget",
+    "proBadge": "PRO",
+    "preflightProUnavailable": "Ο παράγοντας PRO widget είναι μη διαθέσιμος. Ελέγξτε PRO_WIDGET_KEY στον διακομιστή.",
+    "preflightInvalidProKey": "Κλειδί PRO απορρίφθηκε. Ενημερώστε wm-pro-key και επαναφορτώστε.",
+    "preflightProSubscriptionRequired": "Απαιτείται συνδρομή Pro. Εάν μόλις αναβαθμίστηκε, ανανεώστε τη σελίδα. διαφορετικά επικοινωνήστε με την υποστήριξη.",
+    "preflightProRequired": "Απαιτείται συνδρομή Pro για χρήση του Widget Builder. Αναβαθμίστε για ξεκλείδωμα.",
+    "examples": {
+      "oilGold": "Δείξτε μου την τιμή του ακατέργαστου πετρελαίου σήμερα έναντι του χρυσού",
+      "cryptoMovers": "Δημιουργήστε ένα widget για τους κορυφαίους κινητήρες κρυπτογράφησης τις τελευταίες 24 ώρες",
+      "flightDelays": "Συνοψίστε τις χειρότερες διεθνείς καθυστερήσεις πτήσεων αυτή τη στιγμή",
+      "conflictHotspots": "Χαρτογραφήστε τα τελευταία σημεία εστίασης σύγκρουσης UCDP με σύντομες ετικέτες"
+    },
+    "proExamples": {
+      "interactiveChart": "Διαδραστικό γράφημα Chart.js που συγκρίνει τις τιμές πετρελαίου και χρυσού",
+      "sortableTable": "Πίνακας τιμών κρυπτογραφήματος με δυνατότητα ταξινόμησης και φίλτρο αναζήτησης",
+      "animatedCounters": "Ζωντανοί μετρητές για βασικούς οικονομικούς δείκτες",
+      "tabbedComparison": "Σύγκριση με καρτέλες των συμβάντων σύγκρουσης κατά περιοχή"
+    }
+  },
+  "connectivity": {
+    "offlineCached": "Χωρίς σύνδεση — εμφάνιση αποθηκευμένων δεδομένων από {{freshness}}.",
+    "offlineUnavailable": "Χωρίς σύνδεση — τα ζωντανά δεδομένα δεν είναι διαθέσιμα.",
+    "cachedFallback": "Τα ζωντανά δεδομένα δεν είναι διαθέσιμα — εμφάνιση αποθηκευμένων δεδομένων από {{freshness}}."
+  },
+  "premium": {
+    "pro": "PRO",
+    "lockedDesc": "Απαιτείται κλειδί άδειας World Monitor",
+    "signInToUnlock": "Συνδεθείτε για ξεκλείδωμα ειδικών δυνατοτήτων",
+    "signIn": "Συνδεθείτε για Ξεκλείδωμα",
+    "upgradeDesc": "Αναβαθμίστε σε Pro για πλήρη πρόσβαση σε ανάλυτικά premium",
+    "upgradeToPro": "Αναβαθμίστε σε Pro",
+    "features": {
+      "orefSirens1": "Ειδοποιήσεις πυραύλων και ρακετών του Ισραήλ σε πραγματικό χρόνο",
+      "orefSirens2": "Χαρτογραφία ζωνών σειρήνας με ταξινόμηση απειλών",
+      "telegramIntel1": "Επιμελημένα κανάλια ανοιχτής πληροφοριακής ανάλυσης Telegram",
+      "telegramIntel2": "Ενημερώσεις συγκρούσεων και γεωπολιτικών ζητημάτων σε σχεδόν πραγματικό χρόνο",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
+    }
+  },
+  "auth": {
+    "signIn": "Σύνδεση",
+    "createAccount": "Δημιουργία λογαριασμού",
+    "settings": "Ρυθμίσεις",
+    "passkeyOffer": {}
+  },
+  "mcp": {
+    "connectPanel": "Σύνδεση MCP",
+    "modalTitle": "Σύνδεση Διακομιστή MCP",
+    "serverUrl": "URL Διακομιστή",
+    "authHeader": "Κεφαλίδα Ταυτοποίησης",
+    "optional": "προαιρετικό",
+    "apiKey": "Κλειδί API",
+    "apiKeyPlaceholder": "Επικολλήστε το κλειδί API σας",
+    "useCustomHeaders": "Προχωρημένο: χρήση προσαρμοσμένων κεφαλίδων ↓",
+    "useApiKey": "← Χρήση κλειδιού API",
+    "connectBtn": "Σύνδεση & Εμφάνιση Εργαλείων",
+    "connecting": "Σύνδεση...",
+    "foundTools": "Βρέθηκαν {{count}} εργαλείο(α)",
+    "connectFailed": "Η σύνδεση απέτυχε",
+    "selectTool": "Επιλέξτε ένα εργαλείο",
+    "toolArgs": "Ορίσματα (JSON)",
+    "panelTitle": "Τίτλος Πίνακα",
+    "panelTitlePlaceholder": "Ο Πίνακάς μου MCP",
+    "refreshEvery": "Ανανέωση κάθε",
+    "seconds": "δευτερόλεπτα",
+    "addPanel": "Προσθήκη Πίνακα",
+    "configure": "Ρύθμιση MCP",
+    "refreshNow": "Ανανέωση τώρα",
+    "invalidJson": "Μη έγκυρο JSON",
+    "confirmDelete": "Κατάργηση αυτού του πίνακα MCP;",
+    "quickConnect": "Γρήγορη Σύνδεση",
+    "or": "ή εισάγετε έναν προσαρμοσμένο διακομιστή",
+    "generatingVisualization": "Δημιουργία απεικόνισης...",
+    "visualizationFailed": "Η απεικόνιση απέτυχε"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Καρτέλες πίνακα ελέγχου",
+    "defaultName": "Κύρια",
+    "newTabName": "Νέα καρτέλα",
+    "newTabCreated": "Δημιουργήθηκε νέα καρτέλα",
+    "tabDeleted": "Η καρτέλα \"{{name}}\" διαγράφηκε",
+    "addTab": "Προσθήκη καρτέλας",
+    "addTabTitle": "Νέα καρτέλα (ξεκινά με τα προεπιλεγμένα πάνελ)",
+    "renameHint": "{{name}} — διπλό κλικ για μετονομασία",
+    "deleteTab": "Διαγραφή καρτέλας",
+    "deleteTabAria": "Διαγραφή καρτέλας {{name}}",
+    "tabNameAria": "Όνομα καρτέλας"
+  },
+  "theaterPresets": {
+    "label": "Προρυθμίσεις κάλυψης",
+    "applied": "Εφαρμόστηκε η προρύθμιση {{preset}}: ενεργοποιήθηκαν {{count}} πηγές",
+    "alreadyApplied": "Η προρύθμιση {{preset}} έχει ήδη εφαρμοστεί",
+    "ukraineWar": {
+      "label": "Πόλεμος στην Ουκρανία",
+      "description": "Ενεργοποίηση βασικών ουκρανικών μέσων, ανεξάρτητου ρωσικού Τύπου και πηγών αξιολόγησης του μετώπου"
+    },
+    "indoPacific": {
+      "label": "Ινδο-Ειρηνικός / Ταϊβάν",
+      "description": "Ενεργοποίηση πηγών ασφάλειας για την Ταϊβάν, το Πακιστάν και τη Νοτιοανατολική Ασία"
+    },
+    "sahelWestAfrica": {
+      "label": "Σαχέλ και Δυτική Αφρική",
+      "description": "Ενεργοποίηση τοπικών πηγών από το Σαχέλ, τη Νιγηρία και τη Δυτική Αφρική"
+    },
+    "caucasusCentralAsia": {
+      "label": "Καύκασος και Κεντρική Ασία",
+      "description": "Ενεργοποίηση περιφερειακών πηγών από τον Νότιο Καύκασο και την Κεντρική Ασία"
+    },
+    "middleEastFlashpoints": {
+      "label": "Εστίες έντασης στη Μέση Ανατολή",
+      "description": "Ενεργοποίηση πηγών για το Ιράν, το Ισραήλ, τον Κόλπο και τις κουρδικές περιοχές"
+    },
+    "unavailable": "Η προρύθμιση {{preset}} δεν είναι διαθέσιμη με τα τρέχοντα πάνελ"
+  },
+  "countryHistory": {
+    "title": "Ημερήσιο ιστορικό χώρας",
+    "loading": "Φόρτωση ημερήσιου ιστορικού…",
+    "window": "Περίοδος",
+    "days": "{{days}} ημέρες",
+    "observed": "{{count}} στιγμιότυπα σε {{days}} ημέρες",
+    "legend": "CII (κεχριμπαρί): υψηλότερες τιμές σημαίνουν περισσότερη αστάθεια. Ανθεκτικότητα (πράσινο): υψηλότερες τιμές σημαίνουν μεγαλύτερη ικανότητα. Οι κουκκίδες δείχνουν ημέρες με επιλεγμένους τίτλους.",
+    "chart": "Ημερήσιες βαθμολογίες CII και ανθεκτικότητας. Τα κενά και οι αλλαγές τύπου διακόπτουν τις γραμμές.",
+    "selectDate": "{{date}}, {{count}} επιλεγμένοι τίτλοι",
+    "empty": "Δεν υπάρχουν ημερήσια στιγμιότυπα σε αυτή την περίοδο. Το ιστορικό συγκεντρώνεται μετά την ενεργοποίηση.",
+    "unavailable": "Το ιστορικό δεν είναι προσωρινά διαθέσιμο. Δοκιμάστε ξανά.",
+    "retry": "Δοκιμή ξανά",
+    "stale": "Η τελευταία επιτυχής ημερήσια καταγραφή έγινε πριν από περισσότερες από 36 ώρες.",
+    "break": "Αλλαγή τύπου ή κενό παρατήρησης. Συγκρίνετε μόνο βαθμολογίες με τον ίδιο τύπο.",
+    "partial": "Η ειδησεογραφική κάλυψη ήταν μερική κατά την καταγραφή.",
+    "resilience": "Ανθεκτικότητα",
+    "ciiMissing": "CII μη διαθέσιμο",
+    "resilienceMissing": "Ανθεκτικότητα μη διαθέσιμη",
+    "noEvents": "Δεν καταγράφηκαν επιλεγμένοι τίτλοι για αυτή την ημερομηνία. Αυτό δεν αποδεικνύει απουσία γεγονότων.",
+    "unlock90": "Ξεκλειδώστε 90 ημέρες με Pro",
+    "unlock365": "Ξεκλειδώστε 365 ημέρες με πρόγραμμα API"
   }
 }

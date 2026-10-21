@@ -4,8 +4,9 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
 import type { DailyMarketBrief } from '@/services/daily-market-brief';
 import { describeFreshness } from '@/services/persistent-cache';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getChangeClass } from '@/utils';
+import { createWatchlistButton } from './watchlist-modal';
 
 type BriefSource = 'live' | 'cached';
 
@@ -47,6 +48,7 @@ export class DailyMarketBriefPanel extends Panel {
     super({ id: 'daily-market-brief', title: 'Daily Market Brief', infoTooltip: t('components.dailyMarketBrief.infoTooltip'), premium: 'locked' });
     this.fwSelector = new FrameworkSelector({ panelId: 'daily-market-brief', isPremium: hasPremiumAccess(), panel: this, note: 'Applies to client-generated analysis only' });
     this.header.appendChild(this.fwSelector.el);
+    this.header.appendChild(createWatchlistButton('Edit Watchlist'));
   }
 
   public override destroy(): void {
@@ -63,20 +65,20 @@ export class DailyMarketBriefPanel extends Panel {
       <div class="daily-brief-shell" style="display:grid;gap:12px">
         <div class="daily-brief-card" style="display:grid;gap:6px;padding:12px;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.03)">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-            <div style="font-size:13px;font-weight:600">${escapeHtml(brief.title)}</div>
-            <div style="font-size:11px;color:var(--text-dim)">${escapeHtml(formatGeneratedTime(brief.generatedAt, brief.timezone))}</div>
+            <div style="font-size:calc(13px * var(--wm-panel-effective-scale, 1));font-weight:600">${escapeHtml(brief.title)}</div>
+            <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(formatGeneratedTime(brief.generatedAt, brief.timezone))}</div>
           </div>
-          <div style="font-size:12px;line-height:1.5;color:var(--text)">${escapeHtml(brief.summary)}</div>
+          <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));line-height:1.5;color:var(--text)">${escapeHtml(brief.summary)}</div>
         </div>
 
         <div style="display:grid;gap:10px">
           <div style="padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.02)">
-            <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Action Plan</div>
-            <div style="font-size:12px;line-height:1.5">${escapeHtml(brief.actionPlan)}</div>
+            <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Action Plan</div>
+            <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));line-height:1.5">${escapeHtml(brief.actionPlan)}</div>
           </div>
           <div style="padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.02)">
-            <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Risk Watch</div>
-            <div style="font-size:12px;line-height:1.5">${escapeHtml(brief.riskWatch)}</div>
+            <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Risk Watch</div>
+            <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));line-height:1.5">${escapeHtml(brief.riskWatch)}</div>
           </div>
         </div>
 
@@ -85,19 +87,19 @@ export class DailyMarketBriefPanel extends Panel {
             <div style="display:grid;gap:6px;padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.02)">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
                 <div>
-                  <div style="font-size:12px;font-weight:600">${escapeHtml(item.name)}</div>
-                  <div style="font-size:11px;color:var(--text-dim)">${escapeHtml(item.display)}</div>
+                  <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600">${escapeHtml(item.name)}</div>
+                  <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(item.display)}</div>
                 </div>
                 <div style="text-align:right">
-                  <div style="font-size:12px;font-weight:600">${escapeHtml(formatPrice(item.price))}</div>
-                  <div class="market-change ${getChangeClass(item.change ?? 0)}" style="font-size:11px">${escapeHtml(formatChange(item.change))}</div>
+                  <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600">${escapeHtml(formatPrice(item.price))}</div>
+                  <div class="market-change ${getChangeClass(item.change ?? 0)}" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${escapeHtml(formatChange(item.change))}</div>
                 </div>
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-                <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)">${escapeHtml(stanceLabel(item.stance))}</div>
-                ${item.relatedHeadline ? `<div style="font-size:11px;color:var(--text-dim);text-align:right;max-width:55%">Linked headline</div>` : ''}
+                <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)">${escapeHtml(stanceLabel(item.stance))}</div>
+                ${item.relatedHeadline ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-align:right;max-width:55%">Linked headline</div>` : ''}
               </div>
-              <div style="font-size:12px;line-height:1.45">${escapeHtml(item.note)}</div>
+              <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));line-height:1.45">${escapeHtml(item.note)}</div>
             </div>
           `).join('')}
         </div>
@@ -105,7 +107,7 @@ export class DailyMarketBriefPanel extends Panel {
       </div>
     `;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 
   public showUnavailable(message = 'The daily brief needs live market data before it can be generated.'): void {

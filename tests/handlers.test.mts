@@ -3,13 +3,13 @@
  *
  * Covers exported pure functions from:
  *   - server/worldmonitor/cyber/v1/_shared.ts
+ *   - server/worldmonitor/military/v1/get-usni-fleet-report.ts
  *   - server/worldmonitor/news/v1/_shared.ts  (+ dedup.mjs + hash.ts)
  *   - server/worldmonitor/infrastructure/v1/get-cable-health.ts
  *
- * NOTE: server/worldmonitor/military/v1/get-usni-fleet-report.ts has many useful
- * pure helpers (hullToVesselType, detectDeploymentStatus, extractHomePort,
- * stripHtml, getRegionCoords, parseUSNIArticle) but they are NOT exported.
- * A follow-up PR should export those functions to enable testing.
+ * USNI parsing now happens in the Railway relay seed path; these tests cover
+ * the server handler's pure cache-response helpers without resurrecting the
+ * stale in-handler parser path.
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,22 +17,32 @@ import assert from 'node:assert/strict';
 // ---------------------------------------------------------------------------
 // Cyber domain helpers
 // ---------------------------------------------------------------------------
+import { clampInt, SEVERITY_RANK } from '../server/worldmonitor/cyber/v1/_shared.ts';
+// Deduplication and proto conversion live in the Railway seeder, which is the
+// only code that still runs them. The RPC reads what the seeder already wrote.
 import {
-  clampInt,
   dedupeThreats,
-  toProtoCyberThreat,
+  toProto as toProtoCyberThreat,
   THREAT_TYPE_MAP,
   SOURCE_MAP,
   SEVERITY_MAP,
-  SEVERITY_RANK,
-  type RawThreat,
-} from '../server/worldmonitor/cyber/v1/_shared.ts';
+} from '../scripts/seed-cyber-threats.mjs';
+
+// ---------------------------------------------------------------------------
+// Military / USNI fleet report helpers
+// ---------------------------------------------------------------------------
+import {
+  buildUSNIFleetReportCacheResponse,
+  buildUSNIFleetReportForceRefreshResponse,
+} from '../server/worldmonitor/military/v1/get-usni-fleet-report.ts';
+import type { USNIFleetReport } from '../src/generated/server/worldmonitor/military/v1/service_server.ts';
 
 // ---------------------------------------------------------------------------
 // News domain helpers
 // ---------------------------------------------------------------------------
 import { deduplicateHeadlines } from '../server/worldmonitor/news/v1/dedup.mjs';
-import { buildArticlePrompts, hashString } from '../server/worldmonitor/news/v1/_shared.ts';
+import { buildArticlePrompts, hashString, selectUniqueHeadlinePairs } from '../server/worldmonitor/news/v1/_shared.ts';
+import { MAX_BODY_LEN, buildSummaryCacheKey } from '../src/utils/summary-cache-key.ts';
 
 // ---------------------------------------------------------------------------
 // Infrastructure / cable health helpers
@@ -46,6 +56,66 @@ import {
   processNgaSignals,
   computeHealthMap,
 } from '../server/worldmonitor/infrastructure/v1/get-cable-health.ts';
+
+
+// ========================================================================
+// USNI fleet report response helpers
+// ========================================================================
+
+describe('USNI fleet report response helpers', () => {
+  const makeReport = (overrides: Partial<USNIFleetReport> = {}): USNIFleetReport => ({
+    articleUrl: 'https://news.usni.org/2026/06/01/usni-news-fleet-and-marine-tracker',
+    articleDate: '2026-06-01T12:00:00Z',
+    articleTitle: 'USNI News Fleet and Marine Tracker',
+    vessels: [],
+    strikeGroups: [],
+    regions: [],
+    parsingWarnings: [],
+    timestamp: 1_780_310_400_000,
+    ...overrides,
+  });
+
+  it('returns an unsupported force-refresh response without a report', () => {
+    const result = buildUSNIFleetReportForceRefreshResponse();
+
+    assert.equal(result.report, undefined);
+    assert.equal(result.cached, false);
+    assert.equal(result.stale, false);
+    assert.match(result.error, /forceRefresh is no longer supported/);
+  });
+
+  it('prefers live cache data over stale fallback data', () => {
+    const live = makeReport({ articleTitle: 'Live USNI report' });
+    const stale = makeReport({ articleTitle: 'Stale USNI report' });
+
+    const result = buildUSNIFleetReportCacheResponse(live, stale);
+
+    assert.equal(result.report, live);
+    assert.equal(result.cached, true);
+    assert.equal(result.stale, false);
+    assert.equal(result.error, '');
+  });
+
+  it('uses stale cache data when live cache data is unavailable', () => {
+    const stale = makeReport({ articleTitle: 'Stale USNI report' });
+
+    const result = buildUSNIFleetReportCacheResponse(null, stale);
+
+    assert.equal(result.report, stale);
+    assert.equal(result.cached, true);
+    assert.equal(result.stale, true);
+    assert.equal(result.error, 'Using cached data');
+  });
+
+  it('reports a cache miss without fabricating an empty report', () => {
+    const result = buildUSNIFleetReportCacheResponse(null, null);
+
+    assert.equal(result.report, undefined);
+    assert.equal(result.cached, false);
+    assert.equal(result.stale, false);
+    assert.match(result.error, /No USNI fleet data in cache/);
+  });
+});
 
 
 // ========================================================================
@@ -88,7 +158,7 @@ describe('clampInt', () => {
 // ========================================================================
 
 describe('dedupeThreats', () => {
-  const baseThreat: RawThreat = {
+  const baseThreat = {
     id: 'feodo:1.2.3.4',
     type: 'c2_server',
     source: 'feodo',
@@ -151,7 +221,7 @@ describe('dedupeThreats', () => {
 // ========================================================================
 
 describe('toProtoCyberThreat', () => {
-  const raw: RawThreat = {
+  const raw = {
     id: 'feodo:1.2.3.4',
     type: 'c2_server',
     source: 'feodo',
@@ -342,6 +412,22 @@ describe('buildArticlePrompts', () => {
     assert.ok(result.userPrompt.includes('2. SpaceX launch delayed'));
   });
 
+  // GHSA-28jv-ccf2-w27h: the cache key folds variant case, so the prompt must
+  // too. Otherwise a 'TECH' request wrote a generic-prompt summary into the
+  // row every 'tech' caller reads.
+  it('selects one prompt for every variant spelling that shares a cache key', async () => {
+    for (const mode of ['brief', 'analysis', 'other']) {
+      const spellings = ['tech', 'TECH', 'Tech'];
+      const keys = await Promise.all(spellings.map((variant) =>
+        buildSummaryCacheKey(headlines, mode, '', variant, 'en', undefined, [])));
+      assert.equal(new Set(keys).size, 1, `${mode}: spellings should share a key`);
+      const prompts = spellings.map((variant) =>
+        JSON.stringify(buildArticlePrompts(headlines, unique, { ...baseOpts, mode, variant })));
+      assert.equal(new Set(prompts).size, 1, `${mode}: one key must mean one prompt`);
+      assert.match(prompts[0]!, /tech/i);
+    }
+  });
+
   it('brief tech variant focuses on technology', () => {
     const techOpts = { ...baseOpts, variant: 'tech' };
     const result = buildArticlePrompts(headlines, unique, techOpts);
@@ -371,6 +457,95 @@ describe('buildArticlePrompts', () => {
     const frOpts = { ...baseOpts, lang: 'fr' };
     const result = buildArticlePrompts(headlines, unique, frOpts);
     assert.ok(result.systemPrompt.includes('FR'));
+  });
+
+  // ── bodies (U6) ────────────────────────────────────────────────────────
+
+  it('omitting bodies yields byte-identical userPrompt to pre-U6 (R6 fallback)', () => {
+    const result = buildArticlePrompts(headlines, unique, baseOpts);
+    // Exact shape: numbered headlines joined with \n — no Context: lines.
+    const expectedHeadlineBlock = '1. Earthquake hits Tokyo\n2. SpaceX launch delayed';
+    assert.ok(result.userPrompt.includes(expectedHeadlineBlock));
+    assert.ok(!result.userPrompt.includes('Context:'), 'no bodies → no Context: line');
+  });
+
+  it('interleaves Context: lines per headline when bodies are supplied', () => {
+    const bodies = [
+      'A 7.1 magnitude quake struck offshore Tokyo early Tuesday.',
+      'SpaceX postponed the Starlink launch due to upper-level winds.',
+    ];
+    const result = buildArticlePrompts(headlines, unique, { ...baseOpts, bodies });
+    assert.ok(result.userPrompt.includes('1. Earthquake hits Tokyo\n    Context: A 7.1 magnitude quake'));
+    assert.ok(result.userPrompt.includes('2. SpaceX launch delayed\n    Context: SpaceX postponed'));
+  });
+
+  it('emits Context: only under headlines whose body is non-empty (partial fill)', () => {
+    const bodies = ['', 'SpaceX postponed the Starlink launch due to upper-level winds.'];
+    const result = buildArticlePrompts(headlines, unique, { ...baseOpts, bodies });
+    // Headline 1 has no body → no Context line under it.
+    assert.ok(result.userPrompt.includes('1. Earthquake hits Tokyo\n2.'));
+    // Headline 2 does.
+    assert.ok(result.userPrompt.includes('2. SpaceX launch delayed\n    Context: SpaceX postponed'));
+  });
+
+  it('clips body with the canonical cache-key limit at prompt-builder level', () => {
+    const longBody = 'B'.repeat(MAX_BODY_LEN * 2);
+    const result = buildArticlePrompts(['H'], ['H'], { ...baseOpts, bodies: [longBody] });
+    const match = result.userPrompt.match(/Context: (B+)/);
+    assert.ok(match, 'Context: present');
+    assert.strictEqual(match[1].length, MAX_BODY_LEN, 'prompt and cache identity share one body limit');
+  });
+
+  it('translate mode ignores bodies (safety: translate path is headline[0]-only)', () => {
+    const translateOpts = { mode: 'translate', geoContext: '', variant: 'Spanish', lang: 'es' };
+    const result = buildArticlePrompts(headlines, unique, { ...translateOpts, bodies: ['unrelated body 1', 'unrelated body 2'] });
+    assert.ok(!result.userPrompt.includes('Context:'), 'translate mode must not interleave bodies');
+  });
+
+  it('bodies array shorter than uniqueHeadlines does not crash', () => {
+    const result = buildArticlePrompts(headlines, unique, { ...baseOpts, bodies: ['only first'] });
+    assert.ok(result.userPrompt.includes('1. Earthquake hits Tokyo\n    Context: only first'));
+    // Second headline with no paired body → no Context line under it.
+    assert.ok(result.userPrompt.includes('2. SpaceX launch delayed'));
+  });
+});
+
+describe('selectUniqueHeadlinePairs', () => {
+  it('deduplicates before applying the five-headline prompt limit', () => {
+    const pairs = [
+      { h: 'Alpha', b: '' },
+      { h: 'Alpha', b: '' },
+      { h: 'Alpha', b: '' },
+      { h: 'Alpha', b: '' },
+      { h: 'Alpha', b: '' },
+      { h: 'Beta', b: '' },
+    ];
+
+    assert.deepEqual(
+      selectUniqueHeadlinePairs(pairs).map((pair) => pair.h),
+      ['Alpha', 'Beta'],
+    );
+  });
+
+  it('keeps the first body for a headline and stops after five unique pairs', () => {
+    const pairs = [
+      { h: 'Alpha', b: 'first alpha body' },
+      { h: 'Alpha', b: 'later alpha body' },
+      { h: '', b: 'empty headline body' },
+      { h: 'Beta', b: 'beta body' },
+      { h: 'Charlie', b: 'charlie body' },
+      { h: 'Delta', b: 'delta body' },
+      { h: 'Echo', b: 'echo body' },
+      { h: 'Foxtrot', b: 'must be outside the prompt window' },
+    ];
+
+    assert.deepEqual(selectUniqueHeadlinePairs(pairs), [
+      { h: 'Alpha', b: 'first alpha body' },
+      { h: 'Beta', b: 'beta body' },
+      { h: 'Charlie', b: 'charlie body' },
+      { h: 'Delta', b: 'delta body' },
+      { h: 'Echo', b: 'echo body' },
+    ]);
   });
 });
 
@@ -520,9 +695,12 @@ describe('parseIssueDate', () => {
 // ========================================================================
 
 describe('processNgaSignals', () => {
+  // Fixture notices are dated March 2025; score them as of the next day so the stale-notice filter keeps them.
+  const NOW = Date.UTC(2025, 2, 16);
+
   it('returns empty signals for non-cable warnings', () => {
     const warnings = [{ text: 'MILITARY EXERCISE IN AREA', issueDate: '011200Z JAN 2025' }];
-    assert.deepEqual(processNgaSignals(warnings), []);
+    assert.deepEqual(processNgaSignals(warnings, NOW), []);
   });
 
   it('produces a signal for a cable-related warning with known cable name', () => {
@@ -530,7 +708,7 @@ describe('processNgaSignals', () => {
       text: 'CABLE OPERATIONS NEAR MAREA CABLE SYSTEM. VESSELS ADVISED TO KEEP CLEAR.',
       issueDate: '151430Z MAR 2025',
     }];
-    const signals = processNgaSignals(warnings);
+    const signals = processNgaSignals(warnings, NOW);
     assert.ok(signals.length >= 1);
     assert.equal(signals[0]!.cableId, 'marea');
   });
@@ -540,7 +718,7 @@ describe('processNgaSignals', () => {
       text: 'FAULT REPORTED ON SUBMARINE CABLE MAREA. REPAIR VESSEL EN ROUTE.',
       issueDate: '151430Z MAR 2025',
     }];
-    const signals = processNgaSignals(warnings);
+    const signals = processNgaSignals(warnings, NOW);
     const faultSignals = signals.filter((s) => s.kind === 'operator_fault');
     assert.ok(faultSignals.length >= 1);
     assert.equal(faultSignals[0]!.severity, 1.0);
@@ -551,7 +729,7 @@ describe('processNgaSignals', () => {
       text: 'CABLESHIP ILE DE BATZ CABLE OPERATIONS ON STATION NEAR MAREA CABLE SYSTEM.',
       issueDate: '151430Z MAR 2025',
     }];
-    const signals = processNgaSignals(warnings);
+    const signals = processNgaSignals(warnings, NOW);
     const repairSignals = signals.filter((s) => s.kind === 'repair_activity');
     assert.ok(repairSignals.length >= 1);
   });
@@ -561,7 +739,7 @@ describe('processNgaSignals', () => {
       text: 'SUBMARINE CABLE OPERATIONS IN UNSPECIFIED AREA',
       issueDate: '151430Z MAR 2025',
     }];
-    const signals = processNgaSignals(warnings);
+    const signals = processNgaSignals(warnings, NOW);
     assert.equal(signals.length, 0);
   });
 });

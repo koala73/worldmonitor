@@ -1,0 +1,34 @@
+[
+  {
+    "Id": 1676,
+    "Message": "Rainfall warning in southern Alberta",
+    "Notes": "Heavy rain totaling between 50 and 80 mm is expected by Friday morning. Water may pool on roadways and in low-lying areas. Turn on your headlights in rain and don't drive through flooded roadways. For more information, visit Environment Canada.",
+    "StartTime": 1786571040,
+    "EndTime": 1786657380,
+    "LastUpdated": 1786649027,
+    "Regions": [
+      "Banff",
+      "Calgary",
+      "Central Region",
+      "Edmonton",
+      "Ft McMurray / N Central Region",
+      "Peace Region",
+      "South Region"
+    ],
+    "HighImportance": false,
+    "SendNotification": true
+  },
+  {
+    "Id": 9001,
+    "Message": "High-importance test alert for northern Alberta",
+    "Notes": "Captured-shape fixture; HighImportance true, no coordinates.",
+    "StartTime": 1786571040,
+    "EndTime": 1786657380,
+    "LastUpdated": 1786649027,
+    "Regions": [
+      "Ft McMurray / N Central Region"
+    ],
+    "HighImportance": true,
+    "SendNotification": true
+  }
+]

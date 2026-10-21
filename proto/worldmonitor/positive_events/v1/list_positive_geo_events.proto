@@ -17,4 +17,16 @@ message ListPositiveGeoEventsRequest {}
 
 message ListPositiveGeoEventsResponse {
   repeated PositiveGeoEvent events = 1;
+
+  // Unix epoch ms at which the underlying source data was last successfully
+  // fetched. Always set when serving from cache or in-process fallback; 0 if
+  // no data is available. Clients can use this to display a freshness
+  // indicator or "data is X minutes old" warning. See issue #3706.
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+
+  // True when the response is being served from the in-process fallback
+  // cache because the upstream source is unavailable or returned stale
+  // data. Clients can surface a "data may be out of date" indicator. See
+  // issue #3706.
+  bool stale = 3;
 }

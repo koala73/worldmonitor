@@ -1,124 +1,180 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, CHROME_UA, sleep } from './_seed-utils.mjs';
+// Railway service config (set up manually via Railway dashboard or `railway service`):
+//   - Service name: seed-fire-detections
+//   - Builder: NIXPACKS (root Dockerfile not used for this seed)
+//   - rootDirectory: scripts
+//   - startCommand: node seed-fire-detections.mjs
+//   - Cron schedule: "*/10 * * * *" (every 10min UTC)
+
+import { loadEnvFile, readSeedSnapshot, runSeed, withRetry, writeExtraKey, MAX_PAYLOAD_BYTES } from './_seed-utils.mjs';
+import { buildEnvelope } from './_seed-envelope-source.mjs';
+import { compactWildfireDashboardPayload, WILDFIRE_CANONICAL_DETECTION_LIMIT } from './_wildfire-dashboard.mjs';
+import {
+  fetchCwfisFires,
+  CWFIS_SNAPSHOT_TTL_SECONDS,
+  CWFIS_SNAPSHOT_KEY,
+} from './wildfire/cwfis-wfs.mjs';
+import {
+  BC_SNAPSHOT_KEY,
+  BC_SNAPSHOT_TTL_SECONDS,
+  canadianWildfireAfterPublish,
+  fetchBcFirePoints,
+  hasCompleteWorldwideWildfireCoverage,
+  mergeWildfireSourcesWithBc,
+  wildfirePublishData,
+} from './wildfire/bc-fire-points.mjs';
+import {
+  fetchAllFirmsRegions,
+  FIRMS_SOURCES,
+} from './wildfire/firms-area.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'wildfire:fires:v1';
-const FIRMS_SOURCES = ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'];
+const BOOTSTRAP_KEY = 'wildfire:fires-bootstrap:v1';
 
-const MONITORED_REGIONS = {
-  'Ukraine': '22,44,40,53',
-  'Russia': '20,50,180,82',
-  'Iran': '44,25,63,40',
-  'Israel/Gaza': '34,29,36,34',
-  'Syria': '35,32,42,37',
-  'Taiwan': '119,21,123,26',
-  'North Korea': '124,37,131,43',
-  'Saudi Arabia': '34,16,56,32',
-  'Turkey': '26,36,45,42',
-};
-
-function mapConfidence(c) {
-  switch ((c || '').toLowerCase()) {
-    case 'h': return 'FIRE_CONFIDENCE_HIGH';
-    case 'n': return 'FIRE_CONFIDENCE_NOMINAL';
-    case 'l': return 'FIRE_CONFIDENCE_LOW';
-    default: return 'FIRE_CONFIDENCE_UNSPECIFIED';
-  }
+export function declareRecords(data) {
+  return Array.isArray(data?.fireDetections) ? data.fireDetections.length : 0;
 }
 
-function parseCSV(csv) {
-  const lines = csv.trim().split('\n');
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map(h => h.trim());
-  const results = [];
-  for (let i = 1; i < lines.length; i++) {
-    const vals = lines[i].split(',').map(v => v.trim());
-    if (vals.length < headers.length) continue;
-    const row = {};
-    headers.forEach((h, idx) => { row[h] = vals[idx]; });
-    results.push(row);
-  }
-  return results;
+// Bound the canonical payload before it reaches atomicPublish (#5866). FIRMS detection volume
+// is seasonal and unbounded: on 2026-07-30 a clean run (27/27 sources ok, zero upstream
+// failures) accumulated 20,442 detections, serialized to 5.2MB, and atomicPublish hard-threw
+// above its 5MB cap. That throw escapes to main().catch — exit 1, nothing published, TTL not
+// extended — so the deliberately short 2h TTL below then blanked the panel.
+//
+// Ranking is the dashboard comparator (possibleExplosion -> confidence -> brightness -> frp ->
+// detectedAt), so what gets dropped is always the lowest-signal tail, and the real FIRMS count
+// survives in `pagination.totalCount`.
+const CANONICAL_SOURCE_VERSION = `${FIRMS_SOURCES.join('+')}+firms-area-v2+cwfis-wfs-v1+bc-wildfire-kml-v1`;
+
+function measureCanonicalPublishBytes(data) {
+  return Buffer.byteLength(JSON.stringify(buildEnvelope({
+    fetchedAt: Date.now(),
+    recordCount: Array.isArray(data?.fireDetections) ? data.fireDetections.length : 0,
+    sourceVersion: CANONICAL_SOURCE_VERSION,
+    schemaVersion: 1,
+    state: 'OK',
+    data,
+  })), 'utf8');
 }
 
-function parseDetectedAt(acqDate, acqTime) {
-  const padded = (acqTime || '').padStart(4, '0');
-  const hours = padded.slice(0, 2);
-  const minutes = padded.slice(2);
-  return new Date(`${acqDate}T${hours}:${minutes}:00Z`).getTime();
-}
-
-async function fetchRegionSource(apiKey, regionName, bbox, source) {
-  const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${source}/${bbox}/1`;
-  const res = await fetch(url, {
-    headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(30_000),
+function capCanonicalPayload(data) {
+  data = wildfirePublishData(data);
+  const capped = compactWildfireDashboardPayload(data, WILDFIRE_CANONICAL_DETECTION_LIMIT, {
+    maxBytes: MAX_PAYLOAD_BYTES,
+    measureBytes: measureCanonicalPublishBytes,
   });
-  if (!res.ok) throw new Error(`FIRMS ${res.status} for ${regionName}/${source}`);
-  const csv = await res.text();
-  return parseCSV(csv);
+  // Same reference back = already under the cap (or an unrecognized shape). Never dereference
+  // blindly here: a throw inside publishTransform is the exact FATAL this function exists to
+  // prevent.
+  if (capped === data) return data;
+  const total = data.fireDetections.length;
+  const kept = capped.fireDetections.length;
+  console.log(`  canonical cap: publishing ${kept} of ${total} detections (dropped ${total - kept} lowest-signal to stay under the 5MB publish cap)`);
+  return capped;
 }
 
-async function fetchAllRegions(apiKey) {
-  const entries = Object.entries(MONITORED_REGIONS);
-  const seen = new Set();
-  const fireDetections = [];
-  let fulfilled = 0;
-  let failed = 0;
-
-  for (const source of FIRMS_SOURCES) {
-    for (const [regionName, bbox] of entries) {
-      try {
-        const rows = await fetchRegionSource(apiKey, regionName, bbox, source);
-        fulfilled++;
-        for (const row of rows) {
-          const id = `${row.latitude ?? ''}-${row.longitude ?? ''}-${row.acq_date ?? ''}-${row.acq_time ?? ''}`;
-          if (seen.has(id)) continue;
-          seen.add(id);
-          const detectedAt = parseDetectedAt(row.acq_date || '', row.acq_time || '');
-          fireDetections.push({
-            id,
-            location: {
-              latitude: parseFloat(row.latitude ?? '0') || 0,
-              longitude: parseFloat(row.longitude ?? '0') || 0,
-            },
-            brightness: parseFloat(row.bright_ti4 ?? '0') || 0,
-            frp: parseFloat(row.frp ?? '0') || 0,
-            confidence: mapConfidence(row.confidence || ''),
-            satellite: row.satellite || '',
-            detectedAt,
-            region: regionName,
-            dayNight: row.daynight || '',
-          });
-        }
-      } catch (err) {
-        failed++;
-        console.error(`  [FIRMS] ${source}/${regionName}: ${err.message || err}`);
-      }
-      await sleep(6_000); // FIRMS free tier: 10 req/min — 6s between calls stays safely under limit
-    }
-    console.log(`  ${source}: ${fireDetections.length} total (${fulfilled} ok, ${failed} failed)`);
+async function fetchMergedWildfires() {
+  const apiKey = process.env.NASA_FIRMS_API_KEY || process.env.FIRMS_API_KEY || '';
+  const cache = new Map();
+  // Missing config is NOT runtime degradation. Without this refusal an absent key
+  // reaches mergeWildfireSourcesWithBc, is swallowed by allSettled, and silently
+  // republishes the canonical worldwide key as Canada-only on every tick.
+  // Let a live FIRMS outage degrade; never let a misconfigured deploy do it.
+  if (!apiKey) {
+    console.error('[seed-fire-detections] NASA_FIRMS_API_KEY (or FIRMS_API_KEY) is required but not set. Refusing to run.');
+    process.exit(1);
   }
+  console.log('  FIRMS key configured');
+  const data = await mergeWildfireSourcesWithBc({
+    fetchFirms: () => fetchAllFirmsRegions(apiKey),
+    fetchCwfis: async () => fetchCwfisFires({
+      fetchFn: globalThis.fetch, cache,
+      previousSnapshot: await readSeedSnapshot(CWFIS_SNAPSHOT_KEY),
+    }),
+    // The strict read fails closed, so a transient Upstash glitch (an HTTP-200
+    // body that is not JSON, a 5xx, a timeout) would otherwise exit 1 with no
+    // BC snapshot to persist. A read that keeps failing still exits 1 after
+    // the retries, so last-good BC state is never overwritten from a bad read.
+    fetchBcWildfire: async () => fetchBcFirePoints({
+      fetchFn: globalThis.fetch, cache,
+      previousSnapshot: await withRetry(() => readSeedSnapshot(BC_SNAPSHOT_KEY, { strict: true }), 2, 500),
+    }),
+  });
+  if (data.fireDetections.length === 0) {
+    await persistSourceSnapshots(data).catch(error => {
+      throw Object.assign(error, { nonRetryable: true });
+    });
+  }
+  return data;
+}
 
-  return { fireDetections, pagination: undefined };
+async function persistSourceSnapshots(data) {
+  const snapshot = data._cwfisSnapshot;
+  if (!snapshot) throw new Error('CWFIS recovery snapshot is missing');
+  await writeExtraKey(CWFIS_SNAPSHOT_KEY, snapshot, CWFIS_SNAPSHOT_TTL_SECONDS);
+  await writeExtraKey('seed-meta:wildfire:cwfis-source', {
+    fetchedAt: snapshot.fetchedAt,
+    recordCount: snapshot.fireDetections.length,
+    lastAttemptAt: snapshot.lastAttemptAt,
+    sourceState: snapshot.consecutiveFailures ? 'degraded' : 'ok',
+    sourceVersion: 'cwfis-recovery-v1',
+  }, CWFIS_SNAPSHOT_TTL_SECONDS);
+  const bcSnapshot = data._bcSnapshot;
+  if (!bcSnapshot) throw new Error('BC recovery snapshot is missing');
+  await writeExtraKey(BC_SNAPSHOT_KEY, bcSnapshot, BC_SNAPSHOT_TTL_SECONDS);
+  await writeExtraKey('seed-meta:wildfire:bc-source', {
+    fetchedAt: bcSnapshot.fetchedAt,
+    recordCount: bcSnapshot.fireDetections.length,
+    lastAttemptAt: bcSnapshot.lastAttemptAt,
+    sourceState: bcSnapshot.errorCode ? 'degraded' : 'ok',
+    errorCode: bcSnapshot.errorCode,
+    sourceVersion: 'bc-fire-points-v1',
+  }, BC_SNAPSHOT_TTL_SECONDS);
 }
 
 async function main() {
-  const apiKey = process.env.NASA_FIRMS_API_KEY || process.env.FIRMS_API_KEY || '';
-  if (!apiKey) {
-    console.log('NASA_FIRMS_API_KEY not set — skipping fire detections seed');
-    process.exit(0);
-  }
-
-  console.log('  FIRMS key configured');
-
-  await runSeed('wildfire', 'fires', CANONICAL_KEY, () => fetchAllRegions(apiKey), {
-    validateFn: (data) => Array.isArray(data?.fireDetections) && data.fireDetections.length > 0,
+  await runSeed('wildfire', 'fires', CANONICAL_KEY, fetchMergedWildfires, {
+    // A partial response cannot replace a key whose contract is worldwide.
+    // runSeed preserves both canonical and bootstrap last-good keys when this
+    // returns false, then afterValidationSkip records the current diagnosis.
+    validateFn: hasCompleteWorldwideWildfireCoverage,
+    // 2h — deliberately BELOW the 6h health gate (maxStaleMin 360). Do NOT "fix" this
+    // by raising it to satisfy tests/seed-ttl-outlives-staleness-fleet: doing so DOWNGRADES
+    // a safety alarm. Verified against classifyKey with the seeder dead for 3h:
+    //
+    //   ttl 2h (this):  wildfires -> EMPTY (crit)   — ops is paged, panel blanks honestly
+    //   ttl 7h:         wildfires -> OK    (green)  — 3h-old fire data served, silently
+    //
+    // The canonical `wildfires` is NOT in EMPTY_DATA_OK_KEYS, so its key expiring at 2h is
+    // exactly what makes a dead fire feed loud. A longer TTL keeps stale data alive past
+    // the gate and turns that crit into a warn (and, inside the gate, into a green).
     ttlSeconds: 7200,
-    lockTtlMs: 600_000, // 10 min — 27 calls × (6s pace + up to 30s timeout) can exceed 5 min under partial slowness
-    sourceVersion: FIRMS_SOURCES.join('+'),
+    // Applied to the CANONICAL key only. runSeed feeds extraKey transforms the RAW fetcher
+    // output, not publishData (scripts/_seed-utils.mjs), so the bootstrap key below still
+    // ranks its top-500 over every detection FIRMS returned — capping here cannot change what
+    // the dashboard renders. Capping inside fetchAllRegions would not have that property.
+    publishTransform: capCanonicalPayload,
+    lockTtlMs: 2_700_000, // 45 min — 27 slots × 72s (2 × 30s attempts + 2 × 6s pace) = 32.4 min; leave fetch and publication headroom. Overlapping cron ticks skip the held lock.
+    fetchPhaseTimeoutMs: 2_400_000, // 40 min — bound whole-fetch retries if all upstreams fail, before the lock expires.
+    sourceVersion: CANONICAL_SOURCE_VERSION,
+    extraKeys: [{
+      key: BOOTSTRAP_KEY,
+      transform: (data) => compactWildfireDashboardPayload(wildfirePublishData(data)),
+      declareRecords,
+      metaKey: 'seed-meta:wildfire:fires-bootstrap',
+    }],
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 360,
+    beforePublish: persistSourceSnapshots,
+    afterPublish: canadianWildfireAfterPublish,
+    afterValidationSkip: async (data, { existingSeedMeta }) => {
+      await persistSourceSnapshots(data);
+      return canadianWildfireAfterPublish(data, { previousMeta: existingSeedMeta });
+    },
   });
 }
 

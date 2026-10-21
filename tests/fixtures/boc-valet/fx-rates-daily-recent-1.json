@@ -1,0 +1,320 @@
+{
+  "terms": {
+    "url": "https://www.bankofcanada.ca/terms/"
+  },
+  "groupDetail": {
+    "label": "Daily exchange rates",
+    "description": "The daily average exchange rates for various foreign currencies (either currently or historically published) expressed as one unit of the foreign currency converted into Canadian dollars. These rates are typically published once each business day by 16:30 (ET). All Bank of Canada exchange rates are indicative rates only, obtained from averages of aggregated price quotes from financial institutions.",
+    "link": "https://www.bankofcanada.ca/?p=190892"
+  },
+  "seriesDetail": {
+    "FXAUDCAD": {
+      "label": "AUD/CAD",
+      "description": "Daily average exchange rate: daily value of the Australian dollar expressed in Canadian dollars, for 1 unit of Australian dollar",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXBRLCAD": {
+      "label": "BRL/CAD",
+      "description": "Daily average exchange rate: daily value of the Brazilian real expressed in Canadian dollars, for 1 unit of Brazilian real",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXCNYCAD": {
+      "label": "CNY/CAD",
+      "description": "Daily average exchange rate: daily value of the Chinese renminbi expressed in Canadian dollars, for 1 unit of Chinese renminbi",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXEURCAD": {
+      "label": "EUR/CAD",
+      "description": "Daily average exchange rate: daily value of the euro expressed in Canadian dollars, for 1 unit of euro",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXHKDCAD": {
+      "label": "HKD/CAD",
+      "description": "Daily average exchange rate: daily value of the Hong Kong dollar expressed in Canadian dollars, for 1 unit of Hong Kong dollar",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXINRCAD": {
+      "label": "INR/CAD",
+      "description": "Daily average exchange rate: daily value of the Indian rupee expressed in Canadian dollars, for 1 unit of Indian rupee",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXIDRCAD": {
+      "label": "IDR/CAD",
+      "description": "Daily average exchange rate: daily value of the Indonesian rupiah expressed in Canadian dollars, for 1 unit of Indonesian rupiah",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXJPYCAD": {
+      "label": "JPY/CAD",
+      "description": "Daily average exchange rate: daily value of the Japanese yen expressed in Canadian dollars, for 1 unit of Japanese yen",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXMYRCAD": {
+      "label": "MYR/CAD",
+      "description": "Daily average exchange rate: daily value of the Malaysian ringgit expressed in Canadian dollars, for 1 unit of Malaysian ringgit",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXMXNCAD": {
+      "label": "MXN/CAD",
+      "description": "Daily average exchange rate: daily value of the Mexican peso expressed in Canadian dollars, for 1 unit of Mexican peso",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXNZDCAD": {
+      "label": "NZD/CAD",
+      "description": "Daily average exchange rate: daily value of the New Zealand dollar expressed in Canadian dollars, for 1 unit of New Zealand dollar",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXNOKCAD": {
+      "label": "NOK/CAD",
+      "description": "Daily average exchange rate: daily value of the Norwegian krone expressed in Canadian dollars, for 1 unit of Norwegian krone",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXPENCAD": {
+      "label": "PEN/CAD",
+      "description": "Daily average exchange rate: daily value of the Peruvian new sol expressed in Canadian dollars, for 1 unit of Peruvian new sol",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXPLNCAD": {
+      "label": "PLN/CAD",
+      "description": "Daily average exchange rate: daily value of the Polish zloty expressed in Canadian dollars, for 1 unit of Polish zloty",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXRUBCAD": {
+      "label": "RUB/CAD",
+      "description": "Daily average exchange rate \u2014 historical series: daily value of the Russian ruble expressed in Canadian dollars, for 1 unit of Russian ruble",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXSARCAD": {
+      "label": "SAR/CAD",
+      "description": "Daily average exchange rate \u2014 historical series: daily value of the Saudi riyal expressed in Canadian dollars, for 1 unit of Saudi riyal",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXSGDCAD": {
+      "label": "SGD/CAD",
+      "description": "Daily average exchange rate: daily value of the Singapore dollar expressed in Canadian dollars, for 1 unit of Singapore dollar",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXZARCAD": {
+      "label": "ZAR/CAD",
+      "description": "Daily average exchange rate: daily value of the South African rand expressed in Canadian dollars, for 1 unit of South African rand",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXKRWCAD": {
+      "label": "KRW/CAD",
+      "description": "Daily average exchange rate: daily value of the South Korean won expressed in Canadian dollars, for 1 unit of South Korean won",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXSEKCAD": {
+      "label": "SEK/CAD",
+      "description": "Daily average exchange rate: daily value of the Swedish krona expressed in Canadian dollars, for 1 unit of Swedish krona",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXCHFCAD": {
+      "label": "CHF/CAD",
+      "description": "Daily average exchange rate: daily value of the Swiss franc expressed in Canadian dollars, for 1 unit of Swiss franc",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXTWDCAD": {
+      "label": "TWD/CAD",
+      "description": "Daily average exchange rate: daily value of the Taiwanese dollar expressed in Canadian dollars, for 1 unit of Taiwanese dollar",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXTHBCAD": {
+      "label": "THB/CAD",
+      "description": "Daily average exchange rate: daily value of the Thai baht expressed in Canadian dollars, for 1 unit of Thai baht",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXTRYCAD": {
+      "label": "TRY/CAD",
+      "description": "Daily average exchange rate: daily value of the Turkish lira expressed in Canadian dollars, for 1 unit of Turkish lira",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXGBPCAD": {
+      "label": "GBP/CAD",
+      "description": "Daily average exchange rate: daily value of the UK pound sterling expressed in Canadian dollars, for 1 unit of pound sterling",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXUSDCAD": {
+      "label": "USD/CAD",
+      "description": "Daily average exchange rate: daily value of the US dollar expressed in Canadian dollars, for 1 unit of US dollar",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "FXVNDCAD": {
+      "label": "VND/CAD",
+      "description": "Daily average exchange rate \u2014 historical series: daily value of the Vietnamese dong expressed in Canadian dollars, for 1 unit of Vietnamese dong",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    }
+  },
+  "observations": [
+    {
+      "d": "2019-12-31",
+      "FXVNDCAD": {
+        "v": "0.000056"
+      }
+    },
+    {
+      "d": "2026-08-13",
+      "FXAUDCAD": {
+        "v": "0.9838"
+      },
+      "FXBRLCAD": {
+        "v": "0.2687"
+      },
+      "FXCNYCAD": {
+        "v": "0.2067"
+      },
+      "FXEURCAD": {
+        "v": "1.6075"
+      },
+      "FXHKDCAD": {
+        "v": "0.1776"
+      },
+      "FXINRCAD": {
+        "v": "0.01460"
+      },
+      "FXIDRCAD": {
+        "v": "0.000078"
+      },
+      "FXJPYCAD": {
+        "v": "0.008750"
+      },
+      "FXMYRCAD": {
+        "v": "0.3410"
+      },
+      "FXMXNCAD": {
+        "v": "0.08175"
+      },
+      "FXNZDCAD": {
+        "v": "0.8152"
+      },
+      "FXNOKCAD": {
+        "v": "0.1466"
+      },
+      "FXPENCAD": {
+        "v": "0.4138"
+      },
+      "FXPLNCAD": {
+        "v": "0.3732"
+      },
+      "FXSGDCAD": {
+        "v": "1.0887"
+      },
+      "FXZARCAD": {
+        "v": "0.08617"
+      },
+      "FXKRWCAD": {
+        "v": "0.000983"
+      },
+      "FXSEKCAD": {
+        "v": "0.1458"
+      },
+      "FXCHFCAD": {
+        "v": "1.7146"
+      },
+      "FXTWDCAD": {
+        "v": "0.04340"
+      },
+      "FXTHBCAD": {
+        "v": "0.04202"
+      },
+      "FXTRYCAD": {
+        "v": "0.02920"
+      },
+      "FXGBPCAD": {
+        "v": "1.8806"
+      },
+      "FXUSDCAD": {
+        "v": "1.3938"
+      }
+    },
+    {
+      "d": "2026-04-30",
+      "FXRUBCAD": {
+        "v": "0.01819"
+      },
+      "FXSARCAD": {
+        "v": "0.3633"
+      }
+    }
+  ]
+}

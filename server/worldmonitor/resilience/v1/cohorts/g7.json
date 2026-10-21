@@ -1,0 +1,5 @@
+{
+  "name": "g7",
+  "description": "Group of Seven advanced economies. Used in resilience cohort anti-inversion test (plan 2026-04-26-002 §U1) as the structural anchor for 'large advanced economies should outperform sparse-data microstates / SARs'. Membership is the canonical G7 list; do NOT add or remove without methodology justification.",
+  "iso2": ["US", "GB", "DE", "FR", "JP", "IT", "CA"]
+}

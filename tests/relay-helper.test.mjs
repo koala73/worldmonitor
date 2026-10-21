@@ -131,6 +131,32 @@ describe('fetchWithTimeout', () => {
 });
 
 describe('createRelayHandler', () => {
+  it('serves OREF success publicly and keeps unavailable responses out of caches', async () => {
+    const { default: handler } = await import('../api/oref-alerts.js');
+    mockFetchOk();
+    const response = await handler(makeRequest('https://worldmonitor.app/api/oref-alerts'));
+    assert.equal(response.headers.get('access-control-allow-origin'), '*');
+    assert.equal(response.headers.get('access-control-allow-credentials'), null);
+    assert.match(response.headers.get('cache-control'), /public/);
+    mockFetchStatus(503);
+    const failed = await handler(makeRequest('https://worldmonitor.app/api/oref-alerts'));
+    assert.equal(failed.status, 503);
+    assert.equal(failed.headers.get('cache-control'), 'no-store');
+  });
+  it('uses public CORS only on successful public relay responses', async () => {
+    process.env.WS_RELAY_URL = 'wss://relay.example.com';
+    mockFetchOk();
+    const handler = createRelayHandler({ relayPath: '/test', publicCors: true });
+    const response = await handler(makeRequest('https://worldmonitor.app/api/test'));
+    assert.equal(response.headers.get('access-control-allow-origin'), '*');
+    assert.equal(response.headers.get('access-control-allow-credentials'), null);
+    assert.equal(response.headers.get('vary'), null);
+    mockFetchStatus(503);
+    const failed = await handler(makeRequest('https://worldmonitor.app/api/test'));
+    assert.notEqual(failed.headers.get('access-control-allow-origin'), '*');
+    const denied = await handler(makeRequest('https://worldmonitor.app/api/test', { headers: { Origin: 'https://evil.example' } }));
+    assert.equal(denied.status, 403);
+  });
   beforeEach(() => {
     process.env.WS_RELAY_URL = 'wss://relay.example.com';
     process.env.RELAY_SHARED_SECRET = 'test-secret';
@@ -300,17 +326,38 @@ describe('createRelayHandler', () => {
     const res = await handler(makeRequest('https://worldmonitor.app/api/test'));
     assert.equal(res.status, 504);
     const body = await res.json();
-    assert.equal(body.error, 'Relay timeout');
+    assert.deepEqual(body, { error: 'Relay timeout' });
   });
 
   it('returns 502 on network error', async () => {
-    mockFetchError('Connection refused');
+    mockFetchError('Connection refused at https://relay.internal/?key=synthetic-secret');
     const handler = createRelayHandler({ relayPath: '/test' });
     const res = await handler(makeRequest('https://worldmonitor.app/api/test'));
     assert.equal(res.status, 502);
     const body = await res.json();
-    assert.equal(body.error, 'Relay request failed');
-    assert.equal(body.details, 'Connection refused');
+    assert.deepEqual(body, { error: 'Relay request failed' });
+  });
+
+  // Keeping the failure OUT of the response body is only half the fix: the two
+  // routes with no cfg.fallback (api/opensky.js, api/polymarket.js) would then
+  // answer an outage with a bare 502 and leave no trace anywhere. Pin the
+  // server-side record so the body assertions above cannot lock in silence.
+  it('records the cause server-side even though the body stays generic', async () => {
+    const warnings = [];
+    const realWarn = console.warn;
+    console.warn = (...args) => { warnings.push(args.map(String).join(' ')); };
+    try {
+      mockFetchError('Connection refused at https://relay.internal/?key=synthetic-secret');
+      const handler = createRelayHandler({ relayPath: '/test' });
+      const res = await handler(makeRequest('https://worldmonitor.app/api/test'));
+      assert.equal(res.status, 502);
+      assert.deepEqual(await res.json(), { error: 'Relay request failed' });
+      const logged = warnings.find(line => line.includes('[relay]'));
+      assert.ok(logged, `expected a [relay] warning, got ${JSON.stringify(warnings)}`);
+      assert.match(logged, /Connection refused at https:\/\/relay\.internal/);
+    } finally {
+      console.warn = realWarn;
+    }
   });
 
   it('calls fallback when relay unavailable', async () => {

@@ -8,25 +8,47 @@ import "worldmonitor/intelligence/v1/get_company_enrichment.proto";
 import "worldmonitor/intelligence/v1/get_country_facts.proto";
 import "worldmonitor/intelligence/v1/get_country_intel_brief.proto";
 import "worldmonitor/intelligence/v1/get_country_risk.proto";
+import "worldmonitor/intelligence/v1/get_country_history.proto";
+import "worldmonitor/intelligence/v1/get_country_signal_observations.proto";
 import "worldmonitor/intelligence/v1/get_pizzint_status.proto";
 import "worldmonitor/intelligence/v1/get_risk_scores.proto";
 import "worldmonitor/intelligence/v1/list_security_advisories.proto";
 import "worldmonitor/intelligence/v1/list_company_signals.proto";
+import "worldmonitor/intelligence/v1/search_sec_filings.proto";
+import "worldmonitor/intelligence/v1/list_material_events.proto";
 import "worldmonitor/intelligence/v1/list_gps_interference.proto";
 import "worldmonitor/intelligence/v1/list_oref_alerts.proto";
 import "worldmonitor/intelligence/v1/list_satellites.proto";
 import "worldmonitor/intelligence/v1/list_telegram_feed.proto";
+import "worldmonitor/intelligence/v1/list_x_feed.proto";
 import "worldmonitor/intelligence/v1/search_gdelt_documents.proto";
 import "worldmonitor/intelligence/v1/get_gdelt_topic_timeline.proto";
 import "worldmonitor/intelligence/v1/list_cross_source_signals.proto";
 import "worldmonitor/intelligence/v1/list_market_implications.proto";
 import "worldmonitor/intelligence/v1/get_social_velocity.proto";
+import "worldmonitor/intelligence/v1/list_wsb_tickers.proto";
+import "worldmonitor/intelligence/v1/get_country_energy_profile.proto";
+import "worldmonitor/intelligence/v1/compute_energy_shock.proto";
+import "worldmonitor/intelligence/v1/get_country_port_activity.proto";
+import "worldmonitor/intelligence/v1/get_country_coverage.proto";
+import "worldmonitor/intelligence/v1/get_china_decision_signals.proto";
+import "worldmonitor/intelligence/v1/get_regional_snapshot.proto";
+import "worldmonitor/intelligence/v1/get_regime_history.proto";
+import "worldmonitor/intelligence/v1/get_regional_brief.proto";
+import "worldmonitor/intelligence/v1/search_intel_history.proto";
+import "worldmonitor/intelligence/v1/get_intel_timeline.proto";
+import "worldmonitor/intelligence/v1/get_similar_events.proto";
 
 // IntelligenceService provides APIs for technical and strategic intelligence.
 service IntelligenceService {
   option (sebuf.http.service_config) = {base_path: "/api/intelligence/v1"};
 
-  // GetRiskScores retrieves composite risk scores and strategic assessments.
+  // Read one bounded country-qualified observation family or eligible flight page for the country panel, with source clocks and coverage.
+  rpc GetCountrySignalObservations(GetCountrySignalObservationsRequest) returns (GetCountrySignalObservationsResponse) {
+    option (sebuf.http.config) = {path: "/get-country-signal-observations", method: HTTP_METHOD_GET};
+  }
+
+  // Retrieve composite country risk scores and strategic assessments by region, with component contributions and advisory context for geopolitical risk monitoring.
   rpc GetRiskScores(GetRiskScoresRequest) returns (GetRiskScoresResponse) {
     option (sebuf.http.config) = {
       path: "/get-risk-scores"
@@ -47,6 +69,14 @@ service IntelligenceService {
     option (sebuf.http.config) = {path: "/classify-event", method: HTTP_METHOD_GET};
   }
 
+  // Daily country snapshots with source versions, gaps and tier-limited depth.
+  rpc GetCountryHistory(GetCountryHistoryRequest) returns (GetCountryHistoryResponse) {
+    option (sebuf.http.config) = {
+      path: "/get-country-history"
+      method: HTTP_METHOD_GET
+    };
+  }
+
   // GetCountryRisk retrieves composite risk intelligence for a specific country.
   rpc GetCountryRisk(GetCountryRiskRequest) returns (GetCountryRiskResponse) {
     option (sebuf.http.config) = {
@@ -59,6 +89,16 @@ service IntelligenceService {
   rpc GetCountryIntelBrief(GetCountryIntelBriefRequest) returns (GetCountryIntelBriefResponse) {
     option (sebuf.http.config) = {
       path: "/get-country-intel-brief"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // GetCountryCoverage returns the country panel's visible coverage timeline:
+  // clustered news incidents reconciled against first-party structured records,
+  // with per-producer freshness so an empty list is never silent.
+  rpc GetCountryCoverage(GetCountryCoverageRequest) returns (GetCountryCoverageResponse) {
+    option (sebuf.http.config) = {
+      path: "/get-country-coverage"
       method: HTTP_METHOD_GET
     };
   }
@@ -108,7 +148,18 @@ service IntelligenceService {
     };
   }
 
-  // GetCompanyEnrichment aggregates company data from multiple public sources (GitHub, SEC, HN).
+  // ListXFeed retrieves curated public news-account posts from monitored X
+  // accounts. Returns permalink plus derived facts only — post text is R4.
+  rpc ListXFeed(ListXFeedRequest) returns (ListXFeedResponse) {
+    option (sebuf.http.config) = {
+      path: "/list-x-feed"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // GetCompanyEnrichment aggregates a per-company intelligence composite: SEC EDGAR
+  // identity and recent filings (via authoritative ticker-to-CIK resolution), market
+  // profile and earnings surprises from Finnhub, and recent news mentions.
   rpc GetCompanyEnrichment(GetCompanyEnrichmentRequest) returns (GetCompanyEnrichmentResponse) {
     option (sebuf.http.config) = {
       path: "/get-company-enrichment"
@@ -116,7 +167,9 @@ service IntelligenceService {
     };
   }
 
-  // ListCompanySignals discovers activity signals for a company from public sources.
+  // ListCompanySignals discovers classified intelligence signals for a company from
+  // authoritative sources: SEC 8-K material events and recent news mentions, with
+  // per-type summary rollups. Fiscal period ends are not used as event timestamps.
   rpc ListCompanySignals(ListCompanySignalsRequest) returns (ListCompanySignalsResponse) {
     option (sebuf.http.config) = {
       path: "/list-company-signals"
@@ -124,7 +177,25 @@ service IntelligenceService {
     };
   }
 
-  // GetCountryFacts retrieves factual country data from RestCountries and Wikipedia.
+  // SearchSecFilings runs a full-text search over SEC EDGAR filings with optional
+  // form-type and date-range filters.
+  rpc SearchSecFilings(SearchSecFilingsRequest) returns (SearchSecFilingsResponse) {
+    option (sebuf.http.config) = {
+      path: "/search-sec-filings"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // ListMaterialEvents returns the pre-seeded stream of recent SEC 8-K material-event
+  // filings (M&A, executive changes, restatements, bankruptcies) across all filers.
+  rpc ListMaterialEvents(ListMaterialEventsRequest) returns (ListMaterialEventsResponse) {
+    option (sebuf.http.config) = {
+      path: "/list-material-events"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // GetCountryFacts retrieves factual country data from Wikidata and Wikipedia.
   rpc GetCountryFacts(GetCountryFactsRequest) returns (GetCountryFactsResponse) {
     option (sebuf.http.config) = {path: "/get-country-facts", method: HTTP_METHOD_GET};
   }
@@ -149,8 +220,80 @@ service IntelligenceService {
     option (sebuf.http.config) = {path: "/list-market-implications", method: HTTP_METHOD_GET};
   }
 
+  // Premium Reddit ticker feed.
+  rpc ListWsbTickers(ListWsbTickersRequest) returns (ListWsbTickersResponse) {
+    option (sebuf.http.config) = {path: "/list-wsb-tickers", method: HTTP_METHOD_GET};
+  }
+
   // GetSocialVelocity returns trending Reddit posts from r/worldnews and r/geopolitics ranked by velocity.
   rpc GetSocialVelocity(GetSocialVelocityRequest) returns (GetSocialVelocityResponse) {
     option (sebuf.http.config) = {path: "/get-social-velocity", method: HTTP_METHOD_GET};
+  }
+
+  // GetCountryEnergyProfile aggregates Phase 1/2/2.5 energy data per country.
+  rpc GetCountryEnergyProfile(GetCountryEnergyProfileRequest) returns (GetCountryEnergyProfileResponse) {
+    option (sebuf.http.config) = {path: "/get-country-energy-profile", method: HTTP_METHOD_GET};
+  }
+
+  // ComputeEnergyShockScenario computes on-demand product supply shock for a given country + chokepoint.
+  rpc ComputeEnergyShockScenario(ComputeEnergyShockScenarioRequest) returns (ComputeEnergyShockScenarioResponse) {
+    option (sebuf.http.config) = {path: "/compute-energy-shock", method: HTTP_METHOD_GET};
+  }
+
+  // GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
+  rpc GetCountryPortActivity(GetCountryPortActivityRequest) returns (CountryPortActivityResponse) {
+    option (sebuf.http.config) = {path: "/get-country-port-activity", method: HTTP_METHOD_GET};
+  }
+
+  // GetChinaDecisionSignals composes the six launched China decision-parity
+  // domains into one bounded provenance-preserving public snapshot.
+  rpc GetChinaDecisionSignals(GetChinaDecisionSignalsRequest) returns (GetChinaDecisionSignalsResponse) {
+    option (sebuf.http.config) = {path: "/get-china-decision-signals", method: HTTP_METHOD_GET};
+  }
+
+  // Written every 6h by scripts/seed-regional-snapshots.mjs; the handler only
+  // reads canonical state. (Detached: kept out of the public spec.)
+
+  // GetRegionalSnapshot returns the latest RegionalSnapshot for a region,
+  // refreshed every 6h. Premium-gated.
+  rpc GetRegionalSnapshot(GetRegionalSnapshotRequest) returns (GetRegionalSnapshotResponse) {
+    option (sebuf.http.config) = {path: "/get-regional-snapshot", method: HTTP_METHOD_GET};
+  }
+
+  // GetRegimeHistory returns the region's regime transition log newest-first.
+  // Entries are append-only from the seed writer, recorded only when
+  // diffRegionalSnapshot reports regime_changed. Premium-gated.
+  rpc GetRegimeHistory(GetRegimeHistoryRequest) returns (GetRegimeHistoryResponse) {
+    option (sebuf.http.config) = {path: "/get-regime-history", method: HTTP_METHOD_GET};
+  }
+
+  // GetRegionalBrief returns the latest weekly intelligence brief for a region.
+  // Written by scripts/seed-regional-briefs.mjs on a weekly cron. Premium-gated.
+  rpc GetRegionalBrief(GetRegionalBriefRequest) returns (GetRegionalBriefResponse) {
+    option (sebuf.http.config) = {path: "/get-regional-brief", method: HTTP_METHOD_GET};
+  }
+
+  // Store: convex/intelHistory.ts. (Detached: kept out of the public spec.)
+
+  // SearchIntelHistory searches stored historical intelligence events by
+  // semantic similarity to a free-text query. Each cache miss costs one
+  // embeddings call, so the route has its own fail-closed rate policy.
+  // Premium-gated.
+  rpc SearchIntelHistory(SearchIntelHistoryRequest) returns (SearchIntelHistoryResponse) {
+    option (sebuf.http.config) = {path: "/search-intel-history", method: HTTP_METHOD_POST};
+  }
+
+  // GetIntelTimeline returns the durable historical intelligence store
+  // newest-first for one domain and/or country. Pure index read — no
+  // embedding, no ranking. Premium-gated.
+  rpc GetIntelTimeline(GetIntelTimelineRequest) returns (GetIntelTimelineResponse) {
+    option (sebuf.http.config) = {path: "/get-intel-timeline", method: HTTP_METHOD_GET};
+  }
+
+  // GetSimilarEvents returns historical precedents for a described situation.
+  // Same vector search as SearchIntelHistory over a longer free-text input,
+  // so it is likewise embeddings-backed and rate-policied. Premium-gated.
+  rpc GetSimilarEvents(GetSimilarEventsRequest) returns (GetSimilarEventsResponse) {
+    option (sebuf.http.config) = {path: "/get-similar-events", method: HTTP_METHOD_POST};
   }
 }

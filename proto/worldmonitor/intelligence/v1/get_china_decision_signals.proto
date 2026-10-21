@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+message GetChinaDecisionSignalsRequest {}
+
+message GetChinaDecisionSignalsResponse {
+  // Canonical bounded JSON shared byte-for-byte by public API, country
+  // summary, and MCP. Operator-only health stays on /api/health.
+  string payload_json = 1;
+  string generated_at = 2;
+  // True only when all six launched groups are unavailable. Partial source
+  // outages remain visible per group and do not suppress unrelated domains.
+  bool upstream_unavailable = 3;
+}

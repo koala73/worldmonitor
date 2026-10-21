@@ -1,0 +1,38 @@
+{
+  "verifiedAt": "2026-09-24T08:57:09.430Z",
+  "readOnlyCommands": [
+    "GET metadata",
+    "GET canonical payload",
+    "STRLEN canonical payload",
+    "TTL canonical payload"
+  ],
+  "metaKey": "seed-meta:research:tech-events:seeder",
+  "meta": {
+    "fetchedAt": 1790237059365,
+    "recordCount": 125
+  },
+  "payloadSummary": {
+    "key": "research:tech-events:v1",
+    "bytes": 36115,
+    "ttlSeconds": 25630,
+    "envelopeState": null,
+    "events": 125,
+    "sourceCounts": {
+      "techmeme": 26,
+      "dev.events": 97,
+      "curated": 2
+    }
+  },
+  "localClassifierAgainstProductionRecords": {
+    "status": "OK",
+    "records": 125,
+    "seedAgeMin": 53,
+    "maxStaleMin": 180
+  },
+  "localCompactProjection": {
+    "status": "HEALTHY",
+    "checkedAt": "2026-09-24T08:57:09.430Z"
+  },
+  "operationalProblems": [],
+  "scope": "Read-only pre-existing publication evidence. The proposed classifier ran locally against production records. This is not deployment or acceptance evidence for this repair."
+}

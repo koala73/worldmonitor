@@ -1,0 +1,121 @@
+---
+title: "China Official Macro and Policy"
+description: "Official China macro observations, release-calendar verification, policy-event taxonomy, source admission, revisions, and missingness."
+---
+
+WorldMonitor maintains two independent official-document lanes: revision-aware
+numeric macro observations and typed policy/enforcement events. They share the
+[decision-signal provenance contract](/decision-signal-provenance), but they
+do not share fetchers, scoring, or freshness rules.
+
+## Official macro observations
+
+The launched macro snapshot requires five series:
+
+| Series ID | Publisher | Pillar | Unit | Maximum observation age |
+| --- | --- | --- | --- | --- |
+| `nbs_industrial_value_added_yoy` | National Bureau of Statistics of China | Activity | Percent | 75 days |
+| `nbs_fixed_asset_investment_yoy` | National Bureau of Statistics of China | Investment/property | Percent | 75 days |
+| `nbs_real_estate_investment_yoy` | National Bureau of Statistics of China | Investment/property | Percent | 75 days |
+| `safe_fx_reserves` | State Administration of Foreign Exchange | External pressure | USD 100 million | 45 days |
+| `safe_bank_fx_settlement` | State Administration of Foreign Exchange | External pressure | CNY 100 million | 45 days |
+
+NBS is collected from `www.stats.gov.cn/english/PressRelease/`; SAFE is
+collected from `www.safe.gov.cn/safe/`. Both sources have bounded request
+budgets, manual redirect handling, response-size limits, robots preflight,
+source-host allowlists, and reviewed attribution requirements. The macro
+seeder does not use a proxy to bypass a rejected source decision.
+
+The following reviewed candidates remain explicit unavailable observations
+instead of being silently omitted:
+
+- `pboc_aggregate_financing_flow`
+- `pboc_new_rmb_loans`
+- `pboc_m2_yoy`
+- `pboc_policy_liquidity_operation`
+- `gacc_exports`
+- `gacc_imports`
+- `gacc_trade_balance`
+
+PBoC candidates remain blocked when `www.pbc.gov.cn` robots policy disallows
+the reviewed paths or terms review is incomplete. GACC candidates remain
+blocked when `english.customs.gov.cn` cannot pass the TLS/source preflight.
+Their pillars therefore remain `unavailable`; another publisher is not
+substituted.
+
+## Revisions and direction
+
+Each official observation retains its observation period, publication time,
+retrieval time, source URL, vintage ID, revision sequence, and supersession
+state. A correction creates or updates a traceable vintage; it does not rewrite
+the historical point-in-time record.
+
+Direction is calculated only when the published series contract supplies a
+valid comparison. Missing comparison values remain unavailable. The snapshot
+is launch-ready only when all five required observations are valid and within
+their individual age budgets. Transport freshness and snapshot completeness
+are written as separate seed metadata.
+
+`GET /api/economic/v1/get-china-macro-snapshot` reads the canonical
+`economic:china:macro:v2` seed and never fans out to upstream publishers on a
+cache miss. The macro Railway member runs every 36 hours.
+
+## Release calendar
+
+The release calendar reads the current NBS calendar from `www.stats.gov.cn`.
+Loan Prime Rate dates are generated from the reviewed Chinese business-day
+calendar and marked `provisional`, then promoted to `verified` only when the
+corresponding ChinaMoney/CFETS notice is found on `www.chinamoney.com.cn`.
+
+Failure of the required NBS calendar fails the calendar build. Failure of
+ChinaMoney verification leaves LPR dates provisional and records the source
+decision; it does not relabel them as verified.
+
+## Policy and enforcement events
+
+The policy lane polls six official agencies:
+
+| Agency | Publisher | Listing host |
+| --- | --- | --- |
+| `CAC` | Cyberspace Administration of China | `www.cac.gov.cn` |
+| `SAMR` | State Administration for Market Regulation | `www.samr.gov.cn` |
+| `MIIT` | Ministry of Industry and Information Technology | `www.miit.gov.cn` |
+| `MOFCOM` | Ministry of Commerce | `www.mofcom.gov.cn` |
+| `NDRC` | National Development and Reform Commission | `zfxxgk.ndrc.gov.cn` |
+| `PBOC` | People's Bank of China | `www.pbc.gov.cn` |
+
+Each agency is limited to one listing request and at most three reviewed
+document fetches per run, with a 400 ms same-host cadence. Listing responses
+are capped at 750 KB and documents at 2 MB. URLs must match the reviewed host
+and path contract.
+
+The deterministic taxonomy emits:
+
+- `consultation_draft`
+- `announcement_guidance`
+- `final_rule`
+- `administrative_approval_restriction`
+- `investigation`
+- `enforcement_penalty`
+- `effective_date_change`
+- `amendment_correction_repeal_supersession`
+- `unknown`
+
+The published event keeps the original Chinese title and text, translation
+state, document number, publication and effective dates, reviewed sector/entity
+links, content hash, classification evidence, lineage, revisions, and full
+provenance. Unknown classification is retained as unknown; it is not promoted
+to enforcement.
+
+The Railway macro bundle refreshes this lane every 6 hours. It retains at most
+120 events across complete lineages for 180 days. A failed agency preserves
+still-valid last-good events with transport freshness changed to `error`;
+healthy agencies continue independently.
+
+## Alert boundary
+
+Consultation drafts, guidance, and unknown policy classifications do not alert.
+Reviewed policy/enforcement alerts require a new stable lineage. Corrections
+and repeat ingestion retain the same lineage for deduplication. The bounded
+China decision-signal composition publishes at most four valid items from this
+lane.

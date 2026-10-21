@@ -5,7 +5,7 @@ import type {
   GdeltTimelinePoint,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
-import { getCachedJson } from '../../../_shared/redis';
+import { getRawJson } from '../../../_shared/redis';
 
 const VALID_TOPICS = new Set(['military', 'cyber', 'nuclear', 'sanctions', 'intelligence', 'maritime']);
 
@@ -20,8 +20,8 @@ export async function getGdeltTopicTimeline(
 
   try {
     const [toneData, volData] = await Promise.all([
-      getCachedJson(`gdelt:intel:tone:${topic}`, true),
-      getCachedJson(`gdelt:intel:vol:${topic}`, true),
+      getRawJson(`gdelt:intel:tone:${topic}`),
+      getRawJson(`gdelt:intel:vol:${topic}`),
     ]);
 
     const unwrap = (d: unknown): { arr: GdeltTimelinePoint[]; fetchedAt: string } => {

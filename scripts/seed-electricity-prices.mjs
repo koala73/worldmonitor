@@ -1,0 +1,498 @@
+#!/usr/bin/env node
+
+import {
+  acquireLockSafely,
+  CHROME_UA,
+  extendExistingTtl,
+  getRedisCredentials,
+  httpsProxyFetchRaw,
+  httpRetryError,
+  isRetryableHttpStatus,
+  isTransientProxyError,
+  loadEnvFile,
+  logSeedResult,
+  releaseLock,
+  resolveProxyForConnect,
+  withRetry,
+} from './_seed-utils.mjs';
+
+loadEnvFile(import.meta.url);
+
+export const ELECTRICITY_KEY_PREFIX = 'energy:electricity:v1:';
+export const ELECTRICITY_INDEX_KEY = 'energy:electricity:v1:index';
+export const ELECTRICITY_META_KEY = 'seed-meta:energy:electricity-prices';
+export const ELECTRICITY_TTL_SECONDS = 3 * 24 * 3600; // 3 days = 259200s
+
+const LOCK_DOMAIN = 'energy:electricity-prices';
+
+// ENTSO-E took 23-45s per region on 2026-09-29 while its route was degraded,
+// so a 20s attempt timed out on responses that were still coming.
+export const ENTSO_E_ATTEMPT_TIMEOUT_MS = 30_000;
+// Worst case: 3 direct + 2 proxy attempts per region, three regions at a time.
+export const LOCK_TTL_MS = 20 * 60 * 1000;
+
+const ENTSO_E_REGIONS = [
+  { region: 'DE', eic: '10Y1001A1001A82H', name: 'Germany' },       // DE-LU bidding zone (post-split)
+  { region: 'FR', eic: '10YFR-RTE------C', name: 'France' },
+  { region: 'ES', eic: '10YES-REE------0', name: 'Spain' },
+  { region: 'IT', eic: '10Y1001A1001A73I', name: 'Italy (North)' }, // IT-North bidding zone
+  { region: 'NL', eic: '10YNL----------L', name: 'Netherlands' },
+  { region: 'BE', eic: '10YBE----------2', name: 'Belgium' },
+  { region: 'PL', eic: '10YPL-AREA-----S', name: 'Poland' },
+  { region: 'PT', eic: '10YPT-REN------W', name: 'Portugal' },
+  { region: 'NO', eic: '10YNO-1--------2', name: 'Norway (Oslo)' }, // NO1 bidding zone
+  { region: 'SE', eic: '10Y1001A1001A46L', name: 'Sweden (Stockholm)' }, // SE3 bidding zone
+];
+export const ENTSO_E_REGION_COUNT = ENTSO_E_REGIONS.length;
+
+export const EIA_REGIONS = [
+  { region: 'CISO',  respondent: 'CISO',  name: 'California' },
+  { region: 'MISO',  respondent: 'MISO',  name: 'Midwest' },
+  { region: 'PJM',   respondent: 'PJM',   name: 'Mid-Atlantic' },
+  { region: 'NYISO', respondent: 'NYIS',  name: 'New York' },
+  { region: 'ERCO',  respondent: 'ERCO',  name: 'Texas (ERCOT)' },
+  { region: 'SPP',   respondent: 'SWPP',  name: 'Southwest' },
+  { region: 'ISNE',  respondent: 'ISNE',  name: 'New England' },
+];
+
+// ── Date helpers ─────────────────────────────────────────────────────────────
+
+function formatEntsoDate(date) {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}${m}${d}0000`;
+}
+
+function isoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+// ── XML parser (no external deps) ────────────────────────────────────────────
+
+export function parseEntsoEPrice(xml) {
+  const amounts = [];
+  const re = /<price\.amount>([^<]*)<\/price\.amount>/g;
+  let m;
+  while ((m = re.exec(xml)) !== null) {
+    if (!/^-?\d+(?:\.\d+)?$/.test(m[1].trim())) return null;
+    const v = Number(m[1]);
+    if (!Number.isFinite(v)) return null;
+    amounts.push(v);
+  }
+  if (amounts.length === 0) return null;
+  return +(amounts.reduce((a, b) => a + b, 0) / amounts.length).toFixed(2);
+}
+
+// ── Index builder ─────────────────────────────────────────────────────────────
+
+export function buildElectricityIndex(regionData, date) {
+  const withPrices = regionData
+    .filter((r) => r.priceMwhEur != null && Number.isFinite(r.priceMwhEur))
+    .sort((a, b) => b.priceMwhEur - a.priceMwhEur)
+    .slice(0, 20)
+    .map((r) => ({ region: r.region, source: r.source, priceMwhEur: r.priceMwhEur }));
+
+  return {
+    updatedAt: new Date().toISOString(),
+    date,
+    regions: withPrices,
+  };
+}
+
+// ── Redis helpers ─────────────────────────────────────────────────────────────
+
+async function redisPipeline(commands) {
+  const { url, token } = getRedisCredentials();
+  const response = await fetch(`${url}/pipeline`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(commands),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Redis pipeline failed: HTTP ${response.status} — ${text.slice(0, 200)}`);
+  }
+  return response.json();
+}
+
+// Only safe provider GETs use this retry path. Parsing and permanent HTTP errors
+// must not consume the transport retry budget.
+async function retryProviderRequest(request, retries = 2) {
+  return withRetry(async () => {
+    try {
+      return await request();
+    } catch (err) {
+      const code = err.cause?.code ?? err.code;
+      const transient = !(err instanceof SyntaxError) && (typeof err.status === 'number'
+        ? isRetryableHttpStatus(err.status)
+        : ['UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'].includes(code)
+          || isTransientProxyError(`${err.message} ${code || ''}`));
+      err.nonRetryable = !transient;
+      throw err;
+    }
+  }, retries, 500);
+}
+
+function providerHttpError(response, label) {
+  const err = httpRetryError(response, { maxRetryAfterMs: 1000 });
+  err.message = `${label} HTTP ${response.status}`;
+  return err;
+}
+
+// ── ENTSO-E fetcher ───────────────────────────────────────────────────────────
+
+export async function fetchEntsoERegion(region, token, today, yesterday, {
+  fetchFn = globalThis.fetch,
+  proxyAuth = resolveProxyForConnect(),
+  proxyFetcher = httpsProxyFetchRaw,
+} = {}) {
+  const params = new URLSearchParams({
+    documentType: 'A44',
+    in_Domain: region.eic,
+    out_Domain: region.eic,
+    periodStart: formatEntsoDate(yesterday),
+    periodEnd: `${isoDate(today).replace(/-/g, '')}2300`,
+    securityToken: token,
+  });
+  const url = `https://web-api.tp.entsoe.eu/api?${params.toString()}`;
+
+  try {
+    let xml;
+    try {
+      xml = await retryProviderRequest(
+        () =>
+          fetchFn(url, {
+            headers: { 'User-Agent': CHROME_UA, Accept: 'application/xml' },
+            signal: AbortSignal.timeout(ENTSO_E_ATTEMPT_TIMEOUT_MS),
+          }).then((r) => {
+            if (!r.ok) throw providerHttpError(r, `ENTSO-E ${region.region}`);
+            return r.text();
+          }),
+        2,
+      );
+    } catch (directErr) {
+      if (directErr.nonRetryable) throw directErr;
+      if (!proxyAuth) {
+        // Without PROXY_URL the fallback is inert; say so, or the log line is
+        // byte-identical to the pre-fallback outage and reads as "proxy blocked too".
+        console.warn(`[electricity] ENTSO-E ${region.region} direct failed (${directErr.message}); no proxy configured (PROXY_URL unset), skipping proxy fallback`);
+        throw directErr;
+      }
+      console.warn(`[electricity] ENTSO-E ${region.region} direct failed (${directErr.message}); retrying via proxy`);
+      try {
+        const { buffer } = await retryProviderRequest(() => proxyFetcher(url, proxyAuth, {
+          accept: 'application/xml',
+          timeoutMs: ENTSO_E_ATTEMPT_TIMEOUT_MS,
+          signal: AbortSignal.timeout(ENTSO_E_ATTEMPT_TIMEOUT_MS),
+        }), 1);
+        xml = buffer.toString('utf8');
+      } catch (proxyErr) {
+        throw new Error(`direct=${directErr.message}; proxy=${proxyErr.message}`);
+      }
+    }
+
+    const price = parseEntsoEPrice(xml);
+    if (price == null) {
+      console.warn(`[electricity] ENTSO-E ${region.region}: no price.amount in response`);
+      return null;
+    }
+
+    console.log(`[electricity] ENTSO-E ${region.region}: ${price} EUR/MWh`);
+    return {
+      region: region.region,
+      source: 'entso-e',
+      priceMwhEur: price,
+      priceMwhUsd: null,
+      date: isoDate(today),
+      unit: 'EUR/MWh',
+      seededAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    console.warn(`[electricity] ENTSO-E ${region.region} failed: ${err.message}`);
+    return null;
+  }
+}
+
+async function fetchAllEntsoE(token, today, yesterday) {
+  const BATCH = 3;
+  const results = [];
+
+  for (let i = 0; i < ENTSO_E_REGIONS.length; i += BATCH) {
+    const batch = ENTSO_E_REGIONS.slice(i, i + BATCH);
+    const batchResults = await Promise.all(
+      batch.map((r) => fetchEntsoERegion(r, token, today, yesterday)),
+    );
+    results.push(...batchResults);
+    if (i + BATCH < ENTSO_E_REGIONS.length) {
+      await new Promise((res) => setTimeout(res, 300));
+    }
+  }
+
+  return results.filter(Boolean);
+}
+
+// ── EIA-930 fetcher ───────────────────────────────────────────────────────────
+
+export async function fetchEiaRegion(region, apiKey, today) {
+  const dateStr = isoDate(today);
+  const params = new URLSearchParams({
+    frequency: 'hourly',
+    'data[]': 'value',
+    'facets[respondent][]': region.respondent,
+    'facets[type][]': 'D',
+    start: isoDate(new Date(today.getTime() - 2 * 24 * 3600 * 1000)),
+    end: dateStr,
+    'sort[0][column]': 'period',
+    'sort[0][direction]': 'desc',
+    length: '1',
+    api_key: apiKey,
+  });
+
+  try {
+    const resp = await retryProviderRequest(
+      () =>
+        fetch(`https://api.eia.gov/v2/electricity/rto/region-data/data/?${params.toString()}`, {
+          headers: { 'User-Agent': CHROME_UA },
+          signal: AbortSignal.timeout(20_000),
+        }).then((r) => {
+          if (!r.ok) throw providerHttpError(r, `EIA-930 ${region.region}`);
+          return r.json();
+        }),
+      2,
+    );
+
+    const rows = resp?.response?.data;
+    if (!Array.isArray(rows)) {
+      console.warn(`[electricity] EIA-930 ${region.region}: malformed response.data`);
+      return null;
+    }
+    if (rows.length === 0) {
+      console.warn(`[electricity] EIA-930 ${region.region}: no data rows`);
+      return null;
+    }
+
+    const latest = rows[0];
+    const value = latest?.value;
+    const demandMwh = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')
+      ? Number(value) : NaN;
+    if (!Number.isFinite(demandMwh)) {
+      console.warn(`[electricity] EIA-930 ${region.region}: invalid demand value`);
+      return null;
+    }
+
+    console.log(`[electricity] EIA-930 ${region.region}: ${demandMwh} MWh demand`);
+    return {
+      region: region.region,
+      source: 'eia-930',
+      priceMwhEur: null,
+      priceMwhUsd: null,
+      demandMwh,
+      date: dateStr,
+      unit: 'MWh',
+      seededAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    console.warn(`[electricity] EIA-930 ${region.region} failed: ${err.message}`);
+    return null;
+  }
+}
+
+async function fetchAllEia(apiKey, today) {
+  const results = await Promise.all(EIA_REGIONS.map((r) => fetchEiaRegion(r, apiKey, today)));
+  return results.filter(Boolean);
+}
+
+// ── Failure preservation ──────────────────────────────────────────────────────
+
+/** Resolves true only when every last-good key still existed and was extended. */
+async function preservePreviousSnapshot(errorMsg, regionKeys) {
+  console.error('[electricity] Preserving previous snapshot:', errorMsg);
+  const keys = [...regionKeys.map((k) => `${ELECTRICITY_KEY_PREFIX}${k}`), ELECTRICITY_INDEX_KEY, ELECTRICITY_META_KEY];
+  return extendExistingTtl(keys, ELECTRICITY_TTL_SECONDS);
+}
+
+/**
+ * Exit 0 when a failed run still left the previous snapshot in place: Railway
+ * reports any non-zero exit as a crash, and a provider outage the run absorbed
+ * is not one. The next cron tick retries, and health goes stale if the outage
+ * outlasts the budget. Exit 1 when nothing was retained: the data is gone and a
+ * human has to act. Mirrors runSeed's `=== Done (…, RETRY) ===` exit-0 path.
+ */
+export function failureExitCode(err) {
+  return err?.retained === true ? 0 : 1;
+}
+
+/**
+ * The cron retries later the same UTC day; once that day's snapshot is
+ * published a later tick has nothing to add. Keyed on the snapshot's own date,
+ * not its publication time, which can fall after midnight. Every snapshot key
+ * must still exist, or the run republishes. A failed read returns false so the
+ * run still fetches.
+ */
+async function publishedToday(dateStr) {
+  const snapshotKeys = [
+    ELECTRICITY_INDEX_KEY,
+    ...[...ENTSO_E_REGIONS, ...EIA_REGIONS].map((r) => `${ELECTRICITY_KEY_PREFIX}${r.region}`),
+  ];
+  try {
+    const [meta, present] = await redisPipeline([
+      ['GET', ELECTRICITY_META_KEY],
+      ['EXISTS', ...snapshotKeys],
+    ]);
+    const snapshotDate = JSON.parse(meta?.result ?? 'null')?.snapshotDate;
+    return snapshotDate === dateStr && present?.result === snapshotKeys.length;
+  } catch {
+    return false;
+  }
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+export async function main() {
+  const startedAt = Date.now();
+  const runId = `electricity-prices:${startedAt}`;
+  const lock = await acquireLockSafely(LOCK_DOMAIN, runId, LOCK_TTL_MS, { label: LOCK_DOMAIN });
+  if (lock.skipped) return;
+  if (!lock.locked) {
+    console.log('[electricity] Lock held, skipping');
+    return;
+  }
+
+  const today = new Date();
+  const yesterday = new Date(Date.now() - 24 * 3600 * 1000);
+  const dateStr = isoDate(today);
+
+  const entsoToken = process.env.ENTSO_E_TOKEN;
+  const eiaKey = process.env.EIA_API_KEY;
+
+  let entsoResults = [];
+  let eiaResults = [];
+  // Once any write is attempted the previous snapshot may be partly replaced,
+  // so a later failure can no longer claim to have retained it.
+  let publicationStarted = false;
+
+  try {
+    if (await publishedToday(dateStr)) {
+      console.log(`[electricity] Snapshot for ${dateStr} already published; skipping`);
+      return 'already-fresh';
+    }
+
+    // ENTSO-E (EU day-ahead prices)
+    if (!entsoToken) {
+      console.warn('[electricity] ENTSO_E_TOKEN not set — skipping ENTSO-E');
+    } else {
+      entsoResults = await fetchAllEntsoE(entsoToken, today, yesterday);
+      console.log(`[electricity] ENTSO-E: ${entsoResults.length} regions`);
+    }
+
+    // EIA-930 (US demand data)
+    if (!eiaKey) {
+      console.warn('[electricity] EIA_API_KEY not set — skipping EIA-930');
+    } else {
+      eiaResults = await fetchAllEia(eiaKey, today);
+      console.log(`[electricity] EIA-930: ${eiaResults.length} regions`);
+    }
+
+    // A missing region can be a provider failure, malformed data, or a valid
+    // empty response. None proves a fresh complete price/demand snapshot.
+    if (!entsoToken) throw new Error('ENTSO_E_TOKEN not set — retaining electricity snapshot');
+    if (entsoResults.length !== ENTSO_E_REGIONS.length) {
+      throw new Error(`Only ${entsoResults.length} ENTSO-E regions returned valid prices (required: ${ENTSO_E_REGIONS.length})`);
+    }
+    if (!eiaKey) throw new Error('EIA_API_KEY not set — retaining electricity snapshot');
+    if (eiaResults.length !== EIA_REGIONS.length) {
+      throw new Error(`Only ${eiaResults.length} EIA regions returned usable demand (required: ${EIA_REGIONS.length})`);
+    }
+
+    const allRegions = [...entsoResults, ...eiaResults];
+
+    const index = buildElectricityIndex(entsoResults, dateStr);
+    const metaPayload = {
+      fetchedAt: Date.now(),
+      snapshotDate: dateStr,
+      recordCount: allRegions.length,
+      sourceVersion: 'electricity-prices-v1',
+    };
+
+    const commands = [];
+    for (const entry of allRegions) {
+      commands.push([
+        'SET',
+        `${ELECTRICITY_KEY_PREFIX}${entry.region}`,
+        JSON.stringify(entry),
+        'EX',
+        ELECTRICITY_TTL_SECONDS,
+      ]);
+    }
+    commands.push([
+      'SET',
+      ELECTRICITY_INDEX_KEY,
+      JSON.stringify(index),
+      'EX',
+      ELECTRICITY_TTL_SECONDS,
+    ]);
+    publicationStarted = true;
+    const results = await redisPipeline(commands);
+    if (!Array.isArray(results) || results.length !== commands.length || results.some((r) => r?.result !== 'OK')) {
+      throw new Error('Redis pipeline: electricity data publication not confirmed');
+    }
+
+    const metaResults = await redisPipeline([[
+      'SET',
+      ELECTRICITY_META_KEY,
+      JSON.stringify(metaPayload),
+      'EX',
+      ELECTRICITY_TTL_SECONDS,
+    ]]);
+    if (!Array.isArray(metaResults) || metaResults.length !== 1 || metaResults[0]?.result !== 'OK') {
+      throw new Error('Redis pipeline: electricity metadata publication not confirmed');
+    }
+
+    logSeedResult('energy:electricity-prices', allRegions.length, Date.now() - startedAt, {
+      entsoRegions: entsoResults.length,
+      eiaRegions: eiaResults.length,
+    });
+    console.log(`[electricity] Seeded ${allRegions.length} regions (${entsoResults.length} ENTSO-E, ${eiaResults.length} EIA-930)`);
+    return true;
+  } catch (err) {
+    const allKnownRegions = [
+      ...ENTSO_E_REGIONS.map((r) => r.region),
+      ...EIA_REGIONS.map((r) => r.region),
+    ];
+    const retained = await preservePreviousSnapshot(String(err), allKnownRegions).catch((e) => {
+      console.error('[electricity] Failed to preserve snapshot:', e);
+      return false;
+    });
+    err.retained = !publicationStarted && retained === true;
+    throw err;
+  } finally {
+    await releaseLock(LOCK_DOMAIN, runId);
+  }
+}
+
+if (process.argv[1]?.endsWith('seed-electricity-prices.mjs')) {
+  // Terminal success marker. Emitted from .then() so it can ONLY print after main() has fully
+  // resolved — a throw anywhere inside, including a late publish step, skips it. Any marker
+  // written INSIDE main() would print before later work and could vouch for a run that then
+  // died (exactly how #6092 stayed invisible). Format mirrors runSeed() so the crash
+  // diagnostic recognises it; without it a clean run is indistinguishable from a silent death.
+  const __runStartedAt = Date.now();
+  main()
+    .then((published) => {
+      if (published === 'already-fresh') console.log(`\n=== Done (${Date.now() - __runStartedAt}ms, already fresh) ===`);
+      else if (published) console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`);
+    })
+    .catch((err) => {
+      console.error(err);
+      if (failureExitCode(err) === 0) {
+        console.log('[electricity] Retained previous snapshot; the next cron tick retries');
+        console.log(`\n=== Done (${Date.now() - __runStartedAt}ms, RETRY) ===`);
+      }
+      process.exit(failureExitCode(err));
+    });
+}

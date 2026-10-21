@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { buildCoverageSnapshot } from '../../snapshots/coverage.js';
 import {
   buildBasketSeriesSnapshot,
   buildCategoriesSnapshot,
@@ -9,6 +10,17 @@ import {
 } from '../../snapshots/worldmonitor.js';
 
 export async function worldmonitorRoutes(fastify: FastifyInstance) {
+  fastify.get('/coverage', async (request, reply) => {
+    const { market = 'ae' } = request.query as { market?: string };
+    try {
+      const data = await buildCoverageSnapshot(market);
+      return reply.send(data);
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'failed to build coverage snapshot' });
+    }
+  });
+
   fastify.get('/overview', async (request, reply) => {
     const { market = 'ae' } = request.query as { market?: string };
     try {
@@ -24,6 +36,13 @@ export async function worldmonitorRoutes(fastify: FastifyInstance) {
     const { market = 'ae', days = '30' } = request.query as { market?: string; days?: string };
     try {
       const data = await buildMoversSnapshot(market, parseInt(days, 10));
+      // Null means every candidate was gated as a parse artifact. Sending it
+      // would answer 200 with a body of `null`; answering 200 with an empty
+      // snapshot would be worse still, reporting an untrustworthy window as a
+      // quiet market. Say unavailable instead.
+      if (data === null) {
+        return reply.status(503).send({ error: 'movers snapshot unavailable: all candidates gated as implausible' });
+      }
       return reply.send(data);
     } catch (err) {
       fastify.log.error(err);

@@ -1,0 +1,145 @@
+{
+  "$comment": "Machine-readable homepage view served at /?mode=agent (vercel.json rewrite). Structured summary for AI agents instead of marketing HTML. Parity with the MCP server card and agent card is guarded in tests/agent-mode-view.test.mjs.",
+  "kind": "agent-view",
+  "product": "World Monitor",
+  "url": "https://www.worldmonitor.app",
+  "description": "Live global-intelligence platform serving machine-readable JSON, correlated across layers, with forecasts and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy. On-demand NLP utilities add classification, entity extraction, news clusters, and keyword spikes.",
+  "endpoints": {
+    "mcp": {
+      "url": "https://worldmonitor.app/mcp",
+      "transport": "streamable-http",
+      "serverCard": "https://worldmonitor.app/.well-known/mcp/server-card.json",
+      "note": "Call tools/list or read the server card for the live tool inventory. tools/list, prompts/list and resources/list are anonymous. get_sources is the sole credential-free, daily-quota-free data tool and has a separate fail-closed 10/min/IP anonymous limit; describe_tool and all other tool calls need subscription auth."
+    },
+    "rest": {
+      "base": "https://api.worldmonitor.app",
+      "openapi": "https://www.worldmonitor.app/openapi.json",
+      "protocol": "REST",
+      "graphql": false,
+      "note": "Send a descriptive User-Agent; generic UAs are filtered at the edge. Fetch the OpenAPI spec for the full operation list."
+    },
+    "a2a": {
+      "url": "https://www.worldmonitor.app/a2a",
+      "agentCard": "https://worldmonitor.app/.well-known/agent-card.json",
+      "note": "Anonymous concierge: message/send routes a natural-language need to the right tool."
+    },
+    "nlweb": {
+      "url": "https://www.worldmonitor.app/ask",
+      "note": "POST {\"query\": \"...\"} → NLWeb JSON; prefer.streaming=true → SSE (start/result/complete)."
+    },
+    "cli": {
+      "package": "worldmonitor",
+      "install": "npm install -g worldmonitor",
+      "url": "https://www.npmjs.com/package/worldmonitor"
+    },
+    "sdks": {
+      "javascript": {
+        "package": "worldmonitor",
+        "registry": "npm",
+        "install": "npm install worldmonitor",
+        "url": "https://www.npmjs.com/package/worldmonitor"
+      },
+      "python": {
+        "package": "worldmonitor-sdk",
+        "registry": "PyPI",
+        "install": "pip install worldmonitor-sdk",
+        "url": "https://pypi.org/project/worldmonitor-sdk/"
+      },
+      "ruby": {
+        "package": "worldmonitor",
+        "registry": "RubyGems",
+        "install": "gem install worldmonitor",
+        "url": "https://rubygems.org/gems/worldmonitor"
+      },
+      "go": {
+        "package": "github.com/koala73/worldmonitor/sdk/go",
+        "registry": "Go modules",
+        "install": "go get github.com/koala73/worldmonitor/sdk/go",
+        "url": "https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go",
+        "searchUrl": "https://pkg.go.dev/search?q=worldmonitor",
+        "moduleProxyUrl": "https://proxy.golang.org/github.com/koala73/worldmonitor/sdk/go/@latest",
+        "source": "https://github.com/koala73/worldmonitor/tree/main/sdk/go"
+      },
+      "guide": "https://www.worldmonitor.app/docs/sdks",
+      "note": "Use the exact package names above. npm, PyPI and RubyGems link to worldmonitor.app in their project metadata. Go modules have no homepage field: verify the module path in the official koala73/worldmonitor repository and its product links on pkg.go.dev. The Python package is worldmonitor-sdk; the PyPI package named worldmonitor is unrelated."
+    },
+    "docsMcp": {
+      "url": "https://www.worldmonitor.app/docs/mcp",
+      "transport": "streamable-http",
+      "serverCard": "https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json",
+      "note": "Public documentation search-and-retrieval MCP server — no auth. Route 'how do I…' questions here; route live-data calls to the product MCP."
+    },
+    "sandbox": {
+      "url": "https://www.worldmonitor.app/sandbox/index.json",
+      "docs": "https://www.worldmonitor.app/docs/sandbox",
+      "note": "Test environment: deterministic, schema-valid sample responses for representative REST operations — no auth, no quota, safe for CI. The data API is read-only, so live calls cannot mutate production data."
+    }
+  },
+  "quickstart": {
+    "sandbox": "curl https://www.worldmonitor.app/sandbox/get-resilience-score.json",
+    "rest": "curl -H 'X-WorldMonitor-Key: wm_<40 hex>' 'https://api.worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=DE'",
+    "mcp": "curl -X POST https://worldmonitor.app/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}'"
+  },
+  "authentication": {
+    "summary": "Authentication: OAuth2 (scope=mcp) or an API key header for subscription data. Discovery surfaces (tools/list, prompts/list, resources/list, /a2a, /ask) are anonymous. get_sources is the sole credential-free, daily-quota-free data tool; describe_tool and all other tool calls are subscription-gated.",
+    "freeDataTool": {
+      "name": "get_sources",
+      "dailyQuota": false,
+      "anonymousRateLimit": "10 requests/min per IP, fail closed"
+    },
+    "oauth2": {
+      "authorizationServer": "https://worldmonitor.app/.well-known/oauth-authorization-server",
+      "protectedResource": "https://worldmonitor.app/.well-known/oauth-protected-resource",
+      "scope": "mcp"
+    },
+    "apiKey": {
+      "header": "X-WorldMonitor-Key",
+      "format": "wm_<40 hex>",
+      "issueAt": "https://www.worldmonitor.app/pro"
+    },
+    "guide": "https://www.worldmonitor.app/auth.md",
+    "plansAndLimits": "https://www.worldmonitor.app/pricing.md"
+  },
+  "rateLimits": {
+    "anonymous": "60 requests/min per IP on public MCP metadata methods, /a2a and /ask; get_sources uses a separate fail-closed 10 requests/min per IP ceiling",
+    "authenticated": "Per-minute burst is plan-resolved and shared per user across OAuth tokens and dashboard-issued wm_ keys: 60/minute on Pro, Pro Business and API Starter, 300 on API Business, 1000 on Enterprise. Subscription data calls reserve a per-user daily quota on the same plan-resolved budget through either door: Pro 50/day and Pro Business 250/day at one unit per call, API Starter 1000/day and API Business 10000/day drawn from the same allowance as their REST requests and charged at a per-tool weight of 1, 2 or 3, Enterprise unlimited. get_sources and metadata calls are daily-quota-free — see https://www.worldmonitor.app/pricing.md"
+  },
+  "documentation": "https://www.worldmonitor.app/docs/documentation",
+  "capabilities": [
+    "real-time market data (equities, commodities, crypto, FX)",
+    "global live conflict events and CII v14 scores for 31 Tier-1 countries",
+    "country resilience scores across the 196-country public rankable universe, with domain/pillar breakdown",
+    "13 shipping chokepoints with live AIS transit intelligence",
+    "maritime and aviation activity, airspace status",
+    "energy intelligence (LNG, pipelines, refineries, outages)",
+    "sanctions, supply-chain and tariff data",
+    "cyber threats, natural disasters, health and displacement signals",
+    "AI world/country briefs, scenario forecasts, prediction markets"
+  ],
+  "discovery": {
+    "llmsTxt": "https://www.worldmonitor.app/llms.txt",
+    "llmsFullTxt": "https://www.worldmonitor.app/llms-full.txt",
+    "sectionLlmsTxt": {
+      "api": "https://www.worldmonitor.app/api/llms.txt",
+      "docs": "https://www.worldmonitor.app/docs/llms.txt",
+      "developers": "https://www.worldmonitor.app/developers/llms.txt",
+      "blog": "https://www.worldmonitor.app/blog/llms.txt"
+    },
+    "schemamap": "https://www.worldmonitor.app/schemamap.xml",
+    "markdownHomepage": "https://www.worldmonitor.app/index.md",
+    "agentPlugin": "https://www.worldmonitor.app/plugin.json",
+    "agentSkills": "https://worldmonitor.app/.well-known/agent-skills/index.json",
+    "apiCatalog": "https://worldmonitor.app/.well-known/api-catalog",
+    "aiCatalog": "https://worldmonitor.app/.well-known/ai-catalog.json",
+    "productFacts": "https://www.worldmonitor.app/product-facts.json",
+    "docs": "https://www.worldmonitor.app/docs/documentation"
+  },
+  "instances": {
+    "geopolitics": "https://www.worldmonitor.app/dashboard",
+    "tech": "https://tech.worldmonitor.app/dashboard",
+    "finance": "https://finance.worldmonitor.app/dashboard",
+    "commodities": "https://commodity.worldmonitor.app/dashboard",
+    "positiveNews": "https://happy.worldmonitor.app/dashboard",
+    "energy": "https://energy.worldmonitor.app/dashboard"
+  }
+}

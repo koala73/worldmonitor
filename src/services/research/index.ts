@@ -1,11 +1,7 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  ResearchServiceClient,
-  type ArxivPaper,
-  type GithubRepo,
-  type HackernewsItem,
-} from '@/generated/client/worldmonitor/research/v1/service_client';
+import type { ArxivPaper, GithubRepo, HackernewsItem } from '@/generated/client/worldmonitor/research/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
+import { ResearchServiceClient } from '@/services/generated-rpc-clients';
 
 // Re-export proto types (no legacy mapping needed -- proto types are clean)
 export type { ArxivPaper, GithubRepo, HackernewsItem };

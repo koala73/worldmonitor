@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+message GetDefenseIndustrialBaseRequest {
+  // ISO 3166-1 alpha-2 country code.
+  string country_code = 1 [
+    (sebuf.http.query) = { name: "country_code" },
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$"
+  ];
+}
+
+message DefenseIndustrialMetric {
+  bool available = 1;
+  double value = 2;
+  int32 year = 3;
+  double previous_value = 4;
+  int32 previous_year = 5;
+  string source = 6;
+}
+
+message ArmsSupplierDependency {
+  string supplier_iso2 = 1;
+  double tiv_share = 2;
+}
+
+message GetDefenseIndustrialBaseResponse {
+  string country_code = 1;
+  bool available = 2;
+  DefenseIndustrialMetric expenditure_pct_gdp = 3;
+  DefenseIndustrialMetric expenditure_usd = 4;
+  DefenseIndustrialMetric personnel = 5;
+  DefenseIndustrialMetric arms_exports_tiv = 6;
+  DefenseIndustrialMetric arms_imports_tiv = 7;
+  repeated ArmsSupplierDependency suppliers = 8;
+  double supplier_hhi = 9;
+  int32 window_start_year = 10;
+  int32 window_end_year = 11;
+  string supplier_source = 12;
+  // Oldest timestamp among the source values served. Kept for compatibility.
+  string fetched_at = 13;
+  string industrial_fetched_at = 14;
+  string supplier_fetched_at = 15;
+  bool supplier_retained = 16;
+  double supplier_mapping_coverage = 17;
+}

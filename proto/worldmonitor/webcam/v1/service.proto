@@ -9,9 +9,11 @@ import "worldmonitor/webcam/v1/get_webcam_image.proto";
 service WebcamService {
   option (sebuf.http.service_config) = {base_path: "/api/webcam/v1"};
 
+  // ListWebcams lists webcams in view, grouped into map clusters, with a total-in-view count.
   rpc ListWebcams(ListWebcamsRequest) returns (ListWebcamsResponse) {
     option (sebuf.http.config) = {path: "/list-webcams", method: HTTP_METHOD_GET};
   }
+  // GetWebcamImage resolves a webcam id into its thumbnail and player URLs, title, and last-updated timestamp.
   rpc GetWebcamImage(GetWebcamImageRequest) returns (GetWebcamImageResponse) {
     option (sebuf.http.config) = {path: "/get-webcam-image", method: HTTP_METHOD_GET};
   }

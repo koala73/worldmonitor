@@ -14,20 +14,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { headingToCompass } from '../src/utils/heading-to-compass.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 
 // ========================================================================
-// 1. Compass heading calculation (pure math, mirrors GlobeMap logic)
+// 1. Compass heading calculation used by GlobeMap
 // ========================================================================
-
-/** Replicates the compass formula from GlobeMap.showMarkerTooltip */
-function headingToCompass(heading) {
-  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-  return dirs[Math.round(((heading ?? 0) % 360 + 360) % 360 / 22.5) % 16];
-}
 
 describe('headingToCompass', () => {
   it('returns N for heading 0', () => {
@@ -111,9 +106,12 @@ describe('GlobeMap tooltip enrichment', () => {
     assert.ok(src.includes('Heading:'), 'flight tooltip must display Heading label');
   });
 
-  it('GPS jamming tooltip uses human-readable satellite label', () => {
-    assert.ok(src.includes('Avg satellites visible'), 'gpsjam must show readable label');
-    assert.ok(!src.includes('NP avg:'), 'gpsjam must not use cryptic NP avg label');
+  it('GPS jamming tooltip uses the gpsjam.org interference metric (% aircraft affected)', () => {
+    // Source reverted from Wingbits (np_avg / "satellites visible") to gpsjam.org,
+    // whose native metric is the share of aircraft reporting GPS interference.
+    assert.ok(src.includes('Aircraft affected'), 'gpsjam must show the readable % aircraft affected label');
+    assert.ok(!src.includes('NP avg:'), 'gpsjam must not use the cryptic NP avg label');
+    assert.ok(!src.includes('Avg satellites visible'), 'gpsjam.org has no satellite-visibility metric');
   });
 
   it('extends hide delay to 6s for rich tooltip kinds', () => {

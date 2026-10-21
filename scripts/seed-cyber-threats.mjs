@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { isIP } from 'node:net';
 import { loadEnvFile, CHROME_UA, runSeed, verifySeedKey, writeExtraKey } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -12,14 +13,30 @@ const CANONICAL_KEY = 'cyber:threats:v2';
 const BOOTSTRAP_KEY = 'cyber:threats-bootstrap:v2';
 const CACHE_TTL = 10800; // 3h — survives 1 missed 2h cron cycle
 
+// Issue #4008: the bulk sources (AbuseIPDB blacklist, C2Intel plaintext) carry
+// no upstream first-seen, so `firstSeenAt` was 0 for the majority of records,
+// leaving downstream consumers (cyberDigital discovery-day grouping, #3971/#4009)
+// without a usable discovery timestamp. We persist a WorldMonitor-observed
+// first-seen per indicator across runs: upstream first-seen wins when present,
+// otherwise the first run that observes an indicator stamps it. The map is
+// rebuilt from the current feed each run, so it self-prunes to ~feed size
+// instead of growing unbounded. Internal cache key (cache: prefix), not public.
+const FIRST_SEEN_KEY = 'cache:cyber:first-seen:v1';
+const FIRST_SEEN_TTL = 14 * 24 * 60 * 60; // 14d — refreshed every run; survives multi-day cron gaps
+
 const FEODO_URL = 'https://feodotracker.abuse.ch/downloads/ipblocklist.json';
 const URLHAUS_RECENT_URL = (limit) => `https://urlhaus-api.abuse.ch/v1/urls/recent/limit/${limit}/`;
 const C2INTEL_URL = 'https://raw.githubusercontent.com/drb-ra/C2IntelFeeds/master/feeds/IPC2s-30day.csv';
-const OTX_INDICATORS_URL = 'https://otx.alienvault.com/api/v1/indicators/export?type=IPv4&modified_since=';
+const OTX_INDICATORS_URL = 'https://otx.alienvault.com/api/v1/indicators/export?types=IPv4&modified_since=';
 const ABUSEIPDB_BLACKLIST_URL = 'https://api.abuseipdb.com/api/v2/blacklist';
 
 const UPSTREAM_TIMEOUT_MS = 10_000;
 const MAX_LIMIT = 1000;
+// OTX filters the export by `types=` (a singular `type=` is ignored and returns every
+// indicator type). It serves 1000 rows per page with OTX-hosted `next` links, and `count`
+// is the number of DISTINCT indicators (14d on 2026-10-06: 239 rows, 234 distinct, count 234).
+// Coverage needs every page; the cap bounds a runaway cursor.
+const OTX_MAX_PAGES = 10;
 const DEFAULT_DAYS = 14;
 const MAX_CACHED_THREATS = 2000;
 const GEO_MAX_UNRESOLVED = 200;
@@ -27,14 +44,14 @@ const GEO_CONCURRENCY = 12;
 const GEO_OVERALL_TIMEOUT_MS = 15_000;
 const GEO_PER_IP_TIMEOUT_MS = 2000;
 
-const THREAT_TYPE_MAP = {
+export const THREAT_TYPE_MAP = {
   c2_server: 'CYBER_THREAT_TYPE_C2_SERVER',
   malware_host: 'CYBER_THREAT_TYPE_MALWARE_HOST',
   phishing: 'CYBER_THREAT_TYPE_PHISHING',
   malicious_url: 'CYBER_THREAT_TYPE_MALICIOUS_URL',
 };
 
-const SOURCE_MAP = {
+export const SOURCE_MAP = {
   feodo: 'CYBER_THREAT_SOURCE_FEODO',
   urlhaus: 'CYBER_THREAT_SOURCE_URLHAUS',
   c2intel: 'CYBER_THREAT_SOURCE_C2INTEL',
@@ -48,7 +65,7 @@ const INDICATOR_TYPE_MAP = {
   url: 'CYBER_THREAT_INDICATOR_TYPE_URL',
 };
 
-const SEVERITY_MAP = {
+export const SEVERITY_MAP = {
   low: 'CRITICALITY_LEVEL_LOW',
   medium: 'CRITICALITY_LEVEL_MEDIUM',
   high: 'CRITICALITY_LEVEL_HIGH',
@@ -267,15 +284,194 @@ async function hydrateCoordinates(threats) {
 // Source fetchers
 // ========================================================================
 
+const PROVIDER_MAX_DECODED_BYTES = 4 * 1024 * 1024;
+
+function utf8JsonBytes(value) {
+  return Buffer.byteLength(JSON.stringify(value), 'utf8');
+}
+
+function boundedText(value, maxBytes, required = false) {
+  return typeof value === 'string' && value.length <= maxBytes
+    && (!required || value.length > 0) && Buffer.byteLength(value, 'utf8') <= maxBytes;
+}
+
+function providerResult(ok, threats = [], observedAt = null, reason = 'upstream-error') {
+  return { ok, threats, observedAt, outcome: ok ? 'observed' : 'unavailable', reason: ok ? 'success' : reason };
+}
+
+function providerRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).length <= 64
+    && !['error', 'errors', 'message', 'detail'].some(key => Object.hasOwn(value, key))
+    && value.success !== false;
+}
+
+function providerIp(value) {
+  return boundedText(value, 80, true) && isIP(value.trim()) !== 0;
+}
+
+function providerRow(row, source) {
+  if (!providerRecord(row) || utf8JsonBytes(row) > 16384) return false;
+  const fields = {
+    feodo: ['ip_address', 'dst_ip', 'ip', 'ioc', 'host', 'status', 'c2_status', 'first_seen',
+      'first_seen_utc', 'dateadded', 'last_online', 'last_seen', 'last_seen_utc',
+      'malware', 'malware_family', 'family', 'tags', 'country', 'country_code',
+      'port', 'hostname', 'as_number', 'as_name'],
+    urlhaus: ['url', 'ioc', 'url_status', 'status', 'tags', 'host', 'ip_address', 'ip',
+      'date_added', 'dateadded', 'firstseen', 'first_seen', 'last_online', 'last_seen',
+      'threat', 'threat_type', 'country', 'country_code', 'id', 'urlhaus_reference',
+      'urlhaus_link', 'reporter', 'blacklists', 'larted', 'takedown_time'],
+    otx: ['indicator', 'ip', 'tags', 'title', 'description', 'created', 'modified', 'type', 'id', 'content'],
+    abuseipdb: ['ipAddress', 'ip', 'abuseConfidenceScore', 'countryCode', 'country', 'lastReportedAt'],
+  };
+  if (Object.keys(row).some(key => !fields[source].includes(key)
+    && !['latitude', 'lat', 'longitude', 'lon'].includes(key))) return false;
+  const stringFields = ['ip_address', 'dst_ip', 'ip', 'ioc', 'host', 'indicator', 'ipAddress',
+    'url', 'status', 'c2_status', 'url_status', 'country', 'country_code', 'countryCode',
+    'malware', 'malware_family', 'family', 'threat', 'threat_type', 'title', 'description', 'type'];
+  if (stringFields.some(key => row[key] != null && !boundedText(row[key], key === 'url' ? 1024 : 4096))) return false;
+  const dateFields = ['first_seen', 'first_seen_utc', 'dateadded', 'last_online', 'last_seen',
+    'last_seen_utc', 'date_added', 'firstseen', 'created', 'modified', 'lastReportedAt'];
+  if (dateFields.some(key => row[key] != null && row[key] !== ''
+    && (!boundedText(row[key], 80, true) || toEpochMs(row[key]) <= 0))) return false;
+  if (row.tags != null && !(boundedText(row.tags, 4096)
+    || (Array.isArray(row.tags) && row.tags.length <= 16 && row.tags.every(tag => boundedText(tag, 160))))) return false;
+  for (const [keys, max] of [[['latitude', 'lat'], 90], [['longitude', 'lon'], 180]]) {
+    if (keys.some(key => row[key] != null && ((typeof row[key] !== 'number' && !boundedText(row[key], 80, true))
+      || !Number.isFinite(Number(row[key])) || toNum(row[key]) !== Number(row[key])
+      || Math.abs(Number(row[key])) > max))) return false;
+  }
+  if (source === 'feodo') {
+    const status = clean(row.status || row.c2_status || '', 30).toLowerCase();
+    return providerIp(row.ip_address || row.dst_ip || row.ip || row.ioc || row.host)
+      && ['', 'online', 'offline'].includes(status);
+  }
+  if (source === 'urlhaus') {
+    const status = clean(row.url_status || row.status || '', 30).toLowerCase();
+    const rawUrl = row.url || row.ioc;
+    if (!boundedText(rawUrl, 1024, true) || !['', 'online', 'offline'].includes(status)) return false;
+    try {
+      const parsed = new URL(rawUrl);
+      return ['http:', 'https:'].includes(parsed.protocol) && !!parsed.hostname;
+    } catch { return false; }
+  }
+  if (source === 'otx') return providerIp(row.indicator || row.ip)
+    && (row.type == null || ['IPv4', 'IPv6'].includes(row.type));
+  const score = row.abuseConfidenceScore;
+  return providerIp(row.ipAddress || row.ip) && typeof score === 'number'
+    && Number.isInteger(score) && score >= 0 && score <= 100;
+}
+
+function otxIncomplete() {
+  return Object.assign(new Error('Incomplete OTX page cannot establish source coverage'), { code: 'OTX_INCOMPLETE_PAGE' });
+}
+
+// A `next` cursor is followed only on the export endpoint itself; anything else means
+// coverage cannot be established and nothing is fetched (the API key never leaves OTX).
+function otxNextUrl(next) {
+  if (next == null) return null;
+  if (typeof next !== 'string') return undefined;
+  let url;
+  try { url = new URL(next); } catch { throw otxIncomplete(); }
+  const exportUrl = new URL(OTX_INDICATORS_URL);
+  if (url.origin !== exportUrl.origin || url.pathname !== exportUrl.pathname) throw otxIncomplete();
+  return url.href;
+}
+
+// Page-level coverage checks run before row validation so a known-incomplete export is
+// reported as incomplete even when its rows or wrapper are also malformed.
+function otxPageCoverage(payload, page) {
+  if (Array.isArray(payload)) {
+    if (page > 1 || payload.length > MAX_LIMIT) throw otxIncomplete();
+    return { next: null, count: null };
+  }
+  const rows = payload?.results;
+  if (Array.isArray(rows) && rows.length > MAX_LIMIT) throw otxIncomplete();
+  if (page === 1 && typeof payload?.previous === 'string') throw otxIncomplete();
+  const next = otxNextUrl(payload?.next);
+  const count = Number.isSafeInteger(payload?.count) && payload.count >= 0 ? payload.count : null;
+  return { next, count };
+}
+
+async function providerRows(response, source, containerKeys, bareArray = false, otxPage = null) {
+  let payload;
+  try { payload = await response.json(); } catch { return null; }
+  if (source === 'otx') {
+    const { next, count } = otxPageCoverage(payload, otxPage.page);
+    if (next === undefined) return null;
+    if (count !== null && otxPage.count !== null && count !== otxPage.count) throw otxIncomplete();
+    const pageRows = Array.isArray(payload) ? payload : payload?.results;
+    if (Array.isArray(pageRows)) {
+      for (const row of pageRows) otxPage.indicators.add(row?.indicator ?? row?.ip);
+    }
+    otxPage.count = count ?? otxPage.count;
+    if (!next && otxPage.count !== null && Array.isArray(pageRows) && otxPage.indicators.size !== otxPage.count) {
+      throw otxIncomplete();
+    }
+    otxPage.next = next;
+  }
+  if (utf8JsonBytes(payload) > PROVIDER_MAX_DECODED_BYTES) return null;
+  let rows;
+  if (bareArray && Array.isArray(payload)) rows = payload;
+  else {
+    if (!providerRecord(payload)) return null;
+    const allowed = source === 'urlhaus' ? ['urls', 'data', 'query_status']
+      : source === 'otx' ? ['results', 'count', 'next', 'previous']
+      : source === 'abuseipdb' ? ['data', 'meta'] : ['data'];
+    if (Object.keys(payload).some(key => !allowed.includes(key))) return null;
+    if (source === 'otx' && ((payload.count !== undefined && (!Number.isSafeInteger(payload.count) || payload.count < 0))
+      || ['next', 'previous'].some(key => payload[key] != null && !boundedText(payload[key], 4096)))) return null;
+    if (source === 'abuseipdb' && payload.meta !== undefined
+      && (!providerRecord(payload.meta) || Object.keys(payload.meta).some(key => key !== 'generatedAt')
+        || (payload.meta.generatedAt !== undefined
+          && (!boundedText(payload.meta.generatedAt, 80, true) || toEpochMs(payload.meta.generatedAt) <= 0)))) return null;
+    if (source === 'urlhaus' && payload.query_status === 'no_results') {
+      if (Object.keys(payload).some(key => !['query_status', 'urls'].includes(key))
+        || (payload.urls !== undefined && (!Array.isArray(payload.urls) || payload.urls.length !== 0))) return null;
+      return [];
+    }
+    if (payload.query_status !== undefined && payload.query_status !== 'ok') return null;
+    const present = containerKeys.filter(key => Object.hasOwn(payload, key));
+    if (present.length !== 1 || !Array.isArray(payload[present[0]])) return null;
+    rows = payload[present[0]];
+  }
+  if (rows.length > 10000 || !rows.every(row => providerRow(row, source))) return null;
+  return rows;
+}
+
+function c2IntelRows(text) {
+  if (!boundedText(text, PROVIDER_MAX_DECODED_BYTES)) return null;
+  const lines = text.split('\n');
+  if (lines.length > 10000) return null;
+  const rows = [];
+  let header = false;
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (!boundedText(line, 16384)) return null;
+    if (/^#?\s*ip,(?:description|ioc)$/i.test(line)) {
+      if (header || rows.length > 0) return null;
+      header = true;
+      continue;
+    }
+    if (line.startsWith('#')) continue;
+    const comma = line.indexOf(',');
+    if (comma < 0 || !providerIp(line.slice(0, comma))
+      || !boundedText(line.slice(comma + 1), 4096, true) || !line.slice(comma + 1).trim()) return null;
+    rows.push(line);
+  }
+  return rows.length > 0 || header || !text.trim() ? rows : null;
+}
+
 async function fetchFeodo(cutoffMs) {
   try {
     const resp = await fetch(FEODO_URL, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!resp.ok) return { ok: false, threats: [] };
-    const payload = await resp.json();
-    const records = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
+    if (!resp.ok) return providerResult(false);
+    const records = await providerRows(resp, 'feodo', ['data'], true);
+    if (records === null) return providerResult(false, [], null, 'invalid-payload');
     const threats = [];
     for (const r of records) {
       const ip = clean(r?.ip_address || r?.dst_ip || r?.ip || r?.ioc || r?.host, 80).toLowerCase();
@@ -298,25 +494,25 @@ async function fetchFeodo(cutoffMs) {
       if (threats.length >= MAX_LIMIT) break;
     }
     console.log(`  Feodo: ${threats.length} threats`);
-    return { ok: true, threats };
+    return providerResult(true, threats, Date.now());
   } catch (e) {
     console.warn(`  Feodo: failed — ${e.message}`);
-    return { ok: false, threats: [] };
+    return providerResult(false);
   }
 }
 
 async function fetchUrlhaus(cutoffMs) {
   const authKey = clean(process.env.URLHAUS_AUTH_KEY || '', 200);
-  if (!authKey) { console.log('  URLhaus: skipped (no URLHAUS_AUTH_KEY)'); return { ok: false, threats: [] }; }
+  if (!authKey) { console.log('  URLhaus: skipped (no URLHAUS_AUTH_KEY)'); return { ...providerResult(false, [], null, 'missing-key'), outcome: 'unconfigured' }; }
   try {
     const resp = await fetch(URLHAUS_RECENT_URL(MAX_LIMIT), {
       method: 'GET',
       headers: { Accept: 'application/json', 'Auth-Key': authKey, 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!resp.ok) return { ok: false, threats: [] };
-    const payload = await resp.json();
-    const rows = Array.isArray(payload?.urls) ? payload.urls : (Array.isArray(payload?.data) ? payload.data : []);
+    if (!resp.ok) return providerResult(false);
+    const rows = await providerRows(resp, 'urlhaus', ['urls', 'data']);
+    if (rows === null) return providerResult(false, [], null, 'invalid-payload');
     const threats = [];
     for (const r of rows) {
       const rawUrl = clean(r?.url || r?.ioc || '', 1024);
@@ -330,8 +526,11 @@ async function fetchUrlhaus(cutoffMs) {
       const indType = ipCand ? 'ip' : (hostname ? 'domain' : 'url');
       const indicator = ipCand || hostname || rawUrl;
       if (!indicator) continue;
-      const firstSeen = toEpochMs(r?.dateadded || r?.firstseen || r?.first_seen);
-      const lastSeen = toEpochMs(r?.last_online || r?.last_seen || r?.dateadded);
+      // URLhaus /v1/urls/recent/ returns `date_added` (snake_case, e.g.
+      // "2026-06-01 12:00:00 UTC"); the prior `dateadded` key never matched, so
+      // both timestamps fell through to 0 (#4008). Keep the old keys as fallbacks.
+      const firstSeen = toEpochMs(r?.date_added || r?.dateadded || r?.firstseen || r?.first_seen);
+      const lastSeen = toEpochMs(r?.last_online || r?.last_seen || r?.date_added || r?.dateadded);
       if ((lastSeen || firstSeen) && (lastSeen || firstSeen) < cutoffMs) continue;
       const threat = clean(r?.threat || r?.threat_type || '', 40).toLowerCase();
       const allTags = tags.join(' ');
@@ -351,10 +550,10 @@ async function fetchUrlhaus(cutoffMs) {
       if (threats.length >= MAX_LIMIT) break;
     }
     console.log(`  URLhaus: ${threats.length} threats`);
-    return { ok: true, threats };
+    return providerResult(true, threats, Date.now());
   } catch (e) {
     console.warn(`  URLhaus: failed — ${e.message}`);
-    return { ok: false, threats: [] };
+    return providerResult(false);
   }
 }
 
@@ -364,10 +563,11 @@ async function fetchC2Intel() {
       headers: { Accept: 'text/plain', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!resp.ok) return { ok: false, threats: [] };
-    const text = await resp.text();
+    if (!resp.ok) return providerResult(false);
+    const rows = c2IntelRows(await resp.text());
+    if (rows === null) return providerResult(false, [], null, 'invalid-payload');
     const threats = [];
-    for (const line of text.split('\n')) {
+    for (const line of rows) {
       if (!line || line.startsWith('#')) continue;
       const ci = line.indexOf(',');
       if (ci < 0) continue;
@@ -391,25 +591,31 @@ async function fetchC2Intel() {
       if (threats.length >= MAX_LIMIT) break;
     }
     console.log(`  C2Intel: ${threats.length} threats`);
-    return { ok: true, threats };
+    return providerResult(true, threats, Date.now());
   } catch (e) {
     console.warn(`  C2Intel: failed — ${e.message}`);
-    return { ok: false, threats: [] };
+    return providerResult(false);
   }
 }
 
 async function fetchOtx(days) {
   const apiKey = clean(process.env.OTX_API_KEY || '', 200);
-  if (!apiKey) { console.log('  OTX: skipped (no OTX_API_KEY)'); return { ok: false, threats: [] }; }
+  if (!apiKey) { console.log('  OTX: skipped (no OTX_API_KEY)'); return { ...providerResult(false, [], null, 'missing-key'), outcome: 'unconfigured' }; }
   try {
     const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-    const resp = await fetch(`${OTX_INDICATORS_URL}${encodeURIComponent(since)}`, {
-      headers: { Accept: 'application/json', 'X-OTX-API-KEY': apiKey, 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-    if (!resp.ok) return { ok: false, threats: [] };
-    const payload = await resp.json();
-    const results = Array.isArray(payload?.results) ? payload.results : (Array.isArray(payload) ? payload : []);
+    const otxPage = { page: 0, indicators: new Set(), count: null, next: `${OTX_INDICATORS_URL}${encodeURIComponent(since)}` };
+    const results = [];
+    while (otxPage.next) {
+      if (++otxPage.page > OTX_MAX_PAGES) throw otxIncomplete();
+      const resp = await fetch(otxPage.next, {
+        headers: { Accept: 'application/json', 'X-OTX-API-KEY': apiKey, 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+      if (!resp.ok) return providerResult(false);
+      const rows = await providerRows(resp, 'otx', ['results'], true, otxPage);
+      if (rows === null) return providerResult(false, [], null, 'invalid-payload');
+      results.push(...rows);
+    }
     const threats = [];
     for (const r of results) {
       const ip = clean(r?.indicator || r?.ip || '', 80).toLowerCase();
@@ -427,16 +633,29 @@ async function fetchOtx(days) {
       if (threats.length >= MAX_LIMIT) break;
     }
     console.log(`  OTX: ${threats.length} threats`);
-    return { ok: true, threats };
+    return providerResult(true, threats, Date.now());
   } catch (e) {
     console.warn(`  OTX: failed — ${e.message}`);
-    return { ok: false, threats: [] };
+    return providerResult(false, [], null, e.code === 'OTX_INCOMPLETE_PAGE' ? 'incomplete-page' : 'upstream-error');
   }
+}
+
+// A failed blacklist call (non-OK, e.g. a 429 from the daily cap, an invalid body, or a thrown error) falls back to the
+// last good 24h list instead of publishing 0 rows, so the feed does not flap between
+// 500 rows and none. The retained rows carry no fresh observation clock.
+async function retainedAbuseIpDb(label, reason = 'upstream-error') {
+  const cached = await verifySeedKey(ABUSEIPDB_CACHE_KEY).catch(() => null);
+  if (Array.isArray(cached) && cached.length > 0) {
+    console.warn(`  AbuseIPDB: ${label} — keeping ${cached.length} cached threats`);
+    return { ...providerResult(true, cached), outcome: 'retained', reason: `${reason}-cache` };
+  }
+  console.warn(`  AbuseIPDB: ${label} — no cache`);
+  return providerResult(false, [], null, reason);
 }
 
 async function fetchAbuseIpDb() {
   const apiKey = clean(process.env.ABUSEIPDB_API_KEY || '', 200);
-  if (!apiKey) { console.log('  AbuseIPDB: skipped (no ABUSEIPDB_API_KEY)'); return { ok: false, threats: [] }; }
+  if (!apiKey) { console.log('  AbuseIPDB: skipped (no ABUSEIPDB_API_KEY)'); return { ...providerResult(false, [], null, 'missing-key'), outcome: 'unconfigured' }; }
 
   try {
     const lastCall = await verifySeedKey(ABUSEIPDB_RATE_KEY);
@@ -445,10 +664,10 @@ async function fetchAbuseIpDb() {
       const cached = await verifySeedKey(ABUSEIPDB_CACHE_KEY);
       if (Array.isArray(cached) && cached.length > 0) {
         console.log(`  AbuseIPDB: ${cached.length} threats (cached, called ${Math.round((Date.now() - lastTs) / 60000)}m ago)`);
-        return { ok: true, threats: cached };
+        return { ...providerResult(true, cached), outcome: 'retained', reason: 'rate-cache' };
       }
       console.log('  AbuseIPDB: skipped (rate limit, no cache)');
-      return { ok: false, threats: [] };
+      return providerResult(false, [], null, 'rate-cache-missing');
     }
   } catch (e) {
     console.warn('  AbuseIPDB: rate-limit check failed (Redis) — proceeding with caution:', e?.message || e);
@@ -463,9 +682,9 @@ async function fetchAbuseIpDb() {
       headers: { Accept: 'application/json', Key: apiKey, 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!resp.ok) return { ok: false, threats: [] };
-    const payload = await resp.json();
-    const records = Array.isArray(payload?.data) ? payload.data : [];
+    if (!resp.ok) return retainedAbuseIpDb(`HTTP ${resp.status}`);
+    const records = await providerRows(resp, 'abuseipdb', ['data']);
+    if (records === null) return retainedAbuseIpDb('invalid payload', 'invalid-payload');
     const threats = [];
     for (const r of records) {
       const ip = clean(r?.ipAddress || r?.ip || '', 80).toLowerCase();
@@ -484,10 +703,9 @@ async function fetchAbuseIpDb() {
     console.log(`  AbuseIPDB: ${threats.length} threats`);
     await writeExtraKey(ABUSEIPDB_CACHE_KEY, threats, 86400).catch(() => {});
     await writeExtraKey(ABUSEIPDB_RATE_KEY, { calledAt: Date.now() }, 86400).catch(() => {});
-    return { ok: true, threats };
+    return providerResult(true, threats, Date.now());
   } catch (e) {
-    console.warn(`  AbuseIPDB: failed — ${e.message}`);
-    return { ok: false, threats: [] };
+    return retainedAbuseIpDb(`failed — ${e.message}`);
   }
 }
 
@@ -495,7 +713,7 @@ async function fetchAbuseIpDb() {
 // Dedup + proto mapping
 // ========================================================================
 
-function dedupeThreats(threats) {
+export function dedupeThreats(threats) {
   const map = new Map();
   for (const t of threats) {
     const key = `${t.source}:${t.indicatorType}:${t.indicator}`;
@@ -510,7 +728,58 @@ function dedupeThreats(threats) {
   return Array.from(map.values());
 }
 
-function toProto(raw) {
+// Issue #4008 — pure merge of WorldMonitor-observed first-seen. Resolves one
+// canonical first-seen per indicator = min(every upstream date present this run,
+// the prior persisted value); if no real date exists anywhere, stamps `nowMs`
+// (first sighting). Two passes so the value is order-independent: every
+// occurrence of the same IOC (e.g. seen via URLhaus + AbuseIPDB in one run) gets
+// the SAME firstSeen even on the first run, regardless of which source's row
+// comes first. Mutates each threat's `firstSeen` in place and returns the next
+// persisted map, rebuilt from only the indicators present this run (self-pruning).
+// Keyed by indicator identity (`indicatorType:indicator`). Pure (no I/O) so it is
+// unit-testable.
+export function mergeObservedFirstSeen(threats, priorMap, nowMs) {
+  const prior = priorMap && typeof priorMap === 'object' ? priorMap : {};
+  const next = {};
+  // Pass 1: fold the earliest *real* (>0) date across all occurrences + prior.
+  // Keys with no real date anywhere are recorded as 0 (resolved to nowMs below).
+  for (const t of threats) {
+    const key = `${t.indicatorType}:${t.indicator}`;
+    const upstream = Number(t.firstSeen) > 0 ? Number(t.firstSeen) : 0;
+    const stored = Number(prior[key]) > 0 ? Number(prior[key]) : 0;
+    const candidates = [upstream, stored, next[key]].filter((v) => Number(v) > 0);
+    next[key] = candidates.length ? Math.min(...candidates) : (next[key] ?? 0);
+  }
+  // Pass 2: any key still without a real date is a first sighting → nowMs; then
+  // assign the resolved value to every occurrence so the snapshot is consistent.
+  for (const t of threats) {
+    const key = `${t.indicatorType}:${t.indicator}`;
+    if (!(Number(next[key]) > 0)) next[key] = nowMs;
+    t.firstSeen = next[key];
+  }
+  return { threats, nextMap: next };
+}
+
+// Redis wrapper around mergeObservedFirstSeen. Read/write failures are non-fatal:
+// a missing prior map degrades to stamping `nowMs`, and a failed write just means
+// next run re-stamps — neither should fail the seed.
+async function applyObservedFirstSeen(threats, nowMs) {
+  let prior = {};
+  try {
+    const raw = await verifySeedKey(FIRST_SEEN_KEY);
+    if (raw && typeof raw === 'object') prior = raw;
+  } catch (e) {
+    console.warn(`  first-seen map read failed — ${e?.message || e}`);
+  }
+  const { nextMap } = mergeObservedFirstSeen(threats, prior, nowMs);
+  try {
+    await writeExtraKey(FIRST_SEEN_KEY, nextMap, FIRST_SEEN_TTL);
+  } catch (e) {
+    console.warn(`  first-seen map write failed — ${e?.message || e}`);
+  }
+}
+
+export function toProto(raw) {
   return {
     id: raw.id,
     type: THREAT_TYPE_MAP[raw.type] || 'CYBER_THREAT_TYPE_UNSPECIFIED',
@@ -543,14 +812,27 @@ async function fetchAllThreats() {
     fetchAbuseIpDb(),
   ]);
 
-  const anyOk = feodo.ok || urlhaus.ok || c2intel.ok || otx.ok || abuseipdb.ok;
-  if (!anyOk) throw new Error('All 5 IOC sources failed');
+  if (otx.reason === 'incomplete-page') {
+    throw Object.assign(new Error('Incomplete OTX page prevents an unqualified cyber snapshot'), {
+      code: 'OTX_INCOMPLETE_PAGE', nonRetryable: true,
+    });
+  }
+
+  // A retained AbuseIPDB list (rate window or failed call) keeps the feed populated but is
+  // not a fresh observation: a run where nothing was observed must fail, so seed-meta ages.
+  const anyObserved = [feodo, urlhaus, c2intel, otx, abuseipdb].some((p) => p.ok && p.outcome === 'observed');
+  if (!anyObserved) throw new Error('All 5 IOC sources failed');
 
   const combined = dedupeThreats([
     ...feodo.threats, ...urlhaus.threats, ...c2intel.threats, ...otx.threats, ...abuseipdb.threats,
   ]);
 
   console.log(`  Combined (deduped): ${combined.length}`);
+
+  // #4008: stamp a stable per-indicator first-seen (upstream when present, else
+  // WorldMonitor-observed) before sort/proto so `firstSeenAt` is populated for
+  // every source, including AbuseIPDB/C2Intel which carry no upstream date.
+  await applyObservedFirstSeen(combined, now);
 
   const hydrated = await hydrateCoordinates(combined);
 
@@ -576,12 +858,27 @@ function validate(data) {
   return Array.isArray(data?.threats) && data.threats.length >= 1;
 }
 
-runSeed('cyber', 'threats', CANONICAL_KEY, fetchAllThreats, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'multi-ioc-v2',
-  extraKeys: [{ key: BOOTSTRAP_KEY }],
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+export function declareRecords(data) {
+  return Array.isArray(data?.threats) ? data.threats.length : 0;
+}
+
+// isMain guard so tests can import the pure helpers (mergeObservedFirstSeen,
+// declareRecords) without triggering a live seed run. Matches the repo
+// convention (see feedback_seed_isMain_guard); Railway still runs the seed via
+// `node scripts/seed-cyber-threats.mjs` because argv[1] resolves to this file.
+const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''));
+if (isMain) {
+  runSeed('cyber', 'threats', CANONICAL_KEY, fetchAllThreats, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'multi-ioc-v2',
+    extraKeys: [{ key: BOOTSTRAP_KEY, declareRecords }],
+
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 240,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

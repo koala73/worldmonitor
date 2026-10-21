@@ -1,0 +1,636 @@
+#!/usr/bin/env node
+/**
+ * Generate stable commercial product facts and catalogs.
+ *
+ * Source chain:
+ *   convex/config/productCatalog.ts (lifecycle, plans, prices, public copy)
+ *   api/mcp/registry/index.ts        (machine-readable MCP server card)
+ *
+ * These outputs are committed because lifecycle, prices, entitlements, and
+ * catalog identities are reviewed product contracts. Extensible inventory
+ * counts are emitted separately by scripts/generate-inventory-facts.mjs.
+ *
+ * Usage:
+ *   npm run product:facts
+ *   npm run product:facts:check
+ */
+
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { PRODUCT_CATALOG, PUBLIC_PRODUCT_METADATA } from '../convex/config/productCatalog.ts';
+import { AI_DATA_CENTERS } from '../src/config/ai-datacenters.ts';
+import { CHOKEPOINT_REGISTRY } from '../src/config/chokepoint-registry.ts';
+import { UNDERSEA_CABLES } from '../src/config/geo-map.ts';
+import { getCompleteLayerCatalogKeys } from '../src/config/map-layer-definitions.ts';
+import { INTEL_HOTSPOTS } from '../shared/geo-data.ts';
+import { PIPELINES } from '../shared/pipelines-data.ts';
+import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
+import { MCP_DOMAIN_SUMMARY, MCP_TAGS, MCP_TOOL_CATEGORIES, TOOL_CATEGORY_BY_NAME } from '../api/mcp/domains.ts';
+import { UI_RESOURCE_LIST_RESPONSE } from '../api/mcp/ui/registry.ts';
+import { FREE_ACCOUNT_CALLS_PER_DAY } from '../api/mcp/upgrade-constants.ts';
+import { publishedRankedCountries } from './build-crawlable-corpus.mjs';
+import { commandPaletteCommandCount } from './lib/command-palette-count.mjs';
+import { defaultOnLayerStats } from './lib/default-map-layer-count.mjs';
+import {
+  AGENT_CARD_DOMAIN_SURFACE,
+  JSON_DOMAIN_SURFACES,
+  MARKDOWN_DOMAIN_SURFACES,
+  SERVER_CARD_DOMAIN_SURFACE,
+  renderJsonDomainSurface,
+  renderMarkdownDomainSurface,
+} from './lib/mcp-domain-summary.mjs';
+import { lngFacilityCount } from './_storage-facility-registry.mjs';
+import { computeStats } from './docs-stats.mjs';
+import { loadManifest, scanUpstreamHosts, sourceAttributionStats } from './source-attribution.mjs';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const CHECK = process.argv.includes('--check');
+// Newest published resilience snapshot: the depth band's ranked slot and the
+// {ranked, universe} pair the blog glossary interpolates read this one value.
+const resilience = publishedRankedCountries(ROOT);
+const failures = [];
+
+const read = (path) => readFileSync(join(ROOT, path), 'utf8');
+const readJson = (path) => JSON.parse(read(path));
+const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
+
+function emit(path, content) {
+  const current = existsSync(join(ROOT, path)) ? read(path) : null;
+  if (current === content) return;
+  if (CHECK) {
+    failures.push(`${path} is stale`);
+    return;
+  }
+  writeFileSync(join(ROOT, path), content);
+  console.log(`  ✓ ${join(ROOT, path)}`);
+}
+
+function transform(path, update) {
+  const current = read(path);
+  emit(path, update(current));
+}
+
+function withoutKeys(value, keys) {
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !keys.has(key)));
+}
+
+function billingDurationFor(period) {
+  if (period === 'monthly') return 'P1M';
+  if (period === 'annual') return 'P1Y';
+  return null;
+}
+
+function priceText(price) {
+  if (price == null) return 'Custom';
+  return Number.isInteger(price) ? String(price) : price.toFixed(2);
+}
+
+const generatedTiers = readJson('pro-test/src/generated/tiers.json');
+const previousFacts = existsSync(join(ROOT, 'shared/product-facts.generated.json'))
+  ? readJson('shared/product-facts.generated.json')
+  : null;
+
+const publicCatalogEntries = Object.entries(PRODUCT_CATALOG)
+  .filter(([, entry]) => entry.publicVisible);
+const publicTierGroups = [...new Set(publicCatalogEntries.map(([, entry]) => entry.tierGroup))];
+const productsById = Object.fromEntries(
+  publicCatalogEntries
+    .filter(([, entry]) => entry.dodoProductId)
+    .map(([planKey, entry]) => [
+      entry.dodoProductId,
+      {
+        planKey,
+        tierGroup: entry.tierGroup,
+        billingPeriod: entry.billingPeriod,
+      },
+    ]),
+);
+const fallbackPrices = Object.fromEntries(
+  publicCatalogEntries
+    .filter(([, entry]) => entry.dodoProductId && entry.priceCents != null && entry.priceCents > 0)
+    .map(([, entry]) => [entry.dodoProductId, entry.priceCents]),
+);
+
+const tierGroupForLocaleKey = {
+  free: 'free',
+  pro: 'pro',
+  proBusiness: 'pro_business',
+  api: 'api_starter',
+  apiBusiness: 'api_business',
+  enterprise: 'enterprise',
+};
+const tierConfig = Object.fromEntries(
+  generatedTiers.map((tier) => [
+    tierGroupForLocaleKey[tier.localeKey],
+    withoutKeys(tier, new Set([
+      'price',
+      'period',
+      'monthlyPrice',
+      'annualPrice',
+      'monthlyProductId',
+      'annualProductId',
+    ])),
+  ]),
+);
+
+const plans = publicCatalogEntries.map(([planKey, entry]) => ({
+  planKey,
+  name: entry.displayName,
+  tierGroup: entry.tierGroup,
+  billingPeriod: entry.billingPeriod,
+  billingDuration: billingDurationFor(entry.billingPeriod),
+  price: entry.priceCents == null ? null : entry.priceCents / 100,
+  priceCurrency: PUBLIC_PRODUCT_METADATA.currency,
+  availability: PUBLIC_PRODUCT_METADATA.availability,
+  url: PUBLIC_PRODUCT_METADATA.pricingUrl,
+  currentForCheckout: entry.currentForCheckout,
+  selfServe: entry.selfServe,
+  // Carried so pricingSummary() can DERIVE its plan-limit copy from the
+  // catalog. The feature strings below used to be hand-written, which meant
+  // re-running this generator faithfully reproduced stale limits and the
+  // freshness gate — which only diffs the generator against its own output —
+  // could never see the drift.
+  dashboardAiCallsPerDay: entry.features?.planLimits?.dashboardAiCallsPerDay,
+  description: [
+    ...entry.marketingFeatures,
+    ...(entry.highlightFeatures ?? []),
+  ].join(', '),
+}));
+
+const heroProofStats = buildHeroProofStats();
+
+const facts = {
+  _generated: 'scripts/generate-public-product-facts.mjs — do not edit by hand; run `npm run product:facts`',
+  product: {
+    name: PUBLIC_PRODUCT_METADATA.name,
+    lifecycle: PUBLIC_PRODUCT_METADATA.lifecycle,
+    canonicalUrl: PUBLIC_PRODUCT_METADATA.canonicalUrl,
+    pricingUrl: PUBLIC_PRODUCT_METADATA.pricingUrl,
+    primaryCtaLabel: PUBLIC_PRODUCT_METADATA.primaryCtaLabel,
+  },
+  currency: PUBLIC_PRODUCT_METADATA.currency,
+  plans,
+  heroProofStats,
+  depthProofStats: buildDepthProofStats(heroProofStats),
+  // Resilience ranking coverage from the newest published snapshot, so copy
+  // that cannot run the snapshot helper (the blog glossary) can still state
+  // "{ranked} of {universe} countries" without hard-coding either number.
+  resilienceCoverage: { ranked: resilience.ranked, universe: resilience.universe },
+};
+
+/**
+ * Definitional homepage proof figures, measured rather than hardcoded:
+ * mapLayers counts non-sunset layers in the full-variant catalog, feeds and
+ * providers come from the validated attribution inventory, and alertOrigins
+ * is the definitional count of independent alert-origin systems (kept literal
+ * and pinned by tests/public-product-facts.test.mjs).
+ */
+function buildHeroProofStats() {
+  const stats = sourceAttributionStats(scanUpstreamHosts(ROOT), loadManifest(ROOT));
+  return {
+    mapLayers: getCompleteLayerCatalogKeys('full').length,
+    feeds: stats.feedHosts,
+    providers: stats.providerCount,
+    alertOrigins: 5,
+  };
+}
+
+/**
+ * "Under the hood" band proof figures (#7745). The subhead promises "Every
+ * number below is live in the dashboard today — not a roadmap", so every slot
+ * is measured from the same registries that produce ai-search.md's coverage
+ * block and the hero rail, and generation fails closed on any non-numeric
+ * value — the band shipped with adjectives in 14 of 15 slots for exactly the
+ * reason this validation exists.
+ */
+function buildDepthProofStats(hero) {
+  const stats = computeStats();
+  const candidate = {
+    // The first four slots carry the same labels — and therefore the same
+    // published figures — as the hero rail.
+    ...hero,
+    chokepoints: CHOKEPOINT_REGISTRY.length,
+    instabilityCountries: stats.tier1Countries,
+    resilienceRanked: resilience.ranked,
+    submarineCables: UNDERSEA_CABLES.length,
+    pipelinesLng: PIPELINES.length + lngFacilityCount(),
+    aiDatacenters: AI_DATA_CENTERS.length,
+    hotspots: INTEL_HOTSPOTS.length,
+    stockExchanges: stats.stockExchangeCount,
+    mcpTools: TOOL_REGISTRY.length,
+    commands: commandPaletteCommandCount(),
+    languages: stats.locales,
+  };
+  for (const [key, value] of Object.entries(candidate)) {
+    if (!Number.isInteger(value) || value <= 0) {
+      throw new Error(`depth proof stat ${key} must be a positive integer, got ${JSON.stringify(value)}`);
+    }
+  }
+  return candidate;
+}
+
+const catalogBundle = {
+  _generated: facts._generated,
+  facts,
+  products: productsById,
+  tierConfig,
+  publicTierGroups,
+  fallbackPrices,
+};
+
+emit('shared/product-facts.generated.json', json(facts));
+emit('scripts/shared/product-facts.generated.json', json(facts));
+// Slim homepage proof numerals. Hero.tsx imports this file — not the full
+// facts bundle — so the welcome JS payload grows by bytes, not kilobytes.
+emit('pro-test/src/generated/hero-stats.json', json(facts.heroProofStats));
+// Same rationale for the "Under the hood" band numerals that Depth.tsx renders.
+emit('pro-test/src/generated/depth-stats.json', json(facts.depthProofStats));
+// Welcome copy figures that are not band slots (the first-five tenth card).
+const proMonthlyPrice = plans.find((plan) => plan.planKey === 'pro_monthly')?.price;
+if (typeof proMonthlyPrice !== 'number' || proMonthlyPrice <= 0) throw new Error(`pro_monthly price must be a positive number, got ${proMonthlyPrice}`);
+emit('pro-test/src/generated/copy-stats.json', json({
+  ...defaultOnLayerStats(read('src/config/variants/full.ts'), getCompleteLayerCatalogKeys('full')),
+  proMonthlyPrice,
+}));
+emit('shared/product-catalog.generated.json', json(catalogBundle));
+emit('scripts/shared/product-catalog.generated.json', json(catalogBundle));
+
+const edgeModule = `// AUTO-GENERATED from convex/config/productCatalog.ts.
+// Do not edit manually. Run: npm run product:facts
+// @ts-check
+
+export const PUBLIC_PRODUCT_FACTS = ${JSON.stringify(facts, null, 2)};
+
+export const PRODUCT_CATALOG = ${JSON.stringify(productsById, null, 2)};
+
+export const TIER_CONFIG = ${JSON.stringify(tierConfig, null, 2)};
+
+export const PUBLIC_TIER_GROUPS = ${JSON.stringify(publicTierGroups, null, 2)};
+
+export const FALLBACK_PRICES = ${JSON.stringify(fallbackPrices, null, 2)};
+`;
+emit('api/_product-catalog.generated.js', edgeModule);
+
+function offerFor(plan) {
+  const offer = {
+    '@type': 'Offer',
+    name: plan.name,
+    price: priceText(plan.price),
+    priceCurrency: plan.priceCurrency,
+    availability: plan.availability,
+    url: plan.url,
+    description: plan.description,
+  };
+  if (plan.billingDuration) {
+    offer.priceSpecification = {
+      '@type': 'UnitPriceSpecification',
+      price: priceText(plan.price),
+      priceCurrency: plan.priceCurrency,
+      billingDuration: plan.billingDuration,
+    };
+  }
+  return offer;
+}
+
+function rewriteApplicationJsonLd(source, includedGroups) {
+  return source.replace(
+    /(<script\b(?=[^>]*\btype="application\/ld\+json")[^>]*>)([\s\S]*?)(<\/script>)/g,
+    (whole, open, body, close) => {
+      let block;
+      try {
+        block = JSON.parse(body);
+      } catch {
+        return whole;
+      }
+      if (!['SoftwareApplication', 'WebApplication'].includes(block['@type'])) return whole;
+
+      const selectedPlans = plans.filter((plan) => (
+        plan.price != null && (!includedGroups || includedGroups.includes(plan.tierGroup))
+      ));
+      block.offers = selectedPlans.map(offerFor);
+      const indented = JSON.stringify(block, null, 2)
+        .split('\n')
+        .map((line) => `    ${line}`)
+        .join('\n');
+      return `${open}\n${indented}\n    ${close}`;
+    },
+  );
+}
+
+const applicationJsonLdGroups = new Map([
+  ['index.html', ['free', 'pro']],
+  ['pro-test/welcome.html', ['free', 'pro']],
+  ['pro-test/index.html', null],
+]);
+
+// Every Pro locale carries lifecycle and pricing copy, so enumerate the
+// directory rather than hand-listing a subset.
+const proLocalePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
+  .filter((name) => name.endsWith('.json'))
+  .map((name) => `pro-test/src/locales/${name}`)
+  .sort();
+
+for (const [path, groups] of applicationJsonLdGroups) {
+  transform(path, (source) => rewriteApplicationJsonLd(source, groups));
+}
+
+// Keep the hand-authored A2A routing copy's catalog total derived from the
+// registry. The rest of the description is editorial, but a stale number
+// would misrepresent what agents can discover through MCP.
+transform('public/.well-known/agent-card.json', (source) => {
+  const card = JSON.parse(source);
+  const routingSkill = card.skills?.find((skill) => skill.id === 'route-to-tool');
+  if (!routingSkill?.description) {
+    throw new Error('agent-card routing skill must have a description');
+  }
+  if ([...routingSkill.description.matchAll(/\b\d+-tool catalog\b/g)].length !== 1) {
+    throw new Error('agent-card routing skill must advertise exactly one N-tool catalog');
+  }
+  if ([...source.matchAll(/\b\d+-tool catalog\b/g)].length !== 1) {
+    throw new Error('agent-card must contain exactly one N-tool catalog claim');
+  }
+  const next = source.replace(/\b\d+-tool catalog\b/, `${TOOL_REGISTRY.length}-tool catalog`);
+  return renderJsonDomainSurface(next, AGENT_CARD_DOMAIN_SURFACE, MCP_DOMAIN_SUMMARY);
+});
+
+// The server card is the machine-readable tool catalog consumed by docs-stats
+// and external MCP discovery. Generate it from the same registry as the count
+// so adding tools cannot leave a syntactically valid but incomplete card.
+transform('public/.well-known/mcp/server-card.json', (source) => {
+  const card = JSON.parse(source);
+  const disasterTool = TOOL_REGISTRY.find((tool) => tool.name === 'get_natural_disasters');
+  if (!disasterTool) throw new Error('get_natural_disasters must exist in TOOL_REGISTRY');
+  const disasterFilename = disasterTool._uiResourceUri?.match(/^ui:\/\/worldmonitor\/(natural-disasters(?:-v\d+)?\.html)$/)?.[1];
+  if (!disasterFilename) throw new Error('get_natural_disasters must advertise a ui://worldmonitor/natural-disasters HTML resource');
+  card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
+    /get_market_data → market-radar(?:-v\d+)?\.html/,
+    'get_market_data → market-radar-v3.html',
+  ).replace(
+    /get_country_brief → country-brief(?:-v\d+)?\.html/,
+    'get_country_brief → country-brief-v3.html',
+  ).replace(
+    /get_natural_disasters → natural-disasters(?:-v\d+)?\.html/,
+    `get_natural_disasters → ${disasterFilename}`,
+  ).replace(
+    /get_news_intelligence → news-intelligence(?:-v\d+)?\.html/,
+    'get_news_intelligence → news-intelligence-v3.html',
+  ).replace(
+    /get_conflict_events → conflict-events(?:-v\d+)?\.html/,
+    'get_conflict_events → conflict-events-v2.html',
+  ).replace(
+    /get_prediction_markets → prediction-markets(?:-v\d+)?\.html/,
+    'get_prediction_markets → prediction-markets-v3.html',
+  ).replace(
+    /get_forecast_predictions → forecasts(?:-v\d+)?\.html/,
+    'get_forecast_predictions → forecasts-v4.html',
+  ).replace(
+    /get_chokepoint_status → chokepoint-monitor(?:-v\d+)?\.html/,
+    'get_chokepoint_status → chokepoint-monitor-v2.html',
+  ).replace(
+    /get_world_brief → world-brief(?:-v\d+)?\.html/,
+    'get_world_brief → world-brief-v2.html',
+  ).replace(
+    /get_country_risk → country-risk(?:-v\d+)?\.html/,
+    'get_country_risk → country-risk-v3.html',
+  );
+  card.metadata.mcpApps.uiResources = UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri);
+  // Categories and tags come from api/mcp/domains.ts. The per-tool category is
+  // card-only; the live tools/list _meta stays access + weight (no wire change).
+  // ui.resourceUri mirrors the live MCP Apps link so a scanner that cannot
+  // authenticate still sees which tools render an app.
+  card.toolCategories = MCP_TOOL_CATEGORIES.map((category) => category.id);
+  card.tags = [...MCP_TAGS];
+  card.tools = TOOL_REGISTRY.map((tool) => {
+    const category = TOOL_CATEGORY_BY_NAME[tool.name];
+    if (!category) throw new Error(`${tool.name} has no category in api/mcp/domains.ts`);
+    return {
+      name: tool.name,
+      description: tool.description,
+      _meta: {
+        ...(tool._uiResourceUri ? { ui: { resourceUri: tool._uiResourceUri } } : {}),
+        'worldmonitor/access': toolAccess(tool),
+        'worldmonitor/category': category,
+      },
+    };
+  });
+  return renderJsonDomainSurface(json(card), SERVER_CARD_DOMAIN_SURFACE, MCP_DOMAIN_SUMMARY);
+});
+
+// The domain list on the other discovery surfaces. The card and agent-card
+// rows render inside their own transforms above, because a second transform
+// of the same file would read the unwritten original in --check mode.
+for (const surface of JSON_DOMAIN_SURFACES) {
+  if (surface === SERVER_CARD_DOMAIN_SURFACE || surface === AGENT_CARD_DOMAIN_SURFACE) continue;
+  transform(surface.path, (source) => renderJsonDomainSurface(source, surface, MCP_DOMAIN_SUMMARY));
+}
+for (const surface of MARKDOWN_DOMAIN_SURFACES) {
+  transform(surface.path, (source) => renderMarkdownDomainSurface(source, surface, MCP_DOMAIN_SUMMARY));
+}
+
+// Keep lifecycle cleanup here. Inventory totals in these locale files are not
+// generator-owned acceptance criteria.
+for (const path of proLocalePaths) {
+  transform(path, (source) => {
+    const locale = JSON.parse(source);
+    delete locale.nav?.reserveAccess;
+    delete locale.hero?.reserveEarlyAccess;
+    delete locale.hero?.emailPlaceholder;
+    delete locale.hero?.emailAriaLabel;
+    delete locale.twoPath?.proCta;
+    delete locale.finalCta?.getPro;
+    delete locale.footer?.beFirstInLine;
+    delete locale.form;
+    delete locale.referral;
+    // The "Under the hood" band renders measured numerals (depth-stats.json),
+    // so the retired adjective value slots are lifecycle-cleaned like the
+    // waitlist copy above. Labels (sNl) stay — they remain the localized copy.
+    for (let slot = 1; slot <= 15; slot += 1) delete locale.welcome?.depth?.[`s${slot}v`];
+    return json(locale);
+  });
+}
+
+function replacePreviousPrices(source) {
+  if (!previousFacts) return source;
+  const previousByPlan = new Map(previousFacts.plans.map((plan) => [plan.planKey, plan]));
+  let result = source;
+  for (const plan of plans) {
+    const previous = previousByPlan.get(plan.planKey);
+    if (previous?.price == null || plan.price == null || previous.price === plan.price) continue;
+    const oldText = priceText(previous.price);
+    const nextText = priceText(plan.price);
+    result = result.replaceAll(`$${oldText}`, `$${nextText}`);
+    // Comma-variant rewrite only when the old price actually HAD a decimal
+    // point: for integer prices the "comma form" is identical to the dot
+    // form, and running it after the line above re-matches the freshly
+    // written replacement's prefix ("$449.99" -> "$449,99.99").
+    if (oldText.includes('.')) {
+      result = result.replaceAll(
+        `$${oldText.replace('.', ',')}`,
+        `$${nextText.replace('.', ',')}`,
+      );
+    }
+    result = result.replaceAll(`"${oldText}"`, `"${nextText}"`);
+    result = result.replaceAll(`: ${oldText}`, `: ${nextText}`);
+  }
+  return result;
+}
+
+for (const path of new Set([
+  'public/pricing.md',
+  'docs/pricing.mdx',
+  'docs/zh/pricing.mdx',
+  'docs/zh/about.mdx',
+  'docs/api-commerce.mdx',
+  'docs/zh/api-commerce.mdx',
+  'blog-site/src/content/blog/free-vs-paid-real-time-intelligence-dashboards.md',
+  'blog-site/src/content/blog/worldmonitor-mcp-server-ai-agents-real-time-intelligence.md',
+  'pro-test/prerender.mjs',
+  'pro-test/welcome.html',
+  ...proLocalePaths,
+])) {
+  transform(path, replacePreviousPrices);
+}
+
+/**
+ * docs/about.mdx is the canonical product description directories lift (#9405),
+ * so its inventory figures restate the measured depth-band stats. Each phrase
+ * must occur exactly `occurrences` times: copy that drifts from the wording
+ * fails here instead of going stale. `keys` fill the phrase's leading numerals
+ * in order; later digits (the "1" in "Tier-1") are left alone.
+ */
+const ABOUT_FACT_PHRASES = [
+  { pattern: /\b\d+ news and OSINT feeds from \d+ attributed providers\b/g, occurrences: 1, keys: ['feeds', 'providers'] },
+  { pattern: /\ball \d+ attributed providers\b/g, occurrences: 1, keys: ['providers'] },
+  { pattern: /\b\d+ (?:toggleable )?layer types\b/g, occurrences: 2, keys: ['mapLayers'] },
+  { pattern: /\b\d+ Tier-1 countries\b/g, occurrences: 1, keys: ['instabilityCountries'] },
+  { pattern: /\b\d+ scored hotspots\b/g, occurrences: 1, keys: ['hotspots'] },
+  { pattern: /\b\d+ live-AIS maritime chokepoints\b/g, occurrences: 1, keys: ['chokepoints'] },
+  { pattern: /\b\d+ subsea cables\b/g, occurrences: 1, keys: ['submarineCables'] },
+];
+
+function restateAboutFacts(source, stats) {
+  let result = source;
+  for (const { pattern, occurrences, keys } of ABOUT_FACT_PHRASES) {
+    const found = result.match(pattern)?.length ?? 0;
+    if (found !== occurrences) {
+      throw new Error(`docs/about.mdx: expected ${occurrences} match(es) of ${pattern}, found ${found}`);
+    }
+    result = result.replace(pattern, (phrase) => {
+      let slot = 0;
+      return phrase.replace(/\d+/g, (digits) => (slot < keys.length ? String(stats[keys[slot++]]) : digits));
+    });
+  }
+  return result;
+}
+
+// One transform per file: a second one would read the unwritten original in
+// --check mode, so the Pro price rewrite rides along here.
+transform('docs/about.mdx', (source) => restateAboutFacts(replacePreviousPrices(source), facts.depthProofStats));
+
+/** The free-account MCP allowance, worded once for every pricing surface (#9144). */
+const FREE_ACCOUNT_MCP_LINE = `${FREE_ACCOUNT_CALLS_PER_DAY} cached-data MCP calls/day with a free account`;
+
+function pricingSummary() {
+  const byKey = Object.fromEntries(plans.map((plan) => [plan.planKey, plan]));
+  /** Catalog-derived dashboard-AI copy. `null` in the catalog means unlimited. */
+  const dashboardAi = (planKey) => {
+    const limit = byKey[planKey]?.dashboardAiCallsPerDay;
+    if (limit === null) return 'unlimited dashboard-AI requests';
+    if (typeof limit !== 'number') {
+      throw new Error(`${planKey} is missing planLimits.dashboardAiCallsPerDay`);
+    }
+    return `${limit.toLocaleString('en-US')} dashboard-AI requests/day`;
+  };
+  return {
+    product: PUBLIC_PRODUCT_METADATA.name,
+    lifecycle: PUBLIC_PRODUCT_METADATA.lifecycle,
+    url: PUBLIC_PRODUCT_METADATA.canonicalUrl,
+    pricing_url: PUBLIC_PRODUCT_METADATA.pricingUrl,
+    currency: PUBLIC_PRODUCT_METADATA.currency,
+    plans: [
+      {
+        name: 'Free',
+        price_usd_monthly: 0,
+        signup_required: false,
+        features: ['global map coverage (Resilience is Pro)', 'curated feeds', 'country briefs', 'chokepoints', 'instability scores', 'watchlists', '3 dashboard tabs', FREE_ACCOUNT_MCP_LINE],
+      },
+      {
+        name: 'Pro',
+        price_usd_monthly: byKey.pro_monthly.price,
+        price_usd_yearly: byKey.pro_annual.price,
+        features: ['WM Analyst', 'Scenario Engine', 'Route Explorer', 'AI digest', 'custom widget builder', dashboardAi('pro_monthly'), 'MCP', '10 custom dashboards', 'personal license'],
+      },
+      {
+        name: 'Pro Business',
+        price_usd_monthly: byKey.pro_business_monthly.price,
+        price_usd_yearly: byKey.pro_business_annual.price,
+        features: ['Everything in Pro', 'commercial license', 'data export — CSV, JSON & PDF reports', '25 custom dashboards', dashboardAi('pro_business_monthly'), '250 MCP calls/day', 'priority support'],
+      },
+      {
+        name: 'API',
+        price_usd_monthly: byKey.api_starter.price,
+        price_usd_yearly: byKey.api_starter_annual.price,
+        features: ['REST API', 'license / API key included', '1,000 requests/day starter limit (REST + MCP combined; a live MCP call counts as 2-3)', dashboardAi('api_starter'), 'webhooks', 'structured JSON', 'OpenAPI docs', 'commercial license — for your organization'],
+      },
+      {
+        name: 'API Business',
+        price_usd_monthly: byKey.api_business.price,
+        price_usd_yearly: byKey.api_business_annual.price,
+        features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)', dashboardAi('api_business'), '5 Pro licenses — invite users at any corporate email domain', 'commercial license — for your customers', 'priority support'],
+      },
+      {
+        name: 'Enterprise',
+        price: 'Custom',
+        contact: 'enterprise@worldmonitor.app',
+        features: ['SSO/MFA/RBAC', 'team workspaces', 'white-label', 'on-premises', 'air-gapped', 'dedicated support'],
+      },
+    ],
+  };
+}
+
+transform('public/pricing.md', (source) => {
+  const generatedNote = '<!-- Product lifecycle, prices, and capability counts are generated by `npm run product:facts`. -->';
+  let next = source.replace(/^Last updated:.*\n\n/m, '');
+  if (!next.includes(generatedNote)) {
+    next = next.replace('# Pricing - World Monitor\n', `# Pricing - World Monitor\n\n${generatedNote}\n`);
+  }
+  const freeMcp = `- MCP: ${FREE_ACCOUNT_MCP_LINE}; other MCP tools require a paid plan\n`;
+  next = /^- MCP: .* with a free account.*\n/m.test(next)
+    ? next.replace(/^- MCP: .* with a free account.*\n/m, freeMcp)
+    : next.replace(/(## Free\n[\s\S]*?^- Limits: .*\n)/m, `$1${freeMcp}`);
+  return next.replace(
+    /```json\n[\s\S]*?```/,
+    `\`\`\`json\n${JSON.stringify(pricingSummary(), null, 2)}\n\`\`\``,
+  );
+});
+
+transform('docs/docs.json', (source) => {
+  const config = JSON.parse(source);
+  const visit = (value) => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    if (value.href === 'https://www.worldmonitor.app/pro#waitlist') {
+      value.href = PUBLIC_PRODUCT_METADATA.pricingUrl;
+      if (value.label === 'Get Early Access') value.label = PUBLIC_PRODUCT_METADATA.primaryCtaLabel;
+      if (value.label === '获取早期访问权限') value.label = '查看 Pro 方案';
+    }
+    Object.values(value).forEach(visit);
+  };
+  visit(config);
+  return json(config);
+});
+
+if (CHECK && failures.length > 0) {
+  console.error(`public product facts check FAILED (${failures.length}):`);
+  for (const failure of failures) console.error(`  ✗ ${failure}`);
+  console.error('\nRun `npm run product:facts` and commit the generated changes.');
+  process.exit(1);
+}
+
+if (CHECK) {
+  console.log('public product facts check OK');
+}

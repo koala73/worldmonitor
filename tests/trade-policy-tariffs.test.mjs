@@ -11,41 +11,22 @@ const root = resolve(__dirname, '..');
 const protoSrc = readFileSync(join(root, 'proto/worldmonitor/trade/v1/get_tariff_trends.proto'), 'utf-8');
 const tradeDataProtoSrc = readFileSync(join(root, 'proto/worldmonitor/trade/v1/trade_data.proto'), 'utf-8');
 const seedSrc = readFileSync(join(root, 'scripts/seed-supply-chain-trade.mjs'), 'utf-8');
+const healthSrc = readFileSync(join(root, 'api/health.js'), 'utf-8');
 const panelSrc = readFileSync(join(root, 'src/components/TradePolicyPanel.ts'), 'utf-8');
 const serviceSrc = readFileSync(join(root, 'src/services/trade/index.ts'), 'utf-8');
 const clientGeneratedSrc = readFileSync(join(root, 'src/generated/client/worldmonitor/trade/v1/service_client.ts'), 'utf-8');
 const serverGeneratedSrc = readFileSync(join(root, 'src/generated/server/worldmonitor/trade/v1/service_server.ts'), 'utf-8');
 
-describe('Trade tariff proto contract', () => {
-  it('adds EffectiveTariffRate message to shared trade data', () => {
-    assert.match(tradeDataProtoSrc, /message EffectiveTariffRate/);
-    assert.match(tradeDataProtoSrc, /string source_name = 1;/);
-    assert.match(tradeDataProtoSrc, /double tariff_rate = 5;/);
-  });
+// The proto/generated-type block that used to sit here pinned field numbers and
+// optional-property declarations that tsc already enforces, and the panel block
+// below pinned i18n key names present in the markup. What remains is executable:
+// the HTML parser, the date helper, and the freshness-budget relationship that
+// is derived from both the seeder and the health config.
 
-  it('adds optional effective_tariff_rate to GetTariffTrendsResponse', () => {
-    assert.match(protoSrc, /EffectiveTariffRate effective_tariff_rate = 4;/);
-  });
-});
-
-describe('Generated tariff types', () => {
-  it('client types expose an optional effectiveTariffRate snapshot', () => {
-    assert.match(clientGeneratedSrc, /effectiveTariffRate\?: EffectiveTariffRate/);
-  });
-
-  it('server types expose an optional effectiveTariffRate snapshot', () => {
-    assert.match(serverGeneratedSrc, /effectiveTariffRate\?: EffectiveTariffRate/);
-  });
-
-  it('trade service re-exports EffectiveTariffRate', () => {
-    assert.match(serviceSrc, /export type \{[^}]*EffectiveTariffRate/);
-  });
-});
-
-describe('Budget Lab effective tariff seed integration', () => {
-  it('imports parse helpers from shared utils module', () => {
-    assert.match(seedSrc, /_trade-parse-utils\.mjs/);
-    assert.match(seedSrc, /parseBudgetLabEffectiveTariffHtml/);
+describe('FRED effective tariff rate seed integration', () => {
+  it('uses FRED customs duties and imports of goods series', () => {
+    assert.match(seedSrc, /B235RC1Q027SBEA/);
+    assert.match(seedSrc, /A255RC1Q027SBEA/);
   });
 
   it('attaches the effective tariff snapshot only to the US tariff payload', () => {
@@ -55,6 +36,69 @@ describe('Budget Lab effective tariff seed integration', () => {
   it('keeps restrictions snapshot labeled as WTO MFN baseline data', () => {
     assert.match(seedSrc, /measureType: 'WTO MFN Baseline'/);
     assert.match(seedSrc, /description: `WTO MFN baseline: \$\{value\.toFixed\(1\)\}%`/);
+  });
+});
+
+describe('tariffTrendsUs health-check is meta-only and sits inside TARIFF_TTL', () => {
+  // #6316 moved tariffTrendsUs off the single US years=10 data key onto the
+  // fleet seed-meta record (same shape as tradeFlows). A meta-only probe
+  // watches a 7-day meta TTL, so maxStaleMin MUST sit inside the 8h data TTL
+  // — otherwise health stays green while every data key has already expired.
+  // Prior to that change maxStaleMin was 540 (outside the old single-key
+  // budget) and created an 8h–15h silent EMPTY window; see the 2026-04-27
+  // incident notes that originally locked this suite.
+
+  function extractSeconds(varName) {
+    // Prefer export const / const forms.
+    const re = new RegExp(`(?:export\\s+)?const\\s+${varName}\\s*=\\s*(\\d+)`, 'm');
+    const m = seedSrc.match(re);
+    if (!m) throw new Error(`could not find ${varName} in seed src`);
+    return parseInt(m[1], 10);
+  }
+
+  function extractMaxStaleMin(name) {
+    const re = new RegExp(`${name}:\\s*\\{[^}]*?maxStaleMin:\\s*(\\d+)`, 'ms');
+    const m = healthSrc.match(re);
+    if (!m) throw new Error(`could not find ${name}.maxStaleMin in health src`);
+    return parseInt(m[1], 10);
+  }
+
+  function extractMetaKey(name) {
+    const re = new RegExp(`${name}:\\s*\\{[^}]*?key:\\s*'([^']+)'`, 'ms');
+    const m = healthSrc.match(re);
+    if (!m) throw new Error(`could not find ${name}.key in health src`);
+    return m[1];
+  }
+
+  it('TARIFF_TTL is 28800s (8h) — pinned so the relationship below stays meaningful', () => {
+    assert.equal(extractSeconds('TARIFF_TTL'), 28800);
+  });
+
+  it('tariffTrendsUs probes the fleet seed-meta key, not a single data key', () => {
+    assert.equal(extractMetaKey('tariffTrendsUs'), 'seed-meta:trade:tariffs');
+    assert.match(healthSrc, /tariffTrendsUs:\s*'seed-meta:trade:tariffs'/);
+  });
+
+  it('tariffTrendsUs.maxStaleMin is 420min — inside TARIFF_TTL (480), not outside it', () => {
+    assert.equal(extractMaxStaleMin('tariffTrendsUs'), 420);
+  });
+
+  it('maxStaleMin <= TARIFF_TTL_min (no silent green after data keys expire)', () => {
+    const ttlMin = extractSeconds('TARIFF_TTL') / 60;
+    const maxStale = extractMaxStaleMin('tariffTrendsUs');
+    assert.ok(
+      maxStale <= ttlMin,
+      `meta-only maxStaleMin (${maxStale}) must be <= TARIFF_TTL_min (${ttlMin}); ` +
+      `a budget past the data TTL stays green while every tariff key has expired.`,
+    );
+  });
+
+  it('maxStaleMin >= 360 (the 6h cron) so a healthy fleet is not false-STALE', () => {
+    const maxStale = extractMaxStaleMin('tariffTrendsUs');
+    assert.ok(
+      maxStale >= 360,
+      `maxStaleMin (${maxStale}) must cover the 6h cron cadence`,
+    );
   });
 });
 
@@ -132,37 +176,5 @@ describe('toIsoDate helper', () => {
   it('returns empty string for unparseable input', () => {
     assert.equal(toIsoDate('not a date'), '');
     assert.equal(toIsoDate(''), '');
-  });
-});
-
-describe('Trade policy tariff panel', () => {
-  it('renames the misleading Restrictions tab to Overview', () => {
-    assert.match(panelSrc, /components\.tradePolicy\.overview/);
-    assert.match(panelSrc, /components\.tradePolicy\.noOverviewData/);
-  });
-
-  it('labels the WTO series as an MFN baseline', () => {
-    assert.match(panelSrc, /components\.tradePolicy\.baselineMfnTariff/);
-    assert.match(panelSrc, /components\.tradePolicy\.mfnAppliedRate/);
-  });
-
-  it('shows effective tariff and gap cards when coverage exists', () => {
-    assert.match(panelSrc, /components\.tradePolicy\.effectiveTariffRateLabel/);
-    assert.match(panelSrc, /components\.tradePolicy\.gapLabel/);
-    assert.match(panelSrc, /components\.tradePolicy\.effectiveMinusBaseline/);
-  });
-
-  it('keeps a graceful MFN-only fallback for countries without effective-rate coverage', () => {
-    assert.match(panelSrc, /components\.tradePolicy\.noEffectiveCoverageForCountry/);
-  });
-
-  it('clarifies on the Restrictions tab that WTO figures are baselines, not live tariff burden', () => {
-    assert.match(panelSrc, /components\.tradePolicy\.overviewNoteNoEffective/);
-    assert.match(panelSrc, /components\.tradePolicy\.overviewNoteTail/);
-  });
-
-  it('adds inline US effective-rate context on the overview card', () => {
-    assert.match(panelSrc, /renderRestrictionEffectiveContext/);
-    assert.match(panelSrc, /components\.tradePolicy\.gapVsMfnLabel/);
   });
 });

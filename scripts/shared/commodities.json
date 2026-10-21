@@ -10,6 +10,7 @@
     { "symbol": "CL=F", "name": "Crude Oil WTI", "display": "OIL" },
     { "symbol": "BZ=F", "name": "Brent Crude", "display": "BRENT" },
     { "symbol": "NG=F", "name": "Natural Gas", "display": "NATGAS" },
+    { "symbol": "TTF=F", "name": "TTF Natural Gas", "display": "TTF GAS" },
     { "symbol": "RB=F", "name": "Gasoline RBOB", "display": "GASOLINE" },
     { "symbol": "HO=F", "name": "Heating Oil", "display": "HEATING OIL" },
     { "symbol": "URA", "name": "Uranium (Global X)", "display": "URANIUM" },

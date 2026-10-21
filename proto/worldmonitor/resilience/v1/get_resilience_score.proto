@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package worldmonitor.resilience.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/resilience/v1/resilience.proto";
+
+message GetResilienceScoreRequest {
+  // ISO 3166-1 alpha-2 country code to score.
+  string country_code = 1 [(sebuf.http.query) = { name: "countryCode", required: true }];
+}
+
+message ScoreInterval {
+  double p05 = 1;
+  double p95 = 2;
+}
+
+message GetResilienceScoreResponse {
+  string country_code = 1;
+  double overall_score = 2;
+  string level = 3;
+  repeated ResilienceDomain domains = 4;
+  reserved 5;
+  string trend = 6;
+  double change_30d = 7;
+  bool low_confidence = 8;
+  double imputation_share = 9;
+  double baseline_score = 10;
+  double stress_score = 11;
+  double stress_factor = 12;
+  string data_version = 13;
+  ScoreInterval score_interval = 14;
+  // Phase 2 T2.1/T2.3: three-pillar schema. Populated with real
+  // domain-weighted, coverage-scaled pillar scores when schema_version ==
+  // "2.0" (the current default). Empty array when schema_version == "1.0", which is
+  // the legacy opt-out path retained for one release cycle via the
+  // RESILIENCE_SCHEMA_V2_ENABLED env flag.
+  repeated ResiliencePillar pillars = 15;
+  // Phase 2 T2.1/T2.3: "2.0" is the current default (adds pillars; keeps
+  // overall_score / baseline_score / etc. populated for backward compat).
+  // "1.0" is the legacy opt-out shape (pillars empty) retained for one
+  // release cycle. Controlled at response build time by the
+  // RESILIENCE_SCHEMA_V2_ENABLED env flag (defaults to "true" → v2).
+  string schema_version = 16;
+  // Current headline-ranking eligibility. True only when the country passes
+  // the headline gate: coverage >= 0.65 AND (population >= 200k OR
+  // coverage >= 0.85) AND !lowConfidence. GetResilienceRanking includes
+  // only eligible countries in items[]; scored but ineligible countries
+  // remain in greyedOut[]. Raw score endpoints still return the country
+  // score when available. Widget and country detail copy should show
+  // "Outside headline ranking" when false unless low-confidence is the more
+  // specific reason.
+  bool headline_eligible = 17;
+}

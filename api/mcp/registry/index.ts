@@ -1,0 +1,207 @@
+import { loadToolAliases } from '../alias';
+import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
+import { JMESPATH_SCHEMA } from '../jmespath';
+import { advertisedOutputSchema } from '../structured-content';
+import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
+import { compressDescription, utf8ByteLength } from '../utils';
+import { CACHE_TOOLS } from './cache-tools';
+import { NLP_TOOLS } from './nlp-tools';
+import { RETIRED_RPC_TOOLS, RPC_TOOLS } from './rpc-tools';
+import { COUNTRY_VIEW_TOOLS } from './country-view';
+import { NEWS_DASHBOARD_TOOLS } from './news-dashboard';
+import { SOURCE_TOOLS } from './source-tools';
+import { MACRO_TOOLS } from './macro-tools';
+import { STOCK_TOOLS } from './stock-tools';
+import { COST_SHOCK_TOOLS } from './cost-shock-tools';
+import { PUBLIC_DOMAIN_TOOLS } from './public-domain-tools';
+import { TARIFF_TOOLS } from './tariff-tools';
+
+// Merged tool registry — cache tools first (no `_execute`), then RPC tools
+// (with `_execute`), then the NLP utilities. Order is observable: `tools/list`
+// emits tools in this same order, and `describe_tool({tool_name: 'nonexistent'})`
+// returns the available-list sorted before responding. NLP_TOOLS is appended
+// last so extracting it from rpc-tools.ts left every other tool's position
+// unchanged. SOURCE_TOOLS is appended after it for the same reason.
+export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS, ...TARIFF_TOOLS];
+export const RETIRED_TOOLS: ToolDef[] = [...RETIRED_RPC_TOOLS];
+
+export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(
+  TOOL_REGISTRY.filter((tool) => tool._freeTier === true).map((tool) => tool.name),
+);
+
+/**
+ * Account tools stay authenticated but never spend an allowance or quota slot:
+ * the metadata reads, and `start_upgrade` (#9144), which an agent most needs
+ * exactly when the allowance is spent.
+ */
+export function isQuotaExemptMetadataTool(tool: ToolDef): boolean {
+  return tool.name === 'describe_tool' || tool.name === 'get_mcp_allowance' || tool.name === 'start_upgrade';
+}
+
+/**
+ * What one `tools/call` COSTS, in REST-request units.
+ *
+ * Whether that cost is charged is `reserveQuota`'s call: only an `api`
+ * allowance pays the weight, because only there is an MCP call meant to be
+ * comparable to a REST request. A dedicated MCP allowance charges one unit per
+ * call regardless of what this returns.
+ *
+ * A cache tool answers from the Upstash bootstrap cache and costs what a REST
+ * request costs, so it charges 1. A tool with `_execute` fetches downstream
+ * through the gateway, which `server/gateway.ts` deliberately exempts from the
+ * per-account meter for internal-MCP callers — so the edge has to charge that
+ * work here or it goes unbilled entirely.
+ *
+ * Most execution tools make one downstream call. Per-tool overrides cover
+ * the maximum fan-out of country briefs (two) and airspace (four when split
+ * at the dateline). The weight is fixed before execution, including when a
+ * request selects fewer sources or needs only one longitude interval.
+ */
+export function toolWeight(tool: ToolDef): number {
+  if (tool._weight !== undefined) return tool._weight;
+  return tool._execute === undefined ? 1 : 2;
+}
+
+/** Single access classifier used by tools/list, describe_tool, and resources. */
+export function toolAccess(tool: ToolDef): McpAccessClass {
+  if (tool._subscriptionOnly) return 'subscription';
+  if (tool._freeTier === true) return 'free';
+  // Local metadata escape hatch: authenticated free accounts may call it and
+  // dispatch exempts it from both the allowance and Pro daily quota.
+  if (isQuotaExemptMetadataTool(tool)) return 'free-account';
+  return tool._execute === undefined ? 'free-account' : 'subscription';
+}
+
+export const TOOL_ALIASES = loadToolAliases(TOOL_REGISTRY, RETIRED_TOOLS, toolAccess);
+
+// Public shape for tools/list — strips internal _-prefixed fields, adds MCP
+// annotations, and injects the universal `summary` flag (issue #3678) into
+// every cache tool's advertised schema. Cache tools are uniformly summarisable;
+// RPC/_execute tools have bespoke response shapes and aren't covered.
+export const SUMMARY_SCHEMA = {
+  type: 'boolean',
+  description: 'Return counts + 3-item samples instead of full lists. Useful when you only need shape/size or want to budget context before drilling in.',
+} as const;
+
+// Collision guard — fail fast at module load if a future PR hand-declares
+// `jmespath` (or `summary` on a cache tool) on a tool's inputSchema. The
+// universal injection below would silently overwrite the hand-declared
+// version; failing loud forces the author to resolve the duplication.
+for (const tool of TOOL_REGISTRY) {
+  const props = tool.inputSchema.properties;
+  if (props && 'jmespath' in props) {
+    throw new Error(`api/mcp/registry/index.ts: tool "${tool.name}" declares its own 'jmespath' property — collides with universal JMESPATH_SCHEMA injection. Remove the per-tool declaration.`);
+  }
+  if (tool._execute === undefined && props && 'summary' in props) {
+    throw new Error(`api/mcp/registry/index.ts: cache tool "${tool.name}" declares its own 'summary' property — collides with universal SUMMARY_SCHEMA injection. Remove the per-tool declaration.`);
+  }
+}
+
+// Shared public-shape builder (v1.5.0). SINGLE source of truth for what
+// `tools/list` and `describe_tool` emit. Both surfaces go through this
+// helper so they can never drift.
+//
+// Always recursively deep-clones property schemas AND the injected
+// SUMMARY_SCHEMA / JMESPATH_SCHEMA consts via `structuredClone`. Without
+// this, mutating any returned property (including nested `enum` / `items.enum`
+// arrays, e.g. `get_market_data.asset_class.items.enum`) would corrupt
+// the registry or the module-level schema consts. Codex Round 2 explicitly
+// flagged shallow `{ ...prop }` as insufficient for these shapes.
+//
+// `_*`-prefixed internal fields (_apiPaths, _cacheKeys,
+// _freshnessChecks, _coverageKeys, _postFilter, _execute)
+// are NEVER enumerated — the function only constructs a fresh object with
+// the public-shape fields (name, description, inputSchema, annotations).
+//
+// `opts.compressDescriptions` — when true (the tools/list call path),
+// the tool's top-level `description` is capped at TOOL_DESCRIPTION_MAX_BYTES
+// through compressDescription. Every registered description already fits
+// (tests/mcp-tools-list-description-budget.test.mjs), so on a passing build
+// both paths emit the same text; the cap is a runtime backstop, not a
+// second shape. When false (the describe_tool call path), text is passed
+// through untouched.
+export function buildPublicTool(
+  tool: ToolDef,
+  opts: { compressDescriptions: boolean },
+): PublicToolShape {
+  const isCacheTool = tool._execute === undefined;
+
+  // Recursively clone each property schema. Handles both direct `enum: [...]`
+  // arrays and nested `items.enum: [...]` arrays — both shapes appear in
+  // TOOL_REGISTRY (e.g. get_market_data's `asset_class.items.enum` and
+  // `get_news_intelligence.topic.enum`). `structuredClone` is a Web Platform
+  // global on Vercel edge + Node 18+ (no polyfill needed).
+  const clonedProperties: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(tool.inputSchema.properties)) {
+    clonedProperties[key] = structuredClone(value);
+  }
+
+  // Inject the universal schemas as CLONES, not bare references, so that
+  // mutating `result.inputSchema.properties.jmespath.description` doesn't
+  // corrupt the module-level JMESPATH_SCHEMA const.
+  if (isCacheTool) {
+    clonedProperties.summary = structuredClone(SUMMARY_SCHEMA);
+  }
+  // Universal, with no roster: a licence-bearing tool declares `_attribution`
+  // instead, and the dispatcher re-attaches its sources to every projection
+  // (shared/attribution-rider.ts). Nothing here is allowed to gate it, because
+  // a tool advertising no `jmespath` is exactly the state that made the old
+  // roster's gaps invisible.
+  clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
+
+  const description = opts.compressDescriptions
+    ? compressDescription(tool.description, TOOL_DESCRIPTION_MAX_BYTES)
+    : tool.description;
+
+  const publicTool: PublicToolShape = {
+    name: tool.name,
+    title: tool.title,
+    description,
+    inputSchema: {
+      type: tool.inputSchema.type,
+      properties: clonedProperties,
+      required: [...tool.inputSchema.required],
+      ...(tool.inputSchema.oneOf ? { oneOf: structuredClone(tool.inputSchema.oneOf) } : {}),
+    },
+    // Deep-clone for the same reason as inputSchema.properties — mutating the
+    // returned object must not corrupt the module-level outputSchema literal.
+    // Advertised as `anyOf [documented shape, projection / soft-envelope
+    // shapes]` so the `structuredContent` every call returns validates in a
+    // strict client whatever the response kind (api/mcp/structured-content.ts).
+    outputSchema: advertisedOutputSchema(structuredClone(tool.outputSchema), {
+      permitDeprecation: TOOL_ALIASES.targetNames().has(tool.name),
+    }),
+    // Per-tool annotations declared on each registry entry (v1.7.0).
+    // Deep-cloned so a mutating client can't poison the registry literal —
+    // matches the inputSchema.properties + outputSchema treatment above.
+    // The spec's annotations.title repeats the top-level title: some hosts,
+    // including the Claude Connectors Directory, read only this one.
+    annotations: { title: tool.title, ...structuredClone(tool.annotations) },
+    _meta: {
+      'worldmonitor/access': toolAccess(tool),
+      'worldmonitor/weight': toolWeight(tool),
+    },
+  };
+
+  // MCP Apps (`io.modelcontextprotocol/ui`) — translate the tool's internal
+  // `_uiResourceUri` into the spec-reserved public `_meta`. Emit BOTH the
+  // nested `ui.resourceUri` (current form) and the flat `ui/resourceUri`
+  // (deprecated legacy alias) so hosts on either revision resolve the shell.
+  // Only tools with an interactive UI surface carry the UI-specific fields;
+  // every tool carries the agent-facing access marker initialized above.
+  if (tool._uiResourceUri) {
+    publicTool._meta.ui = { resourceUri: tool._uiResourceUri };
+    publicTool._meta['ui/resourceUri'] = tool._uiResourceUri;
+    if (tool._openaiEntrypoints) {
+      publicTool._meta['openai/ui'] = { entrypoints: structuredClone(tool._openaiEntrypoints) };
+    }
+  }
+
+  return publicTool;
+}
+
+export const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => buildPublicTool(tool, { compressDescriptions: true }));
+// Tools-list payload is static at module load — precompute its wire size so
+// the per-session `mcp.tools_list_emitted` telemetry line doesn't re-stringify
+// ~5 KB on every initialize.
+export const TOOL_LIST_BYTES = utf8ByteLength(JSON.stringify(TOOL_LIST_RESPONSE));

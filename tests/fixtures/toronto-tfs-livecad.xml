@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tfs_active_incidents>
+  <update_from_db_time>2026-08-20 17:45:01</update_from_db_time>
+  <event>
+    <prime_street>YARDLEY AVE, EY</prime_street>
+    <cross_streets>BARRON RD / GLENBURN AVE</cross_streets>
+    <dispatch_time>2026-08-20T15:56:47</dispatch_time>
+    <event_num>F26129800</event_num>
+    <event_type>Fire - Residential</event_type>
+    <alarm_lev>0</alarm_lev>
+    <beat>235</beat>
+    <units_disp>A221, C22, C24, LA325, P222, P224, R235, S232</units_disp>
+  </event>
+  <event>
+    <prime_street>DUNDAS ST, TT</prime_street>
+    <cross_streets>GEORGE ST / PEMBROKE ST</cross_streets>
+    <dispatch_time>2026-08-20T16:33:40</dispatch_time>
+    <event_num>F26129823</event_num>
+    <event_type>Fire -  Highrise Residential</event_type>
+    <alarm_lev>2</alarm_lev>
+    <beat>325</beat>
+    <units_disp>C30, C31, CMD30, HR332, P312, R325, S313, T333</units_disp>
+  </event>
+  <event>
+    <prime_street>&#x20;</prime_street>
+    <cross_streets>DON MILLS RD / FINCH AVE E</cross_streets>
+    <dispatch_time>2026-08-20T17:19:31</dispatch_time>
+    <event_num>F26129847</event_num>
+    <event_type>Vehicle - Personal Injury</event_type>
+    <alarm_lev>0</alarm_lev>
+    <beat>113</beat>
+    <units_disp>P113</units_disp>
+  </event>
+</tfs_active_incidents>

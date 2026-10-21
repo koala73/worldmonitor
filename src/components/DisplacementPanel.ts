@@ -1,15 +1,28 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
-import type { UnhcrSummary, CountryDisplacement } from '@/services/displacement';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
+import type { UnhcrSummary, CountryDisplacement, CrossBorderData, CrossBorderSituation, DisplacementEventCountrySummary, DisplacementEventsData, InternalDisplacementData, InternalDisplacementOperation } from '@/services/displacement';
 import { formatPopulation } from '@/services/displacement';
 import { t } from '@/services/i18n';
+import { renderFollowedOnlyChip, type FollowedOnlyChipHandle } from '@/utils/followed-only-chip';
+import { isFollowed, subscribe as subscribeFollowed } from '@/services/followed-countries';
+import { toIso2 } from '@/utils/country-codes';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { bindActivationKeys } from '@/utils/activation';
 
-type DisplacementTab = 'origins' | 'hosts';
+
+type DisplacementTab = 'origins' | 'hosts' | 'recent' | 'internal' | 'crossBorder';
 
 export class DisplacementPanel extends Panel {
   private data: UnhcrSummary | null = null;
+  private internalData: InternalDisplacementData | null = null;
+  private crossBorderData: CrossBorderData | null = null;
+  private eventsData: DisplacementEventsData | null = null;
   private activeTab: DisplacementTab = 'origins';
   private onCountryClick?: (lat: number, lon: number) => void;
+  private followedOnlyChip: FollowedOnlyChipHandle | null = null;
+  private followedOnlyHost: HTMLElement | null = null;
+  private followedOnlyTeardown: (() => void) | null = null;
+  private followedUnsub: (() => void) | null = null;
 
   constructor() {
     super({
@@ -30,12 +43,49 @@ export class DisplacementPanel extends Panel {
         return;
       }
       const row = (e.target as HTMLElement).closest<HTMLElement>('.disp-row');
-      if (row) {
+      // An empty attribute means the row has no location; Number('') is 0.
+      if (row?.dataset.lat && row.dataset.lon) {
         const lat = Number(row.dataset.lat);
         const lon = Number(row.dataset.lon);
         if (Number.isFinite(lat) && Number.isFinite(lon)) this.onCountryClick?.(lat, lon);
       }
     });
+    this.mountFollowedOnlyChip();
+    bindActivationKeys(this.content, '.disp-row');
+  }
+
+  private mountFollowedOnlyChip(): void {
+    const host = document.createElement('span');
+    host.className = 'panel-header-followed-only-host';
+    this.followedOnlyHost = host;
+    this.followedOnlyChip = renderFollowedOnlyChip({
+      panelId: 'displacement',
+      onChange: () => {
+        this.renderContent();
+      },
+    });
+    if (this.followedOnlyChip.html === '') return;
+    setTrustedHtml(host, trustedHtml(this.followedOnlyChip.html, "legacy direct innerHTML migration"));
+    // Insert BEFORE the close button so close stays rightmost. The Panel
+    // base appends `.panel-close-btn` first; a plain `appendChild` would
+    // land the chip after close and break the user expectation that X
+    // is always the last header control.
+    const closeBtn = this.header.querySelector('.panel-close-btn');
+    if (closeBtn) {
+      this.header.insertBefore(host, closeBtn);
+    } else {
+      this.header.appendChild(host);
+    }
+    this.followedOnlyTeardown = this.followedOnlyChip.attach(host);
+    // Re-filter on external watchlist change so a follow/unfollow from
+    // another surface refreshes the displacement table immediately.
+    this.followedUnsub = subscribeFollowed(() => {
+      this.renderContent();
+    });
+  }
+
+  protected override updateFreshnessBadge(): void {
+    super.updateFreshnessBadge(this.activeTab === 'origins' || this.activeTab === 'hosts' ? undefined : null);
   }
 
   public setCountryClickHandler(handler: (lat: number, lon: number) => void): void {
@@ -48,48 +98,120 @@ export class DisplacementPanel extends Panel {
     this.renderContent();
   }
 
+  public setInternalData(data: InternalDisplacementData): void {
+    this.internalData = data;
+    this.renderContent();
+  }
+
+  public setCrossBorderData(data: CrossBorderData): void {
+    this.crossBorderData = data;
+    this.renderContent();
+  }
+
+  public setEventsData(data: DisplacementEventsData): void {
+    this.eventsData = data;
+    // UNHCR owns the header count once it arrives.
+    if (!this.data) this.setCount(data.countries.length);
+    this.renderContent();
+  }
+
+  // Any one source counts: a later UNHCR failure must not replace DTM, IDMC or portal tabs with an error.
+  public hasData(): boolean {
+    return this.data !== null || this.internalData !== null || this.crossBorderData !== null || this.eventsData !== null;
+  }
+
+  // UNHCR yearly data, IDMC, IOM DTM and the UNHCR portal load independently; each
+  // tab renders as soon as its own data is there.
   private renderContent(): void {
-    if (!this.data) return;
+    const sources: { id: DisplacementTab; label: string; render?: () => string }[] = [];
+    if (this.data) {
+      sources.push({ id: 'origins', label: t('components.displacement.origins') });
+      sources.push({ id: 'hosts', label: t('components.displacement.hosts') });
+    }
+    const events = this.eventsData;
+    if (events) {
+      sources.push({ id: 'recent', label: t('components.displacement.recent'), render: () => this.renderRecentTable(events) });
+    }
+    const internal = this.internalData;
+    if (internal) {
+      sources.push({ id: 'internal', label: t('components.displacement.internal'), render: () => this.renderInternalTable(internal.operations) });
+    }
+    const crossBorder = this.crossBorderData;
+    if (crossBorder) {
+      sources.push({ id: 'crossBorder', label: t('components.displacement.crossBorder'), render: () => this.renderCrossBorderTable(crossBorder.situations) });
+    }
+    if (sources.length === 0) return;
+    if (!sources.some((source) => source.id === this.activeTab)) this.activeTab = sources[0]!.id;
+    this.updateFreshnessBadge();
 
-    const g = this.data.globalTotals;
+    const tabsHtml = `
+      <div class="panel-tabs" role="tablist" aria-label="Displacement data view">
+        ${sources.map((source) => `<button class="panel-tab ${this.activeTab === source.id ? 'active' : ''}" data-tab="${source.id}" role="tab" aria-selected="${this.activeTab === source.id}" id="disp-tab-${source.id}" aria-controls="disp-tab-panel">${source.label}</button>`).join('')}
+      </div>
+    `;
+    const statsHtml = this.data ? this.renderStats(this.data) : '';
+    const active = sources.find((source) => source.id === this.activeTab)!;
+    const bodyHtml = active.render ? active.render() : this.renderUnhcrTable(this.data!);
 
+    this.setSafeContent(unsafeRawHtml(`
+      <div class="disp-panel-content">
+        ${statsHtml ? `<div class="disp-stats-grid">${statsHtml}</div>` : ''}
+        ${tabsHtml}
+        <div id="disp-tab-panel" role="tabpanel" aria-labelledby="disp-tab-${this.activeTab}">
+          ${bodyHtml}
+        </div>
+      </div>
+    `, 'legacy Panel.setContent() migration'));
+  }
+
+  private renderStats(data: UnhcrSummary): string {
+    const g = data.globalTotals;
     const stats = [
       { label: t('components.displacement.refugees'), value: formatPopulation(g.refugees), cls: 'disp-stat-refugees' },
       { label: t('components.displacement.asylumSeekers'), value: formatPopulation(g.asylumSeekers), cls: 'disp-stat-asylum' },
       { label: t('components.displacement.idps'), value: formatPopulation(g.idps), cls: 'disp-stat-idps' },
       { label: t('components.displacement.total'), value: formatPopulation(g.total), cls: 'disp-stat-total' },
     ];
-
-    const statsHtml = stats.map(s =>
+    return stats.map(s =>
       `<div class="disp-stat-box ${s.cls}">
         <span class="disp-stat-value">${s.value}</span>
         <span class="disp-stat-label">${s.label}</span>
       </div>`
     ).join('');
+  }
 
-    const tabsHtml = `
-      <div class="panel-tabs" role="tablist" aria-label="Displacement data view">
-        <button class="panel-tab ${this.activeTab === 'origins' ? 'active' : ''}" data-tab="origins" role="tab" aria-selected="${this.activeTab === 'origins'}" id="disp-tab-origins" aria-controls="disp-tab-panel">${t('components.displacement.origins')}</button>
-        <button class="panel-tab ${this.activeTab === 'hosts' ? 'active' : ''}" data-tab="hosts" role="tab" aria-selected="${this.activeTab === 'hosts'}" id="disp-tab-hosts" aria-controls="disp-tab-panel">${t('components.displacement.hosts')}</button>
-      </div>
-    `;
-
+  private renderUnhcrTable(data: UnhcrSummary): string {
     let countries: CountryDisplacement[];
     if (this.activeTab === 'origins') {
-      countries = [...this.data.countries]
+      countries = [...data.countries]
         .filter(c => c.refugees + c.asylumSeekers > 0)
         .sort((a, b) => (b.refugees + b.asylumSeekers) - (a.refugees + a.asylumSeekers));
     } else {
-      countries = [...this.data.countries]
+      countries = [...data.countries]
         .filter(c => (c.hostTotal || 0) > 0)
         .sort((a, b) => (b.hostTotal || 0) - (a.hostTotal || 0));
+    }
+
+    // U7 — "Followed only" filter chip. When active, drop rows whose
+    // country code is not in the user's watchlist. Items without a
+    // resolvable ISO-2 are dropped (we can't prove they belong to a
+    // followed country).
+    const followedOnlyActive = this.followedOnlyChip?.isActive() === true;
+    if (followedOnlyActive) {
+      countries = countries.filter(c => {
+        const code = toIso2(c.code ?? '');
+        return code ? isFollowed(code) : false;
+      });
     }
 
     const displayed = countries.slice(0, 30);
     let tableHtml: string;
 
     if (displayed.length === 0) {
-      tableHtml = `<div class="panel-empty">${t('common.noDataShort')}</div>`;
+      const emptyMsg = followedOnlyActive
+        ? 'No items in your followed countries. Add countries by tapping the star, or turn off this filter.'
+        : t('common.noDataShort');
+      tableHtml = `<div class="panel-empty">${escapeHtml(emptyMsg)}</div>`;
     } else {
       const rows = displayed.map(c => {
         const hostTotal = c.hostTotal || 0;
@@ -107,7 +229,7 @@ export class DisplacementPanel extends Panel {
           ? `<span class="disp-badge ${badgeCls}">${badgeLabel}</span>`
           : '';
 
-        return `<tr class="disp-row" data-lat="${c.lat || ''}" data-lon="${c.lon || ''}">
+        return `<tr class="disp-row" data-lat="${c.lat || ''}" data-lon="${c.lon || ''}" tabindex="0">
           <td class="disp-name">${escapeHtml(c.name)}</td>
           <td class="disp-status">${badgeHtml}</td>
           <td class="disp-count">${formatPopulation(count)}</td>
@@ -118,23 +240,180 @@ export class DisplacementPanel extends Panel {
         <table class="disp-table">
           <thead>
             <tr>
-              <th>${t('components.displacement.country')}</th>
-              <th>${t('components.displacement.status')}</th>
-              <th>${t('components.displacement.count')}</th>
+              <th scope="col">${t('components.displacement.country')}</th>
+              <th scope="col">${t('components.displacement.status')}</th>
+              <th scope="col">${t('components.displacement.count')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>`;
     }
+    return tableHtml;
+  }
 
-    this.setContent(`
-      <div class="disp-panel-content">
-        <div class="disp-stats-grid">${statsHtml}</div>
-        ${tabsHtml}
-        <div id="disp-tab-panel" role="tabpanel" aria-labelledby="disp-tab-${this.activeTab}">
-          ${tableHtml}
-        </div>
-      </div>
-    `);
+  // One row per UNHCR situation. Situations overlap (Sudanese refugees in
+  // Chad are also in the Sahel situation), so rows are never added up.
+  private renderCrossBorderTable(allSituations: CrossBorderSituation[]): string {
+    let situations = allSituations;
+    const followedOnlyActive = this.followedOnlyChip?.isActive() === true;
+    if (followedOnlyActive) {
+      situations = situations.filter(s => s.countryCodes.some(code => isFollowed(code)));
+    }
+    if (situations.length === 0) {
+      const emptyMsg = followedOnlyActive
+        ? 'No items in your followed countries. Add countries by tapping the star, or turn off this filter.'
+        : t('common.noDataShort');
+      return `<div class="panel-empty">${escapeHtml(emptyMsg)}</div>`;
+    }
+    const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '-' : ''}${formatPopulation(Math.abs(n))}`;
+    const rows = situations.map(s => {
+      let change = '—';
+      let period = '';
+      if (s.lastMonth) {
+        change = formatPopulation(s.lastMonth.individuals);
+        period = s.lastMonth.month;
+      } else if (s.latestChange) {
+        change = signed(s.latestChange.delta);
+        period = s.latestChange.days ? t('components.displacement.inDays', { days: String(s.latestChange.days) }) : '';
+      }
+      const badge = s.accelerating ? ` <span class="disp-badge disp-crisis">${t('components.displacement.accelerating')}</span>` : '';
+      const detail = [s.asOf, s.kind, s.measure, s.stale ? t('components.displacement.staleReport') : '', s.topCountries.join(', ')].filter(Boolean).join(' · ');
+      const source = s.source || 'UNHCR Operational Data Portal';
+      const sourceLink = /^https:\/\//.test(s.sourceUrl) ? `<a href="${escapeHtml(s.sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source)}</a>` : escapeHtml(source);
+      const windows = s.last7Days !== undefined || s.last30Days !== undefined
+        ? `${s.last7Days === undefined ? '—' : s.last7Days.toLocaleString('en-US')} / ${s.last30Days === undefined ? '—' : s.last30Days.toLocaleString('en-US')}` : '';
+      if (windows) { change = windows; period = t('components.displacement.last7And30'); }
+      if (s.changePct !== undefined) period += ` (${s.changePct > 0 ? '+' : ''}${s.changePct.toFixed(0)}%)`;
+      return `<tr class="disp-row" data-lat="${s.lat ?? ''}" data-lon="${s.lon ?? ''}" tabindex="0">
+          <td class="disp-name">${escapeHtml(s.name)}${badge}<div class="disp-operation">${escapeHtml(detail)}</div><div class="disp-operation">${sourceLink}</div></td>
+          <td class="disp-round">${escapeHtml(change)}${period ? `<div class="disp-operation">${escapeHtml(period)}</div>` : ''}</td>
+          <td class="disp-count">${formatPopulation(s.total)}</td>
+        </tr>`;
+    }).join('');
+    const statuses = this.crossBorderData?.sources?.map(source => `${source.name}: ${source.status}`).join(' · ');
+    return `
+        ${statuses ? `<div class="disp-source-note">${escapeHtml(statuses)}</div>` : ''}
+        <table class="disp-table disp-movements-table">
+          <thead>
+            <tr>
+              <th scope="col">${t('components.displacement.situation')}</th>
+              <th scope="col" class="disp-round">${t('components.displacement.period')}</th>
+              <th scope="col" class="disp-count">${t('components.displacement.reported')}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="disp-source-note">${escapeHtml(t('components.displacement.movementNote'))}</div>`;
+  }
+
+  // One row per country with IDMC figures in the last 30 days or published this week.
+  private renderRecentTable(events: DisplacementEventsData): string {
+    let countries: DisplacementEventCountrySummary[] = events.countries;
+    const followedOnlyActive = this.followedOnlyChip?.isActive() === true;
+    if (followedOnlyActive) {
+      countries = countries.filter(c => {
+        const code = toIso2(c.countryCode ?? '');
+        return code ? isFollowed(code) : false;
+      });
+    }
+    if (countries.length === 0) {
+      const emptyMsg = followedOnlyActive
+        ? 'No items in your followed countries. Add countries by tapping the star, or turn off this filter.'
+        : t('common.noDataShort');
+      return `<div class="panel-empty">${escapeHtml(emptyMsg)}</div>`;
+    }
+    const rows = countries.slice(0, 40).map(c => {
+      const badge = c.surge ? ` <span class="disp-badge disp-crisis">${t('components.displacement.surge')}</span>` : '';
+      const split = [
+        c.conflict30d > 0 ? `${t('components.displacement.conflict')} ${formatPopulation(c.conflict30d)}` : '',
+        c.disaster30d > 0 ? `${t('components.displacement.disaster')} ${formatPopulation(c.disaster30d)}` : '',
+      ].filter(Boolean).join(' · ');
+      return `<tr class="disp-row" data-lat="${c.lat ?? ''}" data-lon="${c.lon ?? ''}" tabindex="0">
+          <td class="disp-name">${escapeHtml(c.countryName)}${badge}${split ? `<div class="disp-operation">${escapeHtml(split)}</div>` : ''}</td>
+          <td class="disp-round">${c.newlyReported7d > 0 ? formatPopulation(c.newlyReported7d) : '—'}</td>
+          <td class="disp-count">${formatPopulation(c.displaced30d)}</td>
+        </tr>`;
+    }).join('');
+    return `
+        <table class="disp-table">
+          <thead>
+            <tr>
+              <th scope="col">${t('components.displacement.country')}</th>
+              <th scope="col" class="disp-round">${t('components.displacement.newThisWeek')}</th>
+              <th scope="col" class="disp-count">${t('components.displacement.last30Days')}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="disp-source-note">${escapeHtml(this.recentNote(events))}</div>`;
+  }
+
+  private recentNote(events: DisplacementEventsData): string {
+    return [
+      t('components.displacement.recentNote'),
+      events.asOf ? t('components.displacement.recentAsOf', { date: events.asOf }) : '',
+      events.missingCountries.length ? t('components.displacement.recentMissing', { countries: events.missingCountries.join(', ') }) : '',
+    ].filter(Boolean).join(' ');
+  }
+
+  // One row per IOM DTM operation. Operations in a country can overlap, so
+  // rows are never added up into a country total.
+  private renderInternalTable(allOperations: InternalDisplacementOperation[]): string {
+    let operations = allOperations;
+    const followedOnlyActive = this.followedOnlyChip?.isActive() === true;
+    if (followedOnlyActive) {
+      operations = operations.filter(op => {
+        const code = toIso2(op.countryCode ?? '');
+        return code ? isFollowed(code) : false;
+      });
+    }
+    if (operations.length === 0) {
+      const emptyMsg = followedOnlyActive
+        ? 'No items in your followed countries. Add countries by tapping the star, or turn off this filter.'
+        : t('common.noDataShort');
+      return `<div class="panel-empty">${escapeHtml(emptyMsg)}</div>`;
+    }
+    const rows = operations.slice(0, 40).map(op => `<tr class="disp-row" data-lat="${op.lat ?? ''}" data-lon="${op.lon ?? ''}" tabindex="0">
+          <td class="disp-name">${escapeHtml(op.countryName)}<div class="disp-operation">${escapeHtml(op.operation)}</div></td>
+          <td class="disp-round">${escapeHtml(op.reportingDate)}</td>
+          <td class="disp-count">${formatPopulation(op.totalIdps)}</td>
+        </tr>`).join('');
+    return `
+        <table class="disp-table">
+          <thead>
+            <tr>
+              <th scope="col">${t('components.displacement.country')}</th>
+              <th scope="col" class="disp-round">${t('components.displacement.latestRound')}</th>
+              <th scope="col" class="disp-count">${t('components.displacement.idps')}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="disp-source-note">${escapeHtml(t('components.displacement.internalNote'))}</div>`;
+  }
+
+  public override destroy(): void {
+    if (this.followedOnlyTeardown) {
+      try {
+        this.followedOnlyTeardown();
+      } catch {
+        /* swallow */
+      }
+      this.followedOnlyTeardown = null;
+    }
+    if (this.followedUnsub) {
+      try {
+        this.followedUnsub();
+      } catch {
+        /* swallow */
+      }
+      this.followedUnsub = null;
+    }
+    if (this.followedOnlyHost && this.followedOnlyHost.parentElement) {
+      this.followedOnlyHost.parentElement.removeChild(this.followedOnlyHost);
+    }
+    this.followedOnlyHost = null;
+    this.followedOnlyChip = null;
+    super.destroy();
   }
 }

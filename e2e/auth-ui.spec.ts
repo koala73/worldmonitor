@@ -17,7 +17,7 @@ test.describe('auth UI (anonymous state)', () => {
 
   test('Sign In button visible with readable text', async ({ page }) => {
     await page.goto('/');
-    const signInBtn = page.locator('.auth-signin-btn');
+    const signInBtn = page.locator('#authWidgetMount .auth-signin-btn');
     await signInBtn.waitFor({ timeout: 20000 });
     await expect(signInBtn).toBeVisible();
     await expect(signInBtn).toHaveText('Sign In');
@@ -31,8 +31,9 @@ test.describe('auth UI (anonymous state)', () => {
 
   test('Sign In click triggers Clerk modal or overlay', async ({ page }) => {
     await page.goto('/');
-    await page.locator('.auth-signin-btn').waitFor({ timeout: 20000 });
-    await jsClick(page, '.auth-signin-btn');
+    const signInSelector = '#authWidgetMount .auth-signin-btn';
+    await page.locator(signInSelector).waitFor({ timeout: 20000 });
+    await jsClick(page, signInSelector);
 
     // Clerk renders its modal into .cl-rootBox or an iframe.
     // When Clerk JS is not configured (no publishable key in test env),

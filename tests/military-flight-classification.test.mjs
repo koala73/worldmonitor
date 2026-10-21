@@ -196,6 +196,75 @@ describe('military flight classification', () => {
     });
   });
 
+  it('admits exact validated PLA aircraft without adding a China-wide hex range', () => {
+    const fixtures = [
+      { hex: '7A4262', type: 'reconnaissance' },
+      { hex: '7A444F', type: 'tanker' },
+      { hex: '7A446F', type: 'transport' },
+      { hex: '7A4403', type: 'transport' },
+    ];
+
+    for (const fixture of fixtures) {
+      const { flights } = filterMilitaryFlights([makeState({
+        icao24: fixture.hex,
+        callsign: '',
+        country: 'China',
+        lon: 120,
+        lat: 25,
+      })]);
+      assert.equal(flights.length, 1, `${fixture.hex} should classify by exact record`);
+      assert.equal(flights[0].operator, 'plaaf');
+      assert.equal(flights[0].operatorCountry, 'China');
+      assert.equal(flights[0].aircraftType, fixture.type);
+      assert.equal(flights[0].confidence, 'high');
+      assert.equal(flights[0].admissionReason, 'hex_exact');
+    }
+  });
+
+  it('admits explicit trusted PLAAF and PLAN operator metadata on otherwise-unclassified hexes', () => {
+    const fixtures = [
+      { hex: '780123', operatorCode: 'PLAAF', expected: 'plaaf', type: 'J-16 fighter' },
+      { hex: '781234', operatorCode: 'PLAN', expected: 'plan', type: 'Y-9 patrol aircraft' },
+    ];
+
+    for (const fixture of fixtures) {
+      const { flights } = filterMilitaryFlights([makeState({
+        icao24: fixture.hex,
+        callsign: '',
+        country: 'China',
+        lon: 120,
+        lat: 25,
+        sourceMeta: {
+          operatorCode: fixture.operatorCode,
+          aircraftTypeLabel: fixture.type,
+        },
+      })]);
+      assert.equal(flights.length, 1, `${fixture.operatorCode} metadata should be trusted`);
+      assert.equal(flights[0].operator, fixture.expected);
+      assert.equal(flights[0].operatorCountry, 'China');
+      assert.equal(flights[0].admissionReason, 'source_operator_trusted');
+      assert.equal(flights[0].operatorInferenceReason, 'source_metadata');
+    }
+  });
+
+  it('keeps Chinese airlines and arbitrary national-allocation hexes non-military', () => {
+    const fixtures = [
+      { hex: '780101', callsign: 'CCA123' }, // Air China
+      { hex: '780102', callsign: 'CSN456' }, // China Southern
+      { hex: '780103', callsign: 'CHH789' }, // Hainan Airlines
+      { hex: '7A4000', callsign: '' },        // arbitrary China allocation
+    ];
+
+    const { flights } = filterMilitaryFlights(fixtures.map((fixture) => makeState({
+      icao24: fixture.hex,
+      callsign: fixture.callsign,
+      country: 'China',
+      lon: 120,
+      lat: 25,
+    })));
+    assert.deepEqual(flights, []);
+  });
+
   it('does not false-positive short operator acronyms inside unrelated words', () => {
     assert.equal(deriveOperatorFromSourceMeta({
       operatorName: 'Civil Aircraft Leasing',

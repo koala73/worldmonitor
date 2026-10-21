@@ -1,0 +1,283 @@
+{
+  "policyVersion": "cm-evidence-selection-v1",
+  "now": 1785921600000,
+  "cases": [
+    {
+      "name": "common names fail closed",
+      "subjects": [
+        {
+          "companyId": "company-acme-us",
+          "name": "Acme Holdings",
+          "claims": [
+            { "claimId": "claim-acme-us", "type": "alias", "value": "Acme", "trustState": "unverified", "allowedUses": ["discovery", "attribution"] }
+          ]
+        },
+        {
+          "companyId": "company-acme-uk",
+          "name": "Acme Industries",
+          "claims": [
+            { "claimId": "claim-acme-uk", "type": "alias", "value": "Acme", "trustState": "unverified", "allowedUses": ["discovery", "attribution"] }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "provider": "exa",
+          "providerLocator": "exa-common-acme",
+          "url": "https://news.example/acme-update",
+          "title": "Acme announces an expansion",
+          "publishedAt": 1785921500000,
+          "observedAt": 1785921600000,
+          "candidateCompanyIds": ["company-acme-us", "company-acme-uk"],
+          "sourceAuthority": "independent_source"
+        }
+      ],
+      "expected": { "companyIds": [], "candidateCount": 0 }
+    },
+    {
+      "name": "ambiguous short names fail closed",
+      "subjects": [
+        {
+          "companyId": "company-x-labs",
+          "name": "X Labs",
+          "claims": [
+            { "claimId": "claim-x", "type": "alias", "value": "X", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "provider": "exa",
+          "providerLocator": "exa-short-x",
+          "url": "https://wire.example/x-update",
+          "title": "X launches today",
+          "publishedAt": 1785921500000,
+          "observedAt": 1785921600000,
+          "candidateCompanyIds": ["company-x-labs"],
+          "sourceAuthority": "independent_source"
+        }
+      ],
+      "expected": { "companyIds": [], "candidateCount": 0 }
+    },
+    {
+      "name": "sparse strong evidence produces one blocking candidate",
+      "subjects": [
+        {
+          "companyId": "company-sparse",
+          "name": "Sparse Systems Ltd",
+          "claims": [
+            { "claimId": "claim-sparse-lei", "type": "legal_identifier", "value": "lei:549300SPARSE01", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "provider": "exa",
+          "providerLocator": "exa-sparse-1",
+          "url": "https://independent.example/sparse-contract",
+          "title": "Sparse Systems wins contract (LEI:549300SPARSE01)",
+          "publishedAt": 1785921500000,
+          "observedAt": 1785921600000,
+          "candidateCompanyIds": ["company-sparse"],
+          "sourceAuthority": "independent_source"
+        }
+      ],
+      "expected": {
+        "companyIds": ["company-sparse"],
+        "candidateCount": 1,
+        "observationBlocking": true,
+        "referenceCount": 1,
+        "referencesTruncated": false
+      }
+    },
+    {
+      "name": "parent subsidiary alias collision fails closed",
+      "subjects": [
+        {
+          "companyId": "company-globex-parent",
+          "name": "Globex Corporation",
+          "claims": [
+            { "claimId": "claim-globex-parent", "type": "alias", "value": "Globex", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        },
+        {
+          "companyId": "company-globex-energy",
+          "name": "Globex Energy Limited",
+          "claims": [
+            { "claimId": "claim-globex-energy", "type": "alias", "value": "Globex Energy", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "provider": "exa",
+          "providerLocator": "exa-globex-energy",
+          "url": "https://industry.example/globex-energy",
+          "title": "Globex Energy Limited updates its outlook",
+          "publishedAt": 1785921500000,
+          "observedAt": 1785921600000,
+          "candidateCompanyIds": ["company-globex-parent", "company-globex-energy"],
+          "sourceAuthority": "independent_source"
+        }
+      ],
+      "expected": { "companyIds": [], "candidateCount": 0 }
+    },
+    {
+      "name": "parent subsidiary shared strong domain fails closed",
+      "subjects": [
+        {
+          "companyId": "company-shared-parent",
+          "name": "Shared Group Plc",
+          "claims": [
+            { "claimId": "claim-shared-parent-domain", "type": "domain", "value": "shared-group.example", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        },
+        {
+          "companyId": "company-shared-subsidiary",
+          "name": "Shared Group Energy Ltd",
+          "claims": [
+            { "claimId": "claim-shared-subsidiary-domain", "type": "domain", "value": "shared-group.example", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "provider": "exa",
+          "providerLocator": "exa-shared-domain",
+          "url": "https://shared-group.example/news/update",
+          "title": "Shared Group announces an update",
+          "publishedAt": 1785921500000,
+          "observedAt": 1785921600000,
+          "candidateCompanyIds": ["company-shared-parent", "company-shared-subsidiary"],
+          "sourceAuthority": "low_authority"
+        }
+      ],
+      "expected": { "companyIds": [], "candidateCount": 0 }
+    },
+    {
+      "name": "discovery-only claims cannot attribute evidence",
+      "subjects": [
+        {
+          "companyId": "company-discovery-only",
+          "name": "Discovery Only Ltd",
+          "claims": [
+            { "claimId": "claim-discovery-only", "type": "legal_identifier", "value": "lei:DISCOVERYONLY", "trustState": "verified", "allowedUses": ["discovery"] }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "provider": "exa",
+          "providerLocator": "exa-discovery-only",
+          "url": "https://independent.example/discovery-only",
+          "title": "Discovery Only Ltd update (LEI:DISCOVERYONLY)",
+          "publishedAt": 1785921500000,
+          "observedAt": 1785921600000,
+          "candidateCompanyIds": ["company-discovery-only"],
+          "sourceAuthority": "independent_source"
+        }
+      ],
+      "expected": { "companyIds": [], "candidateCount": 0 }
+    },
+    {
+      "name": "low-authority rumors never block observation",
+      "subjects": [
+        {
+          "companyId": "company-rumor",
+          "name": "Rumor Systems Ltd",
+          "claims": [
+            { "claimId": "claim-rumor-lei", "type": "legal_identifier", "value": "lei:RUMOR123", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "provider": "exa",
+          "providerLocator": "exa-rumor-1",
+          "url": "https://reddit.com/r/business/comments/rumor",
+          "title": "Unconfirmed Rumor Systems report (LEI:RUMOR123)",
+          "publishedAt": 1785921500000,
+          "observedAt": 1785921600000,
+          "candidateCompanyIds": ["company-rumor"],
+          "sourceAuthority": "low_authority"
+        }
+      ],
+      "expected": {
+        "companyIds": ["company-rumor"],
+        "candidateCount": 1,
+        "observationBlocking": false,
+        "referenceCount": 1,
+        "referencesTruncated": false
+      }
+    },
+    {
+      "name": "syndicated evidence collapses and truncates deterministically",
+      "subjects": [
+        {
+          "companyId": "company-northstar",
+          "name": "Northstar Robotics",
+          "claims": [
+            { "claimId": "claim-northstar-lei", "type": "legal_identifier", "value": "lei:549300NORTHSTAR", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        }
+      ],
+      "evidenceTemplate": {
+        "provider": "exa",
+        "providerLocatorPrefix": "exa-syndicated-",
+        "urlPrefix": "https://source-",
+        "urlSuffix": ".example/northstar-award",
+        "title": "Northstar Robotics receives award (LEI:549300NORTHSTAR)",
+        "publishedAt": 1785921500000,
+        "observedAt": 1785921600000,
+        "candidateCompanyIds": ["company-northstar"],
+        "sourceAuthority": "independent_source",
+        "replicas": 22
+      },
+      "expected": {
+        "companyIds": ["company-northstar"],
+        "candidateCount": 1,
+        "referenceCount": 22,
+        "selectedReferenceCount": 20,
+        "referencesTruncated": true,
+        "syndicatedCount": 21
+      }
+    },
+    {
+      "name": "one occurrence remains separately scoped to two companies",
+      "subjects": [
+        {
+          "companyId": "company-red",
+          "name": "Red Shipping",
+          "claims": [
+            { "claimId": "claim-red-lei", "type": "legal_identifier", "value": "lei:RED123", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        },
+        {
+          "companyId": "company-blue",
+          "name": "Blue Logistics",
+          "claims": [
+            { "claimId": "claim-blue-lei", "type": "legal_identifier", "value": "lei:BLUE456", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "provider": "exa",
+          "providerLocator": "exa-joint-venture",
+          "url": "https://business.example/joint-venture",
+          "title": "Red Shipping (LEI:RED123) and Blue Logistics (LEI:BLUE456) form a joint venture",
+          "publishedAt": 1785921500000,
+          "observedAt": 1785921600000,
+          "candidateCompanyIds": ["company-red", "company-blue"],
+          "sourceAuthority": "independent_source"
+        }
+      ],
+      "expected": {
+        "companyIds": ["company-blue", "company-red"],
+        "candidateCount": 2,
+        "sharedContentFingerprint": true,
+        "distinctOccurrenceDedupeKeys": true
+      }
+    }
+  ]
+}

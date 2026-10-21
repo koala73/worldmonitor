@@ -1,0 +1,774 @@
+// Regression test for PR #3078: strict-floor validators must not poison
+// seed-meta on validation failure when opts.emptyDataIsFailure is set.
+//
+// Without this guarantee, a single transient empty fetch would refresh
+// seed-meta with fetchedAt=now, locking bundle runners out of retry for a
+// full interval (30 days for the IMF extended bundle).
+
+import { test, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  BUNDLE_SECTION_TIMEOUT_MS_ENV,
+  GRACEFUL_FETCH_FAILURE_EXIT_CODE,
+  markPreservableFetchFailure,
+  runSeed,
+} from '../scripts/_seed-utils.mjs';
+
+const ORIGINAL_FETCH = globalThis.fetch;
+const ORIGINAL_EXIT = process.exit;
+const ORIGINAL_ENV = {
+  UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+  UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+};
+const ORIGINAL_SIGTERM_LISTENERS = new Set(process.rawListeners('SIGTERM'));
+
+// Cap idle retry waits — attempt count and logged wait stay real (see the
+// WM_SEED_RETRY_DELAY_MS comment in scripts/_seed-utils.mjs withRetry).
+const originalRetryDelay = process.env.WM_SEED_RETRY_DELAY_MS;
+beforeEach(() => {
+  process.env.WM_SEED_RETRY_DELAY_MS = '0';
+});
+afterEach(() => {
+  if (originalRetryDelay === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+  else process.env.WM_SEED_RETRY_DELAY_MS = originalRetryDelay;
+});
+
+let recordedCalls;
+let expireResult;
+let expirePipelineStatus;
+// Redis GET result for seed-meta reads; undefined keeps the generic OK reply.
+let seedMetaGetResult;
+
+beforeEach(() => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example.com';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+  recordedCalls = [];
+  expireResult = 0;
+  expirePipelineStatus = 200;
+  seedMetaGetResult = undefined;
+
+  globalThis.fetch = async (url, opts = {}) => {
+    const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
+    recordedCalls.push({ url: String(url), method: opts?.method || 'GET', body });
+    // Lock acquire: SET NX returns OK. Pipeline (EXPIRE) returns array. Default: OK.
+    if (Array.isArray(body) && Array.isArray(body[0])) {
+      return new Response(JSON.stringify(body.map(() => ({ result: expireResult }))), { status: expirePipelineStatus });
+    }
+    if (seedMetaGetResult !== undefined && String(url).includes('/get/seed-meta%3A')) {
+      return new Response(JSON.stringify({ result: seedMetaGetResult }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+  };
+
+  // runSeed's skipped path calls process.exit(0). Convert to a throw so the
+  // test can proceed after the seed "finishes" and inspect recorded calls.
+  process.exit = (code) => {
+    const e = new Error(`__test_exit__:${code}`);
+    e.exitCode = code;
+    throw e;
+  };
+});
+
+afterEach(() => {
+  globalThis.fetch = ORIGINAL_FETCH;
+  process.exit = ORIGINAL_EXIT;
+  if (ORIGINAL_ENV.UPSTASH_REDIS_REST_URL == null) delete process.env.UPSTASH_REDIS_REST_URL;
+  else process.env.UPSTASH_REDIS_REST_URL = ORIGINAL_ENV.UPSTASH_REDIS_REST_URL;
+  if (ORIGINAL_ENV.UPSTASH_REDIS_REST_TOKEN == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  else process.env.UPSTASH_REDIS_REST_TOKEN = ORIGINAL_ENV.UPSTASH_REDIS_REST_TOKEN;
+  for (const listener of process.rawListeners('SIGTERM')) {
+    if (!ORIGINAL_SIGTERM_LISTENERS.has(listener)) process.removeListener('SIGTERM', listener);
+  }
+});
+
+function countMetaSets(resourceSuffix) {
+  return recordedCalls.filter(c =>
+    Array.isArray(c.body)
+    && c.body[0] === 'SET'
+    && typeof c.body[1] === 'string'
+    && c.body[1] === `seed-meta:test:${resourceSuffix}`,
+  ).length;
+}
+
+function countSetsFor(key) {
+  return recordedCalls.filter(c =>
+    Array.isArray(c.body)
+    && c.body[0] === 'SET'
+    && c.body[1] === key,
+  ).length;
+}
+
+async function runWithExitTrap(fn) {
+  try {
+    await fn();
+    return null;
+  } catch (err) {
+    if (!String(err.message).startsWith('__test_exit__:')) throw err;
+    return err.exitCode;
+  }
+}
+
+function expireKeys() {
+  return recordedCalls
+    .filter(c => Array.isArray(c.body) && Array.isArray(c.body[0]))
+    .flatMap(c => c.body)
+    .filter(cmd => Array.isArray(cmd) && cmd[0] === 'EXPIRE')
+    .map(cmd => cmd[1]);
+}
+
+function runEmptyContractRetry(resource, opts = {}) {
+  return runWithExitTrap(() =>
+    runSeed('test', resource, `test:${resource}:v1`, async () => ({ items: [] }), {
+      validateFn: (d) => Array.isArray(d?.items),
+      ttlSeconds: 3600,
+      sourceVersion: 'test-v1',
+      schemaVersion: 1,
+      maxStaleMin: 120,
+      declareRecords: (d) => d.items.length,
+      ...opts,
+    }),
+  );
+}
+
+async function captureSeedLogs(fn) {
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  const logs = [];
+  const warnings = [];
+  const errors = [];
+  console.log = (...args) => logs.push(args.join(' '));
+  console.warn = (...args) => warnings.push(args.join(' '));
+  console.error = (...args) => errors.push(args.join(' '));
+  try {
+    const exitCode = await fn();
+    return { exitCode, logs, warnings, errors };
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+    console.error = originalError;
+  }
+}
+
+function runSkippedExtraKey(resource, extraKeyOptions = {}) {
+  return captureSeedLogs(() => runWithExitTrap(() => runSeed(
+    'test',
+    resource,
+    `test:${resource}:v1`,
+    async () => ({ events: [{ id: 'canonical' }], completion: [] }),
+    {
+      validateFn: (data) => Array.isArray(data?.events),
+      ttlSeconds: 3600,
+      sourceVersion: 'test-v1',
+      schemaVersion: 1,
+      maxStaleMin: 120,
+      declareRecords: (data) => data.events.length,
+      extraKeys: [{
+        key: `test:${resource}:completion`,
+        transform: (data) => data.completion,
+        declareRecords: (completion) => completion.length,
+        skipWhenEmpty: true,
+        ...extraKeyOptions,
+      }],
+    },
+  )));
+}
+
+test('fetch failure extends existing TTL and exits with graceful-failure code', async () => {
+  const exitCode = await runWithExitTrap(() =>
+    runSeed('test', 'fetch-fail', 'test:fetch-fail:v1', async () => {
+      const err = new Error('upstream unavailable');
+      err.nonRetryable = true;
+      throw err;
+    }, {
+      validateFn: (d) => Boolean(d),
+      ttlSeconds: 3600,
+      extraKeys: [{ key: 'test:fetch-fail:extra' }],
+      preserveKeys: ['test:fetch-fail:preserve-only'],
+    }),
+  );
+
+  assert.equal(
+    exitCode,
+    GRACEFUL_FETCH_FAILURE_EXIT_CODE,
+    'fetch failure should use the reserved graceful-failure exit code so bundle logs do not report OK',
+  );
+  assert.deepEqual(
+    new Set(expireKeys()),
+    new Set(['test:fetch-fail:v1', 'seed-meta:test:fetch-fail', 'test:fetch-fail:extra', 'test:fetch-fail:preserve-only']),
+    'fetch failure should still preserve canonical, seed-meta, extra-key, and explicitly preserved last-good TTLs',
+  );
+  assert.equal(
+    countMetaSets('fetch-fail'), 0,
+    'fetch failure must not write fresh seed-meta while reporting graceful failure',
+  );
+});
+
+const MINUTE_MS = 60_000;
+const freshMeta = () => JSON.stringify({ fetchedAt: Date.now() - 30 * MINUTE_MS, recordCount: 1 });
+
+for (const scenario of [
+  { label: 'confirmed fresh retention', expected: 0 },
+  { label: 'missing last-good', retained: 0, expected: 75 },
+  { label: 'unconfirmed retention', retained: null, expected: 75 },
+  { label: 'Redis retention failure', status: 403, expected: 75 },
+  { label: 'default policy', optIn: false, expected: 75 },
+  { label: 'untagged (configuration or code) error', tagged: false, expected: 75 },
+  { label: 'last-good older than maxStaleMin', meta: () => JSON.stringify({ fetchedAt: Date.now() - 121 * MINUTE_MS }), expected: 75 },
+  { label: 'unreadable seed-meta', meta: () => 'not json', expected: 75 },
+  { label: 'bundle-runner child', bundle: true, expected: 75 },
+]) {
+  test(`fetch failure with ${scenario.label} preserves the failure and selects the correct exit`, async () => {
+    expireResult = scenario.retained === undefined ? 1 : scenario.retained;
+    expirePipelineStatus = scenario.status ?? 200;
+    seedMetaGetResult = (scenario.meta ?? freshMeta)();
+    const originalSectionTimeout = process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV];
+    if (scenario.bundle) process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV] = '600000';
+    let afterPublishCalls = 0;
+    let result;
+    try {
+      result = await captureSeedLogs(() => runWithExitTrap(() => runSeed(
+        'test', 'fetch-policy', 'test:fetch-policy:v1',
+        async () => {
+          const err = Object.assign(new Error('upstream unavailable'), { nonRetryable: true });
+          throw scenario.tagged === false ? err : markPreservableFetchFailure(err);
+        },
+        {
+          ttlSeconds: 3600,
+          maxStaleMin: 120,
+          allowPreservedFetchFailure: scenario.optIn ?? true,
+          afterPublish: () => { afterPublishCalls++; },
+        },
+      )));
+    } finally {
+      if (originalSectionTimeout === undefined) delete process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV];
+      else process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV] = originalSectionTimeout;
+    }
+
+    assert.equal(result.exitCode, scenario.expected);
+    assert.deepEqual(expireKeys(), ['test:fetch-policy:v1', 'seed-meta:test:fetch-policy']);
+    assert.equal(countSetsFor('test:fetch-policy:v1'), 0);
+    assert.equal(countMetaSets('fetch-policy'), 0);
+    assert.equal(afterPublishCalls, 0);
+    // Log markers must agree with the exit code: triage counts "Failed
+    // gracefully" as an exit-75 tick.
+    const failedGracefully = result.logs.some((line) => line.includes('=== Failed gracefully'));
+    const retainedMarker = result.logs.some((line) => line.includes('=== Refresh failed; last-good retained'));
+    assert.equal(failedGracefully, scenario.expected === 75);
+    assert.equal(retainedMarker, scenario.expected === 0);
+  });
+}
+
+test('allowPreservedFetchFailure without maxStaleMin is a contract violation', async () => {
+  const result = await captureSeedLogs(() => runWithExitTrap(() => runSeed(
+    'test', 'fetch-policy-no-stale', 'test:fetch-policy-no-stale:v1',
+    async () => ['unused'],
+    { ttlSeconds: 3600, allowPreservedFetchFailure: true },
+  )));
+  assert.equal(result.exitCode, 1);
+  assert.ok(result.errors.some((line) => line.includes('allowPreservedFetchFailure requires a positive maxStaleMin')));
+});
+
+test('allowPreservedFetchFailure does not suppress publish errors', async () => {
+  expireResult = 1;
+  await assert.rejects(
+    () => runSeed('test', 'publish-policy', 'test:publish-policy:v1', async () => ['new data'], {
+      ttlSeconds: 3600,
+      maxStaleMin: 120,
+      allowPreservedFetchFailure: true,
+      publishTransform: () => { throw new Error('fixture publish failed'); },
+    }),
+    /fixture publish failed/,
+  );
+  assert.equal(countSetsFor('test:publish-policy:v1'), 0);
+  assert.equal(countMetaSets('publish-policy'), 0);
+});
+
+test('contract RETRY hard-fails when expired keys make last-good preservation impossible', async () => {
+  expireResult = 0;
+  const exitCode = await runEmptyContractRetry('retry-missing', {
+    preserveKeys: ['test:retry-missing:preserve-only'],
+  });
+
+  assert.equal(exitCode, 1,
+    'zero-yield RETRY must be a hard failure when EXPIRE confirms the last-good keys are gone');
+  assert.deepEqual(
+    new Set(expireKeys()),
+    new Set(['test:retry-missing:v1', 'seed-meta:test:retry-missing', 'test:retry-missing:preserve-only']),
+    'RETRY must preserve explicit companion keys before deciding its exit state',
+  );
+  assert.equal(countMetaSets('retry-missing'), 0,
+    'a failed RETRY must not write fresh seed-meta and mask the outage');
+});
+
+test('contract RETRY remains graceful when every last-good key is preserved', async () => {
+  expireResult = 1;
+  const exitCode = await runEmptyContractRetry('retry-preserved', {
+    preserveKeys: ['test:retry-preserved:preserve-only'],
+  });
+
+  assert.equal(exitCode, 0,
+    'zero-yield RETRY may remain exit 0 when every last-good key was actually preserved');
+  assert.deepEqual(
+    new Set(expireKeys()),
+    new Set(['test:retry-preserved:v1', 'seed-meta:test:retry-preserved', 'test:retry-preserved:preserve-only']),
+    'RETRY must preserve explicit companion keys before treating the zero-yield run as graceful',
+  );
+});
+
+test('validation failure with emptyDataIsFailure:true does NOT refresh seed-meta', async () => {
+  await runWithExitTrap(() =>
+    runSeed('test', 'empty-fail', 'test:empty-fail:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10, // always fails for empty
+      emptyDataIsFailure: true,
+      ttlSeconds: 3600,
+    }),
+  );
+
+  assert.equal(
+    countMetaSets('empty-fail'), 0,
+    'seed-meta must NOT be SET on validation-fail when emptyDataIsFailure is true; ' +
+    'refreshing fetchedAt here would mask outages and block bundle retries',
+  );
+});
+
+test('validation failure WITHOUT emptyDataIsFailure DOES refresh seed-meta (quiet-period feeds)', async () => {
+  await runWithExitTrap(() =>
+    runSeed('test', 'empty-legacy', 'test:empty-legacy:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,
+      ttlSeconds: 3600,
+    }),
+  );
+
+  assert.ok(
+    countMetaSets('empty-legacy') >= 1,
+    'legacy behavior for quiet-period feeds (news, events) must still write ' +
+    'seed-meta count=0 so health does not false-positive STALE_SEED',
+  );
+});
+
+test('contract extra keys publish their explicit seed-meta after a successful write', async () => {
+  const exitCode = await runWithExitTrap(() => runSeed('test', 'extra-meta-success', 'test:extra-meta-success:v1', async () => ({
+    events: [{ id: 'canonical' }],
+    warnings: [{ id: 'warning' }],
+  }), {
+    validateFn: (data) => Array.isArray(data?.events),
+    ttlSeconds: 3600,
+    sourceVersion: 'test-v1',
+    schemaVersion: 1,
+    maxStaleMin: 120,
+    declareRecords: (data) => data.events.length,
+    extraKeys: [{
+      key: 'test:extra-meta-success:warnings',
+      transform: (data) => data.warnings,
+      declareRecords: (warnings) => warnings.length,
+      metaKey: 'seed-meta:test:extra-meta-success:warnings',
+      metaCritical: true,
+      skipWhenEmpty: true,
+    }],
+  }));
+
+  assert.equal(exitCode, 0);
+  assert.equal(
+    countSetsFor('seed-meta:test:extra-meta-success:warnings'),
+    1,
+    'a published extra key must refresh its explicit seed-meta key',
+  );
+});
+
+test('skipWhenEmpty preserves the last-good extra key without refreshing its seed-meta', async () => {
+  const exitCode = await runWithExitTrap(() => runSeed('test', 'extra-meta-empty', 'test:extra-meta-empty:v1', async () => ({
+    events: [{ id: 'canonical' }],
+    warnings: [],
+  }), {
+    validateFn: (data) => Array.isArray(data?.events),
+    ttlSeconds: 3600,
+    sourceVersion: 'test-v1',
+    schemaVersion: 1,
+    maxStaleMin: 120,
+    declareRecords: (data) => data.events.length,
+    extraKeys: [{
+      key: 'test:extra-meta-empty:warnings',
+      transform: (data) => data.warnings,
+      declareRecords: (warnings) => warnings.length,
+      metaKey: 'seed-meta:test:extra-meta-empty:warnings',
+      metaCritical: true,
+      skipWhenEmpty: true,
+    }],
+  }));
+
+  assert.equal(exitCode, 0);
+  assert.equal(
+    countSetsFor('seed-meta:test:extra-meta-empty:warnings'),
+    0,
+    'an empty transformed extra key must not refresh freshness metadata',
+  );
+  assert.equal(
+    countSetsFor('test:extra-meta-empty:warnings'),
+    0,
+    'an empty transformed extra key must not overwrite the last-good payload',
+  );
+  assert.ok(
+    expireKeys().includes('test:extra-meta-empty:warnings'),
+    'the skipped extra key must have its TTL extended to preserve last-good data',
+  );
+});
+
+test('allowMissingOnSkip suppresses missing-key warnings and does not claim TTL preservation', async () => {
+  expireResult = 0;
+  const { exitCode, logs, warnings } = await runSkippedExtraKey('optional-extra-missing', {
+    allowMissingOnSkip: true,
+  });
+
+  assert.equal(exitCode, 0);
+  assert.doesNotMatch(
+    warnings.join('\n'),
+    /manual seed required/,
+    'an opted-in optional extra key may be absent when its empty write is skipped',
+  );
+  assert.doesNotMatch(
+    logs.join('\n'),
+    /extended TTL to preserve last-good/,
+    'EXPIRE 0 must not be reported as a successful TTL extension',
+  );
+});
+
+test('allowMissingOnSkip reports preservation only when EXPIRE confirms it', async () => {
+  expireResult = 1;
+  const { exitCode, logs, warnings } = await runSkippedExtraKey('optional-extra-preserved', {
+    allowMissingOnSkip: true,
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(logs.join('\n'), /skipped write, extended TTL to preserve last-good/);
+  assert.doesNotMatch(warnings.join('\n'), /manual seed required/);
+});
+
+test('allowMissingOnSkip keeps an unconfirmed expiry warning and does not claim preservation', async () => {
+  expireResult = null;
+  const { exitCode, logs, warnings } = await runSkippedExtraKey('optional-extra-unconfirmed', {
+    allowMissingOnSkip: true,
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(warnings.join('\n'), /unconfirmed/i);
+  assert.doesNotMatch(logs.join('\n'), /extended TTL to preserve last-good/);
+});
+
+test('allowMissingOnSkip keeps a failed expiry warning and does not claim preservation', async () => {
+  expirePipelineStatus = 401;
+  const { exitCode, logs, warnings, errors } = await runSkippedExtraKey('optional-extra-failed', {
+    allowMissingOnSkip: true,
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match([...warnings, ...errors].join('\n'), /TTL.*failed|failed.*TTL/i);
+  assert.doesNotMatch(logs.join('\n'), /extended TTL to preserve last-good/);
+});
+
+test('allowMissingOnSkip also silences the warning on the fetch-failure preservation path', async () => {
+  // The empty-skip branch is only one of six preservation paths. The others
+  // (fetch failure, SIGTERM, contract RETRY, atomic-publish failure, validation
+  // skip) all go through preserveExistingKeys, which preserves the same extra
+  // keys -- so without threading the allowance there, the optional completion
+  // marker still triggers "manual seed required" on every failed tick.
+  // Every key in this fixture is absent, so the canonical key and its seed-meta
+  // warn legitimately. What must change is the COUNT: the optional completion
+  // marker is excluded, and the strict control below proves the difference is
+  // the allowance and not the fixture.
+  const runFetchFailure = (resource, extraKeyOptions) => {
+    expireResult = 0;
+    return captureSeedLogs(() => runWithExitTrap(() => runSeed(
+      'test',
+      resource,
+      `test:${resource}:v1`,
+      async () => { throw new Error('upstream down'); },
+      {
+        validateFn: (data) => Array.isArray(data?.events),
+        ttlSeconds: 3600,
+        sourceVersion: 'test-v1',
+        schemaVersion: 1,
+        maxStaleMin: 120,
+        declareRecords: (data) => data.events.length,
+        extraKeys: [{
+          key: `test:${resource}:completion`,
+          transform: (data) => data.completion,
+          declareRecords: (completion) => completion.length,
+          skipWhenEmpty: true,
+          ...extraKeyOptions,
+        }],
+      },
+    )));
+  };
+
+  const optional = await runFetchFailure('optional-extra-fetch-fail', { allowMissingOnSkip: true });
+  const strict = await runFetchFailure('strict-extra-fetch-fail', {});
+
+  assert.equal(optional.exitCode, 75);
+  assert.equal(strict.exitCode, 75);
+  assert.match(optional.warnings.join('\n'), /WARNING: 2 key\(s\) were expired\/missing/);
+  assert.match(strict.warnings.join('\n'), /WARNING: 3 key\(s\) were expired\/missing/);
+});
+
+test('skipWhenEmpty remains strict for a missing extra key without allowMissingOnSkip', async () => {
+  expireResult = 0;
+  const { exitCode, logs, warnings } = await runSkippedExtraKey('strict-extra-missing');
+
+  assert.equal(exitCode, 0);
+  assert.match(warnings.join('\n'), /manual seed required/);
+  assert.doesNotMatch(logs.join('\n'), /extended TTL to preserve last-good/);
+});
+
+// PR #3582: When validateFn rejects a transient blip but canonical key still
+// holds a contract-mode envelope with recordCount > 0, seed-meta should mirror
+// the canonical's (fetchedAt, recordCount) rather than overwrite with zero.
+// Production motivation: resilience:power-losses 2026-05-03 — canonical had
+// 216 countries but a partial WB fetch (149 < 150 floor) caused validateFn
+// to reject; runSeed wrote recordCount=0 to seed-meta; /api/health flipped
+// EMPTY_DATA even though the canonical data was fine. The mirror behavior
+// keeps health honest while preserving STALE_SEED honesty (mirrored
+// fetchedAt is the canonical's ORIGINAL value, not now).
+function withCanonicalEnvelope({
+  canonicalKey,
+  fetchedAt,
+  recordCount,
+  sourceVersion = 'test-v1',
+  contentAge,
+  existingSeedMeta,
+  seedMetaKey,
+}) {
+  const seed = {
+    fetchedAt,
+    recordCount,
+    sourceVersion,
+    schemaVersion: 1,
+    state: 'OK',
+  };
+  // Optional content-age trio (2026-05-04 health-readiness plan).
+  // Used by the Sprint 1 anti-regression test that asserts the validate-fail
+  // mirror preserves content fields end-to-end (Codex round 1 P0b).
+  if (contentAge && typeof contentAge === 'object') {
+    seed.newestItemAt = contentAge.newestItemAt ?? null;
+    seed.oldestItemAt = contentAge.oldestItemAt ?? null;
+    seed.maxContentAgeMin = contentAge.maxContentAgeMin;
+  }
+  const envelope = {
+    _seed: seed,
+    data: { items: Array.from({ length: recordCount }, (_, i) => ({ id: i })) },
+  };
+  return async (url, opts = {}) => {
+    const u = String(url);
+    const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
+    recordedCalls.push({ url: u, method: opts?.method || 'GET', body });
+    // Match GET on the canonical key — return the envelope wrapped in {result}.
+    if (u.includes(`/get/${encodeURIComponent(canonicalKey)}`) || u.endsWith(`/get/${canonicalKey}`)) {
+      return new Response(JSON.stringify({ result: JSON.stringify(envelope) }), { status: 200 });
+    }
+    // Prior seed-meta (poolCounts etc.) so validate-skip can re-apply diagnostics.
+    if (existingSeedMeta && seedMetaKey
+      && (u.includes(`/get/${encodeURIComponent(seedMetaKey)}`) || u.endsWith(`/get/${seedMetaKey}`))) {
+      return new Response(JSON.stringify({ result: JSON.stringify(existingSeedMeta) }), { status: 200 });
+    }
+    if (Array.isArray(body) && Array.isArray(body[0])) {
+      return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
+    }
+    return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+  };
+}
+
+function lastMetaSetBody(resourceSuffix) {
+  const setCalls = recordedCalls.filter(c =>
+    Array.isArray(c.body)
+    && c.body[0] === 'SET'
+    && typeof c.body[1] === 'string'
+    && c.body[1] === `seed-meta:test:${resourceSuffix}`,
+  );
+  if (setCalls.length === 0) return null;
+  const last = setCalls[setCalls.length - 1];
+  // Body shape is ['SET', metaKey, JSON.stringify(meta), 'EX', ttl]
+  try { return JSON.parse(last.body[2]); } catch { return null; }
+}
+
+test('PR #3582: validation failure with non-empty canonical envelope MIRRORS its (fetchedAt, recordCount)', async () => {
+  const FROZEN_FETCHED_AT = 1700000000000; // arbitrary fixed past timestamp
+  const RECORD_COUNT = 216;
+  globalThis.fetch = withCanonicalEnvelope({
+    canonicalKey: 'test:partial-fetch:v1',
+    fetchedAt: FROZEN_FETCHED_AT,
+    recordCount: RECORD_COUNT,
+    sourceVersion: 'wb-power-losses-2026',
+  });
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'partial-fetch', 'test:partial-fetch:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10, // rejects (transient blip)
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('partial-fetch');
+  assert.ok(meta, 'seed-meta must be written (mirror path) when a valid canonical envelope exists');
+  assert.equal(
+    meta.recordCount, RECORD_COUNT,
+    `seed-meta.recordCount must MIRROR canonical (${RECORD_COUNT}), not be overwritten with 0 — ` +
+    'health-reported count should track last-good data, not the failed transient fetch',
+  );
+  assert.equal(
+    meta.fetchedAt, FROZEN_FETCHED_AT,
+    'seed-meta.fetchedAt must MIRROR canonical original fetchedAt (not Date.now()) — ' +
+    'STALE_SEED must still fire naturally when canonical truly ages past maxStaleMin',
+  );
+});
+
+test('PR #3582: validation failure with MISSING canonical falls back to recordCount=0 (legacy)', async () => {
+  // Default fetch mock returns {result: 'OK'} on GET, which fails JSON.parse
+  // inside readCanonicalEnvelopeMeta — so the helper returns null and runSeed
+  // falls through to the original quiet-period behavior. This proves the
+  // mirror logic is non-disruptive for legacy bare-shape / missing-key seeders.
+  await runWithExitTrap(() =>
+    runSeed('test', 'no-canonical', 'test:no-canonical:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('no-canonical');
+  assert.ok(meta, 'seed-meta must still be written when no canonical envelope to mirror');
+  assert.equal(meta.recordCount, 0, 'falls back to recordCount=0 when canonical envelope is missing/malformed');
+});
+
+// Sprint 1 (2026-05-04 health-readiness plan, Codex round 1 P0b):
+// validate-fail mirror MUST preserve content-age fields from the canonical
+// envelope. Without this, /api/health loses the STALE_CONTENT signal exactly
+// when last-good-with-stale-content data is being served — the worst possible
+// time for the alarm to vanish.
+test('Sprint 1: validation failure with canonical contentAge MIRRORS newestItemAt/oldestItemAt/maxContentAgeMin', async () => {
+  const FROZEN_FETCHED_AT = 1700000000000;
+  const FROZEN_NEWEST_AT = 1699000000000;   // older than fetchedAt = realistic for sparse upstream
+  const FROZEN_OLDEST_AT = 1690000000000;
+  const RECORD_COUNT = 216;
+  globalThis.fetch = withCanonicalEnvelope({
+    canonicalKey: 'test:content-age-mirror:v1',
+    fetchedAt: FROZEN_FETCHED_AT,
+    recordCount: RECORD_COUNT,
+    sourceVersion: 'tgh-bundle-v2',
+    contentAge: {
+      newestItemAt: FROZEN_NEWEST_AT,
+      oldestItemAt: FROZEN_OLDEST_AT,
+      maxContentAgeMin: 12960,
+    },
+  });
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'content-age-mirror', 'test:content-age-mirror:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,    // rejects → mirror branch
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('content-age-mirror');
+  assert.ok(meta, 'seed-meta must be written via the mirror branch');
+  assert.equal(meta.recordCount, RECORD_COUNT, 'recordCount mirrored');
+  assert.equal(meta.fetchedAt, FROZEN_FETCHED_AT, 'fetchedAt mirrored (canonical original, not now)');
+  assert.equal(
+    meta.newestItemAt, FROZEN_NEWEST_AT,
+    'newestItemAt MUST be mirrored — without this, STALE_CONTENT signal vanishes during transient validate-fails',
+  );
+  assert.equal(meta.oldestItemAt, FROZEN_OLDEST_AT, 'oldestItemAt mirrored');
+  assert.equal(meta.maxContentAgeMin, 12960, 'maxContentAgeMin mirrored');
+});
+
+// Anti-regression: legacy seeder (no contentMeta) — meta must NOT carry
+// content fields. Proves the mirror is gated on canonical envelope presence
+// of the content trio, not added unconditionally.
+test('Sprint 1: validation failure with canonical envelope BUT no contentAge writes legacy meta shape', async () => {
+  const FROZEN_FETCHED_AT = 1700000000000;
+  const RECORD_COUNT = 100;
+  globalThis.fetch = withCanonicalEnvelope({
+    canonicalKey: 'test:legacy-mirror:v1',
+    fetchedAt: FROZEN_FETCHED_AT,
+    recordCount: RECORD_COUNT,
+    // no contentAge — legacy contract-mode seeder
+  });
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'legacy-mirror', 'test:legacy-mirror:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('legacy-mirror');
+  assert.ok(meta, 'seed-meta written via mirror');
+  assert.equal(meta.recordCount, RECORD_COUNT);
+  assert.equal(meta.fetchedAt, FROZEN_FETCHED_AT);
+  assert.ok(!('newestItemAt' in meta), 'newestItemAt absent for legacy seeders');
+  assert.ok(!('oldestItemAt' in meta), 'oldestItemAt absent for legacy seeders');
+  assert.ok(!('maxContentAgeMin' in meta), 'maxContentAgeMin absent for legacy seeders');
+});
+
+// #5875 review P1: validate-skip rewrites seed-meta as a full SET. Without
+// merging prior afterPublish diagnostics (poolCounts, errorReason, …),
+// fail-closed health surfaces false-alarm after the first healthy publish.
+test('validation skip preserves prior seed-meta diagnostics (poolCounts)', async () => {
+  const FROZEN_FETCHED_AT = 1700000000000;
+  const RECORD_COUNT = 38;
+  const POOL_COUNTS = { geopolitical: 18, tech: 12, finance: 8 };
+  const SEED_META_KEY = 'seed-meta:test:pool-diag-preserve';
+
+  globalThis.fetch = withCanonicalEnvelope({
+    canonicalKey: 'test:pool-diag-preserve:v1',
+    fetchedAt: FROZEN_FETCHED_AT,
+    recordCount: RECORD_COUNT,
+    sourceVersion: 'prediction-markets-v1',
+    seedMetaKey: SEED_META_KEY,
+    existingSeedMeta: {
+      fetchedAt: FROZEN_FETCHED_AT - 60_000,
+      recordCount: RECORD_COUNT,
+      sourceVersion: 'prediction-markets-v1',
+      poolCounts: POOL_COUNTS,
+      status: 'ok',
+    },
+  });
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'pool-diag-preserve', 'test:pool-diag-preserve:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('pool-diag-preserve');
+  assert.ok(meta, 'seed-meta must be rewritten on the mirror path');
+  assert.equal(meta.recordCount, RECORD_COUNT, 'canonical recordCount still mirrored');
+  assert.equal(meta.fetchedAt, FROZEN_FETCHED_AT, 'canonical fetchedAt still mirrored');
+  assert.deepEqual(
+    meta.poolCounts,
+    POOL_COUNTS,
+    'prior poolCounts must survive validate-skip so fail-closed health stays honest',
+  );
+  assert.equal(meta.status, 'ok', 'other non-reserved diagnostics are preserved too');
+});
+
+test('validation skip with no prior diagnostics still writes a clean mirror', async () => {
+  const FROZEN_FETCHED_AT = 1700000000000;
+  globalThis.fetch = withCanonicalEnvelope({
+    canonicalKey: 'test:no-prior-diag:v1',
+    fetchedAt: FROZEN_FETCHED_AT,
+    recordCount: 50,
+  });
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'no-prior-diag', 'test:no-prior-diag:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('no-prior-diag');
+  assert.ok(meta);
+  assert.equal(meta.recordCount, 50);
+  assert.equal(meta.fetchedAt, FROZEN_FETCHED_AT);
+  assert.equal(Object.hasOwn(meta, 'poolCounts'), false);
+});

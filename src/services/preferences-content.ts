@@ -1,26 +1,42 @@
-import { LANGUAGES, getCurrentLanguage, changeLanguage, t } from '@/services/i18n';
+import { LANGUAGES, getCurrentLanguageTag, changeLanguage, t } from '@/services/i18n';
 import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
 import { getMapProvider, setMapProvider, MAP_PROVIDER_OPTIONS, MAP_THEME_OPTIONS, getMapTheme, setMapTheme, type MapProvider } from '@/config/basemap';
-import { getLiveStreamsAlwaysOn, setLiveStreamsAlwaysOn } from '@/services/live-stream-settings';
+import {
+  formatIdleStopMinutes,
+  getLiveMediaIdleStop,
+  getLiveStreamsAlwaysOn,
+  LIVE_MEDIA_IDLE_STOP_OPTIONS,
+  parseLiveMediaIdleStop,
+  setLiveMediaIdleStop,
+  setLiveStreamsAlwaysOn,
+} from '@/services/live-stream-settings';
 import { getGlobeVisualPreset, setGlobeVisualPreset, GLOBE_VISUAL_PRESET_OPTIONS, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import type { StreamQuality } from '@/services/ai-flow-settings';
 import { getThemePreference, setThemePreference, type ThemePreference } from '@/utils/theme-manager';
 import { getFontFamily, setFontFamily, type FontFamily } from '@/services/font-settings';
+import {
+  FONT_SCALE_CHANGED_EVENT,
+  FONT_SCALE_STEPS,
+  fontScaleLabel,
+  getFontScale,
+  parseFontScale,
+  setFontScale,
+  type FontScaleChangedDetail,
+} from '@/services/font-scale-settings';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
-import {
-  getChannelsData,
-  createPairingToken,
-  setEmailChannel,
-  setSlackChannel,
-  deleteChannel,
-  saveAlertRules,
-  type NotificationChannel,
-  type ChannelType,
-} from '@/services/notification-channels';
-import { getCurrentClerkUser } from '@/services/clerk';
-import { SITE_VARIANT } from '@/config/variant';
+import { getSyncState, getLastSyncAt, syncNow, isCloudSyncEnabled } from '@/utils/cloud-prefs-sync';
+import { declareOverlay } from '@/utils/open-modal';
+
+const SYNC_STATE_LABELS: Record<string, string> = {
+  synced: 'Synced', pending: 'Pending', syncing: 'Syncing\u2026',
+  conflict: 'Conflict', offline: 'Offline', 'signed-out': 'Signed out', error: 'Error',
+};
+const SYNC_STATE_COLORS: Record<string, string> = {
+  synced: 'var(--color-ok, #34d399)', pending: 'var(--color-warn, #fbbf24)', syncing: 'var(--color-warn, #fbbf24)',
+  conflict: 'var(--color-error, #f87171)', offline: 'var(--text-faint, #888)', 'signed-out': 'var(--text-faint, #888)', error: 'var(--color-error, #f87171)',
+};
 import {
   loadFrameworkLibrary,
   saveImportedFramework,
@@ -29,12 +45,15 @@ import {
   getActiveFrameworkForPanel,
   type AnalysisPanelId,
 } from '@/services/analysis-framework-store';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
 
 export interface PreferencesHost {
   isDesktopApp: boolean;
   onMapProviderChange?: (provider: MapProvider) => void;
+  onSettingSaved?: () => void;
   isSignedIn?: boolean;
 }
 
@@ -43,15 +62,23 @@ export interface PreferencesResult {
   attach: (container: HTMLElement) => () => void;
 }
 
-function toggleRowHtml(id: string, label: string, desc: string, checked: boolean): string {
+function toggleRowHtml(
+  id: string,
+  label: string,
+  desc: string,
+  checked: boolean,
+  disabled = false,
+): string {
+  // The visible text lives outside the wrapping <label>, so the checkbox
+  // needs an explicit aria-labelledby/-describedby to have an accessible name.
   return `
-    <div class="ai-flow-toggle-row">
+    <div class="ai-flow-toggle-row${disabled ? ' is-disabled' : ''}">
       <div class="ai-flow-toggle-label-wrap">
-        <div class="ai-flow-toggle-label">${label}</div>
-        <div class="ai-flow-toggle-desc">${desc}</div>
+        <div class="ai-flow-toggle-label" id="${id}-label">${label}</div>
+        <div class="ai-flow-toggle-desc" id="${id}-desc">${desc}</div>
       </div>
-      <label class="ai-flow-switch">
-        <input type="checkbox" id="${id}"${checked ? ' checked' : ''}>
+      <label class="ai-flow-switch${disabled ? ' is-disabled' : ''}">
+        <input type="checkbox" id="${id}" aria-labelledby="${id}-label" aria-describedby="${id}-desc"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>
         <span class="ai-flow-slider"></span>
       </label>
     </div>
@@ -62,9 +89,23 @@ function renderMapThemeDropdown(container: HTMLElement, provider: MapProvider): 
   const select = container.querySelector<HTMLSelectElement>('#us-map-theme');
   if (!select) return;
   const currentTheme = getMapTheme(provider);
-  select.innerHTML = MAP_THEME_OPTIONS[provider]
+  setTrustedHtml(select, trustedHtml(MAP_THEME_OPTIONS[provider]
     .map(opt => `<option value="${opt.value}"${opt.value === currentTheme ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`)
-    .join('');
+    .join(''), "legacy direct innerHTML migration"));
+}
+
+function updateSyncStatusUI(container: HTMLElement): void {
+  const dot = container.querySelector<HTMLElement>('#usSyncDot');
+  const label = container.querySelector<HTMLElement>('#usSyncLabel');
+  const time = container.querySelector<HTMLElement>('#usSyncTime');
+  if (!dot || !label || !time) return;
+
+  const state = getSyncState();
+  const lastSync = getLastSyncAt();
+
+  dot.style.background = (SYNC_STATE_COLORS[state] ?? SYNC_STATE_COLORS.error) as string;
+  label.textContent = SYNC_STATE_LABELS[state] ?? 'Unknown';
+  time.textContent = `Last synced: ${lastSync ? new Date(lastSync).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : 'Never'}`;
 }
 
 function updateAiStatus(container: HTMLElement): void {
@@ -89,9 +130,96 @@ function updateAiStatus(container: HTMLElement): void {
   }
 }
 
+function handlePreferenceChange(
+  target: HTMLInputElement,
+  container: HTMLElement,
+  host: PreferencesHost,
+): boolean | Promise<boolean> {
+  switch (target.id) {
+    case 'us-stream-quality':
+      setStreamQuality(target.value as StreamQuality);
+      return true;
+    case 'us-globe-visual-preset':
+      setGlobeVisualPreset(target.value as GlobeVisualPreset);
+      return true;
+    case 'us-theme':
+      setThemePreference(target.value as ThemePreference);
+      return true;
+    case 'us-font-family':
+      setFontFamily(target.value as FontFamily);
+      return true;
+    case 'us-font-scale': {
+      const scale = parseFontScale(target.value);
+      if (scale === undefined) return false;
+      setFontScale(scale);
+      return true;
+    }
+    case 'us-map-provider': {
+      const provider = target.value as MapProvider;
+      setMapProvider(provider);
+      renderMapThemeDropdown(container, provider);
+      host.onMapProviderChange?.(provider);
+      window.dispatchEvent(new CustomEvent('map-theme-changed'));
+      return true;
+    }
+    case 'us-map-theme':
+      setMapTheme(getMapProvider(), target.value);
+      window.dispatchEvent(new CustomEvent('map-theme-changed'));
+      return true;
+    case 'us-live-streams-always-on':
+      setLiveStreamsAlwaysOn(target.checked);
+      return true;
+    case 'us-live-media-idle-stop': {
+      const idleStop = parseLiveMediaIdleStop(target.value);
+      if (idleStop === undefined) return false;
+      setLiveMediaIdleStop(idleStop);
+      return true;
+    }
+    case 'us-language':
+      trackLanguageChange(target.value);
+      return changeLanguage(target.value);
+    case 'us-cloud':
+      setAiFlowSetting('cloudLlm', target.checked);
+      updateAiStatus(container);
+      return true;
+    case 'us-browser': {
+      setAiFlowSetting('browserModel', target.checked);
+      const warn = container.querySelector<HTMLElement>('.ai-flow-toggle-warn');
+      if (warn) warn.style.display = target.checked ? 'block' : 'none';
+      // Headline Memory is a child of Browser Local Model — keep its
+      // toggle's enabled/disabled state in sync without re-rendering
+      // the whole panel. The runtime gate (`isHeadlineMemoryEnabled`)
+      // already AND-gates both flags; this just mirrors that visually.
+      const hmInput = container.querySelector<HTMLInputElement>('#us-headline-memory');
+      const hmRow = hmInput?.closest('.ai-flow-toggle-row');
+      const hmSwitch = hmInput?.closest('.ai-flow-switch');
+      if (hmInput && !host.isDesktopApp) {
+        hmInput.disabled = !target.checked;
+        hmRow?.classList.toggle('is-disabled', !target.checked);
+        hmSwitch?.classList.toggle('is-disabled', !target.checked);
+      }
+      updateAiStatus(container);
+      return true;
+    }
+    case 'us-map-flash':
+      setAiFlowSetting('mapNewsFlash', target.checked);
+      return true;
+    case 'us-headline-memory':
+      setAiFlowSetting('headlineMemory', target.checked);
+      return true;
+    case 'us-badge-anim':
+      setAiFlowSetting('badgeAnimation', target.checked);
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const settings = getAiFlowSettings();
-  const currentLang = getCurrentLanguage();
+  // Compared against LANGUAGES[].code below, which carries full tags (`zh-TW`).
+  // The region-stripped accessor would mark 简体中文 selected for a Traditional reader.
+  const currentLang = getCurrentLanguageTag();
   let html = '';
 
   // ── Display group ──
@@ -103,11 +231,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const currentThemePref = getThemePreference();
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('preferences.theme')}</div>
+      <div class="ai-flow-toggle-label" id="us-theme-label">${t('preferences.theme')}</div>
       <div class="ai-flow-toggle-desc">${t('preferences.themeDesc')}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-theme">`;
+  html += `<select class="unified-settings-select" id="us-theme" aria-labelledby="us-theme-label">`;
   for (const opt of [
     { value: 'auto', label: t('preferences.themeAuto') },
     { value: 'dark', label: t('preferences.themeDark') },
@@ -122,11 +250,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const currentFont = getFontFamily();
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('preferences.fontFamily')}</div>
+      <div class="ai-flow-toggle-label" id="us-font-family-label">${t('preferences.fontFamily')}</div>
       <div class="ai-flow-toggle-desc">${t('preferences.fontFamilyDesc')}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-font-family">`;
+  html += `<select class="unified-settings-select" id="us-font-family" aria-labelledby="us-font-family-label">`;
   for (const opt of [
     { value: 'mono', label: t('preferences.fontMono') },
     { value: 'system', label: t('preferences.fontSystem') },
@@ -136,15 +264,31 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   }
   html += `</select>`;
 
+  // Panel font scale. Fixed-geometry map chrome deliberately does not inherit
+  // this value; individual panel overrides live in Settings -> Panels.
+  const currentFontScale = getFontScale();
+  html += `<div class="ai-flow-toggle-row">
+    <div class="ai-flow-toggle-label-wrap">
+      <div class="ai-flow-toggle-label" id="us-font-scale-label">${t('preferences.fontScale', { defaultValue: 'Panel text size' })}</div>
+      <div class="ai-flow-toggle-desc">${t('preferences.fontScaleDesc', { defaultValue: 'Sets panel text globally. A panel-specific value replaces this setting.' })}</div>
+    </div>
+  </div>`;
+  html += `<select class="unified-settings-select" id="us-font-scale" aria-labelledby="us-font-scale-label">`;
+  for (const scale of FONT_SCALE_STEPS) {
+    const selected = scale === currentFontScale ? ' selected' : '';
+    html += `<option value="${scale}"${selected}>${fontScaleLabel(scale)}</option>`;
+  }
+  html += `</select>`;
+
   // Map tile provider
   const currentProvider = getMapProvider();
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('preferences.mapProvider')}</div>
+      <div class="ai-flow-toggle-label" id="us-map-provider-label">${t('preferences.mapProvider')}</div>
       <div class="ai-flow-toggle-desc">${t('preferences.mapProviderDesc')}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-map-provider">`;
+  html += `<select class="unified-settings-select" id="us-map-provider" aria-labelledby="us-map-provider-label">`;
   for (const opt of MAP_PROVIDER_OPTIONS) {
     const selected = opt.value === currentProvider ? ' selected' : '';
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
@@ -155,11 +299,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const currentMapTheme = getMapTheme(currentProvider);
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('preferences.mapTheme')}</div>
+      <div class="ai-flow-toggle-label" id="us-map-theme-label">${t('preferences.mapTheme')}</div>
       <div class="ai-flow-toggle-desc">${t('preferences.mapThemeDesc')}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-map-theme">`;
+  html += `<select class="unified-settings-select" id="us-map-theme" aria-labelledby="us-map-theme-label">`;
   for (const opt of MAP_THEME_OPTIONS[currentProvider]) {
     const selected = opt.value === currentMapTheme ? ' selected' : '';
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
@@ -172,11 +316,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const currentPreset = getGlobeVisualPreset();
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('preferences.globePreset')}</div>
+      <div class="ai-flow-toggle-label" id="us-globe-visual-preset-label">${t('preferences.globePreset')}</div>
       <div class="ai-flow-toggle-desc">${t('preferences.globePresetDesc')}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-globe-visual-preset">`;
+  html += `<select class="unified-settings-select" id="us-globe-visual-preset" aria-labelledby="us-globe-visual-preset-label">`;
   for (const opt of GLOBE_VISUAL_PRESET_OPTIONS) {
     const selected = opt.value === currentPreset ? ' selected' : '';
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
@@ -184,8 +328,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   html += `</select>`;
 
   // Language
-  html += `<div class="ai-flow-section-label">${t('header.languageLabel')}</div>`;
-  html += `<select class="unified-settings-lang-select" id="us-language">`;
+  html += `<div class="ai-flow-section-label" id="us-language-label">${t('header.languageLabel')}</div>`;
+  html += `<select class="unified-settings-lang-select" id="us-language" aria-labelledby="us-language-label">`;
   for (const lang of LANGUAGES) {
     const selected = lang.code === currentLang ? ' selected' : '';
     html += `<option value="${lang.code}"${selected}>${lang.flag} ${escapeHtml(lang.label)}</option>`;
@@ -215,7 +359,18 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     `;
   }
 
-  html += toggleRowHtml('us-headline-memory', t('components.insights.headlineMemoryLabel'), t('components.insights.headlineMemoryDesc'), settings.headlineMemory);
+  // Headline Memory requires Browser Local Model (it loads an embeddings
+  // model in the ML worker). Disable the toggle when the parent is off so
+  // the user sees the dependency rather than wondering why their Headline
+  // Memory toggle "did nothing."
+  const headlineDisabled = !host.isDesktopApp && !settings.browserModel;
+  html += toggleRowHtml(
+    'us-headline-memory',
+    t('components.insights.headlineMemoryLabel'),
+    t('components.insights.headlineMemoryDesc'),
+    settings.headlineMemory,
+    headlineDisabled,
+  );
 
   html += `</div></details>`;
 
@@ -250,7 +405,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
   // Import button
   html += `<div class="fw-import-row">
-    <button type="button" class="settings-btn settings-btn-secondary fw-import-btn" id="fwImportBtn">${t('components.insights.analysisFrameworksImportBtn')}</button>
+    <button type="button" class="btn btn-secondary fw-import-btn" id="fwImportBtn">${t('components.insights.analysisFrameworksImportBtn')}</button>
   </div>`;
 
   // Import modal (hidden by default)
@@ -269,11 +424,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           <label class="fw-import-label">agentskills.io URL or ID</label>
           <input type="text" class="fw-import-input" id="fwAgentskillsUrl" placeholder="https://agentskills.io/skills/..." />
         </div>
-        <button type="button" class="settings-btn settings-btn-secondary" id="fwFetchBtn">Fetch</button>
+        <button type="button" class="btn btn-secondary" id="fwFetchBtn">Fetch</button>
         <div class="fw-import-preview" id="fwAgentskillsPreview" style="display:none">
           <div class="fw-import-preview-name" id="fwPreviewName"></div>
           <div class="fw-import-preview-desc" id="fwPreviewDesc"></div>
-          <button type="button" class="settings-btn settings-btn-primary fw-save-btn" id="fwAgentskillsSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
+          <button type="button" class="btn btn-primary fw-save-btn" id="fwAgentskillsSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
         </div>
         <div class="fw-import-error" id="fwAgentskillsError" style="display:none"></div>
       </div>
@@ -283,7 +438,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           <textarea class="fw-import-textarea" id="fwJsonInput" rows="6" placeholder='{ "name": "...", "instructions": "..." }'></textarea>
         </div>
         <div class="fw-import-error" id="fwJsonError" style="display:none"></div>
-        <button type="button" class="settings-btn settings-btn-primary fw-save-btn" id="fwJsonSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
+        <button type="button" class="btn btn-primary fw-save-btn" id="fwJsonSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
       </div>
     </div>
   </div>`;
@@ -298,11 +453,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const currentQuality = getStreamQuality();
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('components.insights.streamQualityLabel')}</div>
+      <div class="ai-flow-toggle-label" id="us-stream-quality-label">${t('components.insights.streamQualityLabel')}</div>
       <div class="ai-flow-toggle-desc">${t('components.insights.streamQualityDesc')}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-stream-quality">`;
+  html += `<select class="unified-settings-select" id="us-stream-quality" aria-labelledby="us-stream-quality-label">`;
   for (const opt of STREAM_QUALITY_OPTIONS) {
     const selected = opt.value === currentQuality ? ' selected' : '';
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
@@ -316,6 +471,23 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     getLiveStreamsAlwaysOn(),
   );
 
+  const currentIdleStop = getLiveMediaIdleStop();
+  html += `<div class="ai-flow-toggle-row">
+    <div class="ai-flow-toggle-label-wrap">
+      <div class="ai-flow-toggle-label" id="us-live-media-idle-stop-label">${t('components.insights.streamIdleStopLabel')}</div>
+      <div class="ai-flow-toggle-desc">${t('components.insights.streamIdleStopDesc')}</div>
+    </div>
+  </div>`;
+  html += `<select class="unified-settings-select" id="us-live-media-idle-stop" aria-labelledby="us-live-media-idle-stop-label">`;
+  for (const option of LIVE_MEDIA_IDLE_STOP_OPTIONS) {
+    const label = option === 'never'
+      ? t('components.insights.streamIdleStopNever')
+      : formatIdleStopMinutes(option, getCurrentLanguageTag());
+    const selected = option === currentIdleStop ? ' selected' : '';
+    html += `<option value="${option}"${selected}>${escapeHtml(label)}</option>`;
+  }
+  html += `</select>`;
+
   html += `</div></details>`;
 
   // ── Panels group ──
@@ -325,37 +497,41 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   html += toggleRowHtml('us-badge-anim', t('components.insights.badgeAnimLabel'), t('components.insights.badgeAnimDesc'), settings.badgeAnimation);
   html += `</div></details>`;
 
+  // ── Cloud Sync group (web-only, signed-in, feature flag on) ──
+  if (!host.isDesktopApp && host.isSignedIn && isCloudSyncEnabled()) {
+    const syncState = getSyncState();
+    const lastSync = getLastSyncAt();
+    const lastSyncStr = lastSync
+      ? new Date(lastSync).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+      : 'Never';
+
+    html += `<details class="wm-pref-group">`;
+    html += `<summary>Cloud Sync</summary>`;
+    html += `<div class="wm-pref-group-content">`;
+    html += `<div class="wm-sync-status-row">
+      <div class="wm-sync-status-info">
+        <span class="wm-sync-status-dot" id="usSyncDot" style="background:${SYNC_STATE_COLORS[syncState] ?? SYNC_STATE_COLORS.error}"></span>
+        <span class="wm-sync-status-label" id="usSyncLabel">${SYNC_STATE_LABELS[syncState] ?? 'Unknown'}</span>
+        <span class="wm-sync-status-time" id="usSyncTime">Last synced: ${escapeHtml(lastSyncStr)}</span>
+      </div>
+      <button type="button" class="btn btn-secondary wm-sync-now-btn" id="usSyncNowBtn">Sync now</button>
+    </div>`;
+    html += `</div></details>`;
+  }
+
   // ── Data & Community group ──
   html += `<details class="wm-pref-group">`;
   html += `<summary>${t('preferences.dataAndCommunity')}</summary>`;
   html += `<div class="wm-pref-group-content">`;
   html += `
     <div class="us-data-mgmt">
-      <button type="button" class="settings-btn settings-btn-secondary" id="usExportBtn">${t('components.settings.exportSettings')}</button>
-      <button type="button" class="settings-btn settings-btn-secondary" id="usImportBtn">${t('components.settings.importSettings')}</button>
+      <button type="button" class="btn btn-secondary" id="usExportBtn">${t('components.settings.exportSettings')}</button>
+      <button type="button" class="btn btn-secondary" id="usImportBtn">${t('components.settings.importSettings')}</button>
       <input type="file" id="usImportInput" accept=".json" class="us-hidden-input" />
     </div>
     <div class="us-data-mgmt-toast" id="usDataMgmtToast"></div>
   `;
-  html += `<a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noopener noreferrer" class="us-discussion-link">
-    <span class="us-discussion-dot"></span>
-    <span>${t('components.community.joinDiscussion')}</span>
-  </a>`;
   html += `</div></details>`;
-
-  // ── Notifications group (web-only, signed-in) ──
-  if (!host.isDesktopApp) {
-    if (!host.isSignedIn) {
-      html += `<div class="ai-flow-toggle-desc us-notif-signin">Sign in to link notification channels.</div>`;
-    } else {
-      html += `<details class="wm-pref-group" id="usNotifGroup">`;
-      html += `<summary>Notifications</summary>`;
-      html += `<div class="wm-pref-group-content">`;
-      html += `<div class="us-notif-loading" id="usNotifLoading">Loading...</div>`;
-      html += `<div class="us-notif-content" id="usNotifContent" style="display:none"></div>`;
-      html += `</div></details>`;
-    }
-  }
 
   // AI status footer (web-only)
   if (!host.isDesktopApp) {
@@ -365,8 +541,19 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   return {
     html,
     attach(container: HTMLElement): () => void {
+      // The import modal is authored in the template above, so it declares
+      // after mount. Pasted JSON and a URL input make it blocking.
+      const importModal = container.querySelector<HTMLElement>('.fw-import-modal');
+      if (importModal) declareOverlay(importModal, { reload: 'blocking' });
+
       const ac = new AbortController();
       const { signal } = ac;
+
+      window.addEventListener(FONT_SCALE_CHANGED_EVENT, (event) => {
+        const select = container.querySelector<HTMLSelectElement>('#us-font-scale');
+        const scale = (event as CustomEvent<FontScaleChangedDetail>).detail?.scale;
+        if (select && scale !== undefined) select.value = String(scale);
+      }, { signal });
 
       container.addEventListener('change', (e) => {
         const target = e.target as HTMLInputElement;
@@ -383,60 +570,14 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           return;
         }
 
-        if (target.id === 'us-stream-quality') {
-          setStreamQuality(target.value as StreamQuality);
+        const saveResult = handlePreferenceChange(target, container, host);
+        if (typeof saveResult === 'boolean') {
+          if (saveResult) host.onSettingSaved?.();
           return;
         }
-        if (target.id === 'us-globe-visual-preset') {
-          setGlobeVisualPreset(target.value as GlobeVisualPreset);
-          return;
-        }
-        if (target.id === 'us-theme') {
-          setThemePreference(target.value as ThemePreference);
-          return;
-        }
-        if (target.id === 'us-font-family') {
-          setFontFamily(target.value as FontFamily);
-          return;
-        }
-        if (target.id === 'us-map-provider') {
-          const provider = target.value as MapProvider;
-          setMapProvider(provider);
-          renderMapThemeDropdown(container, provider);
-          host.onMapProviderChange?.(provider);
-          window.dispatchEvent(new CustomEvent('map-theme-changed'));
-          return;
-        }
-        if (target.id === 'us-map-theme') {
-          const provider = getMapProvider();
-          setMapTheme(provider, target.value);
-          window.dispatchEvent(new CustomEvent('map-theme-changed'));
-          return;
-        }
-        if (target.id === 'us-live-streams-always-on') {
-          setLiveStreamsAlwaysOn(target.checked);
-          return;
-        }
-        if (target.id === 'us-language') {
-          trackLanguageChange(target.value);
-          void changeLanguage(target.value);
-          return;
-        }
-        if (target.id === 'us-cloud') {
-          setAiFlowSetting('cloudLlm', target.checked);
-          updateAiStatus(container);
-        } else if (target.id === 'us-browser') {
-          setAiFlowSetting('browserModel', target.checked);
-          const warn = container.querySelector('.ai-flow-toggle-warn') as HTMLElement;
-          if (warn) warn.style.display = target.checked ? 'block' : 'none';
-          updateAiStatus(container);
-        } else if (target.id === 'us-map-flash') {
-          setAiFlowSetting('mapNewsFlash', target.checked);
-        } else if (target.id === 'us-headline-memory') {
-          setAiFlowSetting('headlineMemory', target.checked);
-        } else if (target.id === 'us-badge-anim') {
-          setAiFlowSetting('badgeAnimation', target.checked);
-        }
+        void saveResult.then((saved) => {
+          if (saved) host.onSettingSaved?.();
+        }).catch(() => undefined);
       }, { signal });
 
       container.addEventListener('click', (e) => {
@@ -488,7 +629,9 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           hideImportError(errEl);
           if (preview) preview.style.display = 'none';
           const urlVal = urlInput.value.trim();
-          if (!urlVal.includes('agentskills.io')) {
+          let skillHostname = '';
+          try { skillHostname = new URL(urlVal).hostname; } catch { /* rejected below */ }
+          if (!['agentskills.io', 'www.agentskills.io', 'api.agentskills.io'].includes(skillHostname)) {
             showImportError(errEl, 'Only agentskills.io URLs are supported.');
             return;
           }
@@ -523,7 +666,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           }).catch((err: Error) => {
             if (err.name === 'AbortError') return;
             if (err.message === 'rate-limit') {
-              showImportError(errEl, 'Too many import requests. Try again in an hour.');
+              showImportError(errEl, 'Too many import requests. Try again in a minute.');
             } else {
               showImportError(errEl, 'Could not reach agentskills.io. Check your connection.');
             }
@@ -605,230 +748,22 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
       if (!host.isDesktopApp) updateAiStatus(container);
 
-      // ── Notifications section ──
-      if (!host.isDesktopApp && host.isSignedIn) {
-        let notifPollInterval: ReturnType<typeof setInterval> | null = null;
-
-        function clearNotifPoll(): void {
-          if (notifPollInterval !== null) {
-            clearInterval(notifPollInterval);
-            notifPollInterval = null;
-          }
+      // ── Cloud Sync: wire "Sync now" button + live state updates ──
+      if (!host.isDesktopApp && host.isSignedIn && isCloudSyncEnabled()) {
+        const syncBtn = container.querySelector<HTMLButtonElement>('#usSyncNowBtn');
+        if (syncBtn) {
+          syncBtn.addEventListener('click', () => {
+            syncBtn.disabled = true;
+            syncBtn.textContent = 'Syncing\u2026';
+            syncNow().finally(() => {
+              syncBtn.disabled = false;
+              syncBtn.textContent = 'Sync now';
+              updateSyncStatusUI(container);
+            });
+          }, { signal });
         }
-
-        signal.addEventListener('abort', clearNotifPoll);
-
-        function renderChannelRow(channel: NotificationChannel | null, type: ChannelType): string {
-          if (channel?.verified) {
-            const label = type === 'telegram' ? `@${channel.chatId ?? 'Telegram'}`
-              : type === 'email' ? (channel.email ?? 'Email')
-              : 'Slack webhook';
-            return `<div class="us-notif-channel-row" data-channel-type="${type}">
-              <span class="us-notif-channel-label">${escapeHtml(label)}</span>
-              <button type="button" class="settings-btn settings-btn-secondary us-notif-disconnect" data-channel="${type}">Disconnect</button>
-            </div>`;
-          }
-          if (type === 'telegram') {
-            return `<div class="us-notif-channel-row" data-channel-type="telegram">
-              <button type="button" class="settings-btn us-notif-telegram-connect" id="usConnectTelegram">Connect Telegram</button>
-            </div>`;
-          }
-          if (type === 'email') {
-            return `<div class="us-notif-channel-row" data-channel-type="email">
-              <button type="button" class="settings-btn us-notif-email-connect" id="usConnectEmail">Link Email</button>
-            </div>`;
-          }
-          if (type === 'slack') {
-            return `<div class="us-notif-channel-row" data-channel-type="slack">
-              <input type="url" class="unified-settings-select" id="usSlackWebhookUrl" placeholder="https://hooks.slack.com/services/..." />
-              <button type="button" class="settings-btn us-notif-slack-connect" id="usConnectSlack">Connect Slack</button>
-            </div>`;
-          }
-          return '';
-        }
-
-        function renderNotifContent(data: Awaited<ReturnType<typeof getChannelsData>>): string {
-          const channelTypes: ChannelType[] = ['telegram', 'email', 'slack'];
-          const alertRule = data.alertRules?.[0] ?? null;
-          const sensitivity = alertRule?.sensitivity ?? 'all';
-
-          let html = '<div class="ai-flow-section-label">Channels</div>';
-          for (const type of channelTypes) {
-            const channel = data.channels.find(c => c.channelType === type) ?? null;
-            html += renderChannelRow(channel, type);
-          }
-
-          html += `<div class="ai-flow-section-label">Alert Rules</div>
-            <div class="ai-flow-toggle-row">
-              <div class="ai-flow-toggle-label-wrap">
-                <div class="ai-flow-toggle-label">Enable notifications</div>
-                <div class="ai-flow-toggle-desc">Receive alerts for events matching your filters</div>
-              </div>
-              <label class="ai-flow-switch">
-                <input type="checkbox" id="usNotifEnabled"${alertRule?.enabled ? ' checked' : ''}>
-                <span class="ai-flow-slider"></span>
-              </label>
-            </div>
-            <div class="ai-flow-section-label">Sensitivity</div>
-            <select class="unified-settings-select" id="usNotifSensitivity">
-              <option value="all"${sensitivity === 'all' ? ' selected' : ''}>All events</option>
-              <option value="high"${sensitivity === 'high' ? ' selected' : ''}>High &amp; critical</option>
-              <option value="critical"${sensitivity === 'critical' ? ' selected' : ''}>Critical only</option>
-            </select>`;
-          return html;
-        }
-
-        function reloadNotifSection(): void {
-          const loadingEl = container.querySelector<HTMLElement>('#usNotifLoading');
-          const contentEl = container.querySelector<HTMLElement>('#usNotifContent');
-          if (!loadingEl || !contentEl) return;
-          loadingEl.style.display = 'block';
-          contentEl.style.display = 'none';
-          if (signal.aborted) return;
-          getChannelsData().then((data) => {
-            if (signal.aborted) return;
-            contentEl.innerHTML = renderNotifContent(data);
-            loadingEl.style.display = 'none';
-            contentEl.style.display = 'block';
-          }).catch(() => {
-            if (signal.aborted) return;
-            if (loadingEl) loadingEl.textContent = 'Failed to load notification settings.';
-          });
-        }
-
-        reloadNotifSection();
-
-        // When a new channel is linked, auto-update the rule's channels list
-        // so it includes the new channel without requiring a manual toggle.
-        function saveRuleWithNewChannel(newChannel: ChannelType): void {
-          const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
-          const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
-          if (!enabledEl) return;
-          const enabled = enabledEl.checked;
-          const sensitivity = (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical';
-          const existing = Array.from(container.querySelectorAll<HTMLElement>('[data-channel-type]'))
-            .filter(el => el.querySelector('.us-notif-disconnect'))
-            .map(el => el.dataset.channelType as ChannelType);
-          const channels = [...new Set([...existing, newChannel])];
-          void saveAlertRules({ variant: SITE_VARIANT, enabled, eventTypes: [], sensitivity, channels });
-        }
-
-        let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-        signal.addEventListener('abort', () => {
-          if (alertRuleDebounceTimer !== null) {
-            clearTimeout(alertRuleDebounceTimer);
-            alertRuleDebounceTimer = null;
-          }
-        });
-
-        container.addEventListener('change', (e) => {
-          const target = e.target as HTMLInputElement;
-          if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity') {
-            if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
-            alertRuleDebounceTimer = setTimeout(() => {
-              const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
-              const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
-              const enabled = enabledEl?.checked ?? false;
-              const sensitivity = (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical';
-              const connectedChannelTypes = Array.from(
-                container.querySelectorAll<HTMLElement>('[data-channel-type]'),
-              )
-                .filter(el => el.querySelector('.us-notif-disconnect'))
-                .map(el => el.dataset.channelType as ChannelType);
-              void saveAlertRules({
-                variant: SITE_VARIANT,
-                enabled,
-                eventTypes: [],
-                sensitivity,
-                channels: connectedChannelTypes,
-              });
-            }, 1000);
-          }
-        }, { signal });
-
-        container.addEventListener('click', (e) => {
-          const target = e.target as HTMLElement;
-
-          if (target.closest('#usConnectTelegram')) {
-            const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
-            if (!rowEl) return;
-            createPairingToken().then(({ token, expiresAt }) => {
-              if (signal.aborted) return;
-              const botUsername = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ?? 'WorldMonitorBot';
-              const deepLink = `https://t.me/${botUsername}?start=${token}`;
-              const secsLeft = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
-              rowEl.innerHTML = `
-                <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="settings-btn us-notif-tg-link">Open Telegram to pair</a>
-                <span class="us-notif-tg-countdown" id="usTgCountdown">${secsLeft}s</span>
-              `;
-              let remaining = secsLeft;
-              clearNotifPoll();
-              notifPollInterval = setInterval(() => {
-                if (signal.aborted) { clearNotifPoll(); return; }
-                remaining -= 3;
-                const countdownEl = container.querySelector<HTMLElement>('#usTgCountdown');
-                if (countdownEl) countdownEl.textContent = `${Math.max(0, remaining)}s`;
-                const expired = remaining <= 0;
-                if (expired) clearNotifPoll();
-                getChannelsData().then((data) => {
-                  const tg = data.channels.find(c => c.channelType === 'telegram');
-                  if (tg?.verified || expired) {
-                    if (tg?.verified) saveRuleWithNewChannel('telegram');
-                    reloadNotifSection();
-                  }
-                }).catch(() => {
-                  if (expired) reloadNotifSection();
-                });
-              }, 3000);
-            }).catch(() => {});
-            return;
-          }
-
-          if (target.closest('#usConnectEmail')) {
-            const user = getCurrentClerkUser();
-            const email = user?.email;
-            if (!email) {
-              const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
-              if (rowEl) {
-                rowEl.querySelector('.us-notif-error')?.remove();
-                rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">No email found on your account</span>');
-              }
-              return;
-            }
-            setEmailChannel(email).then(() => {
-              if (!signal.aborted) { saveRuleWithNewChannel('email'); reloadNotifSection(); }
-            }).catch(() => {});
-            return;
-          }
-
-          if (target.closest('#usConnectSlack')) {
-            const input = container.querySelector<HTMLInputElement>('#usSlackWebhookUrl');
-            const url = input?.value?.trim() ?? '';
-            const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[a-zA-Z0-9]+$/;
-            if (!SLACK_RE.test(url)) {
-              const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
-              if (rowEl) {
-                const existing = rowEl.querySelector('.us-notif-error');
-                if (existing) existing.remove();
-                rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">Invalid Slack webhook URL format</span>');
-              }
-              return;
-            }
-            setSlackChannel(url).then(() => {
-              if (!signal.aborted) { saveRuleWithNewChannel('slack'); reloadNotifSection(); }
-            }).catch(() => {});
-            return;
-          }
-
-          const disconnectBtn = target.closest<HTMLElement>('.us-notif-disconnect[data-channel]');
-          if (disconnectBtn?.dataset.channel) {
-            const channelType = disconnectBtn.dataset.channel as ChannelType;
-            deleteChannel(channelType).then(() => {
-              if (!signal.aborted) reloadNotifSection();
-            }).catch(() => {});
-            return;
-          }
-        }, { signal });
+        const syncPollId = setInterval(() => updateSyncStatusUI(container), 2000);
+        signal.addEventListener('abort', () => clearInterval(syncPollId));
       }
 
       return () => ac.abort();
@@ -857,7 +792,7 @@ function renderFrameworkLibraryHtml(): string {
 
 function refreshFrameworkLibrary(container: HTMLElement): void {
   const list = container.querySelector('#fwLibraryList');
-  if (list) list.innerHTML = renderFrameworkLibraryHtml();
+  if (list) setTrustedHtml(list, trustedHtml(renderFrameworkLibraryHtml(), "legacy direct innerHTML migration"));
 }
 
 function showImportError(el: HTMLElement | null, msg: string): void {
@@ -876,9 +811,9 @@ function showToast(container: HTMLElement, msg: string, success: boolean): void 
   const toast = container.querySelector('#usDataMgmtToast');
   if (!toast) return;
   toast.className = `us-data-mgmt-toast ${success ? 'ok' : 'error'}`;
-  toast.innerHTML = success
+  setTrustedHtml(toast, trustedHtml(success
     ? `${escapeHtml(msg)} <a href="#" class="us-toast-reload">${t('components.settings.reloadNow')}</a>`
-    : escapeHtml(msg);
+    : escapeHtml(msg), "legacy direct innerHTML migration"));
   toast.querySelector('.us-toast-reload')?.addEventListener('click', (e) => {
     e.preventDefault();
     window.location.reload();

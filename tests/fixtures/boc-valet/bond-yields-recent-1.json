@@ -1,0 +1,45 @@
+{
+  "terms": {
+    "url": "https://www.bankofcanada.ca/terms/"
+  },
+  "seriesDetail": {
+    "BD.CDN.10YR.DQ.YLD": {
+      "label": "Benchmark bond yield: 10 year",
+      "description": "The yield on the Government of Canada 10-year benchmark bond. This series represents the prevailing market interest rate for the 10-year Government of Canada bond and is used as a reference for financial market analysis and reporting.",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "BD.CDN.2YR.DQ.YLD": {
+      "label": "Benchmark bond yield: 2 year",
+      "description": "The yield on the Government of Canada 2-year benchmark bond. This series reflects the prevailing interest rate for the 2-year term and is used to monitor short-term government borrowing costs.",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    },
+    "BD.CDN.5YR.DQ.YLD": {
+      "label": "Benchmark bond yield: 5 year",
+      "description": "The yield on the Government of Canada 5-year benchmark bond. This series reports the prevailing yield for the 5-year maturity point on the Canadian government bond yield curve.",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      }
+    }
+  },
+  "observations": [
+    {
+      "d": "2026-08-12",
+      "BD.CDN.5YR.DQ.YLD": {
+        "v": "3.30"
+      },
+      "BD.CDN.10YR.DQ.YLD": {
+        "v": "3.69"
+      },
+      "BD.CDN.2YR.DQ.YLD": {
+        "v": "2.98"
+      }
+    }
+  ]
+}

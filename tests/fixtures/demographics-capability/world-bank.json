@@ -1,0 +1,22 @@
+{
+  "SE.TER.ENRR": [
+    {"country":{"id":"DE","value":"Germany"},"countryiso3code":"DEU","date":"2024","value":76.7096862792969},
+    {"country":{"id":"US","value":"United States"},"countryiso3code":"USA","date":"2024","value":null},
+    {"country":{"id":"US","value":"United States"},"countryiso3code":"USA","date":"2023","value":125.5}
+  ],
+  "SP.POP.SCIE.RD.P6": [
+    {"country":{"id":"DE","value":"Germany"},"countryiso3code":"DEU","date":"2023","value":5926.07432}
+  ],
+  "SE.TER.GRAD.EN.ZS": [
+    {"country":{"id":"DE","value":"Germany"},"countryiso3code":"DEU","date":"2018","value":21.39715},
+    {"country":{"id":"US","value":"United States"},"countryiso3code":"USA","date":"2019","value":20}
+  ],
+  "SE.TER.GRAD.SC.ZS": [
+    {"country":{"id":"DE","value":"Germany"},"countryiso3code":"DEU","date":"2018","value":9.04953},
+    {"country":{"id":"US","value":"United States"},"countryiso3code":"USA","date":"2018","value":10}
+  ],
+  "UIS.FOSGP.5T8.F600": [
+    {"country":{"id":"DE","value":"Germany"},"countryiso3code":"DEU","date":"2018","value":4.86212},
+    {"country":{"id":"US","value":"United States"},"countryiso3code":"USA","date":"2019","value":null}
+  ]
+}

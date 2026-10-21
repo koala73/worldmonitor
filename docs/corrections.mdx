@@ -1,0 +1,202 @@
+---
+title: "Revision and Corrections Log"
+description: "Review published WorldMonitor dataset and methodology corrections, their effective dates and effects, plus the planned Energy Atlas automated asset-change log."
+---
+
+<Note>
+This public log records material revisions to WorldMonitor datasets and
+methods. The automated Energy Atlas asset-change writer remains planned.
+What ships today on the Energy Atlas includes the evidence bundles inside each
+RPC response (`ListPipelines`, `ListStorageFacilities`,
+`ListFuelShortages`, `ListEnergyDisruptions`), and the methodology pages
+that describe how public badges are derived from those bundles. Until the
+asset-change writer ships:
+`GetPipelineDetail.revisions` and `GetStorageFacilityDetail.revisions`
+return empty arrays. Reader error reports for news labels are live; see
+[Reporting an error](#reporting-an-error).
+</Note>
+
+## Published revisions
+
+| Effective date | Product | Revision | Published effect |
+| --- | --- | --- | --- |
+| 2026-09-08 | Country pages / country brief | **Unsupported brief citations withheld.** The September 7 audit reported 20 of 50 sampled "What this means" bullets naming assets absent from their grounding headlines, including Cerrejón, Caño Limón-Coveñas, Tamar, Leviathan and El Guri. A citation index alone did not prove that its source named the entities in the claim. The freeze and page build now check each paragraph or bullet against every source it cites and withhold the whole brief when the check fails. Uncited lines must also ground their names in the retained source set. | A local replay of the 2026-09-04 snapshot with this rule withholds all 22 briefs that survived the earlier publisher floor, leaving 0 published briefs from that capture. These are precautionary withdrawals, not a claim that all their statements are false. Dated headlines and timelines remain. The same rule applies to the downloadable datasets and future freezes; the historical snapshot is preserved. Only source titles are retained, so the check cannot rely on article bodies and can reject legitimate paraphrases or mixed-source paragraphs. This checks named-entity presence, not factual entailment. See [issue #7865](https://github.com/koala73/worldmonitor/issues/7865). |
+| 2026-09-05 | Country pages / country brief | **Single-publisher briefs withheld; brief text and grounding corrected.** A generated country brief is now published only when its grounding headlines come from at least two distinct publishers; a 24/48/72h outlook synthesised from one outlet is withheld and the page keeps its dated headlines. The country matcher that selected grounding headlines matched bare ISO codes as words, so a few briefs were grounded on another country's news (an "African Union (AU)" story on the Australia page); one shared matcher now grounds the pages, the dashboard and the MCP tool. Briefs also rendered raw markdown markers and, for countries outside the tier-1 table, the ISO code in place of the country name in the "What this means for" heading. | Applies to every indexed country page, its dataset download and the weekly frozen snapshot. On the 2026-09-04 snapshot 18 of 40 published briefs are withdrawn (including the wrong-country ones and one grounded on three articles from a single newsroom) and the remaining 22 render as structured text with the country name in the heading. New briefs are grounded and named correctly from the first refresh after this change. See [PR #7762](https://github.com/koala73/worldmonitor/pull/7762) for [issue #7748](https://github.com/koala73/worldmonitor/issues/7748) and [issue #7738](https://github.com/koala73/worldmonitor/issues/7738). |
+| 2026-09-02 | Chokepoint status | **Source availability separated.** NGA navigational warnings, the AIS snapshot, relay transit counts and PortWatch movement are now four independent availability domains, so one missing source no longer hides another's valid values and an unavailable reading is never shown as a measured zero or a calm level. The combined warnings row was split into navigational warnings and AIS disruptions, and congestion is labelled AIS congestion. | Applies to all 13 chokepoint pages, dashboard panels, frozen snapshots, OpenAPI clients and the public agent skill. Cached payloads and frozen snapshots predating the new source flags fail closed, so warnings, AIS disruptions and AIS congestion stay withheld until a fresh capture replaces them. See [PR #7535](https://github.com/koala73/worldmonitor/pull/7535) for [issue #7529](https://github.com/koala73/worldmonitor/issues/7529). |
+| 2026-09-01 | Chokepoint status | **Derived metrics withheld without a transit count.** Week-over-week movement, navigational-warning counts and AIS-derived congestion were published even when the day's transit count was unavailable, contradicting the page's own transit disclaimer. A shared coverage rule now withholds every metric that depends on a missing transit count. | Applies to all 13 chokepoint pages and the live browser refresh path. Withheld values render as an em dash or are hidden; complete transit coverage is unchanged. See [PR #7515](https://github.com/koala73/worldmonitor/pull/7515) for [issue #7503](https://github.com/koala73/worldmonitor/issues/7503). |
+| 2026-06-01 | Country Resilience Index | **P1-1 pillar aggregation correction.** Pillar scores now apply each domain's design weight inside pillar aggregation. The 2026-05-28 snapshot used the earlier coverage-only member aggregation and remains a labelled historical capture. | Live score, ranking, history, and interval cache generations changed together. The 2026-08-29 full-universe capture is the first published country snapshot after this correction. See [PR #4021](https://github.com/koala73/worldmonitor/pull/4021). |
+
+The crawlable CRI snapshot workflow is scheduled for the first day of each month (`17 5 1 * *` UTC). It captures the credentialed full-universe ranking, rebuilds the crawlable corpus and sitemap, and opens a pull request for review. Off-cycle captures also ship when a methodology correction needs a new full-universe artifact. The current published snapshot is `resilience-ranking-2026-08-29.json` (captured 2026-08-29, after the P1-1 pillar-aggregation correction), not a first-of-month run.
+
+## Story label history
+
+WorldMonitor labels each news story with how widely it is covered: one
+publisher family carries it ("single publisher"), or two or more do
+("corroborated"). The label describes coverage, not accuracy. A story moving
+to "corroborated" means more publishers carry it, not that it was confirmed.
+
+When a story's label moves between those two states, the change is recorded
+automatically. Each entry records:
+
+- the previous and new label;
+- how many publisher families stood behind each;
+- the publishers behind the new label, with their tiers;
+- the story's CRED score;
+- the headline and a representative link;
+- the time.
+
+Entries are kept for seven days. The [trust page](https://www.worldmonitor.app/trust/)
+shows them, with today's count of stories under each label. Read them through
+[`GET /api/news/v1/list-label-changes`](/api-reference/newsservice/listlabelchanges), for every story or
+for one story with `story_id`. The history starts when this shipped. Earlier
+changes were not recorded, and a story's first label is not an entry.
+
+Only the full English digest records changes. Other variants keep fewer of a
+story's feeds and would flip its label back and forth. "Tier 4 only" and
+"unknown" are not recorded, because they depend on which feed labels a cycle
+happened to keep.
+
+## Reporting an error
+
+Anyone can report that a label or story is wrong, without an account, from the
+[trust page](https://www.worldmonitor.app/trust/) or through
+[`POST /api/news/v1/submit-error-report`](/api-reference/newsservice/submiterrorreport).
+A report holds a message, and optionally the story it concerns, a URL and an
+email for a reply.
+
+- Reports are stored for review and never applied automatically.
+- Submissions are rate-limited per IP.
+- The review queue holds at most 1,000 pending reports. When it is full, new
+  reports are refused rather than pushing older ones out unseen.
+- Reports and any email are kept for 90 days and are never published.
+
+When a reviewer accepts a report, only the reviewer's public note is added to
+the label history above, as a `correction` entry with trigger `report`. The
+reader's message and email stay private. A rejected report publishes nothing.
+
+## Energy Atlas automated revision log (planned)
+
+WorldMonitor's Energy Atlas publishes evidence bundles — not opinions —
+for pipelines, storage facilities, [fuel shortages](/api-reference/supplychainservice/listfuelshortages), and disruption
+events. A deterministic, versioned classifier turns those bundles into
+public badges (`flowing` / `reduced` / `offline` / `disputed` for
+assets; `confirmed` / `watch` for shortages).
+
+When the classifier goes live, every time it changes a public field —
+because evidence updated, because staleness decayed a badge, because a
+new classifier version re-derived an old asset, or because an
+operator/regulator-submitted correction was applied — it will write an
+append-only entry here.
+
+This is the designed asset-level audit record. The evidence registries
+are forward-looking snapshots. The automated log will record how each
+status changed.
+
+## Planned data shape
+
+Each entry is planned as a row with the following fields:
+
+```ts
+{
+  date: string,                 // ISO8601 — when the change was written
+  assetOrEventId: string,       // matches an id in the pipeline / storage / shortage / disruption registry
+  fieldChanged: string,         // e.g. 'publicBadge', 'physicalState', 'severity', 'evidence.sanctionRefs'
+  previousValue: unknown,       // value before the change
+  newValue: unknown,            // value after the change
+  trigger: 'classifier' | 'source' | 'decay' | 'override',
+  sourcesUsed: string[],        // URLs cited by the classifier for this change
+  classifierVersion: string,    // version that produced newValue (e.g. 'badge-deriver-v1')
+}
+```
+
+The matching proto surface lives at
+`GetPipelineDetail.revisions` and `GetStorageFacilityDetail.revisions`.
+Both currently return empty arrays by design — the handlers document
+"Revision log arrives in a post-launch release" in their code comments
+rather than pretending the surface is live.
+
+### Planned trigger vocabulary
+
+- **`classifier`** — a routine classifier pass re-derives the field
+  from the current evidence bundle. Expected to be the most common
+  trigger once live.
+- **`source`** — a new evidence source arrives (regulator filing,
+  operator press release, sanction list update) and the classifier
+  re-derives accordingly.
+- **`decay`** — the evidence is older than the staleness window
+  (14 days for registry fields, 30 days for shortage evidence) and the
+  classifier demotes a non-positive badge to `disputed` or `watch`.
+- **`override`** — a break-glass manual override is applied. Reserved
+  for demonstrably-wrong classifier outputs flagged by readers.
+  Overrides will carry the same `sourcesUsed` discipline as classifier
+  entries.
+
+## What is live today
+
+- **Published methodology revisions.** The table on this page records
+  changes that affect public datasets and their interpretation.
+- **Evidence bundles on every asset.** Click any pipeline, storage
+  facility, or shortage pin on the [Energy Atlas](https://energy.worldmonitor.app/dashboard)
+  and you see its full evidence bundle: physical state, commercial
+  state, operator statements (with URL and date), sanction references
+  (with authority + list ID + URL), classifier version and confidence,
+  and the timestamp of the most recent evidence update. This is the
+  primary audit surface today.
+- **Public methodology pages.** The derivation rules, staleness
+  windows, and evidence-threshold specs are all publicly documented:
+  - [Pipeline Registry](/methodology/pipelines)
+  - [Storage Facilities](/methodology/storage)
+  - [Fuel Shortages](/methodology/shortages)
+  - [Disruption Event Log](/methodology/disruptions)
+  - [Chokepoints](/methodology/chokepoints)
+- **Versioned classifier output.** Every RPC response carries a
+  `classifier_version` field. A reader can pin expectations to a
+  version today even though the revision-log history-of-versions
+  surface isn't yet published.
+
+## What is not live today
+
+- Automated Energy Atlas asset-level entries. This page will list those
+  rows after the classifier ships.
+- Automated corrections. Reader reports (see
+  [Reporting an error](#reporting-an-error)) are reviewed by a person and are
+  never applied automatically. Energy Atlas corrections are not yet on the
+  classifier's path; they're handled manually today.
+- The `override`-trigger entry writer. Same dependency: ships with the
+  classifier.
+
+## Verifying a badge today (pre-classifier)
+
+Until the revision log is live, the audit path for any status on the
+Energy Atlas is:
+
+1. Open the asset drawer (click the pipeline / storage dot / shortage
+   pin).
+2. Read the evidence bundle — every source is linked with publication
+   date and authority (`regulator` / `operator` / `press` /
+   `satellite`).
+3. Check the methodology page for the asset class — the derivation
+   rules are deterministic and versioned.
+4. If all evidence is current and the public badge still looks wrong
+   after walking the rules, open an issue on the public repository
+   with the asset id, the current evidence bundle, and your reasoning.
+   The manual review path will seed `override` entries once the
+   revision log ships.
+
+## Why document this surface before it ships
+
+Two reasons to publish the spec before the writer lands:
+
+1. **Contract stability.** The shape of `revisions` in
+   `GetPipelineDetail.revisions` / `GetStorageFacilityDetail.revisions`
+   is part of the RPC contract that agents and MCP clients consume.
+   Documenting it now means downstream consumers can code against the
+   stable shape before live data arrives.
+2. **Policy signalling.** Evidence-first classification only works if
+   the audit trail is committed-to in public, not treated as an
+   internal implementation detail. Publishing the planned shape and
+   submission policy ahead of the writer is the commitment.
+
+Neither reason justifies overstating the current state. When automated
+asset-level entries start appearing, this page will replace the status
+callout with the last update time.

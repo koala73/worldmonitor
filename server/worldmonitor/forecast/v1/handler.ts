@@ -1,6 +1,14 @@
 import type { ForecastServiceHandler } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
+import { getForecastScorecard } from './get-forecast-scorecard';
 import { getForecasts } from './get-forecasts';
 import { getSimulationPackage } from './get-simulation-package';
 import { getSimulationOutcome } from './get-simulation-outcome';
+import { triggerSimulation } from './trigger-simulation';
 
-export const forecastHandler: ForecastServiceHandler = { getForecasts, getSimulationPackage, getSimulationOutcome };
+export const forecastHandler: ForecastServiceHandler = {
+  getForecasts,
+  getForecastScorecard,
+  getSimulationPackage,
+  getSimulationOutcome,
+  triggerSimulation,
+};

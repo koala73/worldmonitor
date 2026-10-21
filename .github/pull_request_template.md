@@ -30,6 +30,17 @@
 - [ ] New RSS feed domains added to `api/rss-proxy.js` allowlist (if adding feeds)
 - [ ] No API keys or secrets committed
 - [ ] TypeScript compiles without errors (`npm run typecheck`)
+- [ ] New or repointed health probes have a completed Railway-side pre-seed, a one-way durable activation marker for an intentionally gated producer, or an owner-bound baseline acknowledgement with an entry-level `expiresAt` bounded to the first scheduled cron window (if applicable)
+
+## Documentation Alignment Checklist
+
+<!-- Required for documentation-alignment PRs that touch methodology, API/MCP contracts, generated docs, examples, Redis keys, CII, CRI, news, digest, or briefing. Mark N/A only when this PR does not publish or change documentation claims. -->
+
+- [ ] Claim ledger attached or linked
+- [ ] All required Audit Council role signoffs attached
+- [ ] Generated docs regenerated from proto where applicable
+- [ ] Fixture-backed examples recomputed
+- [ ] Redis writers/readers enumerated for every documented key
 
 ## Screenshots
 

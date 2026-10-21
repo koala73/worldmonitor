@@ -1,6 +1,6 @@
 ---
 title: "Webcam Layer"
-description: "Global webcam coverage with timelapse playback, pinned webcam panel, and multi-source integration roadmap."
+description: "World Monitor's global webcam coverage layer — timelapse playback, pinned webcam panel, and multi-source integration roadmap for live imagery."
 ---
 The Webcam layer provides global visual intelligence by overlaying webcam locations on the map, with interactive tooltips showing preview images and a pinned webcam panel for persistent monitoring of key locations.
 
@@ -11,7 +11,7 @@ The primary data source is the [Windy Webcams API](https://api.windy.com/webcams
 | Attribute | Value |
 |-----------|-------|
 | **Provider** | Windy Webcams API v3 |
-| **Coverage** | ~65,000 cameras globally |
+| **Coverage** | Global camera catalog |
 | **Update frequency** | Cameras capture images periodically (every 5-15 min) |
 | **Seeder** | `scripts/seed-webcams.mjs` — regional bounding-box fetch with adaptive quadrant splitting |
 | **API key** | Required (`WINDY_API_KEY`); free tier available at [api.windy.com](https://api.windy.com) |
@@ -73,6 +73,15 @@ Runtime:
   User clicks marker → getWebcamImage RPC → Windy API (cached 5 min) → tooltip with preview
   User pins webcam → localStorage → PinnedWebcamsPanel (2x2 iframe grid)
 ```
+
+### Backed by endpoints
+
+The webcam layer does not hydrate marker or preview data from the bootstrap payload. Viewport reads are direct WebcamService RPC calls against the seeded Redis geo index, and preview/player URLs are fetched only after a user interacts with a marker.
+
+| Method | Route | What it feeds |
+|--------|-------|---------------|
+| `GET` | `/api/webcam/v1/list-webcams` | Map webcam markers and clusters for the current viewport; the handler reads seeded Redis geo/metadata keys and caches clustered viewport responses. |
+| `GET` | `/api/webcam/v1/get-webcam-image` | Tooltip preview images and Windy player URLs for a selected camera; the handler calls Windy on demand and caches each webcam image lookup for 5 minutes. |
 
 ### Server-side clustering
 
@@ -136,7 +145,9 @@ Pinned webcam data is stored in `localStorage` under the key `wm-pinned-webcams`
 webcamId, title, lat, lng, category, country, playerUrl, active (boolean), pinnedAt (timestamp)
 ```
 
-Maximum 4 webcams can be active (showing in grid) at any time. The total number of pinned webcams is not limited.
+Maximum 4 webcams can be active (showing in grid) at any time. Up to 32 unique webcams can be pinned. The serialized webcam preference is limited to 16 KiB of UTF-8 data. Pinning at either storage limit shows a message and keeps existing pins.
+
+Settings import, cloud sync, and saved-data reads validate webcam records and Windy player URLs. Malformed or oversized preference blobs become an empty list. Within the size limit, normalization keeps the first valid, unique records that fit. These rules affect only the webcam preference, not other settings.
 
 ## Current Limitations
 
@@ -181,4 +192,4 @@ Challenge: Each state has a slightly different schema requiring normalizing adap
 
 ### Phase 3: OpenWebcamDB
 
-Supplementary source with ~2,052 curated cameras. Free tier limited to 50 requests/day. Clean REST API but small dataset. Requires aggressive caching strategy.
+Supplementary source with a curated camera catalog. Free tier limited to 50 requests/day. Clean REST API but a smaller dataset. Requires aggressive caching strategy.

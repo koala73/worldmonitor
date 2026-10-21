@@ -2,6 +2,10 @@
   "name": "blog-site",
   "type": "module",
   "version": "0.0.1",
+  "allowScripts": {
+    "esbuild": true,
+    "fsevents": false
+  },
   "engines": {
     "node": ">=22.12.0"
   },
@@ -9,16 +13,30 @@
     "dev": "astro dev",
     "generate:og": "node scripts/generate-og-images.mjs",
     "build": "npm run generate:og && astro build",
+    "verify:guides": "node --test scripts/verify-buying-guides.test.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/rss": "^4.0.16",
+    "@astrojs/rss": "^4.0.18",
     "@astrojs/sitemap": "^3.7.1",
-    "astro": "^6.0.0",
-    "fast-xml-builder": "^1.1.0",
+    "astro": "^7.2.8",
     "gray-matter": "^4.0.3",
+    "http-cache-semantics": "file:../vendor/http-cache-semantics",
     "satori": "^0.25.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.5"
+  },
+  "overrides": {
+    "http-cache-semantics": "$http-cache-semantics",
+    "sharp": "$sharp",
+    "devalue": "^5.9.4",
+    "defu": "^6.1.5",
+    "esbuild": "0.28.1",
+    "fast-xml-parser": "^5.8.0",
+    "h3": "^1.15.9",
+    "picomatch": "^4.0.4",
+    "postcss": "^8.5.18",
+    "smol-toml": "^1.7.1",
+    "fflate": "0.7.5"
   }
 }

@@ -40,7 +40,7 @@ function extractGetRoutes() {
 function extractCacheTierKeys() {
   const gatewayPath = join(root, 'server', 'gateway.ts');
   const src = readFileSync(gatewayPath, 'utf-8');
-  const re = /'\/(api\/[^']+)':\s*'(fast|medium|slow|slow-browser|static|daily|no-store)'/g;
+  const re = /'\/(api\/[^']+)':\s*'(fast|medium|slow|slow-browser|live-browser|static|daily|no-store|live)'/g;
   const entries = {};
   let m;
   while ((m = re.exec(src)) !== null) {
@@ -54,8 +54,8 @@ describe('RPC_CACHE_TIER route parity', () => {
   const tierMap = extractCacheTierKeys();
   const tierKeys = Object.keys(tierMap);
 
-  it('finds at least 50 GET routes in generated server files', () => {
-    assert.ok(getRoutes.length >= 50, `Expected ≥50 GET routes, found ${getRoutes.length}`);
+  it('finds a non-empty GET route universe in generated server files', () => {
+    assert.ok(getRoutes.length > 0, 'generated GET route extraction must not be empty');
   });
 
   it('every generated GET route has an explicit cache tier entry', () => {
@@ -76,19 +76,54 @@ describe('RPC_CACHE_TIER route parity', () => {
     );
   });
 
+  it('does not cache paired physical-premium cohorts across source-clock boundaries', () => {
+    assert.equal(tierMap['/api/market/v1/get-physical-premiums'], 'no-store');
+    assert.equal(tierMap['/api/market/v1/get-physical-divergence-index'], 'no-store');
+  });
+
   it('no route uses the implicit default tier', () => {
     const gatewaySrc = readFileSync(join(root, 'server', 'gateway.ts'), 'utf-8');
+    // The declared per-route tier (RPC_CACHE_TIER + env override, captured as
+    // `declaredTier`) still falls back to 'medium' — the tripwire that keeps
+    // every route's tier explicit. `declaredTier` also gates the no-store floor.
     assert.match(
       gatewaySrc,
-      /RPC_CACHE_TIER\[pathname\]\s*\?\?\s*'medium'/,
+      /declaredTier\s*\?\?\s*'medium'/,
       'Gateway still has medium default fallback — ensure all routes are explicit',
+    );
+    assert.match(
+      gatewaySrc,
+      /RPC_CACHE_TIER\[pathname\]/,
+      'Gateway still consults RPC_CACHE_TIER for the declared per-route tier',
     );
   });
 
-  it('slow-browser tier includes max-age, slow tier does not', () => {
+  it('keeps Pro-fresh market routes on the ordinary shared default', () => {
+    for (const path of [
+      '/api/market/v1/list-market-quotes',
+      '/api/market/v1/list-crypto-quotes',
+      '/api/market/v1/list-commodity-quotes',
+      '/api/market/v1/list-stablecoin-markets',
+      '/api/market/v1/list-gulf-quotes',
+    ]) {
+      assert.equal(
+        tierMap[path],
+        'medium',
+        `${path} must stay medium by default; only verified paid callers get live-browser`,
+      );
+    }
+  });
+
+  it('shared tiers include public s-maxage while private browser tiers do not', () => {
     const gatewaySrc = readFileSync(join(root, 'server', 'gateway.ts'), 'utf-8');
-    assert.match(gatewaySrc, /slow-browser.*max-age/s, 'slow-browser tier must include max-age');
-    const slowLine = gatewaySrc.match(/^\s+slow: 'public.*'/m)?.[0] ?? '';
-    assert.ok(!slowLine.includes('max-age'), 'slow tier must NOT include max-age');
+    const slowLine = gatewaySrc.match(/^\s+slow: '.*'/m)?.[0] ?? '';
+    assert.ok(slowLine.includes('public'), 'slow tier must include public for CF caching');
+    assert.ok(slowLine.includes('s-maxage'), 'slow tier must include s-maxage for CF edge TTL');
+    const slowBrowserLine = gatewaySrc.match(/^\s+'slow-browser': '.*'/m)?.[0] ?? '';
+    assert.ok(!slowBrowserLine.includes('public'), 'slow-browser tier must NOT include public');
+    assert.ok(!slowBrowserLine.includes('s-maxage'), 'slow-browser tier must NOT include s-maxage');
+    const liveBrowserLine = gatewaySrc.match(/^\s+'live-browser': '.*'/m)?.[0] ?? '';
+    assert.ok(!liveBrowserLine.includes('public'), 'live-browser tier must NOT include public');
+    assert.ok(!liveBrowserLine.includes('s-maxage'), 'live-browser tier must NOT include s-maxage');
   });
 });

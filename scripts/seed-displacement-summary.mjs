@@ -6,6 +6,7 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY_PREFIX = 'displacement:summary:v1';
 const CACHE_TTL = 86400; // 24 hours — UNHCR data is annual
+export const MIN_DISPLACEMENT_COUNTRIES = 100;
 
 const COUNTRY_CENTROIDS = {
   AFG: [33.9, 67.7], SYR: [35.0, 38.0], UKR: [48.4, 31.2], SDN: [15.5, 32.5],
@@ -62,8 +63,7 @@ async function fetchUnhcrYearItems(year) {
   return items;
 }
 
-async function fetchDisplacementSummary() {
-  const currentYear = new Date().getFullYear();
+export async function fetchDisplacementSummary() {
   let rawItems = [];
   let dataYearUsed = currentYear;
 
@@ -213,23 +213,53 @@ async function fetchDisplacementSummary() {
   };
 }
 
-function validate(data) {
-  return (
+export function validate(data) {
+  return Boolean(
     data?.summary &&
     typeof data.summary.year === 'number' &&
     Array.isArray(data.summary.countries) &&
-    data.summary.countries.length >= 1
+    data.summary.countries.length >= MIN_DISPLACEMENT_COUNTRIES
   );
 }
 
-const currentYear = new Date().getFullYear();
+const currentYear = new Date().getUTCFullYear();
 const canonicalKey = `${CANONICAL_KEY_PREFIX}:${currentYear}`;
 
-runSeed('displacement', 'summary', canonicalKey, fetchDisplacementSummary, {
+export function declareRecords(data) {
+  return data?.summary?.countries?.length ?? 0;
+}
+
+// The canonical key rotates every Jan 1 while UNHCR current-year data is empty
+// early in the year — the fetcher falls back up to 2 years and publishes
+// OLD-year totals under the NEW-year key with fresh fetchedAt. Declare content
+// age from the ACTUAL data year so health can raise STALE_CONTENT instead of
+// presenting 12-24-month-old totals as current (mirrors
+// seed-mineral-production.mjs).
+export function contentMeta(data) {
+  const year = Number(data?.summary?.year);
+  if (!Number.isInteger(year) || year <= 0) return null;
+  const newestItemAt = Date.parse(`${year}-12-31T00:00:00.000Z`);
+  if (!Number.isFinite(newestItemAt) || newestItemAt <= 0) return null;
+  return { newestItemAt, oldestItemAt: newestItemAt };
+}
+
+export const seedOptions = {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: `unhcr-${currentYear}`,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+  declareRecords,
+  contentMeta,
+  schemaVersion: 1,
+  maxStaleMin: 3600,
+  // Content-age ceiling sized to tolerate the normal Jan-Feb prior-year
+  // fallback (~13 months old) while still flagging genuinely frozen data.
+  maxContentAgeMin: 20 * 30 * 24 * 60,
+  emptyDataIsFailure: true,
+};
+
+if (process.argv[1]?.endsWith('seed-displacement-summary.mjs')) {
+  runSeed('displacement', 'summary', canonicalKey, fetchDisplacementSummary, seedOptions).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

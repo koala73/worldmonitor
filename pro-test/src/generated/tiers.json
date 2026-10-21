@@ -1,0 +1,177 @@
+[
+  {
+    "name": "Free",
+    "localeKey": "free",
+    "price": 0,
+    "period": "forever",
+    "description": "Get started with the essentials",
+    "features": [
+      "Core dashboard panels",
+      "Global news feed",
+      "Earthquake & weather alerts",
+      "Basic map view",
+      "3 dashboard tabs"
+    ],
+    "planLimits": {
+      "apiRequestsPerDay": 0,
+      "apiBurstRequestsPerMinute": 0,
+      "mcpCallsPerDay": 0,
+      "dashboardAiCallsPerDay": 0,
+      "mcpBurstRequestsPerMinute": 0,
+      "mcpDailyBudgetSharedWithRest": false
+    },
+    "cta": "Get Started",
+    "href": "https://worldmonitor.app/dashboard",
+    "highlighted": false
+  },
+  {
+    "name": "Pro",
+    "localeKey": "pro",
+    "monthlyPrice": 39.99,
+    "annualPrice": 359.99,
+    "description": "Full intelligence dashboard",
+    "features": [
+      "Everything in Free — panels, sources & followed countries uncapped",
+      "WM Analyst chat + AI stock analysis & backtesting",
+      "Cost-shock modelling & supply-chain stress tests",
+      "Intel memory — historical search, timelines & similar events",
+      "Physical metals divergence, minerals concentration & sovereign debt data",
+      "Scheduled AI digest + alert rules engine",
+      "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
+      "Custom widgets & 10 dashboards (vs 3)"
+    ],
+    "highlightFeatures": [
+      "Personal license",
+      "1 named user"
+    ],
+    "planLimits": {
+      "apiRequestsPerDay": 0,
+      "apiBurstRequestsPerMinute": 0,
+      "mcpCallsPerDay": 50,
+      "dashboardAiCallsPerDay": 500,
+      "mcpBurstRequestsPerMinute": 60,
+      "mcpDailyBudgetSharedWithRest": false
+    },
+    "monthlyProductId": "pdt_0Nbtt71uObulf7fGXhQup",
+    "annualProductId": "pdt_0NbttMIfjLWC10jHQWYgJ",
+    "highlighted": true
+  },
+  {
+    "name": "Pro Business",
+    "localeKey": "proBusiness",
+    "monthlyPrice": 49.99,
+    "annualPrice": 449.99,
+    "description": "The Pro dashboard, licensed for work",
+    "features": [
+      "Everything in Pro",
+      "Use for client work, internal tools & reporting",
+      "Data export — CSV, JSON & PDF reports",
+      "25 custom dashboards (vs 10)",
+      "MCP + SDK: 250 calls/day (vs 50)",
+      "Priority support"
+    ],
+    "highlightFeatures": [
+      "Commercial license included",
+      "1 named user — not a shared login"
+    ],
+    "planLimits": {
+      "apiRequestsPerDay": 0,
+      "apiBurstRequestsPerMinute": 0,
+      "mcpCallsPerDay": 250,
+      "dashboardAiCallsPerDay": 2500,
+      "mcpBurstRequestsPerMinute": 60,
+      "mcpDailyBudgetSharedWithRest": false
+    },
+    "monthlyProductId": "pdt_0NjyFDbhURh2oROgPIU3G",
+    "annualProductId": "pdt_0Nk072fxPUcHWivZRtlQW",
+    "highlighted": false
+  },
+  {
+    "name": "API Starter",
+    "localeKey": "api",
+    "monthlyPrice": 99.99,
+    "annualPrice": 899.99,
+    "description": "Build internal tools on live intelligence data",
+    "features": [
+      "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
+      "License / API key included",
+      "Real-time data streams",
+      "60 requests/minute",
+      "1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
+      "Webhook notifications"
+    ],
+    "highlightFeatures": [
+      "Commercial license — for your organization"
+    ],
+    "planLimits": {
+      "apiRequestsPerDay": 1000,
+      "apiBurstRequestsPerMinute": 60,
+      "mcpCallsPerDay": 1000,
+      "dashboardAiCallsPerDay": 1000,
+      "mcpBurstRequestsPerMinute": 60,
+      "mcpDailyBudgetSharedWithRest": true
+    },
+    "monthlyProductId": "pdt_0NbttVmG1SERrxhygbbUq",
+    "annualProductId": "pdt_0Nbu2lawHYE3dv2THgSEV",
+    "highlighted": false
+  },
+  {
+    "name": "API Business",
+    "localeKey": "apiBusiness",
+    "monthlyPrice": 299.99,
+    "annualPrice": 2699.99,
+    "description": "Launch your own product on WorldMonitor data",
+    "features": [
+      "Everything in API Starter",
+      "R1–R3 redistribution rights for customer-facing products",
+      "300 requests/minute",
+      "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
+      "5 Pro licenses — invite users at any corporate email domain",
+      "Priority support"
+    ],
+    "highlightFeatures": [
+      "Commercial license — for your customers"
+    ],
+    "planLimits": {
+      "apiRequestsPerDay": 10000,
+      "apiBurstRequestsPerMinute": 300,
+      "mcpCallsPerDay": 10000,
+      "dashboardAiCallsPerDay": 10000,
+      "mcpBurstRequestsPerMinute": 300,
+      "mcpDailyBudgetSharedWithRest": true
+    },
+    "monthlyProductId": "pdt_0Nbttg7NuOJrhbyBGCius",
+    "annualProductId": "pdt_0NkHjzMhGp3m45sZLQ7BQ",
+    "highlighted": false
+  },
+  {
+    "name": "Enterprise",
+    "localeKey": "enterprise",
+    "price": null,
+    "description": "Custom solutions for organizations",
+    "features": [
+      "Everything in Pro + API",
+      "Unlimited API requests",
+      "Dedicated support",
+      "Custom integrations",
+      "SLA guarantee",
+      "On-premise option",
+      "Data processing agreement (DPA)",
+      "Purchase-order billing",
+      "SAML SSO, SCIM",
+      "Custom security and privacy settings",
+      "Fully white-labeled — with or without revenue sharing"
+    ],
+    "planLimits": {
+      "apiRequestsPerDay": 100000,
+      "apiBurstRequestsPerMinute": 1000,
+      "mcpCallsPerDay": 25000,
+      "dashboardAiCallsPerDay": 25000,
+      "mcpBurstRequestsPerMinute": 1000,
+      "mcpDailyBudgetSharedWithRest": false
+    },
+    "cta": "Contact Sales",
+    "href": "mailto:enterprise@worldmonitor.app",
+    "highlighted": false
+  }
+]

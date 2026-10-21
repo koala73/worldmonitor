@@ -1,0 +1,506 @@
+#!/usr/bin/env node
+
+import { get as httpsGet } from 'node:https';
+import { Readable } from 'node:stream';
+import { pathToFileURL } from 'node:url';
+import { XMLParser } from 'fast-xml-parser';
+import Papa from 'papaparse';
+
+import { decodeHtmlEntities } from './_html-entities.mjs';
+import { loadEnvFile, CHROME_UA, httpRetryError, readCanonicalValue, runSeed, withRetry, writeExtraKey } from './_seed-utils.mjs';
+import {
+  GLOBAL_TENDER_KEY,
+  isOpenOpportunity,
+  mergeTenderSourceResults,
+  normalizeSamOpportunity,
+  normalizeTedNotice,
+  normalizeContractsFinderRelease,
+  normalizeCanadaBuysNotice,
+  normalizeGetsNotice,
+  normalizeWorldBankNotice,
+} from './_global-tenders.mjs';
+
+const CACHE_TTL_SECONDS = 10_800; // 3h, safely beyond the hourly Railway cadence.
+const SOURCE_STATUS_TTL_SECONDS = CACHE_TTL_SECONDS;
+const MAX_PER_SOURCE = 100;
+const GETS_FEED_URL = 'https://www.gets.govt.nz/ExternalRSSFeed.htm';
+const CANADA_BUYS_OPEN_CSV_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv';
+
+function fetchResponseTransport(url, { timeoutMs, ...fetchOptions }) {
+  return fetch(url, {
+    ...fetchOptions,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
+function samIpv4ResponseTransport(httpsGetFn = httpsGet) {
+  return (url, { headers, timeoutMs, method, body }) => new Promise((resolve, reject) => {
+    if ((method != null && String(method).toUpperCase() !== 'GET') || body != null) {
+      const error = new Error('SAM native HTTPS transport only supports GET requests without a body');
+      error.nonRetryable = true;
+      reject(error);
+      return;
+    }
+    // Intentionally do not follow redirects: forwarding api_key to another
+    // location could disclose it, and SAM routing changes should stay visible.
+    const request = httpsGetFn(url, {
+      family: 4,
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    }, (response) => {
+      try {
+        const responseHeaders = new Headers();
+        for (const [name, value] of Object.entries(response.headers || {})) {
+          for (const item of Array.isArray(value) ? value : [value]) {
+            if (item !== undefined) responseHeaders.append(name, String(item));
+          }
+        }
+        const status = response.statusCode ?? 500;
+        const responseBody = status === 204 || status === 205 || status === 304
+          ? null
+          : Readable.toWeb(response);
+        resolve(new Response(responseBody, {
+          status,
+          headers: responseHeaders,
+        }));
+      } catch (error) {
+        response.destroy();
+        const responseError = error instanceof Error ? error : new Error(String(error));
+        responseError.nonRetryable = true;
+        reject(responseError);
+      }
+    });
+    request.on('error', reject);
+  });
+}
+
+// Most sources share this HTTP retry path. World Bank wraps the complete JSON
+// read separately so body failures share its bounded retry budget.
+//
+// The retry budget is BOUNDED by the bundle section, not chosen for its own sake:
+// Global-Tenders has timeoutMs 180_000 and CanadaBuys uses a 60s per-attempt
+// timeout, so maxRetries 2 would cost 60+1+60+2+60 = 183s and BREACH the section.
+// Callers with a long per-attempt timeout must lower maxRetries accordingly.
+// Sources run in parallel, so the section pays the slowest source, not the sum.
+async function fetchResponse(url, options = {}, transport = fetchResponseTransport) {
+  const { timeoutMs = 20_000, maxRetries = 2, retryDelayMs = 1000, retry429 = true, ...fetchOptions } = options;
+  return withRetry(async () => {
+    const response = await transport(url, {
+      ...fetchOptions,
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, ...(fetchOptions.headers || {}) },
+      timeoutMs,
+    });
+    if (!response.ok) {
+      // Reuse the repository retry contract: 408 and 429 remain retryable, permanent
+      // 4xx responses fail fast, and Retry-After is capped before it reaches withRetry.
+      const error = httpRetryError(response);
+      // Quota-style rate limits (SAM.gov's small daily budget) do not clear in
+      // seconds — in-run retries only burn more of the budget (#5444).
+      if (!retry429 && response.status === 429) error.nonRetryable = true;
+      await response.body?.cancel().catch(() => {});
+      throw error;
+    }
+    return response;
+  }, maxRetries, retryDelayMs);
+}
+
+async function fetchJson(url, options = {}) {
+  return (await fetchResponse(url, options)).json();
+}
+
+function createSamFetchJson(httpsGetFn = httpsGet) {
+  const transport = samIpv4ResponseTransport(httpsGetFn);
+  return async (url, options = {}) => (await fetchResponse(url, options, transport)).json();
+}
+
+export const __testing__ = { createSamFetchJson };
+
+async function fetchText(url, options = {}) {
+  return (await fetchResponse(url, { ...options, headers: { Accept: 'application/rss+xml, application/xml, text/xml', ...(options.headers || {}) } })).text();
+}
+
+export function sourceStatus(source, state, records = [], error = '', now = Date.now()) {
+  const fetchedAt = new Date(now).toISOString();
+  return {
+    source,
+    state,
+    recordCount: records.length,
+    fetchedAt,
+    lastSuccessfulAt: state === 'ok' ? fetchedAt : '',
+    stale: false,
+    ...(error ? { error: error.slice(0, 200) } : {}),
+  };
+}
+
+function utcDate(value) {
+  const date = new Date(value);
+  return `${String(date.getUTCMonth() + 1).padStart(2, '0')}/${String(date.getUTCDate()).padStart(2, '0')}/${date.getUTCFullYear()}`;
+}
+
+function tedDate(value) {
+  return new Date(value).toISOString().slice(0, 10).replaceAll('-', '');
+}
+
+// SAM.gov enforces a small per-key daily request quota (10/day for
+// non-federal keys). An hourly seed that fetches every tick — worse, with
+// in-run 429 retries — burns ~72 requests/day and pins the source at HTTP 429
+// permanently (#5444). Spread the budget instead: only hit the API when the
+// last ATTEMPT is older than this interval. The quota is spent by attempts,
+// not successes: a failed run carries lastSuccessfulAt forward unchanged, so a
+// gate measured from the last success stopped pacing as soon as a failure was
+// older than the interval and every hourly tick hit SAM again (#8505). Because
+// the enclosing bundle only checks this member hourly, the gate opens on every
+// third tick — 180 minutes apart, 8 requests/day against the 10/day budget —
+// and source health allows one more hourly gate for scheduling jitter.
+const SAM_MIN_FETCH_INTERVAL_MS = 150 * 60_000;
+
+function previousSamResult(previousSnapshot, now) {
+  const status = (previousSnapshot?.sourceStatuses || []).find((entry) => entry?.source === 'sam');
+  // fetchedAt is the last attempt that spent a request: sourceStatus() stamps a
+  // success, mergeTenderSourceResults stamps a failure, and a paced run carries
+  // the prior value through. 'unavailable' is the one status written without a
+  // request (no API key), so it must not start the clock — a restored
+  // credential would otherwise wait out a full interval before fetching.
+  if (!status || status.state === 'unavailable') return null;
+  const lastAttemptMs = Date.parse(status.fetchedAt || '');
+  if (!Number.isFinite(lastAttemptMs)) return null;
+  const records = (previousSnapshot?.tenders || [])
+    .filter((tender) => tender.source === 'sam' && isOpenOpportunity(tender, now));
+  return { status, records, lastAttemptMs };
+}
+
+export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Date.now(), fetchJsonFn, httpsGetFn = httpsGet, previousSnapshot = null } = {}) {
+  if (!apiKey) return { records: [], status: sourceStatus('sam', 'unavailable', [], 'SAM_GOV_API_KEY is not configured', now) };
+  const prior = previousSamResult(previousSnapshot, now);
+  if (prior && now - prior.lastAttemptMs < SAM_MIN_FETCH_INTERVAL_MS) {
+    // Within budget interval: carry the fresh-enough prior result through
+    // without spending a request. lastSuccessfulAt keeps its real value, so
+    // health staleness accounting is unaffected. Only an already-healthy
+    // status may be normalized; a paced stale/error status must remain
+    // degraded until a real SAM request succeeds.
+    const status = prior.status.state === 'ok'
+      ? { ...prior.status, state: 'ok', recordCount: prior.records.length, stale: false, paced: true }
+      : { ...prior.status, recordCount: prior.records.length, paced: true };
+    return {
+      records: prior.records,
+      status,
+    };
+  }
+  const url = new URL('https://api.sam.gov/opportunities/v2/search');
+  url.searchParams.set('api_key', apiKey);
+  url.searchParams.set('postedFrom', utcDate(now - 14 * 86400_000));
+  url.searchParams.set('postedTo', utcDate(now));
+  url.searchParams.set('limit', String(MAX_PER_SOURCE));
+  // api.sam.gov publishes IPv6 addresses, but Railway's container network does
+  // not currently have a working IPv6 route. Force the source's official IPv4
+  // endpoints so native fetch does not repeatedly select a doomed address.
+  const payload = await (fetchJsonFn ?? createSamFetchJson(httpsGetFn))(url, {
+    retry429: false,
+    // A timed-out or reset request may already be metered, so the next
+    // interval is the only retry; in-run retries tripled every attempt (#8505).
+    maxRetries: 0,
+  });
+  if (!Array.isArray(payload?.opportunitiesData)) throw new Error('SAM response is missing opportunitiesData');
+  const records = payload.opportunitiesData.map(normalizeSamOpportunity).filter((tender) => isOpenOpportunity(tender, now));
+  return { records, status: sourceStatus('sam', 'ok', records, '', now) };
+}
+
+export async function fetchTed({ now = Date.now(), fetchJsonFn = fetchJson } = {}) {
+  const payload = await fetchJsonFn('https://api.ted.europa.eu/v3/notices/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: `deadline-receipt-tender-date-lot >= ${tedDate(now)} SORT BY publication-date DESC`,
+      fields: ['publication-number', 'title-lot', 'publication-date', 'deadline-receipt-tender-date-lot', 'organisation-name-buyer', 'organisation-country-buyer', 'main-classification-proc', 'notice-type'],
+      page: 1,
+      limit: MAX_PER_SOURCE,
+      scope: 'ACTIVE',
+      paginationMode: 'PAGE_NUMBER',
+      onlyLatestVersions: true,
+    }),
+  });
+  const notices = payload?.notices ?? payload?.results;
+  if (!Array.isArray(notices)) throw new Error('TED response is missing notices');
+  const records = notices.map(normalizeTedNotice).filter((tender) => isOpenOpportunity(tender, now));
+  return { records, status: sourceStatus('ted', 'ok', records, '', now) };
+}
+
+export async function fetchContractsFinder({ now = Date.now(), fetchJsonFn = fetchJson } = {}) {
+  const url = new URL('https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search');
+  url.searchParams.set('publishedFrom', new Date(now - 14 * 86400_000).toISOString());
+  url.searchParams.set('publishedTo', new Date(now).toISOString());
+  url.searchParams.set('stages', 'tender');
+  url.searchParams.set('limit', String(MAX_PER_SOURCE));
+  // The documented 100-release query has returned valid data after 24s to
+  // first byte. Two 45s attempts (plus bounded backoff) fit the 180s section.
+  const payload = await fetchJsonFn(url, { timeoutMs: 45_000, maxRetries: 1 });
+  const releases = payload?.releases ?? payload?.records;
+  if (!Array.isArray(releases)) throw new Error('Contracts Finder response is missing releases');
+  const normalized = releases.map(normalizeContractsFinderRelease);
+  if (normalized.some((tender) => !tender || (['active', 'open'].includes(tender.status) && !tender.deadline))) {
+    throw new Error('Contracts Finder response contains malformed releases');
+  }
+  const records = normalized.filter((tender) => isOpenOpportunity(tender, now));
+  return { records, status: sourceStatus('contracts-finder', 'ok', records, '', now) };
+}
+
+export async function fetchCanadaBuys({ now = Date.now(), fetchTextFn = fetchText } = {}) {
+  const csv = await fetchTextFn(CANADA_BUYS_OPEN_CSV_URL, {
+    timeoutMs: 60_000,
+    // 6 MB CSV on a 60s attempt timeout: one retry (60+1+60 = 121s) fits inside the
+    // 180s Global-Tenders section budget; two (183s) would breach it.
+    maxRetries: 1,
+    headers: { Accept: 'text/csv, application/octet-stream;q=0.9, */*;q=0.1' },
+  });
+  const parsed = Papa.parse(csv, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (header) => header.replace(/^\uFEFF/, ''),
+  });
+  const requiredHeaders = ['title-titre-eng', 'referenceNumber-numeroReference', 'noticeURL-URLavis-eng'];
+  if (!requiredHeaders.every((header) => parsed.meta?.fields?.includes(header))) {
+    throw new Error('CanadaBuys response is not the documented open-tender CSV');
+  }
+  if (parsed.errors?.length && !parsed.data?.length) throw new Error(`CanadaBuys CSV parse failed: ${parsed.errors[0]?.message || 'unknown error'}`);
+  const records = parsed.data.map((row) => normalizeCanadaBuysNotice({
+    title: row['title-titre-eng'],
+    referenceNumber: row['referenceNumber-numeroReference'],
+    publishedAt: row['publicationDate-datePublication'],
+    updatedAt: row['amendmentDate-dateModification'],
+    deadline: row['tenderClosingDate-appelOffresDateCloture'],
+    status: row['tenderStatus-appelOffresStatut-eng'],
+    unspsc: row.unspsc,
+    sector: row['unspscDescription-eng'],
+    procurementCategory: row['procurementCategory-categorieApprovisionnement'],
+    noticeType: row['noticeType-avisType-eng'],
+    buyer: row['contractingEntityName-nomEntitContractante-eng'],
+    noticeUrl: row['noticeURL-URLavis-eng'],
+    description: row['tenderDescription-descriptionAppelOffres-eng'],
+  })).filter((tender) => isOpenOpportunity(tender, now)).slice(0, MAX_PER_SOURCE);
+  return { records, status: sourceStatus('canada-buys', 'ok', records, '', now) };
+}
+
+function decodeHtml(value) {
+  return decodeHtmlEntities(
+    String(value || '')
+      .replace(/<br\s*\/?\s*>/gi, '\n')
+      .replace(/<[^>]+>/g, ''),
+  )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getsField(description, label) {
+  const pattern = new RegExp(`${label}:?\\s*(?:<\\/b>)?\\s*<\\/td>\\s*<td[^>]*>([\\s\\S]*?)<\\/td>`, 'i');
+  return decodeHtml(String(description || '').match(pattern)?.[1] || '');
+}
+
+function asItems(value) {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+export async function fetchGets({ now = Date.now(), fetchTextFn = fetchText } = {}) {
+  const xml = await fetchTextFn(GETS_FEED_URL);
+  const parsed = new XMLParser({ ignoreAttributes: false, processEntities: true }).parse(xml);
+  const items = asItems(parsed?.rss?.channel?.item).slice(0, MAX_PER_SOURCE);
+  const records = items.map((item) => {
+    const description = String(item?.description || '');
+    const link = typeof item?.link === 'string' ? item.link : item?.guid;
+    const id = getsField(description, 'RFx ID') || String(link || '').match(/[?&]id=(\d+)/)?.[1] || '';
+    const deadlineRaw = getsField(description, 'Close date');
+    return normalizeGetsNotice({
+      id,
+      title: item?.title,
+      link,
+      buyer: item?.['dc:creator'] || getsField(description, 'Organisation'),
+      publishedAt: item?.['dc:date'] || item?.pubDate,
+      deadline: Number.isFinite(Date.parse(deadlineRaw)) ? new Date(deadlineRaw).toISOString() : '',
+      categories: asItems(item?.category),
+      description: getsField(description, 'Overview'),
+    });
+  }).filter((tender) => isOpenOpportunity(tender, now));
+  return { records, status: sourceStatus('gets', 'ok', records, '', now) };
+}
+
+async function fetchWorldBankJson(url) {
+  // Include body consumption in each attempt. Retrying only fetch() leaves
+  // timeouts and truncated JSON after successful headers outside the retry loop.
+  const deadline = Date.now() + 75_000;
+  let attempt = 0;
+  return withRetry(async () => {
+    attempt += 1;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw Object.assign(new Error('World Bank request budget exhausted'), { nonRetryable: true });
+    }
+    let phase = 'headers';
+    try {
+      const response = await fetchResponseTransport(url, {
+        timeoutMs: Math.min(20_000, remaining),
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      });
+      if (!response.ok) {
+        const error = httpRetryError(response, { remainingBudgetMs: deadline - Date.now() });
+        await response.body?.cancel().catch(() => {});
+        throw error;
+      }
+      phase = 'body';
+      return await response.json();
+    } catch (error) {
+      const wait = Math.max(5000 * 2 ** (attempt - 1), error.retryAfterMs || 0);
+      if (wait >= deadline - Date.now()) error.nonRetryable = true;
+      const reason = error.status ? `HTTP_${error.status}`
+        : ['TimeoutError', 'AbortError', 'SyntaxError'].includes(error.name) ? error.name : 'transport';
+      console.warn(`[World-Bank] attempt=${attempt}/3 phase=${phase} failure=${reason}`);
+      throw error;
+    }
+  }, 2, 5000);
+}
+
+export async function fetchWorldBank({ now = Date.now(), fetchJsonFn = fetchWorldBankJson } = {}) {
+  const url = new URL('https://search.worldbank.org/api/v2/procnotices');
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('rows', String(MAX_PER_SOURCE));
+  url.searchParams.set('os', '0');
+  url.searchParams.set('fl', 'id,url,notice_type,publication_date,project_id,project_name,bid_description,procurement_category,procurement_method,submission_deadline_date,project_ctry_code,project_ctry_name,sector,borrower,implementing_agency');
+  url.searchParams.set('srt', 'submission_deadline_date');
+  url.searchParams.set('order', 'asc');
+  url.searchParams.set('apilang', 'en');
+  url.searchParams.set('srce', 'both');
+  url.searchParams.set('notice_type_exact', 'Invitation for Bids^Invitation for Prequalification^Request for Expression of Interest');
+  url.searchParams.set('deadline_strdate', new Date(now).toISOString().slice(0, 10));
+  const payload = await fetchJsonFn(url);
+  const rawNotices = payload?.procnotices;
+  if (!rawNotices || typeof rawNotices !== 'object') {
+    throw new Error('World Bank response is missing procnotices');
+  }
+  const notices = Array.isArray(rawNotices) ? rawNotices : Object.values(rawNotices);
+  const normalized = notices.map(normalizeWorldBankNotice);
+  if (normalized.some((tender) => !tender?.sourceNoticeId || !tender.title || !Number.isFinite(Date.parse(tender.deadline)))) {
+    throw new Error('World Bank response contains malformed notices');
+  }
+  // This is a bounded sample, not a full-corpus crawl. When the provider
+  // declares its result window, a truncated window must not clear prior data.
+  if (payload.total != null) {
+    const total = Number(payload.total);
+    if (!/^\d+$/.test(String(payload.total)) || !Number.isSafeInteger(total)
+      || notices.length !== Math.min(MAX_PER_SOURCE, total)
+      || (payload.os != null && Number(payload.os) !== 0)) {
+      throw new Error('World Bank response contains an incomplete notice window');
+    }
+  }
+  const records = normalized.filter((tender) => isOpenOpportunity(tender, now));
+  return { records, status: sourceStatus('world-bank', 'ok', records, '', now) };
+}
+
+// An Australian `austender` adapter is BLOCKED on the provider (#5286): no
+// permitted machine-readable AusTender interface publishes the closing date
+// that isOpenOpportunity requires. As of 2026-07-13 (checked against a
+// same-day capture of the feed, corroborated by its independent consumers):
+// the official current-ATM RSS (https://www.tenders.gov.au/public_data/rss/rss.xml,
+// registered on data.gov.au) carries only title/link/description/pubDate —
+// no close date, buyer, or category; the official OCDS API
+// (api.tenders.gov.au/ocds/*) exposes awarded contract notices, not open
+// ATMs; data.gov.au's machine-readable open-ATM exports ended June 2014.
+// Closing dates exist only on per-notice HTML pages, and scraping them is an
+// explicit non-goal. Do not substitute GETS (NZ) for Australian coverage.
+const SOURCE_ADAPTERS = [
+  ['sam', fetchSam],
+  ['ted', fetchTed],
+  ['contracts-finder', fetchContractsFinder],
+  ['canada-buys', fetchCanadaBuys],
+  ['gets', fetchGets],
+  ['world-bank', fetchWorldBank],
+];
+
+export async function fetchGlobalTenders({ previousSnapshot = null, adapters = SOURCE_ADAPTERS, now = Date.now() } = {}) {
+  const attemptedAt = new Date(now).toISOString();
+  const settled = await Promise.allSettled(adapters.map(([, fetchSource]) => fetchSource({ now, previousSnapshot })));
+  return mergeTenderSourceResults({
+    settled,
+    sourceNames: adapters.map(([source]) => source),
+    previousSnapshot,
+    attemptedAt,
+  });
+}
+
+function validate(snapshot) {
+  return snapshot?.dataAvailable === true && Array.isArray(snapshot?.tenders) && Array.isArray(snapshot?.sourceStatuses);
+}
+
+function contentMeta(snapshot) {
+  const dates = snapshot.tenders.map((tender) => Date.parse(tender.publishedAt || tender.updatedAt)).filter(Number.isFinite);
+  return dates.length ? { newestItemAt: Math.max(...dates), oldestItemAt: Math.min(...dates) } : null;
+}
+
+export function declareRecords(snapshot) {
+  return Array.isArray(snapshot?.tenders) ? snapshot.tenders.length : 0;
+}
+
+async function recordUnavailableSourceHealth(snapshot) {
+  if (snapshot?.dataAvailable === true) return;
+  await Promise.all((snapshot?.sourceStatuses || []).map(writeSourceStatus));
+}
+
+export function sourceHealthMeta(status) {
+  const trackedSource = ['contracts-finder', 'world-bank'].includes(status.source);
+  const successTime = status.lastSuccessfulAt || ((!trackedSource || status.state === 'ok') ? status.fetchedAt : '');
+  const successfulAt = Date.parse(successTime || '');
+  const failed = status.state !== 'ok';
+  return {
+    fetchedAt: Number.isFinite(successfulAt) ? successfulAt : 0,
+    recordCount: status.recordCount || 0,
+    sourceState: status.state,
+    stale: Boolean(status.stale || failed),
+    ...(trackedSource ? {
+      lastAttemptAt: status.fetchedAt,
+      lastSuccessfulAt: status.lastSuccessfulAt || '',
+      consecutiveFailures: status.consecutiveFailures,
+      firstFailureAt: status.firstFailureAt,
+      ...(status.confirmedEmpty === true ? { confirmedEmpty: true } : {}),
+      ...(status.error ? { error: status.error } : {}),
+    } : {}),
+  };
+}
+
+async function writeSourceStatus(status) {
+  const key = `economic:global-tenders:v1:source:${status.source}`;
+  const metaKey = `seed-meta:economic:global-tenders:${status.source}`;
+  await writeExtraKey(key, status, SOURCE_STATUS_TTL_SECONDS);
+  await writeExtraKey(metaKey, sourceHealthMeta(status), SOURCE_STATUS_TTL_SECONDS);
+}
+
+export async function main({ adapters, now } = {}) {
+  loadEnvFile(import.meta.url);
+  await runSeed('economic', 'global-tenders', GLOBAL_TENDER_KEY, async () => {
+    const snapshot = await fetchGlobalTenders({
+      adapters, now,
+      previousSnapshot: await readCanonicalValue(GLOBAL_TENDER_KEY, { strict: true }),
+    });
+    // A fully unavailable initial run fails canonical validation by design, but
+    // operators still need the per-source failure states written to health.
+    await recordUnavailableSourceHealth(snapshot);
+    return snapshot;
+  }, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL_SECONDS,
+    declareRecords,
+    sourceVersion: 'sam-ted-contractsfinder-canadabuys-gets-worldbank-v2',
+    schemaVersion: 1,
+    maxStaleMin: 180,
+    zeroIsValid: true,
+    contentMeta,
+    maxContentAgeMin: 14 * 24 * 60,
+    afterPublish: async (snapshot) => {
+      await Promise.all(snapshot.sourceStatuses.map(writeSourceStatus));
+    },
+  });
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error('FATAL:', error?.message || error);
+    process.exit(1);
+  });
+}

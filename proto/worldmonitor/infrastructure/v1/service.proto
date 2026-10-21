@@ -68,8 +68,9 @@ service InfrastructureService {
     };
   }
 
-  // RecordBaselineSnapshot batch-updates baseline statistics using Welford's online algorithm.
+  // RecordBaselineSnapshot is deprecated and DISABLED. Client-supplied shared baseline writes are rejected.
   rpc RecordBaselineSnapshot(RecordBaselineSnapshotRequest) returns (RecordBaselineSnapshotResponse) {
+    option deprecated = true;
     option (sebuf.http.config) = {path: "/record-baseline-snapshot"};
   }
 
@@ -81,7 +82,7 @@ service InfrastructureService {
     };
   }
 
-  // ListTemporalAnomalies returns server-computed temporal anomalies for news and satellite_fires.
+  // ListTemporalAnomalies returns computed news and satellite-fire anomalies with scores, observed values, baselines, tracked signal types, and computation time.
   rpc ListTemporalAnomalies(ListTemporalAnomaliesRequest) returns (ListTemporalAnomaliesResponse) {
     option (sebuf.http.config) = {
       path: "/list-temporal-anomalies"

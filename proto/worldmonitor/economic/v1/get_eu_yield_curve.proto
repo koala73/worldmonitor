@@ -22,5 +22,7 @@ message GetEuYieldCurveResponse {
   // Latest ECB yield curve snapshot.
   EuYieldCurveData data = 1;
   // True if data is not yet available in cache.
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 2;
 }

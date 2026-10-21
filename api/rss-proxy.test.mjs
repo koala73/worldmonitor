@@ -1,0 +1,1068 @@
+import { afterEach, beforeEach, mock, test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const originalEnv = { ...process.env };
+const originalFetch = globalThis.fetch;
+const TEST_KEY = 'rss-proxy-test-key';
+
+process.env.WORLDMONITOR_VALID_KEYS = TEST_KEY;
+delete process.env.UPSTASH_REDIS_REST_URL;
+delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
+const { default: handler, __testing__ } = await import('./rss-proxy.js');
+const { RELAY_ONLY_DOMAINS, RSS_BROWSER_UA, DIRECT_FETCH_HEADERS } = __testing__;
+const { __resetRateLimitForTest } = await import('./_rate-limit.js');
+const { default: isAllowedDomain } = await import('./_rss-allowed-domain-match.js');
+
+function restoreEnv() {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in originalEnv)) delete process.env[key];
+  }
+  Object.assign(process.env, originalEnv);
+}
+
+const PROXY_ENDPOINT = 'https://api.worldmonitor.app/api/rss-proxy';
+
+/**
+ * @param {string | null} feedUrl  feed to proxy; `null` omits the `url` param
+ *   entirely (the missing-parameter case). Passed through encodeURIComponent
+ *   so malformed values survive the query string verbatim.
+ * @param {{ method?: string, origin?: string | null, apiKey?: string | null }} [opts]
+ *   `origin: null` / `apiKey: null` omit that header rather than sending it
+ *   empty — the handler distinguishes absent from present-but-wrong.
+ */
+function makeRequest(feedUrl, opts = {}) {
+  const { method = 'GET', origin = 'https://worldmonitor.app', apiKey = TEST_KEY } = opts;
+  const url = feedUrl === null
+    ? PROXY_ENDPOINT
+    : `${PROXY_ENDPOINT}?url=${encodeURIComponent(feedUrl)}`;
+  const headers = {};
+  if (origin !== null) headers.Origin = origin;
+  if (apiKey !== null) headers['X-WorldMonitor-Key'] = apiKey;
+  return new Request(url, { method, headers });
+}
+
+/**
+ * Installs a fetch spy and returns the recorded call list. Any fetch the
+ * handler makes is recorded; `respond` decides the reply (default: a 200 feed).
+ * Guards that reject *before* fetching assert `calls` stays empty — that is the
+ * assertion with teeth, since a bypassed guard shows up as an upstream call.
+ */
+function spyFetch(respond = () => new Response('<rss/>', { status: 200 })) {
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), redirect: init.redirect, headers: init.headers });
+    return respond(String(input), init, calls);
+  };
+  return calls;
+}
+
+/** Feed hosts these tests treat as "reachable upstream" — used to prove a
+ *  guard fired before any feed fetch, while ignoring Upstash/relay traffic. */
+function feedCalls(calls) {
+  return calls.filter((c) => !c.url.includes('upstash') && !c.url.includes('relay.example.com'));
+}
+
+beforeEach(() => {
+  process.env.WORLDMONITOR_VALID_KEYS = TEST_KEY;
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  delete process.env.WS_RELAY_URL;
+  delete process.env.RELAY_SHARED_SECRET;
+  // getRatelimit() caches limiters in a module-level Map keyed by policy, so a
+  // limiter built against the fake Upstash host in one test would survive into
+  // the next even after the env vars are deleted. Reset the cache each time.
+  __resetRateLimitForTest();
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  restoreEnv();
+  __resetRateLimitForTest();
+});
+
+test('rejects allowlisted redirect chains that escape the RSS domain allowlist on a later hop', async () => {
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), redirect: init.redirect });
+    if (calls.length === 1) {
+      return new Response('', {
+        status: 302,
+        headers: { Location: 'https://www.techcrunch.com/feed' },
+      });
+    }
+    if (calls.length === 2) {
+      return new Response('', {
+        status: 302,
+        headers: { Location: 'http://169.254.169.254/latest/meta-data' },
+      });
+    }
+    throw new Error(`unexpected fetch after disallowed redirect: ${input}`);
+  };
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const body = await res.json();
+
+  assert.equal(res.status, 403);
+  assert.equal(body.error, 'Redirect to disallowed domain');
+  assert.deepEqual(calls.map((call) => call.url), [
+    'https://techcrunch.com/feed',
+    'https://www.techcrunch.com/feed',
+  ]);
+  assert.deepEqual(calls.map((call) => call.redirect), ['manual', 'manual']);
+});
+
+test('rejects a redirect whose later hop targets a plain non-allowlisted host', async () => {
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), redirect: init.redirect });
+    // First hop is an allowlisted canonical redirect; the second escapes to an
+    // ordinary STRANGER host (not an IP, not a lookalike). Pins that
+    // assertAllowedRedirect rejects unrelated hosts, not just the metadata IP —
+    // otherwise loosening it to admit any `.com` on a redirect hop stays green.
+    if (calls.length === 1) {
+      return new Response('', { status: 302, headers: { Location: 'https://www.techcrunch.com/feed' } });
+    }
+    return new Response('', { status: 302, headers: { Location: 'https://evil.example.com/feed' } });
+  };
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'Redirect to disallowed domain');
+  // The attacker host is never fetched — the chain stops at the disallowed hop.
+  assert.deepEqual(calls.map((call) => call.url), [
+    'https://techcrunch.com/feed',
+    'https://www.techcrunch.com/feed',
+  ]);
+});
+
+test('allows legitimate apex to www RSS canonical redirects', async () => {
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), redirect: init.redirect });
+    if (calls.length === 1) {
+      return new Response('', {
+        status: 301,
+        headers: { Location: 'https://www.techcrunch.com/feed' },
+      });
+    }
+    return new Response('<rss><channel><title>ok</title></channel></rss>', {
+      status: 200,
+      headers: { 'Content-Type': 'application/rss+xml' },
+    });
+  };
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.match(await res.text(), /<rss>/);
+  assert.deepEqual(calls.map((call) => call.url), [
+    'https://techcrunch.com/feed',
+    'https://www.techcrunch.com/feed',
+  ]);
+  assert.deepEqual(calls.map((call) => call.redirect), ['manual', 'manual']);
+});
+
+test('rejects redirects that switch away from http or https', async () => {
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), redirect: init.redirect });
+    return new Response('', {
+      status: 302,
+      headers: { Location: 'file:///etc/passwd' },
+    });
+  };
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const body = await res.json();
+
+  assert.equal(res.status, 403);
+  assert.equal(body.error, 'Redirect protocol not allowed');
+  assert.deepEqual(calls, [{ url: 'https://techcrunch.com/feed', redirect: 'manual' }]);
+});
+
+test('rejects direct RSS fetches that exceed the redirect limit', async () => {
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), redirect: init.redirect });
+    return new Response('', {
+      status: 302,
+      headers: { Location: `https://www.techcrunch.com/feed-hop-${calls.length}` },
+    });
+  };
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const body = await res.json();
+
+  assert.equal(res.status, 502);
+  assert.equal(body.error, 'Too many redirects');
+  assert.deepEqual(calls.map((call) => call.url), [
+    'https://techcrunch.com/feed',
+    'https://www.techcrunch.com/feed-hop-1',
+    'https://www.techcrunch.com/feed-hop-2',
+    'https://www.techcrunch.com/feed-hop-3',
+  ]);
+  assert.deepEqual(calls.map((call) => call.redirect), ['manual', 'manual', 'manual', 'manual']);
+});
+
+test('preserves Railway relay fallback for direct-fetch transport failures', async () => {
+  process.env.WS_RELAY_URL = 'wss://relay.example.com';
+  process.env.RELAY_SHARED_SECRET = 'relay-secret';
+  const calls = [];
+
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), headers: init.headers });
+    if (calls.length === 1) {
+      throw new Error('direct fetch failed');
+    }
+    return new Response('<rss><channel><title>relay</title></channel></rss>', {
+      status: 200,
+      headers: { 'Content-Type': 'application/xml' },
+    });
+  };
+
+  const feedUrl = 'https://techcrunch.com/feed';
+  const res = await handler(makeRequest(feedUrl));
+
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /relay/);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, feedUrl);
+  assert.equal(calls[1].url, `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`);
+  assert.equal(calls[1].headers['x-relay-key'], 'relay-secret');
+});
+
+test('keeps stale Railway RSS bodies private with reflected credentialed CORS', async () => {
+  process.env.WS_RELAY_URL = 'wss://relay.example.com';
+  process.env.RELAY_SHARED_SECRET = 'relay-secret';
+  const calls = [];
+
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), headers: init.headers });
+    if (calls.length === 1) return new Response('Forbidden', { status: 403 });
+    return new Response('<rss><channel><title>stale</title></channel></rss>', {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/xml',
+        'X-Cache': 'BACKOFF-STALE',
+        'X-Relay-Stale': '1',
+      },
+    });
+  };
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('cache-control'), 'private, max-age=180');
+  assert.equal(res.headers.get('cdn-cache-control'), null);
+  assert.equal(res.headers.get('access-control-allow-origin'), 'https://worldmonitor.app');
+  assert.equal(res.headers.get('access-control-allow-credentials'), 'true');
+  assert.equal(res.headers.get('vary'), 'Origin');
+  assert.equal(res.headers.get('x-cache'), 'BACKOFF-STALE');
+  assert.equal(res.headers.get('x-relay-stale'), '1');
+  assert.match(await res.text(), /stale/);
+  assert.equal(calls.length, 2);
+});
+
+test('keeps legacy plain STALE relay responses non-cacheable during rollout', async () => {
+  process.env.WS_RELAY_URL = 'wss://relay.example.com';
+  process.env.RELAY_SHARED_SECRET = 'relay-secret';
+  const calls = [];
+
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), headers: init.headers });
+    if (calls.length === 1) return new Response('Forbidden', { status: 403 });
+    return new Response('<rss><channel><title>legacy stale</title></channel></rss>', {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/xml',
+        'X-Cache': 'STALE',
+      },
+    });
+  };
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('cache-control'), 'private, max-age=180');
+  assert.equal(res.headers.get('cdn-cache-control'), null);
+  assert.equal(res.headers.get('x-cache'), 'STALE');
+  assert.equal(res.headers.get('x-relay-stale'), null);
+  assert.match(await res.text(), /legacy stale/);
+  assert.equal(calls.length, 2);
+});
+
+test('preserves the original direct-fetch diagnostic when the relay fallback itself throws (#5398)', async (t) => {
+  const log = t.mock.method(console, 'error', () => {});
+  // Both legs fail, but the relay's throw must not replace directError as the
+  // reported failure — the #5378 suite only ever covered relay returning
+  // null/Response, never throwing.
+  process.env.WS_RELAY_URL = 'wss://relay.example.com';
+  for (const relayError of [new Error('boom relay leg'), null]) {
+    const calls = [];
+
+    globalThis.fetch = async (input) => {
+      calls.push(String(input));
+      if (calls.length === 1) {
+        throw new Error('boom direct fetch');
+      }
+      throw relayError;
+    };
+
+    const feedUrl = 'https://techcrunch.com/feed';
+    const res = await handler(makeRequest(feedUrl));
+    const body = await res.json();
+
+    assert.equal(res.status, 502);
+    assert.equal(body.error, 'Failed to fetch feed');
+    assert.deepEqual(body, { error: 'Failed to fetch feed', url: feedUrl });
+    assert.ok(log.mock.calls.some(({ arguments: args }) => args[2] === 'boom direct fetch'));
+    assert.equal(calls.length, 2);
+  }
+});
+
+test('preserves the original non-ok direct response when the relay retry itself throws (#5398)', async () => {
+  // Direct fetch succeeds but is non-ok; the relay retry then throws instead
+  // of returning null/a Response. The original non-ok direct response must
+  // still be what's returned, not an unhandled relay exception.
+  process.env.WS_RELAY_URL = 'wss://relay.example.com';
+  for (const relayError of [new Error('boom relay retry'), null]) {
+    const calls = [];
+
+    globalThis.fetch = async (input) => {
+      calls.push(String(input));
+      if (calls.length === 1) {
+        return new Response('not found', { status: 404 });
+      }
+      throw relayError;
+    };
+
+    const feedUrl = 'https://techcrunch.com/feed';
+    const res = await handler(makeRequest(feedUrl));
+
+    assert.equal(res.status, 404);
+    assert.equal(await res.text(), 'not found');
+    assert.equal(calls.length, 2);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Initial-host SSRF allowlist guard (#5378)
+//
+// These lock `isAllowedDomain(parsedUrl.hostname)` in api/rss-proxy.js. The
+// adversarial sweep flagged "hostname/userinfo confusion" as a possible
+// BYPASS; probing WHATWG `new URL()` shows it is not — userinfo is stripped
+// into `username`/`password` and a suffix-confusion host stays intact, so both
+// resolve to a non-allowlisted `hostname` and 403. What the sweep actually
+// found is that the guard had ZERO coverage: deleting it changed nothing in
+// the suite while the handler happily fetched the attacker host. That is what
+// these tests close. The teeth are `calls` staying empty — a 403 alone can be
+// produced by an unrelated failure, but "never touched the network" cannot.
+// ---------------------------------------------------------------------------
+
+test('rejects suffix-confusion hosts that merely start with an allowlisted domain', async () => {
+  const calls = spyFetch();
+
+  const res = await handler(makeRequest('https://techcrunch.com.attacker.example/feed'));
+  const body = await res.json();
+
+  assert.equal(res.status, 403);
+  assert.equal(body.error, 'Domain not allowed');
+  assert.deepEqual(calls, [], 'attacker host must never be fetched');
+});
+
+test('rejects userinfo-confusion URLs whose real host is not allowlisted', async () => {
+  const calls = spyFetch();
+
+  const res = await handler(makeRequest('https://techcrunch.com@attacker.example/feed'));
+  const body = await res.json();
+
+  assert.equal(res.status, 403);
+  assert.equal(body.error, 'Domain not allowed');
+  assert.deepEqual(calls, [], 'attacker host must never be fetched');
+});
+
+test('rejects a trailing-dot FQDN form of an allowlisted host', async () => {
+  const calls = spyFetch();
+
+  const res = await handler(makeRequest('https://techcrunch.com./feed'));
+
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'Domain not allowed');
+  assert.deepEqual(calls, []);
+});
+
+test('rejects link-local metadata addresses supplied as the initial url', async () => {
+  const calls = spyFetch();
+
+  const res = await handler(makeRequest('http://169.254.169.254/latest/meta-data'));
+
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'Domain not allowed');
+  assert.deepEqual(calls, [], 'metadata endpoint must never be fetched');
+});
+
+test('rejects a plain, unrelated host that is simply not on the allowlist', async () => {
+  const calls = spyFetch();
+
+  // The other negative cases are all lookalikes of an allowlisted name (suffix/
+  // userinfo/trailing-dot confusion) or a raw IP — so they only prove the guard
+  // rejects IMPOSTORS. This pins that it also rejects a STRANGER: an ordinary,
+  // well-formed host with no relationship to any allowlisted domain. Without it,
+  // loosening the guard to `!isAllowedDomain(host) && !host.endsWith('.com')`
+  // (admit any .com) stays green.
+  const res = await handler(makeRequest('https://evil.example.com/feed'));
+
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'Domain not allowed');
+  assert.deepEqual(calls, [], 'a non-allowlisted stranger host must never be fetched');
+});
+
+test('allows an allowlisted host supplied in mixed case (URL normalizes it)', async () => {
+  const calls = spyFetch(() => new Response('<rss><channel/></rss>', {
+    status: 200,
+    headers: { 'Content-Type': 'application/rss+xml' },
+  }));
+
+  const res = await handler(makeRequest('https://TechCrunch.COM/feed'));
+
+  assert.equal(res.status, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://techcrunch.com/feed');
+});
+
+test('every relay-only domain is also in the RSS allowlist', () => {
+  // Drift guard: the allowlist check runs FIRST, so a relay-only host missing
+  // from the allowlist would 403 before the relay routing it exists for is ever
+  // used. Both checks now share hostMatchForms() www-tolerance, so membership is
+  // tested through the same predicate the handler uses.
+  const orphans = [...RELAY_ONLY_DOMAINS].filter((host) => !isAllowedDomain(host));
+  assert.deepEqual(orphans, [], `relay-only hosts missing from the RSS allowlist: ${orphans.join(', ')}`);
+});
+
+// ---------------------------------------------------------------------------
+// Pre-fetch gates: auth, rate limit, protocol (#5378)
+//
+// All three run BEFORE any upstream fetch. Each test asserts the status AND
+// that no feed request escaped — the sweep's mutations (dropping the 401
+// return, ignoring rateLimitResponse) manifested as an upstream fetch with a
+// 502/200, so the "no feed call" assertion is what actually kills them.
+// ---------------------------------------------------------------------------
+
+test('rejects requests with no API key before fetching the feed', async () => {
+  const calls = spyFetch();
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed', { apiKey: null }));
+
+  assert.equal(res.status, 401);
+  assert.equal((await res.json()).error, 'API key required');
+  assert.deepEqual(calls, [], 'unauthenticated request must not reach upstream');
+});
+
+test('rejects requests with an invalid API key before fetching the feed', async () => {
+  const calls = spyFetch();
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed', { apiKey: 'wrong-key' }));
+
+  assert.equal(res.status, 401);
+  assert.equal((await res.json()).error, 'Invalid API key');
+  assert.deepEqual(calls, [], 'invalid-key request must not reach upstream');
+});
+
+test('returns 429 and skips the feed fetch when the rate limit is exhausted', async () => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+
+  // Upstash sliding-window EVAL reply shape: [remaining, limit]. A negative
+  // remaining means blocked, and the second element surfaces as `limit` on the
+  // limiter verdict — hence 600, the handler's default policy (mirrors the
+  // `[-1, 30]` mock for the 30/min policy in api/_rate-limit.test.mjs).
+  const calls = spyFetch(() => new Response(
+    JSON.stringify([{ result: [-1, 600] }]),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  ));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+
+  assert.equal(res.status, 429);
+  assert.equal((await res.json()).error, 'Too many requests');
+  assert.equal(res.headers.get('X-RateLimit-Limit'), '600');
+  assert.equal(res.headers.get('X-RateLimit-Remaining'), '0');
+  assert.match(res.headers.get('Retry-After') ?? '', /^\d+$/);
+  // The 429 must still carry CORS headers, or the browser client sees an opaque
+  // network error instead of a readable rate-limit response.
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+  assert.deepEqual(
+    feedCalls(calls).map((c) => c.url),
+    [],
+    'rate-limited request must not reach the feed',
+  );
+});
+
+test('allows the request through when the rate limiter reports headroom', async () => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+
+  // Positive counterpart to the 429 case: proves the 429 above is produced by
+  // the limiter verdict, not merely by Upstash being configured at all.
+  const calls = spyFetch((url) => (
+    url.includes('fake-upstash')
+      ? new Response(JSON.stringify([{ result: [599, 600] }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+      : new Response('<rss><channel/></rss>', {
+        status: 200,
+        headers: { 'Content-Type': 'application/rss+xml' },
+      })
+  ));
+
+  // A malformed Upstash reply also yields 200 — checkRateLimit catches the parse
+  // error and fail-opens (`return null`) — so status alone can't tell "limiter
+  // granted headroom" from "limiter threw and failed open". Capture the degraded
+  // log and assert it never fired, so this positive control has real teeth.
+  const errorLogs = [];
+  const originalConsoleError = console.error;
+  console.error = (...args) => { errorLogs.push(args.join(' ')); };
+  let res;
+  try {
+    res = await handler(makeRequest('https://techcrunch.com/feed'));
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(feedCalls(calls).map((c) => c.url), ['https://techcrunch.com/feed']);
+  assert.ok(
+    !errorLogs.some((l) => l.includes('[rate-limit] redis-error')),
+    `limiter degraded (fail-open) instead of granting headroom: ${errorLogs.join(' | ')}`,
+  );
+});
+
+test('rejects a non-http initial url with 400, not the 403 domain verdict', async () => {
+  const calls = spyFetch();
+
+  const res = await handler(makeRequest('file:///etc/passwd'));
+
+  // Status is the assertion with teeth: `file:` also fails the allowlist
+  // (hostname is ''), so only the 400 distinguishes the protocol guard from
+  // the domain guard. The sweep's mutation flipped exactly this status.
+  assert.equal(res.status, 400);
+  assert.equal((await res.json()).error, 'URL protocol not allowed');
+  assert.deepEqual(calls, []);
+});
+
+// ---------------------------------------------------------------------------
+// Request-shape handling (#5378)
+// ---------------------------------------------------------------------------
+
+test('returns 400 when the url parameter is missing entirely', async () => {
+  const calls = spyFetch();
+
+  const res = await handler(makeRequest(null));
+
+  assert.equal(res.status, 400);
+  assert.equal((await res.json()).error, 'Missing url parameter');
+  assert.deepEqual(calls, []);
+});
+
+test('returns 400 (not 502) for a malformed url parameter', async () => {
+  const calls = spyFetch();
+
+  // Regression for WORLDMONITOR-TT: `new URL()` throwing inside the try block
+  // was reported to Sentry at error level and answered 502. It is a client
+  // error and must be caught by the pre-try parse.
+  const res = await handler(makeRequest('not-a-url'));
+
+  assert.equal(res.status, 400);
+  assert.equal((await res.json()).error, 'Invalid url parameter');
+  assert.deepEqual(calls, []);
+});
+
+test('answers CORS preflight with 204 and no upstream call', async () => {
+  const calls = spyFetch();
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed', { method: 'OPTIONS' }));
+
+  assert.equal(res.status, 204);
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+  // Exact match, not a substring — pins the advertised verb set so widening it
+  // (e.g. to include POST/PUT/DELETE) can't slip through unnoticed.
+  assert.equal(res.headers.get('Access-Control-Allow-Methods'), 'GET, OPTIONS');
+  assert.deepEqual(calls, []);
+});
+
+test('rejects non-GET methods with 405', async () => {
+  const calls = spyFetch();
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed', { method: 'POST' }));
+
+  assert.equal(res.status, 405);
+  assert.equal((await res.json()).error, 'Method not allowed');
+  assert.deepEqual(calls, []);
+});
+
+test('rejects a disallowed Origin before auth, method, or fetch', async () => {
+  const calls = spyFetch();
+
+  // Fail ALL THREE early gates at once (bad Origin + no key + non-GET) so only
+  // the ORDERING explains a 403 'Origin not allowed' verdict — if the Origin
+  // gate ran after auth or method, this would be 401 or 405 instead.
+  const res = await handler(makeRequest('https://techcrunch.com/feed', {
+    origin: 'https://evil.example',
+    apiKey: null,
+    method: 'POST',
+  }));
+
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'Origin not allowed');
+  // Never echo the attacker origin back.
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+  assert.deepEqual(calls, []);
+});
+
+// ---------------------------------------------------------------------------
+// Routing + response policy (#5378)
+// ---------------------------------------------------------------------------
+
+test('routes relay-only domains straight to Railway without shared caching', async () => {
+  process.env.WS_RELAY_URL = 'wss://relay.example.com';
+  process.env.RELAY_SHARED_SECRET = 'relay-secret';
+
+  const feedUrl = 'https://rss.cnn.com/rss/edition.rss';
+  const calls = spyFetch(() => new Response('<rss><channel><title>cnn</title></channel></rss>', {
+    status: 200,
+    headers: { 'Content-Type': 'application/rss+xml' },
+  }));
+
+  const res = await handler(makeRequest(feedUrl));
+
+  assert.equal(res.status, 200);
+  // Exactly one call, to the relay — the direct fetch is skipped entirely
+  // because Vercel edge IPs are blocked by these hosts.
+  assert.deepEqual(calls.map((c) => c.url), [
+    `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`,
+  ]);
+  assert.equal(res.headers.get('Cache-Control'), 'private, max-age=180');
+  assert.equal(res.headers.get('CDN-Cache-Control'), null);
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+  assert.equal(res.headers.get('Access-Control-Allow-Credentials'), 'true');
+});
+
+test('routes the apex form of a www-registered relay-only host to Railway (www-tolerant match)', async () => {
+  process.env.WS_RELAY_URL = 'wss://relay.example.com';
+
+  // 'www.cisa.gov' is relay-only; a request for the bare apex 'cisa.gov' is
+  // still allowlisted (www-tolerant) and MUST route to the relay. With an
+  // exact-match relay-only check it would fall through to a direct Vercel-edge
+  // fetch that cisa.gov blocks — the exact class of drift the shared
+  // hostMatchForms() normalization closes.
+  const feedUrl = 'https://cisa.gov/uscert/ncas/all.xml';
+  const calls = spyFetch(() => new Response('<rss><channel><title>cisa</title></channel></rss>', {
+    status: 200,
+    headers: { 'Content-Type': 'application/rss+xml' },
+  }));
+
+  const res = await handler(makeRequest(feedUrl));
+
+  assert.equal(res.status, 200);
+  // Exactly one call, to the relay — no direct fetch to cisa.gov.
+  assert.deepEqual(calls.map((c) => c.url), [
+    `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`,
+  ]);
+  assert.equal(res.headers.get('CDN-Cache-Control'), null);
+});
+
+test('keeps successful non-relay-only feeds private and out of shared caches', async () => {
+  const calls = spyFetch(() => new Response('<rss><channel/></rss>', {
+    status: 200,
+    headers: { 'Content-Type': 'application/rss+xml' },
+  }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(calls.map((c) => c.url), ['https://techcrunch.com/feed']);
+  assert.equal(res.headers.get('Cache-Control'), 'private, max-age=180');
+  assert.equal(res.headers.get('CDN-Cache-Control'), null);
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+  assert.equal(res.headers.get('Access-Control-Allow-Credentials'), 'true');
+  assert.equal(res.headers.get('Vary'), 'Origin');
+});
+
+test('passes a non-2xx upstream status through without caching it', async () => {
+  const calls = spyFetch(() => new Response('upstream boom', { status: 503 }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+
+  assert.equal(res.status, 503);
+  assert.equal(res.headers.get('Cache-Control'), 'private, max-age=180');
+  assert.equal(
+    res.headers.get('CDN-Cache-Control'),
+    null,
+    'a credential-gated response must never be stored in the CDN',
+  );
+  assert.deepEqual(calls.map((c) => c.url), ['https://techcrunch.com/feed']);
+});
+
+test('retries through the relay when the direct fetch returns a non-2xx status', async () => {
+  process.env.WS_RELAY_URL = 'wss://relay.example.com';
+  const feedUrl = 'https://techcrunch.com/feed';
+
+  const calls = spyFetch((url) => (
+    url.includes('relay.example.com')
+      ? new Response('<rss><channel><title>relay</title></channel></rss>', {
+        status: 200,
+        headers: { 'Content-Type': 'application/rss+xml' },
+      })
+      : new Response('blocked', { status: 403 })
+  ));
+
+  const res = await handler(makeRequest(feedUrl));
+
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /relay/);
+  assert.deepEqual(calls.map((c) => c.url), [
+    feedUrl,
+    `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`,
+  ]);
+});
+
+test('uses inert text when upstream sends no content-type', async () => {
+  const calls = spyFetch(() => {
+    const res = new Response('<rss><channel/></rss>', { status: 200 });
+    res.headers.delete('content-type');
+    return res;
+  });
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('Content-Type'), 'text/plain; charset=utf-8');
+  assert.equal(calls.length, 1);
+});
+
+test('maps a direct-fetch AbortError to 504 Feed timeout', async () => {
+  // No WS_RELAY_URL, so the relay fallback returns null and the AbortError is
+  // rethrown into the outer catch, which classifies it as a timeout (504). Note:
+  // this asserts only the 504 mapping. The `if (!isTimeout)` Sentry-suppression
+  // gate is NOT verified here — captureSilentError is a no-op under
+  // NODE_TEST_CONTEXT, so a spy-free test can't distinguish "capture skipped"
+  // from "capture ran but no-op'd". Left unasserted deliberately.
+  const calls = spyFetch(() => {
+    const err = new Error('The operation was aborted');
+    err.name = 'AbortError';
+    throw err;
+  });
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const body = await res.json();
+
+  assert.equal(res.status, 504);
+  assert.deepEqual(body, { error: 'Feed timeout', url: 'https://techcrunch.com/feed' });
+  assert.equal(calls.length, 1);
+});
+
+test('maps a generic direct-fetch error to 502 Failed to fetch feed when no relay is configured', async (t) => {
+  const log = t.mock.method(console, 'error', () => {});
+  // Non-Abort throw + WS_RELAY_URL unset -> fetchViaRailway returns null ->
+  // directError rethrows into the outer catch: the handler's generic-failure
+  // branch and the ONLY captureSilentError call site. Untested before this.
+  const message = 'fetch failed https://internal.example/?key=synthetic-secret';
+  const calls = spyFetch(() => { throw new Error(message); });
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const body = await res.json();
+
+  assert.equal(res.status, 502);
+  assert.equal(body.error, 'Failed to fetch feed');
+  assert.deepEqual(body, { error: 'Failed to fetch feed', url: 'https://techcrunch.com/feed' });
+  assert.ok(log.mock.calls.some(({ arguments: args }) => args[2] === message));
+  assert.equal(body.url, 'https://techcrunch.com/feed');
+});
+
+test('maps a relay-only host to 502 when the relay is unavailable', async () => {
+  // Relay-only domain + WS_RELAY_URL unset -> fetchViaRailway returns null ->
+  // handler throws 'Railway relay unavailable ...' into the same 502 branch.
+  const calls = spyFetch();
+
+  const res = await handler(makeRequest('https://rss.cnn.com/rss/edition.rss'));
+  const body = await res.json();
+
+  assert.equal(res.status, 502);
+  assert.equal(body.error, 'Failed to fetch feed');
+  assert.deepEqual(body, { error: 'Failed to fetch feed', url: 'https://rss.cnn.com/rss/edition.rss' });
+  // No relay configured and direct fetch is skipped for relay-only hosts, so
+  // nothing was ever fetched.
+  assert.deepEqual(calls, []);
+});
+
+test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, async () => {
+  // Hold fetch pending while the fake clock is advanced across each
+  // boundary. Fake timers keep this deterministic (no real waiting).
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    for (const { feedUrl, deadlineMs, label } of [
+      { feedUrl: 'https://news.google.com/rss/search?q=test', deadlineMs: 20_000, label: 'Google News' },
+      { feedUrl: 'https://techcrunch.com/feed', deadlineMs: 12_000, label: 'default' },
+    ]) {
+      let signal;
+      let release;
+      globalThis.fetch = async (_input, init = {}) => {
+        signal = init.signal;
+        await new Promise((resolve) => { release = resolve; });
+        return new Response('<rss/>', { status: 200 });
+      };
+
+      const pending = handler(makeRequest(feedUrl));
+      // Yield until the handler has entered fetch and armed the signal — BOUNDED
+      // so a regression that stops the handler from reaching fetch fails fast
+      // with a clear message instead of spinning until the runner's timeout.
+      // (setImmediate and performance.now are unfaked here; only setTimeout is
+      // mocked.) The bound is wall-clock, not a turn count: the API-key check
+      // awaits crypto.subtle.digest, which completes on the libuv threadpool,
+      // and on a contended CI runner that took longer than 1000 turns, so the
+      // handler reached fetch after the assertion and leaked into the next test.
+      const armDeadline = performance.now() + 2_000;
+      while (!signal && performance.now() < armDeadline) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      assert.ok(signal, `${label} feed: handler never reached fetch (signal never armed)`);
+
+      mock.timers.tick(deadlineMs - 1);
+      assert.equal(signal.aborted, false, `${label} feed aborted before its ${deadlineMs}ms deadline`);
+      mock.timers.tick(2);
+      assert.equal(signal.aborted, true, `${label} feed did not abort at its ${deadlineMs}ms deadline`);
+
+      release();
+      await pending;
+    }
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Browser User-Agent on the RSS proxy (#6624)
+//
+// CBC (and similar publishers) 403 Node/undici default UAs from some
+// datacenter IPs. The UA belongs on this proxy fetch, not a one-off in
+// feeds.ts, and not via fetch.bind(globalThis).
+// ---------------------------------------------------------------------------
+
+const CBC_CATALOG_URL = 'https://www.cbc.ca/webfeed/rss/rss-world';
+const SEEDER_CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
+
+test('RSS proxy browser UA matches the seeder CHROME_UA convention (#6624)', () => {
+  assert.equal(RSS_BROWSER_UA, SEEDER_CHROME_UA);
+  assert.equal(DIRECT_FETCH_HEADERS['User-Agent'], SEEDER_CHROME_UA);
+  const seedSrc = readFileSync(fileURLToPath(new URL('../scripts/_seed-utils.mjs', import.meta.url)), 'utf8');
+  assert.match(
+    seedSrc,
+    /const CHROME_UA = 'Mozilla\/5\.0 \(Windows NT 10\.0; Win64; x64\) AppleWebKit\/537\.36 \(KHTML, like Gecko\) Chrome\/134\.0\.0\.0 Safari\/537\.36'/,
+    'seeder CHROME_UA drifted from the RSS proxy browser UA',
+  );
+});
+
+test('does not inject UA via a bound fetch (#6624)', () => {
+  const src = readFileSync(fileURLToPath(new URL('./rss-proxy.js', import.meta.url)), 'utf8');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  assert.doesNotMatch(code, /fetch\.bind\s*\(/);
+  assert.match(src, /rssFetchHeadersForHost\(/, 'UA must be set on the proxy fetch headers');
+});
+
+test('sends the seeder-convention browser User-Agent on a CBC direct fetch (#6624)', async () => {
+  const calls = spyFetch();
+  const res = await handler(makeRequest(CBC_CATALOG_URL));
+  assert.equal(res.status, 200);
+  assert.equal(feedCalls(calls).length, 1);
+  assert.equal(calls[0].url, CBC_CATALOG_URL);
+  assert.equal(calls[0].headers['User-Agent'], RSS_BROWSER_UA);
+  assert.match(calls[0].headers['User-Agent'], /Chrome\//);
+  assert.doesNotMatch(calls[0].headers['User-Agent'], /^(undici|node|WorldMonitor)/);
+});
+
+test('keeps a browser UA on the CBC path — a bot UA would be 403ed (#6624)', async () => {
+  // SCOPE, stated plainly so this is not misread as proof of a fix: the proxy
+  // ALREADY sent a browser UA before this change (Chrome/120). This mock 403s
+  // anything without Mozilla/5.0 + Chrome/, which the old UA also satisfied, so
+  // this test does NOT discriminate the new behaviour from the old and no CBC
+  // 403 is demonstrated anywhere in this change.
+  //
+  // What it does lock is a regression: if someone drops the header block or
+  // swaps in a library/undici default UA, the direct fetch starts 403ing. The
+  // version bump itself is pinned by the CHROME_UA equality test above, which
+  // is what actually fails if the proxy and seeder UAs drift apart.
+  const calls = spyFetch((_url, init) => {
+    const ua = init.headers?.['User-Agent'] || '';
+    if (!/Mozilla\/5\.0/.test(ua) || !/Chrome\//.test(ua)) {
+      return new Response('Forbidden', { status: 403 });
+    }
+    return new Response('<rss><channel><item><title>ok</title></item></channel></rss>', {
+      status: 200,
+      headers: { 'Content-Type': 'application/rss+xml' },
+    });
+  });
+
+  const res = await handler(makeRequest(CBC_CATALOG_URL));
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /<item>/);
+  assert.equal(calls[0].headers['User-Agent'], RSS_BROWSER_UA);
+  assert.equal(calls.length, 1, 'browser UA must succeed on the direct fetch; no relay retry');
+});
+
+test('does not treat an upstream CBC 403 as a cacheable success (#6624)', async () => {
+  // No relay configured (beforeEach deletes WS_RELAY_URL). A 403 must be
+  // forwarded, not rewritten to empty-200, so last-good is not poisoned
+  // by coverage-less success.
+  const calls = spyFetch(() => new Response('Forbidden', { status: 403 }));
+  const res = await handler(makeRequest(CBC_CATALOG_URL));
+  assert.equal(res.status, 403);
+  assert.equal(await res.text(), 'Forbidden');
+  assert.equal(res.headers.get('cache-control'), 'private, max-age=180');
+  assert.equal(res.headers.get('cdn-cache-control'), null);
+  assert.equal(calls[0].headers['User-Agent'], RSS_BROWSER_UA);
+});
+
+for (const relay of [false, true]) {
+  for (const mime of ['text/html', 'application/xhtml+xml', 'image/svg+xml', 'application/xml', 'application/rss+xml']) {
+    test(`serves hostile ${mime} as inert text through ${relay ? 'relay' : 'direct'} fetch`, async () => {
+      if (relay) process.env.WS_RELAY_URL = 'wss://relay.example.com';
+      const body = '<?xml-stylesheet href="https://attacker.invalid/style.xsl"?><html xmlns="http://www.w3.org/1999/xhtml"><script>alert(1)</script></html>';
+      const calls = spyFetch(() => new Response(body, { headers: {
+        'Content-Type': mime,
+        'X-Cache': 'STALE',
+        'X-Relay-Stale': '1',
+      } }));
+      const response = await handler(makeRequest(relay ? 'https://www.cisa.gov/feed' : 'https://techcrunch.com/feed'));
+      assert.equal(response.status, 200);
+      assert.equal(await response.text(), body);
+      assert.equal(response.headers.get('Content-Type'), 'text/plain; charset=utf-8');
+      assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
+      assert.equal(response.headers.get('Content-Security-Policy'), "sandbox; default-src 'none'");
+      assert.equal(response.headers.get('Cache-Control'), 'private, max-age=180');
+      assert.equal(response.headers.get('X-Relay-Stale'), relay ? '1' : null);
+      assert.equal(response.headers.get('X-Cache'), relay ? 'STALE' : null);
+      assert.equal(calls.length, 1);
+      assert.equal(new URL(calls[0].url).hostname, relay ? 'relay.example.com' : 'techcrunch.com');
+    });
+  }
+}
+
+test('keeps upstream HTML errors inert while preserving their status', async () => {
+  const body = '<html><script>alert(1)</script></html>';
+  spyFetch(() => new Response(body, { status: 403, headers: { 'Content-Type': 'text/html' } }));
+  const response = await handler(makeRequest('https://techcrunch.com/feed'));
+  assert.equal(response.status, 403);
+  assert.equal(await response.text(), body);
+  assert.equal(response.headers.get('Content-Type'), 'text/plain; charset=utf-8');
+  assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.equal(response.headers.get('Content-Security-Policy'), "sandbox; default-src 'none'");
+});
+
+// ─── WORLDMONITOR-ZR: an oversized feed must degrade, not vanish ─────────────
+//
+// #8273 bounded the body read with a hard `throw new Error('Feed body too
+// large')` once the decoded body passed 5 MB. That turned an unbounded read
+// into a total failure for any feed above the cap: the throw unwinds to the
+// outer catch, which captures to Sentry and returns 502 `Failed to fetch
+// feed`. "20VC Episodes" (src/config/feeds.ts, an allowlisted host) measures
+// 11.92 MB across 1423 episodes, so it 502s on every fetch.
+//
+// Nothing downstream wanted 11.92 MB. src/services/rss.ts renders
+// `Array.from(items).slice(0, 5)`, and src/services/country-coverage.ts caps
+// lower still. The read should stop once it has enough items.
+//
+// Truncating at an arbitrary byte is not an option. src/services/rss.ts parses
+// with `DOMParser(text, 'text/xml')` and treats a `<parsererror>` document as a
+// total feed failure, falling back to stale cache — a silently stale panel
+// rather than a visible error. So the read must stop on an ITEM boundary and
+// close the document so it stays well-formed.
+
+/**
+ * Build a syntactically valid feed of `items` entries, each padded to force the
+ * body over a byte threshold. `dialect` picks RSS 2.0 (`<item>`/`</channel>
+ * </rss>`) or Atom (`<entry>`/`</feed>`), the two shapes src/services/rss.ts
+ * branches on via `items.length === 0 ? 'entry' : 'item'`.
+ */
+function buildFeed({ items, padBytes = 0, dialect = 'rss' }) {
+  const pad = 'x'.repeat(padBytes);
+  if (dialect === 'atom') {
+    const entries = Array.from({ length: items }, (_, i) =>
+      `<entry><title>Episode ${i}</title><summary>${pad}</summary></entry>`).join('');
+    return `<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Show</title>${entries}</feed>`;
+  }
+  const body = Array.from({ length: items }, (_, i) =>
+    `<item><title>Episode ${i}</title><description>${pad}</description></item>`).join('');
+  return `<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>Show</title>${body}</channel></rss>`;
+}
+
+function countTags(xml, tag) {
+  return {
+    open: (xml.match(new RegExp(`<${tag}[\\s>]`, 'g')) || []).length,
+    close: (xml.match(new RegExp(`</${tag}>`, 'g')) || []).length,
+  };
+}
+
+test('returns the newest items of an oversized RSS feed instead of failing it (WORLDMONITOR-ZR)', async () => {
+  const feed = buildFeed({ items: 600, padBytes: 10 * 1024 });
+  assert.ok(feed.length > 5 * 1024 * 1024, 'fixture must exceed the 5 MB byte cap to exercise the bound');
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const text = await res.text();
+
+  assert.equal(res.status, 200, 'an oversized feed degrades to its newest items, it does not 502');
+  const items = countTags(text, 'item');
+  assert.ok(items.close >= 1, 'at least one complete item survives the bound');
+  assert.ok(items.close <= 20, `item bound caps the payload, got ${items.close}`);
+  assert.equal(items.open, items.close, 'every retained <item> is closed — a half-item yields <parsererror>');
+  assert.ok(text.endsWith('</channel></rss>'), `document must close its open elements, got tail ${JSON.stringify(text.slice(-40))}`);
+  assert.ok(text.length < feed.length, 'the response is actually bounded');
+});
+
+test('returns the newest entries of an oversized Atom feed instead of failing it', async () => {
+  const feed = buildFeed({ items: 600, padBytes: 10 * 1024, dialect: 'atom' });
+  assert.ok(feed.length > 5 * 1024 * 1024, 'fixture must exceed the 5 MB byte cap');
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/atom+xml' } }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const text = await res.text();
+
+  assert.equal(res.status, 200);
+  const entries = countTags(text, 'entry');
+  assert.ok(entries.close >= 1 && entries.close <= 20, `entry bound caps the payload, got ${entries.close}`);
+  assert.equal(entries.open, entries.close, 'every retained <entry> is closed');
+  assert.ok(text.endsWith('</feed>'), `Atom closes its root, got tail ${JSON.stringify(text.slice(-40))}`);
+});
+
+test('leaves a feed inside both bounds byte-identical', async () => {
+  const feed = buildFeed({ items: 3, padBytes: 32 });
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), feed, 'a small feed must pass through untouched');
+});
+
+test('rejects an allowlisted host on a non-default port, directly or via redirect', async () => {
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    calls.push(String(input));
+    return new Response('', { status: 302, headers: { Location: 'https://www.techcrunch.com:8443/feed' } });
+  };
+
+  const direct = await handler(makeRequest('https://techcrunch.com:8443/feed'));
+  assert.equal(direct.status, 403);
+  assert.equal(calls.length, 0, 'a non-default port is refused before any fetch');
+
+  const redirected = await handler(makeRequest('https://techcrunch.com/feed'));
+  assert.equal(redirected.status, 403);
+  assert.equal((await redirected.json()).error, 'Redirect to disallowed domain');
+  assert.deepEqual(calls, ['https://techcrunch.com/feed']);
+});

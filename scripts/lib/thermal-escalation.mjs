@@ -222,10 +222,18 @@ function buildSummary(clusters) {
   };
 }
 
+function isEmergencyDetection(detection) {
+  if (!detection || typeof detection !== 'object') return false;
+  if (detection.kind === 'prescribed') return false;
+  if (detection.emergency === false) return false;
+  return true;
+}
+
 export function computeThermalEscalationWatch(detections, previousHistory = { cells: {} }, options = {}) {
   const nowMs = options.nowMs ?? Date.now();
   const sourceVersion = options.sourceVersion ?? 'thermal-escalation-v1';
-  const clusters = clusterDetections(detections, options.radiusKm ?? CLUSTER_RADIUS_KM);
+  const emergencyDetections = (Array.isArray(detections) ? detections : []).filter(isEmergencyDetection);
+  const clusters = clusterDetections(emergencyDetections, options.radiusKm ?? CLUSTER_RADIUS_KM);
   const previousCells = previousHistory?.cells ?? {};
   const nextHistory = {
     updatedAt: new Date(nowMs).toISOString(),

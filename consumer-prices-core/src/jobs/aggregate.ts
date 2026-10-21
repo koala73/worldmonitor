@@ -56,7 +56,7 @@ async function getBasketRows(basketSlug: string, marketCode: string): Promise<Ba
        SELECT price, unit_price, currency_code, observed_at
        FROM price_observations
        WHERE retailer_product_id = rp.id AND in_stock = true
-       ORDER BY observed_at DESC LIMIT 1
+       ORDER BY observed_at DESC, id DESC LIMIT 1
      ) po ON true
      WHERE b.slug = $1`,
     [basketSlug, marketCode],
@@ -306,5 +306,17 @@ export async function validateAndAggregateAll() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  validateAndAggregateAll().finally(() => closePool()).catch(console.error);
+  // Terminal success marker (format mirrors runSeed() in scripts/_seed-utils.mjs) so the crash
+  // diagnostic can distinguish a clean run from a silent death. Chained BEFORE .catch so a
+  // rejection — including the `N/M basket(s) failed` throw — skips it.
+  const runStartedAt = Date.now();
+  validateAndAggregateAll()
+    .then(() => console.log(`\n=== Done (${Date.now() - runStartedAt}ms) ===`))
+    .finally(() => closePool())
+    // Mirror scrape.ts: a failed aggregate must fail the cron (Railway green
+    // deploys on exit 0 — console.error alone reported success on 0/N).
+    .catch((err) => {
+      console.error(err);
+      process.exitCode = 1;
+    });
 }

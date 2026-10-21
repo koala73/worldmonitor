@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package worldmonitor.company_monitoring.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/company_monitoring/v1/company_monitoring.proto";
+
+message ListCompanyEventImpactsRequest {
+  // Account-scoped logical company IDs to include; storage identifiers are not accepted.
+  repeated string company_ids = 1 [
+    (buf.validate.field).repeated.max_items = 100,
+    (buf.validate.field).repeated.items.string.pattern = "^cm_company_[0-9A-HJKMNP-TV-Z]{26}$",
+    (sebuf.http.query) = {name: "company_id"}
+  ];
+  // Accepted values are positive, negative, and mixed.
+  repeated string directions = 2 [
+    (buf.validate.field).repeated.max_items = 3,
+    (buf.validate.field).repeated.items.string.pattern = "^(?:positive|negative|mixed|MATERIAL_IMPACT_DIRECTION_(?:POSITIVE|NEGATIVE|MIXED))$",
+    (sebuf.http.query) = {name: "direction"}
+  ];
+  // Accepted values are admitted, corrected, and retracted.
+  repeated string lifecycles = 3 [
+    (buf.validate.field).repeated.max_items = 3,
+    (buf.validate.field).repeated.items.string.pattern = "^(?:admitted|corrected|retracted|MATERIAL_IMPACT_LIFECYCLE_(?:ADMITTED|CORRECTED|RETRACTED))$",
+    (sebuf.http.query) = {name: "lifecycle"}
+  ];
+  // Maximum rows to return, from 1 through 100; zero requests the server default.
+  int32 page_size = 4 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).int32.gte = 1,
+    (buf.validate.field).int32.lte = 100,
+    (sebuf.http.query) = {name: "page_size"}
+  ];
+  // Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
+  string cursor = 5 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.max_bytes = 2048,
+    (buf.validate.field).string.pattern = "^cmc1\\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\\.[A-Za-z0-9_-]{43}$",
+    (sebuf.http.query) = {name: "cursor"}
+  ];
+}
+
+message ListCompanyEventImpactsResponse {
+  repeated CompanyMaterialImpact impacts = 1 [(buf.validate.field).repeated.max_items = 100];
+  string next_cursor = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.max_bytes = 2048,
+    (buf.validate.field).string.pattern = "^cmc1\\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\\.[A-Za-z0-9_-]{43}$"
+  ];
+  SnapshotBoundary snapshot = 3;
+}
+
+message ListCompanyEventChangesRequest {
+  // Required signed opaque poll cursor bound to the account, mode, expiry, and snapshot generation; never a storage identifier.
+  string cursor = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_bytes = 2048,
+    (buf.validate.field).string.pattern = "^cmc1\\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\\.[A-Za-z0-9_-]{43}$",
+    (sebuf.http.query) = {name: "cursor"}
+  ];
+  // Maximum changes to return, from 1 through 100; zero requests the server default.
+  int32 page_size = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).int32.gte = 1,
+    (buf.validate.field).int32.lte = 100,
+    (sebuf.http.query) = {name: "page_size"}
+  ];
+}
+
+message ListCompanyEventChangesResponse {
+  repeated CompanyMaterialImpact impacts = 1 [(buf.validate.field).repeated.max_items = 100];
+  string next_cursor = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.max_bytes = 2048,
+    (buf.validate.field).string.pattern = "^cmc1\\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\\.[A-Za-z0-9_-]{43}$"
+  ];
+  CompanyEventPollState poll_state = 3;
+}
+
+message GetCompanyMaterialEventRequest {
+  // Account-scoped logical impact ID; storage identifiers are not accepted.
+  string impact_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^cm_impact_[0-9A-HJKMNP-TV-Z]{26}$",
+    (sebuf.http.query) = {name: "impact_id"}
+  ];
+}
+
+message GetCompanyMaterialEventResponse {
+  MaterialEvent event = 1;
+  CompanyMaterialImpact impact = 2;
+  repeated CompanyEvidenceReference evidence = 3 [(buf.validate.field).repeated.max_items = 20];
+  int32 evidence_total_count = 4 [(buf.validate.field).int32.gte = 0];
+  bool evidence_truncated = 5;
+}

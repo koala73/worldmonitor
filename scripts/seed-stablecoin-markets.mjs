@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+import { pathToFileURL } from 'node:url';
+import { loadEnvFile, loadSharedConfig, runSeed, fetchCoinPaprikaTickersById, coingeckoEndpoint, fetchCoinGeckoWithRetryBudget } from './_seed-utils.mjs';
+// scripts/shared/ mirror (NOT ../shared/): this seeder deploys via Railway
+// rootDirectory=scripts, where the repo-root shared/ folder does not exist.
+// The mirror is byte-locked to shared/ by tests/scripts-shared-mirror.test.mjs.
+import { classifyStablecoin } from './shared/stablecoin-classifier.cjs';
 
 const stablecoinConfig = loadSharedConfig('stablecoins.json');
 
@@ -10,37 +15,32 @@ const CANONICAL_KEY = 'market:stablecoins:v1';
 const CACHE_TTL = 5400; // 90min — 1h buffer over 10min cron cadence (was 60min = 50min buffer)
 
 const STABLECOIN_IDS = stablecoinConfig.ids.join(',');
-
-async function fetchWithRateLimitRetry(url, maxAttempts = 5, headers = { Accept: 'application/json', 'User-Agent': CHROME_UA }) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const resp = await fetch(url, {
-      headers,
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (resp.status === 429) {
-      const wait = Math.min(10_000 * (i + 1), 60_000);
-      console.warn(`  CoinGecko 429 — waiting ${wait / 1000}s (attempt ${i + 1}/${maxAttempts})`);
-      await sleep(wait);
-      continue;
-    }
-    if (!resp.ok) throw new Error(`CoinGecko HTTP ${resp.status}`);
-    return resp;
-  }
-  throw new Error('CoinGecko rate limit exceeded after retries');
-}
-
 const COINPAPRIKA_ID_MAP = stablecoinConfig.coinpaprika;
+const COINPAPRIKA_IDS = stablecoinConfig.ids.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
+
+export const REQUEST_TIMEOUT_MS = 15_000;
+// Ceiling on the whole CoinGecko phase, in-flight request included. Sized so
+// that this plus COINPAPRIKA_WORST_CASE_MS fits the bundle section timeout
+// that SIGTERMs this seeder; tests/seed-fetch-budget.test.mjs gates that
+// arithmetic against the manifest, so when it trips lower this rather than
+// raise timeoutMs.
+export const COINGECKO_RETRY_BUDGET_MS = 45_000;
+// The fallback runs COINPAPRIKA_IDS in rounds of COINPAPRIKA_CONCURRENCY, each
+// round bounded by one request timeout. Both values are passed to the helper
+// explicitly so this derivation describes the call as made, and mapping a new
+// stablecoin widens the budget instead of silently breaking the invariant.
+const COINPAPRIKA_CONCURRENCY = 4;
+export const COINPAPRIKA_WORST_CASE_MS = Math.ceil(COINPAPRIKA_IDS.length / COINPAPRIKA_CONCURRENCY) * REQUEST_TIMEOUT_MS;
 
 async function fetchFromCoinGecko() {
-  const apiKey = process.env.COINGECKO_API_KEY;
-  const baseUrl = apiKey
-    ? 'https://pro-api.coingecko.com/api/v3'
-    : 'https://api.coingecko.com/api/v3';
+  const { baseUrl, headers } = coingeckoEndpoint();
   const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${STABLECOIN_IDS}&order=market_cap_desc&sparkline=false&price_change_percentage=7d`;
-  const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA };
-  if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
 
-  const resp = await fetchWithRateLimitRetry(url, 5, headers);
+  const resp = await fetchCoinGeckoWithRetryBudget(url, {
+    headers,
+    requestTimeoutMs: REQUEST_TIMEOUT_MS,
+    budgetMs: COINGECKO_RETRY_BUDGET_MS,
+  });
   const data = await resp.json();
   if (!Array.isArray(data) || data.length === 0) {
     throw new Error('CoinGecko returned no stablecoin data');
@@ -50,19 +50,14 @@ async function fetchFromCoinGecko() {
 
 async function fetchFromCoinPaprika() {
   console.log('  [CoinPaprika] Falling back to CoinPaprika...');
-  const ids = STABLECOIN_IDS.split(',');
-  const paprikaIds = new Set(ids.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean));
-  if (paprikaIds.size === 0) throw new Error('No CoinPaprika ID mapping for stablecoins');
+  if (COINPAPRIKA_IDS.length === 0) throw new Error('No CoinPaprika ID mapping for stablecoins');
 
-  const resp = await fetch('https://api.coinpaprika.com/v1/tickers?quotes=USD', {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
+  const tickers = await fetchCoinPaprikaTickersById(COINPAPRIKA_IDS, {
+    concurrency: COINPAPRIKA_CONCURRENCY,
+    timeoutMs: REQUEST_TIMEOUT_MS,
   });
-  if (!resp.ok) throw new Error(`CoinPaprika HTTP ${resp.status}`);
-  const allTickers = await resp.json();
   const reverseMap = new Map(Object.entries(COINPAPRIKA_ID_MAP).map(([g, p]) => [p, g]));
-  return allTickers
-    .filter((t) => paprikaIds.has(t.id))
+  return tickers
     .map((t) => ({
       id: reverseMap.get(t.id) || t.id,
       current_price: t.quotes.USD.price,
@@ -76,7 +71,7 @@ async function fetchFromCoinPaprika() {
     }));
 }
 
-async function fetchStablecoinMarkets() {
+export async function fetchStablecoinMarkets() {
   let data;
   try {
     data = await fetchFromCoinGecko();
@@ -85,28 +80,11 @@ async function fetchStablecoinMarkets() {
     data = await fetchFromCoinPaprika();
   }
 
-  const stablecoins = data.map((coin) => {
-    const price = coin.current_price || 0;
-    const deviation = Math.abs(price - 1.0);
-    let pegStatus;
-    if (deviation <= 0.005) pegStatus = 'ON PEG';
-    else if (deviation <= 0.01) pegStatus = 'SLIGHT DEPEG';
-    else pegStatus = 'DEPEGGED';
-
-    return {
-      id: coin.id,
-      symbol: (coin.symbol || '').toUpperCase(),
-      name: coin.name,
-      price,
-      deviation: +(deviation * 100).toFixed(3),
-      pegStatus,
-      marketCap: coin.market_cap || 0,
-      volume24h: coin.total_volume || 0,
-      change24h: coin.price_change_percentage_24h || 0,
-      change7d: coin.price_change_percentage_7d_in_currency || 0,
-      image: coin.image || '',
-    };
-  });
+  // Shared with the relay's backup seeder and with the RPC handler, which
+  // classifies coins this seed does not carry. Three producers shaping rows
+  // with three private copies of this logic would let the same coin read a
+  // different peg status from each path. (#6308, #6319)
+  const stablecoins = data.map((coin) => classifyStablecoin(coin));
 
   const totalMarketCap = stablecoins.reduce((sum, c) => sum + c.marketCap, 0);
   const totalVolume24h = stablecoins.reduce((sum, c) => sum + c.volume24h, 0);
@@ -133,10 +111,21 @@ function validate(data) {
   );
 }
 
-runSeed('market', 'stablecoins', CANONICAL_KEY, fetchStablecoinMarkets, {
+export function declareRecords(data) {
+  return Array.isArray(data?.stablecoins) ? data.stablecoins.length : 0;
+}
+
+// isMain guard — required so tests can `import` the budget exports without
+// firing runSeed on module load (which would touch Redis and process.exit).
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) runSeed('market', 'stablecoins', CANONICAL_KEY, fetchStablecoinMarkets, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'coingecko-stablecoins',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 60,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

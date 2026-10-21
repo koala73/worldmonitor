@@ -1,0 +1,74 @@
+[
+  {
+    "commodity": "Uranium",
+    "sub_commodity": "Uranium, mine",
+    "country": "Kazakhstan",
+    "year": 2022,
+    "statistic_type": "Production",
+    "value": 21227,
+    "unit": "tonnes"
+  },
+  {
+    "commodity": "Uranium",
+    "sub_commodity": "Uranium, mine",
+    "country": "Canada",
+    "year": 2022,
+    "statistic_type": "Production",
+    "value": 7351,
+    "unit": "tonnes"
+  },
+  {
+    "commodity": "Uranium",
+    "sub_commodity": "Uranium, mine",
+    "country": "Namibia",
+    "year": 2022,
+    "statistic_type": "Production",
+    "value": 5613,
+    "unit": "tonnes"
+  },
+  {
+    "commodity": "Uranium",
+    "sub_commodity": "Uranium, mine",
+    "country": "Australia",
+    "year": 2022,
+    "statistic_type": "Production",
+    "value": 4553,
+    "unit": "tonnes"
+  },
+  {
+    "commodity": "Uranium",
+    "sub_commodity": "Uranium, mine",
+    "country": "Uzbekistan",
+    "year": 2022,
+    "statistic_type": "Production",
+    "value": 3300,
+    "unit": "tonnes"
+  },
+  {
+    "commodity": "Germanium",
+    "sub_commodity": "Germanium, refinery",
+    "country": "China",
+    "year": 2022,
+    "statistic_type": "Production",
+    "value": 95,
+    "unit": "tonnes"
+  },
+  {
+    "commodity": "Germanium",
+    "sub_commodity": "Germanium, refinery",
+    "country": "Belgium",
+    "year": 2022,
+    "statistic_type": "Production",
+    "value": 15,
+    "unit": "tonnes"
+  },
+  {
+    "commodity": "Germanium",
+    "sub_commodity": "Germanium, refinery",
+    "country": "Canada",
+    "year": 2022,
+    "statistic_type": "Production",
+    "value": 9,
+    "unit": "tonnes"
+  }
+]

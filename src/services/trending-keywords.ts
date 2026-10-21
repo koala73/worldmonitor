@@ -1,12 +1,37 @@
 import type { CorrelationSignal } from './correlation';
+import { effectivePubDateMs } from './feed-date';
 import { mlWorker } from './ml-worker';
 import { generateSummary } from './summarization';
-import { SUPPRESSED_TRENDING_TERMS, escapeRegex, generateSignalId, tokenize } from '@/utils/analysis-constants';
+import { SUPPRESSED_TRENDING_TERMS, generateSignalId } from '@/utils/analysis-constants';
+// The pure spike primitives (regex entity extractors, term candidacy, display
+// normalization, spike decision math) live in shared/keyword-spike-core.js
+// (issue #5697) so the server-side get_keyword_spikes MCP tool shares them.
+// This module keeps the stateful machinery: rolling term records, cooldowns,
+// localStorage config, ML enrichment, i18n signal copy.
+import {
+  BASELINE_WINDOW_MS,
+  DEFAULT_MIN_SPIKE_COUNT,
+  DEFAULT_SPIKE_MULTIPLIER,
+  MIN_SPIKE_SOURCE_COUNT,
+  MIN_TOKEN_LENGTH,
+  ROLLING_WINDOW_MS,
+  buildBaseTermCandidates,
+  asDisplayTerm,
+  evaluateSpikeDecision,
+  extractEntities,
+  isEntityShapedTerm,
+  isLikelyProperNoun,
+  toTermKey,
+} from '../../shared/keyword-spike-core.js';
+import { PUBLISHER_FAMILIES, publisherFamilyFor } from '../../shared/publisher-families.js';
 import { t } from '@/services/i18n';
+
+export { extractEntities };
 
 export interface TrendingHeadlineInput {
   title: string;
   pubDate: Date;
+  pubDateMissing?: boolean;
   source: string;
   link?: string;
 }
@@ -50,6 +75,7 @@ export interface TrendingSpike {
   multiplier: number;
   windowMs: number;
   uniqueSources: number;
+  sourceNames: string[];
   headlines: StoredHeadline[];
 }
 
@@ -61,16 +87,17 @@ export interface TrendingConfig {
 }
 
 const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 
-const ROLLING_WINDOW_MS = 2 * HOUR_MS;
-const BASELINE_WINDOW_MS = 7 * DAY_MS;
 const BASELINE_REFRESH_MS = HOUR_MS;
 const SPIKE_COOLDOWN_MS = 30 * 60 * 1000;
 const MAX_TRACKED_TERMS = 10000;
 const MAX_AUTO_SUMMARIES_PER_HOUR = 5;
-const MIN_TOKEN_LENGTH = 3;
-const MIN_SPIKE_SOURCE_COUNT = 2;
+// A spike can be built from an unbounded number of headlines; the signal that
+// travels to the modal and into the retained signal history must not be.
+// (`sourceNames` needs no cap of its own — distinct feed names are already
+// bounded by the feed registry, and capping it would put `sourceCount` and the
+// names it claims to explain back into disagreement.)
+const MAX_SPIKE_ARTICLES = 6;
 const CONFIG_KEY = 'worldmonitor-trending-config-v1';
 const ML_ENTITY_MIN_CONFIDENCE = 0.75;
 const ML_ENTITY_BATCH_SIZE = 20;
@@ -78,24 +105,10 @@ const ML_ENTITY_TYPES = new Set(['PER', 'ORG', 'LOC', 'MISC']);
 
 const DEFAULT_CONFIG: TrendingConfig = {
   blockedTerms: [],
-  minSpikeCount: 5,
-  spikeMultiplier: 3,
+  minSpikeCount: DEFAULT_MIN_SPIKE_COUNT,
+  spikeMultiplier: DEFAULT_SPIKE_MULTIPLIER,
   autoSummarize: true,
 };
-
-const CVE_PATTERN = /CVE-\d{4}-\d{4,}/gi;
-const APT_PATTERN = /APT\d+/gi;
-const FIN_PATTERN = /FIN\d+/gi;
-
-const LEADER_NAMES = [
-  'putin', 'zelensky', 'xi jinping', 'biden', 'trump', 'netanyahu',
-  'khamenei', 'erdogan', 'modi', 'macron', 'scholz', 'starmer',
-  'orban', 'milei', 'kim jong un', 'al-sisi',
-];
-const LEADER_PATTERNS = LEADER_NAMES.map(name => ({
-  name,
-  pattern: new RegExp(`\\b${escapeRegex(name)}\\b`, 'i'),
-}));
 
 const termFrequency = new Map<string, TermRecord>();
 const seenHeadlines = new Map<string, number>();
@@ -106,19 +119,13 @@ const autoSummaryRuns: number[] = [];
 let cachedConfig: TrendingConfig | null = null;
 let lastBaselineRefreshMs = 0;
 
-function toTermKey(term: string): string {
-  return term.trim().toLowerCase();
-}
-
-function asDisplayTerm(term: string): string {
-  if (/^(cve-\d{4}-\d{4,}|apt\d+|fin\d+)$/i.test(term)) {
-    return term.toUpperCase();
-  }
-  return term.toLowerCase();
-}
-
 function isStorageAvailable(): boolean {
-  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+  if (typeof window === 'undefined') return false;
+  try {
+    return typeof window.localStorage !== 'undefined';
+  } catch {
+    return false;
+  }
 }
 
 function uniqueBlockedTerms(terms: string[]): string[] {
@@ -173,28 +180,6 @@ function getBlockedTermSet(config: TrendingConfig): Set<string> {
     ...Array.from(SUPPRESSED_TRENDING_TERMS).map(term => toTermKey(term)),
     ...config.blockedTerms.map(term => toTermKey(term)),
   ]);
-}
-
-export function extractEntities(text: string): string[] {
-  const entities: string[] = [];
-  const lower = text.toLowerCase();
-
-  for (const match of text.matchAll(CVE_PATTERN)) {
-    entities.push(match[0].toUpperCase());
-  }
-  for (const match of text.matchAll(APT_PATTERN)) {
-    entities.push(match[0].toUpperCase());
-  }
-  for (const match of text.matchAll(FIN_PATTERN)) {
-    entities.push(match[0].toUpperCase());
-  }
-  for (const { name, pattern } of LEADER_PATTERNS) {
-    if (pattern.test(lower)) {
-      entities.push(name);
-    }
-  }
-
-  return entities;
 }
 
 function normalizeEntityType(type: string): string {
@@ -329,31 +314,33 @@ function dedupeHeadlines(headlines: StoredHeadline[]): StoredHeadline[] {
   return unique;
 }
 
-function stripSourceAttribution(title: string): string {
-  const idx = title.lastIndexOf(' - ');
-  if (idx === -1) return title;
-  const after = title.slice(idx + 3).trim();
-  if (after.length > 0 && after.length <= 60 && !/[.!?]/.test(after)) {
-    return title.slice(0, idx).trim();
+/**
+ * Distinct PUBLISHERS behind a window of headlines, as display names.
+ *
+ * #6414 made the alert's count and the names it shows the same fact, so that
+ * the number a user reads is backed by the list beside it. #6428 makes that
+ * fact publishers rather than feed labels: `headline.source` is a feed label,
+ * and one newsroom ships many ("Reuters World" + "Reuters US"), so a
+ * label-keyed Set let a single publisher raise a "4 different news sources"
+ * alert on its own.
+ *
+ * Deduping by family and displaying the publisher keeps both properties —
+ * the count still equals the chips, and both now mean independent outlets.
+ * Per-article evidence is untouched: `headlines` still carries every article
+ * with its own source label and link.
+ */
+function distinctPublisherNames(headlines: StoredHeadline[]): string[] {
+  const byFamily = new Map<string, string>();
+  for (const headline of headlines) {
+    const family = publisherFamilyFor(headline.source);
+    if (!family || byFamily.has(family)) continue;
+    // A curated family displays its publisher name ("BBC" for "BBC Africa").
+    // An unmapped label displays its own original text — the singleton family
+    // id is case-normalized so counting cannot be fooled by casing drift, and
+    // that normalized id is a key, not something to show a user.
+    byFamily.set(family, PUBLISHER_FAMILIES[family]?.publisher ?? headline.source.trim());
   }
-  return title;
-}
-
-function buildBaseTermCandidates(title: string): Map<string, TermCandidate> {
-  const termCandidates = new Map<string, TermCandidate>();
-  const cleanTitle = stripSourceAttribution(title);
-
-  for (const token of tokenize(cleanTitle)) {
-    const termKey = toTermKey(token);
-    termCandidates.set(termKey, { display: token, isEntity: false });
-  }
-
-  for (const entity of extractEntities(cleanTitle)) {
-    const termKey = toTermKey(entity);
-    termCandidates.set(termKey, { display: entity, isEntity: true });
-  }
-
-  return termCandidates;
+  return [...byFamily.values()];
 }
 
 function recordTermCandidates(
@@ -387,7 +374,7 @@ function recordTermCandidates(
       title: headline.title,
       source: headline.source,
       link: headline.link ?? '',
-      publishedAt: Number.isFinite(headline.pubDate.getTime()) ? headline.pubDate.getTime() : now,
+      publishedAt: effectivePubDateMs(headline),
       ingestedAt: now,
     });
     addedAny = true;
@@ -406,10 +393,12 @@ function checkForSpikes(now: number, config: TrendingConfig, blockedTerms: Set<s
     if (recentCount < config.minSpikeCount) continue;
 
     const baseline = record.baseline7d;
-    const multiplier = baseline > 0 ? recentCount / baseline : 0;
-    const isSpike = baseline > 0
-      ? recentCount > baseline * config.spikeMultiplier
-      : recentCount >= config.minSpikeCount;
+    const { isSpike, multiplier } = evaluateSpikeDecision({
+      recentCount,
+      baseline,
+      minSpikeCount: config.minSpikeCount,
+      spikeMultiplier: config.spikeMultiplier,
+    });
 
     if (!isSpike) continue;
     if (now - record.lastSpikeAlertMs < SPIKE_COOLDOWN_MS) continue;
@@ -417,8 +406,8 @@ function checkForSpikes(now: number, config: TrendingConfig, blockedTerms: Set<s
     const recentHeadlines = dedupeHeadlines(
       record.headlines.filter(headline => now - headline.ingestedAt <= ROLLING_WINDOW_MS)
     );
-    const uniqueSources = new Set(recentHeadlines.map(headline => headline.source)).size;
-    if (uniqueSources < MIN_SPIKE_SOURCE_COUNT) continue;
+    const sourceNames = distinctPublisherNames(recentHeadlines);
+    if (sourceNames.length < MIN_SPIKE_SOURCE_COUNT) continue;
 
     record.lastSpikeAlertMs = now;
     spikes.push({
@@ -427,7 +416,8 @@ function checkForSpikes(now: number, config: TrendingConfig, blockedTerms: Set<s
       baseline,
       multiplier,
       windowMs: ROLLING_WINDOW_MS,
-      uniqueSources,
+      uniqueSources: sourceNames.length,
+      sourceNames,
       headlines: recentHeadlines,
     });
   }
@@ -449,38 +439,10 @@ function pushSignal(signal: CorrelationSignal): void {
   }
 }
 
-function isLikelyProperNoun(term: string, headlines: StoredHeadline[]): boolean {
-  if (term.includes(' ') && term.length > 5) return true;
-  if (/^\d/.test(term)) return true;
-
-  const titles = headlines.slice(0, 8).map(h => h.title);
-  const termRe = new RegExp(`\\b${escapeRegex(term)}\\b`, 'gi');
-  let capitalizedCount = 0;
-  let midSentenceCount = 0;
-  for (const title of titles) {
-    for (const m of title.matchAll(termRe)) {
-      const idx = m.index ?? 0;
-      if (idx === 0) continue;
-      midSentenceCount++;
-      if (/[A-Z]/.test(title[idx]!)) capitalizedCount++;
-    }
-  }
-  if (midSentenceCount === 0) {
-    return titles.some(t => {
-      const allCaps = t.match(new RegExp(`\\b${escapeRegex(term)}\\b`, 'gi'));
-      return allCaps?.some(match => match === match.toUpperCase() && match.length >= 2);
-    });
-  }
-  return capitalizedCount / midSentenceCount >= 0.5;
-}
-
 async function isSignificantTerm(term: string, headlines: StoredHeadline[]): Promise<boolean> {
   const lower = term.toLowerCase();
 
-  if (/^(cve-\d{4}-\d{4,}|apt\d+|fin\d+)$/i.test(term)) return true;
-  for (const { pattern } of LEADER_PATTERNS) {
-    if (pattern.test(term)) return true;
-  }
+  if (isEntityShapedTerm(term)) return true;
 
   if (!mlWorker.isAvailable) {
     return isLikelyProperNoun(term, headlines);
@@ -517,10 +479,30 @@ async function handleSpike(spike: TrendingSpike, config: TrendingConfig): Promis
     }
 
     const windowHours = Math.round((spike.windowMs / HOUR_MS) * 10) / 10;
-    const headlines = spike.headlines.slice(0, 6).map(h => h.title);
+    // The evidence the alert is about: the articles that produced the count.
+    // Newest first, THEN capped. `spike.headlines` is in ingestion order over a
+    // 2h window while the per-term cooldown is only 30 minutes, so taking the
+    // head of that array would hand a re-spike the same six up-to-2h-old
+    // headlines it showed last time while the title reports a higher count.
+    // Coarse feed timestamps can tie, so arrival time decides which evidence
+    // is newest within the same publication instant.
+    const articles = [...spike.headlines]
+      .sort((a, b) => b.publishedAt - a.publishedAt || b.ingestedAt - a.ingestedAt)
+      .slice(0, MAX_SPIKE_ARTICLES)
+      .map(headline => ({
+        title: headline.title,
+        source: headline.source,
+        link: headline.link || undefined,
+        ...(headline.publishedAt !== 0 && { publishedAt: headline.publishedAt }),
+      }));
+    // Derived from the FULL deduped window rather than `articles`, then used for
+    // both spike qualification and `sourceCount`, so the count and names stay
+    // the same fact even when one source's only headline falls past the cap.
+    const sourceNames = spike.sourceNames;
+    const headlines = articles.map(article => article.title);
     const multiplierText = spike.baseline > 0 ? `${spike.multiplier.toFixed(1)}x baseline` : 'cold-start threshold';
 
-    let description = `${spike.term} is appearing across ${spike.uniqueSources} sources (${spike.count} mentions in ${windowHours}h).`;
+    let description = `${spike.term} is appearing across ${sourceNames.length} sources (${spike.count} mentions in ${windowHours}h).`;
 
     const now = Date.now();
     if (config.autoSummarize && headlines.length >= 2 && canRunAutoSummary(now)) {
@@ -550,11 +532,14 @@ async function handleSpike(spike: TrendingSpike, config: TrendingConfig): Promis
       data: {
         term: spike.term,
         newsVelocity: spike.count,
-        relatedTopics: [spike.term],
+        // No relatedTopics: it was `[spike.term]`, which rendered a chip
+        // repeating the term the user was already reading.
         baseline: spike.baseline,
         multiplier: spike.baseline > 0 ? spike.multiplier : undefined,
-        sourceCount: spike.uniqueSources,
-        explanation: `${spike.term}: ${spike.count} mentions across ${spike.uniqueSources} sources (${multiplierText})`,
+        sourceCount: sourceNames.length,
+        sourceNames,
+        articles,
+        explanation: `${spike.term}: ${spike.count} mentions across ${sourceNames.length} sources (${multiplierText})`,
       },
     });
   } catch (error) {

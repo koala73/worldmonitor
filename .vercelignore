@@ -18,3 +18,9 @@ target/
 
 # Common local artifacts
 .DS_Store
+
+# Never deploy api test files: every non-underscore file under api/ becomes a
+# live serverless function, and a deployed *.test.mjs executes its whole
+# node:test suite (production env + Sentry) on every request (WORLDMONITOR-VD).
+# Guarded by tests/deploy-config.test.mjs.
+api/**/*.test.mjs

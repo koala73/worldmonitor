@@ -1,8 +1,28 @@
 ---
 title: "Natural Disaster Tracking"
-description: "Multi-source natural disaster monitoring using GDACS and NASA EONET, with intelligent deduplication and filtering for earthquakes, wildfires, cyclones, and more."
+description: "Multi-source natural disaster monitoring via GDACS and NASA EONET with deduplication and filtering for earthquakes, wildfires, and cyclones."
 ---
 The Natural layer combines two authoritative sources for comprehensive disaster monitoring, providing real-time alerts with severity assessments and satellite-derived event detection.
+
+## IMD marine bulletins
+
+India Meteorological Department (IMD) sea-area and coastal bulletins come from the public pages on `mausam.imd.gov.in` (`weather:imd-cyclone-marine:v1`). The seeder reads 2 sea-area bulletins (Bay of Bengal and Arabian Sea) and 7 coastal bulletins. Each record keeps the storm-warning line, the port signal, the storm-surge or tidal warning, and the wind, weather, visibility, and sea condition for one area. Each record also keeps the issuing office, the time of issue, and the validity window. The seeder does not merge these records into `weather:alerts:v1`.
+
+IMD cyclone track, forecast wind radii, and cone of uncertainty are available only from the IMD API, so these products are disabled with the reason `API_ONLY_COVERED_BY_GDACS`. GDACS tropical cyclones, described below, cover the North Indian Ocean. Port warnings and fishermen warnings are PDF-only. Port signals arrive in the coastal bulletins instead. A disabled product or an empty list is not an all-clear.
+
+The RTI non-commercial terms recorded for IMD (`commercialUse: rti-non-commercial-only`) apply to these public pages as well as to the API.
+
+## Configure the IMD Railway seeder
+
+The `seed-imd-cyclone-marine` service needs no IMD account, API key, or proxy. It needs only `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. It runs on the registry schedule, `*/15 * * * *`. Each run requests the 9 bulletin pages in sequence, 1 second apart, with a browser `User-Agent`.
+
+Each page is parsed on its own:
+
+- A page that parses and is inside its validity window publishes its area records.
+- A page whose validity window has ended publishes no records. The run still counts as healthy, because IMD replied and the page parsed.
+- A page that fails to load or parse keeps its last-good records until their validity window ends. The snapshot reports `coverageState: degraded` and names the page under `products.<id>.pages`.
+
+To verify a deployment, call the WorldMonitor MCP tool `get_imd_cyclone_marine`. Accept the deployment only when the response has `stale: false`, its IMD snapshot has `coverageState: ok`, and `generatedAt` is later than the deployment time. Also confirm that `https://api.worldmonitor.app/api/health?compact=1` does not list `imdCycloneMarine` in `problems`.
 
 ## GDACS (Global Disaster Alert and Coordination System)
 

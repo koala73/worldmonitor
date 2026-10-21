@@ -1,8 +1,18 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, getRedisCredentials, withRetry, writeFreshnessMetadata, extendExistingTtl, acquireLockSafely, releaseLock, logSeedResult } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, getRedisCredentials, withRetry, writeFreshnessMetadata, extendExistingTtl, acquireLockSafely, releaseLock, logSeedResult, readCanonicalValue } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
+
+// Content-age budget — tracked against the daily €STR series (the primary
+// euro short-term rate). 10 days absorbs a weekend + ECB holiday cluster
+// while flipping /api/health to STALE_CONTENT within ~6 business days of a
+// freeze. This detects an €STR freeze and a whole-ECB-SDMX outage (both stop
+// €STR); an EURIBOR-only freeze is not modelled — the three EURIBOR series
+// are monthly and a single maxContentAgeMin cannot cover both cadences. See
+// issue #3845.
+const ESTR_MAX_CONTENT_AGE_MIN = 10 * DAY_MIN;
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -104,6 +114,30 @@ async function fetchEcbSeries(def) {
   return observations;
 }
 
+// ─── €STR content-age derivation (exported for unit tests) ─────────────────────
+//
+// The content-age contract tracks the €STR observation span so /api/health can
+// fire STALE_CONTENT if €STR freezes (issue #3845). €STR is fetched fresh each
+// run, but on a TRANSIENT fetch failure this seeder still publishes seed-meta
+// for the EURIBOR series that DID succeed (successCount > 0 → no throw). Nulling
+// the content age in that case flips ecbEstr AND all three ecbEuribor* health
+// checks (they share this one seed-meta record) to STALE_CONTENT on the FIRST
+// failed run — far more aggressive than the 10-day ESTR_MAX_CONTENT_AGE_MIN
+// budget, which is meant to fire only ~6 business days into a genuine freeze.
+//
+// So when the fresh fetch failed, derive the span from the LAST-GOOD €STR key
+// (whose TTL we extend on failure) instead. Freeze detection is preserved: if
+// €STR has genuinely been frozen for > budget days, the preserved key's newest
+// observation is already old enough to trip STALE_CONTENT; and if the key has
+// expired entirely (sustained outage) the read yields no observations → null
+// span → STALE_CONTENT. Fresh observations always win when present.
+export function deriveEstrContentMeta(freshObservations, preservedObservations, nowMs = Date.now()) {
+  const source = Array.isArray(freshObservations) && freshObservations.length > 0
+    ? freshObservations
+    : (Array.isArray(preservedObservations) ? preservedObservations : []);
+  return tokensToContentMeta(source.map((o) => o?.date), nowMs);
+}
+
 // ─── Write a single FRED-format key to Redis ───────────────────────────────────
 
 async function writeSeriesKey(redisUrl, redisToken, def, observations) {
@@ -150,12 +184,14 @@ async function main() {
   const { url: redisUrl, token: redisToken } = getRedisCredentials();
   let successCount = 0;
   let totalObs = 0;
+  let estrObservations = null;
   const failedSeries = [];
 
   for (const def of ECB_SERIES) {
     try {
       const observations = await withRetry(() => fetchEcbSeries(def), 2, 2000);
       await writeSeriesKey(redisUrl, redisToken, def, observations);
+      if (def.id === 'ESTR') estrObservations = observations;
       successCount++;
       totalObs += observations.length;
     } catch (err) {
@@ -178,7 +214,31 @@ async function main() {
     throw new Error(`All ECB series failed: ${failedSeries.join(', ')}`);
   }
 
-  await writeFreshnessMetadata(domain, resource, totalObs, 'ecb-sdmx');
+  // Content-age: report the €STR observation span so /api/health can fire
+  // STALE_CONTENT if the series freezes (issue #3845). When THIS run's €STR
+  // fetch failed, derive the span from the last-good €STR key (whose TTL we
+  // just extended) instead of nulling it — a single transient ECB blip must
+  // not flip ecbEstr + all EURIBOR checks to STALE_CONTENT. Freeze detection
+  // is preserved; see deriveEstrContentMeta.
+  let preservedEstrObs = null;
+  if (estrObservations == null) {
+    try {
+      const preserved = await readCanonicalValue(fredSeedKey('ESTR'));
+      preservedEstrObs = preserved?.series?.observations ?? null;
+      if (Array.isArray(preservedEstrObs) && preservedEstrObs.length > 0) {
+        console.log(`  €STR fetch failed — content-age from last-good key (${preservedEstrObs.length} obs, latest ${preservedEstrObs.at(-1)?.date})`);
+      }
+    } catch {
+      // best-effort: fall through to null span → STALE_CONTENT
+    }
+  }
+  const estrSpan = deriveEstrContentMeta(estrObservations, preservedEstrObs);
+  const contentAge = {
+    newestItemAt: estrSpan?.newestItemAt ?? null,
+    oldestItemAt: estrSpan?.oldestItemAt ?? null,
+    maxContentAgeMin: ESTR_MAX_CONTENT_AGE_MIN,
+  };
+  await writeFreshnessMetadata(domain, resource, totalObs, 'ecb-sdmx', TTL, undefined, contentAge);
 
   const durationMs = Date.now() - startMs;
   logSeedResult(domain, totalObs, durationMs, { successCount, failedSeries });

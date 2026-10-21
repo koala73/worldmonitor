@@ -7,8 +7,10 @@
     "strict": true,
     "skipLibCheck": true,
     "allowJs": true,
+    "incremental": true,
+    "tsBuildInfoFile": "../node_modules/.cache/convex-tsconfig.tsbuildinfo",
     "outDir": "./_generated"
   },
   "include": ["./**/*.ts"],
-  "exclude": ["./_generated"]
+  "exclude": ["./_generated", "./__tests__"]
 }

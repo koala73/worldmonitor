@@ -1,3 +1,4 @@
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 /**
  * VirtualList - Efficient virtual scrolling with DOM recycling.
  * Only renders visible items + a small buffer, dramatically reducing DOM nodes.
@@ -129,7 +130,7 @@ export class VirtualList {
       this.resizeObserver = null;
     }
     this.itemPool = [];
-    this.container.innerHTML = '';
+    setTrustedHtml(this.container, trustedHtml('', "legacy direct innerHTML migration"));
   }
 
   private handleScroll = (): void => {
@@ -297,7 +298,7 @@ export class WindowedList<T> {
     this.chunkElements.clear();
 
     // Create container structure
-    this.container.innerHTML = '';
+    setTrustedHtml(this.container, trustedHtml('', "legacy direct innerHTML migration"));
 
     if (items.length === 0) {
       return;
@@ -390,7 +391,7 @@ export class WindowedList<T> {
       .map((item, i) => this.renderItem(item, startIdx + i))
       .join('');
 
-    element.innerHTML = html;
+    setTrustedHtml(element, trustedHtml(html, "legacy direct innerHTML migration"));
     element.classList.add('rendered');
     this.renderedChunks.add(chunkIndex);
   }

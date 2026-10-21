@@ -9,8 +9,20 @@ retailer:
 
   searchConfig:
     numResults: 5
-    urlPathContains: /p/
+    # Noon keeps grocery pages on the main `/p/` route but also exposes
+    # short-lived `/now-product/` pages on minutes.noon.com.
+    allowedHosts:
+      - minutes.noon.com
+    urlPathContains:
+      - /p/
+      - /now-product/
+    # Mirror of noon_sa: the shared minutes.noon.com host also fronts
+    # /saudi-en/, so the AE storefront has to be pinned explicitly.
+    urlPathMustContain:
+      - /uae-en/
     queryTemplate: "{canonicalName} grocery fresh food {currency} {market}"
+    extractionFallback: exa
+    requireStrictValidator: true
 
   rateLimit:
     requestsPerMinute: 10

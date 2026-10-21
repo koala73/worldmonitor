@@ -11,6 +11,20 @@ retailer:
     numResults: 5
     urlPathContains: /p/
     queryTemplate: "{canonicalName} grocery {market} price"
+    # kroger.com blocks Firecrawl outright: /v1/scrape answers HTTP 500 on every
+    # candidate, and the consecutive errors then trip the provider cooldown, so
+    # the production failure list reads mostly provider-cooldown — an echo of
+    # the 500s rather than a separate fault. 0/12 pages, dragging US to a 0.375
+    # completion ratio (COVERAGE_DEGRADED, #6841).
+    #
+    # Exa reaches the same pages. Probed live 2026-08-17, twice 60s apart so a
+    # transient engine outage could not be mistaken for a standing block:
+    #   firecrawl -> HTTP 500 on all three urls, both passes
+    #   exa       -> "Hiland Dairy Whole Milk" $7.49, real page titles
+    # So this is a routing gap, not an unscrapeable retailer: without an
+    # explicit fallback the adapter only ever tries Firecrawl
+    # (search.ts pushes 'exa' solely when this is set).
+    extractionFallback: exa
 
   rateLimit:
     requestsPerMinute: 15

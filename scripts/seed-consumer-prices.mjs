@@ -17,28 +17,17 @@
  */
 
 import { loadEnvFile, CHROME_UA, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { pathToFileURL } from 'node:url';
 
 loadEnvFile(import.meta.url);
 
 const FORCE = process.argv.includes('--force');
-if (!FORCE) {
-  console.error(
-    '[consumer-prices] ERROR: --force flag required.\n' +
-    'This script overwrites Redis keys with short TTLs (10-60 min), stomping the\n' +
-    'authoritative publish.ts 26h TTLs. Only run manually when publish.ts is broken.\n' +
-    'Usage: node scripts/seed-consumer-prices.mjs --force',
-  );
-  process.exit(1);
-}
+const IS_MAIN = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
 
 const BASE_URL = process.env.CONSUMER_PRICES_CORE_BASE_URL;
 const API_KEY = process.env.CONSUMER_PRICES_CORE_API_KEY;
 const MARKET = process.env.CONSUMER_PRICES_DEFAULT_MARKET || 'ae';
 const BASKET = 'essentials-ae';
-
-if (!BASE_URL) {
-  console.warn('[consumer-prices] CONSUMER_PRICES_CORE_BASE_URL not set — writing empty placeholders');
-}
 
 async function fetchSnapshot(path) {
   if (!BASE_URL) return null;
@@ -99,6 +88,41 @@ function emptyCategories(market, range) {
   return { marketCode: market, asOf: String(Date.now()), range, categories: [], upstreamUnavailable: true };
 }
 
+export function emptyCoverage(market) {
+  return {
+    marketCode: market,
+    asOf: String(Date.now()),
+    attemptedPages: 0,
+    completedPages: 0,
+    failedPages: 0,
+    completionRatio: null,
+    rejectedCount: 0,
+    failureReasons: {},
+    status: 'unknown',
+    minimumCompletionRatio: 0.5,
+    retailers: [],
+    upstreamUnavailable: true,
+  };
+}
+
+export function coverageForSeedMeta(data) {
+  if (!Array.isArray(data?.retailers) || !('completedPages' in data)) return undefined;
+  return {
+    status: typeof data.status === 'string' ? data.status : undefined,
+    completedPages: Number(data.completedPages) || 0,
+    failedPages: Number(data.failedPages) || 0,
+    completionRatio: data.completionRatio == null ? null : Number(data.completionRatio) || 0,
+    rejectedCount: Number(data.rejectedCount) || 0,
+    // #6182: the terminal failure class behind the counts. Relayed as written
+    // by consumer-prices-core, which already constrained it to the closed
+    // vocabulary; health re-filters before echoing it to operators.
+    failureReasons: data.failureReasons && typeof data.failureReasons === 'object'
+      ? data.failureReasons
+      : {},
+    retailers: data.retailers,
+  };
+}
+
 async function run() {
   console.log(`[consumer-prices] seeding market=${MARKET} basket=${BASKET}`);
 
@@ -108,13 +132,16 @@ async function run() {
   const TTL_FRESHNESS  = 600;   // 10 min
   const TTL_SERIES     = 3600;  // 60 min
   const TTL_CATEGORIES = 1800;  // 30 min
+  const TTL_COVERAGE   = 1800;  // 30 min
+  const COVERAGE_KEY = `consumer-prices:coverage:${MARKET}`;
 
   // Fetch all snapshots in parallel
-  const [overview, movers30d, movers7d, spread, freshness, series30d, series7d, series90d,
-         categories30d, categories7d, categories90d] = await Promise.all([
+  const [overview, movers30d, movers7d, movers90d, spread, freshness, series30d, series7d, series90d,
+         categories30d, categories7d, categories90d, coverage] = await Promise.all([
     fetchSnapshot(`/wm/consumer-prices/v1/overview?market=${MARKET}`),
     fetchSnapshot(`/wm/consumer-prices/v1/movers?market=${MARKET}&days=30`),
     fetchSnapshot(`/wm/consumer-prices/v1/movers?market=${MARKET}&days=7`),
+    fetchSnapshot(`/wm/consumer-prices/v1/movers?market=${MARKET}&days=90`),
     fetchSnapshot(`/wm/consumer-prices/v1/retailer-spread?market=${MARKET}&basket=${BASKET}`),
     fetchSnapshot(`/wm/consumer-prices/v1/freshness?market=${MARKET}`),
     fetchSnapshot(`/wm/consumer-prices/v1/basket-series?market=${MARKET}&basket=${BASKET}&range=30d`),
@@ -123,6 +150,7 @@ async function run() {
     fetchSnapshot(`/wm/consumer-prices/v1/categories?market=${MARKET}&range=30d`),
     fetchSnapshot(`/wm/consumer-prices/v1/categories?market=${MARKET}&range=7d`),
     fetchSnapshot(`/wm/consumer-prices/v1/categories?market=${MARKET}&range=90d`),
+    fetchSnapshot(`/wm/consumer-prices/v1/coverage?market=${MARKET}`),
   ]);
 
   const writes = [
@@ -143,6 +171,12 @@ async function run() {
       data: movers7d ?? emptyMovers(MARKET, '7d'),
       ttl: TTL_MOVERS,
       metaKey: `seed-meta:consumer-prices:movers:${MARKET}:7d`,
+    },
+    {
+      key: `consumer-prices:movers:${MARKET}:90d`,
+      data: movers90d ?? emptyMovers(MARKET, '90d'),
+      ttl: TTL_MOVERS,
+      metaKey: `seed-meta:consumer-prices:movers:${MARKET}:90d`,
     },
     {
       key: `consumer-prices:retailer-spread:${MARKET}:${BASKET}`,
@@ -192,15 +226,32 @@ async function run() {
       ttl: TTL_CATEGORIES,
       metaKey: `seed-meta:consumer-prices:categories:${MARKET}:90d`,
     },
+    {
+      key: COVERAGE_KEY,
+      data: coverage ?? emptyCoverage(MARKET),
+      ttl: TTL_COVERAGE,
+      metaKey: `seed-meta:consumer-prices:coverage:${MARKET}`,
+    },
   ];
 
   let failed = 0;
   for (const { key, data, ttl, metaKey } of writes) {
     try {
-      const recordCount = Array.isArray(data.retailers ?? data.categories ?? data.risers)
-        ? (data.retailers ?? data.categories ?? data.risers ?? []).length
-        : 1;
-      await writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKey);
+      let recordCount;
+      if (data.upstreamUnavailable === true) {
+        // Synthetic placeholder written when upstream fetch failed — keep
+        // recordCount=0 so health.js surfaces EMPTY_DATA instead of going green.
+        recordCount = 0;
+      } else if (Array.isArray(data.risers) || Array.isArray(data.fallers)) {
+        const sum = (data.risers?.length ?? 0) + (data.fallers?.length ?? 0);
+        recordCount = Math.max(1, sum);
+      } else if (Array.isArray(data.retailers ?? data.essentialsSeries ?? data.categories)) {
+        recordCount = (data.retailers ?? data.essentialsSeries ?? data.categories).length;
+      } else {
+        recordCount = 1;
+      }
+      const coverage = coverageForSeedMeta(data);
+      await writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKey, undefined, coverage);
       console.log(`  [consumer-prices] wrote ${key} (${recordCount} records)`);
     } catch (err) {
       console.error(`  [consumer-prices] failed ${key}: ${err.message}`);
@@ -212,7 +263,21 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-run().catch((err) => {
-  console.error('[consumer-prices] seed failed:', err);
-  process.exit(1);
-});
+if (IS_MAIN) {
+  if (!FORCE) {
+    console.error(
+      '[consumer-prices] ERROR: --force flag required.\n' +
+      'This script overwrites Redis keys with short TTLs (10-60 min), stomping the\n' +
+      'authoritative publish.ts 26h TTLs. Only run manually when publish.ts is broken.\n' +
+      'Usage: node scripts/seed-consumer-prices.mjs --force',
+    );
+    process.exit(1);
+  }
+  if (!BASE_URL) {
+    console.warn('[consumer-prices] CONSUMER_PRICES_CORE_BASE_URL not set — writing empty placeholders');
+  }
+  run().catch((err) => {
+    console.error('[consumer-prices] seed failed:', err);
+    process.exit(1);
+  });
+}

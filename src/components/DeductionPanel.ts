@@ -1,7 +1,8 @@
 import { Panel } from './Panel';
-import { getRpcBaseUrl } from '@/services/rpc-client';
-import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
-import { h, replaceChildren } from '@/utils/dom-utils';
+import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
+import { premiumFetch } from '@/services/premium-fetch';
+import { h, replaceChildren, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { yieldToMain } from '@/utils/after-paint';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import type { NewsItem, DeductContextDetail } from '@/types';
@@ -9,16 +10,38 @@ import { buildNewsContext } from '@/utils/news-context';
 import { getActiveFrameworkForPanel } from '@/services/analysis-framework-store';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
+import { extractDeductionProbability } from './deduction-probability';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
-const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+// deduct-situation + list-market-implications are premium-gated.
+const getIntelligenceClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch }));
 
 const COOLDOWN_MS = 5_000;
+
+// The analysis is LLM markdown grounded on RSS headlines, so a headline that
+// smuggles markup into the model's output must not become a tracking pixel or
+// an outbound link. Text structure only: no images, anchors, or attributes
+// beyond class. Same shape as ChatAnalystPanel's ANALYST_PURIFY_CONFIG plus
+// headings and blockquotes, which the deduction prompt's sections produce.
+export const DEDUCTION_PURIFY_CONFIG = {
+  ALLOWED_TAGS: ['p', 'strong', 'em', 'b', 'i', 'br', 'hr',
+    'ul', 'ol', 'li', 'code', 'pre', 'blockquote',
+    'h1', 'h2', 'h3', 'h4',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'div', 'span'],
+  ALLOWED_ATTR: ['class'],
+  ALLOW_DATA_ATTR: false,
+  // DOMPurify keeps aria-* even when ALLOWED_ATTR omits them; an injected
+  // aria-hidden would hide the analysis from screen readers.
+  ALLOW_ARIA_ATTR: false,
+};
 
 export class DeductionPanel extends Panel {
     private formEl: HTMLFormElement;
     private inputEl: HTMLTextAreaElement;
-    private geoInputEl: HTMLInputElement;
+    private geoInputEl: HTMLTextAreaElement;
     private resultContainer: HTMLElement;
+    private contentRoot: HTMLElement;
     private submitBtn: HTMLButtonElement;
     private isSubmitting = false;
     private getLatestNews?: () => NewsItem[];
@@ -41,11 +64,11 @@ export class DeductionPanel extends Panel {
             rows: 3,
         }) as HTMLTextAreaElement;
 
-        this.geoInputEl = h('input', {
+        this.geoInputEl = h('textarea', {
             className: 'deduction-geo-input',
-            type: 'text',
+            rows: 2,
             placeholder: 'Geographic or situation context (optional)...',
-        }) as HTMLInputElement;
+        }) as HTMLTextAreaElement;
 
         this.submitBtn = h('button', {
             className: 'deduction-submit-btn',
@@ -70,6 +93,7 @@ export class DeductionPanel extends Panel {
             this.formEl,
             this.resultContainer
         );
+        this.contentRoot = container;
 
         replaceChildren(this.content, container);
 
@@ -100,6 +124,32 @@ export class DeductionPanel extends Panel {
 
         this.fwSelector = new FrameworkSelector({ panelId: 'deduction', isPremium: hasPremiumAccess(), panel: this });
         this.header.appendChild(this.fwSelector.el);
+    }
+
+    private deductionGeneration = 0;
+    private deductionAbort: AbortController | null = null;
+
+    public override clearSensitiveContent(): void {
+        this.deductionGeneration += 1;
+        // The previous account's request must not keep running (and spending
+        // its quota) after the reset; discarding its result is not enough.
+        this.deductionAbort?.abort();
+        this.deductionAbort = null;
+        this.inputEl.value = '';
+        this.geoInputEl.value = '';
+        this.resultContainer.replaceChildren();
+        this.resultContainer.className = 'deduction-result';
+        this.isSubmitting = false;
+        this.submitBtn.disabled = false;
+        super.clearSensitiveContent();
+    }
+
+    public override unlockPanel(): void {
+        super.unlockPanel();
+        if (!this.content.contains(this.contentRoot)) {
+            this.resultContainer.replaceChildren();
+            this.setContentNodes(this.contentRoot);
+        }
     }
 
     public override destroy(): void {
@@ -154,19 +204,20 @@ export class DeductionPanel extends Panel {
             if (group.cls === 'ds-primary') {
                 const headingNode = group.nodes[0];
                 const fullText = headingNode?.textContent ?? '';
-                const probMatch = /(\d{1,3})\s*%/.exec(fullText);
+                const probability = extractDeductionProbability(fullText);
                 const timeMatch = /\(([^)]+)\)/.exec(fullText);
                 labelEl.textContent = group.label;
                 if (timeMatch) {
                     const timeSpan = document.createElement('span');
-                    timeSpan.style.cssText = 'font-size:10px;color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0';
+                    timeSpan.style.cssText = 'font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0';
                     timeSpan.textContent = timeMatch[1] ?? '';
                     labelEl.appendChild(timeSpan);
                 }
-                if (probMatch) {
+                if (probability) {
                     const badge = document.createElement('span');
                     badge.className = 'ds-prob-badge';
-                    badge.textContent = `${probMatch[1]}%`;
+                    badge.textContent = probability.label;
+                    badge.title = probability.isRange ? 'Rough probability range from the source' : 'Approximate probability from the source';
                     labelEl.appendChild(badge);
                 }
             } else {
@@ -182,7 +233,10 @@ export class DeductionPanel extends Panel {
                 clone.querySelector('strong')?.remove();
                 const bodyDiv = document.createElement('div');
                 bodyDiv.className = group.cls === 'ds-primary' ? 'ds-primary-body' : '';
-                bodyDiv.innerHTML = clone.innerHTML.replace(/^[\s:–—-]+/, '');
+                setTrustedHtml(
+                    bodyDiv,
+                    trustedHtml(clone.innerHTML.replace(/^[\s:–—-]+/, ''), 'legacy direct innerHTML migration'),
+                );
                 section.appendChild(bodyDiv);
             } else {
                 // For alt paths: inject probability badges into li items
@@ -190,12 +244,13 @@ export class DeductionPanel extends Panel {
                     bodyNodes.forEach(n => {
                         if (n.tagName === 'UL') {
                             n.querySelectorAll('li').forEach(li => {
-                                const probMatch = /^(\d{1,3})\s*%\s*[:\s]?(.*)/.exec(li.textContent ?? '');
-                                if (probMatch) {
+                                const probability = extractDeductionProbability(li.textContent ?? '', { leadingOnly: true });
+                                if (probability) {
                                     const badge = document.createElement('span');
                                     badge.className = 'ds-alt-prob';
-                                    badge.textContent = `${probMatch[1]}%`;
-                                    li.textContent = (probMatch[2] ?? '').replace(/^\s*[:\s]+/, '').trim();
+                                    badge.textContent = probability.label;
+                                    badge.title = probability.isRange ? 'Rough probability range from the source' : 'Approximate probability from the source';
+                                    li.textContent = probability.remainder;
                                     li.insertBefore(badge, li.firstChild);
                                 }
                             });
@@ -229,26 +284,41 @@ export class DeductionPanel extends Panel {
 
         const fw = getActiveFrameworkForPanel('deduction');
 
+        const generation = ++this.deductionGeneration;
+        this.deductionAbort?.abort();
+        const controller = new AbortController();
+        this.deductionAbort = controller;
         this.isSubmitting = true;
         this.submitBtn.disabled = true;
 
         this.resultContainer.className = 'deduction-result loading';
-        this.resultContainer.innerHTML = '<div class="deduction-loading-dots"><span></span><span></span><span></span></div>Analyzing…';
+        setTrustedHtml(
+            this.resultContainer,
+            trustedHtml(
+                '<div class="deduction-loading-dots"><span></span><span></span><span></span></div>Analyzing…',
+                'legacy direct innerHTML migration',
+            ),
+        );
 
         try {
-            const resp = await client.deductSituation({
+            const resp = await getIntelligenceClient().deductSituation({
                 query,
                 geoContext,
                 framework: fw?.systemPromptAppend ?? '',
-            });
-            if (!this.element?.isConnected) return;
+            }, { signal: controller.signal });
+            if (generation !== this.deductionGeneration || !this.element?.isConnected) return;
 
             this.resultContainer.className = 'deduction-result';
             if (resp.analysis) {
                 const parsed = await marked.parse(resp.analysis);
-                if (!this.element?.isConnected) return;
-                const safe = DOMPurify.sanitize(parsed);
-                this.resultContainer.innerHTML = safe;
+                if (generation !== this.deductionGeneration || !this.element?.isConnected) return;
+                // Yield so the response paint lands before the synchronous DOMPurify
+                // pass (the heavy `sanitize` chunk) — breaks the post-response long
+                // task instead of running parse+purify+innerHTML as one block (#4537).
+                await yieldToMain();
+                if (generation !== this.deductionGeneration || !this.element?.isConnected) return;
+                const safe = DOMPurify.sanitize(parsed, DEDUCTION_PURIFY_CONFIG);
+                setTrustedHtml(this.resultContainer, trustedHtml(safe, 'legacy direct innerHTML migration'));
                 this.reformatResult(this.resultContainer);
             } else {
                 this.resultContainer.textContent = resp.provider === 'error'
@@ -256,14 +326,17 @@ export class DeductionPanel extends Panel {
                     : 'No analysis available for this query.';
             }
         } catch (err) {
-            if (!this.element?.isConnected) return;
+            if (generation !== this.deductionGeneration || !this.element?.isConnected) return;
             console.error('[DeductionPanel] Error:', err);
             this.resultContainer.className = 'deduction-result error';
             this.resultContainer.textContent = 'An error occurred while analyzing the situation.';
         } finally {
-            this.isSubmitting = false;
-            if (this.element?.isConnected) {
-                setTimeout(() => { this.submitBtn.disabled = false; }, COOLDOWN_MS);
+            if (this.deductionAbort === controller) this.deductionAbort = null;
+            if (generation === this.deductionGeneration) {
+                this.isSubmitting = false;
+                if (this.element?.isConnected) {
+                    setTimeout(() => { this.submitBtn.disabled = false; }, COOLDOWN_MS);
+                }
             }
         }
     }

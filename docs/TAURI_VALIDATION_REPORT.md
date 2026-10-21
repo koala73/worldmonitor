@@ -22,7 +22,7 @@ If any of these checks fail, treat downstream desktop build failures as environm
 1. `npm ci` — failed because the environment blocks downloading the pinned `@tauri-apps/cli` package from npm (`403 Forbidden`).
 2. `npm run typecheck` — succeeded.
 3. `npm run build:full` — succeeded (warnings only).
-4. `npm run desktop:build:full` — not runnable in this environment because `npm ci` failed, so the local `tauri` binary was unavailable (desktop scripts now fail fast with a clear `npm ci` remediation message when this occurs).
+4. `npm run desktop:tauri:build` — not runnable in this environment because `npm ci` failed, so the local `tauri` binary was unavailable (desktop scripts now fail fast with a clear `npm ci` remediation message when this occurs).
 5. `cargo check` (from `src-tauri/`) — failed because the environment blocks downloading crates from `https://index.crates.io` (`403 CONNECT tunnel failed`).
 
 ## Assessment
@@ -49,7 +49,7 @@ Choose one supported path:
 
 - Online path:
   - `npm ci`
-  - `npm run desktop:build:full`
+  - `npm run desktop:tauri:build`
 
 - Restricted-network path:
   - Restore prebuilt offline artifacts (including `src-tauri/vendor/` or internal mirror mapping).
@@ -66,4 +66,4 @@ If preflight fails, use one of these approved remediations:
 - Pre-vendor Rust crates (`src-tauri/vendor/`) and run Cargo in offline mode.
 - Use CI runners that restore package/cache artifacts from a trusted internal store before builds.
 
-For release packaging details, see `docs/RELEASE_PACKAGING.md` (section: **Network preflight and remediation**).
+For release packaging details, see `docs/release-packaging.mdx` (section: **Network preflight and remediation**).

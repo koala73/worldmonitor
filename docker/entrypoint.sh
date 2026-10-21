@@ -13,6 +13,18 @@ if [ -d /run/secrets ]; then
   done
 fi
 
+node /app/validate-session-secret.mjs
+
+# This image is always the public Docker ingress, with or without Compose.
+# The sidecar's default (desktop) mode serves /api/local-* management to any
+# caller nginx forwards with the internal token, so the mode is not optional.
+export LOCAL_API_MODE=docker
 export LOCAL_API_PORT="${LOCAL_API_PORT:-46123}"
-envsubst '$LOCAL_API_PORT' < /etc/nginx/nginx.conf.template > /tmp/nginx.conf
+if [ -z "${LOCAL_API_TOKEN:-}" ]; then
+  LOCAL_API_TOKEN="$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")"
+  export LOCAL_API_TOKEN
+fi
+
+node /app/render-nginx-realip.mjs
+envsubst '$LOCAL_API_PORT $LOCAL_API_TOKEN' < /etc/nginx/nginx.conf.template > /tmp/nginx.conf
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/worldmonitor.conf

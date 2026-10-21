@@ -1,0 +1,185 @@
+/**
+ * Operational scrape coverage summaries.
+ *
+ * This module reports what each retailer run attempted, completed, rejected,
+ * and failed. It deliberately does not change validator admission rules: a
+ * rejected observation remains rejected, and the count exists so partial
+ * publication is visible. Source parsing/provider recovery remain tracked by
+ * #5445 and #5811; this is the coordination/health layer only.
+ */
+
+import { COVERAGE_FAILURE_REASONS } from '../jobs/scrape-coverage.js';
+
+export const MIN_MARKET_COMPLETION_RATIO = 0.5;
+
+const KNOWN_FAILURE_REASONS = new Set<string>(COVERAGE_FAILURE_REASONS);
+
+/**
+ * Keep only whole positive counts under the producer's closed vocabulary.
+ *
+ * The map crosses a process boundary (JSONB written by the scraper, read back
+ * here, relayed to operators through health), so an unknown code or a
+ * negative/fractional count is a producer/schema drift rather than a
+ * diagnostic. Dropping it keeps the market rollup arithmetic sound and matches
+ * how health treats every other per-producer code vocabulary.
+ */
+function sanitizeFailureReasons(
+  raw: Record<string, number> | null | undefined,
+): Record<string, number> {
+  if (!raw || typeof raw !== 'object') return {};
+  const clean: Record<string, number> = {};
+  for (const [reason, value] of Object.entries(raw)) {
+    if (!KNOWN_FAILURE_REASONS.has(reason)) continue;
+    const count = Number(value);
+    if (!Number.isSafeInteger(count) || count <= 0) continue;
+    clean[reason] = count;
+  }
+  return clean;
+}
+
+export type RetailerCoverageStatus = 'healthy' | 'partial' | 'failed' | 'unknown';
+export type MarketCoverageStatus = 'healthy' | 'partial' | 'degraded' | 'unknown';
+
+export interface RetailerCoverageInput {
+  slug: string;
+  name: string;
+  lastRunAt: string | null;
+  runStatus: string | null;
+  pagesAttempted: number;
+  pagesSucceeded: number;
+  errorsCount: number;
+  rejectedCount: number;
+  /** Terminal failure class -> count, summing to `errorsCount` (#6182). */
+  failureReasons?: Record<string, number> | null;
+  activeRun?: ActiveScrapeRun | null;
+}
+
+export interface ActiveScrapeRun {
+  startedAt: string;
+  pagesAttempted: number;
+  pagesSucceeded: number;
+  errorsCount: number;
+  rejectedCount: number;
+}
+
+export interface RetailerCoverage extends RetailerCoverageInput {
+  failedPages: number;
+  completionRatio: number | null;
+  coverageStatus: RetailerCoverageStatus;
+  failureReasons: Record<string, number>;
+}
+
+export interface MarketCoverageSnapshot {
+  marketCode: string;
+  asOf: string;
+  attemptedPages: number;
+  completedPages: number;
+  failedPages: number;
+  completionRatio: number | null;
+  rejectedCount: number;
+  status: MarketCoverageStatus;
+  minimumCompletionRatio: number;
+  retailers: RetailerCoverage[];
+  failureReasons: Record<string, number>;
+  upstreamUnavailable: false;
+}
+
+function nonNegativeInt(value: number | null | undefined): number {
+  return Math.max(0, Math.floor(Number(value) || 0));
+}
+
+export function summarizeRetailerCoverage(input: RetailerCoverageInput): RetailerCoverage {
+  const pagesAttempted = nonNegativeInt(input.pagesAttempted);
+  const pagesSucceeded = Math.min(pagesAttempted, nonNegativeInt(input.pagesSucceeded));
+  const failedPages = Math.max(0, pagesAttempted - pagesSucceeded);
+  const errorsCount = nonNegativeInt(input.errorsCount);
+  const rejectedCount = nonNegativeInt(input.rejectedCount);
+  const completionRatio = pagesAttempted > 0
+    ? Number((pagesSucceeded / pagesAttempted).toFixed(4))
+    : null;
+
+  let coverageStatus: RetailerCoverageStatus = 'unknown';
+  if (pagesAttempted > 0 && pagesSucceeded === 0) coverageStatus = 'failed';
+  else if (
+    pagesAttempted > 0 &&
+    (input.runStatus !== 'completed' || failedPages > 0 || errorsCount > 0 || rejectedCount > 0)
+  ) coverageStatus = 'partial';
+  else if (pagesAttempted > 0) coverageStatus = 'healthy';
+
+  return {
+    ...input,
+    pagesAttempted,
+    pagesSucceeded,
+    errorsCount,
+    rejectedCount,
+    // Overwrites the raw value the spread copied from `input` — the spread is
+    // what would otherwise relay an unvalidated map straight to health.
+    failureReasons: sanitizeFailureReasons(input.failureReasons),
+    failedPages,
+    completionRatio,
+    coverageStatus,
+  };
+}
+
+export function summarizeMarketCoverage(
+  marketCode: string,
+  asOf: string,
+  inputs: RetailerCoverageInput[],
+): MarketCoverageSnapshot {
+  const retailers = inputs.map(summarizeRetailerCoverage);
+  const attemptedPages = retailers.reduce((sum, retailer) => sum + retailer.pagesAttempted, 0);
+  const completedPages = retailers.reduce((sum, retailer) => sum + retailer.pagesSucceeded, 0);
+  const failedPages = retailers.reduce((sum, retailer) => sum + retailer.failedPages, 0);
+  const rejectedCount = retailers.reduce((sum, retailer) => sum + retailer.rejectedCount, 0);
+  const failureReasons: Record<string, number> = {};
+  for (const retailer of retailers) {
+    for (const [reason, count] of Object.entries(retailer.failureReasons)) {
+      failureReasons[reason] = (failureReasons[reason] ?? 0) + count;
+    }
+  }
+  const completionRatio = attemptedPages > 0
+    ? Number((completedPages / attemptedPages).toFixed(4))
+    : null;
+  const hasUnknownRetailer = retailers.some((retailer) => retailer.coverageStatus === 'unknown');
+  const hasBudgetTruncatedRetailer = retailers.some((retailer) => (
+    retailer.runStatus === 'partial'
+    && retailer.pagesAttempted > 0
+    && retailer.pagesSucceeded === retailer.pagesAttempted
+    && retailer.errorsCount === 0
+    && retailer.rejectedCount === 0
+  ));
+
+  let status: MarketCoverageStatus = 'unknown';
+  if (
+    retailers.length > 0
+    && (completionRatio == null || completedPages === 0 || completionRatio < MIN_MARKET_COMPLETION_RATIO)
+  ) {
+    status = 'degraded';
+  // Market health is governed by the declared aggregate floor. Terminal
+  // retailer noise stays in `retailers` and `failureReasons`, but does not make
+  // a roster-complete market operationally partial when the aggregate remains
+  // usable. An error-free terminal partial is the persisted budget-truncation
+  // shape: every attempted page succeeded, but planned targets were skipped.
+  // Unknown retailers likewise mean the producer cannot prove the roster has
+  // settled, so both states stay partial.
+  } else if (hasUnknownRetailer || hasBudgetTruncatedRetailer) {
+    status = 'partial';
+  } else if (retailers.length > 0) {
+    status = 'healthy';
+  }
+
+  return {
+    marketCode,
+    asOf,
+    attemptedPages,
+    completedPages,
+    failedPages,
+    completionRatio,
+    rejectedCount,
+    status,
+    minimumCompletionRatio: MIN_MARKET_COMPLETION_RATIO,
+    retailers,
+    failureReasons,
+    upstreamUnavailable: false,
+  };
+}

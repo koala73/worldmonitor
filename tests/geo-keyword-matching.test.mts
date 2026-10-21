@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '../src/utils/keyword-match.ts';
+import { getGeoHubById } from '../src/services/geo-hub-index.ts';
 
 // --- Tokenizer tests ---
 
@@ -275,27 +276,22 @@ describe('multi-word phrase matching', () => {
 // --- DC keywords cleanup ---
 
 describe('DC keywords (cleaned)', () => {
-  const dcKeywords = ['pentagon', 'white house', 'congress', 'cia', 'nsa', 'washington', 'biden', 'trump', 'senate', 'supreme court', 'vance', 'elon'];
-
-  it('does NOT contain "house" as standalone keyword', () => {
-    assert.ok(!dcKeywords.includes('house'));
-  });
-
-  it('does NOT contain "us " trailing-space hack', () => {
-    assert.ok(!dcKeywords.includes('us '));
-  });
+  const dcKeywords = getGeoHubById('washington')?.keywords;
 
   it('"Housing market crashes" does NOT match any DC keyword', () => {
+    assert.ok(dcKeywords);
     const t = tokenizeForMatch('Housing market crashes nationwide');
     assert.ok(!matchesAnyKeyword(t, dcKeywords));
   });
 
   it('"White House announces budget" DOES match DC', () => {
+    assert.ok(dcKeywords);
     const t = tokenizeForMatch('White House announces budget cuts');
     assert.ok(matchesAnyKeyword(t, dcKeywords));
   });
 
   it('"Congress passes bill" DOES match DC', () => {
+    assert.ok(dcKeywords);
     const t = tokenizeForMatch('Congress passes new spending bill');
     assert.ok(matchesAnyKeyword(t, dcKeywords));
   });

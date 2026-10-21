@@ -1,27 +1,29 @@
 import { Panel } from './Panel';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import { sanitizeUrl } from '@/utils/sanitize';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { isDesktopRuntime } from '@/services/runtime';
-import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
+
 import type { TechEvent, ListTechEventsResponse } from '@/generated/client/worldmonitor/research/v1/service_client';
 import type { NewsItem, DeductContextDetail } from '@/types';
 import { buildNewsContext } from '@/utils/news-context';
 import { getHydratedData } from '@/services/bootstrap';
+import { ResearchServiceClient } from '@/services/generated-rpc-clients';
 
 type ViewMode = 'upcoming' | 'conferences' | 'earnings' | 'all';
 
-const researchClient = new ResearchServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const getResearchClient = createLazyClient(() => new ResearchServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 export class TechEventsPanel extends Panel {
   private viewMode: ViewMode = 'upcoming';
   private events: TechEvent[] = [];
   private loading = true;
   private error: string | null = null;
+  private onMapNavigate: ((lat: number, lng: number) => void) | null = null;
 
   constructor(id: string, private getLatestNews?: () => NewsItem[]) {
-    super({ id, title: t('panels.events'), showCount: true });
+    super({ id, title: t('panels.events'), showCount: true, infoTooltip: t('components.techEvents.infoTooltip') });
     this.element.classList.add('panel-tall');
     void this.fetchEvents();
   }
@@ -44,7 +46,7 @@ export class TechEventsPanel extends Panel {
     // Fallback: single RPC call — listTechEvents reads from Redis seed,
     // retrying on empty returns the same stale result each time.
     try {
-      const data = await researchClient.listTechEvents({
+      const data = await getResearchClient().listTechEvents({
         type: '',
         mappable: false,
         days: 180,
@@ -81,7 +83,6 @@ export class TechEventsPanel extends Panel {
       return;
     }
 
-    this.setErrorState(false);
     const filteredEvents = this.getFilteredEvents();
     const upcomingConferences = this.events.filter(e => e.type === 'conference' && new Date(e.startDate) >= new Date());
     const mappableCount = upcomingConferences.filter(e => e.coords && !e.coords.virtual).length;
@@ -93,7 +94,7 @@ export class TechEventsPanel extends Panel {
       ['all', t('components.techEvents.all')],
     ];
 
-    replaceChildren(this.content,
+    this.setContentNodes(
       h('div', { className: 'tech-events-panel' },
         h('div', { className: 'panel-tabs' },
           ...tabEntries.map(([view, label]) =>
@@ -239,11 +240,12 @@ export class TechEventsPanel extends Panel {
     );
   }
 
+  public setMapNavigateHandler(handler: (lat: number, lng: number) => void): void {
+    this.onMapNavigate = handler;
+  }
+
   private panToLocation(lat: number, lng: number): void {
-    // Dispatch event for map to handle
-    window.dispatchEvent(new CustomEvent('tech-event-location', {
-      detail: { lat, lng, zoom: 10 }
-    }));
+    this.onMapNavigate?.(lat, lng);
   }
 
   public refresh(): void {

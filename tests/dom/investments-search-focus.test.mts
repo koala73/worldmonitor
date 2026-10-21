@@ -1,0 +1,38 @@
+import { afterEach, beforeAll, expect, it, vi } from 'vitest';
+import { InvestmentsPanel } from '@/components/InvestmentsPanel';
+import { initTestI18n } from './helpers/i18n.mts';
+beforeAll(initTestI18n);
+afterEach(() => { vi.useRealTimers(); document.body.replaceChildren(); });
+it('keeps the focused search input and caret while filtering', () => {
+  vi.useFakeTimers();
+  const panel = new InvestmentsPanel();
+  document.body.append(panel.getElement());
+  vi.advanceTimersByTime(150);
+  const input = panel.getElement().querySelector<HTMLInputElement>('.fdi-search')!;
+  input.focus();
+  input.value = 'port';
+  input.setSelectionRange(2, 2);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  vi.advanceTimersByTime(150);
+  expect(document.activeElement).toBe(input);
+  expect(input.selectionStart).toBe(2);
+  expect(panel.getElement().querySelectorAll('.fdi-row').length).toBeGreaterThan(0);
+  panel.destroy();
+});
+it('does not restore stale rows when a filter render is followed by typing', () => {
+  vi.useFakeTimers();
+  const panel = new InvestmentsPanel();
+  document.body.append(panel.getElement());
+  vi.advanceTimersByTime(150);
+  const select = panel.getElement().querySelector<HTMLSelectElement>('[data-filter="investingCountry"]')!;
+  select.value = 'SA';
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  const input = panel.getElement().querySelector<HTMLInputElement>('.fdi-search')!;
+  input.focus();
+  input.value = 'no matching investment 12345';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  vi.advanceTimersByTime(150);
+  expect(document.activeElement).toBe(input);
+  expect(panel.getElement().querySelectorAll('.fdi-row')).toHaveLength(0);
+  panel.destroy();
+});

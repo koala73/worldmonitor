@@ -1,5 +1,9 @@
 {
   "ids": ["tether", "usd-coin", "dai", "first-digital-usd", "ethena-usde"],
+  "pegThresholds": {
+    "onPegMaxDeviation": 0.005,
+    "slightDepegMaxDeviation": 0.01
+  },
   "coinpaprika": {
     "tether": "usdt-tether",
     "usd-coin": "usdc-usd-coin",

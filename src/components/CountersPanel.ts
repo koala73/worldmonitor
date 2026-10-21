@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import {
   COUNTER_METRICS,
   getCounterValue,
@@ -26,7 +27,7 @@ export class CountersPanel extends Panel {
   private readonly desktopUpdateIntervalMs = 250;
 
   constructor() {
-    super({ id: 'counters', title: 'Live Counters', trackActivity: false });
+    super({ id: 'counters', title: 'Live Counters', trackActivity: false, infoTooltip: t('components.counters.infoTooltip') });
     this.createCounterGrid();
     if (this.desktopMode) {
       this.visibilityHandler = () => {
@@ -54,9 +55,9 @@ export class CountersPanel extends Panel {
       grid.appendChild(card);
     }
 
-    // Clear loading state and append the grid
-    this.content.innerHTML = '';
-    this.content.appendChild(grid);
+    // Route through the sanctioned helper (#6557): clears the error state
+    // and cancels any pending debounced write alongside the replace.
+    this.setContentNodes(grid);
   }
 
   /**

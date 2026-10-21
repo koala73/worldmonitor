@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package worldmonitor.forecast.v1;
+
+import "sebuf/http/annotations.proto";
+
+// run_id is intentionally absent: the server derives it from the
+// SIMULATION_PACKAGE_LATEST_KEY pointer to avoid lock-key collisions, queue
+// stuffing, and races with cron rotation. See #3734 and
+// docs/plans/2026-05-18-003-feat-simulation-trigger-and-runid-filter-plan.md D1.
+
+// TriggerSimulationRequest enqueues a run for the current simulation package.
+message TriggerSimulationRequest {
+  // client_version exists because sebuf v0.11.1 emits a typecheck-broken POST
+  // client for an empty request message.
+
+  // Optional client version, such as "mcp-client/0.2". Logged, never stored.
+  string client_version = 1;
+}
+
+// TriggerSimulationResponse is the HTTP 200 result of an enqueue attempt.
+// Errors return a non-200 status instead.
+message TriggerSimulationResponse {
+  // True when the task was newly enqueued; false on idempotency hit or
+  // no_package.
+  bool queued = 1;
+  // Server-derived runId from SIMULATION_PACKAGE_LATEST_KEY. Empty
+  // string when reason='no_package' (no package pointer was available).
+  string run_id = 2;
+  // The fingerprint is the first 16 hex chars of sha256 over the package's R2 key.
+
+  // Opaque fingerprint of the package key; it changes when the key changes.
+  // Empty when reason='no_package'.
+  string pkg_fingerprint = 3;
+  // 'already-handled' merges "already queued" and "already completed this
+  // cycle" so the response is not a cron-timing oracle; logs keep the split.
+
+  // '' when queued, 'no_package' when no package exists, or 'already-handled'
+  // when this cycle's run is already queued or done.
+  string reason = 4;
+}

@@ -1,0 +1,96 @@
+name: Pro bundle freshness
+
+# Rebuilds pro-test on any PR that touches pro-test/** or the catalog/generator
+# that feed pro-test's generated pricing model, and fails if the pro build
+# breaks or if the generated config and locale placeholders it compiles against
+# do not match the regenerated output.
+#
+# Scope note (#6898): public/pro/ used to be committed and served verbatim, so
+# this job also diffed the rebuilt bundle against those bytes -- the class that
+# shipped stale JS in #3227 -> #3228 and #4563 -> #4574. Vercel now builds
+# public/pro/ during the deploy (build:full chains build:pro) and the artifact
+# is gitignored, so that half is gone: a stale bundle is no longer reachable
+# and a broken build fails the deploy instead. What remains is still real --
+# the GENERATED CONFIG (tiers.json, pro locales, product facts, catalog
+# mirrors) is committed, so it can still go stale -- plus the build-succeeds
+# signal, which is now load-bearing precisely because the deploy depends on it.
+
+on:
+  pull_request:
+    paths:
+      - 'api/mcp/registry/**'
+      - 'convex/config/productCatalog.ts'
+      - 'public/.well-known/agent-card.json'
+      - 'scripts/generate-product-config.mjs'
+      - 'scripts/generate-public-product-facts.mjs'
+      - 'shared/content-attribution.ts'
+      - 'pro-test/**'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            pro-test/package-lock.json
+
+      - name: Install root deps
+        run: npm ci --ignore-scripts
+
+      - name: Regenerate product facts
+        run: npm run product:facts
+
+      - name: Install pro-test deps
+        run: cd pro-test && npm ci
+
+      - name: Build pro-test
+        run: cd pro-test && npm run build
+
+      - name: Verify the built bundle exists and generated config matches
+        run: |
+          # The build step above is the deploy's own command, so assert on its
+          # OUTPUT and not just its exit code: these two pages are what Vercel
+          # serves at / and /pro, they are named by vite.config.ts
+          # rollupOptions.input, and nothing committed covers for them any more.
+          # A config edit that renames or drops an entry now ships a 404.
+          for page in public/pro/index.html public/pro/welcome.html; do
+            if [ ! -s "$page" ]; then
+              echo "::error::$page missing or empty after 'cd pro-test && npm run build'."
+              echo "Vercel builds public/pro/ during the deploy (#6898), so this would ship a 404 at /pro."
+              exit 1
+            fi
+          done
+          # public/product-facts.json is deliberately absent below: it is
+          # gitignored, and `git diff --exit-code` on an untracked path exits 0,
+          # so listing it reads as coverage while never being able to fail.
+          # tests/public-product-facts.test.mjs is what actually guards it.
+          # public/.well-known/agent-card.json is tracked and rewritten by the
+          # same generator, so a stale committed catalog size must fail here.
+          if ! git diff --exit-code \
+            api/_product-catalog.generated.js \
+            pro-test/index.html \
+            pro-test/prerender.mjs \
+            pro-test/src/generated/tiers.json \
+            pro-test/src/locales/ \
+            pro-test/welcome.html \
+            public/.well-known/agent-card.json \
+            scripts/shared/product-catalog.generated.json \
+            scripts/shared/product-facts.generated.json \
+            shared/product-catalog.generated.json \
+            shared/product-facts.generated.json \
+            src/config/product-ids.generated.ts \
+            src/config/products.generated.ts; then
+            echo "::error::Product catalog, generated config, or pro locales is stale."
+            echo "public/pro/ itself is built on deploy and is not diffed here, but the generated config it compiles against is committed."
+            echo "Run 'npm run product:facts' and commit generated config, public facts, and pro locales."
+            exit 1
+          fi

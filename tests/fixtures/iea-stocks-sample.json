@@ -1,0 +1,32 @@
+{
+  "latest": { "year": 2025, "month": 11 },
+  "records": [
+    {
+      "countryName": "Germany",
+      "yearMonth": 202511,
+      "total": "130",
+      "industry": "130",
+      "publicData": "0",
+      "abroadIndustry": "0",
+      "abroadPublic": "0"
+    },
+    {
+      "countryName": "Norway",
+      "yearMonth": 202511,
+      "total": "Net Exporter",
+      "industry": "0",
+      "publicData": "0",
+      "abroadIndustry": "0",
+      "abroadPublic": "0"
+    },
+    {
+      "countryName": "Japan",
+      "yearMonth": 202511,
+      "total": "171",
+      "industry": "108",
+      "publicData": "33",
+      "abroadIndustry": "20",
+      "abroadPublic": "10"
+    }
+  ]
+}

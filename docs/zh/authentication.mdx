@@ -1,0 +1,144 @@
+---
+title: "身份验证与面板门控"
+description: "World Monitor 中用户身份验证、高级面板门控与服务端会话强制执行机制的完整技术说明：涵盖 Clerk 集成、加密 Cookie 会话、JWT 令牌校验、权益检查、多设备登录与 Pro 订阅门控逻辑，确保仪表盘、API 与桌面应用的访问控制稳固可靠。"
+---
+
+WorldMonitor 使用 [Clerk](https://clerk.com) 进行身份验证。认证系统将高级面板置于登录与层级检查之后，并通过本地 JWT 验证在服务端 API 端点上强制执行基于会话的访问控制。
+
+---
+
+## 认证技术栈
+
+| 层级 | 技术 | 用途 |
+|-------|-----------|---------|
+| 认证提供商 | Clerk | 登录（邮箱、社交登录）、会话管理、托管 UI |
+| JWT 验证 | jose + Clerk JWKS | 服务端 Bearer Token 验证（无需往返请求） |
+| Convex 集成 | Clerk JWT 模板（`convex`） | 使用 `applicationID: "convex"` 的 Convex 认证 |
+| 认证状态 | `auth-state.ts` | 响应式浏览器认证状态、角色缓存 |
+
+### 关键文件
+
+| 文件 | 用途 |
+|------|---------|
+| `convex/auth.config.ts` | Convex 认证提供商配置 — Clerk JWT 签发方 + applicationID |
+| `src/services/clerk.ts` | Clerk 实例初始化，用于 Convex JWT 模板的 `getClerkToken()` |
+| `src/services/auth-state.ts` | 响应式认证状态、角色获取、会话水合 |
+| `src/components/AuthHeaderWidget.ts` | 头部登录按钮、Clerk UserButton |
+| `server/auth-session.ts` | 使用 jose + 缓存 JWKS 的服务端 JWT 验证 |
+
+---
+
+## 面板门控
+
+高级面板在用户满足访问要求之前，会显示 CTA 遮罩层而非内容。
+
+### 门控原因
+
+| 原因 | 用户所见 | 解决方式 |
+|--------|-------------------|------------|
+| `ANONYMOUS` | "登录以解锁" | 通过 Clerk 登录 |
+| `FREE_TIER` | "升级到 Pro" | 升级订阅 |
+| `NONE` | 正常面板内容 | 已解锁 |
+
+### 如何配置哪些面板为高级面板
+
+三个文件控制门控。**添加或移除高级面板时，三者必须保持同步。**
+
+#### 1. 面板配置 — `src/config/panels.ts`
+
+在相关变体的面板条目中添加 `premium: 'locked'`：
+
+```ts
+// In FULL_PANELS, FINANCE_PANELS, etc.
+'my-panel': { name: 'My Panel', enabled: true, premium: 'locked' }
+```
+
+#### 2. 客户端门控集合 — `src/app/panel-layout.ts`
+
+将面板键添加到 `WEB_PREMIUM_PANELS`：
+
+```ts
+const WEB_PREMIUM_PANELS = new Set([
+  'stock-analysis',
+  'stock-backtest',
+  'daily-market-brief',
+  'my-panel',  // <-- add here
+]);
+```
+
+此集合驱动响应式 UI 门控 — 当认证状态变化时，该集合中的面板会被检查，并相应地显示/隐藏 CTA。
+
+#### 3. 服务端 API 强制执行（如果面板调用高级 API）
+
+**客户端 Token 注入** — `src/services/runtime.ts`（`WEB_PREMIUM_API_PATHS`）：
+
+```ts
+const WEB_PREMIUM_API_PATHS = new Set([
+  '/api/market/v1/analyze-stock',
+  '/api/market/v1/get-stock-analysis-history',
+  '/api/market/v1/backtest-stock',
+  '/api/market/v1/list-stored-stock-backtests',
+  '/api/my-domain/v1/my-endpoint',  // <-- add here
+]);
+```
+
+当 fetch 请求匹配此集合中的路径且用户拥有 Clerk 会话时，客户端会自动注入 `Authorization: Bearer <token>`。
+
+**服务端网关** — `server/gateway.ts`（`PREMIUM_RPC_PATHS`）：
+
+```ts
+const PREMIUM_RPC_PATHS = new Set([
+  '/api/market/v1/analyze-stock',
+  '/api/market/v1/get-stock-analysis-history',
+  '/api/market/v1/backtest-stock',
+  '/api/market/v1/list-stored-stock-backtests',
+  '/api/my-domain/v1/my-endpoint',  // <-- add here
+]);
+```
+
+网关通过本地 JWKS 验证（jose）校验 Bearer Token，并检查 `session.role === 'pro'`。如果用户不是 pro，则返回 403。
+
+### 当前受门控的面板
+
+| 面板 | 变体 | 门控类型 |
+|-------|----------|-----------|
+| `stock-analysis` | full, finance | `locked`（Web） |
+| `stock-backtest` | full, finance | `locked`（Web） |
+| `daily-market-brief` | full, finance | `locked`（Web） |
+
+### 桌面端行为
+
+在 Tauri 钥匙串中拥有有效 `WORLDMONITOR_API_KEY` 的桌面端用户可绕过所有面板门控。现有的 API 密钥流程不受影响 — Bearer Token 是**第二条认证路径**，而非替代方案。
+
+---
+
+## 服务端会话强制执行
+
+Vercel API 网关为高级端点接受两种形式的身份验证：
+
+1. **静态 API 密钥** — `X-WorldMonitor-Key` 头（现有流程，未变更）
+2. **Bearer Token** — `Authorization: Bearer <clerk_jwt>`（用于 Web 用户）
+
+网关首先尝试 API 密钥。如果在高级端点上失败，则回退到使用 `server/auth-session.ts` 进行本地 JWKS 验证的 Bearer Token 校验。JWT 验证依据：
+- **签发方**：`CLERK_JWT_ISSUER_DOMAIN`
+- **受众**：`convex`（与 Clerk JWT 模板匹配）
+- **签名**：通过 Clerk 发布的 JWKS 使用 RSA256
+
+非高级端点不需要来自 Web 来源的任何身份验证。
+
+---
+
+## 环境变量
+
+| 变量 | 位置 | 用途 |
+|----------|-------|---------|
+| `CLERK_JWT_ISSUER_DOMAIN` | Convex + Vercel | 用于 JWT 验证的 Clerk 签发方域名 |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Vercel | 客户端 Clerk 发布密钥 |
+
+---
+
+## 用户角色
+
+用户角色（`pro` / `free`）存储为 Clerk JWT 中的 `plan` 声明。服务端从已验证的 Token 负载中提取此值。未知或缺失的 `plan` 值默认为 `free`（安全失败 — 绝不会默认为 pro）。
+
+在客户端，`getAuthState().user?.role` 暴露该角色。`isProUser()` 和 `hasPremiumAccess()` 都会检查此值以及旧版 API 密钥门控。

@@ -17,6 +17,16 @@ const root = resolve(__dirname, '..');
 
 const readSrc = (relPath: string) => readFileSync(resolve(root, relPath), 'utf-8');
 
+function deferred<T>() {
+  let resolvePromise!: (value: T) => void;
+  let rejectPromise!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return { promise, resolve: resolvePromise, reject: rejectPromise };
+}
+
 
 // ============================================================
 // 2. Behavioral: persistentStaleCeilingMs controls hydration discard
@@ -784,3 +794,101 @@ describe('CircuitBreaker — shouldCache eviction of invalid cached data', () =>
   });
 });
 
+describe('CircuitBreaker — awaited stale refresh opt-in', () => {
+  const CIRCUIT_BREAKER_URL = pathToFileURL(
+    resolve(root, 'src/utils/circuit-breaker.ts'),
+  ).href;
+
+  it('waits for a stale refresh and falls back with cached mode when it fails', async () => {
+    const mod = await import(`${CIRCUIT_BREAKER_URL}?t=${Date.now()}-await-stale-failure`);
+    const { createCircuitBreaker, clearAllCircuitBreakers } = mod;
+    clearAllCircuitBreakers();
+
+    const originalNow = Date.now;
+    let now = 1_000;
+    Date.now = () => now;
+
+    try {
+      const breaker = createCircuitBreaker<{ value: string }>({
+        name: 'Awaited Stale Failure Test',
+        cacheTtlMs: 10,
+        persistCache: false,
+      });
+      const fallback = { value: 'fallback' };
+      await breaker.execute(async () => ({ value: 'seed' }), fallback);
+      const originalTimestamp = breaker.getDataState().timestamp;
+      now += 11;
+
+      const refresh = deferred<{ value: string }>();
+      let refreshCalls = 0;
+      const pending = breaker.execute(async () => {
+        refreshCalls++;
+        return refresh.promise;
+      }, fallback, {
+        staleRefreshMode: 'await',
+      });
+
+      let settled = false;
+      void pending.then(() => {
+        settled = true;
+      });
+      await Promise.resolve();
+      assert.equal(refreshCalls, 1);
+      assert.equal(settled, false, 'await mode must not return stale before refresh settles');
+
+      refresh.reject(new Error('upstream unavailable'));
+      const result = await pending;
+      assert.deepEqual(result, { value: 'seed' });
+      assert.deepEqual(breaker.getDataState(), {
+        mode: 'cached',
+        timestamp: originalTimestamp,
+        offline: false,
+      });
+    } finally {
+      Date.now = originalNow;
+      clearAllCircuitBreakers();
+    }
+  });
+
+  it('coalesces concurrent awaited stale refreshes and returns the fresh result', async () => {
+    const mod = await import(`${CIRCUIT_BREAKER_URL}?t=${Date.now()}-await-stale-coalesce`);
+    const { createCircuitBreaker, clearAllCircuitBreakers } = mod;
+    clearAllCircuitBreakers();
+
+    const originalNow = Date.now;
+    let now = 2_000;
+    Date.now = () => now;
+
+    try {
+      const breaker = createCircuitBreaker<{ value: string }>({
+        name: 'Awaited Stale Coalescing Test',
+        cacheTtlMs: 10,
+        persistCache: false,
+      });
+      const fallback = { value: 'fallback' };
+      await breaker.execute(async () => ({ value: 'seed' }), fallback);
+      now += 11;
+
+      const refresh = deferred<{ value: string }>();
+      let refreshCalls = 0;
+      const refreshFn = async () => {
+        refreshCalls++;
+        return refresh.promise;
+      };
+      const options = { staleRefreshMode: 'await' as const };
+      const first = breaker.execute(refreshFn, fallback, options);
+      const second = breaker.execute(refreshFn, fallback, options);
+      await Promise.resolve();
+      assert.equal(refreshCalls, 1, 'same-key awaited refreshes must share one request');
+
+      refresh.resolve({ value: 'fresh' });
+      const [firstResult, secondResult] = await Promise.all([first, second]);
+      assert.deepEqual(firstResult, { value: 'fresh' });
+      assert.deepEqual(secondResult, { value: 'fresh' });
+      assert.equal(breaker.getDataState().mode, 'live');
+    } finally {
+      Date.now = originalNow;
+      clearAllCircuitBreakers();
+    }
+  });
+});

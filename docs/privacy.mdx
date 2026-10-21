@@ -1,0 +1,106 @@
+---
+title: "World Monitor privacy policy and data handling"
+description: "How World Monitor handles personal data: what we collect, subprocessors, AI query processing, cookies, retention, and GDPR and CCPA access and deletion rights."
+---
+
+{/* REVIEW — operator based in the UAE (party naming decided 20 August 2026: "World Monitor", country only); effective date 20 August 2026 (DebugBear RUM and the self-hosted Umami collector disclosed, #6978/#5388). Still optional: (1) a dedicated privacy@ inbox vs support@; (2) PIPEDA coverage and a DPA are still open (#6638). NOT legal advice — a legal review is still recommended. */}
+
+_Last updated: 21 October 2026_
+
+**Download:** [PDF](https://www.worldmonitor.app/legal/privacy.pdf) · [Markdown](https://www.worldmonitor.app/docs/privacy.md)
+
+This Privacy Policy explains how **World Monitor FZ LLC, a free zone limited liability company registered in Dubai, United Arab Emirates** ("World Monitor", "we", "us"), handles information when you use the World Monitor dashboard, website, API, MCP server, and apps (the "Service").
+
+This page is written in plain language and is not legal advice.
+
+## The short version
+
+- The basic dashboard works **without an account and without signup**.
+- We do not sell your personal data.
+- We use a small set of established subprocessors for authentication, payments, hosting, error monitoring, and AI analysis — listed in full below.
+- You can request access to, export of, or deletion of your account data at any time.
+
+## Information we collect
+
+**Account information.** If you create an account or upgrade to Pro, our authentication provider (Clerk) processes your email address, name, and login credentials. We store account identifiers and your plan/entitlement state in our database (Convex).
+
+**Payment information.** Subscriptions are processed by Dodo Payments, which acts as the merchant of record. Your full card details are entered with and held by the payment processor — **World Monitor never receives or stores your full card number.** We receive limited billing metadata (such as plan, status, country, and the last four digits) needed to manage your subscription.
+
+**Usage and diagnostics.** To keep the Service reliable we collect:
+
+- **Error and crash diagnostics** via Sentry (e.g. error messages, stack traces, browser and device type).
+- **Privacy-oriented product analytics** via Vercel Web Analytics, Cloudflare, and our self-hosted Umami instance (`abacus.worldmonitor.app`) — used to understand traffic patterns. These are designed to avoid cross-site tracking, and where configured are cookieless. For signed-in users, Umami events also carry your account identifier, plan, and subscription status, so we can see how each plan uses the product.
+- **Page-performance monitoring (RUM)** via DebugBear on a 10% sample of page loads. It receives the page path, viewport and device pixel ratio, navigation and web-vitals timings, and the user agent, along with the IP address inherent in any web request, plus any browser errors raised on a sampled page (error messages, stack traces, and source URLs). **URL query parameters are not part of its page data** — the dashboard state your address bar carries (map view, time range, selected layers) is not stored with page views. A browser error report can still include the page address with its query string, so that dashboard state may appear in error data. DebugBear does not load while the address carries sign-in tokens, checkout or referral codes, or email parameters. It is used to find slow and unstable pages, not to identify or track you.
+- **Server and request logs** via Axiom and our hosting/CDN providers (Vercel, Cloudflare), including IP address, user agent, and request metadata, retained for security and debugging.
+
+**Content you submit to AI features.** When you use AI briefings, analysis, forecasts, or the research assistant, the text of your query and the relevant context are sent to our AI providers (Anthropic and, via OpenRouter, other model providers) to generate a response. Do not submit sensitive personal data into AI prompts.
+
+**Preferences and alerts.** Settings such as saved locations, alert rules, and layer preferences are stored in your browser (local storage) and, for signed-in users, in our database (Convex).
+
+## Cookies and local storage
+
+- **Essential** — authentication sessions (Clerk) and security use cookies or equivalent storage that are required for signed-in features to work.
+- **Preferences** — dashboard settings are stored locally in your browser.
+- **Analytics** — our analytics are designed to be privacy-friendly and, where configured, do not use tracking cookies.
+
+## Data Processing Addendum
+
+If you use the Service to process personal data and need a processor agreement, the [Data Processing Addendum](/dpa) applies automatically — no signature required — and incorporates the EU standard contractual clauses and the UK addendum for international transfers. A countersigned copy is available on request.
+
+## Subprocessors
+
+We share personal data only with the service providers below, which process it on our behalf to run the Service. Each row says what personal data reaches that provider. The table also names the one analytics collector we host ourselves, so it can be reconciled against anything you see in a network log.
+
+| Provider | Purpose | Personal data it processes |
+|----------|---------|----------------------------|
+| Clerk | Authentication and account management | Name, email address, login credentials, and session tokens |
+| Convex | Application database (accounts, billing records, entitlements, API keys, alerts, preferences) | Account identifiers, name and email address, subscription and payment records (including payment-provider customer details), plan and entitlement state, API keys (stored as hashes), alert rules and the destinations you connect, saved preferences, and messages you send through our contact forms |
+| Dodo Payments | Payment processing and subscription billing (merchant of record) | Name, email address, billing details, and card details, which Dodo Payments holds; we receive the plan, status, country, and last four digits |
+| Sentry | Error and crash monitoring | Error messages, stack traces, browser and device type, and the IP address inherent in any web request |
+| DebugBear | Real-user page-performance monitoring (10% sample of page loads) | Page path, viewport, navigation and web-vitals timings, user agent, IP address, and browser errors on a sampled page (error messages, stack traces, and source URLs) |
+| Umami (self-hosted, `abacus.worldmonitor.app`) | Product analytics, running in our own Railway project — no analytics vendor receives this data | Page views and product events, with the browser and device details a web request carries; for signed-in users, your account identifier, plan, and subscription status |
+| Upstash | Rate-limit and cache store | Rate-limit keys derived from your IP address, cached entitlement records, and short-lived cached responses |
+| Railway | Container hosting for our background services: alert and digest delivery, the data relay (including the widget builder), and our Umami analytics instance and its database | Alert and digest content and the destination identifiers it is delivered to, prompts you send to the widget builder, and the Umami analytics events stored in its database (including, for signed-in users, your account identifier, plan, and subscription status) |
+| Mintlify | Documentation site hosting (`worldmonitor.app/docs`, including this page) | IP address and user agent of documentation page requests |
+| Vercel | Application and API hosting, and web analytics | IP address, user agent, and request metadata, and the content of API requests and responses in transit |
+| Cloudflare | Content delivery, edge security, bot challenges (Turnstile), web analytics, and object storage (R2) | IP address, user agent, request metadata, and Turnstile challenge signals |
+| Axiom | Application logging and observability | IP address and approximate location (city, region), user agent, referrer, request metadata, and your account identifier |
+| Anthropic | AI model provider for analysis, briefings, and the widget builder | The text of your AI queries and the context sent with them |
+| OpenRouter | AI model routing for analysis and forecasts; it passes each request to the model provider it routes to | The text of your AI queries and the context sent with them |
+| Resend | Transactional email delivery | Recipient email address and the email's content |
+
+We give at least 30 days' notice before a new subprocessor starts processing personal data, as set out in section 8 of the [Data Processing Addendum](/dpa).
+
+## Where your alerts go
+
+If you connect an alert or digest channel, we transmit the alert content you asked for to the destination **you** chose: Telegram, Slack, Discord, a webhook URL of yours, email, or a browser push endpoint. To do that we store the identifiers that channel needs — a chat or channel id, a webhook URL, or the OAuth token you granted us — and nothing more.
+
+Those destinations are not our subprocessors: they receive your alerts because you directed them to, and what they do with the content is governed by your own relationship with them. Disconnecting a channel deletes the identifiers we hold for it.
+
+## How we use information
+
+We use the information above to operate and secure the Service, authenticate users, process subscriptions, generate AI analysis you request, communicate with you about your account, and improve reliability and performance. We rely on legitimate interests, contract performance, and — where applicable — your consent as the legal bases for this processing.
+
+## Data retention
+
+We keep account and subscription data for as long as your account is active and as needed to meet legal, tax, and security obligations. Diagnostic and log data is retained on a rolling basis for a limited period. When you delete your account, we delete or anonymize associated personal data, except where we must retain it by law.
+
+## Your rights
+
+Depending on where you live (including under the EU/UK GDPR and the California CCPA/CPRA), you may have the right to access, correct, export, or delete your personal data, and to object to or restrict certain processing. Signed-in users can delete their World Monitor account from **Avatar → Plan & billing → Delete account** by typing `DELETE`; see [Accounts](/accounts). If you cannot sign in, write from the account email to [support@worldmonitor.app](mailto:support@worldmonitor.app) so we can confirm the Clerk user id. Anonymous dashboard use has no server account — clear local site data instead. To exercise any of these rights, contact us at [support@worldmonitor.app](mailto:support@worldmonitor.app). You also have the right to complain to your local data protection authority.
+
+## International transfers
+
+Our subprocessors may process data in countries other than yours, including the United States. Where required, transfers are covered by appropriate safeguards such as standard contractual clauses.
+
+## Children
+
+The Service is not directed to children and is not intended for use by anyone under the age required by their local law to consent to data processing. We do not knowingly collect personal data from children.
+
+## Changes
+
+We may update this policy as the Service evolves. Material changes will be reflected here with a new "Last updated" date.
+
+## Contact
+
+Questions about this policy or your data: [support@worldmonitor.app](mailto:support@worldmonitor.app).

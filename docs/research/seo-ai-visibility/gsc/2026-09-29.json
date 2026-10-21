@@ -1,0 +1,3981 @@
+{
+  "schemaVersion": 1,
+  "pageFamilySchemaVersion": 2,
+  "snapshotId": "gsc-2026-09-29",
+  "observedAt": "2026-09-29T05:30:00.883Z",
+  "repositoryRevision": "fdc0af27b94e614e5a61f9bb26740d3156e98ae2",
+  "source": "search-console-api",
+  "property": null,
+  "propertyKind": "domain",
+  "sitemaps": [
+    {
+      "url": "https://www.worldmonitor.app/sitemap-main.xml",
+      "kind": "urlset",
+      "urlCount": 292,
+      "childCount": 0
+    },
+    {
+      "url": "https://www.worldmonitor.app/blog/sitemap-index.xml",
+      "kind": "index",
+      "urlCount": 0,
+      "childCount": 1
+    },
+    {
+      "url": "https://www.worldmonitor.app/docs/sitemap.xml",
+      "kind": "urlset",
+      "urlCount": 518,
+      "childCount": 0
+    },
+    {
+      "url": "https://www.worldmonitor.app/blog/sitemap-0.xml",
+      "kind": "urlset",
+      "urlCount": 78,
+      "childCount": 0
+    }
+  ],
+  "inventory": {
+    "declared": 888,
+    "byFamily": {
+      "blog": 78,
+      "chokepoints": 14,
+      "compare": 13,
+      "country_pages": 198,
+      "crises": 15,
+      "dashboard": 6,
+      "developer_mcp": 2,
+      "docs_zh": 138,
+      "documentation": 380,
+      "homepage": 1,
+      "markdown_twins": 12,
+      "pricing": 1,
+      "research": 3,
+      "sources": 19,
+      "tools": 4,
+      "use_cases": 4
+    },
+    "byKind": {
+      "html": 876,
+      "markdown-twin": 12
+    },
+    "byHost": {
+      "commodity.worldmonitor.app": 1,
+      "energy.worldmonitor.app": 1,
+      "finance.worldmonitor.app": 1,
+      "happy.worldmonitor.app": 1,
+      "tech.worldmonitor.app": 1,
+      "worldmonitor.app": 1,
+      "www.worldmonitor.app": 882
+    }
+  },
+  "indexation": {
+    "status": "available",
+    "reason": null,
+    "sample": {
+      "cap": 2000,
+      "selected": 888,
+      "inspected": 888,
+      "declared": 888,
+      "complete": true,
+      "basis": "round-robin across page families",
+      "extrapolated": false
+    },
+    "byFamily": {
+      "homepage": {
+        "declared": 1,
+        "inspected": 1,
+        "indexed": 1,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 1,
+          "denominator": 1,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 1
+        }
+      },
+      "dashboard": {
+        "declared": 6,
+        "inspected": 6,
+        "indexed": 6,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 6,
+          "denominator": 6,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 6
+        }
+      },
+      "blog": {
+        "declared": 78,
+        "inspected": 78,
+        "indexed": 78,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 78,
+          "denominator": 78,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 78
+        }
+      },
+      "documentation": {
+        "declared": 380,
+        "inspected": 380,
+        "indexed": 348,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 0.9158,
+          "numerator": 348,
+          "denominator": 380,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 4,
+        "discoveredNotCrawled": 26,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Crawled - currently not indexed": 4,
+          "Discovered - currently not indexed": 26,
+          "Submitted and indexed": 348,
+          "URL is unknown to Google": 2
+        }
+      },
+      "docs_zh": {
+        "declared": 138,
+        "inspected": 138,
+        "indexed": 127,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 0.9203,
+          "numerator": 127,
+          "denominator": 138,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 2,
+        "discoveredNotCrawled": 8,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Crawled - currently not indexed": 2,
+          "Discovered - currently not indexed": 8,
+          "Duplicate, Google chose different canonical than user": 1,
+          "Submitted and indexed": 127
+        }
+      },
+      "country_pages": {
+        "declared": 198,
+        "inspected": 198,
+        "indexed": 198,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 198,
+          "denominator": 198,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 198
+        }
+      },
+      "chokepoints": {
+        "declared": 14,
+        "inspected": 14,
+        "indexed": 14,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 14,
+          "denominator": 14,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 14
+        }
+      },
+      "crises": {
+        "declared": 15,
+        "inspected": 15,
+        "indexed": 8,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 0.5333,
+          "numerator": 8,
+          "denominator": 15,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 6,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Discovered - currently not indexed": 6,
+          "Submitted and indexed": 8,
+          "URL is unknown to Google": 1
+        }
+      },
+      "tools": {
+        "declared": 4,
+        "inspected": 4,
+        "indexed": 4,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 4,
+          "denominator": 4,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 4
+        }
+      },
+      "pricing": {
+        "declared": 1,
+        "inspected": 1,
+        "indexed": 1,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 1,
+          "denominator": 1,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 1
+        }
+      },
+      "developer_mcp": {
+        "declared": 2,
+        "inspected": 2,
+        "indexed": 1,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 0.5,
+          "numerator": 1,
+          "denominator": 2,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 1,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Crawled - currently not indexed": 1,
+          "Submitted and indexed": 1
+        }
+      },
+      "sources": {
+        "declared": 19,
+        "inspected": 19,
+        "indexed": 14,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 0.7368,
+          "numerator": 14,
+          "denominator": 19,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 3,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Discovered - currently not indexed": 3,
+          "Submitted and indexed": 14,
+          "URL is unknown to Google": 2
+        }
+      },
+      "compare": {
+        "declared": 13,
+        "inspected": 13,
+        "indexed": 3,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 0.2308,
+          "numerator": 3,
+          "denominator": 13,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 9,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Discovered - currently not indexed": 9,
+          "Submitted and indexed": 3,
+          "URL is unknown to Google": 1
+        }
+      },
+      "research": {
+        "declared": 3,
+        "inspected": 3,
+        "indexed": 3,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 3,
+          "denominator": 3,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 3
+        }
+      },
+      "use_cases": {
+        "declared": 4,
+        "inspected": 4,
+        "indexed": 4,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 4,
+          "denominator": 4,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 4
+        }
+      },
+      "markdown_twins": {
+        "declared": 12,
+        "inspected": 12,
+        "indexed": 0,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 0,
+          "numerator": 0,
+          "denominator": 12,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 4,
+        "discoveredNotCrawled": 8,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Crawled - currently not indexed": 4,
+          "Discovered - currently not indexed": 8
+        }
+      }
+    },
+    "byKind": {
+      "html": {
+        "declared": 876,
+        "inspected": 876,
+        "indexed": 810,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 0.9247,
+          "numerator": 810,
+          "denominator": 876,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 7,
+        "discoveredNotCrawled": 52,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Crawled - currently not indexed": 7,
+          "Discovered - currently not indexed": 52,
+          "Duplicate, Google chose different canonical than user": 1,
+          "Submitted and indexed": 810,
+          "URL is unknown to Google": 6
+        }
+      },
+      "markdown-twin": {
+        "declared": 12,
+        "inspected": 12,
+        "indexed": 0,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 0,
+          "numerator": 0,
+          "denominator": 12,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 4,
+        "discoveredNotCrawled": 8,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Crawled - currently not indexed": 4,
+          "Discovered - currently not indexed": 8
+        }
+      }
+    },
+    "byHost": {
+      "commodity.worldmonitor.app": {
+        "declared": 1,
+        "inspected": 1,
+        "indexed": 1,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 1,
+          "denominator": 1,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 1
+        }
+      },
+      "energy.worldmonitor.app": {
+        "declared": 1,
+        "inspected": 1,
+        "indexed": 1,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 1,
+          "denominator": 1,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 1
+        }
+      },
+      "finance.worldmonitor.app": {
+        "declared": 1,
+        "inspected": 1,
+        "indexed": 1,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 1,
+          "denominator": 1,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 1
+        }
+      },
+      "happy.worldmonitor.app": {
+        "declared": 1,
+        "inspected": 1,
+        "indexed": 1,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 1,
+          "denominator": 1,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 1
+        }
+      },
+      "tech.worldmonitor.app": {
+        "declared": 1,
+        "inspected": 1,
+        "indexed": 1,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 1,
+          "numerator": 1,
+          "denominator": 1,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 0,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Submitted and indexed": 1
+        }
+      },
+      "worldmonitor.app": {
+        "declared": 1,
+        "inspected": 1,
+        "indexed": 0,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 0,
+          "numerator": 0,
+          "denominator": 1,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 1,
+        "discoveredNotCrawled": 0,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Crawled - currently not indexed": 1
+        }
+      },
+      "www.worldmonitor.app": {
+        "declared": 882,
+        "inspected": 882,
+        "indexed": 805,
+        "indexedReason": null,
+        "indexedShare": {
+          "value": 0.9127,
+          "numerator": 805,
+          "denominator": 882,
+          "basis": "inspected",
+          "extrapolated": false,
+          "reason": null
+        },
+        "crawledNotIndexed": 10,
+        "discoveredNotCrawled": 60,
+        "servingNoindex": 0,
+        "coverageStates": {
+          "Crawled - currently not indexed": 10,
+          "Discovered - currently not indexed": 60,
+          "Duplicate, Google chose different canonical than user": 1,
+          "Submitted and indexed": 805,
+          "URL is unknown to Google": 6
+        }
+      }
+    },
+    "htmlPages": {
+      "declared": 876,
+      "inspected": 876,
+      "withIndexStatus": 876,
+      "indexed": 810,
+      "indexedReason": null,
+      "indexedShare": {
+        "value": 0.9247,
+        "numerator": 810,
+        "denominator": 876,
+        "basis": "inspected-html",
+        "extrapolated": false,
+        "reason": null
+      },
+      "indexedByFamily": {
+        "blog": 78,
+        "chokepoints": 14,
+        "compare": 3,
+        "country_pages": 198,
+        "crises": 8,
+        "dashboard": 6,
+        "developer_mcp": 1,
+        "docs_zh": 127,
+        "documentation": 348,
+        "homepage": 1,
+        "pricing": 1,
+        "research": 3,
+        "sources": 14,
+        "tools": 4,
+        "use_cases": 4
+      },
+      "crawledNotIndexed": 7,
+      "discoveredNotCrawled": 52,
+      "actionable": 6,
+      "actionableUrls": [
+        {
+          "url": "https://www.worldmonitor.app/docs/api-platform",
+          "family": "documentation",
+          "host": "www.worldmonitor.app",
+          "coverageState": "Crawled - currently not indexed",
+          "liveStatus": 200,
+          "liveContentType": "text/html; charset=utf-8"
+        },
+        {
+          "url": "https://www.worldmonitor.app/docs/zh/mcp-tools-reference",
+          "family": "docs_zh",
+          "host": "www.worldmonitor.app",
+          "coverageState": "Crawled - currently not indexed",
+          "liveStatus": 200,
+          "liveContentType": "text/html; charset=utf-8"
+        },
+        {
+          "url": "https://www.worldmonitor.app/docs/api-reference/economicservice/getuscpimonthly",
+          "family": "documentation",
+          "host": "www.worldmonitor.app",
+          "coverageState": "Crawled - currently not indexed",
+          "liveStatus": 200,
+          "liveContentType": "text/html; charset=utf-8"
+        },
+        {
+          "url": "https://www.worldmonitor.app/docs/zh/panels/threat-timeline",
+          "family": "docs_zh",
+          "host": "www.worldmonitor.app",
+          "coverageState": "Crawled - currently not indexed",
+          "liveStatus": 200,
+          "liveContentType": "text/html; charset=utf-8"
+        },
+        {
+          "url": "https://www.worldmonitor.app/docs/mcp-tools-reference",
+          "family": "documentation",
+          "host": "www.worldmonitor.app",
+          "coverageState": "Crawled - currently not indexed",
+          "liveStatus": 200,
+          "liveContentType": "text/html; charset=utf-8"
+        },
+        {
+          "url": "https://www.worldmonitor.app/docs/methodology/country-resilience-index",
+          "family": "documentation",
+          "host": "www.worldmonitor.app",
+          "coverageState": "Crawled - currently not indexed",
+          "liveStatus": 200,
+          "liveContentType": "text/html; charset=utf-8"
+        }
+      ]
+    },
+    "topNotIndexedReasons": [
+      {
+        "state": "Discovered - currently not indexed",
+        "count": 60
+      },
+      {
+        "state": "Crawled - currently not indexed",
+        "count": 11
+      },
+      {
+        "state": "URL is unknown to Google",
+        "count": 6
+      }
+    ],
+    "inspectionErrors": [],
+    "canonicalMismatches": [
+      {
+        "url": "https://www.worldmonitor.app/docs/api-platform",
+        "family": "documentation",
+        "host": "www.worldmonitor.app",
+        "googleCanonical": "https://www.worldmonitor.app/docs/api-platform",
+        "userCanonical": "https://worldmonitor.app/docs/api-platform",
+        "coverageState": "Crawled - currently not indexed"
+      }
+    ],
+    "liveStateDisagreements": [],
+    "kindDisagreements": [
+      {
+        "url": "https://worldmonitor.app/mcp",
+        "declaredKind": "html",
+        "observedKind": "markdown-twin",
+        "contentType": "text/markdown; charset=utf-8"
+      }
+    ]
+  },
+  "performance": {
+    "status": "available",
+    "reason": null,
+    "windows": [
+      {
+        "label": "28d",
+        "startDate": "2026-09-01",
+        "endDate": "2026-09-28",
+        "status": "available",
+        "reason": null,
+        "totals": {
+          "clicks": 85083,
+          "impressions": 781720,
+          "ctr": 0.1088,
+          "averagePosition": 3.1,
+          "urls": 1041
+        },
+        "rowCounts": {
+          "page": 1041,
+          "query": 5206
+        },
+        "byFamily": {
+          "homepage": {
+            "clicks": 79536,
+            "impressions": 249619,
+            "ctr": 0.3186,
+            "averagePosition": 3.94,
+            "urls": 23,
+            "impressionsPerIndexedUrl": 249619,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/",
+                "clicks": 79404,
+                "impressions": 229446,
+                "position": 3.730115146919101
+              },
+              {
+                "url": "https://www.worldmonitor.app/#first-five",
+                "clicks": 0,
+                "impressions": 4287,
+                "position": 6.225565663634243
+              },
+              {
+                "url": "https://www.worldmonitor.app/#moments",
+                "clicks": 0,
+                "impressions": 4287,
+                "position": 6.225565663634243
+              },
+              {
+                "url": "https://www.worldmonitor.app/#depth",
+                "clicks": 0,
+                "impressions": 4197,
+                "position": 6.327614963068859
+              },
+              {
+                "url": "https://www.worldmonitor.app/#agents",
+                "clicks": 0,
+                "impressions": 3967,
+                "position": 6.582051928409378
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/?lat=58.5000&lon=21.0000&zoom=2.50&view=mena&timeRange=7d&layers=conflicts%2Chotspots%2Csanctions%2Cweather%2Coutages%2Cnatural%2CiranAttacks.",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 2
+              },
+              {
+                "url": "https://www.worldmonitor.app/?lat=58.5000&lon=21.0000&zoom=2.50&view=mena&timeRange=7d&layers=conflicts%2Chotspots%2Csanctions%2Cweather%2Coutages%2CNatural%2CiranAttacks",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 2
+              },
+              {
+                "url": "https://www.worldmonitor.app/?lang=fr",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "http://worldmonitor.app/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "http://www.worldmonitor.app/",
+                "clicks": 0,
+                "impressions": 2,
+                "position": 1
+              }
+            ]
+          },
+          "dashboard": {
+            "clicks": 2072,
+            "impressions": 152626,
+            "ctr": 0.0136,
+            "averagePosition": 1.61,
+            "urls": 62,
+            "impressionsPerIndexedUrl": 25437.67,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/dashboard",
+                "clicks": 1266,
+                "impressions": 64845,
+                "position": 2.079528105482304
+              },
+              {
+                "url": "https://finance.worldmonitor.app/dashboard",
+                "clicks": 387,
+                "impressions": 58330,
+                "position": 1.1785359163380764
+              },
+              {
+                "url": "https://tech.worldmonitor.app/dashboard",
+                "clicks": 357,
+                "impressions": 23324,
+                "position": 1.2214885954381753
+              },
+              {
+                "url": "https://happy.worldmonitor.app/dashboard",
+                "clicks": 19,
+                "impressions": 4741,
+                "position": 1.3368487660831048
+              },
+              {
+                "url": "https://commodity.worldmonitor.app/dashboard",
+                "clicks": 16,
+                "impressions": 818,
+                "position": 2.5378973105134475
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/dashboard?lat=8.0000&lon=0.0000&zoom=2.50&view=eu&timeRange=7d&layers=conflicts%2Chotspots%2Csanctions%2Cweather%2Coutages%2Cnatural",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/dashboard?lat=38.9869&lon=0.0000&zoom=1.31&view=global&timeRange=7d&layers=conflicts%2Cbases%2Chotspots%2Cnuclear%2Csanctions%2Cweather%2Ceconomic%2Cwaterways%2Coutages%2Cmilitary%2Cnatural&country=CA",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/dashboard?lat=20.0000&lon=0.0000&zoom=1.66&view=global&timeRange=7d&layers=conflicts%2Cbases%2Chotspots%2Cnuclear%2Csanctions%2Cweather%2Ceconomic%2Cwaterways%2Coutages%2Cmilitary%2Cnatural",
+                "clicks": 1,
+                "impressions": 1,
+                "position": 7
+              },
+              {
+                "url": "https://www.worldmonitor.app/dashboard?lat=20.0000&lon=0.0000&zoom=1.00&view=global&timeRange=7d&layers=sanctions",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/dashboard?lang=ro",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              }
+            ]
+          },
+          "blog": {
+            "clicks": 1986,
+            "impressions": 169087,
+            "ctr": 0.0117,
+            "averagePosition": 3.54,
+            "urls": 87,
+            "impressionsPerIndexedUrl": 2167.78,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/",
+                "clicks": 297,
+                "impressions": 65028,
+                "position": 1.133711631912407
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/",
+                "clicks": 35,
+                "impressions": 51510,
+                "position": 1.2361094933022714
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/glossary/pentagon-pizza-index/",
+                "clicks": 110,
+                "impressions": 21085,
+                "position": 8.673132558691012
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/",
+                "clicks": 767,
+                "impressions": 10182,
+                "position": 4.732567275584365
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/satellite-imagery-orbital-surveillance/",
+                "clicks": 133,
+                "impressions": 2634,
+                "position": 6.395216400911162
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/what-is-a-maritimt-chokepoint/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/track-conflicts-real-time/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/self-host-worldmonitor-open-source-intelligence-dashboard/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/self-host-open-source-intelligence-dashboard/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/osint-free-intelligence-dashboard",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              }
+            ]
+          },
+          "documentation": {
+            "clicks": 609,
+            "impressions": 86094,
+            "ctr": 0.0071,
+            "averagePosition": 2.76,
+            "urls": 352,
+            "impressionsPerIndexedUrl": 247.4,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/docs/documentation",
+                "clicks": 48,
+                "impressions": 50893,
+                "position": 1.2610575128210166
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/data-sources",
+                "clicks": 34,
+                "impressions": 6643,
+                "position": 2.858949269908174
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/getting-started",
+                "clicks": 96,
+                "impressions": 6474,
+                "position": 3.7568736484399134
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/about",
+                "clicks": 77,
+                "impressions": 2163,
+                "position": 3.220527045769764
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/mcp-overview",
+                "clicks": 37,
+                "impressions": 1353,
+                "position": 5.95269770879527
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/docs/webcam-layer#storage",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 5
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/webcam-layer#expected-latency-behavior",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 5
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/releasing-cli",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 2
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/panels/thermal-escalation",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 6
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/panels/stock-backtest",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 3
+              }
+            ]
+          },
+          "docs_zh": {
+            "clicks": 47,
+            "impressions": 2306,
+            "ctr": 0.0204,
+            "averagePosition": 6.75,
+            "urls": 116,
+            "impressionsPerIndexedUrl": 18.16,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/getting-started",
+                "clicks": 9,
+                "impressions": 305,
+                "position": 5.842622950819672
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/documentation",
+                "clicks": 10,
+                "impressions": 201,
+                "position": 3.572139303482587
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/overview",
+                "clicks": 1,
+                "impressions": 201,
+                "position": 4.686567164179104
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/relay-parameters",
+                "clicks": 0,
+                "impressions": 179,
+                "position": 8.966480446927374
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/data-sources",
+                "clicks": 2,
+                "impressions": 161,
+                "position": 8.31055900621118
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/usage-auth",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 2
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/trademark-policy",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 21
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/privacy",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 10
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/panels/supply-chain",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 6
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/panels/forecast",
+                "clicks": 1,
+                "impressions": 1,
+                "position": 6
+              }
+            ]
+          },
+          "country_pages": {
+            "clicks": 183,
+            "impressions": 8973,
+            "ctr": 0.0204,
+            "averagePosition": 9.41,
+            "urls": 275,
+            "impressionsPerIndexedUrl": 45.32,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/countries/",
+                "clicks": 26,
+                "impressions": 1304,
+                "position": 12.27377300613497
+              },
+              {
+                "url": "https://www.worldmonitor.app/countries/turkey/",
+                "clicks": 2,
+                "impressions": 204,
+                "position": 6.651960784313726
+              },
+              {
+                "url": "https://www.worldmonitor.app/country-instability-index/",
+                "clicks": 6,
+                "impressions": 173,
+                "position": 12.867052023121387
+              },
+              {
+                "url": "https://www.worldmonitor.app/countries/saudi-arabia/",
+                "clicks": 6,
+                "impressions": 165,
+                "position": 7.218181818181818
+              },
+              {
+                "url": "https://www.worldmonitor.app/countries/israel/",
+                "clicks": 1,
+                "impressions": 141,
+                "position": 21.48936170212766
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/countries/viet-nam/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 3
+              },
+              {
+                "url": "https://www.worldmonitor.app/countries/uae/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 4
+              },
+              {
+                "url": "https://www.worldmonitor.app/countries/sao-tome/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 45
+              },
+              {
+                "url": "https://www.worldmonitor.app/countries/saint-kitts-and-nevis/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 9
+              },
+              {
+                "url": "https://www.worldmonitor.app/countries/monaco/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 11
+              }
+            ]
+          },
+          "chokepoints": {
+            "clicks": 107,
+            "impressions": 5040,
+            "ctr": 0.0212,
+            "averagePosition": 7.37,
+            "urls": 21,
+            "impressionsPerIndexedUrl": 360,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/bab-el-mandeb/",
+                "clicks": 60,
+                "impressions": 1866,
+                "position": 7.27545551982851
+              },
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/panama-canal/",
+                "clicks": 18,
+                "impressions": 1016,
+                "position": 7.307086614173229
+              },
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/",
+                "clicks": 7,
+                "impressions": 803,
+                "position": 6.960149439601494
+              },
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/strait-of-gibraltar/",
+                "clicks": 3,
+                "impressions": 184,
+                "position": 6.108695652173913
+              },
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/lombok-strait/",
+                "clicks": 2,
+                "impressions": 166,
+                "position": 8.524096385542169
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/strait-of-gibraltar",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/bab-el-mandeb",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 2
+              },
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/bab-el-mandab/",
+                "clicks": 1,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://tech.worldmonitor.app/chokepoints/bosporus-strait/",
+                "clicks": 0,
+                "impressions": 6,
+                "position": 7.833333333333333
+              },
+              {
+                "url": "https://tech.worldmonitor.app/chokepoints/lombok-strait/",
+                "clicks": 0,
+                "impressions": 7,
+                "position": 58.714285714285715
+              }
+            ]
+          },
+          "crises": {
+            "clicks": 36,
+            "impressions": 624,
+            "ctr": 0.0577,
+            "averagePosition": 8.65,
+            "urls": 8,
+            "impressionsPerIndexedUrl": 78,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/crises/",
+                "clicks": 25,
+                "impressions": 392,
+                "position": 8.540816326530612
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/ukraine-war/",
+                "clicks": 4,
+                "impressions": 93,
+                "position": 10.193548387096774
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/myanmar-civil-war/",
+                "clicks": 4,
+                "impressions": 39,
+                "position": 6.666666666666667
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/red-sea-security/",
+                "clicks": 2,
+                "impressions": 27,
+                "position": 6.185185185185185
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/sudan-conflict/",
+                "clicks": 1,
+                "impressions": 25,
+                "position": 6.24
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/crises/lebanon-israel-escalation/",
+                "clicks": 0,
+                "impressions": 9,
+                "position": 4.555555555555555
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/iran-israel-escalation/",
+                "clicks": 0,
+                "impressions": 15,
+                "position": 23.533333333333335
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/hormuz-gulf-security/",
+                "clicks": 0,
+                "impressions": 24,
+                "position": 5.125
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/sudan-conflict/",
+                "clicks": 1,
+                "impressions": 25,
+                "position": 6.24
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/red-sea-security/",
+                "clicks": 2,
+                "impressions": 27,
+                "position": 6.185185185185185
+              }
+            ]
+          },
+          "tools": {
+            "clicks": 9,
+            "impressions": 302,
+            "ctr": 0.0298,
+            "averagePosition": 12.2,
+            "urls": 4,
+            "impressionsPerIndexedUrl": 75.5,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/tools/natural-hazard-pulse/",
+                "clicks": 2,
+                "impressions": 131,
+                "position": 19.015267175572518
+              },
+              {
+                "url": "https://www.worldmonitor.app/tools/",
+                "clicks": 3,
+                "impressions": 100,
+                "position": 6.76
+              },
+              {
+                "url": "https://www.worldmonitor.app/tools/airspace-disruption-checker/",
+                "clicks": 4,
+                "impressions": 67,
+                "position": 7.373134328358209
+              },
+              {
+                "url": "https://www.worldmonitor.app/tools/signal-convergence/",
+                "clicks": 0,
+                "impressions": 4,
+                "position": 6
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/tools/signal-convergence/",
+                "clicks": 0,
+                "impressions": 4,
+                "position": 6
+              },
+              {
+                "url": "https://www.worldmonitor.app/tools/airspace-disruption-checker/",
+                "clicks": 4,
+                "impressions": 67,
+                "position": 7.373134328358209
+              },
+              {
+                "url": "https://www.worldmonitor.app/tools/",
+                "clicks": 3,
+                "impressions": 100,
+                "position": 6.76
+              },
+              {
+                "url": "https://www.worldmonitor.app/tools/natural-hazard-pulse/",
+                "clicks": 2,
+                "impressions": 131,
+                "position": 19.015267175572518
+              }
+            ]
+          },
+          "pricing": {
+            "clicks": 387,
+            "impressions": 89401,
+            "ctr": 0.0043,
+            "averagePosition": 1.7,
+            "urls": 18,
+            "impressionsPerIndexedUrl": 89401,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/pro",
+                "clicks": 239,
+                "impressions": 77209,
+                "position": 1.462471991607196
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro#pricing",
+                "clicks": 0,
+                "impressions": 2793,
+                "position": 6.965628356605801
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=tr",
+                "clicks": 8,
+                "impressions": 2590,
+                "position": 1.4552123552123553
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=ja",
+                "clicks": 91,
+                "impressions": 2072,
+                "position": 1.9454633204633205
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=fr",
+                "clicks": 20,
+                "impressions": 1670,
+                "position": 1.9461077844311379
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=ar",
+                "clicks": 0,
+                "impressions": 5,
+                "position": 6.8
+              },
+              {
+                "url": "https://worldmonitor.app/pro",
+                "clicks": 1,
+                "impressions": 5,
+                "position": 1.4
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=it",
+                "clicks": 0,
+                "impressions": 8,
+                "position": 4.25
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=sv",
+                "clicks": 0,
+                "impressions": 10,
+                "position": 4
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=bg",
+                "clicks": 0,
+                "impressions": 11,
+                "position": 6.090909090909091
+              }
+            ]
+          },
+          "developer_mcp": {
+            "clicks": 7,
+            "impressions": 102,
+            "ctr": 0.0686,
+            "averagePosition": 5.85,
+            "urls": 17,
+            "impressionsPerIndexedUrl": 102,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/api/download?platform=macos-arm64",
+                "clicks": 7,
+                "impressions": 34,
+                "position": 4.8235294117647065
+              },
+              {
+                "url": "https://www.worldmonitor.app/reference/changelog/page/5/",
+                "clicks": 0,
+                "impressions": 24,
+                "position": 7.833333333333333
+              },
+              {
+                "url": "https://www.worldmonitor.app/reference/changelog/page/3/",
+                "clicks": 0,
+                "impressions": 10,
+                "position": 4.8
+              },
+              {
+                "url": "https://www.worldmonitor.app/reference/changelog/",
+                "clicks": 0,
+                "impressions": 6,
+                "position": 2.166666666666667
+              },
+              {
+                "url": "https://www.worldmonitor.app/reference/changelog/page/6/",
+                "clicks": 0,
+                "impressions": 6,
+                "position": 6
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/reference/changelog/page/9/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 6
+              },
+              {
+                "url": "https://www.worldmonitor.app/reference/changelog/page/7/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 7
+              },
+              {
+                "url": "https://www.worldmonitor.app/reference/changelog/page/12/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 9
+              },
+              {
+                "url": "https://www.worldmonitor.app/mcp",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/changelog",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 6
+              }
+            ]
+          },
+          "sources": {
+            "clicks": 6,
+            "impressions": 4474,
+            "ctr": 0.0013,
+            "averagePosition": 6.79,
+            "urls": 15,
+            "impressionsPerIndexedUrl": 319.57,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/sources/?utm_source=welcome-nav",
+                "clicks": 0,
+                "impressions": 2692,
+                "position": 6.9286775631500745
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/",
+                "clicks": 4,
+                "impressions": 828,
+                "position": 7.833333333333333
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/china/",
+                "clicks": 1,
+                "impressions": 472,
+                "position": 5.815677966101695
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/energy/",
+                "clicks": 0,
+                "impressions": 321,
+                "position": 4.130841121495327
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/military/",
+                "clicks": 0,
+                "impressions": 39,
+                "position": 8.538461538461538
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/sources/news/page/6/",
+                "clicks": 0,
+                "impressions": 2,
+                "position": 6
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/news/page/7/",
+                "clicks": 0,
+                "impressions": 3,
+                "position": 7.333333333333333
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/news/page/5/",
+                "clicks": 0,
+                "impressions": 4,
+                "position": 8
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/news/page/3/",
+                "clicks": 0,
+                "impressions": 4,
+                "position": 8.75
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/infrastructure/",
+                "clicks": 0,
+                "impressions": 5,
+                "position": 4.4
+              }
+            ]
+          },
+          "compare": {
+            "clicks": 69,
+            "impressions": 954,
+            "ctr": 0.0723,
+            "averagePosition": 4.39,
+            "urls": 3,
+            "impressionsPerIndexedUrl": 318,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/compare/liveuamap-alternatives/",
+                "clicks": 69,
+                "impressions": 886,
+                "position": 4.248306997742663
+              },
+              {
+                "url": "https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/",
+                "clicks": 0,
+                "impressions": 41,
+                "position": 5.878048780487805
+              },
+              {
+                "url": "https://www.worldmonitor.app/compare/best-geopolitical-risk-dashboards/",
+                "clicks": 0,
+                "impressions": 27,
+                "position": 6.777777777777778
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/compare/best-geopolitical-risk-dashboards/",
+                "clicks": 0,
+                "impressions": 27,
+                "position": 6.777777777777778
+              },
+              {
+                "url": "https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/",
+                "clicks": 0,
+                "impressions": 41,
+                "position": 5.878048780487805
+              },
+              {
+                "url": "https://www.worldmonitor.app/compare/liveuamap-alternatives/",
+                "clicks": 69,
+                "impressions": 886,
+                "position": 4.248306997742663
+              }
+            ]
+          },
+          "research": {
+            "clicks": 2,
+            "impressions": 923,
+            "ctr": 0.0022,
+            "averagePosition": 6.78,
+            "urls": 3,
+            "impressionsPerIndexedUrl": 307.67,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/",
+                "clicks": 1,
+                "impressions": 834,
+                "position": 6.7685851318944845
+              },
+              {
+                "url": "https://www.worldmonitor.app/accuracy/",
+                "clicks": 0,
+                "impressions": 66,
+                "position": 6.863636363636363
+              },
+              {
+                "url": "https://www.worldmonitor.app/research/",
+                "clicks": 1,
+                "impressions": 23,
+                "position": 7.130434782608695
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/research/",
+                "clicks": 1,
+                "impressions": 23,
+                "position": 7.130434782608695
+              },
+              {
+                "url": "https://www.worldmonitor.app/accuracy/",
+                "clicks": 0,
+                "impressions": 66,
+                "position": 6.863636363636363
+              },
+              {
+                "url": "https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/",
+                "clicks": 1,
+                "impressions": 834,
+                "position": 6.7685851318944845
+              }
+            ]
+          },
+          "use_cases": {
+            "clicks": 3,
+            "impressions": 245,
+            "ctr": 0.0122,
+            "averagePosition": 12.16,
+            "urls": 4,
+            "impressionsPerIndexedUrl": 61.25,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/use-cases/monitor-supply-chain-disruptions/",
+                "clicks": 0,
+                "impressions": 109,
+                "position": 12.36697247706422
+              },
+              {
+                "url": "https://www.worldmonitor.app/use-cases/monitor-country-risk/",
+                "clicks": 2,
+                "impressions": 66,
+                "position": 18.560606060606062
+              },
+              {
+                "url": "https://www.worldmonitor.app/use-cases/verify-breaking-news/",
+                "clicks": 0,
+                "impressions": 53,
+                "position": 6.245283018867925
+              },
+              {
+                "url": "https://www.worldmonitor.app/use-cases/",
+                "clicks": 1,
+                "impressions": 17,
+                "position": 4.470588235294118
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/use-cases/",
+                "clicks": 1,
+                "impressions": 17,
+                "position": 4.470588235294118
+              },
+              {
+                "url": "https://www.worldmonitor.app/use-cases/verify-breaking-news/",
+                "clicks": 0,
+                "impressions": 53,
+                "position": 6.245283018867925
+              },
+              {
+                "url": "https://www.worldmonitor.app/use-cases/monitor-country-risk/",
+                "clicks": 2,
+                "impressions": 66,
+                "position": 18.560606060606062
+              },
+              {
+                "url": "https://www.worldmonitor.app/use-cases/monitor-supply-chain-disruptions/",
+                "clicks": 0,
+                "impressions": 109,
+                "position": 12.36697247706422
+              }
+            ]
+          },
+          "markdown_twins": {
+            "clicks": 0,
+            "impressions": 0,
+            "ctr": null,
+            "averagePosition": null,
+            "urls": 0,
+            "impressionsPerIndexedUrl": null,
+            "impressionsPerIndexedUrlReason": "no URL in this family was confirmed indexed in the sample",
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [],
+            "worstUrls": []
+          },
+          "story_shares": {
+            "clicks": 0,
+            "impressions": 3,
+            "ctr": 0,
+            "averagePosition": 5,
+            "urls": 1,
+            "impressionsPerIndexedUrl": null,
+            "impressionsPerIndexedUrlReason": "no URL in this family was confirmed indexed in the sample",
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/story?c=UA&t=brief",
+                "clicks": 0,
+                "impressions": 3,
+                "position": 5
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/story?c=UA&t=brief",
+                "clicks": 0,
+                "impressions": 3,
+                "position": 5
+              }
+            ]
+          }
+        },
+        "unmapped": {
+          "urls": 32,
+          "clicks": 24,
+          "impressions": 10947,
+          "topUrls": [
+            {
+              "url": "https://www.worldmonitor.app/zh/map-engine",
+              "clicks": 20,
+              "impressions": 9486,
+              "position": 1.1816360952983345,
+              "reason": "https://www.worldmonitor.app/zh/map-engine does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/'to",
+              "clicks": 4,
+              "impressions": 1178,
+              "position": 1.4889643463497453,
+              "reason": "https://www.worldmonitor.app/'to does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/webmcp-maintenance",
+              "clicks": 0,
+              "impressions": 58,
+              "position": 7.137931034482759,
+              "reason": "https://www.worldmonitor.app/webmcp-maintenance does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/dpa",
+              "clicks": 0,
+              "impressions": 57,
+              "position": 5.5964912280701755,
+              "reason": "https://www.worldmonitor.app/dpa does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/legal/terms.pdf",
+              "clicks": 0,
+              "impressions": 49,
+              "position": 6.061224489795919,
+              "reason": "https://www.worldmonitor.app/legal/terms.pdf does not map to a page family"
+            },
+            {
+              "url": "https://status.worldmonitor.app/",
+              "clicks": 0,
+              "impressions": 37,
+              "position": 4.486486486486486,
+              "reason": "host status.worldmonitor.app has no page family in the worldmonitor.app property"
+            },
+            {
+              "url": "https://www.worldmonitor.app/methodology/food-stocks",
+              "clicks": 0,
+              "impressions": 12,
+              "position": 8.583333333333332,
+              "reason": "https://www.worldmonitor.app/methodology/food-stocks does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/zh/releasing-cli",
+              "clicks": 0,
+              "impressions": 9,
+              "position": 3.2222222222222223,
+              "reason": "https://www.worldmonitor.app/zh/releasing-cli does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/usage-quickstart?lat=0.1792&lon=-0.8062&zoom=1.00&view=america&timeRange=7d&layers=none",
+              "clicks": 0,
+              "impressions": 8,
+              "position": 1,
+              "reason": "https://happy.worldmonitor.app/usage-quickstart?lat=0.1792&lon=-0.8062&zoom=1.00&view=america&timeRange=7d&layers=none does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/scenarioservice/getscenariostatus",
+              "clicks": 0,
+              "impressions": 7,
+              "position": 5.714285714285714,
+              "reason": "https://www.worldmonitor.app/api-reference/scenarioservice/getscenariostatus does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/premium-finance-search",
+              "clicks": 0,
+              "impressions": 6,
+              "position": 3.8333333333333335,
+              "reason": "https://api.worldmonitor.app/premium-finance-search does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/scenario-engine",
+              "clicks": 0,
+              "impressions": 6,
+              "position": 11.666666666666666,
+              "reason": "https://api.worldmonitor.app/scenario-engine does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/webcamservice/listwebcams",
+              "clicks": 0,
+              "impressions": 5,
+              "position": 6,
+              "reason": "https://www.worldmonitor.app/api-reference/webcamservice/listwebcams does not map to a page family"
+            },
+            {
+              "url": "https://commodity.worldmonitor.app/panels/latest-brief",
+              "clicks": 0,
+              "impressions": 4,
+              "position": 5.5,
+              "reason": "https://commodity.worldmonitor.app/panels/latest-brief does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/api-reference/aviationservice/listairportflights",
+              "clicks": 0,
+              "impressions": 3,
+              "position": 2,
+              "reason": "https://api.worldmonitor.app/api-reference/aviationservice/listairportflights does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/zh/relay-parameters",
+              "clicks": 0,
+              "impressions": 3,
+              "position": 1,
+              "reason": "https://api.worldmonitor.app/zh/relay-parameters does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/api-reference/intelligenceservice/getcountryintelbrief",
+              "clicks": 0,
+              "impressions": 2,
+              "position": 7.5,
+              "reason": "https://happy.worldmonitor.app/api-reference/intelligenceservice/getcountryintelbrief does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/release-packaging?lat=257.2683&lon=144.0000&zoom=2.50&view=america&timeRange=7d&layers=none",
+              "clicks": 0,
+              "impressions": 2,
+              "position": 2.5,
+              "reason": "https://happy.worldmonitor.app/release-packaging?lat=257.2683&lon=144.0000&zoom=2.50&view=america&timeRange=7d&layers=none does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/fr",
+              "clicks": 0,
+              "impressions": 2,
+              "position": 1,
+              "reason": "https://www.worldmonitor.app/fr does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/desktop-app",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 7,
+              "reason": "https://api.worldmonitor.app/desktop-app does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/zh/route-explorer",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://api.worldmonitor.app/zh/route-explorer does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/zh/api-notifications",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 5,
+              "reason": "https://happy.worldmonitor.app/zh/api-notifications does not map to a page family"
+            },
+            {
+              "url": "https://www.happy.worldmonitor.app/dashboard",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 3,
+              "reason": "host www.happy.worldmonitor.app has no page family in the worldmonitor.app property"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/scenarioservice/listscenariotemplates",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://www.worldmonitor.app/api-reference/scenarioservice/listscenariotemplates does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/app/docs/getting-started",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://www.worldmonitor.app/app/docs/getting-started does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/auth/",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://www.worldmonitor.app/auth/ does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/chokepoint/panama-canal/",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://www.worldmonitor.app/chokepoint/panama-canal/ does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/desktop-app",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 6,
+              "reason": "https://www.worldmonitor.app/desktop-app does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/map-engine",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://www.worldmonitor.app/map-engine does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/panels/fsi",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 5,
+              "reason": "https://www.worldmonitor.app/panels/fsi does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/zh/military-tracking",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 10,
+              "reason": "https://www.worldmonitor.app/zh/military-tracking does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/zh/releasing-cli?lat=175.2683&lon=-108.0000&zoom=2.50&view=america&timeRange=7d&layers=conflicts%2Chotspots%2Csanctions%2Cweather%2Coutages%2Cnatural",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 2,
+              "reason": "https://www.worldmonitor.app/zh/releasing-cli?lat=175.2683&lon=-108.0000&zoom=2.50&view=america&timeRange=7d&layers=conflicts%2Chotspots%2Csanctions%2Cweather%2Coutages%2Cnatural does not map to a page family"
+            }
+          ]
+        },
+        "topQueries": [
+          {
+            "query": "world monitor",
+            "clicks": 29842,
+            "impressions": 40504,
+            "position": 1.127839225755481
+          },
+          {
+            "query": "worldmonitor",
+            "clicks": 11584,
+            "impressions": 14716,
+            "position": 1.004145148138081
+          },
+          {
+            "query": "monitor the situation",
+            "clicks": 223,
+            "impressions": 12656,
+            "position": 3.524336283185841
+          },
+          {
+            "query": "pizza index",
+            "clicks": 56,
+            "impressions": 10238,
+            "position": 7.721820668099238
+          },
+          {
+            "query": "ww3 monitor",
+            "clicks": 49,
+            "impressions": 9380,
+            "position": 4.457889125799573
+          },
+          {
+            "query": "world monitor app",
+            "clicks": 5294,
+            "impressions": 6918,
+            "position": 1.0063602197166812
+          },
+          {
+            "query": "warmonitor",
+            "clicks": 96,
+            "impressions": 6633,
+            "position": 4.518619026081712
+          },
+          {
+            "query": "war monitor",
+            "clicks": 275,
+            "impressions": 6366,
+            "position": 4.596606974552309
+          },
+          {
+            "query": "pentagon pizza index",
+            "clicks": 14,
+            "impressions": 5859,
+            "position": 9.22205154463219
+          },
+          {
+            "query": "worldmonitor app",
+            "clicks": 3349,
+            "impressions": 4001,
+            "position": 1.000249937515621
+          },
+          {
+            "query": "war monitor 3",
+            "clicks": 1,
+            "impressions": 3627,
+            "position": 8.466776950647919
+          },
+          {
+            "query": "world",
+            "clicks": 4,
+            "impressions": 3544,
+            "position": 13.24576749435666
+          },
+          {
+            "query": "worldmonitor.ap",
+            "clicks": 1917,
+            "impressions": 2228,
+            "position": 1.0004488330341113
+          },
+          {
+            "query": "world monitor github",
+            "clicks": 259,
+            "impressions": 1984,
+            "position": 2.427923387096774
+          },
+          {
+            "query": "osint world map",
+            "clicks": 1106,
+            "impressions": 1820,
+            "position": 1.896153846153846
+          },
+          {
+            "query": "ww3 monitor x",
+            "clicks": 0,
+            "impressions": 1818,
+            "position": 5.687018701870187
+          },
+          {
+            "query": "word monitor",
+            "clicks": 965,
+            "impressions": 1516,
+            "position": 1.1154353562005277
+          },
+          {
+            "query": "osint live tracker",
+            "clicks": 46,
+            "impressions": 1354,
+            "position": 7.254062038404727
+          },
+          {
+            "query": "monitor the situation middle east",
+            "clicks": 15,
+            "impressions": 1206,
+            "position": 3.783582089552239
+          },
+          {
+            "query": "worldmonitor.app",
+            "clicks": 880,
+            "impressions": 1197,
+            "position": 1.0025062656641603
+          }
+        ]
+      },
+      {
+        "label": "90d",
+        "startDate": "2026-07-01",
+        "endDate": "2026-09-28",
+        "status": "available",
+        "reason": null,
+        "totals": {
+          "clicks": 335034,
+          "impressions": 2875889,
+          "ctr": 0.1165,
+          "averagePosition": 2.96,
+          "urls": 1383
+        },
+        "rowCounts": {
+          "page": 1383,
+          "query": 12744
+        },
+        "byFamily": {
+          "homepage": {
+            "clicks": 319334,
+            "impressions": 960405,
+            "ctr": 0.3325,
+            "averagePosition": 3.86,
+            "urls": 35,
+            "impressionsPerIndexedUrl": 960405,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/",
+                "clicks": 319111,
+                "impressions": 912780,
+                "position": 3.7873397751922697
+              },
+              {
+                "url": "https://www.worldmonitor.app/#first-five",
+                "clicks": 3,
+                "impressions": 11402,
+                "position": 5.02499561480442
+              },
+              {
+                "url": "https://www.worldmonitor.app/#moments",
+                "clicks": 1,
+                "impressions": 11402,
+                "position": 5.02499561480442
+              },
+              {
+                "url": "https://www.worldmonitor.app/#depth",
+                "clicks": 0,
+                "impressions": 11305,
+                "position": 5.055373728438744
+              },
+              {
+                "url": "https://www.worldmonitor.app/#agents",
+                "clicks": 1,
+                "impressions": 6191,
+                "position": 6.110806008722339
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/?lat=58.5000&lon=21.0000&zoom=2.50&view=mena&timeRange=7d&layers=conflicts%2Chotspots%2Csanctions%2Cweather%2Coutages%2Cnatural%2CiranAttacks.",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 2
+              },
+              {
+                "url": "https://www.worldmonitor.app/?lat=58.5000&lon=21.0000&zoom=2.50&view=mena&timeRange=7d&layers=conflicts%2Chotspots%2Csanctions%2Cweather%2Coutages%2CNatural%2CiranAttacks",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 2
+              },
+              {
+                "url": "https://www.worldmonitor.app/?lang=ja",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "http://www.worldmonitor.app/?",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 5
+              },
+              {
+                "url": "https://www.worldmonitor.app/?utm_source=sp_auto_dm&utm_referrer=sp_auto_dm&fbclid=PAT01DUATYj8lleHRuA2FlbQIxMABzcnRjBmFwcF9pZA81NjcwNjczNDMzNTI0MjcAAacaCjD51MfH_xk-dDddfbdvHIwl2mfp07QM1mOIEEDZqy3Yxa2a6I1779EzWw_aem_xiDXqMmx8b9qbz197fyGgg",
+                "clicks": 0,
+                "impressions": 2,
+                "position": 1
+              }
+            ]
+          },
+          "dashboard": {
+            "clicks": 6567,
+            "impressions": 577344,
+            "ctr": 0.0114,
+            "averagePosition": 1.7,
+            "urls": 119,
+            "impressionsPerIndexedUrl": 96224,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/dashboard",
+                "clicks": 4431,
+                "impressions": 249272,
+                "position": 2.2376480310664655
+              },
+              {
+                "url": "https://finance.worldmonitor.app/dashboard",
+                "clicks": 1125,
+                "impressions": 163223,
+                "position": 1.2047076698749564
+              },
+              {
+                "url": "https://tech.worldmonitor.app/dashboard",
+                "clicks": 871,
+                "impressions": 152455,
+                "position": 1.1442196057853138
+              },
+              {
+                "url": "https://happy.worldmonitor.app/dashboard",
+                "clicks": 50,
+                "impressions": 9378,
+                "position": 1.8302409895500107
+              },
+              {
+                "url": "https://commodity.worldmonitor.app/dashboard",
+                "clicks": 24,
+                "impressions": 1140,
+                "position": 3.1719298245614036
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/dashboard?zoom=2.50&view=mena&timeRange=7d&layers=conflicts%2Chotspots%2Csanctions%2Cweather%2Coutages%2Cnatural",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 9
+              },
+              {
+                "url": "https://www.worldmonitor.app/dashboard?ref=welcome-hero",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/dashboard?lat=NaN&lon=NaN&zoom=2.50&view=america&timeRange=7d&layers=conflicts%2Chotspots%2Csanctions%2Cweather%2Coutages%2Cnatural",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/dashboard?lat=8.0000&lon=0.0000&zoom=2.50&view=eu&timeRange=7d&layers=conflicts%2Chotspots%2Csanctions%2Cweather%2Coutages%2Cnatural",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/dashboard?lat=40.2372&lon=17.2676&zoom=2.07&view=global&timeRange=7d&layers=bases%2Cais%2Ceconomic%2Cwaterways%2Cdatacenters%2Cmilitary%2Cminerals%2Cdisplacement%2CtradeRoutes",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              }
+            ]
+          },
+          "blog": {
+            "clicks": 4515,
+            "impressions": 558153,
+            "ctr": 0.0081,
+            "averagePosition": 2.8,
+            "urls": 112,
+            "impressionsPerIndexedUrl": 7155.81,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/",
+                "clicks": 1076,
+                "impressions": 246062,
+                "position": 1.2304581772073706
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/",
+                "clicks": 208,
+                "impressions": 199356,
+                "position": 1.4599058969883023
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/",
+                "clicks": 1434,
+                "impressions": 26321,
+                "position": 5.3782151134075455
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/glossary/pentagon-pizza-index/",
+                "clicks": 121,
+                "impressions": 24716,
+                "position": 8.79191616766467
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/five-dashboards-one-platform-worldmonitor-variants/",
+                "clicks": 53,
+                "impressions": 8082,
+                "position": 4.584756248453353
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/what-is-a-maritimt-chokepoint/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/track-conflicts-real-time/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/self-host-worldmonitor-open-source-intelligence-dashboard/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/self-host-open-source-intelligence-dashboard/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/blog/posts/osint-free-intelligence-dashboard",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              }
+            ]
+          },
+          "documentation": {
+            "clicks": 1880,
+            "impressions": 361048,
+            "ctr": 0.0052,
+            "averagePosition": 2.93,
+            "urls": 486,
+            "impressionsPerIndexedUrl": 1037.49,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/docs/documentation",
+                "clicks": 293,
+                "impressions": 216200,
+                "position": 1.3701017576318224
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/getting-started",
+                "clicks": 424,
+                "impressions": 46357,
+                "position": 3.3385464978320427
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/data-sources",
+                "clicks": 106,
+                "impressions": 20982,
+                "position": 4.273281860642456
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/architecture",
+                "clicks": 14,
+                "impressions": 7376,
+                "position": 7.957158351409978
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/api-reference",
+                "clicks": 257,
+                "impressions": 4284,
+                "position": 4.5779645191409895
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/docs/webcam-layer#storage",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 5
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/webcam-layer#expected-latency-behavior",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 5
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/natural-disasters#nasa-eonet-earth-observatory-natural-event-tracker",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 4
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/natural-disasters#imd-rsmc-new-delhi-cyclones",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 4
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/natural-disasters#gdacs-global-disaster-alert-and-coordination-system",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 4
+              }
+            ]
+          },
+          "docs_zh": {
+            "clicks": 184,
+            "impressions": 9230,
+            "ctr": 0.0199,
+            "averagePosition": 10.07,
+            "urls": 128,
+            "impressionsPerIndexedUrl": 72.68,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/data-sources",
+                "clicks": 6,
+                "impressions": 873,
+                "position": 9.847651775486828
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/getting-started",
+                "clicks": 45,
+                "impressions": 768,
+                "position": 5.96484375
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/documentation",
+                "clicks": 37,
+                "impressions": 493,
+                "position": 4.369168356997972
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/overview",
+                "clicks": 7,
+                "impressions": 432,
+                "position": 7.175925925925926
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/methodology/country-resilience-index",
+                "clicks": 0,
+                "impressions": 411,
+                "position": 10.472019464720194
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/methodology/demographics-capability",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 9
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/panels/thermal-escalation",
+                "clicks": 0,
+                "impressions": 2,
+                "position": 76.5
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/methodology/thermal-escalation",
+                "clicks": 0,
+                "impressions": 2,
+                "position": 82
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/methodology/china-activity-nowcast",
+                "clicks": 0,
+                "impressions": 2,
+                "position": 4.5
+              },
+              {
+                "url": "https://www.worldmonitor.app/docs/zh/china-logistics-corridors",
+                "clicks": 0,
+                "impressions": 2,
+                "position": 6
+              }
+            ]
+          },
+          "country_pages": {
+            "clicks": 293,
+            "impressions": 16388,
+            "ctr": 0.0179,
+            "averagePosition": 13.72,
+            "urls": 306,
+            "impressionsPerIndexedUrl": 82.77,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/countries/",
+                "clicks": 26,
+                "impressions": 1430,
+                "position": 11.872727272727273
+              },
+              {
+                "url": "https://www.worldmonitor.app/countries/turkey/",
+                "clicks": 9,
+                "impressions": 361,
+                "position": 9.238227146814404
+              },
+              {
+                "url": "https://www.worldmonitor.app/countries/saudi-arabia/",
+                "clicks": 7,
+                "impressions": 283,
+                "position": 13.452296819787986
+              },
+              {
+                "url": "https://www.worldmonitor.app/countries/chad/",
+                "clicks": 0,
+                "impressions": 279,
+                "position": 8.401433691756273
+              },
+              {
+                "url": "https://www.worldmonitor.app/countries/united-states/",
+                "clicks": 4,
+                "impressions": 271,
+                "position": 27.756457564575644
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/countries/cambodia",
+                "clicks": 1,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/countries/azerbaijan/energy",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://tech.worldmonitor.app/countries/venezuela/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 9
+              },
+              {
+                "url": "https://tech.worldmonitor.app/countries/tuvalu/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 38
+              },
+              {
+                "url": "https://tech.worldmonitor.app/countries/tanzania/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 91
+              }
+            ]
+          },
+          "chokepoints": {
+            "clicks": 167,
+            "impressions": 8216,
+            "ctr": 0.0203,
+            "averagePosition": 8.72,
+            "urls": 24,
+            "impressionsPerIndexedUrl": 586.86,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/bab-el-mandeb/",
+                "clicks": 84,
+                "impressions": 2317,
+                "position": 7.911955114372033
+              },
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/",
+                "clicks": 16,
+                "impressions": 1410,
+                "position": 8.873758865248227
+              },
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/panama-canal/",
+                "clicks": 19,
+                "impressions": 1199,
+                "position": 7.689741451209341
+              },
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/korea-strait/",
+                "clicks": 3,
+                "impressions": 859,
+                "position": 9.140861466821885
+              },
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/cape-of-good-hope/",
+                "clicks": 3,
+                "impressions": 349,
+                "position": 9.469914040114613
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/strait-of-gibraltar",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/bab-el-mandeb",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 2
+              },
+              {
+                "url": "https://www.worldmonitor.app/chokepoints/bab-el-mandab/",
+                "clicks": 1,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://tech.worldmonitor.app/chokepoints/dover-strait/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://finance.worldmonitor.app/chokepoints/strait-of-malacca/",
+                "clicks": 0,
+                "impressions": 5,
+                "position": 31.2
+              }
+            ]
+          },
+          "crises": {
+            "clicks": 47,
+            "impressions": 1277,
+            "ctr": 0.0368,
+            "averagePosition": 10.58,
+            "urls": 9,
+            "impressionsPerIndexedUrl": 159.63,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/crises/",
+                "clicks": 33,
+                "impressions": 772,
+                "position": 10.546632124352332
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/ukraine-war/",
+                "clicks": 5,
+                "impressions": 254,
+                "position": 11.893700787401574
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/red-sea-security/",
+                "clicks": 3,
+                "impressions": 91,
+                "position": 7.912087912087912
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/sudan-conflict/",
+                "clicks": 2,
+                "impressions": 64,
+                "position": 11.5625
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/myanmar-civil-war/",
+                "clicks": 4,
+                "impressions": 39,
+                "position": 6.666666666666667
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://tech.worldmonitor.app/crises/ukraine-war/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 30
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/lebanon-israel-escalation/",
+                "clicks": 0,
+                "impressions": 9,
+                "position": 4.555555555555555
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/iran-israel-escalation/",
+                "clicks": 0,
+                "impressions": 23,
+                "position": 18.91304347826087
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/hormuz-gulf-security/",
+                "clicks": 0,
+                "impressions": 24,
+                "position": 5.125
+              },
+              {
+                "url": "https://www.worldmonitor.app/crises/myanmar-civil-war/",
+                "clicks": 4,
+                "impressions": 39,
+                "position": 6.666666666666667
+              }
+            ]
+          },
+          "tools": {
+            "clicks": 30,
+            "impressions": 844,
+            "ctr": 0.0355,
+            "averagePosition": 12.12,
+            "urls": 5,
+            "impressionsPerIndexedUrl": 211,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/tools/natural-hazard-pulse/",
+                "clicks": 20,
+                "impressions": 360,
+                "position": 17.255555555555556
+              },
+              {
+                "url": "https://www.worldmonitor.app/tools/",
+                "clicks": 3,
+                "impressions": 292,
+                "position": 8.345890410958905
+              },
+              {
+                "url": "https://www.worldmonitor.app/tools/airspace-disruption-checker/",
+                "clicks": 7,
+                "impressions": 177,
+                "position": 7.655367231638418
+              },
+              {
+                "url": "https://tech.worldmonitor.app/tools/",
+                "clicks": 0,
+                "impressions": 11,
+                "position": 18.272727272727273
+              },
+              {
+                "url": "https://www.worldmonitor.app/tools/signal-convergence/",
+                "clicks": 0,
+                "impressions": 4,
+                "position": 6
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/tools/signal-convergence/",
+                "clicks": 0,
+                "impressions": 4,
+                "position": 6
+              },
+              {
+                "url": "https://tech.worldmonitor.app/tools/",
+                "clicks": 0,
+                "impressions": 11,
+                "position": 18.272727272727273
+              },
+              {
+                "url": "https://www.worldmonitor.app/tools/airspace-disruption-checker/",
+                "clicks": 7,
+                "impressions": 177,
+                "position": 7.655367231638418
+              },
+              {
+                "url": "https://www.worldmonitor.app/tools/",
+                "clicks": 3,
+                "impressions": 292,
+                "position": 8.345890410958905
+              },
+              {
+                "url": "https://www.worldmonitor.app/tools/natural-hazard-pulse/",
+                "clicks": 20,
+                "impressions": 360,
+                "position": 17.255555555555556
+              }
+            ]
+          },
+          "pricing": {
+            "clicks": 1881,
+            "impressions": 360884,
+            "ctr": 0.0052,
+            "averagePosition": 1.98,
+            "urls": 29,
+            "impressionsPerIndexedUrl": 360884,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/pro",
+                "clicks": 1174,
+                "impressions": 311429,
+                "position": 1.7772975541776779
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=fr",
+                "clicks": 194,
+                "impressions": 12543,
+                "position": 2.3199394084349834
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=tr",
+                "clicks": 43,
+                "impressions": 9117,
+                "position": 1.6029395634528902
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro#pricing",
+                "clicks": 2,
+                "impressions": 8443,
+                "position": 5.279403055785858
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=ja",
+                "clicks": 359,
+                "impressions": 8231,
+                "position": 3.2535536386830275
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=th",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 9
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=ro",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 2
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro?lang=pl",
+                "clicks": 0,
+                "impressions": 6,
+                "position": 5.666666666666667
+              },
+              {
+                "url": "https://commodity.worldmonitor.app/pro",
+                "clicks": 0,
+                "impressions": 6,
+                "position": 3.5
+              },
+              {
+                "url": "https://www.worldmonitor.app/pro/assets/worldmonitor-7-mar-2026-CtI5YvxO.jpg",
+                "clicks": 0,
+                "impressions": 9,
+                "position": 3.6666666666666665
+              }
+            ]
+          },
+          "developer_mcp": {
+            "clicks": 27,
+            "impressions": 655,
+            "ctr": 0.0412,
+            "averagePosition": 9.5,
+            "urls": 27,
+            "impressionsPerIndexedUrl": 655,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/api/download?platform=macos-arm64",
+                "clicks": 25,
+                "impressions": 383,
+                "position": 8.347258485639687
+              },
+              {
+                "url": "https://www.worldmonitor.app/openapi.json",
+                "clicks": 0,
+                "impressions": 62,
+                "position": 8.467741935483872
+              },
+              {
+                "url": "https://www.worldmonitor.app/reference/changelog/page/5/",
+                "clicks": 0,
+                "impressions": 31,
+                "position": 7.67741935483871
+              },
+              {
+                "url": "https://worldmonitor.app/api/download?platform=windows-exe",
+                "clicks": 2,
+                "impressions": 29,
+                "position": 6.310344827586207
+              },
+              {
+                "url": "https://www.worldmonitor.app/reference/changelog/page/9/",
+                "clicks": 0,
+                "impressions": 25,
+                "position": 15
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/reference/changelog/page/12/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 9
+              },
+              {
+                "url": "https://www.worldmonitor.app/reference/changelog/page/10/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 8
+              },
+              {
+                "url": "https://www.worldmonitor.app/mcp",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              },
+              {
+                "url": "https://www.worldmonitor.app/api/climate/v1/list-air-quality-data",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 9
+              },
+              {
+                "url": "https://worldmonitor.app/mcp",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 1
+              }
+            ]
+          },
+          "sources": {
+            "clicks": 8,
+            "impressions": 6322,
+            "ctr": 0.0013,
+            "averagePosition": 7.09,
+            "urls": 15,
+            "impressionsPerIndexedUrl": 451.57,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/sources/?utm_source=welcome-nav",
+                "clicks": 0,
+                "impressions": 4223,
+                "position": 6.64551266871892
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/",
+                "clicks": 6,
+                "impressions": 1145,
+                "position": 10.039301310043669
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/china/",
+                "clicks": 1,
+                "impressions": 472,
+                "position": 5.815677966101695
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/energy/",
+                "clicks": 0,
+                "impressions": 321,
+                "position": 4.130841121495327
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/military/",
+                "clicks": 0,
+                "impressions": 39,
+                "position": 8.538461538461538
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/sources/news/page/6/",
+                "clicks": 0,
+                "impressions": 2,
+                "position": 6
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/news/page/7/",
+                "clicks": 0,
+                "impressions": 3,
+                "position": 7.333333333333333
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/news/page/5/",
+                "clicks": 0,
+                "impressions": 4,
+                "position": 8
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/news/page/3/",
+                "clicks": 0,
+                "impressions": 4,
+                "position": 8.75
+              },
+              {
+                "url": "https://www.worldmonitor.app/sources/infrastructure/",
+                "clicks": 0,
+                "impressions": 5,
+                "position": 4.4
+              }
+            ]
+          },
+          "compare": {
+            "clicks": 69,
+            "impressions": 954,
+            "ctr": 0.0723,
+            "averagePosition": 4.39,
+            "urls": 3,
+            "impressionsPerIndexedUrl": 318,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/compare/liveuamap-alternatives/",
+                "clicks": 69,
+                "impressions": 886,
+                "position": 4.248306997742663
+              },
+              {
+                "url": "https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/",
+                "clicks": 0,
+                "impressions": 41,
+                "position": 5.878048780487805
+              },
+              {
+                "url": "https://www.worldmonitor.app/compare/best-geopolitical-risk-dashboards/",
+                "clicks": 0,
+                "impressions": 27,
+                "position": 6.777777777777778
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/compare/best-geopolitical-risk-dashboards/",
+                "clicks": 0,
+                "impressions": 27,
+                "position": 6.777777777777778
+              },
+              {
+                "url": "https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/",
+                "clicks": 0,
+                "impressions": 41,
+                "position": 5.878048780487805
+              },
+              {
+                "url": "https://www.worldmonitor.app/compare/liveuamap-alternatives/",
+                "clicks": 69,
+                "impressions": 886,
+                "position": 4.248306997742663
+              }
+            ]
+          },
+          "research": {
+            "clicks": 2,
+            "impressions": 1380,
+            "ctr": 0.0014,
+            "averagePosition": 6.73,
+            "urls": 3,
+            "impressionsPerIndexedUrl": 460,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/",
+                "clicks": 1,
+                "impressions": 1227,
+                "position": 6.3626731866340664
+              },
+              {
+                "url": "https://www.worldmonitor.app/research/",
+                "clicks": 1,
+                "impressions": 87,
+                "position": 11.839080459770114
+              },
+              {
+                "url": "https://www.worldmonitor.app/accuracy/",
+                "clicks": 0,
+                "impressions": 66,
+                "position": 6.863636363636363
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/accuracy/",
+                "clicks": 0,
+                "impressions": 66,
+                "position": 6.863636363636363
+              },
+              {
+                "url": "https://www.worldmonitor.app/research/",
+                "clicks": 1,
+                "impressions": 87,
+                "position": 11.839080459770114
+              },
+              {
+                "url": "https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/",
+                "clicks": 1,
+                "impressions": 1227,
+                "position": 6.3626731866340664
+              }
+            ]
+          },
+          "use_cases": {
+            "clicks": 3,
+            "impressions": 352,
+            "ctr": 0.0085,
+            "averagePosition": 14.22,
+            "urls": 7,
+            "impressionsPerIndexedUrl": 88,
+            "impressionsPerIndexedUrlReason": null,
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/use-cases/monitor-supply-chain-disruptions/",
+                "clicks": 0,
+                "impressions": 160,
+                "position": 13.25625
+              },
+              {
+                "url": "https://www.worldmonitor.app/use-cases/monitor-country-risk/",
+                "clicks": 2,
+                "impressions": 97,
+                "position": 23.164948453608247
+              },
+              {
+                "url": "https://www.worldmonitor.app/use-cases/verify-breaking-news/",
+                "clicks": 0,
+                "impressions": 70,
+                "position": 6.142857142857143
+              },
+              {
+                "url": "https://www.worldmonitor.app/use-cases/",
+                "clicks": 1,
+                "impressions": 20,
+                "position": 4.55
+              },
+              {
+                "url": "https://commodity.worldmonitor.app/use-cases/monitor-supply-chain-disruptions/",
+                "clicks": 0,
+                "impressions": 3,
+                "position": 35.666666666666664
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://commodity.worldmonitor.app/use-cases/verify-breaking-news/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 7
+              },
+              {
+                "url": "https://commodity.worldmonitor.app/use-cases/",
+                "clicks": 0,
+                "impressions": 1,
+                "position": 2
+              },
+              {
+                "url": "https://commodity.worldmonitor.app/use-cases/monitor-supply-chain-disruptions/",
+                "clicks": 0,
+                "impressions": 3,
+                "position": 35.666666666666664
+              },
+              {
+                "url": "https://www.worldmonitor.app/use-cases/",
+                "clicks": 1,
+                "impressions": 20,
+                "position": 4.55
+              },
+              {
+                "url": "https://www.worldmonitor.app/use-cases/verify-breaking-news/",
+                "clicks": 0,
+                "impressions": 70,
+                "position": 6.142857142857143
+              }
+            ]
+          },
+          "markdown_twins": {
+            "clicks": 0,
+            "impressions": 0,
+            "ctr": null,
+            "averagePosition": null,
+            "urls": 0,
+            "impressionsPerIndexedUrl": null,
+            "impressionsPerIndexedUrlReason": "no URL in this family was confirmed indexed in the sample",
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [],
+            "worstUrls": []
+          },
+          "story_shares": {
+            "clicks": 1,
+            "impressions": 103,
+            "ctr": 0.0097,
+            "averagePosition": 5.38,
+            "urls": 1,
+            "impressionsPerIndexedUrl": null,
+            "impressionsPerIndexedUrlReason": "no URL in this family was confirmed indexed in the sample",
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://www.worldmonitor.app/story?c=UA&t=brief",
+                "clicks": 1,
+                "impressions": 103,
+                "position": 5.378640776699029
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://www.worldmonitor.app/story?c=UA&t=brief",
+                "clicks": 1,
+                "impressions": 103,
+                "position": 5.378640776699029
+              }
+            ]
+          },
+          "site_infrastructure": {
+            "clicks": 0,
+            "impressions": 7,
+            "ctr": 0,
+            "averagePosition": 8.57,
+            "urls": 1,
+            "impressionsPerIndexedUrl": null,
+            "impressionsPerIndexedUrlReason": "no URL in this family was confirmed indexed in the sample",
+            "impressionsPerIndexedUrlBasis": "sampled-indexed-count",
+            "bestUrls": [
+              {
+                "url": "https://worldmonitor.app/robots.txt",
+                "clicks": 0,
+                "impressions": 7,
+                "position": 8.571428571428571
+              }
+            ],
+            "worstUrls": [
+              {
+                "url": "https://worldmonitor.app/robots.txt",
+                "clicks": 0,
+                "impressions": 7,
+                "position": 8.571428571428571
+              }
+            ]
+          }
+        },
+        "unmapped": {
+          "urls": 73,
+          "clicks": 26,
+          "impressions": 12327,
+          "topUrls": [
+            {
+              "url": "https://www.worldmonitor.app/zh/map-engine",
+              "clicks": 20,
+              "impressions": 9486,
+              "position": 1.1816360952983345,
+              "reason": "https://www.worldmonitor.app/zh/map-engine does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/'to",
+              "clicks": 4,
+              "impressions": 1178,
+              "position": 1.4889643463497453,
+              "reason": "https://www.worldmonitor.app/'to does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/download",
+              "clicks": 2,
+              "impressions": 669,
+              "position": 1.1614349775784754,
+              "reason": "https://www.worldmonitor.app/download does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/dpa",
+              "clicks": 0,
+              "impressions": 126,
+              "position": 4.722222222222222,
+              "reason": "https://www.worldmonitor.app/dpa does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/cli",
+              "clicks": 0,
+              "impressions": 119,
+              "position": 10.025210084033613,
+              "reason": "https://happy.worldmonitor.app/cli does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/conflictservice/listucdpevents",
+              "clicks": 0,
+              "impressions": 59,
+              "position": 2.915254237288136,
+              "reason": "https://www.worldmonitor.app/api-reference/conflictservice/listucdpevents does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/release-packaging?lat=257.2683&lon=144.0000&zoom=2.50&view=america&timeRange=7d&layers=none",
+              "clicks": 0,
+              "impressions": 58,
+              "position": 6.206896551724138,
+              "reason": "https://happy.worldmonitor.app/release-packaging?lat=257.2683&lon=144.0000&zoom=2.50&view=america&timeRange=7d&layers=none does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/panels/disease-outbreaks",
+              "clicks": 0,
+              "impressions": 58,
+              "position": 6.344827586206897,
+              "reason": "https://www.worldmonitor.app/panels/disease-outbreaks does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/webmcp-maintenance",
+              "clicks": 0,
+              "impressions": 58,
+              "position": 7.137931034482759,
+              "reason": "https://www.worldmonitor.app/webmcp-maintenance does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/legal/terms.pdf",
+              "clicks": 0,
+              "impressions": 49,
+              "position": 6.061224489795919,
+              "reason": "https://www.worldmonitor.app/legal/terms.pdf does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/privacy",
+              "clicks": 0,
+              "impressions": 47,
+              "position": 3.978723404255319,
+              "reason": "https://www.worldmonitor.app/privacy does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/forecastservice/triggersimulation",
+              "clicks": 0,
+              "impressions": 39,
+              "position": 3.3333333333333335,
+              "reason": "https://www.worldmonitor.app/api-reference/forecastservice/triggersimulation does not map to a page family"
+            },
+            {
+              "url": "https://status.worldmonitor.app/",
+              "clicks": 0,
+              "impressions": 37,
+              "position": 4.486486486486486,
+              "reason": "host status.worldmonitor.app has no page family in the worldmonitor.app property"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/panels/wsb-ticker-scanner",
+              "clicks": 0,
+              "impressions": 31,
+              "position": 7.548387096774194,
+              "reason": "https://happy.worldmonitor.app/panels/wsb-ticker-scanner does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/panels/thermal-escalation",
+              "clicks": 0,
+              "impressions": 25,
+              "position": 4.32,
+              "reason": "https://www.worldmonitor.app/panels/thermal-escalation does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/usage-quickstart",
+              "clicks": 0,
+              "impressions": 22,
+              "position": 7.954545454545454,
+              "reason": "https://happy.worldmonitor.app/usage-quickstart does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/intelligenceservice/listgpsinterference",
+              "clicks": 0,
+              "impressions": 17,
+              "position": 6.588235294117647,
+              "reason": "https://www.worldmonitor.app/api-reference/intelligenceservice/listgpsinterference does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/support",
+              "clicks": 0,
+              "impressions": 16,
+              "position": 6.625,
+              "reason": "https://www.worldmonitor.app/support does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/scenarioservice/getscenariostatus",
+              "clicks": 0,
+              "impressions": 15,
+              "position": 6.066666666666666,
+              "reason": "https://www.worldmonitor.app/api-reference/scenarioservice/getscenariostatus does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/methodology/disease-alert-level",
+              "clicks": 0,
+              "impressions": 15,
+              "position": 5.933333333333334,
+              "reason": "https://www.worldmonitor.app/methodology/disease-alert-level does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/scenarioservice/listscenariotemplates",
+              "clicks": 0,
+              "impressions": 13,
+              "position": 5.153846153846154,
+              "reason": "https://www.worldmonitor.app/api-reference/scenarioservice/listscenariotemplates does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/economicservice/getnatgasstorage",
+              "clicks": 0,
+              "impressions": 12,
+              "position": 5.75,
+              "reason": "https://www.worldmonitor.app/api-reference/economicservice/getnatgasstorage does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/scenarioservice/runscenario",
+              "clicks": 0,
+              "impressions": 12,
+              "position": 4.916666666666666,
+              "reason": "https://www.worldmonitor.app/api-reference/scenarioservice/runscenario does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/methodology/food-stocks",
+              "clicks": 0,
+              "impressions": 12,
+              "position": 8.583333333333332,
+              "reason": "https://www.worldmonitor.app/methodology/food-stocks does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/aviationservice/getairportopssummary",
+              "clicks": 0,
+              "impressions": 11,
+              "position": 2.4545454545454546,
+              "reason": "https://www.worldmonitor.app/api-reference/aviationservice/getairportopssummary does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/zh/pricing",
+              "clicks": 0,
+              "impressions": 10,
+              "position": 33.6,
+              "reason": "https://api.worldmonitor.app/zh/pricing does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/infrastructureservice/listinternetoutages",
+              "clicks": 0,
+              "impressions": 10,
+              "position": 3.9,
+              "reason": "https://www.worldmonitor.app/api-reference/infrastructureservice/listinternetoutages does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/zh/releasing-cli",
+              "clicks": 0,
+              "impressions": 9,
+              "position": 3.2222222222222223,
+              "reason": "https://www.worldmonitor.app/zh/releasing-cli does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/usage-quickstart?lat=0.1792&lon=-0.8062&zoom=1.00&view=america&timeRange=7d&layers=none",
+              "clicks": 0,
+              "impressions": 8,
+              "position": 1,
+              "reason": "https://happy.worldmonitor.app/usage-quickstart?lat=0.1792&lon=-0.8062&zoom=1.00&view=america&timeRange=7d&layers=none does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/premium-finance-search",
+              "clicks": 0,
+              "impressions": 7,
+              "position": 3.857142857142857,
+              "reason": "https://api.worldmonitor.app/premium-finance-search does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/privacy",
+              "clicks": 0,
+              "impressions": 7,
+              "position": 4,
+              "reason": "https://happy.worldmonitor.app/privacy does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/api-reference/webcamservice/listwebcams",
+              "clicks": 0,
+              "impressions": 7,
+              "position": 13.428571428571429,
+              "reason": "https://www.worldmonitor.app/api-reference/webcamservice/listwebcams does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/api-reference/aviationservice/listairportflights",
+              "clicks": 0,
+              "impressions": 6,
+              "position": 2.333333333333333,
+              "reason": "https://api.worldmonitor.app/api-reference/aviationservice/listairportflights does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/scenario-engine",
+              "clicks": 0,
+              "impressions": 6,
+              "position": 11.666666666666666,
+              "reason": "https://api.worldmonitor.app/scenario-engine does not map to a page family"
+            },
+            {
+              "url": "https://finance.worldmonitor.app/api-reference/thermalservice/listthermalescalations",
+              "clicks": 0,
+              "impressions": 5,
+              "position": 14,
+              "reason": "https://finance.worldmonitor.app/api-reference/thermalservice/listthermalescalations does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/api-reference/intelligenceservice/getcountryintelbrief",
+              "clicks": 0,
+              "impressions": 5,
+              "position": 9,
+              "reason": "https://happy.worldmonitor.app/api-reference/intelligenceservice/getcountryintelbrief does not map to a page family"
+            },
+            {
+              "url": "https://commodity.worldmonitor.app/api-reference/newsservice/getsummarizearticlecache",
+              "clicks": 0,
+              "impressions": 4,
+              "position": 5.75,
+              "reason": "https://commodity.worldmonitor.app/api-reference/newsservice/getsummarizearticlecache does not map to a page family"
+            },
+            {
+              "url": "https://commodity.worldmonitor.app/panels/latest-brief",
+              "clicks": 0,
+              "impressions": 4,
+              "position": 5.5,
+              "reason": "https://commodity.worldmonitor.app/panels/latest-brief does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/zh/relay-parameters",
+              "clicks": 0,
+              "impressions": 3,
+              "position": 1,
+              "reason": "https://api.worldmonitor.app/zh/relay-parameters does not map to a page family"
+            },
+            {
+              "url": "https://clerk.worldmonitor.app/",
+              "clicks": 0,
+              "impressions": 3,
+              "position": 75,
+              "reason": "host clerk.worldmonitor.app has no page family in the worldmonitor.app property"
+            },
+            {
+              "url": "https://docs.worldmonitor.app/",
+              "clicks": 0,
+              "impressions": 3,
+              "position": 2.333333333333333,
+              "reason": "host docs.worldmonitor.app has no page family in the worldmonitor.app property"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/api-reference/climateservice/listclimatedisasters",
+              "clicks": 0,
+              "impressions": 3,
+              "position": 4.333333333333334,
+              "reason": "https://happy.worldmonitor.app/api-reference/climateservice/listclimatedisasters does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/api-reference/healthservice/listairqualityalerts",
+              "clicks": 0,
+              "impressions": 3,
+              "position": 1.6666666666666665,
+              "reason": "https://happy.worldmonitor.app/api-reference/healthservice/listairqualityalerts does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/api-reference/infrastructureservice/listinternettrafficanomalies",
+              "clicks": 0,
+              "impressions": 3,
+              "position": 7.333333333333333,
+              "reason": "https://happy.worldmonitor.app/api-reference/infrastructureservice/listinternettrafficanomalies does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/api-reference/aviationservice/getyoutubelivestreaminfo",
+              "clicks": 0,
+              "impressions": 2,
+              "position": 9.5,
+              "reason": "https://api.worldmonitor.app/api-reference/aviationservice/getyoutubelivestreaminfo does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/api-reference/consumerpricesservice/getconsumerpricebasketseries",
+              "clicks": 0,
+              "impressions": 2,
+              "position": 4,
+              "reason": "https://api.worldmonitor.app/api-reference/consumerpricesservice/getconsumerpricebasketseries does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/api-reference/resilienceservice/getresilienceruntimemanifest",
+              "clicks": 0,
+              "impressions": 2,
+              "position": 4.5,
+              "reason": "https://api.worldmonitor.app/api-reference/resilienceservice/getresilienceruntimemanifest does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/methodology/chokepoints",
+              "clicks": 0,
+              "impressions": 2,
+              "position": 8,
+              "reason": "https://api.worldmonitor.app/methodology/chokepoints does not map to a page family"
+            },
+            {
+              "url": "https://commodity.worldmonitor.app/releasing-cli",
+              "clicks": 0,
+              "impressions": 2,
+              "position": 6,
+              "reason": "https://commodity.worldmonitor.app/releasing-cli does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/api-reference/consumerpricesservice/listconsumerpricecategories",
+              "clicks": 0,
+              "impressions": 2,
+              "position": 6,
+              "reason": "https://happy.worldmonitor.app/api-reference/consumerpricesservice/listconsumerpricecategories does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/api-reference/infrastructureservice/listinternetddosattacks",
+              "clicks": 0,
+              "impressions": 2,
+              "position": 8.5,
+              "reason": "https://happy.worldmonitor.app/api-reference/infrastructureservice/listinternetddosattacks does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/fr",
+              "clicks": 0,
+              "impressions": 2,
+              "position": 1,
+              "reason": "https://www.worldmonitor.app/fr does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/desktop-app",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 7,
+              "reason": "https://api.worldmonitor.app/desktop-app does not map to a page family"
+            },
+            {
+              "url": "https://api.worldmonitor.app/zh/route-explorer",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://api.worldmonitor.app/zh/route-explorer does not map to a page family"
+            },
+            {
+              "url": "https://commodity.worldmonitor.app/api-reference/climateservice/listairqualitydata",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 9,
+              "reason": "https://commodity.worldmonitor.app/api-reference/climateservice/listairqualitydata does not map to a page family"
+            },
+            {
+              "url": "https://commodity.worldmonitor.app/api-reference/marketservice/getgoldintelligence",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 6,
+              "reason": "https://commodity.worldmonitor.app/api-reference/marketservice/getgoldintelligence does not map to a page family"
+            },
+            {
+              "url": "https://commodity.worldmonitor.app/api-reference/marketservice/getsectorsummary",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 3,
+              "reason": "https://commodity.worldmonitor.app/api-reference/marketservice/getsectorsummary does not map to a page family"
+            },
+            {
+              "url": "https://commodity.worldmonitor.app/panels/deduction",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 47,
+              "reason": "https://commodity.worldmonitor.app/panels/deduction does not map to a page family"
+            },
+            {
+              "url": "https://commodity.worldmonitor.app/releasing-cli?lat=257.2683&lon=36.0000&zoom=2.50&view=america&timeRange=7d&layers=economic%2Coutages%2Cnatural%2Cminerals",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 10,
+              "reason": "https://commodity.worldmonitor.app/releasing-cli?lat=257.2683&lon=36.0000&zoom=2.50&view=america&timeRange=7d&layers=economic%2Coutages%2Cnatural%2Cminerals does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/api-reference/forecastservice/getforecasts",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 4,
+              "reason": "https://happy.worldmonitor.app/api-reference/forecastservice/getforecasts does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/api-reference/marketservice/listcommodityquotes",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://happy.worldmonitor.app/api-reference/marketservice/listcommodityquotes does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/api-reference/supplychainservice/getshippingrates",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://happy.worldmonitor.app/api-reference/supplychainservice/getshippingrates does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/global-procurement-intelligence",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 4,
+              "reason": "https://happy.worldmonitor.app/global-procurement-intelligence does not map to a page family"
+            },
+            {
+              "url": "https://happy.worldmonitor.app/zh/api-notifications",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 5,
+              "reason": "https://happy.worldmonitor.app/zh/api-notifications does not map to a page family"
+            },
+            {
+              "url": "https://www.happy.worldmonitor.app/dashboard",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 3,
+              "reason": "host www.happy.worldmonitor.app has no page family in the worldmonitor.app property"
+            },
+            {
+              "url": "https://www.worldmonitor.app/app/docs/getting-started",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://www.worldmonitor.app/app/docs/getting-started does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/auth/",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://www.worldmonitor.app/auth/ does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/chokepoint/panama-canal/",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://www.worldmonitor.app/chokepoint/panama-canal/ does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/desktop-app",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 6,
+              "reason": "https://www.worldmonitor.app/desktop-app does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/map-engine",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 1,
+              "reason": "https://www.worldmonitor.app/map-engine does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/panels/fsi",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 5,
+              "reason": "https://www.worldmonitor.app/panels/fsi does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/zh/military-tracking",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 10,
+              "reason": "https://www.worldmonitor.app/zh/military-tracking does not map to a page family"
+            },
+            {
+              "url": "https://www.worldmonitor.app/zh/releasing-cli?lat=175.2683&lon=-108.0000&zoom=2.50&view=america&timeRange=7d&layers=conflicts%2Chotspots%2Csanctions%2Cweather%2Coutages%2Cnatural",
+              "clicks": 0,
+              "impressions": 1,
+              "position": 2,
+              "reason": "https://www.worldmonitor.app/zh/releasing-cli?lat=175.2683&lon=-108.0000&zoom=2.50&view=america&timeRange=7d&layers=conflicts%2Chotspots%2Csanctions%2Cweather%2Coutages%2Cnatural does not map to a page family"
+            }
+          ]
+        },
+        "topQueries": [
+          {
+            "query": "world monitor",
+            "clicks": 118084,
+            "impressions": 164710,
+            "position": 1.0945297796126525
+          },
+          {
+            "query": "worldmonitor",
+            "clicks": 55584,
+            "impressions": 70540,
+            "position": 1.0124326623192514
+          },
+          {
+            "query": "monitor the situation",
+            "clicks": 1358,
+            "impressions": 59260,
+            "position": 3.0629092136348297
+          },
+          {
+            "query": "ww3 monitor",
+            "clicks": 154,
+            "impressions": 35869,
+            "position": 4.727508433466225
+          },
+          {
+            "query": "world monitor app",
+            "clicks": 23789,
+            "impressions": 30520,
+            "position": 1.0086828309305373
+          },
+          {
+            "query": "war monitor 3",
+            "clicks": 4,
+            "impressions": 26396,
+            "position": 7.0606910137899686
+          },
+          {
+            "query": "warmonitor",
+            "clicks": 304,
+            "impressions": 25963,
+            "position": 4.240380541539883
+          },
+          {
+            "query": "worldmonitor app",
+            "clicks": 18138,
+            "impressions": 20928,
+            "position": 1.003058103975535
+          },
+          {
+            "query": "war monitor",
+            "clicks": 772,
+            "impressions": 20386,
+            "position": 4.802609634062592
+          },
+          {
+            "query": "world monitor github",
+            "clicks": 1682,
+            "impressions": 12707,
+            "position": 2.2016211536948136
+          },
+          {
+            "query": "pizza index",
+            "clicks": 60,
+            "impressions": 11866,
+            "position": 7.734535648070116
+          },
+          {
+            "query": "world",
+            "clicks": 12,
+            "impressions": 8609,
+            "position": 13.795330468114763
+          },
+          {
+            "query": "worldmonitor.ap",
+            "clicks": 6879,
+            "impressions": 8188,
+            "position": 1.0101367855398145
+          },
+          {
+            "query": "pentagon pizza index",
+            "clicks": 16,
+            "impressions": 6902,
+            "position": 9.241669081425673
+          },
+          {
+            "query": "word monitor",
+            "clicks": 4499,
+            "impressions": 6883,
+            "position": 1.2097922417550486
+          },
+          {
+            "query": "ワールドモニター",
+            "clicks": 4245,
+            "impressions": 6046,
+            "position": 1.016043665233212
+          },
+          {
+            "query": "ww3 monitor x",
+            "clicks": 3,
+            "impressions": 5781,
+            "position": 5.278671510119357
+          },
+          {
+            "query": "worldmonitor.app",
+            "clicks": 4242,
+            "impressions": 5616,
+            "position": 1.0208333333333333
+          },
+          {
+            "query": "monitor the situation middle east",
+            "clicks": 52,
+            "impressions": 4350,
+            "position": 4.094942528735633
+          },
+          {
+            "query": "world tracker",
+            "clicks": 514,
+            "impressions": 3920,
+            "position": 3.872448979591837
+          }
+        ]
+      }
+    ]
+  },
+  "samplingNotes": [
+    "28d: 32 page rows map to no family (10947 impressions). They count in the totals and are listed under unmapped.",
+    "90d: 73 page rows map to no family (12327 impressions). They count in the totals and are listed under unmapped."
+  ],
+  "guardrails": [
+    "Shares are measured over inspected rows. No sampled share is projected onto a reported total.",
+    "Google coverage state and the live probe status are both recorded; disagreement is flagged, never resolved.",
+    "Property identifiers and credentials stay in operator configuration and never reach this file."
+  ]
+}

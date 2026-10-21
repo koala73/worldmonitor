@@ -1,0 +1,27 @@
+{
+  "cap": "urn:oasis:names:tc:emergency:cap:1.2",
+  "alert": {
+    "status": "Actual",
+    "msgType": "Update",
+    "scope": "Public",
+    "sender": "cap-pac@canada.ca",
+    "identifier": "urn:oid:2.49.0.1.124.0639846732.2026",
+    "sent": "2026-08-18T00:52:24-00:00",
+    "info": [
+      {
+        "language": "en-CA",
+        "category": "Met",
+        "event": "thunderstorm",
+        "responseType": "AllClear",
+        "urgency": "Past",
+        "severity": "Minor",
+        "certainty": "Observed",
+        "senderName": "Environment Canada",
+        "headline": "yellow warning - severe thunderstorm - ended",
+        "description": "Severe thunderstorms associated with this alert have weakened or moved out of the area.",
+        "effective": "2026-08-18T00:52:24-00:00",
+        "expires": "2026-08-18T01:52:24-00:00"
+      }
+    ]
+  }
+}

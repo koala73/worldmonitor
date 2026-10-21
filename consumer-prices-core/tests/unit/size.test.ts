@@ -35,6 +35,60 @@ describe('parseSize', () => {
     expect(parseSize('500ml')?.baseQuantity).toBe(500);
   });
 
+  // Regression (#6267): only the `l`/`L` symbol and the singular spellings
+  // were mapped, so Noon UAE's "3 Liters" parsed to null. A null parse makes
+  // the validator's quantity window report `unknown` — not a hard fail — so a
+  // 3L bottle was accepted as the 1L basket item at ~3x the price.
+  it('parses spelled-out litres, singular and plural', () => {
+    for (const raw of ['3 Liters', '3 Litres', '3 liter', '3 litre', '3 LITERS']) {
+      const r = parseSize(raw);
+      expect(r?.baseQuantity, raw).toBe(3000);
+      expect(r?.baseUnit, raw).toBe('ml');
+    }
+  });
+
+  it('parses spelled-out mass units, singular and plural', () => {
+    expect(parseSize('500 grams')?.baseQuantity).toBe(500);
+    expect(parseSize('500 gramme')?.baseQuantity).toBe(500);
+    expect(parseSize('1 kilogram')?.baseQuantity).toBe(1000);
+    expect(parseSize('2 kilos')?.baseQuantity).toBe(2000);
+    expect(parseSize('400 gm')?.baseQuantity).toBe(400);
+    expect(parseSize('400 gms')?.baseQuantity).toBe(400);
+    expect(parseSize('2 pounds')?.baseQuantity).toBeCloseTo(907.184);
+    expect(parseSize('8 ounces')?.baseQuantity).toBeCloseTo(226.796);
+  });
+
+  it('parses spelled-out volume units below a litre', () => {
+    expect(parseSize('750 millilitres')?.baseQuantity).toBe(750);
+    expect(parseSize('750 milliliters')?.baseQuantity).toBe(750);
+    expect(parseSize('33 centilitres')?.baseQuantity).toBe(330);
+    expect(parseSize('2 gallons')?.baseQuantity).toBeCloseTo(7570.82);
+  });
+
+  // The plural fallback strips ONE trailing `s` only after a direct miss, so
+  // units whose plural is itself a key keep resolving directly.
+  it('keeps directly-mapped plural count units resolving to ct', () => {
+    expect(parseSize('24 pcs')?.baseUnit).toBe('ct');
+    expect(parseSize('24 pieces')?.baseUnit).toBe('ct');
+    expect(parseSize('6 sachets')?.baseUnit).toBe('ct');
+  });
+
+  // Deliberately still unmapped — see normalizeUnit's comment. Mapping any of
+  // these would make more canonical names parse, which LOOSENS the adapter's
+  // missing-size rejection instead of tightening it.
+  it('leaves pack, unidades and pint unparsed', () => {
+    expect(parseSize('24 pack')).toBeNull();
+    expect(parseSize('12 unidades')).toBeNull();
+    expect(parseSize('2 pint')).toBeNull();
+  });
+
+  // UNIT_MAP was an object literal, so `UNIT_MAP['constructor']` resolved
+  // through the prototype chain to a truthy Function and produced a
+  // ParsedSize with a NaN baseQuantity and an undefined baseUnit.
+  it('returns null for prototype-chain keys', () => {
+    expect(parseSize('5 constructor')).toBeNull();
+  });
+
   it('parses count units', () => {
     const r = parseSize('12 rolls');
     expect(r?.baseQuantity).toBe(12);

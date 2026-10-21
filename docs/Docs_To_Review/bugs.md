@@ -45,7 +45,8 @@ Keep the `App` class as a thin composition root that wires controllers together.
 | Field | Value |
 |---|---|
 | **Severity** | Critical (security) |
-| **Affected** | `src/components/MapPopup.ts`, `src/components/DeckGLMap.ts`, `src/components/CascadePanel.ts`, `src/components/CountryBriefPage.ts`, `src/components/CountryIntelModal.ts`, `src/components/InsightsPanel.ts`, `src/App.ts` (lines ~2763, ~2817) |
+| **Affected** | `src/components/MapPopup.ts`, `src/components/DeckGLMap.ts`, `src/components/CascadePanel.ts`, `src/components/CountryBriefPage.ts`, `src/components/InsightsPanel.ts`, `src/App.ts` (lines ~2763, ~2817) |
+| **Historical removals** | CountryIntelModal was part of the original audit set but has since been deleted as an unused orphan. |
 | **Depends on** | — |
 
 **Description**
@@ -59,7 +60,7 @@ Add an ESLint rule or grep pre-commit hook to flag new `innerHTML` usage.
 
 ---
 
-### BUG-003 — `youtube/live` Dev Endpoint Always Returns `null` Video
+### BUG-003 — `youtube/live` Dev Endpoint Always Returned `null` Video
 
 | Field | Value |
 |---|---|
@@ -67,12 +68,14 @@ Add an ESLint rule or grep pre-commit hook to flag new `innerHTML` usage.
 | **Affected** | `vite.config.ts` (line ~148-151) |
 | **Depends on** | — |
 
+**Status**: Resolved. The dev plugin was deleted when channel live detection was retired; Live News plays verified streams from `src/config/live-video-sources.ts`.
+
 **Description**
-The `youtubeLivePlugin()` Vite middleware hardcodes `{ videoId: null, channel }` with a TODO comment: *"will implement proper detection later"*.
-This means the LiveNewsPanel falls back to static channel-level video IDs during local development, never resolving the actual live stream.
+The `youtubeLivePlugin()` Vite middleware, since deleted, hardcoded `{ videoId: null, channel }` with a TODO comment: *"will implement proper detection later"*.
+This meant the LiveNewsPanel fell back to static channel-level video IDs during local development, never resolving the actual live stream.
 
 **AI instructions**
-Implement the pending live-stream detection using the `youtubei.js` library already in `package.json`, or remove the dev plugin and proxy to the production API route (`/api/youtube/live.js`).
+None: resolved by deleting the dev plugin. The `youtubei.js` dependency this entry once suggested was removed from `package.json` at the same time.
 
 ---
 
@@ -125,7 +128,7 @@ The Polymarket dev proxy targets `https://worldmonitor.app` (the live production
 This creates a circular dependency in dev → prod, means dev can break when prod is deploying, and masks local proxy bugs until they hit production.
 
 **AI instructions**
-Proxy directly to `gamma-api.polymarket.com` or implement the same edge-function logic locally in a Vite middleware plugin (similar to `youtubeLivePlugin`).
+Proxy directly to `gamma-api.polymarket.com` or implement the same edge-function logic locally in a Vite middleware plugin (similar to `rssProxyPlugin`).
 
 ---
 

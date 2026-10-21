@@ -1,0 +1,545 @@
+/**
+ * #5911 — `startCheckout()` on desktop must open Dodo's hosted checkout in the
+ * OS browser and must ask Dodo to return the buyer to a WEB origin.
+ *
+ * Two separate defects, both invisible to the existing web-path suites:
+ *
+ *   1. `window.location.assign(hostedCheckoutUrl)` replaced the entire Tauri
+ *      WebView with Dodo's page — no tab, no back button — and ran 3DS/fraud
+ *      inside an embedded WebView, the exact nesting #4449 moved away from.
+ *   2. The return URL was built from `window.location.origin`, which on
+ *      desktop is `tauri://localhost`. A buyer who paid was redirected to a
+ *      route no browser can open, so the `?wm_checkout=return` reconciliation
+ *      never ran anywhere.
+ *
+ * Drives the REAL `startCheckout` through the same esbuild stub harness the
+ * other checkout suites use (`checkout-unparsable-success-body.test.mts`), so
+ * the real hosted-URL guard, the real return-URL builders and the real
+ * `external-navigation` + `tauri-bridge` modules are all exercised. Only the
+ * runtime detector is stubbed, so a case states its runtime rather than
+ * inferring one from a synthesised window.
+ */
+
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { build, type Plugin } from 'esbuild';
+
+interface TauriInvocation {
+  command: string;
+  payload?: Record<string, unknown>;
+}
+
+interface HarnessState {
+  desktop: boolean;
+  /** Simulates the native opener refusing / hanging past its timeout. */
+  invokeRejects: boolean;
+  /** null models a signed-out desktop user (first launch, before sign-in). */
+  currentUser: { id: string; email: string } | null;
+  responseStatus: number;
+  /** Bodies POSTed to /api/create-checkout. */
+  requestBodies: Array<Record<string, unknown>>;
+  invocations: TauriInvocation[];
+  /** WebView navigations — must stay empty on desktop. */
+  assignedUrls: string[];
+  openedWindows: string[];
+  toasts: string[];
+  errorToasts: string[];
+  responseBody: string;
+  productLoad: Promise<void>;
+  onProductLoad: () => void;
+  onAuthState: (state: { user: { id: string } | null }) => void;
+  signInCalls: number;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __desktopCheckoutHarness: HarnessState;
+}
+
+const HOSTED_CHECKOUT_URL = 'https://checkout.dodopayments.com/buy/sess_123';
+
+class MemoryStorage {
+  private readonly store = new Map<string, string>();
+  getItem(key: string): string | null {
+    return this.store.has(key) ? (this.store.get(key) as string) : null;
+  }
+  setItem(key: string, value: string): void {
+    this.store.set(key, String(value));
+  }
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+/**
+ * Minimal `document` double: the desktop branch renders the "return to app"
+ * toast, which the web path never reached, so the shared harness never needed
+ * one. Only what `utils/toast.ts` touches is modelled.
+ */
+function installDocument(): void {
+  const body = {
+    appendChild: (el: { textContent: string }) => {
+      globalThis.__desktopCheckoutHarness.toasts.push(el.textContent);
+    },
+  };
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      body,
+      querySelector: () => null,
+      getElementById: () => null,
+      createElement: () => ({
+        className: '',
+        textContent: '',
+        style: {},
+        classList: { add: () => {}, remove: () => {} },
+        setAttribute: () => {},
+        remove: () => {},
+      }),
+    },
+  });
+  Object.defineProperty(globalThis, 'requestAnimationFrame', {
+    configurable: true,
+    value: (fn: () => void) => {
+      fn();
+      return 1;
+    },
+  });
+}
+
+function resetHarness(
+  desktop: boolean,
+  overrides: Partial<Pick<HarnessState, 'invokeRejects' | 'currentUser' | 'responseStatus' | 'responseBody'>> = {},
+): void {
+  globalThis.__desktopCheckoutHarness = {
+    desktop,
+    invokeRejects: false,
+    currentUser: { id: 'user_1', email: 'buyer@example.com' },
+    responseStatus: 200,
+    requestBodies: [],
+    invocations: [],
+    assignedUrls: [],
+    openedWindows: [],
+    toasts: [],
+    errorToasts: [],
+    responseBody: JSON.stringify({ checkout_url: HOSTED_CHECKOUT_URL }),
+    productLoad: Promise.resolve(),
+    onProductLoad: () => {},
+    onAuthState: () => {},
+    signInCalls: 0,
+    ...overrides,
+  };
+
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: new MemoryStorage() });
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: new MemoryStorage() });
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      setInterval: () => 1,
+      clearInterval: () => {},
+      // The WebView origin a shipped Tauri build actually reports. On web the
+      // suite uses the real dashboard origin.
+      location: {
+        // A VARIANT host on the web side on purpose: if it were
+        // worldmonitor.app, the web return-origin assertion below would pass
+        // even if resolveCheckoutReturnOrigin always returned the canonical
+        // origin — the exact property the desktop case exists to prove.
+        href: desktop ? 'tauri://localhost/index.html' : 'https://tech.worldmonitor.app/dashboard',
+        origin: desktop ? 'tauri://localhost' : 'https://tech.worldmonitor.app',
+        pathname: desktop ? '/index.html' : '/dashboard',
+        search: '',
+        hash: '',
+        assign: (url: string) => {
+          globalThis.__desktopCheckoutHarness.assignedUrls.push(url);
+        },
+      },
+      open: (url: string) => {
+        globalThis.__desktopCheckoutHarness.openedWindows.push(url);
+        // A non-null handle models Tauri's window.open succeeding — i.e. the
+        // fallback opened ANOTHER WEBVIEW, not the OS browser.
+        return {} as unknown;
+      },
+      history: { replaceState: () => {} },
+      __TAURI_INTERNALS__: {
+        invoke: async (command: string, payload?: Record<string, unknown>) => {
+          const harness = globalThis.__desktopCheckoutHarness;
+          harness.invocations.push({ command, payload });
+          if (harness.invokeRejects) throw new Error('open_url refused');
+        },
+      },
+    },
+  });
+  Object.defineProperty(globalThis, 'fetch', {
+    configurable: true,
+    value: async (_url: string, init?: { body?: string }) => {
+      const harness = globalThis.__desktopCheckoutHarness;
+      harness.requestBodies.push(JSON.parse(init?.body ?? '{}'));
+      return {
+        ok: harness.responseStatus >= 200 && harness.responseStatus < 300,
+        status: harness.responseStatus,
+        text: async () => harness.responseBody,
+        json: async () => JSON.parse(harness.responseBody),
+        headers: { get: () => null },
+      };
+    },
+  });
+  installDocument();
+}
+
+const stubSources: Record<string, string> = {
+  '@/bootstrap/sentry-defer': `
+    export function enqueueSentryCall(fn) {
+      fn({ addBreadcrumb: () => {}, captureMessage: () => {}, captureException: () => {} });
+    }
+  `,
+  // The one behavioural knob: which runtime the case is asserting. The real
+  // detector has its own coverage in tests/desktop-external-handoff.test.mts,
+  // which drives it from a synthesised Tauri window.
+  './desktop-runtime': `
+    export const isDesktopRuntime = () => globalThis.__desktopCheckoutHarness.desktop;
+  `,
+  './billing': `
+    export const openBillingPortal = async () => {};
+    export const prereserveBillingPortalTab = () => null;
+  `,
+  './clerk': `
+    export const getCurrentClerkUser = () => globalThis.__desktopCheckoutHarness.currentUser;
+    export const getClerkToken = async () => 'tok_test';
+    export const openSignIn = () => { globalThis.__desktopCheckoutHarness.signInCalls++; };
+  `,
+  './analytics': `
+    export const trackCheckoutStart = (_productId, _authed, surface, _attribution, context) => (
+      context ?? { eventSurface: surface, origin: { kind: 'dashboard' } }
+    );
+  `,
+  './auth-state': `
+    export const subscribeAuthState = (listener) => {
+      const h = globalThis.__desktopCheckoutHarness;
+      h.onAuthState = listener;
+      listener({ user: h.currentUser });
+      return () => {};
+    };
+  `,
+  '@/config/products': `
+    globalThis.__desktopCheckoutHarness.onProductLoad();
+    await globalThis.__desktopCheckoutHarness.productLoad;
+    export * from './src/config/products.ts';
+  `,
+  './checkout-attempt': `
+    export const saveCheckoutAttempt = () => {};
+    export const loadCheckoutAttempt = () => null;
+    export const clearCheckoutAttempt = () => {};
+  `,
+  './checkout-error-toast': `
+    export const showCheckoutErrorToast = (m) => globalThis.__desktopCheckoutHarness.errorToasts.push(m);
+  `,
+  './entitlements': `
+    export const isEntitled = () => false;
+    export const onEntitlementChange = () => () => {};
+  `,
+  './checkout-banner-state': `
+    export const CLASSIC_AUTO_DISMISS_MS = 5000;
+    export const EXTENDED_UNLOCK_TIMEOUT_MS = 30000;
+    export const ENTITLEMENT_POLL_MS = 1000;
+    export const LATE_ACTIVATION_GRACE_MS = 300000;
+    export const maskEmail = (email) => email ?? null;
+  `,
+  './referral-capture': `
+    export const loadActiveReferral = () => null;
+    // Re-exported real, never faked: startCheckout gates its outgoing
+    // referral on this, so a stub that always returns true would make any
+    // referral assertion in this harness vacuous (#6493).
+    export { isAffiliateCode } from './src/services/referral-capture.ts';
+  `,
+  './checkout-duplicate-dialog': `
+    export const showDuplicateSubscriptionDialog = () => {};
+  `,
+  './checkout-pending-dialog': `
+    export const showCheckoutPendingDialog = () => {};
+  `,
+  './checkout-plan-names': `
+    export const resolvePlanDisplayName = () => 'Pro';
+  `,
+};
+
+const harnessPlugin: Plugin = {
+  name: 'desktop-checkout-harness',
+  setup(buildApi) {
+    buildApi.onResolve({ filter: /.*/ }, (args) =>
+      Object.hasOwn(stubSources, args.path) ? { path: args.path, namespace: 'dch-stub' } : null,
+    );
+    buildApi.onLoad({ filter: /.*/, namespace: 'dch-stub' }, (args) => ({
+      contents: stubSources[args.path],
+      loader: 'js',
+      // Lets a stub re-export the real module it partially replaces.
+      resolveDir: process.cwd(),
+    }));
+  },
+};
+
+async function loadCheckoutModule(): Promise<{
+  startCheckout: (productId: string) => Promise<boolean>;
+  resumePendingCheckout: () => Promise<boolean>;
+  initCheckoutWatchers: () => void;
+  capturePendingCheckoutIntentFromUrl: () => unknown;
+  DESKTOP_CHECKOUT_HANDOFF_MESSAGE: string;
+}> {
+  const result = await build({
+    absWorkingDir: process.cwd(),
+    stdin: {
+      contents:
+        `export { startCheckout, resumePendingCheckout, initCheckoutWatchers, capturePendingCheckoutIntentFromUrl, DESKTOP_CHECKOUT_HANDOFF_MESSAGE } from './src/services/checkout.ts';`,
+      resolveDir: process.cwd(),
+      loader: 'ts',
+    },
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2022',
+    write: false,
+    define: { 'import.meta.env.VITE_DODO_ENVIRONMENT': '"test_mode"' },
+    plugins: [harnessPlugin],
+  });
+  const dataUrl = `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`;
+  return await import(`${dataUrl}#${Date.now()}-${Math.random()}`);
+}
+
+const PENDING_CHECKOUT_KEY = 'wm-pending-checkout';
+const PRODUCT_ID = 'pdt_0Nbtt71uObulf7fGXhQup';
+
+function pendingIntent(productId = PRODUCT_ID) {
+  return { productId, savedByUserId: 'user_1', savedAt: Date.now() };
+}
+
+async function deferredResume() {
+  resetHarness(false);
+  const h = globalThis.__desktopCheckoutHarness;
+  const load = Promise.withResolvers<void>();
+  const started = Promise.withResolvers<void>();
+  h.productLoad = load.promise;
+  h.onProductLoad = started.resolve;
+  const checkout = await loadCheckoutModule();
+  checkout.initCheckoutWatchers();
+  sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(pendingIntent()));
+  const result = checkout.resumePendingCheckout();
+  await started.promise;
+  return { h, checkout, load, result };
+}
+
+describe('pending checkout resume', () => {
+  it('resumes a current catalog product and clears the intent on success', async () => {
+    const { h, load, result } = await deferredResume();
+    load.resolve();
+    assert.equal(await result, true);
+    assert.equal(h.requestBodies[0]?.productId, PRODUCT_ID);
+    assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), null);
+  });
+
+  it('drops a plan key and explains recovery without starting checkout', async () => {
+    resetHarness(false);
+    sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(pendingIntent('pro_monthly')));
+    const checkout = await loadCheckoutModule();
+    assert.equal(await checkout.resumePendingCheckout(), false);
+    assert.equal(globalThis.__desktopCheckoutHarness.requestBodies.length, 0);
+    assert.deepEqual(globalThis.__desktopCheckoutHarness.errorToasts, [
+      "That product isn't available. Please refresh and try again.",
+    ]);
+    assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), null);
+  });
+
+  for (const nextUser of [null, { id: 'user_2', email: 'second@example.com' }]) {
+    it(`aborts when the account changes to ${nextUser?.id ?? 'signed out'} during product loading`, async () => {
+      const { h, load, result } = await deferredResume();
+      h.currentUser = nextUser;
+      h.onAuthState({ user: nextUser });
+      load.resolve();
+      assert.equal(await result, false);
+      assert.equal(h.requestBodies.length, 0);
+      assert.equal(h.signInCalls, 0);
+      assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), null);
+    });
+  }
+
+  it('does not revive a checkout after sign-out and sign-in to the same account', async () => {
+    const { h, load, result } = await deferredResume();
+    const user = h.currentUser;
+    h.currentUser = null;
+    h.onAuthState({ user: null });
+    h.currentUser = user;
+    h.onAuthState({ user });
+    load.resolve();
+    assert.equal(await result, false);
+    assert.equal(h.requestBodies.length, 0);
+    assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), null);
+  });
+
+  it('leaves a replacement intent intact while the previous product is loading', async () => {
+    const { h, checkout, load, result } = await deferredResume();
+    window.location.href = `https://tech.worldmonitor.app/dashboard?checkoutProduct=${PRODUCT_ID}&checkoutDiscount=new-discount`;
+    checkout.capturePendingCheckoutIntentFromUrl();
+    const replacement = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
+    load.resolve();
+    assert.equal(await result, false);
+    assert.equal(h.requestBodies.length, 0);
+    assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), replacement);
+  });
+
+  it('reports a failed products load and keeps the intent for retry', async () => {
+    const { h, load, result } = await deferredResume();
+    const saved = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
+    load.reject(new TypeError('Failed to fetch dynamically imported module'));
+    assert.equal(await result, false);
+    assert.equal(h.requestBodies.length, 0);
+    assert.equal(h.errorToasts.length, 1);
+    assert.match(h.errorToasts[0]!, /temporarily unavailable/i);
+    assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), saved);
+  });
+
+  it('does not show a product-load error for an intent canceled by sign-out', async () => {
+    const { h, load, result } = await deferredResume();
+    h.currentUser = null;
+    h.onAuthState({ user: null });
+    load.reject(new TypeError('Failed to fetch dynamically imported module'));
+    assert.equal(await result, false);
+    assert.deepEqual(h.errorToasts, []);
+    assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), null);
+  });
+});
+
+describe('startCheckout on desktop (#5911)', () => {
+  it('opens the hosted checkout in the OS browser instead of replacing the app', async () => {
+    resetHarness(true);
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(await checkout.startCheckout('pro_monthly'), true);
+
+    assert.deepEqual(globalThis.__desktopCheckoutHarness.invocations, [
+      { command: 'open_url', payload: { url: HOSTED_CHECKOUT_URL } },
+    ]);
+    // The reported bug, stated as a negative: the WebView must not navigate.
+    assert.deepEqual(globalThis.__desktopCheckoutHarness.assignedUrls, []);
+    assert.deepEqual(globalThis.__desktopCheckoutHarness.openedWindows, []);
+  });
+
+  it('asks Dodo to return the buyer to the web dashboard, not to tauri://localhost', async () => {
+    resetHarness(true);
+    const checkout = await loadCheckoutModule();
+
+    await checkout.startCheckout('pro_monthly');
+
+    const [body] = globalThis.__desktopCheckoutHarness.requestBodies;
+    assert.equal(body?.returnUrl, 'https://worldmonitor.app/dashboard?wm_checkout=return&wm_src=desktop');
+  });
+
+  it('reports a checkout error instead of claiming success when nothing opened', async () => {
+    // The bug this guards: openExternalUrl used to swallow the failure and
+    // resolve, so the caller toasted "check your browser" and returned true
+    // for a paid-for session that never opened anywhere.
+    resetHarness(true, { invokeRejects: true });
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(await checkout.startCheckout('pro_monthly'), false);
+
+    const harness = globalThis.__desktopCheckoutHarness;
+    assert.deepEqual(harness.toasts, [], 'must not announce a handoff that did not happen');
+    assert.equal(harness.errorToasts.length, 1, 'the failure must reach the user');
+    // Still no WebView navigation — the failure path must not reintroduce it.
+    assert.deepEqual(harness.assignedUrls, []);
+  });
+
+  it('keeps the signed-out redirect out of the WebView', async () => {
+    // The branch a desktop user takes before signing in. It routes through
+    // runNoUserPath's injected navigate, which was left on
+    // window.location.assign by the first cut of this fix.
+    resetHarness(true, { currentUser: null });
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(await checkout.startCheckout('pro_monthly'), false);
+
+    const harness = globalThis.__desktopCheckoutHarness;
+    assert.deepEqual(harness.assignedUrls, [], 'the app must not be replaced by /pro');
+    assert.deepEqual(harness.invocations, [
+      {
+        command: 'open_url',
+        payload: { url: 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop' },
+      },
+    ]);
+  });
+
+  it('keeps the checkout-error pricing fallback out of the WebView', async () => {
+    // renderCheckoutErrorSurface's fallbackToPricingPage arm — the other
+    // window.location.assign that survived the first cut.
+    resetHarness(true, { responseStatus: 500, responseBody: '{"error":"boom"}' });
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(await checkout.startCheckout('pro_monthly'), false);
+
+    const harness = globalThis.__desktopCheckoutHarness;
+    assert.deepEqual(harness.assignedUrls, []);
+    assert.deepEqual(harness.invocations, [
+      {
+        command: 'open_url',
+        payload: { url: 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop' },
+      },
+    ]);
+  });
+
+  it('does not open a checkout WebView when the native browser launch fails', async () => {
+    // Checkout must not open a WebView and then invite a duplicate retry.
+    resetHarness(true, { invokeRejects: true });
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(await checkout.startCheckout('pro_monthly'), false);
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const harness = globalThis.__desktopCheckoutHarness;
+    assert.equal(harness.invocations.length, 2, 'hosted checkout and default pricing fallback both attempted native launch');
+    assert.deepEqual(harness.openedWindows, [], 'hosted checkout requires a native browser');
+    assert.deepEqual(harness.toasts, [], 'must not claim a successful native launch');
+    assert.equal(harness.errorToasts.length, 1);
+  });
+
+  it('tells the buyer where checkout went and that nothing redirects back', async () => {
+    // Without this the click is indistinguishable from a dead button: the app
+    // window is unchanged and the browser may open behind a fullscreen app.
+    resetHarness(true);
+    const checkout = await loadCheckoutModule();
+
+    await checkout.startCheckout('pro_monthly');
+
+    assert.deepEqual(globalThis.__desktopCheckoutHarness.toasts, [
+      checkout.DESKTOP_CHECKOUT_HANDOFF_MESSAGE,
+    ]);
+  });
+
+});
+
+describe('startCheckout on web is unchanged (#5911 regression guard)', () => {
+  it('still navigates the top window and never touches the native bridge', async () => {
+    resetHarness(false);
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(await checkout.startCheckout('pro_monthly'), true);
+
+    assert.deepEqual(globalThis.__desktopCheckoutHarness.assignedUrls, [HOSTED_CHECKOUT_URL]);
+    assert.deepEqual(globalThis.__desktopCheckoutHarness.invocations, []);
+    assert.deepEqual(globalThis.__desktopCheckoutHarness.toasts, []);
+  });
+
+  it('keeps returning the buyer to the origin they started from', async () => {
+    resetHarness(false);
+    const checkout = await loadCheckoutModule();
+
+    await checkout.startCheckout('pro_monthly');
+
+    const [body] = globalThis.__desktopCheckoutHarness.requestBodies;
+    // The variant host, NOT the canonical origin — this is what proves the
+    // desktop swap is conditional rather than unconditional.
+    assert.equal(body?.returnUrl, 'https://tech.worldmonitor.app/dashboard?wm_checkout=return');
+  });
+});

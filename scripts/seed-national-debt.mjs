@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, imfSdmxFetchIndicator } from './_seed-utils.mjs';
+import weoFiscalPeriods from './shared/weo-fiscal-periods.mjs';
 
 loadEnvFile(import.meta.url);
 
-const IMF_BASE = 'https://www.imf.org/external/datamapper/api/v1';
-const TREASURY_URL = 'https://api.fiscaldata.treasury.gov/services/api/v1/accounting/od/debt_to_penny?fields=record_date,tot_pub_debt_out_amt&sort=-record_date&page[size]=1';
+const TREASURY_URL = 'https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/debt_to_penny?fields=record_date,tot_pub_debt_out_amt&sort=-record_date&page[size]=1';
 
 const CANONICAL_KEY = 'economic:national-debt:v1';
-const CACHE_TTL = 35 * 24 * 3600; // 35 days — monthly cron with buffer
+// 65 days — must exceed health.js SEED_META.nationalDebt.maxStaleMin (60d) so
+// a missed monthly cron keeps the canonical payload readable through the
+// STALE_SEED warn window instead of vanishing into EMPTY crit at day 35.
+// writeFreshnessMetadata() uses max(7d, ttlSeconds) → meta TTL tracks this.
+const CACHE_TTL = 65 * 24 * 3600;
 
 // IMF WEO regional aggregate codes (not real sovereign countries)
 const AGGREGATE_CODES = new Set([
@@ -24,18 +28,7 @@ function isAggregate(code) {
   return AGGREGATE_CODES.has(code) || TERRITORY_CODES.has(code) || code.endsWith('Q');
 }
 
-async function fetchImfIndicator(indicator, periods, timeoutMs) {
-  const url = `${IMF_BASE}/${indicator}?periods=${periods}`;
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!resp.ok) throw new Error(`IMF ${indicator}: HTTP ${resp.status}`);
-  const data = await resp.json();
-  return data?.values?.[indicator] ?? {};
-}
-
-async function fetchTreasury() {
+export async function fetchTreasury() {
   const resp = await fetch(TREASURY_URL, {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     signal: AbortSignal.timeout(15_000),
@@ -50,9 +43,25 @@ async function fetchTreasury() {
   };
 }
 
-export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCountry, treasuryOverride) {
-  const BASELINE_TS = Date.UTC(2024, 0, 1); // 2024-01-01T00:00:00Z
+// Latest year with a positive value, capped at maxYear. The cap keeps next
+// year's WEO forecast (fetched by weoYearWindow) from replacing the current
+// year, which is the figure IMF DataMapper ranks.
+function latestYearWithValue(byYear, maxYear) {
+  if (!byYear) return null;
+  let best = null;
+  for (const [yearStr, value] of Object.entries(byYear)) {
+    const y = Number(yearStr);
+    const v = Number(value);
+    if (Number.isFinite(y) && y <= maxYear && Number.isFinite(v) && v > 0 && (best === null || y > best)) {
+      best = y;
+    }
+  }
+  return best;
+}
+
+export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCountry, treasuryOverride, now = new Date()) {
   const SECONDS_PER_YEAR = 365.25 * 86400;
+  const currentYear = now.getUTCFullYear();
 
   const entries = [];
 
@@ -62,38 +71,66 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
     const gdpByYear = gdpByCountry[iso3];
     if (!gdpByYear) continue;
 
-    const gdp2024 = Number(gdpByYear['2024']);
-    if (!Number.isFinite(gdp2024) || gdp2024 <= 0) continue;
+    // Only years with GDP too, so debt % is never multiplied by another year's GDP.
+    const debtWithGdp = Object.fromEntries(
+      Object.entries(debtByYear || {}).filter(([year]) => Number(gdpByYear[year]) > 0),
+    );
+    const latestDebtYear = latestYearWithValue(debtWithGdp, currentYear);
+    if (latestDebtYear === null) continue;
+    const weoLabel = `IMF WEO ${latestDebtYear}`;
+    const gdpLatest = Number(gdpByYear[String(latestDebtYear)]);
 
-    const debtPct2024 = Number(debtByYear['2024']);
-    const debtPct2023 = Number(debtByYear['2023']);
-    const hasDebt2024 = Number.isFinite(debtPct2024) && debtPct2024 > 0;
-    const hasDebt2023 = Number.isFinite(debtPct2023) && debtPct2023 > 0;
+    const effectiveDebtPct = Number(debtByYear[String(latestDebtYear)]);
+    const prevYear = String(latestDebtYear - 1);
+    const prevDebtPct = Number(debtByYear[prevYear]);
+    const hasPrev = Number.isFinite(prevDebtPct) && prevDebtPct > 0;
 
-    if (!hasDebt2024 && !hasDebt2023) continue;
-
-    const effectiveDebtPct = hasDebt2024 ? debtPct2024 : debtPct2023;
-    const gdpUsd = gdp2024 * 1e9;
+    const gdpUsd = gdpLatest;
     let debtUsd = (effectiveDebtPct / 100) * gdpUsd;
+    // Debt already includes the period's deficit. Anchor at the UTC boundary
+    // after its last day, just as calendar-year stocks use January 1.
+    const fiscalPeriod = weoFiscalPeriods.countries[iso3];
+    let baselineTs = fiscalPeriod
+      ? Date.UTC(
+        latestDebtYear + (fiscalPeriod.yearLabel === 'start' ? 1 : 0),
+        fiscalPeriod.endMonth - 1,
+        fiscalPeriod.endDay + 1,
+      )
+      : Date.UTC(latestDebtYear + 1, 0, 1);
+    const periodEndTs = baselineTs;
 
-    // Override USA with live Treasury data when available
+    // Override USA with live Treasury data when available. That total is
+    // already current as of its record date, so the ticker accrues from there.
     if (iso3 === 'USA' && treasuryOverride && treasuryOverride.debtUsd > 0) {
       debtUsd = treasuryOverride.debtUsd;
+      const recordTs = Date.parse(treasuryOverride.date);
+      if (Number.isFinite(recordTs) && recordTs <= now.getTime()) baselineTs = recordTs;
     }
 
     let annualGrowth = 0;
-    if (hasDebt2024 && hasDebt2023) {
-      annualGrowth = ((debtPct2024 - debtPct2023) / debtPct2023) * 100;
+    if (hasPrev) {
+      annualGrowth = ((effectiveDebtPct - prevDebtPct) / prevDebtPct) * 100;
     }
 
     const deficitByYear = deficitPctByCountry[iso3];
-    const deficitPct2024 = deficitByYear ? Number(deficitByYear['2024']) : NaN;
+    // The clock accrues over the period after the anchored stock's period
+    // end, so once that end has passed it runs on the next period's projected
+    // deficit and GDP. Before then, or without both, it uses the stock's own
+    // year; no deficit for that year means no accrual.
+    const nextYear = String(latestDebtYear + 1);
+    const nextDeficitPct = Number(deficitByYear?.[nextYear]);
+    const nextGdpUsd = Number(gdpByYear[nextYear]);
+    const useNextPeriod = now.getTime() >= periodEndTs && Number.isFinite(nextDeficitPct) && nextGdpUsd > 0;
+    const deficitPct2024 = useNextPeriod
+      ? nextDeficitPct
+      : (deficitByYear ? Number(deficitByYear[String(latestDebtYear)]) : NaN);
+    const accrualGdpUsd = useNextPeriod ? nextGdpUsd : gdpUsd;
     let perSecondRate = 0;
     let perDayRate = 0;
     // Only accrue when running a deficit (GGXCNL_NGDP < 0 = net borrower).
     // Surplus countries (Norway, Kuwait, Singapore, etc.) tick at 0 — not upward.
     if (Number.isFinite(deficitPct2024) && deficitPct2024 < 0) {
-      const deficitAbs = (Math.abs(deficitPct2024) / 100) * gdpUsd;
+      const deficitAbs = (Math.abs(deficitPct2024) / 100) * accrualGdpUsd;
       perSecondRate = deficitAbs / SECONDS_PER_YEAR;
       perDayRate = deficitAbs / 365.25;
     }
@@ -106,8 +143,8 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
       annualGrowth,
       perSecondRate,
       perDayRate,
-      baselineTs: BASELINE_TS,
-      source: iso3 === 'USA' && treasuryOverride ? 'IMF WEO + US Treasury FiscalData' : 'IMF WEO 2024',
+      baselineTs,
+      source: iso3 === 'USA' && treasuryOverride ? `${weoLabel} + US Treasury FiscalData` : weoLabel,
     });
   }
 
@@ -115,11 +152,20 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
   return entries;
 }
 
+// Rolling 4-year window: two historical, current, one forward. WEO publishes
+// the current-year vintage mid-year and forecasts forward — this keeps the
+// seed picking up newer vintages without manual edits.
+export function weoYearWindow(now = new Date()) {
+  const y = now.getUTCFullYear();
+  return [String(y - 2), String(y - 1), String(y), String(y + 1)];
+}
+
 async function fetchNationalDebt() {
+  const years = weoYearWindow();
   const [debtPctData, gdpData, deficitData, treasury] = await Promise.all([
-    fetchImfIndicator('GGXWDG_NGDP', '2023,2024', 30_000),
-    fetchImfIndicator('NGDPD', '2024', 30_000),
-    fetchImfIndicator('GGXCNL_NGDP', '2024', 30_000),
+    imfSdmxFetchIndicator('GGXWDG_NGDP', { years }),
+    imfSdmxFetchIndicator('NGDPD', { years }),
+    imfSdmxFetchIndicator('GGXCNL_NGDP', { years }),
     fetchTreasury().catch(() => null),
   ]);
 
@@ -136,12 +182,23 @@ function validate(data) {
 }
 
 // Guard: only run seed when executed directly, not when imported by tests
+export function declareRecords(data) {
+  return Array.isArray(data?.entries) ? data.entries.length : 0;
+}
+
 if (process.argv[1]?.endsWith('seed-national-debt.mjs')) {
   runSeed('economic', 'national-debt', CANONICAL_KEY, fetchNationalDebt, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
-    sourceVersion: 'imf-weo-2024',
+    sourceVersion: 'imf-sdmx-weo-2024',
     recordCount: (data) => data?.entries?.length ?? 0,
+  
+    declareRecords,
+    schemaVersion: 1,
+    // Matches api/health.js SEED_META.nationalDebt (60d = 2× monthly interval).
+    // runSeed only validates the field is present; health.js is the actual
+    // alarm source, but keeping these in sync prevents future drift.
+    maxStaleMin: 86400,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

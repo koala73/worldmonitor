@@ -1,0 +1,30 @@
+[
+  {
+    "Id": 4401,
+    "Message": "High wind warning in southern Manitoba",
+    "Notes": "Captured-shape fixture; no coordinates.",
+    "StartTime": 1786571040,
+    "EndTime": 1786657380,
+    "LastUpdated": 1786649027,
+    "Regions": [
+      "Winnipeg",
+      "Eastern",
+      "Central"
+    ],
+    "HighImportance": false,
+    "SendNotification": true
+  },
+  {
+    "Id": 4402,
+    "Message": "High-importance test alert for northern Manitoba",
+    "Notes": "Captured-shape fixture; HighImportance true, no coordinates.",
+    "StartTime": 1786571040,
+    "EndTime": 1786657380,
+    "LastUpdated": 1786649027,
+    "Regions": [
+      "Northern"
+    ],
+    "HighImportance": true,
+    "SendNotification": true
+  }
+]

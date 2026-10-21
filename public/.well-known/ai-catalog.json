@@ -1,0 +1,115 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "World Monitor",
+    "identifier": "did:web:worldmonitor.app",
+    "documentationUrl": "https://www.worldmonitor.app/docs/documentation"
+  },
+  "entries": [
+    {
+      "identifier": "urn:air:worldmonitor.app:mcp:worldmonitor",
+      "displayName": "World Monitor MCP server",
+      "type": "application/mcp-server-card+json",
+      "url": "https://worldmonitor.app/.well-known/mcp/server-card.json",
+      "description": "Live global-intelligence MCP server with real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
+      "tags": [
+        "news-and-intelligence",
+        "news",
+        "intelligence",
+        "geopolitics",
+        "global-risk",
+        "mcp"
+      ],
+      "capabilities": [
+        "get_world_brief",
+        "get_country_brief",
+        "get_country_risk",
+        "get_conflict_events",
+        "get_market_data",
+        "get_energy_intelligence",
+        "get_maritime_activity",
+        "get_chokepoint_status",
+        "get_supply_chain_data",
+        "analyze_situation",
+        "get_forecast_predictions"
+      ],
+      "representativeQueries": [
+        "what is happening in the Red Sea right now",
+        "country risk briefing for Egypt",
+        "global markets and conflict overview this morning",
+        "which shipping chokepoints are disrupted",
+        "forecast the impact of a Strait of Hormuz closure"
+      ],
+      "trustManifest": {
+        "identity": "did:web:worldmonitor.app",
+        "identityType": "did"
+      }
+    },
+    {
+      "identifier": "urn:air:worldmonitor.app:mcp:worldmonitor-docs",
+      "displayName": "World Monitor Docs MCP server",
+      "type": "application/mcp-server-card+json",
+      "url": "https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json",
+      "description": "Public, anonymous MCP server for searching and reading the World Monitor developer docs, API references and guides. Use it for how-to questions; use the World Monitor MCP server for live data.",
+      "tags": [
+        "docs",
+        "search",
+        "mcp"
+      ],
+      "trustManifest": {
+        "identity": "did:web:worldmonitor.app",
+        "identityType": "did"
+      }
+    },
+    {
+      "identifier": "urn:air:worldmonitor.app:api:worldmonitor",
+      "displayName": "World Monitor REST API",
+      "type": "application/vnd.oai.openapi+json;version=3.1",
+      "url": "https://www.worldmonitor.app/openapi.json",
+      "description": "World Monitor's public REST API spans conflict, markets, energy, maritime, aviation, climate, health, and supply-chain intelligence, with API-key and OAuth access. Read the linked OpenAPI document for the live operation inventory.",
+      "tags": [
+        "news-and-intelligence",
+        "api",
+        "rest",
+        "openapi"
+      ],
+      "trustManifest": {
+        "identity": "did:web:worldmonitor.app",
+        "identityType": "did"
+      }
+    },
+    {
+      "identifier": "urn:air:worldmonitor.app:agent-plugin:worldmonitor",
+      "displayName": "World Monitor agent plugin",
+      "type": "application/json",
+      "url": "https://www.worldmonitor.app/plugin.json",
+      "description": "Agent Plugins 1.0.0 manifest for World Monitor: MCP servers plus task-focused agent skills, packaged from the public GitHub repository.",
+      "tags": [
+        "news-and-intelligence",
+        "agent-plugin",
+        "mcp",
+        "agent-skills"
+      ],
+      "trustManifest": {
+        "identity": "did:web:worldmonitor.app",
+        "identityType": "did"
+      }
+    },
+    {
+      "identifier": "urn:air:worldmonitor.app:skills:index",
+      "displayName": "World Monitor agent skills",
+      "type": "application/json",
+      "url": "https://worldmonitor.app/.well-known/agent-skills/index.json",
+      "description": "Self-published agent skills for common World Monitor workflows (country briefings, market prep, conflict monitoring, route risk).",
+      "tags": [
+        "news-and-intelligence",
+        "agent-skills",
+        "skills"
+      ],
+      "trustManifest": {
+        "identity": "did:web:worldmonitor.app",
+        "identityType": "did"
+      }
+    }
+  ]
+}

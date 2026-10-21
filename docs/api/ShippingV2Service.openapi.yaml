@@ -1,0 +1,895 @@
+openapi: 3.1.0
+info:
+    title: ShippingV2Service API
+    version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
+paths:
+    /api/v2/shipping/route-intelligence:
+        get:
+            tags:
+                - ShippingV2Service
+            summary: RouteIntelligence
+            description: |-
+                RouteIntelligence scores a country-pair trade route for chokepoint exposure
+                 and current disruption risk. Partner-facing; wire shape is byte-compatible
+                 with the pre-migration JSON response documented at docs/api-shipping-v2.mdx.
+                 Empty exposure/bypass arrays with empty fetched_at mean the route snapshot is
+                 unavailable/degraded, not that the route has confirmed zero exposure. PRO-gated. Requires an active Pro subscription.
+            operationId: RouteIntelligence
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: fromIso2
+                  in: query
+                  description: Origin country, ISO-3166-1 alpha-2 uppercase.
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+                    pattern: '^[A-Z]{2}$'
+                - name: toIso2
+                  in: query
+                  description: Destination country, ISO-3166-1 alpha-2 uppercase.
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+                    pattern: '^[A-Z]{2}$'
+                - name: cargoType
+                  in: query
+                  description: |-
+                    Cargo type — one of: container (default), tanker, bulk, roro.
+                     Empty string defers to the server default. Unknown values are coerced to
+                     "container" to preserve legacy behavior.
+                  required: false
+                  example: "container"
+                  schema:
+                    type: string
+                - name: hs2
+                  in: query
+                  description: |-
+                    2-digit HS commodity code (default "27" — mineral fuels). Non-digit
+                     characters are stripped server-side to match legacy behavior.
+                  required: false
+                  example: "27"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "bypassOptions":
+                                    - "activationThreshold": "example"
+                                      "addedCostMultiplier": 75.25
+                                      "addedTransitDays": 7
+                                      "id": "example-id"
+                                      "name": "WorldMonitor Analyst"
+                                "cargoType": "container"
+                                "chokepointExposures":
+                                    - "chokepointId": "suez"
+                                      "chokepointName": "WorldMonitor Analyst"
+                                      "exposurePct": 1
+                                "disruptionScore": 42
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                            schema:
+                                $ref: '#/components/schemas/RouteIntelligenceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/v2/shipping/webhooks:
+        get:
+            tags:
+                - ShippingV2Service
+            summary: ListWebhooks
+            description: |-
+                ListWebhooks returns the caller's registered webhooks filtered by the
+                 SHA-256 owner tag of the calling API key. The `secret` is intentionally
+                 omitted from the response; use rotate-secret to obtain a new one. PRO-gated. Requires an active Pro subscription.
+            operationId: ListWebhooks
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "webhooks":
+                                    - "active": true
+                                      "alertThreshold": 1
+                                      "callbackUrl": "https://example.com/worldmonitor-webhook"
+                                      "chokepointIds":
+                                          - "suez"
+                                      "countries":
+                                          - "US"
+                            schema:
+                                $ref: '#/components/schemas/ListWebhooksResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+        post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
+            tags:
+                - ShippingV2Service
+            summary: RegisterWebhook
+            description: |-
+                RegisterWebhook subscribes a callback URL to one event type.
+                 Returns the subscriberId and the raw HMAC secret — the secret is never
+                 returned again except via rotate-secret. PRO-gated. Requires an active Pro subscription.
+            operationId: RegisterWebhook
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            requestBody:
+                content:
+                    application/json:
+                        example:
+                            "alertThreshold": 1
+                            "callbackUrl": "https://example.com/worldmonitor-webhook"
+                            "chokepointIds":
+                                - "suez"
+                            "eventType": "chokepoint.disruption"
+                            "minLiveSignal": 1
+                        schema:
+                            $ref: '#/components/schemas/RegisterWebhookRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
+                    content:
+                        application/json:
+                            example:
+                                "secret": "example"
+                                "subscriberId": "example-id"
+                            schema:
+                                $ref: '#/components/schemas/RegisterWebhookResponse'
+                "400":
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+        BearerAuth:
+            type: http
+            scheme: bearer
+            description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
+    schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        BillingVerificationError:
+            type: object
+            description: "Returned with HTTP 503 when paid access cannot be confirmed right now: the billing provider is re-verifying a recently expired subscription, or the entitlement backend is unreachable. Retryable — honor Retry-After."
+            properties:
+                error:
+                    type: string
+                    description: Human-readable billing-verification failure reason.
+                code:
+                    type: string
+                    enum:
+                        - renewal_verification_pending
+                        - renewal_verification_failed
+                        - entitlement_verification_unavailable
+                    description: Machine-readable billing-verification state, mirrored in the X-Billing-Verification response header.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint, when the denial came from a tier gate.
+            required:
+                - error
+                - code
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                code:
+                    type: string
+                    enum:
+                        - subscription_lapsed
+                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        RouteIntelligenceRequest:
+            type: object
+            properties:
+                fromIso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: Origin country, ISO-3166-1 alpha-2 uppercase.
+                toIso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: Destination country, ISO-3166-1 alpha-2 uppercase.
+                cargoType:
+                    type: string
+                    description: |-
+                        Cargo type — one of: container (default), tanker, bulk, roro.
+                         Empty string defers to the server default. Unknown values are coerced to
+                         "container" to preserve legacy behavior.
+                hs2:
+                    type: string
+                    description: |-
+                        2-digit HS commodity code (default "27" — mineral fuels). Non-digit
+                         characters are stripped server-side to match legacy behavior.
+            required:
+                - fromIso2
+                - toIso2
+            description: |-
+                RouteIntelligenceRequest scopes a route-intelligence query by origin and
+                 destination country. Query-parameter names are preserved verbatim from the
+                 legacy partner contract (fromIso2/toIso2/cargoType/hs2 — camelCase).
+        RouteIntelligenceResponse:
+            type: object
+            properties:
+                fromIso2:
+                    type: string
+                toIso2:
+                    type: string
+                cargoType:
+                    type: string
+                hs2:
+                    type: string
+                primaryRouteId:
+                    type: string
+                chokepointExposures:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChokepointExposure'
+                bypassOptions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BypassOption'
+                warRiskTier:
+                    type: string
+                    description: War-risk tier enum string, e.g., "WAR_RISK_TIER_NORMAL" or "WAR_RISK_TIER_ELEVATED".
+                disruptionScore:
+                    type: integer
+                    format: int32
+                    description: Disruption score of the primary chokepoint, 0-100.
+                fetchedAt:
+                    type: string
+                    description: |-
+                        ISO-8601 timestamp of when the response was assembled. Empty string means
+                         the route snapshot is unavailable/degraded, not confirmed zero exposure.
+            description: |-
+                RouteIntelligenceResponse wire shape preserved byte-for-byte from the
+                 pre-migration JSON at docs/api-shipping-v2.mdx. `fetched_at` is intentionally
+                 a string (ISO-8601) rather than int64 epoch ms because partners depend on
+                 the ISO-8601 shape.
+        ChokepointExposure:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+                chokepointName:
+                    type: string
+                exposurePct:
+                    type: integer
+                    format: int32
+            description: Single chokepoint exposure for a route.
+        BypassOption:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                type:
+                    type: string
+                    description: Type of bypass (e.g., "maritime_detour", "land_corridor").
+                addedTransitDays:
+                    type: integer
+                    format: int32
+                addedCostMultiplier:
+                    type: number
+                    format: double
+                activationThreshold:
+                    type: string
+                    description: Enum-like string, e.g., "DISRUPTION_SCORE_60".
+            description: Single bypass-corridor option around a disrupted chokepoint.
+        RegisterWebhookRequest:
+            type: object
+            properties:
+                callbackUrl:
+                    type: string
+                    maxLength: 2048
+                    minLength: 8
+                    description: |-
+                        HTTPS callback URL. Must not resolve to a private/loopback address at
+                         registration time (SSRF guard). The delivery worker re-validates the
+                         resolved IP before each send to mitigate DNS rebinding.
+                chokepointIds:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Zero or more chokepoint IDs to subscribe to. Empty list subscribes to
+                             the entire CHOKEPOINT_REGISTRY. Unknown IDs fail with 400.
+                alertThreshold:
+                    type: integer
+                    maximum: 100
+                    minimum: 0
+                    format: int32
+                    description: Disruption-score threshold for delivery, 0-100. Default 50; an explicit 0 delivers every alert.
+                eventType:
+                    type: string
+                    maxLength: 64
+                    description: A shared/event-triggers.json key; `chokepoint.disruption` when omitted.
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: '`country.risk_surge` scope: monitored ISO2 codes; empty = all.'
+                minLiveSignal:
+                    type: integer
+                    maximum: 40
+                    minimum: 0
+                    format: int32
+                    description: '`chokepoint.disruption` live-signal floor; 0 = score only.'
+                scope:
+                    $ref: '#/components/schemas/WebhookScope'
+            required:
+                - callbackUrl
+            description: |-
+                RegisterWebhookRequest subscribes to one eventType (default
+                 chokepoint.disruption). Wire shape is byte-compatible with the legacy
+                 POST body.
+        WebhookScope:
+            type: object
+            properties:
+                keywords:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking: whole-word terms, any-of, 1-20.'
+                categories:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking: classifier categories.'
+                importanceFloor:
+                    type: integer
+                    format: int32
+                    description: 'news.breaking: importanceScore floor, 0-100 (default 69).'
+                severityFloor:
+                    type: string
+                    description: 'news.breaking: `critical` or `high` (default high).'
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking, natural.hazard: ISO2 codes; unplaced events never match.'
+                hazardTypes:
+                    type: array
+                    items:
+                        type: string
+                        description: 'natural.hazard: event categories.'
+                minMagnitude:
+                    type: number
+                    format: double
+                    description: 'natural.hazard: earthquake magnitude floor, 4.5-9.5 (default 5.5).'
+                minAlertLevel:
+                    type: string
+                    description: 'natural.hazard: GDACS `Orange` or `Red` (default Orange).'
+                assetClasses:
+                    type: array
+                    items:
+                        type: string
+                        description: 'market.move: `equity`, `commodity`, `crypto`.'
+                symbols:
+                    type: array
+                    items:
+                        type: string
+                        description: 'market.move: quote symbols, 1-50.'
+                minAbsPct:
+                    type: number
+                    format: double
+                    description: 'market.move: |changePct| floor, 5-100 (default 10).'
+                direction:
+                    type: string
+                    description: 'market.move: `up`, `down` or `any` (default any).'
+            description: Per-event filters for occurrence events. Each key applies to the events named in its comment; the handler validates against shared/event-triggers.json and stores the defaults.
+        RegisterWebhookResponse:
+            type: object
+            properties:
+                subscriberId:
+                    type: string
+                    description: '`wh_` prefix + 24 lowercase hex chars (12 random bytes).'
+                secret:
+                    type: string
+                    description: Raw 64-char lowercase hex secret (32 random bytes). No `whsec_` prefix.
+            description: |-
+                RegisterWebhookResponse wire shape preserved exactly — partners persist the
+                 `secret` because the server never returns it again except via rotate-secret.
+        ListWebhooksRequest:
+            type: object
+            description: |-
+                ListWebhooksRequest has no fields — the owner is derived from the caller's
+                 API-key fingerprint (SHA-256 of X-WorldMonitor-Key).
+        ListWebhooksResponse:
+            type: object
+            properties:
+                webhooks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/WebhookSummary'
+            description: |-
+                ListWebhooksResponse wire shape preserved exactly: the `webhooks` field
+                 name and the omission of `secret` are part of the partner contract.
+        WebhookSummary:
+            type: object
+            properties:
+                subscriberId:
+                    type: string
+                callbackUrl:
+                    type: string
+                chokepointIds:
+                    type: array
+                    items:
+                        type: string
+                alertThreshold:
+                    type: integer
+                    format: int32
+                createdAt:
+                    type: string
+                    description: ISO-8601 timestamp of registration.
+                active:
+                    type: boolean
+                eventType:
+                    type: string
+                    description: As registered; see RegisterWebhookRequest.
+                countries:
+                    type: array
+                    items:
+                        type: string
+                minLiveSignal:
+                    type: integer
+                    format: int32
+                scope:
+                    $ref: '#/components/schemas/WebhookScope'
+            description: |-
+                Single webhook record in the list response. `secret` is intentionally
+                 omitted; use rotate-secret to obtain a new one.

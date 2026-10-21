@@ -1,0 +1,199 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { __testing__ as healthTesting } from '../api/health.js';
+
+const {
+  BOOTSTRAP_KEYS,
+  EMPTY_DATA_OK_KEYS,
+  MISSING_DATA_IS_FAILURE_KEYS,
+  SEED_META,
+  STANDALONE_KEYS,
+  STATUS_COUNTS,
+  ZERO_RECORD_DATA_OK_KEYS,
+  classifyKey,
+} = healthTesting;
+const NOW = 1_700_000_000_000;
+
+// Successful publishers for these compact projections always leave a payload. A
+// missing key after a fresh meta is therefore a failed publish, not quiet data.
+const STRICT_PROJECTIONS = [...MISSING_DATA_IS_FAILURE_KEYS];
+
+// These sources intentionally refresh only metadata on quiet cycles, so a missing
+// payload with fresh metadata remains healthy rather than generating a false alarm.
+const QUIET_META_ONLY_KEYS = [
+  'weatherAlerts',
+  'newsThreatSummary',
+];
+
+const AUDITED_PRESENT_PAYLOAD_KEYS = [
+  'cableHealth',
+  'ddosAttacks',
+  'trafficAnomalies',
+  'notamClosures',
+  // canadaRoads does NOT refresh metadata only on quiet cycles: the seeder
+  // publishes an explicit {records: []} envelope on every successful tick
+  // (zeroIsValid -> OK_ZERO -> canonical written). So fresh metadata plus a
+  // vanished payload is a real publish failure, not a quiet period — the same
+  // reasoning api/health.js already applies to `outages`. albertaRoads rides the
+  // same seeder and the same publish path. torontoRoads is a different seeder but
+  // the same contract: an explicit envelope on every successful tick.
+  'canadaRoads',
+  'albertaRoads',
+  'manitobaRoads',
+  'torontoRoads',
+  'bcOpen511',
+  // canadaAlerts is the same contract again: seed-alberta-emergency-alert runs
+  // with zeroIsValid, so a quiet province still writes {alerts: []}. A vanished
+  // canonical key beside fresh seed-meta is a failed publish — and on an
+  // EMERGENCY ALERT layer, reading OK while the payload is gone is the worst
+  // place in the fleet to be wrong.
+  'canadaAlerts',
+  'canadaAlertsAbSource',
+  'canadaAlertsBcSource',
+  'canadaAlertsSkSource',
+];
+
+function classifyMissing(name, meta) {
+  const redisKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+  const seedCfg = SEED_META[name];
+  return classifyKey(name, redisKey, { allowOnDemand: false }, {
+    keyStrens: new Map([[redisKey, 0]]),
+    keyErrors: new Map(),
+    keyMetaValues: meta == null ? new Map() : new Map([[seedCfg.key, JSON.stringify(meta)]]),
+    keyMetaErrors: new Map(),
+    now: NOW,
+  });
+}
+
+function classifyPresent(name, meta) {
+  const redisKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+  const seedCfg = SEED_META[name];
+  return classifyKey(name, redisKey, { allowOnDemand: false }, {
+    keyStrens: new Map([[redisKey, 128]]),
+    keyErrors: new Map(),
+    keyMetaValues: new Map([[seedCfg.key, JSON.stringify(meta)]]),
+    keyMetaErrors: new Map(),
+    now: NOW,
+  });
+}
+
+test('optional DDoS target degradation is diagnostic only across health states', () => {
+  for (const [classify, age, expected] of [
+    [classifyPresent, 1, 'OK'],
+    [classifyPresent, 61, 'STALE_SEED'],
+    [classifyMissing, 1, 'EMPTY'],
+  ]) {
+    const meta = { fetchedAt: NOW - age * 60_000, recordCount: 0 };
+    const baseline = classify('ddosAttacks', meta);
+    const degraded = classify('ddosAttacks', { ...meta, targetLocationsDegraded: true });
+    assert.equal(degraded.status, expected);
+    assert.deepEqual(degraded, { ...baseline, targetLocationsDegraded: true });
+  }
+  for (const value of [undefined, false, 'true', 1, {}]) {
+    const entry = classifyPresent('ddosAttacks', {
+      fetchedAt: NOW, recordCount: 0, targetLocationsDegraded: value,
+    });
+    assert.equal(Object.hasOwn(entry, 'targetLocationsDegraded'), false);
+  }
+  const unrelated = classifyPresent('trafficAnomalies', {
+    fetchedAt: NOW, recordCount: 0, targetLocationsDegraded: true,
+  });
+  assert.equal(Object.hasOwn(unrelated, 'targetLocationsDegraded'), false);
+});
+
+test('published strict projections escalate when their data key vanishes', () => {
+  for (const name of STRICT_PROJECTIONS) {
+    const seedCfg = SEED_META[name];
+    assert.ok(EMPTY_DATA_OK_KEYS.has(name), `${name} remains tolerant of a present empty payload`);
+    assert.ok(seedCfg, `${name} has seed metadata that records a successful publication`);
+
+    const entry = classifyMissing(name, {
+      fetchedAt: NOW - Math.floor(seedCfg.maxStaleMin / 2) * 60_000,
+      recordCount: 0,
+    });
+    assert.equal(entry.status, 'EMPTY', `${name}: fresh metadata + missing key is a vanished projection`);
+    assert.equal(STATUS_COUNTS[entry.status], 'crit', `${name}: vanished projection must be critical`);
+    assert.equal(entry.records, 0);
+  }
+});
+
+test('strict projections retain cold-start and stale-seed handling', () => {
+  for (const name of STRICT_PROJECTIONS) {
+    const seedCfg = SEED_META[name];
+
+    assert.equal(
+      classifyMissing(name).status,
+      'STALE_SEED',
+      `${name}: no metadata means it has never been published, not that it vanished`,
+    );
+    assert.equal(
+      classifyMissing(name, {
+        fetchedAt: NOW - (seedCfg.maxStaleMin + 1) * 60_000,
+        recordCount: 0,
+      }).status,
+      'STALE_SEED',
+      `${name}: a late publisher remains a stale-seed warning`,
+    );
+  }
+});
+
+test('quiet metadata-only sources remain healthy while their payload is absent', () => {
+  for (const name of QUIET_META_ONLY_KEYS) {
+    const seedCfg = SEED_META[name];
+    const entry = classifyMissing(name, {
+      fetchedAt: NOW - Math.floor(seedCfg.maxStaleMin / 2) * 60_000,
+      recordCount: 0,
+    });
+    assert.equal(entry.status, 'OK', `${name}: a quiet successful cycle may publish metadata without a payload`);
+    assert.equal(STATUS_COUNTS[entry.status], 'ok');
+  }
+});
+
+test('Alberta CAP verification degradation is health-visible with present mixed or empty data', () => {
+  for (const recordCount of [0, 2]) {
+    const entry = classifyPresent('canadaAlerts', {
+      fetchedAt: NOW - 5 * 60_000,
+      recordCount,
+      sourceState: 'degraded',
+      errorCode: 'CAP_VERIFICATION_FAILED',
+    });
+    assert.equal(entry.status, 'SEED_ERROR');
+    assert.equal(entry.errorCode, 'CAP_VERIFICATION_FAILED');
+  }
+
+  const verifiedQuiet = classifyPresent('canadaAlerts', {
+    fetchedAt: NOW - 5 * 60_000,
+    recordCount: 0,
+    sourceState: 'ok',
+  });
+  assert.equal(verifiedQuiet.status, 'OK');
+});
+
+test('audited sparse sources require a payload even when zero records is valid', () => {
+  for (const name of AUDITED_PRESENT_PAYLOAD_KEYS) {
+    const seedCfg = SEED_META[name];
+    const freshZeroMeta = {
+      fetchedAt: NOW - Math.floor(seedCfg.maxStaleMin / 2) * 60_000,
+      recordCount: 0,
+    };
+    assert.ok(
+      MISSING_DATA_IS_FAILURE_KEYS.has(name),
+      `${name}: a fresh marker cannot hide a vanished canonical payload`,
+    );
+    assert.ok(
+      ZERO_RECORD_DATA_OK_KEYS.has(name),
+      `${name}: a present quiet payload may still report zero records`,
+    );
+    assert.equal(
+      classifyMissing(name, freshZeroMeta).status,
+      'EMPTY',
+      `${name}: fresh metadata does not excuse a missing payload`,
+    );
+    assert.equal(
+      classifyPresent(name, freshZeroMeta).status,
+      'OK',
+      `${name}: a present quiet payload remains healthy`,
+    );
+  }
+});

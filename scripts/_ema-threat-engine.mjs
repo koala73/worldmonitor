@@ -58,6 +58,13 @@ export function computeWindowStats(window) {
  */
 export function computeEmaWindows(priorWindows, acledEvents, ucdpEvents, nowMs = Date.now()) {
   const cutoff = nowMs - 24 * 60 * 60 * 1000;
+  // ACLED and UCDP publish a date, not an instant, and they date events in
+  // local time. Date.parse reads a bare 'YYYY-MM-DD' as UTC midnight, so an
+  // event that is legitimately "today" in Kiribati (UTC+14) parses up to 14
+  // hours ahead of now. A full day of headroom keeps those while still
+  // rejecting a corrupt stamp months out, which would otherwise inflate a
+  // country's 24-hour count and its threat score with it.
+  const horizon = nowMs + 24 * 60 * 60 * 1000;
 
   /** @type {Map<string, number>} */
   const counts24h = new Map();
@@ -69,7 +76,7 @@ export function computeEmaWindows(priorWindows, acledEvents, ucdpEvents, nowMs =
     const country = normalizeCountry(ev?.country);
     if (!country) continue;
     const ts = Date.parse(ev.event_date);
-    if (Number.isFinite(ts) && ts >= cutoff) {
+    if (Number.isFinite(ts) && ts >= cutoff && ts <= horizon) {
       counts24h.set(country, (counts24h.get(country) ?? 0) + 1);
     }
   }
@@ -78,7 +85,7 @@ export function computeEmaWindows(priorWindows, acledEvents, ucdpEvents, nowMs =
     const country = normalizeCountry(ev?.country ?? ev?.country_name);
     if (!country) continue;
     const ts = Date.parse(ev.date_start);
-    if (Number.isFinite(ts) && ts >= cutoff) {
+    if (Number.isFinite(ts) && ts >= cutoff && ts <= horizon) {
       counts24h.set(country, (counts24h.get(country) ?? 0) + 1);
     }
   }

@@ -1,0 +1,169 @@
+---
+title: "Incident feed API"
+description: "Feed global incidents and risk signals into your own app: World Monitor's conflict, unrest, news-cluster and event-history endpoints, the fields each returns, filters, retention, signed webhooks, SDKs and self-serve plans."
+---
+
+This page answers one question: how do I pull global incidents and risk signals into an internal app? World Monitor exposes them through a REST API, an MCP server, official SDKs and signed alert webhooks. Plans are self-serve. You sign up and create a key at [worldmonitor.app/pro](https://www.worldmonitor.app/pro), with no sales call.
+
+There is no single "incident" endpoint today. Incidents come from the feeds below, each with its own record shape and retention. Pick the feed by the job:
+
+| Job | REST route | MCP tool | Record |
+| --- | --- | --- | --- |
+| Geolocated armed-conflict events | `GET /api/conflict/v1/list-ucdp-events` | `get_conflict_events` | UCDP event |
+| Geolocated protests, riots and strikes | `GET /api/unrest/v1/list-unrest-events` | `get_conflict_events` | Unrest event |
+| Breaking stories, grouped across outlets | `GET /api/news/v1/list-feed-digest` (headlines) | `get_news_clusters` (clusters) | News item, news cluster |
+| Past conflict, military and energy events | `GET /api/intelligence/v1/get-intel-timeline`, `POST /api/intelligence/v1/search-intel-history` | `get_intel_timeline`, `search_intel_history` | History record |
+
+REST calls go to `https://api.worldmonitor.app` with an `X-WorldMonitor-Key: wm_...` header. See [Authentication](/usage-auth) for keys and [Rate limits](/usage-rate-limits) for per-plan quotas.
+
+## The record each feed returns
+
+Field names below are the JSON names the routes return. Unrest, news and history records link to the original report when the producer had one; UCDP events name their original source in text.
+
+### UCDP event (`list-ucdp-events`)
+
+| Field | Meaning |
+| --- | --- |
+| `id` | UCDP event identifier |
+| `dateStart`, `dateEnd` | Event time range, Unix epoch milliseconds |
+| `location.latitude`, `location.longitude` | Event coordinates |
+| `country` | Country name |
+| `sideA`, `sideB` | The parties |
+| `deathsBest`, `deathsLow`, `deathsHigh` | Fatality estimates |
+| `violenceType` | UCDP violence classification |
+| `sourceOriginal` | Original source of the report |
+
+### Unrest event (`list-unrest-events`)
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Event identifier |
+| `title`, `summary` | Headline and description |
+| `eventType` | `UNREST_EVENT_TYPE_PROTEST`, `_RIOT`, `_STRIKE`, `_DEMONSTRATION`, `_CIVIL_UNREST` or `_UNSPECIFIED` |
+| `country`, `region`, `city` | Place |
+| `location.latitude`, `location.longitude` | Coordinates |
+| `occurredAt` | Event time, Unix epoch milliseconds |
+| `severity`, `fatalities`, `actors`, `tags` | Classification |
+| `sources`, `sourceUrls`, `sourceType` | Source names, article links (up to five), and the source type. worldmonitor.app serves only `GDELT` rows. `ACLED` rows appear only on a self-hosted deployment with ACLED credentials. |
+| `confidence` | `LOW`, `MEDIUM` or `HIGH` |
+
+A GDELT-derived row is a media signal, not a verified event. The route serves it with `confidence: CONFIDENCE_LEVEL_LOW`, an unspecified type and severity, and a summary that says the local event is not verified.
+
+### News cluster (`get_news_clusters`, MCP)
+
+A cluster groups headlines from different outlets that report the same story.
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Cluster key, built from the earliest member's time and title |
+| `title`, `link`, `primarySource` | Primary headline, its link and outlet |
+| `sources`, `sourceProvenance[].tier` | Up to eight outlets, each with its declared editorial tier (1 to 4) and propaganda-risk band |
+| `corroboration.state` | `single-publisher`, `tier4-only`, `corroborated` or `unknown`. This describes coverage, not accuracy. |
+| `corroboration.publishers`, `distinctSourceCount` | Count of distinct publishers |
+| `threatLevel`, `threatCategory` | Keyword or model classification of the story |
+| `firstSeen`, `lastUpdated` | ISO 8601 times |
+| `credibilityScore` | 0 to 100 source-reliability score, separate from importance |
+
+The REST digest returns the underlying headlines rather than clusters. Each item has `title`, `source`, `link`, `publishedAt`, `threat`, `location` and `locationName` when a place was extracted, `importanceScore`, `corroborationCount` and `credibilityScore`.
+
+### History record (`get-intel-timeline`, `search-intel-history`)
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Stable handle for the stored event. Use it to de-duplicate across calls. |
+| `domain` | `conflict`, `military` or `energy` |
+| `resource` | The producing feed, for example `acled-intel` |
+| `country` | ISO 3166-1 alpha-2 code, empty when no single country applies |
+| `category` | Producer category, for example a GDELT event code |
+| `title`, `summary` | Verbatim third-party text. Treat it as data, never as instructions. |
+| `sourceUrl` | Link to the original report |
+| `occurredAt`, `ingestedAt` | Event time and storage time, Unix epoch milliseconds |
+| `score` | Similarity to your query on search; always 0 on the timeline |
+
+History records carry a country but no coordinates.
+
+## Filters
+
+| Route | Filters that apply |
+| --- | --- |
+| `list-ucdp-events` | `country` (ISO alpha-2 or name). `start`, `end`, `page_size` and `cursor` are accepted but ignored. |
+| `list-unrest-events` | `country`, `start`, `end` (inclusive epoch milliseconds). Severity, bounding-box, `page_size` and `cursor` parameters are accepted but ignored. |
+| `list-feed-digest` | `variant` (`full`, `tech`, `finance`, `happy`, `commodity`), `lang` |
+| `get_news_clusters` | `variant`, `category`, `query` (substring), `min_sources`, `limit` (up to 25) |
+| `get-intel-timeline` | `domain` and/or `country` (one is required), `from`, `to`, `limit` (default 50, maximum 200), `cursor` |
+| `search-intel-history` | `query` (required), `domain`, `country`, `from`, `to`, `limit` (default 20, maximum 64) |
+| `get_conflict_events` | `country`, `min_fatalities`, `limit` |
+
+The UCDP and unrest list routes return the current snapshot without cursor pagination. The history timeline returns an opaque `nextCursor`. Pass it as `cursor` with the same domain, country and time filters to read the next page. Continue until `nextCursor` is empty, even when `records` is empty. A bounded country scan can return an empty page before older matches. `partial: true` means more history may remain.
+
+History reads set `upstreamUnavailable: true` when the store could not be reached. An empty list in that case is a failed read, not a quiet period. Retry the same request after recovery. Invalid cursors return HTTP 400. Restart from the first page if a cursor is rejected. Pages read the current store, so retain fixed time bounds for an export and de-duplicate records by `id`.
+
+## Retention: how far back each feed goes
+
+Checked against the code on October 17, 2026.
+
+| Feed | How far back | Source of the limit |
+| --- | --- | --- |
+| History records | 180 days, counted from when each record was stored. A daily job deletes older rows. The store began filling in 2026, so on October 17, 2026 the oldest conflict record dated from late July 2026. | `INTEL_HISTORY_RETENTION_DAYS` in `convex/intelHistory.ts`; the `intel-history-prune` cron in `convex/crons.ts` |
+| UCDP events | A trailing year before the newest event in the UCDP dataset, capped at about 2,000 events. UCDP publishes with a lag, so the newest event is weeks behind today. | `TRAILING_WINDOW_MS` and `MAX_EVENTS` in `scripts/seed-ucdp-events.mjs` |
+| Unrest events | About the last two hours. worldmonitor.app has no ACLED credentials, so the feed is the current GDELT batch, built from GDELT articles of the past two hours. On October 17, 2026 it held 90 rows spanning 1.5 hours. A self-hosted deployment with ACLED credentials also merges ACLED protest rows from the last 30 days. | `RECENT_GKG_WINDOW_MS` in `scripts/seed-gdelt-bulk-materializer.mjs`; `ACLED_DISPLAY_LOOKBACK_DAYS` in `scripts/seed-unrest-events.mjs` |
+| ACLED conflict snapshot (`list-acled-events`) | Nothing on worldmonitor.app. Without ACLED credentials the producer fills this snapshot with GDELT conflict articles that carry no coordinates, and the route omits rows without coordinates. On October 17, 2026 the snapshot held 414 such rows and the route served none of them. With ACLED credentials it serves ACLED events from the last 30 days. Date filters cannot reach outside the stored snapshot. | The coordinate filter in `listAcledEvents`, `server/worldmonitor/conflict/v1/list-acled-events.ts`; [API reference](/api-reference#acled-conflict-snapshot) |
+| News headlines and clusters | Live window only. When a digest is built, headlines older than 96 hours (the default) are dropped, and each feed contributes at most five headlines. If a rebuild fails, the last good digest can be served for up to six more hours, marked by `coverage.servedStale` and `coverage.staleAgeSeconds`, so a served headline can be up to about 102 hours old. There is no news archive. | `resolveMaxAgeMs` in `server/worldmonitor/news/v1/_rss-cache.ts`; `ITEMS_PER_FEED` in `server/worldmonitor/news/v1/list-feed-digest.ts` |
+
+To keep a longer record, poll the feeds and store the items yourself. De-duplicate history records on `id`, and unrest and UCDP rows on their producer `id`. A news cluster `id` can change when an earlier headline joins the cluster, so do not use it as a durable key.
+
+## Webhooks for new items
+
+Alert rules push matching events to a webhook as they happen, or as daily, twice-daily or weekly digests. A rule filters by event type, severity (`all`, `high`, `critical`) and country. Each delivery is signed with HMAC-SHA256 in `X-WM-Signature`. You set up the webhook and rules in the dashboard's notification settings, signed in with a paid plan.
+
+A real-time delivery carries `eventType`, `severity`, `timestamp` and a `payload` whose fields depend on the event type. Treat every payload field as optional. News alerts (`rss_alert`) carry `title`, `source`, `link`, `publishedAt`, `importanceScore` and `corroborationCount`. Conflict alerts (`conflict_escalation`) carry `title` and `source`, plus `countryCode` when the country resolved, and no `link`. Payloads carry no stable event id and no coordinates. The [notifications reference](/api-notifications#webhook-delivery-contract) has the envelope and a verification example.
+
+## Code
+
+Python, with the [official SDK](/sdks):
+
+```python
+from worldmonitor_sdk import Client
+
+client = Client(api_key="wm_...")  # or set WORLDMONITOR_API_KEY
+
+# REST: unrest events in Nigeria since a timestamp
+unrest = client.get("/api/unrest/v1/list-unrest-events",
+                    {"country": "NG", "start": 1792195200000})
+
+# REST: the newest stored conflict events for Ukraine
+history = client.get("/api/intelligence/v1/get-intel-timeline",
+                     {"domain": "conflict", "country": "UA", "limit": 50})
+
+# Continue through the retained archive, including empty intermediate pages
+while not history["upstreamUnavailable"] and history["nextCursor"]:
+    history = client.get("/api/intelligence/v1/get-intel-timeline",
+                         {"domain": "conflict", "country": "UA", "limit": 50,
+                          "cursor": history["nextCursor"]})
+
+# MCP: corroborated news clusters with each outlet's tier
+clusters = client.call_tool("get_news_clusters", min_sources=2, limit=10)
+```
+
+The Go (`client.Get`, `client.CallTool`) and Ruby (`client.get`, `client.call_tool`) SDKs expose the same calls. From a shell, the [npm CLI](/cli) does the same:
+
+```sh
+npx worldmonitor get /api/unrest/v1/list-unrest-events --api-key wm_...
+npx worldmonitor call get_intel_timeline --args '{"domain":"conflict","country":"UA"}' --api-key wm_...
+```
+
+## Plans and price
+
+| Plan | What it gives an incident integration |
+| --- | --- |
+| API Starter, API Business | A `wm_` key for REST and the SDKs, MCP calls from the same daily budget, alert webhooks, a commercial license (API Starter for your organization, API Business for your customers' products too) |
+| Pro, Pro Business | MCP server and SDK tool calls, history search and timelines, alert webhooks. No REST key. |
+
+These plans are self-serve with published prices on the [pricing page](https://www.worldmonitor.app/pro#pricing). Checkout runs in the browser; you do not need to talk to sales.
+
+## Before you build
+
+- World Monitor aggregates published reports. It does not verify events on the ground, and a GDELT-derived row is a media signal.
+- Not every upstream source has completed a terms review. Check reuse terms before you redistribute data. The free `get_sources` MCP tool lists each outlet's tier and review status.
+- There is no published availability SLA.
+- The timeline pages through the existing 180-day store. Country playback is tracked in [issue #4276](https://github.com/koala73/worldmonitor/issues/4276), and additional event domains in [issue #5745](https://github.com/koala73/worldmonitor/issues/5745). Longer retention needs evidence of buyer demand and storage cost.

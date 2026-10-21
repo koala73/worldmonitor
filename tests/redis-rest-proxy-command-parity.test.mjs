@@ -1,0 +1,502 @@
+// #6937: EXECUTE the proxy's command gate, do not describe it.
+//
+// The first cut of this file regex-scraped ALLOWED_COMMANDS out of the proxy
+// and diffed it against strings scraped from one digest file. That shape is
+// the exact anti-pattern tests/digest-lastgood-script.test.mjs names: two
+// source scrapes agreeing proves nothing about the decision the proxy makes.
+// Concretely it was wrong three ways — it modelled ALLOWED_COMMANDS as the
+// whole acceptance rule (missing the deliberate pinned-script path, so it
+// reported EVAL as a parity violation and invited the reader to "fix" that by
+// allowlisting arbitrary Lua), it read 1 of 79 proxy-facing files, and with no
+// positive control it passed vacuously whenever either regex stopped matching.
+//
+// This version extracts the proxy's real assertCommandAllowed — the single
+// authorization decision both /pipeline and /multi-exec now route through —
+// and runs commands through it, the same extract-and-eval harness
+// tests/redis-rest-proxy-url-masking.test.mjs uses for maskRedisUrl. The proxy
+// connects to Redis and listens at import time, so it cannot be imported.
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import {
+  APPEND_HISTORY_LUA,
+  PUBLISH_PHYSICAL_PREMIUM_LUA,
+  PUBLISH_DIVERGENCE_LUA,
+} from '../scripts/seed-physical-premiums.mjs';
+import {
+  RESERVE_LUA,
+  SETTLE_LUA,
+  ACK_RECEIPTS_LUA,
+  STATUS_LUA,
+} from '../scripts/lib/x-post-budget.cjs';
+import { SOURCE_RETRY_CLAIM_SCRIPT } from '../scripts/_bundle-runner.mjs';
+import { CABLE_HEALTH_REPAIR_SCRIPT } from '../shared/cable-health-repair-script.mjs';
+import { COMPARE_AND_DELETE_SCRIPT } from '../shared/compare-and-delete-script.cjs';
+import { recordHistoryCost } from '../scripts/lib/intel-history-cost.mjs';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(here, '..');
+const proxyPath = resolve(repoRoot, 'docker/redis-rest-proxy.mjs');
+const proxySrc = readFileSync(proxyPath, 'utf8');
+
+// Pull the real gate plus everything it closes over. Each piece is asserted
+// present below, so a rename or a move reds this file loudly instead of
+// silently degrading into "nothing is allowed" or "nothing is emitted".
+function extract(pattern, label) {
+  const hit = proxySrc.match(pattern)?.[0];
+  assert.ok(hit, `${label} not found in docker/redis-rest-proxy.mjs`);
+  return hit;
+}
+
+const allowedCommandsSrc = extract(/const ALLOWED_COMMANDS = new Set\(\[[\s\S]*?\]\);/, 'ALLOWED_COMMANDS');
+const scriptConstsSrc = [...proxySrc.matchAll(/const [A-Z_]+_SCRIPT = \[[\s\S]*?\]\.join\('\\n'\);/g)].map((m) => m[0]);
+const allowedEvalSrc = extract(/const ALLOWED_EVAL_SCRIPTS = new Set\(\[[\s\S]*?\]\);/, 'ALLOWED_EVAL_SCRIPTS');
+const legacyReplacementsSrc = extract(/const LEGACY_EVAL_REPLACEMENTS = new Map\(\[[\s\S]*?\]\);/, 'LEGACY_EVAL_REPLACEMENTS');
+const isAllowedEvalSrc = extract(/function isAllowedEval\([\s\S]*?\n\}/, 'isAllowedEval');
+const assertAllowedSrc = extract(/function assertCommandAllowed\([\s\S]*?\n\}/, 'assertCommandAllowed');
+const commandForExecutionSrc = extract(/function commandForExecution\([\s\S]*?\n\}/, 'commandForExecution');
+
+function buildGate() {
+  // eslint-disable-next-line no-new-func
+  return new Function(`
+    const console = { error() {}, warn() {}, log() {} };
+    ${allowedCommandsSrc}
+    ${scriptConstsSrc.join('\n')}
+    ${allowedEvalSrc}
+    ${legacyReplacementsSrc}
+    ${isAllowedEvalSrc}
+    ${assertAllowedSrc}
+    ${commandForExecutionSrc}
+    return {
+      assertCommandAllowed,
+      commandForExecution,
+      ALLOWED_COMMANDS,
+      ALLOWED_EVAL_SCRIPTS,
+      X_POST_BUDGET_RESERVE_SCRIPT,
+      X_POST_BUDGET_STATUS_SCRIPT,
+      LEGACY_X_POST_BUDGET_RESERVE_SCRIPT,
+      LEGACY_X_POST_BUDGET_STATUS_SCRIPT,
+    };
+  `)();
+}
+
+const accepts = (gate, args) => {
+  try {
+    gate.assertCommandAllowed(args);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+it('accepts the emitted history-cost command and rejects a modified script', async () => {
+  const gate = buildGate();
+  let checked = false;
+  await recordHistoryCost({ domain: 'energy', resource: 'intelligence', at: Date.now(), runs: 1 }, {
+    env: { UPSTASH_REDIS_REST_URL: 'https://redis.test', UPSTASH_REDIS_REST_TOKEN: 'test' },
+    fetchImpl: async (_url, init) => {
+      const command = JSON.parse(init.body);
+      assert.deepEqual(gate.commandForExecution(command), command.map(String));
+      assert.equal(accepts(gate, [command[0], `${command[1]} `, ...command.slice(2)]), false);
+      checked = true;
+      return Response.json({ result: 'OK' });
+    },
+  });
+  assert.equal(checked, true);
+});
+
+it('accepts the exact compare-and-delete script emitted by the Redis client', () => {
+  const source = readFileSync(resolve(repoRoot, 'server/_shared/redis.ts'), 'utf8');
+  assert.match(source, /from '\.\.\/\.\.\/shared\/compare-and-delete-script\.cjs'/);
+  const start = source.indexOf('export async function compareAndDeleteRedisKey');
+  assert.ok(start >= 0, 'compareAndDeleteRedisKey export not found');
+  const nextExport = source.slice(start + 1).search(/\nexport /);
+  assert.ok(nextExport >= 0, 'next export after compareAndDeleteRedisKey not found');
+  const body = source.slice(start, start + 1 + nextExport);
+  assert.match(
+    body,
+    /JSON\.stringify\(\['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', finalKey, expectedValue\]\)/,
+  );
+  const gate = buildGate();
+  assert.equal(accepts(gate, ['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', 'lock', 'token']), true);
+  assert.equal(accepts(gate, ['EVAL', `${COMPARE_AND_DELETE_SCRIPT} `, '1', 'lock', 'token']), false);
+});
+
+// A Redis command array is [CMD, <key expression>, ...]. A label/enum/country
+// tuple is [ 'AAA', 'BBB', ... ] — every element a quoted literal. Requiring
+// the second element to be something other than a quoted string separates the
+// two: across the 79 proxy-facing files that discriminator drops 55 false
+// positives (BTC, NATO, CROSS_SOURCE_SIGNAL_TYPE_*) while dropping zero real
+// commands. Verify that claim before relaxing it.
+const COMMAND_ARRAY = /\[\s*'([A-Z][A-Z0-9]{1,20})'\s*,\s*([^'"\s])/g;
+
+// Tokens the discriminator cannot distinguish from a command. Keep this tiny
+// and justified — the test below proves nothing here is a real command, so an
+// entry can never quietly mask a genuine parity gap.
+const NOT_COMMANDS = new Set([
+  'INFORM', // scripts/validate-resilience-correlation.mjs: ['INFORM', informResult] label tuple
+]);
+
+// Every file that reaches the proxy, not just the news digest. Tests are
+// excluded: they assert against stubs and legitimately name blocked commands.
+function proxyFacingFiles() {
+  const out = execFileSync(
+    'grep',
+    ['-rl', '-e', 'runRedisPipeline', '-e', 'runRedisTransaction', '-e', '/pipeline', '-e', '/multi-exec',
+      // Vendido no instala deps aquí, pero un checkout de desarrollo sí
+      // (scripts/node_modules). Sin esto el scan lee sourcemaps de terceros
+      // (p.ej. convex cli.bundle.cjs.map) y "descubre" tokens que no son
+      // comandos Redis -- verde en CI (sin node_modules), rojo en local.
+      '--exclude-dir=node_modules',
+      'server', 'scripts', 'shared', 'api'],
+    { cwd: repoRoot, encoding: 'utf8' },
+  );
+  return out.trim().split('\n').filter(Boolean).filter((f) => !/__tests__|\.test\.|(^|\/)tests\//.test(f));
+}
+
+function emittedCommands() {
+  const byCommand = new Map();
+  for (const file of proxyFacingFiles()) {
+    let src;
+    try {
+      src = readFileSync(resolve(repoRoot, file), 'utf8');
+    } catch {
+      continue;
+    }
+    for (const [, command] of src.matchAll(COMMAND_ARRAY)) {
+      if (NOT_COMMANDS.has(command)) continue;
+      if (!byCommand.has(command)) byCommand.set(command, new Set());
+      byCommand.get(command).add(file);
+    }
+  }
+  return byCommand;
+}
+
+describe('redis-rest-proxy command gate', () => {
+  it('exposes one shared gate that both request paths route through', () => {
+    // The divergence this replaced: /multi-exec had its own bare
+    // ALLOWED_COMMANDS.has() check, so a command added to the Set ran there
+    // without the pinned-script branch runCommand enforces.
+    assert.match(proxySrc, /client\.sendCommand\(commandForExecution\(args\)\)/,
+      'runCommand must delegate to the shared command gate');
+    assert.match(proxySrc, /queuedCommand = commandForExecution\(cmd\)/,
+      'the /multi-exec handler must delegate to the shared command gate');
+    assert.match(proxySrc, /multi\.addCommand\(queuedCommand\)/,
+      'the /multi-exec handler must queue the command the gate authorized, not the caller\'s array');
+    assert.doesNotMatch(proxySrc, /if \(!ALLOWED_COMMANDS\.has\(cmdName\)\)/,
+      '/multi-exec must not re-implement the allowlist check');
+    // #8265: this assertion used to pin `multi.sendCommand(...)` — a method that
+    // does not exist on node-redis v4's transaction chain — so the source scrape
+    // certified the call site that made every /multi-exec answer 403. A scrape
+    // can only prove the gate is wired in; whether the queued command actually
+    // reaches Redis is behavioral, and redis-rest-proxy-multi-exec.test.mjs
+    // proves that against a chain stub built from the real v4 surface.
+    assert.doesNotMatch(proxySrc, /multi\.sendCommand\(/,
+      'sendCommand is a node-redis CLIENT method; the v4 multi chain queues with addCommand');
+  });
+
+  it('accepts every Redis command the platform actually sends', () => {
+    const gate = buildGate();
+    const emitted = emittedCommands();
+
+    // Positive controls. Without these the assertion below is vacuously true
+    // the moment either extraction stops matching.
+    assert.ok(gate.ALLOWED_COMMANDS.size > 40,
+      `expected a populated allowlist, got ${gate.ALLOWED_COMMANDS.size}`);
+    assert.ok(emitted.size >= 30,
+      `expected to find the platform's Redis commands, got ${emitted.size}`);
+    for (const anchor of ['HSET', 'HSETNX', 'HINCRBY', 'ZADD', 'ZREMRANGEBYSCORE', 'EVAL']) {
+      assert.ok(emitted.has(anchor), `scan lost a known-emitted command: ${anchor}`);
+    }
+
+    const rejected = [...emitted]
+      // EVAL is authorized by script text, not by name; the dedicated case below
+      // covers it. Rejecting it here is what pushed the previous version toward
+      // allowlisting arbitrary Lua.
+      .filter(([command]) => command !== 'EVAL')
+      .filter(([command]) => !accepts(gate, [command, 'k']))
+      .map(([command, files]) => `${command} (${[...files].sort().join(', ')})`)
+      .sort();
+
+    assert.deepEqual(rejected, [],
+      'these commands are sent to the proxy but rejected by it; add them to ALLOWED_COMMANDS only after reviewing blast radius');
+  });
+
+  it('still blocks the dangerous commands the allowlist exists for', () => {
+    // Negative control. An absence-only parity check stays green when the
+    // allowlist is widened to anything at all, including these.
+    const gate = buildGate();
+    for (const dangerous of [
+      'FLUSHALL', 'FLUSHDB', 'CONFIG', 'DEBUG', 'SLAVEOF', 'REPLICAOF',
+      'SHUTDOWN', 'SCRIPT', 'EVALSHA', 'ACL', 'MODULE', 'MIGRATE', 'RESET', 'CLIENT',
+      'SUBSCRIBE', 'PSUBSCRIBE', 'SSUBSCRIBE', 'UNSUBSCRIBE', 'PUNSUBSCRIBE', 'SUNSUBSCRIBE',
+    ]) {
+      assert.equal(accepts(gate, [dangerous, 'k']), false, `${dangerous} must stay blocked`);
+    }
+  });
+
+  it('admits a pinned script but never an arbitrary one', () => {
+    const gate = buildGate();
+    const pinned = [...gate.ALLOWED_EVAL_SCRIPTS];
+    assert.ok(pinned.length >= 1, 'the proxy must pin at least one script');
+    assert.equal(accepts(gate, ['EVAL', pinned[0], '1', 'k']), true,
+      'a pinned script must be accepted');
+    assert.equal(accepts(gate, ['EVAL', "redis.call('FLUSHALL')", '0']), false,
+      'an unpinned script must be rejected');
+    assert.equal(accepts(gate, ['EVAL']), false, 'EVAL with no script must be rejected');
+  });
+
+  it('pins the physical-premium history append by exact bytes', () => {
+    const gate = buildGate();
+    assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(APPEND_HISTORY_LUA), true);
+    assert.equal(accepts(gate, ['EVAL', APPEND_HISTORY_LUA, '1', 'history']), true);
+    assert.equal(
+      accepts(gate, ['EVAL', `${APPEND_HISTORY_LUA} `, '1', 'history']),
+      false,
+      'a one-character script variant must stay blocked',
+    );
+  });
+
+  it('admits the exact bundle recovery claim through the self-hosted proxy', () => {
+    const gate = buildGate();
+    const command = ['EVAL', SOURCE_RETRY_CLAIM_SCRIPT, '1', 'seed-meta:military:cross-strait-activity:complete', '{}', '{}'];
+    assert.equal(accepts(gate, command), true);
+    assert.deepEqual(Array.from(gate.commandForExecution(command)), command);
+    assert.equal(accepts(gate, ['EVAL', `${SOURCE_RETRY_CLAIM_SCRIPT} `, '1', 'k']), false);
+  });
+
+  it('admits only the exact cable snapshot repair script', () => {
+    const gate = buildGate();
+    const command = ['EVAL', CABLE_HEALTH_REPAIR_SCRIPT, '2', 'snapshot', 'meta'];
+    assert.deepEqual(Array.from(gate.commandForExecution(command)), command);
+    assert.equal(accepts(gate, ['EVAL', `${CABLE_HEALTH_REPAIR_SCRIPT} `, '2', 'snapshot', 'meta']), false);
+  });
+
+  it('pins the atomic physical-premium publication by exact bytes', () => {
+    const gate = buildGate();
+    assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(PUBLISH_PHYSICAL_PREMIUM_LUA), true);
+    assert.equal(
+      accepts(gate, ['EVAL', PUBLISH_PHYSICAL_PREMIUM_LUA, '2', 'snapshot', 'activation']),
+      true,
+    );
+    assert.equal(
+      accepts(gate, ['EVAL', `${PUBLISH_PHYSICAL_PREMIUM_LUA} `, '2', 'snapshot', 'activation']),
+      false,
+    );
+  });
+
+  it('pins the physical-divergence publication by exact bytes', () => {
+    const gate = buildGate();
+    assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(PUBLISH_DIVERGENCE_LUA), true);
+    assert.equal(
+      accepts(gate, ['EVAL', PUBLISH_DIVERGENCE_LUA, '2', 'snapshot', 'meta']),
+      true,
+    );
+    assert.equal(
+      accepts(gate, ['EVAL', `${PUBLISH_DIVERGENCE_LUA} `, '2', 'snapshot', 'meta']),
+      false,
+      'a one-character script variant must stay blocked',
+    );
+  });
+
+  it('pins every X Post budget script by exact bytes', () => {
+    const gate = buildGate();
+    for (const script of [RESERVE_LUA, SETTLE_LUA, ACK_RECEIPTS_LUA, STATUS_LUA]) {
+      assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(script), true);
+      assert.equal(accepts(gate, ['EVAL', script, '1', 'budget-key']), true);
+      assert.equal(
+        accepts(gate, ['EVAL', `${script} `, '1', 'budget-key']),
+        false,
+        'a one-character script variant must stay blocked',
+      );
+    }
+  });
+
+  it('accepts current and immediately prior X budget callers during rollout', () => {
+    const gate = buildGate();
+    const legacyScripts = [
+      [
+        gate.LEGACY_X_POST_BUDGET_RESERVE_SCRIPT,
+        gate.X_POST_BUDGET_RESERVE_SCRIPT,
+        '16673cafd28e2c29b645f1fd6c5a98465f9d4d6e4aa2af4b8e1d9ffb67de03ce',
+      ],
+      [
+        gate.LEGACY_X_POST_BUDGET_STATUS_SCRIPT,
+        gate.X_POST_BUDGET_STATUS_SCRIPT,
+        'dd44c93034f8fdfb89b1460e651e158e213c92a37f532d58954e537367fcd99e',
+      ],
+    ];
+    for (const [script, currentScript, expectedHash] of legacyScripts) {
+      assert.equal(createHash('sha256').update(script).digest('hex'), expectedHash);
+      assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(script), true);
+      assert.equal(accepts(gate, ['EVAL', script, '1', 'budget-key']), true);
+      assert.equal(gate.commandForExecution(['EVAL', script, '1', 'budget-key'])[1], currentScript);
+      assert.equal(accepts(gate, ['EVAL', `${script} `, '1', 'budget-key']), false);
+    }
+    assert.notEqual(gate.LEGACY_X_POST_BUDGET_RESERVE_SCRIPT, RESERVE_LUA);
+    assert.notEqual(gate.LEGACY_X_POST_BUDGET_STATUS_SCRIPT, STATUS_LUA);
+  });
+
+  it('admits the compare-and-delete script releaseLock actually sends', async () => {
+    const gate = buildGate();
+    const previousUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    const originalFetch = globalThis.fetch;
+    let command;
+    globalThis.fetch = async (_url, options) => {
+      command = JSON.parse(options.body);
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => '',
+        json: async () => ({ result: 1 }),
+      };
+    };
+    try {
+      const { releaseLock } = await import('../scripts/_seed-utils.mjs');
+      await releaseLock('theater-posture', 'run-1');
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = previousUrl;
+      if (previousToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = previousToken;
+    }
+    assert.equal(command?.[1], COMPARE_AND_DELETE_SCRIPT);
+    assert.deepEqual(command?.slice(0, 3), ['EVAL', COMPARE_AND_DELETE_SCRIPT, 1]);
+    assert.equal(accepts(gate, command), true);
+    assert.equal(accepts(gate, ['EVAL', `${command[1]} `, '1', 'seed-lock:theater-posture', 'run-1']), false);
+  });
+
+  it('warns when seed lock release is rejected', async () => {
+    const previousUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    const warnings = [];
+    globalThis.fetch = async () => {
+      throw new Error('Command not allowed: EVAL (script not in the pinned allowlist)');
+    };
+    console.warn = (...args) => { warnings.push(args.map(String).join(' ')); };
+    try {
+      const { releaseLock } = await import('../scripts/_seed-utils.mjs');
+      await releaseLock('theater-posture', 'run-9');
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = previousUrl;
+      if (previousToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = previousToken;
+    }
+    const logged = warnings.join('\n');
+    assert.match(logged, /seed-lock:theater-posture/);
+    assert.match(logged, /Command not allowed: EVAL \(script not in the pinned allowlist\)/);
+  });
+
+  it('admits the AIS relay owner-checked lock release', () => {
+    const gate = buildGate();
+    const relaySrc = readFileSync(resolve(repoRoot, 'scripts/ais-relay.cjs'), 'utf8');
+    const marker = 'function upstashReleaseLockIfOwner';
+    const start = relaySrc.indexOf(marker);
+    assert.ok(start >= 0, 'upstashReleaseLockIfOwner not found');
+    const nextFn = relaySrc.slice(start + marker.length).search(/\n(?:async )?function /);
+    assert.ok(nextFn >= 0, 'next function after upstashReleaseLockIfOwner not found');
+    const body = relaySrc.slice(start, start + marker.length + nextFn);
+    assert.match(
+      body,
+      /JSON\.stringify\(\['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', key, owner\]\)/,
+    );
+    assert.equal(accepts(gate, ['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', 'lock', 'owner']), true);
+    assert.equal(accepts(gate, ['EVAL', `${COMPARE_AND_DELETE_SCRIPT} `, '1', 'lock', 'owner']), false);
+  });
+
+  it('rewrites the pre-pin seed lock release onto the pinned compare-and-delete', () => {
+    const gate = buildGate();
+    const legacy = 'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end';
+    assert.equal(
+      createHash('sha256').update(legacy).digest('hex'),
+      'e8f5cdd7bf30b91b9ff7a57af527e4e0acc1e3cb6f91a44a9ef89ee0512c71c0',
+    );
+    assert.equal(accepts(gate, ['EVAL', legacy, '1', 'seed-lock:x', 'run']), true);
+    assert.equal(
+      gate.commandForExecution(['EVAL', legacy, '1', 'seed-lock:x', 'run'])[1],
+      COMPARE_AND_DELETE_SCRIPT,
+    );
+    assert.equal(accepts(gate, ['EVAL', `${legacy} `, '1', 'seed-lock:x', 'run']), false);
+  });
+
+  it('pins the webhook owner-index remove-expired script by exact bytes', () => {
+    const gate = buildGate();
+    const ownerIndexSrc = readFileSync(
+      resolve(repoRoot, 'server/worldmonitor/shipping/v2/webhook-owner-index.ts'),
+      'utf8',
+    );
+    const match = ownerIndexSrc.match(/const REMOVE_EXPIRED_MEMBER = "([^"]+)";/);
+    assert.ok(match, 'webhook-owner-index.ts must define REMOVE_EXPIRED_MEMBER');
+    const script = match[1];
+    assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(script), true);
+    assert.equal(accepts(gate, ['EVAL', script, '2', 'owner', 'record']), true);
+    assert.equal(
+      accepts(gate, ['EVAL', `${script} `, '2', 'owner', 'record']),
+      false,
+      'a one-character script variant must stay blocked',
+    );
+  });
+});
+
+it('accepts the exact PizzINT archive script and rejects arbitrary edits', async () => {
+  const { default: history } = await import('../scripts/shared/pizzint-history.cjs');
+  const gate = buildGate();
+  assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(history.WRITE_LUA), true);
+  assert.equal(accepts(gate, ['EVAL', history.WRITE_LUA, '2', 'history', 'metadata']), true);
+  assert.equal(accepts(gate, ['EVAL', history.WRITE_LUA + ' ', '2', 'history', 'metadata']), false);
+  // Membership alone would still pass if the writer sent some OTHER script, so
+  // pin the call site too: recordPizzintHistory must put WRITE_LUA on the wire.
+  const source = readFileSync(new URL('../scripts/shared/pizzint-history.cjs', import.meta.url), 'utf8');
+  assert.match(source, /await evalCommand\(WRITE_LUA, write\.keys, args\)/);
+  assert.equal(accepts(gate, ['EVAL', history.WRITE_LUA, '3', 'bucket', 'bucket-meta', 'heartbeat']), true);
+});
+
+it('accepts the daily CII writer command and rejects modified scripts', () => {
+  const output = execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', `
+    import { persistCiiDailyHistory } from './server/worldmonitor/intelligence/v1/get-risk-scores.ts';
+    import { CII_COUNTRY_CODES } from './shared/cii-weights.ts';
+    import { CII_FORMULA_VERSION } from './server/worldmonitor/intelligence/v1/_risk-config.ts';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    delete process.env.LOCAL_API_MODE;
+    let emitted;
+    globalThis.fetch = async (_input, init) => {
+      emitted = JSON.parse(init.body);
+      return Response.json([{ result: CII_COUNTRY_CODES.length }]);
+    };
+    await persistCiiDailyHistory({
+      ciiScores: CII_COUNTRY_CODES.map(region => ({
+        region, combinedScore: 40,
+        components: { ciiContribution: 1, geoConvergence: 2, militaryActivity: 3, newsActivity: 4 },
+        computedAt: Date.UTC(2026, 9, 18), methodologyVersion: CII_FORMULA_VERSION,
+      })),
+      strategicRisks: [], stale: false, degraded: false,
+    });
+    console.log(JSON.stringify(emitted));
+  `], { cwd: repoRoot, encoding: 'utf8' });
+  const pipeline = JSON.parse(output.trim().split('\n').at(-1));
+  assert.equal(pipeline.length, 1);
+  const command = pipeline[0];
+  assert.equal(command[0], 'EVAL');
+  assert.equal(command[2], 34);
+  const gate = buildGate();
+  assert.deepEqual(Array.from(gate.commandForExecution(command)), command.map(String));
+  assert.equal(accepts(gate, ['EVAL', `${command[1]} `, ...command.slice(2)]), false);
+});

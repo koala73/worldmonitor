@@ -1,0 +1,743 @@
+// GEO re-audit residue from issue #7463. Cross-host Sitemap, llms-full corpus,
+// well-known MCP server.json, corrections-log wiring, snapshot jargon, cadence,
+// lastmod-as-change-date, and homepage as-of dates. CCBot and msvalidate.01 are
+// captain calls — this file locks them as untouched rather than guessed.
+
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import { comparisonDiscoveryEntries } from '../scripts/build-comparison-pages.mjs';
+import { COMPARISONS_HEADING, buildLlmsFullText, redactInternalApiOrigins, withComparisonsSection, withCorpusNavigation, withResilienceCoverage } from '../scripts/build-llms-full.mjs';
+import { RESILIENCE_COVERAGE_PATTERN, buildCorpus, resilienceCoverageOf, resilienceCoveragePhrase, resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
+import { parseSitemapDocument } from '../scripts/verify-sitemaps.mjs';
+import { accuracyStateAudit, classifyAccuracyState } from '../scripts/build-accuracy-page.mjs';
+import { RANKABLE_UNIVERSE_SIZE } from '../scripts/shared/rankable-universe.mjs';
+import { GLOSSARY_TERMS } from '../blog-site/src/data/glossary.ts';
+import { RESILIENCE_COVERAGE_SURFACES, restateCoverage, syncResilienceCoverage } from '../scripts/sync-resilience-coverage.mjs';
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+function read(relativePath) {
+  return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+function readJson(relativePath) {
+  return JSON.parse(read(relativePath));
+}
+
+describe('GEO residue #7463', () => {
+  it('variant robots.txt authorises the www sitemap for cross-host submission', () => {
+    const body = read('public/robots.variant.txt');
+    assert.match(body, /^Sitemap: https:\/\/www\.worldmonitor\.app\/sitemap\.xml$/m);
+    assert.match(body, /^Sitemap: https:\/\/www\.worldmonitor\.app\/blog\/sitemap-index\.xml$/m);
+    assert.match(body, /^Sitemap: https:\/\/www\.worldmonitor\.app\/docs\/sitemap\.xml$/m);
+  });
+
+  it('does not reverse CCBot Disallow:/ and does not invent msvalidate.01', () => {
+    for (const file of ['public/robots.www.txt', 'public/robots.variant.txt', 'public/robots.api.txt']) {
+      const body = read(file);
+      assert.match(body, /^User-agent: CCBot$/m, `${file} must keep the CCBot group`);
+      assert.match(body, /^Disallow: \/$/m, `${file} must keep Disallow:/`);
+    }
+
+    const homepageSources = [
+      'pro-test/welcome.html',
+      'pro-test/index.html',
+      'pro-test/src/welcome/Hero.tsx',
+      'public/home.md',
+    ];
+    for (const file of homepageSources) {
+      assert.doesNotMatch(
+        read(file),
+        /msvalidate\.01/i,
+        `${file} must not invent a Bing verification token`,
+      );
+    }
+  });
+
+  it('llms-full.txt is a 150–400 KB corpus, not a near-duplicate index', () => {
+    const generated = buildLlmsFullText({ rootDir: repoRoot });
+    const committed = read('public/llms-full.txt');
+    assert.equal(
+      committed,
+      generated,
+      'public/llms-full.txt is stale — run npm run build:llms-full',
+    );
+
+    const bytes = Buffer.byteLength(committed, 'utf8');
+    const briefBytes = Buffer.byteLength(read('public/llms.txt'), 'utf8');
+    assert.ok(
+      bytes >= 150_000 && bytes <= 400_000,
+      `llms-full.txt must be 150–400 KB, got ${bytes} bytes`,
+    );
+    assert.ok(
+      bytes > briefBytes * 2,
+      `llms-full.txt (${bytes} B) must be substantially larger than llms.txt (${briefBytes} B)`,
+    );
+    assert.match(committed, /Country Resilience Index/);
+    assert.match(committed, /Strait of Hormuz/);
+    assert.match(committed, /Suez Canal/);
+    assert.match(committed, /## Generated corpus/);
+    assert.match(committed, /72 indicators across 21 active dimensions, 6 domains/);
+    assert.match(committed, /product-facts\.json.*capabilities\.localeCodes/);
+  });
+
+  it('llms-full inlines the generated forecast-accuracy record, not only an index link', () => {
+    const generated = buildLlmsFullText({ rootDir: repoRoot });
+    const snapshot = readJson(resolveLatestLivePulseSnapshotPath(repoRoot));
+    const skill = snapshot.forecastScorecard?.scorecard?.skill;
+    const section = generated.split(/^## Forecast accuracy$/m)[1]?.split(/^## /m)[0] ?? '';
+    assert.match(generated, /^## Forecast accuracy$/m);
+    assert.match(section, /https:\/\/www\.worldmonitor\.app\/accuracy\//);
+    // While the capture holds the #8990 audit, the section carries the withdrawal notice in place of every score.
+    const audit = accuracyStateAudit(classifyAccuracyState(snapshot.forecastScorecard));
+    if (audit) {
+      assert.match(section, new RegExp(`^Under audit since ${audit.since}\\.`, 'm'));
+      assert.ok(section.includes(`/issues/${audit.issue}`));
+      assert.doesNotMatch(section, /Brier|scored forecasts|-day window/);
+      return;
+    }
+    assert.match(section, /does not publish/i);
+    assert.ok(
+      Number.isFinite(skill?.brier) && skill.count > 0,
+      'the committed pulse snapshot must carry a measurable headline cohort so this section cannot be a hardcoded stub',
+    );
+    assert.match(section, new RegExp(`Brier of ${Number(skill.brier).toFixed(3)}`));
+    assert.match(section, new RegExp(`${Number(skill.count).toLocaleString('en-US')} scored forecasts`));
+    assert.match(
+      section,
+      new RegExp(`${Number(snapshot.forecastScorecard.scorecard.rollingWindowDays).toLocaleString('en-US')}-day window`),
+    );
+    assert.doesNotMatch(
+      section,
+      /issue #\d+/,
+      'the corpus section must state the negative scope without a tracker-only sentence',
+    );
+  });
+
+  // "Usable" was previously read as "not redacted", and the URL this pinned —
+  // https://api.worldmonitor.app/resilience/v1/get-runtime-manifest — 404s: the
+  // route is /api/resilience/v1/..., and the link had been published without the
+  // /api prefix (#7660, confirmed against production 2026-09-04). It now asserts
+  // the served path as well as the surviving host, so a link that resolves to
+  // nothing cannot pass again.
+  it('keeps the public runtime-manifest link usable in llms-full', () => {
+    const generated = buildLlmsFullText({ rootDir: repoRoot });
+    const manifestPath = '/api/resilience/v1/get-runtime-manifest';
+    const manifestUrl = `https://www.worldmonitor.app${manifestPath}`;
+    const escaped = manifestUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(
+      generated,
+      new RegExp(`\\[runtime manifest\\]\\(${escaped}\\)`),
+      'generated corpus must link the runtime manifest at the path that actually serves it',
+    );
+    // Every citation of the route must carry the /api prefix. A bare
+    // `/resilience/v1/...` is the 404 shape, and `[REDACTED]/...` is the
+    // over-redaction this test was originally written to catch.
+    for (const citation of generated.match(/\S*\/resilience\/v1\/get-runtime-manifest/g) ?? []) {
+      assert.ok(
+        citation.includes('/api/resilience/v1/get-runtime-manifest'),
+        `runtime-manifest citation does not resolve: ${citation}`,
+      );
+      assert.ok(!citation.includes('[REDACTED]'), `runtime-manifest citation was redacted: ${citation}`);
+    }
+
+    // The redaction rule itself: internal/preview `api.*` hosts collapse to
+    // [REDACTED], the public API origin survives. Asserted directly rather
+    // than through whichever document happens to cite it.
+    const publicApiOrigin = ['https://api', 'worldmonitor.app'].join('.');
+    const mixed = redactInternalApiOrigins([
+      `see https://api.preview.example${manifestPath}`,
+      `and ${publicApiOrigin}${manifestPath}`,
+    ].join(' '));
+    assert.match(mixed, /\[REDACTED\]\/api\/resilience\/v1\/get-runtime-manifest/);
+    assert.ok(mixed.includes(`${publicApiOrigin}${manifestPath}`), 'the public API origin must survive redaction');
+    assert.match(mixed, /pragma: allowlist secret/);
+  });
+
+  it('gives the full corpus unique headings and a complete, resolvable contents list (#7749)', () => {
+    const generated = buildLlmsFullText({ rootDir: repoRoot });
+    const headings = [...generated.matchAll(/^## (.+)$/gm)].map((match) => match[1]);
+    assert.equal(new Set(headings).size, headings.length, 'section headings must be unique');
+    const contents = generated.match(/<!-- corpus-navigation:start -->([\s\S]*?)<!-- corpus-navigation:end -->/)?.[1];
+    assert.ok(contents, 'the generated corpus needs a table of contents');
+    const links = [...contents.matchAll(/^- \[([^\]]+)\]\(#([^\)]+)\)$/gm)];
+    assert.deepEqual(links.map((match) => match[1]), headings, 'contents must enumerate every section in order');
+    assert.equal(new Set(links.map((match) => match[2])).size, links.length);
+    for (const [, , anchor] of links) {
+      assert.equal(generated.split(`<a id="${anchor}"></a>`).length - 1, 1, `${anchor} must resolve exactly once`);
+    }
+    assert.match(generated, /\[Data Sources\]\(#corpus-data-sources-country-resilience-index-methodology\)/,
+      'the imported methodology must link its own data sources');
+    for (const [, anchor] of generated.matchAll(/\]\(#([^)]+)\)/g)) {
+      assert.ok(generated.includes(`<a id="${anchor}"></a>`), `${anchor} must resolve within the corpus`);
+    }
+  });
+
+  it('qualifies colliding headings, preserves code examples, and rewrites document-local links (#7749)', () => {
+    const code = '```markdown\n## Sources\n[example](#sources)\n```';
+    const generated = withCorpusNavigation([
+      { title: 'Brief', text: '# Product\n\n## Sources\n[Brief sources](#sources)' },
+      { title: 'Methodology', text: `## Sources!\n[Method sources](#sources)\n\n${code}\n\n### Sources` },
+    ]);
+    assert.match(generated, /^# Product\n/);
+    assert.match(generated, /## Sources! \(Methodology\)/);
+    assert.match(generated, /### Sources \(Methodology\) 2/);
+    assert.match(generated, /\[Brief sources\]\(#corpus-sources\)/);
+    assert.match(generated, /\[Method sources\]\(#corpus-sources-methodology\)/);
+    assert.ok(generated.includes(code), 'fenced headings and links must remain code');
+  });
+
+  it('serves the MCP server card at the newer well-known server.json name', () => {
+    const vercel = readJson('vercel.json');
+    const rewrite = vercel.rewrites.find((entry) => entry.source === '/.well-known/mcp/server.json');
+    assert.ok(rewrite, 'vercel.json must rewrite the newer well-known name');
+    assert.equal(rewrite.destination, '/.well-known/mcp/server-card.json');
+    const card = readJson('public/.well-known/mcp/server-card.json');
+    assert.notEqual(
+      readJson('server.json').$schema,
+      card.$schema,
+      'do not publish the MCP registry server.json at the well-known path',
+    );
+    assert.equal(card.$schema, 'https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json');
+  });
+
+  it('published snapshot note warns about formula change without ticket jargon', () => {
+    const current = readJson('docs/snapshots/resilience-ranking-2026-08-29.json');
+    assert.doesNotMatch(current.snapshotNote, /Post-P1-1/);
+    assert.match(current.snapshotNote, /different formula|not directly comparable/i);
+    assert.match(current.snapshotNote, /domain design weights/i);
+    assert.match(read('scripts/freeze-resilience-ranking.mjs'), /Earlier published CRI numbers used coverage-only member aggregation/);
+    assert.doesNotMatch(read('scripts/freeze-resilience-ranking.mjs'), /Post-P1-1/);
+  });
+
+  it('corrections log distinguishes the first-of-month schedule from the 2026-08-29 artifact', () => {
+    const en = read('docs/corrections.mdx');
+    const zh = read('docs/zh/corrections.mdx');
+    assert.match(en, /first day of each month/);
+    assert.match(en, /resilience-ranking-2026-08-29/);
+    assert.match(en, /[Oo]ff-cycle/);
+    assert.doesNotMatch(
+      en,
+      /runs on the first day of each month\. It captures/,
+      'must not imply the published 2026-08-29 artifact was a first-of-month run',
+    );
+    assert.match(zh, /每月第一天/);
+    assert.match(zh, /resilience-ranking-2026-08-29/);
+    assert.match(zh, /计划外/);
+  });
+
+  it('country lastmod includes livePulse and ignores the shared corpus generator stamp', () => {
+    const source = read('scripts/build-crawlable-corpus.mjs');
+    const match = source.match(/const countriesLastmod = laterDate\(([\s\S]*?)\);/);
+    assert.ok(match, 'countriesLastmod assignment must exist');
+    assert.match(match[1], /livePulse\.capturedAt/);
+    assert.doesNotMatch(match[1], /CORPUS_GENERATOR_CONTENT_VERSION/);
+    assert.match(match[1], /resilience\.capturedAt/);
+    assert.match(match[1], /COUNTRY_PAGE_CONTENT_VERSION/);
+
+    const chokepoints = source.match(/const chokepointsLastmod = laterDate\(([\s\S]*?)\);/);
+    assert.ok(chokepoints);
+    assert.match(chokepoints[1], /livePulse\.capturedAt/);
+    assert.doesNotMatch(chokepoints[1], /CORPUS_GENERATOR_CONTENT_VERSION/);
+
+    const research = source.match(/const researchLastmod = laterDate\(([\s\S]*?)\);/);
+    assert.ok(research);
+    assert.doesNotMatch(research[1], /CORPUS_GENERATOR_CONTENT_VERSION/);
+    assert.doesNotMatch(research[1], /livePulse/);
+
+    const useCases = source.match(/const useCasesLastmod = laterDate\(([\s\S]*?)\);/);
+    assert.ok(useCases);
+    assert.doesNotMatch(useCases[1], /CORPUS_GENERATOR_CONTENT_VERSION/);
+    assert.doesNotMatch(useCases[1], /livePulse/);
+  });
+
+  it('homepage as-of date tracks the published pulse, not a hand-set stamp (#8701)', () => {
+    // The hero and home.md were pinned to 2026-09-08 to match #software
+    // dateModified. Once dateModified followed the pulse (#7654) the pin left
+    // the visible date trailing lastmod, so all three now read one freeze.
+    const snapshot = readJson(resolveLatestLivePulseSnapshotPath(repoRoot));
+    const hero = read('pro-test/src/welcome/Hero.tsx');
+    const en = readJson('pro-test/src/locales/en.json');
+
+    assert.match(hero, /dateTime=\{PUBLISHED_PULSE_DATE\}/);
+    assert.equal(en.welcome?.hero?.asOf, 'As of {{date}}');
+    assert.match(read('public/home.md'), new RegExp(`^As of ${snapshot.capturedAt}\\.$`, 'm'));
+  });
+
+  it('homepage and Pro software dates track the teaser strip snapshot (#7654)', () => {
+    // The strip reads docs/snapshots/crawlable-live-pulse-*.json, so the host
+    // page's crawler-facing dates come from the same freeze — refreshed by
+    // `npm run teasers:welcome`, never hand-maintained.
+    const snapshot = readJson(resolveLatestLivePulseSnapshotPath(repoRoot));
+    const welcome = read('pro-test/welcome.html');
+    assert.match(welcome, new RegExp(`<meta name="lastmod" content="${snapshot.capturedAt}"`));
+    assert.match(welcome, new RegExp(`"dateModified": "${snapshot.capturedAt}"`));
+    assert.match(read('pro-test/index.html'), new RegExp(`"dateModified": "${snapshot.capturedAt}"`));
+  });
+
+  it('does not add well-known server.json to the MCP registry publish path filter', () => {
+    const workflow = read('.github/workflows/publish-mcp-registry.yml');
+    assert.doesNotMatch(
+      workflow,
+      /public\/\.well-known\/mcp\/server\.json/,
+      'well-known server.json is a discovery alias, not a registry publish input',
+    );
+  });
+
+  it('regenerates llms-full when the monthly resilience snapshot refreshes', () => {
+    const workflow = read('.github/workflows/resilience-snapshot-refresh.yml');
+    assert.match(workflow, /npm run build:llms-full/);
+    assert.match(workflow, /git add "\$snapshot_path" public\/sitemap\.xml public\/sitemap-main\.xml public\/llms-full\.txt/);
+  });
+
+  it('regenerates llms-full when the weekly pulse snapshot refreshes', () => {
+    const workflow = read('.github/workflows/crawlable-pulse-refresh.yml');
+    assert.match(workflow, /npm run build:llms-full/);
+    assert.match(workflow, /git add "\$snapshot_path" public\/sitemap\.xml public\/sitemap-main\.xml public\/llms-full\.txt/);
+    assert.match(workflow, /tests\/seo-geo-residue\.test\.mjs/);
+  });
+});
+
+describe('GEO residue #7616 (U1 agent surfaces)', () => {
+  // Ranked = rows in the newest published snapshot; universe = ranked plus
+  // greyed-out rows, which must equal the committed rankable whitelist.
+  function latestResilienceCoverage() {
+    const snapshots = readdirSync(join(repoRoot, 'docs/snapshots'))
+      .filter((name) => /^resilience-ranking-\d{4}-\d{2}-\d{2}\.json$/.test(name))
+      .sort();
+    assert.ok(snapshots.length > 0, 'a published resilience snapshot must exist');
+    const snapshot = JSON.parse(read(`docs/snapshots/${snapshots[ snapshots.length - 1]}`));
+    assert.ok(Array.isArray(snapshot.items) && snapshot.items.length > 0);
+    const ranked = snapshot.items.length;
+    const universe = ranked + (Array.isArray(snapshot.greyedOut) ? snapshot.greyedOut.length : 0);
+    assert.equal(universe, RANKABLE_UNIVERSE_SIZE, 'snapshot ranked + greyedOut must equal the rankable universe');
+    return { ranked, universe };
+  }
+
+  it('fails closed when a snapshot does not cover the rankable universe', () => {
+    const rows = (n) => Array.from({ length: n }, (_, index) => ({ countryCode: `C${index}` }));
+    assert.deepEqual(
+      resilienceCoverageOf({ items: rows(RANKABLE_UNIVERSE_SIZE - 3), greyedOut: rows(3) }),
+      { ranked: RANKABLE_UNIVERSE_SIZE - 3, universe: RANKABLE_UNIVERSE_SIZE },
+    );
+    assert.throws(() => resilienceCoverageOf({ items: [], greyedOut: rows(3) }), /must contain ranked items/);
+    assert.throws(
+      () => resilienceCoverageOf({ items: rows(RANKABLE_UNIVERSE_SIZE - 3), greyedOut: rows(2) }),
+      /but the rankable universe has/,
+    );
+    assert.throws(() => resilienceCoverageOf({ items: rows(RANKABLE_UNIVERSE_SIZE - 3) }), /but the rankable universe has/);
+  });
+
+  const COVERAGE_FILES = [
+    'public/llms.txt',
+    'public/llms-full.txt',
+    'index.html',
+    'docs/about.mdx',
+    'src/config/variant-meta.ts',
+  ];
+
+  it('links the real documentation file, not the dead DOCUMENTATION.md blob path', () => {
+    const generated = buildLlmsFullText({ rootDir: repoRoot });
+    for (const [label, body] of [['public/llms.txt', read('public/llms.txt')], ['generated llms-full', generated]]) {
+      assert.doesNotMatch(
+        body,
+        /docs\/DOCUMENTATION\.md/,
+        `${label} must not reference the dead DOCUMENTATION.md blob path`,
+      );
+      assert.match(
+        body,
+        /\(https:\/\/github\.com\/koala73\/worldmonitor\/blob\/main\/docs\/documentation\.mdx\)/,
+        `${label} must link the real documentation.mdx location`,
+      );
+    }
+  });
+
+  it('states coverage with the two-part definition pinned to the live snapshot', () => {
+    const { ranked, universe } = latestResilienceCoverage();
+    const phrase = resilienceCoveragePhrase({ ranked, universe });
+    const standard = new RegExp(`live in 190\\+ countries[^.]*${phrase}`);
+    for (const file of COVERAGE_FILES) {
+      const body = read(file);
+      assert.match(body, standard, `${file} must carry the standard coverage definition`);
+      // Every mention must use the shared wording and carry the exact
+      // snapshot pair, so a bare "ranked for N" or a stale pair fails here.
+      const mentions = body.split('structural resilience ranked for').length - 1;
+      const statements = body.match(RESILIENCE_COVERAGE_PATTERN) ?? [];
+      assert.ok(statements.length > 0, `${file} must state resilience coverage`);
+      assert.equal(statements.length, mentions, `${file} must state every resilience mention as "${phrase}"`);
+      for (const statement of statements) {
+        assert.equal(statement.trim(), phrase, `${file} must state exactly "${phrase}"`);
+      }
+    }
+    assert.match(
+      buildLlmsFullText({ rootDir: repoRoot }),
+      standard,
+      'generated llms-full must derive the coverage pair from the newest snapshot',
+    );
+    assert.throws(
+      () => withResilienceCoverage('live in 190+ countries, with structural resilience ranked for 1.', { ranked, universe }),
+      /expected "structural resilience ranked for/,
+      'a bare ranked count without its universe is not the shared wording',
+    );
+    assert.equal(
+      withResilienceCoverage('ranked: structural resilience ranked for 9 of 9 countries.', { ranked, universe }),
+      `ranked: ${phrase}.`,
+    );
+    assert.throws(
+      () => withResilienceCoverage('live in 190+ countries.', { ranked, universe }),
+      /expected "structural resilience ranked for/,
+    );
+    for (const file of COVERAGE_FILES) {
+      assert.doesNotMatch(read(file), /across 190\+ countries/, `${file} must not use the legacy reach phrasing`);
+      assert.doesNotMatch(read(file), /used in 190\+ countries/, `${file} must not use the legacy reach phrasing`);
+    }
+  });
+
+  // Elie's standing decision: resilience coverage reads "{ranked} of
+  // {universe}" everywhere. These hand-written pages cannot run the snapshot
+  // helper, so each must carry the newest snapshot's pair verbatim, and no
+  // public surface may claim to score or rank "196 countries" bare. The 196-
+  // country rankable universe as a definition stays allowed.
+  it('states CRI ranking coverage on docs and blog pages as the snapshot pair', () => {
+    const { ranked, universe } = latestResilienceCoverage();
+    const required = [
+      ['docs/methodology/country-resilience-index.mdx', `Live resilience scoring with ${ranked} of ${universe} countries ranked`],
+      ['docs/zh/methodology/country-resilience-index.mdx', `其中 ${ranked} 个国家进入排名（${ranked}/${universe}）`],
+      ['docs/overview.mdx', `ranks ${ranked} of ${universe} countries`],
+      ['blog-site/src/content/blog/country-instability-index-methodology-explained.md', `Ranked for ${ranked} of ${universe} countries, refreshed every six hours`],
+      ['public/llms-full.txt', `refreshed every six hours, ranking ${ranked} of ${universe} countries.`],
+    ];
+    for (const [file, text] of required) {
+      assert.ok(read(file).includes(text), `${file} must state "${text}"`);
+    }
+    const facts = JSON.parse(read('shared/product-facts.generated.json'));
+    assert.deepEqual(facts.resilienceCoverage, { ranked, universe }, 'product facts must carry the snapshot pair');
+    const cri = GLOSSARY_TERMS.find((term) => term.slug === 'country-resilience-index');
+    assert.ok(cri.short.includes(`refreshed every six hours, ranking ${ranked} of ${universe} countries.`), cri.short);
+    assert.doesNotMatch(read('blog-site/src/data/glossary.ts'), new RegExp(`\\b${ranked} of ${universe}\\b`), 'the glossary must interpolate the pair, not hard-code it');
+
+    const surfaces = [
+      ...required.map(([file]) => file),
+      ...COVERAGE_FILES,
+      'blog-site/src/data/glossary.ts',
+      'docs/features.mdx',
+      'docs/documentation.mdx',
+      'docs/PRESS_KIT.md',
+      'public/home.md',
+      'public/ai-search.md',
+    ];
+    for (const file of new Set(surfaces)) {
+      const text = read(file);
+      // "the published score for all 196 countries" (a changelog fact about
+      // every scored country) is not a coverage claim, so "all" is excluded.
+      const bare = text.match(
+        /\b(?:scoring|scores|ranked|ranking|refresh\w*[^.\n]{0,40})\s+(?:for|across)\s+196 countries\b|\branks?\s+(?:a|the)\s+196-country\b|面向 196 个国家的实时韧性评分体系。/i,
+      );
+      assert.equal(bare?.[0] ?? null, null, `${file} states CRI coverage as a bare 196 countries`);
+      for (const line of text.split('\n').filter((row) => /rank|排名/i.test(row))) {
+        for (const [statement, statedRanked, statedUniverse] of line.matchAll(/\b(\d+) of (\d+) countries\b/g)) {
+          assert.deepEqual(
+            [Number(statedRanked), Number(statedUniverse)],
+            [ranked, universe],
+            `${file} states "${statement}", not the snapshot's ${ranked} of ${universe}`,
+          );
+        }
+      }
+    }
+  });
+
+  // Elie approved this audience line verbatim for the homepage "What is World
+  // Monitor?" block and the markdown served to AI agents.
+  it('states the approved audience line on the homepage and in home.md', () => {
+    const line = 'Best for analysts, journalists, traders and builders who need live geopolitical signals.';
+    const en = JSON.parse(read('pro-test/src/locales/en.json'));
+    assert.equal(en.welcome.hero.whatIsBestFor, line);
+    assert.match(
+      read('pro-test/src/welcome/Hero.tsx'),
+      /\{t\('welcome\.hero\.whatIsBody', depthProofStats\)\}<\/p>\s*<p[^>]*>\{t\('welcome\.hero\.whatIsBestFor'\)\}<\/p>/,
+      'the Hero must render the audience line right after the definition',
+    );
+    assert.ok(read('public/home.md').split('\n').includes(line), 'public/home.md must carry the audience line on its own line');
+  });
+
+  // The /countries/ hub (meta, og, twitter and JSON-LD descriptions plus its
+  // FAQ) and the CII page are generated, so check the built corpus rather than
+  // a committed file: every "N of M countries" there must be the snapshot pair.
+  it('states resilience coverage on the generated country pages as the snapshot pair', async () => {
+    const { ranked, universe } = latestResilienceCoverage();
+    const phrase = resilienceCoveragePhrase({ ranked, universe });
+    const outDir = mkdtempSync(join(tmpdir(), 'wm-coverage-'));
+    try {
+      await buildCorpus({ rootDir: repoRoot, outDir, baseUrl: 'https://www.worldmonitor.app' });
+      for (const page of ['countries/index.html', 'country-instability-index/index.html']) {
+        const html = readFileSync(join(outDir, page), 'utf8');
+        assert.ok(html.includes(phrase), `${page} must state "${phrase}"`);
+        const pairs = [...html.matchAll(/\b(\d+) of (\d+) countries\b/g)];
+        for (const [statement, statedRanked, statedUniverse] of pairs) {
+          assert.deepEqual(
+            [Number(statedRanked), Number(statedUniverse)],
+            [ranked, universe],
+            `${page} states "${statement}", not the snapshot's ${ranked} of ${universe}`,
+          );
+        }
+        assert.doesNotMatch(
+          html,
+          /structural (?:resilience|capacity) across \d+ countries/,
+          `${page} must not state resilience coverage as the universe alone`,
+        );
+      }
+      const hub = readFileSync(join(outDir, 'countries/index.html'), 'utf8');
+      for (const pattern of [
+        /<meta name="description" content="([^"]+)"/,
+        /<meta property="og:description" content="([^"]+)"/,
+        /<meta name="twitter:description" content="([^"]+)"/,
+      ]) {
+        const description = hub.match(pattern)?.[1];
+        assert.ok(description?.includes(phrase), `/countries/ ${pattern.source} must carry "${phrase}"`);
+      }
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
+  // The hand-written surfaces cannot import the snapshot, so the monthly
+  // refresh restates them with scripts/sync-resilience-coverage.mjs. Prove the
+  // sync both agrees with the newest snapshot today and rewrites every surface
+  // when the ranked count moves, so a new snapshot cannot fail the checks above.
+  it('restates hand-written coverage from the newest snapshot', () => {
+    const { ranked, universe } = latestResilienceCoverage();
+    assert.deepEqual(syncResilienceCoverage({ rootDir: repoRoot, check: true }), []);
+    const moved = { ranked: ranked - 1, universe };
+    for (const surface of RESILIENCE_COVERAGE_SURFACES) {
+      const current = read(surface.path);
+      assert.equal(restateCoverage(current, surface, { ranked, universe }), current, `${surface.path} is stale`);
+      const next = restateCoverage(current, surface, moved);
+      assert.equal(next.split(surface.render(moved)).length - 1, surface.occurrences, `${surface.path} must restate every statement`);
+      assert.ok(!next.includes(surface.render({ ranked, universe })), `${surface.path} kept the old pair`);
+    }
+    assert.throws(
+      () => restateCoverage('no coverage here', RESILIENCE_COVERAGE_SURFACES[0], { ranked, universe }),
+      /expected 3 resilience coverage statement/,
+    );
+  });
+
+  it('regenerates every coverage surface in the monthly snapshot refresh', () => {
+    const workflow = read('.github/workflows/resilience-snapshot-refresh.yml');
+    const step = (command) => {
+      const index = workflow.indexOf(command);
+      assert.ok(index > 0, `the refresh workflow must run ${command}`);
+      return index;
+    };
+    // inventory:facts derives public/product-facts.json from product facts,
+    // and the glossary CRI line in llms-full reads them, so both run after.
+    const productFacts = step('scripts/generate-public-product-facts.mjs');
+    assert.ok(productFacts < step('npm run inventory:facts'), 'product facts must be regenerated before inventory:facts');
+    assert.ok(productFacts < step('npm run build:llms-full'), 'product facts must be regenerated before build:llms-full');
+    assert.ok(step('npm run resilience:coverage') < step('node --import tsx --test'));
+    const staged = workflow.slice(workflow.indexOf('git add "$snapshot_path"'), workflow.indexOf('git commit'));
+    for (const path of [
+      ...RESILIENCE_COVERAGE_SURFACES.map((surface) => surface.path),
+      'shared/product-facts.generated.json',
+      'scripts/shared/product-facts.generated.json',
+      'shared/product-catalog.generated.json',
+      'scripts/shared/product-catalog.generated.json',
+      'api/_product-catalog.generated.js',
+      'pro-test/src/generated/depth-stats.json',
+    ]) {
+      assert.ok(staged.includes(path), `the refresh workflow must commit ${path}`);
+    }
+  });
+});
+
+describe('GEO residue #7616 (U3 sitemap index)', () => {
+  it('serves a root sitemap index listing exactly the three robots-declared sitemaps', () => {
+    const index = parseSitemapDocument(read('public/sitemap.xml'));
+    assert.equal(index.type, 'index', 'public/sitemap.xml must be a sitemap index, not a URL set');
+    assert.deepEqual(
+      [...index.locations].sort(),
+      [
+        'https://www.worldmonitor.app/blog/sitemap-index.xml',
+        'https://www.worldmonitor.app/docs/sitemap.xml',
+        'https://www.worldmonitor.app/sitemap-main.xml',
+      ],
+      'the root index must expose the local, blog, and docs sitemaps and nothing else',
+    );
+  });
+
+  it('keeps the local URL set in sitemap-main.xml without blog/docs overlap', () => {
+    const urlset = parseSitemapDocument(read('public/sitemap-main.xml'));
+    assert.equal(urlset.type, 'urlset');
+    assert.ok(
+      urlset.locations.includes('https://www.worldmonitor.app/dashboard'),
+      'sitemap-main.xml must list the dashboard route',
+    );
+    assert.ok(
+      urlset.locations.every((loc) => !loc.includes('/blog/') && !loc.includes('/docs/')),
+      'sitemap-main.xml must not overlap the blog or docs inventories',
+    );
+  });
+
+  it('measures the local member lastmod and never fabricates foreign lastmod', () => {
+    const source = read('public/sitemap.xml');
+    const local = source.match(/<sitemap>\s*<loc>https:\/\/www\.worldmonitor\.app\/sitemap-main\.xml<\/loc>\s*(<lastmod>(\d{4}-\d{2}-\d{2})<\/lastmod>)?\s*<\/sitemap>/);
+    assert.ok(local?.[2], 'the local index member must carry a measured lastmod date');
+    assert.doesNotMatch(
+      source,
+      /blog\/sitemap-index\.xml<\/loc>\s*<lastmod>/,
+      'the blog member must not carry a fabricated lastmod',
+    );
+    assert.doesNotMatch(
+      source,
+      /docs\/sitemap\.xml<\/loc>\s*<lastmod>/,
+      'the docs member must not carry a fabricated lastmod',
+    );
+  });
+});
+
+describe('GEO residue #7463 filesystem', () => {
+  it('does not duplicate the MCP registry server.json under well-known', () => {
+    const names = readdirSync(join(repoRoot, 'public/.well-known/mcp'));
+    assert.ok(names.includes('server-card.json'));
+    assert.equal(
+      names.includes('server.json'),
+      false,
+      'well-known server.json must be a rewrite alias, not a second copy of the card',
+    );
+  });
+});
+
+// The 13 /compare/ pages scored 85–92 on citability yet were referenced from
+// none of the surfaces built to tell an assistant what the site offers: zero
+// mentions in llms.txt, llms-full.txt, or the served homepage (#7746). The
+// section is generated from COMPARISON_PAGES and spliced into llms.txt by the
+// same script that emits llms-full.txt, so the two cannot drift from each
+// other or from the pages; the sitemap cross-check catches a route family
+// that ships without a discovery entry at all.
+describe('GEO residue #7746 (compare discoverability)', () => {
+  const llmsTxt = () => read('public/llms.txt');
+  const sitemapCompareUrls = () =>
+    parseSitemapDocument(read('public/sitemap-main.xml')).locations
+      .filter((loc) => new URL(loc).pathname.startsWith('/compare/'))
+      .sort();
+
+  it('lists every sitemap /compare/ URL in llms.txt and the generated llms-full corpus', () => {
+    const urls = sitemapCompareUrls();
+    assert.ok(urls.length >= 13, `sitemap-main.xml should carry the 13-route compare family, got ${urls.length}`);
+    const generated = buildLlmsFullText({ rootDir: repoRoot });
+    for (const url of urls) {
+      // Exactly once: the splice locates its section by heading, so a renamed
+      // heading would leave a stale copy behind that the fixed-point check
+      // cannot see. Counting the links catches that duplicate.
+      assert.equal(llmsTxt().split(`](${url})`).length, 2, `public/llms.txt must link ${url} exactly once`);
+      assert.ok(generated.includes(`](${url})`), `generated llms-full must link ${url}`);
+    }
+  });
+
+  it('keeps the llms.txt Comparisons section in sync with the generator, between Answer Blocks and Live Instances', () => {
+    const body = llmsTxt();
+    assert.equal(
+      withComparisonsSection(body),
+      body,
+      'public/llms.txt Comparisons section is stale — run npm run build:llms-full',
+    );
+    const answerBlocks = body.indexOf('\n## AI Search Answer Blocks\n');
+    const comparisons = body.indexOf(`\n${COMPARISONS_HEADING}\n`);
+    const liveInstances = body.indexOf('\n## Live Instances\n');
+    assert.ok(answerBlocks !== -1 && comparisons !== -1 && liveInstances !== -1, 'all three headings must exist');
+    assert.ok(
+      answerBlocks < comparisons && comparisons < liveInstances,
+      'Comparisons must sit between AI Search Answer Blocks and Live Instances',
+    );
+    assert.equal(
+      (body.match(new RegExp(`^${COMPARISONS_HEADING}$`, 'mg')) ?? []).length,
+      1,
+      'llms.txt must carry exactly one Comparisons section',
+    );
+  });
+
+  it('derives one query-led discovery entry per compare route, matching the sitemap set exactly', () => {
+    const entries = comparisonDiscoveryEntries('https://www.worldmonitor.app');
+    assert.deepEqual(entries.map((entry) => entry.url).sort(), sitemapCompareUrls());
+    const descriptions = new Set();
+    for (const entry of entries) {
+      assert.ok(entry.title.length > 0, `${entry.url} needs a title`);
+      assert.ok(
+        entry.description.length >= 60 && entry.description.length <= 240,
+        `${entry.url} summary must be 60–240 chars, got ${entry.description.length}`,
+      );
+      assert.ok(!descriptions.has(entry.description), `${entry.url} summary duplicates another entry`);
+      descriptions.add(entry.description);
+      assert.ok(
+        llmsTxt().includes(`- [${entry.title}](${entry.url}): ${entry.description}`),
+        `llms.txt must carry the exact entry for ${entry.url}`,
+      );
+    }
+  });
+
+  it('splices the section idempotently and fails loudly on malformed input', () => {
+    const doc = '# X\n\n## AI Search Answer Blocks\n\nbody\n\n## Live Instances\n\n- a\n';
+    const once = withComparisonsSection(doc);
+    assert.ok(once.includes(`\n${COMPARISONS_HEADING}\n`), 'first run inserts the section');
+    assert.ok(once.indexOf(COMPARISONS_HEADING) < once.indexOf('## Live Instances'), 'inserted ahead of Live Instances');
+    assert.equal(withComparisonsSection(once), once, 'the inserted document is a fixed point');
+    const edited = once.replace('- [Compare World Monitor]', '- [Stale]');
+    assert.notEqual(edited, once);
+    assert.equal(withComparisonsSection(edited), once, 'a hand-edited section is replaced in place');
+    assert.throws(() => withComparisonsSection('# X\n\n## Documentation\n\n- a\n'), /Live Instances/);
+    assert.throws(() => withComparisonsSection(`${once}\n${COMPARISONS_HEADING}\n\nextra\n`), /exactly one/);
+  });
+
+  it('links the Liveuamap FAQ answer to the comparison page on the homepage and its agent mirror', () => {
+    const label = 'worldmonitor.app/compare/liveuamap-alternatives';
+    const href = '/compare/liveuamap-alternatives/';
+    const dashboardHref = '/compare/best-geopolitical-risk-dashboards/';
+    const dashboardLabel = `worldmonitor.app${dashboardHref.slice(0, -1)}`;
+    const en = readJson('pro-test/src/locales/en.json');
+    assert.equal(en.welcome.faq.q5, 'How is this different from a conflict map like Liveuamap?');
+    // The destination rides inside the answer string, like the terms link in
+    // a11, so the FAQPage JSON-LD keeps it and the translator pins the URL.
+    assert.ok(en.welcome.faq.a5.includes(label), 'en a5 must keep the comparison destination');
+    assert.equal(en.welcome.faq.a5Link, undefined, 'the label lives in a5, not a separate key');
+    for (const file of readdirSync(join(repoRoot, 'pro-test/src/locales'))) {
+      const answer = readJson(`pro-test/src/locales/${file}`).welcome?.faq?.a5;
+      assert.ok(typeof answer === 'string' && answer.includes(label), `${file} a5 must keep the comparison destination`);
+      assert.ok(answer.includes(dashboardLabel), `${file} a5 must include the dashboard comparison destination`);
+    }
+    assert.equal(readJson('scripts/locale-baselines/pro-test.json')['welcome.faq.a5'], en.welcome.faq.a5);
+    // FAQ.tsx maps that label to the route, and the route must be one the
+    // comparison registry actually emits, so a renamed slug cannot leave the
+    // homepage on a 404 while every generated surface moves.
+    const faqSource = read('pro-test/src/welcome/FAQ.tsx');
+    const mapping = faqSource.match(/label: '([^']+)', href: '(\/compare\/[^']+)'/);
+    assert.ok(mapping, 'FAQ.tsx must map a compare label to its route');
+    assert.equal(mapping[1], label);
+    assert.equal(mapping[2], href);
+    assert.ok(
+      comparisonDiscoveryEntries('https://www.worldmonitor.app').some((entry) => entry.url === `https://www.worldmonitor.app${href}`),
+      'the FAQ route must be a registered comparison page',
+    );
+    assert.ok(en.welcome.faq.a5.includes(dashboardLabel));
+    assert.ok(faqSource.includes(`label: '${dashboardLabel}', href: '${dashboardHref}'`));
+    assert.ok(comparisonDiscoveryEntries('https://www.worldmonitor.app').some((entry) => entry.url === `https://www.worldmonitor.app${dashboardHref}`));
+    assert.match(
+      read('public/home.md'),
+      /\]\(https:\/\/www\.worldmonitor\.app\/compare\/\)/,
+      'home.md must link the comparison hub',
+    );
+    assert.match(
+      read('public/ai-search.md'),
+      /^- Competitor comparisons[^\n]*https:\/\/www\.worldmonitor\.app\/compare\/$/m,
+      'ai-search.md Relevant Pages must list the comparison hub',
+    );
+    assert.match(
+      read('.github/workflows/resilience-snapshot-refresh.yml'),
+      /git add [^\n]*public\/llms\.txt/,
+      'the monthly refresh must stage llms.txt now that build:llms-full owns it',
+    );
+  });
+});

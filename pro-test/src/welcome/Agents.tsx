@@ -1,0 +1,128 @@
+import { motion } from 'motion/react';
+import { Check } from 'lucide-react';
+import { CardLinkArrow, cardLinkFocusRing } from './CardLink';
+import { t } from '../i18n';
+import depthProofStats from '../generated/depth-stats.json';
+import copyStats from '../generated/copy-stats.json';
+
+// Registry install commands are product identifiers, not prose — they stay
+// untranslated on purpose (same reason the tool names below do).
+const INSTALL_CHIPS = [
+  { cmd: 'npm i worldmonitor', href: 'https://www.npmjs.com/package/worldmonitor' },
+  { cmd: 'pip install worldmonitor-sdk', href: 'https://pypi.org/project/worldmonitor-sdk/' },
+  { cmd: 'gem install worldmonitor', href: 'https://rubygems.org/gems/worldmonitor' },
+  { cmd: 'go get github.com/koala73/worldmonitor/sdk/go', href: 'https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go' },
+] as const;
+
+const AGENT_RESOURCES = [
+  { key: 'briefing', href: '/llms.txt', display: '/llms.txt', eventTarget: 'welcome-agent-briefing' },
+  { key: 'mcp', href: 'https://worldmonitor.app/mcp', display: 'worldmonitor.app/mcp', eventTarget: 'welcome-agent-mcp' },
+  // Destination is the API reference, not the bare api host: that host's root
+  // is a 308 to the www homepage, so it was a redirect hop to a page that is
+  // not the API (#8603). `display` tracks the destination, as it does for
+  // every other entry here — this block is read by LLMs summarising the
+  // section, so a display string that names a different URL than the link
+  // would teach them the wrong base URL.
+  { key: 'api', href: 'https://www.worldmonitor.app/docs/api-reference', display: 'worldmonitor.app/docs/api-reference', eventTarget: 'welcome-agent-api' },
+  { key: 'agentView', href: '/?mode=agent', display: '/?mode=agent', eventTarget: 'welcome-agent-view' },
+] as const;
+
+export const Agents = () => (
+  <section id="agents" className="py-24 px-6 border-t border-wm-border">
+    <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 items-center">
+      <motion.div
+        initial={false}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-60px' }}
+        transition={{ duration: 0.5 }}
+        className="min-w-0"
+      >
+        <div className="font-mono text-xs uppercase tracking-[3px] text-wm-green mb-3">{t('welcome.agents.eyebrow')}</div>
+        <h2 className="text-3xl md:text-5xl font-display font-bold tracking-tight mb-6">{t('welcome.agents.title')}</h2>
+        <p className="text-wm-muted mb-6">{t('welcome.agents.sub', { ...depthProofStats, ...copyStats })}</p>
+        <ul className="space-y-3 mb-6 text-sm">
+          {[1, 2, 3, 4].map(n => (
+            <li key={n} className="flex items-start gap-2.5">
+              <Check className="w-4 h-4 text-wm-green shrink-0 mt-0.5" aria-hidden="true" />
+              <span className="text-wm-muted">{t(`welcome.agents.b${n}`, depthProofStats)}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="mb-6">
+          <p className="mb-3 font-mono text-xs uppercase tracking-[2px] text-wm-text">
+            {t('welcome.agents.resources.title')}
+          </p>
+          <div className="grid gap-px overflow-hidden rounded-sm border border-wm-border bg-wm-border sm:grid-cols-2">
+            {AGENT_RESOURCES.map(({ key, href, display, eventTarget }) => (
+              <a
+                key={key}
+                href={href}
+                data-umami-event="welcome-cta"
+                data-umami-event-target={eventTarget}
+                className={`group flex min-w-0 items-center justify-between gap-3 bg-wm-card px-4 py-3 text-sm transition-colors hover:bg-wm-bg/80 ${cardLinkFocusRing}`}
+              >
+                <span className="min-w-0">
+                  <span className="block font-medium text-wm-text">{t(`welcome.agents.resources.${key}`)}</span>
+                  <span className="block truncate font-mono text-xs text-wm-muted">{display}</span>
+                </span>
+                <CardLinkArrow className="shrink-0 text-wm-green" />
+              </a>
+            ))}
+          </div>
+        </div>
+        <div className="mb-6 rounded-sm border border-wm-border bg-wm-card/70 font-mono text-xs leading-none">
+          {INSTALL_CHIPS.map(({ cmd, href }, i) => (
+            <a
+              key={cmd}
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className={`flex items-center gap-2 px-4 py-2.5 text-wm-muted hover:text-wm-text hover:bg-wm-bg/60 transition-colors ${i > 0 ? 'border-t border-wm-border' : ''}`}
+            >
+              <span className="text-wm-green" aria-hidden="true">$</span>
+              <span className="truncate">{cmd}</span>
+            </a>
+          ))}
+        </div>
+        <p className="font-mono text-xs uppercase tracking-wider text-wm-text mb-8">{t('welcome.agents.promise')}</p>
+        <a
+          href="https://www.worldmonitor.app/docs/documentation"
+          className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-green/50 transition-colors inline-block"
+        >
+          {t('welcome.agents.cta')}
+        </a>
+      </motion.div>
+      <motion.div
+        initial={false}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-60px' }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+        className="min-w-0 bg-wm-card border border-wm-border rounded-md overflow-hidden border-glow"
+      >
+        <div className="flex items-center gap-1.5 px-4 h-9 border-b border-wm-border bg-wm-bg/80">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" aria-hidden="true" />
+          <span className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" aria-hidden="true" />
+          <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]" aria-hidden="true" />
+          <span className="ml-3 font-mono text-xs uppercase tracking-widest text-wm-muted">{t('welcome.agents.termTitle')}</span>
+        </div>
+        <div className="p-6 font-mono text-xs leading-relaxed break-words">
+          <p className="text-wm-text mb-4">&gt; {t('welcome.agents.termQuery')}</p>
+          <p className="text-wm-muted mb-1">
+            <span className="text-wm-green" aria-hidden="true">⏺</span> get_chokepoint_status{' '}
+            <span className="text-wm-blue">{'{'}jmespath: "chokepoints[?name=='Bab el-Mandeb']"{'}'}</span>
+          </p>
+          <p className="text-wm-muted mb-1">
+            <span className="text-wm-green" aria-hidden="true">⏺</span> get_country_risk <span className="text-wm-blue">{'{'}country: "YE"{'}'}</span>
+          </p>
+          <p className="text-wm-muted mb-4">
+            <span className="text-wm-green" aria-hidden="true">⏺</span> get_maritime_activity <span className="text-wm-blue">{'{'}region: "red_sea"{'}'}</span>
+          </p>
+          <p className="text-wm-text mb-2"><span className="text-wm-green" aria-hidden="true">✓</span> {t('welcome.agents.termAnswer')}</p>
+          <p>
+            <a href="https://www.worldmonitor.app/docs/documentation" className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.agents.termDocs')}</a>
+          </p>
+        </div>
+      </motion.div>
+    </div>
+  </section>
+);

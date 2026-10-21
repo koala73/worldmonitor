@@ -1,0 +1,419 @@
+{
+  "_comment": "Real prediction:markets-bootstrap:v1 records captured from production on 2026-07-30 (union of the geopolitical/tech/finance pools, deduplicated by url). NOTE ON PROVENANCE: these are PUBLISHED records, so each already passed the seeder's shouldInclude gates (price band, volume floor, exclude/meme keywords) and carries the added `regions` field's inputs — it is the raw-candidate SHAPE, but a pre-filtered SAMPLE, not an unfiltered fetch. That is what makes it the right fixture for classification (real venue titles and real Polymarket tag slugs, including Kalshi records which always carry an empty tags array) and the wrong one for exercising shouldInclude's own thresholds. Fixture for #5733.",
+  "markets": [
+    {
+      "title": "Will no Fed rate cuts happen in 2026?",
+      "yesPrice": 89.6,
+      "volume": 45643309.60632901,
+      "url": "https://polymarket.com/event/how-many-fed-rate-cuts-in-2026",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["rewards-200-4pt5-50", "fed-rates", "economic-policy", "fed", "business", "jerome-powell", "economy", "finance"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Ledger IPO before 2027?",
+      "yesPrice": 10,
+      "volume": 6908572.301751993,
+      "url": "https://polymarket.com/event/ipos-before-2027",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["business", "big-tech", "ipos", "finance"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Iran agrees to surrender enriched uranium stockpile by December 31, 2026?",
+      "yesPrice": 12.5,
+      "volume": 17601283.10192198,
+      "url": "https://polymarket.com/event/iran-agrees-to-surrender-enriched-uranium-stockpile-by",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["geopolitics", "trump", "middle-east", "diplomacy-ceasefire", "politics", "trump-iran", "iran", "nuclear", "negotiations"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will Anthropic have the highest IPO Market Cap 2026?",
+      "yesPrice": 11.3,
+      "volume": 5000707.113035,
+      "url": "https://polymarket.com/event/largest-ipo-by-market-cap-in-2026-287",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["climate-science", "ipo", "science", "elon-musk", "openai", "business", "ipos", "sam-altman", "big-tech", "spacex", "space", "finance", "openai-ipo"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will Renan Santos finish in second place in the first round of the 2026 Brazilian presidential election?",
+      "yesPrice": 11.2,
+      "volume": 4338171.918163002,
+      "url": "https://polymarket.com/event/brazil-presidential-election-first-round-2nd-place",
+      "endDate": "2026-10-04T00:00:00Z",
+      "tags": ["brazil", "politics", "world", "global-elections", "elections", "international-election-props"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will Nebius Group be acquired before 2027?",
+      "yesPrice": 14.5,
+      "volume": 18108105.184368998,
+      "url": "https://polymarket.com/event/which-companies-will-be-acquired-before-2027",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["business", "big-tech", "prediction-markets", "finance", "tech", "ai", "acquisitions", "buy"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will the Democratic Party control the House after the 2026 Midterm elections?",
+      "yesPrice": 85.5,
+      "volume": 8901325.340096,
+      "url": "https://polymarket.com/event/which-party-will-win-the-house-in-2026",
+      "endDate": "2026-11-03T00:00:00Z",
+      "tags": ["parent-for-derivative", "united-states", "us-presidential-election", "politics", "midterms", "world-elections", "elections", "global-elections", "earn-4", "main-election"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will Pump.fun perform an airdrop by December 31, 2026",
+      "yesPrice": 12,
+      "volume": 2769869.6437140005,
+      "url": "https://polymarket.com/event/pumpfun-airdop-by",
+      "endDate": "2027-01-01T05:00:00Z",
+      "tags": ["airdrops", "crypto", "pre-market", "pumpptfun"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will China invade Taiwan by December 31, 2027?",
+      "yesPrice": 12,
+      "volume": 2285897.0355969993,
+      "url": "https://polymarket.com/event/will-china-invade-taiwan-by-december-31-2027",
+      "endDate": "2027-12-31T00:00:00Z",
+      "tags": ["china", "politics", "world", "geopolitics"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Opensea FDV above $500M one day after launch?",
+      "yesPrice": 15.3,
+      "volume": 6597454.164707,
+      "url": "https://polymarket.com/event/opensea-fdv-above-one-day-after-launch",
+      "endDate": "2027-01-01T05:00:00Z",
+      "tags": ["fdv", "crypto", "pre-market"],
+      "source": "polymarket"
+    },
+    {
+      "title": "US recession by end of 2026?",
+      "yesPrice": 11.5,
+      "volume": 1686201.7278130003,
+      "url": "https://polymarket.com/event/us-recession-by-end-of-2026",
+      "endDate": "2027-01-31T00:00:00Z",
+      "tags": ["business", "economy", "economic-policy", "macro-graph"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Iran coup attempt by December 31?",
+      "yesPrice": 13,
+      "volume": 2107208.933681993,
+      "url": "https://polymarket.com/event/iran-coup-attempt-by-june-30",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["geopolitics", "iranian-leadership-regime", "reza-pahlavi", "iran", "israel", "world", "trump", "middle-east"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Sam Altman out as OpenAI CEO before 2027?",
+      "yesPrice": 10,
+      "volume": 709135.2601169988,
+      "url": "https://polymarket.com/event/which-ceos-will-be-out-before-2027",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["business", "ai", "big-tech", "tech", "economy", "finance"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will Sorin Grindeanu be the next Prime Minister of Romania?",
+      "yesPrice": 15.3,
+      "volume": 3240126.18847,
+      "url": "https://polymarket.com/event/next-prime-minister-of-romania-732",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["politics", "main-election", "global-elections", "elections", "romania", "bolojat", "romania-government"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will the Doge-1 Lunar Mission launch by December 31, 2026?",
+      "yesPrice": 11.9,
+      "volume": 871734.9197680003,
+      "url": "https://polymarket.com/event/will-the-doge-1-lunar-mission-launch-before-2027",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["pop-culture", "spacex", "space", "science"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will Ukraine agree to cede territory to Russia before 2027?",
+      "yesPrice": 11.5,
+      "volume": 721283.1255290001,
+      "url": "https://polymarket.com/event/will-ukraine-agree-to-cede-territory-to-russia-before-2027",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["zelenskyy", "russia", "trump", "geopolitics", "politics", "ukraine", "world", "ukraine-peace-deal"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Ukraine peace referendum scheduled by December 31?",
+      "yesPrice": 10.5,
+      "volume": 521481.775878,
+      "url": "https://polymarket.com/event/ukraine-calls-a-referendum-on-peace-deal-with-russia-by-january-31",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["ukraine", "geopolitics", "trump", "zelensky", "putin", "politics", "russia", "ukraine-peace-deal"],
+      "source": "polymarket"
+    },
+    {
+      "title": "NATO/EU troops fighting in Ukraine by December 31, 2026?",
+      "yesPrice": 10.5,
+      "volume": 419486.2576090001,
+      "url": "https://polymarket.com/event/natoeu-troops-fighting-in-ukraine-in-2025",
+      "endDate": "2026-12-31T12:00:00Z",
+      "tags": ["ukraine", "politics", "geopolitics", "russia", "nato", "eu", "world", "trump-zelenskyy", "security-guarantee"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will China invade Taiwan by June 30, 2027?",
+      "yesPrice": 10.5,
+      "volume": 404551.09925800015,
+      "url": "https://polymarket.com/event/will-china-invade-taiwan-by-june-30-2027",
+      "endDate": "2027-06-30T00:00:00Z",
+      "tags": ["china", "politics", "geopolitics", "taiwan"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will Zelenskyy talk to Putin by December 31?",
+      "yesPrice": 13,
+      "volume": 904530.4867650004,
+      "url": "https://polymarket.com/event/will-zelenskyy-talk-to-putin-by-november-30-821",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["geopolitics", "ukraine", "putin", "zelenskyy", "politics", "russia"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will MegaETH perform an airdrop by December 31, 2026?",
+      "yesPrice": 16.5,
+      "volume": 2646716.878486997,
+      "url": "https://polymarket.com/event/megaeth-airdrop-by",
+      "endDate": "2027-01-01T05:00:00Z",
+      "tags": ["airdrops", "crypto", "megaeth", "pre-market"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will Mojtaba Khamenei be head of state in Iran end of 2026?",
+      "yesPrice": 79.3,
+      "volume": 37097100.816747,
+      "url": "https://polymarket.com/event/iran-leader-end-of-2026",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["middle-east", "iran", "world", "geopolitics", "politics", "iranian-leadership-regime", "rewards-50-4pt5-100"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will 7-8 SpaceX Starship launches successfully reach Space in 2026?",
+      "yesPrice": 11.8,
+      "volume": 490085.63151499996,
+      "url": "https://polymarket.com/event/how-many-spacex-starship-launches-reach-space-in-2026",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["spacex", "space", "science", "elon-musk", "climate-science"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will AfD win the most seats in the 2026 Berlin state elections?",
+      "yesPrice": 17.8,
+      "volume": 3139438.4668219998,
+      "url": "https://polymarket.com/event/berlin-state-election-winner",
+      "endDate": "2026-09-20T00:00:00Z",
+      "tags": ["world-elections", "world", "german-elections", "main-election", "global-elections", "politics", "elections", "germany"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Iran leadership change by December 31?",
+      "yesPrice": 21.5,
+      "volume": 21324457.626913022,
+      "url": "https://polymarket.com/event/iran-leadership-change-by",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["politics", "iran", "iranian-leadership-regime", "geopolitics", "mojtaba", "ayatollah", "khamenei", "mojtaba-khamenei", "khamenei-out", "mojtaba-out"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will Anthropic or OpenAI IPO first?",
+      "yesPrice": 89.5,
+      "volume": 243958.46079199994,
+      "url": "https://polymarket.com/event/will-anthropic-or-openai-ipo-first",
+      "endDate": "2027-12-31T00:00:00Z",
+      "tags": ["sam-altman", "openai", "business", "ipos", "ipo", "finance", "ai", "claude-5", "openai-ipo", "anthropic-ipo", "anthropic"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Major meteor strike (10kt+) in 2026?",
+      "yesPrice": 10,
+      "volume": 178617.20540100013,
+      "url": "https://polymarket.com/event/major-meteor-strike-10kt-in-2026",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["climate-science", "spacex", "science", "space", "astroid", "weather", "nasa", "natural-disaster"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will OpenAI IPO by December 31 2026?",
+      "yesPrice": 18.5,
+      "volume": 2666893.5167150036,
+      "url": "https://polymarket.com/event/openai-ipo-by",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["openai-ipo", "ipos", "big-tech", "ai", "finance", "business", "ipo", "openai"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will Anthropic's market cap be less than $1.25T at market close on IPO day?",
+      "yesPrice": 10.5,
+      "volume": 181328.51955,
+      "url": "https://polymarket.com/event/anthropic-ipo-closing-market-cap-higher-strikes",
+      "endDate": "2026-12-31T23:55:00Z",
+      "tags": ["finance", "big-tech", "anthropic", "ipo", "claude", "ipos", "ai", "anthropic-ipo", "rewards-200-4pt5-50"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will a Chinese company have the best AI model by December 31?",
+      "yesPrice": 11,
+      "volume": 117536.64933199997,
+      "url": "https://polymarket.com/event/will-a-chinese-company-have-the-best-ai-model-by-december-31",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["tech", "ai", "china", "airdrops", "big-tech", "ai-rankings"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Predict.fun FDV above $200M one day after launch?",
+      "yesPrice": 76,
+      "volume": 6008300.814157001,
+      "url": "https://polymarket.com/event/predictfun-fdv-above-one-day-after-launch",
+      "endDate": "2028-01-01T05:00:00Z",
+      "tags": ["crypto", "fdv", "pre-market", "predictptfun"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will Hyperliquid reach $100 by December 31, 2026?",
+      "yesPrice": 21,
+      "volume": 1793110.0578889996,
+      "url": "https://polymarket.com/event/what-price-will-hyperliquid-hit-before-2027",
+      "endDate": "2027-01-01T05:00:00Z",
+      "tags": ["hyperliquid", "crypto", "yearly", "hit-price", "crypto-prices"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will there be between 11 and 13 earthquakes of magnitude 7.0 or higher worldwide in 2026?",
+      "yesPrice": 20.5,
+      "volume": 1364579.1847659997,
+      "url": "https://polymarket.com/event/how-many-7pt0-or-above-earthquakes-in-2026",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["weather", "climate-science", "science", "earthquakes", "natural-disasters"],
+      "source": "polymarket"
+    },
+    {
+      "title": "AI bubble burst in 2026?",
+      "yesPrice": 23.1,
+      "volume": 2919068.237889004,
+      "url": "https://polymarket.com/event/ai-bubble-burst-by",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["business", "tech", "finance", "big-tech"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will the ECB announce a 25 bps increase at the September 2026 meeting?",
+      "yesPrice": 85.5,
+      "volume": 163418.667147,
+      "url": "https://polymarket.com/event/ecb-interest-rates-september-2026-20260616222636097",
+      "endDate": "2026-09-10T11:59:00Z",
+      "tags": ["ecb", "euro", "europe", "economy", "eurozone", "Global-Rates", "interest-rates", "monetary-policy", "macro-indicators", "european-central-bank"],
+      "source": "polymarket"
+    },
+    {
+      "title": "ECB rate cut in 2026?",
+      "yesPrice": 11.5,
+      "volume": 30456.509546999998,
+      "url": "https://polymarket.com/event/ecb-rate-cut-in-2026",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["Global-Rates", "economy", "europe", "eu", "economic-policy"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Natural Disaster in 2026?",
+      "yesPrice": 18,
+      "volume": 229823.07414900002,
+      "url": "https://polymarket.com/event/natural-disaster-in-2026",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["parlays", "hurricane", "nasa", "astroid", "science", "earthquake", "weather", "climate", "space", "natural-disaster", "natural-disasters", "climate-science"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will the Reserve Bank of India make no change to the policy repo rate after the August Meeting?",
+      "yesPrice": 89,
+      "volume": 13530.476868,
+      "url": "https://polymarket.com/event/reserve-bank-of-india-decision-in-august-20260630194149522",
+      "endDate": "2026-08-05T00:00:00Z",
+      "tags": ["rbi", "economy", "Global-Rates", "interest-rates", "economic-policy"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Kraken IPO by December 31, 2026?",
+      "yesPrice": 26,
+      "volume": 1590045.474205,
+      "url": "https://polymarket.com/event/kraken-ipo-in-2025",
+      "endDate": "2027-01-01T05:00:00Z",
+      "tags": ["crypto", "exchange", "finance", "business", "2025-predictions", "featured", "ipos", "crypto-listings"],
+      "source": "polymarket"
+    },
+    {
+      "title": "U.S. agrees to a new trade deal with \"Pakistan\" before 2027?",
+      "yesPrice": 12,
+      "volume": 360614.04719799996,
+      "url": "https://polymarket.com/event/which-countries-will-trump-make-new-trade-deals-with-before-2027-921",
+      "endDate": "2026-12-31T00:00:00Z",
+      "tags": ["tariffs", "trade-war", "politics", "geopolitics", "trump", "world"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Clarity Act (H.R.3633) signed into law in 2026?",
+      "yesPrice": 28.5,
+      "volume": 3314337.6252710004,
+      "url": "https://polymarket.com/event/clarity-act-signed-into-law-in-2026",
+      "endDate": "2027-01-01T05:00:00Z",
+      "tags": ["crypto", "trump", "politics", "us-law", "crypto-legal", "clarity-act"],
+      "source": "polymarket"
+    },
+    {
+      "title": "Will Elon Musk visit Mars in his lifetime?: Mars",
+      "yesPrice": 12,
+      "volume": 114574.56,
+      "url": "https://kalshi.com/markets/KXELONMARS-99",
+      "endDate": "2099-08-01T04:59:00Z",
+      "tags": [],
+      "source": "kalshi"
+    },
+    {
+      "title": "Will Zohran Mamdani become President of the United States before 2045?: Before 2045",
+      "yesPrice": 11,
+      "volume": 37573.98,
+      "url": "https://kalshi.com/markets/KXPERSONPRESMAM-45",
+      "endDate": "2045-01-29T15:00:00Z",
+      "tags": [],
+      "source": "kalshi"
+    },
+    {
+      "title": "Will OpenAI or Anthropic IPO first?: Anthropic",
+      "yesPrice": 83,
+      "volume": 168166.92,
+      "url": "https://kalshi.com/markets/KXOAIANTH-40-ANTH",
+      "endDate": "2040-01-01T04:59:00Z",
+      "tags": [],
+      "source": "kalshi"
+    },
+    {
+      "title": "Who will succeed Netanyahu as Prime Minister of Israel?: Naftali Bennett",
+      "yesPrice": 14,
+      "volume": 37318.27,
+      "url": "https://kalshi.com/markets/KXNEXTISRAELPM-45JAN01-NBEN",
+      "endDate": "2045-01-01T15:00:00Z",
+      "tags": [],
+      "source": "kalshi"
+    },
+    {
+      "title": "Will Nick Fuentes become President of the United States before 2045?: Before 2045",
+      "yesPrice": 16,
+      "volume": 52854.74,
+      "url": "https://kalshi.com/markets/KXPERSONPRESFUENTES-45",
+      "endDate": "2045-01-08T15:00:00Z",
+      "tags": [],
+      "source": "kalshi"
+    }
+  ]
+}

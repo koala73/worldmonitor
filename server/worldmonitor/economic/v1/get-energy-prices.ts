@@ -10,21 +10,25 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
+// sebuf serializes repeated query params comma-form; split before filtering.
+import { parseStringArray } from '../../../_shared/parse-string-array';
 
 const SEED_CACHE_KEY = 'economic:energy:v1:all';
 
 export async function getEnergyPrices(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: GetEnergyPricesRequest,
 ): Promise<GetEnergyPricesResponse> {
   try {
     const result = await getCachedJson(SEED_CACHE_KEY, true) as GetEnergyPricesResponse | null;
-    if (!result?.prices?.length) return { prices: [] };
-    if (req.commodities.length > 0) {
-      return { prices: result.prices.filter(p => req.commodities.includes(p.commodity)) };
+    if (!result?.prices?.length) return markNoStoreFallbackResponse(ctx.request, { prices: [] });
+    const commodities = parseStringArray(req.commodities);
+    if (commodities.length > 0) {
+      return { prices: result.prices.filter(p => commodities.includes(p.commodity)) };
     }
     return result;
   } catch {
-    return { prices: [] };
+    return markNoStoreFallbackResponse(ctx.request, { prices: [] });
   }
 }

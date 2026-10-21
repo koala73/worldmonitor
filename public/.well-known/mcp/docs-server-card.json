@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+  "name": "app.worldmonitor/docs",
+  "title": "World Monitor Docs",
+  "description": "Search and read World Monitor developer docs, API references, and guides.",
+  "kind": "docs",
+  "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
+  "version": "1.0.0",
+  "url": "https://www.worldmonitor.app/docs/mcp",
+  "serverUrl": "https://www.worldmonitor.app/docs/mcp",
+  "protocolVersion": "2025-06-18",
+  "transport": {
+    "type": "streamableHttp",
+    "endpoint": "https://www.worldmonitor.app/docs/mcp"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://www.worldmonitor.app/docs/mcp"
+    }
+  ],
+  "capabilities": {
+    "tools": true,
+    "resources": true
+  },
+  "authentication": "none",
+  "documentation": "https://www.worldmonitor.app/docs/documentation",
+  "tags": ["docs", "search", "mcp"],
+  "metadata": {
+    "note": "First-party server card for the documentation MCP. The endpoint (url, serverUrl, remotes[].url) is the worldmonitor.app facade, which is the address agents should connect to; it is proxied to Mintlify. The card carries no tools[]: the server is anonymous, so tools/list is the authoritative inventory. Listed in /.well-known/ai-catalog.json, served at the server's own /docs/mcp/server-card, and advertised via rel=\"mcp-server-card\" anchor=\"/docs/mcp\" alongside the product MCP card at /.well-known/mcp/server-card.json."
+  }
+}

@@ -12,7 +12,10 @@ export class PlaywrightProvider implements AcquisitionProvider {
 
   private async getContext(): Promise<BrowserContext> {
     if (!this.browser) {
-      this.browser = await chromium.launch({ headless: true });
+      // Honor the Dockerfile-provided apt Chromium; without this the env var
+      // is dead and Playwright silently downloads its own browser instead.
+      const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined;
+      this.browser = await chromium.launch({ headless: true, executablePath });
     }
     if (!this.context) {
       this.context = await this.browser.newContext({

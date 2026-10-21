@@ -1,0 +1,339 @@
+// Per-tool output-shape contract regression. For every tool in
+// `__testing__.TOOL_REGISTRY`, dispatch a `tools/call` through the public
+// handler with default-ish arguments and assert the returned `content[0].text`
+// JSON validates against that tool's declared `outputSchema`.
+//
+// Coverage scope (documented intent — see PR body):
+//   • Cache tools (no `_execute`): real dispatch pipeline. fetch is stubbed
+//     so every cache-key read returns a non-null `{}` payload, executeTool
+//     assembles the envelope, and the test validates the response. This
+//     catches envelope-shape regression (missing `cached_at` / `stale`,
+//     wrong `data` shape, executeTool stripping the envelope, etc.).
+//   • RPC tools (has `_execute`): `_execute` is monkey-patched to return a
+//     minimal-shape object derived from the declared `outputSchema`. This
+//     proves the schema declaration is internally consistent (a `required`
+//     field whose type allows no concrete value would fail) and that the
+//     dispatch pipeline preserves the response unchanged through
+//     `applyJmespath` and `rpcOk`. It does NOT exercise the real `_execute`
+//     body — field-level shape drift for RPC tools is OUT OF SCOPE and is
+//     covered indirectly by the per-fixture parity test in
+//     `mcp-output-schema-coverage.test.mjs` (3 cache tools today).
+//
+// One `it()` per tool so a failure names the offending tool.
+
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import { strict as assert } from 'node:assert';
+
+import Ajv2020 from 'ajv/dist/2020.js';
+
+import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES } from '../shared/country-raw-signals.ts';
+import { validate } from './helpers/json-schema-mini.mjs';
+import {
+  HMAC_SECRET,
+  makeProDeps,
+  proReq,
+  callBody,
+} from './helpers/mcp-pro-deps.mjs';
+
+const originalFetch = globalThis.fetch;
+const originalEnv = { ...process.env };
+
+// Required-args table. Tools whose `inputSchema.required` is non-empty must
+// receive concrete values — anything else trips the runtime arg validation
+// before reaching dispatch. Values are deliberately benign and aligned with
+// each tool's documented format (e.g. ISO 3166-1 alpha-2 for country_code).
+const REQUIRED_ARGS = {
+  get_country_history: { country_code: 'US' },
+  get_defense_industrial_base: { country_code: 'US' },
+  get_country_coverage: { country_code: 'US' },
+  get_food_stocks: { country_code: 'US' },
+  get_demographics_capability: { country_code: 'US' },
+  get_resilience_indicators: { country_code: 'US' },
+  get_five_factor_scorecard: { country_code: 'US' },
+  get_supply_vulnerabilities: { country_code: 'US' },
+  get_chokepoint_dependencies: { chokepoint_id: 'suez' },
+  verify_claim: { claim: 'A controlled claim for verification.' },
+  analyze_news_headlines: { headlines: ['Controlled headline'] },
+  get_country_brief_section: { section: 'risk', arguments: { country_code: 'US' } },
+  get_bilateral_tariff: { reporter: 'US', partner: 'CN', hs_code: '010121' },
+  get_us_import_duty: { partner: 'CN', hs_code: '010121' },
+  classify_event: { text: 'Iran closes Strait of Hormuz to tanker traffic' },
+  start_upgrade: { plan: 'pro_monthly' },
+  get_country_brief: { country_code: 'US' },
+  open_country_brief: { country_code: 'US' },
+  get_country_risk: { country_code: 'US' },
+  get_consumer_prices: { country_code: 'US' },
+  get_airspace: { country_code: 'US' },
+  get_maritime_activity: { country_code: 'US' },
+  analyze_situation: { query: 'test query' },
+  search_intel_history: { query: 'test query' },
+  get_intel_timeline: { domain: 'conflict' },
+  // `situation` carries a 10-char proto minimum, so the placeholder clears it.
+  get_similar_events: { situation: 'a test situation description' },
+  search_flights: { origin: 'JFK', destination: 'LHR', departure_date: '2026-06-01' },
+  search_flight_prices_by_date: {
+    origin: 'JFK', destination: 'LHR', start_date: '2026-06-01', end_date: '2026-06-10',
+  },
+  describe_tool: { tool_name: 'get_market_data' },
+  get_macro_history: { dataset: 'us-cpi' },
+  get_internet_activity: { dataset: 'traffic' },
+  get_stock_research: { operation: 'analysis', symbols: ['AAPL'] },
+  get_supply_chain_cost_shock: { mode: 'energy', country: 'JP', chokepoint_id: 'suez' },
+  compute_energy_shock: { country: 'JP', chokepoint_id: 'suez' },
+};
+
+// Generate the smallest concrete value satisfying a JSON-Schema-subset
+// description. Used to fabricate minimal-shape responses for RPC `_execute`
+// overrides. The implementation is intentionally narrow — it mirrors the
+// vocabulary the registry actually emits (`type`, `properties`, `required`,
+// `items`, `enum`).
+function minimalShape(schema) {
+  if (!schema || typeof schema !== 'object') return null;
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) return schema.enum[0];
+  const types = Array.isArray(schema.type)
+    ? schema.type
+    : (schema.type ? [schema.type] : []);
+  if (types.includes('object') || schema.properties) {
+    const obj = {};
+    for (const key of (schema.required ?? [])) {
+      obj[key] = minimalShape(schema.properties?.[key] ?? {});
+    }
+    return obj;
+  }
+  if (types.includes('array')) return [];
+  if (types.includes('string')) return '';
+  if (types.includes('number') || types.includes('integer')) return 0;
+  if (types.includes('boolean')) return false;
+  if (types.includes('null')) return null;
+  return null;
+}
+
+// `minimalShape` reads only `type` / `properties` / `required` / `items` /
+// `enum`. A schema that constrains its root with `oneOf` + `const` needs a
+// hand-written payload, or the stub is not a valid instance of the very schema
+// it was derived from — which the Ajv check below would (rightly) reject.
+const STUB_FIXTURES = {
+  get_country_brief_section: assembleRawSignals('US', Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family =>
+    [family, failedRawSignal(family, 'unavailable', '2026-10-05T12:00:00Z', 'Controlled failure')])), '2026-10-05T12:00:00Z'),
+  get_stock_research: { operation: 'analysis', data: { available: false, symbol: 'AAPL' } },
+  get_five_factor_scorecard: { unavailable: true, unavailableReason: 'country-unavailable' },
+  list_five_factor_scorecards: {
+    methodologyVersion: '', computedAt: '', scorecards: [], unavailable: true, unavailableReason: 'scorecard-snapshot-unavailable',
+  },
+};
+
+// What a strict MCP client does: validate `structuredContent` against the
+// schema `tools/list` ADVERTISED, with a full JSON Schema validator. The mini
+// validator above skips `oneOf`, `const`, `pattern` and numeric bounds, all of
+// which the registry uses, so equality with the text alone would let a response
+// violate its published schema and still pass. Same Ajv options as
+// tests/mcp-output-schema-coverage.test.mjs.
+const ajv = new Ajv2020({
+  allErrors: true, allowUnionTypes: true, strict: true, strictRequired: false, validateFormats: false,
+});
+const advertisedValidators = new Map();
+function advertisedValidator(publicTool) {
+  if (!advertisedValidators.has(publicTool.name)) {
+    advertisedValidators.set(publicTool.name, ajv.compile(publicTool.outputSchema));
+  }
+  return advertisedValidators.get(publicTool.name);
+}
+
+describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry tools)', () => {
+  let mod;
+  let mcpHandler;
+  let originalExecutes;
+
+  beforeEach(async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = 'wm_test_key_tool_contracts';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+
+    // Upstash GET shape with a non-null `{}` payload. unwrapEnvelope sees no
+    // `_seed.fetchedAt`, returns `{}` as the bare value, so executeTool's
+    // F6 cache_all_null guard passes (every read is a real-but-empty object,
+    // not null) and the envelope is assembled. Meta reads also resolve to
+    // `{}` → evaluateFreshness returns `{cached_at: null, stale: true}`,
+    // both of which validate against `cacheEnvelope`'s nullable cached_at
+    // and boolean stale.
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ result: JSON.stringify({}) }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+
+    mod = await import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
+    mcpHandler = mod.mcpHandler;
+    originalExecutes = new Map();
+  });
+
+  afterEach(() => {
+    // Restore any monkey-patched `_execute` so a later test (or a re-import
+    // that reuses a cached module) sees the production body.
+    for (const [tool, original] of originalExecutes.entries()) {
+      tool._execute = original;
+    }
+    globalThis.fetch = originalFetch;
+    Object.keys(process.env).forEach((k) => {
+      if (!(k in originalEnv)) delete process.env[k];
+    });
+    Object.assign(process.env, originalEnv);
+  });
+
+  // Register one test per tool from the executable source of truth. Source
+  // text parsing can silently lose coverage after formatting or a module move.
+  const TOOL_NAMES = TOOL_REGISTRY.map((tool) => tool.name);
+  assert.ok(TOOL_NAMES.length > 0, 'expected at least one tool in the registry');
+
+  for (const name of TOOL_NAMES) {
+    it(`${name} — tools/call response validates against declared outputSchema`, async () => {
+      const tool = mod.__testing__.TOOL_REGISTRY.find((t) => t.name === name);
+      assert.ok(tool, `tool ${name} not found in fresh module registry`);
+      const isCacheTool = typeof tool._execute !== 'function';
+
+      // RPC tools: override `_execute` with a minimal-shape stub so the test
+      // does not depend on internal HTTP endpoints. The minimal shape is
+      // derived from the tool's `outputSchema` and proves the declared
+      // schema is internally consistent (no `required` field of an
+      // impossible type) and that the dispatch pipeline preserves the
+      // response through `applyJmespath` + `rpcOk`. Original `_execute`
+      // is restored in `afterEach`.
+      if (!isCacheTool) {
+        originalExecutes.set(tool, tool._execute);
+        const stubReturn = STUB_FIXTURES[name] ?? minimalShape(tool.outputSchema);
+        tool._execute = async () => stubReturn;
+      }
+
+      let args = REQUIRED_ARGS[name] ?? {};
+      const { deps, pipe } = makeProDeps();
+      // start_upgrade creates its checkout session in dispatch, before the
+      // stubbed _execute; answer the relay so the call reaches the result path.
+      if (name === 'start_upgrade') deps.createCheckout = async () => ({ kind: 'created', checkoutUrl: 'https://checkout.example/session' });
+      let originalForecast;
+      if (name === 'get_forecast_case' || name === 'get_forecast_theaters') {
+        const generatedAt = Date.now();
+        originalForecast = { id: 'contract-case', title: 'Controlled original forecast', caseFile: { baseCase: 'Original case evidence' } };
+        globalThis.fetch = async url => {
+          const parsedUrl = new URL(url);
+          assert.equal(parsedUrl.hostname, 'stub.upstash', 'contract fixture must never fetch a live service');
+          if (!parsedUrl.pathname.startsWith('/get/')) return Response.json({ result: [9999, 10000] });
+          const key = decodeURIComponent(parsedUrl.pathname.slice('/get/'.length));
+          assert.ok(['forecast:predictions:v2', 'seed-meta:forecast:predictions'].includes(key), key);
+          return Response.json({ result: JSON.stringify(key === 'forecast:predictions:v2'
+            ? { generatedAt, predictions: [originalForecast] }
+            : { fetchedAt: generatedAt }) });
+        };
+        const opening = await mcpHandler(proReq('POST', callBody('get_forecast_predictions', {})), deps);
+        const openingBody = await opening.json();
+        const receipt = openingBody.result?.structuredContent?.panelRequest;
+        assert.equal(receipt?.panel, 'forecasts', 'original evidence fixture must obtain a real signed admission');
+        args = name === 'get_forecast_case'
+          ? { forecast_id: originalForecast.id, generated_at: String(generatedAt), panel_request: receipt.token }
+          : { panel_request: receipt.token };
+      }
+      const res = await mcpHandler(proReq('POST', callBody(name, args)), deps);
+
+      assert.equal(res.status, 200, `tools/call must return 200 for ${name}`);
+      const body = await res.json();
+      assert.ok(
+        body?.result?.content?.[0]?.text,
+        `tools/call response for ${name} missing content[0].text`,
+      );
+      const parsed = JSON.parse(body.result.content[0].text);
+      if (name === 'get_forecast_case') {
+        assert.equal(parsed.data.forecastCase.status, 'ready');
+        assert.deepEqual(parsed.data.forecastCase.forecast, originalForecast);
+        assert.equal(pipe.count, 1, 'opening and original case share one daily allocation');
+      }
+      if (name === 'get_forecast_theaters') assert.equal(pipe.count, 1, 'opening and original theaters share one daily allocation');
+
+      // Cache tools must always carry the envelope keys, regardless of the
+      // schema's per-tool `data.properties`. Asserting these explicitly here
+      // means a regression that strips the envelope is caught by name, not
+      // by a deeper validate() error message.
+      if (isCacheTool) {
+        assert.ok('cached_at' in parsed, `${name}: envelope missing cached_at`);
+        assert.ok('stale' in parsed, `${name}: envelope missing stale`);
+        assert.equal(typeof parsed.stale, 'boolean', `${name}: envelope.stale not boolean`);
+      }
+
+      const errors = validate(tool.outputSchema, parsed);
+      assert.deepEqual(
+        errors, [],
+        `${name}: response fails outputSchema:\n  ${errors.join('\n  ')}`,
+      );
+
+      // A strict client reads `structuredContent`, not the text, and rejects
+      // the call when it is missing (#8328). For an unprojected call it is the
+      // same document the text serializes, so the validation above covers it.
+      assert.deepEqual(
+        body.result.structuredContent, parsed,
+        `${name}: structuredContent must be the document content[0].text serializes`,
+      );
+
+      const publicTool = mod.TOOL_LIST_RESPONSE.find((t) => t.name === name);
+      assert.ok(publicTool, `${name} missing from tools/list`);
+      const validateAdvertised = advertisedValidator(publicTool);
+      assert.ok(
+        validateAdvertised(body.result.structuredContent),
+        `${name}: structuredContent fails the ADVERTISED outputSchema (a strict client throws -32602):\n  ${
+          (validateAdvertised.errors ?? []).slice(0, 5).map((e) => `${e.instancePath || '/'} ${e.message}`).join('\n  ')}`,
+      );
+    });
+  }
+});
+
+describe('get_maritime_activity ports view through the real producer and REST reader', () => {
+  it('serves the top 25 ports, preserves unknown trends, and handles uncovered countries', async () => {
+    const { finalisePortsForCountry } = await import('../scripts/seed-portwatch-port-activity.mjs');
+    const { getCountryPortActivity } = await import('../server/worldmonitor/intelligence/v1/get-country-port-activity.ts');
+    const { installRedis } = await import('./helpers/fake-upstash-redis.mts');
+    const tool = TOOL_REGISTRY.find(t => t.name === 'get_maritime_activity');
+    const accum = new Map(Array.from({ length: 30 }, (_, i) => [String(i), {
+      portname: `Port ${i}`, last30_calls: 100 - i, prev30_calls: i === 0 ? 0 : 50,
+      last30_import: 1000, last30_export: 500,
+    }]));
+    const ports = finalisePortsForCountry(accum, new Map());
+    ports[1].prevTankerCalls30d = undefined;
+    const savedEnv = { ...process.env };
+    const savedFetch = globalThis.fetch;
+    delete process.env.LOCAL_API_MODE;
+    const redis = installRedis({
+      'supply_chain:portwatch-ports:v1:_countries': ['NL'],
+      'supply_chain:portwatch-ports:v1:NL': { ports, cacheWrittenAt: Date.now(), fetchedAt: '2026-10-17T00:00:00Z' },
+    });
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      if (new URL(url).hostname !== 'example.test') return redis.fetchImpl(url, init);
+      calls.push(String(url));
+      assert.equal(new URL(url).pathname, '/api/intelligence/v1/get-country-port-activity');
+      return Response.json(await getCountryPortActivity({}, { countryCode: new URL(url).searchParams.get('country_code') }));
+    };
+    try {
+      const result = await tool._execute({ country_code: 'Netherlands', view: 'ports' }, 'https://example.test', { kind: 'env_key', apiKey: 'test' });
+      assert.equal(calls.length, 1);
+      assert.equal(result.country_code, 'NL');
+      assert.equal(result.available, true);
+      assert.equal(result.fetched_at, '2026-10-17T00:00:00Z');
+      assert.equal(result.ports.length, 25);
+      assert.equal(result.ports[0].trend_delta_pct, null);
+      assert.equal(result.ports[1].trend_delta_pct, null);
+      assert.equal(result.ports[2].trend_delta_pct, 96);
+      assert.equal(result.ports[2].import_tanker_dwt_30d, 1000);
+      assert.equal(result.ports[2].export_tanker_dwt_30d, 500);
+      assert.equal(Object.hasOwn(result.ports[0], 'anomaly_signal'), false);
+      assert.deepEqual(validate(tool.outputSchema, result), []);
+      const validateOutput = ajv.compile(tool.outputSchema);
+      assert.equal(validateOutput(result), true, JSON.stringify(validateOutput.errors));
+      const empty = await tool._execute({ country_code: 'CH', view: 'ports' }, 'https://example.test', { kind: 'env_key', apiKey: 'test' });
+      assert.equal(empty.available, false);
+      assert.deepEqual(empty.ports, []);
+    } finally {
+      globalThis.fetch = savedFetch;
+      for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
+      Object.assign(process.env, savedEnv);
+    }
+  });
+});

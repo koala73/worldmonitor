@@ -1,0 +1,4 @@
+allowBuilds:
+  '@prisma/engines': true
+  prisma: false
+verifyDepsBeforeRun: false

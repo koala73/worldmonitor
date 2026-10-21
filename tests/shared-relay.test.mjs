@@ -42,13 +42,13 @@ function loadRelayFunctions() {
   // to avoid module caching problems with env var tests
   const CHROME_UA = 'WorldMonitor-Test-UA';
 
-  const getRelayBaseUrl = function () {
+  const getRelayBaseUrl = () => {
     const relayUrl = process.env.WS_RELAY_URL;
     if (!relayUrl) return null;
     return relayUrl.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/$/, '');
   };
 
-  const getRelayHeaders = function (extra = {}) {
+  const getRelayHeaders = (extra = {}) => {
     const headers = {
       Accept: 'application/json',
       'User-Agent': CHROME_UA,

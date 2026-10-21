@@ -30,6 +30,85 @@ message NewsItem {
   worldmonitor.core.v1.GeoCoordinates location = 7;
   // Human-readable location name.
   string location_name = 8;
+  // Composite importance score. The base 0-100 score uses severity × 55% +
+  // source tier × 20% + corroboration × 15% + recency × 10%, then may add an
+  // 18-point diplomacy/flashpoint boost and 4 points per entity-level
+  // corroborating source, capped at five sources. The final score can exceed
+  // 100; with current boosts it is approximately capped at 138.
+  int32 importance_score = 9;
+  // Number of distinct sources that reported the same story in this digest
+  // cycle. "Same story" is determined by edit-tolerant story-identity
+  // clustering (headlines describing one event with different wording,
+  // ordering, source suffixes, truncation, or morphology corroborate each
+  // other) — not exact-title matching. See shared/story-identity.js.
+  int32 corroboration_count = 10;
+  // Story lifecycle metadata derived from cross-cycle persistence data.
+  StoryMeta story_meta = 11;
+  // Cleaned article description from the RSS/Atom <description> /
+  // <content:encoded> / <summary> / <content> tag: HTML-stripped,
+  // entity-decoded, whitespace-normalised, clipped to 400 chars. Empty string
+  // when unavailable or indistinguishable from the headline — consumers must
+  // fall back to the headline for display/LLM grounding in that case.
+  string snippet = 12;
+  // Equity ticker symbols mentioned by the story, extracted at ingest from
+  // cashtags ($AAPL) and the curated company dictionary
+  // (shared/stocks.json). Uppercase symbols, deduplicated, capped at 8.
+  // Empty when no tracked ticker is mentioned. See shared/ticker-extract.js.
+  repeated string tickers = 13 [(buf.validate.field).repeated.max_items = 8];
+  // Credibility score (0-100), distinct from importance_score. Measures
+  // source reliability / truthfulness, not newsworthiness. The base score
+  // uses source tier × 30% + propaganda risk × 50% + independent
+  // corroboration × 20%. High propaganda-risk sources (state-controlled
+  // media) are capped at 40 so a highly newsworthy RT/TASS story still
+  // scores low. Third-party bias/factuality ratings are reserved and not
+  // currently applied. See docs/methodology/news-credibility.mdx.
+  int32 credibility_score = 14;
+}
+
+// StoryMeta carries cross-cycle persistence data attached to each news item.
+message StoryMeta {
+  // Epoch ms when the story first appeared in any digest cycle.
+  int64 first_seen = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Total number of digest cycles in which this story appeared.
+  int32 mention_count = 2;
+  // #4919. The cross-cycle Redis source set (story:sources:v1) feeds
+  // importance scoring, not this field. (Detached: kept out of the public spec.)
+
+  // Number of unique sources reporting this story in the CURRENT digest
+  // cycle; 1 for unclustered items.
+  int32 source_count = 3;
+  // Story lifecycle phase derived from persistence data.
+  StoryPhase phase = 4;
+}
+
+// StoryPhase represents the lifecycle stage of a tracked news story.
+enum StoryPhase {
+  // Unspecified or not yet tracked.
+  STORY_PHASE_UNSPECIFIED = 0;
+  // First appearance in any digest cycle.
+  STORY_PHASE_BREAKING = 1;
+  // 2–5 mentions and less than 2 hours old.
+  STORY_PHASE_DEVELOPING = 2;
+  // 6+ mentions or older than 2 hours; still active.
+  STORY_PHASE_SUSTAINED = 3;
+  // Reserved. ListFeedDigest does not emit this value.
+  //
+  // The value previously documented a "currentScore dropped below 50% of
+  // peakScore" rule. Issue #7081 tested that rule against frozen production
+  // evidence and recorded a no-go. importanceScore weights severity at 55% and
+  // recency at 10%, so the ratio measures how old an article is, not how much
+  // traction a story has: a critical or high story cannot reach half its peak
+  // without a severity downgrade, while an info story crosses the threshold on
+  // the recency term alone once its article passes 24 hours. Fading is also not
+  // observable at that point in the digest build, because the phase is derived
+  // only for stories that appear in the current cycle.
+  //
+  // The value stays in the enum and clients must keep handling it. The
+  // notification cron uses its own silence-based fading rule for digest
+  // delivery; that rule is internal and does not reach this field today.
+  // Evidence: tests/fixtures/story-phase-fading-study.json,
+  // scripts/study-story-phase-fading.mjs.
+  STORY_PHASE_FADING = 4;
 }
 
 // ThreatClassification represents an AI-assessed threat level for a news item.
@@ -43,7 +122,8 @@ message ThreatClassification {
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 1
   ];
-  // Classification source — "keyword", "ml", or "llm".
+  // Classification source — "keyword", "keyword-historical-downgrade", or
+  // "llm".
   string source = 4;
 }
 

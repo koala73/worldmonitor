@@ -5,18 +5,24 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 const BASE = 'https://www.submarinecablemap.com/api/v3';
-const CANONICAL_KEY = 'infrastructure:submarine-cables:v1';
-const CACHE_TTL = 7 * 24 * 3600; // 7 days — cable infra changes slowly
+export const CANONICAL_KEY = 'infrastructure:submarine-cables:v1';
+export const CACHE_TTL = 21 * 24 * 3600; // 21 days — keeps last-good data through the 17.5-day stale window
 
 // Strategic cable list — TeleGeography slugs organized by region.
 // Find slugs at: https://www.submarinecablemap.com/api/v3/cable/all.json
-const CABLE_REGIONS = [
+// NOTE: TeleGeography renames/splits slugs over time (e.g. the combined
+// "Unity/EAC-Pacific" was split into 'unity' + 'eac-c2c'). A stale slug returns
+// HTTP 200 with the SPA's HTML shell (not JSON); per-cable fetches tolerate this
+// (see fetchSubmarineCables), but it silently drops the cable — verify slugs
+// against cable/all.json when the fetched count drifts below the region total.
+export const CABLE_REGIONS = [
   {
     label: 'TRANS-ATLANTIC',
     ids: [
       'marea', 'grace-hopper', 'havfrueaec-2', 'dunant', 'amitie',
       'atlantic-crossing-1-ac-1', 'apollo', 'nuvem', 'flag-atlantic-1-fa-1',
       'tata-tgn-atlantic-south', 'tata-tgn-western-europe',
+      'exa-north-and-south',
     ],
   },
   {
@@ -24,7 +30,7 @@ const CABLE_REGIONS = [
     ids: [
       'faster', 'southern-cross-cable-network-sccn', 'curie',
       'trans-pacific-express-tpe-cable-system', 'new-cross-pacific-ncp-cable-system',
-      'pacific-light-cable-network-plcn', 'jupiter', 'unityeac-pacific',
+      'pacific-light-cable-network-plcn', 'jupiter', 'unity',
       'pacific-crossing-1-pc-1', 'topaz', 'echo', 'southern-cross-next', 'hawaiki',
     ],
   },
@@ -34,6 +40,7 @@ const CABLE_REGIONS = [
       'seamewe-6', 'seamewe-4', 'seamewe-5', 'asia-africa-europe-1-aae-1',
       'imewe', 'europe-india-gateway-eig', 'peace-cable',
       'seacomtata-tgn-eurasia', 'te-northtgn-eurasiaseacomalexandrosmedex',
+      'fea', 'middle-east-north-africa-mena-cable-systemgulf-bridge-international',
     ],
   },
   {
@@ -51,6 +58,7 @@ const CABLE_REGIONS = [
       'south-america-1-sam-1', 'ellalink', 'brusa', 'monet', 'seabras-1',
       'firmina', 'south-atlantic-cable-system-sacs', 'south-atlantic-inter-link-sail',
       'arcos', 'america-movil-submarine-cable-system-1-amx-1', 'globenet', 'malbec',
+      'south-american-crossing-sac', 'pan-american-crossing-pac',
     ],
   },
   {
@@ -61,6 +69,8 @@ const CABLE_REGIONS = [
       'asia-direct-cable-adc', 'bifrost', 'apricot', 'apcn-2',
       'australia-japan-cable-ajc', 'australia-singapore-cable-asc',
       'japan-guam-australia-south-jga-s', 'sea-us', 'india-asia-xpress-iax', 'raman',
+      'eac-c2c', 'asia-submarine-cable-express-asecahaya-malaysia', 'mist',
+      'bay-of-bengal-gateway-bbg', 'oman-australia-cable-oac',
     ],
   },
   {
@@ -75,6 +85,7 @@ const CABLE_REGIONS = [
     ids: [
       'falcon', 'tata-tgn-gulf', 'fiber-optic-gulf-fog', 'omranepeg',
       'gulf-bridge-international-cable-systemmiddle-east-north-africa-cable-system-gbicsmena',
+      'uae-iran', 'kuwait-iran',
     ],
   },
   {
@@ -86,7 +97,7 @@ const CABLE_REGIONS = [
 const COUNTRY_CODES = {
   'Afghanistan': 'AF', 'Albania': 'AL', 'Algeria': 'DZ', 'Angola': 'AO', 'Argentina': 'AR',
   'Australia': 'AU', 'Austria': 'AT', 'Bahrain': 'BH', 'Bangladesh': 'BD', 'Belgium': 'BE',
-  'Belize': 'BZ', 'Benin': 'BJ', 'Bermuda': 'BM', 'Brazil': 'BR', 'Brunei': 'BN',
+  'Belize': 'BZ', 'British Indian Ocean Territory': 'IO', 'Cocos (Keeling) Islands': 'CC', 'Benin': 'BJ', 'Bermuda': 'BM', 'Brazil': 'BR', 'Brunei': 'BN',
   'Bulgaria': 'BG', 'Cameroon': 'CM', 'Canada': 'CA', 'Cayman Islands': 'KY',
   'Chile': 'CL', 'China': 'CN', 'Colombia': 'CO', 'Comoros': 'KM',
   'Costa Rica': 'CR', 'Croatia': 'HR', 'Cuba': 'CU', "Côte d'Ivoire": 'CI', 'Cyprus': 'CY',
@@ -156,7 +167,27 @@ function getCountryCode(countryName) {
   return countryName.slice(0, 2).toUpperCase();
 }
 
-async function fetchSubmarineCables() {
+function minimumCableCount() {
+  const allCount = CABLE_REGIONS.reduce((s, r) => s + r.ids.length, 0);
+  return Math.floor(allCount * 0.9);
+}
+
+async function readJsonResponse(resp, label) {
+  const contentType = typeof resp.headers?.get === 'function'
+    ? resp.headers.get('content-type')
+    : '';
+  const text = await resp.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const snippet = text.slice(0, 80).replace(/\s+/g, ' ').trim();
+    const type = contentType ? ` content-type=${contentType}` : '';
+    const suffix = snippet ? ` (${snippet})` : '';
+    throw new Error(`${label}: invalid JSON${type}${suffix}`);
+  }
+}
+
+export async function fetchSubmarineCables() {
   const allIds = CABLE_REGIONS.flatMap(r => r.ids);
   console.log(`  Fetching ${allIds.length} strategic cables from TeleGeography...`);
 
@@ -166,7 +197,7 @@ async function fetchSubmarineCables() {
     signal: AbortSignal.timeout(30_000),
   });
   if (!cableGeoResp.ok) throw new Error(`cable-geo.json: HTTP ${cableGeoResp.status}`);
-  const cableGeo = await cableGeoResp.json();
+  const cableGeo = await readJsonResponse(cableGeoResp, 'cable-geo.json');
 
   const allIdSet = new Set(allIds);
   const routeMap = new Map();
@@ -190,7 +221,7 @@ async function fetchSubmarineCables() {
     signal: AbortSignal.timeout(30_000),
   });
   if (!lpGeoResp.ok) throw new Error(`landing-point-geo.json: HTTP ${lpGeoResp.status}`);
-  const lpGeo = await lpGeoResp.json();
+  const lpGeo = await readJsonResponse(lpGeoResp, 'landing-point-geo.json');
 
   const lpCoords = new Map();
   for (const feat of lpGeo.features) {
@@ -212,12 +243,17 @@ async function fetchSubmarineCables() {
   for (let i = 0; i < allIds.length; i += 5) {
     const batch = allIds.slice(i, i + 5);
     const results = await Promise.all(batch.map(async (id) => {
-      const resp = await fetch(`${BASE}/cable/${id}.json`, {
-        headers: { 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!resp.ok) { failed.push(id); return null; }
-      return { id, data: await resp.json() };
+      try {
+        const resp = await fetch(`${BASE}/cable/${id}.json`, {
+          headers: { 'User-Agent': CHROME_UA },
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return { id, data: await readJsonResponse(resp, `cable/${id}.json`) };
+      } catch (err) {
+        failed.push({ id, reason: err?.message || String(err) });
+        return null;
+      }
     }));
 
     for (const result of results) {
@@ -273,7 +309,19 @@ async function fetchSubmarineCables() {
   }
 
   console.log(`  Fetched ${cables.length}/${allIds.length} cables`);
-  if (failed.length) console.warn('  Failed:', failed.join(', '));
+  if (failed.length) {
+    const preview = failed
+      .slice(0, 10)
+      .map(f => `${f.id} (${f.reason})`)
+      .join(', ');
+    console.warn(`  Failed details (${failed.length}): ${preview}${failed.length > 10 ? ', ...' : ''}`);
+  }
+
+  const minCount = minimumCableCount();
+  if (cables.length < minCount) {
+    const failedIds = failed.map(f => f.id).join(', ');
+    throw new Error(`Fetched ${cables.length}/${allIds.length} cables, below minimum ${minCount}; failed details: ${failedIds || 'none'}`);
+  }
 
   // Collision check
   const seenIds = new Map();
@@ -287,16 +335,26 @@ async function fetchSubmarineCables() {
   return { cables, fetchedAt: Date.now(), source: 'TeleGeography Submarine Cable Map' };
 }
 
-function validate(data) {
-  const allCount = CABLE_REGIONS.reduce((s, r) => s + r.ids.length, 0);
-  return data?.cables?.length >= Math.floor(allCount * 0.9);
+export function validate(data) {
+  return data?.cables?.length >= minimumCableCount();
 }
 
-runSeed('infrastructure', 'submarine-cables', CANONICAL_KEY, fetchSubmarineCables, {
+export function declareRecords(data) {
+  return data?.cables?.length ?? 0;
+}
+
+export const SUBMARINE_CABLES_SEED_OPTIONS = {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'telegeography-v3',
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 25200,
+};
+
+if (process.argv[1]?.endsWith('seed-submarine-cables.mjs')) {
+  runSeed('infrastructure', 'submarine-cables', CANONICAL_KEY, fetchSubmarineCables, SUBMARINE_CABLES_SEED_OPTIONS).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

@@ -11,7 +11,6 @@
 141,full,latam,Milenio,DEAD,,HTTP 404,https://www.milenio.com/rss,"https://news.google.com/rss/search?q=site:milenio.com+when:1d&hl=es-419&gl=MX&ceid=MX:es-419",All direct paths 404; Google News 100 items
 161,full,asia,Bangkok Post,DEAD,,HTTP 451,https://www.bangkokpost.com/rss,"https://news.google.com/rss/search?q=site:bangkokpost.com+when:1d&hl=en-US&gl=US&ceid=US:en",Geo-blocked 451; Google News 42 items
 377,happy,science,ScienceDaily,DEAD,,Timeout,https://www.sciencedaily.com/rss/top.xml,https://www.sciencedaily.com/rss/all.xml,top.xml empty; all.xml has 40 items verified
-388,intel,inspiring,Breaking Defense,DEAD,,HTTP 403,https://breakingdefense.com/feed/,KEEP,Works with proper User-Agent; 15 items verified
 402,intel,inspiring,RAND,DEAD,,HTTP 404,https://www.rand.org/rss/all.xml,"https://news.google.com/rss/search?q=site:rand.org+when:7d&hl=en-US&gl=US&ceid=US:en",Direct 403; Google News 50 items
 406,intel,inspiring,NTI,DEAD,,HTTP 403,https://www.nti.org/rss/,"https://news.google.com/rss/search?q=site:nti.org+when:30d&hl=en-US&gl=US&ceid=US:en",Direct feed empty; Google News 30d window 27 items
 415,intel,inspiring,Bellingcat,DEAD,,fetch failed,https://www.bellingcat.com/feed/,"https://news.google.com/rss/search?q=site:bellingcat.com+when:30d&hl=en-US&gl=US&ceid=US:en",SSL handshake fails; Google News 30d 19 items (low pub freq)

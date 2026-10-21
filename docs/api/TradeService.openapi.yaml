@@ -2,6 +2,11 @@ openapi: 3.1.0
 info:
     title: TradeService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/trade/v1/get-trade-restrictions:
         get:
@@ -13,22 +18,48 @@ paths:
             parameters:
                 - name: countries
                   in: query
-                  description: WTO member codes to filter by. Empty = all.
+                  description: |-
+                    WTO member codes to filter by. Empty = all.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "840"
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: limit
                   in: query
                   description: Max results to return (server caps at 100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "restrictions":
+                                    - "affectedCountry": "US"
+                                      "description": "Example WorldMonitor observation."
+                                      "id": "example-id"
+                                      "measureType": "all"
+                                      "notifiedAt": "2026-01-15T12:00:00Z"
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetTradeRestrictionsResponse'
                 "400":
@@ -36,51 +67,171 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/trade/v1/get-tariff-trends:
         get:
             tags:
                 - TradeService
             summary: GetTariffTrends
-            description: Get tariff rate timeseries for a country pair.
+            description: |-
+                Average applied tariff timeseries for one reporting economy: the MFN rate
+                 over all products, or with a partner and/or product group the effectively
+                 applied rate on those imports. Not an HS-line rate. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetTariffTrends
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: reporting_country
                   in: query
-                  description: WTO member code of reporting country (e.g. "840" = US).
+                  description: |-
+                    WTO member code of reporting country, as a 3-digit UN M49 code
+                     (for example "840" = United States). Empty selects the "840" default.
                   required: false
+                  example: "840"
                   schema:
                     type: string
+                    pattern: '^([0-9]{3})?$'
                 - name: partner_country
                   in: query
-                  description: WTO member code of partner country (e.g. "156" = China).
+                  description: |-
+                    Exporting partner, 3-digit UN M49 code ("000" = World). Empty or "000"
+                     with no product_sector selects the MFN series.
                   required: false
+                  example: "156"
                   schema:
                     type: string
+                    pattern: '^([0-9]{3})?$'
                 - name: product_sector
                   in: query
-                  description: Product sector filter (HS chapter). Empty = aggregate.
+                  description: |-
+                    WITS product group: an HS section such as "84-85_MachElec" or "50-63_TextCloth",
+                     or "AgrRaw", "Chemical", "Food", "Fuels", "manuf", "OresMtls", "Textiles",
+                     "Transp" (case-insensitive). Empty or "all" means all products. Other values
+                     are answered NOT_COVERED.
                   required: false
+                  example: "all"
                   schema:
                     type: string
+                    pattern: '^([a-zA-Z0-9_-]{0,16})?$'
                 - name: years
                   in: query
-                  description: Number of years to look back (default 10, max 30).
+                  description: |-
+                    Number of years to look back from the newest seeded year, inclusive of
+                     both endpoints (years = 10 returns 11 calendar years). 0 selects the
+                     default of 10; the maximum is 30, which is the full seeded window.
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "coverageEndYear": 1
+                                "coverageStartYear": 1
+                                "datapoints":
+                                    - "boundRate": 0
+                                      "indicatorCode": "example"
+                                      "partnerCountry": "World"
+                                      "productSector": "All products"
+                                      "reportingCountry": "840"
+                                "effectiveTariffRate":
+                                    "observationPeriod": "daily"
+                                    "sourceName": "WorldMonitor Analyst"
+                                    "sourceUrl": "https://example.com/worldmonitor"
+                                    "tariffRate": 75.25
+                                    "updatedAt": "2026-01-15"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/GetTariffTrendsResponse'
                 "400":
@@ -88,13 +239,433 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/trade/v1/get-bilateral-tariff:
+        get:
+            tags:
+                - TradeService
+            summary: GetBilateralTariff
+            description: Applied tariff on one HS6 product between two countries (UNCTAD TRAINS). PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetBilateralTariff
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: reporting_country
+                  in: query
+                  description: Importer, 3-digit UN M49 ("840"). EU members use the EU schedule.
+                  required: true
+                  example: "840"
+                  schema:
+                    type: string
+                    pattern: '^[0-9]{3}$'
+                - name: partner_country
+                  in: query
+                  description: Exporter, 3-digit UN M49 ("484"). "000" returns MFN only.
+                  required: true
+                  example: "484"
+                  schema:
+                    type: string
+                    pattern: '^[0-9]{3}$'
+                - name: hs_code
+                  in: query
+                  description: Six-digit HS subheading ("870323").
+                  required: true
+                  example: "870323"
+                  schema:
+                    type: string
+                    pattern: '^[0-9]{6}$'
+                - name: year
+                  in: query
+                  description: Tariff year; 0 = latest year TRAINS lists for the importer.
+                  required: false
+                  example: 2021
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "appliedRate":
+                                    "maxRate": 0
+                                    "minRate": 0
+                                    "nonAdValoremLines": 0
+                                    "rate": 0
+                                    "tariffLines": 1
+                                "basis": "APPLIED_TARIFF_BASIS_PREFERENTIAL"
+                                "filingReporter": "840"
+                                "groupPreferences":
+                                    - "groupCode": "P22"
+                                      "groupName": "North American Free Trade Agreement (NAFTA)"
+                                      "rate":
+                                          "maxRate": 0
+                                          "minRate": 0
+                                          "nonAdValoremLines": 0
+                                          "rate": 0
+                                          "tariffLines": 1
+                                "hsCode": "870323"
+                                "mfnRate":
+                                    "maxRate": 2.5
+                                    "minRate": 2.5
+                                    "nonAdValoremLines": 0
+                                    "rate": 2.5
+                                    "tariffLines": 1
+                                "nomenclature": "H5"
+                                "partnerCountry": "484"
+                                "preferentialRate":
+                                    "maxRate": 0
+                                    "minRate": 0
+                                    "nonAdValoremLines": 0
+                                    "rate": 0
+                                    "tariffLines": 1
+                                "reportingCountry": "840"
+                                "source": "UNCTAD TRAINS via World Bank WITS"
+                                "sourceUrl": "https://wits.worldbank.org/API/V1/SDMX/V21/datasource/TRN/reporter/840/partner/all/product/870323/year/2021/datatype/reported"
+                                "upstreamUnavailable": false
+                                "year": 2021
+                            schema:
+                                $ref: '#/components/schemas/GetBilateralTariffResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/trade/v1/get-us-import-duty:
+        get:
+            tags:
+                - TradeService
+            summary: GetUsImportDuty
+            description: Current US duty on one product from one country (USITC HTS). PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetUsImportDuty
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: hs_code
+                  in: query
+                  description: 'HTS code: 6, 8 or 10 digits, no dots ("870323").'
+                  required: true
+                  example: "870380"
+                  schema:
+                    type: string
+                    pattern: '^[0-9]{6}([0-9]{2}){0,2}$'
+                - name: partner_country
+                  in: query
+                  description: Exporter, 3-digit UN M49 ("156").
+                  required: true
+                  example: "156"
+                  schema:
+                    type: string
+                    pattern: '^[0-9]{3}$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "additionalDutiesLoaded": true
+                                "hsCode": "870380"
+                                "htsRelease": "2026HTSRev21"
+                                "lines":
+                                    - "additionalDuties":
+                                        - "addedRate": 100
+                                          "authority": "US_DUTY_AUTHORITY_SECTION_301"
+                                          "condition": ""
+                                          "effectiveFrom": "2024-09-27"
+                                          "heading": "9903.91.03"
+                                          "legalNote": "U.S. note 31(d)"
+                                          "program": "China four-year review"
+                                          "status": "US_ADDITIONAL_DUTY_STATUS_APPLIES"
+                                          "topUpTo": 0
+                                        - "addedRate": 25
+                                          "authority": "US_DUTY_AUTHORITY_SECTION_232"
+                                          "condition": "Section 232 rates vary by origin deal and, for some derivatives, apply to metal content only."
+                                          "effectiveFrom": ""
+                                          "heading": "9903.94.01"
+                                          "legalNote": "U.S. note 33(b)"
+                                          "program": "Passenger vehicles and light trucks"
+                                          "status": "US_ADDITIONAL_DUTY_STATUS_CONDITIONAL"
+                                          "topUpTo": 0
+                                      "baseAdValorem": 2.5
+                                      "baseNonAdValorem": false
+                                      "baseRate": "2.5%"
+                                      "basis": "US_DUTY_BASIS_MFN"
+                                      "column2Rate": "10%"
+                                      "description": "Other vehicles, with only electric motors for propulsion"
+                                      "estimateComplete": false
+                                      "estimatedRate": 102.5
+                                      "generalRate": "2.5%"
+                                      "htsCode": "8703.80.00"
+                                      "preferenceProgram": ""
+                                      "specialRate": "Free (A+,AU,B,BH,CL,CO,D,E,IL,JO,KR,MA,OM,P,PA,PE,S,SG)"
+                                      "unresolvedPrograms":
+                                          - "D"
+                                          - "E"
+                                "partnerCountry": "156"
+                                "source": "USITC Harmonized Tariff Schedule"
+                                "sourceUrl": "https://hts.usitc.gov/search?query=8703.80"
+                                "upstreamUnavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetUsImportDutyResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/trade/v1/get-trade-flows:
         get:
             tags:
@@ -105,28 +676,64 @@ paths:
             parameters:
                 - name: reporting_country
                   in: query
-                  description: WTO member code of reporting country.
+                  description: |-
+                    WTO member code of reporting country, as a 3-digit UN M49 code
+                     (for example "840" = United States). Empty selects the "840" default.
                   required: false
+                  example: "840"
                   schema:
                     type: string
+                    pattern: '^([0-9]{3})?$'
                 - name: partner_country
                   in: query
-                  description: WTO member code of partner country.
+                  description: |-
+                    WTO member code of partner country, as a 3-digit UN M49 code.
+                     Empty selects "000" = World, which is the only partner currently covered:
+                     the WTO indicators behind these flows (ITS_MTV_AX, ITS_MTV_AM) publish a
+                     World total and answer 204 for every named partner. Any other code is
+                     accepted by validation and answered with unavailable_reason
+                     TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED, so coverage can widen without a
+                     contract change.
                   required: false
+                  example: "000"
                   schema:
                     type: string
+                    pattern: '^([0-9]{3})?$'
                 - name: years
                   in: query
-                  description: Number of years to look back (default 10, max 30).
+                  description: |-
+                    Number of years to look back from the newest seeded year, inclusive of
+                     both endpoints (years = 10 returns 11 calendar years). 0 selects the
+                     default of 10; the maximum is 30, which is the full seeded window.
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "coverageEndYear": 1
+                                "coverageStartYear": 1
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "flows":
+                                    - "exportValueUsd": 1.5
+                                      "importValueUsd": 1.5
+                                      "partnerCountry": "000"
+                                      "productSector": "Total merchandise"
+                                      "reportingCountry": "840"
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetTradeFlowsResponse'
                 "400":
@@ -134,13 +741,84 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/trade/v1/get-trade-barriers:
         get:
             tags:
@@ -151,28 +829,57 @@ paths:
             parameters:
                 - name: countries
                   in: query
-                  description: WTO member codes to filter by. Empty = all.
+                  description: |-
+                    WTO member codes to filter by. Empty = all.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "840"
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: measure_type
                   in: query
-                  description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
+                  description: |-
+                    Filter by measure type: "SPS", "TBT", or empty for both.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "SPS"
                   schema:
                     type: string
                 - name: limit
                   in: query
                   description: Max results to return (server caps at 100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "barriers":
+                                    - "dateDistributed": "2026-01-15"
+                                      "id": "example-id"
+                                      "measureType": "SPS"
+                                      "notifyingCountry": "US"
+                                      "objective": "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetTradeBarriersResponse'
                 "400":
@@ -180,13 +887,84 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/trade/v1/get-customs-revenue:
         get:
             tags:
@@ -194,11 +972,29 @@ paths:
             summary: GetCustomsRevenue
             description: Get US customs duties revenue (Treasury MTS data, seeded by Railway).
             operationId: GetCustomsRevenue
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "months":
+                                    - "calendarMonth": 1
+                                      "calendarYear": 1
+                                      "fiscalYear": 1
+                                      "fytdAmountBillions": 1.5
+                                      "monthlyAmountBillions": 1.5
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetCustomsRevenueResponse'
                 "400":
@@ -206,44 +1002,140 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/trade/v1/list-comtrade-flows:
         get:
             tags:
                 - TradeService
             summary: ListComtradeFlows
-            description: List UN Comtrade strategic commodity flows with anomaly detection.
+            description: List UN Comtrade strategic commodity flows with anomaly detection. PRO-gated. Requires entitlement tier >= 1.
             operationId: ListComtradeFlows
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: reporter_code
                   in: query
                   description: UN Comtrade reporter code (e.g. "842" = US, "156" = China). Empty returns all reporters.
                   required: false
+                  example: "842"
                   schema:
                     type: string
                 - name: cmd_code
                   in: query
                   description: HS commodity code (e.g. "2709" = crude oil). Empty returns all commodities.
                   required: false
+                  example: "2709"
                   schema:
                     type: string
+                    pattern: '^\d{4,6}$'
                 - name: anomalies_only
                   in: query
                   description: If true, only return flows with a year-over-year change exceeding 30%.
                   required: false
+                  example: true
                   schema:
                     type: boolean
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "flows":
+                                    - "cmdCode": "2709"
+                                      "cmdDesc": "example"
+                                      "isAnomaly": true
+                                      "netWeightKg": 1.5
+                                      "partnerCode": "example"
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/ListComtradeFlowsResponse'
                 "400":
@@ -251,15 +1143,125 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+        BearerAuth:
+            type: http
+            scheme: bearer
+            description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:
@@ -267,6 +1269,82 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        BillingVerificationError:
+            type: object
+            description: "Returned with HTTP 503 when paid access cannot be confirmed right now: the billing provider is re-verifying a recently expired subscription, or the entitlement backend is unreachable. Retryable — honor Retry-After."
+            properties:
+                error:
+                    type: string
+                    description: Human-readable billing-verification failure reason.
+                code:
+                    type: string
+                    enum:
+                        - renewal_verification_pending
+                        - renewal_verification_failed
+                        - entitlement_verification_unavailable
+                    description: Machine-readable billing-verification state, mirrored in the X-Billing-Verification response header.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint, when the denial came from a tier gate.
+            required:
+                - error
+                - code
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                code:
+                    type: string
+                    enum:
+                        - subscription_lapsed
+                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -298,7 +1376,9 @@ components:
                     type: array
                     items:
                         type: string
-                        description: WTO member codes to filter by. Empty = all.
+                        description: |-
+                            WTO member codes to filter by. Empty = all.
+                             Accepted but currently ignored; no-op until this handler supports the parameter.
                 limit:
                     type: integer
                     format: int32
@@ -354,18 +1434,45 @@ components:
             properties:
                 reportingCountry:
                     type: string
-                    description: WTO member code of reporting country (e.g. "840" = US).
+                    pattern: ^([0-9]{3})?$
+                    description: |-
+                        WTO member code of reporting country, as a 3-digit UN M49 code
+                         (for example "840" = United States). Empty selects the "840" default.
                 partnerCountry:
                     type: string
-                    description: WTO member code of partner country (e.g. "156" = China).
+                    pattern: ^([0-9]{3})?$
+                    description: |-
+                        Exporting partner, 3-digit UN M49 code ("000" = World). Empty or "000"
+                         with no product_sector selects the MFN series.
                 productSector:
                     type: string
-                    description: Product sector filter (HS chapter). Empty = aggregate.
+                    pattern: ^([a-zA-Z0-9_-]{0,16})?$
+                    description: |-
+                        WITS product group: an HS section such as "84-85_MachElec" or "50-63_TextCloth",
+                         or "AgrRaw", "Chemical", "Food", "Fuels", "manuf", "OresMtls", "Textiles",
+                         "Transp" (case-insensitive). Empty or "all" means all products. Other values
+                         are answered NOT_COVERED.
                 years:
                     type: integer
+                    maximum: 30
+                    minimum: 0
                     format: int32
-                    description: Number of years to look back (default 10, max 30).
-            description: Request for tariff timeseries data.
+                    description: |-
+                        Number of years to look back from the newest seeded year, inclusive of
+                         both endpoints (years = 10 returns 11 calendar years). 0 selects the
+                         default of 10; the maximum is 30, which is the full seeded window.
+            description: |-
+                Request for tariff timeseries data.
+
+                 Without partner_country or product_sector, this serves the reporter's WTO MFN
+                 applied average over all products (indicator TP_A_0010), seeded on Railway; a
+                 reporter outside the seed is reported as uncovered, not fetched.
+
+                 With a partner other than World, or a product group other than all, it serves
+                 the reporter's effectively applied tariff (preferences included) on those
+                 goods, from World Bank WITS (UNCTAD TRAINS), fetched on demand and cached.
+                 Both are schedule rates: neither includes unilateral duties such as Section
+                 301 (see get-us-import-duty).
         GetTariffTrendsResponse:
             type: object
             properties:
@@ -375,12 +1482,43 @@ components:
                         $ref: '#/components/schemas/TariffDataPoint'
                 fetchedAt:
                     type: string
-                    description: ISO 8601 timestamp when data was fetched from WTO.
+                    description: ISO 8601 time the data was fetched from WTO or WITS.
                 upstreamUnavailable:
                     type: boolean
-                    description: True if upstream fetch failed and results may be stale/empty.
+                    description: |-
+                        True when datapoints could not be served because of a fault — a seeded
+                         reporter whose cache entry is gone, or a cache read that failed. False when
+                         datapoints are served AND when the request names a combination that is
+                         simply not part of seeded coverage, which is a contract answer rather than
+                         an outage.
                 effectiveTariffRate:
                     $ref: '#/components/schemas/EffectiveTariffRate'
+                unavailableReason:
+                    type: string
+                    enum:
+                        - TARIFF_TREND_UNAVAILABLE_REASON_UNSPECIFIED
+                        - TARIFF_TREND_UNAVAILABLE_REASON_INVALID_REQUEST
+                        - TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED
+                        - TARIFF_TREND_UNAVAILABLE_REASON_SEED_MISSING
+                        - TARIFF_TREND_UNAVAILABLE_REASON_COVERAGE_UNKNOWN
+                        - TARIFF_TREND_UNAVAILABLE_REASON_CACHE_UNAVAILABLE
+                        - TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE
+                    description: |-
+                        TariffTrendUnavailableReason says why no datapoints were returned. The
+                         distinction that matters is NOT_COVERED — a contract answer, nothing is
+                         broken and a retry cannot help — against every other member, which names a
+                         fault.
+                coverageStartYear:
+                    type: integer
+                    format: int32
+                    description: |-
+                        First and last calendar year covered by `datapoints`. Both are 0 when no
+                         datapoints are returned. This is the effective window after slicing to
+                         `years`, which may be narrower than the requested lookback when the seed
+                         starts later.
+                coverageEndYear:
+                    type: integer
+                    format: int32
             description: Response containing tariff trend datapoints.
         TariffDataPoint:
             type: object
@@ -390,10 +1528,10 @@ components:
                     description: WTO member code of reporting country.
                 partnerCountry:
                     type: string
-                    description: WTO member code of partner country.
+                    description: 'Partner: "World", or the requested 3-digit code.'
                 productSector:
                     type: string
-                    description: Product sector or HS chapter.
+                    description: '"All products", or the requested WITS product group.'
                 year:
                     type: integer
                     format: int32
@@ -401,15 +1539,23 @@ components:
                 tariffRate:
                     type: number
                     format: double
-                    description: Applied MFN tariff rate (percentage).
+                    description: |-
+                        Simple average applied tariff (percentage): MFN on TP_A_0010, effectively
+                         applied on AHS-SMPL-AVRG.
                 boundRate:
                     type: number
                     format: double
-                    description: WTO bound tariff rate (percentage).
+                    description: 'WTO bound tariff rate (percentage). Reserved: always 0.'
                 indicatorCode:
                     type: string
-                    description: WTO indicator code used for this datapoint.
-            description: Single tariff data point for a reporter-partner-product combination.
+                    description: 'Indicator: TP_A_0010 (WTO) or AHS-SMPL-AVRG (WITS).'
+                weightedRate:
+                    type: number
+                    format: double
+                    description: Import-weighted average (percentage). WITS series only; 0 on TP_A_0010.
+            description: |-
+                One year of a reporter's average tariff: the WTO MFN all-products average
+                 (TP_A_0010), or a WITS applied average for a partner and/or product group.
         EffectiveTariffRate:
             type: object
             properties:
@@ -430,20 +1576,323 @@ components:
                     format: double
                     description: Effective tariff rate (percentage).
             description: Current effective tariff estimate for countries with coverage beyond WTO MFN baselines.
+        GetBilateralTariffRequest:
+            type: object
+            properties:
+                reportingCountry:
+                    type: string
+                    pattern: ^[0-9]{3}$
+                    description: Importer, 3-digit UN M49 ("840"). EU members use the EU schedule.
+                partnerCountry:
+                    type: string
+                    pattern: ^[0-9]{3}$
+                    description: Exporter, 3-digit UN M49 ("484"). "000" returns MFN only.
+                hsCode:
+                    type: string
+                    pattern: ^[0-9]{6}$
+                    description: Six-digit HS subheading ("870323").
+                year:
+                    type: integer
+                    maximum: 2100
+                    minimum: 0
+                    format: int32
+                    description: Tariff year; 0 = latest year TRAINS lists for the importer.
+            required:
+                - reportingCountry
+                - partnerCountry
+                - hsCode
+            description: |-
+                Applied tariff on one HS6 product between two countries, from UNCTAD TRAINS
+                 via World Bank WITS. Excludes unilateral duties (Section 301/232, IEEPA,
+                 AD/CVD, safeguards).
+        GetBilateralTariffResponse:
+            type: object
+            properties:
+                reportingCountry:
+                    type: string
+                    description: Importer code, as requested.
+                partnerCountry:
+                    type: string
+                    description: Exporter code, as requested.
+                hsCode:
+                    type: string
+                    description: HS6 code, as requested.
+                year:
+                    type: integer
+                    format: int32
+                    description: Year served; 0 when none.
+                nomenclature:
+                    type: string
+                    description: HS edition the importer filed in ("H5" = HS 2017).
+                basis:
+                    type: string
+                    enum:
+                        - APPLIED_TARIFF_BASIS_UNSPECIFIED
+                        - APPLIED_TARIFF_BASIS_PREFERENTIAL
+                        - APPLIED_TARIFF_BASIS_MFN
+                        - APPLIED_TARIFF_BASIS_MFN_PREFERENCES_NOT_REPORTED
+                    description: Source of applied_rate.
+                appliedRate:
+                    $ref: '#/components/schemas/TariffRateDetail'
+                mfnRate:
+                    $ref: '#/components/schemas/TariffRateDetail'
+                preferentialRate:
+                    $ref: '#/components/schemas/TariffRateDetail'
+                groupPreferences:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GroupTariffPreference'
+                source:
+                    type: string
+                    description: Data source.
+                sourceUrl:
+                    type: string
+                    description: WITS query behind the rows.
+                upstreamUnavailable:
+                    type: boolean
+                    description: True on a fault, false on a coverage answer.
+                unavailableReason:
+                    type: string
+                    enum:
+                        - BILATERAL_TARIFF_UNAVAILABLE_REASON_UNSPECIFIED
+                        - BILATERAL_TARIFF_UNAVAILABLE_REASON_INVALID_REQUEST
+                        - BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED
+                        - BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE
+                    description: Why no rate was served. NOT_COVERED is final; UPSTREAM_UNAVAILABLE is a fault.
+                filingReporter:
+                    type: string
+                    description: 'Reporter code queried: "918" for EU members.'
+                mfnAveRate:
+                    $ref: '#/components/schemas/TariffRateDetail'
+            description: Applied tariff on one HS6 product between two countries.
+        TariffRateDetail:
+            type: object
+            properties:
+                rate:
+                    type: number
+                    format: double
+                    description: Average ad valorem rate.
+                minRate:
+                    type: number
+                    format: double
+                    description: Lowest line rate.
+                maxRate:
+                    type: number
+                    format: double
+                    description: Highest line rate.
+                tariffLines:
+                    type: integer
+                    format: int32
+                    description: National tariff lines.
+                nonAdValoremLines:
+                    type: integer
+                    format: int32
+                    description: Specific or compound lines, excluded from the average.
+            description: Simple average across the importer's national tariff lines, in percent.
+        GroupTariffPreference:
+            type: object
+            properties:
+                groupCode:
+                    type: string
+                    description: WITS group code ("A41").
+                groupName:
+                    type: string
+                    description: WITS group name; empty when WITS has none.
+                rate:
+                    $ref: '#/components/schemas/TariffRateDetail'
+            description: Preference granted to a partner group. Membership is not resolved.
+        GetUsImportDutyRequest:
+            type: object
+            properties:
+                hsCode:
+                    type: string
+                    pattern: ^[0-9]{6}([0-9]{2}){0,2}$
+                    description: 'HTS code: 6, 8 or 10 digits, no dots ("870323").'
+                partnerCountry:
+                    type: string
+                    pattern: ^[0-9]{3}$
+                    description: Exporter, 3-digit UN M49 ("156").
+            required:
+                - hsCode
+                - partnerCountry
+            description: |-
+                Current US duty on a product from one country: HTS columns plus the
+                 chapter 99 Section 301 and 232 duties. IEEPA duties are not collected
+                 since 2026-02-24 and are not reported. Excludes AD/CVD.
+        GetUsImportDutyResponse:
+            type: object
+            properties:
+                hsCode:
+                    type: string
+                    description: HTS code, as requested.
+                partnerCountry:
+                    type: string
+                    description: Exporter code, as requested.
+                htsRelease:
+                    type: string
+                    description: HTS release of the chapter 99 index ("2026HTSRev21").
+                lines:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UsTariffLine'
+                additionalDutiesLoaded:
+                    type: boolean
+                    description: False when the chapter 99 index was unavailable.
+                source:
+                    type: string
+                    description: Data source.
+                sourceUrl:
+                    type: string
+                    description: HTS search page for the code.
+                upstreamUnavailable:
+                    type: boolean
+                    description: True on a fault, false on a coverage answer.
+                unavailableReason:
+                    type: string
+                    enum:
+                        - US_IMPORT_DUTY_UNAVAILABLE_REASON_UNSPECIFIED
+                        - US_IMPORT_DUTY_UNAVAILABLE_REASON_INVALID_REQUEST
+                        - US_IMPORT_DUTY_UNAVAILABLE_REASON_NOT_COVERED
+                        - US_IMPORT_DUTY_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE
+                    description: Why no line was served. NOT_COVERED is final; UPSTREAM_UNAVAILABLE is a fault.
+            description: Current US duty on a product from one country.
+        UsTariffLine:
+            type: object
+            properties:
+                htsCode:
+                    type: string
+                    description: 8-digit HTS line ("8703.23.01").
+                description:
+                    type: string
+                    description: Article description.
+                generalRate:
+                    type: string
+                    description: Column 1 General.
+                specialRate:
+                    type: string
+                    description: Column 1 Special, with program codes.
+                column2Rate:
+                    type: string
+                    description: Column 2.
+                basis:
+                    type: string
+                    enum:
+                        - US_DUTY_BASIS_UNSPECIFIED
+                        - US_DUTY_BASIS_MFN
+                        - US_DUTY_BASIS_PREFERENTIAL
+                        - US_DUTY_BASIS_COLUMN_2
+                    description: Column the base rate comes from.
+                baseRate:
+                    type: string
+                    description: Base rate text.
+                baseAdValorem:
+                    type: number
+                    format: double
+                    description: Base rate in percent; 0 when not ad valorem.
+                baseNonAdValorem:
+                    type: boolean
+                    description: True when the base rate is specific or compound.
+                preferenceProgram:
+                    type: string
+                    description: Special program applied ("S" = USMCA).
+                unresolvedPrograms:
+                    type: array
+                    items:
+                        type: string
+                        description: Special programs whose partner eligibility is not resolved.
+                additionalDuties:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UsAdditionalDuty'
+                estimatedRate:
+                    type: number
+                    format: double
+                    description: Base plus APPLIES duties, in percent.
+                estimateComplete:
+                    type: boolean
+                    description: False when the base is not ad valorem or a duty is not APPLIES/EXEMPT.
+            description: One 8-digit HTS line.
+        UsAdditionalDuty:
+            type: object
+            properties:
+                heading:
+                    type: string
+                    description: Chapter 99 heading ("9903.88.03").
+                authority:
+                    type: string
+                    enum:
+                        - US_DUTY_AUTHORITY_UNSPECIFIED
+                        - US_DUTY_AUTHORITY_SECTION_301
+                        - US_DUTY_AUTHORITY_SECTION_232
+                        - US_DUTY_AUTHORITY_COLUMN_2
+                    description: Legal authority of a chapter 99 duty.
+                program:
+                    type: string
+                    description: Action name ("China List 3").
+                addedRate:
+                    type: number
+                    format: double
+                    description: Percentage points added to the base rate.
+                topUpTo:
+                    type: number
+                    format: double
+                    description: Combined rate the base is raised to; 0 when none.
+                status:
+                    type: string
+                    enum:
+                        - US_ADDITIONAL_DUTY_STATUS_UNSPECIFIED
+                        - US_ADDITIONAL_DUTY_STATUS_APPLIES
+                        - US_ADDITIONAL_DUTY_STATUS_CONDITIONAL
+                        - US_ADDITIONAL_DUTY_STATUS_EXEMPT
+                        - US_ADDITIONAL_DUTY_STATUS_SCHEDULED
+                    description: Whether a chapter 99 duty applies to this line and partner.
+                condition:
+                    type: string
+                    description: What decides the status.
+                legalNote:
+                    type: string
+                    description: Chapter 99 U.S. note listing the products.
+                effectiveFrom:
+                    type: string
+                    description: First day in force, when dated.
+            description: A chapter 99 duty on one line.
         GetTradeFlowsRequest:
             type: object
             properties:
                 reportingCountry:
                     type: string
-                    description: WTO member code of reporting country.
+                    pattern: ^([0-9]{3})?$
+                    description: |-
+                        WTO member code of reporting country, as a 3-digit UN M49 code
+                         (for example "840" = United States). Empty selects the "840" default.
                 partnerCountry:
                     type: string
-                    description: WTO member code of partner country.
+                    pattern: ^([0-9]{3})?$
+                    description: |-
+                        WTO member code of partner country, as a 3-digit UN M49 code.
+                         Empty selects "000" = World, which is the only partner currently covered:
+                         the WTO indicators behind these flows (ITS_MTV_AX, ITS_MTV_AM) publish a
+                         World total and answer 204 for every named partner. Any other code is
+                         accepted by validation and answered with unavailable_reason
+                         TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED, so coverage can widen without a
+                         contract change.
                 years:
                     type: integer
+                    maximum: 30
+                    minimum: 0
                     format: int32
-                    description: Number of years to look back (default 10, max 30).
-            description: Request for bilateral trade flow data.
+                    description: |-
+                        Number of years to look back from the newest seeded year, inclusive of
+                         both endpoints (years = 10 returns 11 calendar years). 0 selects the
+                         default of 10; the maximum is 30, which is the full seeded window.
+            description: |-
+                Request for merchandise trade flow data, reporter versus World.
+
+                 Coverage is seed-backed: Railway pre-fetches a fixed set of
+                 reporter/partner pairs from WTO and this API serves slices of that history.
+                 It never calls WTO per request, so a well-formed combination outside the
+                 seeded set is reported as uncovered (see GetTradeFlowsResponse.
+                 unavailable_reason) rather than fetched on demand.
         GetTradeFlowsResponse:
             type: object
             properties:
@@ -456,7 +1905,34 @@ components:
                     description: ISO 8601 timestamp when data was fetched from WTO.
                 upstreamUnavailable:
                     type: boolean
-                    description: True if upstream fetch failed and results may be stale/empty.
+                    description: |-
+                        True when flows could not be served because of a fault — a seeded pair
+                         whose cache entry is gone, or a cache read that failed. False when flows
+                         are served AND when the request names a combination that is simply not
+                         part of seeded coverage, which is a contract answer rather than an outage.
+                unavailableReason:
+                    type: string
+                    enum:
+                        - TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED
+                        - TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST
+                        - TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED
+                        - TRADE_FLOW_UNAVAILABLE_REASON_SEED_MISSING
+                        - TRADE_FLOW_UNAVAILABLE_REASON_COVERAGE_UNKNOWN
+                        - TRADE_FLOW_UNAVAILABLE_REASON_CACHE_UNAVAILABLE
+                    description: |-
+                        TradeFlowUnavailableReason says why no rows were returned. The distinction
+                         that matters is NOT_COVERED — a contract answer, nothing is broken and a
+                         retry cannot help — against every other member, which names a fault.
+                coverageStartYear:
+                    type: integer
+                    format: int32
+                    description: |-
+                        First and last calendar year covered by `flows`. Both are 0 when no flows
+                         are returned. This is the effective window after slicing to `years`, which
+                         may be narrower than the requested lookback when the seed starts later.
+                coverageEndYear:
+                    type: integer
+                    format: int32
             description: Response containing trade flow records.
         TradeFlowRecord:
             type: object
@@ -498,10 +1974,14 @@ components:
                     type: array
                     items:
                         type: string
-                        description: WTO member codes to filter by. Empty = all.
+                        description: |-
+                            WTO member codes to filter by. Empty = all.
+                             Accepted but currently ignored; no-op until this handler supports the parameter.
                 measureType:
                     type: string
-                    description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
+                    description: |-
+                        Filter by measure type: "SPS", "TBT", or empty for both.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 limit:
                     type: integer
                     format: int32

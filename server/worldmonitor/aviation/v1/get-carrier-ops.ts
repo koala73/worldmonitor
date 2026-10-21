@@ -5,28 +5,66 @@ import type {
     CarrierOpsSummary,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
-import { parseStringArray, DEFAULT_WATCHED_AIRPORTS } from './_shared';
+import { markNoCacheResponse } from '../../../_shared/response-headers';
+import {
+    parseStringArray,
+    DEFAULT_WATCHED_AIRPORTS,
+    IATA_RE,
+    MAX_AIRPORTS_PER_REQUEST,
+    requireLiveAviationAccess,
+} from './_shared';
+import { aviationStackBudgetCycle } from './_avstack-budget';
 import { listAirportFlights } from './list-airport-flights';
 
-const CACHE_TTL = 300;
+// 15min, matching list-airport-flights — see the TTL note there. This route is
+// the more expensive of the two: every miss fans out to listAirportFlights once
+// PER AIRPORT, so one uncached request is N paid AviationStack calls, not one.
+const CACHE_TTL = 900;
 
 export async function getCarrierOps(
     ctx: ServerContext,
     req: GetCarrierOpsRequest,
 ): Promise<GetCarrierOpsResponse> {
+    // Metered route — gate before anything else, and before the per-airport
+    // fan-out below turns one request into N paid calls.
+    await requireLiveAviationAccess(ctx.request);
+
     const rawAirports = parseStringArray(req.airports);
-    const airports = rawAirports.length > 0 ? rawAirports.map(a => a.toUpperCase()) : DEFAULT_WATCHED_AIRPORTS.slice(0, 3);
-    const minFlights = req.minFlights ?? 3;
-    const cacheKey = `aviation:carrier-ops:${airports.sort().join(',')}:v1`;
     const now = Date.now();
 
+    // Every airport in this list becomes its own PAID AviationStack call below,
+    // and `parseStringArray` bounds neither the length nor the shape of what a
+    // caller sends. Unbounded, `?airports=A,B,...,Z` was an anonymous multiplier
+    // on spend — 26 codes, 26 paid calls, one request. Validate then truncate:
+    //   - non-IATA codes are rejected outright rather than dropped, so a typo
+    //     surfaces instead of silently returning a different airport set (and so
+    //     arbitrary strings cannot inflate cache-key cardinality);
+    //   - the survivors are capped, matching how list-airport-flights clamps
+    //     `limit` rather than erroring.
+    const requested = rawAirports.map(a => a.toUpperCase());
+    if (requested.some(a => !IATA_RE.test(a))) {
+        return { carriers: [], source: 'invalid', updatedAt: now };
+    }
+    const airports = (requested.length > 0 ? requested : DEFAULT_WATCHED_AIRPORTS.slice(0, 3))
+        .slice(0, MAX_AIRPORTS_PER_REQUEST);
+
+    // The generated GET decoder emits 0 when min_flights is absent
+    // (`Number(params.get("min_flights") ?? "0")`), and `??` does not treat 0
+    // as missing — so 0 means "use the default" here. An explicit 0 is not a
+    // usable filter (every carrier group has >= 1 flight).
+    const minFlights = req.minFlights > 0 ? req.minFlights : 3;
+    const cacheKey = `aviation:carrier-ops:${[...airports].sort().join(',')}:v2:${aviationStackBudgetCycle()}`;
+    let unavailableSource = 'unavailable';
+
     try {
-        const result = await cachedFetchJson<{ carriers: CarrierOpsSummary[] }>(
+        const result = await cachedFetchJson<{ carriers: CarrierOpsSummary[]; source: 'aviationstack' }>(
             cacheKey, CACHE_TTL, async () => {
                 // Fetch flights for each airport
                 type FI = import('../../../../src/generated/server/worldmonitor/aviation/v1/service_server').FlightInstance;
                 const allFlights: FI[] = [];
                 const flightAirportMap = new Map<FI, string>();
+                const childUnavailableSources = new Set<string>();
+                let successfulChildren = 0;
 
                 const flightPromises = airports.map(airport =>
                     listAirportFlights(ctx, {
@@ -36,18 +74,34 @@ export async function getCarrierOps(
                     }).then(resp => ({
                         airport,
                         flights: resp.flights,
+                        source: resp.source,
                     })),
                 );
 
                 const flightResults = await Promise.allSettled(flightPromises);
 
-                for (const result of flightResults) {
-                    if (result.status !== 'fulfilled') continue;
-                    const { airport, flights } = result.value;
+                for (const child of flightResults) {
+                    if (child.status !== 'fulfilled') {
+                        childUnavailableSources.add('error');
+                        continue;
+                    }
+                    const { airport, flights, source } = child.value;
+                    if (source !== 'aviationstack') {
+                        childUnavailableSources.add(source || 'unavailable');
+                        continue;
+                    }
+                    successfulChildren++;
                     for (const f of flights) {
                         allFlights.push(f);
                         flightAirportMap.set(f, airport);
                     }
+                }
+
+                if (childUnavailableSources.size > 0) {
+                    unavailableSource = successfulChildren > 0
+                        ? 'partial'
+                        : [...childUnavailableSources][0] ?? 'unavailable';
+                    return null;
                 }
 
                 // Group by carrier.iataCode + airport
@@ -89,17 +143,27 @@ export async function getCarrierOps(
                 // Sort by worst cancellation rate then delay pct
                 carriers.sort((a, b) => b.cancellationRate - a.cancellationRate || b.delayPct - a.delayPct);
 
-                return { carriers };
+                return { carriers, source: 'aviationstack' };
             }
         );
 
+        if (!result) {
+            markNoCacheResponse(ctx.request);
+            return {
+                carriers: [],
+                source: unavailableSource,
+                updatedAt: now,
+            };
+        }
+
         return {
-            carriers: (result?.carriers ?? []).filter(c => c.totalFlights >= minFlights),
-            source: 'aviationstack',
+            carriers: result.carriers.filter(c => c.totalFlights >= minFlights),
+            source: result.source,
             updatedAt: now,
         };
     } catch (err) {
         console.warn(`[Aviation] GetCarrierOps failed: ${err instanceof Error ? err.message : err}`);
+        markNoCacheResponse(ctx.request);
         return { carriers: [], source: 'error', updatedAt: now };
     }
 }

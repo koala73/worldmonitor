@@ -1,6 +1,31 @@
 import { CHROME_UA } from './constants';
-import { isProviderAvailable } from './llm-health';
+import { isModelUsable, isProviderAvailable, recordModelFailure, recordModelSuccess } from './llm-health';
 import { sanitizeForPrompt } from './llm-sanitize.js';
+import { buildLlmCallEvent, deliverUsageEvents, type LlmCallEvent } from './usage';
+import {
+  DEEPSEEK_V4_FLASH_MODEL_PREFIX,
+  getLlmAttemptTimeoutMs,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
+  OPENROUTER_PROVIDER_ROUTING,
+} from '../../scripts/_llm-model-timeouts.mjs';
+
+export { getLlmAttemptTimeoutMs } from '../../scripts/_llm-model-timeouts.mjs';
+
+function promptChars(messages: Array<{ role: string; content: string }>): number {
+  return messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0);
+}
+
+// Best-effort, awaited: one POST per logical call (all provider attempts
+// batched). deliverUsageEvents no-ops unless USAGE_TELEMETRY=1; awaiting a
+// ≤1.5s-bounded telemetry write is noise next to a multi-second completion
+// and survives Edge isolate teardown (no dangling promise).
+async function flushLlmEvents(events: LlmCallEvent[]): Promise<void> {
+  if (events.length === 0) return;
+  try {
+    await deliverUsageEvents(events);
+  } catch { /* telemetry must never affect the call result */ }
+}
 
 export interface ProviderCredentials {
   apiUrl: string;
@@ -9,10 +34,27 @@ export interface ProviderCredentials {
   extraBody?: Record<string, unknown>;
 }
 
-export type LlmProviderName = 'ollama' | 'groq' | 'minimax' | 'openrouter' | 'generic';
+const PROVIDER_CHAIN = [
+  'ollama',
+  'minimax',
+  'openrouter',
+  'openrouter-free',
+  'openrouter-free-backup',
+  'generic',
+] as const;
+
+export type LlmProviderName = typeof PROVIDER_CHAIN[number];
+
+const OPENROUTER_DEFAULT_MODELS = {
+  openrouter: DEEPSEEK_V4_FLASH_MODEL_PREFIX,
+  'openrouter-free': OPENROUTER_FREE_PRIMARY_MODEL,
+  'openrouter-free-backup': OPENROUTER_FREE_BACKUP_MODEL,
+} as const satisfies Partial<Record<LlmProviderName, string>>;
 
 export interface ProviderCredentialOverrides {
   model?: string;
+  /** OpenRouter only: let reasoning-capable models reason (reasoning profile). Default false — utility calls must not pay reasoning tokens. */
+  enableReasoning?: boolean;
 }
 
 const OLLAMA_HOST_ALLOWLIST = new Set([
@@ -23,6 +65,13 @@ function isLocalDeployment(): boolean {
   const mode = typeof process !== 'undefined' ? (process.env?.LOCAL_API_MODE || '') : '';
   return mode.includes('sidecar') || mode.includes('docker');
 }
+
+// OpenRouter provider routing now lives in scripts/_llm-model-timeouts.mjs, next to
+// the Flash completion timeout it is inseparable from. It used to be defined HERE
+// only, which meant the Railway forecast seeder (which cannot import server/) had the
+// timeout but NOT the routing: OpenRouter free-routed its calls to backends 4-7x
+// slower than the timeout allowed, and every market_implications run failed. One
+// source of truth so a consumer cannot pick up the timeout without the routing.
 
 export function getProviderCredentials(
   provider: string,
@@ -56,25 +105,12 @@ export function getProviderCredentials(
     };
   }
 
-  if (provider === 'groq') {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) return null;
-    return {
-      apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-      model: overrides.model || 'llama-3.1-8b-instant',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    };
-  }
-
   if (provider === 'minimax') {
     const apiKey = process.env.MINIMAX_API_KEY;
     if (!apiKey) return null;
     return {
       apiUrl: 'https://api.minimax.io/v1/chat/completions',
-      model: overrides.model || process.env.MINIMAX_MODEL || 'MiniMax-M3',
+      model: overrides.model || process.env.MINIMAX_MODEL || 'MiniMax-M3.1-Flash',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
@@ -82,17 +118,27 @@ export function getProviderCredentials(
     };
   }
 
-  if (provider === 'openrouter') {
+  const openRouterDefaultModel = OPENROUTER_DEFAULT_MODELS[provider as keyof typeof OPENROUTER_DEFAULT_MODELS];
+  if (typeof openRouterDefaultModel === 'string') {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) return null;
     return {
       apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-      model: overrides.model || 'google/gemini-2.5-flash',
+      model: overrides.model || openRouterDefaultModel,
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://worldmonitor.app',
         'X-Title': 'World Monitor',
+      },
+      // Hybrid-reasoning models (DeepSeek V4) reason by default via
+      // OpenRouter's normalized `reasoning` param; utility calls must not
+      // pay reasoning tokens. The reasoning profile opts back in, letting
+      // the model's own default apply. `provider` routing is always sent —
+      // the China-provider exclusion is not optional (see the constant).
+      extraBody: {
+        ...(overrides.enableReasoning ? {} : { reasoning: { enabled: false } }),
+        provider: OPENROUTER_PROVIDER_ROUTING,
       },
     };
   }
@@ -113,6 +159,30 @@ export function getProviderCredentials(
   }
 
   return null;
+}
+
+/**
+ * Read AT MOST ~`cap` characters of a provider error body, then cancel the
+ * stream — a large or slow error body must never delay the next-provider
+ * fallback (#4966 review). The request's own AbortSignal still bounds a
+ * pathological first-chunk stall.
+ */
+async function readBoundedErrorBody(resp: Response, cap: number): Promise<string> {
+  const body = resp.body;
+  if (!body) return '';
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let out = '';
+  try {
+    while (out.length < cap) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      out += decoder.decode(value, { stream: true });
+    }
+  } catch { /* best-effort diagnostics only */ } finally {
+    try { void reader.cancel().catch(() => {}); } catch { /* already closed */ }
+  }
+  return out.slice(0, cap);
 }
 
 export function stripThinkingTags(text: string): string {
@@ -136,8 +206,20 @@ export function stripThinkingTags(text: string): string {
   return s;
 }
 
-const PROVIDER_CHAIN = ['ollama', 'groq', 'minimax', 'openrouter', 'generic'] as const;
+
+// Fixed OpenRouter free variants absorb paid-model outages. Each
+// model is its own validated attempt, so malformed JSON or empty content can
+// advance the chain; OpenRouter's random `openrouter/free` router cannot.
+// Ollama stays first so self-hosted deployments are untouched.
 const PROVIDER_SET = new Set<string>(PROVIDER_CHAIN);
+const OPENROUTER_FREE_ATTEMPT_TIMEOUT_MS = 8_000;
+const INDEPENDENT_FALLBACK_RESERVE_MS = 5_000;
+
+function isOpenRouterProvider(provider: string): boolean {
+  return provider === 'openrouter'
+    || provider === 'openrouter-free'
+    || provider === 'openrouter-free-backup';
+}
 
 export interface LlmCallOptions {
   messages: Array<{ role: string; content: string }>;
@@ -153,6 +235,16 @@ export interface LlmCallOptions {
   validate?: (content: string) => boolean;
   /** Optional text to append to the system message (index 0). Appended as \n\n---\n\n<systemAppend>. No-op if no system message at index 0. */
   systemAppend?: string;
+  /** Caller surface tag for llm_call usage telemetry (e.g. 'classify-event'). */
+  stage?: string;
+  /** Let reasoning-capable OpenRouter models reason. Set by the reasoning profile; utility calls stay reasoning-off. */
+  enableReasoning?: boolean;
+  /**
+   * Treat provider-reported token-limit completions as failed attempts and
+   * continue the configured provider chain. Defaults off so existing callers
+   * retain the historic first-non-empty-completion behavior.
+   */
+  retryOnLengthLimit?: boolean;
 }
 
 export interface LlmCallResult {
@@ -160,6 +252,46 @@ export interface LlmCallResult {
   model: string;
   provider: string;
   tokens: number;
+  /** Provider-reported completion status; null when the provider omits it. */
+  finishReason: string | null;
+}
+
+const TOKEN_LIMIT_FINISH_REASONS = new Set([
+  'length',
+  'max_tokens',
+  'max_output_tokens',
+]);
+
+const KNOWN_NON_LIMIT_FINISH_REASONS = new Set([
+  'stop',
+  'end_turn',
+  'tool_calls',
+  'function_call',
+  'content_filter',
+  'safety',
+  'recitation',
+  'blocklist',
+  'prohibited_content',
+  'spii',
+  'malformed_function_call',
+  'image_safety',
+]);
+
+function normalizeFinishReason(finishReason: string | null): string | null {
+  if (typeof finishReason !== 'string') return null;
+  const normalized = finishReason.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return normalized || null;
+}
+
+function isLengthLimitedCompletion(
+  finishReason: string | null,
+  completionTokens: number,
+  maxTokens: number,
+): boolean {
+  const normalized = normalizeFinishReason(finishReason);
+  if (normalized && TOKEN_LIMIT_FINISH_REASONS.has(normalized)) return true;
+  if (completionTokens < maxTokens) return false;
+  return normalized === null || !KNOWN_NON_LIMIT_FINISH_REASONS.has(normalized);
 }
 
 function resolveProviderChain(opts: {
@@ -182,11 +314,22 @@ function resolveProviderChain(opts: {
   return providers.length > 0 ? providers : [...PROVIDER_CHAIN];
 }
 
+// The reasoning profile carries text users type (chat-analyst, deduct-situation).
+// NVIDIA logs prompts sent to the free backup model and its trial terms cover
+// evaluation use (#8570), so these fallbacks skip it: paid OpenRouter -> gemma
+// free. An operator who names it in LLM_REASONING_PROVIDER still gets it.
+const USER_TEXT_EXCLUDED_PROVIDERS: readonly LlmProviderName[] = ['openrouter-free-backup'];
+
+function fallbackProviders(provider: LlmProviderName, excluded: readonly LlmProviderName[]): LlmProviderName[] {
+  return PROVIDER_CHAIN.filter((p) => p !== provider && !excluded.includes(p));
+}
+
 function callLlmProfile(
   opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>,
   providerEnv: string,
   modelEnv: string,
   defaultProvider: LlmProviderName,
+  excluded: readonly LlmProviderName[] = [],
 ): Promise<LlmCallResult | null> {
   const envProvider = process.env[providerEnv];
   const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : (() => {
@@ -194,7 +337,7 @@ function callLlmProfile(
     return defaultProvider;
   })()) as LlmProviderName;
   const model = process.env[modelEnv];
-  const remaining = PROVIDER_CHAIN.filter((p) => p !== provider);
+  const remaining = fallbackProviders(provider, excluded);
   return callLlm({
     ...opts,
     providerOrder: [provider, ...remaining],
@@ -204,15 +347,30 @@ function callLlmProfile(
 
 /** Cheap/fast model for extraction and parsing tasks. Configurable via LLM_TOOL_PROVIDER / LLM_TOOL_MODEL. */
 export const callLlmTool = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>) =>
-  callLlmProfile(opts, 'LLM_TOOL_PROVIDER', 'LLM_TOOL_MODEL', 'groq');
+  callLlmProfile(opts, 'LLM_TOOL_PROVIDER', 'LLM_TOOL_MODEL', 'openrouter');
 
-/** Powerful model for synthesis and reasoning tasks. Configurable via LLM_REASONING_PROVIDER / LLM_REASONING_MODEL. */
+/**
+ * Powerful model for synthesis and reasoning tasks. Configurable via
+ * LLM_REASONING_PROVIDER / LLM_REASONING_MODEL. Reasoning is ON by default,
+ * but a caller may pass `enableReasoning: false` to use the same
+ * high-quality model with reasoning DISABLED — required for short-output
+ * stages (a 2–3 sentence brief blurb) where an actual reasoning model
+ * (e.g. deepseek-v4-pro) would otherwise spend its whole small max_tokens
+ * budget on hidden reasoning tokens and return empty content (#4983).
+ */
 export const callLlmReasoning = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>) =>
-  callLlmProfile(opts, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter');
+  callLlmProfile({ enableReasoning: true, ...opts }, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter', USER_TEXT_EXCLUDED_PROVIDERS);
 
-export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider'> & {
+// enableReasoning is omitted too: the reasoning stream hardcodes it on —
+// exposing the knob on the stream type would be a silent no-op for callers.
+export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider' | 'enableReasoning' | 'retryOnLengthLimit'> & {
   /** When fired, aborts the active provider fetch and stops the stream. */
   signal?: AbortSignal;
+  /**
+   * Called when a provider answers a completion request with HTTP success,
+   * i.e. it has taken on billable work even if no answer content follows.
+   */
+  onProviderAccepted?: () => void;
 };
 
 /**
@@ -226,7 +384,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
   const envProvider = process.env.LLM_REASONING_PROVIDER;
   const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : 'openrouter') as LlmProviderName;
   const model = process.env.LLM_REASONING_MODEL;
-  const remaining = PROVIDER_CHAIN.filter((p) => p !== provider);
+  const remaining = fallbackProviders(provider, USER_TEXT_EXCLUDED_PROVIDERS);
   const providerOrder = [provider, ...remaining];
   const modelOverrides = model ? { [provider]: model } as Partial<Record<LlmProviderName, string>> : undefined;
 
@@ -237,6 +395,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
     timeoutMs = 90_000,
     systemAppend,
     signal: clientSignal,
+    onProviderAccepted,
   } = opts;
 
   let messages = rawMessages;
@@ -254,6 +413,10 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
   const enc = new TextEncoder();
   let activeController: AbortController | null = null;
   let streamClosed = false;
+  const stage = opts.stage || 'unknown';
+  const inputChars = promptChars(messages);
+  const events: LlmCallEvent[] = [];
+  let attemptIndex = 0;
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -266,14 +429,30 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
         streamClosed = true;
         controller.close();
       };
+      // Flush AFTER the stream is closed so telemetry latency never delays
+      // the client's terminal event. Token counts are unavailable on the SSE
+      // path — prompt_chars + duration still attribute the spend surface.
+      const closeAndFlush = async () => {
+        closeStream();
+        await flushLlmEvents(events);
+      };
 
       for (const providerName of providerOrder) {
         if (streamClosed) break;
 
         const creds = getProviderCredentials(providerName, {
           model: modelOverrides?.[providerName as LlmProviderName],
+          // Streaming variant of callLlmReasoning — the reasoning profile opts in.
+          enableReasoning: true,
         });
         if (!creds) continue;
+
+        // Model gate first: it is synchronous, so a quarantined model costs
+        // neither a completion request nor an origin probe.
+        if (!isModelUsable(creds.apiUrl, creds.model)) {
+          console.warn(`[llm-stream:${providerName}] Model ${creds.model} quarantined, skipping`);
+          continue;
+        }
 
         if (!(await isProviderAvailable(creds.apiUrl))) {
           console.warn(`[llm-stream:${providerName}] Offline, skipping`);
@@ -285,6 +464,23 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
         const timeoutId = setTimeout(() => activeController?.abort(), timeoutMs);
         if (clientSignal?.aborted) { clearTimeout(timeoutId); break; }
         clientSignal?.addEventListener('abort', () => activeController?.abort(), { once: true });
+
+        const t0 = Date.now();
+        const fallbackIndex = attemptIndex;
+        attemptIndex += 1;
+        const record = (ok: boolean, reason = '') => {
+          events.push(buildLlmCallEvent({
+            provider: providerName,
+            model: creds.model,
+            stage,
+            ok,
+            durationMs: Date.now() - t0,
+            promptChars: inputChars,
+            maxTokens,
+            fallbackIndex,
+            reason,
+          }));
+        };
 
         let hasContent = false;
         try {
@@ -303,10 +499,21 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
           });
           // Timeout stays active — it must bound the streaming body read, not just the connection
 
+          if (resp.ok) {
+            // HTTP success proves the provider accepted this model even if the
+            // application later rejects, strips, or cannot read the payload.
+            recordModelSuccess(creds.apiUrl, creds.model);
+            onProviderAccepted?.();
+          }
+
           if (!resp.ok || !resp.body) {
+            const errBody = await readBoundedErrorBody(resp, 300).catch(() => '');
             clearTimeout(timeoutId);
-            const errBody = resp.body ? await resp.text().catch(() => '') : '';
-            console.warn(`[llm-stream:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody.slice(0, 300)}`);
+            console.warn(`[llm-stream:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody}`);
+            // The body already told us whether the MODEL was rejected; feeding
+            // it back is what stops the next request re-sending the prompt.
+            recordModelFailure(creds.apiUrl, creds.model, resp.status, errBody);
+            record(false, `http_${resp.status}`);
             continue;
           }
 
@@ -340,26 +547,31 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
           clearTimeout(timeoutId);
 
           if (hasContent) {
+            record(true);
             emit({ done: true });
-            closeStream();
+            await closeAndFlush();
             return;
           }
+          record(false, 'empty');
         } catch (err) {
           clearTimeout(timeoutId);
           if (hasContent) {
             // Partial stream — close without done so the client sees it as truncated, not success
-            closeStream();
+            record(false, 'truncated');
+            await closeAndFlush();
             return;
           }
-          if (streamClosed) return;
+          if (streamClosed) { await flushLlmEvents(events); return; }
           console.warn(`[llm-stream:${providerName}] ${(err as Error).message}`);
+          const name = (err as Error).name;
+          record(false, name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'fetch_error');
         }
       }
 
       if (!streamClosed) {
         emit({ error: 'llm_unavailable' });
-        closeStream();
       }
+      await closeAndFlush();
     },
     cancel() {
       // Client disconnected — abort the active provider fetch immediately
@@ -381,6 +593,8 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
     stripThinkingTags: shouldStrip = true,
     validate,
     systemAppend,
+    enableReasoning = false,
+    retryOnLengthLimit = false,
   } = opts;
 
   let messages = rawMessages;
@@ -396,79 +610,198 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
   }
 
   const providers = resolveProviderChain({ forcedProvider, providerOrder });
+  const stage = opts.stage || 'unknown';
+  const inputChars = promptChars(messages);
+  const events: LlmCallEvent[] = [];
+  let attemptIndex = 0;
+  const deadlineAt = Date.now() + Math.max(1, timeoutMs);
+  let skipRemainingOpenRouter = false;
 
-  for (const providerName of providers) {
-    const creds = getProviderCredentials(providerName, {
-      model: modelOverrides?.[providerName as LlmProviderName],
-    });
-    if (!creds) {
-      if (forcedProvider) return null;
-      continue;
-    }
+  try {
+    for (let providerIndex = 0; providerIndex < providers.length; providerIndex += 1) {
+      const providerName = providers[providerIndex]!;
+      if (skipRemainingOpenRouter && isOpenRouterProvider(providerName)) continue;
 
-    // Health gate: skip provider if endpoint is unreachable
-    if (!(await isProviderAvailable(creds.apiUrl))) {
-      console.warn(`[llm:${providerName}] Offline, skipping`);
-      if (forcedProvider) return null;
-      continue;
-    }
-
-    try {
-      const resp = await fetch(creds.apiUrl, {
-        method: 'POST',
-        headers: { ...creds.headers, 'User-Agent': CHROME_UA },
-        body: JSON.stringify({
-          ...creds.extraBody,
-          model: creds.model,
-          messages,
-          temperature,
-          max_tokens: maxTokens,
-        }),
-        signal: AbortSignal.timeout(timeoutMs),
+      const creds = getProviderCredentials(providerName, {
+        model: modelOverrides?.[providerName as LlmProviderName],
+        enableReasoning,
       });
-
-      if (!resp.ok) {
-        console.warn(`[llm:${providerName}] HTTP ${resp.status}`);
+      if (!creds) {
         if (forcedProvider) return null;
         continue;
       }
 
-      const data = (await resp.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-        usage?: { total_tokens?: number };
+      // Model gate: skip a model the provider has already rejected. Runs before
+      // the reachability probe because it is synchronous and network-free.
+      if (!isModelUsable(creds.apiUrl, creds.model)) {
+        console.warn(`[llm:${providerName}] Model ${creds.model} quarantined, skipping`);
+        if (forcedProvider) return null;
+        continue;
+      }
+
+      // Health gate: skip provider if endpoint is unreachable
+      if (!(await isProviderAvailable(creds.apiUrl))) {
+        console.warn(`[llm:${providerName}] Offline, skipping`);
+        if (forcedProvider) return null;
+        continue;
+      }
+
+      const remainingMs = deadlineAt - Date.now();
+      if (remainingMs <= 0) break;
+
+      // Keep one independent provider reachable inside the caller's wall-clock
+      // budget. The fixed free models share OpenRouter's control plane, so a
+      // stalled OpenRouter completion must not consume the next origin's reserve.
+      const hasIndependentFallback = isOpenRouterProvider(providerName)
+        && providers.slice(providerIndex + 1).some((laterProvider) => {
+          const laterCreds = getProviderCredentials(laterProvider, {
+            model: modelOverrides?.[laterProvider as LlmProviderName],
+            enableReasoning,
+          });
+          return laterCreds !== null
+            && new URL(laterCreds.apiUrl).origin !== new URL(creds.apiUrl).origin;
+        });
+      const reservedMs = hasIndependentFallback
+        ? Math.min(INDEPENDENT_FALLBACK_RESERVE_MS, Math.max(0, remainingMs - 1))
+        : 0;
+      const availableAttemptMs = remainingMs - reservedMs;
+      if (availableAttemptMs <= 0) continue;
+
+      const modelAttemptMs = getLlmAttemptTimeoutMs(creds.model, timeoutMs);
+      const freeAttemptCapMs = providerName === 'openrouter-free'
+        || providerName === 'openrouter-free-backup'
+        ? OPENROUTER_FREE_ATTEMPT_TIMEOUT_MS
+        : modelAttemptMs;
+      const attemptTimeoutMs = Math.max(1, Math.min(
+        modelAttemptMs,
+        freeAttemptCapMs,
+        availableAttemptMs,
+      ));
+
+      // Skipped providers (no creds / offline) never sent the prompt, so
+      // only real attempts get an event and advance the fallback index.
+      const t0 = Date.now();
+      const fallbackIndex = attemptIndex;
+      attemptIndex += 1;
+      const record = (ok: boolean, extra: { reason?: string; tokensTotal?: number; tokensPrompt?: number; tokensCompletion?: number } = {}) => {
+        events.push(buildLlmCallEvent({
+          provider: providerName,
+          model: creds.model,
+          stage,
+          ok,
+          durationMs: Date.now() - t0,
+          promptChars: inputChars,
+          maxTokens,
+          fallbackIndex,
+          ...extra,
+        }));
       };
 
-      let content = data.choices?.[0]?.message?.content?.trim() || '';
-      if (!content) {
-        if (forcedProvider) return null;
-        continue;
-      }
+      try {
+        const resp = await fetch(creds.apiUrl, {
+          method: 'POST',
+          headers: { ...creds.headers, 'User-Agent': CHROME_UA },
+          body: JSON.stringify({
+            ...creds.extraBody,
+            model: creds.model,
+            messages,
+            temperature,
+            max_tokens: maxTokens,
+          }),
+          // #5246: DeepSeek V4 Flash is bimodal — healthy calls finish near 2s,
+          // while stalled calls hang to the old 25s clamp. Cut only this model's
+          // dead tail so the existing provider chain can reach its fallback.
+          signal: AbortSignal.timeout(attemptTimeoutMs),
+        });
 
-      const tokens = data.usage?.total_tokens ?? 0;
-
-      if (shouldStrip) {
-        content = stripThinkingTags(content);
-        if (!content) {
+        if (!resp.ok) {
+          // Log a bounded body slice (like the stream path already does) —
+          // region-403s and provider errors are undiagnosable from the
+          // status code alone (#4944 U7). Bounded READ, not just bounded
+          // log: never consume a huge/slow error body before falling back.
+          const errBody = await readBoundedErrorBody(resp, 300).catch(() => '');
+          console.warn(`[llm:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody}`);
+          // The body already told us whether the MODEL was rejected; feeding it
+          // back is what stops the next request re-sending the prompt.
+          recordModelFailure(creds.apiUrl, creds.model, resp.status, errBody);
+          record(false, { reason: `http_${resp.status}` });
           if (forcedProvider) return null;
           continue;
         }
-      }
 
-      // Strip markdown code fences (e.g. ```json ... ```) that some models add
-      content = content.replace(/^```(?:\w+)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
+        // Provider acceptance is the model-health signal. Output validation,
+        // token limits, and content policy are separate application concerns.
+        recordModelSuccess(creds.apiUrl, creds.model);
 
-      if (validate && !validate(content)) {
-        console.warn(`[llm:${providerName}] validate() rejected response, trying next`);
+        const data = (await resp.json()) as {
+          choices?: Array<{ message?: { content?: string }; finish_reason?: string | null }>;
+          usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
+        };
+        const tokensExtra = {
+          tokensTotal: data.usage?.total_tokens ?? 0,
+          tokensPrompt: data.usage?.prompt_tokens ?? 0,
+          tokensCompletion: data.usage?.completion_tokens ?? 0,
+        };
+
+        const tokens = data.usage?.total_tokens ?? 0;
+        const finishReason = typeof data.choices?.[0]?.finish_reason === 'string'
+          ? data.choices[0].finish_reason
+          : null;
+        if (retryOnLengthLimit && isLengthLimitedCompletion(
+          finishReason,
+          tokensExtra.tokensCompletion,
+          maxTokens,
+        )) {
+          console.warn(`[llm:${providerName}] Token-limited completion, trying next`);
+          record(false, { ...tokensExtra, reason: 'length' });
+          if (forcedProvider) return null;
+          continue;
+        }
+
+        let content = data.choices?.[0]?.message?.content?.trim() || '';
+        if (!content) {
+          record(false, { ...tokensExtra, reason: 'empty' });
+          if (forcedProvider) return null;
+          continue;
+        }
+
+        if (shouldStrip) {
+          content = stripThinkingTags(content);
+          if (!content) {
+            record(false, { ...tokensExtra, reason: 'stripped_empty' });
+            if (forcedProvider) return null;
+            continue;
+          }
+        }
+
+        // Strip markdown code fences (e.g. ```json ... ```) that some models add
+        content = content.replace(/^```(?:\w+)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
+
+        if (validate && !validate(content)) {
+          console.warn(`[llm:${providerName}] validate() rejected response, trying next`);
+          record(false, { ...tokensExtra, reason: 'validate_reject' });
+          if (forcedProvider) return null;
+          continue;
+        }
+
+        record(true, tokensExtra);
+        return { content, model: creds.model, provider: providerName, tokens, finishReason };
+      } catch (err) {
+        // sentry-coverage-ok: provider failures are expected fallback signals;
+        // record() emits the bounded per-attempt telemetry before the chain continues.
+        const name = (err as Error).name;
+        console.warn(`[llm:${providerName}] ${(err as Error).message}`);
+        const timedOut = name === 'TimeoutError' || name === 'AbortError';
+        record(false, { reason: timedOut ? 'timeout' : 'fetch_error' });
+        if (timedOut && isOpenRouterProvider(providerName)) {
+          skipRemainingOpenRouter = true;
+        }
         if (forcedProvider) return null;
-        continue;
       }
-
-      return { content, model: creds.model, provider: providerName, tokens };
-    } catch (err) {
-      console.warn(`[llm:${providerName}] ${(err as Error).message}`);
-      if (forcedProvider) return null;
     }
-  }
 
-  return null;
+    return null;
+  } finally {
+    await flushLlmEvents(events);
+  }
 }

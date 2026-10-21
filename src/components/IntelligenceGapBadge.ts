@@ -1,10 +1,16 @@
 import { getRecentSignals, type CorrelationSignal } from '@/services/correlation';
-import { getRecentAlerts, type UnifiedAlert } from '@/services/cross-module-integration';
+import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
+import type { UnifiedAlert } from '@/services/cross-module-integration';
 import { getAlertSettings, updateAlertSettings } from '@/services/breaking-news-alerts';
 import { t } from '@/services/i18n';
 import { getSignalContext } from '@/utils/analysis-constants';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackFindingClicked } from '@/services/analytics';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
+import { bindActivationKeys } from '@/utils/activation';
+import { declareOverlay } from '@/utils/open-modal';
+
 
 const LOW_COUNT_THRESHOLD = 3;
 const MAX_VISIBLE_FINDINGS = 10;
@@ -15,6 +21,19 @@ const STORAGE_KEY = 'worldmonitor-intel-findings';
 const POPUP_STORAGE_KEY = 'wm-alert-popup-enabled';
 
 type FindingSource = 'signal' | 'alert';
+type GetRecentAlerts = typeof import('@/services/cross-module-integration').getRecentAlerts;
+
+let getRecentAlertsPromise: Promise<GetRecentAlerts> | null = null;
+
+function loadGetRecentAlerts(): Promise<GetRecentAlerts> {
+  getRecentAlertsPromise ??= import('@/services/cross-module-integration')
+    .then(module => module.getRecentAlerts)
+    .catch((err) => {
+      getRecentAlertsPromise = null;
+      throw err;
+    });
+  return getRecentAlertsPromise;
+}
 
 interface UnifiedFinding {
   id: string;
@@ -43,7 +62,7 @@ export class IntelligenceFindingsBadge {
     if (this.pendingUpdateFrame) return;
     this.pendingUpdateFrame = requestAnimationFrame(() => {
       this.pendingUpdateFrame = 0;
-      this.update();
+      void this.update();
     });
   };
   private audio: HTMLAudioElement | null = null;
@@ -51,15 +70,21 @@ export class IntelligenceFindingsBadge {
   private enabled: boolean;
   private popupEnabled: boolean;
   private contextMenu: HTMLElement | null = null;
+  private contextMenuDismissListener: (() => void) | null = null;
+  private findingsModalOverlay: HTMLElement | null = null;
+  private findingsModalEscListener: ((e: KeyboardEvent) => void) | null = null;
+  private findingsModalTrap: FocusTrap | null = null;
+  private updateEpoch = 0;
+  private destroyed = false;
 
   constructor() {
     this.enabled = IntelligenceFindingsBadge.getStoredEnabledState();
-    this.popupEnabled = localStorage.getItem(POPUP_STORAGE_KEY) === '1';
+    this.popupEnabled = safeStorageGet(POPUP_STORAGE_KEY) === '1';
 
     this.badge = document.createElement('button');
     this.badge.className = 'intel-findings-badge';
     this.badge.title = t('components.intelligenceFindings.badgeTitle');
-    this.badge.innerHTML = '<span class="findings-icon">🎯</span><span class="findings-count">0</span>';
+    setTrustedHtml(this.badge, trustedHtml('<span class="findings-icon">🎯</span><span class="findings-count">0</span>', "legacy direct innerHTML migration"));
 
     this.dropdown = document.createElement('div');
     this.dropdown.className = 'intel-findings-dropdown';
@@ -76,6 +101,7 @@ export class IntelligenceFindingsBadge {
     });
 
     // Event delegation for finding items, toggle, and "more" link
+    bindActivationKeys(this.dropdown, '.finding-item');
     this.dropdown.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
 
@@ -84,9 +110,9 @@ export class IntelligenceFindingsBadge {
         e.stopPropagation();
         this.popupEnabled = !this.popupEnabled;
         if (this.popupEnabled) {
-          localStorage.setItem(POPUP_STORAGE_KEY, '1');
+          safeStorageSet(POPUP_STORAGE_KEY, '1');
         } else {
-          localStorage.removeItem(POPUP_STORAGE_KEY);
+          safeStorageRemove(POPUP_STORAGE_KEY);
         }
         this.renderDropdown();
         return;
@@ -128,7 +154,7 @@ export class IntelligenceFindingsBadge {
       document.addEventListener('click', this.boundCloseDropdown);
       this.mount();
       this.initAudio();
-      this.update();
+      void this.update();
       this.startRefresh();
     }
   }
@@ -154,7 +180,7 @@ export class IntelligenceFindingsBadge {
   }
 
   public static getStoredEnabledState(): boolean {
-    return localStorage.getItem(STORAGE_KEY) !== 'hidden';
+    return safeStorageGet(STORAGE_KEY) !== 'hidden';
   }
 
   public isEnabled(): boolean {
@@ -170,14 +196,15 @@ export class IntelligenceFindingsBadge {
     this.enabled = enabled;
 
     if (enabled) {
-      localStorage.removeItem(STORAGE_KEY);
+      safeStorageRemove(STORAGE_KEY);
       document.addEventListener('click', this.boundCloseDropdown);
       this.mount();
       this.initAudio();
-      this.update();
+      void this.update();
       this.startRefresh();
     } else {
-      localStorage.setItem(STORAGE_KEY, 'hidden');
+      this.updateEpoch++;
+      safeStorageSet(STORAGE_KEY, 'hidden');
       document.removeEventListener('click', this.boundCloseDropdown);
       document.removeEventListener('wm:intelligence-updated', this.boundUpdate);
       if (this.refreshInterval) {
@@ -197,7 +224,7 @@ export class IntelligenceFindingsBadge {
     menu.className = 'intel-findings-context-menu';
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
-    menu.innerHTML = `<div class="context-menu-item">${t('components.intelligenceFindings.hideFindings')}</div>`;
+    setTrustedHtml(menu, trustedHtml(`<div class="context-menu-item">${t('components.intelligenceFindings.hideFindings')}</div>`, "legacy direct innerHTML migration"));
 
     menu.querySelector('.context-menu-item')!.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -206,6 +233,7 @@ export class IntelligenceFindingsBadge {
     });
 
     const dismiss = () => this.dismissContextMenu();
+    this.contextMenuDismissListener = dismiss;
     document.addEventListener('click', dismiss, { once: true });
 
     this.contextMenu = menu;
@@ -213,6 +241,10 @@ export class IntelligenceFindingsBadge {
   }
 
   private dismissContextMenu(): void {
+    if (this.contextMenuDismissListener) {
+      document.removeEventListener('click', this.contextMenuDismissListener);
+      this.contextMenuDismissListener = null;
+    }
     if (this.contextMenu) {
       this.contextMenu.remove();
       this.contextMenu = null;
@@ -229,11 +261,17 @@ export class IntelligenceFindingsBadge {
 
   private startRefresh(): void {
     document.addEventListener('wm:intelligence-updated', this.boundUpdate);
-    this.refreshInterval = setInterval(this.boundUpdate, REFRESH_INTERVAL_MS);
+    this.refreshInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') this.boundUpdate();
+    }, REFRESH_INTERVAL_MS);
   }
 
-  public update(): void {
-    this.findings = this.mergeFindings();
+  public async update(): Promise<void> {
+    const epoch = ++this.updateEpoch;
+    const findings = await this.mergeFindings();
+    if (this.destroyed || !this.enabled || epoch !== this.updateEpoch) return;
+
+    this.findings = findings;
     const count = this.findings.length;
 
     const countEl = this.badge.querySelector('.findings-count');
@@ -251,7 +289,7 @@ export class IntelligenceFindingsBadge {
 
     // Update badge status based on priority
     const hasCritical = this.findings.some(f => f.priority === 'critical');
-    const hasHigh = this.findings.some(f => f.priority === 'high' || f.confidence >= 0.7);
+    const hasHigh = this.findings.some(f => f.priority === 'high');
 
     this.badge.classList.remove('status-none', 'status-low', 'status-high');
     if (count === 0) {
@@ -271,9 +309,15 @@ export class IntelligenceFindingsBadge {
     this.renderDropdown();
   }
 
-  private mergeFindings(): UnifiedFinding[] {
+  private async mergeFindings(): Promise<UnifiedFinding[]> {
     const signals = getRecentSignals();
-    const alerts = getRecentAlerts(ALERT_HOURS);
+    let alerts: UnifiedAlert[] = [];
+    try {
+      const getRecentAlerts = await loadGetRecentAlerts();
+      alerts = getRecentAlerts(ALERT_HOURS);
+    } catch (error) {
+      console.warn('[IntelligenceGapBadge] Alert findings unavailable:', error);
+    }
 
     const signalFindings: UnifiedFinding[] = signals.map(s => ({
       id: `signal-${s.id}`,
@@ -310,8 +354,8 @@ export class IntelligenceFindingsBadge {
   }
 
   private priorityToConfidence(priority: string): number {
-    const map: Record<string, number> = { critical: 95, high: 80, medium: 60, low: 40 };
-    return map[priority] ?? 50;
+    const map: Record<string, number> = { critical: 0.95, high: 0.8, medium: 0.6, low: 0.4 };
+    return map[priority] ?? 0.5;
   }
 
   private priorityScore(priority: string): number {
@@ -338,7 +382,7 @@ export class IntelligenceFindingsBadge {
     const toggleHtml = this.renderPopupToggle();
 
     if (this.findings.length === 0) {
-      this.dropdown.innerHTML = `
+      setTrustedHtml(this.dropdown, trustedHtml(`
         <div class="findings-header">
           <span class="header-title">${t('components.intelligenceFindings.title')}</span>
           <span class="findings-badge none">${t('components.intelligenceFindings.monitoring')}</span>
@@ -350,12 +394,12 @@ export class IntelligenceFindingsBadge {
             <span class="empty-text">${t('components.intelligenceFindings.scanning')}</span>
           </div>
         </div>
-      `;
+      `, "legacy direct innerHTML migration"));
       return;
     }
 
     const criticalCount = this.findings.filter(f => f.priority === 'critical').length;
-    const highCount = this.findings.filter(f => f.priority === 'high' || f.confidence >= 70).length;
+    const highCount = this.findings.filter(f => f.priority === 'high').length;
 
     let statusClass = 'moderate';
     let statusText = t('components.intelligenceFindings.detected', { count: String(this.findings.length) });
@@ -374,7 +418,7 @@ export class IntelligenceFindingsBadge {
       const insight = this.getInsight(finding);
 
       return `
-        <div class="finding-item ${priorityClass}" data-finding-id="${escapeHtml(finding.id)}">
+        <div class="finding-item ${priorityClass}" data-finding-id="${escapeHtml(finding.id)}" role="button" tabindex="0">
           <div class="finding-header">
             <span class="finding-type">${icon} ${escapeHtml(finding.title)}</span>
             <span class="finding-confidence ${priorityClass}">${t(`components.intelligenceFindings.priority.${finding.priority}`)}</span>
@@ -389,7 +433,7 @@ export class IntelligenceFindingsBadge {
     }).join('');
 
     const moreCount = this.findings.length - MAX_VISIBLE_FINDINGS;
-    this.dropdown.innerHTML = `
+    setTrustedHtml(this.dropdown, trustedHtml(`
       <div class="findings-header">
         <span class="header-title">${t('components.intelligenceFindings.title')}</span>
         <span class="findings-badge ${statusClass}">${statusText}</span>
@@ -401,7 +445,7 @@ export class IntelligenceFindingsBadge {
         </div>
         ${moreCount > 0 ? `<div class="findings-more">${t('components.intelligenceFindings.more', { count: String(moreCount) })}</div>` : ''}
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
   }
 
   private getInsight(finding: UnifiedFinding): string {
@@ -462,7 +506,7 @@ export class IntelligenceFindingsBadge {
     this.dropdown.classList.toggle('open', this.isOpen);
     this.badge.classList.toggle('active', this.isOpen);
     if (this.isOpen) {
-      this.update();
+      void this.update();
     }
   }
 
@@ -476,6 +520,11 @@ export class IntelligenceFindingsBadge {
     // Create modal overlay
     const overlay = document.createElement('div');
     overlay.className = 'findings-modal-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    // Read-only findings list; a reload rebuilds it from the same data.
+    declareOverlay(overlay, { reload: 'safe' });
+    overlay.setAttribute('aria-label', t('components.intelligenceFindings.all', { count: String(this.findings.length) }));
 
     const findingsHtml = this.findings.map(finding => {
       const timeAgo = this.formatTimeAgo(finding.timestamp);
@@ -483,7 +532,7 @@ export class IntelligenceFindingsBadge {
       const insight = this.getInsight(finding);
 
       return `
-        <div class="findings-modal-item ${finding.priority}" data-finding-id="${escapeHtml(finding.id)}">
+        <div class="findings-modal-item ${finding.priority}" data-finding-id="${escapeHtml(finding.id)}" role="button" tabindex="0">
           <div class="findings-modal-item-header">
             <span class="findings-modal-item-type">${icon} ${escapeHtml(finding.title)}</span>
             <span class="findings-modal-item-priority ${finding.priority}">${t(`components.intelligenceFindings.priority.${finding.priority}`)}</span>
@@ -497,7 +546,7 @@ export class IntelligenceFindingsBadge {
       `;
     }).join('');
 
-    overlay.innerHTML = `
+    setTrustedHtml(overlay, trustedHtml(`
       <div class="findings-modal">
         <div class="findings-modal-header">
           <span class="findings-modal-title">🎯 ${t('components.intelligenceFindings.all', { count: String(this.findings.length) })}</span>
@@ -507,12 +556,12 @@ export class IntelligenceFindingsBadge {
           ${findingsHtml}
         </div>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
-    const closeOverlay = () => {
-      overlay.remove();
-      document.removeEventListener('keydown', onEsc);
-    };
+    // Replace any modal already open so we never leak more than one overlay
+    // or its document-level Esc listener.
+    this.dismissFindingsModal();
+    const closeOverlay = () => this.dismissFindingsModal();
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeOverlay();
     };
@@ -523,9 +572,17 @@ export class IntelligenceFindingsBadge {
       }
     });
     document.addEventListener('keydown', onEsc);
+    this.findingsModalOverlay = overlay;
+    this.findingsModalEscListener = onEsc;
 
     // Handle clicking individual items
     overlay.querySelectorAll('.findings-modal-item').forEach(item => {
+      item.addEventListener('keydown', (e) => {
+        const key = (e as KeyboardEvent).key;
+        if (key !== 'Enter' && key !== ' ') return;
+        e.preventDefault();
+        (item as HTMLElement).click();
+      });
       item.addEventListener('click', () => {
         const id = item.getAttribute('data-finding-id');
         const finding = this.findings.find(f => f.id === id);
@@ -543,15 +600,36 @@ export class IntelligenceFindingsBadge {
     });
 
     document.body.appendChild(overlay);
+    this.findingsModalTrap = createFocusTrap(overlay, {
+      onEscape: () => this.dismissFindingsModal(),
+    });
+    this.findingsModalTrap.activate();
+  }
+
+  private dismissFindingsModal(): void {
+    if (this.findingsModalEscListener) {
+      document.removeEventListener('keydown', this.findingsModalEscListener);
+      this.findingsModalEscListener = null;
+    }
+    this.findingsModalTrap?.deactivate();
+    this.findingsModalTrap = null;
+    if (this.findingsModalOverlay) {
+      this.findingsModalOverlay.remove();
+      this.findingsModalOverlay = null;
+    }
   }
 
   public destroy(): void {
+    this.destroyed = true;
+    this.updateEpoch++;
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
     if (this.pendingUpdateFrame) {
       cancelAnimationFrame(this.pendingUpdateFrame);
     }
+    this.dismissContextMenu();
+    this.dismissFindingsModal();
     document.removeEventListener('wm:intelligence-updated', this.boundUpdate);
     document.removeEventListener('click', this.boundCloseDropdown);
     this.badge.remove();

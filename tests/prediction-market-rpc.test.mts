@@ -1,0 +1,225 @@
+import assert from 'node:assert/strict';
+import { afterEach, beforeEach, describe, it } from 'node:test';
+
+import { listPredictionMarkets } from '../server/worldmonitor/prediction/v1/list-prediction-markets.ts';
+
+const originalFetch = globalThis.fetch;
+const originalEnv = {
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+};
+
+beforeEach(() => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  if (originalEnv.url === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+  else process.env.UPSTASH_REDIS_REST_URL = originalEnv.url;
+  if (originalEnv.token === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  else process.env.UPSTASH_REDIS_REST_TOKEN = originalEnv.token;
+});
+
+describe('listPredictionMarkets legacy bootstrap compatibility', () => {
+  it('converts optional moves to the REST probability scale and omits unknown values', async () => {
+    const rows = [
+      { title: 'moves', yesPrice: 69, volume: 30000, url: 'https://example.test/moves', change24h: 1, change7d: -4 },
+      { title: 'zero', yesPrice: 50, volume: 20000, url: 'https://example.test/zero', change24h: 0 },
+      { title: 'unknown', yesPrice: 40, volume: 10000, url: 'https://example.test/unknown' },
+    ];
+    globalThis.fetch = async () => Response.json({ result: JSON.stringify({ geopolitical: rows, tech: [], finance: [], fetchedAt: 123 }) });
+    const response = await listPredictionMarkets({} as never, { category: '', query: '', pageSize: 10, cursor: '' });
+    const serialized = JSON.parse(JSON.stringify(response));
+    assert.equal(serialized.markets[0].yesPriceChange24h, 0.01);
+    assert.equal(serialized.markets[0].yesPriceChange7d, -0.04);
+    assert.equal(serialized.markets[1].yesPriceChange24h, 0);
+    assert.equal('yesPriceChange7d' in serialized.markets[1], false);
+    assert.equal('yesPriceChange24h' in serialized.markets[2], false);
+    assert.equal('yesPriceChange7d' in serialized.markets[2], false);
+  });
+  it('suppresses an explicitly unavailable display destination while retaining the contract ID', async () => {
+    const row = { title: 'China meeting', yesPrice: 70, volume: 30000, source: 'kalshi', url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: '' };
+    globalThis.fetch = async () => Response.json({ result: JSON.stringify({ countries: { CN: [row] }, fetchedAt: 789 }) });
+    const response = await listPredictionMarkets({} as never, { category: 'country:CN', query: '', pageSize: 5, cursor: '' } as never);
+    assert.equal(response.markets[0].id, 'KXMEETING-27-CN');
+    assert.equal(response.markets[0].url, '');
+    assert.equal(response.markets[0].yesPrice, 0.7);
+  });
+  it('preserves contract IDs and separate events sharing a Kalshi series landing', async () => {
+    const first = { title: 'China meeting in 2027', yesPrice: 70, volume: 30000, source: 'kalshi', url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: 'https://kalshi.com/markets/kxmeeting' };
+    const second = { ...first, title: 'China meeting in 2028', url: 'https://kalshi.com/markets/KXMEETING-28-CN', volume: 40000 };
+    const payload = { geopolitical: [first, second], tech: [], finance: [{ ...first, volume: 50000 }], countries: { CN: [first, second] }, fetchedAt: 789 };
+    globalThis.fetch = async () => Response.json({ result: JSON.stringify(payload) });
+    for (const category of ['', 'country:CN']) {
+      const response = await listPredictionMarkets({} as never, { category, query: '', pageSize: 50, cursor: '' } as never);
+      assert.deepEqual(new Set(response.markets.map(row => row.id)), new Set(['KXMEETING-27-CN', 'KXMEETING-28-CN']));
+      assert.equal(response.markets.length, 2);
+      assert.ok(response.markets.every(row => row.url === first.displayUrl));
+      if (!category) assert.equal(response.markets.find(row => row.id === 'KXMEETING-27-CN')?.volume, 50000);
+    }
+  });
+
+  it('dedupes the old three-pool payload and keeps the highest-volume copy', async () => {
+    const base = {
+      title: 'Will Iran strike Israel?',
+      yesPrice: 70,
+      volume: 10,
+      url: 'https://polymarket.com/event/iran-strike-israel',
+      endDate: '2099-01-01T00:00:00Z',
+      source: 'polymarket',
+    } as const;
+    const payload = {
+      geopolitical: [base],
+      tech: [{ ...base, volume: 30 }],
+      finance: [{ ...base, volume: 20 }],
+      fetchedAt: 123,
+    };
+
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      result: JSON.stringify(payload),
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+    const response = await listPredictionMarkets({} as never, {
+      category: '',
+      query: '',
+      pageSize: 100,
+      cursor: '',
+    });
+
+    assert.equal(response.dataAvailable, true);
+    assert.equal(response.markets.length, 1);
+    assert.equal(response.markets[0].volume, 30);
+    assert.equal(response.fetchedAt, 123);
+  });
+
+  it('reads the country index directly for a country category', async () => {
+    const payload = {
+      countries: {
+        US: [{
+          title: 'Will United States GDP grow in 2027?',
+          yesPrice: 61,
+          volume: 25_000,
+          url: 'https://kalshi.com/markets/USGDP-27',
+          endDate: '2027-12-31T00:00:00Z',
+          source: 'kalshi',
+        }],
+      },
+      fetchedAt: 456,
+    };
+    const requestedKeys: string[] = [];
+    globalThis.fetch = async (input) => {
+      requestedKeys.push(decodeURIComponent(new URL(String(input)).pathname.split('/').pop() || ''));
+      return new Response(JSON.stringify({ result: JSON.stringify(payload) }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+
+    const response = await listPredictionMarkets({} as never, {
+      category: 'country:US',
+      query: '',
+      pageSize: 5,
+      cursor: '',
+    } as never);
+
+    assert.deepEqual(requestedKeys, ['prediction:markets-country-index:v1']);
+    assert.equal(response.dataAvailable, true);
+    assert.equal(response.markets.length, 1);
+    assert.equal(response.markets[0].source, 'MARKET_SOURCE_KALSHI');
+    assert.equal(response.fetchedAt, 456);
+  });
+
+  it('filters country markets by query before applying page size', async () => {
+    const payload = {
+      countries: {
+        US: [
+          {
+            title: 'Will the Fed cut rates in 2026?',
+            yesPrice: 40,
+            volume: 50_000,
+            url: 'https://kalshi.com/markets/FEDCUT-26',
+            endDate: '2026-12-31T00:00:00Z',
+            source: 'kalshi',
+          },
+          {
+            title: 'Will United States GDP grow in 2027?',
+            yesPrice: 61,
+            volume: 25_000,
+            url: 'https://kalshi.com/markets/USGDP-27',
+            endDate: '2027-12-31T00:00:00Z',
+            source: 'kalshi',
+          },
+          {
+            title: 'Will US GDP exceed 30T in 2028?',
+            yesPrice: 55,
+            volume: 12_000,
+            url: 'https://kalshi.com/markets/USGDP-28',
+            endDate: '2028-12-31T00:00:00Z',
+            source: 'kalshi',
+          },
+        ],
+      },
+      fetchedAt: 456,
+    };
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      result: JSON.stringify(payload),
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+    const response = await listPredictionMarkets({} as never, {
+      category: 'country:US',
+      query: 'GDP',
+      pageSize: 1,
+      cursor: '',
+    } as never);
+
+    assert.equal(response.dataAvailable, true);
+    assert.equal(response.markets.length, 1);
+    assert.match(response.markets[0].title, /GDP/i);
+    assert.equal(response.markets[0].url, 'https://kalshi.com/markets/USGDP-27');
+  });
+
+  it('treats an omitted (zero) pageSize as the default, not one market', async () => {
+    const market = (n: number) => ({
+      title: `Will US GDP grow ${n}?`,
+      yesPrice: 50,
+      volume: 1_000 - n,
+      url: `https://kalshi.com/markets/USGDP-${n}`,
+      endDate: '2099-12-31T00:00:00Z',
+      source: 'kalshi',
+    });
+    const payload = { countries: { US: [market(1), market(2), market(3)] }, fetchedAt: 456 };
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      result: JSON.stringify(payload),
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+    const response = await listPredictionMarkets({} as never, {
+      category: 'country:US',
+      query: '',
+      pageSize: 0,
+      cursor: '',
+    } as never);
+
+    assert.equal(response.markets.length, 3);
+  });
+
+  it('fails closed for a malformed country category', async () => {
+    let fetchCalls = 0;
+    globalThis.fetch = async () => {
+      fetchCalls += 1;
+      return Response.json({ result: null });
+    };
+
+    const response = await listPredictionMarkets({} as never, {
+      category: 'country:USA',
+      query: '',
+      pageSize: 5,
+      cursor: '',
+    });
+
+    assert.equal(fetchCalls, 0);
+    assert.equal(response.dataAvailable, false);
+    assert.deepEqual(response.markets, []);
+  });
+});

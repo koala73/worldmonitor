@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package worldmonitor.company_monitoring.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/company_monitoring/v1/company_monitoring.proto";
+
+message GetCompanyCoverageRequest {
+  // Account-scoped logical company ID; storage identifiers are not accepted.
+  string company_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^cm_company_[0-9A-HJKMNP-TV-Z]{26}$",
+    (sebuf.http.query) = {name: "company_id"}
+  ];
+}
+
+message GetCompanyCoverageResponse {
+  string company_id = 1 [(buf.validate.field).string.pattern = "^cm_company_[0-9A-HJKMNP-TV-Z]{26}$"];
+  CompanyCoverage coverage = 2;
+}
+
+message GetCompanyMonitoringStatusRequest {}
+
+message GetCompanyMonitoringStatusResponse {
+  CompanyMonitoringAccessState access_state = 1;
+  int32 company_count = 2 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 500
+  ];
+  int32 company_limit = 3 [(buf.validate.field).int32.const = 500];
+  int64 snapshot_generation = 4 [(buf.validate.field).int64.gte = 0];
+  CompanyMonitoringFeatureFlags feature_flags = 5;
+}

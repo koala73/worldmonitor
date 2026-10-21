@@ -1,0 +1,635 @@
+import { type AuthSession, getAuthState, subscribeAuthState } from '@/services/auth-state';
+import {
+  getEntitlementVerificationStatus,
+  onEntitlementChange,
+  onEntitlementVerificationChange,
+} from '@/services/entitlements';
+import { PanelGateReason, getPanelGateReason } from '@/services/panel-gating';
+import { loadStoredMissionPreset, onMissionPresetChange } from '@/services/mission-presets';
+import { trackProPreviewCta, trackProPreviewViewed } from '@/services/analytics';
+import { isProTierResolved } from '@/services/widget-store';
+import { getResilienceScore, type ResilienceDomain, type ResilienceScoreResponse } from '@/services/resilience';
+import { h, replaceChildren } from '@/utils/dom-utils';
+import { createCheckoutConsentElement } from '@/utils/legal-links';
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import {
+  type DimensionConfidence,
+  LOCKED_PREVIEW,
+  RESILIENCE_VISUAL_LEVEL_COLORS,
+  collectDimensionConfidences,
+  formatBaselineStress,
+  formatResilienceMethodologyHelpTitle,
+  formatResilienceChange30d,
+  formatResilienceConfidence,
+  formatResilienceDataVersion,
+  formatResilienceScoreInterval,
+  getResilienceOverallDisplay,
+  getImputationClassIcon,
+  getImputationClassLabel,
+  getResilienceDomainLabel,
+  getResilienceTrendArrow,
+  getResilienceVisualLevel,
+  getStalenessIcon,
+  getStalenessLabel,
+  shouldRenderResilienceBaselineStress,
+} from './resilience-widget-utils';
+import { CountrySectionError } from '@/services/country-brief-error';
+import type { CountryEnergyProfileData } from './CountryBriefPanel';
+
+// LOCKED_PREVIEW lives in resilience-widget-utils.ts so tests and
+// other non-Vite consumers can import it without dragging in the
+// full ResilienceWidget class transitive graph (the class indirectly
+// depends on import.meta.env.DEV via proxy.ts, which breaks plain
+// node test runners). Moved in the PR #2949 review round.
+const METHODOLOGY_HELP_TITLE = formatResilienceMethodologyHelpTitle();
+
+function normalizeCountryCode(countryCode: string | null | undefined): string | null {
+  const normalized = String(countryCode || '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+}
+
+function clampScore(score: number): number {
+  if (!Number.isFinite(score)) return 0;
+  return Math.min(100, Math.max(0, score));
+}
+
+export class ResilienceWidget {
+  private readonly element: HTMLElement;
+  private authState: AuthSession = getAuthState();
+  private unsubscribeAuth: (() => void) | null = null;
+  private unsubscribeEntitlement: (() => void) | null = null;
+  private unsubscribeVerification: (() => void) | null = null;
+  private unsubscribeMission: (() => void) | null = null;
+  private crisisPreviewObserver: IntersectionObserver | null = null;
+  private crisisPreviewFallbackTimer: number | null = null;
+  private currentCountryCode: string | null = null;
+  private currentData: ResilienceScoreResponse | null = null;
+  private loading = false;
+  private errorMessage: string | null = null;
+  private accessDenied = false;
+  private requestVersion = 0;
+  private energyMixData: CountryEnergyProfileData | null = null;
+
+  constructor(countryCode?: string | null, private readonly managed?: { load: (code: string) => Promise<ResilienceScoreResponse> }) {
+    this.element = document.createElement('section');
+    this.element.className = 'cdp-card resilience-widget';
+    if (!this.managed) {
+      this.unsubscribeAuth = subscribeAuthState((state) => {
+        this.authState = state;
+        this.reactToAccessChange();
+      });
+
+      // The entitlement snapshot lands on its own channel — production fires no
+      // auth event when it arrives. Subscribing to auth alone meant the access
+      // verdict computed during the pre-snapshot window was never revisited, so
+      // a paying user did not merely see the wrong CTA for a moment, they kept
+      // it (WORLDMONITOR-NY). Billing/subscription is not a gate input here;
+      // this widget still uses getPanelGateReason, not the billing-aware
+      // refinement panel-layout.ts applies.
+      this.unsubscribeEntitlement = onEntitlementChange(() => this.reactToAccessChange());
+      // The terminal "no snapshot is coming" outcome arrives ONLY here — see
+      // isAccessStillResolving. Without this subscription the widget would still
+      // hang on the waiting state until some unrelated event forced a re-render.
+      this.unsubscribeVerification = onEntitlementVerificationChange(() => this.reactToAccessChange());
+      this.unsubscribeMission = onMissionPresetChange(() => this.render());
+
+    }
+    this.setCountryCode(countryCode ?? null);
+  }
+
+  public getElement(): HTMLElement {
+    return this.element;
+  }
+
+  public setCountryCode(countryCode: string | null): void {
+    const normalized = normalizeCountryCode(countryCode);
+    if (normalized === this.currentCountryCode) return;
+
+    this.currentCountryCode = normalized;
+    this.currentData = null;
+    this.energyMixData = null;
+    this.errorMessage = null;
+    this.loading = false;
+    this.requestVersion += 1;
+
+    if (!normalized) {
+      this.render();
+      return;
+    }
+
+    void this.refresh();
+  }
+
+  public async refresh(): Promise<void> {
+    if (!this.currentCountryCode) {
+      this.render();
+      return;
+    }
+
+    if ((!this.managed && this.authState.isPending) || this.getGateReason() !== PanelGateReason.NONE) {
+      this.render();
+      return;
+    }
+
+    const requestVersion = ++this.requestVersion;
+    this.loading = true;
+    this.errorMessage = null;
+    this.accessDenied = false;
+    this.render();
+
+    try {
+      const response = await (this.managed ? this.managed.load(this.currentCountryCode) : getResilienceScore(this.currentCountryCode));
+      if (requestVersion !== this.requestVersion) return;
+      this.currentData = response;
+      this.loading = false;
+      this.errorMessage = null;
+      this.render();
+    } catch (error) {
+      if (requestVersion !== this.requestVersion) return;
+      this.loading = false;
+      this.currentData = null;
+      this.accessDenied = error instanceof CountrySectionError && error.state === 'locked';
+      this.errorMessage = error instanceof Error ? error.message : 'Unable to load resilience score.';
+      this.render();
+    }
+  }
+
+  public setEnergyMix(data: CountryEnergyProfileData | null): void {
+    this.energyMixData = data;
+    this.render();
+  }
+
+  public destroy(): void {
+    this.requestVersion += 1;
+    this.unsubscribeAuth?.();
+    this.unsubscribeAuth = null;
+    this.unsubscribeEntitlement?.();
+    this.unsubscribeEntitlement = null;
+    this.unsubscribeVerification?.();
+    this.unsubscribeVerification = null;
+    this.unsubscribeMission?.();
+    this.unsubscribeMission = null;
+    this.stopCrisisPreviewTracking();
+  }
+
+  /**
+   * Re-evaluate access after any of the signals that feed the gate moved,
+   * fetching the score once the verdict first becomes NONE. Shared by the
+   * auth, entitlement, and verification subscriptions so those paths cannot
+   * drift.
+   */
+  private reactToAccessChange(): void {
+    const gateReason = this.getGateReason();
+    const loadedCountryCode = normalizeCountryCode(this.currentData?.countryCode);
+    const needsRefresh = !this.currentData || (loadedCountryCode !== null && loadedCountryCode !== this.currentCountryCode);
+    if (gateReason === PanelGateReason.NONE && this.currentCountryCode && !this.loading && needsRefresh) {
+      void this.refresh();
+      return;
+    }
+    this.render();
+  }
+
+  /**
+   * Whether the account's plan is still genuinely in flight, as opposed to
+   * unknown for good.
+   *
+   * `isProTierResolved()` answers "do we have a settled tier", and for a
+   * signed-in user that stays false for as long as the entitlement snapshot is
+   * missing — including when it is never coming. The terminal outcome is
+   * published on a DIFFERENT channel: `markEntitlementVerificationUnavailable`
+   * moves only the verification status and leaves the snapshot null, so
+   * `onEntitlementChange` never fires and a wait keyed on the tier alone hangs
+   * forever, denying the panel to free and paying users alike.
+   *
+   * So the wait is bounded by the verification lifecycle: keep waiting only
+   * while the bounded Clerk/Convex retries are actually running (`idle` /
+   * `pending`), and on a terminal `unavailable` fall through to the ordinary
+   * gate verdict — the same pairing `UnifiedSettings.renderPlanCheckingState`
+   * uses on the sibling surface. That leaves the terminal case exactly as it
+   * behaves today while still fixing the common one.
+   */
+  private isAccessStillResolving(): boolean {
+    if (this.managed || isProTierResolved()) return false;
+    const status = getEntitlementVerificationStatus();
+    return status === 'idle' || status === 'pending';
+  }
+
+  private getGateReason(): PanelGateReason {
+    return this.managed ? PanelGateReason.NONE : getPanelGateReason(this.authState, true);
+  }
+
+  private render(): void {
+    const gateReason = this.getGateReason();
+    const body = this.renderBody(gateReason);
+
+    replaceChildren(
+      this.element,
+      h(
+        'div',
+        { className: 'resilience-widget__header' },
+        h('h3', { className: 'cdp-card-title resilience-widget__title' }, 'Resilience Score'),
+        h(
+          'span',
+          {
+            className: 'resilience-widget__help',
+            title: METHODOLOGY_HELP_TITLE,
+            'aria-label': 'Resilience score methodology',
+          },
+          '?',
+        ),
+      ),
+      body,
+    );
+    this.reconcileCrisisPreviewTracking();
+  }
+
+  private renderBody(gateReason: PanelGateReason): HTMLElement {
+    if (!this.currentCountryCode) {
+      return h('div', { className: 'cdp-card-body' }, this.makeEmpty('Resilience data loads when a country is selected.'));
+    }
+
+    // `authState.isPending` covers only the Clerk half of "do we know this
+    // account's plan yet". For a signed-in user the Convex entitlement snapshot
+    // lands seconds AFTER Clerk resolves, and `getPanelGateReason` reads
+    // FREE_TIER for a paying subscriber for that whole window — so rendering the
+    // gate on auth alone showed "Upgrade to Pro" to Pro customers, who clicked
+    // it into a 409 ACTIVE_SUBSCRIPTION_EXISTS from /api/create-checkout
+    // (WORLDMONITOR-NY: 28 events / 15 accounts since April, breadcrumb
+    // `button.panel-locked-cta.resilience-widget__cta`). `isProTierResolved`
+    // is the repo's existing answer to exactly this ambiguity — it treats any
+    // "Pro" signal as definitive and only a *settled* absence as free.
+    // Same class as the 2026-04-17/18 panel-overlay incident fixed in
+    // panel-gating.ts and the renderPlanCheckingState guard in
+    // UnifiedSettings.ts; this is the third surface.
+    if ((!this.managed && this.authState.isPending) || this.isAccessStillResolving()) {
+      return h('div', { className: 'cdp-card-body' }, this.makeLoading('Checking access…'));
+    }
+
+    if (gateReason !== PanelGateReason.NONE) {
+      return this.renderLocked(gateReason);
+    }
+
+    if (this.loading) {
+      return h('div', { className: 'cdp-card-body' }, this.makeLoading('Loading resilience score…'));
+    }
+
+    if (this.accessDenied) return h('div', { className: 'cdp-card-body resilience-widget__locked', 'data-brief-state': 'locked' }, this.makeEmpty(this.errorMessage ?? 'This connection is not authorized for resilience data.'));
+    if (this.errorMessage) {
+      return this.renderError(this.errorMessage);
+    }
+
+    if (!this.currentData) {
+      return h('div', { className: 'cdp-card-body' }, this.makeEmpty('Resilience score unavailable.'));
+    }
+
+    return this.renderScoreCard(this.currentData);
+  }
+
+  // KTD7: crisis-desk's Release 1 preview IS this locked surface — it ships
+  // already, so its treated-mission work is instrumentation only. Events are
+  // scoped to the active mission so ordinary locked renders stay unattributed.
+  private crisisDeskPreviewViewedTracked = false;
+
+  private isCrisisDeskMissionActive(): boolean {
+    try {
+      return loadStoredMissionPreset()?.id === 'crisis-desk';
+    } catch {
+      return false;
+    }
+  }
+
+  private renderLocked(gateReason: PanelGateReason): HTMLElement {
+    const description = gateReason === PanelGateReason.ANONYMOUS
+      ? 'Sign in to unlock premium resilience scores.'
+      : 'Upgrade to Pro to unlock resilience scores.';
+    const cta = gateReason === PanelGateReason.ANONYMOUS ? 'Sign In' : 'Upgrade to Pro';
+
+    const preview = this.renderScoreCard(LOCKED_PREVIEW, true);
+    preview.classList.add('resilience-widget__preview');
+
+    const button = h('button', {
+      type: 'button',
+      className: 'panel-locked-cta resilience-widget__cta',
+      onclick: () => {
+        if (gateReason === PanelGateReason.ANONYMOUS) {
+          void import('@/services/clerk')
+            .then((module) => module.openSignIn())
+            .catch(() => this.showAuthUnavailable());
+          return;
+        }
+        const crisisDesk = this.isCrisisDeskMissionActive();
+        if (crisisDesk) trackProPreviewCta('crisis-desk', 'cii');
+        void this.openUpgradeFlow(crisisDesk).catch(() => {
+          window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+        });
+      },
+    }, cta) as HTMLButtonElement;
+
+    return h(
+      'div',
+      { className: 'cdp-card-body resilience-widget__locked' },
+      preview,
+      h('div', { className: 'panel-locked-desc resilience-widget__gate-desc' }, description),
+      // Assent above the CTA (#6976) — only on the upgrade branch. The
+      // ANONYMOUS branch opens Clerk sign-in, which carries its own Terms and
+      // Privacy links via the appearance layout options.
+      ...(gateReason === PanelGateReason.ANONYMOUS
+        ? []
+        : [createCheckoutConsentElement(WEB_APP_ORIGIN)]),
+      button,
+    );
+  }
+
+  private reconcileCrisisPreviewTracking(): void {
+    this.stopCrisisPreviewTracking();
+    if (this.crisisDeskPreviewViewedTracked || !this.isCrisisDeskMissionActive()) return;
+    if (!this.element.querySelector('.resilience-widget__locked')) return;
+
+    const recordView = (): void => {
+      if (this.crisisDeskPreviewViewedTracked) return;
+      if (!this.element.isConnected || !this.isCrisisDeskMissionActive()) return;
+      if (!this.element.querySelector('.resilience-widget__locked')) return;
+      this.crisisDeskPreviewViewedTracked = true;
+      this.stopCrisisPreviewTracking();
+      trackProPreviewViewed('crisis-desk', 'cii');
+    };
+
+    if (typeof IntersectionObserver === 'undefined') {
+      this.crisisPreviewFallbackTimer = window.setTimeout(recordView, 0);
+      return;
+    }
+
+    this.crisisPreviewObserver = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) recordView();
+    }, { threshold: 0.3 });
+    this.crisisPreviewObserver.observe(this.element);
+  }
+
+  private stopCrisisPreviewTracking(): void {
+    this.crisisPreviewObserver?.disconnect();
+    this.crisisPreviewObserver = null;
+    if (this.crisisPreviewFallbackTimer !== null) {
+      window.clearTimeout(this.crisisPreviewFallbackTimer);
+      this.crisisPreviewFallbackTimer = null;
+    }
+  }
+
+  private async showAuthUnavailable(): Promise<void> {
+    const message = 'Sign-in is temporarily unavailable. Please try again.';
+    try {
+      const { showCheckoutErrorToast } = await import('@/services/checkout-error-toast');
+      showCheckoutErrorToast(message);
+      return;
+    } catch {
+      window.alert(message);
+    }
+  }
+
+  private renderError(message: string): HTMLElement {
+    return h(
+      'div',
+      { className: 'cdp-card-body resilience-widget__error' },
+      h('div', { className: 'cdp-empty' }, message),
+      h(
+        'button',
+        {
+          type: 'button',
+          className: 'cdp-action-btn resilience-widget__retry',
+          onclick: () => void this.refresh(),
+        },
+        'Retry',
+      ),
+    );
+  }
+
+  private renderScoreCard(data: ResilienceScoreResponse, preview = false): HTMLElement {
+    const overallDisplay = getResilienceOverallDisplay(data);
+    const levelColor = RESILIENCE_VISUAL_LEVEL_COLORS[overallDisplay.visualLevel];
+    const scoreInterval = overallDisplay.hasScore ? formatResilienceScoreInterval(data.scoreInterval) : null;
+
+    return h(
+      'div',
+      { className: 'cdp-card-body resilience-widget__body' },
+      h(
+        'div',
+        { className: 'resilience-widget__overall' },
+        this.renderBarBlock(
+          overallDisplay.scoreForBar,
+          levelColor,
+          h(
+            'div',
+            { className: 'resilience-widget__overall-meta' },
+            h('span', { className: 'resilience-widget__overall-score' }, overallDisplay.scoreLabel),
+            ...(scoreInterval
+              ? [h('span', {
+                  className: 'resilience-widget__overall-interval',
+                  title: scoreInterval.title,
+                }, scoreInterval.label)]
+              : []),
+            h(
+              'span',
+              {
+                className: 'resilience-widget__overall-level',
+                style: { color: levelColor },
+                title: overallDisplay.serverLevelLabel,
+              },
+              overallDisplay.visualLevelLabel,
+            ),
+            ...(overallDisplay.hasScore
+              ? [h('span', { className: 'resilience-widget__overall-trend' }, `${getResilienceTrendArrow(data.trend)} ${data.trend}`)]
+              : []),
+          ),
+        ),
+      ),
+      ...(shouldRenderResilienceBaselineStress(data, overallDisplay)
+        ? [h(
+            'div',
+            { className: 'resilience-widget__baseline-stress' },
+            h('span', { className: 'resilience-widget__baseline-stress-text' },
+              formatBaselineStress(data.baselineScore, data.stressScore)),
+          )]
+        : []),
+      h(
+        'div',
+        { className: 'resilience-widget__domains' },
+        ...data.domains.map((domain) => this.renderDomainRow(domain, preview)),
+      ),
+      // T1.6 Phase 1 of the country-resilience reference-grade upgrade plan:
+      // per-dimension confidence grid. Uses only the existing `coverage`,
+      // `observedWeight`, `imputedWeight` fields on ResilienceDimension so
+      // this ships without proto changes. Imputation class icons (T1.7)
+      // and freshness badges (T1.5 full pass) land as additional columns
+      // once the schema exposes those fields through the response type.
+      this.renderDimensionConfidenceGrid(data),
+      h(
+        'div',
+        { className: 'resilience-widget__footer' },
+        h(
+          'span',
+          {
+            className: `resilience-widget__confidence${data.lowConfidence ? ' resilience-widget__confidence--low' : ''}`,
+            title: preview ? 'Preview only' : 'Coverage and imputation-based confidence signal.',
+          },
+          formatResilienceConfidence(data),
+        ),
+        h('span', { className: 'resilience-widget__delta' }, formatResilienceChange30d(data.change30d)),
+        ...(() => {
+          // Hoisted so the formatter (which runs a regex + Date parse) is
+          // only invoked once per render instead of twice (guard + child).
+          // Raised in review of PR #2943 for consistency with the existing
+          // scoreInterval / baselineScore blocks in this file.
+          const dataVersionLabel = formatResilienceDataVersion(data.dataVersion);
+          return dataVersionLabel
+            ? [h(
+                'span',
+                {
+                  className: 'resilience-widget__data-version',
+                  title: 'Date the static-seed bundle (Railway job) was last refreshed. Individual live inputs (conflict events, sanctions, prices) can be newer — see the per-dimension freshness badge for those.',
+                },
+                dataVersionLabel,
+              )]
+            : [];
+        })(),
+      ),
+    );
+  }
+
+  private renderDimensionConfidenceGrid(data: ResilienceScoreResponse): HTMLElement {
+    const dimensions = collectDimensionConfidences(data.domains);
+    return h(
+      'div',
+      {
+        className: 'resilience-widget__dimension-grid',
+        title: 'Per-dimension data coverage. Hover a cell for the coverage percentage and observation provenance.',
+      },
+      ...dimensions.map((dim) => this.renderDimensionConfidenceCell(dim)),
+    );
+  }
+
+  private renderDimensionConfidenceCell(dim: DimensionConfidence): HTMLElement {
+    // Compose the tooltip from three independent fragments so the order
+    // is stable regardless of which optional fields the scorer
+    // populated. Imputation class + freshness are added by T1.7 / T1.5
+    // and may both be null (observed + unknown cadence), in which case
+    // only the base coverage string is shown.
+    const titleParts: string[] = [
+      dim.absent ? `${dim.label}: no data` : `${dim.label}: ${dim.coveragePct}% coverage, ${dim.status}`,
+    ];
+    if (dim.imputationClass) titleParts.push(getImputationClassLabel(dim.imputationClass));
+    if (dim.staleness) titleParts.push(getStalenessLabel(dim.staleness));
+    const title = titleParts.join(' | ');
+
+    const imputationClassName = dim.imputationClass
+      ? `resilience-widget__dimension-imputation resilience-widget__dimension-imputation--${dim.imputationClass}`
+      : 'resilience-widget__dimension-imputation';
+    const freshnessClassName = dim.staleness
+      ? `resilience-widget__dimension-freshness resilience-widget__dimension-freshness--${dim.staleness}`
+      : 'resilience-widget__dimension-freshness';
+
+    return h(
+      'div',
+      {
+        className: `resilience-widget__dimension-cell resilience-widget__dimension-cell--${dim.status}`,
+        title,
+      },
+      h('span', { className: 'resilience-widget__dimension-label' }, dim.label),
+      h(
+        'div',
+        { className: 'resilience-widget__dimension-bar-track' },
+        h('div', {
+          className: 'resilience-widget__dimension-bar-fill',
+          style: { width: `${dim.coveragePct}%` },
+        }),
+      ),
+      h(
+        'span',
+        {
+          className: imputationClassName,
+          'aria-label': dim.imputationClass ? getImputationClassLabel(dim.imputationClass) : undefined,
+        },
+        dim.imputationClass ? getImputationClassIcon(dim.imputationClass) : '',
+      ),
+      h('span', { className: 'resilience-widget__dimension-pct' }, dim.absent ? 'n/a' : `${dim.coveragePct}%`),
+      h(
+        'span',
+        {
+          className: freshnessClassName,
+          'aria-label': dim.staleness ? getStalenessLabel(dim.staleness) : undefined,
+        },
+        getStalenessIcon(dim.staleness),
+      ),
+    );
+  }
+
+  private renderDomainRow(domain: ResilienceDomain, preview = false): HTMLElement {
+    const score = clampScore(domain.score);
+    const levelColor = RESILIENCE_VISUAL_LEVEL_COLORS[getResilienceVisualLevel(score)];
+
+    const attrs: Record<string, string> = { className: 'resilience-widget__domain-row' };
+
+    if (!preview && domain.id === 'energy' && this.energyMixData
+      && (this.energyMixData.mixAvailable || this.energyMixData.importShareAvailable || this.energyMixData.gasStorageAvailable)) {
+      const d = this.energyMixData;
+      const parts = [d.importShareAvailable
+        ? `Import dep: ${d.importShare.toFixed(1)}%`
+        : 'Import dep: unavailable'];
+      if (d.mixAvailable) {
+        parts.push(
+          `Gas: ${d.gasShare.toFixed(1)}%`,
+          `Coal: ${d.coalShare.toFixed(1)}%`,
+          `Renew: ${d.renewShare.toFixed(1)}%`,
+        );
+      }
+      if (d.gasStorageAvailable) parts.push(`EU storage: ${d.gasStorageFillPct.toFixed(1)}%`);
+      attrs['title'] = parts.join(' | ');
+    }
+
+    return h(
+      'div',
+      attrs,
+      h('span', { className: 'resilience-widget__domain-label' }, getResilienceDomainLabel(domain.id)),
+      this.renderBarBlock(score, levelColor),
+      h('span', { className: 'resilience-widget__domain-score' }, String(Math.round(score))),
+    );
+  }
+
+  private renderBarBlock(score: number, color: string, trailing?: HTMLElement): HTMLElement {
+    return h(
+      'div',
+      { className: 'resilience-widget__bar-block' },
+      h(
+        'div',
+        { className: 'resilience-widget__bar-track' },
+        h('div', {
+          className: 'resilience-widget__bar-fill',
+          style: {
+            width: `${score}%`,
+            background: color,
+          },
+        }),
+      ),
+      trailing ?? null,
+    );
+  }
+
+  private makeLoading(text: string): HTMLElement {
+    return h(
+      'div',
+      { className: 'cdp-loading-inline' },
+      h('div', { className: 'cdp-loading-line' }),
+      h('div', { className: 'cdp-loading-line cdp-loading-line-short' }),
+      h('span', { className: 'cdp-loading-text' }, text),
+    );
+  }
+
+  private makeEmpty(text: string): HTMLElement {
+    return h('div', { className: 'cdp-empty' }, text);
+  }
+
+  private async openUpgradeFlow(crisisDeskAttribution = false): Promise<void> {
+    const { openUpgradeCheckout } = await import('@/services/upgrade-flow');
+    await openUpgradeCheckout(
+      crisisDeskAttribution ? { missionId: 'crisis-desk', panelKey: 'cii' } : undefined,
+    );
+  }
+}

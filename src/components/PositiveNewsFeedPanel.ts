@@ -6,6 +6,8 @@ import { shareHappyCard } from '@/services/happy-share-renderer';
 import { formatTime } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
+import { trustedHtml } from '@/utils/dom-utils';
+
 
 /**
  * PositiveNewsFeedPanel -- scrolling positive news feed with category filter bar
@@ -106,11 +108,13 @@ export class PositiveNewsFeedPanel extends Panel {
     this.filteredItems = items;
 
     if (items.length === 0) {
-      this.content.innerHTML = `<div class="positive-feed-empty">${escapeHtml(t('components.positiveNewsFeed.noStories'))}</div>`;
+      // #6557: a settled empty state is authoritative content.
+      this.setTrustedContent(trustedHtml(`<div class="positive-feed-empty">${escapeHtml(t('components.positiveNewsFeed.noStories'))}</div>`, "legacy direct innerHTML migration"));
       return;
     }
 
-    this.content.innerHTML = items.map((item, idx) => this.renderCard(item, idx)).join('');
+    // #6557: success render with data — route through the sanctioned helper.
+    this.setTrustedContent(trustedHtml(items.map((item, idx) => this.renderCard(item, idx)).join(''), "legacy direct innerHTML migration"));
 
     // Delegated click handler for share buttons (remove first to avoid stacking)
     this.content.removeEventListener('click', this.handleShareClick);

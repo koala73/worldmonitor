@@ -1,0 +1,547 @@
+import { CountrySectionError } from '@/services/country-brief-error';
+import { Panel } from './Panel';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
+import { t } from '@/services/i18n';
+import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
+
+import type {
+  ListPipelinesResponse,
+  PipelineEntry,
+  GetPipelineDetailResponse,
+  EnergyDisruptionEntry,
+} from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import { formatEventWindow, formatCapacityOffline } from '@/shared/disruption-timeline';
+import {
+  derivePipelinePublicBadge,
+  pickNewerClassifierVersion,
+  pickNewerIsoTimestamp,
+} from '@/shared/pipeline-evidence';
+import {
+  ensurePipelineRegistriesHydrated,
+  getCachedPipelineRegistries,
+  setCachedPipelineRegistries,
+  type RawPipelineRegistry,
+} from '@/shared/pipeline-registry-store';
+import { shouldErrorOnPipelineLiveResponse } from '@/shared/pipeline-live-paint';
+import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
+import { bindActivationKeys } from '@/utils/activation';
+
+const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
+  fetch: rpcFetch,
+}));
+
+// Shape of the raw Redis registry hydrated by bootstrap. This mirrors
+// scripts/data/pipelines-{gas,oil}.json verbatim — the seeder does NOT
+// transform to wire format. So bootstrap entries are raw objects with
+// no publicBadge field; we derive client-side (same function as server)
+// to match what the RPC will later return on background re-fetch.
+// Alias for the shared store's raw-registry type. Kept as a local alias so
+// existing inline call sites read cleanly. Both the panel and DeckGLMap go
+// through the same shared store (pipeline-registry-store.ts) because
+// getHydratedData is single-use and would drain on whichever consumer read
+// first, forcing the other off its hydration path.
+type RawBootstrapRegistry = RawPipelineRegistry;
+
+const BADGE_COLOR: Record<string, string> = {
+  flowing:  '#2ecc71',
+  reduced:  '#f39c12',
+  offline:  '#e74c3c',
+  disputed: '#9b59b6',
+};
+
+function badgeLabel(badge: string): string {
+  return badge.charAt(0).toUpperCase() + badge.slice(1);
+}
+
+function capacityLabel(p: PipelineEntry): string {
+  if (p.commodityType === 'gas' && typeof p.capacityBcmYr === 'number' && p.capacityBcmYr > 0) {
+    return `${p.capacityBcmYr.toFixed(1)} bcm/yr`;
+  }
+  if (p.commodityType === 'oil' && typeof p.capacityMbd === 'number' && p.capacityMbd > 0) {
+    return `${p.capacityMbd.toFixed(2)} mb/d`;
+  }
+  return '—';
+}
+
+function badgeChip(badge: string | undefined): string {
+  const safe = badge && BADGE_COLOR[badge] ? badge : 'disputed';
+  const color = BADGE_COLOR[safe] ?? '#7f8c8d';
+  return `<span class="pp-badge" style="background:${color}">${escapeHtml(badgeLabel(safe))}</span>`;
+}
+
+// Project one raw bootstrap entry into the wire-format PipelineEntry the
+// renderer expects. Defensively coerces every field because Upstash returns
+// `unknown` and the source JSON can drift. Mirrors the server-side
+// projectPipeline() in server/worldmonitor/supply-chain/v1/list-pipelines.ts
+// so pre- and post-RPC renders produce the same badges.
+function projectRawPipeline(raw: unknown): PipelineEntry | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const id = typeof r.id === 'string' ? r.id : '';
+  if (!id) return null;
+
+  const str = (v: unknown, d = ''): string => (typeof v === 'string' ? v : d);
+  const num = (v: unknown, d = 0): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+
+  const latLon = (v: unknown): { lat: number; lon: number } => {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const o = v as Record<string, unknown>;
+      return { lat: num(o.lat), lon: num(o.lon) };
+    }
+    return { lat: 0, lon: 0 };
+  };
+
+  const evRaw = r.evidence as Record<string, unknown> | undefined;
+  const operatorStatement =
+    evRaw && typeof evRaw.operatorStatement === 'object' && evRaw.operatorStatement
+      ? {
+          text: str((evRaw.operatorStatement as Record<string, unknown>).text),
+          url: str((evRaw.operatorStatement as Record<string, unknown>).url),
+          date: str((evRaw.operatorStatement as Record<string, unknown>).date),
+        }
+      : undefined;
+  const sanctionRefs = Array.isArray(evRaw?.sanctionRefs)
+    ? (evRaw.sanctionRefs as unknown[]).map(s => {
+        const o = (s ?? {}) as Record<string, unknown>;
+        return { authority: str(o.authority), listId: str(o.listId), date: str(o.date), url: str(o.url) };
+      })
+    : [];
+
+  const ev = evRaw
+    ? {
+        physicalState: str(evRaw.physicalState, 'unknown'),
+        physicalStateSource: str(evRaw.physicalStateSource, 'operator'),
+        operatorStatement,
+        commercialState: str(evRaw.commercialState, 'unknown'),
+        sanctionRefs,
+        lastEvidenceUpdate: str(evRaw.lastEvidenceUpdate),
+        classifierVersion: str(evRaw.classifierVersion, 'v1'),
+        classifierConfidence: num(evRaw.classifierConfidence, 0),
+      }
+    : undefined;
+
+  // Derive the public badge client-side so bootstrap first-paint matches
+  // what the RPC will return on background refresh. Same deterministic
+  // function; identical inputs produce identical outputs.
+  const publicBadge = derivePipelinePublicBadge(ev);
+
+  return {
+    id,
+    name: str(r.name),
+    operator: str(r.operator),
+    commodityType: str(r.commodityType),
+    fromCountry: str(r.fromCountry),
+    toCountry: str(r.toCountry),
+    transitCountries: Array.isArray(r.transitCountries)
+      ? (r.transitCountries as unknown[]).map(t => str(t))
+      : [],
+    capacityBcmYr: num(r.capacityBcmYr),
+    capacityMbd: num(r.capacityMbd),
+    lengthKm: num(r.lengthKm),
+    inService: num(r.inService),
+    startPoint: latLon(r.startPoint),
+    endPoint: latLon(r.endPoint),
+    waypoints: Array.isArray(r.waypoints) ? (r.waypoints as unknown[]).map(latLon) : [],
+    evidence: ev,
+    publicBadge,
+  };
+}
+
+function buildBootstrapResponse(
+  gas: RawBootstrapRegistry | undefined,
+  oil: RawBootstrapRegistry | undefined,
+): ListPipelinesResponse | null {
+  const pipelines: PipelineEntry[] = [];
+  for (const reg of [gas, oil]) {
+    if (!reg?.pipelines) continue;
+    for (const raw of Object.values(reg.pipelines)) {
+      const projected = projectRawPipeline(raw);
+      if (projected) pipelines.push(projected);
+    }
+  }
+  if (pipelines.length === 0) return null;
+  // Gas + oil seeders cron independently now — mixed-version / mixed-
+  // timestamp windows are a real rollout state. Actually compare instead
+  // of always preferring gas, matching the server-side aggregation.
+  return {
+    pipelines,
+    fetchedAt: pickNewerIsoTimestamp(gas?.updatedAt, oil?.updatedAt),
+    classifierVersion: pickNewerClassifierVersion(gas?.classifierVersion, oil?.classifierVersion),
+    upstreamUnavailable: false,
+  };
+}
+
+export class PipelineStatusPanel extends Panel {
+  private data: ListPipelinesResponse | null = null;
+  private selectedId: string | null = null;
+  private detail: GetPipelineDetailResponse | null = null;
+  private detailLoading = false;
+  private detailError: string | null = null;
+  // Disruption events for the currently-open pipeline. Fetched lazily
+  // alongside getPipelineDetail. undefined = not yet fetched;
+  // empty array = fetched and no events on file.
+  private detailEvents: EnergyDisruptionEntry[] | null | undefined = undefined;
+  private usedHydrationPaint = false;
+  private openDetailHandler = (ev: Event): void => {
+    const id = (ev as CustomEvent<{ pipelineId?: string }>).detail?.pipelineId;
+    if (!id || !this.element?.isConnected) return;
+    void this.loadDetail(id);
+  };
+
+  constructor(private readonly detailSource?: Pick<ReturnType<typeof getSupplyChainClient>, 'getPipelineDetail' | 'listEnergyDisruptions'>) {
+    super({
+      id: 'pipeline-status',
+      title: 'Oil & Gas Pipeline Status',
+      defaultRowSpan: 2,
+      infoTooltip:
+        'Curated registry of critical oil and gas pipelines. Public badge is derived from ' +
+        'evidence (operator statements, sanction refs, commercial state, physical signals) — ' +
+        'see /docs/methodology/pipelines for the classifier spec.',
+    });
+    // Listen for DeckGLMap pipeline clicks. Loose coupling via window event
+    // keeps the map and the panel decoupled — if the panel isn't mounted, the
+    // event is a no-op. If both exist, a map click opens this drawer on the
+    // same pipeline id.
+    if (!this.detailSource && typeof window !== 'undefined') {
+      window.addEventListener('energy:open-pipeline-detail', this.openDetailHandler);
+    }
+    this.content.addEventListener('click', this.handleContentClick);
+    bindActivationKeys(this.content, '.pp-row');
+  }
+
+  private handleContentClick = (e: Event): void => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    if (target.closest('.pp-drawer-close')) {
+      this.closeDetail();
+      return;
+    }
+    const row = target.closest<HTMLTableRowElement>('tr.pp-row');
+    if (!row || !this.content.contains(row)) return;
+    const id = row.dataset.pipelineId;
+    if (id) void this.loadDetail(id);
+  };
+
+  public destroy(): void {
+    if (!this.detailSource && typeof window !== 'undefined') {
+      window.removeEventListener('energy:open-pipeline-detail', this.openDetailHandler);
+    }
+    super.destroy?.();
+  }
+
+  public async fetchData(): Promise<void> {
+    try {
+      // Shared store: rolling-deploy leftover first, then one on-demand
+      // fetch. A response that arrives before this panel is inserted still
+      // lands in the store and is replayed via runWhenConnected.
+      // First paint skips RPC when hydration yields the complete gas + oil
+      // pair. Later fetchData ticks (24h scheduler) ask the store for a
+      // CDN-shielded refresh.
+      let { gas, oil } = getCachedPipelineRegistries();
+      if (!gas || !oil) {
+        const hydratedRegistries = await ensurePipelineRegistriesHydrated({
+          refresh: this.usedHydrationPaint,
+        });
+        gas = hydratedRegistries.gas;
+        oil = hydratedRegistries.oil;
+      } else if (this.usedHydrationPaint) {
+        const hydratedRegistries = await ensurePipelineRegistriesHydrated({ refresh: true });
+        gas = hydratedRegistries.gas;
+        oil = hydratedRegistries.oil;
+      }
+      // The RPC returns the combined registry. Do not let a rolling-deploy
+      // cache containing only one commodity become a terminal first paint.
+      const hydrated = gas && oil ? buildBootstrapResponse(gas, oil) : null;
+      if (hydrated) {
+        const apply = (): void => {
+          this.data = hydrated;
+          this.render();
+        };
+        if (!this.element?.isConnected) {
+          this.runWhenConnected(apply);
+          this.usedHydrationPaint = true;
+          return;
+        }
+        apply();
+        this.usedHydrationPaint = true;
+        return;
+      }
+
+      const live = await getSupplyChainClient().listPipelines({ commodityType: '' });
+      const toRecord = (filterCommodity: string): Record<string, PipelineEntry> =>
+        Object.fromEntries(live.pipelines.filter(p => p.commodityType === filterCommodity).map(p => [p.id, p]));
+      if (live.pipelines?.length && !live.upstreamUnavailable) {
+        setCachedPipelineRegistries({
+          gas: { pipelines: toRecord('gas'), classifierVersion: live.classifierVersion, updatedAt: live.fetchedAt },
+          oil: { pipelines: toRecord('oil'), classifierVersion: live.classifierVersion, updatedAt: live.fetchedAt },
+        });
+        this.usedHydrationPaint = true;
+      }
+      const applyLive = (): void => {
+        // upstreamUnavailable with rows means partial coverage (one of gas/oil
+        // missing). Match ChokepointStripPanel: keep useful data and warn in
+        // render(). Still refuse to cache a one-sided response above.
+        if (shouldErrorOnPipelineLiveResponse(live)) {
+          this.showError('Pipeline registry unavailable', () => void this.fetchData());
+          return;
+        }
+        this.data = live;
+        this.render();
+      };
+      if (!this.element?.isConnected) {
+        this.runWhenConnected(applyLive);
+        return;
+      }
+      applyLive();
+    } catch (err) {
+      if (this.isAbortError(err)) return;
+      const applyError = (): void => {
+        this.showError('Pipeline registry error', () => void this.fetchData());
+      };
+      if (!this.element?.isConnected) {
+        this.runWhenConnected(applyError);
+        return;
+      }
+      applyError();
+    }
+  }
+
+  public async presentDetail(data: ListPipelinesResponse, id: string): Promise<void> {
+    this.data = data;
+    await this.loadDetail(id);
+  }
+
+  public async presentCountryDetail(countryCode: string, id: string): Promise<void> {
+    const { gas, oil } = getCachedPipelineRegistries();
+    const data = buildBootstrapResponse(gas, oil);
+    const pipelines = data?.pipelines.filter(pipeline => pipeline.fromCountry === countryCode || pipeline.toCountry === countryCode || pipeline.transitCountries.includes(countryCode)) ?? [];
+    if (!data || !pipelines.some(pipeline => pipeline.id === id)) throw new Error('Pipeline is not in this country.');
+    await this.presentDetail({ ...data, pipelines }, id);
+  }
+
+  private async loadDetail(pipelineId: string): Promise<void> {
+    this.selectedId = pipelineId;
+    this.detailLoading = true;
+    this.detailError = null;
+    this.detailEvents = undefined;
+    this.render();
+    try {
+      const timeline = (this.detailSource ?? getSupplyChainClient()).listEnergyDisruptions({ assetId: pipelineId, assetType: 'pipeline', ongoingOnly: false }).catch(() => undefined);
+      const d = await (this.detailSource ?? getSupplyChainClient()).getPipelineDetail({ pipelineId });
+      if (!this.element?.isConnected || this.selectedId !== pipelineId) return;
+      this.detail = d;
+      this.detailLoading = false;
+      this.render();
+      void timeline.then(events => {
+        if (!this.element?.isConnected || this.selectedId !== pipelineId) return;
+        this.detailEvents = events && !events.upstreamUnavailable ? events.events : null;
+        this.render();
+      });
+    } catch (error) {
+      if (!this.element?.isConnected) return;
+      // Mirror the same stale-response guard the success path uses: if the
+      // user has already clicked a different pipeline while this one was
+      // in flight, the newer request owns detailLoading / detail state.
+      // Without this guard, a failed A + in-flight B briefly shows
+      // "unavailable" for B's drawer even though B is still loading.
+      if (this.selectedId !== pipelineId) return;
+      this.detailLoading = false;
+      this.detail = null;
+      this.detailError = error instanceof CountrySectionError ? error.message : null;
+      this.render();
+    }
+  }
+
+  private closeDetail(): void {
+    this.selectedId = null;
+    this.detail = null;
+    this.detailEvents = undefined;
+    this.render();
+  }
+
+  private renderDisruptionTimeline(): string {
+    if (this.detailEvents === undefined) return this.detailLoading ? '' : '<div class="pp-evidence"><div class="pp-sub">Loading disruption timeline…</div></div>';
+    if (this.detailEvents === null) return '<div class="pp-evidence"><div class="pp-sub">Disruption timeline unavailable. Asset details remain visible.</div></div>';
+    if (this.detailEvents.length === 0) {
+      return `<div class="pp-evidence">
+        <div class="pp-sub" style="margin-bottom:6px">Disruption timeline</div>
+        <div class="pp-ev-item pp-sub">No disruption events on file for this asset.</div>
+      </div>`;
+    }
+    const items = this.detailEvents.map(ev => {
+      const window = escapeHtml(formatEventWindow(ev.startAt, ev.endAt));
+      const cap = formatCapacityOffline(ev.capacityOfflineBcmYr, ev.capacityOfflineMbd);
+      const capLine = cap ? ` · ${escapeHtml(cap)} offline` : '';
+      const causes = (ev.causeChain && ev.causeChain.length > 0)
+        ? ` · ${escapeHtml(ev.causeChain.join(' → '))}`
+        : '';
+      return `<div class="pp-ev-item">
+        <strong>${escapeHtml(ev.eventType || 'event')}</strong> · ${window}${capLine}${causes}
+        <div class="pp-sub" style="margin-top:2px">${escapeHtml(ev.shortDescription || '')}</div>
+      </div>`;
+    }).join('');
+    return `<div class="pp-evidence">
+      <div class="pp-sub" style="margin-bottom:6px">Disruption timeline (${this.detailEvents.length})</div>
+      ${items}
+    </div>`;
+  }
+
+  private render(): void {
+    if (!this.data) return;
+
+    const rows = [...this.data.pipelines]
+      // Stable order: non-flowing first (what an atlas reader cares about),
+      // then by commodity + name.
+      .sort((a, b) => {
+        const aFlow = a.publicBadge === 'flowing' ? 1 : 0;
+        const bFlow = b.publicBadge === 'flowing' ? 1 : 0;
+        if (aFlow !== bFlow) return aFlow - bFlow;
+        if (a.commodityType !== b.commodityType) return a.commodityType.localeCompare(b.commodityType);
+        return a.name.localeCompare(b.name);
+      })
+      .map(p => this.renderRow(p))
+      .join('');
+
+    const attribution = attributionFooterHtml({
+      sourceType: 'classifier',
+      method: 'evidence → badge (deterministic)',
+      sampleSize: this.data.pipelines.length,
+      sampleLabel: 'pipelines',
+      updatedAt: this.data.fetchedAt,
+      classifierVersion: this.data.classifierVersion,
+      creditName: 'Global Energy Monitor (CC-BY 4.0)',
+      creditUrl: 'https://globalenergymonitor.org/',
+    });
+
+    const drawer = this.selectedId ? this.renderDrawer() : '';
+    const coverageWarning = this.data.upstreamUnavailable
+      ? `<div class="economic-warning">${escapeHtml(t('components.supplyChain.upstreamUnavailable'))}</div>`
+      : '';
+
+    const html = unsafeRawHtml(`
+      <div class="pp-wrap">
+        ${coverageWarning}
+        <table class="pp-table">
+          <thead>
+            <tr>
+              <th scope="col">Asset</th>
+              <th scope="col">From → To</th>
+              <th scope="col">Capacity</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${attribution}
+        ${drawer}
+      </div>
+      ${ATTRIBUTION_FOOTER_CSS}
+      <style>
+        .pp-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
+        .pp-table { width: 100%; border-collapse: collapse; }
+        .pp-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .pp-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .pp-table tr.pp-row { cursor: pointer; }
+        .pp-table tr.pp-row:hover td { background: rgba(255,255,255,0.03); }
+        .pp-name { font-weight: 600; color: var(--text, #eee); }
+        .pp-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
+        .pp-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
+        .pp-drawer { position: absolute; inset: 0; background: var(--panel-bg, #0f1218); padding: 12px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
+        .pp-drawer-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; color: var(--text-dim, #888); cursor: pointer; font-size: calc(14px * var(--wm-panel-effective-scale, 1)); }
+        .pp-drawer h3 { margin: 0 0 6px 0; font-size: calc(13px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); }
+        .pp-drawer .pp-kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-bottom: 10px; }
+        .pp-drawer .pp-kv-key { color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding-top: 2px; }
+        .pp-evidence { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); }
+        .pp-ev-item { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); margin-bottom: 6px; }
+        .pp-ev-item a { color: #4ade80; text-decoration: none; }
+        .pp-ev-item a:hover { text-decoration: underline; }
+      </style>
+    `, 'legacy Panel.setContent() migration');
+    if (this.detailSource) this.setSafeContentImmediate(html);
+    else this.setSafeContent(html);
+  }
+
+  private renderRow(p: PipelineEntry): string {
+    const commodity = p.commodityType === 'gas' ? '⛽' : '🛢️';
+    const route = `${escapeHtml(p.fromCountry)} → ${escapeHtml(p.toCountry)}`;
+    return `
+      <tr class="pp-row" data-pipeline-id="${escapeHtml(p.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
+        <td>
+          <div class="pp-name">${commodity} ${escapeHtml(p.name)}</div>
+          <div class="pp-sub">${escapeHtml(p.operator || '')}</div>
+        </td>
+        <td>${route}</td>
+        <td>${escapeHtml(capacityLabel(p))}</td>
+        <td>${badgeChip(p.publicBadge)}</td>
+      </tr>`;
+  }
+
+  private renderDrawer(): string {
+    if (this.detailLoading) {
+      return `<div class="pp-drawer"><button class="pp-drawer-close" aria-label="Close">✕</button>Loading…</div>`;
+    }
+    const p = this.detail?.pipeline;
+    if (!p) {
+      return `<div class="pp-drawer"><button class="pp-drawer-close" aria-label="Close">✕</button>${escapeHtml(this.detailError ?? 'Pipeline detail unavailable.')}</div>`;
+    }
+
+    const ev = p.evidence;
+    // sanitizeUrl drops disallowed schemes (javascript:, data:, etc.) and
+    // returns '' for invalid URLs; we suppress the <a> entirely when sanitize
+    // rejects, so a bad URL in seeded data can't render an executable link.
+    const sanctionItems = (ev?.sanctionRefs ?? []).map(s => {
+      const safeUrl = sanitizeUrl(s.url || '');
+      const linkLabel = escapeHtml(s.date || 'source');
+      const dateLink = safeUrl
+        ? `<a href="${safeUrl}" target="_blank" rel="noopener">${linkLabel}</a>`
+        : linkLabel;
+      return `
+      <div class="pp-ev-item">
+        <strong>${escapeHtml(s.authority)}</strong> ${escapeHtml(s.listId || '')} ·
+        ${dateLink}
+      </div>`;
+    }).join('');
+    const operatorStatement = ev?.operatorStatement?.text
+      ? (() => {
+          const safeUrl = sanitizeUrl(ev.operatorStatement?.url || '');
+          const dateLink = safeUrl
+            ? `· <a href="${safeUrl}" target="_blank" rel="noopener">${escapeHtml(ev.operatorStatement?.date || 'source')}</a>`
+            : '';
+          return `<div class="pp-ev-item"><strong>Operator:</strong> ${escapeHtml(ev.operatorStatement.text)}
+           ${dateLink}
+         </div>`;
+        })()
+      : '';
+
+    const transit = p.transitCountries.length > 0
+      ? ` via ${p.transitCountries.map(c => escapeHtml(c)).join(', ')}`
+      : '';
+
+    return `
+      <div class="pp-drawer">
+        <button class="pp-drawer-close" aria-label="Close">✕</button>
+        <h3>${escapeHtml(p.name)} ${badgeChip(p.publicBadge)}</h3>
+        <div class="pp-kv">
+          <div class="pp-kv-key">Operator</div>   <div>${escapeHtml(p.operator)}</div>
+          <div class="pp-kv-key">Commodity</div>  <div>${escapeHtml(p.commodityType)}</div>
+          <div class="pp-kv-key">Route</div>      <div>${escapeHtml(p.fromCountry)} → ${escapeHtml(p.toCountry)}${transit}</div>
+          <div class="pp-kv-key">Capacity</div>   <div>${escapeHtml(capacityLabel(p))}</div>
+          <div class="pp-kv-key">Length</div>     <div>${p.lengthKm > 0 ? `${p.lengthKm.toLocaleString()} km` : '—'}</div>
+          <div class="pp-kv-key">In service</div> <div>${p.inService > 0 ? escapeHtml(String(p.inService)) : '—'}</div>
+        </div>
+        <div class="pp-evidence">
+          <div class="pp-sub" style="margin-bottom:6px">Evidence</div>
+          <div class="pp-ev-item">
+            <strong>Physical state:</strong> ${escapeHtml(ev?.physicalState || 'unknown')}
+            (source: ${escapeHtml(ev?.physicalStateSource || 'unknown')})
+          </div>
+          <div class="pp-ev-item"><strong>Commercial:</strong> ${escapeHtml(ev?.commercialState || 'unknown')}</div>
+          ${operatorStatement}
+          ${sanctionItems}
+          ${ev?.classifierVersion ? `<div class="pp-ev-item pp-sub">Classifier ${escapeHtml(ev.classifierVersion)} · confidence ${Math.round((ev.classifierConfidence ?? 0) * 100)}%</div>` : ''}
+        </div>
+        ${this.renderDisruptionTimeline()}
+      </div>`;
+  }
+}

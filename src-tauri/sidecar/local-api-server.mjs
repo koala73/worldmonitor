@@ -1,15 +1,29 @@
 #!/usr/bin/env node
 import http, { createServer } from 'node:http';
 import https from 'node:https';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
+import { isIP } from 'node:net';
 import { promisify } from 'node:util';
 import { brotliCompress, gzipSync } from 'node:zlib';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const sharedResourceRoot = process.env.LOCAL_API_RESOURCE_DIR
+  || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const { getConfiguredLlmHealthProviders } = await import(
+  pathToFileURL(path.join(sharedResourceRoot, 'shared/llm-health-providers.js')).href
+);
 
 const brotliCompressAsync = promisify(brotliCompress);
+const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
+const DESKTOP_AUTH_TIMESTAMP_HEADER = 'X-WorldMonitor-Desktop-Timestamp';
+const DESKTOP_AUTH_SIGNATURE_HEADER = 'X-WorldMonitor-Desktop-Signature';
+const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
+const MAX_REGISTRATION_BODY_BYTES = 16 * 1024;
+const MAX_REGISTRATION_EMAIL_LENGTH = 254;
 
 // Monkey-patch globalThis.fetch to force IPv4 for HTTPS requests.
 // Node.js built-in fetch (undici) tries IPv6 first via Happy Eyeballs.
@@ -17,6 +31,14 @@ const brotliCompressAsync = promisify(brotliCompress);
 // IPv6 endpoints time out, causing ETIMEDOUT. This override ensures ALL
 // fetch() calls in dynamically-loaded handler modules (api/*.js) use IPv4.
 const _originalFetch = globalThis.fetch;
+const ALLOW_PRIVATE_NETWORK_FETCH = Symbol('worldmonitor.allowPrivateNetworkFetch');
+const sidecarAllowedPrivateFetchOrigins = new Set();
+// The sidecar's own listen origins. A fetch to one of these is a nested call
+// into this same process (MCP registry tools call sibling /api routes this
+// way), not an upstream request, so it must not hold an upstream slot: the
+// nested handler's own upstream fetches draw from the same pool, and six
+// concurrent self-calls would otherwise wedge until their timeouts fire.
+const sidecarSelfFetchOrigins = new Set();
 
 function normalizeRequestBody(body) {
   if (body == null) return null;
@@ -49,6 +71,31 @@ function buildSafeResponse(statusCode, statusText, headers, bodyBuffer) {
   return new Response(body, { status, statusText, headers });
 }
 
+// Constant-time token check. Only the length can differ in timing, and the
+// token length is not secret; the content is compared with timingSafeEqual.
+function tokenMatches(candidate, expected) {
+  if (typeof candidate !== 'string' || !candidate) return false;
+  const a = Buffer.from(candidate, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function canonicalizeDesktopAuthPayload(payload) {
+  return JSON.stringify({
+    email: typeof payload?.email === 'string' ? payload.email : '',
+    source: typeof payload?.source === 'string' ? payload.source : '',
+    appVersion: typeof payload?.appVersion === 'string' ? payload.appVersion : '',
+    referredBy: typeof payload?.referredBy === 'string' ? payload.referredBy : '',
+    website: typeof payload?.website === 'string' ? payload.website : '',
+    turnstileToken: typeof payload?.turnstileToken === 'string' ? payload.turnstileToken : '',
+  });
+}
+
+function signDesktopAuthPayload(secret, timestamp, payload) {
+  const message = `${timestamp}\n${canonicalizeDesktopAuthPayload(payload)}`;
+  return `sha256=${createHmac('sha256', secret).update(message).digest('hex')}`;
+}
+
 function isTransientVerificationError(error) {
   if (!(error instanceof Error)) return false;
   const code = typeof error.code === 'string' ? error.code : '';
@@ -63,6 +110,15 @@ function isTransientVerificationError(error) {
 let _activeUpstream = 0;
 const _upstreamQueue = [];
 const MAX_CONCURRENT_UPSTREAM = 6;
+// Inactivity timeout for ipv4Fetch's upstream requests. req.setTimeout fires
+// after this many ms with NO socket activity (it resets on data, so a slow
+// but active transfer is unaffected) -- protects against a peer that accepts
+// the connection and then goes fully silent (no FIN/RST, no more bytes),
+// which none of the other terminal-event listeners below ever observe.
+// Matches fetchWithTimeout()'s own default timeoutMs for consistency.
+// Mutable (not const) only so tests can shrink it -- production always runs
+// at the default.
+let _upstreamIdleTimeoutMs = 12000;
 function acquireUpstreamSlot() {
   if (_activeUpstream < MAX_CONCURRENT_UPSTREAM) {
     _activeUpstream++;
@@ -78,6 +134,18 @@ function releaseUpstreamSlot() {
   }
 }
 
+// JSON literal safe to interpolate into an inline <script>: escapes the
+// characters that can close the element or start an HTML comment.
+function jsonForScript(value) {
+  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
+function isYahooFinanceHost(hostname) {
+  // URL keeps a DNS-absolute trailing dot, which still names the same host.
+  const host = hostname.endsWith('.') ? hostname.slice(0, -1) : hostname;
+  return host === 'finance.yahoo.com' || host.endsWith('.finance.yahoo.com');
+}
+
 // Global Yahoo Finance rate gate — shared across ALL handler bundles.
 let _yahooLastReq = 0;
 let _yahooQueue = Promise.resolve();
@@ -90,13 +158,110 @@ function sidecarYahooGate() {
   return _yahooQueue;
 }
 
+function redactUrlForLog(rawUrl) {
+  try {
+    const redacted = new URL(String(rawUrl));
+    redacted.username = '';
+    redacted.password = '';
+    redacted.search = '';
+    redacted.hash = '';
+    return redacted.toString();
+  } catch {
+    return String(rawUrl);
+  }
+}
+
+function makeSsrfBlockedError(reason, rawUrl) {
+  const error = new Error(`SSRF blocked: ${reason} (url=${redactUrlForLog(rawUrl)})`);
+  error.code = 'ERR_SSRF_BLOCKED';
+  return error;
+}
+
+function firstIPv4Address(addresses = []) {
+  return addresses.find((addr) => isIP(addr) === 4) ?? null;
+}
+
+function firstIPv6Address(addresses = []) {
+  return addresses.find((addr) => isIP(addr) === 6) ?? null;
+}
+
+// IPv4-first, IPv6 fallback. Returning the family alongside the address lets
+// the caller pin both the lookup callback AND http(s).request({ family })
+// to the same family — otherwise an IPv6-only public hostname would be
+// validated against AAAA records but reconnected under family:4 by the OS,
+// reopening the TOCTOU window the pinned lookup is meant to close.
+function pickPinnedAddress(addresses = []) {
+  const v4 = firstIPv4Address(addresses);
+  if (v4) return { address: v4, family: 4 };
+  const v6 = firstIPv6Address(addresses);
+  if (v6) return { address: v6, family: 6 };
+  return null;
+}
+
+function makePinnedLookup(address, family = 4) {
+  return (_hostname, options, callback) => {
+    const cb = typeof options === 'function' ? options : callback;
+    const lookupOptions = typeof options === 'object' && options !== null ? options : {};
+    queueMicrotask(() => {
+      if (lookupOptions.all) cb(null, [{ address, family }]);
+      else cb(null, address, family);
+    });
+  };
+}
+
+function registerSidecarAllowedPrivateFetchOrigins(port, extraOrigins = []) {
+  // Normalize through URL so a default port (80) compares equal to
+  // `url.origin`, which omits it: `http://127.0.0.1:80` never matches
+  // `new URL('http://127.0.0.1:80/x').origin === 'http://127.0.0.1'`.
+  const selfOrigins = [
+    new URL(`http://127.0.0.1:${port}`).origin,
+    new URL(`http://localhost:${port}`).origin,
+  ];
+  const origins = [...selfOrigins, ...extraOrigins];
+  for (const origin of origins) sidecarAllowedPrivateFetchOrigins.add(origin);
+  for (const origin of selfOrigins) sidecarSelfFetchOrigins.add(origin);
+  return () => {
+    for (const origin of origins) sidecarAllowedPrivateFetchOrigins.delete(origin);
+    for (const origin of selfOrigins) sidecarSelfFetchOrigins.delete(origin);
+  };
+}
+
+function isAllowedPrivateSidecarFetch(url) {
+  if (sidecarAllowedPrivateFetchOrigins.has(url.origin)) return true;
+  // Desktop users can change Ollama settings without restarting the sidecar.
+  // Trust only the current configured origin, never an address from a request.
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar' && process.env.OLLAMA_API_URL) {
+    try {
+      return url.origin === new URL(process.env.OLLAMA_API_URL).origin;
+    } catch { /* invalid configuration grants no private-network access */ }
+  }
+  return false;
+}
+
+async function assertSafeSidecarFetchUrl(url) {
+  if (isAllowedPrivateSidecarFetch(url)) {
+    return { safe: true, resolvedAddresses: [url.hostname] };
+  }
+
+  const safety = await isSafeUrl(url.toString());
+  if (!safety.safe) {
+    throw makeSsrfBlockedError(safety.reason, url.toString());
+  }
+  return safety;
+}
+
 globalThis.fetch = async function ipv4Fetch(input, init) {
   const isRequest = input && typeof input === 'object' && 'url' in input;
   let url;
-  try { url = new URL(typeof input === 'string' ? input : input.url); } catch { return _originalFetch(input, init); }
+  try { url = new URL(isRequest ? input.url : input); } catch { return _originalFetch(input, init); }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return _originalFetch(input, init);
-  if (url.hostname.includes('finance.yahoo.com')) await sidecarYahooGate();
-  await acquireUpstreamSlot();
+  const allowPrivateNetwork = init?.[ALLOW_PRIVATE_NETWORK_FETCH] === true;
+  const safety = allowPrivateNetwork
+    ? { safe: true, resolvedAddresses: [url.hostname] }
+    : await assertSafeSidecarFetchUrl(url);
+  if (isYahooFinanceHost(url.hostname)) await sidecarYahooGate();
+  const holdsUpstreamSlot = !sidecarSelfFetchOrigins.has(url.origin);
+  if (holdsUpstreamSlot) await acquireUpstreamSlot();
   try {
     const mod = url.protocol === 'https:' ? https : http;
     const method = init?.method || (isRequest ? input.method : 'GET');
@@ -108,10 +273,42 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
         : Array.isArray(rawHeaders) ? Object.fromEntries(rawHeaders) : rawHeaders;
       Object.assign(headers, h);
     }
+    const pinned = isAllowedPrivateSidecarFetch(url) ? null : pickPinnedAddress(safety.resolvedAddresses);
+    const requestOptions = {
+      hostname: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: url.pathname + url.search,
+      method,
+      headers,
+      // Default to IPv4 (broken-IPv6 servers like EIA/NASA FIRMS); when we
+      // pinned a specific address, use its family so http(s).request and the
+      // lookup callback agree.
+      family: pinned?.family ?? 4,
+    };
+    if (pinned) {
+      requestOptions.lookup = makePinnedLookup(pinned.address, pinned.family);
+    }
+    // Settle idempotently and reject on every stream event that can leave a
+    // response mid-flight (upstream accepts the connection, sends headers,
+    // then stalls) — not just `res 'end'` / `req 'error'`. Without this, a
+    // stalled response never settles the Promise, the `finally` below never
+    // runs, and one upstream slot leaks permanently (#5441).
     return await new Promise((resolve, reject) => {
-      const req = mod.request({ hostname: url.hostname, port: url.port || (url.protocol === 'https:' ? 443 : 80), path: url.pathname + url.search, method, headers, family: 4 }, (res) => {
+      let settled = false;
+      const settle = (fn, v) => { if (settled) return; settled = true; fn(v); };
+      // Check before ever dispatching to the network: if the caller's signal
+      // already fired (e.g. while we were awaiting the SSRF check or the
+      // upstream-slot queue above), honor it now instead of wasting a slot
+      // on a request nobody wants (#5441 follow-up review).
+      if (init?.signal?.aborted) {
+        settle(reject, new Error('aborted by signal'));
+        return;
+      }
+      const req = mod.request(requestOptions, (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
+        res.on('error', (e) => settle(reject, e));
+        res.on('aborted', () => settle(reject, new Error('upstream response aborted mid-body')));
         res.on('end', () => {
           const buf = Buffer.concat(chunks);
           const responseHeaders = new Headers();
@@ -119,42 +316,141 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
             if (v) responseHeaders.set(k, Array.isArray(v) ? v.join(', ') : v);
           }
           try {
-            resolve(buildSafeResponse(res.statusCode, res.statusMessage, responseHeaders, buf));
+            settle(resolve, buildSafeResponse(res.statusCode, res.statusMessage, responseHeaders, buf));
           } catch (error) {
-            reject(error);
+            settle(reject, error);
           }
         });
       });
-      req.on('error', reject);
-      if (init?.signal) { init.signal.addEventListener('abort', () => req.destroy()); }
+      req.on('error', (e) => settle(reject, e));
+      req.on('close', () => settle(reject, new Error('request closed before completion')));
+      // Catches a peer that accepts the connection and then goes silent
+      // forever (no error, no close, no data) -- the only stall shape none
+      // of the listeners above ever observe.
+      req.setTimeout(_upstreamIdleTimeoutMs, () => {
+        req.destroy();
+        settle(reject, new Error('upstream request idle-timed out'));
+      });
+      if (init?.signal) {
+        init.signal.addEventListener('abort', () => { req.destroy(); settle(reject, new Error('aborted by signal')); });
+      }
       if (body != null) req.write(body);
       req.end();
     });
   } finally {
-    releaseUpstreamSlot();
+    if (holdsUpstreamSlot) releaseUpstreamSlot();
   }
 };
 
 const ALLOWED_ENV_KEYS = new Set([
-  'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'EXA_API_KEYS', 'BRAVE_API_KEYS', 'SERPAPI_API_KEYS', 'FRED_API_KEY', 'EIA_API_KEY',
+  'OPENROUTER_API_KEY', 'EXA_API_KEYS', 'BRAVE_API_KEYS', 'SERPAPI_API_KEYS', 'FRED_API_KEY', 'EIA_API_KEY',
   'CLOUDFLARE_API_TOKEN', 'ACLED_ACCESS_TOKEN', 'URLHAUS_AUTH_KEY',
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
-  'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'NASA_FIRMS_API_KEY',
+  'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'ALPHA_VANTAGE_API_KEY', 'NASA_FIRMS_API_KEY',
   'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WORLDMONITOR_API_KEY', 'WTO_API_KEY',
-  'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN',
+  'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN', DESKTOP_AUTH_SECRET_ENV,
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const RSS_PROXY_SECURITY_HEADERS = Object.freeze({
+  // RSS publishers are untrusted. The response must not become a same-origin
+  // document if a caller navigates to or frames the proxy URL.
+  'content-security-policy': "sandbox; default-src 'none'; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
+  'x-content-type-options': 'nosniff',
+});
 
 // ── SSRF protection ──────────────────────────────────────────────────────
 // Block requests to private/reserved IP ranges to prevent the RSS proxy
 // from being used as a localhost pivot or internal network scanner.
 
+function ipv4ToInt(parts) {
+  return (
+    ((parts[0] << 24) >>> 0) +
+    (parts[1] << 16) +
+    (parts[2] << 8) +
+    parts[3]
+  ) >>> 0;
+}
+
+const BLOCKED_IPV4_RANGES = [
+  ['0.0.0.0', 8],       // "this" network
+  ['10.0.0.0', 8],      // RFC1918 private
+  ['100.64.0.0', 10],   // carrier-grade NAT
+  ['127.0.0.0', 8],     // loopback
+  ['169.254.0.0', 16],  // link-local
+  ['172.16.0.0', 12],   // RFC1918 private
+  ['192.0.0.0', 24],    // IETF protocol assignments
+  ['192.0.2.0', 24],    // documentation
+  ['192.88.99.0', 24],  // deprecated 6to4 relay anycast
+  ['192.168.0.0', 16],  // RFC1918 private
+  ['198.18.0.0', 15],   // benchmark testing
+  ['198.51.100.0', 24], // documentation
+  ['203.0.113.0', 24],  // documentation
+  ['224.0.0.0', 3],     // multicast, reserved, limited broadcast
+].map(([base, prefix]) => {
+  const baseInt = ipv4ToInt(base.split('.').map(Number));
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  return [baseInt, mask];
+});
+
+// Expand a valid IPv6 literal (any spelling, brackets optional) into its eight
+// 16-bit groups. WHATWG URL parsing canonicalizes first, so an embedded dotted
+// quad and a `::` run both come back as plain hextets.
+function ipv6Hextets(ip) {
+  const normalized = String(ip).replace(/^\[|\]$/g, '');
+  if (isIP(normalized) !== 6) return null;
+
+  let canonical;
+  try {
+    canonical = new URL(`http://[${normalized}]/`).hostname.slice(1, -1);
+  } catch {
+    return null;
+  }
+
+  const [head, tail = ''] = canonical.split('::');
+  const headGroups = head ? head.split(':') : [];
+  const tailGroups = tail ? tail.split(':') : [];
+  const fill = canonical.includes('::') ? 8 - headGroups.length - tailGroups.length : 0;
+  if (fill < 0 || headGroups.length + tailGroups.length + fill !== 8) return null;
+  const groups = [...headGroups, ...Array(fill).fill('0'), ...tailGroups]
+    .map((group) => Number.parseInt(group, 16));
+  return groups.some((group) => !Number.isInteger(group) || group < 0 || group > 0xffff) ? null : groups;
+}
+
+// IPv6 forms that carry an IPv4 address and are routed by a translator or a
+// tunnel: block them by the embedded IPv4, not the IPv6 prefix. Mirrors
+// api/_notification-webhook-ssrf.ts embeddedIpv4FromIpv6.
+function ipv4EmbeddedInIPv6(ip) {
+  const groups = ipv6Hextets(ip);
+  if (!groups) return null;
+  const [g0, g1, g2, g3, g4, g5, g6, g7] = groups;
+  const dotted = (hi, lo) => [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff].join('.');
+  const zeroPrefix = g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0;
+
+  if (zeroPrefix && g5 === 0xffff) return dotted(g6, g7);                        // ::ffff:0:0/96 IPv4-mapped
+  if (g0 === 0x0064 && g1 === 0xff9b && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) {
+    return dotted(g6, g7);                                                        // 64:ff9b::/96 NAT64
+  }
+  if (g0 === 0x2002) return dotted(g1, g2);                                       // 2002::/16 6to4
+  if (zeroPrefix && g5 === 0) return dotted(g6, g7);                              // ::/96 IPv4-compatible
+  return null;
+}
+
+// Teredo (2001::/32) tunnels to an arbitrary IPv4 chosen by the client, so no
+// embedded-address rule can vet it; the whole 2001::/32 block is reserved.
+function isTeredoIPv6(ip) {
+  const groups = ipv6Hextets(ip);
+  return !!groups && groups[0] === 0x2001 && groups[1] === 0;
+}
+
 function isPrivateIP(ip) {
-  // IPv4-mapped IPv6 — extract the v4 portion
-  const v4Mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
-  const addr = v4Mapped ? v4Mapped[1] : ip;
+  // IPv6 literals that embed an IPv4 (mapped, NAT64, 6to4, compatible) are
+  // judged by that IPv4. WHATWG URL parsing canonicalizes mapped literals to
+  // hexadecimal (::ffff:127.0.0.1 -> ::ffff:7f00:1), so every valid spelling
+  // is normalized before the v4 portion is extracted.
+  if (isTeredoIPv6(ip)) return true;
+  const addr = ipv4EmbeddedInIPv6(ip) || ip;
 
   // IPv6 loopback
   if (addr === '::1' || addr === '::') return true;
@@ -162,19 +458,15 @@ function isPrivateIP(ip) {
   // IPv6 link-local / unique-local
   if (/^f[cd][0-9a-f]{2}:/i.test(addr)) return true; // fc00::/7 (ULA)
   if (/^fe[89ab][0-9a-f]:/i.test(addr)) return true;  // fe80::/10 (link-local)
+  if (/^ff[0-9a-f]{2}:/i.test(addr)) return true;      // ff00::/8 multicast
 
   const parts = addr.split('.').map(Number);
-  if (parts.length !== 4 || parts.some(p => isNaN(p))) return false; // not an IPv4
+  if (parts.length !== 4 || parts.some(p => !Number.isInteger(p) || p < 0 || p > 255)) return false; // not an IPv4
 
-  const [a, b] = parts;
-  if (a === 127) return true;                       // 127.0.0.0/8  loopback
-  if (a === 10) return true;                        // 10.0.0.0/8   private
-  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 private
-  if (a === 192 && b === 168) return true;           // 192.168.0.0/16 private
-  if (a === 169 && b === 254) return true;           // 169.254.0.0/16 link-local
-  if (a === 0) return true;                          // 0.0.0.0/8
-  if (a >= 224) return true;                         // 224.0.0.0+ multicast/reserved
-  return false;
+  const ipInt = ipv4ToInt(parts);
+  return BLOCKED_IPV4_RANGES.some(([baseInt, mask]) => {
+    return (ipInt & mask) === (baseInt & mask);
+  });
 }
 
 async function isSafeUrl(urlString) {
@@ -206,6 +498,9 @@ async function isSafeUrl(urlString) {
   const ipLiteral = hostname.replace(/^\[|\]$/g, '');
   if (isPrivateIP(ipLiteral)) {
     return { safe: false, reason: 'Requests to private/reserved IP addresses are not allowed' };
+  }
+  if (isIP(ipLiteral)) {
+    return { safe: true, resolvedAddresses: [ipLiteral] };
   }
 
   // DNS resolution check — resolve the hostname and verify all resolved IPs
@@ -245,8 +540,36 @@ function json(data, status = 200, extraHeaders = {}) {
   });
 }
 
+function rssProxyJson(data, status = 200) {
+  return json(data, status, RSS_PROXY_SECURITY_HEADERS);
+}
+
+function rssProxyResponse(body, status = 200) {
+  return new Response(body, {
+    status,
+    headers: {
+      ...RSS_PROXY_SECURITY_HEADERS,
+      'content-type': 'application/xml; charset=utf-8',
+    },
+  });
+}
+
 function canCompress(headers, body) {
-  return body.length > 1024 && !headers['content-encoding'];
+  if (!(body.length > 1024) || headers['content-encoding']) return false;
+  const contentType = String(headers['content-type'] || '').toLowerCase();
+  // Already-compressed rasters/media gain nothing from gzip/br and waste CPU (#7382).
+  // SVG (image/svg+xml) is text and still compresses — keep it eligible.
+  if (
+    /^image\/(jpeg|jpg|png|gif|webp|avif|heic|heif|bmp|tiff)(?:;|$)/.test(contentType)
+    || contentType.startsWith('audio/')
+    || contentType.startsWith('video/')
+    || contentType.includes('zip')
+    || contentType.includes('gzip')
+    || contentType.includes('octet-stream')
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function appendVary(existing, token) {
@@ -370,6 +693,8 @@ async function buildRouteTable(root) {
 }
 
 const REQUEST_BODY_CACHE = Symbol('requestBodyCache');
+// Leave time for local fallback within the frontend's 5s request budgets.
+const CLOUD_PROXY_TIMEOUT_MS = 3000;
 
 async function readBody(req) {
   if (Object.prototype.hasOwnProperty.call(req, REQUEST_BODY_CACHE)) {
@@ -401,12 +726,79 @@ function toHeaders(nodeHeaders, options = {}) {
   return headers;
 }
 
-async function proxyToCloud(requestUrl, req, remoteBase) {
-  const target = `${remoteBase}${requestUrl.pathname}${requestUrl.search}`;
+// The renderer forwards a signed-in Pro user's Clerk bearer under its own
+// header: `Authorization` on the renderer → sidecar hop carries the sidecar
+// token, so the user credential cannot share it (#9396).
+const CLOUD_USER_AUTHORIZATION_HEADER = 'x-worldmonitor-user-authorization';
+const CLOUD_BEARER_SHAPE = /^Bearer [A-Za-z0-9._~+/-]+=*$/;
+const CLOUD_SESSION_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+const CLOUD_SESSION_RETRY_MS = 30 * 1000;
+
+// The cloud edge 403s missing, short, and library user agents. The renderer's
+// hop arrives through Rust with none, and a WebView UA would misreport the caller.
+function cloudUserAgent() {
+  return `WorldMonitor-Desktop/${process.env.LOCAL_API_APP_VERSION || 'unknown'} (sidecar)`;
+}
+
+function cloudUrl(remoteBase, pathname) {
+  const target = new URL(remoteBase);
+  target.pathname = `${target.pathname.replace(/\/$/, '')}${pathname}`;
+  return target;
+}
+
+// The gateway authenticates a Pro browser by an anonymous wms_ session plus
+// the Clerk bearer; the bearer alone is ignored on routes that are not
+// tier-gated. Mint the session the way a browser does and reuse it until
+// close to expiry. A failed mint is retried after a pause, not per request.
+async function mintCloudSession(remoteBase) {
+  try {
+    const response = await fetch(cloudUrl(remoteBase, '/api/wm-session'), {
+      method: 'POST',
+      headers: { Origin: 'https://worldmonitor.app', 'User-Agent': cloudUserAgent() },
+      signal: AbortSignal.timeout(CLOUD_PROXY_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    if (typeof payload?.token !== 'string' || !payload.token.startsWith('wms_') || !Number.isFinite(payload.exp)) {
+      return null;
+    }
+    return { token: payload.token, exp: payload.exp };
+  } catch {
+    return null;
+  }
+}
+
+// A failed refresh keeps the current session until it actually expires.
+async function getCloudSessionToken(context) {
+  const now = Date.now();
+  const cached = context.cloudSession;
+  const usable = cached?.token && cached.exp > now ? cached.token : null;
+  if (usable && cached.exp - now > CLOUD_SESSION_REFRESH_MARGIN_MS) return usable;
+  if (cached?.retryAt > now) return usable;
+  context.cloudSessionMint ??= mintCloudSession(context.remoteBase).then((session) => {
+    context.cloudSession = session ?? { ...cached, token: usable, retryAt: Date.now() + CLOUD_SESSION_RETRY_MS };
+    return session?.token ?? usable;
+  }).finally(() => {
+    context.cloudSessionMint = null;
+  });
+  return context.cloudSessionMint;
+}
+
+async function proxyToCloud(requestUrl, req, context) {
+  // One budget covers session minting and the fetch, so a cold session cannot
+  // stretch a request past the renderer's fallback timeout.
+  const deadline = AbortSignal.timeout(CLOUD_PROXY_TIMEOUT_MS);
+  const target = cloudUrl(context.remoteBase, requestUrl.pathname);
+  target.search = requestUrl.search;
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
   const headers = toHeaders(req.headers, { stripOrigin: true });
+  headers.delete(LOCAL_API_TRANSPORT_HEADER);
   // Strip sidecar auth token — meaningless to cloud API.
   headers.delete('Authorization');
+  const userAuthorization = headers.get(CLOUD_USER_AUTHORIZATION_HEADER) ?? '';
+  headers.delete(CLOUD_USER_AUTHORIZATION_HEADER);
+  const userBearer = CLOUD_BEARER_SHAPE.test(userAuthorization) ? userAuthorization : '';
+  headers.set('User-Agent', cloudUserAgent());
   // Strip conditional headers so cloud always returns fresh 200, not 304.
   // The browser may have stale ETags from previous sessions with empty data.
   headers.delete('If-None-Match');
@@ -414,11 +806,92 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
   // Identify sidecar as trusted origin so the cloud API key validator
   // doesn't reject the request (no origin + no key = 401).
   headers.set('Origin', 'https://worldmonitor.app');
-  return fetch(target, {
-    method: req.method,
-    headers,
+  // Inject the configured enterprise key for cloud calls that pass through the
+  // sidecar so auth-gated endpoints (e.g. /api/mcp-proxy per PR #3768, issue
+  // #3723) succeed without each renderer call having to attach it. Renderer-
+  // supplied X-WorldMonitor-Key (e.g. a wm_ user key from runtime config) wins
+  // — don't clobber it.
+  if (!headers.has('X-WorldMonitor-Key')) {
+    const wmKey = process.env.WORLDMONITOR_API_KEY;
+    if (wmKey) headers.set('X-WorldMonitor-Key', wmKey);
+  }
+  // Only a signed-in Pro desktop forwards a bearer.
+  if (userBearer) headers.set('Authorization', userBearer);
+  // Without a key the gateway answers 401, so every desktop presents the
+  // anonymous session a browser holds (#7548). The gateway rejects that session
+  // on tier-gated routes, so it unlocks nothing beyond the public web app.
+  if (!headers.has('X-WorldMonitor-Key')) {
+    const session = await Promise.race([
+      getCloudSessionToken(context),
+      new Promise((resolve) => {
+        if (deadline.aborted) resolve(null);
+        else deadline.addEventListener('abort', () => resolve(null), { once: true });
+      }),
+    ]);
+    if (session) headers.set('X-WorldMonitor-Key', session);
+  }
+  const clientAbort = new AbortController();
+  const onClientClose = () => clientAbort.abort();
+  req.socket.once('close', onClientClose);
+  if (req.socket.destroyed) clientAbort.abort();
+  try {
+    return await fetch(target, {
+      method: req.method,
+      headers,
+      body,
+      signal: AbortSignal.any([clientAbort.signal, deadline]),
+    });
+  } finally {
+    req.socket.off('close', onClientClose);
+  }
+}
+
+async function proxyRegisterInterestToCloud(requestUrl, req, context) {
+  const target = `${context.remoteBase}${requestUrl.pathname}${requestUrl.search}`;
+  const bodyBuffer = await readBody(req);
+  let payload = {};
+  if (bodyBuffer?.length) {
+    try {
+      payload = JSON.parse(bodyBuffer.toString('utf8'));
+    } catch {
+      payload = {};
+    }
+  }
+
+  const normalizedPayload = {
+    ...payload,
+    source: 'desktop-settings',
+  };
+  const body = JSON.stringify(normalizedPayload);
+  const headers = toHeaders(req.headers, { stripOrigin: true });
+  headers.delete(LOCAL_API_TRANSPORT_HEADER);
+  headers.delete(CLOUD_USER_AUTHORIZATION_HEADER);
+  headers.delete('Authorization');
+  headers.delete('If-None-Match');
+  headers.delete('If-Modified-Since');
+  headers.delete('Transfer-Encoding');
+  headers.delete('Content-Encoding');
+  headers.delete('Connection');
+  headers.delete('Expect');
+  headers.delete(DESKTOP_AUTH_TIMESTAMP_HEADER);
+  headers.delete(DESKTOP_AUTH_SIGNATURE_HEADER);
+  headers.set('Origin', 'https://worldmonitor.app');
+  headers.set('User-Agent', CHROME_UA);
+  headers.set('Content-Type', 'application/json');
+  headers.set('Content-Length', String(Buffer.byteLength(body)));
+
+  const secret = process.env[DESKTOP_AUTH_SECRET_ENV];
+  if (secret) {
+    const timestamp = String(Date.now());
+    headers.set(DESKTOP_AUTH_TIMESTAMP_HEADER, timestamp);
+    headers.set(DESKTOP_AUTH_SIGNATURE_HEADER, signDesktopAuthPayload(secret, timestamp, normalizedPayload));
+  }
+
+  return fetchWithTimeout(target, {
+    method: 'POST',
+    headers: Object.fromEntries(headers.entries()),
     body,
-  });
+  }, 15000);
 }
 
 function pickModule(pathname, routes) {
@@ -441,6 +914,11 @@ const cloudPreferred = new Set();
 // Routes/prefixes that should always proxy to cloud. The sidecar lacks
 // WS_RELAY_URL (Yahoo/Finnhub relay) and seeded Redis data. These routes
 // return 200-with-empty-data locally, so normal cloudFallback won't trigger.
+//
+// `/api/market/v1/` covers ListMarketQuotes, so the desktop app gets the same
+// seed-first contract as the web dashboard — including custom watchlist
+// symbols resolved through the cloud provider adapter (#6305). Serving it
+// locally would find no seed snapshot and report every symbol unavailable.
 const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
   ? [
     '/api/market/v1/',
@@ -450,14 +928,189 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
     '/api/research/v1/',
   ]
   : [];
-const cloudPreferredExact = !process.env.WS_RELAY_URL
-  ? new Set(['/api/bootstrap'])
-  : new Set();
+// These routes read seed-owned Redis snapshots that the local sidecar does not
+// hold. They must stay cloud-preferred even when a desktop configures WS relay;
+// relay availability does not provide Upstash credentials to local handlers.
+// Seed-only RPC routes in families that also have live handlers (#5906); the
+// whole-family cases are in cloudPreferredSeedOnlyPrefixes below.
+// tests/sidecar-cloud-preferred-seed-only.test.mjs derives this set from the
+// generated route tables and fails when an entry is not a real RPC path, when
+// its handler reaches an upstream itself, or when a seed-only route is missing.
+const cloudPreferredExact = new Set([
+  '/api/bootstrap',
+  '/api/aviation/v1/get-airport-ops-summary',
+  '/api/displacement/v1/get-displacement-summary',
+  '/api/displacement/v1/get-internal-displacement',
+  '/api/displacement/v1/get-cross-border-movements',
+  '/api/economic/v1/get-bis-credit',
+  '/api/economic/v1/get-bis-exchange-rates',
+  '/api/economic/v1/get-bis-policy-rates',
+  '/api/economic/v1/get-bls-series',
+  '/api/economic/v1/get-capital-flows',
+  '/api/economic/v1/get-china-macro-snapshot',
+  '/api/economic/v1/get-crude-inventories',
+  '/api/economic/v1/get-ecb-fx-rates',
+  '/api/economic/v1/get-economic-calendar',
+  '/api/economic/v1/get-economic-stress',
+  '/api/economic/v1/get-energy-capacity',
+  '/api/economic/v1/get-energy-crisis-policies',
+  '/api/economic/v1/get-energy-prices',
+  '/api/economic/v1/get-eu-fsi',
+  '/api/economic/v1/get-eu-gas-storage',
+  '/api/economic/v1/get-eu-yield-curve',
+  '/api/economic/v1/get-eurostat-country-data',
+  '/api/economic/v1/get-fao-food-price-index',
+  '/api/economic/v1/get-fred-series',
+  '/api/economic/v1/get-fred-series-batch',
+  '/api/economic/v1/get-government-yield-curve',
+  '/api/economic/v1/get-macro-signals',
+  '/api/economic/v1/get-nat-gas-storage',
+  '/api/economic/v1/get-national-debt',
+  '/api/economic/v1/get-oil-inventories',
+  '/api/economic/v1/get-oil-stocks-analysis',
+  '/api/economic/v1/get-us-cpi-monthly',
+  '/api/economic/v1/get-us-interest-rates',
+  '/api/economic/v1/get-us-treasury-par-yield-curve',
+  '/api/economic/v1/get-world-cpi-monthly',
+  '/api/economic/v1/list-bigmac-prices',
+  '/api/economic/v1/list-fuel-prices',
+  '/api/economic/v1/list-global-tenders',
+  '/api/economic/v1/list-grocery-basket-prices',
+  '/api/forecast/v1/get-forecasts',
+  '/api/forecast/v1/get-simulation-outcome',
+  '/api/forecast/v1/get-simulation-package',
+  '/api/infrastructure/v1/get-bootstrap-data',
+  '/api/infrastructure/v1/get-temporal-baseline',
+  '/api/infrastructure/v1/list-internet-ddos-attacks',
+  '/api/infrastructure/v1/list-internet-outages',
+  '/api/infrastructure/v1/list-internet-traffic-anomalies',
+  '/api/infrastructure/v1/list-temporal-anomalies',
+  '/api/intelligence/v1/compute-energy-shock',
+  '/api/intelligence/v1/get-china-decision-signals',
+  '/api/intelligence/v1/get-country-energy-profile',
+  '/api/intelligence/v1/get-country-history',
+  '/api/intelligence/v1/get-country-port-activity',
+  '/api/intelligence/v1/get-country-risk',
+  '/api/intelligence/v1/get-gdelt-topic-timeline',
+  '/api/intelligence/v1/get-pizzint-status',
+  '/api/intelligence/v1/get-regional-brief',
+  '/api/intelligence/v1/get-regional-snapshot',
+  '/api/intelligence/v1/get-social-velocity',
+  '/api/intelligence/v1/list-cross-source-signals',
+  '/api/intelligence/v1/list-gps-interference',
+  '/api/intelligence/v1/list-market-implications',
+  '/api/intelligence/v1/list-material-events',
+  '/api/intelligence/v1/list-satellites',
+  '/api/intelligence/v1/list-security-advisories',
+  '/api/intelligence/v1/list-wsb-tickers',
+  '/api/market/v1/get-cot-positioning',
+  '/api/market/v1/get-fear-greed-index',
+  '/api/market/v1/get-gold-intelligence',
+  '/api/market/v1/get-hyperliquid-flow',
+  '/api/market/v1/get-market-breadth-history',
+  '/api/market/v1/get-physical-divergence-index',
+  '/api/market/v1/get-physical-premiums',
+  '/api/market/v1/get-sector-summary',
+  '/api/market/v1/list-ai-tokens',
+  '/api/market/v1/list-commodity-quotes',
+  '/api/market/v1/list-crypto-sectors',
+  '/api/market/v1/list-defi-tokens',
+  '/api/market/v1/list-earnings-calendar',
+  '/api/market/v1/list-etf-flows',
+  '/api/market/v1/list-gulf-quotes',
+  '/api/market/v1/list-other-tokens',
+  '/api/military/v1/get-defense-industrial-base',
+  '/api/military/v1/get-theater-posture',
+  '/api/military/v1/get-usni-fleet-report',
+  '/api/military/v1/list-defense-patents',
+  '/api/news/v1/summarize-article-cache',
+  '/api/research/v1/list-arxiv-papers',
+  '/api/research/v1/list-hackernews-items',
+  '/api/research/v1/list-trending-repos',
+  '/api/resilience/v1/get-demographics-capability',
+  '/api/resilience/v1/get-food-stocks',
+  '/api/resilience/v1/get-runtime-manifest',
+  '/api/scenario/v1/get-scenario-status',
+  '/api/supply-chain/v1/get-bypass-options',
+  '/api/supply-chain/v1/get-chokepoint-dependencies',
+  '/api/supply-chain/v1/get-chokepoint-history',
+  '/api/supply-chain/v1/get-country-vulnerabilities',
+  '/api/supply-chain/v1/get-fuel-shortage-detail',
+  '/api/supply-chain/v1/get-mineral-production',
+  '/api/supply-chain/v1/get-multi-sector-cost-shock',
+  '/api/supply-chain/v1/get-pipeline-detail',
+  '/api/supply-chain/v1/get-shipping-rates',
+  '/api/supply-chain/v1/get-shipping-stress',
+  '/api/supply-chain/v1/get-storage-facility-detail',
+  '/api/supply-chain/v1/list-energy-disruptions',
+  '/api/supply-chain/v1/list-fuel-shortages',
+  '/api/supply-chain/v1/list-pipelines',
+  '/api/supply-chain/v1/list-storage-facilities',
+  '/api/supply-chain/v1/list-vulnerability-rankings',
+  '/api/trade/v1/get-customs-revenue',
+  '/api/trade/v1/get-tariff-trends',
+  '/api/trade/v1/get-trade-barriers',
+  '/api/trade/v1/get-trade-flows',
+  '/api/trade/v1/get-trade-restrictions',
+  '/api/trade/v1/list-comtrade-flows',
+  '/api/v2/shipping/route-intelligence',
+  '/api/webcam/v1/list-webcams',
+]);
+// Route families whose EVERY handler only reads seed-owned Redis (#5906). The
+// sidecar never holds Upstash credentials (UPSTASH_* is not in
+// ALLOWED_ENV_KEYS), a Redis miss degrades to an empty 200, and an empty 200
+// never trips the `!response.ok` cloud fallback — so served locally these
+// families render blank panels with no error anywhere. Always cloud,
+// WS_RELAY_URL or not. A family that gains a live handler moves to exact
+// entries; the contract test above enforces that.
+const cloudPreferredSeedOnlyPrefixes = [
+  '/api/climate/v1/',
+  '/api/conflict/v1/',
+  '/api/consumer-prices/v1/',
+  '/api/cyber/v1/',
+  '/api/health/v1/',
+  '/api/natural/v1/',
+  '/api/positive-events/v1/',
+  '/api/prediction/v1/',
+  '/api/radiation/v1/',
+  '/api/safety/v1/',
+  '/api/sanctions/v1/',
+  '/api/seismology/v1/',
+  '/api/thermal/v1/',
+  '/api/unrest/v1/',
+  '/api/wildfire/v1/',
+];
+const cloudPreferredAlwaysPrefixes = ['/api/scorecard/v1/'];
+
+// Versioned route families (api/v{N}/{domain}) the desktop deliberately never
+// bundles — scripts/build-sidecar-handlers.mjs refuses to build an undeclared
+// one, and its CLOUD_ONLY_ROUTE_FAMILIES must list exactly these (#5907).
+// Routed to the cloud on purpose, WS_RELAY_URL or not: route-intelligence reads
+// seed-owned Redis (empty 200 locally, so `!ok` fallback never fires) and the
+// webhook family is Pro-gated + server-persisted, so the gate lives upstream.
+// Before this list the family reached the cloud only via the 404 "handler
+// missing" fallback — undeclared, and invisible when cloudFallback is off.
+const cloudOnlyRouteFamilyPrefixes = ['/api/v2/shipping/'];
 
 function isCloudPreferred(pathname) {
   if (cloudPreferred.has(pathname)) return true;
   if (cloudPreferredExact.has(pathname)) return true;
-  return cloudPreferredPrefixes.some(p => pathname.startsWith(p));
+  return cloudPreferredAlwaysPrefixes.some(p => pathname.startsWith(p))
+    || cloudPreferredSeedOnlyPrefixes.some(p => pathname.startsWith(p))
+    || cloudOnlyRouteFamilyPrefixes.some(p => pathname.startsWith(p))
+    || cloudPreferredPrefixes.some(p => pathname.startsWith(p));
+}
+
+async function isLocalOnlyRequest(req, pathname) {
+  if (req.method !== 'POST' || pathname !== '/api/news/v1/summarize-article') return false;
+  const body = await readBody(req);
+  if (!body?.length) return false;
+  try {
+    const parsed = JSON.parse(body.toString('utf8'));
+    return parsed?.provider === 'ollama' && parsed?.mode === 'translate';
+  } catch {
+    return false;
+  }
 }
 
 const TRAFFIC_LOG_MAX = 200;
@@ -518,6 +1171,15 @@ async function importHandler(modulePath) {
   }
 }
 
+function remoteBaseLooksPrivate(remoteBase) {
+  let parsed;
+  try { parsed = new URL(remoteBase); } catch { return false; }
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '');
+  if (hostname === 'localhost') return true;
+  if (isIP(hostname)) return isPrivateIP(hostname);
+  return false;
+}
+
 function resolveConfig(options = {}) {
   const port = Number(options.port ?? process.env.LOCAL_API_PORT ?? 46123);
   const remoteBase = String(options.remoteBase ?? process.env.LOCAL_API_REMOTE_BASE ?? 'https://api.worldmonitor.app').replace(/\/$/, '');
@@ -532,10 +1194,25 @@ function resolveConfig(options = {}) {
   const mode = String(options.mode ?? process.env.LOCAL_API_MODE ?? 'desktop-sidecar');
   const requestedFallback = String(options.cloudFallback ?? process.env.LOCAL_API_CLOUD_FALLBACK ?? '') === 'true';
   const cloudFallback = mode === 'docker' ? false : requestedFallback;
-  if (mode === 'docker' && requestedFallback) {
-    (options.logger ?? console).warn('[local-api] Cloud fallback disabled in Docker mode (self-hosted instances must not proxy to api.worldmonitor.app)');
-  }
+  // Programmatic dev/test escape hatch only; CLI/env startup keeps private remoteBase blocked.
+  const allowPrivateRemoteBase = options.allowPrivateRemoteBase === true;
+  // Programmatic-only test escape hatch for adding extra origins to the
+  // private-fetch allowlist (e.g. distinct upstream test servers). Mirrors
+  // allowPrivateRemoteBase: no env-var path, so production startup can't
+  // widen the SSRF boundary by accident.
+  const allowPrivateFetchOrigins = Array.isArray(options.allowPrivateFetchOrigins)
+    ? options.allowPrivateFetchOrigins.filter((o) => typeof o === 'string' && o.length > 0)
+    : [];
   const logger = options.logger ?? console;
+  if (mode === 'docker' && requestedFallback) {
+    logger.warn('[local-api] Cloud fallback disabled in Docker mode (self-hosted instances must not proxy to api.worldmonitor.app)');
+  }
+  if (cloudFallback && !allowPrivateRemoteBase && remoteBaseLooksPrivate(remoteBase)) {
+    logger.warn(
+      `[local-api] cloudFallback enabled but remoteBase=${remoteBase} is private/loopback; ` +
+      'requests will be blocked by SSRF protection. Pass allowPrivateRemoteBase=true programmatically for dev/test.'
+    );
+  }
 
   return {
     port,
@@ -545,6 +1222,8 @@ function resolveConfig(options = {}) {
     apiDir,
     mode,
     cloudFallback,
+    allowPrivateRemoteBase,
+    allowPrivateFetchOrigins,
     logger,
   };
 }
@@ -582,13 +1261,23 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
     }
   }
   try {
-    const resp = await proxyToCloud(requestUrl, req, context.remoteBase);
+    const resp = await proxyToCloud(requestUrl, req, context);
     if (!resp.ok) {
       context.logger.warn(`[local-api] cloud returned ${resp.status} for ${requestUrl.pathname}`);
     }
     return resp;
   } catch (error) {
-    context.logger.error('[local-api] cloud fallback failed', requestUrl.pathname, error);
+    if (error?.code === 'ERR_SSRF_BLOCKED') {
+      // error.message already carries "SSRF blocked: <reason> (url=<redacted>)".
+      // Surface the actionable remediation so a misconfigured LOCAL_API_REMOTE_BASE
+      // doesn't read as a vague 5xx.
+      context.logger.error(
+        `[local-api] cloud fallback blocked by SSRF protection for ${requestUrl.pathname}: ${error.message}. ` +
+        'If remoteBase intentionally points at a private/loopback host, pass allowPrivateRemoteBase=true programmatically.'
+      );
+    } else {
+      context.logger.error('[local-api] cloud fallback failed', requestUrl.pathname, error);
+    }
     return null;
   }
 }
@@ -614,49 +1303,66 @@ function makeCorsHeaders(req) {
   return {
     'Access-Control-Allow-Origin': getSidecarCorsOrigin(req),
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
   };
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
-  // Use node:https with IPv4 forced — Node.js built-in fetch (undici) tries IPv6
-  // first and some servers (EIA, NASA FIRMS) have broken IPv6 causing ETIMEDOUT.
+  // Use node:https with IPv4 by default — Node.js built-in fetch (undici) tries
+  // IPv6 first and some servers (EIA, NASA FIRMS) have broken IPv6. Callers
+  // with a validated address can instead pin its detected family below.
   const u = new URL(url);
+  const allowPrivateNetwork = options.allowPrivateNetwork === true;
+  const fetchOptions = { ...options };
+  delete fetchOptions.allowPrivateNetwork;
+  const resolvedAddress = fetchOptions.resolvedAddress;
+  const requestedFamily = fetchOptions.resolvedFamily;
+  delete fetchOptions.resolvedAddress;
+  delete fetchOptions.resolvedFamily;
+  const resolvedFamily = resolvedAddress ? isIP(resolvedAddress) : 0;
+  if (resolvedAddress && resolvedFamily === 0) {
+    throw new TypeError('resolvedAddress must be an IPv4 or IPv6 address');
+  }
+  if (requestedFamily != null && requestedFamily !== resolvedFamily) {
+    throw new TypeError('resolvedFamily must match resolvedAddress');
+  }
   if (u.protocol === 'https:') {
     return new Promise((resolve, reject) => {
       const reqOpts = {
         hostname: u.hostname,
         port: u.port || 443,
         path: u.pathname + u.search,
-        method: options.method || 'GET',
-        headers: options.headers || {},
-        family: 4,
+        method: fetchOptions.method || 'GET',
+        headers: fetchOptions.headers || {},
+        family: resolvedFamily || 4,
       };
       // Pin to a pre-resolved IP to prevent TOCTOU DNS rebinding.
       // The hostname is kept for SNI / TLS certificate validation.
-      if (options.resolvedAddress) {
-        reqOpts.lookup = (_hostname, _opts, cb) => cb(null, options.resolvedAddress, 4);
+      if (resolvedAddress) {
+        reqOpts.lookup = makePinnedLookup(resolvedAddress, resolvedFamily);
       }
       const req = https.request(reqOpts, (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
         res.on('end', () => {
-          const body = Buffer.concat(chunks).toString();
-          resolve({
-            ok: res.statusCode >= 200 && res.statusCode < 300,
-            status: res.statusCode,
-            headers: { get: (k) => res.headers[k.toLowerCase()] || null },
-            text: () => Promise.resolve(body),
-            json: () => Promise.resolve(JSON.parse(body)),
-          });
+          const body = Buffer.concat(chunks);
+          const headers = new Headers();
+          for (const [key, value] of Object.entries(res.headers)) {
+            if (value) headers.set(key, Array.isArray(value) ? value.join(', ') : value);
+          }
+          try {
+            resolve(buildSafeResponse(res.statusCode, res.statusMessage, headers, body));
+          } catch (error) {
+            reject(error);
+          }
         });
       });
       req.on('error', reject);
       req.setTimeout(timeoutMs, () => { req.destroy(new Error('Request timed out')); });
-      if (options.body) {
-        const body = normalizeRequestBody(options.body);
+      if (fetchOptions.body) {
+        const body = normalizeRequestBody(fetchOptions.body);
         if (body != null) req.write(body);
       }
       req.end();
@@ -666,17 +1372,19 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   // For pinned addresses on plain HTTP, rewrite the URL to connect to the
   // validated IP and set the Host header so virtual-host routing still works.
   let fetchUrl = url;
-  const fetchHeaders = { ...(options.headers || {}) };
-  if (options.resolvedAddress && u.protocol === 'http:') {
+  const fetchHeaders = { ...(fetchOptions.headers || {}) };
+  if (resolvedAddress && u.protocol === 'http:') {
     const pinned = new URL(url);
     fetchHeaders['Host'] = pinned.host;
-    pinned.hostname = options.resolvedAddress;
+    pinned.hostname = resolvedFamily === 6 ? `[${resolvedAddress}]` : resolvedAddress;
     fetchUrl = pinned.toString();
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(fetchUrl, { ...options, headers: fetchHeaders, signal: controller.signal });
+    const requestOptions = { ...fetchOptions, headers: fetchHeaders, signal: controller.signal };
+    if (allowPrivateNetwork) requestOptions[ALLOW_PRIVATE_NETWORK_FETCH] = true;
+    return await fetch(fetchUrl, requestOptions);
   } finally {
     clearTimeout(timer);
   }
@@ -725,17 +1433,6 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 
   try {
     switch (key) {
-    case 'GROQ_API_KEY': {
-      const response = await fetchWithTimeout('https://api.groq.com/openai/v1/models', {
-        headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
-      });
-      const text = await response.text();
-      if (isCloudflareChallenge403(response, text)) return ok('Groq key stored (Cloudflare blocked verification)');
-      if (isAuthFailure(response.status, text)) return fail('Groq rejected this key');
-      if (!response.ok) return fail(`Groq probe failed (${response.status})`);
-      return ok('Groq key verified');
-    }
-
     case 'OPENROUTER_API_KEY': {
       const response = await fetchWithTimeout('https://openrouter.ai/api/v1/models', {
         headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
@@ -931,12 +1628,12 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       } catch {
         return fail('Invalid URL');
       }
-      const response = await fetchWithTimeout(probeUrl, { method: 'GET' }, 8000);
+      const response = await fetchWithTimeout(probeUrl, { method: 'GET', allowPrivateNetwork: true }, 8000);
       if (!response.ok) {
         // Fall back to native Ollama /api/tags endpoint
         try {
           const tagsUrl = new URL('/api/tags', value).toString();
-          const tagsResponse = await fetchWithTimeout(tagsUrl, { method: 'GET' }, 8000);
+          const tagsResponse = await fetchWithTimeout(tagsUrl, { method: 'GET', allowPrivateNetwork: true }, 8000);
           if (!tagsResponse.ok) return fail(`Ollama probe failed (${tagsResponse.status})`);
           return ok('Ollama endpoint verified (native API)');
         } catch {
@@ -1018,8 +1715,11 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     case 'ICAO_API_KEY':
       return ok('ICAO API key stored (verification requires NOTAM endpoint access)');
 
-      default:
-        return ok('Key stored');
+    case DESKTOP_AUTH_SECRET_ENV:
+      return ok('Desktop shared secret stored');
+
+    default:
+      return ok('Key stored');
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'provider probe failed';
@@ -1031,8 +1731,22 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 }
 
 async function dispatch(requestUrl, req, routes, context) {
+  // Docker's public proxy supplies transport auth, not native administration authority.
+  if (context.mode === 'docker' && requestUrl.pathname.startsWith('/api/local-')) {
+    return json({ error: 'Native administration is unavailable in Docker mode' }, 403);
+  }
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: makeCorsHeaders(req) });
+  }
+
+  // Liveness probe — exempt from auth so container/orchestrator healthchecks
+  // can hit it without the per-session LOCAL_API_TOKEN. Deliberately minimal
+  // and dependency-free: a 200 here proves the sidecar process is up and
+  // routing (and, when reached via nginx /api/, that the whole request path
+  // works end-to-end). Does not touch cloud, Redis, or any data source.
+  if (requestUrl.pathname === '/api/sidecar-health') {
+    return json({ status: 'ok', mode: context.mode, port: context.port });
   }
 
   // Health check — exempt from auth to support external monitoring tools
@@ -1040,89 +1754,45 @@ async function dispatch(requestUrl, req, routes, context) {
     return handleLocalServiceStatus(context);
   }
 
-  // HLS proxy — exempt from auth because <video src="..."> cannot carry
-  // custom headers.  Proxies HLS manifests and segments from allowlisted CDN
-  // hosts, adding the required Referer header that browsers cannot set.
-  // Desktop-only (sidecar); web uses YouTube fallback.
-  if (requestUrl.pathname === '/api/hls-proxy') {
-    const ALLOWED_HLS_HOSTS = new Set(['cdn-ca2-na.lncnetworks.host']);
-    const upstreamRaw = requestUrl.searchParams.get('url');
-    if (!upstreamRaw) return new Response('Missing url param', { status: 400, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
-    let upstream;
-    try { upstream = new URL(upstreamRaw); } catch { return new Response('Invalid url', { status: 400, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } }); }
-    if (upstream.protocol !== 'https:' || !ALLOWED_HLS_HOSTS.has(upstream.hostname)) {
-      return new Response('Host not allowed', { status: 403, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
-    }
-    try {
-      const hlsResp = await new Promise((resolve, reject) => {
-        const reqOpts = {
-          hostname: upstream.hostname,
-          port: 443,
-          path: upstream.pathname + upstream.search,
-          method: 'GET',
-          headers: { 'Referer': 'https://livenewschat.eu/', 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
-          family: 4,
-        };
-        const r = https.request(reqOpts, (res) => {
-          const chunks = [];
-          res.on('data', c => chunks.push(c));
-          res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
-        });
-        r.on('error', reject);
-        r.setTimeout(10000, () => r.destroy(new Error('HLS upstream timeout')));
-        r.end();
-      });
-      if (hlsResp.status < 200 || hlsResp.status >= 300) {
-        return new Response(`Upstream ${hlsResp.status}`, { status: hlsResp.status, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
-      }
-      const ct = hlsResp.headers['content-type'] || '';
-      const isManifest = upstreamRaw.endsWith('.m3u8') || ct.includes('mpegurl') || ct.includes('x-mpegurl');
-      if (isManifest) {
-        const basePath = upstream.pathname.substring(0, upstream.pathname.lastIndexOf('/') + 1);
-        const baseOrigin = upstream.origin;
-        let manifest = hlsResp.body.toString('utf-8');
-        manifest = manifest.replace(/^(?!#)(\S+)/gm, (match) => {
-          const full = match.startsWith('http') ? match : `${baseOrigin}${basePath}${match}`;
-          return `/api/hls-proxy?url=${encodeURIComponent(full)}`;
-        });
-        manifest = manifest.replace(/URI="([^"]+)"/g, (_m, uri) => {
-          const full = uri.startsWith('http') ? uri : `${baseOrigin}${basePath}${uri}`;
-          return `URI="/api/hls-proxy?url=${encodeURIComponent(full)}"`;
-        });
-        return new Response(manifest, { status: 200, headers: { 'content-type': 'application/vnd.apple.mpegurl', 'cache-control': 'no-cache', ...makeCorsHeaders(req) } });
-      }
-      return new Response(hlsResp.body, { status: 200, headers: { 'content-type': ct || 'application/octet-stream', 'cache-control': 'no-cache', ...makeCorsHeaders(req) } });
-    } catch (e) {
-      context.logger.warn('[hls-proxy] error:', e.message);
-      return new Response('Proxy error', { status: 502, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
-    }
-  }
-
   // YouTube embed bridge — exempt from auth because iframe src cannot carry
   // Authorization headers.  Serves a minimal HTML page that loads the YouTube
   // IFrame Player API from a localhost origin (which YouTube accepts, unlike
   // tauri://localhost).  No sensitive data is exposed.
   if (requestUrl.pathname === '/api/youtube-embed') {
+    // Exactly one of videoId (that video) or channel (whatever the channel has live right now).
     const videoId = requestUrl.searchParams.get('videoId');
-    if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+    const channel = requestUrl.searchParams.get('channel');
+    if ((videoId === null) === (channel === null)) {
+      return new Response('Pass exactly one of videoId or channel', { status: 400, headers: { 'content-type': 'text/plain' } });
+    }
+    if (videoId !== null && !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
       return new Response('Invalid videoId', { status: 400, headers: { 'content-type': 'text/plain' } });
+    }
+    if (channel !== null && !/^UC[A-Za-z0-9_-]{22}$/.test(channel)) {
+      return new Response('Invalid channel', { status: 400, headers: { 'content-type': 'text/plain' } });
     }
     const autoplay = requestUrl.searchParams.get('autoplay') === '0' ? '0' : '1';
     const mute = requestUrl.searchParams.get('mute') === '0' ? '0' : '1';
+    // The caller's presentation decides the chrome; a tile that draws its own asks for none.
+    const controls = requestUrl.searchParams.get('controls') === '0' ? '0' : '1';
     const vq = ['small','medium','large','hd720','hd1080'].includes(requestUrl.searchParams.get('vq') || '') ? requestUrl.searchParams.get('vq') : '';
     const origin = `http://localhost:${context.port}`;
     // parentOrigin is the actual parent window origin (tauri://localhost, asset://localhost, etc.)
-    // passed by the frontend so window.parent.postMessage reaches it. Only accept known desktop
-    // schemes; fall back to '*' if absent or unrecognised.
+    // passed by the frontend so bridge messages reach it. Only accept known desktop origins;
+    // an absent or unrecognized origin gets a local no-op bridge.
     const rawParentOrigin = requestUrl.searchParams.get('parentOrigin') || '';
     const isAllowedParentOrigin = /^(tauri|asset):\/\/localhost$/.test(rawParentOrigin)
       || /^https?:\/\/localhost(:\d{1,5})?$/.test(rawParentOrigin)
-      || /^https?:\/\/[\w-]+\.tauri\.localhost(:\d{1,5})?$/.test(rawParentOrigin);
-    const parentOrigin = isAllowedParentOrigin ? rawParentOrigin : '*';
-    const safeVideoId = JSON.stringify(String(videoId));
-    const safeOrigin = JSON.stringify(origin);
-    const safeParentOrigin = JSON.stringify(parentOrigin);
-    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>function tryStorageAccess(){if(document.requestStorageAccess){document.requestStorageAccess().catch(function(){})}}tryStorageAccess();var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture; storage-access'+(a?'; '+a:''));console.log('[yt-embed] patched iframe allow=autoplay+storage-access')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)window.parent.postMessage({type:'yt-mute-state',muted:last},${safeParentOrigin});muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;window.parent.postMessage({type:'yt-mute-state',muted:m},${safeParentOrigin})}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:${safeVideoId},host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:${safeOrigin},widget_referrer:${safeOrigin}},events:{onReady:function(){console.log('[yt-embed] onReady');window.parent.postMessage({type:'yt-ready'},${safeParentOrigin});${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality(${JSON.stringify(vq)});` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');window.parent.postMessage({type:'yt-autoplay-failed'},${safeParentOrigin})}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();window.parent.postMessage({type:'yt-error',code:e.data},${safeParentOrigin})},onStateChange:function(e){window.parent.postMessage({type:'yt-state',state:e.data},${safeParentOrigin});if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
+      || /^https?:\/\/(?:[\w-]+\.)?tauri\.localhost(:\d{1,5})?$/.test(rawParentOrigin);
+    // A channel embeds as videoId 'live_stream' with a channel player var.
+    const safeVideoId = jsonForScript(videoId ?? 'live_stream');
+    const channelPlayerVar = channel ? `channel:${jsonForScript(channel)},` : '';
+    const safeOrigin = jsonForScript(origin);
+    const safeParentOrigin = jsonForScript(isAllowedParentOrigin ? rawParentOrigin : null);
+    const bridgePostMessageScript = isAllowedParentOrigin
+      ? `function postToParent(message){window.parent.postMessage(message,${safeParentOrigin})}`
+      : 'function postToParent(){}';
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>${bridgePostMessageScript}function tryStorageAccess(){if(document.requestStorageAccess){document.requestStorageAccess().catch(function(){})}}tryStorageAccess();var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture; storage-access'+(a?'; '+a:''));console.log('[yt-embed] patched iframe allow=autoplay+storage-access')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)postToParent({type:'yt-mute-state',muted:last});muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;postToParent({type:'yt-mute-state',muted:m})}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function postVideoData(){var d={},duration=null,state=null;try{d=player.getVideoData()||{}}catch(e){}try{duration=player.getDuration()}catch(e){}try{state=player.getPlayerState()}catch(e){}postToParent({type:'yt-video-data',videoId:d.video_id||'',isLive:typeof d.isLive==='boolean'?d.isLive:null,title:d.title||'',author:d.author||'',duration:typeof duration==='number'?duration:null,state:typeof state==='number'?state:null})}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:${safeVideoId},host:'https://www.youtube.com',playerVars:{${channelPlayerVar}autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:${controls},modestbranding:1,enablejsapi:1,origin:${safeOrigin},widget_referrer:${safeOrigin}},events:{onReady:function(){console.log('[yt-embed] onReady');postToParent({type:'yt-ready'});${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality(${jsonForScript(vq)});` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');postToParent({type:'yt-autoplay-failed'})}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();postToParent({type:'yt-error',code:e.data})},onStateChange:function(e){postToParent({type:'yt-state',state:e.data});if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!${isAllowedParentOrigin}||e.origin!==${safeParentOrigin}||e.source!==window.parent)return;if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break;case'probe':postVideoData();break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
     return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'permissions-policy': 'autoplay=*, encrypted-media=*, storage-access=(self "https://www.youtube.com")', ...makeCorsHeaders(req) } });
   }
 
@@ -1130,13 +1800,28 @@ async function dispatch(requestUrl, req, routes, context) {
   // Every endpoint below requires a valid LOCAL_API_TOKEN.  This prevents
   // other local processes, malicious browser scripts, and rogue extensions
   // from accessing the sidecar API without the per-session token.
+  //
+  // Default-deny: if LOCAL_API_TOKEN is unset/empty we reject every request.
+  // Treating "unset" as "auth disabled" turns any standalone sidecar run
+  // (e.g. Docker mode) into an open local-HTTP proxy reachable by other
+  // local users, browser tabs on allowed origins, etc. The Tauri Rust
+  // shell always sets LOCAL_API_TOKEN at launch; production callers must
+  // do the same.
   const expectedToken = process.env.LOCAL_API_TOKEN;
-  if (expectedToken) {
-    const authHeader = req.headers.authorization || '';
-    if (authHeader !== `Bearer ${expectedToken}`) {
-      context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
-      return json({ error: 'Unauthorized' }, 401);
-    }
+  if (!expectedToken) {
+    context.logger.warn(
+      `[local-api] LOCAL_API_TOKEN not set — refusing request to ${requestUrl.pathname}. ` +
+      `Set LOCAL_API_TOKEN before starting the sidecar.`,
+    );
+    return json({ error: 'Service misconfigured: LOCAL_API_TOKEN not set' }, 503);
+  }
+  const authHeader = req.headers.authorization || '';
+  const transportToken = req.headers[LOCAL_API_TRANSPORT_HEADER] || '';
+  const hasTransportAuth = tokenMatches(transportToken, expectedToken);
+  const hasLegacyAuth = tokenMatches(authHeader, `Bearer ${expectedToken}`);
+  if (!hasTransportAuth && !hasLegacyAuth) {
+    context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
+    return json({ error: 'Unauthorized' }, 401);
   }
 
   if (requestUrl.pathname === '/api/local-status') {
@@ -1150,40 +1835,25 @@ async function dispatch(requestUrl, req, routes, context) {
       routes: routes.length,
     });
   }
-  // LLM health endpoint — mirrors probe logic from server/_shared/llm-health.ts.
-  // TODO: refactor to import getLlmHealthStatus() once handlers share a process-level module cache.
   if (requestUrl.pathname === '/api/llm-health') {
     const PROBE_TIMEOUT = 2000;
-    async function probeOrigin(url) {
-      try { await fetch(url, { method: 'GET', signal: AbortSignal.timeout(PROBE_TIMEOUT) }); return true; } catch { return false; }
-    }
-    const providers = [];
-    const providerChecks = [];
-    const ollamaUrl = process.env.OLLAMA_API_URL || process.env.LLM_API_URL;
-    const groqKey = process.env.GROQ_API_KEY;
-    const openrouterKey = process.env.OPENROUTER_API_KEY;
-
-    if (ollamaUrl) {
+    async function probeOrigin(url, options = {}) {
       try {
-        const origin = new URL(ollamaUrl).origin;
-        providerChecks.push(
-          probeOrigin(origin).then((available) => ({ name: 'ollama', url: origin, available })),
-        );
-      } catch {}
+        await fetchWithTimeout(url, { method: 'GET', allowPrivateNetwork: options.allowPrivateNetwork === true }, PROBE_TIMEOUT);
+        return true;
+      } catch {
+        return false;
+      }
     }
-    if (groqKey && groqKey.startsWith('gsk_')) {
-      providerChecks.push(
-        probeOrigin('https://api.groq.com').then((available) => ({ name: 'groq', url: 'https://api.groq.com', available })),
-      );
-    }
-    if (openrouterKey) {
-      providerChecks.push(
-        probeOrigin('https://openrouter.ai').then((available) => ({ name: 'openrouter', url: 'https://openrouter.ai', available })),
-      );
-    }
-    if (providerChecks.length > 0) {
-      providers.push(...(await Promise.all(providerChecks)));
-    }
+    const providers = await Promise.all(
+      getConfiguredLlmHealthProviders(process.env).map(async (provider) => ({
+        name: provider.name,
+        url: provider.url,
+        available: await probeOrigin(provider.url, {
+          allowPrivateNetwork: provider.allowPrivateNetwork,
+        }),
+      })),
+    );
 
     const anyAvailable = providers.some(p => p.available);
     return json({ available: anyAvailable, providers, checkedAt: Date.now() });
@@ -1210,93 +1880,149 @@ async function dispatch(requestUrl, req, routes, context) {
     }
     return json({ verboseMode });
   }
-  // Registration — call Convex directly when CONVEX_URL is available (self-hosted),
-  // otherwise proxy to cloud (desktop sidecar never has CONVEX_URL).
+  // Registration — use the authenticated Convex HTTP bridge when CONVEX_URL is
+  // available (self-hosted), otherwise proxy to cloud (desktop sidecar never
+  // has CONVEX_URL).
+  // Keeps the legacy /api/register-interest local path so older desktop builds
+  // continue to work; cloud fallback rewrites to the new sebuf RPC path.
   if (requestUrl.pathname === '/api/register-interest' && req.method === 'POST') {
     const convexUrl = process.env.CONVEX_URL;
     if (!convexUrl) {
-      const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'no CONVEX_URL');
-      if (cloudResponse) return cloudResponse;
+      const cloudUrl = new URL(requestUrl);
+      cloudUrl.pathname = '/api/leads/v1/register-interest';
+      try {
+        const cloudResponse = await proxyRegisterInterestToCloud(cloudUrl, req, context);
+        if (!cloudResponse.ok) {
+          context.logger.warn(`[local-api] cloud returned ${cloudResponse.status} for ${cloudUrl.pathname}`);
+        }
+        return cloudResponse;
+      } catch (error) {
+        context.logger.error('[local-api] register-interest cloud fallback failed', error);
+      }
       return json({ error: 'Registration service unavailable' }, 503);
     }
     try {
       const body = await new Promise((resolve, reject) => {
+        if (Number(req.headers['content-length']) > MAX_REGISTRATION_BODY_BYTES) {
+          req.resume();
+          resolve(null);
+          return;
+        }
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let bytes = 0;
+        const onData = (chunk) => {
+          bytes += chunk.length;
+          if (bytes > MAX_REGISTRATION_BODY_BYTES) {
+            chunks.length = 0;
+            req.off('data', onData);
+            req.resume();
+            resolve(null);
+            return;
+          }
+          chunks.push(chunk);
+        };
+        req.on('data', onData);
         req.on('end', () => resolve(Buffer.concat(chunks).toString()));
         req.on('error', reject);
       });
+      if (body === null) {
+        return json({ error: 'Request body too large' }, 413, { Connection: 'close' });
+      }
       const parsed = JSON.parse(body);
-      const email = parsed.email;
-      if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      const email = parsed?.email;
+      if (typeof email !== 'string' || email.length > MAX_REGISTRATION_EMAIL_LENGTH
+        || !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(email)) {
         return json({ error: 'Invalid email address' }, 400);
       }
-      const response = await fetchWithTimeout(`${convexUrl}/api/mutation`, {
+      const sharedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+      if (!sharedSecret) {
+        context.logger.warn('[local-api] self-hosted register-interest bridge is not configured');
+        return json({ error: 'Registration service unavailable' }, 503);
+      }
+      const convexSiteUrl = (
+        process.env.CONVEX_SITE_URL || convexUrl.replace(/\.convex\.cloud\/?$/, '.convex.site')
+      ).replace(/\/$/, '');
+      const args = {
+        email,
+        source: typeof parsed.source === 'string' ? parsed.source : 'desktop',
+        appVersion: typeof parsed.appVersion === 'string' ? parsed.appVersion : 'unknown',
+      };
+      if (typeof parsed.referredBy === 'string') args.referredBy = parsed.referredBy;
+      const response = await fetchWithTimeout(`${convexSiteUrl}/api/internal-register-interest`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: 'registerInterest:register',
-          args: { email, source: parsed.source || 'desktop', appVersion: parsed.appVersion || 'unknown' },
-          format: 'json',
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'worldmonitor-sidecar/1.0',
+          'x-convex-shared-secret': sharedSecret,
+        },
+        body: JSON.stringify(args),
       }, 15000);
+      if (!response.ok) {
+        context.logger.warn(`[local-api] self-hosted register-interest bridge returned ${response.status}`);
+        return json({ error: 'Registration failed' }, 502);
+      }
       const responseBody = await response.text();
       let result;
-      try { result = JSON.parse(responseBody); } catch { result = { status: 'registered' }; }
-      if (result.status === 'error') {
-        return json({ error: result.errorMessage || 'Registration failed' }, 500);
+      try {
+        result = JSON.parse(responseBody);
+      } catch {
+        return json({ error: 'Registration failed' }, 502);
       }
-      return json(result.value || result);
+      if (!result || (result.status !== 'registered' && result.status !== 'already_registered')) {
+        return json({ error: 'Registration failed' }, 502);
+      }
+      return json({ status: 'registered', referralCode: '', referralCount: 0, position: 0, emailSuppressed: false });
     } catch (e) {
       context.logger.error(`[register-interest] error: ${e.message}`);
       return json({ error: 'Registration service unreachable' }, 502);
     }
   }
 
-  // YouTube live detection — requires residential proxy (Railway relay).
-  // Direct fetch from sidecar fails (YouTube blocks datacenter IPs).
-  // Always proxy to cloud, bypassing the cloudFallback flag.
+  // YouTube video naming for channel management (oEmbed). The cloud edge handler owns the
+  // rate limit and the retired channel-detection answer, so always proxy to cloud,
+  // bypassing the cloudFallback flag.
   if (requestUrl.pathname === '/api/youtube/live') {
-    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'youtube-live needs relay');
+    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'youtube video names come from the cloud');
     if (cloudResponse) return cloudResponse;
-    return json({ error: 'YouTube live detection unavailable' }, 503);
+    return json({ error: 'YouTube video lookup unavailable' }, 503);
   }
 
   // RSS proxy — fetch public feeds with SSRF protection
   if (requestUrl.pathname === '/api/rss-proxy') {
     const feedUrl = requestUrl.searchParams.get('url');
-    if (!feedUrl) return json({ error: 'Missing url parameter' }, 400);
+    if (!feedUrl) return rssProxyJson({ error: 'Missing url parameter' }, 400);
 
     // SSRF protection: block private IPs, reserved ranges, and DNS rebinding
     const safety = await isSafeUrl(feedUrl);
     if (!safety.safe) {
       context.logger.warn(`[local-api] rss-proxy SSRF blocked: ${safety.reason} (url=${feedUrl})`);
-      return json({ error: safety.reason }, 403);
+      return rssProxyJson({ error: safety.reason }, 403);
     }
 
     try {
       const parsed = new URL(feedUrl);
-      // Pin to the first IPv4 address validated by isSafeUrl() so the
-      // actual TCP connection goes to the same IP we checked, closing
-      // the TOCTOU DNS-rebinding window.
-      const pinnedV4 = safety.resolvedAddresses?.find(a => a.includes('.'));
+      // Pin to an address validated by isSafeUrl() so the actual TCP
+      // connection goes to the same IP and family we checked, closing
+      // the TOCTOU DNS-rebinding window for IPv4 and IPv6-only feeds.
+      const pinned = pickPinnedAddress(safety.resolvedAddresses);
+      if (!pinned) {
+        context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${feedUrl})`);
+        return rssProxyJson({ error: 'Could not resolve hostname' }, 403);
+      }
       const response = await fetchWithTimeout(feedUrl, {
         headers: {
           'User-Agent': CHROME_UA,
           'Accept': 'application/rss+xml, application/xml, text/xml, */*',
           'Accept-Language': 'en-US,en;q=0.9',
         },
-        ...(pinnedV4 ? { resolvedAddress: pinnedV4 } : {}),
-      }, parsed.hostname.includes('news.google.com') ? 20000 : 12000);
-      const contentType = response.headers?.get?.('content-type') || 'application/xml';
+        resolvedAddress: pinned.address,
+        resolvedFamily: pinned.family,
+      }, parsed.hostname === 'news.google.com' ? 20000 : 12000);
       const rssBody = await response.text();
-      return new Response(rssBody || '', {
-        status: response.status,
-        headers: { 'content-type': contentType },
-      });
+      return rssProxyResponse(rssBody || '', response.status);
     } catch (e) {
       const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
-      return json({ error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed', url: feedUrl }, isTimeout ? 504 : 502);
+      return rssProxyJson({ error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed', url: feedUrl }, isTimeout ? 504 : 502);
     }
   }
 
@@ -1379,14 +2105,17 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  if (context.cloudFallback && isCloudPreferred(requestUrl.pathname)) {
+  const localOnly = await isLocalOnlyRequest(req, requestUrl.pathname);
+  const cloudPreferredAttempted = !localOnly && context.cloudFallback && isCloudPreferred(requestUrl.pathname);
+  if (cloudPreferredAttempted) {
     const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'cloud-preferred');
     if (cloudResponse) return cloudResponse;
   }
+  const allowCloudFallback = !localOnly && context.cloudFallback && !cloudPreferredAttempted;
 
   const modulePath = pickModule(requestUrl.pathname, routes);
   if (!modulePath || !existsSync(modulePath)) {
-    if (context.cloudFallback) {
+    if (allowCloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler missing');
       if (cloudResponse) return cloudResponse;
     }
@@ -1398,7 +2127,7 @@ async function dispatch(requestUrl, req, routes, context) {
     const mod = await importHandler(modulePath);
     if (typeof mod.default !== 'function') {
       logOnce(context.logger, requestUrl.pathname, 'invalid handler module');
-      if (context.cloudFallback) {
+      if (allowCloudFallback) {
         const cloudResponse = await tryCloudFallback(requestUrl, req, context, `invalid handler module`);
         if (cloudResponse) return cloudResponse;
       }
@@ -1408,6 +2137,22 @@ async function dispatch(requestUrl, req, routes, context) {
     const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
     const hdrs = toHeaders(req.headers, { stripOrigin: true });
     hdrs.set('Origin', `http://127.0.0.1:${context.port}`);
+    // The OpenSky route is product-only. Its local handler requires the
+    // desktop product key in addition to the native transport token that was
+    // verified above. Inject it inside the sidecar so the renderer never sees
+    // or handles the key.
+    if (requestUrl.pathname === '/api/opensky') {
+      const productKey = process.env.WORLDMONITOR_API_KEY;
+      if (productKey) hdrs.set('X-WorldMonitor-Key', productKey);
+    }
+    // The transport credential authenticates the nginx/sidecar hop only. Do
+    // not expose it to route handlers, where Authorization is caller identity
+    // (OAuth bearer) and X-WorldMonitor-Key is the caller's API key.
+    hdrs.delete(LOCAL_API_TRANSPORT_HEADER);
+    hdrs.delete(CLOUD_USER_AUTHORIZATION_HEADER);
+    if (hdrs.get('Authorization') === `Bearer ${expectedToken}`) {
+      hdrs.delete('Authorization');
+    }
     const request = new Request(requestUrl.toString(), {
       method: req.method,
       headers: hdrs,
@@ -1417,14 +2162,14 @@ async function dispatch(requestUrl, req, routes, context) {
     const response = await mod.default(request);
     if (!(response instanceof Response)) {
       logOnce(context.logger, requestUrl.pathname, 'handler returned non-Response');
-      if (context.cloudFallback) {
+      if (allowCloudFallback) {
         const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler returned non-Response');
         if (cloudResponse) return cloudResponse;
       }
       return json({ error: 'Handler returned invalid response', endpoint: requestUrl.pathname }, 500);
     }
 
-    if (!response.ok && context.cloudFallback) {
+    if (!response.ok && allowCloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, `local status ${response.status}`);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     }
@@ -1433,7 +2178,7 @@ async function dispatch(requestUrl, req, routes, context) {
   } catch (error) {
     const reason = error.code === 'ERR_MODULE_NOT_FOUND' ? 'missing dependency' : error.message;
     logOnce(context.logger, requestUrl.pathname, reason);
-    if (context.cloudFallback) {
+    if (allowCloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, error);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     }
@@ -1441,10 +2186,24 @@ async function dispatch(requestUrl, req, routes, context) {
   }
 }
 
+// Test seam: lets tests shrink ipv4Fetch's upstream idle timeout so a
+// silent-stall test doesn't have to wait out the real 12s production value.
+// Production code never calls this.
+export const __testing__ = {
+  isCloudPreferred,
+  canCompress,
+  jsonForScript,
+  isYahooFinanceHost,
+  setUpstreamIdleTimeoutMs(ms) {
+    _upstreamIdleTimeoutMs = ms;
+  },
+};
+
 export async function createLocalApiServer(options = {}) {
   const context = resolveConfig(options);
   loadVerboseState(context.dataDir);
   const routes = await buildRouteTable(context.apiDir);
+  let unregisterSelfFetchOrigins = null;
 
   const server = createServer(async (req, res) => {
     const requestUrl = new URL(req.url || '/', `http://127.0.0.1:${context.port}`);
@@ -1538,6 +2297,43 @@ export async function createLocalApiServer(options = {}) {
       const address = server.address();
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
       context.port = boundPort;
+      const extraAllowedPrivateOrigins = [];
+      if (context.mode === 'docker') {
+        const addConfiguredPrivateOrigin = (envKey, blockedService) => {
+          const rawUrl = process.env[envKey];
+          if (!rawUrl) return;
+          try {
+            extraAllowedPrivateOrigins.push(new URL(rawUrl).origin);
+          } catch (err) {
+            context.logger.warn(
+              `[local-api] ${envKey} is not a valid URL; not added to the private-fetch allowlist (${blockedService}): ${err.message}`,
+            );
+          }
+        };
+
+        // Docker self-host ONLY: the Redis REST proxy (UPSTASH_REDIS_REST_URL)
+        // points at an internal private host (e.g. http://redis-rest:80 on a
+        // docker network). Without trusting it the SSRF guard blocks every Redis
+        // call and all /api/* return 503 REDIS_DOWN. On desktop,
+        // UPSTASH_REDIS_REST_URL is a public Upstash https origin that already
+        // passes the SSRF check, so this path is docker-only.
+        addConfiguredPrivateOrigin('UPSTASH_REDIS_REST_URL', 'Redis calls will be SSRF-blocked');
+
+        // SELF_HOSTING.md documents LLM_API_URL for compose-network or LAN
+        // endpoints; OLLAMA_API_URL is the supported desktop runtime setting.
+        // Without trusting their exact configured origins, the global SSRF
+        // guard blocks every private LLM probe and silently skips the provider.
+        for (const envKey of ['LLM_API_URL', 'OLLAMA_API_URL']) {
+          addConfiguredPrivateOrigin(envKey, 'LLM calls will be SSRF-blocked');
+        }
+      }
+      if (context.allowPrivateRemoteBase) {
+        try { extraAllowedPrivateOrigins.push(new URL(context.remoteBase).origin); } catch {}
+      }
+      for (const origin of context.allowPrivateFetchOrigins) {
+        try { extraAllowedPrivateOrigins.push(new URL(origin).origin); } catch {}
+      }
+      unregisterSelfFetchOrigins = registerSidecarAllowedPrivateFetchOrigins(boundPort, extraAllowedPrivateOrigins);
 
       const portFile = process.env.LOCAL_API_PORT_FILE;
       if (portFile) {
@@ -1546,22 +2342,13 @@ export async function createLocalApiServer(options = {}) {
 
       context.logger.log(`[local-api] listening on http://127.0.0.1:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback})`);
 
-      // Warm LLM health cache in background (non-blocking)
-      (async () => {
-        const urls = [
-          process.env.OLLAMA_API_URL || process.env.LLM_API_URL,
-          process.env.GROQ_API_KEY ? 'https://api.groq.com' : null,
-          process.env.OPENROUTER_API_KEY ? 'https://openrouter.ai' : null,
-        ].filter(Boolean);
-        for (const url of urls) {
-          try { await fetch(url, { method: 'GET', signal: AbortSignal.timeout(2000) }); } catch {}
-        }
-        if (urls.length) console.log(`[local-api] LLM health warmed for ${urls.length} provider(s)`);
-      })();
-
       return { port: boundPort };
     },
     async close() {
+      if (unregisterSelfFetchOrigins) {
+        unregisterSelfFetchOrigins();
+        unregisterSelfFetchOrigins = null;
+      }
       await new Promise((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
       });

@@ -45,7 +45,8 @@ function extractLayerRenderers(source) {
       const renderers = renderersMatch[1].match(/'(\w+)'/g)?.map(s => s.replace(/'/g, '')) ?? [];
       result[key] = renderers;
     } else {
-      result[key] = ['flat', 'globe'];
+      // Layers with no explicit `renderers:` inherit the def() factory default.
+      result[key] = ['svg', 'deck', 'globe'];
     }
   }
   return result;
@@ -80,6 +81,7 @@ const VARIANT_DEFAULTS = {
   finance:   { desktop: 'FINANCE_MAP_LAYERS',    mobile: 'FINANCE_MOBILE_MAP_LAYERS' },
   happy:     { desktop: 'HAPPY_MAP_LAYERS',      mobile: 'HAPPY_MOBILE_MAP_LAYERS' },
   commodity: { desktop: 'COMMODITY_MAP_LAYERS',  mobile: 'COMMODITY_MOBILE_MAP_LAYERS' },
+  energy:    { desktop: 'ENERGY_MAP_LAYERS',     mobile: 'ENERGY_MOBILE_MAP_LAYERS' },
 };
 
 describe('variant layer guardrail', () => {
@@ -105,6 +107,19 @@ describe('variant layer guardrail', () => {
       );
     });
   }
+
+  it('every variant MapLayers object includes canadaRoads', () => {
+    for (const { desktop, mobile } of Object.values(VARIANT_DEFAULTS)) {
+      for (const name of [desktop, mobile]) {
+        const re = new RegExp(`const ${name}[\\s\\S]*?canadaRoads:\\s*(true|false)`);
+        assert.match(
+          panelsSource,
+          re,
+          `${name} must set canadaRoads so VARIANT_LAYER_ORDER layers exist on the MapLayers object`,
+        );
+      }
+    }
+  });
 
   it('every layer in VARIANT_LAYER_ORDER has at least one DeckGL/Globe renderer', () => {
     const noRenderer = [];

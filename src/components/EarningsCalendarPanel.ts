@@ -1,6 +1,8 @@
 import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { localYmd } from '@/utils/local-date';
+import { t, getLocale } from '@/services/i18n';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 let _client: MarketServiceClient | null = null;
 async function getMarketClient(): Promise<MarketServiceClient> {
@@ -52,9 +54,9 @@ function dateLabel(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
   if (Number.isNaN(d.getTime())) return dateStr;
   const days = Math.round((d.getTime() - today.getTime()) / 86_400_000);
-  const formatted = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  if (days === 0) return `TODAY · ${formatted}`;
-  if (days === 1) return `TOMORROW · ${formatted}`;
+  const formatted = d.toLocaleDateString(getLocale(), { weekday: 'short', month: 'short', day: 'numeric' });
+  if (days === 0) return t('components.earningsCalendar.today', { date: formatted });
+  if (days === 1) return t('components.earningsCalendar.tomorrow', { date: formatted });
   return formatted.toUpperCase().replace(',', ' ·');
 }
 
@@ -79,31 +81,35 @@ function renderEntry(e: EarningsEntry): string {
       : e.surpriseDirection === 'miss'
         ? 'background:rgba(231,76,60,0.2);color:#e74c3c'
         : 'background:rgba(255,255,255,0.08);color:var(--text-dim)';
-    const badgeLabel = e.surpriseDirection === 'beat' ? 'BEAT' : e.surpriseDirection === 'miss' ? 'MISS' : 'IN LINE';
+    const badgeLabel = e.surpriseDirection === 'beat'
+      ? t('components.earningsCalendar.surprise.beat')
+      : e.surpriseDirection === 'miss'
+        ? t('components.earningsCalendar.surprise.miss')
+        : t('components.earningsCalendar.surprise.inLine');
     const pct = surprisePct(e.epsActual, e.epsEstimate);
     epsHtml = `
-      <span style="font-size:11px;font-weight:600;color:var(--text)">EPS ${escapeHtml(epsActFmt)}</span>
-      <span style="font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;${badgeStyle}">${escapeHtml(badgeLabel)}${pct ? ` ${escapeHtml(pct)}` : ''}</span>`;
+      <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text)">${escapeHtml(t('components.earningsCalendar.epsActual', { value: epsActFmt }))}</span>
+      <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:1px 4px;border-radius:3px;${badgeStyle}">${escapeHtml(badgeLabel)}${pct ? ` ${escapeHtml(pct)}` : ''}</span>`;
   } else if (epsEstFmt) {
-    epsHtml = `<span style="font-size:11px;color:var(--text-dim)">EPS est ${escapeHtml(epsEstFmt)}</span>`;
+    epsHtml = `<span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(t('components.earningsCalendar.epsEstimate', { value: epsEstFmt }))}</span>`;
   }
 
   // Revenue section
   let revHtml = '';
   if (e.hasActuals && revActFmt) {
-    revHtml = `<span style="font-size:10px;color:var(--text-dim)">${escapeHtml(revActFmt)} rev</span>`;
+    revHtml = `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(t('components.earningsCalendar.revenueActual', { value: revActFmt }))}</span>`;
   } else if (revEstFmt) {
-    revHtml = `<span style="font-size:10px;color:rgba(255,255,255,0.25)">${escapeHtml(revEstFmt)} est</span>`;
+    revHtml = `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:rgba(255,255,255,0.25)">${escapeHtml(t('components.earningsCalendar.revenueEstimate', { value: revEstFmt }))}</span>`;
   }
 
   return `
     <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
       <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;padding-top:1px">
-        ${hourLabel ? `<span style="font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;${hourStyle};letter-spacing:0.04em">${escapeHtml(hourLabel)}</span>` : ''}
+        ${hourLabel ? `<span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:2px 5px;border-radius:3px;${hourStyle};letter-spacing:0.04em">${escapeHtml(hourLabel)}</span>` : ''}
       </div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(e.company)}</div>
-        <div style="font-size:10px;color:var(--text-dim);letter-spacing:0.04em">${escapeHtml(e.symbol)}</div>
+        <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(e.company)}</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);letter-spacing:0.04em">${escapeHtml(e.symbol)}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0">
         ${epsHtml ? `<div style="display:flex;align-items:center;gap:5px">${epsHtml}</div>` : ''}
@@ -116,7 +122,7 @@ function renderGroup(date: string, entries: EarningsEntry[], isFirst: boolean): 
   const borderStyle = isFirst ? '' : 'border-top:1px solid rgba(255,255,255,0.06);';
   return `
     <div style="${borderStyle}padding-top:${isFirst ? '0' : '10'}px;padding-bottom:2px">
-      <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.06em;padding:0 0 5px">${escapeHtml(dateLabel(date))}</div>
+      <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.06em;padding:0 0 5px">${escapeHtml(dateLabel(date))}</div>
       ${entries.map(renderEntry).join('')}
     </div>`;
 }
@@ -125,7 +131,7 @@ export class EarningsCalendarPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'earnings-calendar', title: 'Earnings Calendar', showCount: false });
+    super({ id: 'earnings-calendar', title: t('components.earningsCalendar.title'), showCount: false, infoTooltip: t('components.earningsCalendar.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {
@@ -139,19 +145,20 @@ export class EarningsCalendarPanel extends Panel {
       const today = new Date();
       const future = new Date();
       future.setDate(future.getDate() + 14);
-      const fromDate = today.toISOString().slice(0, 10);
-      const toDate = future.toISOString().slice(0, 10);
+      // Local-time day keys (see localYmd) — UTC slicing skewed the window.
+      const fromDate = localYmd(today);
+      const toDate = localYmd(future);
       const resp = await client.listEarningsCalendar({ fromDate, toDate });
 
       if (resp.unavailable || !resp.earnings?.length) {
-        if (!this._hasData) this.showError('No earnings data', () => void this.fetchData());
+        if (!this._hasData) this.showError(t('components.earningsCalendar.errors.noData'), () => void this.fetchData());
         return false;
       }
 
       this.render(resp.earnings as EarningsEntry[]);
       return true;
     } catch (e) {
-      if (!this._hasData) this.showError(e instanceof Error ? e.message : 'Failed to load', () => void this.fetchData());
+      if (!this._hasData) this.showError(e instanceof Error ? e.message : t('components.earningsCalendar.errors.failedToLoad'), () => void this.fetchData());
       return false;
     }
   }
@@ -174,6 +181,6 @@ export class EarningsCalendarPanel extends Panel {
         ${sortedDates.map((d, i) => renderGroup(d, grouped.get(d)!, i === 0)).join('')}
       </div>`;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

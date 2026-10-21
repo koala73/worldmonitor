@@ -1,0 +1,117 @@
+{
+  "$comment": "The official MCP registry refuses to republish a version whose payload changed, and publish-mcp-registry.mjs compares the WHOLE canonicalized manifest. Nothing forces SERVER_VERSION to move with that payload: server-card.json::tools tracks the code registry, so 68, 69, 71 and 72 tools all shipped under 1.17.0 while the published description sat frozen at 39 (#7372), and a copy edit to server.json::description does the same with even less of a version-bump smell. Each version therefore pins the exact payload it publishes — `tools` for a legible error, `manifestSha256` over the derived manifest for every other field. Changing what is published means bumping SERVER_VERSION (api/mcp/constants.ts) plus `version` and `serverInfo.version` in server-card.json and server.json, then adding a NEW entry here. Editing a published entry in place does not un-publish it: the registry still holds the old payload, so the publish job fails closed on every run until the version is bumped.",
+  "versions": {
+    "1.17.0": {
+      "tools": 72,
+      "manifestSha256": "28c51a2caeb612865d404056e4936e048955ae9d63673b4e9294469c459aac87"
+    },
+    "1.18.0": {
+      "tools": 74,
+      "manifestSha256": "bb153560ee54f85f9b00bccd5474f04b9abc256e31049a1040c176f505e8fcef"
+    },
+    "1.19.0": {
+      "tools": 74,
+      "manifestSha256": "cce31fc35eb392a49394ea38321d52ed0136122af0d9e95137da873c3717e71c"
+    },
+    "1.20.0": {
+      "tools": 75,
+      "manifestSha256": "ae38d1237ffd4b03fc37679f67304d03677dcd4ee8751096eaa5044336f8932f"
+    },
+    "1.21.0": {
+      "tools": 75,
+      "manifestSha256": "10721ab9326c8cbee651aa6da67034fbe67d8d38cee37628ec336f01345b46bb"
+    },
+    "1.22.0": {
+      "tools": 77,
+      "manifestSha256": "a8507b8a2c6664cb0b104fb35137af71796b65b2ca3d665ca8c0d5450b2a874e"
+    },
+    "1.23.0": {
+      "tools": 78,
+      "manifestSha256": "f8bdb5c1ba55aea079d021ec730d76a5ce69357f587a61336266eef044db6614"
+    },
+    "1.24.0": {
+      "tools": 82,
+      "manifestSha256": "b9a06f28e7d69febe5fd6c873436cf96693dcde70cadad5012404e049573caf2"
+    },
+    "1.25.0": {
+      "tools": 84,
+      "manifestSha256": "f854b68643af780122236fe4eb4ced596f3cd01c89f1b6bc2e4cd3f4db119514"
+    },
+    "1.26.0": {
+      "tools": 86,
+      "manifestSha256": "3320ade37e1db7803d15f4ee58a48b41c6bf292f694cd744ab14fe91a89c06d5"
+    },
+    "1.27.0": {
+      "tools": 87,
+      "manifestSha256": "cb7ed3fe6b228521451d10449f1bf97f356f8994c9c07bbf645fb9cf213cea6e"
+    },
+    "1.28.0": {
+      "tools": 88,
+      "manifestSha256": "c24c2315b0bf4010dbfaa824c81c88f9cf4cde2f4828729b8657d12133a41b14"
+    },
+    "1.29.0": {
+      "tools": 89,
+      "manifestSha256": "804a68696407a6f0eba82969316805da7930419634b1520143d16950173e422b"
+    },
+    "1.30.0": {
+      "tools": 89,
+      "manifestSha256": "7c6458fe9d49816bda47a388f8f3f8c5f7e704f42563779b2358747ceb6a5b7e"
+    },
+    "1.31.0": {
+      "tools": 90,
+      "manifestSha256": "11582cec757cf8faf64774644b15c19196ba524ff4fc70a26683aec58fea966e"
+    },
+    "1.32.0": {
+      "tools": 93,
+      "manifestSha256": "e3c991220dc386d7c0788c51edf4a84917c08ff83d186928129df309f53458c6"
+    },
+    "1.33.0": {
+      "tools": 94,
+      "manifestSha256": "68b45483faff1018deff9e60f48fc3281eefb2173aa8e92ed6d134e59af5cbae"
+    },
+    "1.34.0": {
+      "tools": 94,
+      "manifestSha256": "953a561054b7f1c5b7729220db9db3e02ac77dd1f18b2b73512a79e7dbccf10b"
+    },
+    "1.35.0": {
+      "tools": 94,
+      "manifestSha256": "e84a44f955835e47fe90718f7065fe6f764bd859b7849b841114e63a6bcb43c5"
+    },
+    "1.36.0": {
+      "tools": 94,
+      "manifestSha256": "38a2a713963cef05b3426e87b01e079304879adaa9a9b5af2bc16c4f5b11123f"
+    },
+    "1.37.0": {
+      "tools": 93,
+      "manifestSha256": "4be34f904399d6e65dfe3f7737833a542b7b4f2eefd9df6cbb03b94d4a90c130"
+    },
+    "1.38.0": {
+      "tools": 93,
+      "manifestSha256": "9e74d9114333970bb6e4114e0a9c33eaeeb1600abc776572ffaa4228a76f185e"
+    },
+    "1.39.0": {
+      "tools": 93,
+      "manifestSha256": "c53016e7ab8c5ea33b647540f32459ed3512257c62a100bef2440033e7e5010c"
+    },
+    "1.40.0": {
+      "tools": 94,
+      "manifestSha256": "fd452109e9b895187951c672b1a71ab386c65d52ffffdc06bfe42163905f9b01"
+    },
+    "1.41.0": {
+      "tools": 95,
+      "manifestSha256": "e40fea81edb8dfb6a70494cbaa1d3e50805ed3127f10cd222611402861b44eb0"
+    },
+    "1.42.0": {
+      "tools": 96,
+      "manifestSha256": "9849377af987661798320ab6f03281c1508db1d8ce4cf53d857624cbe5e2a075"
+    },
+    "1.43.0": {
+      "tools": 97,
+      "manifestSha256": "e50c00e533976f6c6ca13bbf69c9f632f84f3e50369c9c10e9a4d930e69a2833"
+    },
+    "1.44.0": {
+      "tools": 95,
+      "manifestSha256": "2a6ea6bb7a7b20970b1358335fd4a65b94286aad08ccec20b1581bad4ca7b047"
+    }
+  }
+}

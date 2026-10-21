@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+import { pathToFileURL } from 'node:url';
+import { loadEnvFile, loadSharedConfig, runSeed, fetchCoinPaprikaTickersById, coingeckoEndpoint, fetchCoinGeckoWithRetryBudget } from './_seed-utils.mjs';
 
 const defiConfig = loadSharedConfig('defi-tokens.json');
 const aiConfig = loadSharedConfig('ai-tokens.json');
@@ -15,30 +16,31 @@ const CACHE_TTL = 5400; // 90min — 1h buffer over 30min cron cadence (was 60mi
 
 const ALL_IDS = [...new Set([...defiConfig.ids, ...aiConfig.ids, ...otherConfig.ids])];
 const COINPAPRIKA_ID_MAP = { ...defiConfig.coinpaprika, ...aiConfig.coinpaprika, ...otherConfig.coinpaprika };
+const COINPAPRIKA_IDS = ALL_IDS.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
 
-async function fetchWithRateLimitRetry(url, maxAttempts = 5, headers = { Accept: 'application/json', 'User-Agent': CHROME_UA }) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const resp = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
-    if (resp.status === 429) {
-      const wait = Math.min(10_000 * (i + 1), 60_000);
-      console.warn(`  CoinGecko 429 — waiting ${wait / 1000}s (attempt ${i + 1}/${maxAttempts})`);
-      await sleep(wait);
-      continue;
-    }
-    if (!resp.ok) throw new Error(`CoinGecko HTTP ${resp.status}`);
-    return resp;
-  }
-  throw new Error('CoinGecko rate limit exceeded after retries');
-}
+export const REQUEST_TIMEOUT_MS = 15_000;
+// Ceiling on the whole CoinGecko phase, in-flight request included. Sized so
+// that this plus COINPAPRIKA_WORST_CASE_MS fits the bundle section timeout
+// that SIGTERMs this seeder; tests/seed-fetch-budget.test.mjs gates that
+// arithmetic against the manifest, so when it trips lower this rather than
+// raise timeoutMs.
+export const COINGECKO_RETRY_BUDGET_MS = 45_000;
+// The fallback runs COINPAPRIKA_IDS in rounds of COINPAPRIKA_CONCURRENCY, each
+// round bounded by one request timeout. Both values are passed to the helper
+// explicitly so this derivation describes the call as made, and mapping a new
+// token widens the budget instead of silently breaking the invariant.
+const COINPAPRIKA_CONCURRENCY = 4;
+export const COINPAPRIKA_WORST_CASE_MS = Math.ceil(COINPAPRIKA_IDS.length / COINPAPRIKA_CONCURRENCY) * REQUEST_TIMEOUT_MS;
 
 async function fetchFromCoinGecko() {
-  const apiKey = process.env.COINGECKO_API_KEY;
-  const baseUrl = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
+  const { baseUrl, headers } = coingeckoEndpoint();
   const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${ALL_IDS.join(',')}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`;
-  const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA };
-  if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
 
-  const resp = await fetchWithRateLimitRetry(url, 5, headers);
+  const resp = await fetchCoinGeckoWithRetryBudget(url, {
+    headers,
+    requestTimeoutMs: REQUEST_TIMEOUT_MS,
+    budgetMs: COINGECKO_RETRY_BUDGET_MS,
+  });
   const data = await resp.json();
   if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
   return data;
@@ -46,16 +48,12 @@ async function fetchFromCoinGecko() {
 
 async function fetchFromCoinPaprika() {
   console.log('  [CoinPaprika] Falling back to CoinPaprika...');
-  const resp = await fetch('https://api.coinpaprika.com/v1/tickers?quotes=USD', {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
+  const tickers = await fetchCoinPaprikaTickersById(COINPAPRIKA_IDS, {
+    concurrency: COINPAPRIKA_CONCURRENCY,
+    timeoutMs: REQUEST_TIMEOUT_MS,
   });
-  if (!resp.ok) throw new Error(`CoinPaprika HTTP ${resp.status}`);
-  const allTickers = await resp.json();
-  const paprikaIds = new Set(ALL_IDS.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean));
   const reverseMap = new Map(Object.entries(COINPAPRIKA_ID_MAP).map(([g, p]) => [p, g]));
-  return allTickers
-    .filter((t) => paprikaIds.has(t.id))
+  return tickers
     .map((t) => ({
       id: reverseMap.get(t.id) || t.id,
       current_price: t.quotes.USD.price,
@@ -83,7 +81,7 @@ function mapTokens(ids, meta, byId) {
   return tokens;
 }
 
-async function fetchTokenPanels() {
+export async function fetchTokenPanels() {
   let raw;
   try {
     raw = await fetchFromCoinGecko();
@@ -103,26 +101,54 @@ async function fetchTokenPanels() {
   return { defi, ai, other, total };
 }
 
-function validate(data) {
+// validate() runs on the POST-publishTransform payload (the canonical defi
+// panel itself, shape {tokens, ...}) — NOT the pre-transform {defi, ai, other}
+// shape. The prior body checked data.defi/.ai/.other and silently forced the
+// skipped-write path every run. AI/OTHER panels are validated implicitly by
+// their own extraKey declareRecords on write.
+export function validate(data) {
   return (
-    Array.isArray(data?.defi?.tokens) &&
-    data.defi.tokens.length >= 1 &&
-    (data.defi.tokens.some((t) => t.price > 0) ||
-      data.ai.tokens.some((t) => t.price > 0) ||
-      data.other.tokens.some((t) => t.price > 0))
+    Array.isArray(data?.tokens) &&
+    data.tokens.length >= 1 &&
+    data.tokens.some((t) => t.price > 0)
   );
 }
 
-runSeed('market', 'token-panels', DEFI_KEY, fetchTokenPanels, {
+// Canonical key (DEFI_KEY) holds the defi panel object `{tokens, ...}` after
+// publishTransform. declareRecords must match the POST-transform shape;
+// counting `data.defi/ai/other` on the transformed payload returned 0 and
+// forced runSeed into RETRY, leaving all 3 token keys stale.
+export function declareRecords(data) {
+  return Array.isArray(data?.tokens) ? data.tokens.length : 0;
+}
+
+// Each panel has its own {tokens, ...} shape — reuse canonical declareRecords
+// since the transformed extra-key payloads are structurally identical to the
+// canonical one (a single panel). `skipWhenEmpty` guards against a partial
+// upstream fetch (CoinGecko dropping the AI or Other IDs for a cycle while DeFi
+// still resolves, so validateFn passes on the canonical panel): without it,
+// runSeed would clobber the good cached AI/Other panel with a recordCount=0
+// write — blanking the UI panel and tripping the seed-contract probe's
+// minRecords:1 floor (false 503). Exported so a test can assert the guard.
+export const TOKEN_PANEL_EXTRA_KEYS = [
+  { key: AI_KEY,    transform: (data) => data.ai,    ttl: CACHE_TTL, declareRecords, skipWhenEmpty: true },
+  { key: OTHER_KEY, transform: (data) => data.other, ttl: CACHE_TTL, declareRecords, skipWhenEmpty: true },
+];
+
+// isMain guard — required so tests/agents can `import` declareRecords without
+// firing runSeed on module load (which would touch Redis and process.exit).
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) runSeed('market', 'token-panels', DEFI_KEY, fetchTokenPanels, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'coingecko-paprika-fallback',
   recordCount: (data) => data.total,
   publishTransform: (data) => data.defi,
-  extraKeys: [
-    { key: AI_KEY, transform: (data) => data.ai, ttl: CACHE_TTL },
-    { key: OTHER_KEY, transform: (data) => data.other, ttl: CACHE_TTL },
-  ],
+  extraKeys: TOKEN_PANEL_EXTRA_KEYS,
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 90,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

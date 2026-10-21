@@ -1,0 +1,56 @@
+---
+title: "Telegram Intel"
+description: "Topic-tabbed Telegram-channel feed — open-source intelligence mirrored through a relay, with live/recent distinction and relay-status awareness."
+---
+
+The **Telegram Intel** panel (internal id `telegram-intel`) mirrors a curated set of open-source Telegram channels into the dashboard and lets users follow additional public channels: topic-tabbed, freshness-aware, and relay-status-aware so the panel can distinguish "no recent traffic" from "relay unavailable".
+
+## What the panel shows
+
+A row of topic tabs at the top with a feed list below:
+
+- **Topic tabs** — tabs derived from `TELEGRAM_TOPICS` in `src/services/telegram-intel`. The default tab is `all`.
+- **Custom public channels** — resolve an `@username`, preview it, and add channels up to the bounded watchlist limit. The list is stored locally under `telegram:watchlist:v1`; each channel can be removed from its pill.
+- **Feed items** — `TelegramItem[]` for the active topic, each showing channel, public trust badges (same propaganda/tier CSS as news clusters), message timestamp, and message body (with `sanitizeUrl` applied to any links).
+- **Live distinction** — items newer than 10 minutes (`LIVE_THRESHOLD_MS = 600_000`) are flagged as live.
+- **Relay state** — when the Telegram relay isn't reachable (`relayEnabled = false`), the panel indicates degraded mode rather than showing an empty list.
+
+Panel id is `telegram-intel`; canonical component is `src/components/TelegramIntelPanel.ts`. Title from i18n (`panels.telegramIntel`); config name: "Telegram Intel". Default row span is 2 — the panel is dense.
+
+## How you reach it
+
+- **Cmd+K**: type *telegram*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only (`priority: 2`). The full-variant registration layers `premium: 'locked'` on desktop (`_desktop && { premium: 'locked' as const }`), so the panel is **free on web** and **PRO-locked on desktop**. Not present in the tech, finance, commodity, or happy variants. Source: `'telegram-intel'` in `FULL_PANELS` of `src/config/panels.ts`.
+
+## Data sources
+
+- `@/services/telegram-intel` — backed by `/api/telegram-feed`, which proxies to the existing Railway Telegram relay. The product-managed curated set remains separate from each browser's user-defined watchlist.
+
+### Backed by endpoints
+
+| Surface | Endpoint | Notes |
+|---|---|---|
+| Panel relay path | `GET /api/telegram-feed` | First-party browser path. Requires the dashboard session credential (`wms_`); message text is R4. |
+| Resolve custom channel | `GET /api/telegram-feed?mode=resolve&username=...` | Resolves public `@username` values through the existing GramJS session. |
+| Read custom channel | `GET /api/telegram-feed?mode=channel&username=...` | Returns recent public-channel posts through the same credential gate as the curated feed, behind a 90-second client cache (deliberately longer than the panel's 60s refresh, so a routine tick does not re-fetch every watchlist entry). |
+| Generated service RPC | `GET /api/intelligence/v1/list-telegram-feed` | Direct IntelligenceService RPC with `topic`, `channel`, and `limit` query parameters; fetches the same Railway relay. |
+
+## Refresh cadence
+
+Driven by the relay's poll cycle; the panel reads on mount and on relevant external refresh triggers.
+
+## Saudi Civil Defense alerts
+
+The curated full feed includes [Saudi Civil Defense](https://t.me/SaudiDCD) as a Tier 1 government source. Its official emergency notices are primary government reports; the source rating does not establish independent confirmation of every incident.
+
+Posts no older than 15 minutes enter the existing LLM classification pass. Only high or critical results can produce breaking-news notifications, with the original Telegram link and Saudi Arabia country scope. Routine posts, incomplete text, invalid timestamps, and failed classifications do not produce alerts. Normal subscription rules, severity filters, quiet hours, and delivery deduplication still apply. Adding a custom channel does not enable notifications from it.
+
+This path requires the Telegram relay, a configured classification provider, Redis, and the notification worker. Deployment and a natural successful delivery are separate from local fixture tests.
+
+## Tier & gating
+
+**Free on web; PRO-locked on desktop.** Registered without `premium` on the web path; the desktop variant spreads `premium: 'locked'` via the `_desktop &&` clause.
+
+## API reference
+
+- `/api/telegram-feed` — relay proxy documented under [Proxies](/api-proxies).

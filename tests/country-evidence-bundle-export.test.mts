@@ -1,0 +1,1147 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { build } from 'esbuild';
+import ts from 'typescript';
+import { runInNewContext } from 'node:vm';
+import { createCountryDeepDivePanelHarness } from './helpers/country-deep-dive-panel-harness.mjs';
+import { createBrowserEnvironment } from './helpers/runtime-config-panel-harness.mjs';
+import { countrySignalsFromMilitary } from '../src/services/country-signals';
+
+type ExportUtils = typeof import('../src/utils/export.ts');
+type GlobalSnapshot = { exists: boolean; value: unknown };
+
+async function loadExportUtils(): Promise<ExportUtils> {
+  const tempDir = mkdtempSync(join(tmpdir(), 'wm-country-evidence-export-'));
+  const outfile = join(tempDir, 'export-utils.bundle.mjs');
+  const entry = resolve(process.cwd(), 'src/utils/export.ts');
+
+  const stubModules = new Map([
+    ['i18n-stub', `export function t(key) { return key; }`],
+    ['dom-utils-stub', `
+      export function trustedHtml(value) { return String(value ?? ''); }
+      export function setTrustedHtml(el, value) { el.innerHTML = String(value ?? ''); }
+    `],
+  ]);
+
+  stubModules.set('atlas-detail-stub', `
+    export class PipelineStatusPanel {
+      constructor() { throw new Error('Hosted Atlas details require the compiled iframe fixture'); }
+    }
+    export { PipelineStatusPanel as StorageFacilityMapPanel, PipelineStatusPanel as FuelShortagePanel };
+  `);
+
+  const aliasMap = new Map([
+    ['./PipelineStatusPanel', 'atlas-detail-stub'],
+    ['./StorageFacilityMapPanel', 'atlas-detail-stub'],
+    ['./FuelShortagePanel', 'atlas-detail-stub'],
+    ['@/services/i18n', 'i18n-stub'],
+    ['@/utils/dom-utils', 'dom-utils-stub'],
+  ]);
+
+  const plugin = {
+    name: 'country-evidence-export-test-stubs',
+    setup(buildApi: any) {
+      buildApi.onResolve({ filter: /.*/ }, (args) => {
+        const target = aliasMap.get(args.path);
+        return target ? { path: target, namespace: 'stub' } : null;
+      });
+      buildApi.onLoad({ filter: /.*/, namespace: 'stub' }, (args) => ({
+        contents: stubModules.get(args.path),
+        loader: 'js',
+      }));
+    },
+  };
+
+  const result = await build({
+    entryPoints: [entry],
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2020',
+    write: false,
+    plugins: [plugin],
+  });
+
+  writeFileSync(outfile, result.outputFiles[0].text, 'utf8');
+  const mod = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`);
+  rmSync(tempDir, { recursive: true, force: true });
+  return mod as ExportUtils;
+}
+
+function snapshotGlobal(name: string): GlobalSnapshot {
+  return {
+    exists: Object.prototype.hasOwnProperty.call(globalThis, name),
+    value: (globalThis as Record<string, unknown>)[name],
+  };
+}
+
+function restoreGlobal(name: string, snapshot: GlobalSnapshot): void {
+  if (snapshot.exists) {
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      writable: true,
+      value: snapshot.value,
+    });
+    return;
+  }
+  delete (globalThis as Record<string, unknown>)[name];
+}
+
+function defineGlobal(name: string, value: unknown): void {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+
+function zeroCountryBriefSignals() {
+  return {
+    criticalNews: 0,
+    protests: 0,
+    militaryFlights: 0,
+    militaryVessels: 0,
+    militaryFlightsInCountry: 0,
+    militaryVesselsInCountry: 0,
+    outages: 0,
+    aisDisruptions: 0,
+    satelliteFires: 0,
+    radiationAnomalies: 0,
+    temporalAnomalies: 0,
+    cyberThreats: 0,
+    earthquakes: 0,
+    displacementOutflow: 0,
+    climateStress: 0,
+    conflictEvents: 0,
+    activeStrikes: 0,
+    orefSirens: 0,
+    orefHistory24h: 0,
+    aviationDisruptions: 0,
+    travelAdvisories: 0,
+    travelAdvisoryMaxLevel: null,
+    gpsJammingHexes: 0,
+    isTier1: true,
+    thermalEscalations: 0,
+    sanctionsDesignations: 0,
+    sanctionsNewDesignations: 0,
+  };
+}
+
+type CountryBriefHarnessOptions = {
+  premiumAccess?: boolean;
+  exportGateLocked?: boolean;
+  availableExportFormats?: Array<'csv' | 'json' | 'pdf'>;
+};
+
+async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
+  const premiumAccess = options.premiumAccess === true;
+  const exportGateLocked = options.exportGateLocked === true;
+  const availableExportFormats = options.availableExportFormats ?? ['csv', 'json', 'pdf'];
+  const tempDir = mkdtempSync(join(tmpdir(), 'wm-country-brief-page-'));
+  const outfile = join(tempDir, 'CountryBriefPage.bundle.mjs');
+  const entry = resolve(process.cwd(), 'src/components/CountryBriefPage.ts');
+
+  const stubModules = new Map([
+    ['sanitize-stub', `
+      export function escapeHtml(value) { return String(value ?? ''); }
+      export function sanitizeUrl(value) { return value ?? ''; }
+    `],
+    ['intel-brief-stub', `
+      export function formatIntelBrief(value) { return value; }
+      // Echoes its input so a test can see which evidence and class the page passed.
+      export function renderBriefEvidenceFooter(evidence, options) {
+        if (!Array.isArray(evidence) || evidence.length === 0) return '';
+        const rows = evidence.map((item) => item.id + '=' + item.label + ': ' + item.value).join('|');
+        return '<details data-evidence-footer="' + (options?.className ?? '') + '">' + rows + '</details>';
+      }
+    `],
+    ['i18n-stub', `
+      export function t(key, params) {
+        if (params && typeof params.count === 'number') return key + ':' + params.count;
+        return key;
+      }
+    `],
+    ['utils-stub', `
+      export function getCSSColor() { return '#44ff88'; }
+      export function showToast(message) {
+        globalThis.__wmCountryBriefPageTestState.toasts.push(message);
+      }
+    `],
+    ['related-assets-stub', `
+      export function getNearbyInfrastructure() { return []; }
+      export function haversineDistanceKm() { return 0; }
+    `],
+    ['ports-stub', `export const PORTS = [];`],
+    ['export-stub', `
+      const state = globalThis.__wmCountryBriefPageTestState;
+      export function exportCountryBriefJSON(data) { state.jsonExports.push(data); }
+      export function exportCountryBriefCSV(data) { state.csvExports.push(data); }
+      export function exportCountryEvidenceMarkdown(data) { state.evidenceExports.push(data); }
+      export function countryEvidenceMarkdownArtifact(data) { return { filename: 'fixture.md', mimeType: 'text/markdown;charset=utf-8', content: JSON.stringify(data) }; }
+    `],
+    ['country-geometry-stub', `export const ME_STRIKE_BOUNDS = {};`],
+    ['country-flag-stub', `export function toFlagEmoji(code, fallback = ':world:') { return code ? ':' + code + ':' : fallback; }`],
+    ['dom-utils-stub', `
+      function setAttributes(el, attrText) {
+        for (const match of attrText.matchAll(/([A-Za-z0-9_-]+)="([^"]*)"/g)) {
+          el.setAttribute(match[1], match[2]);
+        }
+      }
+
+      function textFromHtml(html) {
+        return String(html ?? '').replace(/<[^>]+>/g, '').trim();
+      }
+
+      function materializeCountryBriefExportControls(root, html) {
+        if (!String(html).includes('cb-export-option')) return;
+        const page = document.createElement('div');
+        page.className = 'country-brief-page';
+        const trigger = document.createElement('button');
+        trigger.className = 'cb-export-btn';
+        const menu = document.createElement('div');
+        menu.className = 'cb-export-menu hidden';
+        for (const match of String(html).matchAll(/<button\\s+([^>]*class="[^"]*cb-export-option[^"]*"[^>]*)>([\\s\\S]*?)<\\/button>/g)) {
+          const button = document.createElement('button');
+          setAttributes(button, match[1]);
+          button.textContent = textFromHtml(match[2]);
+          menu.appendChild(button);
+        }
+        page.appendChild(trigger);
+        page.appendChild(menu);
+        // updateBrief writes into this section, so give it a real node.
+        if (String(html).includes('class="cb-brief-content"')) {
+          const briefContent = document.createElement('div');
+          briefContent.className = 'cb-brief-content';
+          page.appendChild(briefContent);
+        }
+        root.appendChild(page);
+      }
+
+      export function trustedHtml(value) { return String(value ?? ''); }
+
+      export function setTrustedHtml(el, value) {
+        const html = String(value ?? '');
+        el.innerHTML = html;
+        materializeCountryBriefExportControls(el, html);
+      }
+    `],
+    ['auth-state-stub', `export function getAuthState() { return { user: null }; }`],
+    ['panel-gating-stub', `
+      export function hasPremiumAccess() { return ${premiumAccess ? 'true' : 'false'}; }
+    `],
+    ['gates-export-stub', `
+      export function evaluateExportGate() {
+        return ${exportGateLocked
+          ? `{ locked: true, reason: 'free_tier' }`
+          : '{ locked: false, pendingActivation: false }'};
+      }
+      export function evaluateAvailableExportFormats() {
+        return ${JSON.stringify(availableExportFormats)};
+      }
+      export function exportLockToGateReason(reason) { return reason; }
+    `],
+    ['export-gate-stub', `export function primeExportGateActivation() { return Promise.resolve(false); }`],
+    ['export-gate-control-stub', `
+      export function exportGateCopy(reason) {
+        return { icon: '', desc: 'export-gate-locked:' + reason, cta: '' };
+      }
+    `],
+    ['analytics-stub', `
+      export function trackGateHit(feature) {
+        globalThis.__wmCountryBriefPageTestState.gateHits.push(feature);
+      }
+    `],
+  ]);
+
+  stubModules.set('atlas-detail-stub', `
+    export class PipelineStatusPanel {
+      constructor() { throw new Error('Hosted Atlas details require the compiled iframe fixture'); }
+    }
+    export { PipelineStatusPanel as StorageFacilityMapPanel, PipelineStatusPanel as FuelShortagePanel };
+  `);
+
+  const aliasMap = new Map([
+    ['./PipelineStatusPanel', 'atlas-detail-stub'],
+    ['./StorageFacilityMapPanel', 'atlas-detail-stub'],
+    ['./FuelShortagePanel', 'atlas-detail-stub'],
+    ['@/utils/sanitize', 'sanitize-stub'],
+    ['@/utils/format-intel-brief', 'intel-brief-stub'],
+    ['@/services/i18n', 'i18n-stub'],
+    ['@/utils', 'utils-stub'],
+    ['@/services/related-assets', 'related-assets-stub'],
+    ['@/config/ports', 'ports-stub'],
+    ['@/utils/export', 'export-stub'],
+    ['@/services/country-geometry', 'country-geometry-stub'],
+    ['@/utils/country-flag', 'country-flag-stub'],
+    ['@/utils/dom-utils', 'dom-utils-stub'],
+    ['@/services/auth-state', 'auth-state-stub'],
+    ['@/services/panel-gating', 'panel-gating-stub'],
+    ['@/services/gates/export', 'gates-export-stub'],
+    ['@/services/gates/export-resolver', 'export-gate-stub'],
+    ['@/components/ExportGateControl', 'export-gate-control-stub'],
+    ['@/services/analytics', 'analytics-stub'],
+  ]);
+
+  const plugin = {
+    name: 'country-brief-page-test-stubs',
+    setup(buildApi: any) {
+      buildApi.onResolve({ filter: /.*/ }, (args: any) => {
+        const target = aliasMap.get(args.path);
+        return target ? { path: target, namespace: 'stub' } : null;
+      });
+      buildApi.onLoad({ filter: /.*/, namespace: 'stub' }, (args: any) => ({
+        contents: stubModules.get(args.path),
+        loader: 'js',
+      }));
+    },
+  };
+
+  const result = await build({
+    entryPoints: [entry],
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2020',
+    write: false,
+    plugins: [plugin],
+  });
+
+  writeFileSync(outfile, result.outputFiles[0].text, 'utf8');
+  const mod = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`);
+  return {
+    CountryBriefPage: mod.CountryBriefPage,
+    cleanupBundle() {
+      rmSync(tempDir, { recursive: true, force: true });
+    },
+  };
+}
+
+async function createCountryBriefPageHarness(options: CountryBriefHarnessOptions = {}) {
+  const originalGlobals = {
+    document: snapshotGlobal('document'),
+    window: snapshotGlobal('window'),
+    localStorage: snapshotGlobal('localStorage'),
+    requestAnimationFrame: snapshotGlobal('requestAnimationFrame'),
+    cancelAnimationFrame: snapshotGlobal('cancelAnimationFrame'),
+    navigator: snapshotGlobal('navigator'),
+    HTMLElement: snapshotGlobal('HTMLElement'),
+    HTMLButtonElement: snapshotGlobal('HTMLButtonElement'),
+  };
+  const browserEnvironment = createBrowserEnvironment();
+  const state = {
+    evidenceExports: [] as Array<Record<string, unknown>>,
+    jsonExports: [] as Array<Record<string, unknown>>,
+    csvExports: [] as Array<Record<string, unknown>>,
+    gateHits: [] as string[],
+    toasts: [] as string[],
+  };
+
+  defineGlobal('document', browserEnvironment.document);
+  defineGlobal('window', browserEnvironment.window);
+  defineGlobal('localStorage', browserEnvironment.localStorage);
+  defineGlobal('requestAnimationFrame', browserEnvironment.requestAnimationFrame);
+  defineGlobal('cancelAnimationFrame', browserEnvironment.cancelAnimationFrame);
+  defineGlobal('navigator', browserEnvironment.window.navigator);
+  defineGlobal('HTMLElement', browserEnvironment.HTMLElement);
+  defineGlobal('HTMLButtonElement', browserEnvironment.HTMLButtonElement);
+  defineGlobal('__wmCountryBriefPageTestState', state);
+
+  let CountryBriefPage;
+  let cleanupBundle: (() => void) | undefined;
+  try {
+    ({ CountryBriefPage, cleanupBundle } = await loadCountryBriefPage(options));
+  } catch (error) {
+    delete (globalThis as Record<string, unknown>).__wmCountryBriefPageTestState;
+    restoreGlobal('document', originalGlobals.document);
+    restoreGlobal('window', originalGlobals.window);
+    restoreGlobal('localStorage', originalGlobals.localStorage);
+    restoreGlobal('requestAnimationFrame', originalGlobals.requestAnimationFrame);
+    restoreGlobal('cancelAnimationFrame', originalGlobals.cancelAnimationFrame);
+    restoreGlobal('navigator', originalGlobals.navigator);
+    restoreGlobal('HTMLElement', originalGlobals.HTMLElement);
+    restoreGlobal('HTMLButtonElement', originalGlobals.HTMLButtonElement);
+    throw error;
+  }
+
+  function cleanup() {
+    cleanupBundle?.();
+    delete (globalThis as Record<string, unknown>).__wmCountryBriefPageTestState;
+    restoreGlobal('document', originalGlobals.document);
+    restoreGlobal('window', originalGlobals.window);
+    restoreGlobal('localStorage', originalGlobals.localStorage);
+    restoreGlobal('requestAnimationFrame', originalGlobals.requestAnimationFrame);
+    restoreGlobal('cancelAnimationFrame', originalGlobals.cancelAnimationFrame);
+    restoreGlobal('navigator', originalGlobals.navigator);
+    restoreGlobal('HTMLElement', originalGlobals.HTMLElement);
+    restoreGlobal('HTMLButtonElement', originalGlobals.HTMLButtonElement);
+  }
+
+  return {
+    createPage() {
+      return new CountryBriefPage();
+    },
+    document: browserEnvironment.document,
+    getOverlay() {
+      return browserEnvironment.document.querySelector('.country-brief-overlay') as HTMLElement | null;
+    },
+    getEvidenceExports() {
+      return state.evidenceExports;
+    },
+    getJsonExports() {
+      return state.jsonExports;
+    },
+    getCsvExports() {
+      return state.csvExports;
+    },
+    getGateHits() {
+      return state.gateHits;
+    },
+    getToasts() {
+      return state.toasts;
+    },
+    cleanup,
+  };
+}
+
+function dispatchDelegatedClick(delegateRoot: HTMLElement, target: HTMLElement): void {
+  const event = new Event('click', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'target', { value: target });
+  delegateRoot.dispatchEvent(event);
+}
+
+describe('country evidence bundle export', () => {
+  for (const [component, methodName] of [['CountryDeepDivePanel', 'exportEvidenceBundle'], ['CountryBriefPage', 'exportBrief']]) {
+    for (const state of [
+      { name: 'no loaded brief', brief: null, original: null, cached: null },
+      { name: 'loaded brief with absent original clock', brief: 'Controlled assessment', original: undefined, cached: true },
+      { name: 'known cached original clock', brief: 'Controlled retained assessment', original: '2026-10-05T09:00:00Z', cached: true },
+      { name: 'known fresh original clock', brief: 'Controlled fresh assessment', original: '2026-10-05T09:00:00Z', cached: false },
+    ]) {
+      it(`${component} preserves original clock semantics for ${state.name}`, async () => {
+        const exports = await loadExportUtils();
+        const exportClock = '2026-10-06T12:00:00.000Z';
+        const originalUrl = 'https://www.bbc.co.uk/news/articles/crly09gz7ew4o?at_medium=RSS&at_campaign=rss';
+        const source = readFileSync(resolve(process.cwd(), `src/components/${component}.ts`), 'utf8');
+        const ast = ts.createSourceFile(`${component}.ts`, source, ts.ScriptTarget.Latest, true);
+        let method: ts.MethodDeclaration | undefined;
+        const visit = (node: ts.Node): void => {
+          if (ts.isMethodDeclaration(node) && node.name.getText(ast) === methodName) method = node;
+          ts.forEachChild(node, visit);
+        };
+        visit(ast);
+        assert.ok(method);
+        class ExportDate extends Date {
+          constructor(value?: string | number) { super(value ?? exportClock); }
+        }
+        let legacyArtifact: ReturnType<ExportUtils['countryEvidenceMarkdownArtifact']> | undefined;
+        const compiled = ts.transpileModule(`class ActualExportCaller { ${method.getText(ast)} }; ActualExportCaller.prototype.${methodName};`, {
+          compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+        }).outputText;
+        const invoke = runInNewContext(compiled, {
+          Date: ExportDate,
+          countryEvidenceMarkdownArtifact: exports.countryEvidenceMarkdownArtifact,
+          exportCountryEvidenceMarkdown: (input: Parameters<ExportUtils['countryEvidenceMarkdownArtifact']>[0]) => {
+            legacyArtifact = exports.countryEvidenceMarkdownArtifact(input);
+          },
+        });
+        const snapshot = {
+          currentName: 'Canada', currentCode: 'CA', currentBrief: state.brief,
+          currentBriefGeneratedAt: state.original, currentBriefCached: state.cached,
+          currentHeadlines: [{ title: 'Controlled BBC source', source: 'BBC', link: originalUrl, pubDate: '2026-10-06T08:00:00Z' }],
+          signalCoverageNotes: [], canExportEvidenceBundle: () => true,
+          downloadText: async (artifact: ReturnType<ExportUtils['countryEvidenceMarkdownArtifact']>) => artifact,
+        };
+        const before = JSON.stringify(snapshot);
+        const returned = await invoke.call(snapshot, component === 'CountryBriefPage' ? 'evidence-md' : new AbortController().signal);
+        const artifact = component === 'CountryBriefPage' ? legacyArtifact : returned;
+        assert.ok(artifact);
+        assert.equal(JSON.stringify(snapshot), before);
+        assert.ok(artifact.content.includes(`Bundle generated at: ${exportClock}`));
+        assert.ok(artifact.content.includes(`Exported at: ${exportClock}`));
+        assert.ok(artifact.content.includes('Published at: 2026-10-06T08:00:00.000Z'));
+        assert.ok(artifact.content.includes('Freshness: 4h old at export.'));
+        assert.ok(artifact.content.includes(originalUrl));
+        assert.equal(artifact.mimeType, 'text/markdown;charset=utf-8');
+        assert.equal(artifact.filename, 'country-evidence-CA-2026-10-06T12-00-00-000Z.md');
+        if (state.original) {
+          assert.ok(artifact.content.includes(`Brief generated at: 2026-10-05T09:00:00.000Z (${state.cached ? 'cached' : 'fresh'})`));
+          assert.ok(!artifact.content.includes('Brief generation timestamp unavailable.'));
+        } else {
+          assert.doesNotMatch(artifact.content, /Brief generated at:/, 'Unknown original brief clock must not use the export clock');
+          assert.ok(artifact.content.includes('Brief generation timestamp unavailable.'));
+        }
+        assert.equal(artifact.content.includes('## Intelligence Brief'), Boolean(state.brief));
+        if (state.brief) assert.ok(artifact.content.includes(state.brief));
+      });
+    }
+  }
+
+  it('keeps absent, null, empty and invalid original factory clocks unavailable', async () => {
+    const exports = await loadExportUtils();
+    for (const original of [{}, { briefGeneratedAt: null }, { briefGeneratedAt: '' }, { briefGeneratedAt: 'invalid' }]) {
+      const input = { country: 'Canada', code: 'CA', generatedAt: '2026-10-06T12:00:00Z', exportedAt: '2026-10-06T12:00:00Z', ...original };
+      const before = JSON.stringify(input);
+      const bundle = Reflect.apply(exports.buildCountryEvidenceBundle, undefined, [input]);
+      assert.equal(bundle.briefGeneratedAt, undefined);
+      assert.equal(bundle.generatedAt, '2026-10-06T12:00:00.000Z');
+      assert.equal(bundle.exportedAt, '2026-10-06T12:00:00.000Z');
+      assert.ok(bundle.freshnessNotes.includes('Brief generation timestamp unavailable.'));
+      assert.equal(JSON.stringify(input), before);
+    }
+  });
+
+  it('keeps cyber unknown without an admitted source and separates retained generation from export time', async () => {
+    const signals = countrySignalsFromMilitary('FR');
+    assert.equal(signals.cyberThreats, null);
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+    const originalClock = '2026-10-05T01:00:00.000Z';
+    const exportedAt = '2026-10-06T01:00:00.000Z';
+    const bundle = buildCountryEvidenceBundle({ country: 'France', code: 'FR',
+      signals: { cyberThreats: signals.cyberThreats }, generatedAt: originalClock,
+      briefGeneratedAt: originalClock, briefCached: true, exportedAt });
+    assert.deepEqual(bundle.signals, [{ label: 'Cyber threats', value: 'unavailable' }]);
+    assert.equal(bundle.generatedAt, originalClock);
+    assert.equal(bundle.briefGeneratedAt, originalClock);
+    assert.equal(bundle.exportedAt, exportedAt);
+    assert.equal(bundle.briefCacheStatus, 'cached');
+    assert.ok(renderCountryEvidenceMarkdown(bundle).includes('Cyber threats: unavailable'));
+  });
+
+  it('preserves unavailable cyber counts and explicit zero separately in portable evidence', async () => {
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+    for (const [count, expected] of [[null, 'unavailable'], [0, '0'], [2, '2']] as const) {
+      const bundle = buildCountryEvidenceBundle({ country: 'France', code: 'FR',
+        signals: { cyberThreats: count }, exportedAt: '2026-10-06T01:00:00Z' });
+      assert.deepEqual(bundle.signals, [{ label: 'Cyber threats', value: expected }]);
+      assert.ok(renderCountryEvidenceMarkdown(bundle).includes(`Cyber threats: ${expected}`));
+    }
+    assert.deepEqual(buildCountryEvidenceBundle({ country: 'France', code: 'FR' }).signals, []);
+  });
+
+  it('builds a portable bundle with active signals, sources, freshness, and disclaimer', async () => {
+    const { buildCountryEvidenceBundle, COUNTRY_EVIDENCE_PROVENANCE_DISCLAIMER } = await loadExportUtils();
+
+    const bundle = buildCountryEvidenceBundle({
+      country: 'France',
+      code: 'fr',
+      context: 'Country dossier',
+      exportedAt: '2026-06-10T12:00:00.000Z',
+      briefGeneratedAt: '2026-06-10T11:55:00.000Z',
+      briefCached: false,
+      score: 38,
+      level: 'normal',
+      trend: 'stable',
+      components: { unrest: 8, conflict: 12, security: 9, information: 4 },
+      signals: {
+        criticalNews: 2,
+        protests: 0,
+        travelAdvisoryMaxLevel: 'reconsider',
+      },
+      brief: 'SITUATION NOW\n- Demonstrations remain localized.',
+      headlines: [{
+        title: 'Transport unions announce strikes',
+        source: 'Reuters',
+        link: 'https://example.com/story?x=1',
+        pubDate: '2026-06-10T06:00:00.000Z',
+      }],
+    });
+
+    assert.equal(bundle.country, 'France');
+    assert.equal(bundle.code, 'FR');
+    assert.equal(bundle.briefCacheStatus, 'fresh');
+    assert.deepEqual(bundle.signals, [
+      { label: 'Critical news', value: '2' },
+      { label: 'Maximum travel advisory', value: 'reconsider' },
+    ]);
+    assert.equal(bundle.sources[0]?.publisher, 'Reuters');
+    assert.equal(bundle.sources[0]?.url, 'https://example.com/story?x=1');
+    assert.equal(bundle.sources[0]?.freshness, '6h old at export.');
+    assert.equal(bundle.provenanceDisclaimer, COUNTRY_EVIDENCE_PROVENANCE_DISCLAIMER);
+  });
+
+  it('redacts secret-like URL credentials and query params while preserving benign citation params', async () => {
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+    const openAiProjectKey = ['sk', 'proj', 'urlredactionfixture1234567890', 'abcdef123456'].join('-');
+    const awsAccessKey = ['AK', 'IA', 'URLREDACTEXAMPLE'].join('');
+    const jwt = [
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+      'eyJ1cmwiOiJyZWRhY3Rpb24tZml4dHVyZSJ9',
+      'SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c',
+    ].join('.');
+
+    const bundle = buildCountryEvidenceBundle({
+      country: 'Testland',
+      code: 'TL',
+      exportedAt: '2026-06-10T12:00:00.000Z',
+      headlines: [{
+        title: 'Credentialed source URL',
+        source: 'Wire',
+        link: `https://analyst:${openAiProjectKey}@example.com/story(2026)?x=1&api_key=${openAiProjectKey}&token=plain-secret-value&ref=${awsAccessKey}#id_token=${jwt}`,
+        pubDate: '2026-06-10T11:00:00.000Z',
+      }],
+    });
+    const url = bundle.sources[0]?.url ?? '';
+    const markdown = renderCountryEvidenceMarkdown(bundle);
+
+    assert.match(url, /^https:\/\/%5Bredacted-user-id%5D:%5Bredacted-secret%5D@example\.com\/story%282026%29\?/);
+    assert.match(url, /[?&]x=1(?:&|#|$)/);
+    assert.match(url, /[?&]api_key=%5Bredacted-secret%5D(?:&|#|$)/);
+    assert.match(url, /[?&]token=%5Bredacted-secret%5D(?:&|#|$)/);
+    assert.match(url, /[?&]ref=%5Bredacted-secret%5D(?:&|#|$)/);
+    assert.match(url, /id_token=.*redacted-secret/);
+    assert.doesNotMatch(url, new RegExp(openAiProjectKey));
+    assert.doesNotMatch(url, new RegExp(awsAccessKey));
+    assert.doesNotMatch(url, /eyJhbGci/);
+    assert.doesNotMatch(markdown, new RegExp(openAiProjectKey));
+    assert.doesNotMatch(markdown, new RegExp(awsAccessKey));
+    assert.doesNotMatch(markdown, /eyJhbGci/);
+  });
+
+  it('omits unsafe or missing citations without fabricating source metadata', async () => {
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+
+    const bundle = buildCountryEvidenceBundle({
+      country: 'Unknown',
+      code: 'xx',
+      exportedAt: '2026-06-10T12:00:00.000Z',
+      headlines: [
+        { title: '', source: '', link: '', pubDate: null },
+        { title: 'Newswire note', source: '', link: '', pubDate: null },
+        { title: 'Unsafe link', source: null, link: 'javascript:alert(1)', pubDate: 'not-a-date' },
+      ],
+    });
+    const markdown = renderCountryEvidenceMarkdown(bundle);
+
+    assert.equal(bundle.sources.length, 2);
+    assert.equal(bundle.sources[0]?.title, 'Newswire note');
+    assert.equal(bundle.sources[0]?.publisher, undefined);
+    assert.equal(bundle.sources[0]?.url, undefined);
+    assert.equal(bundle.sources[0]?.note, 'URL unavailable; citation link was not provided.');
+    assert.equal(bundle.sources[1]?.url, undefined);
+    assert.equal(bundle.sources[1]?.note, 'URL omitted because it was missing or unsafe.');
+    assert.doesNotMatch(markdown, /javascript:alert/);
+    assert.match(markdown, /Publisher: Unavailable/);
+  });
+
+  it('redacts secret-like values and private identifiers from rendered evidence', async () => {
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+    const legacyOpenAiKey = ['sk', 'live', 'abc1234567890'].join('_');
+    const awsAccessKey = ['AK', 'IA', 'IOSFODNN7EXAMPLE'].join('');
+    const awsSecret = ['wJalrXUtnFEMI', '/K7MDENG+bPxRfiCY', 'EXAMPLEKEY'].join('');
+    const slackToken = ['xox', 'b-redacted-fixture-token'].join('');
+    const googleKey = ['AI', 'za', 'SyA1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p'].join('');
+    const openAiProjectKey = ['sk', 'proj', 'abc1234567890abcdefABCDEF', 'xyz1234567890'].join('-');
+    const colonOpenAiKey = ['sk', 'proj', 'colonredactionfixture1234567890', 'abcdef123456'].join('-');
+    const jwt = [
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+      'eyJzdWIiOiIxMjM0NTY3ODkwIn0',
+      'SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c',
+    ].join('.');
+
+    const bundle = buildCountryEvidenceBundle({
+      country: 'Testland',
+      code: 'TL',
+      exportedAt: '2026-06-10T12:00:00.000Z',
+      brief: [
+        'The session: closed-door talks remain underway.',
+        `api_key: ${colonOpenAiKey}`,
+        `Contact analyst@example.com with token=${legacyOpenAiKey} and user_abcdef123456.`,
+        `AWS ${awsAccessKey} aws_secret_access_key=${awsSecret}`,
+        `Slack ${slackToken} Google ${googleKey} OpenAI ${openAiProjectKey}`,
+        `Authorization: Bearer ${jwt}`,
+      ].join('\n'),
+      headlines: [{
+        title: 'Report includes wm_0123456789abcdef0123456789abcdef01234567',
+        source: `Desk user_abc12345 ${slackToken}`,
+        link: 'https://example.com/private',
+        pubDate: '2026-06-10T11:00:00.000Z',
+      }],
+    });
+    const markdown = renderCountryEvidenceMarkdown(bundle);
+
+    assert.match(markdown, /The session: closed-door talks remain underway\./);
+    assert.match(markdown, /api_key: \[redacted-secret\]/);
+    assert.doesNotMatch(markdown, /session[:=]\s*\[redacted-secret\]/);
+    assert.doesNotMatch(markdown, /analyst@example\.com/);
+    assert.doesNotMatch(markdown, new RegExp(legacyOpenAiKey));
+    assert.doesNotMatch(markdown, new RegExp(colonOpenAiKey));
+    assert.doesNotMatch(markdown, /wm_0123456789abcdef0123456789abcdef01234567/);
+    assert.doesNotMatch(markdown, /user_abcdef123456/);
+    assert.doesNotMatch(markdown, new RegExp(awsAccessKey));
+    assert.doesNotMatch(markdown, new RegExp(awsSecret.replace(/[+/]/g, '\\$&')));
+    assert.doesNotMatch(markdown, new RegExp(slackToken));
+    assert.doesNotMatch(markdown, new RegExp(googleKey));
+    assert.doesNotMatch(markdown, new RegExp(openAiProjectKey));
+    assert.doesNotMatch(markdown, /eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9/);
+    assert.match(markdown, /\[redacted-email\]/);
+    assert.match(markdown, /\[redacted-secret\]/);
+    assert.match(markdown, /\[redacted-user-id\]/);
+  });
+
+  it('escapes unlinked source titles and publisher markdown inline text', async () => {
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+
+    const markdown = renderCountryEvidenceMarkdown(buildCountryEvidenceBundle({
+      country: 'Linkland',
+      code: 'LL',
+      exportedAt: '2026-06-10T12:00:00.000Z',
+      headlines: [{
+        title: 'Unlinked ](http://evil.com) title',
+        source: 'Publisher [spoof](http://evil.com)',
+        link: '',
+        pubDate: '2026-06-10T11:00:00.000Z',
+      }],
+    }));
+
+    assert.doesNotMatch(markdown, /\]\(http:\/\/evil\.com\)/);
+    assert.match(markdown, /Unlinked \\\]\\\(http:\/\/evil\\\.com\\\) title/);
+    assert.match(markdown, /Publisher: Publisher \\\[spoof\\\]\\\(http:\/\/evil\\\.com\\\)/);
+  });
+
+  it('renders Markdown with the expected handoff sections', async () => {
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+
+    const markdown = renderCountryEvidenceMarkdown(buildCountryEvidenceBundle({
+      country: 'Norway',
+      code: 'NO',
+      exportedAt: '2026-06-10T12:00:00.000Z',
+      score: 12,
+      level: 'low',
+      trend: 'stable',
+      brief: '## Spoofed Sources\n- This heading came from AI text.',
+      headlines: [{
+        title: 'Grid operator updates alert level',
+        source: 'NVE',
+        link: 'https://example.org/report(2026)overview',
+        pubDate: '2026-06-08T12:00:00.000Z',
+      }],
+    }));
+
+    assert.match(markdown, /^# WorldMonitor Evidence Bundle: Norway \(NO\)/);
+    assert.match(markdown, /## Risk Context/);
+    assert.match(markdown, /## Selected Signals/);
+    assert.match(markdown, /## Intelligence Brief/);
+    assert.match(markdown, /> ## Spoofed Sources/);
+    assert.doesNotMatch(markdown, /\n## Spoofed Sources/);
+    assert.match(markdown, /## Sources/);
+    assert.match(markdown, /\[Grid operator updates alert level\]\(https:\/\/example.org\/report%282026%29overview\)/);
+    assert.match(markdown, /Freshness: 2d old at export\./);
+    assert.match(markdown, /## Provenance Disclaimer/);
+  });
+
+  it('wires country brief export surfaces to the evidence Markdown exporter', () => {
+    const legacySource = readFileSync(resolve(process.cwd(), 'src/components/CountryBriefPage.ts'), 'utf8');
+    const dossierSource = readFileSync(resolve(process.cwd(), 'src/components/CountryDeepDivePanel.ts'), 'utf8');
+
+    assert.match(legacySource, /exportCountryEvidenceMarkdown/);
+    assert.match(legacySource, /data-format="evidence-md"/);
+    // U5 (plan 2026-07-25-001): json/csv route through the data-export gate;
+    // evidence-md keeps its own Pro gate, and image/pdf/print stay free.
+    assert.match(legacySource, /format === 'json' \|\| format === 'csv'/);
+    assert.match(legacySource, /if \(this\.canExportStructuredData\(format\)\) this\.exportBrief\(format\);/);
+    assert.match(legacySource, /evaluateAvailableExportFormats\(authState\)/);
+    assert.match(legacySource, /else if \(format === 'evidence-md'\) \{\n\s+this\.exportBrief\(format\);/);
+    assert.match(legacySource, /if \(format === 'evidence-md' && !this\.canExportEvidenceBundle\(\)\) return;/);
+    assert.match(legacySource, /if \(format === 'evidence-md'\) exportCountryEvidenceMarkdown\(data\)/);
+    assert.match(legacySource, /data-format="json"/);
+    assert.match(legacySource, /data-format="csv"/);
+    assert.match(legacySource, /trackGateHit\('evidence-export'\)/);
+
+    assert.match(dossierSource, /countryEvidenceMarkdownArtifact/);
+    assert.match(dossierSource, /cdp-evidence-export-btn/);
+    assert.match(dossierSource, /if \(!this\.canRequestPremium\(\)\)/);
+    assert.match(dossierSource, /trackGateHit\('evidence-export'\)/);
+    assert.match(dossierSource, /this\.exportEvidenceBundle\(signal\)/);
+    assert.match(dossierSource, /this\.downloadText\(countryEvidenceMarkdownArtifact\(data\), signal\)/);
+  });
+
+  it('blocks country brief evidence export for free users', async () => {
+    const harness = await createCountryBriefPageHarness({ premiumAccess: false });
+    try {
+      const page = harness.createPage();
+      page.show('France', 'FR', null, zeroCountryBriefSignals());
+
+      const overlay = harness.getOverlay();
+      assert.ok(overlay, 'expected country brief overlay');
+      const button = overlay.querySelector('[data-format="evidence-md"]') as HTMLElement | null;
+      assert.ok(button, 'expected evidence export option');
+
+      dispatchDelegatedClick(overlay, button);
+
+      assert.equal(harness.getEvidenceExports().length, 0);
+      assert.deepEqual(harness.getGateHits(), ['evidence-export']);
+      assert.deepEqual(harness.getToasts(), ['Evidence export is available on Pro.']);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('uses one Evidence snapshot, disables duplicate clicks and suppresses status after country close', async () => {
+    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: true });
+    try {
+      let settle!: (value: { state: 'host-accepted' }) => void;
+      const delivered: Array<{ artifact: { content: string }; signal: AbortSignal }> = [];
+      const panel = harness.createPanel((artifact: { content: string }, signal: AbortSignal) => {
+        delivered.push({ artifact, signal });
+        return new Promise(resolve => { settle = resolve; });
+      });
+      panel.show('France', 'FR', null, zeroCountryBriefSignals());
+      for (let attempt = 0; attempt < 25 && !harness.getPanelRoot()?.querySelector('.cdp-evidence-export-btn'); attempt++) await new Promise(resolve => setTimeout(resolve, 0));
+      const button = harness.getPanelRoot()!.querySelector('.cdp-evidence-export-btn') as HTMLButtonElement;
+      button.dispatchEvent(new Event('click')); button.dispatchEvent(new Event('click'));
+      assert.equal(delivered.length, 1); assert.equal(button.disabled, true);
+      assert.equal(JSON.parse(delivered[0]!.artifact.content).code, 'FR');
+      panel.hide(); assert.equal(delivered[0]!.signal.aborted, true);
+      settle({ state: 'host-accepted' }); await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(harness.getToasts(), []);
+    } finally { harness.cleanup(); }
+  });
+
+  it('renders the World Monitor data footer from the brief evidence', async () => {
+    const harness = await createCountryBriefPageHarness({ premiumAccess: true });
+    try {
+      const page = harness.createPage();
+      page.show('France', 'FR', null, zeroCountryBriefSignals());
+      page.updateBrief({
+        code: 'FR',
+        brief: 'SITUATION NOW\nFiscal space scores 28 of 100. [E2]',
+        generatedAt: '2026-06-10T11:55:00.000Z',
+        evidence: [
+          { id: 'E2', kind: 'resilience', label: 'Fiscal space', value: '28/100', asOf: '2026-06-01', url: 'https://www.worldmonitor.app/country/FR' },
+        ],
+      });
+
+      const section = harness.getOverlay()?.querySelector('.cb-brief-content') as HTMLElement | null;
+      assert.ok(section, 'expected brief section');
+      const html = section.innerHTML;
+      assert.match(html, /data-evidence-footer="cb-brief-sources cb-brief-evidence"/);
+      assert.match(html, /E2=Fiscal space: 28\/100/);
+      assert.ok(
+        html.indexOf('data-evidence-footer') > html.indexOf('cb-brief-text'),
+        'evidence footer renders after the brief text',
+      );
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('blocks country brief JSON/CSV export when the data-export gate is locked (R9)', async () => {
+    const harness = await createCountryBriefPageHarness({ premiumAccess: false, exportGateLocked: true });
+    try {
+      const page = harness.createPage();
+      page.show('France', 'FR', null, zeroCountryBriefSignals());
+
+      const overlay = harness.getOverlay();
+      assert.ok(overlay, 'expected country brief overlay');
+      for (const format of ['json', 'csv']) {
+        const button = overlay.querySelector(`[data-format="${format}"]`) as HTMLElement | null;
+        assert.ok(button, `expected ${format} export option`);
+        dispatchDelegatedClick(overlay, button);
+      }
+
+      assert.equal(harness.getJsonExports().length, 0);
+      assert.equal(harness.getCsvExports().length, 0);
+      assert.deepEqual(harness.getGateHits(), ['export', 'export']);
+      // The toast carries the billing-aware reason, not a hardcoded upsell.
+      assert.deepEqual(harness.getToasts(), ['export-gate-locked:free_tier', 'export-gate-locked:free_tier']);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('allows country brief JSON/CSV export when the data-export gate is open', async () => {
+    const harness = await createCountryBriefPageHarness({ premiumAccess: false, exportGateLocked: false });
+    try {
+      const page = harness.createPage();
+      page.show('France', 'FR', null, zeroCountryBriefSignals());
+
+      const overlay = harness.getOverlay();
+      assert.ok(overlay, 'expected country brief overlay');
+      const jsonButton = overlay.querySelector('[data-format="json"]') as HTMLElement | null;
+      assert.ok(jsonButton, 'expected json export option');
+      dispatchDelegatedClick(overlay, jsonButton);
+
+      assert.equal(harness.getJsonExports().length, 1);
+      assert.deepEqual(harness.getGateHits(), []);
+      assert.deepEqual(harness.getToasts(), []);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('enforces declared Country Brief formats at menu-open and click time', async () => {
+    const harness = await createCountryBriefPageHarness({
+      premiumAccess: false,
+      exportGateLocked: false,
+      availableExportFormats: ['json'],
+    });
+    try {
+      const page = harness.createPage();
+      page.show('France', 'FR', null, zeroCountryBriefSignals());
+
+      const overlay = harness.getOverlay();
+      assert.ok(overlay, 'expected country brief overlay');
+      const trigger = overlay.querySelector('.cb-export-btn') as HTMLElement | null;
+      const jsonButton = overlay.querySelector('[data-format="json"]') as HTMLButtonElement | null;
+      const csvButton = overlay.querySelector('[data-format="csv"]') as HTMLButtonElement | null;
+      const pdfButton = overlay.querySelector('[data-format="pdf"]') as HTMLButtonElement | null;
+      assert.ok(trigger, 'expected country brief export trigger');
+      assert.ok(jsonButton, 'expected json export option');
+      assert.ok(csvButton, 'expected csv export option');
+      assert.ok(pdfButton, 'expected pdf export option');
+
+      dispatchDelegatedClick(overlay, trigger);
+
+      assert.equal(jsonButton.hidden, false);
+      assert.equal(csvButton.hidden, true);
+      // The Country Brief print-based PDF remains free and outside the
+      // structured-data format allowlist.
+      assert.notEqual(pdfButton.hidden, true);
+
+      // A synthetic click proves the action itself re-checks the allowlist;
+      // hiding alone must not be the security boundary.
+      dispatchDelegatedClick(overlay, csvButton);
+      dispatchDelegatedClick(overlay, jsonButton);
+
+      assert.equal(harness.getCsvExports().length, 0);
+      assert.equal(harness.getJsonExports().length, 1);
+      assert.deepEqual(harness.getGateHits(), []);
+      assert.deepEqual(harness.getToasts(), []);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('passes the active dossier context to the evidence exporter for Pro users when clicked', async () => {
+    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: true });
+    try {
+      const panel = harness.createPanel();
+      panel.show('France', 'FR', {
+        code: 'FR',
+        name: 'France',
+        score: 38,
+        level: 'normal',
+        trend: 'stable',
+        change24h: 0,
+        components: { unrest: 8, conflict: 12, security: 9, information: 4 },
+        lastUpdated: null,
+      }, {
+        criticalNews: 2,
+        protests: 0,
+        militaryFlights: 1,
+        militaryVessels: 0,
+        militaryFlightsInCountry: 0,
+        militaryVesselsInCountry: 0,
+        outages: 0,
+        aisDisruptions: 0,
+        satelliteFires: 0,
+        radiationAnomalies: 0,
+        temporalAnomalies: 0,
+        cyberThreats: 0,
+        earthquakes: 0,
+        displacementOutflow: 0,
+        climateStress: 0,
+        conflictEvents: 0,
+        activeStrikes: 0,
+        orefSirens: 0,
+        orefHistory24h: 0,
+        aviationDisruptions: 0,
+        travelAdvisories: 1,
+        travelAdvisoryMaxLevel: 'exercise caution',
+        gpsJammingHexes: 0,
+        isTier1: true,
+        thermalEscalations: 0,
+        sanctionsDesignations: 0,
+        sanctionsNewDesignations: 0,
+      });
+      panel.updateBrief({
+        code: 'FR',
+        brief: 'SITUATION NOW\n- Demonstrations remain localized.',
+        generatedAt: '2026-06-10T11:55:00.000Z',
+        cached: true,
+      });
+      panel.updateNews([{
+        title: 'Transport unions announce strikes',
+        source: 'Reuters',
+        link: 'https://example.com/story',
+        pubDate: '2026-06-10T06:00:00.000Z',
+        threat: { level: 'medium' },
+      }]);
+      for (let attempt = 0; attempt < 25 && harness.getWidgets().length === 0; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const button = harness.getPanelRoot()?.querySelector('.cdp-evidence-export-btn') as HTMLButtonElement | null;
+      assert.ok(button, 'expected evidence export button');
+      button.dispatchEvent(new Event('click'));
+
+      await new Promise(resolve => setImmediate(resolve));
+
+      const exports = harness.getEvidenceExports();
+      assert.equal(exports.length, 1);
+      assert.equal(exports[0].country, 'France');
+      assert.equal(exports[0].code, 'FR');
+      assert.equal(exports[0].context, 'Country dossier');
+      assert.equal(exports[0].score, 38);
+      assert.equal(exports[0].signals.criticalNews, 2);
+      assert.equal(exports[0].signals.militaryFlights, 1);
+      assert.equal(exports[0].brief, 'SITUATION NOW\n- Demonstrations remain localized.');
+      assert.equal(exports[0].briefGeneratedAt, '2026-06-10T11:55:00.000Z');
+      assert.equal(exports[0].briefCached, true);
+      assert.equal(exports[0].headlines[0].title, 'Transport unions announce strikes');
+      assert.equal(exports[0].headlines[0].source, 'Reuters');
+      assert.equal(exports[0].headlines[0].link, 'https://example.com/story');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('blocks active dossier evidence export for free users', async () => {
+    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: false });
+    try {
+      const panel = harness.createPanel();
+      panel.show('France', 'FR', null, {
+        criticalNews: 0,
+        protests: 0,
+        militaryFlights: 0,
+        militaryVessels: 0,
+        militaryFlightsInCountry: 0,
+        militaryVesselsInCountry: 0,
+        outages: 0,
+        aisDisruptions: 0,
+        satelliteFires: 0,
+        radiationAnomalies: 0,
+        temporalAnomalies: 0,
+        cyberThreats: 0,
+        earthquakes: 0,
+        displacementOutflow: 0,
+        climateStress: 0,
+        conflictEvents: 0,
+        activeStrikes: 0,
+        orefSirens: 0,
+        orefHistory24h: 0,
+        aviationDisruptions: 0,
+        travelAdvisories: 0,
+        travelAdvisoryMaxLevel: null,
+        gpsJammingHexes: 0,
+        isTier1: true,
+        thermalEscalations: 0,
+        sanctionsDesignations: 0,
+        sanctionsNewDesignations: 0,
+      });
+      for (let attempt = 0; attempt < 25 && harness.getWidgets().length === 0; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const button = harness.getPanelRoot()?.querySelector('.cdp-evidence-export-btn') as HTMLButtonElement | null;
+      assert.ok(button, 'expected evidence export button');
+      button.dispatchEvent(new Event('click'));
+
+      assert.equal(harness.getEvidenceExports().length, 0);
+      assert.deepEqual(harness.getGateHits(), ['evidence-export']);
+      assert.deepEqual(harness.getToasts(), ['Evidence export is available on Pro.']);
+    } finally {
+      harness.cleanup();
+    }
+  });
+});
+
+
+describe('CSV spreadsheet safety', () => {
+  it('neutralizes formula text in dashboard and country brief downloads', async () => {
+    const exports = await loadExportUtils();
+    const originalDocument = snapshotGlobal('document');
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    const blobs: Blob[] = [];
+    URL.createObjectURL = (blob: Blob) => { blobs.push(blob); return 'blob:test'; };
+    URL.revokeObjectURL = () => {};
+    defineGlobal('document', {
+      createElement: () => ({ click() {} }),
+      body: { appendChild() {}, removeChild() {} },
+    });
+    try {
+      const payloads = ['=1+1', '+SUM(1,2)', '-1+2', '@SUM(1)', '\t=1', '\r=1', '\n=1', '  =1'];
+      exports.exportToCSV({ timestamp: 0, markets: [{ symbol: 'TEST', name: '-2.5', price: 10, change: -2.5 }], news: payloads.map(title => ({
+        title, source: 'ordinary, "quoted"', link: 'https://example.com/?a=1&b=2',
+        pubDate: new Date(0), isAlert: false,
+      })) });
+      const dashboard = await blobs[0]!.text();
+      assert.ok(dashboard.includes("\"TEST\",\"'-2.5\",\"10\",\"-2.5\""), 'numeric change stays numeric while numeric-looking text is neutralized');
+      for (const value of payloads) assert.ok(dashboard.includes(`"'${value.replace(/"/g, '""')}"`));
+      assert.ok(dashboard.includes('"ordinary, ""quoted"""'));
+      assert.ok(dashboard.includes('"https://example.com/?a=1&b=2"'));
+      exports.exportCountryBriefCSV({ country: 'Test', code: 'TS', generatedAt: 'now', brief: '=1+1', signals: { change: -3, count: 0, missing: null } });
+      const brief = await blobs[1]!.text();
+      assert.ok(brief.includes('"\'=1+1"'));
+      assert.ok(brief.includes('"change","-3"'));
+      assert.ok(brief.includes('"count","0"'));
+      assert.ok(brief.includes('"missing","null"'));
+    } finally {
+      restoreGlobal('document', originalDocument);
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
+});
+
+describe('CSV military vessel class', () => {
+  it('exports the AIS activity for a vessel whose only military evidence is ship type 35', async () => {
+    // #8611: AIS type 35 means "Military Ops" activity, not a hull class, so
+    // the vessel carries vesselType 'unknown'. The map shows the supported
+    // activity; the CSV a user keeps must not drop it back to a bare unknown.
+    const exports = await loadExportUtils();
+    const originalDocument = snapshotGlobal('document');
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    const blobs: Blob[] = [];
+    URL.createObjectURL = (blob: Blob) => { blobs.push(blob); return 'blob:test'; };
+    URL.revokeObjectURL = () => {};
+    defineGlobal('document', {
+      createElement: () => ({ click() {} }),
+      body: { appendChild() {}, removeChild() {} },
+    });
+    const vessel = (overrides: Record<string, unknown> = {}) => ({
+      id: 'ais-235123456', mmsi: '235123456', name: 'SEA FALCON',
+      vesselType: 'unknown', aisShipType: 'Military Ops',
+      operator: 'other', operatorCountry: 'Yemen',
+      lat: 12, lon: 44, heading: 0, speed: 4,
+      lastAisUpdate: new Date(0), confidence: 'low',
+      ...overrides,
+    });
+    try {
+      exports.exportToCSV({
+        timestamp: 0,
+        intelligence: { military: { vessels: [vessel()], flights: [] } },
+      } as never);
+      const csv = await blobs[0]!.text();
+      assert.ok(csv.includes('"SEA FALCON","235123456","Yemen","Military Ops"'), csv);
+
+      exports.exportToCSV({
+        timestamp: 0,
+        intelligence: { military: { vessels: [vessel({ name: 'USS ZUMWALT', vesselType: 'destroyer' })], flights: [] } },
+      } as never);
+      const known = await blobs[1]!.text();
+      assert.ok(known.includes('"USS ZUMWALT","235123456","Yemen","destroyer"'), known);
+    } finally {
+      restoreGlobal('document', originalDocument);
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
+});
+
+
+it('preserves bounded sanitized Signals coverage notes beside counts in the existing evidence export', async () => {
+  const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+  const bundle = buildCountryEvidenceBundle({ country: 'United States', code: 'US', signals: { outages: 1 }, signalCoverageNotes: ['<script>bad()</script><SCRIPT>bad()</SCRIPT><ScRiPt>bad()</ScRiPt>Returned sample; snapshot unknown; these counts are not fresh.', ...Array.from({ length: 20 }, () => 'x'.repeat(2000))] });
+  assert.ok(bundle.freshnessNotes.some(note => note.includes('these counts are not fresh')));
+  assert.ok(bundle.freshnessNotes.every(note => note.length <= 1600));
+  assert.ok(bundle.freshnessNotes.length <= 15);
+  assert.match(renderCountryEvidenceMarkdown(bundle), /Returned sample/);
+  assert.doesNotMatch(renderCountryEvidenceMarkdown(bundle), /<script\b/i);
+});

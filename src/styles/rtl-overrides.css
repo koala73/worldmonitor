@@ -113,7 +113,6 @@
 
 /* margin-left: auto push patterns → margin-right: auto */
 [dir="rtl"] .cii-share-btn,
-[dir="rtl"] .country-intel-share-btn,
 [dir="rtl"] .sources-counter {
   margin-left: 0;
   margin-right: auto;

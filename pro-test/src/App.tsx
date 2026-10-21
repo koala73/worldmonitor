@@ -1,23 +1,54 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, type ReactElement, type ReactNode } from 'react';
+import type { UserResource } from '@clerk/types';
+import * as Sentry from '@sentry/react';
 import { motion } from 'motion/react';
 import {
-  Globe, Activity, ShieldAlert, Zap, Terminal, Database,
+  Globe, ShieldAlert, Zap, Terminal, Database,
   Send, MessageCircle, Mail, MessageSquare, ChevronDown,
   ArrowRight, Check, Lock, Server, Cpu, Layers,
   Bell, Brain, Key, Plug, PanelTop, ExternalLink,
   BarChart3, Clock, Radio, Ship, Plane, Flame,
-  Cable, Wifi, MapPin, Users, TrendingUp,
-  Filter, Lightbulb, SlidersHorizontal, Telescope,
+  Cable, Wifi, MapPin, TrendingUp,
+  Boxes, Filter, Lightbulb, SlidersHorizontal, Telescope,
   LineChart, Search, Shield, Building2,
   Landmark, Fuel
 } from 'lucide-react';
 import { t } from './i18n';
-import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
+import { ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
+import { scheduleClerkLoad, subscribeClerkLoaded } from './services/clerk';
+import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-user-state';
+import { hasLiveClientSession } from './services/clerk-session';
+import { createTimeoutSignal, isTimeoutOrAbortError } from './services/timeout-signal';
+import { PricingSection } from './components/PricingSection';
+import { WhatsNew } from './components/WhatsNew';
+import { Logo } from './components/Logo';
+import { WiredBadge } from './components/WiredBadge';
+import { Footer } from './components/Footer';
+import {
+  DASHBOARD_SCREENSHOT_JPG,
+  DASHBOARD_SCREENSHOT_AVIF_SRCSET,
+  DASHBOARD_SCREENSHOT_WEBP_SRCSET,
+} from './assets/dashboard-screenshot';
+import { ensureTurnstileScript } from './turnstile';
 import wiredLogo from './assets/wired-logo.svg';
+import {
+  DASHBOARD_EMBED_PREVIEW_URL,
+  DASHBOARD_PATH,
+  DASHBOARD_URL,
+} from './routes';
+import { appendStoredContentAttributionToUrl } from '../../shared/content-attribution';
+import { isInternalSourceTag } from '../../shared/referral-namespaces';
+import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
+import { LegalFooterNav } from './components/LegalFooterNav';
+import { PressFooterNav } from './components/PressFooterNav';
+import { ABOUT_DOCS_PATH } from '../../shared/press';
+import {
+  isDesktopCheckoutHandoff,
+  parseMissionPreviewAttributionFromSearch,
+} from '../../shared/checkout-attribution';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
-const PRO_URL = 'https://worldmonitor.app/pro';
 
 declare global {
   interface Window {
@@ -47,104 +78,233 @@ export function renderTurnstileWidgets(): number {
   return count;
 }
 
+/**
+ * The single entry point for this page's inbound referral code. Every
+ * consumer goes through it — the dashboard CTAs via appendRefToUrl and
+ * PricingSection, which hands the value to startCheckout and from there to
+ * Dodo as `affonso_referral`.
+ *
+ * Internal source tags are rejected here rather than at each consumer: an
+ * internal tag is not an affiliate code on this surface either, and this page
+ * reaches checkout without ever passing through the dashboard's
+ * referral-capture guard (#6493).
+ */
 function getRefCode(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
   const params = new URLSearchParams(window.location.search);
-  return params.get('ref') || undefined;
+  const code = params.get('ref') || undefined;
+  if (!code || isInternalSourceTag(code)) return undefined;
+  return code;
 }
 
-function sanitize(val: unknown): string {
-  return String(val ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
+function getMcpAttributionSource(): string | undefined {
+  // Uses the shared allowlist rather than an inline literal so the /pro page,
+  // the checkout edge function, and the Convex webhook reader can never disagree
+  // about what the campaign marker is (#6716).
+  if (typeof window === 'undefined') return undefined;
+  return readMcpAttributionFromSearch(window.location.search);
 }
 
-function showReferralSuccess(formEl: HTMLFormElement, data: { referralCode?: string; position?: number; status?: string }) {
-  if (data.referralCode == null && data.status == null) {
-    const btn = formEl.querySelector('button[type="submit"]') as HTMLButtonElement;
-    if (btn) { btn.textContent = t('form.joinWaitlist'); btn.disabled = false; }
-    return;
-  }
-  const safeCode = sanitize(data.referralCode);
-  const referralLink = `${PRO_URL}?ref=${safeCode}`;
-  const shareText = encodeURIComponent(t('referral.shareText'));
-  const shareUrl = encodeURIComponent(referralLink);
-
-  const el = (tag: string, cls: string, text?: string) => {
-    const node = document.createElement(tag);
-    node.className = cls;
-    if (text) node.textContent = text;
-    return node;
-  };
-
-  const successDiv = el('div', 'text-center');
-
-  const isAlreadyRegistered = data.status === 'already_registered';
-  const shareHint = t('referral.shareHint');
-
-  if (isAlreadyRegistered) {
-    successDiv.appendChild(el('p', 'text-lg font-display font-bold text-wm-green mb-2', t('referral.alreadyOnList')));
-  } else {
-    successDiv.appendChild(el('p', 'text-lg font-display font-bold text-wm-green mb-2', t('referral.youreIn')));
-  }
-  successDiv.appendChild(el('p', 'text-sm text-wm-muted mb-4', shareHint));
-
-  if (safeCode) {
-    const linkBox = el('div', 'bg-wm-card border border-wm-border px-4 py-3 mb-4 font-mono text-xs text-wm-green break-all select-all cursor-pointer', referralLink);
-    linkBox.addEventListener('click', () => {
-      navigator.clipboard.writeText(referralLink).then(() => {
-        linkBox.textContent = t('referral.copied');
-        setTimeout(() => { linkBox.textContent = referralLink; }, 2000);
-      });
-    });
-    successDiv.appendChild(linkBox);
-
-    const shareRow = el('div', 'flex gap-3 justify-center flex-wrap');
-    const shareLinks = [
-      { label: t('referral.shareOnX'), href: `https://x.com/intent/tweet?text=${shareText}&url=${shareUrl}` },
-      { label: t('referral.linkedin'), href: `https://www.linkedin.com/sharing/share-offsite/?url=${shareUrl}` },
-      { label: t('referral.whatsapp'), href: `https://wa.me/?text=${shareText}%20${shareUrl}` },
-      { label: t('referral.telegram'), href: `https://t.me/share/url?url=${shareUrl}&text=${encodeURIComponent(t('referral.joinWaitlistShare'))}` },
-    ];
-    for (const s of shareLinks) {
-      const a = el('a', 'bg-wm-card border border-wm-border px-4 py-2 text-xs font-mono text-wm-muted hover:text-wm-text hover:border-wm-text transition-colors', s.label);
-      (a as HTMLAnchorElement).href = s.href;
-      (a as HTMLAnchorElement).target = '_blank';
-      (a as HTMLAnchorElement).rel = 'noreferrer';
-      shareRow.appendChild(a);
-    }
-    successDiv.appendChild(shareRow);
-  }
-
-  formEl.replaceWith(successDiv);
+/**
+ * Carry the current visit's referral code into a dashboard-target URL.
+ * Ensures `/pro?ref=X` → hero "try the dashboard" click propagates the
+ * code to the dashboard, where captureReferralFromUrl() in App.ts
+ * persists it to localStorage for a later in-dashboard upgrade. Writes
+ * with the `wm_referral=` name because the dashboard uses that going
+ * forward; the /pro page itself still accepts `ref=` for inbound
+ * compatibility with existing share links.
+ *
+ * Validates against the same charset as the dashboard's `isValidCode`
+ * (alphanumeric + `-` + `_`, ≤64 chars) so a hostile `/pro?ref=` value
+ * doesn't briefly appear in the dashboard URL on arrival before the
+ * dashboard-side validator strips it. Invalid codes return the URL
+ * unchanged so the link still works without attribution.
+ */
+const REFERRAL_CODE_REGEX = /^[a-zA-Z0-9_-]+$/;
+function isValidRefCode(code: string): boolean {
+  return code.length > 0 && code.length <= 64 && REFERRAL_CODE_REGEX.test(code);
 }
 
-async function submitWaitlist(email: string, formEl: HTMLFormElement) {
-  const btn = formEl.querySelector('button[type="submit"]') as HTMLButtonElement;
-  const origText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = t('form.submitting');
-
-  const honeypot = (formEl.querySelector('input[name="website"]') as HTMLInputElement)?.value || '';
-  const turnstileWidget = formEl.querySelector('.cf-turnstile') as HTMLElement | null;
-  const turnstileToken = turnstileWidget?.dataset.token || '';
-  const ref = getRefCode();
-
+function appendRefToUrl(url: string, refCode: string | undefined): string {
+  let nextUrl = appendStoredContentAttributionToUrl(url, {
+    destination: 'dashboard',
+    placement: 'pro-dashboard-cta',
+  });
+  if (!refCode || !isValidRefCode(refCode)) return nextUrl;
   try {
-    const res = await fetch(`${API_BASE}/register-interest`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, source: 'pro-waitlist', website: honeypot, turnstileToken, referredBy: ref }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Registration failed');
-    showReferralSuccess(formEl, { referralCode: data.referralCode, position: data.position, status: data.status });
-  } catch (err: any) {
-    btn.textContent = err.message === 'Too many requests' ? t('form.tooManyRequests') : t('form.failedTryAgain');
-    btn.disabled = false;
-    if (turnstileWidget?.dataset.widgetId && window.turnstile) {
-      window.turnstile.reset(turnstileWidget.dataset.widgetId);
-      delete turnstileWidget.dataset.token;
-    }
-    setTimeout(() => { btn.textContent = origText; }, 3000);
+    const parsed = new URL(nextUrl, window.location.href);
+    parsed.searchParams.set('wm_referral', refCode);
+    nextUrl = parsed.toString();
+  } catch {
+    const sep = nextUrl.includes('?') ? '&' : '?';
+    nextUrl = `${nextUrl}${sep}wm_referral=${encodeURIComponent(refCode)}`;
   }
+  return nextUrl;
+}
+
+function openSignIn(): void {
+  ensureClerk().then(c => c.openSignIn()).catch((err) => {
+    console.error('[auth] Failed to open sign in:', err);
+    Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'open-sign-in' } });
+  });
+}
+
+/**
+ * Lightweight /pro auth state. The live __session JWT gives us an immediate
+ * signed-in signal without loading Clerk; the real Clerk user is filled in only
+ * after the SDK is loaded from an auth action or an idle signed-in load.
+ *
+ * Used by the Navbar to swap the SIGN IN button for Clerk's UserButton avatar
+ * once the visitor is authenticated, and by the Hero to hide its redundant
+ * SIGN IN CTA. Single source of truth for "is the /pro visitor signed in".
+ */
+function useClerkUser(): ClerkUserState {
+  const [state, setState] = useState<ClerkUserState>(() => ({
+    user: null,
+    isLoaded: true,
+    signedIn: hasLiveClientSession(),
+  }));
+
+  useEffect(() => {
+    return startClerkUserStateSync(setState, {
+      hasLiveClientSession,
+      subscribeClerkLoaded,
+      scheduleClerkLoad,
+      onLoadError(err) {
+        console.error('[auth] Failed to load Clerk for nav auth state:', err);
+        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk-for-nav' } });
+        setState({ user: null, isLoaded: true, signedIn: false });
+      },
+    });
+  }, []);
+
+  return state;
+}
+
+/**
+ * Entitlement state shared across /pro — `isPro: true` when the signed-in
+ * visitor has an active Pro entitlement, either via Clerk pro role OR a
+ * Convex Dodo subscription (tier >= 1). The provider below performs
+ * exactly one /api/me/entitlement fetch per page load and makes the
+ * result available via useProEntitlement(); Navbar and Hero (and any
+ * future caller) share a single source of truth, so the nav and hero
+ * can't disagree on transient failures.
+ *
+ * Defaults to `{ isPro: false, isChecked: false }` for consumers that
+ * render without a provider (e.g. tests) — matches the closed-by-default
+ * stance for unpaid visitors.
+ */
+type ProEntitlementState = { isPro: boolean; isChecked: boolean };
+const ProEntitlementContext = createContext<ProEntitlementState>({ isPro: false, isChecked: false });
+
+function ProEntitlementProvider({ children }: { children: ReactNode }): ReactElement {
+  const { user, signedIn } = useClerkUser();
+  const userId = user?.id ?? null;
+  const [state, setState] = useState<ProEntitlementState>({ isPro: false, isChecked: false });
+
+  useEffect(() => {
+    if (!signedIn) {
+      setState({ isPro: false, isChecked: true });
+      return;
+    }
+    if (!userId) {
+      setState({ isPro: false, isChecked: false });
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const clerk = await ensureClerk();
+        // Clerk can expose `user` before its session-token endpoint is
+        // ready; a first null return is a known transient, not a final
+        // "no token." Retry once after a 2s gap — same pattern as
+        // services/checkout.ts:getAuthToken. Without the retry, a real
+        // Pro user hitting /pro on a cold Clerk load gets a permanent
+        // isPro=false for the whole session.
+        let token = await clerk.session?.getToken().catch(() => null);
+        if (!token) {
+          await new Promise((r) => setTimeout(r, 2000));
+          token = await clerk.session?.getToken().catch(() => null);
+        }
+        if (!token) {
+          if (!cancelled) setState({ isPro: false, isChecked: true });
+          return;
+        }
+        const resp = await fetch(`${API_BASE}/me/entitlement`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: createTimeoutSignal(8_000),
+        });
+        if (!resp.ok) {
+          if (!cancelled) setState({ isPro: false, isChecked: true });
+          return;
+        }
+        const data = await resp.json() as { isPro?: boolean };
+        if (!cancelled) setState({ isPro: data.isPro === true, isChecked: true });
+      } catch (err) {
+        console.error('[auth] Failed to check pro entitlement:', err);
+        // WORLDMONITOR-10F: 8s createTimeoutSignal / page teardown aborts are
+        // expected (Safari: AbortError "Fetch is aborted"). Do not page Sentry.
+        if (!isTimeoutOrAbortError(err)) {
+          Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'check-entitlement' } });
+        }
+        if (!cancelled) setState({ isPro: false, isChecked: true });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [signedIn, userId]);
+
+  return <ProEntitlementContext.Provider value={state}>{children}</ProEntitlementContext.Provider>;
+}
+
+function useProEntitlement(): ProEntitlementState {
+  return useContext(ProEntitlementContext);
+}
+
+/**
+ * Mounts Clerk's native UserButton (avatar + dropdown with profile + sign
+ * out) into a DOM node. Using Clerk's built-in widget avoids reimplementing
+ * a signed-in UI from scratch and inherits theming from the existing
+ * clerk.load() appearance options in services/checkout.ts.
+ */
+function ClerkUserButton({ user }: { user: UserResource | null }): ReactElement {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    if (!ref.current) return;
+    const el = ref.current;
+    let unmounted = false;
+
+    ensureClerk()
+      .then((clerk) => {
+        if (unmounted || !el) return;
+        clerk.mountUserButton(el, {
+          afterSignOutUrl: 'https://www.worldmonitor.app/pro',
+        });
+      })
+      .catch((err) => {
+        console.error('[auth] Failed to mount user button:', err);
+        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'mount-user-button' } });
+      });
+
+    return () => {
+      unmounted = true;
+      ensureClerk().then((clerk) => {
+        if (el) clerk.unmountUserButton(el);
+      }).catch(() => { /* mount path already failed */ });
+    };
+  }, [user]);
+
+  return (
+    <div ref={ref} translate="no" className="flex h-8 w-8 items-center justify-center">
+      {!user && (
+        <span
+          className="block h-8 w-8 rounded-full border border-wm-border bg-wm-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+          aria-hidden="true"
+        />
+      )}
+    </div>
+  );
 }
 
 const SlackIcon = () => (
@@ -153,53 +313,66 @@ const SlackIcon = () => (
   </svg>
 );
 
-const Logo = () => (
-  <a href="https://worldmonitor.app" className="flex items-center gap-2 hover:opacity-80 transition-opacity" aria-label="World Monitor — Home">
-    <div className="relative w-8 h-8 rounded-full bg-wm-card border border-wm-border flex items-center justify-center overflow-hidden">
-      <Globe className="w-5 h-5 text-wm-blue opacity-50 absolute" aria-hidden="true" />
-      <Activity className="w-6 h-6 text-wm-green absolute z-10" aria-hidden="true" />
-    </div>
-    <div className="flex flex-col">
-      <span className="font-display font-bold text-sm leading-none tracking-tight">WORLD MONITOR</span>
-      <span className="text-[9px] text-wm-muted font-mono uppercase tracking-widest leading-none mt-1">by Someone.ceo</span>
-    </div>
-  </a>
-);
-
 /* ─── 0. Navbar ─── */
-const Navbar = () => (
-  <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
-    <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-      <Logo />
-      <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
-        <a href="#tiers" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
-        <a href="#pro" className="hover:text-wm-green transition-colors">{t('nav.pro')}</a>
-        <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
-        <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
+const Navbar = () => {
+  const { user, isLoaded, signedIn } = useClerkUser();
+  const { isPro, isChecked } = useProEntitlement();
+  // Show "Go to Dashboard" instead of "Upgrade to Pro" once we confirm
+  // the visitor is already a paying customer. Until the entitlement
+  // check completes we keep the upgrade CTA in place — a signed-in
+  // free user would see a one-frame flash otherwise, which is less
+  // annoying than showing "Go to Dashboard" for half a second to a
+  // visitor who hasn't paid.
+  const showGoToDashboard = isLoaded && signedIn && !!user && isChecked && isPro;
+  return (
+    <nav data-wm-nav="primary" className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
+      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <Logo />
+        <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
+          <a href="#tiers" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
+          <a href="#pro" className="hover:text-wm-green transition-colors">{t('nav.pro')}</a>
+          <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
+          <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
+        </div>
+        <div className="flex items-center gap-2">
+          {isLoaded && (signedIn
+            ? <ClerkUserButton user={user} />
+            : (
+              <button
+                type="button"
+                onClick={openSignIn}
+                className="border border-wm-border text-wm-text px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:border-wm-text transition-colors"
+              >
+                {t('nav.signIn')}
+              </button>
+            ))}
+          {showGoToDashboard ? (
+            <a
+              href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
+              className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-1.5"
+            >
+              {t('nav.goToDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
+            </a>
+          ) : (
+            <a href="#pricing" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+              {t('nav.upgradeToPro')}
+            </a>
+          )}
+        </div>
       </div>
-      <a href="#waitlist" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
-        {t('nav.reserveAccess')}
-      </a>
-    </div>
-  </nav>
-);
+    </nav>
+  );
+};
 
 /* ─── 1. Hero — Less noise, more signal ─── */
-const WiredBadge = () => (
-  <a
-    href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map"
-    target="_blank"
-    rel="noreferrer"
-    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-wm-border bg-wm-card/50 text-wm-muted text-xs font-mono hover:border-wm-green/30 hover:text-wm-text transition-colors"
-  >
-    {t('wired.asFeaturedIn')} <span className="text-wm-text font-bold">WIRED</span> <ExternalLink className="w-3 h-3" aria-hidden="true" />
-  </a>
-);
-
 const SignalBars = () => {
   const total = 60;
   const center = total / 2;
   const signalRadius = 8;
+  const jitter = (index: number, salt: number) => {
+    const x = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  };
 
   return (
     <div className="relative my-4 md:my-8 -mx-6">
@@ -213,31 +386,59 @@ const SignalBars = () => {
           const signalIntensity = isSignal ? 1 - distFromCenter / signalRadius : 0;
           const peakHeight = 60 + signalIntensity * 110;
           const noiseBase = Math.max(8, 35 - distFromCenter * 0.8);
+          const barHeight = isSignal ? peakHeight : noiseBase;
+          const initialScale = isSignal ? 0.3 : 0.5;
+          const scaleY = isSignal
+            ? [0.5, 1, 0.65, 0.9]
+            : [1, 0.3, 0.7, 0.15, 0.5];
+          // Motion accelerates `transform` but not the individual `scaleY`
+          // shorthand, so complete transform strings keep these 60 forever-
+          // repeating bars on the browser's compositor instead of Motion's
+          // JavaScript frame loop. Collapsing this back to `scaleY: [...]`
+          // looks identical and silently restores that main-thread cost.
+          const transform = scaleY.map((scale) => `scaleY(${scale})`);
+          // Motion's JS path expands a single `ease` into one easing per
+          // keyframe segment; its native path would apply a lone easing across
+          // the whole iteration and interpolate linearly between keyframes.
+          // Passing the array keeps the per-segment curve the bars had before,
+          // and still leaves the animation eligible for the native path.
+          const ease = scaleY.slice(1).map(() => 'easeInOut' as const);
 
           return (
-            <motion.div
+            <div
               key={i}
-              className={`flex-1 max-w-2 md:max-w-3 rounded-sm ${isSignal ? 'bg-wm-green' : 'bg-wm-muted/20'}`}
-              style={isSignal ? { boxShadow: `0 0 ${6 + signalIntensity * 12}px rgba(74,222,128,${signalIntensity * 0.5})` } : undefined}
-              initial={{ height: isSignal ? peakHeight * 0.3 : noiseBase * 0.5, opacity: isSignal ? 0.4 : 0.08 }}
-              animate={isSignal
-                ? {
-                    height: [peakHeight * 0.5, peakHeight, peakHeight * 0.65, peakHeight * 0.9],
-                    opacity: [0.6 + signalIntensity * 0.3, 1, 0.75 + signalIntensity * 0.2, 0.95],
-                  }
-                : {
-                    height: [noiseBase, noiseBase * 0.3, noiseBase * 0.7, noiseBase * 0.15, noiseBase * 0.5],
-                    opacity: [0.2, 0.06, 0.15, 0.04, 0.12],
-                  }
-              }
-              transition={{
-                duration: isSignal ? 2.5 + signalIntensity * 0.5 : 1 + Math.random() * 0.6,
-                repeat: Infinity,
-                repeatType: 'reverse',
-                delay: isSignal ? distFromCenter * 0.07 : Math.random() * 0.6,
-                ease: 'easeInOut',
-              }}
-            />
+              className="flex flex-1 max-w-2 md:max-w-3 items-end"
+              style={{ height: `${barHeight}px` }}
+            >
+              <motion.div
+                className={`w-full rounded-sm ${isSignal ? 'bg-wm-green' : 'bg-wm-muted/20'}`}
+                style={{
+                  height: '100%',
+                  transformOrigin: 'bottom',
+                  ...(isSignal
+                    ? { boxShadow: `0 0 ${6 + signalIntensity * 12}px rgba(74,222,128,${signalIntensity * 0.5})` }
+                    : null),
+                }}
+                initial={{ transform: `scaleY(${initialScale})`, opacity: isSignal ? 0.4 : 0.08 }}
+                animate={isSignal
+                  ? {
+                      transform,
+                      opacity: [0.6 + signalIntensity * 0.3, 1, 0.75 + signalIntensity * 0.2, 0.95],
+                    }
+                  : {
+                      transform,
+                      opacity: [0.2, 0.06, 0.15, 0.04, 0.12],
+                    }
+                }
+                transition={{
+                  duration: isSignal ? 2.5 + signalIntensity * 0.5 : 1 + jitter(i, 1) * 0.6,
+                  repeat: Infinity,
+                  repeatType: 'reverse',
+                  delay: isSignal ? distFromCenter * 0.07 : jitter(i, 2) * 0.6,
+                  ease,
+                }}
+              />
+            </div>
           );
         })}
       </div>
@@ -245,65 +446,73 @@ const SignalBars = () => {
   );
 };
 
-const Hero = () => (
-  <section className="pt-28 pb-12 px-6 relative overflow-hidden">
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
-    <div className="max-w-4xl mx-auto text-center relative z-10">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <div className="mb-4">
-          <WiredBadge />
-        </div>
-
-        <h1 className="text-6xl md:text-8xl font-display font-bold tracking-tighter leading-[0.95]">
-          <span className="text-wm-muted/40">{t('hero.noiseWord')}</span>
-          <span className="mx-3 md:mx-5 text-wm-border/50">→</span>
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-wm-green to-emerald-300 text-glow">{t('hero.signalWord')}</span>
-        </h1>
-
-        <SignalBars />
-
-        <p className="text-lg md:text-xl text-wm-muted max-w-xl mx-auto font-light leading-relaxed">
-          {t('hero.valueProps')}
-        </p>
-
-        {getRefCode() && (
-          <div className="inline-flex items-center gap-2 px-4 py-2 mt-4 rounded-sm border border-wm-green/30 bg-wm-green/5 text-sm font-mono text-wm-green">
-            <Users className="w-4 h-4" aria-hidden="true" />
-            {t('referral.invitedBanner')}
+const Hero = ({ srLead }: { srLead?: string }) => {
+  const { user, isLoaded, signedIn } = useClerkUser();
+  const { isPro, isChecked } = useProEntitlement();
+  // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
+  // Hide it once auth state confirms; falls back to just the "Choose Plan"
+  // CTA which is the relevant action for returning users anyway.
+  const showSignIn = isLoaded && !signedIn;
+  // Swap "Choose Plan" for "Go to Dashboard" once we confirm the visitor
+  // is already Pro — same reasoning as the nav swap, and also removes
+  // the #pricing anchor jump which is actively misleading for a paying
+  // customer.
+  const showGoToDashboard = isLoaded && signedIn && !!user && isChecked && isPro;
+  return (
+    <section className="pt-28 pb-12 px-6 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
+      <div className="max-w-4xl mx-auto text-center relative z-10">
+        {/* The prerendered /pro HTML paints this hero before React mounts, so
+            an opacity:0 initial state would blank it out until the bundle ran. */}
+        <motion.div
+          initial={false}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <div className="mb-4">
+            <WiredBadge />
           </div>
-        )}
-        <form className="flex flex-col gap-3 max-w-md mx-auto mt-8" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const email = new FormData(form).get('email') as string; submitWaitlist(email, form); }}>
-          <input type="text" name="website" autoComplete="off" tabIndex={-1} aria-hidden="true" className="absolute opacity-0 h-0 w-0 pointer-events-none" />
-          <div className="flex flex-col sm:flex-row gap-3">
-            <input
-              type="email"
-              name="email"
-              placeholder={t('hero.emailPlaceholder')}
-              className="flex-1 bg-wm-card border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono"
-              required
-              aria-label={t('hero.emailAriaLabel')}
-            />
-            <button type="submit" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2 whitespace-nowrap">
-              {t('hero.reserveEarlyAccess')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
-            </button>
+
+          <h1 className="text-6xl md:text-8xl font-display font-bold tracking-tighter leading-[0.95]">
+            {srLead && <span className="sr-only">{srLead} </span>}
+            <span className="text-wm-muted/40">{t('hero.noiseWord')}</span>
+            <span className="mx-3 md:mx-5 text-wm-border/50">→</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-wm-green to-emerald-300 text-glow">{t('hero.signalWord')}</span>
+          </h1>
+
+          <SignalBars />
+
+          <p className="text-lg md:text-xl text-wm-muted max-w-xl mx-auto font-light leading-relaxed">
+            {t('hero.valueProps')}
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
+            {showGoToDashboard ? (
+              <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+                {t('hero.goToDashboard')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              </a>
+            ) : (
+              <a href="#pricing" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+                {t('hero.choosePlan')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              </a>
+            )}
+            {showSignIn && (
+              <button type="button" onClick={openSignIn} className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-text transition-colors">
+                {t('hero.signIn')}
+              </button>
+            )}
           </div>
-          <div className="cf-turnstile mx-auto" />
-        </form>
-        <div className="flex items-center justify-center gap-4 mt-4">
-          <p className="text-xs text-wm-muted font-mono">{t('hero.launchingDate')}</p>
-          <span className="text-wm-border">|</span>
-          <a href="https://worldmonitor.app" className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
-            {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
-          </a>
-        </div>
-      </motion.div>
-    </div>
-  </section>
-);
+
+          <div className="flex items-center justify-center mt-4">
+            <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
+              {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
+            </a>
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+};
 
 /* ─── 2. Social proof (current — WIRED badge already in hero) ─── */
 const SocialProof = () => (
@@ -314,7 +523,7 @@ const SocialProof = () => (
           { value: "2M+", label: t('socialProof.uniqueVisitors') },
           { value: "421K", label: t('socialProof.peakDailyUsers') },
           { value: "190+", label: t('socialProof.countriesReached') },
-          { value: "435+", label: t('socialProof.liveDataSources') },
+          { value: "500+", label: t('socialProof.liveDataSources') },
         ].map((stat, i) => (
           <div key={i}>
             <p className="text-3xl md:text-4xl font-display font-bold text-wm-green">{stat.value}</p>
@@ -327,8 +536,8 @@ const SocialProof = () => (
           "{t('socialProof.quote')}"
         </p>
         <footer className="mt-6 flex items-center justify-center gap-3">
-          <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-wm-muted hover:text-wm-text transition-colors">
-            <img src={wiredLogo} alt="WIRED" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
+          <a href="https://www.wired.com/story/world-monitor-elie-habib/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-wm-muted hover:text-wm-text transition-colors">
+            <img src={wiredLogo} alt="WIRED" loading="lazy" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
           </a>
         </footer>
       </blockquote>
@@ -346,15 +555,15 @@ const TwoPathSplit = () => (
         <h3 className="font-display text-2xl font-bold mb-2">{t('twoPath.proTitle')}</h3>
         <p className="text-sm text-wm-muted mb-6">{t('twoPath.proDesc')}</p>
         <ul className="space-y-3 mb-8">
-          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6'), t('twoPath.proF7'), t('twoPath.proF8'), t('twoPath.proF9')].map((f, i) => (
+          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6'), t('twoPath.proF7'), t('twoPath.proF8'), t('twoPath.proF9'), t('twoPath.proF10')].map((f, i) => (
             <li key={i} className="flex items-start gap-3 text-sm">
               <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-green" aria-hidden="true" />
               <span className="text-wm-muted">{f}</span>
             </li>
           ))}
         </ul>
-        <a href="#waitlist" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold bg-wm-green text-wm-bg hover:bg-green-400 transition-colors">
-          {t('twoPath.proCta')}
+        <a href="#pricing" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold bg-wm-green text-wm-bg hover:bg-green-400 transition-colors">
+          {t('twoPath.choosePlan')}
         </a>
       </div>
 
@@ -407,7 +616,56 @@ const WhyUpgrade = () => {
   );
 };
 
+/* ─── Three Flagship Pillars (new) ─── */
+const Pillars = () => {
+  const items = [
+    { icon: <Brain className="w-7 h-7" aria-hidden="true" />, title: t('pillars.askIt'), desc: t('pillars.askItDesc') },
+    { icon: <Bell className="w-7 h-7" aria-hidden="true" />, title: t('pillars.subscribeIt'), desc: t('pillars.subscribeItDesc') },
+    { icon: <Plug className="w-7 h-7" aria-hidden="true" />, title: t('pillars.buildOnIt'), desc: t('pillars.buildOnItDesc') },
+  ];
+
+  return (
+    <section className="py-20 px-6 border-t border-wm-border">
+      <div className="max-w-5xl mx-auto">
+        <div className="grid md:grid-cols-3 gap-6">
+          {items.map((item, i) => (
+            <div key={i} className="bg-wm-card border border-wm-border p-6 hover:border-wm-green/30 transition-colors">
+              <div className="text-wm-green mb-4">{item.icon}</div>
+              <h3 className="font-display text-xl font-bold mb-2">{item.title}</h3>
+              <p className="text-sm text-wm-muted leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+/* ─── Delivery Desk (new) ─── */
+const DeliveryDesk = () => (
+  <section className="py-24 px-6 border-t border-wm-border bg-wm-card/20">
+    <div className="max-w-4xl mx-auto text-center">
+      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-wm-green/30 bg-wm-green/10 text-wm-green text-xs font-mono mb-6">
+        {t('deliveryDesk.eyebrow')}
+      </div>
+      <h2 className="text-3xl md:text-5xl font-display font-bold mb-6">{t('deliveryDesk.title')}</h2>
+      <p className="text-lg text-wm-muted leading-relaxed mb-6">
+        {t('deliveryDesk.body')}
+      </p>
+      <p className="text-xl md:text-2xl font-display font-bold text-wm-green mb-8">
+        {t('deliveryDesk.closer')}
+      </p>
+      <p className="font-mono text-xs text-wm-muted uppercase tracking-widest">
+        {t('deliveryDesk.channels')}
+      </p>
+    </div>
+  </section>
+);
+
 /* ─── 5. Live Dashboard Embed (current) ─── */
+// max-w-6xl (1152px) container inside px-6 section padding.
+const LIVE_PREVIEW_IMAGE_SIZES = '(min-width: 1200px) 1152px, calc(100vw - 3rem)';
+
 const LivePreview = () => (
   <section className="px-6 py-16">
     <div className="max-w-6xl mx-auto">
@@ -420,7 +678,7 @@ const LivePreview = () => (
           </div>
           <span className="font-mono text-xs text-wm-muted ml-2">{t('livePreview.windowTitle')}</span>
           <a
-            href="https://worldmonitor.app"
+            href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
             target="_blank"
             rel="noreferrer"
             className="ml-auto text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1"
@@ -429,13 +687,25 @@ const LivePreview = () => (
           </a>
         </div>
         <div className="relative aspect-[16/9] bg-black">
-          <img
-            src={dashboardFallback}
-            alt="World Monitor Dashboard"
-            className="absolute inset-0 w-full h-full object-cover"
-          />
+          <picture>
+            <source type="image/avif" srcSet={DASHBOARD_SCREENSHOT_AVIF_SRCSET} sizes={LIVE_PREVIEW_IMAGE_SIZES} />
+            <source type="image/webp" srcSet={DASHBOARD_SCREENSHOT_WEBP_SRCSET} sizes={LIVE_PREVIEW_IMAGE_SIZES} />
+            <img
+              src={DASHBOARD_SCREENSHOT_JPG}
+              alt="World Monitor Dashboard"
+              className="absolute inset-0 w-full h-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
+          </picture>
           <iframe
-            src="https://worldmonitor.app?alert=false"
+            // ?embed=pro-preview is the unique marker the main app's
+            // IS_EMBEDDED_PREVIEW helper keys off to silence premium-RPC
+            // 401s that otherwise surface in /pro's parent console. See
+            // src/utils/embedded-preview.ts. Not a generic iframe gate —
+            // enterprise white-label embeds without this marker keep
+            // firing premium RPCs normally.
+            src={DASHBOARD_EMBED_PREVIEW_URL}
             title={t('livePreview.iframeTitle')}
             className="relative w-full h-full border-0"
             loading="lazy"
@@ -444,7 +714,7 @@ const LivePreview = () => (
           <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-wm-bg/80 via-transparent to-transparent" />
           <div className="absolute bottom-4 left-0 right-0 text-center pointer-events-auto">
             <a
-              href="https://worldmonitor.app"
+              href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors"
@@ -527,10 +797,10 @@ const ProShowcase = () => (
             </div>
           </div>
           <div className="flex gap-4">
-            <Telescope className="w-6 h-6 text-wm-green shrink-0" aria-hidden="true" />
+            <Boxes className="w-6 h-6 text-wm-green shrink-0" aria-hidden="true" />
             <div>
-              <h4 className="font-bold mb-1">{t('proShowcase.orbitalSurveillance')}</h4>
-              <p className="text-sm text-wm-muted">{t('proShowcase.orbitalSurveillanceDesc')}</p>
+              <h4 className="font-bold mb-1">{t('proShowcase.supplyChainLab')}</h4>
+              <p className="text-sm text-wm-muted">{t('proShowcase.supplyChainLabDesc')}</p>
             </div>
           </div>
           <div className="flex gap-4">
@@ -549,19 +819,21 @@ const ProShowcase = () => (
           </div>
         </div>
 
+        <p className="mt-6 text-xs text-wm-muted">{t('proShowcase.roadmapNote')}</p>
+
         <div className="mt-10 pt-8 border-t border-wm-border">
           <p className="font-mono text-xs text-wm-muted uppercase tracking-widest mb-4">{t('proShowcase.deliveryLabel')}</p>
           <div className="flex gap-6">
             {[
               { icon: <SlackIcon />, label: "Slack" },
-              { icon: <Send className="w-5 h-5" aria-hidden="true" />, label: "Telegram" },
-              { icon: <MessageCircle className="w-5 h-5" aria-hidden="true" />, label: "WhatsApp" },
-              { icon: <Mail className="w-5 h-5" aria-hidden="true" />, label: "Email" },
               { icon: <MessageSquare className="w-5 h-5" aria-hidden="true" />, label: "Discord" },
+              { icon: <Send className="w-5 h-5" aria-hidden="true" />, label: "Telegram" },
+              { icon: <Mail className="w-5 h-5" aria-hidden="true" />, label: "Email" },
+              { icon: <Plug className="w-5 h-5" aria-hidden="true" />, label: "Webhook" },
             ].map((ch, i) => (
               <div key={i} className="flex flex-col items-center gap-1.5 text-wm-muted hover:text-wm-text transition-colors cursor-pointer">
                 {ch.icon}
-                <span className="text-[10px] font-mono">{ch.label}</span>
+                <span className="text-xs font-mono">{ch.label}</span>
               </div>
             ))}
           </div>
@@ -645,7 +917,7 @@ const AudiencePersonas = () => {
 const ApiSection = () => (
   <section className="py-24 px-6 border-y border-wm-border bg-[#0a0a0a]" id="api">
     <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
-      <div className="order-2 lg:order-1">
+      <div className="order-2 lg:order-1 min-w-0">
         <div className="bg-black border border-wm-border rounded-lg overflow-hidden font-mono text-sm">
           <div className="bg-wm-card px-4 py-2 border-b border-wm-border flex items-center gap-2">
             <Terminal className="w-4 h-4 text-wm-muted" aria-hidden="true" />
@@ -672,7 +944,7 @@ const ApiSection = () => (
         </div>
       </div>
 
-      <div className="order-1 lg:order-2">
+      <div className="order-1 lg:order-2 min-w-0">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-wm-border bg-wm-card text-wm-muted text-xs font-mono mb-6">
           {t('apiSection.apiTier')}
         </div>
@@ -692,6 +964,20 @@ const ApiSection = () => (
           <li className="flex items-start gap-3">
             <Database className="w-5 h-5 text-wm-muted shrink-0" aria-hidden="true" />
             <span className="text-sm">{t('apiSection.structured')}</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <Terminal className="w-5 h-5 text-wm-muted shrink-0" aria-hidden="true" />
+            <span className="text-sm">
+              {t('apiSection.cli')}{' — '}
+              <a
+                href="https://www.npmjs.com/package/worldmonitor"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-wm-green hover:underline"
+              >
+                npx worldmonitor
+              </a>
+            </span>
           </li>
         </ul>
 
@@ -800,13 +1086,16 @@ const EnterpriseShowcase = () => (
 /* ─── 11. Comparison Table (simplified columns, kept technical rows) ─── */
 const PricingTable = () => {
   const rows = [
-    { feature: t('pricingTable.dataRefresh'), free: t('pricingTable.f5_15min'), pro: t('pricingTable.fLt60s'), api: t('pricingTable.fPerRequest'), ent: t('pricingTable.fLiveEdge') },
-    { feature: t('pricingTable.dashboard'), free: t('pricingTable.f50panels'), pro: t('pricingTable.f50panels'), api: "\u2014", ent: t('pricingTable.fWhiteLabel') },
+    { feature: t('pricingTable.dataRefresh'), free: t('pricingTable.fStandardCadence'), pro: t('pricingTable.fQuotes30s'), api: t('pricingTable.fPerRequest'), ent: t('pricingTable.fLiveEdge') },
+    { feature: t('pricingTable.panelsRow'), free: t('pricingTable.f40'), pro: t('pricingTable.fUnlimited'), api: t('pricingTable.fUnlimited'), ent: t('pricingTable.fWhiteLabel') },
+    { feature: t('pricingTable.tabsRow'), free: t('pricingTable.f3'), pro: t('pricingTable.f10'), api: t('pricingTable.f25'), ent: t('pricingTable.fUnlimited') },
+    { feature: t('pricingTable.sourcesRow'), free: t('pricingTable.f80'), pro: t('pricingTable.fAll'), api: t('pricingTable.fAll'), ent: t('pricingTable.fAll') },
+    { feature: t('pricingTable.followedRow'), free: t('pricingTable.f3'), pro: t('pricingTable.fUnlimited'), api: t('pricingTable.fUnlimited'), ent: t('pricingTable.fUnlimited') },
     { feature: t('pricingTable.ai'), free: t('pricingTable.fBYOK'), pro: t('pricingTable.fIncluded'), api: "\u2014", ent: t('pricingTable.fAgentsPersonas') },
     { feature: t('pricingTable.briefsAlerts'), free: "\u2014", pro: t('pricingTable.fDailyFlash'), api: "\u2014", ent: t('pricingTable.fTeamDist') },
     { feature: t('pricingTable.delivery'), free: "\u2014", pro: t('pricingTable.fSlackTgWa'), api: t('pricingTable.fWebhook'), ent: t('pricingTable.fSiemMcp') },
     { feature: t('pricingTable.apiRow'), free: "\u2014", pro: "\u2014", api: t('pricingTable.fRestWebhook'), ent: t('pricingTable.fMcpBulk') },
-    { feature: t('pricingTable.infraLayers'), free: t('pricingTable.f45'), pro: t('pricingTable.f45'), api: "\u2014", ent: t('pricingTable.fTensOfThousands') },
+    { feature: t('pricingTable.infraLayers'), free: t('pricingTable.fLayersNoResilience'), pro: t('pricingTable.fAllLayers'), api: t('pricingTable.fAllLayers'), ent: t('pricingTable.fTensOfThousands') },
     { feature: t('pricingTable.satellite'), free: t('pricingTable.fLiveTracking'), pro: t('pricingTable.fPassAlerts'), api: "\u2014", ent: t('pricingTable.fImagerySar') },
     { feature: t('pricingTable.connectorsRow'), free: "\u2014", pro: "\u2014", api: "\u2014", ent: t('pricingTable.f100plus') },
     { feature: t('pricingTable.deployment'), free: t('pricingTable.fCloud'), pro: t('pricingTable.fCloud'), api: t('pricingTable.fCloud'), ent: t('pricingTable.fCloudOnPrem') },
@@ -840,7 +1129,7 @@ const PricingTable = () => {
         {rows.map((row, i) => (
           <div key={i} className="bg-wm-card border border-wm-border p-4 rounded-sm">
             <p className="font-medium text-sm mb-3">{row.feature}</p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-2 gap-2 text-xs break-words">
               <div><span className="text-wm-muted">{t('tiers.free')}:</span> {row.free}</div>
               <div><span className="text-wm-green">{t('tiers.pro')}:</span> <span className="text-wm-green">{row.pro}</span></div>
               <div><span className="text-wm-muted">{t('nav.api')}:</span> {row.api}</div>
@@ -867,6 +1156,11 @@ const FAQ = () => {
     { q: t('faq.q6'), a: t('faq.a6') },
     { q: t('faq.q7'), a: t('faq.a7') },
     { q: t('faq.q8'), a: t('faq.a8') },
+    { q: t('faq.q9'), a: t('faq.a9') },
+    { q: t('faq.q10'), a: t('faq.a10') },
+    { q: t('faq.q11'), a: t('faq.a11') },
+    { q: t('faq.q12'), a: t('faq.a12') },
+    { q: t('faq.q13'), a: t('faq.a13') },
   ];
 
   return (
@@ -889,67 +1183,12 @@ const FAQ = () => {
   );
 };
 
-/* ─── 13. Final CTA (draft — dual CTA) + Footer ─── */
-const Footer = () => (
-  <footer className="border-t border-wm-border bg-[#020202] pt-24 pb-12 px-6 text-center" id="waitlist">
-    <div className="max-w-2xl mx-auto mb-16">
-      <h2 className="text-4xl font-display font-bold mb-4">{t('finalCta.title')}</h2>
-      <p className="text-wm-muted mb-8">{t('finalCta.subtitle')}</p>
-
-      <form className="flex flex-col gap-3 max-w-md mx-auto mb-6" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const email = new FormData(form).get('email') as string; submitWaitlist(email, form); }}>
-        <input type="text" name="website" autoComplete="off" tabIndex={-1} aria-hidden="true" className="absolute opacity-0 h-0 w-0 pointer-events-none" />
-        <div className="flex flex-col sm:flex-row gap-3">
-          <input
-            type="email"
-            name="email"
-            placeholder={t('hero.emailPlaceholder')}
-            className="flex-1 bg-wm-card border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono"
-            required
-            aria-label={t('hero.emailAriaLabel')}
-          />
-          <button type="submit" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors whitespace-nowrap">
-            {t('finalCta.getPro')}
-          </button>
-        </div>
-        <div className="cf-turnstile mx-auto" />
-      </form>
-
-      <a
-        href="#enterprise-contact"
-        className="inline-flex items-center gap-2 text-sm text-wm-muted hover:text-wm-text transition-colors font-mono"
-      >
-        {t('finalCta.talkToSales')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
-      </a>
-    </div>
-
-    <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto pt-8 border-t border-wm-border/50 text-xs text-wm-muted font-mono">
-      <div className="flex items-center gap-3 mb-4 md:mb-0">
-        <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" className="rounded-full" />
-        <div className="flex flex-col">
-          <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
-          <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>
-        </div>
-      </div>
-      <div className="flex items-center gap-6">
-        <a href="/" className="hover:text-wm-text transition-colors">Dashboard</a>
-        <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
-        <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
-        <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
-        <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
-        <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discord</a>
-        <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
-      </div>
-      <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
-    </div>
-  </footer>
-);
-
 /* ─── Enterprise Page (dedicated /pro/#enterprise) ─── */
 const EnterprisePage = () => (
   <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
-    <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
+    <nav data-wm-nav="primary" className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }}><Logo /></a>
+        <Logo href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }} />
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
           <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }} className="hover:text-wm-text transition-colors">{t('nav.pro')}</a>
           <a href="#enterprise" onClick={(e) => { e.preventDefault(); document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
@@ -1059,9 +1298,22 @@ const EnterprisePage = () => (
             const fd = new FormData(form);
             const honeypot = (form.querySelector('input[name="website"]') as HTMLInputElement)?.value || '';
             const turnstileWidget = form.querySelector('.cf-turnstile') as HTMLElement | null;
-            const turnstileToken = turnstileWidget?.dataset.token || '';
+            let turnstileToken = turnstileWidget?.dataset.token || '';
+            if (!turnstileToken && turnstileWidget) {
+              // Turnstile loads lazily (viewport-triggered), so a fast or
+              // autofilled submit can arrive before the widget produced a
+              // token. Kick the loader and give the challenge a bounded
+              // window; if it still hasn't resolved, POST anyway — the
+              // server verdict (and the existing failure UX + widget
+              // reset) stays the authority, same as an expired token.
+              if (await ensureTurnstileScript()) renderTurnstileWidgets();
+              for (let i = 0; i < 40 && !turnstileWidget.dataset.token; i++) {
+                await new Promise((resolve) => setTimeout(resolve, 250));
+              }
+              turnstileToken = turnstileWidget.dataset.token || '';
+            }
             try {
-              const res = await fetch(`${API_BASE}/contact`, {
+              const res = await fetch(`${API_BASE}/leads/v1/submit-contact`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1079,7 +1331,7 @@ const EnterprisePage = () => (
               if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
                 if (res.status === 422 && errorEl) {
-                  errorEl.textContent = data.error || t('enterpriseShowcase.workEmailRequired');
+                  errorEl.textContent = data.message || data.error || t('enterpriseShowcase.workEmailRequired');
                   errorEl.classList.remove('hidden');
                   btn.textContent = origText;
                   btn.disabled = false;
@@ -1124,30 +1376,69 @@ const EnterprisePage = () => (
     <footer className="border-t border-wm-border bg-[#020202] py-8 px-6 text-center">
       <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
         <div className="flex items-center gap-3 mb-4 md:mb-0">
-          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" className="rounded-full" />
-          <div className="flex flex-col">
-            <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
-            <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>
-          </div>
+          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" loading="lazy" className="rounded-full" />
+          <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
         </div>
         <div className="flex items-center gap-6">
-          <a href="/" className="hover:text-wm-text transition-colors">Dashboard</a>
+          <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>
+          <a href={ABOUT_DOCS_PATH} className="hover:text-wm-text transition-colors">About</a>
           <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
-          <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
+          <a href="https://www.worldmonitor.app/docs/documentation" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
-          <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discord</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
         </div>
-        <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
+        <span className="text-xs opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
       </div>
+      <PressFooterNav />
+      {/* This is the pricing page — the footer a buyer sees on the way to
+          checkout — so the documents they are agreeing to have to be one click
+          from here, not one FAQ answer deep (#6976). */}
+      <LegalFooterNav />
     </footer>
   </div>
 );
 
 /* ─── Page Layout ─── */
+/**
+ * The home page's first viewport and landmark structure. prerender.mjs renders
+ * it to static HTML (pro-first-viewport-prerender.tsx) so the hero paints, at
+ * its final size, before the bundle mounts and replaces #root.
+ */
+export const ProHomeShell = ({ heroSrLead, footer, children }: {
+  heroSrLead?: string;
+  footer?: ReactNode;
+  children: ReactNode;
+}) => (
+  <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
+    <Navbar />
+    <main>
+      <Hero srLead={heroSrLead} />
+      {children}
+    </main>
+    {footer}
+  </div>
+);
+
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
+
+  // Resume a checkout the buyer started before signing in.
+  //
+  // This mount hook used to also call `initOverlay()`, which dynamically
+  // imported the heavy Dodo overlay SDK on every /pro mount and registered an
+  // overlay-success handler that bridged the buyer to the dashboard. #4449
+  // moved checkout to a top-level redirect to Dodo's hosted page (see
+  // startCheckout), which made that handler unreachable — after payment the
+  // buyer lands on the dashboard, not /pro, and handleCheckoutReturn owns that
+  // UX via the guarded `?wm_checkout=return` contract. #7222 deleted the
+  // function and dropped `dodopayments-checkout` from this bundle.
+  useEffect(() => {
+    // Consume checkout intent from URL (set by afterSignInUrl on the
+    // checkout-initiated sign-in). No-op for any other /pro entry
+    // point; strips params before any await so a reload can't re-fire.
+    void tryResumeCheckoutFromUrl();
+  }, []);
 
   useEffect(() => {
     const onHash = () => {
@@ -1177,23 +1468,29 @@ export default function App() {
   if (page === 'enterprise') return <EnterprisePage />;
 
   return (
-    <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
-      <Navbar />
-      <main>
-        <Hero />
-        <SocialProof />
-        <TwoPathSplit />
-        <AudiencePersonas />
-        <WhyUpgrade />
-        <LivePreview />
+    <ProEntitlementProvider>
+      <ProHomeShell footer={<Footer />}>
         <SourceMarquee />
+        <Pillars />
+        <WhyUpgrade />
+        <TwoPathSplit />
         <ProShowcase />
+        <DeliveryDesk />
+        <AudiencePersonas />
+        <SocialProof />
+        <LivePreview />
+        <WhatsNew />
+        <PricingSection
+          refCode={getRefCode()}
+          attributionSource={getMcpAttributionSource()}
+          checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
+          desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
+        />
+        <PricingTable />
         <ApiSection />
         <EnterpriseShowcase />
-        <PricingTable />
         <FAQ />
-      </main>
-      <Footer />
-    </div>
+      </ProHomeShell>
+    </ProEntitlementProvider>
   );
 }

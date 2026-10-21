@@ -1,0 +1,33 @@
+---
+import { getCollection, render } from 'astro:content';
+import BlogPost from '../../layouts/BlogPost.astro';
+
+export async function getStaticPaths() {
+  const guides = await getCollection('guides');
+  return guides.map(guide => {
+    const [category, slug] = guide.id.split('/');
+    const relatedPosts = guides
+      .filter(other => other.id !== guide.id)
+      .sort((a, b) => Number(b.id.endsWith(`/${slug}`)) - Number(a.id.endsWith(`/${slug}`))
+        || Number(b.id.startsWith(`${category}/`)) - Number(a.id.startsWith(`${category}/`))
+        || a.id.localeCompare(b.id))
+      .slice(0, 4)
+      .map(other => ({ title: other.data.title, description: other.data.description, href: `/blog/${other.id}/` }));
+    return { params: { category, slug }, props: { guide, relatedPosts } };
+  });
+}
+
+const { guide, relatedPosts } = Astro.props;
+const { Content } = await render(guide);
+---
+
+<BlogPost
+  {...guide.data}
+  slug={guide.id}
+  canonicalPath={`/blog/${guide.id}/`}
+  rawBody={guide.body}
+  relatedPosts={relatedPosts}
+>
+  <Content />
+  <p><a href="/blog/guides/">Browse all comparisons and audience guides</a></p>
+</BlogPost>

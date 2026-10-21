@@ -10,7 +10,19 @@ retailer:
   searchConfig:
     numResults: 5
     queryTemplate: "{canonicalName} grocery singapore {currency} price"
-    urlPathContains: /product/
+    # coldstorage.com.sg serves TWO live product shapes: the catalogue route
+    # `/en/p/<name>/i/<id>.html` and a legacy slug route `/product/<slug>`.
+    # `/p/` alone matches only the first, which loses any item Exa indexes
+    # solely under the legacy route (mineral water is the current example —
+    # all 5 results were `/product/` and the item logged 0 passed the filter).
+    # `/product/` does not contain `/p/`, so both patterns must be listed.
+    urlPathContains:
+      - /p/
+      - /product/
+    allowedHosts:
+      - www.coldstorage.com.sg
+    extractionFallback: exa
+    requireStrictValidator: true
 
   rateLimit:
     requestsPerMinute: 10

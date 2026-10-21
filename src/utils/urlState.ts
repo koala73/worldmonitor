@@ -1,43 +1,10 @@
 import type { MapLayers } from '@/types';
 import type { MapView, TimeRange } from '@/components/Map';
+import { LAYER_REGISTRY } from '@/config/map-layer-definitions';
 
-const LAYER_KEYS: (keyof MapLayers)[] = [
-  'conflicts',
-  'bases',
-  'cables',
-  'pipelines',
-  'hotspots',
-  'ais',
-  'nuclear',
-  'irradiators',
-  'sanctions',
-  'weather',
-  'economic',
-  'waterways',
-  'outages',
-  'cyberThreats',
-  'datacenters',
-  'protests',
-  'flights',
-  'military',
-  'natural',
-  'spaceports',
-  'minerals',
-  'fires',
-  'ucdpEvents',
-  'displacement',
-  'climate',
-  'startupHubs',
-  'cloudRegions',
-  'accelerators',
-  'techHQs',
-  'techEvents',
-  'tradeRoutes',
-  'iranAttacks',
-  'gpsJamming',
-  'satellites',
-  'ciiChoropleth',
-];
+// The registry is typed Record<keyof MapLayers, …>, so every layer is here; a
+// hand-kept copy fell behind it and silently dropped 20 layers from deep links.
+const LAYER_KEYS = Object.keys(LAYER_REGISTRY) as (keyof MapLayers)[];
 
 const TIME_RANGES: TimeRange[] = ['1h', '6h', '24h', '48h', '7d', 'all'];
 const VIEW_VALUES: MapView[] = ['global', 'america', 'mena', 'eu', 'asia', 'latam', 'africa', 'oceania'];
@@ -51,10 +18,50 @@ export interface ParsedMapUrlState {
   layers?: MapLayers;
   country?: string;
   expanded?: boolean;
+  chokepoint?: string;
+}
+
+/**
+ * True when applying this initial URL state starts an async camera move, so
+ * the immediate URL sync after boot must be skipped: getCenter() would report
+ * stale intermediate coordinates until the flight settles. Three cases:
+ *
+ *   - a lat+lon pair: applyInitialUrlState calls setCenter() only when both
+ *     are present, and setCenter flies.
+ *   - a bare zoom with no view preset: setZoom() animates.
+ *   - a chokepoint deep link: it opens after renderer readiness.
+ *
+ * `view` alone never qualifies. Every renderer writes state.view
+ * synchronously at the top of setView(), so the debounced read is correct,
+ * and the initial Globe/SVG view is applied before the sync listener exists,
+ * so those renderers need the immediate write to publish the URL at all.
+ */
+export function urlHasAsyncFlyTo(
+  state: Pick<ParsedMapUrlState, 'view' | 'lat' | 'lon' | 'zoom' | 'chokepoint'> | null | undefined,
+): boolean {
+  const { view, lat, lon, zoom, chokepoint } = state ?? {};
+  return (
+    (lat !== undefined && lon !== undefined)
+    || (!view && zoom !== undefined)
+    || chokepoint !== undefined
+  );
 }
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
+
+/** SearchAction and dashboard deep links share `?q=`. Cap keeps a pasted URL bounded. */
+export const DASHBOARD_SEARCH_QUERY_MAX_CHARS = 200;
+
+export function readDashboardSearchQuery(search: string): string | null {
+  const raw = new URLSearchParams(search).get('q');
+  if (raw == null) return null;
+  const query = raw.trim();
+  if (!query) return null;
+  return query.length > DASHBOARD_SEARCH_QUERY_MAX_CHARS
+    ? query.slice(0, DASHBOARD_SEARCH_QUERY_MAX_CHARS)
+    : query;
+}
 
 const parseEnumParam = <T extends string>(
   params: URLSearchParams,
@@ -94,6 +101,15 @@ export function parseMapUrlState(
   const expandedParam = params.get('expanded');
   const expanded = expandedParam === '1' ? true : undefined;
 
+  // Chokepoint deep-link (?chokepoint=bab_el_mandeb): opens the waterway popup on
+  // the live map. Value is a canonical chokepoint/waterway id (lowercase, snake).
+  // The map resolves it against STRATEGIC_WATERWAYS and no-ops on an unknown id,
+  // so this only needs to reject obviously malformed input.
+  const chokepointParam = params.get('chokepoint');
+  const chokepoint = chokepointParam && /^[a-z][a-z0-9_]{1,40}$/i.test(chokepointParam.trim())
+    ? chokepointParam.trim().toLowerCase()
+    : undefined;
+
   const layersParam = params.get('layers');
   let layers: MapLayers | undefined;
   if (layersParam !== null) {
@@ -129,6 +145,7 @@ export function parseMapUrlState(
     layers,
     country,
     expanded,
+    chokepoint,
   };
 }
 
@@ -142,6 +159,7 @@ export function buildMapUrl(
     layers: MapLayers;
     country?: string;
     expanded?: boolean;
+    chokepoint?: string;
   }
 ): string {
   let url: URL;
@@ -153,7 +171,7 @@ export function buildMapUrl(
   }
   const params = new URLSearchParams();
 
-  if (state.center) {
+  if (state.center && Number.isFinite(state.center.lat) && Number.isFinite(state.center.lon)) {
     params.set('lat', state.center.lat.toFixed(4));
     params.set('lon', state.center.lon.toFixed(4));
   }
@@ -173,6 +191,20 @@ export function buildMapUrl(
     params.set('expanded', '1');
   }
 
+  if (state.chokepoint) {
+    params.set('chokepoint', state.chokepoint);
+  }
+
   url.search = params.toString();
   return url.toString();
+}
+
+/**
+ * The map URL sync owns the query string, not the fragment. Another surface
+ * (Clerk's hash-routed sign-up resume) can be routing on `location.hash`.
+ */
+export function withUrlFragment(url: string, hash: string): string {
+  const next = new URL(url);
+  next.hash = hash;
+  return next.toString();
 }

@@ -7,9 +7,12 @@ import {
   calculateCascade,
   getGraphStats,
   clearGraphCache,
+  preloadCables,
   type DependencyGraph,
 } from '@/services/infrastructure-cascade';
 import type { CascadeResult, CascadeImpactLevel, InfrastructureNode } from '@/types';
+import { trustedHtml } from '@/utils/dom-utils';
+
 
 type NodeFilter = 'all' | 'cable' | 'pipeline' | 'port' | 'chokepoint';
 
@@ -35,13 +38,21 @@ export class CascadePanel extends Panel {
   private async init(): Promise<void> {
     this.showLoading();
     try {
+      await preloadCables();
       this.graph = buildDependencyGraph();
       const stats = getGraphStats();
       this.setCount(stats.nodes);
       this.render();
     } catch (error) {
       console.error('[CascadePanel] Init error:', error);
-      this.showError(t('common.failedDependencyGraph'));
+      // With no `onRetry`, `Panel.showError` leaves `retryCallback` null and so
+      // arms no countdown — and nothing else re-renders this panel: the error
+      // DOM carries none of the controls `setupDelegatedListeners` binds, and
+      // `refresh()` has no callers. The panel stayed dead for the session and
+      // the `setTrustedContent` clear below could never be reached.
+      // `preloadCables()` nulls its cached promise on failure, so a retry
+      // genuinely re-attempts the import.
+      this.showError(t('common.failedDependencyGraph'), () => void this.init());
     }
   }
 
@@ -115,7 +126,7 @@ export class CascadePanel extends Panel {
     return `
       <div class="cascade-selector">
         <div class="panel-tabs" role="radiogroup" aria-label="Infrastructure type filter">${filterButtons}</div>
-        <select class="cascade-select" ${nodes.length === 0 ? 'disabled' : ''}>
+        <select class="cascade-select" aria-label="${t('components.cascade.selectInfrastructureHint')}" ${nodes.length === 0 ? 'disabled' : ''}>
           <option value="">${t('components.cascade.selectPrompt', { type: selectedType })}</option>
           ${nodeOptions}
         </select>
@@ -129,7 +140,10 @@ export class CascadePanel extends Panel {
   private renderCascadeResult(): string {
     if (!this.cascadeResult) return '';
 
-    const { source, countriesAffected, redundancies } = this.cascadeResult;
+    const { source, countriesAffected, redundancies, dataQuality } = this.cascadeResult;
+    const estimateHtml = dataQuality?.estimated
+      ? `<div class="cascade-estimate-note" role="note">${t('components.cascade.estimateNote')}</div>`
+      : '';
 
     const countriesHtml = countriesAffected.length > 0
       ? countriesAffected.map(c => `
@@ -149,6 +163,7 @@ export class CascadePanel extends Panel {
           ${redundancies.map(r => `
             <div class="cascade-redundancy">
               <span class="cascade-redundancy-name">${escapeHtml(r.name)}</span>
+              ${r.avoidsCutZone === false ? `<span class="cascade-redundancy-zone">${t('components.cascade.sharesCutZone')}</span>` : ''}
               <span class="cascade-redundancy-capacity">${Math.round(r.capacityShare * 100)}%</span>
             </div>
           `).join('')}
@@ -168,6 +183,7 @@ export class CascadePanel extends Panel {
           <div class="cascade-countries">${countriesHtml}</div>
         </div>
         ${redundanciesHtml}
+        ${estimateHtml}
       </div>
     `;
   }
@@ -190,13 +206,13 @@ export class CascadePanel extends Panel {
       </div>
     `;
 
-    this.content.innerHTML = `
+    this.setTrustedContent(trustedHtml(`
       <div class="cascade-panel">
         ${statsHtml}
         ${this.renderSelector()}
         ${this.cascadeResult ? this.renderCascadeResult() : `<div class="cascade-hint">${t('components.cascade.selectInfrastructureHint')}</div>`}
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
   }
 
   /**

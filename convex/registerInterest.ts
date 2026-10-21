@@ -1,4 +1,5 @@
-import { mutation, query } from "./_generated/server";
+import { assertAccountWritable, isAccountDeleting } from "./accountDeletion/guard";
+import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { DatabaseReader, DatabaseWriter } from "./_generated/server";
 
@@ -27,14 +28,6 @@ async function generateUniqueReferralCode(
   return Date.now().toString(36).slice(-8);
 }
 
-async function getCounter(db: DatabaseReader, name: string): Promise<number> {
-  const counter = await db
-    .query("counters")
-    .withIndex("by_name", (q) => q.eq("name", name))
-    .first();
-  return counter?.value ?? 0;
-}
-
 async function incrementCounter(db: DatabaseWriter, name: string): Promise<number> {
   const counter = await db
     .query("counters")
@@ -49,7 +42,10 @@ async function incrementCounter(db: DatabaseWriter, name: string): Promise<numbe
   return newVal;
 }
 
-export const register = mutation({
+// This write is intentionally internal. The public edge handler performs the
+// Turnstile/desktop proof, email validation, rate limits, and honeypot check;
+// exposing the mutation itself would let a caller bypass that entire boundary.
+export const register = internalMutation({
   args: {
     email: v.string(),
     source: v.optional(v.string()),
@@ -79,16 +75,50 @@ export const register = mutation({
 
     const referralCode = await generateUniqueReferralCode(ctx.db, normalizedEmail);
 
-    // Credit the referrer
+    // Credit the referrer. Two code spaces can match:
+    //   1. registrations.referralCode — 6-char email-derived codes
+    //      assigned to waitlist entries before signup. Credit lives
+    //      on `registrations.referralCount` for the matching row.
+    //   2. userReferralCodes.code — 8-char HMAC codes assigned to
+    //      signed-in Clerk users via the share-button feature. The
+    //      referrer has no registrations row, so credit lives on
+    //      the separate `userReferralCredits` table.
+    //
+    // Try (1) first for backwards-compatibility with existing
+    // waitlist referrals, then fall through to (2). Never credits
+    // both — the two namespaces are disjoint by design (6-char vs
+    // 8-char hex).
     if (args.referredBy) {
-      const referrer = await ctx.db
+      const registrationReferrer = await ctx.db
         .query("registrations")
         .withIndex("by_referral_code", (q) => q.eq("referralCode", args.referredBy))
         .first();
-      if (referrer) {
-        await ctx.db.patch(referrer._id, {
-          referralCount: (referrer.referralCount ?? 0) + 1,
+      if (registrationReferrer) {
+        await ctx.db.patch(registrationReferrer._id, {
+          referralCount: (registrationReferrer.referralCount ?? 0) + 1,
         });
+      } else {
+        const clerkReferrer = await ctx.db
+          .query("userReferralCodes")
+          .withIndex("by_code", (q) => q.eq("code", args.referredBy as string))
+          .first();
+        if (clerkReferrer && !(await isAccountDeleting(ctx, clerkReferrer.userId))) {
+          // Dedupe by (referrer, email). Returning visitors who
+          // re-submit the waitlist form must not double-credit.
+          const existingCredit = await ctx.db
+            .query("userReferralCredits")
+            .withIndex("by_referrer_email", (q) =>
+              q.eq("referrerUserId", clerkReferrer.userId).eq("refereeEmail", normalizedEmail),
+            )
+            .first();
+          if (!existingCredit) {
+            await ctx.db.insert("userReferralCredits", {
+              referrerUserId: clerkReferrer.userId,
+              refereeEmail: normalizedEmail,
+              createdAt: Date.now(),
+            });
+          }
+        }
       }
     }
 
@@ -105,29 +135,56 @@ export const register = mutation({
       referralCount: 0,
     });
 
+    const suppressed = await ctx.db
+      .query("emailSuppressions")
+      .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
+      .first();
+
     return {
       status: "registered" as const,
       referralCode,
       referralCount: 0,
       position,
+      emailSuppressed: !!suppressed,
     };
   },
 });
 
-export const getPosition = query({
-  args: { referralCode: v.string() },
+/**
+ * Phase 9 / Todo #223: bind a Clerk-derived 8-char share code to a
+ * Clerk userId so future /pro?ref=<code> visitors can be credited
+ * back to the sharer. Idempotent — the same (userId, code) pair is
+ * inserted at most once. Called by /api/referral/me on every call
+ * so the mapping is live by the time anyone clicks a shared link.
+ *
+ * Code collisions: the Clerk HMAC space is 4B slots; at our scale
+ * collisions are a rounding error. If the same code somehow maps
+ * to two userIds we keep the first write and ignore the second —
+ * the later-registered user will simply not be creditable through
+ * the share flow. An alert on this log is appropriate operational
+ * signal that it's time to rotate the signing secret.
+ */
+export const registerUserReferralCode = internalMutation({
+  args: { userId: v.string(), code: v.string() },
   handler: async (ctx, args) => {
-    const reg = await ctx.db
-      .query("registrations")
-      .withIndex("by_referral_code", (q) => q.eq("referralCode", args.referralCode))
+    await assertAccountWritable(ctx, args.userId);
+    const existing = await ctx.db
+      .query("userReferralCodes")
+      .withIndex("by_code", (q) => q.eq("code", args.code))
       .first();
-    if (!reg) return null;
-
-    const total = await getCounter(ctx.db, "registrations_total");
-
-    return {
-      referralCount: reg.referralCount ?? 0,
-      total,
-    };
+    if (existing) {
+      if (existing.userId !== args.userId) {
+        console.warn(
+          `[referral] code collision: ${args.code} first bound to ${existing.userId}, ignoring request from ${args.userId}`,
+        );
+      }
+      return { isNew: false };
+    }
+    await ctx.db.insert("userReferralCodes", {
+      userId: args.userId,
+      code: args.code,
+      createdAt: Date.now(),
+    });
+    return { isNew: true };
   },
 });

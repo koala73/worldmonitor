@@ -1,0 +1,127 @@
+syntax = "proto3";
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// An origin's reported world exports of the same heading, so a shown share can
+// be read against the supplier's total capacity rather than this importer alone.
+message ExporterScale {
+  // Reported world exports of this heading by this origin, in USD.
+  double world_exports_usd = 1;
+  // Reported world-export weight in kilograms. Absent when the origin reported
+  // no weight (the provider writes 0 for "not reported"), never 0 for absent.
+  optional double world_exports_kg = 2;
+  // 1-based position by value among the reporters that filed this heading for
+  // `year` (see reporter_count), not among every world exporter.
+  int32 rank = 3;
+  // Trade observation year of the world-export figures, not the fetch year.
+  // Always equal to the row's year: a scale from another year is not attached.
+  int32 year = 4;
+  // Reporters ranked for this heading and year: rank is out of this many.
+  int32 reporter_count = 5;
+  // Reporters whose newest filing for this heading predates `year` (late filers
+  // or lapsed exporters). They are left out of the ranking, so one that files
+  // later can move every rank below it. Absent on a snapshot written before the
+  // count was recorded.
+  optional int32 unranked_reporter_count = 6;
+}
+
+message ProductExporter {
+  int32 partner_code = 1;
+  string partner_iso2 = 2;
+  double value = 3;
+  double share = 4;
+  // Net weight of the shown flow in kilograms. Absent when the provider
+  // reported no weight; "not reported" is never rendered as 0 trade.
+  optional double net_weight_kg = 5;
+  // True when the provider flagged the net weight as its own estimate.
+  optional bool net_weight_estimated = 6;
+  // Reported quantity in the unit named by quantity_unit_code. Absent when no
+  // quantity was reported or its unit is outside the pinned unit registry.
+  optional double quantity = 7;
+  // UN Comtrade quantity unit code (8 = kg, 12 = m3, 5 = items, 7 = litres).
+  // Absent whenever quantity is absent.
+  optional int32 quantity_unit_code = 8;
+  // World-export scale of this origin for this heading. Absent for a legacy row
+  // and for an origin the world-export snapshot does not cover.
+  optional ExporterScale scale = 9;
+}
+
+message CountryProduct {
+  string hs4 = 1;
+  string description = 2;
+  double total_value = 3;
+  repeated ProductExporter top_exporters = 4;
+  int32 year = 5;
+  // Share denominator: "reported_world" (the provider's World import total for
+  // this heading and year) or "observed_partners" (the sum of observed partner
+  // values). Absent on legacy rows, whose denominator is unverified.
+  optional string denominator_basis = 6;
+  // ISO timestamp this heading alone was fetched at. Present only on a heading
+  // recovered on demand, whose fetch time differs from the payload's.
+  optional string fetched_at = 7;
+  // How top_exporters was selected: "share_threshold" (every origin at or above
+  // 1% of the denominator, padded to 5 and capped at 25; served only for the
+  // requested hs4) or "leading_5" (the canonical leading five). Always present
+  // on a served row.
+  optional string partner_basis = 8;
+  // Origins ranked below the ones shown. Absent under "leading_5", where the
+  // omitted set is not measured.
+  optional int32 omitted_partner_count = 9;
+  // Combined share of the omitted origins, 0-1. Absent under "leading_5".
+  optional double omitted_partner_share = 10;
+}
+
+message GetCountryProductsRequest {
+  // ISO 3166-1 alpha-2 country code whose strategic products should be returned.
+  string iso2 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "iso2"}
+  ];
+  // Optional requested heading; permits bounded recovery of a missing product.
+  optional string hs4 = 2 [(sebuf.http.query) = {name: "hs4"}];
+}
+
+message GetCountryProductsResponse {
+  string iso2 = 1;
+  repeated CountryProduct products = 2;
+  // ISO timestamp from the seeded payload (empty when no data is cached).
+  string fetched_at = 3;
+  // Cache evidence state, independent of the annual trade observation year.
+  optional CountryProductEvidence evidence = 4;
+}
+
+// Cache evidence for the returned products. Missing data is not zero trade.
+message CountryProductEvidence {
+  // Reader state: "observed", "partial" (some catalogue headings absent, which
+  // includes a response holding only a heading recovered on demand),
+  // "stale_preserved" (older than 35 days; last-good data kept),
+  // "cache_unavailable", or, when no payload exists and nothing was recovered,
+  // the last attempt state (see last_attempt_state) or "missing".
+  string state = 1;
+  // Retrieval route of the cached payload; with no payload, the single-heading
+  // recovery route when a heading was recovered, else a legacy-cache label.
+  string source = 2;
+  // HS4 headings the producing request asked for; empty when unknown (legacy cache).
+  repeated string requested_hs4s = 3;
+  // Catalogue headings with no usable product row.
+  repeated string missing_hs4s = 4;
+  // ISO timestamp of the last refresh attempt; empty when unknown.
+  string last_attempt_at = 5;
+  // Result of the last refresh attempt: "observed", "no_records",
+  // "legacy_no_records", "unsupported_reporter", "rate_limited", "unavailable",
+  // "malformed", "incomplete", "regression_rejected", "cache_unavailable",
+  // "cache_write_failed", "busy", "not_attempted", "preserved_reason_unknown"
+  // or "unknown".
+  string last_attempt_state = 6;
+  // Headings served from an on-demand single-heading fetch rather than the
+  // stored payload. Empty when every row came from the stored payload.
+  repeated string recovered_hs4s = 7;
+  // ISO timestamp of the world-export snapshot the scale figures came from.
+  // Absent when no snapshot is cached or no hs4 was requested, in which case no
+  // row carries a scale.
+  optional string world_exports_fetched_at = 8;
+}

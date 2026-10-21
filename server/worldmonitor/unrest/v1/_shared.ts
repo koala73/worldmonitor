@@ -1,68 +1,16 @@
-import type {
-  UnrestEvent,
-  UnrestEventType,
-  SeverityLevel,
-} from '../../../../src/generated/server/worldmonitor/unrest/v1/service_server';
-
-// ========================================================================
-// API URLs
-// ========================================================================
-
-export const GDELT_GEO_URL = 'https://api.gdeltproject.org/api/v2/geo/geo';
-
-// ========================================================================
-// ACLED Event Type Mapping (ported from src/services/protests.ts lines 39-46)
-// ========================================================================
-
-export function mapAcledEventType(eventType: string, subEventType: string): UnrestEventType {
-  const lower = (eventType + ' ' + subEventType).toLowerCase();
-  if (lower.includes('riot') || lower.includes('mob violence'))
-    return 'UNREST_EVENT_TYPE_RIOT';
-  if (lower.includes('strike'))
-    return 'UNREST_EVENT_TYPE_STRIKE';
-  if (lower.includes('demonstration'))
-    return 'UNREST_EVENT_TYPE_DEMONSTRATION';
-  if (lower.includes('protest'))
-    return 'UNREST_EVENT_TYPE_PROTEST';
-  return 'UNREST_EVENT_TYPE_CIVIL_UNREST';
-}
-
-// ========================================================================
-// Severity Classification (ported from src/services/protests.ts lines 49-53)
-// ========================================================================
-
-export function classifySeverity(fatalities: number, eventType: string): SeverityLevel {
-  if (fatalities > 0 || eventType.toLowerCase().includes('riot'))
-    return 'SEVERITY_LEVEL_HIGH';
-  if (eventType.toLowerCase().includes('protest'))
-    return 'SEVERITY_LEVEL_MEDIUM';
-  return 'SEVERITY_LEVEL_LOW';
-}
-
-// ========================================================================
-// GDELT Classifiers
-// ========================================================================
-
-export function classifyGdeltSeverity(count: number, name: string): SeverityLevel {
-  const lowerName = name.toLowerCase();
-  if (count > 100 || lowerName.includes('riot') || lowerName.includes('clash'))
-    return 'SEVERITY_LEVEL_HIGH';
-  if (count < 25)
-    return 'SEVERITY_LEVEL_LOW';
-  return 'SEVERITY_LEVEL_MEDIUM';
-}
-
-export function classifyGdeltEventType(name: string): UnrestEventType {
-  const lowerName = name.toLowerCase();
-  if (lowerName.includes('riot')) return 'UNREST_EVENT_TYPE_RIOT';
-  if (lowerName.includes('strike')) return 'UNREST_EVENT_TYPE_STRIKE';
-  if (lowerName.includes('demonstration')) return 'UNREST_EVENT_TYPE_DEMONSTRATION';
-  return 'UNREST_EVENT_TYPE_PROTEST';
-}
+import type { UnrestEvent } from '../../../../src/generated/server/worldmonitor/unrest/v1/service_server';
 
 // ========================================================================
 // Deduplication (ported from src/services/protests.ts lines 226-258)
 // ========================================================================
+
+const MAX_SOURCE_URLS = 5;
+
+export function mergeSourceUrls(...groups: Array<string[] | undefined>): string[] {
+  return [
+    ...new Set(groups.flatMap((group) => group ?? []).filter((url): url is string => typeof url === 'string' && url.length > 0)),
+  ].slice(0, MAX_SOURCE_URLS);
+}
 
 export function deduplicateEvents(events: UnrestEvent[]): UnrestEvent[] {
   const unique = new Map<string, UnrestEvent>();
@@ -73,27 +21,17 @@ export function deduplicateEvents(events: UnrestEvent[]): UnrestEvent[] {
     const latKey = Math.round(lat * 10) / 10;
     const lonKey = Math.round(lon * 10) / 10;
     const dateKey = new Date(event.occurredAt).toISOString().split('T')[0];
-    const key = `${latKey}:${lonKey}:${dateKey}`;
+    const key = `${event.sourceType}:${latKey}:${lonKey}:${dateKey}`;
 
     const existing = unique.get(key);
     if (!existing) {
+      event.sourceUrls = mergeSourceUrls(event.sourceUrls);
       unique.set(key, event);
     } else {
-      // Merge: prefer ACLED (higher confidence), combine sources
-      if (
-        event.sourceType === 'UNREST_SOURCE_TYPE_ACLED' &&
-        existing.sourceType !== 'UNREST_SOURCE_TYPE_ACLED'
-      ) {
-        event.sources = [...new Set([...event.sources, ...existing.sources])];
-        unique.set(key, event);
-      } else if (existing.sourceType === 'UNREST_SOURCE_TYPE_ACLED') {
-        existing.sources = [...new Set([...existing.sources, ...event.sources])];
-      } else {
-        // Both GDELT: combine sources, upgrade confidence if 2+ sources
-        existing.sources = [...new Set([...existing.sources, ...event.sources])];
-        if (existing.sources.length >= 2) {
-          existing.confidence = 'CONFIDENCE_LEVEL_HIGH';
-        }
+      existing.sources = [...new Set([...existing.sources, ...event.sources])];
+      existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, event.sourceUrls);
+      if (existing.sourceType === 'UNREST_SOURCE_TYPE_GDELT') {
+        existing.confidence = 'CONFIDENCE_LEVEL_LOW';
       }
     }
   }

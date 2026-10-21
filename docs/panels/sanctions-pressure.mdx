@@ -1,0 +1,50 @@
+---
+title: "Sanctions Pressure"
+description: "OFAC SDN + Consolidated and Global Affairs Canada SEMA/JVCFOA designations surfaced as country-level pressure scores, with new-entry / SEMA / vessel / aircraft counts and program-level breakdowns."
+---
+
+The **Sanctions Pressure** panel (internal id `sanctions-pressure`) turns the OFAC SDN and Consolidated lists plus Global Affairs Canada SEMA/JVCFOA designations into an actionable overview: which countries are under the most designation pressure right now, what programs are driving it, and what has changed since the last update.
+
+## What the panel shows
+
+The panel is a compact, analyst-oriented surface (`defaultRowSpan: 2`):
+
+- **Summary bar** — cards at the top: **New** (new designations since the last update — highlighted when `> 0`), **SEMA** (`semaCount` from the GAC list; `0` if that fetch failed), **Vessels**, **Aircraft**.
+- **Country rows** — top 8 countries by sanctions designation pressure, each row showing the country label, total designation count, and the program mix.
+- **Program rows** — designations grouped by program (OFAC programs plus SEMA, JVCFOR, HAMAS, SETTLER).
+
+The panel tracks activity (`trackActivity: true`) so newly arrived designations get the standard new-item visual treatment.
+
+Panel id is `sanctions-pressure`; canonical component is `src/components/SanctionsPressurePanel.ts`. Displayed title: "Sanctions & Designations" (from `super({...})`).
+
+## How you reach it
+
+- **Cmd+K**: type *sanctions* or *OFAC*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** (priority 2), **finance** (priority 1), and **commodity** (priority 1) variants. Not present in the tech or happy variants. Source: `'sanctions-pressure'` entries in `FULL_PANELS`, `FINANCE_PANELS`, `COMMODITY_PANELS` in `src/config/panels.ts`.
+
+## Data sources
+
+`SanctionsPressureResult` payload from `@/services/sanctions-pressure`, backed by:
+
+- **OFAC Specially Designated Nationals (SDN) list**
+- **OFAC Consolidated List**
+- **Global Affairs Canada SEMA / JVCFOA consolidated list** (`sema-ca`)
+
+Screening and the designation change feed also cover six export-control lists from the US Consolidated Screening List (International Trade Administration bulk download): the BIS Entity List (`CSL-EL`), Denied Persons List (`CSL-DPL`), Unverified List (`CSL-UVL`) and Military End User List (`CSL-MEU`), and the State Department's ITAR Debarred (`CSL-DTC`) and Nonproliferation Sanctions (`CSL-ACN`) lists. The CSL's Treasury rows are skipped because OFAC's own lists supply them, and Denied Persons orders whose end date has passed are dropped. CSL rows never count toward pressure scores or country counts, because export controls are not sanctions pressure. The lists carry no entity type, so their rows are typed `unspecified`. Change events for them carry the Federal Register citation (`notice`) and the list page (`url`). A failed CSL download degrades `seed-meta:sanctions:entities` with `CSL_INGEST_FAILED`; pressure health is unaffected.
+
+The seeder pulls each list independently, concatenates OFAC and SEMA (SEMA may attach onto OFAC only), and diffs against the previous snapshot to compute `newEntryCount`. SEMA `<Country>` is the regulation, not nationality, so it is stored on `programs` / the note rather than `countryCodes`.
+
+A SEMA row whose own identity fields are unusable (no regulation, a non-numeric item, an IMO that is not seven digits, or no name) is held back rather than repaired, and the rest of the list still publishes. The held-back row IDs and reasons appear under `sourceHealth["sema-ca"].quarantined` in `seed-meta:sanctions:pressure`. If more than 1% of rows are held back, or any row breaks the table's field or date contract, the whole SEMA source is rejected for that run.
+
+## Refresh cadence
+
+OFAC publishes list updates on an irregular cadence (daily-to-weekly). The panel reads the most recent snapshot; freshness is surfaced indirectly via `newEntryCount`.
+
+## Tier & gating
+
+**PRO-gated.** The panel is visible in its configured variants, but the sanctions-pressure RPC requires a PRO entitlement. Free or unentitled callers receive a documented `403` response instead of an empty sanctions payload.
+
+## API reference
+
+- [Sanctions service](https://github.com/koala73/worldmonitor/blob/main/docs/api/SanctionsService.openapi.yaml) — sanctions pressure + entity search RPCs.
+- Related: `GET /api/sanctions/v1/lookup-sanction-entity?q=...` — name, up to 10 retained aliases per entity and exact IMO screening against the seeded OFAC SDN, OFAC Consolidated, Canada SEMA and US CSL export-control index. The response reports the source lists searched, `seeded` for a query outside 2–200 characters, or `unavailable` when no valid index records are available. It makes no live provider request. A match is a lead to confirm with the issuing agency, not legal advice.

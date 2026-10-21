@@ -1,22 +1,20 @@
+import { normalizeStockSymbol } from '../../shared/stock-symbol';
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  MarketServiceClient,
-  type BacktestStockResponse,
-} from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { BacktestStockResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { runThrottledTargetRequests } from '@/services/throttled-target-requests';
 import { premiumFetch } from '@/services/premium-fetch';
+import { MarketServiceClient } from '@/services/generated-rpc-clients';
 
 const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 export type StockBacktestResult = BacktestStockResponse;
 
-const DEFAULT_LIMIT = 4;
 const DEFAULT_EVAL_WINDOW_DAYS = 10;
 export const STOCK_BACKTEST_FRESH_MS = 24 * 60 * 60 * 1000;
 
-async function getTargets(limit: number) {
+async function getTargets(limitOverride?: number) {
   const { getStockAnalysisTargets } = await import('./stock-analysis');
-  return getStockAnalysisTargets(limit);
+  return getStockAnalysisTargets(limitOverride);
 }
 
 export async function fetchStockBacktestsForTargets(
@@ -33,17 +31,17 @@ export async function fetchStockBacktestsForTargets(
 }
 
 export async function fetchStockBacktests(
-  limit = DEFAULT_LIMIT,
+  limitOverride?: number,
   evalWindowDays = DEFAULT_EVAL_WINDOW_DAYS,
 ): Promise<StockBacktestResult[]> {
-  return fetchStockBacktestsForTargets(await getTargets(limit), evalWindowDays);
+  return fetchStockBacktestsForTargets(await getTargets(limitOverride), evalWindowDays);
 }
 
 export async function fetchStoredStockBacktests(
-  limit = DEFAULT_LIMIT,
+  limitOverride?: number,
   evalWindowDays = DEFAULT_EVAL_WINDOW_DAYS,
 ): Promise<StockBacktestResult[]> {
-  const targets = await getTargets(limit);
+  const targets = await getTargets(limitOverride);
   const symbols = targets.map((target) => target.symbol);
   const response = await client.listStoredStockBacktests({
     symbols,
@@ -52,19 +50,29 @@ export async function fetchStoredStockBacktests(
   return response.items.filter((result) => result.available);
 }
 
+function indexBacktestsBySymbol(items: StockBacktestResult[]): Map<string, StockBacktestResult> {
+  const bySymbol = new Map<string, StockBacktestResult>();
+  for (const item of items) {
+    const symbol = normalizeStockSymbol(item.symbol);
+    if (symbol) bySymbol.set(symbol, item);
+  }
+  return bySymbol;
+}
+
+function isFreshBacktest(item: StockBacktestResult | undefined, now: number, maxAgeMs: number): boolean {
+  const ts = Date.parse(item?.generatedAt || '');
+  return !!item?.available && Number.isFinite(ts) && (now - ts) <= maxAgeMs;
+}
+
 export function hasFreshStoredStockBacktests(
   items: StockBacktestResult[],
   symbols: string[],
   maxAgeMs = STOCK_BACKTEST_FRESH_MS,
 ): boolean {
   if (symbols.length === 0) return false;
-  const bySymbol = new Map(items.map((item) => [item.symbol, item]));
+  const bySymbol = indexBacktestsBySymbol(items);
   const now = Date.now();
-  return symbols.every((symbol) => {
-    const item = bySymbol.get(symbol);
-    const ts = Date.parse(item?.generatedAt || '');
-    return !!item?.available && Number.isFinite(ts) && (now - ts) <= maxAgeMs;
-  });
+  return symbols.every((symbol) => isFreshBacktest(bySymbol.get(normalizeStockSymbol(symbol)), now, maxAgeMs));
 }
 
 export function getMissingOrStaleStoredStockBacktests(
@@ -72,11 +80,7 @@ export function getMissingOrStaleStoredStockBacktests(
   symbols: string[],
   maxAgeMs = STOCK_BACKTEST_FRESH_MS,
 ): string[] {
-  const bySymbol = new Map(items.map((item) => [item.symbol, item]));
+  const bySymbol = indexBacktestsBySymbol(items);
   const now = Date.now();
-  return symbols.filter((symbol) => {
-    const item = bySymbol.get(symbol);
-    const ts = Date.parse(item?.generatedAt || '');
-    return !(item?.available && Number.isFinite(ts) && (now - ts) <= maxAgeMs);
-  });
+  return symbols.filter((symbol) => !isFreshBacktest(bySymbol.get(normalizeStockSymbol(symbol)), now, maxAgeMs));
 }

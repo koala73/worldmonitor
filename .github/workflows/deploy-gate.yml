@@ -1,66 +1,204 @@
 name: Deploy Gate
+run-name: Deploy Gate ${{ github.event.workflow_run.head_sha || github.event.inputs.sha || github.event_name }}
 
-# Runs whenever Test or Typecheck completes on a PR/push.
-# Checks whether BOTH workflows have passed for the same commit SHA.
+# Checks whether all required PR smoke gates have passed for the same commit SHA.
 # Posts a commit status on the PR's head SHA so branch protection can see it.
+#
+# Also runs on a 30-minute schedule (and on demand) as a self-healing sweep
+# (#5479): event-driven evaluation alone can strand a PR — the check-runs API
+# can serve stale reads (~1 min normally, longer during GitHub degradation),
+# and the last workflow_run event for a SHA is the last time anything
+# re-evaluates. For 24 hours after a pending, failure, or error status is
+# published, the sweep re-evaluates it. This also recovers a failed gate when
+# the successful rerun's event saw stale checks. Older blocked heads are listed
+# in the run summary for a branch update or exact-SHA dispatch. Successes with
+# an old required-check contract are always invalidated (#5851).
 
 on:
   workflow_run:
-    workflows: ["Test", "Typecheck"]
+    workflows: ["Test", "Typecheck", "Lint Code", "Security Audit", "Stacked Merge Guard", "Proto Generation Check"]
     types: [completed]
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Evaluate this commit SHA instead of sweeping open PRs
+        required: false
+        type: string
+
+# Replace only requests that have not started. Active workflows still own their
+# SHA writer lock; scheduled invalidation and manual recovery must never be evicted.
+concurrency:
+  group: deploy-gate-events-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.run_id }}
+  queue: single
+  cancel-in-progress: false
 
 permissions:
+  contents: read
+  actions: read
+  checks: read
+  pull-requests: read
   statuses: write
 
+env:
+  GH_TOKEN: ${{ github.token }}
+  REPO: ${{ github.repository }}
+
 jobs:
+  evaluate-direct:
+    if: ${{ (github.event_name == 'workflow_run') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sha: ['${{ github.event.workflow_run.head_sha }}']
+    concurrency:
+      group: deploy-gate-${{ matrix.sha }}
+      queue: max
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Check required PR gates passed for this SHA
+        env:
+          SHA: ${{ matrix.sha }}
+          CHECK_ATTEMPTS: 2
+        run: bash -e .github/scripts/deploy-gate.sh evaluate
+
+  discover:
+    if: ${{ (github.event_name != 'workflow_run') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+    runs-on: ubuntu-latest
+    outputs:
+      discovery: ${{ steps.plan.outputs.discovery }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - id: plan
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.event.inputs.sha }}
+        run: bash -e .github/scripts/deploy-gate.sh discover
+
+  invalidate:
+    needs: discover
+    if: ${{ (needs.discover.result == 'success' && needs.discover.outputs.count != '0') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    concurrency:
+      group: deploy-gate-${{ matrix.sha }}
+      queue: max
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - env:
+          SHA: ${{ matrix.sha }}
+          RESULT_PATH: ${{ runner.temp }}/invalidation/result.json
+        run: |
+          mkdir -p "$(dirname "$RESULT_PATH")"
+          bash -e .github/scripts/deploy-gate.sh invalidate
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: deploy-gate-invalidate-${{ github.run_attempt }}-${{ matrix.sha }}
+          path: ${{ runner.temp }}/invalidation/result.json
+          if-no-files-found: error
+          retention-days: 1
+
+  recover:
+    needs: [discover, invalidate]
+    if: ${{ (always() && needs.discover.result == 'success') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+      invalidation_failed: ${{ steps.plan.outputs.invalidation_failed }}
+      protocol_failed: ${{ steps.plan.outputs.protocol_failed }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - if: ${{ needs.discover.outputs.count != '0' }}
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: deploy-gate-invalidate-${{ github.run_attempt }}-*
+          path: ${{ runner.temp }}/invalidations
+      - id: plan
+        env:
+          DISCOVERY: ${{ needs.discover.outputs.discovery }}
+          RESULTS_DIR: ${{ runner.temp }}/invalidations
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: bash -e .github/scripts/deploy-gate.sh recover
+
+  evaluate:
+    needs: recover
+    if: ${{ (always() && needs.recover.result == 'success' && needs.recover.outputs.count != '0') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.recover.outputs.matrix) }}
+    concurrency:
+      group: deploy-gate-${{ matrix.sha }}
+      queue: max
+      cancel-in-progress: false
+    steps:
+      # The base-drift comparison needs real history: full commit graph for
+      # `merge-base`, trees for `diff --name-only`, and no blobs at all.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Check required PR gates passed for this SHA
+        env:
+          SHA: ${{ matrix.sha }}
+          CHECK_ATTEMPTS: ${{ matrix.check_attempts }}
+        run: bash -e .github/scripts/deploy-gate.sh evaluate
+
   gate:
+    needs: [discover, invalidate, recover, evaluate]
+    if: ${{ (always() && github.event_name != 'workflow_run') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check unit + typecheck both passed for this SHA
+      - name: Aggregate deploy gate execution
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          RESULTS: ${{ toJSON(needs) }}
         run: |
-          # Poll check-runs for this SHA and find the latest result for each required job
-          runs=$(gh api "repos/$REPO/commits/$SHA/check-runs" \
-            --jq '.check_runs | map(select(.name == "unit" or .name == "typecheck"))')
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
 
-          unit=$(echo "$runs" | python3 -c "
-          import sys, json
-          runs = json.load(sys.stdin)
-          matches = [r for r in runs if r['name'] == 'unit']
-          if not matches: print('pending')
-          else: print(sorted(matches, key=lambda r: r.get('completed_at') or '')[-1]['conclusion'] or 'pending')
-          ")
-
-          typecheck=$(echo "$runs" | python3 -c "
-          import sys, json
-          runs = json.load(sys.stdin)
-          matches = [r for r in runs if r['name'] == 'typecheck']
-          if not matches: print('pending')
-          else: print(sorted(matches, key=lambda r: r.get('completed_at') or '')[-1]['conclusion'] or 'pending')
-          ")
-
-          echo "unit=$unit  typecheck=$typecheck"
-
-          if [ "$unit" = "pending" ] || [ "$typecheck" = "pending" ]; then
-            gh api "repos/$REPO/statuses/$SHA" --method POST \
-              --field state="pending" \
-              --field context="gate" \
-              --field description="Waiting for unit + typecheck to complete"
-            exit 0
-          fi
-
-          if [ "$unit" != "success" ] || [ "$typecheck" != "success" ]; then
-            gh api "repos/$REPO/statuses/$SHA" --method POST \
-              --field state="failure" \
-              --field context="gate" \
-              --field description="Required checks did not pass (unit=$unit typecheck=$typecheck)"
-            exit 0
-          fi
-
-          gh api "repos/$REPO/statuses/$SHA" --method POST \
-            --field state="success" \
-            --field context="gate" \
-            --field description="unit + typecheck both passed"
+          jobs = json.loads(os.environ["RESULTS"])
+          failed = [name for name, job in jobs.items() if job["result"] in ("failure", "cancelled")]
+          for phase, planner in (("invalidate", "discover"), ("evaluate", "recover")):
+              if jobs[phase]["result"] == "skipped" and not (
+                  jobs[planner]["result"] == "success"
+                  and jobs[planner]["outputs"].get("count") == "0"
+              ):
+                  failed.append(phase)
+          for phase in ("discover", "recover"):
+              if jobs[phase]["result"] != "success":
+                  failed.append(phase)
+          for flag in ("invalidation_failed", "protocol_failed"):
+              if jobs["recover"]["outputs"].get(flag) != "false":
+                  failed.append(flag)
+          if failed:
+              print("::error::Deploy Gate execution failed: " + ", ".join(sorted(set(failed))))
+              sys.exit(1)
+          PY

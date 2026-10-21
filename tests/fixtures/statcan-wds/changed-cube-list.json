@@ -1,0 +1,30 @@
+{
+  "status": "SUCCESS",
+  "object": [
+    {
+      "responseStatusCode": 0,
+      "productId": 33100036,
+      "releaseTime": "2026-08-13T08:30"
+    },
+    {
+      "responseStatusCode": 0,
+      "productId": 10100139,
+      "releaseTime": "2026-08-13T08:30"
+    },
+    {
+      "responseStatusCode": 0,
+      "productId": 10100144,
+      "releaseTime": "2026-08-13T08:30"
+    },
+    {
+      "responseStatusCode": 0,
+      "productId": 10100108,
+      "releaseTime": "2026-08-13T08:30"
+    },
+    {
+      "responseStatusCode": 0,
+      "productId": 18100178,
+      "releaseTime": "2026-08-13T08:30"
+    }
+  ]
+}

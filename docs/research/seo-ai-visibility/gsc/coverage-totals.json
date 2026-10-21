@@ -1,0 +1,20 @@
+{
+  "readings": [
+    {
+      "exportedOn": "2026-09-04",
+      "declaredUrls": 845,
+      "pageWithRedirect": 1271,
+      "notFound404": 512,
+      "crawledNotIndexed": 1245,
+      "source": "https://github.com/koala73/worldmonitor/issues/7660"
+    },
+    {
+      "exportedOn": "2026-09-24",
+      "declaredUrls": 888,
+      "pageWithRedirect": 1685,
+      "notFound404": 666,
+      "crawledNotIndexed": 1486,
+      "source": "https://github.com/koala73/worldmonitor/issues/8602#issuecomment-5811647867"
+    }
+  ]
+}

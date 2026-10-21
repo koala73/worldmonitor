@@ -1,0 +1,27 @@
+{
+  "$comment": "Verifiable sample of a signed WorldMonitor webhook delivery. Verify signatureV2 over the timestamp, delivery id, event and exact body bytes before you register a live webhook. Use the fixed timestamp as the test clock. The secret here is a public fixture. Each live subscription gets its own secret once from POST /api/v2/shipping/webhooks.",
+  "description": "Signed webhook delivery verification fixture (HMAC-SHA256, legacy and V2 signatures).",
+  "documentation": "https://www.worldmonitor.app/docs/api-shipping-v2",
+  "event": "chokepoint.disruption",
+  "algorithm": "HMAC-SHA256",
+  "signatureHeader": "X-WM-Signature",
+  "signatureV2Header": "X-WM-Signature-V2",
+  "timestampHeader": "X-WM-Timestamp",
+  "signatureFormat": "sha256=<lowercase-hex>",
+  "eventHeader": "X-WM-Event",
+  "deliveryIdHeader": "X-WM-Delivery-Id",
+  "verify": "Compute 'sha256=' + hex(HMAC_SHA256(key=secret, message=body)) over the EXACT bytes of the `body` string below — do NOT re-parse or re-serialize the JSON, and use `secret` verbatim as the key (do not hex-decode it). The result must equal `signature` for legacy verification. For replay protection, require signatureV2 and the timestamp as described in verifyV2.",
+  "verifyV2": "Compute sha256= + hex(HMAC-SHA256(secret, timestamp.deliveryId.event.body)) using the exact header strings and body bytes. Compare with X-WM-Signature-V2 in constant time. Reject timestamps more than 300 seconds in the past or future and dedupe verified delivery IDs. This fixed sample needs its own timestamp as the test clock.",
+  "signatureV2": "sha256=f119249890d458fafe9faa38d8ee6e350a3317d010786929df959e23accb7096",
+  "secret": "41d3788561e87f16bf7868467b2f2bd4b222455c938926211415043db4e90536",
+  "body": "{\"subscriberId\":\"wh_1a2b3c4d5e6f7a8b9c0d1e2f\",\"chokepointId\":\"suez\",\"score\":72,\"alertThreshold\":50,\"triggeredAt\":\"2026-07-04T12:34:56Z\",\"reason\":\"navigational_warning\",\"details\":{\"name\":\"Suez Canal\"}}",
+  "signature": "sha256=c2a73d3b993e1a8704fa951c696b2d046582bfccd4841a96e64d50b774c1ae2d",
+  "headers": {
+    "Content-Type": "application/json",
+    "X-WM-Signature": "sha256=c2a73d3b993e1a8704fa951c696b2d046582bfccd4841a96e64d50b774c1ae2d",
+    "X-WM-Signature-V2": "sha256=f119249890d458fafe9faa38d8ee6e350a3317d010786929df959e23accb7096",
+    "X-WM-Timestamp": "1783168496",
+    "X-WM-Event": "chokepoint.disruption",
+    "X-WM-Delivery-Id": "whd_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+  }
+}

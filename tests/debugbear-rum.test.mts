@@ -1,0 +1,416 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
+
+import {
+  DEBUGBEAR_RUM_SAMPLE_RATE,
+  DEBUGBEAR_RUM_SCRIPT_SRC,
+  initDebugBearRum,
+  reportBootstrapTransferRum,
+  resetDebugBearRumForTesting,
+  shouldEnableDebugBearRum,
+} from '../src/bootstrap/debugbear-rum.ts';
+import {
+  DEBUGBEAR_RUM_SAMPLE_RATE as MARKETING_DEBUGBEAR_RUM_SAMPLE_RATE,
+  DEBUGBEAR_RUM_SCRIPT_SRC as MARKETING_DEBUGBEAR_RUM_SCRIPT_SRC,
+  initDebugBearRum as initMarketingDebugBearRum,
+  resetDebugBearRumForTesting as resetMarketingDebugBearRumForTesting,
+  shouldEnableDebugBearRum as shouldEnableMarketingDebugBearRum,
+} from '../pro-test/src/debugbear-rum.ts';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = resolve(__dirname, '..');
+
+function read(relPath: string): string {
+  return readFileSync(resolve(root, relPath), 'utf8');
+}
+
+function collectReachableProAssets(entryAsset: string): Set<string> {
+  const reachable = new Set<string>();
+  const queue = [entryAsset];
+
+  while (queue.length > 0) {
+    const asset = queue.shift()!;
+    if (reachable.has(asset)) continue;
+    reachable.add(asset);
+
+    const source = read(`public/pro/${asset}`);
+    for (const match of source.matchAll(/(?:from|import)\(\s*["']\.\/([^"']+\.js)["']\s*\)|from\s*["']\.\/([^"']+\.js)["']/g)) {
+      const specifier = match[1] ?? match[2];
+      if (specifier) queue.push(`assets/${specifier}`);
+    }
+  }
+
+  return reachable;
+}
+
+function proPageModuleEntries(htmlRelPath: string): string[] {
+  return [...read(htmlRelPath).matchAll(/<script\b[^>]*\btype=["']module["'][^>]*\bsrc=["']\/pro\/([^"']+\.js)["'][^>]*>/g)]
+    .map((match) => match[1]);
+}
+
+interface FakeDebugBearScript {
+  async: boolean;
+  src: string;
+  fetchPriority?: string;
+  onerror?: (() => void) | null;
+}
+
+function installDebugBearHarness(
+  hostname: string,
+  existingScript: FakeDebugBearScript | null = null,
+  random: () => number = () => 0,
+  href?: string,
+): {
+  appendedScripts: FakeDebugBearScript[];
+  listeners: Map<string, (event: Event) => void>;
+  win: Window & { dbbRum?: unknown[] };
+  restore: () => void;
+} {
+  const appendedScripts: FakeDebugBearScript[] = [];
+  const listeners = new Map<string, (event: Event) => void>();
+  const win = {
+    location: { hostname, href: href ?? `https://${hostname}/` },
+    addEventListener: (type: string, cb: (event: Event) => void) => {
+      listeners.set(type, cb);
+    },
+    removeEventListener: (type: string) => { listeners.delete(type); },
+  } as Window & { dbbRum?: unknown[] };
+  const doc = {
+    querySelector: () => existingScript,
+    createElement: (tag: string) => {
+      assert.equal(tag, 'script');
+      return { async: false, src: '', fetchPriority: 'auto' } satisfies FakeDebugBearScript;
+    },
+    head: {
+      appendChild: (script: FakeDebugBearScript) => {
+        appendedScripts.push(script);
+        return script;
+      },
+    },
+  };
+
+  const saved: Record<string, PropertyDescriptor | undefined> = {
+    window: Object.getOwnPropertyDescriptor(globalThis, 'window'),
+    document: Object.getOwnPropertyDescriptor(globalThis, 'document'),
+  };
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: win });
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: doc });
+  // Force the sample gate to pass deterministically so these tests verify behavior WHEN sampled,
+  // independent of DEBUGBEAR_RUM_SAMPLE_RATE (< 100 makes real Math.random probabilistic).
+  const savedRandom = Math.random;
+  Math.random = random;
+
+  return {
+    appendedScripts,
+    listeners,
+    win,
+    restore: () => {
+      for (const [key, desc] of Object.entries(saved)) {
+        if (desc) Object.defineProperty(globalThis, key, desc);
+        else delete (globalThis as Record<string, unknown>)[key];
+      }
+      Math.random = savedRandom;
+      resetDebugBearRumForTesting();
+      resetMarketingDebugBearRumForTesting();
+    },
+  };
+}
+
+describe('DebugBear RUM loader', () => {
+  it('enables only first-party production dashboard hosts', () => {
+    assert.equal(shouldEnableDebugBearRum('www.worldmonitor.app'), true);
+    assert.equal(shouldEnableDebugBearRum('happy.worldmonitor.app'), true);
+    assert.equal(shouldEnableDebugBearRum('localhost'), false);
+    assert.equal(shouldEnableDebugBearRum('worldmonitor-git-codex-preview-eliewm.vercel.app'), false);
+    assert.equal(shouldEnableDebugBearRum('evilworldmonitor.app'), false);
+  });
+
+  it('installs DebugBear RUM with presampling and pre-script error buffering', () => {
+    const h = installDebugBearHarness('www.worldmonitor.app');
+    try {
+      initDebugBearRum();
+
+      assert.equal(h.appendedScripts.length, 1);
+      assert.equal(h.appendedScripts[0]!.async, true);
+      assert.equal(h.appendedScripts[0]!.src, DEBUGBEAR_RUM_SCRIPT_SRC);
+      assert.equal(h.appendedScripts[0]!.fetchPriority, 'low');
+      assert.deepEqual(h.win.dbbRum?.[0], ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]);
+      assert.ok(h.listeners.has('error'), 'window error listener missing');
+      assert.ok(h.listeners.has('unhandledrejection'), 'window unhandledrejection listener missing');
+
+      const errorEvent = { type: 'error' } as Event;
+      const rejectionEvent = { type: 'unhandledrejection' } as Event;
+      h.listeners.get('error')!(errorEvent);
+      h.listeners.get('unhandledrejection')!(rejectionEvent);
+      assert.deepEqual(h.win.dbbRum, [
+        ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE],
+        ['error', errorEvent],
+        ['unhandledrejection', rejectionEvent],
+      ]);
+    } finally {
+      h.restore();
+    }
+  });
+
+  it('bounds preload errors, forwards to the loaded collector, and cleans up on failure', () => {
+    const h = installDebugBearHarness('www.worldmonitor.app');
+    try {
+      initDebugBearRum();
+      for (let i = 0; i < 1000; i++) h.listeners.get('error')!(new Event('error'));
+      assert.equal(h.win.dbbRum?.length, 51);
+      assert.deepEqual(h.win.dbbRum?.[0], ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]);
+      const buffered = h.win.dbbRum!;
+      const delivered: unknown[] = [];
+      Object.assign(h.win, { dbbRum: { push: (...events: unknown[]) => delivered.push(...events) } });
+      const event = new Event('unhandledrejection');
+      h.listeners.get('unhandledrejection')!(event);
+      assert.deepEqual(delivered, [['unhandledrejection', event]]);
+      assert.equal(buffered.length, 51, 'loaded collector receives events instead of stale buffer');
+      h.win.dbbRum = buffered;
+      h.appendedScripts[0]!.onerror!();
+      assert.equal(h.listeners.size, 0);
+      assert.deepEqual(buffered, [['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]]);
+    } finally { h.restore(); }
+  });
+
+  it('/pro loader bounds preload errors, forwards to the loaded collector, and cleans up on failure', () => {
+    const h = installDebugBearHarness('www.worldmonitor.app');
+    try {
+      initMarketingDebugBearRum();
+      for (let i = 0; i < 1000; i++) h.listeners.get('error')!(new Event('error'));
+      assert.equal(h.win.dbbRum?.length, 51);
+      assert.deepEqual(h.win.dbbRum?.[0], ['presampling', MARKETING_DEBUGBEAR_RUM_SAMPLE_RATE]);
+      const buffered = h.win.dbbRum!;
+      const delivered: unknown[] = [];
+      Object.assign(h.win, { dbbRum: { push: (...events: unknown[]) => delivered.push(...events) } });
+      const event = new Event('unhandledrejection');
+      h.listeners.get('unhandledrejection')!(event);
+      assert.deepEqual(delivered, [['unhandledrejection', event]]);
+      assert.equal(buffered.length, 51, 'loaded collector receives events instead of stale buffer');
+      h.win.dbbRum = buffered;
+      h.appendedScripts[0]!.onerror!();
+      assert.equal(h.listeners.size, 0);
+      assert.deepEqual(buffered, [['presampling', MARKETING_DEBUGBEAR_RUM_SAMPLE_RATE]]);
+    } finally {
+      h.restore();
+      resetMarketingDebugBearRumForTesting();
+    }
+  });
+
+  it('queues transfer metrics and closed low-cardinality tags in the documented slots', () => {
+    const h = installDebugBearHarness('www.worldmonitor.app');
+    try {
+      initDebugBearRum();
+      reportBootstrapTransferRum({
+        tier: 'slow',
+        device_class: 'mobile',
+        duration_ms: 880,
+        decoded_bytes: 1_937_018,
+        encoded_bytes: 351_175,
+        outcome: 'complete',
+      });
+
+      assert.deepEqual(h.win.dbbRum?.slice(1), [
+        ['metric1', 880],
+        ['metric2', 1_937_018],
+        ['metric3', 351_175],
+        ['tag1', 'slow'],
+        ['tag2', 'complete'],
+        ['tag3', 'mobile'],
+      ]);
+      assert.equal(JSON.stringify(h.win.dbbRum).includes('request'), false);
+      assert.equal(JSON.stringify(h.win.dbbRum).includes('user'), false);
+    } finally {
+      h.restore();
+    }
+  });
+
+  it('does not load on local/dev hosts', () => {
+    const h = installDebugBearHarness('localhost');
+    try {
+      initDebugBearRum();
+
+      assert.equal(h.appendedScripts.length, 0);
+      assert.equal(h.win.dbbRum, undefined);
+      assert.equal(h.listeners.size, 0);
+    } finally {
+      h.restore();
+    }
+  });
+
+  it('does not append a duplicate script when one already exists', () => {
+    const existing = { async: true, src: DEBUGBEAR_RUM_SCRIPT_SRC };
+    const h = installDebugBearHarness('worldmonitor.app', existing);
+    try {
+      initDebugBearRum();
+
+      assert.equal(h.appendedScripts.length, 0);
+      assert.deepEqual(h.win.dbbRum?.[0], ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]);
+    } finally {
+      h.restore();
+    }
+  });
+
+  it('keeps the RUM sample rate at 10% and skips out-of-sample loads', () => {
+    assert.equal(DEBUGBEAR_RUM_SAMPLE_RATE, 10);
+
+    const h = installDebugBearHarness('worldmonitor.app', null, () => 0.1);
+    try {
+      initDebugBearRum();
+
+      assert.equal(h.appendedScripts.length, 0);
+      assert.equal(h.win.dbbRum, undefined);
+      assert.equal(h.listeners.size, 0);
+    } finally {
+      h.restore();
+    }
+  });
+});
+
+describe('DebugBear RUM sensitive-URL gate', () => {
+  // DebugBear reads location.search/href once, when its script evaluates, and
+  // has no redaction hook. Referral, invite, checkout-intent and Clerk params
+  // have deferred readers, so they cannot be stripped at boot; the collector
+  // must instead not load until they are gone from the live URL.
+  const SENSITIVE_LANDINGS = [
+    'https://www.worldmonitor.app/dashboard?ref=abc',
+    'https://www.worldmonitor.app/dashboard?wm_referral=abc',
+    'https://www.worldmonitor.app/settings?accept-business-invite=g1&token=tok123',
+    'https://www.worldmonitor.app/?__clerk_ticket=tkt_1',
+    'https://www.worldmonitor.app/?__clerk_status=verified&__clerk_created_session=sess_1',
+    'https://www.worldmonitor.app/dashboard?checkoutProduct=pro&checkoutReferral=abc',
+    'https://www.worldmonitor.app/dashboard#/r?ref=abc',
+  ];
+
+  for (const [label, init, reset] of [
+    ['dashboard', initDebugBearRum, resetDebugBearRumForTesting],
+    ['marketing', initMarketingDebugBearRum, resetMarketingDebugBearRumForTesting],
+  ] as const) {
+    for (const href of SENSITIVE_LANDINGS) {
+      it(`${label}: holds the collector while the URL carries ${new URL(href).search || new URL(href).hash}`, (t) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        const h = installDebugBearHarness('www.worldmonitor.app', null, () => 0, href);
+        try {
+          init();
+          assert.equal(h.appendedScripts.length, 0, 'collector must not read a URL carrying sensitive params');
+          t.mock.timers.tick(1_000);
+          assert.equal(h.appendedScripts.length, 0);
+        } finally { h.restore(); reset(); }
+      });
+    }
+
+    it(`${label}: loads once the deferred consumers have cleaned the URL`, (t) => {
+      t.mock.timers.enable({ apis: ['setTimeout'] });
+      const h = installDebugBearHarness('www.worldmonitor.app', null, () => 0, 'https://www.worldmonitor.app/dashboard?ref=abc&tab=news');
+      try {
+        init();
+        assert.equal(h.appendedScripts.length, 0);
+        (h.win.location as { href: string }).href = 'https://www.worldmonitor.app/dashboard?tab=news';
+        t.mock.timers.tick(1_000);
+        assert.equal(h.appendedScripts.length, 1);
+        assert.equal(h.appendedScripts[0]!.src, DEBUGBEAR_RUM_SCRIPT_SRC);
+      } finally { h.restore(); reset(); }
+    });
+
+    it(`${label}: gives up and detaches when the URL never cleans`, (t) => {
+      t.mock.timers.enable({ apis: ['setTimeout'] });
+      const h = installDebugBearHarness('www.worldmonitor.app', null, () => 0, 'https://www.worldmonitor.app/settings?accept-business-invite=g1&token=tok123');
+      try {
+        init();
+        // Step the clock: each recheck schedules the next one.
+        for (let i = 0; i < 120; i++) t.mock.timers.tick(500);
+        assert.equal(h.appendedScripts.length, 0, 'collector never loads on a URL that keeps its secrets');
+        assert.equal(h.listeners.size, 0, 'pre-script error listeners are removed on give-up');
+      } finally { h.restore(); reset(); }
+    });
+
+    it(`${label}: loads immediately on a clean URL`, () => {
+      const h = installDebugBearHarness('www.worldmonitor.app', null, () => 0, 'https://www.worldmonitor.app/dashboard?tab=news&utm_source=x');
+      try {
+        init();
+        assert.equal(h.appendedScripts.length, 1);
+      } finally { h.restore(); reset(); }
+    });
+  }
+});
+
+describe('DebugBear RUM marketing loader', () => {
+  it('uses the same script endpoint and sample rate as the dashboard loader', () => {
+    assert.equal(MARKETING_DEBUGBEAR_RUM_SCRIPT_SRC, DEBUGBEAR_RUM_SCRIPT_SRC);
+    assert.equal(MARKETING_DEBUGBEAR_RUM_SAMPLE_RATE, DEBUGBEAR_RUM_SAMPLE_RATE);
+    assert.equal(MARKETING_DEBUGBEAR_RUM_SAMPLE_RATE, 10);
+  });
+
+  it('uses the same production-host gate as the dashboard loader', () => {
+    for (const host of [
+      'worldmonitor.app',
+      'www.worldmonitor.app',
+      'tech.worldmonitor.app',
+      'finance.worldmonitor.app',
+      'commodity.worldmonitor.app',
+      'happy.worldmonitor.app',
+      'energy.worldmonitor.app',
+      'localhost',
+      'worldmonitor-git-codex-preview-eliewm.vercel.app',
+      'evilworldmonitor.app',
+    ]) {
+      assert.equal(
+        shouldEnableMarketingDebugBearRum(host),
+        shouldEnableDebugBearRum(host),
+        `marketing DebugBear host gate drifted for ${host}`,
+      );
+    }
+  });
+
+  it('installs DebugBear RUM on marketing pages', () => {
+    const h = installDebugBearHarness('www.worldmonitor.app');
+    try {
+      initMarketingDebugBearRum();
+
+      assert.equal(h.appendedScripts.length, 1);
+      assert.equal(h.appendedScripts[0]!.async, true);
+      assert.equal(h.appendedScripts[0]!.src, MARKETING_DEBUGBEAR_RUM_SCRIPT_SRC);
+      assert.equal(h.appendedScripts[0]!.fetchPriority, 'low');
+      assert.deepEqual(h.win.dbbRum?.[0], ['presampling', MARKETING_DEBUGBEAR_RUM_SAMPLE_RATE]);
+      assert.ok(h.listeners.has('error'), 'window error listener missing');
+      assert.ok(h.listeners.has('unhandledrejection'), 'window unhandledrejection listener missing');
+    } finally {
+      h.restore();
+    }
+  });
+
+  it('skips out-of-sample marketing page loads', () => {
+    const h = installDebugBearHarness('worldmonitor.app', null, () => 0.1);
+    try {
+      initMarketingDebugBearRum();
+
+      assert.equal(h.appendedScripts.length, 0);
+      assert.equal(h.win.dbbRum, undefined);
+      assert.equal(h.listeners.size, 0);
+    } finally {
+      h.restore();
+    }
+  });
+});
+
+// public/pro/ is built by `npm run build:pro`, not committed (#6898): skip when the
+// checkout has not built it, fail when WM_EXPECT_BUILT_OUTPUT=1 says CI did.
+describe('DebugBear RUM marketing build output', { skip: shouldSkipProBuiltOutput() }, () => {
+  guardProBuiltOutput();
+
+  it('/pro and root welcome can reach the DebugBear loader in built assets', () => {
+    for (const page of ['public/pro/index.html', 'public/pro/welcome.html']) {
+      const entries = proPageModuleEntries(page);
+      assert.ok(entries.length > 0, `${page}: no module entry found`);
+      const reachableAssets = new Set(entries.flatMap((entry) => [...collectReachableProAssets(entry)]));
+      assert.ok(
+        [...reachableAssets].some((asset) => read(`public/pro/${asset}`).includes('cdn.debugbear.com')),
+        `${page}: generated entry graph does not contain DebugBear RUM`,
+      );
+    }
+  });
+});

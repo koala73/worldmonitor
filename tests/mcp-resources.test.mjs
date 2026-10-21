@@ -1,0 +1,2275 @@
+// MCP resources wire-contract + stability + auth-symmetry.
+//
+// Three load-bearing concerns:
+//   1. **Stability** — the chokepoint slug table is a publicly-bookmarkable
+//      contract. The byte-for-byte snapshot test fails on ANY slug-table
+//      change so a casual rename forces a deliberate snapshot update.
+//   2. **Auth symmetry** — resources/read MUST consume Pro daily quota
+//      IDENTICALLY to a tools/call against the equivalent tool. This is
+//      the test that catches a "resources are quota-exempt" regression:
+//      the dispatcher counter increment is asserted equal between
+//      resources/read and tools/call against the same backing tool, with
+//      identical pre-seeded counter state. Asymmetric auth is a known MCP
+//      data-leak vector — a Pro user at the daily cap could otherwise
+//      keep reading data through resources for free.
+//   3. **Freshness envelope** — every successful resources/read response
+//      carries `cached_at` and `stale` in the content payload. Cache-tool-
+//      backed resources inherit the envelope from cacheEnvelope; RPC-tool-
+//      backed resources (just country risk in v1) wrap explicitly via
+//      evaluateFreshness against the underlying seed-meta key.
+
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import vm from 'node:vm';
+
+import {
+  BASE_URL,
+  HMAC_SECRET,
+  callBody,
+  makeProDeps,
+  proReq,
+} from './helpers/mcp-pro-deps.mjs';
+import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE, UI_RESOURCE_REGISTRY } from '../api/mcp/ui/registry.ts';
+import { buildAppHtml } from '../api/mcp/ui/shell.ts';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const originalFetch = globalThis.fetch;
+const originalEnv = { ...process.env };
+const VALID_KEY = 'wm_test_key_resources';
+
+describe('prediction projection UI resource discovery', () => {
+  it('advertises v3 while retaining previous inline URIs as a data-free read alias', async () => {
+    const current = 'ui://worldmonitor/prediction-markets-v3.html';
+    const legacy = 'ui://worldmonitor/prediction-markets.html';
+    assert.ok(UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === current));
+    assert.ok(!UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === legacy));
+    assert.equal(isUiResourceUri(current), true);
+    assert.equal(isUiResourceUri(legacy), true);
+    const read = async uri => (await (await buildUiResourceRead(1, uri, {})).json()).result.contents[0];
+    const advertised = await read(current);
+    const alias = await read(legacy);
+    const previous = 'ui://worldmonitor/prediction-markets-v2.html';
+    assert.equal(isUiResourceUri(previous), true);
+    assert.ok(!UI_RESOURCE_LIST_RESPONSE.some(resource => resource.uri === previous));
+    assert.equal((await read(previous)).text, advertised.text);
+    assert.equal((await read(previous)).uri, current);
+    assert.equal(alias.text, advertised.text);
+    assert.equal(alias.uri, current);
+    assert.equal(advertised.mimeType, 'text/html;profile=mcp-app');
+    assert.match(advertised.text, /Prediction Markets/);
+  });
+});
+
+function envKeyReq(body, headers = {}) {
+  return new Request(BASE_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-WorldMonitor-Key': VALID_KEY,
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+// Anonymous request (NO credentials) — exercises the public-discovery /
+// public-resource-read path an agent-readiness scanner (orank) uses.
+function anonReq(body, headers = {}) {
+  return new Request(BASE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
+// resources/read JSON-RPC body factory.
+function readBody(uri, id = 100) {
+  return { jsonrpc: '2.0', id, method: 'resources/read', params: { uri } };
+}
+
+// Execute a served MCP App shell without pulling a browser-DOM dependency into
+// the Edge/API test surface. The widgets only need a deliberately small DOM:
+// id lookup, textContent, appendChild, style, theme attributes, and height
+// reporting. Keeping innerHTML as a throwing setter turns the harness into an
+// executable injection guard rather than another source-regex assertion.
+function mountWidgetHtml(html) {
+  class TestElement {
+    constructor(tagName, id = '') {
+      this.tagName = String(tagName).toUpperCase();
+      this.id = id;
+      this.className = '';
+      this.childNodes = [];
+      this.style = {};
+      this.attributes = {};
+      this._text = '';
+    }
+    appendChild(child) {
+      this.childNodes.push(child);
+      return child;
+    }
+    contains(node) {
+      return node === this || this.childNodes.some((child) => child.contains(node));
+    }
+    focus() {
+      document.activeElement = this;
+    }
+    set textContent(value) {
+      this._text = value == null ? '' : String(value);
+      this.childNodes = [];
+    }
+    get textContent() {
+      return this._text + this.childNodes.map((child) => child.textContent).join('');
+    }
+    set innerHTML(_value) {
+      throw new Error('widget renderers must not write innerHTML');
+    }
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    }
+    getAttribute(name) {
+      return this.attributes[name] ?? null;
+    }
+    querySelectorAll(selector) {
+      const matches = [];
+      const visit = (node) => {
+        for (const child of node.childNodes) {
+          if (selector.startsWith('.')
+            ? child.className.split(/\s+/).includes(selector.slice(1))
+            : child.tagName.toLowerCase() === selector.toLowerCase()) matches.push(child);
+          visit(child);
+        }
+      };
+      visit(this);
+      return matches;
+    }
+    querySelector(selector) {
+      return this.querySelectorAll(selector)[0] ?? null;
+    }
+    getBoundingClientRect() {
+      return { height: 240 };
+    }
+  }
+
+  const byId = new Map();
+  for (const match of html.matchAll(/<([a-z][a-z0-9-]*)\b[^>]*\bid="([^"]+)"[^>]*>/gi)) {
+    byId.set(match[2], new TestElement(match[1], match[2]));
+  }
+  const created = [];
+  const documentElement = new TestElement('html');
+  const document = {
+    documentElement,
+    activeElement: new TestElement('body'),
+    getElementById: (id) => byId.get(id) ?? null,
+    createTextNode: (text) => {
+      const node = new TestElement('#text');
+      node.textContent = text;
+      return node;
+    },
+    createElement: (tag) => {
+      const node = new TestElement(tag);
+      created.push(node);
+      return node;
+    },
+  };
+  document.createElementNS = (namespaceURI, tag) => {
+    const node = document.createElement(tag);
+    node.namespaceURI = namespaceURI;
+    node.tagName = String(tag);
+    return node;
+  };
+  const animationFrames = [];
+  let animationFrameId = 0;
+  const flushAnimationFrame = () => {
+    const callbacks = animationFrames.splice(0);
+    callbacks.forEach((callback) => callback(0));
+  };
+  const listeners = new Map();
+  const posted = [];
+  const parent = { postMessage: (message) => posted.push(message) };
+  const window = {
+    parent,
+    addEventListener: (type, listener) => listeners.set(type, listener),
+    matchMedia: () => ({ matches: false }),
+  };
+  const context = {
+    window,
+    document,
+    URL,
+    Intl,
+    Date,
+    Math,
+    Number,
+    String,
+    Object,
+    Array,
+    JSON,
+    isFinite,
+    isNaN,
+    getComputedStyle: () => ({ getPropertyValue: () => '' }),
+    requestAnimationFrame: (callback) => {
+      animationFrames.push(callback);
+      return ++animationFrameId;
+    },
+  };
+  const script = html.match(/<script>([\s\S]*)<\/script>/i)?.[1];
+  assert.ok(script, 'served widget HTML must contain an executable script');
+  vm.runInNewContext(script, context, { timeout: 1_000 });
+  flushAnimationFrame();
+  assert.equal(typeof listeners.get('message'), 'function', 'widget must register its host message listener');
+
+  return {
+    posted,
+    sendMessage(msg, fromParent = true) {
+      listeners.get('message')({ source: fromParent ? parent : {}, data: { jsonrpc: '2.0', ...msg } });
+      flushAnimationFrame();
+    },
+    sendToolResult(structuredContent) {
+      listeners.get('message')({
+        source: parent,
+        data: {
+          jsonrpc: '2.0',
+          method: 'ui/notifications/tool-result',
+          params: { result: { structuredContent } },
+        },
+      });
+      flushAnimationFrame();
+    },
+    text(id) {
+      return byId.get(id)?.textContent ?? '';
+    },
+    nodes(id) {
+      const root = byId.get(id);
+      const result = [];
+      const visit = (node) => {
+        if (!node) return;
+        result.push(node);
+        node.childNodes.forEach(visit);
+      };
+      visit(root);
+      return result;
+    },
+    created,
+  };
+}
+
+// Mock fetch covering every read path the four resources can touch:
+//   - Upstash REST cache reads (`GET /get/<key>`) → return Redis JSON.
+//   - get_country_risk RPC (sibling fetch to /api/intelligence/v1/get-country-risk).
+//   - Upstash REST sliding-window ratelimit (pipeline / EVALSHA against the
+//     same host) → return null shape so the @upstash/ratelimit limiter
+//     degrades gracefully and doesn't add latency to every test.
+function installMockFetch({ riskPayload = null, keyOverrides = {} } = {}) {
+  const NOW = Date.now();
+  const META = { fetchedAt: NOW, recordCount: 1 };
+
+  // Default payloads for the cache keys the four resources touch. Empty
+  // arrays / objects keep the schema valid; the F6 cache_all_null guard
+  // requires at least ONE key to come back non-null per tool.
+  const stocks = { quotes: [{ symbol: 'AAPL', price: 100, changePercent: 1.2 }, { symbol: 'MSFT', price: 200, changePercent: -0.3 }] };
+  const commodities = { quotes: [{ symbol: 'GC=F', price: 2500, changePercent: 0.5 }] };
+  const crypto = { quotes: [{ symbol: 'BTC-USD', price: 100000, changePercent: 0.0 }] };
+  const transit = { summaries: { suez: { todayTotal: 100, todayTanker: 30, todayCargo: 50, riskLevel: 'normal', riskSummary: 'Normal flow.', dataAvailable: true } } };
+  const chokeRef = { hormuz: { name: 'Strait of Hormuz' } };
+
+  const keyMap = {
+    // get_market_data cache
+    'market:stocks-bootstrap:v1': stocks,
+    'market:commodities-bootstrap:v1': commodities,
+    'market:crypto:v1': crypto,
+    'market:sectors:v2': null,
+    'market:etf-flows:v1': null,
+    'market:gulf-quotes:v1': null,
+    'market:fear-greed:v1': null,
+    'seed-meta:market:stocks': META,
+    // get_chokepoint_status cache
+    'supply_chain:transit-summaries:v1': transit,
+    'supply_chain:chokepoint_transits:v1': null,
+    'supply_chain:portwatch-ports:v1:_countries': null,
+    'energy:chokepoint-baselines:v1': null,
+    'portwatch:chokepoints:ref:v1': chokeRef,
+    'energy:chokepoint-flows:v1': null,
+    'seed-meta:supply_chain:transit-summaries': META,
+    'seed-meta:supply_chain:chokepoint_transits': META,
+    'seed-meta:supply_chain:portwatch-ports': META,
+    'seed-meta:energy:chokepoint-baselines': META,
+    'seed-meta:portwatch:chokepoints-ref': META,
+    'seed-meta:energy:chokepoint-flows': META,
+    // get_country_risk freshness wrap (resource-layer read, distinct from
+    // the RPC's own fetch path)
+    'seed-meta:intelligence:risk-scores': META,
+    ...keyOverrides,
+  };
+
+  globalThis.fetch = async (url, init) => {
+    const u = url.toString();
+    if (u === 'https://www.worldmonitor.app/plugin/market.html') return new Response('<!DOCTYPE html><html><head></head><body><main id="marketRoot"></main><script type="module" src="/plugin/assets/market-test.js"></script></body></html>', { headers: { 'Content-Type': 'text/html' } });
+    if (u === 'https://www.worldmonitor.app/plugin/country.html') return new Response('<!DOCTYPE html><html><head></head><body><main id="countryRoot"></main><script type="module" src="/plugin/assets/country-test.js"></script></body></html>', { headers: { 'Content-Type': 'text/html' } });
+    if (u === 'https://www.worldmonitor.app/plugin/plugin.html') return new Response('<!DOCTYPE html><html><head></head><body><main id="pluginRoot"></main><script type="module" src="/plugin/assets/plugin-test.js"></script></body></html>', { headers: { 'Content-Type': 'text/html' } });
+
+    // get_country_risk RPC — the sibling fetch dispatch._execute does.
+    if (u.includes('/api/intelligence/v1/get-country-risk')) {
+      // GetCountryRiskResponse as the gateway actually serializes it: the
+      // proto struct, camelCase, no case conversion. This mock previously
+      // invented `country_code` / a numeric `cii` / `components{unrest,…}` /
+      // `travelAdvisory` / `sanctionsExposure` — the same fiction the tool's
+      // outputSchema advertised — so the assertions below were checking the
+      // mock against itself rather than against anything production emits.
+      const body = riskPayload ?? {
+        countryCode: 'DE',
+        countryName: 'Germany',
+        cii: {
+          region: 'DE',
+          staticBaseline: 22,
+          dynamicScore: 1.5,
+          combinedScore: 28,
+          trend: 'TREND_DIRECTION_STABLE',
+          components: { newsActivity: 3, ciiContribution: 12, geoConvergence: 8, militaryActivity: 5 },
+          computedAt: 1756288800000,
+          methodologyVersion: 'cii-v4',
+          eventMultiplier: 1,
+          advisoryLevel: '',
+          advisoryProvenance: 'live',
+        },
+        advisoryLevel: 'caution',
+        sanctionsActive: false,
+        sanctionsCount: 0,
+        fetchedAt: 1756288800000,
+        upstreamUnavailable: false,
+      };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Upstash REST cache reads — `GET /get/<urlencoded-key>` → `{result}`.
+    for (const [k, v] of Object.entries(keyMap)) {
+      if (u.includes(`/get/${encodeURIComponent(k)}`)) {
+        return new Response(JSON.stringify({ result: v === null ? null : JSON.stringify(v) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // Default upstash bucket — unrecognised key returns null. Also catches
+    // the @upstash/ratelimit sliding-window EVALSHA / pipeline shape so
+    // the limiter degrades gracefully (~5ms instead of timing out).
+    if (u.includes('fake.upstash') || u.includes('stub.upstash') || u.includes('upstash.io')) {
+      return new Response(JSON.stringify({ result: null }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    return originalFetch(url, init);
+  };
+}
+
+let handler;
+let mcpHandler;
+let PUBLIC_RESOURCE_REGISTRY;
+let TEMPLATE_RESOURCE_REGISTRY;
+let TOOL_REGISTRY;
+let CHOKEPOINT_SLUGS;
+
+describe('api/mcp.ts — resources capability + stability + auth-symmetry', () => {
+  beforeEach(async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = VALID_KEY;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+
+    installMockFetch();
+
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}-resources`);
+    handler = mod.default;
+    mcpHandler = mod.mcpHandler;
+    PUBLIC_RESOURCE_REGISTRY = mod.__testing__.PUBLIC_RESOURCE_REGISTRY;
+    TEMPLATE_RESOURCE_REGISTRY = mod.__testing__.TEMPLATE_RESOURCE_REGISTRY;
+    TOOL_REGISTRY = mod.__testing__.TOOL_REGISTRY;
+    CHOKEPOINT_SLUGS = mod.CHOKEPOINT_SLUGS;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    Object.keys(process.env).forEach((k) => {
+      if (!(k in originalEnv)) delete process.env[k];
+    });
+    Object.assign(process.env, originalEnv);
+  });
+
+  // -------------------------------------------------------------------------
+  // initialize advertises the new capability
+  // -------------------------------------------------------------------------
+  it('initialize advertises capabilities.resources.{subscribe: false, listChanged: false}', async () => {
+    const res = await handler(envKeyReq({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(
+      body.result?.capabilities?.resources,
+      { subscribe: false, listChanged: false },
+      'capabilities.resources must declare both flags explicitly false (stateless transport)',
+    );
+    // Sibling capabilities must NOT be regressed.
+    assert.ok(body.result.capabilities.tools, 'capabilities.tools must still be present');
+    assert.ok(body.result.capabilities.prompts, 'capabilities.prompts must still be present');
+    assert.ok(body.result.capabilities.logging, 'capabilities.logging must still be present');
+  });
+
+  // -------------------------------------------------------------------------
+  // MCP Apps handshake — initialize declares the extension (the SIGNAL that
+  // pairs with the ui:// resource + tool `_meta` CONTENT asserted below).
+  // Hosts and agent-readiness scanners classify an MCP-App surface off this
+  // `capabilities.extensions` key; 1.11.0 shipped the ui:// artifacts but not
+  // this declaration, so the surface read as a plain MCP server. Guarding it
+  // here keeps the full MCP Apps triad (capability + resource + tool meta)
+  // enforced in one file.
+  // -------------------------------------------------------------------------
+  it('initialize declares the MCP Apps extension capabilities.extensions["io.modelcontextprotocol/ui"]', async () => {
+    const res = await handler(envKeyReq({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const extensions = body.result?.capabilities?.extensions;
+    assert.ok(extensions && typeof extensions === 'object',
+      'capabilities.extensions must be an object declaring supported MCP extensions');
+    assert.deepEqual(
+      extensions['io.modelcontextprotocol/ui'], {},
+      "capabilities.extensions['io.modelcontextprotocol/ui'] must be declared (empty object — the " +
+      'extension carries no negotiation parameters), signalling MCP Apps support to hosts/scanners',
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // resources/list shape
+  // -------------------------------------------------------------------------
+  it('keeps the old conflict resource readable without advertising it', async () => {
+    const oldUri = 'ui://worldmonitor/conflict-events.html';
+    const newUri = 'ui://worldmonitor/conflict-events-v2.html';
+    const listed = await (await handler(anonReq({ jsonrpc: '2.0', id: 1, method: 'resources/list', params: {} }))).json();
+    assert.ok(listed.result.resources.some(resource => resource.uri === newUri));
+    assert.ok(!listed.result.resources.some(resource => resource.uri === oldUri));
+    const oldRead = await (await handler(anonReq(readBody(oldUri)))).json();
+    const newRead = await (await handler(anonReq(readBody(newUri)))).json();
+    assert.equal(oldRead.result.contents[0].uri, oldUri);
+    assert.equal(newRead.result.contents[0].uri, newUri);
+    assert.equal(oldRead.result.contents[0].text, newRead.result.contents[0].text);
+    const card = JSON.parse(readFileSync(resolve(__dirname, '../public/.well-known/mcp/server-card.json'), 'utf8'));
+    assert.ok(card.metadata.mcpApps.uiResources.includes(newUri));
+    assert.ok(!card.metadata.mcpApps.uiResources.includes(oldUri));
+    assert.match(card.metadata.mcpApps.note, /get_conflict_events → conflict-events-v2\.html/);
+  });
+
+  it('resources/list returns only concrete anon-readable resources: DATA freshness probe + ui:// shell, no {template} URIs', async () => {
+    const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 2, method: 'resources/list', params: {} }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body.result?.resources), 'result.resources must be an array');
+    // resources/list = concrete DATA resource(s) (metadata-only, anon-readable)
+    // + the MCP Apps ui:// app-shell (v1.11.0). NO {placeholder} templates —
+    // those moved to resources/templates/list (a literal {iso2} can't resolve,
+    // which would break an anonymous validator's resources/read probe).
+    const actualUris = body.result.resources.map((r) => r.uri);
+    assert.deepEqual(actualUris, [
+      'worldmonitor://seed-meta/freshness',
+      'ui://worldmonitor/country-risk-v3.html',
+      'ui://worldmonitor/world-brief-v2.html',
+      'ui://worldmonitor/country-brief-v3.html',
+      'ui://worldmonitor/market-radar-v3.html',
+      'ui://worldmonitor/chokepoint-monitor-v2.html',
+      'ui://worldmonitor/news-intelligence-v3.html',
+      'ui://worldmonitor/conflict-events-v2.html',
+      'ui://worldmonitor/natural-disasters-v3.html',
+      'ui://worldmonitor/prediction-markets-v3.html',
+      'ui://worldmonitor/forecasts-v4.html',
+      'ui://worldmonitor/news-dashboard-v3.html',
+      'ui://worldmonitor/country-view-v3.html',
+    ], 'resources/list = concrete DATA freshness probe then the ui:// app-shell fleet, in registry order');
+    for (const r of body.result.resources) {
+      assert.equal(typeof r.uri, 'string', `resource ${r.uri}: uri must be a string`);
+      assert.ok(r.uri.length > 0, `resource ${r.uri}: uri must be non-empty`);
+      assert.doesNotMatch(r.uri, /[{}]/,
+        `resource ${r.uri}: resources/list must not contain template {placeholder} URIs (use resources/templates/list)`);
+      assert.equal(typeof r.name, 'string', `resource ${r.uri}: name must be a string`);
+      assert.equal(typeof r.description, 'string', `resource ${r.uri}: description must be a string`);
+      // Per-uri mimeType: DATA resources are application/json; the MCP Apps
+      // ui:// shell is the extension's content profile text/html;profile=mcp-app.
+      const expectedMime = r.uri.startsWith('ui://') ? 'text/html;profile=mcp-app' : 'application/json';
+      assert.equal(r.mimeType, expectedMime, `resource ${r.uri}: mimeType must be ${expectedMime}`);
+      // Internal authoring fields must NOT leak via resources/list.
+      assert.equal(r.read, undefined, `resource ${r.uri}: internal "read" must not leak via resources/list`);
+      assert.equal(r.tool, undefined, `resource ${r.uri}: internal "tool" must not leak via resources/list`);
+      assert.equal(r.paramExtractor, undefined, `resource ${r.uri}: internal "paramExtractor" must not leak via resources/list`);
+      assert.equal(r.freshnessWrap, undefined, `resource ${r.uri}: internal "freshnessWrap" must not leak via resources/list`);
+      assert.equal(r.html, undefined, `resource ${r.uri}: internal "html" must not leak via resources/list`);
+      // ui:// shells advertise their CSP/render policy via _meta.ui; the
+      // public DATA metadata probe advertises anonymous-free access.
+      if (r.uri.startsWith('ui://')) {
+        assert.ok(r._meta?.ui?.csp, `ui:// resource ${r.uri} must advertise _meta.ui.csp`);
+      } else {
+        assert.equal(r._meta?.['worldmonitor/access'], 'free', `DATA resource ${r.uri} must advertise free access`);
+      }
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // MCP Apps ui:// resource — read is public + quota-exempt (v1.11.0)
+  // -------------------------------------------------------------------------
+  it('resources/read ui://worldmonitor/country-risk.html returns the app-shell HTML (mimeType text/html;profile=mcp-app)', async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `unexpected error: ${JSON.stringify(body.error)}`);
+    assert.equal(body.result.contents.length, 1);
+    const c = body.result.contents[0];
+    assert.equal(c.uri, 'ui://worldmonitor/country-risk.html');
+    assert.equal(c.mimeType, 'text/html;profile=mcp-app');
+    assert.match(c.text, /^<!doctype html>/i, 'ui:// resource must return self-contained HTML');
+    assert.match(c.text, /ui\/initialize/, 'app shell must implement the MCP Apps postMessage handshake');
+    assert.match(c.text, /ui\/notifications\/tool-result/, 'app shell must consume tool-result notifications');
+  });
+
+  it('advertises Country Risk v3 while preserving both private read aliases', async () => {
+    const current = await handler(anonReq(readBody('ui://worldmonitor/country-risk-v3.html')));
+    const previous = await handler(anonReq(readBody('ui://worldmonitor/country-risk-v2.html')));
+    const legacy = await handler(anonReq(readBody('ui://worldmonitor/country-risk.html')));
+    const currentContent = (await current.json()).result.contents[0];
+    const previousContent = (await previous.json()).result.contents[0];
+    const legacyContent = (await legacy.json()).result.contents[0];
+    assert.equal(currentContent.uri, 'ui://worldmonitor/country-risk-v3.html');
+    assert.equal(previousContent.uri, 'ui://worldmonitor/country-risk-v2.html');
+    assert.equal(legacyContent.uri, 'ui://worldmonitor/country-risk.html');
+    assert.equal(currentContent.text, legacyContent.text);
+    assert.deepEqual(currentContent._meta, legacyContent._meta);
+    assert.equal(currentContent.text, previousContent.text);
+    assert.deepEqual(currentContent._meta, previousContent._meta);
+    const listed = await handler(anonReq({ jsonrpc: '2.0', id: 102, method: 'resources/list', params: {} }));
+    const uris = (await listed.json()).result.resources.map(resource => resource.uri);
+    assert.ok(uris.includes(currentContent.uri));
+    assert.ok(!uris.includes(legacyContent.uri));
+    assert.ok(!uris.includes(previousContent.uri));
+    const tools = await handler(envKeyReq({ jsonrpc: '2.0', id: 103, method: 'tools/list', params: {} }));
+    const riskTool = (await tools.json()).result.tools.find(tool => tool.name === 'get_country_risk');
+    assert.equal(riskTool._meta.ui.resourceUri, currentContent.uri);
+  });
+
+  it('ui:// app-shell HTML carries the orank view-quality + view-csp signals (uppercase DOCTYPE, color-scheme, scoped CSP)', async () => {
+    // orank Experience checks mcp-apps-ui-quality / mcp-view-domain / mcp-view-csp
+    // read the served HTML statically. Guard each required token so a future
+    // edit can't silently regress the score.
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    const html = (await res.json()).result.contents[0].text;
+
+    // ui-quality + view-domain: UPPERCASE DOCTYPE + color-scheme meta.
+    assert.match(html, /^<!DOCTYPE html>/, 'HTML must open with an uppercase <!DOCTYPE html> (orank mcp-apps-ui-quality)');
+    assert.match(html, /<meta\s+name="color-scheme"\s+content="light dark">/, 'must declare <meta name="color-scheme" content="light dark">');
+    assert.doesNotMatch(html, /wm_[a-f0-9]{40}|X-WorldMonitor-Key|Bearer\s+[A-Za-z0-9]/, 'app shell must not hardcode secrets/keys');
+
+    // view-csp: a <meta http-equiv> CSP scoping all four required directive categories.
+    const cspMatch = html.match(/<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]+)">/);
+    assert.ok(cspMatch, 'must carry a <meta http-equiv="Content-Security-Policy"> tag');
+    const csp = cspMatch[1];
+    assert.match(csp, /connect-src[^;]*worldmonitor\.app/, 'connect-src must include the MCP server origin');
+    assert.match(csp, /frame-ancestors[^;]*https:\/\/chatgpt\.com/, 'frame-ancestors must include https://chatgpt.com');
+    assert.match(csp, /frame-ancestors[^;]*https:\/\/claude\.ai/, 'frame-ancestors must include https://claude.ai');
+    assert.match(csp, /form-action\s+'none'/, 'form-action must be scoped');
+    assert.match(csp, /(img|script|style)-src/, 'img/script/style-src must be present');
+    assert.doesNotMatch(csp, /default-src\s+\*/, 'must NOT use a permissive default-src * (loses orank credit)');
+  });
+
+  it('resources/read ui:// response carries spec _meta.ui.csp with secure empty allowlists', async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    const meta = (await res.json()).result.contents[0]._meta;
+    assert.ok(meta?.ui?.csp, 'contents[0]._meta.ui.csp must be present (ext-apps UIResourceMeta)');
+    // connectDomains mirrors the HTML meta CSP's connect-src (the MCP origin);
+    // the other allowlists stay empty (secure default — app loads nothing external).
+    assert.deepEqual(meta.ui.csp.connectDomains, ['https://worldmonitor.app', 'https://www.worldmonitor.app'],
+      'connectDomains must mirror the HTML connect-src (MCP server origin)');
+    assert.deepEqual(meta.ui.csp.resourceDomains, [], 'resourceDomains empty = no external resources');
+    assert.deepEqual(meta.ui.csp.frameDomains, [], 'frameDomains empty = no nested frames');
+    assert.deepEqual(meta.ui.csp.baseUriDomains, [], 'baseUriDomains empty = base-uri self');
+
+    // Consistency guard: every connectDomain must actually appear in the
+    // served HTML's connect-src (catches the two CSP declarations drifting).
+    // Parse the CSP from the meta CONTENT attribute — not a bare `connect-src`
+    // grep, which would also hit the word in the head comment.
+    const htmlRes = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    const html = (await htmlRes.json()).result.contents[0].text;
+    const cspContent = html.match(/<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]+)">/)[1];
+    const connectSrc = cspContent.match(/connect-src([^;]+)/)[1];
+    for (const d of meta.ui.csp.connectDomains) {
+      assert.ok(connectSrc.includes(d), `_meta.ui.csp.connectDomains "${d}" must also be in the HTML connect-src`);
+    }
+  });
+
+  it('resources/read of the ui:// shell is PUBLIC — served with NO credentials', async () => {
+    const anonReq = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(readBody('ui://worldmonitor/country-risk.html')),
+    });
+    const res = await handler(anonReq);
+    assert.equal(res.status, 200, 'ui:// read must be servable without auth (static, data-free template)');
+    const body = await res.json();
+    assert.equal(body.error, undefined, `anon ui:// read must succeed, got: ${JSON.stringify(body.error)}`);
+    assert.equal(body.result.contents[0].mimeType, 'text/html;profile=mcp-app');
+  });
+
+  it('World Brief advertises only v2 while the private original alias retains its requested URI', async () => {
+    const current = 'ui://worldmonitor/world-brief-v2.html';
+    const legacy = 'ui://worldmonitor/world-brief.html';
+    const listRes = await handler(anonReq({ jsonrpc: '2.0', id: 8, method: 'resources/list', params: {} }));
+    const listed = (await listRes.json()).result.resources.map(resource => resource.uri);
+    assert.ok(listed.includes(current));
+    assert.ok(!listed.includes(legacy));
+    const responses = [];
+    for (const uri of [current, legacy]) {
+      const res = await handler(anonReq(readBody(uri)));
+      const body = await res.json();
+      assert.equal(body.error, undefined);
+      assert.equal(body.result.contents[0].uri, uri);
+      assert.equal(body.result.contents[0].mimeType, 'text/html;profile=mcp-app');
+      responses.push(body.result.contents[0]);
+    }
+    assert.equal(responses[0].text, responses[1].text);
+    assert.deepEqual(responses[0]._meta, responses[1]._meta);
+  });
+
+  it('every tool _uiResourceUri resolves to a listed ui:// resource, and every ui:// resource is reachable (bidirectional integrity)', async () => {
+    // Enumerate the ui:// URIs the server actually advertises via resources/list.
+    const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 9, method: 'resources/list', params: {} }));
+    const body = await res.json();
+    const listedUiUris = new Set(
+      body.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://')),
+    );
+
+    // Every tool that declares a UI linkage must point at a listed resource
+    // (no dangling _meta.ui.resourceUri that 404s on resources/read).
+    const linkedByTools = new Set();
+    for (const tool of TOOL_REGISTRY) {
+      if (tool._uiResourceUri) {
+        linkedByTools.add(tool._uiResourceUri);
+        assert.ok(
+          listedUiUris.has(tool._uiResourceUri),
+          `tool "${tool.name}" links _uiResourceUri "${tool._uiResourceUri}" but resources/list does not advertise it`,
+        );
+        // And the read must actually resolve (public, static template).
+        const readRes = await handler(envKeyReq(readBody(tool._uiResourceUri)));
+        const readBodyJson = await readRes.json();
+        assert.equal(readBodyJson.error, undefined,
+          `resources/read of "${tool._uiResourceUri}" (linked by ${tool.name}) must resolve`);
+      }
+    }
+
+    // And every advertised ui:// resource must be linked by at least one tool
+    // — an orphan app shell no tool can trigger is dead surface.
+    for (const uri of listedUiUris) {
+      assert.ok(linkedByTools.has(uri),
+        `ui:// resource "${uri}" is advertised but no tool references it via _uiResourceUri`);
+    }
+  });
+
+  it('advertises Country Brief v3 and keeps prior URIs as a private, quota-free read alias', async () => {
+    const current = 'ui://worldmonitor/country-brief-v3.html';
+    const legacy = 'ui://worldmonitor/country-brief.html';
+    const previous = 'ui://worldmonitor/country-brief-v2.html';
+    const tool = TOOL_REGISTRY.find(tool => tool.name === 'get_country_brief');
+    assert.equal(tool._uiResourceUri, current);
+    const listed = (await (await handler(anonReq({ jsonrpc: '2.0', id: 2, method: 'resources/list' }))).json()).result.resources;
+    assert.ok(listed.some(resource => resource.uri === current));
+    assert.ok(!listed.some(resource => resource.uri === legacy));
+    assert.ok(!listed.some(resource => resource.uri === previous));
+    const { deps, pipe } = makeProDeps();
+    const bodies = [];
+    let reads = 0;
+    const mockFetch = globalThis.fetch;
+    globalThis.fetch = async (...args) => {
+      if (/\/get\/|\/api\//.test(String(args[0]))) reads++;
+      return mockFetch(...args);
+    };
+    for (const uri of [current, previous, legacy]) {
+      for (const request of [anonReq(readBody(uri)), proReq('POST', readBody(uri))]) {
+        const response = await mcpHandler(request, deps);
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.error, undefined);
+        assert.equal(body.result.contents[0].uri, uri);
+        bodies.push(body.result.contents[0]);
+      }
+    }
+    assert.ok(bodies.every(body => body.text === bodies[0].text && body.mimeType === bodies[0].mimeType));
+    assert.equal(pipe.count, 0);
+    assert.equal(reads, 0);
+  });
+
+  // -------------------------------------------------------------------------
+  // MCP Apps fleet-wide quality — the orank view-quality / view-csp signals
+  // asserted for country-risk above must hold for EVERY widget in the fleet,
+  // so a future app shell (or a shared-shell edit) can't silently regress the
+  // CSP / dark-mode / bridge contract. Generalises the single-widget check to
+  // the whole ui:// registry read back off the wire.
+  // -------------------------------------------------------------------------
+  it('FORECAST: advertises v4 and preserves prior URIs as public quota-free read aliases', async () => {
+    const uri = 'ui://worldmonitor/forecasts-v4.html';
+    const aliases = ['ui://worldmonitor/forecasts-v3.html', 'ui://worldmonitor/forecasts-v2.html', 'ui://worldmonitor/forecasts.html'];
+    const listRes = await handler(anonReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
+    const resources = (await listRes.json()).result.resources;
+    assert.equal(resources.filter(resource => resource.uri === uri).length, 1, 'v4 must identify the current Forecast renderer');
+    for (const alias of aliases) assert.equal(resources.filter(resource => resource.uri === alias).length, 0);
+    assert.equal(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')._uiResourceUri, uri);
+    const listedTools = (await (await handler(envKeyReq({ jsonrpc: '2.0', id: 12, method: 'tools/list', params: {} }))).json()).result.tools;
+    const forecastTool = listedTools.find(tool => tool.name === 'get_forecast_predictions');
+    assert.equal(forecastTool._meta.ui.resourceUri, uri);
+    assert.equal(forecastTool._meta['ui/resourceUri'], uri);
+    const currentRes = await handler(anonReq(readBody(uri)));
+    const current = (await currentRes.json()).result.contents[0];
+    assert.equal(current.uri, uri);
+    assert.match(current.text, /Accuracy under audit/);
+    assert.match(current.text, /data-unverified/);
+    assert.match(current.text, /familyOutcomes/);
+    assert.match(current.text, /scoredHorizons/);
+    const { deps, pipe } = makeProDeps();
+    let reads = 0;
+    const mockFetch = globalThis.fetch;
+    globalThis.fetch = async (...args) => {
+      if (String(args[0]) !== 'https://fake.upstash.io/pipeline') reads++;
+      return mockFetch(...args);
+    };
+    try {
+      for (const requested of [uri, ...aliases]) {
+        for (const request of [anonReq(readBody(requested)), proReq('POST', readBody(requested))]) {
+          const response = await mcpHandler(request, deps);
+          assert.equal(response.status, 200);
+          const body = await response.json();
+          assert.equal(body.error, undefined);
+          const content = body.result.contents[0];
+          assert.equal(content.uri, requested);
+          assert.equal(content.text, current.text);
+          assert.equal(content.mimeType, current.mimeType);
+          assert.deepEqual(content._meta, current._meta);
+        }
+      }
+    } finally { globalThis.fetch = mockFetch; }
+    assert.equal(pipe.count, 0);
+    assert.equal(reads, 0);
+    assert.match(resources.find(resource => resource.uri === current.uri).description, /original case/);
+  });
+  it('FLEET: every ui:// shell carries the orank quality signals (DOCTYPE, color-scheme, 4-category CSP, bridge, no secrets)', async () => {
+    const listRes = await handler(envKeyReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
+    const listBody = await listRes.json();
+    const uiUris = listBody.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://') && !['ui://worldmonitor/news-dashboard-v3.html', 'ui://worldmonitor/country-view-v3.html', 'ui://worldmonitor/market-radar-v3.html'].includes(u));
+    const registryUiUris = UI_RESOURCE_REGISTRY.map((resource) => resource.uri).filter(uri => uri !== 'ui://worldmonitor/market-radar-v3.html');
+    assert.deepEqual(uiUris, registryUiUris, 'inline-shell audit covers the inline registry; the compiled dashboard is checked in mcp-news-dashboard and browser tests');
+
+    for (const uri of uiUris) {
+      const res = await handler(envKeyReq(readBody(uri)));
+      const c = (await res.json()).result.contents[0];
+      const html = c.text;
+
+      // ui-quality + view-domain.
+      assert.match(html, /^<!DOCTYPE html>/, `${uri}: must open with an uppercase <!DOCTYPE html>`);
+      assert.match(html, /<meta\s+name="color-scheme"\s+content="light dark">/, `${uri}: must declare color-scheme`);
+      assert.doesNotMatch(html, /wm_[a-f0-9]{40}|X-WorldMonitor-Key|Bearer\s+[A-Za-z0-9]/, `${uri}: must not hardcode secrets`);
+      // The TS template interpolation must be fully resolved — no leaked `${` markers.
+      assert.doesNotMatch(html, /\$\{/, `${uri}: unresolved template placeholder leaked into served HTML`);
+
+      // view-csp: all four required directive categories, scoped (not `*`).
+      const cspMatch = html.match(/<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]+)">/);
+      assert.ok(cspMatch, `${uri}: must carry a <meta http-equiv CSP> tag`);
+      const csp = cspMatch[1];
+      assert.match(csp, /default-src\s+'none'/, `${uri}: default-src must be 'none'`);
+      assert.match(csp, /connect-src[^;]*worldmonitor\.app/, `${uri}: connect-src must include the MCP origin`);
+      // frame-ancestors in a <meta> CSP is ADVISORY — browsers enforce it only
+      // via an HTTP response header, and a ui:// shell is delivered as a
+      // JSON-RPC string the host injects into its own sandboxed iframe (no HTTP
+      // document, so no header to carry it). We assert its presence as a
+      // declarative host/scanner signal of intended embedders, NOT as
+      // browser-enforced clickjacking protection (the real embedding boundary
+      // is the host sandbox + the bridge's event.source === parent check).
+      assert.match(csp, /frame-ancestors[^;]*https:\/\/chatgpt\.com/, `${uri}: must declare chatgpt.com in frame-ancestors (advisory embedder signal)`);
+      assert.match(csp, /frame-ancestors[^;]*https:\/\/claude\.ai/, `${uri}: must declare claude.ai in frame-ancestors (advisory embedder signal)`);
+      assert.match(csp, /form-action\s+'none'/, `${uri}: form-action must be scoped`);
+      assert.match(csp, /base-uri\s+'none'/, `${uri}: base-uri must be scoped`);
+      assert.match(csp, /(img|script|style)-src/, `${uri}: img/script/style-src must be present`);
+      assert.doesNotMatch(csp, /default-src\s+\*/, `${uri}: must not use a permissive default-src *`);
+
+      // MCP Apps postMessage bridge handshake must be implemented.
+      assert.match(html, /ui\/initialize/, `${uri}: must implement the ui/initialize handshake`);
+      assert.match(html, /ui\/notifications\/tool-result/, `${uri}: must consume tool-result notifications`);
+      assert.match(html, /ui\/notifications\/size-changed/, `${uri}: must report size to the host`);
+
+      // Spec _meta.ui.csp must mirror the HTML connect-src and keep the other
+      // allowlists empty (the fleet's shared secure default).
+      assert.deepEqual(c._meta?.ui?.csp?.connectDomains,
+        ['https://worldmonitor.app', 'https://www.worldmonitor.app'],
+        `${uri}: _meta.ui.csp.connectDomains must mirror the HTML connect-src`);
+      assert.deepEqual(c._meta?.ui?.csp?.resourceDomains, [], `${uri}: resourceDomains must be empty`);
+      assert.deepEqual(c._meta?.ui?.csp?.frameDomains, [], `${uri}: frameDomains must be empty`);
+      assert.deepEqual(c._meta?.ui?.csp?.baseUriDomains, [], `${uri}: baseUriDomains must be empty`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Soft-error envelopes must surface a VISIBLE message, not a blank/empty-
+  // success dashboard. A successful tools/call can carry an error sentinel
+  // instead of data — { _budget_exceeded, ... } when the tool output exceeds
+  // its byte budget, or { _jmespath_error, ... } on a bad projection. The
+  // shared shell's safeRender detects these before renderData and routes them
+  // to showError (hides #card, fills #empty). Guarded on the served HTML so a
+  // future shell edit can't silently drop the branch.
+  // -------------------------------------------------------------------------
+  it('FLEET: shared-shell widgets surface soft-error envelopes (_budget_exceeded / _jmespath_error) instead of rendering blank success', async () => {
+    const shellWidgets = [
+      'ui://worldmonitor/world-brief-v2.html',
+      'ui://worldmonitor/country-brief.html',
+      'ui://worldmonitor/chokepoint-monitor-v2.html',
+      'ui://worldmonitor/news-intelligence-v2.html',
+      'ui://worldmonitor/conflict-events-v2.html',
+      'ui://worldmonitor/natural-disasters.html',
+      'ui://worldmonitor/prediction-markets-v3.html',
+      'ui://worldmonitor/forecasts-v4.html',
+    ];
+    for (const uri of shellWidgets) {
+      const res = await handler(envKeyReq(readBody(uri)));
+      const html = (await res.json()).result.contents[0].text;
+      assert.match(html, /function softError/, `${uri}: must define a softError() detector`);
+      assert.match(html, /_budget_exceeded/, `${uri}: must detect the _budget_exceeded soft-error envelope`);
+      assert.match(html, /_jmespath_error/, `${uri}: must detect the _jmespath_error soft-error envelope`);
+      assert.match(html, /function showError/, `${uri}: must route soft errors to a visible showError() path`);
+      // The detector MUST run before renderData in safeRender — otherwise a
+      // blank/empty-success dashboard renders before the error is caught.
+      assert.match(html, /softError\(data\)[\s\S]*renderData\(data, renderContext\)/,
+        `${uri}: safeRender must check softError(data) before calling renderData(data, renderContext)`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Execute the five expansion widgets against real host tool-result messages.
+  // Static shell checks cannot catch field-name drift or the dispatcher's
+  // `summary:true` array shape ({ count, sample }), because both failures still
+  // leave perfectly valid-looking HTML and bridge source behind.
+  // -------------------------------------------------------------------------
+  it('EXPANSION WIDGETS: execute authoritative payloads and summary samples for all five renderers', async () => {
+    const cases = [
+      {
+        uri: 'ui://worldmonitor/news-intelligence-v2.html',
+        hostId: 'list',
+        raw: { data: { insights: { topStories: [{
+          primaryTitle: 'Port disruption expands', primarySource: 'MIIT (China)',
+          sourceProvenance: {
+            risk: 'high', type: 'gov', riskDeclared: true, typeDeclared: true,
+            riskReviewed: true, typeReviewed: true,
+            stateAffiliated: 'China', knownBiases: [],
+            summary: 'Official government source. State-affiliated: China. Perspective: none recorded.',
+          },
+          category: 'security', threatLevel: 'high', isAlert: true, countryCode: 'DE',
+        }] } } },
+        summary: { data: { insights: { topStories: { count: 1, sample: [{
+          primaryTitle: 'Summary news headline', primarySource: 'Unreviewed Source',
+          sourceProvenance: {
+            risk: 'unknown', type: 'unknown', riskDeclared: false, typeDeclared: false,
+            riskReviewed: false, typeReviewed: false, knownBiases: [],
+            summary: 'Provenance not yet reviewed. Perspective: none recorded.',
+          },
+          category: 'politics',
+        }] } } } },
+        rawTokens: [/Port disruption expands/, /MIIT \(China\)/, /Official government source\. State-affiliated: China\. Perspective: none recorded\./, /Alert/, /Germany/],
+        summaryTokens: [/Summary news headline/, /Unreviewed Source/, /Provenance not yet reviewed\. Perspective: none recorded\./],
+      },
+      {
+        uri: 'ui://worldmonitor/conflict-events-v2.html',
+        hostId: 'list',
+        raw: { data: { 'ucdp-events': { events: [{
+          sideA: 'Government forces', sideB: 'Armed group', country: 'Sudan',
+          violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', dateStart: '2026-07-01', deathsBest: 12,
+        }] } } },
+        summary: { data: { 'ucdp-events': { events: { count: 1, sample: [{
+          sideA: 'Summary side A', sideB: 'Summary side B', country: 'Lebanon', deathsBest: 3,
+        }] } } } },
+        rawTokens: [/Government forces vs Armed group/, /Sudan/, /State-based/, /12 deaths/],
+        summaryTokens: [/Summary side A vs Summary side B/, /Lebanon/, /3 deaths/],
+      },
+      {
+        uri: 'ui://worldmonitor/natural-disasters.html',
+        hostId: 'groups',
+        raw: { data: {
+          earthquakes: { earthquakes: [{ magnitude: 5.4, place: 'Aegean Sea', occurredAt: '2026-07-02T00:00:00Z' }] },
+          fires: { fireDetections: [{
+            confidence: 'FIRE_CONFIDENCE_HIGH', region: 'Attica', brightness: 337,
+            location: { latitude: 37.98, longitude: 23.72 },
+          }] },
+        } },
+        summary: { data: {
+          earthquakes: { earthquakes: { count: 1, sample: [{ magnitude: 4.8, place: 'Summary quake', occurredAt: 1_784_000_000_000 }] } },
+          fires: { fireDetections: { count: 1, sample: [{
+            confidence: 'FIRE_CONFIDENCE_NOMINAL', region: 'Summary fire', brightness: 301,
+            location: { latitude: 1, longitude: 2 },
+          }] } },
+        } },
+        rawTokens: [/Earthquakes/, /M5\.4/, /Aegean Sea/, /Active Wildfires/, /High/, /Attica/, /brightness 337/, /Showing 1 of 1 loaded events\./],
+        summaryTokens: [/M4\.8/, /Summary quake/, /Nominal/, /Summary fire/, /brightness 301/],
+      },
+      {
+        uri: 'ui://worldmonitor/prediction-markets-v3.html',
+        hostId: 'groups',
+        raw: { data: { 'markets-bootstrap': {
+          geopolitical: [{ title: 'Ceasefire by September?', yesPrice: 73, source: 'Polymarket' }],
+          tech: [], finance: [],
+        } } },
+        summary: { data: { 'markets-bootstrap': {
+          geopolitical: { count: 1, sample: [{ title: 'Summary market?', yesPrice: 61, source: 'Kalshi' }] },
+          tech: { count: 0, sample: [] }, finance: { count: 0, sample: [] },
+        } } },
+        rawTokens: [/Ceasefire by September\?/, /73%/, /Polymarket/],
+        summaryTokens: [/Summary market\?/, /61%/, /Kalshi/],
+      },
+      {
+        uri: 'ui://worldmonitor/forecasts-v4.html',
+        hostId: 'list',
+        raw: { data: { predictions: { predictions: [{
+          title: 'Oil remains above $70', probability: 0.42, domain: 'energy', region: 'Global',
+        }] } } },
+        summary: { data: { predictions: { predictions: { count: 1, sample: [{
+          title: 'Summary forecast', probability: 67, domain: 'economy', region: 'MENA',
+        }] } } } },
+        rawTokens: [/Oil remains above \$70/, /42%/, /energy/, /Global/],
+        summaryTokens: [/Summary forecast/, /67%/, /economy/, /MENA/],
+      },
+    ];
+
+    for (const entry of cases) {
+      const res = await handler(envKeyReq(readBody(entry.uri)));
+      const html = (await res.json()).result.contents[0].text;
+      const rawView = mountWidgetHtml(html);
+      rawView.sendToolResult(entry.raw);
+      const rawText = rawView.text(entry.hostId);
+      for (const token of entry.rawTokens) assert.match(rawText, token, `${entry.uri}: authoritative payload token ${token}`);
+
+      const summaryView = mountWidgetHtml(html);
+      summaryView.sendToolResult(entry.summary);
+      const summaryText = summaryView.text(entry.hostId);
+      for (const token of entry.summaryTokens) assert.match(summaryText, token, `${entry.uri}: summary sample token ${token}`);
+    }
+  });
+
+  it('Natural Disasters advertises v3 and preserves prior URIs as public quota-free read aliases', async () => {
+    const uri = 'ui://worldmonitor/natural-disasters-v3.html';
+    const aliases = ['ui://worldmonitor/natural-disasters-v2.html', 'ui://worldmonitor/natural-disasters.html'];
+    const listRes = await handler(anonReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
+    const resources = (await listRes.json()).result.resources;
+    assert.equal(resources.filter(resource => resource.uri === uri).length, 1, 'v3 must identify the current Natural renderer');
+    for (const alias of aliases) assert.equal(resources.filter(resource => resource.uri === alias).length, 0);
+    assert.equal(TOOL_REGISTRY.find(tool => tool.name === 'get_natural_disasters')._uiResourceUri, uri);
+    const listedTools = (await (await handler(envKeyReq({ jsonrpc: '2.0', id: 12, method: 'tools/list', params: {} }))).json()).result.tools;
+    const naturalTool = listedTools.find(tool => tool.name === 'get_natural_disasters');
+    assert.equal(naturalTool._meta.ui.resourceUri, uri);
+    assert.equal(naturalTool._meta['ui/resourceUri'], uri);
+    const currentRes = await handler(anonReq(readBody(uri)));
+    const current = (await currentRes.json()).result.contents[0];
+    assert.equal(current.uri, uri);
+    assert.match(current.text, /Some detail was simplified or omitted for display/);
+    assert.match(current.text, /transportCoverage/);
+    const { deps, pipe } = makeProDeps();
+    let reads = 0;
+    const mockFetch = globalThis.fetch;
+    globalThis.fetch = async (...args) => {
+      if (String(args[0]) !== 'https://fake.upstash.io/pipeline') reads++;
+      return mockFetch(...args);
+    };
+    try {
+      for (const requested of [uri, ...aliases]) {
+        for (const request of [anonReq(readBody(requested)), proReq('POST', readBody(requested))]) {
+          const response = await mcpHandler(request, deps);
+          assert.equal(response.status, 200);
+          const body = await response.json();
+          assert.equal(body.error, undefined);
+          const content = body.result.contents[0];
+          assert.equal(content.uri, requested);
+          assert.equal(content.text, current.text);
+          assert.equal(content.mimeType, current.mimeType);
+          assert.deepEqual(content._meta, current._meta);
+        }
+      }
+    } finally { globalThis.fetch = mockFetch; }
+    assert.equal(pipe.count, 0);
+    assert.equal(reads, 0);
+  });
+
+  for (const [name, project, summarize] of [
+    ['full envelope', false, false],
+    ['summary projection', true, true],
+    ['whole-envelope projection', true, false],
+    ['summary whole-envelope projection', true, true],
+  ]) {
+    it(`Natural Disasters preserves hazard rows and freshness for ${name}`, async () => {
+      const res = await handler(envKeyReq(readBody('ui://worldmonitor/natural-disasters.html')));
+      const view = mountWidgetHtml((await res.json()).result.contents[0].text);
+      const quakes = [{ place: 'Observed zero quake', magnitude: 0, occurredAt: 0 }, { place: 'Missing quake' }];
+      const fires = [{ region: 'Observed zero fire', brightness: 0 }, { region: 'Missing fire' }];
+      const envelope = {
+        cached_at: '2026-10-03T16:00:00Z', stale: true,
+        data: {
+          earthquakes: { earthquakes: summarize ? { count: 8, sample: quakes } : quakes },
+          fires: { fireDetections: summarize ? { count: 7, sample: fires } : fires },
+        },
+      };
+      view.sendToolResult(project ? { projection: envelope } : envelope);
+      assert.equal(view.nodes('groups').filter((node) => node.className === 'drow').length, 4);
+      assert.match(view.text('groups'), /M0\.0Observed zero quake1970-01-01/);
+      assert.match(view.text('groups'), /—Missing quake/);
+      assert.match(view.text('groups'), /Observed zero fireDetection time unavailable · brightness 0/);
+      assert.doesNotMatch(view.text('groups'), /Missing fireDetection time unavailable · brightness/);
+      assert.equal(view.text('foot'), 'Snapshot: 2026-10-03T16:00:00Z (stale)');
+      assert.equal(view.posted.some((message) => ['tools/call', 'ui/call-tool'].includes(message.method)), false);
+
+      view.sendToolResult({ projection: { cached_at: '2026-10-04T00:00:00Z', stale: false, data: {
+        earthquakes: { earthquakes: [] }, fires: { fireDetections: [] },
+      } } });
+      assert.match(view.text('groups'), /No natural-hazard events available\./);
+      assert.doesNotMatch(view.text('groups'), /Observed zero|unavailable/);
+      assert.equal(view.text('foot'), 'Snapshot: 2026-10-04T00:00:00Z');
+    });
+  }
+
+  it('Natural Disasters preserves direct data maps and rejects unsupported projection shapes', async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/natural-disasters.html')));
+    const view = mountWidgetHtml((await res.json()).result.contents[0].text);
+    view.sendToolResult({ fires: { fireDetections: [{ region: 'Direct fire' }] } });
+    assert.match(view.text('groups'), /Direct fire/);
+    assert.doesNotMatch(view.text('groups'), /Earthquakes|temporarily unavailable/);
+    for (const projection of [null, 'Direct fire', ['Direct fire'], { places: ['Direct fire'] }]) {
+      view.sendToolResult({ projection });
+      assert.equal(view.nodes('groups').filter((node) => node.className === 'drow').length, 0);
+      assert.match(view.text('groups'), /Natural-hazard data is temporarily unavailable/);
+      assert.doesNotMatch(view.text('groups'), /Earthquakes|Wildfire|No natural-hazard events available/);
+      assert.equal(view.text('foot'), '');
+    }
+  });
+
+  it('EXPANSION WIDGETS: probability nulls remain unknown and visual ranges clamp safely', async () => {
+    const payloads = [
+      {
+        uri: 'ui://worldmonitor/prediction-markets-v3.html', hostId: 'groups',
+        payload: { data: { 'markets-bootstrap': { geopolitical: [
+          { title: 'Unknown market', yesPrice: null },
+          { title: 'Low outlier', yesPrice: -5 },
+          { title: 'High outlier', yesPrice: 130 },
+        ] } } },
+      },
+      {
+        uri: 'ui://worldmonitor/forecasts-v4.html', hostId: 'list',
+        payload: { data: { predictions: { predictions: [
+          { title: 'Unknown forecast', probability: null },
+          { title: 'Fraction forecast', probability: 0.25 },
+          { title: 'High forecast', probability: 140 },
+        ] } } },
+      },
+    ];
+    for (const entry of payloads) {
+      const res = await handler(envKeyReq(readBody(entry.uri)));
+      const view = mountWidgetHtml((await res.json()).result.contents[0].text);
+      view.sendToolResult(entry.payload);
+      const text = view.text(entry.hostId);
+      assert.match(text, /Unknown (market|forecast)—/, `${entry.uri}: null probability must render as unknown`);
+      assert.doesNotMatch(text, /Unknown (market|forecast)0%/, `${entry.uri}: null must not coerce to a definite zero`);
+      const widths = view.nodes(entry.hostId)
+        .filter((node) => node.tagName === 'SPAN' && typeof node.style.width === 'string')
+        .map((node) => node.style.width);
+      assert.ok(widths.includes('100%'), `${entry.uri}: probability bars must clamp values above 100`);
+      if (entry.uri.includes('prediction-markets')) assert.ok(widths.includes('0%'), `${entry.uri}: probability bars must clamp negative values to zero`);
+      else assert.ok(widths.includes('25%'), `${entry.uri}: fractional forecast probability must scale to 0-100`);
+    }
+  });
+
+  // country-risk shipped for a long time reading fields that do not exist on
+  // the wire (`country_code`, a numeric `cii`, `components.unrest`,
+  // `travelAdvisory`, `sanctionsExposure`), so every read returned undefined:
+  // a country under thousands of active OFAC designations rendered "None", and
+  // a total upstream outage rendered identically to a calm, low-risk country.
+  // Nothing caught it because this shell was the one widget never mounted in
+  // the harness above. These drive the real script, so they fail on a field
+  // rename regardless of what the outputSchema claims.
+  const COUNTRY_RISK_HTML = async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    return (await res.json()).result.contents[0].text;
+  };
+
+  // GetCountryRiskResponse for a tracked, sanctioned, high-risk country.
+  const RISK_RU = {
+    countryCode: 'RU',
+    countryName: 'Russia',
+    cii: {
+      region: 'RU',
+      staticBaseline: 62,
+      dynamicScore: 4.2,
+      combinedScore: 78.4,
+      trend: 'TREND_DIRECTION_RISING',
+      components: { newsActivity: 71, ciiContribution: 44, geoConvergence: 88, militaryActivity: 65 },
+      computedAt: 1756288800000,
+      methodologyVersion: 'cii-v4',
+      eventMultiplier: 1.8,
+      advisoryLevel: 'do-not-travel',
+      advisoryProvenance: 'live',
+    },
+    advisoryLevel: 'do-not-travel',
+    sanctionsActive: true,
+    sanctionsCount: 3417,
+    fetchedAt: 1756288800000,
+    upstreamUnavailable: false,
+  };
+
+  // Every upstream read failed. get-country-risk.ts fails closed into this
+  // shape: the risk fields are zeroed, but they mean UNKNOWN, not calm.
+  const RISK_OUTAGE = {
+    countryCode: 'DE', countryName: 'Germany', advisoryLevel: '',
+    sanctionsActive: false, sanctionsCount: 0, fetchedAt: 0, upstreamUnavailable: true,
+  };
+
+  // A real, healthy answer that simply carries no CII score.
+  const RISK_UNTRACKED = {
+    countryCode: 'LU', countryName: 'Luxembourg', advisoryLevel: '',
+    sanctionsActive: false, sanctionsCount: 0, fetchedAt: 0, upstreamUnavailable: false,
+  };
+
+  it('country-risk widget renders the real GetCountryRiskResponse field names', async () => {
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+    view.sendToolResult(RISK_RU);
+
+    assert.equal(view.text('country'), 'Russia');
+    // The original defect: sanctionsExposure did not exist, so this printed
+    // "None" for a country carrying 3417 active designations.
+    assert.equal(view.text('sanctions'), '3417 sanctions listings');
+    // cii is a CiiScore object, never a bare number.
+    assert.equal(view.text('cii'), '78');
+    assert.equal(view.text('level'), 'High');
+    assert.equal(view.text('advisory'), 'do not travel');
+    assert.equal(view.text('trend'), 'Rising');
+    assert.equal(view.text('foot'), 'Snapshot: 2025-08-27T10:00:00.000Z');
+  });
+
+  it('country-risk widget labels CII components by meaning, not by their misnamed wire keys', async () => {
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+    view.sendToolResult(RISK_RU);
+    const rendered = view.text('components');
+
+    // proto CiiComponents names are historical misnomers — cii_contribution is
+    // unrest, geo_convergence is armed conflict, military_activity is
+    // security/mobility. A reader must never see the raw key.
+    assert.match(rendered, /Domestic unrest44/);
+    assert.match(rendered, /Armed conflict88/);
+    assert.match(rendered, /Security & mobility65/);
+    assert.match(rendered, /Information environment71/);
+    for (const wireName of ['ciiContribution', 'geoConvergence', 'militaryActivity', 'newsActivity']) {
+      assert.doesNotMatch(rendered, new RegExp(wireName), `must not surface the raw wire name ${wireName}`);
+    }
+  });
+
+  it('country-risk widget reports an upstream outage as unknown, never as calm', async () => {
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+    view.sendToolResult(RISK_OUTAGE);
+
+    assert.equal(view.text('cii'), '—');
+    assert.equal(view.text('level'), 'Unknown');
+    // The zeroed fields must not read as a clean bill of health.
+    assert.equal(view.text('sanctions'), '—');
+    assert.equal(view.text('advisory'), '—');
+    assert.equal(view.text('trend'), '—');
+    assert.match(view.text('components'), /unavailable/i);
+    assert.equal(view.text('foot'), 'Upstream unavailable — no snapshot time.');
+  });
+
+  it('country-risk widget separates an outage from a genuinely untracked country', async () => {
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+    view.sendToolResult(RISK_UNTRACKED);
+
+    // "None" here is a real finding: no advisory, no designations. The outage
+    // above must not be able to produce the same reading.
+    assert.equal(view.text('sanctions'), 'None');
+    assert.equal(view.text('advisory'), 'None');
+    assert.match(view.text('components'), /No component breakdown available/);
+    assert.equal(view.text('foot'), '', 'fetchedAt 0 means unknown — do not print epoch 0');
+  });
+
+  it('country-risk widget does not let one result\'s severity bleed into the next', async () => {
+    // The host posts results into one long-lived shell, so render() must fully
+    // own the score visuals on every branch. Leaving them untouched when cii
+    // is null showed an outage as "Unknown" above the PREVIOUS country's full
+    // red bar — the exact outage-reads-as-a-verdict failure the banner exists
+    // to prevent.
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+    const barWidth = () => view.nodes('ciibar').find((n) => n.id === 'ciibar')?.style.width;
+
+    view.sendToolResult(RISK_RU);
+    assert.equal(barWidth(), '78.4%');
+    assert.match(view.text('components'), /Armed conflict88/);
+
+    view.sendToolResult(RISK_OUTAGE);
+    assert.equal(barWidth(), '0%', 'score bar must be emptied when the score is unknown');
+    assert.doesNotMatch(view.text('components'), /Armed conflict/, 'components must be rebuilt, not appended to');
+  });
+
+  it('country-risk widget normalises and caps server strings without eating characters', async () => {
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+
+    // The shell is a TS template literal, so a regex written `\s` reaches the
+    // browser as a literal "s" and silently collapses every letter s in the
+    // value ("Russia" -> "Ru ia"). Only an executed render catches that.
+    view.sendToolResult(RISK_RU);
+    assert.equal(view.text('country'), 'Russia');
+
+    // Whitespace collapses, and an unbounded value cannot flood the card:
+    // the tool's output budget is 256 KB, and this shell has no shared
+    // collapseWs helper behind it.
+    view.sendToolResult({
+      ...RISK_UNTRACKED,
+      countryName: '  Bosnia\n\nand   Herzegovina  ',
+      advisoryLevel: 'x'.repeat(5000),
+    });
+    assert.equal(view.text('country'), 'Bosnia and Herzegovina');
+    assert.ok(view.text('advisory').length <= 64, 'an unbounded advisory string must be capped');
+  });
+
+  it('country-risk widget resolves sanctions and trend without trusting the prototype chain', async () => {
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+
+    // sanctionsActive is authoritative over the count.
+    view.sendToolResult({ ...RISK_UNTRACKED, sanctionsActive: true, sanctionsCount: undefined });
+    assert.equal(view.text('sanctions'), 'Active');
+
+    // A bare label-map index also resolves inherited members, so these would
+    // print an Object internal into the Trend row instead of the em-dash.
+    for (const hostile of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+      view.sendToolResult({ ...RISK_RU, cii: { ...RISK_RU.cii, trend: hostile } });
+      assert.equal(view.text('trend'), '—', `trend "${hostile}" must fall back to the em-dash`);
+    }
+  });
+
+  it('conflict-events widget distinguishes byte-truncated responses from complete results', async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/conflict-events-v2.html')));
+    const html = (await res.json()).result.contents[0].text;
+    const payload = {
+      data: {
+        'ucdp-events': { events: [{ sideA: 'Side A', sideB: 'Side B' }] },
+        partial: true,
+        truncation: {
+          reason: 'output_budget',
+          original_event_count: 1000,
+          returned_event_count: 375,
+        },
+      },
+    };
+
+    const partialView = mountWidgetHtml(html);
+    partialView.sendToolResult(payload);
+    assert.match(partialView.text('foot'), /Source response includes 375 of 1,000 events \(output limit\)\./);
+
+    const completeView = mountWidgetHtml(html);
+    completeView.sendToolResult({ data: { 'ucdp-events': { events: [] } } });
+    assert.doesNotMatch(completeView.text('foot'), /output limit/i, 'complete responses must not show truncation copy');
+  });
+
+  it('EXPANSION WIDGETS: hostile tool text stays literal textContent in all five renderers', async () => {
+    const hostile = '<img src=x onerror="globalThis.pwned=true">';
+    const cases = [
+      {
+        uri: 'ui://worldmonitor/news-intelligence-v2.html', hostId: 'list',
+        payload: { data: { insights: { topStories: [{ primaryTitle: hostile, primarySource: hostile }] } } },
+      },
+      {
+        uri: 'ui://worldmonitor/conflict-events-v2.html', hostId: 'list',
+        payload: { data: { 'ucdp-events': { events: [{ sideA: hostile, sideB: 'Other side' }] } } },
+      },
+      {
+        uri: 'ui://worldmonitor/natural-disasters.html', hostId: 'groups',
+        payload: { data: {
+          earthquakes: { earthquakes: [{ place: hostile, magnitude: 4, occurredAt: 0 }] },
+          fires: { fireDetections: [] },
+        } },
+      },
+      {
+        uri: 'ui://worldmonitor/prediction-markets-v3.html', hostId: 'groups',
+        payload: { data: { 'markets-bootstrap': { geopolitical: [{ title: hostile, yesPrice: 50 }] } } },
+      },
+      {
+        uri: 'ui://worldmonitor/forecasts-v4.html', hostId: 'list',
+        payload: { data: { predictions: { predictions: [{ title: hostile, probability: 0.5 }] } } },
+      },
+    ];
+
+    for (const entry of cases) {
+      const res = await handler(envKeyReq(readBody(entry.uri)));
+      const view = mountWidgetHtml((await res.json()).result.contents[0].text);
+      view.sendToolResult(entry.payload);
+      assert.match(view.text(entry.hostId), /<img src=x onerror="globalThis\.pwned=true">/,
+        `${entry.uri}: hostile markup must remain visible literal text`);
+      assert.equal(view.created.some((node) => node.tagName === 'IMG' || node.tagName === 'SCRIPT'), false,
+        `${entry.uri}: tool payload must not manufacture executable DOM nodes`);
+    }
+  });
+
+  it('MULTI-CACHE WIDGETS: missing labels show unavailable while present empty lists show genuine empty copy', async () => {
+    const cases = [
+      {
+        uri: 'ui://worldmonitor/news-intelligence-v2.html', hostId: 'list',
+        missing: { data: { 'gdelt-intel': {} } },
+        empty: { data: { insights: { topStories: [] } } },
+        emptyCopy: /No news stories available\./,
+      },
+      {
+        uri: 'ui://worldmonitor/conflict-events-v2.html', hostId: 'list',
+        missing: { data: { acled: {} } },
+        empty: { data: { 'ucdp-events': { events: [] } } },
+        emptyCopy: /No conflict events available\./,
+      },
+      {
+        uri: 'ui://worldmonitor/natural-disasters.html', hostId: 'groups',
+        missing: { data: { earthquakes: null, fires: { fireDetections: [] } } },
+        empty: { data: { earthquakes: { earthquakes: [] }, fires: { fireDetections: [] } } },
+        emptyCopy: /No natural-hazard events available\./,
+      },
+    ];
+
+    for (const entry of cases) {
+      const res = await handler(envKeyReq(readBody(entry.uri)));
+      const html = (await res.json()).result.contents[0].text;
+      const missingView = mountWidgetHtml(html);
+      missingView.sendToolResult(entry.missing);
+      const missingText = missingView.text(entry.hostId);
+      assert.match(missingText, /unavailable/i, `${entry.uri}: a missing cache label must be visibly unavailable`);
+      assert.doesNotMatch(missingText, entry.emptyCopy, `${entry.uri}: a cache miss must not masquerade as genuine empty data`);
+
+      const emptyView = mountWidgetHtml(html);
+      emptyView.sendToolResult(entry.empty);
+      const emptyText = emptyView.text(entry.hostId);
+      assert.match(emptyText, entry.emptyCopy, `${entry.uri}: a present empty list must retain genuine-empty copy`);
+      assert.doesNotMatch(emptyText, /unavailable/i, `${entry.uri}: genuine empty data must not be called unavailable`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // The country-brief widget must title from the fields get_country_brief
+  // actually returns. The backing get-country-intel-brief handler emits
+  // CAMELCASE identity (`countryCode` + resolved `countryName`), NOT the
+  // snake_case `country_code` the MCP outputSchema documents — so a widget that
+  // reads only `country_code` leaves the title stuck at generic "Country Brief".
+  // -------------------------------------------------------------------------
+  it('country-brief widget resolves its title from the camelCase countryName / countryCode fields the tool returns', async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-brief.html')));
+    const html = (await res.json()).result.contents[0].text;
+    assert.match(html, /data\.countryName/, 'must prefer the resolved countryName field');
+    assert.match(html, /data\.countryCode/, 'must resolve the camelCase countryCode field');
+  });
+
+  it('resources/templates/list returns the three data-bearing URI templates', async () => {
+    const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 3, method: 'resources/templates/list', params: {} }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body.result?.resourceTemplates), 'result.resourceTemplates must be an array');
+
+    const expectedTemplates = [
+      'worldmonitor://countries/{iso2}/risk',
+      'worldmonitor://chokepoints/{slug}/status',
+      'worldmonitor://markets/{symbol}/quote',
+    ];
+    const actualTemplates = body.result.resourceTemplates.map((r) => r.uriTemplate);
+    assert.deepEqual(actualTemplates, expectedTemplates,
+      'resource template URIs and order must match the documented set');
+
+    for (const r of body.result.resourceTemplates) {
+      assert.equal(typeof r.uriTemplate, 'string', `template ${r.uriTemplate}: uriTemplate must be a string`);
+      assert.match(r.uriTemplate, /\{[a-z0-9]+\}/i, `template ${r.uriTemplate}: must contain a {placeholder}`);
+      assert.equal(typeof r.name, 'string', `template ${r.uriTemplate}: name must be a string`);
+      assert.equal(typeof r.description, 'string', `template ${r.uriTemplate}: description must be a string`);
+      assert.equal(r.mimeType, 'application/json', `template ${r.uriTemplate}: mimeType must be application/json`);
+      // Internal authoring fields must NOT leak via resources/templates/list.
+      assert.equal(r.tool, undefined, `template ${r.uriTemplate}: internal "tool" must not leak`);
+      assert.equal(r.paramExtractor, undefined, `template ${r.uriTemplate}: internal "paramExtractor" must not leak`);
+      assert.equal(r.freshnessWrap, undefined, `template ${r.uriTemplate}: internal "freshnessWrap" must not leak`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // orank mcp-resource-quality — every resources/list entry must resources/read
+  // cleanly for an ANONYMOUS caller (no credentials). This is the exact probe
+  // an agent-readiness scanner runs; a 401 here is the failure it reports.
+  // -------------------------------------------------------------------------
+  it('ANON: every resources/list entry reads cleanly without credentials (orank mcp-resource-quality)', async () => {
+    const listRes = await handler(anonReq({ jsonrpc: '2.0', id: 1, method: 'resources/list', params: {} }));
+    assert.equal(listRes.status, 200, 'anonymous resources/list must be public');
+    const listBody = await listRes.json();
+    const uris = listBody.result.resources.map((r) => r.uri);
+    assert.ok(uris.length >= 1, 'resources/list must advertise at least one resource');
+
+    for (const uri of uris) {
+      const res = await handler(anonReq(readBody(uri)));
+      assert.equal(res.status, 200, `anonymous resources/read ${uri} must return 200, got ${res.status}`);
+      const body = await res.json();
+      assert.equal(body.error, undefined,
+        `anonymous resources/read ${uri} must not error, got ${JSON.stringify(body.error)}`);
+      const c = body.result?.contents?.[0];
+      assert.ok(c, `resources/read ${uri} must return a content entry`);
+      // Mixed catalog: concrete DATA resources are application/json; the ui://
+      // shell is text/html;profile=mcp-app. orank requires a valid declared
+      // mimeType + non-empty content for every entry.
+      assert.ok(typeof c.mimeType === 'string' && c.mimeType.length > 0,
+        `resources/read ${uri}: must declare a mimeType`);
+      assert.ok(typeof c.text === 'string' && c.text.length > 0, `resources/read ${uri}: content must be non-empty`);
+      if (c.mimeType === 'application/json') JSON.parse(c.text); // valid JSON for the declared type
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // resources/read — each URI resolves (env-key auth path)
+  // -------------------------------------------------------------------------
+  it('resources/read worldmonitor://countries/de/risk returns country-risk content with cached_at + stale', async () => {
+    const res = await handler(envKeyReq(readBody('worldmonitor://countries/de/risk')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `unexpected error: ${JSON.stringify(body.error)}`);
+    assert.ok(Array.isArray(body.result?.contents), 'result.contents must be an array');
+    assert.equal(body.result.contents.length, 1, 'must return exactly one content entry');
+    const c = body.result.contents[0];
+    assert.equal(c.uri, 'worldmonitor://countries/de/risk', 'echo the requested uri verbatim');
+    assert.equal(c.mimeType, 'application/json');
+    const payload = JSON.parse(c.text);
+    assert.equal(typeof payload.cached_at === 'string' || payload.cached_at === null, true,
+      'cached_at must be string-or-null');
+    assert.equal(typeof payload.stale, 'boolean', 'stale must be a boolean');
+    // The RPC-backed payload merges through — assert the country-risk
+    // shape survived the freshness wrap.
+    assert.equal(payload.countryCode, 'DE', 'countryCode must round-trip through the freshness wrap');
+    assert.equal(payload.cii.combinedScore, 28, 'cii is a CiiScore object; the score lives on combinedScore');
+    assert.equal(payload.sanctionsActive, false);
+    assert.equal(payload.upstreamUnavailable, false);
+  });
+
+  it('country-risk freshness uses the preview namespace that owns the risk data', async () => {
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_GIT_COMMIT_SHA = 'deadbeefcafebabe';
+
+    const productionFetchedAt = Date.now();
+    const previewFetchedAt = productionFetchedAt - 31 * 60_000;
+    installMockFetch({
+      keyOverrides: {
+        'seed-meta:intelligence:risk-scores': { fetchedAt: productionFetchedAt, recordCount: 1 },
+        'preview:deadbeef:seed-meta:intelligence:risk-scores': { fetchedAt: previewFetchedAt, recordCount: 1 },
+      },
+    });
+
+    const res = await handler(envKeyReq(readBody('worldmonitor://countries/de/risk')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `unexpected error: ${JSON.stringify(body.error)}`);
+    const payload = JSON.parse(body.result.contents[0].text);
+    assert.equal(payload.cached_at, new Date(previewFetchedAt).toISOString());
+    assert.equal(payload.stale, true, 'preview risk data must use the preview freshness verdict');
+  });
+
+  for (const method of ['tools/call', 'resources/read']) {
+    it(`withholds cached corridor prose with a null baseline row through ${method}`, async () => {
+      const capture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/chokepoints-routing-advice-2026-09-10.json'), 'utf8'));
+      const captured = capture.body.chokepoints.find(cp => cp.id === 'hormuz_strait').transitSummary;
+      const baseline = { id: 'hormuz_strait', name: 'Strait of Hormuz' };
+      for (const advice of [captured.riskReportAction, undefined, null, { route: 'Suez', cost: '$50-80K' }]) {
+        const summary = { ...captured, todayTotal: null, riskSummary: advice, riskReportAction: advice };
+        installMockFetch({ keyOverrides: {
+          'supply_chain:transit-summaries:v1': { summaries: { hormuz_strait: summary }, fetchedAt: capture.retrievedAt },
+          'energy:chokepoint-baselines:v1': { chokepoints: [null, baseline, { id: 'suez' }] },
+        } });
+        const request = method === 'tools/call'
+          ? callBody('get_chokepoint_status', { chokepoint: 'hormuz' })
+          : readBody('worldmonitor://chokepoints/strait-of-hormuz/status');
+        const response = await handler(envKeyReq(request));
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.error, undefined);
+        const text = body.result.contents?.[0]?.text ?? body.result.content?.[0]?.text;
+        const payload = JSON.parse(text);
+        const served = payload.data['transit-summaries'].summaries.hormuz_strait;
+        assert.deepEqual(served, { ...summary, riskSummary: '', riskReportAction: '' });
+        assert.equal(payload.data['transit-summaries'].fetchedAt, capture.retrievedAt);
+        assert.deepEqual(payload.data['chokepoint-baselines'].chokepoints, [baseline]);
+        assert.doesNotMatch(text, /REROUTE|50-80K|Salalah/);
+      }
+    });
+  }
+
+  it('resources/read worldmonitor://chokepoints/suez/status returns the transit-summary envelope with cached_at + stale', async () => {
+    const res = await handler(envKeyReq(readBody('worldmonitor://chokepoints/suez/status')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `unexpected error: ${JSON.stringify(body.error)}`);
+    const payload = JSON.parse(body.result.contents[0].text);
+    assert.equal(typeof payload.cached_at === 'string' || payload.cached_at === null, true);
+    assert.equal(typeof payload.stale, 'boolean');
+    // Cache-tool envelope — data is keyed by the last-segment label.
+    assert.ok(payload.data, 'cache-tool envelope must carry a data field');
+  });
+
+  it('resources/read worldmonitor://seed-meta/freshness returns envelope-only (no data field)', async () => {
+    const res = await handler(envKeyReq(readBody('worldmonitor://seed-meta/freshness')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `unexpected error: ${JSON.stringify(body.error)}`);
+    const payload = JSON.parse(body.result.contents[0].text);
+    // The jmespath projection in the resource definition collapses to
+    // ONLY {cached_at, stale} — no data field, no nested payload.
+    assert.equal(typeof payload.cached_at === 'string' || payload.cached_at === null, true);
+    assert.equal(typeof payload.stale, 'boolean');
+    assert.equal(Object.keys(payload).sort().join(','), 'cached_at,stale',
+      'envelope-only projection must contain exactly cached_at + stale');
+  });
+
+  it('resources/read worldmonitor://markets/AAPL/quote returns the matched single-symbol slice with cached_at + stale', async () => {
+    const res = await handler(envKeyReq(readBody('worldmonitor://markets/AAPL/quote')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `unexpected error: ${JSON.stringify(body.error)}`);
+    const payload = JSON.parse(body.result.contents[0].text);
+    assert.equal(typeof payload.cached_at === 'string' || payload.cached_at === null, true);
+    assert.equal(typeof payload.stale, 'boolean');
+    assert.ok(payload.data, 'cache-tool envelope must carry a data field');
+  });
+
+  // -------------------------------------------------------------------------
+  // resources/read error paths
+  // -------------------------------------------------------------------------
+  it('resources/read with an unknown URI prefix returns -32602', async () => {
+    const res = await handler(envKeyReq(readBody('worldmonitor://nope/asdf')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32602, `unknown uri prefix must be -32602, got ${body.error?.code}`);
+  });
+
+  it('resources/read with a malformed iso2 (3 letters) returns -32602 with a specific message', async () => {
+    const res = await handler(envKeyReq(readBody('worldmonitor://countries/deu/risk')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32602);
+    assert.ok(/iso2|alpha-2/i.test(body.error?.message ?? ''),
+      `error must explain the iso2 constraint — got: ${body.error?.message}`);
+  });
+
+  it('resources/read with an uppercase iso2 returns -32602 (lowercase canonical)', async () => {
+    // Stability contract: the URI is case-sensitive. "DE" is invalid;
+    // "de" is canonical. Documented inline in the resource description.
+    const res = await handler(envKeyReq(readBody('worldmonitor://countries/DE/risk')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32602);
+  });
+
+  it('resources/read with an unknown chokepoint slug returns -32602 listing the known slugs', async () => {
+    const res = await handler(envKeyReq(readBody('worldmonitor://chokepoints/no-such-slug/status')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32602);
+    assert.ok(/no-such-slug/.test(body.error?.message ?? ''),
+      'error message must echo the unknown slug for debuggability');
+    assert.ok(/suez/.test(body.error?.message ?? ''),
+      'error message must list at least one known slug');
+  });
+
+  it('resources/read with a lowercase ticker returns -32602', async () => {
+    const res = await handler(envKeyReq(readBody('worldmonitor://markets/aapl/quote')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32602);
+  });
+
+  it('resources/read with no uri param returns -32602', async () => {
+    const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 50, method: 'resources/read', params: {} }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32602);
+  });
+
+  // -------------------------------------------------------------------------
+  // Stability — CHOKEPOINT_SLUGS table is a publicly bookmarkable contract.
+  // -------------------------------------------------------------------------
+  it('CHOKEPOINT_SLUGS exposes a frozen 13-entry kebab-case slug table', () => {
+    const entries = Object.entries(CHOKEPOINT_SLUGS);
+    assert.equal(entries.length, 13, `Expected 13 chokepoint slugs, got ${entries.length}`);
+    for (const [slug, matcher] of entries) {
+      assert.match(slug, /^[a-z][a-z0-9-]*$/, `slug "${slug}" must be lowercase kebab-case`);
+      assert.equal(typeof matcher, 'string', `slug "${slug}" matcher must be a string`);
+      assert.ok(matcher.length > 0, `slug "${slug}" matcher must be non-empty`);
+    }
+  });
+
+  it('CHOKEPOINT_SLUGS exact byte-snapshot matches the canonical 13-entry registry', () => {
+    // Stability snapshot. Any slug-table edit must update this expected
+    // map deliberately — a casual rename / re-ordering fails here and
+    // forces the author to acknowledge the public contract change.
+    // Source-of-truth slugs map (alphabetical by slug) — the test failure
+    // when this drifts reports both expected and actual.
+    const expected = {
+      'bab-el-mandeb': 'bab',
+      'bosphorus': 'bosphorus',
+      'cape-of-good-hope': 'cape',
+      'dover-strait': 'dover',
+      'kerch-strait': 'kerch',
+      'korea-strait': 'korea',
+      'lombok-strait': 'lombok',
+      'panama-canal': 'panama',
+      'strait-of-gibraltar': 'gibraltar',
+      'strait-of-hormuz': 'hormuz',
+      'strait-of-malacca': 'malacca',
+      'suez': 'suez',
+      'taiwan-strait': 'taiwan',
+    };
+    // Order doesn't matter (Object.freeze preserves declaration order; we
+    // compare as sorted entries to avoid coupling to authoring order).
+    const actualSorted = Object.fromEntries(
+      Object.entries(CHOKEPOINT_SLUGS).sort(([a], [b]) => a.localeCompare(b)),
+    );
+    assert.deepEqual(actualSorted, expected, 'CHOKEPOINT_SLUGS contents must match the snapshot byte-for-byte');
+  });
+
+  it('api/mcp/resources/slugs.ts file-on-disk parses to the same CHOKEPOINT_SLUGS export', () => {
+    // Defense-in-depth: the snapshot test above runs against the
+    // already-loaded module; this one re-reads the source file from disk
+    // so a sabotage that edits ONLY the in-memory const (test bypass)
+    // would still fail here.
+    const src = readFileSync(resolve(__dirname, '..', 'api', 'mcp', 'resources', 'slugs.ts'), 'utf8');
+    for (const slug of Object.keys(CHOKEPOINT_SLUGS)) {
+      assert.ok(src.includes(`'${slug}'`),
+        `slugs.ts must contain a literal entry for slug "${slug}"`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Auth symmetry — the load-bearing assertion.
+  // -------------------------------------------------------------------------
+  it('LOAD-BEARING: Pro resources/read on countries/de/risk decrements the daily-quota counter by exactly 1 (identical to tools/call(get_country_risk))', async () => {
+    const { deps: depsR, pipe: pipeR } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
+    const resR = await mcpHandler(
+      proReq('POST', readBody('worldmonitor://countries/de/risk')),
+      depsR,
+    );
+    const bodyR = await resR.json();
+    assert.equal(bodyR.error, undefined, `resources/read should succeed, got error: ${JSON.stringify(bodyR.error)}`);
+    assert.equal(pipeR.count, 1,
+      `Pro resources/read MUST increment quota counter by EXACTLY 1 (got ${pipeR.count}). If resources are quota-exempt, this is the data-leak vector the test exists to catch.`);
+
+    // PARITY — tools/call against the same backing tool from an identical
+    // initial state must produce the SAME counter delta. The two paths
+    // share the dispatcher, so divergence here means resources/read
+    // skipped the dispatcher.
+    const { deps: depsT, pipe: pipeT } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
+    const resT = await mcpHandler(
+      proReq('POST', callBody('get_country_risk', { country_code: 'DE' })),
+      depsT,
+    );
+    const bodyT = await resT.json();
+    assert.equal(bodyT.error, undefined, `tools/call should succeed, got error: ${JSON.stringify(bodyT.error)}`);
+    assert.equal(pipeT.count, pipeR.count,
+      `auth symmetry: tools/call counter delta (${pipeT.count}) must equal resources/read counter delta (${pipeR.count})`);
+  });
+
+  it('Pro resources/read on data-bearing template URIs (markets, chokepoints) increments counter by 1 each', async () => {
+    const uris = [
+      'worldmonitor://markets/AAPL/quote',
+      'worldmonitor://chokepoints/suez/status',
+    ];
+    for (const uri of uris) {
+      const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
+      const res = await mcpHandler(proReq('POST', readBody(uri)), deps);
+      const body = await res.json();
+      assert.equal(body.error, undefined,
+        `resources/read ${uri} should succeed, got error: ${JSON.stringify(body.error)}`);
+      assert.equal(pipe.count, 1,
+        `${uri} MUST increment Pro counter by exactly 1, got ${pipe.count}`);
+    }
+  });
+
+  it('PUBLIC seed-meta/freshness resources/read is quota-exempt (metadata-class, mirrors resources/list) even for Pro', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
+    const res = await mcpHandler(proReq('POST', readBody('worldmonitor://seed-meta/freshness')), deps);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `should succeed, got error: ${JSON.stringify(body.error)}`);
+    assert.equal(pipe.count, 0,
+      'seed-meta/freshness is a metadata-only freshness probe — it must NOT consume the Pro daily quota');
+    // Envelope-only content survives the public direct-read path.
+    const payload = JSON.parse(body.result.contents[0].text);
+    assert.equal(Object.keys(payload).sort().join(','), 'cached_at,stale',
+      'public freshness read must return exactly {cached_at, stale}');
+  });
+
+  it('ANON seed-meta/freshness resources/read succeeds (no credentials, no quota)', async () => {
+    const res = await handler(anonReq(readBody('worldmonitor://seed-meta/freshness')));
+    assert.equal(res.status, 200, 'anonymous public-resource read must return 200');
+    const body = await res.json();
+    assert.equal(body.error, undefined, `anonymous read must not error: ${JSON.stringify(body.error)}`);
+    const payload = JSON.parse(body.result.contents[0].text);
+    assert.equal(typeof payload.stale, 'boolean');
+    assert.equal(typeof payload.cached_at === 'string' || payload.cached_at === null, true);
+  });
+
+  it('ANON resources/read of a data-bearing TEMPLATE instantiation stays gated (401 — no quota bypass)', async () => {
+    // The data-leak / quota-bypass protection: only concrete PUBLIC resources
+    // are anon-readable. A template instantiation (country risk) requires auth.
+    const res = await handler(anonReq(readBody('worldmonitor://countries/de/risk')));
+    assert.equal(res.status, 401, 'anonymous read of a data-bearing template must be 401');
+    assert.ok(
+      res.headers.get('WWW-Authenticate')?.includes('Bearer'),
+      'gated resource read must advertise WWW-Authenticate: Bearer',
+    );
+  });
+
+  it('a PUBLIC resource whose read() throws surfaces a clean -32603 (contract enforced at the dispatcher boundary)', async () => {
+    // The PublicResourceDef `read` "MUST be robust" contract is documentation;
+    // the dispatcher enforces it so a future non-robust reader returns -32603
+    // rather than bubbling an unhandled rejection through mcpHandler to the edge.
+    const def = PUBLIC_RESOURCE_REGISTRY[0];
+    const originalRead = def.read;
+    def.read = async () => { throw new Error('simulated reader failure'); };
+    try {
+      const res = await handler(anonReq(readBody(def.uri)));
+      assert.equal(res.status, 200, 'JSON-RPC errors ride inside HTTP 200');
+      const body = await res.json();
+      assert.equal(body.error?.code, -32603,
+        'a throwing public reader must surface -32603, not an unhandled rejection');
+    } finally {
+      def.read = originalRead;
+    }
+  });
+
+  it('env-key resources/read on countries/de/risk charges the operator key ceiling, never the Pro quota path', async () => {
+    // env-key auth path uses X-WorldMonitor-Key. Its daily reservation lands on
+    // the per-key `env_key:<hash>` counter, not on any Pro user's counter.
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
+    const res = await mcpHandler(envKeyReq(readBody('worldmonitor://countries/de/risk')), deps);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `env-key resources/read should succeed, got error: ${JSON.stringify(body.error)}`);
+    assert.equal(pipe.count, 1, 'env-key auth charges one unit of its own daily ceiling');
+    const reservations = pipe.ops.flat().filter(cmd => cmd[0] === 'EVAL');
+    assert.equal(reservations.length, 1);
+    assert.match(String(reservations[0][3]), /mcp:pro-usage:env_key:/, 'env-key auth must NOT touch the Pro daily-quota counter');
+  });
+
+  it('resources/list does NOT increment the Pro quota counter (metadata-class, mirrors prompts/list)', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
+    const res = await mcpHandler(
+      proReq('POST', { jsonrpc: '2.0', id: 1, method: 'resources/list', params: {} }),
+      deps,
+    );
+    const body = await res.json();
+    assert.equal(body.error, undefined);
+    assert.equal(pipe.count, 0, 'resources/list is metadata-class — must NOT count toward daily quota');
+  });
+
+  it('Pro resources/read of the ui:// shell does NOT increment the daily-quota counter (static template, quota-exempt)', async () => {
+    // Unlike a DATA resources/read (which reserves against the 50/day Pro cap
+    // symmetrically with tools/call), a ui:// read returns a static, data-free
+    // app shell and spends no quota — the load-bearing distinction that lets
+    // an unauthenticated host fetch the shell to render it.
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
+    const res = await mcpHandler(
+      proReq('POST', readBody('ui://worldmonitor/country-risk.html')),
+      deps,
+    );
+    const body = await res.json();
+    assert.equal(body.error, undefined, `ui:// read should succeed, got: ${JSON.stringify(body.error)}`);
+    assert.equal(body.result.contents[0].mimeType, 'text/html;profile=mcp-app');
+    assert.equal(pipe.count, 0, 'ui:// resources/read is quota-exempt — must NOT count toward the Pro daily cap');
+  });
+
+  it('Pro resources/read returns -32029 when the daily quota is exhausted (identical to tools/call)', async () => {
+    // Pre-seed the counter at the cap so the next INCR rejects.
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 50 } });
+    const res = await mcpHandler(
+      proReq('POST', readBody('worldmonitor://countries/de/risk')),
+      deps,
+    );
+    assert.equal(res.status, 429, 'cap-exceeded must surface as HTTP 429');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32029, 'cap-exceeded must use the -32029 quota code');
+    assert.equal(pipe.count, 50,
+      'counter must return to the cap after the rejected reservation rolls back (initialCount=50, no net change)');
+  });
+
+  it('auth symmetry extends to the PLAN limit: a Pro Business read is capped at 250, not 50', async () => {
+    // The plan-driven allowance (2026-07-25-001 U3) is resolved by the context
+    // pre-check and threaded through buildResourceResponse into the dispatcher.
+    // If that thread is dropped, a resources/read silently falls back to the
+    // 50/day default while the equivalent tools/call allows 250 — the exact
+    // asymmetry the auth-symmetry contract above exists to forbid, just
+    // pointing the other way (under-serving a paying customer).
+    const proBusiness = async () => ({
+      planKey: 'pro_business_monthly',
+      features: {
+        tier: 1,
+        mcpAccess: true,
+        planLimits: {
+          apiRequestsPerDay: 0,
+          apiBurstRequestsPerMinute: 0,
+          mcpCallsPerDay: 250,
+          mcpBurstRequestsPerMinute: 60,
+        },
+      },
+      validUntil: Date.now() + 86_400_000,
+    });
+
+    const { deps, pipe } = makeProDeps({
+      pipelineOpts: { initialCount: 60 },
+      getEntitlements: proBusiness,
+    });
+    const res = await mcpHandler(proReq('POST', readBody('worldmonitor://countries/de/risk')), deps);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `read at count 60 must succeed on a 250/day plan, got: ${JSON.stringify(body.error)}`);
+    assert.equal(pipe.count, 61);
+
+    const { deps: depsCapped, pipe: pipeCapped } = makeProDeps({
+      pipelineOpts: { initialCount: 250 },
+      getEntitlements: proBusiness,
+    });
+    const capped = await mcpHandler(proReq('POST', readBody('worldmonitor://countries/de/risk')), depsCapped);
+    assert.equal(capped.status, 429, 'the 251st read must still hit the plan cap');
+    const cappedBody = await capped.json();
+    assert.equal(cappedBody.error?.code, -32029);
+    assert.match(cappedBody.error.message, /\(250\/day\)/, 'the re-emitted inner message must quote the plan limit');
+    assert.equal(pipeCapped.count, 250);
+  });
+
+  it('cap-exhausted resources/read forwards Retry-After header (parity with tools/call)', async () => {
+    // Greptile P1 regression guard. A correctly-implemented MCP client
+    // backing off on 429 will retry immediately if Retry-After is absent.
+    // tools/call attaches Retry-After (seconds until UTC midnight on quota
+    // cap, "5" on reservation failure); resources/read must forward it
+    // verbatim or the auth-symmetry contract is broken on the error path.
+    const RealDate = globalThis.Date;
+    const fixedNowMs = RealDate.parse('2026-05-29T12:00:00.000Z');
+    globalThis.Date = class FixedDate extends RealDate {
+      constructor(...args) {
+        super(...(args.length === 0 ? [fixedNowMs] : args));
+      }
+
+      static now() {
+        return fixedNowMs;
+      }
+
+      static parse(value) {
+        return RealDate.parse(value);
+      }
+
+      static UTC(...args) {
+        return RealDate.UTC(...args);
+      }
+    };
+
+    try {
+      const { deps: depsR } = makeProDeps({ pipelineOpts: { initialCount: 50 } });
+      const resR = await mcpHandler(
+        proReq('POST', readBody('worldmonitor://countries/de/risk')),
+        depsR,
+      );
+      assert.equal(resR.status, 429);
+      const retryAfterR = resR.headers.get('Retry-After');
+      assert.ok(retryAfterR, 'resources/read 429 MUST attach a Retry-After header (Greptile P1)');
+      // Cross-check: tools/call against the same backing tool from the same
+      // pre-seeded state must attach the SAME header. Date is pinned for this
+      // assertion so CI scheduling cannot create a one-second midnight-delta
+      // drift between the two sequential requests.
+      const { deps: depsT } = makeProDeps({ pipelineOpts: { initialCount: 50 } });
+      const resT = await mcpHandler(
+        proReq('POST', callBody('get_country_risk', { country_code: 'DE' })),
+        depsT,
+      );
+      assert.equal(resT.status, 429);
+      const retryAfterT = resT.headers.get('Retry-After');
+      assert.equal(retryAfterR, retryAfterT,
+        `Retry-After symmetry: resources/read="${retryAfterR}" must match tools/call="${retryAfterT}"`);
+    } finally {
+      globalThis.Date = RealDate;
+    }
+  });
+
+  it('resources/read forwards a mid-call billing 503 (X-Billing-Verification + Retry-After + no-store)', async () => {
+    // #7269: buildResourceResponse used to copy only Retry-After when
+    // re-emitting dispatcher errors, so a mid-call unverified billing denial
+    // lost its marker and the outer handler classified it as dispatch/rate-limit
+    // degradation. Parity with tools/call (mcp.test.mjs mid-call 503).
+    const { deps } = makeProDeps();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: 'Renewal verification pending', code: 'renewal_verification_pending' }),
+      {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Retry-After': '21',
+          'X-Billing-Verification': 'renewal_verification_pending',
+        },
+      },
+    );
+    const res = await mcpHandler(
+      proReq('POST', readBody('worldmonitor://countries/de/risk')),
+      deps,
+    );
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Retry-After'), '21');
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('X-Billing-Verification'), 'renewal_verification_pending');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603);
+    assert.equal(body.error?.data?.code, 'renewal_verification_pending');
+    assert.equal(body.id, 100);
+  });
+
+  it('resources/read forwards a mid-call confirmed-lapse 403 (X-Billing-Verification + no-store)', async () => {
+    // #7269: a gateway-backed subscription_lapsed 403 must keep the billing
+    // marker so the handler classifies it as billing/tier_403, not an ordinary
+    // precheck denial. Parity with tools/call (mcp.test.mjs mid-call 403).
+    const { deps } = makeProDeps();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: 'Subscription lapsed', code: 'subscription_lapsed' }),
+      {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'X-Billing-Verification': 'subscription_lapsed',
+        },
+      },
+    );
+    const res = await mcpHandler(
+      proReq('POST', readBody('worldmonitor://countries/de/risk')),
+      deps,
+    );
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32002);
+    assert.equal(body.error?.data?.code, 'subscription_lapsed');
+    assert.equal(body.id, 100);
+  });
+
+  it('_budget_exceeded soft envelope from country-risk RPC passes through unchanged (no freshness merge)', async () => {
+    // Greptile P2 regression guard. When the RPC return exceeds the
+    // 256 KB budget, dispatchToolsCall emits a 200 with
+    // `{_budget_exceeded, budget_bytes, actual_bytes, hint}` inside
+    // content[0].text. The freshness-wrap branch must detect this and
+    // pass through unchanged — merging the sentinel with `{cached_at,
+    // stale, ...}` would produce a hybrid shape where clients detecting
+    // soft errors by top-level key see "valid-looking" content with the
+    // error sentinel buried as an inner field.
+    //
+    // Trigger: mock get_country_risk to return a payload >256 KB.
+    const huge = { padding: 'x'.repeat(300_000) }; // > 262_144 budget
+    installMockFetch({ riskPayload: huge });
+
+    const res = await handler(envKeyReq(readBody('worldmonitor://countries/de/risk')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined, 'budget-exceeded surfaces as success-shape, not JSON-RPC error');
+    const payload = JSON.parse(body.result.contents[0].text);
+    assert.equal(payload._budget_exceeded, true, '_budget_exceeded sentinel must survive at top level');
+    assert.equal(typeof payload.budget_bytes, 'number');
+    assert.equal(typeof payload.actual_bytes, 'number');
+    // Critically — no freshness fields silently merged onto the soft-error.
+    assert.equal(payload.cached_at, undefined,
+      'cached_at must NOT be merged onto a soft-error envelope (Greptile P2)');
+    assert.equal(payload.stale, undefined,
+      'stale must NOT be merged onto a soft-error envelope (Greptile P2)');
+  });
+
+  // -------------------------------------------------------------------------
+  // Tool-existence parity (every resource.tool exists in TOOL_REGISTRY)
+  // -------------------------------------------------------------------------
+  it('every TEMPLATE_RESOURCE_REGISTRY entry references a tool that exists in TOOL_REGISTRY', () => {
+    const toolNames = new Set(TOOL_REGISTRY.map((t) => t.name));
+    for (const r of TEMPLATE_RESOURCE_REGISTRY) {
+      assert.ok(
+        toolNames.has(r.tool),
+        `resource "${r.uriTemplate}" references unknown tool "${r.tool}". Known: [${[...toolNames].sort().join(', ')}]`,
+      );
+    }
+  });
+
+  it('PUBLIC_RESOURCE_REGISTRY entries are concrete (no {template}) and expose a read() function', () => {
+    assert.ok(PUBLIC_RESOURCE_REGISTRY.length >= 1, 'at least one public resource must exist');
+    for (const r of PUBLIC_RESOURCE_REGISTRY) {
+      assert.doesNotMatch(r.uri, /[{}]/, `public resource ${r.uri} must be a concrete URI`);
+      assert.equal(typeof r.read, 'function', `public resource ${r.uri} must expose a read() function`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // server-card.json drift (mirrors the prompts test posture)
+  // -------------------------------------------------------------------------
+  it('server-card.json advertises resources: true (matches the wire capability)', () => {
+    const card = JSON.parse(
+      readFileSync(resolve(__dirname, '..', 'public', '.well-known', 'mcp', 'server-card.json'), 'utf8'),
+    );
+    assert.equal(card.capabilities?.resources, true,
+      'server-card.json::capabilities.resources must be true (wire-card parity)');
+  });
+});
+
+describe('shared MCP shell notification origin', () => {
+  const html = buildAppHtml({
+    title: 'Controlled origin case', appName: 'controlled-origin-case', styles: '',
+    body: '<div id="empty"></div><div id="card"><p id="capture"></p><p id="panel-usage"></p></div>',
+    renderBody: 'setText("capture", JSON.stringify({data:data,origin:typeof renderContext === "undefined" ? "missing" : renderContext.kind}));',
+  });
+  const value = { brief: 'Claim [1].', sources: [{ title: 'One', source: 'Wire', url: 'https://example.invalid/one' }] };
+  const content = v => [{ type: 'text', text: JSON.stringify(v) }];
+  const attribution = { data: value, _attribution: { sources: [{ name: 'Controlled wire' }] } };
+  const cases = [
+    ['attribution wrapper', { structuredContent: attribution, content: content(attribution) }, attribution, 'unknown'],
+    ['ordinary structured', { structuredContent: value, content: content(value) }, value, 'ordinary-structured'],
+    ['equal text fallback', { content: content(value) }, value, 'text-fallback'],
+    ['genuine wrapped projection', { structuredContent: { projection: value }, content: content(value) }, { projection: value }, 'projection-wrapped'],
+    ['structured preference', { structuredContent: value, content: content({ brief: 'Conflicting' }) }, value, 'ordinary-structured'],
+    ['structured array', { structuredContent: [], content: content(value) }, [], 'unknown'],
+    ['structured scalar falls back', { structuredContent: 7, content: content(value) }, value, 'text-fallback'],
+    ['null falls back', { structuredContent: null, content: content(value) }, value, 'text-fallback'],
+    ['bad JSON then valid text', { content: [{ type: 'text', text: 'bad json' }, ...content(value)] }, value, 'text-fallback'],
+    ['missing result fields', {}, null, 'unknown'],
+    ['text array', { content: content([]) }, [], 'text-fallback'],
+    ['text scalar', { content: content(7) }, 7, 'text-fallback'],
+  ];
+  for (const [name, result, data, origin] of cases) it(`passes per-notification render origin for ${name}`, () => {
+    const view = mountWidgetHtml(html);
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result } });
+    const actual = JSON.parse(view.text('capture'));
+    assert.deepEqual(actual.data, data);
+    assert.equal(actual.origin, origin);
+  });
+  it('accepts the existing direct params tool-result form with exact data and origin', () => {
+    const view = mountWidgetHtml(html);
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { structuredContent: value, content: content({ brief: 'Conflicting' }) } });
+    assert.deepEqual(JSON.parse(view.text('capture')), { data: value, origin: 'ordinary-structured' });
+  });
+  it('resets origin on replacements and ignores foreign-source notifications', () => {
+    const view = mountWidgetHtml(html);
+    for (const [, result, data, origin] of cases) {
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { result } });
+      assert.deepEqual(JSON.parse(view.text('capture')), { data, origin });
+    }
+    const before = view.text('capture');
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { structuredContent: value } } }, false);
+    assert.equal(view.text('capture'), before);
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { content: content(value) } });
+    assert.equal(JSON.parse(view.text('capture')).origin, 'text-fallback');
+  });
+  it('preserves initialization, usage and soft-error behavior', () => {
+    const view = mountWidgetHtml(html);
+    view.sendMessage({ id: 1, result: { hostCapabilities: {}, hostContext: {} } });
+    assert.ok(view.posted.some(m => m.method === 'ui/notifications/initialized'));
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: {
+      structuredContent: value,
+      _meta: { 'worldmonitor/usage': { unit: 'requests', remaining: 0, limit: 50, resetsAt: '2026-10-08T00:00:00Z' } },
+    } } });
+    assert.match(view.text('panel-usage'), /0 of 50 requests remaining/);
+    const before = view.text('capture');
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { structuredContent: { _budget_exceeded: true } } } });
+    assert.equal(view.text('capture'), before);
+    assert.match(view.text('empty'), /too large/);
+    assert.ok(view.posted.every(m => ['ui/initialize', 'ui/notifications/initialized', 'ui/notifications/size-changed'].includes(m.method)));
+  });
+});
+
+
+describe('shared MCP notification failures', () => {
+  const brief = {
+  "countryCode": "CA",
+  "countryName": "Canada",
+  "brief": "Controlled current assessment [E1]. Unresolved [E2].",
+  "model": "hidden-fixture-model",
+  "generatedAt": 1791288000000,
+  "sources": [
+    {
+      "source": "Controlled Wire",
+      "title": "Original source",
+      "url": "https://example.com/original?q=1",
+      "publishedAt": "2026-10-06T08:00:00Z"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E1",
+      "label": "Controlled indicator",
+      "value": "2.3%",
+      "asOf": "2026-10-05T11:00:00Z",
+      "url": "https://example.com/data"
+    }
+  ],
+  "groundingStories": [
+    {
+      "title": "Distinct grounding",
+      "publishedAt": "2026-10-06T07:00:00Z"
+    }
+  ]
+};
+  async function mountedBrief() {
+    const response = await buildUiResourceRead(1, 'ui://worldmonitor/country-brief-v3.html', {});
+    const view = mountWidgetHtml((await response.json()).result.contents[0].text);
+    view.sendToolResult(brief);
+    assert.equal(view.nodes('card')[0].style.display, 'block');
+    assert.match(view.text('brief'), /Controlled current assessment/);
+    assert.match(view.text('sources'), /Original source/);
+    assert.match(view.text('evidence'), /Controlled indicator/);
+    assert.match(view.text('foot'), /^Generated /);
+    return view;
+  }
+  it('renders a valid nonempty dedicated brief baseline', async () => { await mountedBrief(); });
+  it('shows the standard strict MCP failure after a valid brief', async () => {
+    const view = await mountedBrief();
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: {
+      isError: true, content: [{ type: 'text', text: 'Controlled upstream failed' }],
+    } } });
+    assert.equal(view.text('empty'), 'Controlled upstream failed');
+    assert.equal(view.nodes('card')[0].style.display, 'none');
+  });
+  it('advertises only the Country Brief content the dedicated card displays', () => {
+    const resource = UI_RESOURCE_LIST_RESPONSE.find(r => r.uri === 'ui://worldmonitor/country-brief-v3.html');
+    assert.doesNotMatch(resource.description, /framework lens/);
+    assert.match(resource.description, /paragraphs/);
+    assert.match(resource.description, /grounding sources/);
+    assert.match(resource.description, /cited WorldMonitor data/);
+  });
+  it('uses strict failure precedence and preserves specific existing soft errors', async () => {
+    const cases = [
+      [{ isError: true, structuredContent: brief, content: [{ type: 'text', text: 'Controlled denial' }] }, 'Controlled denial'],
+      [{ isError: true, structuredContent: { error: 'Specific failure' }, content: [{ type: 'text', text: 'Conflicting failure' }] }, 'Specific failure'],
+      [{ isError: true, content: [{ type: 'text', text: '{"error":"Parsed failure"}' }] }, 'Parsed failure'],
+      [{ isError: true, structuredContent: { _budget_exceeded: true }, content: [{ type: 'text', text: 'Conflict' }] }, /too large/],
+      [{ isError: true, content: [{ type: 'text', text: '{"_jmespath_error":"Bad projection"}' }] }, /projection could not/],
+      [{ isError: true, structuredContent: brief, content: [{ type: 'text', text: '{"error":"Literal JSON"}' }] }, '{"error":"Literal JSON"}'],
+    ];
+    for (const [result, expected] of cases) {
+      const view = await mountedBrief();
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { result } });
+      if (typeof expected === 'string') assert.equal(view.text('empty'), expected);
+      else assert.match(view.text('empty'), expected);
+      assert.equal(view.nodes('card')[0].style.display, 'none');
+      assert.match(view.text('brief'), /Controlled current assessment/);
+    }
+  });
+  it('chooses the first usable text and a fixed fallback for unusable content', async () => {
+    for (const content of [undefined, [], [{ type: 'image', text: 'Wrong type' }], [{ type: 'text', text: '\u0000 \n\t' }]]) {
+      const view = await mountedBrief();
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, content } });
+      assert.equal(view.text('empty'), 'Tool request failed.');
+    }
+    const view = await mountedBrief();
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { isError: true,
+      structuredContent: { error: '\u0000 \t' },
+      content: [{ type: 'text', text: '\u0000 \n' }, { type: 'text', text: '  Later usable text  ' }, { type: 'text', text: 'Unused' }],
+    } } });
+    assert.equal(view.text('empty'), 'Later usable text');
+    for (const text of ['7', '[]', JSON.stringify(brief)]) {
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, content: [{ type: 'text', text }] } });
+      assert.equal(view.text('empty'), text);
+      assert.equal(view.nodes('card')[0].style.display, 'none');
+    }
+  });
+  it('cleans and bounds every error-message path and keeps hostile markup literal', async () => {
+    const message = ' \u0000<img src=x onerror="bad()">' + 'x'.repeat(1100) + '\u007f ';
+    const expected = message.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 1000);
+    for (const fields of [
+      { content: [{ type: 'text', text: message }] },
+      { structuredContent: { error: message } },
+      { content: [{ type: 'text', text: JSON.stringify({ error: message }) }] },
+    ]) {
+      const view = await mountedBrief();
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { isError: true, ...fields } } });
+      assert.equal(view.text('empty'), expected);
+      assert.equal(view.text('empty').length, 1000);
+      assert.ok(!view.created.some(node => ['IMG', 'SCRIPT'].includes(node.tagName)));
+    }
+  });
+  it('retains accepted DOM on failure and recovers through ordinary and non-strict results', async () => {
+    const view = await mountedBrief();
+    const ids = ['brief', 'sources', 'evidence', 'foot'];
+    const accepted = ids.map(id => view.nodes(id).slice());
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true } });
+    ids.forEach((id, i) => {
+      const nodes = view.nodes(id);
+      assert.equal(nodes.length, accepted[i].length, id + ': accepted node count survives');
+      nodes.forEach((node, index) => assert.strictEqual(node, accepted[i][index], id + ': accepted node identity survives'));
+    });
+    for (const flag of [undefined, false, 'true']) {
+      const recovery = { ...brief, brief: 'Controlled recovery.' };
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { result: { isError: flag, structuredContent: recovery } } });
+      assert.equal(view.nodes('card')[0].style.display, 'block');
+      assert.equal(view.nodes('empty')[0].style.display, 'none');
+      assert.equal(view.text('brief'), 'Controlled recovery.');
+    }
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { content: [{ type: 'text', text: JSON.stringify(brief) }] } });
+    assert.match(view.text('brief'), /Controlled current assessment/);
+  });
+  it('preserves parent association, both params forms, initialization and size', async () => {
+    const view = await mountedBrief();
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true } }, false);
+    assert.equal(view.nodes('card')[0].style.display, 'block');
+    view.sendMessage({ id: 1, result: { hostCapabilities: {}, hostContext: { theme: 'dark' } } });
+    for (const wrapped of [false, true]) {
+      const result = { isError: true, content: [{ type: 'text', text: 'Association failure' }] };
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: wrapped ? { result } : result });
+      assert.equal(view.text('empty'), 'Association failure');
+    }
+    assert.ok(view.posted.some(m => m.method === 'ui/notifications/initialized'));
+    assert.ok(view.posted.some(m => m.method === 'ui/notifications/size-changed'));
+    assert.ok(view.posted.every(m => ['ui/initialize', 'ui/notifications/initialized', 'ui/notifications/size-changed'].includes(m.method)));
+  });
+  it('recomputes notification origin after a failure without changing ordinary extraction', () => {
+    const html = buildAppHtml({ title: 'Origin', appName: 'origin', styles: '',
+      body: '<div id="empty"></div><div id="card"><p id="capture"></p></div>',
+      renderBody: 'setText("capture", JSON.stringify({data:data,origin:renderContext.kind}));' });
+    const view = mountWidgetHtml(html);
+    view.sendToolResult(brief);
+    const before = view.text('capture');
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, structuredContent: brief } });
+    assert.equal(view.text('capture'), before);
+    view.sendMessage({ method: 'ui/notifications/tool-result', params: { content: [{ type: 'text', text: JSON.stringify(brief) }] } });
+    assert.equal(JSON.parse(view.text('capture')).origin, 'text-fallback');
+    view.sendToolResult({ projection: brief });
+    assert.equal(JSON.parse(view.text('capture')).origin, 'projection-wrapped');
+  });
+  it('preserves valid nonempty baselines and error/recovery across all eight shared-shell cards', async () => {
+    const world = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/mcp-world-brief-api-free-parent.json'), 'utf8'))[0].body.result.structuredContent;
+    const chokepoints = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/mcp-chokepoint-api-free-parent.json'), 'utf8'))[0].body.result.structuredContent;
+    const cases = [
+      ['country-brief-v3', 'brief', brief, /Controlled current assessment/],
+      ['world-brief-v2', 'brief', world, /First claim/],
+      ['news-intelligence-v2', 'list', { data: { insights: { topStories: [{ primaryTitle: 'Port disruption expands', primarySource: 'MIIT (China)', category: 'security', threatLevel: 'high', isAlert: true, countryCode: 'DE' }] } } }, /Port disruption expands/],
+      ['chokepoint-monitor-v2', 'rows', chokepoints, /Hormuz strait/],
+      ['conflict-events-v2', 'list', { data: { 'ucdp-events': { events: [{ sideA: 'Government forces', sideB: 'Armed group', country: 'Sudan', violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', dateStart: '2026-07-01', deathsBest: 12 }] } } }, /Government forces vs Armed group/],
+      ['natural-disasters', 'groups', { data: { earthquakes: { earthquakes: [{ magnitude: 5.4, place: 'Aegean Sea', occurredAt: '2026-07-02T00:00:00Z' }] }, fires: { fireDetections: [{ confidence: 'FIRE_CONFIDENCE_HIGH', region: 'Attica', brightness: 337, location: { latitude: 37.98, longitude: 23.72 } }] } } }, /Aegean Sea/],
+      ['prediction-markets-v3', 'groups', { data: { 'markets-bootstrap': { geopolitical: [{ title: 'Ceasefire by September?', yesPrice: 73, source: 'Polymarket' }], tech: [], finance: [] } } }, /Ceasefire by September/],
+      ['forecasts-v4', 'list', { data: { predictions: { predictions: [{ title: 'Oil remains above $70', probability: 0.42, domain: 'energy', region: 'Global' }] } } }, /Oil remains above/],
+    ];
+    for (const [name, id, payload, token] of cases) {
+      const response = await buildUiResourceRead(1, 'ui://worldmonitor/' + name + '.html', {});
+      const view = mountWidgetHtml((await response.json()).result.contents[0].text);
+      view.sendToolResult(payload);
+      assert.match(view.text(id), token, name + ': baseline must actually render');
+      const before = view.nodes(id).slice();
+      const footer = view.text('foot');
+      view.sendMessage({ method: 'ui/notifications/tool-result', params: { isError: true, content: [{ type: 'text', text: 'Controlled fleet failure' }] } });
+      assert.equal(view.text('empty'), 'Controlled fleet failure', name);
+      assert.equal(view.nodes('card')[0].style.display, 'none', name);
+      const nodes = view.nodes(id);
+      assert.equal(nodes.length, before.length, name + ': accepted node count survives');
+      nodes.forEach((node, index) => assert.strictEqual(node, before[index], name + ': accepted node identity survives'));
+      assert.equal(view.text('foot'), footer, name + ': existing footer survives');
+      view.sendToolResult(payload);
+      assert.equal(view.nodes('card')[0].style.display, 'block', name);
+      assert.equal(view.nodes('empty')[0].style.display, 'none', name);
+      assert.match(view.text(id), token, name);
+    }
+  });
+
+});

@@ -1,0 +1,70 @@
+{
+  "events": [
+    {
+      "jurisdiction_url": "https://api.open511.gov.bc.ca/jurisdiction",
+      "url": "https://api.open511.gov.bc.ca/events/drivebc.ca/RIDE-100556",
+      "id": "drivebc.ca/RIDE-100556",
+      "headline": "CONSTRUCTION",
+      "status": "ACTIVE",
+      "created": "2026-07-15T13:37:20-07:00",
+      "updated": "2026-07-15T13:38:04-07:00",
+      "description": "Road construction. Starting Tue Jul 14. From 8:00 PM to 5:00 AM PST on Monday, Tuesday, Wednesday, Thursday, and Friday. Watch for traffic control. Speed Limit restriction: 50 kmh. Bus on Shoulder project. No impact during day. Periodic night work with 5min stoppages. I. More info: https://www2.gov.bc.ca/gov/content?id=4143D59BD46A4DA6B1DD9F3A2D99C5F0.",
+      "+ivr_message": "Road construction from Highway 1, In Saanich and At Mckenzie Ave / Admirals Rd U/P to In View Royal and At West Burnside Rd U/P (Colwood Bridge). Starting Tue Jul 14. From 8:00 PM to 5:00 AM PST on Monday, Tuesday, Wednesday, Thursday, and Friday. Watch for traffic control. Speed Limit restriction: 50 kmh. Last update: July 15th, 2026 at 1:38pm. Bus on Shoulder project. No impact during day. Periodic night work with 5min stoppages. I.",
+      "+linear_reference_km": 0,
+      "schedule": {
+        "intervals": [
+          "2026-07-15T03:00/"
+        ]
+      },
+      "event_type": "CONSTRUCTION",
+      "event_subtypes": [
+        "ROAD_MAINTENANCE"
+      ],
+      "severity": "MINOR",
+      "geography": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -123.40498,
+            48.4598
+          ],
+          [
+            -123.41737,
+            48.46417
+          ],
+          [
+            -123.43071,
+            48.46406
+          ],
+          [
+            -123.4527,
+            48.46173
+          ]
+        ]
+      },
+      "roads": [
+        {
+          "name": "Highway 1",
+          "from": "Trans-Canada Highway",
+          "direction": "BOTH",
+          "state": "ALL_LANES_OPEN"
+        }
+      ],
+      "areas": [
+        {
+          "url": "http://www.geonames.org/8630140",
+          "name": "Vancouver Island District",
+          "id": "drivebc.ca/2"
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "offset": 500
+  },
+  "meta": {
+    "url": "/events",
+    "up_url": "",
+    "version": "v1"
+  }
+}

@@ -1,8 +1,9 @@
 import { Panel } from './Panel';
 import type { GeoHubActivity } from '@/services/geo-activity';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { getCSSColor } from '@/utils';
+import { bindActivationKeys } from '@/utils/activation';
 
 const COUNTRY_FLAGS: Record<string, string> = {
   'USA': '🇺🇸', 'Russia': '🇷🇺', 'China': '🇨🇳', 'UK': '🇬🇧', 'Belgium': '🇧🇪',
@@ -44,6 +45,7 @@ export class GeoHubsPanel extends Panel {
       }),
     });
     this.setupDelegatedListeners();
+    bindActivationKeys(this.content, '.geo-hub-item');
   }
 
   public setOnHubClick(handler: (hub: GeoHubActivity) => void): void {
@@ -80,7 +82,7 @@ export class GeoHubsPanel extends Panel {
       const topStory = hub.topStories[0];
 
       return `
-        <div class="geo-hub-item ${hub.activityLevel}" data-hub-id="${escapeHtml(hub.hubId)}" data-index="${index}">
+        <div class="geo-hub-item ${hub.activityLevel}" data-hub-id="${escapeHtml(hub.hubId)}" data-index="${index}" role="button" tabindex="0">
           <div class="hub-rank">${index + 1}</div>
           <span class="geo-hub-indicator ${hub.activityLevel}"></span>
           <div class="hub-info">
@@ -105,7 +107,7 @@ export class GeoHubsPanel extends Panel {
       `;
     }).join('');
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 
   /**

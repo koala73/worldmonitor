@@ -1,0 +1,78 @@
+---
+title: "News ↔ Markets"
+description: "Exploratory lead/lag panel that correlates GDELT topic volume with hourly market returns for six assets, with a Pearson coefficient, a 95% Fisher-z interval, and a ±6-hour lag scan."
+---
+
+The **News ↔ Markets** panel (internal id `news-market-correlation`) asks whether news volume on a global topic moves with, ahead of, or behind a market. It plots GDELT topic volume against an asset price, reports a Pearson coefficient with a 95% interval, and scans hourly lags to say whether news or the market leads.
+
+The result is exploratory. Correlation and lead/lag do not establish causation, and the panel shows weak and null results rather than hiding them.
+
+## What the panel shows
+
+- **Controls**: a news topic (default *Sanctions*), a market (default *S&P 500*), and a window of 24 hours, 3 days, 7 days (default), or 14 days.
+- **Chart**: GDELT news volume and the asset price on separate axes over the selected window.
+- **Pearson r**: the coefficient between hourly news volume and the hourly market return, with the number of aligned hourly samples (`n`).
+- **95% interval**: the Fisher-z confidence interval for that coefficient.
+- **Interpretation**: a relationship label (*No clear relationship*, *Weak / Moderate / Strong positive or negative relationship*, or *Insufficient aligned observations*) and a lead/lag line such as *News leads by 3h (r=0.41, n=120)* or *Neither series clearly leads*.
+- **Freshness**: the time the market series was last updated.
+
+Panel id is `news-market-correlation`; canonical component is `src/components/NewsMarketCorrelationPanel.ts`. The analysis lives in `src/services/news-market-correlation.ts`.
+
+## Scope
+
+The panel covers a deliberately narrow slice. Read its verdicts within these limits:
+
+- **Six assets only.** S&P 500 (`^GSPC`), Nasdaq Composite (`^IXIC`), Bitcoin (`BTC-USD`), Ethereum (`ETH-USD`), Gold (`GC=F`), and WTI Crude (`CL=F`). There is no Brent, natural gas, FX, single stock, or prediction market. An asset whose series failed to load is disabled in the selector.
+- **Global topics, not countries or crises.** The news series is worldwide GDELT volume for a topic. The selector offers six security topics: Military Activity, Cyber Threats, Nuclear, Sanctions, Intelligence, and Maritime Security.
+- **Pearson on hourly returns.** The coefficient is linear and contemporaneous within an hourly bucket. It compares news volume with the percentage price change, not with the price level.
+- **No persistence.** Every coefficient, interval, and lead/lag verdict is recomputed in the browser on each load. Nothing is stored, so there is no history of past verdicts.
+
+## How you reach it
+
+- **Cmd+K**: type *news market correlation*, *gdelt markets*, *lead lag*, or *market returns*.
+- **Availability by variant**: enabled by default (`enabled: true, priority: 1`) in the **full/geopolitical**, **finance**, and **commodity** variants. Not registered in the tech, energy, or happy variants. Source: the `'news-market-correlation'` entries in `FULL_PANELS`, `FINANCE_PANELS`, and `COMMODITY_PANELS` in `src/config/panels.ts`.
+
+## Data sources
+
+| Series | Route or key | Upstream |
+|---|---|---|
+| Market prices | Bootstrap on-demand key `marketCorrelationSeries` (Redis `market:correlation-series:v1`) | Yahoo Finance chart API, `range=14d`, `interval=1h`, seeded by `scripts/seed-market-correlation-series.mjs`. |
+| News volume | `GET /api/intelligence/v1/get-gdelt-topic-timeline` (Redis `gdelt:intel:vol:<topic>`) | Counts of matching GDELT bulk records per time bucket, written by `scripts/seed-gdelt-bulk-materializer.mjs`. |
+
+## Method
+
+`analyzeNewsMarketCorrelation()` in `src/services/news-market-correlation.ts` runs these steps:
+
+1. **Window.** The window ends at the latest timestamp in either series and extends back by the selected number of hours.
+2. **Hourly buckets.** News points are averaged per hour. Market points keep the latest positive price per hour.
+3. **Returns.** The market return for an hour is the percentage change from the previous hour. A return is computed only when the two buckets are exactly one hour apart, so market closures leave gaps instead of multi-hour returns.
+4. **Alignment and Pearson r.** Each hourly return is paired with the news volume for the same hour. Pearson r needs at least 4 aligned samples and non-zero variance in both series; otherwise the panel shows *Insufficient aligned observations*.
+5. **95% interval.** Fisher z-transform with a margin of `1.96 / sqrt(n - 3)`, mapped back to the r scale.
+6. **Relationship label.** If the interval spans zero, the label is *No clear relationship*. Otherwise the magnitude of r sets the label: weak below `0.2`, moderate below `0.5`, strong at `0.5` or above.
+7. **Lead/lag scan.** The scan pairs news at hour `t` with the market return at hour `t + lag` for every whole-hour lag from -6 to +6 and keeps the lag with the largest absolute coefficient. A positive lag means news leads; a negative lag means the market leads.
+
+The panel reports *News leads* or *Market leads* only when the best lag meets every condition below. Otherwise it reports *Neither series clearly leads*.
+
+- The lag is not zero.
+- The lag has at least 8 aligned samples.
+- The absolute lag coefficient is at least `0.2`.
+- The lag's 95% interval excludes zero.
+- The absolute lag coefficient beats the same-hour coefficient by at least `0.05`.
+
+The lead/lag line shows the lag in hours, its coefficient, and its sample size. The **95% interval** card always refers to the same-hour coefficient, not the lag.
+
+## Refresh cadence
+
+- **Market series**: re-seeded every 15 minutes as a member of the `seed-bundle-market-backup` bundle. Health flags it stale after 45 minutes.
+- **News series**: the `seed-gdelt-intel` Railway service runs `scripts/seed-gdelt-bulk-materializer.mjs` every 15 minutes. A topic gets new volume points and a fresh timestamp only when a batch contains matching records; otherwise its series and timestamp carry over from the previous run.
+- **Panel**: fetches when it is near the viewport and refreshes every 15 minutes while it stays near the viewport (`REFRESH_INTERVALS.newsMarketCorrelation`).
+
+## Tier & gating
+
+**Free.** No `premium` flag in any variant registration, and both backing reads are public.
+
+## Related
+
+- [Cross-Stream Correlation Engine](/algorithms#cross-stream-correlation-engine) — the signal-based correlation types, where `news_leads_markets` is a reserved name that no detector emits.
+- [Indicators & Signals](/panels/indicators-and-signals) — the catalogue of compact market and correlation panels.
+- [Finance Data](/finance-data) — the broader market data family.

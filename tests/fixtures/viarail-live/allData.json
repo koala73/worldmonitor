@@ -1,0 +1,219 @@
+{
+  "37": {
+    "lat": 45.3694,
+    "lng": -74.4836,
+    "speed": 94,
+    "direction": 236.23,
+    "poll": "2026-08-13T22:07:37Z",
+    "alerts": [
+      {
+        "header": {
+          "en": "Train 37 - Enroute delay",
+          "fr": "Train 37 - Retard en cours de route"
+        },
+        "description": {
+          "en": "This train accumulated a delay due to rail traffic on route.",
+          "fr": "Ce train a accumulé un retard en raison de congestion ferroviaire en cours de route."
+        },
+        "url": {
+          "en": "",
+          "fr": ""
+        }
+      }
+    ],
+    "departed": true,
+    "arrived": false,
+    "from": "QUÉBEC",
+    "to": "OTTAWA",
+    "instance": "2026-08-13",
+    "pollMin": 3,
+    "times": [
+      {
+        "station": "Québec",
+        "code": "QBEC",
+        "tz": "America/Toronto",
+        "estimated": "2026-08-13T12:32:00-04:00",
+        "scheduled": "2026-08-13T12:32:00-04:00",
+        "eta": "ARR",
+        "departure": {
+          "estimated": "2026-08-13T12:32:00-04:00",
+          "scheduled": "2026-08-13T12:32:00-04:00"
+        },
+        "diff": "goo",
+        "diffMin": 0
+      },
+      {
+        "station": "Drummondville",
+        "code": "DRMV",
+        "tz": "America/Toronto",
+        "estimated": "2026-08-13T15:00:15-04:00",
+        "scheduled": "2026-08-13T14:44:00-04:00",
+        "eta": "ARR",
+        "arrival": {
+          "estimated": "2026-08-13T15:00:15-04:00",
+          "scheduled": "2026-08-13T14:44:00-04:00"
+        },
+        "departure": {
+          "estimated": "2026-08-13T15:00:15-04:00",
+          "scheduled": "2026-08-13T14:46:00-04:00"
+        },
+        "diff": "med",
+        "diffMin": 16
+      },
+      {
+        "station": "Ottawa",
+        "code": "OTTW",
+        "tz": "America/Toronto",
+        "estimated": "2026-08-13T19:07:19-04:00",
+        "scheduled": "2026-08-13T18:37:00-04:00",
+        "eta": "56 mins",
+        "arrival": {
+          "estimated": "2026-08-13T19:07:19-04:00",
+          "scheduled": "2026-08-13T18:37:00-04:00"
+        },
+        "diff": "bad",
+        "diffMin": 30
+      }
+    ]
+  },
+  "83": {
+    "lat": 43.1334,
+    "lng": -80.7066,
+    "speed": 0,
+    "direction": 258.55,
+    "poll": "2026-08-13T22:07:35Z",
+    "departed": true,
+    "arrived": false,
+    "from": "TORONTO",
+    "to": "LONDON",
+    "instance": "2026-08-13",
+    "pollMin": 3,
+    "times": [
+      {
+        "station": "Toronto",
+        "code": "TRTO",
+        "tz": "America/Toronto",
+        "estimated": "2026-08-13T16:15:00-04:00",
+        "scheduled": "2026-08-13T16:15:00-04:00",
+        "eta": "ARR",
+        "departure": {
+          "estimated": "2026-08-13T16:15:00-04:00",
+          "scheduled": "2026-08-13T16:15:00-04:00"
+        },
+        "diff": "goo",
+        "diffMin": 0
+      },
+      {
+        "station": "Aldershot",
+        "code": "ALDR",
+        "tz": "America/Toronto",
+        "estimated": "2026-08-13T16:57:19-04:00",
+        "scheduled": "2026-08-13T16:50:00-04:00",
+        "eta": "ARR",
+        "arrival": {
+          "estimated": "2026-08-13T16:57:19-04:00",
+          "scheduled": "2026-08-13T16:50:00-04:00"
+        },
+        "departure": {
+          "estimated": "2026-08-13T16:57:19-04:00",
+          "scheduled": "2026-08-13T16:52:00-04:00"
+        },
+        "diff": "med",
+        "diffMin": 7
+      },
+      {
+        "station": "Brantford",
+        "code": "BRTF",
+        "tz": "America/Toronto",
+        "estimated": "2026-08-13T17:31:16-04:00",
+        "scheduled": "2026-08-13T17:20:00-04:00",
+        "eta": "ARR",
+        "arrival": {
+          "estimated": "2026-08-13T17:31:16-04:00",
+          "scheduled": "2026-08-13T17:20:00-04:00"
+        },
+        "departure": {
+          "estimated": "2026-08-13T17:31:16-04:00",
+          "scheduled": "2026-08-13T17:22:00-04:00"
+        },
+        "diff": "med",
+        "diffMin": 11
+      }
+    ]
+  },
+  "1 (08-09)": {
+    "alerts": [
+      {
+        "header": {
+          "en": "General advisory",
+          "fr": "Avis général"
+        },
+        "description": {
+          "en": "The train’s tracking system relies on cellular signal, which is not always available, and the times displayed may not reflect delays or time recovered along the route.\n\nStation layovers can also be reduced to allow the train to recover some of the lost time.\n\nVIA Rail recommends that passengers arrive at the station well in advance of the estimated departure time.\n\nFor arrival and departure times, please contact our customer centre at 1-888-VIA-RAIL (1-888 842-7245), or dial 711 on your TTY device and request to be relayed to 1-888-842-7245 (for persons who are deaf, hard-of-hearing, or who have speech disabilities).\n",
+          "fr": "Le système de suivi du train dépend du signal cellulaire, qui n’est pas toujours disponible, et que les heures affichées peuvent ne pas refléter les retards ou le temps récupéré en cours de route.\n\nLes arrêts en gare peuvent également être réduits pour permettre au train de récupérer une partie du temps perdu.\n\nVIA Rail recommande aux voyageurs d'arriver à la gare bien avant l'heure de départ estimée.  \n\nPour les heures de d’arrivée et de départ, veuillez contacter notre centre client au 1-888-VIA-RAIL (1-888-842-7245), ou composez le 711 sur votre appareil ATS et demandez à être relié au 1 888 842-7245 (pour les personnes sourdes, malentendantes, ou personnes ayant des troubles de la parole).\n"
+        },
+        "url": {
+          "en": "",
+          "fr": ""
+        }
+      }
+    ],
+    "departed": true,
+    "arrived": true,
+    "from": "TORONTO",
+    "to": "VANCOUVER",
+    "instance": "2026-08-09",
+    "times": [
+      {
+        "station": "Toronto",
+        "code": "TRTO",
+        "tz": "America/Toronto",
+        "estimated": "2026-08-09T09:55:00-04:00",
+        "scheduled": "2026-08-09T09:55:00-04:00",
+        "eta": "ARR",
+        "departure": {
+          "estimated": "2026-08-09T09:55:00-04:00",
+          "scheduled": "2026-08-09T09:55:00-04:00"
+        },
+        "diff": "goo",
+        "diffMin": 0
+      },
+      {
+        "station": "Washago",
+        "code": "WSHG",
+        "tz": "America/Toronto",
+        "estimated": "2026-08-09T13:40:02-04:00",
+        "scheduled": "2026-08-09T12:25:00-04:00",
+        "eta": "ARR",
+        "arrival": {
+          "estimated": "2026-08-09T13:40:02-04:00",
+          "scheduled": "2026-08-09T12:25:00-04:00"
+        },
+        "departure": {
+          "estimated": "2026-08-09T13:40:02-04:00",
+          "scheduled": "2026-08-09T12:25:02-04:00"
+        },
+        "diff": "bad",
+        "diffMin": 75
+      },
+      {
+        "station": "South Parry",
+        "code": "SPAR",
+        "tz": "America/Toronto",
+        "estimated": "2026-08-09T15:27:34-04:00",
+        "scheduled": "2026-08-09T14:27:00-04:00",
+        "eta": "ARR",
+        "arrival": {
+          "estimated": "2026-08-09T15:27:34-04:00",
+          "scheduled": "2026-08-09T14:27:00-04:00"
+        },
+        "departure": {
+          "estimated": "2026-08-09T15:27:34-04:00",
+          "scheduled": "2026-08-09T14:27:02-04:00"
+        },
+        "diff": "bad",
+        "diffMin": 60
+      }
+    ]
+  }
+}

@@ -35,8 +35,9 @@ const INJECTION_PATTERNS = [
   /\[(?:INST|\/INST|SYS|\/SYS)\]/gi,
   /<\/?(system|user|assistant|prompt|context|instruction)\b[^>]*>/gi,
 
-  // Role override markers at line start
-  /(?:^|\n)\s*(?:#{1,4}\s*)?(?:\[|\()?\s*(?:system|human|gpt|claude|llm|model|prompt)\s*(?:\]|\))?\s*:/gim,
+  // Leading whitespace stays on its line. Later runs follow mandatory tokens
+  // so failed matches cannot repartition or repeatedly scan the same whitespace.
+  /(?:^|\n)[^\S\r\n]*(?:#{1,4}\s*)?(?:[\[(]\s*)?(?:system|human|gpt|claude|llm|model|prompt)\s*(?:[\])]\s*)?:/gim,
 
   // Explicit instruction-override phrases
   /ignore\s+(?:all\s+)?(?:previous|above|prior|earlier|the\s+above)\s+instructions?\b/gi,
@@ -46,11 +47,11 @@ const INJECTION_PATTERNS = [
   /(?:output|print|display|reveal|show|repeat|recite|write\s+out)\s+(?:your\s+)?(?:system\s+prompt|instructions?|initial\s+prompt|original\s+prompt|context)\b/gi,
 
   // Prompt boundary separator lines
-  /^[\-=]{3,}$/gm,
+  /^[-=]{3,}$/gm,
   /^#{3,}\s/gm,
 ];
 
-const ROLE_PREFIX_RE = /^\s*(?:#{1,4}\s*)?(?:\[|\()?\s*(?:user|assistant|bot)\s*(?:\]|\))?\s*:\s*/i;
+const ROLE_PREFIX_RE = /^\s*(?:#{1,4}\s*)?(?:[\[(]\s*)?(?:user|assistant|bot)\s*(?:[\])]\s*)?:\s*/i;
 const ROLE_OVERRIDE_STRONG_RE = /\b(?:you\s+are\s+now|act\s+as|pretend\s+(?:to\s+be|you\s+are)|roleplay\s+as|simulate\s+(?:being\s+)?a|from\s+now\s+on|do\s+not\s+(?:follow|obey|adhere\s+to|comply\s+with))\b/i;
 const ROLE_OVERRIDE_COMMAND_RE = /\b(?:ignore|disregard|forget|bypass|override|overwrite|skip|reveal|output|print|display|show|repeat|recite|write\s+out)\b/i;
 const ROLE_OVERRIDE_FOLLOW_RE = /\b(?:follow|obey)\s+(?:all\s+)?(?:the\s+|my\s+|your\s+)?(?:instructions?|prompt|rules?|guidelines?|constraints?)\b/i;
@@ -63,13 +64,13 @@ function isRolePrefixedInjectionLine(line) {
   return ROLE_OVERRIDE_COMMAND_RE.test(line) && ROLE_OVERRIDE_TARGET_RE.test(line);
 }
 
-//  U+0000-U+001F  ASCII control chars (except newline U+000A, tab U+0009)
-//  U+007F         DEL
+//  U+0000-U+001F  ASCII controls (except tab U+0009, newline U+000A, carriage return U+000D)
+//  U+007F-U+009F  DEL and C1 control characters
 //  U+00AD         soft hyphen
 //  U+200B-U+200D  zero-width space / non-joiner / joiner
 //  U+2028-U+2029  Unicode line/paragraph separator
 //  U+FEFF         BOM / zero-width no-break space
-const CONTROL_CHARS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\xAD\u200B-\u200D\u2028\u2029\uFEFF]/g;
+const CONTROL_CHARS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\xAD\u200B-\u200D\u2028\u2029\uFEFF]/g;
 
 /**
  * Sanitize a single string for safe inclusion in an LLM prompt.
@@ -99,6 +100,31 @@ export function sanitizeForPrompt(input) {
 }
 
 /**
+ * Sanitize a string for safe inclusion in a *single line* of an LLM prompt.
+ *
+ * sanitizeForPrompt deliberately preserves a lone newline — it splits on '\n'
+ * to drop role-prefixed injection lines, rejoins, then collapses only runs of
+ * 2+ whitespace. That is right for prose blocks, and wrong everywhere the
+ * newline is the *delimiter* of the surrounding block: a `- ${title}` list
+ * joined with '\n', or a `Label: ${value}` line inside a section. There a
+ * single '\n' in feed text forges an extra bullet or section the model reads as
+ * a separate, real datum (#5850 for liveHeadlines, #5857 for its siblings).
+ *
+ * Sanitizing the content is not enough when the delimiter is part of the
+ * content's alphabet, so this variant also collapses every whitespace run —
+ * newlines, carriage returns and tabs included — to a single space.
+ *
+ * Use this at line-composing call sites; keep plain sanitizeForPrompt for prose
+ * bodies whose internal newlines are legitimate.
+ *
+ * @param {unknown} input
+ * @returns {string}
+ */
+export function sanitizeForPromptLine(input) {
+  return sanitizeForPrompt(input).replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Sanitize an array of headline strings, dropping any that become empty
  * after sanitization.
  * @param {unknown[]} headlines
@@ -118,7 +144,7 @@ const STRUCTURAL_PATTERNS = [
   /<\|(?:endoftext|fim_prefix|fim_middle|fim_suffix|pad)\|>/gi,
   /\[(?:INST|\/INST|SYS|\/SYS)\]/gi,
   /<\/?(system|user|assistant|prompt|context|instruction)\b[^>]*>/gi,
-  /^[\-=]{3,}$/gm,
+  /^[-=]{3,}$/gm,
 ];
 
 /**

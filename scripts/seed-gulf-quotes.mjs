@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, roundSparkline, runSeed, sleep } from './_seed-utils.mjs';
+import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { fetchAvPhysicalCommodity, fetchAvFxDaily } from './_shared-av.mjs';
 
 const gulfConfig = loadSharedConfig('gulf.json');
@@ -13,28 +14,6 @@ const YAHOO_DELAY_MS = 200;
 
 const GULF_SYMBOLS = gulfConfig.symbols;
 
-async function fetchYahooWithRetry(url, label, maxAttempts = 4) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (resp.status === 429) {
-      const wait = 5000 * (i + 1);
-      console.warn(`  [Yahoo] ${label} 429 — waiting ${wait / 1000}s (attempt ${i + 1}/${maxAttempts})`);
-      await sleep(wait);
-      continue;
-    }
-    if (!resp.ok) {
-      console.warn(`  [Yahoo] ${label} HTTP ${resp.status}`);
-      return null;
-    }
-    return resp;
-  }
-  console.warn(`  [Yahoo] ${label} rate limited after ${maxAttempts} attempts`);
-  return null;
-}
-
 function parseYahooChart(data, meta) {
   const result = data?.chart?.result?.[0];
   const chartMeta = result?.meta;
@@ -45,7 +24,8 @@ function parseYahooChart(data, meta) {
   const change = ((price - prevClose) / prevClose) * 100;
 
   const closes = result.indicators?.quote?.[0]?.close;
-  const sparkline = (closes || []).filter((v) => v != null);
+  // Same float64 conversion noise as the shared parseYahooChart — 51% of this key (#5300).
+  const sparkline = roundSparkline((closes || []).filter((v) => v != null));
 
   return {
     symbol: meta.symbol,
@@ -98,9 +78,13 @@ async function fetchGulfQuotes() {
 
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(meta.symbol)}`;
-      const resp = await fetchYahooWithRetry(url, meta.symbol);
-      if (!resp) { misses++; continue; }
-      const chart = await resp.json();
+      let chart;
+      try {
+        chart = await fetchYahooJson(url, { label: meta.symbol });
+      } catch {
+        misses++;
+        continue;
+      }
       const parsed = parseYahooChart(chart, meta);
       if (parsed) {
         quotes.push(parsed);
@@ -126,10 +110,18 @@ function validate(data) {
   return Array.isArray(data?.quotes) && data.quotes.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.quotes) ? data.quotes.length : 0;
+}
+
 runSeed('market', 'gulf-quotes', CANONICAL_KEY, fetchGulfQuotes, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'alphavantage+yahoo-chart',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

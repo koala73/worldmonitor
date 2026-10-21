@@ -1,5 +1,6 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 const originalFetch = globalThis.fetch;
 const originalAbortSignalTimeout = AbortSignal.timeout;
@@ -66,6 +67,87 @@ afterEach(() => {
   restoreGlobals();
 });
 
+describe('bundled Crimea attribution', () => {
+  it('selects Ukraine throughout inland Crimea and preserves mainland attribution', async () => {
+    const bundled = JSON.parse(readFileSync(new URL('../public/data/countries.geojson', import.meta.url), 'utf8'));
+    globalThis.fetch = (async (input) => {
+      if (String(input) === '/data/countries.geojson') return jsonResponse(bundled);
+      return jsonResponse({ type: 'FeatureCollection', features: [] });
+    }) as typeof fetch;
+    const geometry = await loadFreshCountryGeometryModule();
+    await geometry.preloadCountryGeometry();
+    const crimeaLocations = [
+      ['Simferopol', 44.9521, 34.1024, 'UA'],
+      ['Bakhchysarai', 44.752, 33.861, 'UA'],
+      ['Bilohirsk', 45.054, 34.602, 'UA'],
+      ['Dzhankoi', 45.708, 34.393, 'UA'],
+    ] as const;
+    for (const [name, lat, lon, code] of [
+      ...crimeaLocations,
+      ['Kyiv', 50.4501, 30.5234, 'UA'],
+      ['Donetsk', 48.0159, 37.8028, 'UA'],
+      ['Moscow', 55.7558, 37.6173, 'RU'],
+      ['Krasnodar', 45.0355, 38.9753, 'RU'],
+      ['Vladivostok', 43.1155, 131.8855, 'RU'],
+    ] as const) {
+      assert.equal(geometry.getCountryAtCoordinates(lat, lon)?.code, code, name);
+    }
+    bundled.features = bundled.features.filter((feature: { properties: Record<string, string> }) =>
+      feature.properties['ISO3166-1-Alpha-2'] === 'RU');
+    const russiaOnly = await loadFreshCountryGeometryModule();
+    await russiaOnly.preloadCountryGeometry();
+    for (const [name, lat, lon] of crimeaLocations) {
+      assert.equal(russiaOnly.getCountryAtCoordinates(lat, lon), null, `${name} must not overlap Russia`);
+    }
+  });
+});
+
+describe('country geometry political overrides', () => {
+  it('rewrites CN-TW feature properties to TW and indexes under TW', async () => {
+    globalThis.fetch = ((input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === '/data/countries.geojson') {
+        return Promise.resolve(jsonResponse({
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {
+                name: 'Taiwan',
+                'ISO3166-1-Alpha-2': 'CN-TW',
+                'ISO3166-1-Alpha-3': 'TWN',
+              },
+              geometry: {
+                type: 'Polygon',
+                coordinates: [[[120, 22], [122, 22], [122, 25], [120, 25], [120, 22]]],
+              },
+            },
+          ],
+        }));
+      }
+      if (url === 'https://maps.worldmonitor.app/country-boundary-overrides.geojson') {
+        return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));
+      }
+      return Promise.reject(new Error(`Unexpected URL: ${url}`));
+    }) as typeof fetch;
+
+    const countryGeometry = await loadFreshCountryGeometryModule();
+    await countryGeometry.preloadCountryGeometry();
+
+    assert.equal(countryGeometry.canonicalizeCountryCode('CN-TW'), 'TW');
+    assert.equal(countryGeometry.canonicalizeCountryCode('tw'), 'TW');
+    assert.equal(countryGeometry.canonicalizeCountryCode('JP'), 'JP');
+    assert.deepEqual(countryGeometry.getCountryAtCoordinates(23.5, 121), {
+      code: 'TW',
+      name: 'Taiwan',
+    });
+    const geojson = await countryGeometry.getCountriesGeoJson();
+    assert.equal(geojson?.features[0]?.properties?.['ISO3166-1-Alpha-2'], 'TW');
+    assert.equal(countryGeometry.hasCountryGeometry('TW'), true);
+    assert.equal(countryGeometry.hasCountryGeometry('CN-TW'), false);
+  });
+});
+
 describe('country geometry overrides', () => {
   it('loads bundled geometry when override fetch times out', async () => {
     installFastAbortTimeout();
@@ -118,4 +200,34 @@ describe('country geometry overrides', () => {
       name: 'Pakistan',
     });
   });
+});
+
+describe('country geometry recovery', () => {
+  for (const failure of ['network', 'http', 'invalid', 'index'] as const) {
+    it(`retries after ${failure} failure and shares concurrent loads`, async () => {
+      let requests = 0;
+      globalThis.fetch = (async (input) => {
+        if (String(input) !== '/data/countries.geojson') return jsonResponse(makeFeatureCollection(2));
+        requests++;
+        if (requests === 1) {
+          if (failure === 'network') throw new Error('offline');
+          if (failure === 'http') return new Response('', { status: 503 });
+          if (failure === 'index') return jsonResponse({ type: 'FeatureCollection', features: [...makeFeatureCollection(1).features, null] });
+          return jsonResponse({ type: 'invalid' });
+        }
+        return jsonResponse(makeFeatureCollection(1));
+      }) as typeof fetch;
+      const geometry = await loadFreshCountryGeometryModule();
+      await Promise.all([geometry.preloadCountryGeometry(), geometry.preloadCountryGeometry()]);
+      assert.equal(requests, 1);
+      assert.equal(geometry.isCountryGeometryLoaded(), false);
+      assert.equal(geometry.nameToCountryCode('Pakistan'), null);
+      await Promise.all([geometry.preloadCountryGeometry(), geometry.getCountriesGeoJson()]);
+      assert.equal(requests, 2);
+      assert.equal(geometry.isCountryGeometryLoaded(), true);
+      assert.equal(geometry.getCountryAtCoordinates(1.5, 1.5)?.code, 'PK');
+      await geometry.preloadCountryGeometry();
+      assert.equal(requests, 2, 'successful data remains cached');
+    });
+  }
 });

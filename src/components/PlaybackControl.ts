@@ -1,5 +1,8 @@
 import { getSnapshotTimestamps, getSnapshotAt, type DashboardSnapshot } from '@/services/storage';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { LatestRequestGuard } from '@/utils/latest-request-guard';
+
 
 export class PlaybackControl {
   private element: HTMLElement;
@@ -7,11 +10,13 @@ export class PlaybackControl {
   private timestamps: number[] = [];
   private currentIndex = 0;
   private onSnapshotChange: ((snapshot: DashboardSnapshot | null) => void) | null = null;
+  private snapshotGuard = new LatestRequestGuard();
+  private timestampGuard = new LatestRequestGuard();
 
   constructor() {
     this.element = document.createElement('div');
     this.element.className = 'playback-control';
-    this.element.innerHTML = `
+    setTrustedHtml(this.element, trustedHtml(`
       <button class="playback-toggle" title="${t('components.playback.toggleMode')}" aria-label="${t('components.playback.toggleMode')}">
         <span class="playback-icon">⏪</span>
       </button>
@@ -21,7 +26,7 @@ export class PlaybackControl {
           <button class="playback-close" aria-label="${t('components.playback.close')}">×</button>
         </div>
         <div class="playback-slider-container">
-          <input type="range" class="playback-slider" min="0" max="100" value="100">
+          <input type="range" class="playback-slider" min="0" max="100" value="100" aria-label="${t('components.playback.historicalPlayback')}">
           <div class="playback-time">${t('components.playback.live')}</div>
         </div>
         <div class="playback-controls">
@@ -32,7 +37,7 @@ export class PlaybackControl {
           <button class="playback-btn" data-action="end" aria-label="${t('components.playback.skipToEnd')}">⏭</button>
         </div>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     this.setupEventListeners();
   }
@@ -47,10 +52,13 @@ export class PlaybackControl {
       panel.classList.toggle('hidden');
       if (!panel.classList.contains('hidden')) {
         await this.loadTimestamps();
+      } else {
+        this.timestampGuard.begin();
       }
     });
 
     closeBtn.addEventListener('click', () => {
+      this.timestampGuard.begin();
       panel.classList.add('hidden');
       this.goLive();
     });
@@ -70,8 +78,10 @@ export class PlaybackControl {
   }
 
   private async loadTimestamps(): Promise<void> {
-    this.timestamps = await getSnapshotTimestamps();
-    if (!this.element?.isConnected) return;
+    const requestId = this.timestampGuard.begin();
+    const timestamps = await getSnapshotTimestamps();
+    if (!this.timestampGuard.isCurrent(requestId) || !this.element?.isConnected) return;
+    this.timestamps = timestamps;
     this.timestamps.sort((a, b) => a - b);
 
     const slider = this.element.querySelector('.playback-slider') as HTMLInputElement;
@@ -94,11 +104,12 @@ export class PlaybackControl {
       return;
     }
 
+    const requestId = this.snapshotGuard.begin();
     this.isPlaybackMode = true;
     this.updateTimeDisplay();
 
     const snapshot = await getSnapshotAt(timestamp);
-    if (!this.element?.isConnected) return;
+    if (!this.snapshotGuard.isCurrent(requestId) || !this.isPlaybackMode || !this.element?.isConnected) return;
     this.onSnapshotChange?.(snapshot);
 
     document.body.classList.add('playback-mode');
@@ -106,6 +117,7 @@ export class PlaybackControl {
   }
 
   private goLive(): void {
+    this.snapshotGuard.begin();
     this.isPlaybackMode = false;
     this.currentIndex = this.timestamps.length - 1;
 
@@ -163,6 +175,24 @@ export class PlaybackControl {
       });
       display.classList.add('historical');
     }
+  }
+
+  /**
+   * Return to live data and close the panel — for the premium gate revoking
+   * access while a snapshot is being replayed (#5632). Hiding the control is
+   * not enough on its own: the "Live" button lives INSIDE the element being
+   * hidden, so the dashboard would be stranded on historical data with no way
+   * back.
+   *
+   * The `isPlaybackMode` guard is load-bearing. The gate evaluates to a
+   * non-visible verdict at least once on every page load ('pending' while
+   * Clerk hydrates), and an unguarded call would fire `onSnapshotChange(null)`
+   * — and therefore a full `loadAllData()` — on each of them.
+   */
+  public exitPlayback(): void {
+    if (!this.isPlaybackMode) return;
+    this.element.querySelector('.playback-panel')?.classList.add('hidden');
+    this.goLive();
   }
 
   public onSnapshot(callback: (snapshot: DashboardSnapshot | null) => void): void {

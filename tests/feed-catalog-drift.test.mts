@@ -1,0 +1,1518 @@
+/**
+ * Feed-catalog drift guards (follow-up to PR #5405).
+ *
+ * Regression this locks: "Breaking Defense" sat in DEFAULT_ENABLED_INTEL,
+ * SOURCE_TYPES and source-tiers.json for months with NO entry in either feed
+ * catalog, so it was enabled-by-default and permanently unfetchable. The only
+ * thing that noticed was a `console.error` inside `if (import.meta.env.DEV)`
+ * in src/config/feeds.ts — a branch that never executes under CI, because the
+ * test harness bundles feeds.ts with `DEV: false`. The guard existed and was
+ * structurally incapable of failing a build.
+ *
+ * This promotes that dead DEV-only check into an executable assertion, and
+ * covers the same dangling-name class for the two sibling registries that are
+ * keyed independently of the catalogs (source tiers and source types).
+ *
+ * Loading note: src/config/feeds.ts pulls `rssProxyUrl` → `import.meta.env.DEV`,
+ * and Node/tsx has no Vite env object, so we esbuild-bundle with defines — the
+ * shared harness lives in tests/_lib/bundle-feeds-module.mts.
+ */
+import { describe, it, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { build } from 'esbuild';
+import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
+import { isAllowedDomain } from '../api/_rss-allowed-domain-match.js';
+import { computeCapDisabledSources, selectSourcesUnderCap } from '../src/services/source-cap';
+import {
+  applyMigrationChain,
+  buildMigrations,
+  migrateRegionalFeedRolloutDefaultsV5,
+  migrateStrategicDefaultsV4,
+} from '../src/utils/cloud-prefs-migrations';
+import { THEATER_PRESETS } from '../src/config/theater-presets';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoRoot = join(__dirname, '..');
+const tempDir = join(repoRoot, 'tmp-feed-catalog-drift-test');
+const serverOutfile = join(tempDir, 'server-feeds-bundle.mjs');
+
+interface FeedEntry {
+  name: string;
+  lang?: string;
+  strategicDefault?: boolean;
+  url: string | Record<string, string>;
+}
+
+interface FeedsModule {
+  DEFAULT_ENABLED_SOURCES: Record<string, string[]>;
+  DEFAULT_ENABLED_INTEL: string[];
+  FREE_CAP_PROTECTED_SOURCES: readonly string[];
+  FRONTLINE_EUROPE_PROTECTED_SOURCES: readonly string[];
+  CANADA_EN_DEFAULT_SOURCES: readonly string[];
+  CANADA_ARCTIC_OPT_IN_SOURCES: readonly string[];
+  CANADA_DEPTH_OPT_IN_SOURCES: readonly string[];
+  REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES: readonly string[];
+  REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES: readonly string[];
+  CRISIS_FLOOR_EN_DEFAULT_SOURCES: readonly string[];
+  CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES: readonly string[];
+  CRISIS_FLOOR_OPT_IN_SOURCES: readonly string[];
+  CRISIS_DESK_ROLLOUT_SOURCES: readonly string[];
+  INTEL_SOURCES: FeedEntry[];
+  SOURCE_TYPES: Record<string, string>;
+  SOURCE_PROPAGANDA_RISK: Record<string, { risk: string; stateAffiliated?: string }>;
+  FULL_FEEDS?: Record<string, FeedEntry[]>;
+  FEEDS: Record<string, FeedEntry[]>;
+  getAllDefaultEnabledSources: () => Set<string>;
+  getStrategicDefaultSources: () => Set<string>;
+  getLocaleBoostedSources: (locale: string) => Set<string>;
+  getSourcePanelId: (sourceName: string) => string;
+  computeDefaultDisabledSources: (locale?: string) => string[];
+  computePreStrategicDefaultDisabledSources: (locale?: string) => string[];
+  computeLegacyDefaultDisabledSources: () => string[];
+  computePreRegionalFeedRolloutDefaultDisabledSources: (locale?: string) => string[];
+  listConfiguredFeedNames: () => string[];
+}
+
+interface ServerFeedsModule {
+  VARIANT_FEEDS: Record<string, Record<string, FeedEntry[]>>;
+  isServerFeedReachableForLanguage: (
+    feed: Pick<FeedEntry, 'lang' | 'strategicDefault'>,
+    language: string,
+  ) => boolean;
+}
+
+interface RegionalRolloutModule {
+  buildPreStrategicDefaultDisabledStates: (
+    cap: number,
+    locale?: string,
+  ) => Array<ReadonlySet<string>>;
+  buildRegionalFeedRolloutMigrationTargets: (
+    cap: number,
+    locale?: string,
+  ) => Array<{
+    legacyDisabled: ReadonlySet<string>;
+    defaultNames: ReadonlySet<string>;
+    optInNames: ReadonlySet<string>;
+  }>;
+}
+
+/** Sources #5949/#5950 ship as EN-default frontline Europe coverage (cap-protected). */
+const FRONTLINE_EUROPE = [
+  'Kyiv Independent',
+  'TVN24',
+  'Rzeczpospolita',
+  'Meduza',
+  'Moscow Times',
+  'NV EN',
+  'Ukrainska Pravda EN',
+] as const;
+
+const EASTERN_FLANK_EN_DEFAULTS = ['Daily Sabah', 'ERR News'] as const;
+const EASTERN_FLANK_FEEDS = {
+  Digi24: { url: 'https://www.digi24.ro/rss', lang: 'ro' },
+  HotNews: { url: 'https://www.hotnews.ro/rss', lang: 'ro' },
+  G4Media: { url: 'https://www.g4media.ro/feed/', lang: 'ro' },
+  Dnevnik: { url: 'https://www.dnevnik.bg/rss/', lang: 'bg' },
+  'Seznam Zprávy': { url: 'https://www.seznamzpravy.cz/rss', lang: 'cs' },
+  'ERR News': { url: 'https://news.err.ee/rss' },
+  'LRT English': { url: 'https://www.lrt.lt/en/news-in-english?rss' },
+  'LSM English': { url: 'https://eng.lsm.lv/rss/' },
+  'Daily Sabah': { url: 'https://www.dailysabah.com/rss/home-page' },
+} as const;
+
+const POLAND_DEPTH_FEEDS = {
+  PAP: {
+    url: 'https://news.google.com/rss/search?q=site%3Apap.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl',
+    lang: 'pl',
+    countries: ['PL'],
+  },
+  'Gazeta Wyborcza': {
+    url: 'https://news.google.com/rss/search?q=site%3Awyborcza.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl',
+    lang: 'pl',
+    countries: ['PL'],
+  },
+  Polityka: {
+    url: 'https://news.google.com/rss/search?q=site%3Apolityka.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl',
+    lang: 'pl',
+    countries: ['PL'],
+  },
+  Onet: {
+    url: 'https://news.google.com/rss/search?q=site%3Awiadomosci.onet.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl',
+    lang: 'pl',
+    countries: ['PL'],
+  },
+  'OKO.press': {
+    url: 'https://oko.press/feed',
+    lang: 'pl',
+    countries: ['PL'],
+  },
+  'TVP Info': {
+    url: 'https://news.google.com/rss/search?q=site%3Atvp.info%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl',
+    lang: 'pl',
+    countries: ['PL'],
+  },
+} as const;
+
+const STRATEGIC_DEFAULTS = [
+  'ActuNiger',
+  'Annahar',
+  'Hurriyet',
+  'Polsat News',
+  'Studio Tamani',
+  'Kathimerini',
+  'Jeune Afrique',
+  'Asahi Shimbun',
+  'MIIT (China)',
+  'MOFCOM (China)',
+  'Bangkok Post',
+  'VnExpress',
+  'Yonhap News',
+  'leFaso.net',
+] as const;
+const AFRICA_DEPTH_EN_DEFAULTS = ['Hiiraan Online', 'RFI Afrique'] as const;
+const AFRICA_DEPTH_FEEDS = {
+  'Radio Tamazuj': { url: 'https://www.radiotamazuj.org/en/feed' },
+  'The Reporter Ethiopia': { url: 'https://www.thereporterethiopia.com/feed/' },
+  'Ethiopia Insight': { url: 'https://www.ethiopia-insight.com/feed/' },
+  'Dabanga Sudan': { url: 'https://www.dabangasudan.org/en/feed' },
+  'Hiiraan Online': { url: 'https://news.google.com/rss/search?q=site%3Ahiiraan.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en' },
+  'Actualite.cd': { url: 'https://actualite.cd/feed', lang: 'fr' },
+  'Radio Okapi': { url: 'https://www.radiookapi.net/rss.xml', lang: 'fr' },
+  'MyJoyOnline': { url: 'https://www.myjoyonline.com/feed/' },
+  'Citi Newsroom': { url: 'https://news.google.com/rss/search?q=site%3Acitinewsroom.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en' },
+  'Le Quotidien': { url: 'https://lequotidien.sn/feed/', lang: 'fr' },
+  'RFI Afrique': { url: 'https://www.rfi.fr/en/africa/rss' },
+} as const;
+
+const CRISIS_DESK_PACK = {
+  'Yemen Online': { category: 'middleeast', countries: ['YE'], url: 'https://news.google.com/rss/search?q=site%3Ayemenonline.info%20when%3A14d&hl=en-US&gl=US&ceid=US:en', role: 'en-default' },
+  "Sana'a Center": { category: 'middleeast', countries: ['YE'], url: 'https://sanaacenter.org/feed/', role: 'opt-in' },
+  'Syria Direct': { category: 'middleeast', countries: ['SY'], url: 'https://syriadirect.org/feed/', role: 'en-default' },
+  'Enab Baladi English': { category: 'middleeast', countries: ['SY'], url: 'https://news.google.com/rss/search?q=site%3Aenglish.enabbaladi.net%20when%3A14d&hl=en-US&gl=US&ceid=US:en', role: 'opt-in' },
+  '+972 Magazine': { category: 'middleeast', countries: ['IL', 'PS'], url: 'https://www.972mag.com/feed/', role: 'en-default' },
+  'WAFA English': { category: 'middleeast', countries: ['PS'], url: 'https://news.google.com/rss/search?q=site%3Aenglish.wafa.ps%20when%3A7d&hl=en-US&gl=US&ceid=US:en', role: 'opt-in' },
+  'HaitiLibre English': { category: 'latam', countries: ['HT'], url: 'https://www.haitilibre.com/rss-flash-en.php', role: 'en-default' },
+  AyiboPost: { category: 'latam', countries: ['HT'], url: 'https://news.google.com/rss/search?q=site%3Aayibopost.com%20Haiti%20when%3A14d&hl=fr&gl=FR&ceid=FR:fr', lang: 'fr', role: 'opt-in' },
+  'Amu TV': { category: 'asia', countries: ['AF'], url: 'https://amu.tv/feed/', role: 'en-default' },
+  'Pajhwok Afghan News': { category: 'asia', countries: ['AF'], url: 'https://news.google.com/rss/search?q=site%3Apajhwok.com%20Afghanistan%20when%3A7d&hl=en-US&gl=US&ceid=US:en', role: 'opt-in' },
+  'Naharnet Lebanon': { category: 'middleeast', countries: ['LB'], url: 'https://www.naharnet.com/tags/lebanon/en/feed.atom', role: 'en-default' },
+  "L'Orient Today": { category: 'middleeast', countries: ['LB'], url: 'https://news.google.com/rss/search?q=site%3Alorientlejour.com%20Lebanon%20when%3A7d&hl=en-US&gl=US&ceid=US:en', role: 'opt-in' },
+  Annahar: { category: 'middleeast', countries: ['LB'], url: 'https://news.google.com/rss/search?q=site%3Aannahar.com%2Flebanon%20when%3A7d&hl=ar&gl=LB&ceid=LB:ar', lang: 'ar', strategicDefault: true, role: 'strategic-default' },
+  'Studio Tamani': { category: 'africa', countries: ['ML'], url: 'https://www.studiotamani.org/feed/', lang: 'fr', strategicDefault: true, role: 'strategic-default' },
+  'leFaso.net': { category: 'africa', countries: ['BF'], url: 'https://lefaso.net/spip.php?page=backend', lang: 'fr', strategicDefault: true, role: 'strategic-default' },
+  ActuNiger: { category: 'africa', countries: ['NE'], url: 'https://news.google.com/rss/search?q=site%3Aactuniger.com%20Niger%20when%3A7d&hl=fr&gl=FR&ceid=FR:fr', lang: 'fr', strategicDefault: true, role: 'strategic-default' },
+  'Aïr Info': { category: 'africa', countries: ['NE'], url: 'https://airinfoagadez.com/feed/', lang: 'fr', role: 'opt-in' },
+  'Caracas Chronicles': { category: 'latam', countries: ['VE'], url: 'https://www.caracaschronicles.com/feed/', role: 'en-default' },
+  'Efecto Cocuyo': { category: 'latam', countries: ['VE'], url: 'https://efectococuyo.com/feed/', lang: 'es', role: 'opt-in' },
+  'Havana Times': { category: 'latam', countries: ['CU'], url: 'https://havanatimes.org/feed/', role: 'en-default' },
+  '14ymedio': { category: 'latam', countries: ['CU'], url: 'https://www.14ymedio.com/rss/', lang: 'es', role: 'opt-in' },
+  'Libya Herald': { category: 'middleeast', countries: ['LY'], url: 'https://libyaherald.com/rss.xml', role: 'en-default' },
+  'Egypt Independent': { category: 'middleeast', countries: ['EG'], url: 'https://www.egyptindependent.com/feed/', role: 'en-default' },
+  'Mada Masr': { category: 'middleeast', countries: ['EG'], url: 'https://news.google.com/rss/search?q=site%3Amadamasr.com%20when%3A30d&hl=en-US&gl=US&ceid=US:en', role: 'opt-in' },
+  'The Daily Star': { category: 'asia', countries: ['BD'], url: 'https://news.google.com/rss/search?q=site%3Athedailystar.net%20when%3A14d&hl=en-US&gl=US&ceid=US:en', role: 'en-default' },
+  'Dhaka Tribune': { category: 'asia', countries: ['BD'], url: 'https://news.google.com/rss/search?q=site%3Adhakatribune.com%20when%3A14d&hl=en-US&gl=US&ceid=US:en', role: 'opt-in' },
+  'Daily Nation': { category: 'africa', countries: ['KE'], url: 'https://nation.africa/kenya/rss.xml', role: 'en-default' },
+  'The Guardian Post': { category: 'africa', countries: ['CM'], url: 'https://news.google.com/rss/search?q=site%3Atheguardianpostcameroon.com%20when%3A30d&hl=en-US&gl=US&ceid=US:en', role: 'en-default' },
+  Tchadinfos: { category: 'africa', countries: ['TD'], url: 'https://tchadinfos.com/feed/', lang: 'fr', role: 'opt-in' },
+  'Alwihda Info': { category: 'africa', countries: ['TD'], url: 'https://www.alwihdainfo.com/rss/', lang: 'fr', role: 'opt-in' },
+  'Radio Ndeke Luka': { category: 'africa', countries: ['CF'], url: 'https://www.radiondekeluka.org/feed/', lang: 'fr', role: 'opt-in' },
+} as const;
+
+const REGIONAL_ROLLOUT_DEFAULTS = [
+  'Daily Sabah',
+  'ERR News',
+  'Civil.ge',
+  'OC Media',
+  'Eurasianet',
+  'The Astana Times',
+  'Focus Taiwan',
+  'Dawn',
+  'Rappler',
+  'Hiiraan Online',
+  'RFI Afrique',
+] as const;
+
+const REGIONAL_ROLLOUT_OPT_INS = [
+  'Seznam Zprávy',
+  'Digi24',
+  'HotNews',
+  'G4Media',
+  'Dnevnik',
+  'LRT English',
+  'LSM English',
+  'JAMnews',
+  'Azertag',
+  'Armenpress',
+  'Zerkalo',
+  'NewsMaker',
+  'Ziarul de Gardă',
+  'Radio Tamazuj',
+  'The Reporter Ethiopia',
+  'Actualite.cd',
+  'Radio Okapi',
+  'MyJoyOnline',
+  'Le Quotidien',
+  'RFE/RL Central Asia',
+  'The Times of Central Asia',
+  'Taipei Times',
+  'Taiwan News',
+  'Geo News',
+  'Jakarta Post',
+  'The Star (Malaysia)',
+  'Irrawaddy',
+  'Ethiopia Insight',
+  'Dabanga Sudan',
+  'Citi Newsroom',
+] as const;
+
+const INITIAL_FRONTLINE_DEFAULTS = [
+  'Kyiv Independent',
+  'TVN24',
+  'Rzeczpospolita',
+  'Meduza',
+  'Moscow Times',
+] as const;
+
+const UKRAINE_DEPTH_DEFAULTS = ['Ukrainska Pravda EN', 'NV EN', 'ISW'] as const;
+const UKRAINE_DEPTH_OPT_INS = ['Ukrinform', 'Suspilne', 'Hromadske EN'] as const;
+const UKRAINE_DEPTH_NAMES = [...UKRAINE_DEPTH_DEFAULTS, ...UKRAINE_DEPTH_OPT_INS] as const;
+const RECONCILED_ROLLOUT_DEFAULTS = [
+  ...FRONTLINE_EUROPE,
+  'ISW',
+  ...REGIONAL_ROLLOUT_DEFAULTS,
+  ...STRATEGIC_DEFAULTS,
+] as const;
+const RECONCILED_ROLLOUT_OPT_INS = [
+  ...UKRAINE_DEPTH_OPT_INS,
+  ...REGIONAL_ROLLOUT_OPT_INS,
+] as const;
+
+const REPAIRED_REGIONAL_FEEDS = {
+  'Civil.ge': { url: 'https://civil.ge/feed/' },
+  'OC Media': { url: 'https://oc-media.org/feed/' },
+  JAMnews: { url: 'https://jam-news.net/feed/' },
+  NewsMaker: { url: 'https://newsmaker.md/feed', lang: 'ru' },
+  'Ziarul de Gardă': { url: 'https://www.zdg.md/feed/', lang: 'ro' },
+  Eurasianet: { url: 'https://eurasianet.org/rss' },
+  'The Astana Times': { url: 'https://astanatimes.com/feed/' },
+  'The Times of Central Asia': { url: 'https://timesca.com/feed/' },
+  'Focus Taiwan': { url: 'https://news.google.com/rss/search?q=site%3Afocustaiwan.tw%20when%3A3d&hl=en-US&gl=US&ceid=US:en' },
+  'Taipei Times': { url: 'https://news.google.com/rss/search?q=site%3Ataipeitimes.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en' },
+  'Taiwan News': { url: 'https://news.google.com/rss/search?q=site%3Ataiwannews.com.tw%20when%3A3d&hl=en-US&gl=US&ceid=US:en' },
+  'Jakarta Post': { url: 'https://news.google.com/rss/search?q=site%3Athejakartapost.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en' },
+  'The Star (Malaysia)': { url: 'https://news.google.com/rss/search?q=site%3Athestar.com.my%20when%3A3d&hl=en-US&gl=US&ceid=US:en' },
+} as const;
+
+const UNUSED_REGIONAL_PUBLISHER_HOSTS = [
+  'focustaiwan.tw',
+  'www.taipeitimes.com',
+  'www.taiwannews.com.tw',
+  'www.geo.tv',
+  'www.thejakartapost.com',
+  'www.thestar.com.my',
+] as const;
+
+let feeds: FeedsModule;
+let serverFeeds: ServerFeedsModule;
+let regionalRollout: RegionalRolloutModule;
+
+before(async () => {
+  feeds = await bundleFeedsModule<FeedsModule>({ repoRoot, tempDir });
+
+  const serverResult = await build({
+    entryPoints: [join(repoRoot, 'server/worldmonitor/news/v1/_feeds.ts')],
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    target: 'es2022',
+    write: false,
+    absWorkingDir: repoRoot,
+  });
+  writeFileSync(serverOutfile, serverResult.outputFiles[0].text, 'utf8');
+  serverFeeds = await import(`${pathToFileURL(serverOutfile).href}?t=${Date.now()}`) as ServerFeedsModule;
+
+  regionalRollout = await bundleFeedsModule<RegionalRolloutModule>({
+    repoRoot,
+    tempDir,
+    outfileName: 'regional-rollout-bundle.mjs',
+    entryPoint: join(repoRoot, 'src/services/regional-feed-rollout.ts'),
+  });
+});
+
+after(() => {
+  rmSync(tempDir, { recursive: true, force: true });
+});
+
+describe('feed catalog drift', () => {
+  it('does not add unreviewed cross-category aliases for one server feed URL', () => {
+    // fetchAndParseRss caches parsed items by variant + URL, and each parsed
+    // item carries the feed name. Reusing one URL under different names in
+    // sibling categories lets a warm cache relabel one category's items; the
+    // client then drops them after they consumed the server category cap.
+    // Keep the two pre-existing aliases explicit until their panels can be
+    // reconciled, and reject every new instance of this failure mode.
+    const reviewedAliases = new Set([
+      'commodity|https://www.cnbc.com/id/100003114/device/rss/rss.html|finance:CNBC|markets:CNBC Markets',
+      'full|https://news.google.com/rss/search?q=(oil%20price%20OR%20OPEC%20OR%20%22natural%20gas%22%20OR%20pipeline%20OR%20LNG)%20when%3A2d&hl=en-US&gl=US&ceid=US:en|commodities:Oil & Gas|energy:Oil & Gas',
+    ]);
+    const unreviewedAliases: string[] = [];
+
+    for (const [variant, categories] of Object.entries(serverFeeds.VARIANT_FEEDS)) {
+      const byUrl = new Map<string, string[]>();
+      for (const [category, entries] of Object.entries(categories)) {
+        for (const feed of entries) {
+          if (typeof feed.url !== 'string') continue;
+          const labels = byUrl.get(feed.url) ?? [];
+          labels.push(`${category}:${feed.name}`);
+          byUrl.set(feed.url, labels);
+        }
+      }
+      for (const [url, labels] of byUrl) {
+        if (labels.length < 2) continue;
+        const signature = `${variant}|${url}|${labels.sort().join('|')}`;
+        if (!reviewedAliases.has(signature)) unreviewedAliases.push(signature);
+      }
+    }
+
+    assert.deepEqual(
+      unreviewedAliases,
+      [],
+      'A server digest variant reuses one feed URL under multiple category/source aliases. ' +
+        'Because the parsed RSS cache is keyed by variant + URL and retains source names, ' +
+        'remove the duplicate alias or explicitly review and grandfather it.',
+    );
+  });
+
+  it('every default-enabled source resolves to a configured feed', () => {
+    const configured = new Set(feeds.listConfiguredFeedNames());
+    const dangling = [...feeds.getAllDefaultEnabledSources()]
+      .filter((name) => !configured.has(name))
+      .sort();
+
+    assert.deepEqual(
+      dangling,
+      [],
+      `DEFAULT_ENABLED_* names with no entry in FULL_FEEDS or INTEL_SOURCES: ${dangling.join(', ')}. ` +
+        'A default-enabled source without a feed definition is silently unfetchable — ' +
+        'add it to the catalog or remove it from the default-enabled list.',
+    );
+  });
+
+  it('strategic defaults are canonical, EN-enabled, cap-protected, and server-mirrored', () => {
+    const expected = new Set(STRATEGIC_DEFAULTS);
+    assert.deepEqual(
+      [...feeds.getStrategicDefaultSources()].sort(),
+      [...expected].sort(),
+      'strategic default declarations must match the closed-world source list',
+    );
+
+    const clientByName = new Map(
+      Object.values(feeds.FEEDS ?? {}).flat().map((feed) => [feed.name, feed]),
+    );
+    const serverByName = new Map(
+      Object.values(serverFeeds.VARIANT_FEEDS.full ?? {}).flat().map((feed) => [feed.name, feed]),
+    );
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+
+    for (const name of STRATEGIC_DEFAULTS) {
+      const client = clientByName.get(name);
+      const server = serverByName.get(name);
+      assert.ok(client?.strategicDefault, `${name} must be strategic on the client`);
+      assert.ok(server?.strategicDefault, `${name} must be strategic on the server`);
+      assert.ok(enabled.has(name), `${name} must be in the canonical default-enabled set`);
+      assert.ok(!disabledEn.has(name), `${name} must not be disabled for EN first boot`);
+      assert.equal(server?.lang, client?.lang, `${name} server/client language tags must match`);
+    }
+  });
+
+  it('reconstructs the exact pre-strategic default fingerprint', () => {
+    const legacyDisabled = new Set(feeds.computePreStrategicDefaultDisabledSources('en'));
+
+    assert.equal(
+      legacyDisabled.has('Jeune Afrique'),
+      false,
+      'a source that was already an explicit default before #6000 must remain enabled',
+    );
+    for (const name of STRATEGIC_DEFAULTS) {
+      if (name === 'Jeune Afrique') continue;
+      assert.ok(
+        legacyDisabled.has(name),
+        `${name} must be disabled in the untouched EN fingerprint from before #6000`,
+      );
+    }
+  });
+
+  it('migrates exact non-English pre-strategic default and cap states', () => {
+    const plStates = regionalRollout.buildPreStrategicDefaultDisabledStates(80, 'pl');
+    assert.ok(plStates.length > 0);
+    for (const state of plStates) {
+      assert.equal(state.has('Polsat News'), false, 'Polsat was already enabled by the PL locale');
+    }
+
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...plStates[0]!]),
+    };
+    const migrated = migrateStrategicDefaultsV4(
+      blob,
+      new Set(),
+      feeds.getStrategicDefaultSources(),
+      new Set(),
+      plStates,
+    );
+    const disabled = new Set(
+      JSON.parse(migrated['worldmonitor-disabled-feeds'] as string) as string[],
+    );
+    for (const name of STRATEGIC_DEFAULTS) {
+      assert.equal(disabled.has(name), false, `${name} must be enabled for the migrated PL profile`);
+    }
+
+    const ruStates = regionalRollout.buildPreStrategicDefaultDisabledStates(80, 'ru');
+    assert.ok(
+      ruStates.every((state) => state.has('NewsMaker')),
+      'NewsMaker must not be backdated into the pre-repair RU locale fingerprint',
+    );
+  });
+
+  it('keeps strategic reachability separate from English locale boosting', () => {
+    assert.deepEqual([...feeds.getLocaleBoostedSources('en')], []);
+    assert.equal(
+      serverFeeds.isServerFeedReachableForLanguage(
+        { lang: 'ja', strategicDefault: true },
+        'en',
+      ),
+      true,
+    );
+    assert.equal(
+      serverFeeds.isServerFeedReachableForLanguage({ lang: 'ja' }, 'en'),
+      false,
+    );
+  });
+
+  it('keeps strategic defaults under the free-tier source cap', () => {
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const protectedNames = new Set([
+      ...feeds.FREE_CAP_PROTECTED_SOURCES,
+      ...feeds.getStrategicDefaultSources(),
+    ]);
+    const { keep, autoDisabled } = selectSourcesUnderCap(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      disabledEn,
+      80,
+      protectedNames,
+    );
+
+    for (const name of STRATEGIC_DEFAULTS) {
+      assert.ok(keep.has(name), `${name} must survive the free-tier source cap`);
+      assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the cap`);
+    }
+  });
+
+  it('DEFAULT_ENABLED_INTEL names all exist in the intel catalog', () => {
+    const configured = new Set(feeds.listConfiguredFeedNames());
+    const dangling = feeds.DEFAULT_ENABLED_INTEL
+      .filter((name) => !configured.has(name))
+      .sort();
+
+    assert.deepEqual(dangling, [], `DEFAULT_ENABLED_INTEL dangling names: ${dangling.join(', ')}`);
+  });
+
+  // NOTE: deliberately NOT asserting the reverse direction (every source-tiers.json
+  // key resolves to a configured feed). ~41 tier entries on main name feeds that no
+  // longer exist, and an orphaned tier entry is inert — getSourceTier() simply never
+  // looks it up. Grandfathering 41 names would add noise without protecting anything.
+  // The dangerous direction is the one asserted above: enabled-by-default with no feed.
+
+  it('keeps the two source-tiers mirrors byte-identical', () => {
+    const shared = readFileSync(join(repoRoot, 'shared/source-tiers.json'), 'utf8');
+    const scripts = readFileSync(join(repoRoot, 'scripts/shared/source-tiers.json'), 'utf8');
+    assert.equal(scripts, shared, 'scripts/shared/source-tiers.json drifted from shared/source-tiers.json');
+  });
+
+  // Issue #5949 — EN full-variant defaults under-cover the Ukraine war.
+  // Kyiv Independent, PL frontline, and independent RU were cataloged but
+  // off-by-default, so users only saw Western wire/EU framing.
+  it('default-enables exact Ukraine/Poland/independent-Russia frontline set for EN (#5949)', () => {
+    const europe = feeds.DEFAULT_ENABLED_SOURCES.europe ?? [];
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+
+    for (const name of FRONTLINE_EUROPE) {
+      assert.ok(europe.includes(name), `${name} must be listed in DEFAULT_ENABLED_SOURCES.europe`);
+      assert.ok(enabled.has(name), `${name} must be in getAllDefaultEnabledSources()`);
+      assert.ok(
+        !disabledEn.has(name),
+        `${name} must not appear in computeDefaultDisabledSources('en')`,
+      );
+    }
+
+    // State propaganda stays cataloged but off-by-default.
+    for (const stateMedia of ['TASS', 'RT', 'RT Russia'] as const) {
+      assert.ok(
+        !enabled.has(stateMedia),
+        `${stateMedia} must remain off-by-default (state propaganda; catalog-only)`,
+      );
+      assert.ok(disabledEn.has(stateMedia), `${stateMedia} must be in EN disabled defaults`);
+    }
+
+    // Intel: Bellingcat stays on (already default-enabled).
+    assert.ok(
+      feeds.DEFAULT_ENABLED_INTEL.includes('Bellingcat'),
+      'Bellingcat must remain default-enabled in intel',
+    );
+  });
+
+  it('frontline Europe sources are EN-reachable (no exclusive non-en lang) (#5949)', () => {
+    // buildDigest filters `!f.lang || f.lang === lang`. A default-on source
+    // with only lang:'pl'/'ru' never contributes to EN digests.
+    const byName = new Map<string, FeedEntry>();
+    for (const feed of feeds.FEEDS.europe ?? []) byName.set(feed.name, feed);
+
+    for (const name of FRONTLINE_EUROPE) {
+      const feed = byName.get(name);
+      assert.ok(feed, `${name} must exist in FEEDS.europe catalog`);
+      assert.ok(
+        !feed.lang || feed.lang === 'en',
+        `${name} must not be gated to a non-en lang (got lang=${feed.lang ?? 'none'}); ` +
+          'use multi-URL without lang, or an English-only URL, so EN digests include it',
+      );
+      // Multi-URL sources must expose an `en` key for EN fetch resolution.
+      if (typeof feed.url === 'object' && feed.url !== null) {
+        assert.ok(
+          typeof feed.url.en === 'string' && feed.url.en.length > 0,
+          `${name} multi-URL entry must include a non-empty en URL`,
+        );
+      }
+    }
+
+    const expectedEnUrls: Record<string, string> = {
+      TVN24: 'https://tvn24.pl/swiat.xml',
+      Rzeczpospolita: 'https://www.rp.pl/rss_main',
+    };
+    for (const [name, url] of Object.entries(expectedEnUrls)) {
+      const feed = byName.get(name);
+      assert.equal(
+        typeof feed?.url === 'object' ? feed.url.en : undefined,
+        url,
+        `${name} EN must use the verified native RSS fallback`,
+      );
+    }
+  });
+
+  it('server VARIANT_FEEDS.full.europe catalogs the same frontline names (#5949)', () => {
+    // Digest path is the product path for full/EN europe. Import the server
+    // catalog so this assertion exercises the executable data structure rather
+    // than passing because a source name appears in a comment or string.
+    const europe = serverFeeds.VARIANT_FEEDS.full?.europe ?? [];
+    const byName = new Map(europe.map((feed) => [feed.name, feed]));
+    const expectedUrls: Record<string, string> = {
+      'Kyiv Independent': 'https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en',
+      'Ukrainska Pravda EN': 'https://news.google.com/rss/search?q=site%3Aeuromaidanpress.com%20when%3A2d&hl=en-US&gl=US&ceid=US:en',
+      'NV EN': 'https://news.google.com/rss/search?q=site%3Aenglish.nv.ua%20when%3A2d&hl=en-US&gl=US&ceid=US:en',
+      TVN24: 'https://tvn24.pl/swiat.xml',
+      Rzeczpospolita: 'https://www.rp.pl/rss_main',
+      Meduza: 'https://meduza.io/rss/en/all',
+      'Moscow Times': 'https://www.themoscowtimes.com/rss/news',
+    };
+    for (const name of FRONTLINE_EUROPE) {
+      const feed = byName.get(name);
+      assert.ok(feed, `server VARIANT_FEEDS.full.europe must include "${name}" for EN digests`);
+      assert.equal(feed?.url, expectedUrls[name], `server EN URL drifted for "${name}"`);
+      assert.ok(!feed?.lang, `server entry for "${name}" must not set a non-en lang`);
+    }
+  });
+
+  it('server full digest catalogs every theater preset source in its client panel (#5956)', () => {
+    const missing: string[] = [];
+    for (const preset of THEATER_PRESETS) {
+      for (const sourceName of preset.sourceNames) {
+        const category = feeds.getSourcePanelId(sourceName);
+        const serverCategory = serverFeeds.VARIANT_FEEDS.full?.[category] ?? [];
+        if (!serverCategory.some((feed) => feed.name === sourceName)) {
+          missing.push(`${preset.id}/${category}: ${sourceName}`);
+        }
+      }
+    }
+
+    assert.deepEqual(
+      missing,
+      [],
+      'every theater preset source must be served by the matching full-variant digest category: ' +
+        missing.join(', '),
+    );
+  });
+
+  it('does not default-enable Hungary/Greece locale packs for EN (#5949)', () => {
+    const enabled = feeds.getAllDefaultEnabledSources();
+    // These stay locale-boosted (lang: hu / el), not EN default-on.
+    // Kathimerini is now a strategic default (#6000), so it is intentionally
+    // excluded from this locale-only control set.
+    for (const localeOnly of [
+      'Telex',
+      'Index.hu',
+      'Naftemporiki',
+      'in.gr',
+      'iefimerida',
+      'Proto Thema',
+      'ERT',
+      'AMNA',
+      'Ta Nea',
+      'Liberal GR',
+      'CNN Greece',
+    ] as const) {
+      assert.ok(
+        !enabled.has(localeOnly),
+        `${localeOnly} must stay locale-boosted, not EN default-on`,
+      );
+    }
+    // Sanity: hu/el/uk locale boost still works so the packs are not dead.
+    assert.ok(feeds.getLocaleBoostedSources('hu').has('Telex'));
+    assert.ok(feeds.getLocaleBoostedSources('el').has('Kathimerini'));
+    for (const name of ['ERT', 'AMNA', 'Ta Nea', 'Liberal GR', 'CNN Greece'] as const) {
+      assert.ok(feeds.getLocaleBoostedSources('el').has(name), `${name} must locale-boost for el`);
+    }
+    const clientKathimerini = Object.values(feeds.FEEDS ?? {})
+      .flat()
+      .find((feed) => feed.name === 'Kathimerini');
+    const serverKathimerini = (serverFeeds.VARIANT_FEEDS.full?.europe ?? [])
+      .find((feed) => feed.name === 'Kathimerini');
+    assert.equal(clientKathimerini?.strategicDefault, true);
+    assert.equal(serverKathimerini?.strategicDefault, true);
+  });
+
+  it('boosts Ukrainian native feeds for uk locale without EN default-on (#5959)', () => {
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const boosted = feeds.getLocaleBoostedSources('uk');
+    // Multi-URL depth-pack names boost via url key.
+    for (const name of ['Ukrinform', 'Suspilne'] as const) {
+      assert.ok(boosted.has(name), `${name} multi-URL uk key must locale-boost`);
+    }
+    // Pure lang:uk pack — boost for uk UI, not EN default-on.
+    for (const name of [
+      'Ukrainska Pravda',
+      'Hromadske',
+      'Bihus.Info',
+      'Slidstvo.Info',
+      'ZN.UA',
+    ] as const) {
+      assert.ok(boosted.has(name), `${name} must be uk locale-boosted`);
+      assert.ok(!enabled.has(name), `${name} must stay locale-boosted, not EN default-on`);
+    }
+    // EN path still has the English editions, not the native-only names as defaults.
+    assert.ok(enabled.has('Ukrainska Pravda EN') || !enabled.has('Ukrainska Pravda'));
+  });
+
+  it('SOURCE_PROPAGANDA_RISK still high-labels Russian state media (#5949)', () => {
+    for (const name of ['TASS', 'RT', 'RT Russia'] as const) {
+      const profile = feeds.SOURCE_PROPAGANDA_RISK[name];
+      assert.ok(profile, `${name} must remain in SOURCE_PROPAGANDA_RISK`);
+      assert.equal(profile.risk, 'high', `${name} must remain high-risk`);
+      assert.equal(profile.stateAffiliated, 'Russia');
+    }
+  });
+
+  // Issue #5950 — catalog must not drift back to Russia-heavy EN defaults.
+  // Balance rule (documented in feeds.ts Russia & Ukraine block + DEFAULT_ENABLED europe):
+  //   ≥1 dedicated UA primary + ≥1 independent RU; TASS/RT never default-on;
+  //   propaganda tags required for TASS/RT/Kyiv Independent (and default-on independent RU).
+  const UA_PRIMARY_DEFAULTS = ['Kyiv Independent'] as const;
+  const INDEPENDENT_RU_DEFAULTS = ['Meduza', 'Moscow Times'] as const;
+  const RU_STATE_PROPAGANDA = ['TASS', 'RT', 'RT Russia'] as const;
+
+  it('EN defaults satisfy UA/RU balance rule (≥1 UA primary + ≥1 independent RU) (#5950)', () => {
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+
+    const uaOn = UA_PRIMARY_DEFAULTS.filter((n) => enabled.has(n) && !disabledEn.has(n));
+    assert.ok(
+      uaOn.length >= 1,
+      `EN defaults need ≥1 dedicated UA primary among [${UA_PRIMARY_DEFAULTS.join(', ')}]; got none`,
+    );
+
+    const ruIndOn = INDEPENDENT_RU_DEFAULTS.filter((n) => enabled.has(n) && !disabledEn.has(n));
+    assert.ok(
+      ruIndOn.length >= 1,
+      `EN defaults need ≥1 independent RU among [${INDEPENDENT_RU_DEFAULTS.join(', ')}]; got none`,
+    );
+
+    for (const stateMedia of RU_STATE_PROPAGANDA) {
+      assert.ok(!enabled.has(stateMedia), `${stateMedia} must never be EN default-on (#5950)`);
+    }
+  });
+
+  it('FRONTLINE_EUROPE_PROTECTED_SOURCES matches the default-on frontline set (#5950)', () => {
+    // Free-tier cap protection and DEFAULT_ENABLED must not drift apart.
+    assert.deepEqual(
+      [...feeds.FRONTLINE_EUROPE_PROTECTED_SOURCES].sort(),
+      [...FRONTLINE_EUROPE].sort(),
+    );
+    const europe = feeds.DEFAULT_ENABLED_SOURCES.europe ?? [];
+    for (const name of feeds.FRONTLINE_EUROPE_PROTECTED_SOURCES) {
+      assert.ok(europe.includes(name), `${name} must be DEFAULT_ENABLED europe (cap-protected set)`);
+    }
+  });
+
+  it('locks Eastern-flank URL/lang parity and EN/locale selection (#5952)', () => {
+    const clientByName = new Map((feeds.FEEDS.europe ?? []).map((feed) => [feed.name, feed]));
+    const serverByName = new Map(
+      (serverFeeds.VARIANT_FEEDS.full?.europe ?? []).map((feed) => [feed.name, feed]),
+    );
+    const enabled = feeds.getAllDefaultEnabledSources();
+
+    for (const [name, expected] of Object.entries(EASTERN_FLANK_FEEDS)) {
+      const client = clientByName.get(name);
+      const server = serverByName.get(name);
+      assert.ok(client, `${name} must exist in the client Europe catalog`);
+      assert.ok(server, `${name} must exist in the server full/Europe catalog`);
+      assert.equal(client.url, expected.url, `${name} client URL drifted`);
+      assert.equal(server.url, expected.url, `${name} server URL drifted`);
+      assert.equal(client.lang, 'lang' in expected ? expected.lang : undefined, `${name} client lang drifted`);
+      assert.equal(server.lang, 'lang' in expected ? expected.lang : undefined, `${name} server lang drifted`);
+    }
+
+    for (const name of EASTERN_FLANK_EN_DEFAULTS) {
+      assert.ok(enabled.has(name), `${name} must remain default-on for EN`);
+    }
+    for (const localeOnly of ['Digi24', 'HotNews', 'G4Media', 'Dnevnik', 'Seznam Zprávy'] as const) {
+      assert.ok(!enabled.has(localeOnly), `${localeOnly} must remain locale-boosted, not EN default-on`);
+    }
+
+    const roBoosted = feeds.getLocaleBoostedSources('ro');
+    for (const name of ['Digi24', 'HotNews', 'G4Media'] as const) {
+      assert.ok(roBoosted.has(name), `${name} must be boosted for ro`);
+    }
+    assert.ok(feeds.getLocaleBoostedSources('bg').has('Dnevnik'), 'Dnevnik must be boosted for bg');
+    assert.ok(
+      feeds.getLocaleBoostedSources('cs').has('Seznam Zprávy'),
+      'Seznam Zprávy must be boosted for cs',
+    );
+  });
+
+  it('allows every Eastern-flank publisher through the RSS proxy host policy (#5952)', () => {
+    for (const [name, { url }] of Object.entries(EASTERN_FLANK_FEEDS)) {
+      const hostname = new URL(url).hostname;
+      assert.ok(isAllowedDomain(hostname), `${name} host ${hostname} must be RSS-allowlisted`);
+    }
+  });
+
+  it('keeps both Eastern-flank EN defaults under the production free cap (#5952)', () => {
+    assert.deepEqual(
+      [...feeds.FREE_CAP_PROTECTED_SOURCES].sort(),
+      [
+        ...FRONTLINE_EUROPE,
+        ...REGIONAL_ROLLOUT_DEFAULTS,
+        ...feeds.CANADA_EN_DEFAULT_SOURCES,
+        ...feeds.CRISIS_FLOOR_EN_DEFAULT_SOURCES,
+        ...feeds.CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
+      ].sort(),
+      'free-cap protected defaults must match the editorially protected sets',
+    );
+
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const { keep, autoDisabled } = selectSourcesUnderCap(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      disabledEn,
+      80,
+      new Set(feeds.FREE_CAP_PROTECTED_SOURCES),
+    );
+
+    for (const name of EASTERN_FLANK_EN_DEFAULTS) {
+      assert.ok(keep.has(name), `${name} must survive the free source cap`);
+      assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the free source cap`);
+    }
+  });
+
+  it('locks additive Africa-depth URL/lang parity and EN defaults (#5955)', () => {
+    const clientByName = new Map((feeds.FEEDS.africa ?? []).map((feed) => [feed.name, feed]));
+    const serverByName = new Map(
+      (serverFeeds.VARIANT_FEEDS.full?.africa ?? []).map((feed) => [feed.name, feed]),
+    );
+    const africaDefaults = feeds.DEFAULT_ENABLED_SOURCES.africa ?? [];
+
+    for (const [name, expected] of Object.entries(AFRICA_DEPTH_FEEDS)) {
+      const client = clientByName.get(name);
+      const server = serverByName.get(name);
+      assert.ok(client, `${name} must remain in the client Africa catalog`);
+      assert.ok(server, `${name} must remain in the server full/Africa catalog`);
+      assert.equal(client.url, expected.url, `${name} client URL drifted`);
+      assert.equal(server.url, expected.url, `${name} server URL drifted`);
+      assert.equal(client.lang, 'lang' in expected ? expected.lang : undefined, `${name} client lang drifted`);
+      assert.equal(server.lang, 'lang' in expected ? expected.lang : undefined, `${name} server lang drifted`);
+    }
+
+    for (const name of AFRICA_DEPTH_EN_DEFAULTS) {
+      assert.ok(africaDefaults.includes(name), `${name} must remain an Africa EN default`);
+    }
+  });
+
+  it('locks the independently reviewed crisis-desk route, language, and activation matrix (#6813-#6830 plus Annahar)', () => {
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const clientByName = new Map(
+      Object.values(feeds.FEEDS ?? {}).flat().map((feed) => [feed.name, feed]),
+    );
+    const serverByName = new Map(
+      Object.values(serverFeeds.VARIANT_FEEDS.full ?? {}).flat().map((feed) => [feed.name, feed]),
+    );
+    const sourceGeography = JSON.parse(
+      readFileSync(join(repoRoot, 'shared/source-geography.json'), 'utf8'),
+    ) as Record<string, string[]>;
+
+    assert.deepEqual(
+      [...feeds.CRISIS_DESK_ROLLOUT_SOURCES].sort(),
+      Object.keys(CRISIS_DESK_PACK).sort(),
+      'rollout registry must match the independent selected-source matrix',
+    );
+
+    for (const [name, expected] of Object.entries(CRISIS_DESK_PACK)) {
+      const client = clientByName.get(name);
+      const server = serverByName.get(name);
+      assert.ok(client, `${name} must exist in the client catalog`);
+      assert.ok(server, `${name} must exist in the server full digest catalog`);
+      assert.equal(client.url, expected.url, `${name} client route drifted`);
+      assert.equal(server.url, expected.url, `${name} server route drifted`);
+      assert.equal(client.lang, 'lang' in expected ? expected.lang : undefined, `${name} client language drifted`);
+      assert.equal(server.lang, 'lang' in expected ? expected.lang : undefined, `${name} server language drifted`);
+      assert.equal(client.strategicDefault, 'strategicDefault' in expected ? expected.strategicDefault : undefined, `${name} client strategic role drifted`);
+      assert.equal(server.strategicDefault, 'strategicDefault' in expected ? expected.strategicDefault : undefined, `${name} server strategic role drifted`);
+      assert.deepEqual(sourceGeography[name], [...expected.countries], `${name} country mapping drifted`);
+      assert.ok(isAllowedDomain(new URL(expected.url).hostname), `${name} route host must be RSS-allowlisted`);
+      assert.ok(feeds.SOURCE_TYPES[name], `${name} must have a reviewed source type`);
+      assert.ok(feeds.SOURCE_PROPAGANDA_RISK[name], `${name} must have a reviewed risk declaration`);
+
+      if (expected.role === 'opt-in') {
+        assert.ok(!enabled.has(name), `${name} must remain globally opt-in`);
+        assert.ok(disabledEn.has(name), `${name} must start disabled for a fresh EN profile`);
+      } else {
+        assert.ok(enabled.has(name), `${name} must be globally default-on`);
+        assert.ok(!disabledEn.has(name), `${name} must not start disabled for a fresh EN profile`);
+      }
+    }
+
+    assert.deepEqual(
+      [...feeds.CRISIS_FLOOR_EN_DEFAULT_SOURCES].sort(),
+      Object.entries(CRISIS_DESK_PACK).filter(([, source]) => source.role === 'en-default').map(([name]) => name).sort(),
+    );
+    assert.deepEqual(
+      [...feeds.CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES].sort(),
+      Object.entries(CRISIS_DESK_PACK).filter(([, source]) => source.role === 'strategic-default').map(([name]) => name).sort(),
+    );
+    assert.deepEqual(
+      [...feeds.CRISIS_FLOOR_OPT_IN_SOURCES].sort(),
+      Object.entries(CRISIS_DESK_PACK).filter(([, source]) => source.role === 'opt-in').map(([name]) => name).sort(),
+    );
+    assert.equal(feeds.SOURCE_TYPES['WAFA English'], 'gov');
+    assert.equal(feeds.SOURCE_PROPAGANDA_RISK['WAFA English']?.risk, 'high');
+    assert.equal(feeds.SOURCE_PROPAGANDA_RISK['WAFA English']?.stateAffiliated, 'Palestine');
+  });
+
+  it('locks the Polish depth pack as locale-boosted catalog opt-in', () => {
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const boostedPl = feeds.getLocaleBoostedSources('pl');
+    const clientByName = new Map(
+      Object.values(feeds.FEEDS ?? {}).flat().map((feed) => [feed.name, feed]),
+    );
+    const serverByName = new Map(
+      (serverFeeds.VARIANT_FEEDS.full?.europe ?? []).map((feed) => [feed.name, feed]),
+    );
+    const sourceGeography = JSON.parse(
+      readFileSync(join(repoRoot, 'shared/source-geography.json'), 'utf8'),
+    ) as Record<string, string[]>;
+
+    for (const [name, expected] of Object.entries(POLAND_DEPTH_FEEDS)) {
+      const client = clientByName.get(name);
+      const server = serverByName.get(name);
+      assert.ok(client, `${name} must exist in the client Europe catalog`);
+      assert.ok(server, `${name} must exist in the server full/Europe catalog`);
+      assert.equal(client.url, expected.url, `${name} client route drifted`);
+      assert.equal(server.url, expected.url, `${name} server route drifted`);
+      assert.equal(client.lang, expected.lang, `${name} client language drifted`);
+      assert.equal(server.lang, expected.lang, `${name} server language drifted`);
+      assert.equal(client.strategicDefault, undefined, `${name} must not be a strategic default`);
+      assert.equal(server.strategicDefault, undefined, `${name} must not be a strategic default`);
+      assert.deepEqual(sourceGeography[name], [...expected.countries], `${name} country mapping drifted`);
+      assert.ok(isAllowedDomain(new URL(expected.url).hostname), `${name} route host must be RSS-allowlisted`);
+      assert.ok(feeds.SOURCE_TYPES[name], `${name} must have a reviewed source type`);
+      assert.ok(feeds.SOURCE_PROPAGANDA_RISK[name], `${name} must have a reviewed risk declaration`);
+      assert.ok(!enabled.has(name), `${name} must remain globally opt-in`);
+      assert.ok(disabledEn.has(name), `${name} must start disabled for a fresh EN profile`);
+      assert.ok(boostedPl.has(name), `${name} must locale-boost for the Polish UI`);
+    }
+
+    assert.equal(feeds.SOURCE_TYPES.PAP, 'wire');
+    assert.equal(feeds.SOURCE_TYPES['OKO.press'], 'intel');
+    assert.equal(feeds.SOURCE_PROPAGANDA_RISK.PAP?.stateAffiliated, 'Poland');
+    assert.equal(feeds.SOURCE_PROPAGANDA_RISK['TVP Info']?.stateAffiliated, 'Poland');
+  });
+
+  it('allows every Africa-depth feed through the RSS proxy host policy (#5955)', () => {
+    for (const [name, { url }] of Object.entries(AFRICA_DEPTH_FEEDS)) {
+      const hostname = new URL(url).hostname;
+      assert.ok(isAllowedDomain(hostname), `${name} host ${hostname} must be RSS-allowlisted`);
+    }
+  });
+
+  it('keeps both Africa-depth EN defaults under the production free cap (#5955)', () => {
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const { keep, autoDisabled } = selectSourcesUnderCap(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      disabledEn,
+      80,
+      new Set(feeds.FREE_CAP_PROTECTED_SOURCES),
+    );
+
+    for (const name of AFRICA_DEPTH_EN_DEFAULTS) {
+      assert.ok(keep.has(name), `${name} must survive the free source cap`);
+      assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the free source cap`);
+    }
+  });
+
+  it('locks the repaired #5953/#5954 URLs and language reachability across client and digest catalogs', () => {
+    const clientByName = new Map(
+      [...(feeds.FEEDS.europe ?? []), ...(feeds.FEEDS.asia ?? [])]
+        .map((feed) => [feed.name, feed]),
+    );
+    const serverByName = new Map(
+      [
+        ...(serverFeeds.VARIANT_FEEDS.full?.europe ?? []),
+        ...(serverFeeds.VARIANT_FEEDS.full?.asia ?? []),
+      ].map((feed) => [feed.name, feed]),
+    );
+
+    for (const [name, expected] of Object.entries(REPAIRED_REGIONAL_FEEDS)) {
+      const client = clientByName.get(name);
+      const server = serverByName.get(name);
+      assert.ok(client, `${name} must remain in the client regional catalog`);
+      assert.ok(server, `${name} must remain in the server regional catalog`);
+      assert.equal(client.url, expected.url, `${name} client URL drifted`);
+      assert.equal(server.url, expected.url, `${name} server URL drifted`);
+      assert.equal(client.lang, 'lang' in expected ? expected.lang : undefined, `${name} client lang drifted`);
+      assert.equal(server.lang, 'lang' in expected ? expected.lang : undefined, `${name} server lang drifted`);
+    }
+  });
+
+  it('keeps regional rollout defaults and opt-ins disjoint and truthful for fresh profiles', () => {
+    assert.deepEqual(
+      [...feeds.REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES].sort(),
+      [...REGIONAL_ROLLOUT_DEFAULTS].sort(),
+    );
+    assert.deepEqual(
+      [...feeds.REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES].sort(),
+      [...REGIONAL_ROLLOUT_OPT_INS].sort(),
+    );
+
+    const defaults = feeds.getAllDefaultEnabledSources();
+    const disabled = new Set(feeds.computeDefaultDisabledSources('en'));
+    for (const name of REGIONAL_ROLLOUT_DEFAULTS) {
+      assert.ok(defaults.has(name), `${name} must remain an explicit EN default`);
+      assert.ok(!disabled.has(name), `${name} must not be disabled for a fresh EN profile`);
+    }
+    for (const name of REGIONAL_ROLLOUT_OPT_INS) {
+      assert.ok(!defaults.has(name), `${name} must remain opt-in for EN`);
+      assert.ok(disabled.has(name), `${name} must start disabled for a fresh EN profile`);
+    }
+  });
+
+  it('reconstructs unique exact EN preference states across skipped/intermediate releases', () => {
+    const targets = regionalRollout.buildRegionalFeedRolloutMigrationTargets(80, 'en');
+    const states = targets.map((target) => target.legacyDisabled);
+    const canonical = states.map((state) => JSON.stringify([...state].sort()));
+    const preRolloutDefault = JSON.stringify(
+      [...feeds.computePreRegionalFeedRolloutDefaultDisabledSources('en')].sort(),
+    );
+
+    assert.ok(states.length > 1, 'default-only and at least one cap path must be recognized');
+    assert.equal(new Set(canonical).size, states.length, 'equivalent release paths must be deduplicated');
+    assert.ok(canonical.includes(preRolloutDefault), 'the untouched pre-#5976 default state must be recognized');
+    for (const name of [
+      ...feeds.CANADA_EN_DEFAULT_SOURCES,
+      ...feeds.CANADA_ARCTIC_OPT_IN_SOURCES,
+      ...feeds.CANADA_DEPTH_OPT_IN_SOURCES,
+    ]) {
+      assert.equal(
+        preRolloutDefault.includes(name),
+        false,
+        `${name} must stay out of pre-#5960 fingerprints`,
+      );
+    }
+    for (const target of targets) {
+      assert.deepEqual([...target.defaultNames].sort(), [...RECONCILED_ROLLOUT_DEFAULTS].sort());
+      assert.deepEqual([...target.optInNames].sort(), [...RECONCILED_ROLLOUT_OPT_INS].sort());
+    }
+  });
+
+  it('migrates dormant schema-1/2 EN rows from before #5949 through schema 8', () => {
+    const preFrontlineDefault = new Set(
+      feeds.computePreRegionalFeedRolloutDefaultDisabledSources('en'),
+    );
+    for (const name of UKRAINE_DEPTH_NAMES) preFrontlineDefault.delete(name);
+    for (const name of INITIAL_FRONTLINE_DEFAULTS) preFrontlineDefault.add(name);
+
+    const targets = regionalRollout.buildRegionalFeedRolloutMigrationTargets(80, 'en');
+    assert.ok(
+      targets.some((target) => (
+        target.legacyDisabled.size === preFrontlineDefault.size
+        && [...preFrontlineDefault].every((name) => target.legacyDisabled.has(name))
+      )),
+      'the frozen pre-frontline fingerprint must not drift with later catalog additions',
+    );
+
+    const legacyPreStrategicDefault = new Set(
+      feeds.computePreStrategicDefaultDisabledSources(),
+    );
+    const legacyPreStrategicCap = computeCapDisabledSources(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      legacyPreStrategicDefault,
+      80,
+    );
+    const migrations = buildMigrations(feeds.FEEDS, {
+      frontline: {
+        legacyDefaultDisabled: new Set(feeds.computeLegacyDefaultDisabledSources()),
+        names: new Set(feeds.FRONTLINE_EUROPE_PROTECTED_SOURCES),
+        legacyCapDisabled: legacyPreStrategicCap,
+      },
+      strategic: {
+        names: feeds.getStrategicDefaultSources(),
+        legacyDisabledStates: regionalRollout.buildPreStrategicDefaultDisabledStates(80),
+      },
+      regionalRollout: { targets },
+      canadaArctic: { optInSources: feeds.CANADA_ARCTIC_OPT_IN_SOURCES },
+      canadaDepth: { optInSources: feeds.CANADA_DEPTH_OPT_IN_SOURCES },
+      crisisDesk: { optInSources: feeds.CRISIS_FLOOR_OPT_IN_SOURCES },
+    });
+    for (const fromVersion of [1, 2]) {
+      const blob = {
+        'worldmonitor-disabled-feeds': JSON.stringify([...preFrontlineDefault]),
+      };
+      const migrated = applyMigrationChain(blob, fromVersion, 8, migrations);
+      const disabled = new Set(
+        JSON.parse(migrated['worldmonitor-disabled-feeds'] as string) as string[],
+      );
+
+      for (const name of RECONCILED_ROLLOUT_DEFAULTS) {
+        assert.equal(
+          disabled.has(name),
+          false,
+          `schema ${fromVersion}: ${name} must be enabled after the full chain`,
+        );
+      }
+      for (const name of RECONCILED_ROLLOUT_OPT_INS) {
+        assert.ok(
+          disabled.has(name),
+          `schema ${fromVersion}: ${name} must be disabled after the full chain`,
+        );
+      }
+      for (const name of feeds.CANADA_ARCTIC_OPT_IN_SOURCES) {
+        assert.ok(
+          disabled.has(name),
+          `schema ${fromVersion}: ${name} must be disabled after the Canada pack migration`,
+        );
+      }
+      for (const name of feeds.CANADA_DEPTH_OPT_IN_SOURCES) {
+        assert.ok(
+          disabled.has(name),
+          `schema ${fromVersion}: ${name} must be disabled after the Canada depth migration`,
+        );
+      }
+      for (const name of feeds.CANADA_EN_DEFAULT_SOURCES) {
+        assert.equal(
+          disabled.has(name),
+          false,
+          `schema ${fromVersion}: ${name} must remain enabled (not stuffed into the denylist)`,
+        );
+      }
+      for (const name of feeds.CRISIS_FLOOR_OPT_IN_SOURCES) {
+        assert.ok(
+          disabled.has(name),
+          `schema ${fromVersion}: ${name} must be disabled after the crisis-desk migration`,
+        );
+      }
+      for (const name of [
+        ...feeds.CRISIS_FLOOR_EN_DEFAULT_SOURCES,
+        ...feeds.CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
+      ]) {
+        assert.equal(
+          disabled.has(name),
+          false,
+          `schema ${fromVersion}: ${name} must remain globally enabled`,
+        );
+      }
+    }
+  });
+
+  it('wires a distinct local crisis-desk migration key in App.ts', () => {
+    const appSource = readFileSync(join(repoRoot, 'src/App.ts'), 'utf8');
+    assert.match(appSource, /worldmonitor-crisis-desk-optin-v1/);
+    assert.match(
+      appSource,
+      /migrateCrisisDeskOptInsV8\([\s\S]*?CRISIS_FLOOR_OPT_IN_SOURCES\)/,
+      'the local migration must add only the reviewed opt-in cohort',
+    );
+  });
+
+  it('promotes locale-matched rollout sources without changing unrelated opt-ins', () => {
+    const ruTargets = regionalRollout.buildRegionalFeedRolloutMigrationTargets(80, 'ru');
+    assert.ok(ruTargets.length > 0, 'the RU migration must reconstruct at least one exact state');
+    for (const target of ruTargets) {
+      assert.ok(target.defaultNames.has('NewsMaker'), 'NewsMaker is a RU locale default');
+      assert.equal(target.optInNames.has('NewsMaker'), false, 'NewsMaker cannot also be an RU opt-in');
+      assert.ok(target.optInNames.has('JAMnews'), 'unrelated regional sources remain opt-in');
+    }
+  });
+
+  it('fails closed for locale-less cloud fingerprints with conflicting policies', () => {
+    const targets = regionalRollout.buildRegionalFeedRolloutMigrationTargets(80);
+    const targetsByLegacyState = new Map<string, typeof targets>();
+
+    for (const target of targets) {
+      const legacyKey = JSON.stringify([...target.legacyDisabled].sort());
+      const matching = targetsByLegacyState.get(legacyKey) ?? [];
+      matching.push(target);
+      targetsByLegacyState.set(legacyKey, matching);
+    }
+
+    let ambiguousFingerprints = 0;
+    for (const matching of targetsByLegacyState.values()) {
+      const policies = new Set(matching.map((target) => JSON.stringify({
+        defaults: [...target.defaultNames].sort(),
+        optIns: [...target.optInNames].sort(),
+      })));
+      if (policies.size < 2) continue;
+      ambiguousFingerprints += 1;
+      const blob = {
+        'worldmonitor-disabled-feeds': JSON.stringify([...matching[0]!.legacyDisabled]),
+      };
+      assert.equal(
+        migrateRegionalFeedRolloutDefaultsV5(blob, targets),
+        blob,
+        'a cloud row without locale metadata must remain untouched when policies disagree',
+      );
+    }
+
+    assert.ok(ambiguousFingerprints > 0, 'the production targets must exercise the ambiguity guard');
+    assert.ok(
+      targets.some((target) => target.defaultNames.has('NewsMaker')),
+      'all-locale cloud reconstruction must include the RU NewsMaker policy',
+    );
+  });
+
+  it('keeps every regional rollout default under the production free cap', () => {
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const protectedNames = new Set(feeds.FREE_CAP_PROTECTED_SOURCES);
+    const { keep, autoDisabled } = selectSourcesUnderCap(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      disabledEn,
+      80,
+      protectedNames,
+    );
+
+    for (const name of REGIONAL_ROLLOUT_DEFAULTS) {
+      assert.ok(protectedNames.has(name), `${name} must be explicitly protected from the free cap`);
+      assert.ok(keep.has(name), `${name} must survive the free source cap`);
+      assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the free source cap`);
+    }
+  });
+
+  it('allowlists only direct regional feed hosts, not publisher names inside Google News queries', () => {
+    for (const [name, expected] of Object.entries(REPAIRED_REGIONAL_FEEDS)) {
+      const hostname = new URL(expected.url).hostname;
+      assert.ok(isAllowedDomain(hostname), `${name} direct host ${hostname} must be RSS-allowlisted`);
+    }
+    for (const hostname of UNUSED_REGIONAL_PUBLISHER_HOSTS) {
+      assert.equal(
+        isAllowedDomain(hostname),
+        false,
+        `${hostname} is not fetched directly and must not expand the RSS proxy allowlist`,
+      );
+    }
+  });
+
+  // Issue #5960 — Canada + Arctic/Nordic security pack for North America keyCountry CA
+  // and High North coverage beyond Sweden-only SVT.
+  const CANADA_CATALOG_5960 = [
+    'CBC News',
+    'Globe and Mail',
+    'Global News',
+  ] as const;
+  const CANADA_DEPTH_CATALOG = [
+    'Toronto Star',
+    'National Post',
+    'Financial Post',
+    'iPolitics',
+    'The Narwhal',
+    'The Tyee',
+    "Maclean's",
+    'Radio-Canada',
+    'La Presse',
+    'Le Devoir',
+    'TVA Nouvelles',
+    'Vancouver Sun',
+    'Calgary Herald',
+    'Winnipeg Free Press',
+    'Edmonton Journal',
+    'Ottawa Citizen',
+    'The Province',
+    'CTV News',
+    'CP24',
+    'Montreal Gazette',
+  ] as const;
+  const CANADA_CATALOG = [...CANADA_CATALOG_5960, ...CANADA_DEPTH_CATALOG] as const;
+  const CANADA_FR_SOURCES = ['Radio-Canada', 'La Presse', 'Le Devoir', 'TVA Nouvelles'] as const;
+  const NORDIC_ARCTIC_CATALOG = [
+    'Yle News',
+    'NRK',
+    'Aftenposten',
+    'DR Nyheder',
+    'Arctic Today',
+  ] as const;
+  const CANADA_NORDIC_DIRECT_URLS: Record<string, string> = {
+    'CBC News': 'https://www.cbc.ca/webfeed/rss/rss-world',
+    'Globe and Mail': 'https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/canada/?outputType=xml',
+    'Global News': 'https://globalnews.ca/feed/',
+    'Toronto Star': 'https://www.thestar.com/search/?f=rss&t=article&c=news/canada',
+    'National Post': 'https://nationalpost.com/feed/',
+    'Financial Post': 'https://financialpost.com/feed/',
+    'iPolitics': 'https://www.ipolitics.ca/feed',
+    'The Narwhal': 'https://thenarwhal.ca/feed/',
+    'The Tyee': 'https://thetyee.ca/rss2.xml',
+    "Maclean's": 'https://macleans.ca/feed/',
+    'Radio-Canada': 'https://ici.radio-canada.ca/info/rss/info/en-continu',
+    'La Presse': 'https://www.lapresse.ca/actualites/rss',
+    'Le Devoir': 'https://www.ledevoir.com/rss/manchettes.xml',
+    'TVA Nouvelles': 'https://www.tvanouvelles.ca/rss.xml',
+    'Vancouver Sun': 'https://vancouversun.com/feed/',
+    'Calgary Herald': 'https://calgaryherald.com/feed/',
+    'Winnipeg Free Press': 'https://www.winnipegfreepress.com/feed',
+    'Edmonton Journal': 'https://edmontonjournal.com/feed/',
+    'Ottawa Citizen': 'https://ottawacitizen.com/feed/',
+    'The Province': 'https://theprovince.com/feed/',
+    'Yle News': 'https://yle.fi/rss/news',
+    'NRK': 'https://www.nrk.no/nyheter/siste.rss',
+    'Aftenposten': 'https://www.aftenposten.no/rss',
+    'DR Nyheder': 'https://www.dr.dk/nyheder/service/feeds/allenyheder',
+  };
+
+  it('catalogs Canadian sources and default-enables CBC + CTV + Toronto Star (#5960/#6604)', () => {
+
+    const us = feeds.FEEDS.us ?? [];
+    const byName = new Map(us.map((f) => [f.name, f]));
+    for (const name of CANADA_CATALOG) {
+      assert.ok(byName.has(name), `${name} must be in FEEDS.us catalog`);
+    }
+
+    const usDefaults = feeds.DEFAULT_ENABLED_SOURCES.us ?? [];
+    for (const name of feeds.CANADA_EN_DEFAULT_SOURCES) {
+      assert.ok(usDefaults.includes(name), `${name} must be DEFAULT_ENABLED us`);
+    }
+    assert.ok(usDefaults.includes('CTV News'), 'CTV News must be DEFAULT_ENABLED us');
+    assert.equal(usDefaults.includes('National Post'), false, 'National Post must not be DEFAULT_ENABLED us');
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    for (const name of feeds.CANADA_EN_DEFAULT_SOURCES) {
+      assert.ok(enabled.has(name), `${name} must be default-enabled`);
+      assert.ok(!disabledEn.has(name), `${name} must not be disabled for fresh EN`);
+    }
+
+    for (const optIn of ['Globe and Mail', 'Global News'] as const) {
+      assert.ok(!enabled.has(optIn), `${optIn} must remain catalog opt-in`);
+      assert.ok(disabledEn.has(optIn), `${optIn} must start disabled for fresh EN`);
+    }
+    for (const name of feeds.CANADA_DEPTH_OPT_IN_SOURCES) {
+      assert.ok(!enabled.has(name), `${name} must remain catalog opt-in`);
+      assert.ok(disabledEn.has(name), `${name} must start disabled for fresh EN`);
+    }
+    for (const name of CANADA_FR_SOURCES) {
+      assert.equal(byName.get(name)?.lang, 'fr', `${name} must be lang:fr`);
+      assert.equal(byName.get(name)?.strategicDefault, undefined, `${name} must not be strategicDefault`);
+    }
+    const boostedFr = feeds.getLocaleBoostedSources('fr');
+    for (const name of CANADA_FR_SOURCES) {
+      assert.ok(boostedFr.has(name), `${name} must be locale-boosted for fr`);
+    }
+  });
+
+  it('puts CTV News on the Canada depth introducedNames stage, not the frozen CBC #5960 stage (#6605)', () => {
+    const stages = feeds.REGIONAL_FEED_ROLLOUT_STAGES;
+    const cbcStage = stages.find((s) => s.introducedNames.includes('CBC News'));
+    const depthStage = stages.find((s) => s.introducedNames.includes('Toronto Star'));
+    assert.ok(cbcStage, 'frozen #5960 CBC stage must exist');
+    assert.ok(depthStage, 'Canada depth stage must exist');
+    assert.equal(
+      cbcStage.introducedNames.includes('CTV News'),
+      false,
+      'CTV News must not rewrite the frozen #5960 CBC stage',
+    );
+    assert.ok(
+      depthStage.introducedNames.includes('CTV News'),
+      'CTV News must be on the Canada depth introducedNames list next to Toronto Star',
+    );
+  });
+
+  it('catalogs ≥1 Nordic beyond Sweden and EN-reachable High North sources (#5960)', () => {
+    const europe = feeds.FEEDS.europe ?? [];
+    const byName = new Map(europe.map((f) => [f.name, f]));
+    // Beyond SVT (already present): retain the named FI/NO/DK pack.
+    const nordicBeyondSweden = NORDIC_ARCTIC_CATALOG.filter((n) => byName.has(n));
+    assert.deepEqual(nordicBeyondSweden, [...NORDIC_ARCTIC_CATALOG]);
+    for (const name of NORDIC_ARCTIC_CATALOG) {
+      const feed = byName.get(name);
+      assert.ok(feed, `${name} must be in FEEDS.europe catalog`);
+      // no/da/fi are not UI locales — pack is unscoped so EN can enable it.
+      assert.ok(
+        !feed.lang || feed.lang === 'en',
+        `${name} must be EN-reachable (got lang=${feed.lang ?? 'none'})`,
+      );
+    }
+
+    // Not jammed into europe defaults (optional catalog for High North depth).
+    const enabled = feeds.getAllDefaultEnabledSources();
+    for (const name of NORDIC_ARCTIC_CATALOG) {
+      assert.ok(!enabled.has(name), `${name} stays catalog opt-in (not EN default-on)`);
+    }
+  });
+
+  it('mirrors Canada + Arctic/Nordic feeds on the server digest catalog (#5960)', () => {
+    const clientUs = new Map((feeds.FEEDS.us ?? []).map((f) => [f.name, f]));
+    const clientEu = new Map((feeds.FEEDS.europe ?? []).map((f) => [f.name, f]));
+    const serverUs = new Map((serverFeeds.VARIANT_FEEDS.full?.us ?? []).map((f) => [f.name, f]));
+    const serverEu = new Map((serverFeeds.VARIANT_FEEDS.full?.europe ?? []).map((f) => [f.name, f]));
+
+    const CANADA_GNEWS_ONLY = new Set(['CTV News', 'CP24', 'Montreal Gazette']);
+    for (const name of CANADA_CATALOG) {
+      assert.ok(serverUs.has(name), `server us catalog must include ${name}`);
+      const clientUrl = typeof clientUs.get(name)?.url === 'string' ? clientUs.get(name)!.url as string : '';
+      if (CANADA_GNEWS_ONLY.has(name)) {
+        assert.match(clientUrl, /news\.google\.com\/rss\/search/, `${name} client URL must use Google News`);
+        assert.match(serverUs.get(name)!.url, /news\.google\.com\/rss\/search/, `${name} server URL must use Google News`);
+        assert.match(clientUrl, /[?&]hl=en-CA/, `${name} must use CA locale`);
+        assert.match(serverUs.get(name)!.url, /[?&]hl=en-CA/, `${name} server must use CA locale`);
+        continue;
+      }
+      assert.equal(serverUs.get(name)?.url, clientUrl, `${name} client/server URL must match`);
+      assert.equal(clientUrl.includes('news.google.com'), false, `${name} must not use a GNews URL`);
+      if ((CANADA_FR_SOURCES as readonly string[]).includes(name)) {
+        assert.equal(serverUs.get(name)?.lang, 'fr', `${name} server feed must have lang:fr`);
+        assert.equal(clientUs.get(name)?.lang, 'fr', `${name} client feed must have lang:fr`);
+      }
+    }
+    for (const name of NORDIC_ARCTIC_CATALOG) {
+      assert.ok(serverEu.has(name), `server europe catalog must include ${name}`);
+      if (name === 'Arctic Today') {
+        assert.match(
+          serverEu.get(name)!.url,
+          /news\.google\.com\/rss\/search/,
+          'Arctic Today server URL must use Google News',
+        );
+        continue;
+      }
+      const clientUrl = typeof clientEu.get(name)?.url === 'string' ? clientEu.get(name)!.url as string : '';
+      assert.equal(serverEu.get(name)?.url, clientUrl, `${name} client/server URL must match`);
+    }
+  });
+
+  it('allowlists Canada + Nordic direct RSS hosts and reviews provenance (#5960)', () => {
+    for (const [name, url] of Object.entries(CANADA_NORDIC_DIRECT_URLS)) {
+      const hostname = new URL(url).hostname;
+      assert.ok(isAllowedDomain(hostname), `${name} host ${hostname} must be RSS-allowlisted`);
+      const risk = feeds.SOURCE_PROPAGANDA_RISK[name];
+      assert.ok(risk, `${name} must have SOURCE_PROPAGANDA_RISK`);
+      assert.notEqual(risk.risk, 'unknown', `${name} must be reviewed`);
+      assert.ok(feeds.SOURCE_TYPES[name], `${name} must have SOURCE_TYPES`);
+    }
+    const arctic = feeds.SOURCE_PROPAGANDA_RISK['Arctic Today'];
+    assert.ok(arctic && arctic.risk !== 'unknown', 'Arctic Today must be reviewed');
+    assert.ok(feeds.SOURCE_TYPES['Arctic Today'], 'Arctic Today must have SOURCE_TYPES');
+  });
+
+  it('keeps Canada EN default-on sources under the production free cap (#5960/#6604)', () => {
+    for (const name of feeds.CANADA_EN_DEFAULT_SOURCES) {
+      assert.ok(
+        feeds.FREE_CAP_PROTECTED_SOURCES.includes(name),
+        `${name} must be FREE_CAP_PROTECTED so free-tier round-robin cannot strip it`,
+      );
+    }
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const { keep, autoDisabled } = selectSourcesUnderCap(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      disabledEn,
+      80,
+      new Set(feeds.FREE_CAP_PROTECTED_SOURCES),
+    );
+    for (const name of feeds.CANADA_EN_DEFAULT_SOURCES) {
+      assert.ok(keep.has(name), `${name} must survive the free source cap`);
+      assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the free source cap`);
+    }
+  });
+
+  it('treats Canada/Arctic catalog companions as opt-in for fresh EN profiles (#5960)', () => {
+    assert.deepEqual(
+      [...feeds.CANADA_ARCTIC_OPT_IN_SOURCES].sort(),
+      [...CANADA_CATALOG_5960, ...NORDIC_ARCTIC_CATALOG].filter((n) => n !== 'CBC News').sort(),
+    );
+    const disabled = new Set(feeds.computeDefaultDisabledSources('en'));
+    for (const name of feeds.CANADA_ARCTIC_OPT_IN_SOURCES) {
+      assert.ok(disabled.has(name), `${name} must start disabled for a fresh EN profile`);
+    }
+  });
+
+  it('treats Canada depth companions as opt-in and does not append them onto the arctic list (#6604/#6605)', () => {
+    assert.deepEqual(
+      [...feeds.CANADA_DEPTH_OPT_IN_SOURCES].sort(),
+      [...CANADA_DEPTH_CATALOG].filter((n) => n !== 'Toronto Star' && n !== 'CTV News').sort(),
+    );
+    for (const name of feeds.CANADA_DEPTH_OPT_IN_SOURCES) {
+      assert.equal(
+        (feeds.CANADA_ARCTIC_OPT_IN_SOURCES as readonly string[]).includes(name),
+        false,
+        `${name} must not be appended onto CANADA_ARCTIC_OPT_IN_SOURCES`,
+      );
+    }
+    const disabled = new Set(feeds.computeDefaultDisabledSources('en'));
+    for (const name of feeds.CANADA_DEPTH_OPT_IN_SOURCES) {
+      assert.ok(disabled.has(name), `${name} must start disabled for a fresh EN profile`);
+    }
+  });
+
+  it('propaganda risk tags present for TASS/RT/Kyiv Independent and default-on independent RU (#5950)', () => {
+    for (const name of RU_STATE_PROPAGANDA) {
+      const profile = feeds.SOURCE_PROPAGANDA_RISK[name];
+      assert.ok(profile, `${name} must have a SOURCE_PROPAGANDA_RISK entry`);
+      assert.equal(profile.risk, 'high');
+      assert.equal(profile.stateAffiliated, 'Russia');
+    }
+
+    const kyiv = feeds.SOURCE_PROPAGANDA_RISK['Kyiv Independent'];
+    assert.ok(kyiv, 'Kyiv Independent must have a SOURCE_PROPAGANDA_RISK entry');
+    assert.notEqual(kyiv.risk, 'unknown', 'Kyiv Independent must be reviewed (not unknown)');
+    // UA primary is perspective-bearing, not state-media high.
+    assert.ok(
+      kyiv.risk === 'medium' || kyiv.risk === 'low',
+      `Kyiv Independent risk should be medium|low, got ${kyiv.risk}`,
+    );
+
+    for (const name of INDEPENDENT_RU_DEFAULTS) {
+      const profile = feeds.SOURCE_PROPAGANDA_RISK[name];
+      assert.ok(profile, `${name} (default-on independent RU) must have SOURCE_PROPAGANDA_RISK entry`);
+      assert.notEqual(profile.risk, 'unknown', `${name} must be reviewed`);
+      assert.notEqual(
+        profile.stateAffiliated,
+        'Russia',
+        `${name} is independent/exile — must not be tagged stateAffiliated:Russia`,
+      );
+      assert.ok(
+        profile.risk === 'low' || profile.risk === 'medium',
+        `${name} risk should be low|medium (not state-media high), got ${profile.risk}`,
+      );
+    }
+  });
+});

@@ -1,0 +1,78 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "cwfif_national_prescribedfires.fid-16d4dd52_19ffd1062ca_20e9",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -1501042.8036,
+          704403.133
+        ]
+      },
+      "geometry_name": "geometry",
+      "properties": {
+        "id": 17051733,
+        "agency_code": "PC",
+        "region_code": "JA",
+        "national_fire_id": "2026_PC_2026JA2",
+        "agency_fire_id": "2026JA2",
+        "national_fire_cause": "H",
+        "fire_type_ics": 3,
+        "severity_nearest_dsr": -1,
+        "fire_was_prescribed": 1,
+        "percent_contained": -1,
+        "fire_size": 37.25,
+        "response_type": "FUL",
+        "stage_of_control_status": "EX",
+        "situation_report_date": "2026-05-02T22:43:00Z",
+        "status_date": "2026-05-02T06:00:00Z",
+        "latitude": 52.8813,
+        "longitude": -118.1002,
+        "fire_year": 2026,
+        "status_year": 2026,
+        "record_start": "2026-07-03T23:45:00Z",
+        "record_end": "2026-12-31T23:59:59.999Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "cwfif_national_prescribedfires.fid-16d4dd52_19ffd1062ca_20ea",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -1438821.9602,
+          428585.303
+        ]
+      },
+      "geometry_name": "geometry",
+      "properties": {
+        "id": 16498544,
+        "agency_code": "PC",
+        "region_code": "KO",
+        "national_fire_id": "2026_PC_2026KO1",
+        "agency_fire_id": "2026KO1",
+        "national_fire_cause": "H",
+        "fire_type_ics": 4,
+        "severity_nearest_dsr": -1,
+        "fire_was_prescribed": 1,
+        "percent_contained": -1,
+        "fire_size": 3.42,
+        "response_type": "FUL",
+        "stage_of_control_status": "EX",
+        "situation_report_date": "2026-05-13T05:32:00Z",
+        "status_date": "2026-05-12T06:00:00Z",
+        "latitude": 50.7168,
+        "longitude": -115.8748,
+        "fire_year": 2026,
+        "status_year": 2026,
+        "record_start": "2026-06-24T23:45:00Z",
+        "record_end": "2026-12-31T23:59:59.999Z"
+      }
+    }
+  ],
+  "numberMatched": 274,
+  "numberReturned": 2,
+  "timeStamp": "2026-08-13T21:39:47.226Z"
+}

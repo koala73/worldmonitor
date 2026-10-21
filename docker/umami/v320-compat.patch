@@ -1,0 +1,116 @@
+diff --git a/src/lib/prisma.ts b/src/lib/prisma.ts
+index 6cdb33c..d6bee46 100644
+--- a/src/lib/prisma.ts
++++ b/src/lib/prisma.ts
+@@ -439,6 +439,37 @@ async function rawQuery(sql: string, data: Record<string, any>, name?: string):
+   return client.$queryRawUnsafe(query, ...params);
+ }
+ 
++// v3.2.0 compatibility shim. Upstream's session-data upsert fix (7c030e4c)
++// calls `prisma.writeRawQuery`, which exists on upstream's dev branch but not
++// in the v3.2.0 release this image pins. This copy is derived mechanically
++// from the file's own rawQuery above (see Dockerfile.umami) with exactly one
++// semantic change: the DATABASE_REPLICA_URL branch is removed, because a
++// write must never be routed to `$replica()`.
++async function writeRawQuery(sql: string, data: Record<string, any>, name?: string): Promise<any> {
++  if (process.env.LOG_QUERY) {
++    log('QUERY:\n', sql);
++    log('PARAMETERS:\n', data);
++    log('NAME:\n', name);
++  }
++  const params = [];
++  const schema = getSchema();
++
++  if (schema) {
++    await client.$executeRawUnsafe(`SET search_path TO "${schema}";`);
++  }
++
++  const query = sql?.replaceAll(/\{\{\s*(\w+)(::\w+)?\s*}}/g, (...args) => {
++    const [, name, type] = args;
++
++    const value = data[name];
++
++    params.push(value);
++
++    return `$${params.length}${type ?? ''}`;
++  });
++
++  return client.$queryRawUnsafe(query, ...params);
++}
+ async function pagedQuery<T>(model: string, criteria: T, filters?: QueryFilters) {
+   const { page = 1, pageSize, orderBy, sortDescending = false, search } = filters || {};
+   const size = +pageSize || DEFAULT_PAGE_SIZE;
+@@ -540,6 +571,46 @@ function getSchema() {
+   return connectionUrl.searchParams.get('schema');
+ }
+ 
++// v3.2.0 operational hardening. PrismaPg forwards this options object to pg.Pool,
++// whose connectionTimeoutMillis defaults to 0, and pg-pool treats 0 as "queue the
++// caller with no timer at all". A saturated pool therefore parks callers forever
++// instead of failing them, which is how a slow database turned collector requests
++// into indefinite hangs rather than prompt errors (worldmonitor #6053). Bounding
++// the acquisition wait turns pool exhaustion back into a fast, visible failure.
++const DEFAULT_POOL_CONNECT_TIMEOUT_MS = 10000;
++
++// The acquisition bound above made pool exhaustion VISIBLE; it did not make it
++// rarer. pg.Pool also defaults `max` to 10, and nothing here ever set it, so the
++// ceiling was an accident of the library rather than a sizing decision. Measured
++// 2026-08-21: umami held exactly 10 backends at peak and never more, while its
++// Postgres reported max_connections=500 with ~16 in use — the constraint was
++// entirely application-side. Meanwhile the collector saw HTTP 500s whose server
++// log is `timeout exceeded when trying to connect` from pg-pool, i.e. callers
++// giving up waiting for one of those 10 (WORLDMONITOR-YK, and the timeout and
++// queue-overflow siblings it backs up into).
++//
++// Sized deliberately, not maximally: 20 doubles headroom while still consuming
++// 4% of max_connections, so even a scaled-out umami cannot starve the database
++// or the retention service that shares it.
++const DEFAULT_POOL_MAX = 20;
++
++// Annotated because this lands in a .ts file compiled by Next's build; bare
++// parameters would be implicit `any` and fail the image build under strict mode.
++function readPositiveIntEnv(name: string, fallback: number): number {
++  const configured = Number(process.env[name]);
++  return Number.isFinite(configured) && configured > 0 ? configured : fallback;
++}
++
++function getPoolOptions() {
++  return {
++    connectionTimeoutMillis: readPositiveIntEnv(
++      'DATABASE_CONNECT_TIMEOUT_MS',
++      DEFAULT_POOL_CONNECT_TIMEOUT_MS,
++    ),
++    max: readPositiveIntEnv('DATABASE_POOL_MAX', DEFAULT_POOL_MAX),
++  };
++}
++
+ function getClient() {
+   const url = process.env.DATABASE_URL;
+   const replicaUrl = process.env.DATABASE_REPLICA_URL;
+@@ -551,7 +598,7 @@ function getClient() {
+ 
+   const schema = getSchema();
+ 
+-  const baseAdapter = new PrismaPg({ connectionString: url }, { schema });
++  const baseAdapter = new PrismaPg({ connectionString: url, ...getPoolOptions() }, { schema });
+ 
+   const baseClient = new PrismaClient({
+     adapter: baseAdapter,
+@@ -569,7 +616,10 @@ function getClient() {
+     return baseClient;
+   }
+ 
+-  const replicaAdapter = new PrismaPg({ connectionString: replicaUrl }, { schema });
++  const replicaAdapter = new PrismaPg(
++    { connectionString: replicaUrl, ...getPoolOptions() },
++    { schema },
++  );
+ 
+   const replicaClient = new PrismaClient({
+     adapter: replicaAdapter,
+@@ -613,4 +663,5 @@ export default {
+   pagedRawQuery,
+   parseFilters,
+   rawQuery,
++  writeRawQuery,
+ };

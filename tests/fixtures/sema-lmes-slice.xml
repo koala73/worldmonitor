@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<data-set xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<record>
+		<Country>Belarus / Bélarus</Country>
+		<LastName>Oleksin</LastName>
+		<GivenName>Aleksey</GivenName>
+		<Aliases>Aliaksei Aleksin</Aliases>
+		<Schedule>1, Part 1</Schedule>
+		<Item>56</Item>
+		<DateOfListing>2021-06-17</DateOfListing>
+	</record>
+<record>
+		<Country>Belarus / Bélarus</Country>
+		<EntityOrShip>Belaeronavigatsia Republican Unitary Air Navigation Services Enterprise</EntityOrShip>
+		<Schedule>1, Part 2</Schedule>
+		<Item>1</Item>
+		<DateOfListing>2021-06-17</DateOfListing>
+	</record>
+<record>
+		<Country>Russia / Russie</Country>
+		<EntityOrShip>Balitiyskiy III</EntityOrShip>
+		<TitleOrShip>General Cargo/Multi Purpose | Cargo classique/navire polyvalent</TitleOrShip>
+		<ShipIMONumber>7612448</ShipIMONumber>
+		<DateOfBirthOrShipBuildDate>1980</DateOfBirthOrShipBuildDate>
+		<Schedule>1.1</Schedule>
+		<Item>1</Item>
+		<DateOfListing>2025-02-21</DateOfListing>
+	</record>
+<record>
+		<Country>Belarus / Bélarus</Country>
+		<LastName>Lukashenko</LastName>
+		<GivenName>Aleksandr Grigoryevich</GivenName>
+		<DateOfBirthOrShipBuildDate>1954-08-30</DateOfBirthOrShipBuildDate>
+		<Schedule>1, Part 1</Schedule>
+		<Item>8</Item>
+		<DateOfListing>2020-09-28</DateOfListing>
+	</record>
+<record>
+		<Country>Russia / Russie</Country>
+		<EntityOrShip>STREIT Group</EntityOrShip>
+		<Aliases>STREIT Group FZE or STREIT Group FZE-LLC</Aliases>
+		<Schedule>1, Part 2</Schedule>
+		<Item>861</Item>
+		<DateOfListing>2026-08-06</DateOfListing>
+	</record>
+
+<record>
+		<Country>Belarus / Bélarus</Country>
+		<LastName>TARASEVICH</LastName>
+		<GivenName>Andrei Romanovich </GivenName>
+		<Aliases>Andrei Ramanavich TARASEVICH, Belarusian: Андрэй Раманавiч ТАРАСЕВIЧ, Russian: Андрей Романович ТАРАСЕВИЧ</Aliases>
+		<DateOfBirthOrShipBuildDate>1974-11-10</DateOfBirthOrShipBuildDate>
+		<Schedule>1, Part 1</Schedule>
+		<Item>103</Item>
+		<DateOfListing>2024-04-12</DateOfListing>
+	</record>
+<record>
+		<Country>Belarus / Bélarus</Country>
+		<LastName>MASHADZIYEU</LastName>
+		<GivenName>Ruslan Khikmetavich </GivenName>
+		<Aliases>Ruslan Khikmetavich MASHADZEOU, Ruslan Chikmetovič MAŠADZEV,  Mashadiyev Ruslan Khikmetovich, Ruslan Khikmetovich MASHADIYEV,  Belarusian: Руслан Хiкметовiч МАШАДЗЕЎ, Russian: Руслан Хикметович МАШАДИЕВ</Aliases>
+		<Schedule>1, Part 1</Schedule>
+		<Item>99</Item>
+		<DateOfListing>2024-04-12</DateOfListing>
+	</record>
+<record>
+		<Country>Russia / Russie</Country>
+		<EntityOrShip>AI Alliance Russia</EntityOrShip>
+		<Aliases>Alliance, Ассоциация "Альянс В Сфере ИИ", Альянс</Aliases>
+		<Schedule>1, Part 2</Schedule>
+		<Item>768</Item>
+		<DateOfListing>2026-02-19</DateOfListing>
+	</record>
+<record>
+		<Country>Russia / Russie</Country>
+		<EntityOrShip>Alliance</EntityOrShip>
+		<TitleOrShip>Oil Tanker | Navire-citerne pour produits pétroliers</TitleOrShip>
+		<ShipIMONumber>9413561</ShipIMONumber>
+		<DateOfBirthOrShipBuildDate>2009</DateOfBirthOrShipBuildDate>
+		<Schedule>1.1</Schedule>
+		<Item>257</Item>
+		<DateOfListing>2025-02-21</DateOfListing>
+	</record>
+<record>
+		<Country>Justice for Victims of Corrupt Foreign Officials Regulations (JVCFOR) / Règlement relatif à la justice pour les victimes de dirigeants étrangers corrompus (RJVDEC)</Country>
+		<LastName>MADURO MOROS</LastName>
+		<GivenName>Nicolás</GivenName>
+		<Item>1</Item>
+		<DateOfListing>2017-11-03</DateOfListing>
+	</record>
+<record>
+		<Country>Hamas Terrorist Attacks / Attaques terroristes du Hamas</Country>
+		<LastName>Sinwar</LastName>
+		<GivenName>Yahya</GivenName>
+		<Aliases>Yehya Sinwar, Abu Ibrahim,  يحيى السنوار </Aliases>
+		<DateOfBirthOrShipBuildDate>1962-10-29</DateOfBirthOrShipBuildDate>
+		<Schedule>Part 1</Schedule>
+		<Item>1</Item>
+		<DateOfListing>2024-02-02</DateOfListing>
+	</record>
+<record>
+		<Country>Extremist Settler Violence / Violence extrémiste des colons</Country>
+		<LastName>Chasdai</LastName>
+		<GivenName>David Chai</GivenName>
+		<Aliases>דוד חי חסדאי</Aliases>
+		<DateOfBirthOrShipBuildDate>1994-11-23</DateOfBirthOrShipBuildDate>
+		<Schedule>Part 1</Schedule>
+		<Item>1</Item>
+		<DateOfListing>2024-05-16</DateOfListing>
+	</record>
+	</data-set>

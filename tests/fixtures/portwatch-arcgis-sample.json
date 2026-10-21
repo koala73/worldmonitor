@@ -1,0 +1,37 @@
+{
+  "features": [
+    {
+      "attributes": {
+        "date": 1714521600000,
+        "n_container": 12,
+        "n_dry_bulk": 8,
+        "n_general_cargo": 3,
+        "n_roro": 1,
+        "n_tanker": 15,
+        "n_total": 39,
+        "capacity_container": 450000,
+        "capacity_dry_bulk": 320000,
+        "capacity_general_cargo": 85000,
+        "capacity_roro": 25000,
+        "capacity_tanker": 620000
+      }
+    },
+    {
+      "attributes": {
+        "date": 1714608000000,
+        "n_container": 10,
+        "n_dry_bulk": 6,
+        "n_general_cargo": 4,
+        "n_roro": 2,
+        "n_tanker": 18,
+        "n_total": 40,
+        "capacity_container": 380000,
+        "capacity_dry_bulk": 240000,
+        "capacity_general_cargo": 110000,
+        "capacity_roro": 48000,
+        "capacity_tanker": 740000
+      }
+    }
+  ],
+  "exceededTransferLimit": false
+}

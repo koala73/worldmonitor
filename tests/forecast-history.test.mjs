@@ -1,11 +1,124 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { buildProbabilityTrail, stampResolutionTrajectories } from '../scripts/_forecast-probability-trail.mjs';
+
+describe('published probability trail', () => {
+  const hour = 3_600_000;
+  const now = Date.parse('2026-10-18T00:00:00Z');
+  const row = (probability = 0.4, region = 'Iran') => ({ id: 'fc-1', region, probability });
+  const run = (prior, at, predictions = [row()], history = []) => buildProbabilityTrail(prior, { generatedAt: at, predictions }, history);
+
+  it('backfills chronologically, samples moves or six hours, and is retry-idempotent', () => {
+    const trail = run(null, now, [row(0.6)], [
+      { generatedAt: now - hour, predictions: [row(0.401)] },
+      { generatedAt: now - 7 * hour, predictions: [row()] },
+    ]);
+    assert.equal(trail.forecasts['fc-1'].firstSeenAt, new Date(now - 7 * hour).toISOString());
+    assert.deepEqual(trail.forecasts['fc-1'].points.map(p => p[1]), [0.4, 0.401, 0.6]);
+    assert.deepEqual(run(trail, now, [row(0.6)]), trail);
+    const unchanged = run(trail, now + hour, [row(0.601)]);
+    assert.equal(unchanged.forecasts['fc-1'].points.length, 3);
+    assert.equal(unchanged.forecasts['fc-1'].lastSeenAt, new Date(now + hour).toISOString());
+  });
+
+  it('resets on a region change, including a return to the original region', () => {
+    let trail = run(null, now);
+    trail = run(trail, now + hour, [row(0.8, 'Syria')]);
+    trail = run(trail, now + 2 * hour);
+    assert.equal(trail.forecasts['fc-1'].points.length, 1);
+    assert.equal(trail.forecasts['fc-1'].firstSeenProbability, 0.4);
+    assert.equal(trail.forecasts['fc-1'].subjectChangedAt, new Date(now + 2 * hour).toISOString());
+  });
+
+  it('keeps 120 points from 30 days, drops IDs after 35 days, and stays below 250 KB', () => {
+    let trail;
+    for (let i = 0; i < 150; i++) trail = run(trail, now + i * 6 * hour, Array.from({ length: 30 }, (_, j) => ({ ...row(i % 2 ? 0.6 : 0.4), id: `fc-${j}` })));
+    assert.equal(trail.forecasts['fc-1'].points.length, 120);
+    assert.ok(Buffer.byteLength(JSON.stringify(trail)) < 250 * 1024);
+    assert.equal(Object.keys(run(trail, now + 149 * 6 * hour + 35 * 24 * hour + 1, []).forecasts).length, 0);
+    assert.ok(Date.parse(trail.forecasts['fc-1'].points[0][0]) >= trail.generatedAt - 30 * 24 * hour);
+    const entry = { id: 'fc-1', region: 'Iran', firstSeenAt: now, deadline: trail.generatedAt, resolvedAt: trail.generatedAt, status: 'resolved' };
+    stampResolutionTrajectories({ entry }, trail, trail.generatedAt);
+    assert.equal(entry.trajectory.length, 30);
+    assert.deepEqual(entry.trajectory[0], trail.forecasts['fc-1'].points[0]);
+    assert.deepEqual(entry.trajectory.at(-1), trail.forecasts['fc-1'].points.at(-1));
+    assert.throws(() => run({}, now), /Invalid prior/);
+  });
+});
 
 import {
   makePrediction,
   buildHistorySnapshot,
   buildForecastCase,
+  buildHistoryForecastEntry,
+  buildPublishedForecastPayload,
+  readProbabilityTrailInputs,
+  FORECAST_EXTRA_KEYS,
 } from '../scripts/seed-forecasts.mjs';
+
+describe('probability trail producer integration', () => {
+  it('backfills only a confirmed miss, preserves failed reads, and publishes the bounded key', async t => {
+    const originalFetch = globalThis.fetch;
+    const originalEnv = { ...process.env };
+    t.after(() => { globalThis.fetch = originalFetch; for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']) {
+      if (originalEnv[name] === undefined) delete process.env[name]; else process.env[name] = originalEnv[name];
+    } });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://trail.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
+    const snapshot = { generatedAt: Date.parse('2026-10-17T00:00:00Z'), predictions: [{ id: 'a', region: 'Iran', probability: 0.4 }] };
+    const commands = [];
+    globalThis.fetch = async (_url, options) => {
+      const command = JSON.parse(options.body); commands.push(command);
+      return Response.json({ result: command[0] === 'GET' ? null : [JSON.stringify(snapshot)] });
+    };
+    const inputs = await readProbabilityTrailInputs();
+    assert.deepEqual(commands.map(command => command[0]), ['GET', 'LRANGE']);
+    assert.deepEqual(commands[1].slice(-2), [0, 199]);
+    const current = { ...snapshot, generatedAt: snapshot.generatedAt + 3_600_000 };
+    const data = { ...current, probabilityTrail: buildProbabilityTrail(inputs.prior, current, inputs.history) };
+    const extra = FORECAST_EXTRA_KEYS.find(entry => entry.key === 'forecast:probability-trail:v1');
+    assert.equal(extra.ttl, 45 * 24 * 60 * 60);
+    assert.equal(extra.metaKey, 'seed-meta:forecast:probability-trail');
+    assert.equal(extra.skipWhenEmpty, true);
+    assert.equal(extra.declareRecords(extra.transform(data)), 1);
+    assert.equal(extra.transform(data).forecasts.a.firstSeenAt, new Date(snapshot.generatedAt).toISOString());
+    globalThis.fetch = async () => new Response('unavailable', { status: 503 });
+    await assert.rejects(readProbabilityTrailInputs(), /HTTP 503/);
+    globalThis.fetch = async () => Response.json({ error: 'ERR unavailable' });
+    await assert.rejects(readProbabilityTrailInputs(), /malformed response/);
+  });
+  it('writes durable activation markers and rejects unconfirmed writes', async t => {
+    const originalFetch = globalThis.fetch;
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    t.after(() => {
+      globalThis.fetch = originalFetch;
+      for (const [key, value] of [['UPSTASH_REDIS_REST_URL', savedUrl], ['UPSTASH_REDIS_REST_TOKEN', savedToken]]) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://activation.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    const { markProbabilityTrailActivated } = await import('../scripts/seed-forecasts.mjs');
+    const { markForecastArchiveActivated } = await import('../scripts/seed-forecast-resolutions.mjs');
+    const commands = [];
+    globalThis.fetch = async (_url, options) => { commands.push(JSON.parse(options.body)); return Response.json({ result: 'OK' }); };
+    await markProbabilityTrailActivated();
+    await markForecastArchiveActivated();
+    assert.deepEqual(commands, [
+      ['SET', 'seed-activated:forecast:probability-trail', '1'],
+      ['SET', 'seed-activated:forecast:archive', '1'],
+    ]);
+    globalThis.fetch = async () => Response.json({ error: 'ERR unavailable' });
+    await assert.rejects(markProbabilityTrailActivated(), /activation marker write failed/);
+    await assert.rejects(markForecastArchiveActivated(), /Redis SET rejected|activation marker write failed/);
+  });
+});
+
+import {
+  CONFLICT_COUNT_SOURCE_FEED,
+  attachResolutionSpecs,
+} from '../scripts/_forecast-resolution.mjs';
 
 import {
   selectBenchmarkCandidates,
@@ -37,6 +150,11 @@ describe('forecast history snapshot', () => {
     assert.equal(snapshot.predictions.length, 1);
     assert.equal(snapshot.predictions[0].title, rich.title);
     assert.deepEqual(snapshot.predictions[0].signals[0], { type: 'cii', value: 'Iran CII 87 (critical)', weight: 0.4 });
+  });
+
+  it('carries the emitting commit once per snapshot, and nothing when none is known (#7072)', () => {
+    assert.equal(buildHistorySnapshot({ generatedAt: 1, predictions: [] }, { codeVersion: 'abc123' }).codeVersion, 'abc123');
+    assert.equal('codeVersion' in buildHistorySnapshot({ generatedAt: 1, predictions: [] }, { codeVersion: '' }), false);
   });
 });
 
@@ -318,5 +436,264 @@ describe('forecast benchmark promotion', () => {
     assert.equal(diffPreview.format, 'diff');
     assert.match(diffPreview.diff, /Escalation risk: Iran/);
     assert.match(diffPreview.diff, /Iran escalation risk jumps/);
+  });
+});
+
+// ── U3: resolution spec + projections persistence (#4976 Bet 1) ──────────
+//
+// These exercise the seeder wiring: the enrichment seam (attachResolutionSpecs),
+// the makePrediction default, and the camelCase resolution + projections
+// blocks in both the canonical payload and the 45-day history entry.
+
+// A conflict forecast reaching the hard path needs a count-bearing signal;
+// a commodity market forecast needs an inputs feed with the
+// mapped future ticker priced. Kept minimal + console-quiet.
+const HARD_CONFLICT_GENERATED_AT = 1_700_000_000_000;
+
+function makeHardConflictPred() {
+  return makePrediction('conflict', 'Mali', 'Escalation risk: Mali', 0.62, 0.55, '7d', [
+    { type: 'ucdp', value: '14 UCDP conflict events', weight: 0.5 },
+  ]);
+}
+
+describe('forecast resolution spec round-trip (U3)', () => {
+  it('a hard spec survives buildHistoryForecastEntry -> JSON -> parse with camelCase fields intact', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.6, d7: 0.64, d30: 0.7 };
+    // conflict is judged by default (#5136); force the hard path to exercise hard-spec history round-trip.
+    attachResolutionSpecs([pred], {}, HARD_CONFLICT_GENERATED_AT, { conflictCountFeedAvailable: true });
+    assert.equal(pred.resolution.kind, 'hard');
+
+    const entry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
+    assert.equal(entry.resolution.kind, 'hard');
+    assert.equal(entry.resolution.metricKey, pred.resolution.metricKey);
+    assert.equal(entry.resolution.operator, '>=');
+    assert.ok(Number.isFinite(entry.resolution.threshold));
+    assert.equal(entry.resolution.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
+    assert.equal(entry.resolution.deadline, HARD_CONFLICT_GENERATED_AT + 7 * 24 * 60 * 60 * 1000);
+    // camelCase only — no snake_case leaked through the boundary (D6).
+    assert.ok(!('metric_key' in entry.resolution));
+    assert.ok(!('source_feed' in entry.resolution));
+    // proto3-JSON omission: an inapplicable optional field is ABSENT, not null.
+    assert.ok(!('question' in entry.resolution));
+  });
+
+  it('projections now appear in the history entry and equal the source (#4933 gap)', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.61, d7: 0.66, d30: 0.72 };
+    const entry = buildHistoryForecastEntry(pred);
+    assert.deepEqual(entry.projections, { h24: 0.61, d7: 0.66, d30: 0.72 });
+  });
+
+  it('preserves generationOrigin in history entries for scorecard grouping', () => {
+    const pred = makeHardConflictPred();
+    pred.generationOrigin = 'state_derived';
+    const entry = buildHistoryForecastEntry(pred);
+    assert.equal(entry.generationOrigin, 'state_derived');
+
+    const legacy = buildHistoryForecastEntry(makeHardConflictPred());
+    assert.equal(legacy.generationOrigin, 'legacy_detector');
+  });
+
+  it('carries the state-derived bucket id so the ledger can tell withheld buckets apart (#5234)', () => {
+    const pred = makeHardConflictPred();
+    pred.generationOrigin = 'state_derived';
+    pred.stateDerivation = { bucketId: 'fx_stress', sourceStateKind: 'governance_pressure' };
+    assert.equal(buildHistoryForecastEntry(pred).stateBucketId, 'fx_stress');
+    assert.equal(JSON.parse(JSON.stringify(buildHistoryForecastEntry(makeHardConflictPred()))).stateBucketId, undefined);
+  });
+
+  it('makePrediction defaults resolution:null and an unspec\'d forecast serializes with NO resolution key', () => {
+    const pred = makeHardConflictPred();
+    assert.equal(pred.resolution, null);
+
+    // proto3-JSON omission: unset optional message -> absent key on the wire
+    // (deliberate divergence from the sibling calibration:null idiom — the
+    // generated `resolution?: ResolutionSpec` type is exactly honest this way).
+    const historyEntry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
+    assert.ok(!('resolution' in historyEntry));
+
+    const payload = JSON.parse(JSON.stringify(buildPublishedForecastPayload(pred)));
+    assert.ok(!('resolution' in payload));
+    assert.strictEqual(historyEntry.projections, null);
+    assert.ok(!('projections' in payload));
+  });
+
+  it('projections stay in the history entry for horizon scoring and never reach the published payload (#8967)', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.61, d7: 0.66, d30: 0.72 };
+    assert.deepEqual(buildHistoryForecastEntry(pred).projections, { h24: 0.61, d7: 0.66, d30: 0.72 });
+    const payload = JSON.parse(JSON.stringify(buildPublishedForecastPayload(pred)));
+    assert.ok(!('projections' in payload), 'forecast:predictions:v2 must not publish projections');
+  });
+
+  it('canonical payload emits a camelCase resolution object for a spec\'d forecast, omits it otherwise', () => {
+    const spec = makeHardConflictPred();
+    // conflict is judged by default (#5136); force the hard path for the camelCase resolution round-trip.
+    attachResolutionSpecs([spec], {}, HARD_CONFLICT_GENERATED_AT, { conflictCountFeedAvailable: true });
+    const payload = buildPublishedForecastPayload(spec);
+    assert.equal(payload.resolution.kind, 'hard');
+    assert.equal(payload.resolution.metricKey, spec.resolution.metricKey);
+    assert.ok(!('metric_key' in payload.resolution));
+
+    const bare = makeHardConflictPred();
+    const serialized = JSON.parse(JSON.stringify(buildPublishedForecastPayload(bare)));
+    assert.ok(!('resolution' in serialized));
+  });
+
+  it('omits (never zeroes) a judged spec\'s numeric fields', () => {
+    const pred = makePrediction('political', 'France', 'Government stability: France', 0.4, 0.5, '30d', [
+      { type: 'political_signal', value: 'coalition tension', weight: 0.3 },
+    ]);
+    attachResolutionSpecs([pred], {}, HARD_CONFLICT_GENERATED_AT);
+    assert.equal(pred.resolution.kind, 'judged');
+
+    // A judged spec has no threshold — the key must be ABSENT after
+    // serialization (never 0, which would read as a hard ">= 0" bar; never
+    // null, which the generated `threshold?: number` type does not admit).
+    const payload = JSON.parse(JSON.stringify(buildPublishedForecastPayload(pred)));
+    assert.ok(!('threshold' in payload.resolution));
+    assert.ok(!('baselineValue' in payload.resolution));
+    assert.ok(payload.resolution.question && payload.resolution.question.length > 0);
+    assert.ok(Number.isFinite(payload.resolution.deadline));
+  });
+});
+
+describe('forecast resolution seam coverage (U3, R2/D1)', () => {
+  it('a state_derived-origin forecast (market_transmission signal) gets a non-null judged spec — origin wins', () => {
+    // Production shape: buildStateDerivedForecast attaches a market_transmission
+    // signal (weight 0.24) to every state-derived forecast. Origin-precedence
+    // must classify it judged despite the hard-mapped market signal.
+    const pred = makePrediction('market', 'Global', 'State-derived market stress', 0.5, 0.5, '7d', [
+      { type: 'market_transmission', value: 'FX->equities transmission', weight: 0.24 },
+    ]);
+    pred.generationOrigin = 'state_derived';
+    attachResolutionSpecs([pred], {}, HARD_CONFLICT_GENERATED_AT);
+    assert.equal(pred.resolution.kind, 'judged');
+    assert.ok(pred.resolution.deadline);
+  });
+
+  it('a batch with NO state-derived forecasts still has every forecast spec\'d (seam runs after the block closes)', () => {
+    const batch = [
+      makeHardConflictPred(),
+      makePrediction('political', 'France', 'Government stability: France', 0.4, 0.5, '30d', [
+        { type: 'political_signal', value: 'coalition tension', weight: 0.3 },
+      ]),
+    ];
+    attachResolutionSpecs(batch, {}, HARD_CONFLICT_GENERATED_AT);
+    assert.equal(batch.every((p) => p.resolution && typeof p.resolution.kind === 'string'), true);
+  });
+
+  it('R2 coverage over a small mixed batch WITH inputs — 100% spec\'d, hard path reached', () => {
+    const conflictPred = makeHardConflictPred();
+
+    const commodityPred = makePrediction('market', 'Middle East', 'Oil price impact: Middle East', 0.55, 0.5, '7d', [
+      { type: 'commodity', value: 'Oil sensitivity: 0.8', weight: 0.3 },
+    ]);
+
+    const politicalPred = makePrediction('political', 'France', 'Government stability: France', 0.4, 0.5, '30d', [
+      { type: 'political_signal', value: 'coalition tension', weight: 0.3 },
+    ]);
+
+    const stateDerivedPred = makePrediction('market', 'Global', 'State-derived market stress', 0.5, 0.5, '7d', [
+      { type: 'market_transmission', value: 'FX->equities transmission', weight: 0.24 },
+    ]);
+    stateDerivedPred.generationOrigin = 'state_derived';
+
+    // The builder needs feed data for the commodity hard path: the module reads
+    // inputs.commodityQuotes and matches by future ticker (Oil -> CL=F).
+    const inputs = {
+      commodityQuotes: { quotes: [{ symbol: 'CL=F', name: 'WTI Crude', price: 78.5 }] },
+    };
+
+    const batch = [conflictPred, commodityPred, politicalPred, stateDerivedPred];
+    // conflict is judged by default (#5136); force its hard path so this mixed batch still exercises hard+judged.
+    attachResolutionSpecs(batch, inputs, HARD_CONFLICT_GENERATED_AT, { conflictCountFeedAvailable: true });
+
+    // 100% coverage (R2): every forecast carries a non-null spec.
+    assert.equal(batch.every((p) => p.resolution != null), true);
+    // Both kinds present: conflict + commodity hard, political + state-derived judged.
+    assert.equal(conflictPred.resolution.kind, 'hard');
+    assert.equal(commodityPred.resolution.kind, 'hard');
+    assert.equal(commodityPred.resolution.sourceFeed, 'market:commodities-bootstrap:v1');
+    assert.equal(commodityPred.resolution.operator, 'crosses');
+    assert.ok(Number.isFinite(commodityPred.resolution.baselineValue));
+    assert.equal(politicalPred.resolution.kind, 'judged');
+    assert.equal(stateDerivedPred.resolution.kind, 'judged');
+
+    const hardCount = batch.filter((p) => p.resolution.kind === 'hard').length;
+    assert.equal(hardCount, 2);
+  });
+});
+
+describe('projection horizon contracts persist into history (#7075)', () => {
+  it('a point-in-time contract per horizon survives buildHistoryForecastEntry -> JSON -> parse', () => {
+    const pred = makePrediction('supply_chain', 'Strait of Hormuz', 'Hormuz disruption risk rises', 0.62, 0.55, '7d', [
+      { type: 'chokepoint', value: 'Strait of Hormuz disruption detected', weight: 0.5 },
+    ]);
+    attachResolutionSpecs([pred], {}, HARD_CONFLICT_GENERATED_AT);
+    const entry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
+    assert.deepEqual(Object.keys(entry.horizonResolutions), ['h24', 'd30'], 'only hard contracts persist; the parent horizon has none');
+    assert.deepEqual(entry.horizonResolutions.d30, pred.horizonResolutions.d30);
+    assert.equal(entry.horizonResolutions.d30.kind, 'hard');
+    assert.equal(entry.horizonResolutions.h24.deadline, HARD_CONFLICT_GENERATED_AT + 24 * 60 * 60 * 1000);
+    assert.equal(pred.horizonResolutions.d7.reason, 'parent_horizon');
+  });
+
+  it('unscored horizons stay in memory with their reason and persist nothing', () => {
+    const pred = makePrediction('market', 'Middle East', 'Oil price impact from Hormuz disruption', 0.5, 0.4, '7d', [
+      { type: 'commodity', value: 'Oil sensitivity: 0.9', weight: 0.3 },
+    ]);
+    attachResolutionSpecs([pred], { commodityQuotes: { quotes: [{ symbol: 'CL=F', price: 68.92 }] } }, HARD_CONFLICT_GENERATED_AT);
+    assert.equal(pred.horizonResolutions.h24.reason, 'cumulative_unsupported');
+    assert.strictEqual(buildHistoryForecastEntry(pred).horizonResolutions, null);
+  });
+
+  it('a forecast without contracts persists null', () => {
+    const pred = makePrediction('conflict', 'Mali', 'Escalation risk: Mali', 0.6, 0.5, '7d', []);
+    assert.strictEqual(buildHistoryForecastEntry(pred).horizonResolutions, null);
+  });
+});
+
+describe('published payload scored horizons (#7075 panel)', () => {
+  const hard = (horizon) => ({ horizon, kind: 'hard', semantics: 'point_in_time', deadline: HARD_CONFLICT_GENERATED_AT + 1 });
+  const unscored = (horizon) => ({ horizon, kind: 'unscored', reason: 'parent_horizon' });
+
+  it('names only the horizons with a hard point-in-time contract, in horizon order', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.4, d7: 0.5, d30: 0.6 };
+    pred.horizonResolutions = { d30: hard('d30'), d7: unscored('d7'), h24: hard('h24') };
+    assert.deepEqual(buildPublishedForecastPayload(pred).scoredHorizons, ['h24', 'd30']);
+  });
+
+  it('omits the field when no horizon is scored', () => {
+    const pred = makeHardConflictPred();
+    pred.horizonResolutions = { h24: unscored('h24'), d7: unscored('d7'), d30: unscored('d30') };
+    assert.ok(!('scoredHorizons' in buildPublishedForecastPayload(pred)));
+    delete pred.horizonResolutions;
+    assert.ok(!('scoredHorizons' in buildPublishedForecastPayload(pred)));
+  });
+
+  it('never names a horizon for a held-out origin, whose windows the resolver does not register', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.4, d7: 0.5, d30: 0.6 };
+    pred.generationOrigin = 'state_derived';
+    pred.horizonResolutions = { h24: hard('h24') };
+    assert.ok(!('scoredHorizons' in buildPublishedForecastPayload(pred)));
+  });
+});
+
+describe('history projections never invent a zero (#7075 review)', () => {
+  it('keeps a missing or non-finite horizon value as null, never 0', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.4, d7: undefined, d30: Number.NaN };
+    const entry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
+    assert.deepEqual(entry.projections, { h24: 0.4, d7: null, d30: null });
+  });
+
+  it('keeps a real zero', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0, d7: 0.2, d30: 0.3 };
+    assert.equal(buildHistoryForecastEntry(pred).projections.h24, 0);
   });
 });

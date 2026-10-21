@@ -6,16 +6,40 @@
  *  - Valid Pro token → { valid: true, role: 'pro' }
  *  - Valid Free token → { valid: true, role: 'free' }
  *  - Missing plan claim → defaults to 'free'
- *  - Expired token → { valid: false }
+ *  - Small JWT clock skew → accepted within the bounded tolerance on both verification paths
+ *  - Expired token beyond the tolerance → { valid: false, reason: 'invalid' }
+ *  - Not-yet-valid token within the nbf tolerance → accepted on both paths
+ *  - Exact exp/nbf tolerance boundaries → pinned with a fixed verification clock (no wall-clock coupling)
+ *  - Token with no exp claim → rejected (requiredClaims makes the stated bound enforced)
+ *  - Tolerance-only acceptance → surfaced via acceptedWithinClockTolerance
  *  - Invalid signature → { valid: false }
- *  - Any audience → accepted (audience check removed; issuer check prevents cross-app reuse)
+ *  - Allowed audiences → accepted ('convex' template plus configured publishable/audience envs)
+ *  - Unexpected audience → rejected
+ *  - Present azp on a trusted app/preview/desktop origin → accepted (#8178)
+ *  - Present azp on a foreign or vendor origin → rejected
+ *  - Absent azp → fail open (non-browser Clerk tokens omit it)
+ *  - Empty-string azp → fail open (intentional machine-token policy)
+ *  - Present non-string azp, including explicit null → rejected
+ *  - JWKS transport failure → { valid: false, reason: 'unverifiable' }
  *  - JWKS resolver is reused across calls (module-scoped, not per-request)
  */
 
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import { describe, it, before, after } from 'node:test';
-import { generateKeyPair, exportJWK, SignJWT } from 'jose';
+import { generateKeyPair, exportJWK, jwtVerify, SignJWT } from 'jose';
+import { TRUSTED_RETURN_URL_ORIGINS } from '../convex/payments/returnUrlOrigin.ts';
+import { userPrefsOptionsHttpHandler } from '../convex/http.ts';
+
+const EXPECTED_CLOCK_TOLERANCE_SECONDS = 5;
+
+type AuthSessionResult = {
+  valid: boolean;
+  userId?: string;
+  role?: string;
+  reason?: 'invalid' | 'unverifiable';
+  acceptedWithinClockTolerance?: true;
+};
 
 // ---------------------------------------------------------------------------
 // Suite 1: fail-closed when CLERK_JWT_ISSUER_DOMAIN is NOT set
@@ -24,11 +48,13 @@ import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 // Clear env BEFORE dynamic import so the module captures an empty domain
 delete process.env.CLERK_JWT_ISSUER_DOMAIN;
 
-let validateBearerTokenNoEnv: (token: string) => Promise<{ valid: boolean; userId?: string; role?: string }>;
+let validateBearerTokenNoEnv: (token: string) => Promise<AuthSessionResult>;
+let lookupClerkPlanNoEnv: (userId: string) => Promise<'free' | 'pro' | 'unavailable'>;
 
 before(async () => {
   const mod = await import('../server/auth-session.ts');
   validateBearerTokenNoEnv = mod.validateBearerToken;
+  lookupClerkPlanNoEnv = mod.lookupClerkPlan;
 });
 
 describe('validateBearerToken (no CLERK_JWT_ISSUER_DOMAIN)', () => {
@@ -52,6 +78,47 @@ describe('validateBearerToken (no CLERK_JWT_ISSUER_DOMAIN)', () => {
       assert.equal(result.role, undefined);
     }
   });
+
+  it('reports an unavailable plan lookup when Clerk server credentials are absent', async () => {
+    assert.equal(await lookupClerkPlanNoEnv('user_missing_config'), 'unavailable');
+  });
+});
+
+describe('lookupClerkPlan', () => {
+  it('distinguishes verified roles, missing users, and backend outages', async () => {
+    const originalSecret = process.env.CLERK_SECRET_KEY;
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    process.env.CLERK_SECRET_KEY = 'sk_test_embed_lookup';
+    console.warn = () => {};
+
+    try {
+      const mod = await import(`../server/auth-session.ts?plan-lookup=${Date.now()}`);
+      let response = new Response(JSON.stringify({ public_metadata: { plan: 'pro' } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+      globalThis.fetch = async () => response;
+      assert.equal(await mod.lookupClerkPlan('user_role_pro'), 'pro');
+
+      response = new Response(JSON.stringify({ public_metadata: { plan: 'free' } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+      assert.equal(await mod.lookupClerkPlan('user_role_free'), 'free');
+
+      response = new Response('', { status: 404 });
+      assert.equal(await mod.lookupClerkPlan('user_missing'), 'free');
+
+      response = new Response('', { status: 503 });
+      assert.equal(await mod.lookupClerkPlan('user_backend_down'), 'unavailable');
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      if (originalSecret === undefined) delete process.env.CLERK_SECRET_KEY;
+      else process.env.CLERK_SECRET_KEY = originalSecret;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -62,7 +129,14 @@ describe('validateBearerToken (with JWKS)', () => {
   let privateKey: CryptoKey;
   let jwksServer: Server;
   let jwksPort: number;
-  let validateBearerToken: (token: string) => Promise<{ valid: boolean; userId?: string; role?: string }>;
+  let validateBearerToken: (token: string) => Promise<AuthSessionResult>;
+  let getClerkJwtVerifyOptions: () => { clockTolerance?: string | number };
+  let getClerkJwtVerifyBaseOptions: () => {
+    clockTolerance?: string | number;
+    requiredClaims?: string[];
+  };
+  let verifyPublicKey: CryptoKey;
+  let originalClerkSecretKey: string | undefined;
 
   // Separate key pair for "wrong key" tests
   let wrongPrivateKey: CryptoKey;
@@ -71,6 +145,7 @@ describe('validateBearerToken (with JWKS)', () => {
     // Generate an RSA key pair for signing JWTs
     const { publicKey, privateKey: pk } = await generateKeyPair('RS256');
     privateKey = pk;
+    verifyPublicKey = publicKey;
 
     const { privateKey: wpk } = await generateKeyPair('RS256');
     wrongPrivateKey = wpk;
@@ -102,27 +177,56 @@ describe('validateBearerToken (with JWKS)', () => {
     // Set the issuer domain to the local JWKS server and re-import the module
     // (fresh import since the module caches JWKS at first use)
     process.env.CLERK_JWT_ISSUER_DOMAIN = `http://127.0.0.1:${jwksPort}`;
+    process.env.CLERK_PUBLISHABLE_KEY = 'pk_test_123';
+    originalClerkSecretKey = process.env.CLERK_SECRET_KEY;
+    delete process.env.CLERK_SECRET_KEY;
 
     // Dynamic import with cache-busting query param to get a fresh module instance
     const mod = await import(`../server/auth-session.ts?t=${Date.now()}`);
     validateBearerToken = mod.validateBearerToken;
+    getClerkJwtVerifyOptions = mod.getClerkJwtVerifyOptions;
+    getClerkJwtVerifyBaseOptions = mod.getClerkJwtVerifyBaseOptions;
   });
 
   after(async () => {
     jwksServer?.close();
     delete process.env.CLERK_JWT_ISSUER_DOMAIN;
+    delete process.env.CLERK_PUBLISHABLE_KEY;
+    if (originalClerkSecretKey === undefined) {
+      delete process.env.CLERK_SECRET_KEY;
+    } else {
+      process.env.CLERK_SECRET_KEY = originalClerkSecretKey;
+    }
   });
 
   /** Helper to sign a JWT with the test private key */
-  function signToken(claims: Record<string, unknown>, opts?: { expiresIn?: string; key?: CryptoKey }) {
+  function signToken(
+    claims: Record<string, unknown>,
+    opts?: {
+      audience?: string | null;
+      expiresAt?: number;
+      expiresIn?: string;
+      key?: CryptoKey;
+      notBeforeAt?: number;
+    },
+  ) {
     const builder = new SignJWT(claims)
       .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
       .setIssuer(`http://127.0.0.1:${jwksPort}`)
-      .setAudience('convex')
       .setSubject(claims.sub as string ?? 'user_test123')
       .setIssuedAt();
 
-    if (opts?.expiresIn) {
+    if (opts?.audience !== null) {
+      builder.setAudience(opts?.audience ?? 'convex');
+    }
+
+    if (opts?.notBeforeAt !== undefined) {
+      builder.setNotBefore(opts.notBeforeAt);
+    }
+
+    if (opts?.expiresAt !== undefined) {
+      builder.setExpirationTime(opts.expiresAt);
+    } else if (opts?.expiresIn) {
       builder.setExpirationTime(opts.expiresIn);
     } else {
       builder.setExpirationTime('1h');
@@ -131,12 +235,28 @@ describe('validateBearerToken (with JWKS)', () => {
     return builder.sign(opts?.key ?? privateKey);
   }
 
+  it('exposes the intentionally bounded JWT clock tolerance', () => {
+    assert.equal(
+      getClerkJwtVerifyOptions().clockTolerance,
+      EXPECTED_CLOCK_TOLERANCE_SECONDS,
+    );
+    // The fallback (no-audience) path's options carry the same bound directly,
+    // and require `exp` so the bound is enforced rather than assumed.
+    assert.equal(
+      getClerkJwtVerifyBaseOptions().clockTolerance,
+      EXPECTED_CLOCK_TOLERANCE_SECONDS,
+    );
+    assert.deepEqual(getClerkJwtVerifyBaseOptions().requiredClaims, ['exp']);
+  });
+
   it('accepts a valid Pro token', async () => {
     const token = await signToken({ sub: 'user_pro1', plan: 'pro' });
     const result = await validateBearerToken(token);
     assert.equal(result.valid, true);
     assert.equal(result.userId, 'user_pro1');
     assert.equal(result.role, 'pro');
+    // A token with real life left was not admitted by the tolerance.
+    assert.equal(result.acceptedWithinClockTolerance, undefined);
   });
 
   it('accepts a valid Free token and normalizes role to free', async () => {
@@ -163,30 +283,58 @@ describe('validateBearerToken (with JWKS)', () => {
     assert.equal(result.role, 'free');
   });
 
-  it('rejects an expired token', async () => {
-    const token = await new SignJWT({ sub: 'user_expired', plan: 'pro' })
-      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
-      .setIssuer(`http://127.0.0.1:${jwksPort}`)
-      .setAudience('convex')
-      .setSubject('user_expired')
-      .setIssuedAt(Math.floor(Date.now() / 1000) - 7200) // 2h ago
-      .setExpirationTime(Math.floor(Date.now() / 1000) - 3600) // expired 1h ago
-      .sign(privateKey);
+  it('accepts an audience-bearing token expired within the clock tolerance', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = await signToken(
+      { sub: 'user_aud_within_tolerance', plan: 'pro' },
+      { expiresAt: now - 1 },
+    );
 
     const result = await validateBearerToken(token);
-    assert.equal(result.valid, false);
+    assert.equal(result.valid, true);
+    assert.equal(result.userId, 'user_aud_within_tolerance');
+    // Downstream consumers (api/user-prefs.ts) branch on this to classify a
+    // Convex re-verification 401 as expected near-expiry, not auth drift.
+    assert.equal(result.acceptedWithinClockTolerance, true);
+  });
+
+  it('rejects an audience-bearing token expired beyond the clock tolerance', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = await signToken(
+      { sub: 'user_aud_beyond_tolerance', plan: 'pro' },
+      { expiresAt: now - 8 },
+    );
+
+    assert.deepEqual(
+      await validateBearerToken(token),
+      { valid: false, reason: 'invalid' },
+    );
   });
 
   it('rejects a token signed with wrong key', async () => {
     const token = await signToken({ sub: 'user_wrongkey', plan: 'pro' }, { key: wrongPrivateKey });
-    const result = await validateBearerToken(token);
-    assert.equal(result.valid, false);
+    assert.deepEqual(
+      await validateBearerToken(token),
+      { valid: false, reason: 'invalid' },
+    );
   });
 
-  it('accepts a token with any audience (audience check removed, issuer is sufficient)', async () => {
-    // We deliberately removed the audience:'convex' restriction so that both
-    // the 'convex' template tokens and standard Clerk session tokens are accepted.
-    // The issuer check prevents cross-app token reuse.
+  it('accepts a token with the configured publishable-key audience', async () => {
+    const token = await new SignJWT({ sub: 'user_publishable', plan: 'pro' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+      .setIssuer(`http://127.0.0.1:${jwksPort}`)
+      .setAudience('pk_test_123')
+      .setSubject('user_publishable')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(privateKey);
+
+    const result = await validateBearerToken(token);
+    assert.equal(result.valid, true);
+    assert.equal(result.role, 'pro');
+  });
+
+  it('rejects a token with an unexpected audience', async () => {
     const token = await new SignJWT({ sub: 'user_anyaud', plan: 'pro' })
       .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
       .setIssuer(`http://127.0.0.1:${jwksPort}`)
@@ -196,9 +344,192 @@ describe('validateBearerToken (with JWKS)', () => {
       .setExpirationTime('1h')
       .sign(privateKey);
 
+    assert.deepEqual(
+      await validateBearerToken(token),
+      { valid: false, reason: 'invalid' },
+    );
+  });
+
+  it('accepts a standard Clerk token with no aud claim (fallback path)', async () => {
+    const token = await new SignJWT({ sub: 'user_noaud' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+      .setIssuer(`http://127.0.0.1:${jwksPort}`)
+      .setSubject('user_noaud')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(privateKey);
+
+    const result = await validateBearerToken(token);
+    assert.equal(result.valid, true, 'standard Clerk tokens without aud should be accepted');
+    assert.equal(result.userId, 'user_noaud');
+    assert.equal(result.role, 'free');
+  });
+
+  it('accepts a no-audience token expired within the clock tolerance through the fallback path', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = await signToken(
+      { sub: 'user_noaud_within_tolerance' },
+      { audience: null, expiresAt: now - 1 },
+    );
+
     const result = await validateBearerToken(token);
     assert.equal(result.valid, true);
-    assert.equal(result.role, 'pro');
+    assert.equal(result.userId, 'user_noaud_within_tolerance');
+    assert.equal(result.role, 'free');
+    assert.equal(result.acceptedWithinClockTolerance, true);
+  });
+
+  it('rejects a no-audience token expired beyond the clock tolerance', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = await signToken(
+      { sub: 'user_noaud_beyond_tolerance' },
+      { audience: null, expiresAt: now - 8 },
+    );
+
+    assert.deepEqual(
+      await validateBearerToken(token),
+      { valid: false, reason: 'invalid' },
+    );
+  });
+
+  it('accepts a not-yet-valid token within the nbf clock tolerance on both paths', async () => {
+    // Structurally flake-safe direction: nbf recedes into the past as real
+    // time advances, so test-runner delay can only help acceptance. The
+    // rejection side of the nbf boundary is pinned with a fixed clock below —
+    // a live-clock nbf rejection test would flip to a false pass within
+    // seconds, the flake class tracked in #5841.
+    const now = Math.floor(Date.now() / 1000);
+    const audToken = await signToken(
+      { sub: 'user_aud_nbf_within', plan: 'pro' },
+      { notBeforeAt: now + 4 },
+    );
+    const audResult = await validateBearerToken(audToken);
+    assert.equal(audResult.valid, true);
+    assert.equal(audResult.userId, 'user_aud_nbf_within');
+
+    const noAudToken = await signToken(
+      { sub: 'user_noaud_nbf_within' },
+      { audience: null, notBeforeAt: now + 4 },
+    );
+    const noAudResult = await validateBearerToken(noAudToken);
+    assert.equal(noAudResult.valid, true);
+    assert.equal(noAudResult.userId, 'user_noaud_nbf_within');
+    assert.equal(noAudResult.role, 'free');
+  });
+
+  it('rejects a token with no exp claim (requiredClaims enforces the stated bound)', async () => {
+    const token = await new SignJWT({ sub: 'user_no_exp', plan: 'pro' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+      .setIssuer(`http://127.0.0.1:${jwksPort}`)
+      .setAudience('convex')
+      .setSubject('user_no_exp')
+      .setIssuedAt()
+      .sign(privateKey);
+
+    assert.deepEqual(
+      await validateBearerToken(token),
+      { valid: false, reason: 'invalid' },
+    );
+  });
+
+  describe('exact tolerance boundaries (fixed verification clock)', () => {
+    // These pin the numeric bound behaviorally — a tolerance quietly widened
+    // to 6 or narrowed to 4 fails here — with zero wall-clock coupling:
+    // jose's `currentDate` option freezes "now", so elapsed runner time
+    // cannot flip an outcome. Verification runs against the same exported
+    // options objects the module passes to jwtVerify in production.
+    it('pins the exp boundary on the audience path: 4s late accepted, exactly 5s late rejected', async () => {
+      const t = Math.floor(Date.now() / 1000);
+      const currentDate = new Date(t * 1000);
+
+      const justInside = await signToken(
+        { sub: 'user_exp_edge_in', plan: 'pro' },
+        { expiresAt: t - (EXPECTED_CLOCK_TOLERANCE_SECONDS - 1) },
+      );
+      const { payload } = await jwtVerify(justInside, verifyPublicKey, {
+        ...getClerkJwtVerifyOptions(),
+        currentDate,
+      });
+      assert.equal(payload.sub, 'user_exp_edge_in');
+
+      const atBoundary = await signToken(
+        { sub: 'user_exp_edge_out', plan: 'pro' },
+        { expiresAt: t - EXPECTED_CLOCK_TOLERANCE_SECONDS },
+      );
+      await assert.rejects(
+        jwtVerify(atBoundary, verifyPublicKey, {
+          ...getClerkJwtVerifyOptions(),
+          currentDate,
+        }),
+        (err: { code?: string }) => err.code === 'ERR_JWT_EXPIRED',
+      );
+    });
+
+    it('pins the nbf boundary on the fallback path: exactly 5s early accepted, 6s early rejected', async () => {
+      const t = Math.floor(Date.now() / 1000);
+      const currentDate = new Date(t * 1000);
+
+      const atBoundary = await signToken(
+        { sub: 'user_nbf_edge_in' },
+        { audience: null, notBeforeAt: t + EXPECTED_CLOCK_TOLERANCE_SECONDS },
+      );
+      const { payload } = await jwtVerify(atBoundary, verifyPublicKey, {
+        ...getClerkJwtVerifyBaseOptions(),
+        currentDate,
+      });
+      assert.equal(payload.sub, 'user_nbf_edge_in');
+
+      const beyond = await signToken(
+        { sub: 'user_nbf_edge_out' },
+        { audience: null, notBeforeAt: t + EXPECTED_CLOCK_TOLERANCE_SECONDS + 1 },
+      );
+      await assert.rejects(
+        jwtVerify(beyond, verifyPublicKey, {
+          ...getClerkJwtVerifyBaseOptions(),
+          currentDate,
+        }),
+        (err: { code?: string; claim?: string }) =>
+          err.code === 'ERR_JWT_CLAIM_VALIDATION_FAILED' && err.claim === 'nbf',
+      );
+    });
+  });
+
+  it('extracts email and name from JWT for checkout prefill', async () => {
+    const token = await new SignJWT({
+      sub: 'user_prefill',
+      plan: 'pro',
+      email: 'elie@worldmonitor.app',
+      given_name: 'Elie',
+      family_name: 'Habib',
+    })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+      .setIssuer(`http://127.0.0.1:${jwksPort}`)
+      .setAudience('convex')
+      .setSubject('user_prefill')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(privateKey);
+
+    const result = await validateBearerToken(token);
+    assert.equal(result.valid, true);
+    assert.equal(result.email, 'elie@worldmonitor.app');
+    assert.equal(result.name, 'Elie Habib');
+  });
+
+  it('handles missing email/name gracefully (no prefill)', async () => {
+    const token = await new SignJWT({ sub: 'user_noprofile', plan: 'pro' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+      .setIssuer(`http://127.0.0.1:${jwksPort}`)
+      .setAudience('convex')
+      .setSubject('user_noprofile')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(privateKey);
+
+    const result = await validateBearerToken(token);
+    assert.equal(result.valid, true);
+    assert.equal(result.email, undefined);
+    assert.equal(result.name, undefined);
   });
 
   it('rejects a token with wrong issuer', async () => {
@@ -211,8 +542,10 @@ describe('validateBearerToken (with JWKS)', () => {
       .setExpirationTime('1h')
       .sign(privateKey);
 
-    const result = await validateBearerToken(token);
-    assert.equal(result.valid, false);
+    assert.deepEqual(
+      await validateBearerToken(token),
+      { valid: false, reason: 'invalid' },
+    );
   });
 
   it('rejects a token with no sub claim', async () => {
@@ -224,8 +557,47 @@ describe('validateBearerToken (with JWKS)', () => {
       .setExpirationTime('1h')
       .sign(privateKey);
 
-    const result = await validateBearerToken(token);
-    assert.equal(result.valid, false);
+    assert.deepEqual(
+      await validateBearerToken(token),
+      { valid: false, reason: 'invalid' },
+    );
+  });
+
+  it('classifies a JWKS transport failure as unverifiable', async () => {
+    const failingJwksServer = createServer((_req, res) => {
+      res.destroy();
+    });
+    await new Promise<void>((resolve) => {
+      failingJwksServer.listen(0, '127.0.0.1', () => resolve());
+    });
+    const failingAddress = failingJwksServer.address();
+    const failingPort =
+      typeof failingAddress === 'object' && failingAddress ? failingAddress.port : 0;
+    const failingIssuer = `http://127.0.0.1:${failingPort}`;
+    const originalIssuer = process.env.CLERK_JWT_ISSUER_DOMAIN;
+
+    try {
+      process.env.CLERK_JWT_ISSUER_DOMAIN = failingIssuer;
+      const failingModule = await import(`../server/auth-session.ts?jwks-failure=${Date.now()}`);
+      const token = await new SignJWT({ sub: 'user_jwks_failure', plan: 'pro' })
+        .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+        .setIssuer(failingIssuer)
+        .setAudience('convex')
+        .setSubject('user_jwks_failure')
+        .setIssuedAt()
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+      assert.deepEqual(
+        await failingModule.validateBearerToken(token),
+        { valid: false, reason: 'unverifiable' },
+      );
+    } finally {
+      process.env.CLERK_JWT_ISSUER_DOMAIN = originalIssuer;
+      await new Promise<void>((resolve, reject) => {
+        failingJwksServer.close((err) => (err ? reject(err) : resolve()));
+      });
+    }
   });
 
   it('reuses the JWKS resolver across calls (not per-request)', async () => {
@@ -243,53 +615,152 @@ describe('validateBearerToken (with JWKS)', () => {
     assert.equal(r2.valid, true);
     assert.equal(r2.role, 'free');
   });
+
+  // #8178 — Clerk browser session tokens set `azp` to the minting origin.
+  // Bind once in validateBearerToken; fail open when the claim is absent.
+  it('accepts a browser token whose azp is a TRUSTED_RETURN_URL_ORIGINS host', async () => {
+    for (const azp of TRUSTED_RETURN_URL_ORIGINS) {
+      const token = await signToken({ sub: `user_azp_${new URL(azp).hostname}`, plan: 'pro', azp });
+      const result = await validateBearerToken(token);
+      assert.equal(result.valid, true, `expected trusted azp accepted: ${azp}`);
+      assert.equal(result.role, 'pro');
+    }
+  });
+
+  it('accepts desktop and preview azp values surveyed in #8178', async () => {
+    for (const azp of [
+      'tauri://localhost',
+      'asset://localhost',
+      'https://tauri.localhost',
+      'https://worldmonitor-git-feat-azp-eliewm.vercel.app',
+      'https://worldmonitor-r6q9o-eliewm.vercel.app',
+    ]) {
+      const token = await signToken({ sub: 'user_azp_desktop_preview', plan: 'free', azp });
+      const result = await validateBearerToken(token);
+      assert.equal(result.valid, true, `expected surveyed azp accepted: ${azp}`);
+    }
+  });
+
+  it('accepts SITE_URL as azp for self-hosted / preview deploys', async () => {
+    const originalSite = process.env.SITE_URL;
+    process.env.SITE_URL = 'https://self-hosted.example';
+    try {
+      const token = await signToken({
+        sub: 'user_azp_site_url',
+        plan: 'pro',
+        azp: 'https://self-hosted.example',
+      });
+      const result = await validateBearerToken(token);
+      assert.equal(result.valid, true);
+    } finally {
+      if (originalSite === undefined) delete process.env.SITE_URL;
+      else process.env.SITE_URL = originalSite;
+    }
+  });
+
+  it('rejects a foreign or vendor-owned azp', async () => {
+    for (const azp of [
+      'https://evil.example',
+      'https://clerk.worldmonitor.app',
+      'https://abacus.worldmonitor.app',
+      'https://worldmonitor-feat-x-attacker.vercel.app',
+      'https://some-other-app-eliewm.vercel.app',
+    ]) {
+      const token = await signToken({ sub: 'user_azp_foreign', plan: 'pro', azp });
+      assert.deepEqual(
+        await validateBearerToken(token),
+        { valid: false, reason: 'invalid' },
+        `expected foreign azp rejected: ${azp}`,
+      );
+    }
+  });
+
+  it('fails open when azp is absent (non-browser Clerk tokens omit it)', async () => {
+    const token = await signToken({ sub: 'user_no_azp', plan: 'pro' });
+    const result = await validateBearerToken(token);
+    assert.equal(result.valid, true);
+    assert.equal(result.userId, 'user_no_azp');
+  });
+
+  it('fails open when azp is an empty string', async () => {
+    const token = await signToken({ sub: 'user_empty_azp', plan: 'pro', azp: '' });
+    const result = await validateBearerToken(token);
+    assert.equal(result.valid, true);
+    assert.equal(result.userId, 'user_empty_azp');
+  });
+
+  it('rejects a non-string azp claim', async () => {
+    for (const azp of [1, ['https://worldmonitor.app'], { origin: 'https://worldmonitor.app' }]) {
+      const token = await signToken({ sub: 'user_bad_azp_type', plan: 'pro', azp });
+      assert.deepEqual(
+        await validateBearerToken(token),
+        { valid: false, reason: 'invalid' },
+        `expected non-string azp rejected: ${JSON.stringify(azp)}`,
+      );
+    }
+  });
+
+  it('rejects an explicit null azp claim', async () => {
+    const token = await signToken({ sub: 'user_null_azp', plan: 'pro', azp: null });
+    assert.deepEqual(await validateBearerToken(token), { valid: false, reason: 'invalid' });
+  });
+
+  it('rejects SITE_URL mismatch when azp is outside the CORS allowlist', async () => {
+    const originalSite = process.env.SITE_URL;
+    process.env.SITE_URL = 'https://self-hosted.example';
+    try {
+      const token = await signToken({
+        sub: 'user_azp_site_mismatch',
+        plan: 'pro',
+        azp: 'https://other.example',
+      });
+      assert.deepEqual(await validateBearerToken(token), { valid: false, reason: 'invalid' });
+    } finally {
+      if (originalSite === undefined) delete process.env.SITE_URL;
+      else process.env.SITE_URL = originalSite;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
-// Suite 3: CORS origin matching -- pure logic (independent of auth provider)
+// Suite 3: Convex user-preferences CORS preflight
 // ---------------------------------------------------------------------------
 
-describe('CORS origin matching (convex/http.ts)', () => {
-  function matchOrigin(origin: string, pattern: string): boolean {
-    if (pattern.startsWith('*.')) {
-      return origin.endsWith(pattern.slice(1));
+describe('userPrefsOptionsHttpHandler CORS', () => {
+  const invokePreflight = (origin?: string) => userPrefsOptionsHttpHandler(
+    {} as Parameters<typeof userPrefsOptionsHttpHandler>[0],
+    new Request('https://convex.example/api/user-prefs', {
+      method: 'OPTIONS',
+      headers: origin ? { Origin: origin } : undefined,
+    }),
+  );
+
+  it('emits CORS headers for each trusted origin shape', async () => {
+    for (const origin of [
+      'https://worldmonitor.app',
+      'https://worldmonitor-git-preview-xyz-eliewm.vercel.app',
+      'http://localhost:3000',
+    ]) {
+      const response = await invokePreflight(origin);
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.get('access-control-allow-origin'), origin);
+      assert.equal(response.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
     }
-    return origin === pattern;
-  }
-
-  function allowedOrigin(origin: string | null, trusted: string[]): string | null {
-    if (!origin) return null;
-    return trusted.some((p) => matchOrigin(origin, p)) ? origin : null;
-  }
-
-  const TRUSTED = [
-    'https://worldmonitor.app',
-    '*.worldmonitor.app',
-    'http://localhost:3000',
-  ];
-
-  it('allows exact match', () => {
-    assert.equal(allowedOrigin('https://worldmonitor.app', TRUSTED), 'https://worldmonitor.app');
   });
 
-  it('allows wildcard subdomain', () => {
-    const origin = 'https://preview-xyz.worldmonitor.app';
-    assert.equal(allowedOrigin(origin, TRUSTED), origin);
-  });
-
-  it('allows localhost', () => {
-    assert.equal(allowedOrigin('http://localhost:3000', TRUSTED), 'http://localhost:3000');
-  });
-
-  it('blocks unknown origin', () => {
-    assert.equal(allowedOrigin('https://evil.com', TRUSTED), null);
-  });
-
-  it('blocks partial domain match', () => {
-    assert.equal(allowedOrigin('https://attackerworldmonitor.app', TRUSTED), null);
-  });
-
-  it('returns null for null origin -- no ACAO header emitted', () => {
-    assert.equal(allowedOrigin(null, TRUSTED), null);
+  it('omits CORS headers for untrusted and absent origins', async () => {
+    for (const origin of [
+      'https://evil.com',
+      'https://attackerworldmonitor.app',
+      'https://preview-xyz.worldmonitor.app',
+      'https://clerk.worldmonitor.app',
+      'https://abacus.worldmonitor.app',
+      undefined,
+    ]) {
+      const response = await invokePreflight(origin);
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.get('access-control-allow-origin'), null);
+      assert.equal(response.headers.get('access-control-allow-methods'), null);
+    }
   });
 });

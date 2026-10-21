@@ -8,7 +8,8 @@ import "worldmonitor/military/v1/military_vessel.proto";
 // GetTheaterPostureRequest specifies the theater to assess.
 message GetTheaterPostureRequest {
   // Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
-  string theater = 1 [(sebuf.http.query) = { name: "theater" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string theater = 1 [(sebuf.http.query) = { name: "theater" }, (sebuf.http.unimplemented) = true];
 }
 
 // GetTheaterPostureResponse contains theater posture assessments.

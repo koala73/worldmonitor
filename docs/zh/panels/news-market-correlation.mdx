@@ -1,0 +1,78 @@
+---
+title: "新闻 ↔ 市场"
+description: "探索性领先/滞后面板，将 GDELT 主题新闻量与六种资产的每小时市场收益率进行相关分析，给出 Pearson 相关系数、95% Fisher-z 置信区间，以及 ±6 小时的滞后扫描。"
+---
+
+**News ↔ Markets** 面板（内部 id `news-market-correlation`）回答一个问题：某个全球主题的新闻量与某个市场是同步变动、领先还是滞后。它把 GDELT 主题新闻量与资产价格画在同一张图上，给出带 95% 区间的 Pearson 相关系数，并逐小时扫描滞后，判断是新闻领先还是市场领先。
+
+结果是探索性的。相关性和领先/滞后关系不能证明因果，面板也会如实显示弱相关和无相关的结果，而不是把它们隐藏起来。
+
+## 面板显示内容
+
+- **控件**：新闻主题（默认 *Sanctions*）、市场（默认 *S&P 500*），以及 24 小时、3 天、7 天（默认）或 14 天的时间窗口。
+- **图表**：在所选窗口内，用两条独立坐标轴显示 GDELT 新闻量和资产价格。
+- **Pearson r**：每小时新闻量与每小时市场收益率之间的相关系数，并给出对齐的小时样本数（`n`）。
+- **95% 区间**：该系数的 Fisher-z 置信区间。
+- **解读**：关系标签（*No clear relationship*、*Weak / Moderate / Strong positive or negative relationship* 或 *Insufficient aligned observations*），以及一行领先/滞后结论，例如 *News leads by 3h (r=0.41, n=120)* 或 *Neither series clearly leads*。
+- **新鲜度**：市场序列的最后更新时间。
+
+面板 id 为 `news-market-correlation`；组件为 `src/components/NewsMarketCorrelationPanel.ts`，分析逻辑位于 `src/services/news-market-correlation.ts`。
+
+## 覆盖范围
+
+该面板刻意只覆盖一个很窄的范围，请在以下限制内理解它的结论：
+
+- **只有六种资产。** S&P 500（`^GSPC`）、Nasdaq Composite（`^IXIC`）、Bitcoin（`BTC-USD`）、Ethereum（`ETH-USD`）、黄金（`GC=F`）和 WTI 原油（`CL=F`）。不包括布伦特原油、天然气、外汇、个股或预测市场。某个资产的序列加载失败时，它在选择器中会被禁用。
+- **全球主题，而不是国家或危机。** 新闻序列是某个主题在全球范围内的 GDELT 新闻量。选择器提供六个安全主题：Military Activity、Cyber Threats、Nuclear、Sanctions、Intelligence 和 Maritime Security。
+- **基于每小时收益率的 Pearson 相关。** 该系数是线性的，并在同一小时桶内计算。它比较的是新闻量与价格的百分比变化，而不是价格水平。
+- **不保存结论。** 每个系数、区间和领先/滞后结论都在每次加载时于浏览器中重新计算。结论不会被存储，因此没有历史结论记录。
+
+## 如何打开
+
+- **Cmd+K**：输入 *news market correlation*、*gdelt markets*、*lead lag* 或 *market returns*。
+- **各版本可用性**：在 **full/geopolitical**、**finance** 和 **commodity** 版本中默认启用（`enabled: true, priority: 1`）。tech、energy 和 happy 版本中没有注册。来源：`src/config/panels.ts` 中 `FULL_PANELS`、`FINANCE_PANELS` 和 `COMMODITY_PANELS` 的 `'news-market-correlation'` 条目。
+
+## 数据来源
+
+| 序列 | 路由或键 | 上游 |
+|---|---|---|
+| 市场价格 | Bootstrap 按需键 `marketCorrelationSeries`（Redis `market:correlation-series:v1`） | Yahoo Finance chart API，`range=14d`、`interval=1h`，由 `scripts/seed-market-correlation-series.mjs` 写入。 |
+| 新闻量 | `GET /api/intelligence/v1/get-gdelt-topic-timeline`（Redis `gdelt:intel:vol:<topic>`） | 每个时间桶内匹配的 GDELT 批量记录数，由 `scripts/seed-gdelt-bulk-materializer.mjs` 写入。 |
+
+## 计算方法
+
+`src/services/news-market-correlation.ts` 中的 `analyzeNewsMarketCorrelation()` 按以下步骤运行：
+
+1. **窗口。** 窗口结束于两个序列中最新的时间戳，并向前延伸所选的小时数。
+2. **小时桶。** 新闻数据点按小时取平均值；市场数据点保留每小时最新的正价格。
+3. **收益率。** 某小时的市场收益率是相对上一小时的百分比变化。只有两个桶正好相隔一小时时才计算收益率，因此休市会留下空缺，而不会产生跨多小时的收益率。
+4. **对齐与 Pearson r。** 每个小时收益率与同一小时的新闻量配对。Pearson r 至少需要 4 个对齐样本，并且两个序列的方差都不为零；否则面板显示 *Insufficient aligned observations*。
+5. **95% 区间。** 使用 Fisher z 变换，误差范围为 `1.96 / sqrt(n - 3)`，再映射回 r 的尺度。
+6. **关系标签。** 如果区间跨越零，标签为 *No clear relationship*。否则按 r 的绝对值确定标签：低于 `0.2` 为弱，低于 `0.5` 为中等，`0.5` 及以上为强。
+7. **滞后扫描。** 对 -6 到 +6 的每个整小时滞后，把第 `t` 小时的新闻与第 `t + lag` 小时的市场收益率配对，并保留绝对系数最大的滞后。正滞后表示新闻领先，负滞后表示市场领先。
+
+只有当最佳滞后满足以下全部条件时，面板才报告 *News leads* 或 *Market leads*；否则报告 *Neither series clearly leads*。
+
+- 滞后不为零。
+- 该滞后至少有 8 个对齐样本。
+- 滞后系数的绝对值至少为 `0.2`。
+- 该滞后的 95% 区间不包含零。
+- 滞后系数的绝对值比同小时系数至少高 `0.05`。
+
+领先/滞后这一行显示滞后小时数、对应系数和样本数。**95% 区间** 卡片始终对应同小时系数，而不是滞后系数。
+
+## 刷新频率
+
+- **市场序列**：作为 `seed-bundle-market-backup` 捆绑任务的一员，每 15 分钟重新写入一次。超过 45 分钟未更新时，健康检查会将其标记为过期。
+- **新闻序列**：Railway 服务 `seed-gdelt-intel` 每 15 分钟运行一次 `scripts/seed-gdelt-bulk-materializer.mjs`。只有批次中存在匹配记录时，主题才会新增新闻量数据点并更新时间戳；否则沿用上一次运行的序列和时间戳。
+- **面板**：接近视口时获取数据，并在保持接近视口期间每 15 分钟刷新一次（`REFRESH_INTERVALS.newsMarketCorrelation`）。
+
+## 层级与权限
+
+**免费。** 所有版本的注册中都没有 `premium` 标记，两个数据读取接口也都是公开的。
+
+## 相关页面
+
+- [跨流关联引擎](/zh/algorithms#跨流关联引擎)：基于信号的关联类型；其中 `news_leads_markets` 只是保留名称，没有任何检测器会生成它。
+- [指标与信号](/zh/panels/indicators-and-signals)：紧凑型市场与关联面板目录。
+- [金融数据](/zh/finance-data)：更广泛的市场数据家族。

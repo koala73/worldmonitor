@@ -7,7 +7,8 @@
  * from matchCountryNamesInText(). The correlation engine's clusterByCountry()
  * groups by raw string, so "Iran" !== "IR" produced separate rows.
  *
- * Fix: normalizeToCode() in escalation.ts converts all country values to ISO2
+ * Fix: normalizeToCountryCode() converts all country values to ISO2 before the
+ * adapters use them.
  * before pushing signals. generateTitle() resolves ISO2 back to full names.
  */
 
@@ -28,6 +29,7 @@ const readSrc = (relPath: string) => readFileSync(resolve(root, relPath), 'utf-8
 
 describe('escalation adapter — country normalization structure', () => {
   const src = readSrc('src/services/correlation-engine/adapters/escalation.ts');
+  const normalizer = readSrc('src/services/correlation-engine/country-normalization.ts');
 
   it('all signals.push() blocks use normalizedCountry, not raw country', () => {
     const pushBlocks = src.split('signals.push({');
@@ -60,21 +62,13 @@ describe('escalation adapter — country normalization structure', () => {
     );
   });
 
-  it('normalizeToCode is NOT exported', () => {
-    assert.doesNotMatch(
-      src,
-      /export\s+(function|const)\s+normalizeToCode/,
-      'normalizeToCode must be a module-private helper, not exported',
-    );
-    assert.match(
-      src,
-      /function\s+normalizeToCode/,
-      'normalizeToCode function must exist',
-    );
+  it('uses the shared country normalizer', () => {
+    assert.match(src, /import\s+\{\s*normalizeToCountryCode\s*\}\s+from '\.\.\/country-normalization'/);
+    assert.match(normalizer, /export function normalizeToCountryCode/);
   });
 
   it('nameToCountryCode runs before the 2-char fast path', () => {
-    const fnBody = src.slice(src.indexOf('function normalizeToCode'), src.indexOf('const ESCALATION_KEYWORDS'));
+    const fnBody = normalizer.slice(normalizer.indexOf('export function normalizeToCountryCode'));
     const nameIdx = fnBody.indexOf('nameToCountryCode');
     const twoCharIdx = fnBody.indexOf("trimmed.length === 2");
     assert.ok(nameIdx > 0, 'normalizeToCode must call nameToCountryCode');
@@ -82,10 +76,10 @@ describe('escalation adapter — country normalization structure', () => {
     assert.ok(nameIdx < twoCharIdx, 'nameToCountryCode must run BEFORE the 2-char fast path to resolve aliases like UK->GB');
   });
 
-  it('imports nameToCountryCode and getCountryNameByCode from country-geometry', () => {
-    assert.match(src, /nameToCountryCode/, 'must import nameToCountryCode');
+  it('keeps geometry lookup and presentation in their owning modules', () => {
+    assert.match(normalizer, /nameToCountryCode/, 'normalizer must import nameToCountryCode');
     assert.match(src, /getCountryNameByCode/, 'must import getCountryNameByCode');
-    assert.match(src, /iso3ToIso2Code/, 'must import iso3ToIso2Code');
+    assert.match(normalizer, /iso3ToIso2Code/, 'normalizer must import iso3ToIso2Code');
   });
 });
 

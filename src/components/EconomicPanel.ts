@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import type { FredSeries, BisData } from '@/services/economic';
 import { BLS_METRO_IDS } from '@/services/economic';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import type { SpendingSummary } from '@/services/usa-spending';
@@ -50,10 +50,10 @@ function stressComponentCard(c: EconomicStressComponent): string {
   if (c.missing) {
     return `<div style="background:rgba(255,255,255,0.02);border-radius:6px;padding:8px 10px;border:1px solid rgba(255,255,255,0.05)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <span style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">${escapeHtml(c.label)}</span>
-        <span style="font-size:10px;color:#888">N/A</span>
+        <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">${escapeHtml(c.label)}</span>
+        <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#888">N/A</span>
       </div>
-      <div style="font-size:9px;color:#666;font-style:italic">Data unavailable</div>
+      <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:#666;font-style:italic">Data unavailable</div>
     </div>`;
   }
   const color = stressScoreColor(c.score);
@@ -61,14 +61,14 @@ function stressComponentCard(c: EconomicStressComponent): string {
   const rawDisplay = stressFormatRaw(c.id, c.rawValue);
   return `<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px 10px;border:1px solid rgba(255,255,255,0.07)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-      <span style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">${escapeHtml(c.label)}</span>
-      <span style="font-size:10px;color:var(--text-dim)">${escapeHtml(rawDisplay)}</span>
+      <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">${escapeHtml(c.label)}</span>
+      <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(rawDisplay)}</span>
     </div>
     <div style="display:flex;align-items:center;gap:6px">
       <div style="flex:1;background:rgba(255,255,255,0.07);border-radius:3px;height:5px;overflow:hidden">
         <div style="height:100%;width:${barWidth}%;background:${color};border-radius:3px;transition:width 0.3s"></div>
       </div>
-      <span style="font-size:10px;font-weight:600;color:${color};min-width:28px;text-align:right">${c.score.toFixed(0)}</span>
+      <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${color};min-width:28px;text-align:right">${c.score.toFixed(0)}</span>
     </div>
   </div>`;
 }
@@ -223,7 +223,7 @@ export class EconomicPanel extends Panel {
         </button>
         ${hasSpending ? `
           <button class="panel-tab ${this.activeTab === 'spending' ? 'active' : ''}" data-tab="spending">
-            ${t('components.economic.gov')}
+            Recent awards
           </button>
         ` : ''}
         ${hasBis ? `
@@ -265,7 +265,7 @@ export class EconomicPanel extends Panel {
       ? this.lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       : '';
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       ${tabsHtml}
       <div class="economic-content">
         ${contentHtml}
@@ -273,7 +273,7 @@ export class EconomicPanel extends Panel {
       <div class="economic-footer">
         <span class="economic-source">${this.getSourceLabel()} • ${updateTime}</span>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private getSourceLabel(): string {
@@ -530,20 +530,20 @@ export class EconomicPanel extends Panel {
     const needlePct = Math.min(100, Math.max(0, d.compositeScore)).toFixed(1);
     const cards = d.components.map((c) => stressComponentCard(c)).join('');
     const updatedNote = d.seededAt
-      ? `<div style="font-size:9px;color:var(--text-dim);text-align:right;margin-top:8px">Updated ${new Date(d.seededAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>`
+      ? `<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-align:right;margin-top:8px">Updated ${new Date(d.seededAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>`
       : '';
 
     return `<div style="padding:12px 14px">
       <div style="text-align:center;margin-bottom:12px">
-        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Composite Score</div>
-        <div style="font-size:38px;font-weight:700;color:${color};line-height:1">${d.compositeScore.toFixed(1)}</div>
-        <div style="display:inline-block;margin-top:6px;padding:3px 10px;border-radius:12px;background:${color}22;border:1px solid ${color}66;font-size:12px;font-weight:600;color:${color}">${escapeHtml(d.label)}</div>
+        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Composite Score</div>
+        <div style="font-size:calc(38px * var(--wm-panel-effective-scale, 1));font-weight:700;color:${color};line-height:1">${d.compositeScore.toFixed(1)}</div>
+        <div style="display:inline-block;margin-top:6px;padding:3px 10px;border-radius:12px;background:${color}22;border:1px solid ${color}66;font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${color}">${escapeHtml(d.label)}</div>
       </div>
       <div style="margin-bottom:16px">
         <div style="position:relative;height:12px;border-radius:6px;overflow:visible;background:linear-gradient(to right,#27ae60 0%,#f1c40f 20%,#e67e22 40%,#e74c3c 60%,#8e44ad 80%,#8e44ad 100%);margin-bottom:4px">
           <div style="position:absolute;top:-4px;left:calc(${needlePct}% - 2px);width:4px;height:20px;background:#fff;border-radius:2px;box-shadow:0 0 4px rgba(0,0,0,0.6)"></div>
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim)">
+        <div style="display:flex;justify-content:space-between;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">
           <span>Low</span><span>Moderate</span><span>Elevated</span><span>Severe</span><span>Critical</span>
         </div>
       </div>

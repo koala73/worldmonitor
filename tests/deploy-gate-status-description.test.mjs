@@ -1,0 +1,1575 @@
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const gateScriptPath = resolve(repoRoot, '.github/scripts/deploy-gate.sh');
+const gateScript = readFileSync(gateScriptPath, 'utf8');
+const SHA = 'fedcba9876543210fedcba9876543210fedcba98';
+const MAIN_TIP = '0123456789abcdef0123456789abcdef01234567';
+const HEAD_TIP = '89abcdef0123456789abcdef0123456789abcdef';
+const OLD_BASE = 'abcdef0123456789abcdef0123456789abcdef01';
+
+// The whole required list, read from the script so the test cannot pass by
+// pinning a shorter list than production actually gates on.
+const REQUIRED_LITERAL = gateScript.match(/required='(\[[^']*\])'/)[1];
+const REQUIRED = JSON.parse(REQUIRED_LITERAL);
+// Read the rules version from the script too: a bump must change the stamp, and
+// a test that recomputed the stamp from the name list alone would not notice.
+const GATE_RULES = gateScript.match(/gate_rules='([^']*)'/)[1];
+const GATE_STAMP = `[gate-contract:${
+  createHash('sha256').update(`${REQUIRED_LITERAL}\n${GATE_RULES}`).digest('hex').slice(0, 12)}]`;
+const stamped = (description) => `${description} ${GATE_STAMP}`;
+
+function runPhases(options, tempDir) {
+  const outputPath = join(tempDir, 'outputs');
+  const resultsDir = join(tempDir, 'invalidations');
+  rmSync(resultsDir, { recursive: true, force: true });
+  mkdirSync(resultsDir);
+  let status = 0;
+  let stdout = '';
+  let stderr = '';
+  const execute = (phase, env = {}) => {
+    writeFileSync(outputPath, '');
+    const result = spawnSync('bash', ['-e', gateScriptPath, phase], {
+      ...options,
+      env: { ...options.env, GITHUB_OUTPUT: outputPath, ...env },
+    });
+    stdout += result.stdout ?? '';
+    stderr += result.stderr ?? '';
+    if (result.status !== 0) status = result.status ?? 1;
+    const outputs = Object.fromEntries(readFileSync(outputPath, 'utf8').trim().split('\n')
+      .filter(Boolean).map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]));
+    return { result, outputs };
+  };
+  const discovered = execute('discover');
+  if (discovered.result.status !== 0) return { status, stdout, stderr };
+  for (const { sha } of JSON.parse(discovered.outputs.matrix).include) {
+    const directory = join(resultsDir, `deploy-gate-invalidate-1-${sha}`);
+    mkdirSync(directory);
+    execute('invalidate', { SHA: sha, RESULT_PATH: join(directory, 'result.json') });
+  }
+  const recovered = execute('recover', {
+    DISCOVERY: discovered.outputs.discovery,
+    RESULTS_DIR: resultsDir,
+    RUN_ATTEMPT: '1',
+  });
+  if (recovered.result.status !== 0) return { status, stdout, stderr };
+  if (recovered.outputs.invalidation_failed !== 'false' || recovered.outputs.protocol_failed !== 'false') status = 1;
+  for (const { sha, check_attempts: attempts } of JSON.parse(recovered.outputs.matrix).include) {
+    execute('evaluate', { SHA: sha, CHECK_ATTEMPTS: String(attempts) });
+  }
+  return { status, stdout, stderr };
+}
+
+function recoverPlan(discovery, artifacts) {
+  const directory = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
+  try {
+    const resultsDir = join(directory, 'invalidations');
+    mkdirSync(resultsDir);
+    for (const [name, value] of Object.entries(artifacts)) {
+      const artifact = join(resultsDir, name);
+      mkdirSync(artifact);
+      writeFileSync(join(artifact, 'result.json'), typeof value === 'string' ? value : JSON.stringify(value));
+    }
+    const output = join(directory, 'output');
+    writeFileSync(output, '');
+    const result = spawnSync('bash', ['-e', gateScriptPath, 'recover'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        DISCOVERY: JSON.stringify(discovery),
+        GITHUB_OUTPUT: output,
+        RESULTS_DIR: resultsDir,
+        RUN_ATTEMPT: '1',
+        REPO: 'koala73/worldmonitor',
+        SHA: '',
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map((line) => {
+      const separator = line.indexOf('=');
+      return [line.slice(0, separator), JSON.parse(line.slice(separator + 1))];
+    }));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+describe('deploy gate phase results', () => {
+  const stale = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const pending = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  const plan = { kind: 'sweep', stale: [stale], retry: [pending], missing: [] };
+  const artifact = `deploy-gate-invalidate-1-${stale}`;
+
+  it('emits a real empty matrix after an empty invalidation phase', () => {
+    assert.deepEqual(recoverPlan({ kind: 'sweep', stale: [], retry: [], missing: [] }, {}), {
+      matrix: { include: [] }, count: 0, invalidation_failed: false, protocol_failed: false,
+    });
+  });
+
+  it('keeps ordinary failures eligible and excludes exhausted heads', () => {
+    for (const outcome of ['invalidated', 'failed', 'exhausted', 'blocked']) {
+      const result = recoverPlan(plan, { [artifact]: { version: 1, sha: stale, outcome } });
+      assert.deepEqual(result.matrix.include, [
+        ...(['exhausted', 'blocked'].includes(outcome) ? [] : [{ sha: stale, check_attempts: 1 }]),
+        { sha: pending, check_attempts: 2 },
+      ]);
+      assert.equal(result.invalidation_failed, !['invalidated', 'blocked'].includes(outcome));
+      assert.equal(result.protocol_failed, false);
+    }
+  });
+
+  it('excludes unknown worker outcomes while continuing independent heads', () => {
+    for (const artifacts of [
+      {},
+      { [artifact]: 'not json' },
+      { [artifact]: { version: 1, sha: pending, outcome: 'invalidated' } },
+      { [artifact]: { version: 2, sha: stale, outcome: 'invalidated' } },
+      { [artifact]: { version: 1, sha: stale, outcome: 'invalidated', extra: true } },
+      { [`deploy-gate-invalidate-2-${stale}`]: { version: 1, sha: stale, outcome: 'invalidated' } },
+    ]) {
+      const result = recoverPlan(plan, artifacts);
+      assert.deepEqual(result.matrix.include, [{ sha: pending, check_attempts: 2 }]);
+      assert.equal(result.protocol_failed, true);
+    }
+  });
+});
+
+/**
+ * Run the gate step against a fabricated check-runs answer.
+ *
+ * `conclusions` maps a required check name to its conclusion; a name left out
+ * is absent from the API response, which the step reads as pending.
+ *
+ * Options can force API failures, drive the scheduled-sweep path, and add an
+ * older completed suite so the harness also proves that a newer pending rerun
+ * cannot be masked by its predecessor.
+ */
+function runGate(conclusions, {
+  now = '2026-08-12T12:30:00Z',
+  failedRunCreatedAt = '2026-08-12T12:15:00Z',
+  failedRunSha = SHA,
+  graphQlFailures = 0,
+  graphQlFailureKind = 'generic',
+  firstConclusions,
+  previousConclusions,
+  previousStatus,
+  repetitions = 1,
+  resetAvailable = true,
+  restFailures = 0,
+  restFailureKind = 'generic',
+  statusFailures = 0,
+  statusFailuresPerSha = 0,
+  statusFailureKind = 'generic',
+  statusReadFailures = 0,
+  malformedStatusResponse = false,
+  exhaustedSha = '',
+  sweepStatus,
+  sweepStatuses,
+  drift,
+} = {}) {
+  const tempDir = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
+  const fakeBin = join(tempDir, 'bin');
+  const runsFile = join(tempDir, 'check-runs.json');
+  const firstRunsFile = join(tempDir, 'first-check-runs.json');
+  const failuresFile = join(tempDir, 'graphql-failures');
+  const restFailuresFile = join(tempDir, 'rest-failures');
+  const restRunsFile = join(tempDir, 'rest-check-runs.json');
+  const statusFailuresFile = join(tempDir, 'status-failures');
+  const sweepFile = join(tempDir, 'sweep.json');
+  const postedFile = join(tempDir, 'posted');
+  const postTargetsFile = join(tempDir, 'post-targets');
+  const rejectedFile = join(tempDir, 'rejected');
+  const callsFile = join(tempDir, 'calls');
+  const currentStatusesFile = join(tempDir, 'current-statuses.json');
+  const statusReadFailuresFile = join(tempDir, 'status-read-failures');
+  const summaryFile = join(tempDir, 'summary');
+  const driftHeadFilesFile = join(tempDir, 'drift-head-files');
+  const driftMainFilesFile = join(tempDir, 'drift-main-files');
+
+  try {
+    mkdirSync(fakeBin);
+    writeFileSync(failuresFile, String(graphQlFailures));
+    writeFileSync(restFailuresFile, String(restFailures));
+    writeFileSync(statusFailuresFile, String(statusFailures));
+    for (const { sha } of sweepStatuses ?? []) {
+      writeFileSync(`${statusFailuresFile}-${sha}`, String(statusFailuresPerSha));
+    }
+    writeFileSync(postedFile, '');
+    writeFileSync(postTargetsFile, '');
+    writeFileSync(rejectedFile, '');
+    writeFileSync(callsFile, '');
+    writeFileSync(summaryFile, '');
+    const drifting = {
+      mergeBase: MAIN_TIP, mainTip: MAIN_TIP, headTip: HEAD_TIP,
+      headFiles: [], mainFiles: [], fetchFails: false, mergeBaseFails: false,
+      ...drift,
+    };
+    writeFileSync(driftHeadFilesFile, `${drifting.headFiles.join('\n')}\n`);
+    writeFileSync(driftMainFilesFile, `${drifting.mainFiles.join('\n')}\n`);
+    writeFileSync(statusReadFailuresFile, String(statusReadFailures));
+    writeFileSync(currentStatusesFile, JSON.stringify(Object.fromEntries(
+      (sweepStatuses ?? [{ sha: SHA, status: previousStatus ?? sweepStatus }])
+        .filter(({ status }) => status)
+        .map(({ sha, status }) => [sha, { ...status, context: 'gate', state: status.state.toLowerCase() }]),
+    )));
+    const runsFor = (values, timestamp, idBase) => REQUIRED.flatMap((name, index) => values?.[name]
+      ? [{
+        name,
+        conclusion: values[name] === 'pending' ? null : values[name].toUpperCase(),
+        databaseId: idBase + index,
+        completedAt: values[name] === 'pending' ? null : timestamp,
+        startedAt: values[name] === 'pending' ? null : timestamp,
+      }]
+      : []);
+    const requiredRuns = [
+      ...(previousConclusions
+        ? runsFor(previousConclusions, '2026-08-10T04:00:00Z', 1000)
+        : []),
+      ...runsFor(conclusions, '2026-08-10T05:00:00Z', 2000),
+    ];
+    const filler = Array.from({ length: 100 }, (_, index) => ({
+      name: `unrelated-${index}`,
+      conclusion: 'SUCCESS',
+      databaseId: index,
+      completedAt: '2026-08-10T03:00:00Z',
+      startedAt: '2026-08-10T02:00:00Z',
+    }));
+    // `gh api graphql --paginate --slurp` returns an array of page responses;
+    // the workflow's jq projection then keeps only the required check names.
+    writeFileSync(
+      runsFile,
+      JSON.stringify([{
+        data: {
+          repository: {
+            object: {
+              statusCheckRollup: {
+                contexts: {
+                  nodes: filler,
+                  pageInfo: { hasNextPage: true, endCursor: 'page-two' },
+                },
+              },
+            },
+          },
+        },
+      }, {
+        data: {
+          repository: {
+            object: {
+              statusCheckRollup: {
+                contexts: {
+                  nodes: requiredRuns,
+                  pageInfo: { hasNextPage: false, endCursor: 'done' },
+                },
+              },
+            },
+          },
+        },
+      }]),
+    );
+    if (firstConclusions) {
+      const firstPages = JSON.parse(readFileSync(runsFile, 'utf8'));
+      firstPages[1].data.repository.object.statusCheckRollup.contexts.nodes =
+        runsFor(firstConclusions, '2026-08-10T04:00:00Z', 1000);
+      writeFileSync(firstRunsFile, JSON.stringify(firstPages));
+    }
+    const toRestRun = (run) => ({
+      name: run.name,
+      conclusion: run.conclusion,
+      id: run.databaseId,
+      started_at: run.startedAt,
+      completed_at: run.completedAt,
+    });
+    writeFileSync(
+      restRunsFile,
+      JSON.stringify([{
+        total_count: filler.length + requiredRuns.length,
+        check_runs: [...filler.map(toRestRun), ...requiredRuns.map(toRestRun)],
+      }]),
+    );
+    const sweepNode = (sha, status) => ({
+      headRefOid: sha,
+      commits: {
+        nodes: [{
+          commit: {
+            status: {
+              context: status ? { createdAt: now, ...status } : null,
+            },
+          },
+        }],
+      },
+    });
+    writeFileSync(
+      sweepFile,
+      JSON.stringify([{
+        data: {
+          repository: {
+            pullRequests: {
+              nodes: Array.from(
+                { length: 100 },
+                (_, index) => sweepNode(`other-${index}`, {
+                  state: 'SUCCESS',
+                  description: stamped('All required PR gates passed'),
+                }),
+              ),
+              pageInfo: { hasNextPage: true, endCursor: 'page-two' },
+            },
+          },
+        },
+      }, {
+        data: {
+          repository: {
+            pullRequests: {
+              nodes: sweepStatuses?.map(({ sha, status }) => sweepNode(sha, status))
+                ?? [sweepNode(SHA, sweepStatus ?? null)],
+              pageInfo: { hasNextPage: false, endCursor: 'done' },
+            },
+          },
+        },
+      }]),
+    );
+
+    // The fake keeps the production failure semantics: gh exits non-zero on an
+    // API error, rate-limit recovery must consult the reset time, and commit
+    // statuses reject descriptions over GitHub's real 140-character cap.
+    writeFileSync(
+      join(fakeBin, 'gh'),
+      [
+        '#!/bin/sh',
+        'if [ "$1" = "api" ] && [ "$2" = "rate_limit" ]; then',
+        '  case "$*" in',
+        '    *".resources.graphql.reset"*) resource=graphql ;;',
+        '    *".resources.core.reset"*) resource=core ;;',
+        '    *) resource=unknown ;;',
+        '  esac',
+        '  echo "rate-limit:$resource" >> "$FAKE_CALLS"',
+        '  [ "$FAKE_RESET_AVAILABLE" = "1" ] && printf \'%s\\n\' "$FAKE_RESET_AT"',
+        '  exit 0',
+        'fi',
+        'case "$*" in',
+        '  *"pullRequests(first:"*)',
+        '    paginate=0',
+        '    slurp=0',
+        '    for arg in "$@"; do',
+        '      [ "$arg" = "--paginate" ] && paginate=1',
+        '      [ "$arg" = "--slurp" ] && slurp=1',
+        '    done',
+        '    echo "graphql-sweep-page" >> "$FAKE_CALLS"',
+        '    if [ "$paginate" = "1" ]; then',
+        '      echo "graphql-sweep-page" >> "$FAKE_CALLS"',
+        '      [ "$slurp" = "1" ] || exit 96',
+        '      cat "$FAKE_SWEEP_RESPONSES"',
+        '    else',
+        '      jq -c \'[.[0]]\' "$FAKE_SWEEP_RESPONSES"',
+        '    fi',
+        '    exit 0',
+        '    ;;',
+        '  *"statusCheckRollup"*)',
+        '    paginate=0',
+        '    slurp=0',
+        '    for arg in "$@"; do',
+        '      [ "$arg" = "--paginate" ] && paginate=1',
+        '      [ "$arg" = "--slurp" ] && slurp=1',
+        '    done',
+        '    echo "graphql-check-page" >> "$FAKE_CALLS"',
+        '    failures=$(cat "$FAKE_FAILURES")',
+        '    if [ "$failures" -gt 0 ]; then',
+        '      echo $((failures - 1)) > "$FAKE_FAILURES"',
+        '      if [ "$FAKE_FAILURE_KIND" = "rate_limit" ]; then',
+        '        echo "gh: API rate limit exceeded for installation (HTTP 403)" >&2',
+        '      else',
+        '        echo "gh: forced GraphQL failure (HTTP 500)" >&2',
+        '      fi',
+        '      exit 1',
+        '    fi',
+        '    body=$(cat "$FAKE_CHECK_RUNS")',
+        '    if [ -f "$FAKE_FIRST_CHECK_RUNS" ]; then',
+        '      body=$(cat "$FAKE_FIRST_CHECK_RUNS")',
+        '      rm "$FAKE_FIRST_CHECK_RUNS"',
+        '    fi',
+        '    if [ "$paginate" = "1" ]; then',
+        '      echo "graphql-check-page" >> "$FAKE_CALLS"',
+        '      [ "$slurp" = "1" ] || exit 96',
+        '      printf \'%s\' "$body"',
+        '    else',
+        '      printf \'%s\' "$body" | jq -c \'[.[0]]\'',
+        '    fi',
+        '    exit 0',
+        '    ;;',
+        '  *"/check-runs"*)',
+        '    echo "rest-check-runs-page" >> "$FAKE_CALLS"',
+        '    rest_failures=$(cat "$FAKE_REST_FAILURES")',
+        '    if [ "$rest_failures" -gt 0 ]; then',
+        '      echo $((rest_failures - 1)) > "$FAKE_REST_FAILURES"',
+        '      if [ "$FAKE_REST_FAILURE_KIND" = "rate_limit" ]; then',
+        '        echo "gh: API rate limit exceeded for installation (HTTP 403)" >&2',
+        '      else',
+        '        echo "gh: forced REST check-runs failure (HTTP 503)" >&2',
+        '      fi',
+        '      exit 1',
+        '    fi',
+        '    paginate=0',
+        '    slurp=0',
+        '    for arg in "$@"; do',
+        '      [ "$arg" = "--paginate" ] && paginate=1',
+        '      [ "$arg" = "--slurp" ] && slurp=1',
+        '    done',
+        '    if [ "$paginate" = "1" ]; then',
+        '      [ "$slurp" = "1" ] || exit 96',
+        '      cat "$FAKE_REST_CHECK_RUNS"',
+        '    else',
+        '      jq -c \'[.[0]]\' "$FAKE_REST_CHECK_RUNS"',
+        '    fi',
+        '    exit 0',
+        '    ;;',
+        '  *"actions/workflows/deploy-gate.yml/runs"*)',
+        '    echo "rest-failed-runs-page" >> "$FAKE_CALLS"',
+        '    printf \'[{"workflow_runs":[{"created_at":"%s","display_title":"Deploy Gate %s"}]}]\' "$FAKE_FAILED_RUN_CREATED_AT" "$FAKE_FAILED_RUN_SHA"',
+        '    exit 0',
+        '    ;;',
+        '  *"/statuses/"*)',
+        '    state=""',
+        '    description=""',
+        '    target_sha=${2##*/}',
+        '    for arg in "$@"; do',
+        '      case "$arg" in',
+        '        state=*) state=${arg#state=} ;;',
+        '        description=*) description=${arg#description=} ;;',
+        '      esac',
+        '    done',
+        '    echo "status:$state" >> "$FAKE_CALLS"',
+        '    if [ "$target_sha" = "$FAKE_EXHAUSTED_SHA" ]; then',
+        '      echo "gh: This SHA and context has reached the maximum number of statuses. (HTTP 422)" >&2',
+        '      exit 1',
+        '    fi',
+        '    status_failures_file=$FAKE_STATUS_FAILURES',
+        '    [ "$FAKE_STATUS_FAILURES_PER_SHA" = "1" ] && status_failures_file="$FAKE_STATUS_FAILURES-$target_sha"',
+        '    status_failures=$(cat "$status_failures_file")',
+        '    if [ "$status_failures" -gt 0 ]; then',
+        '      echo $((status_failures - 1)) > "$status_failures_file"',
+        '      if [ "$FAKE_STATUS_FAILURE_KIND" = "rate_limit" ]; then',
+        '        echo "gh: API rate limit exceeded for installation (HTTP 403)" >&2',
+        '      else',
+        '        echo "gh: forced commit-status failure (HTTP 500)" >&2',
+        '      fi',
+        '      exit 1',
+        '    fi',
+        '    if [ "${#description}" -gt 140 ]; then',
+        '      printf \'%s|%s\\n\' "$state" "$description" >> "$FAKE_REJECTED"',
+        '      echo "gh: Validation failed: Description is too long (maximum is 140 characters) (Validation Failed)" >&2',
+        '      exit 1',
+        '    fi',
+        '    printf \'%s|%s\\n\' "$state" "$description" >> "$FAKE_POSTED"',
+        '    printf \'%s\\n\' "$target_sha" >> "$FAKE_POST_TARGETS"',
+        '    jq --arg sha "$target_sha" --arg state "$state" --arg description "$description" \'.[$sha] = {context: "gate", state: $state, description: $description}\' "$FAKE_CURRENT_STATUSES" > "$FAKE_CURRENT_STATUSES.next"',
+        '    mv "$FAKE_CURRENT_STATUSES.next" "$FAKE_CURRENT_STATUSES"',
+        '    exit 0',
+        '    ;;',
+        '  *"/status?per_page=100"*)',
+        '    echo "status-read" >> "$FAKE_CALLS"',
+        '    failures=$(cat "$FAKE_STATUS_READ_FAILURES")',
+        '    if [ "$failures" -gt 0 ]; then',
+        '      echo $((failures - 1)) > "$FAKE_STATUS_READ_FAILURES"',
+        '      echo "gh: forced status read failure (HTTP 503)" >&2',
+        '      exit 1',
+        '    fi',
+        '    target_sha=${2%/status?*}',
+        '    target_sha=${target_sha##*/}',
+        '    if [ "$FAKE_MALFORMED_STATUS" = "1" ]; then',
+        '      echo \'[{"message":"unavailable"}]\'',
+        '      exit 0',
+        '    fi',
+        '    jq --arg sha "$target_sha" \'[{statuses: []}, {statuses: [.[$sha] // empty]}]\' "$FAKE_CURRENT_STATUSES"',
+        '    exit 0',
+        '    ;;',
+        'esac',
+        'exit 90',
+        '',
+      ].join('\n'),
+    );
+    // The step sleeps between poll attempts and may wait for a rate-limit reset;
+    // neither delay should slow this deterministic harness.
+    // The drift step reads the two file sets with git. The synthetic SHAs this
+    // harness uses cannot exist in a real repository, so the git semantics are
+    // pinned separately, below, against a real fixture through the `drift`
+    // phase; here the commands are stubbed so the STATUS logic can be driven.
+    writeFileSync(join(fakeBin, 'git'), [
+      '#!/bin/sh',
+      'case "$1 $2" in',
+      '  "fetch --no-tags")',
+      '    echo "git-fetch" >> "$FAKE_CALLS"',
+      '    [ "$FAKE_GIT_FETCH_FAILS" = "1" ] && { echo "fatal: forced fetch failure" >&2; exit 128; }',
+      '    exit 0',
+      '    ;;',
+      'esac',
+      'case "$1" in',
+      '  rev-parse)',
+      '    case "$*" in',
+      '      *head*) printf \'%s\\n\' "$FAKE_GIT_HEAD_TIP" ;;',
+      '      *) printf \'%s\\n\' "$FAKE_GIT_MAIN_TIP" ;;',
+      '    esac',
+      '    exit 0',
+      '    ;;',
+      '  merge-base)',
+      '    echo "git-merge-base" >> "$FAKE_CALLS"',
+      '    [ "$FAKE_GIT_MERGE_BASE_FAILS" = "1" ] && exit 1',
+      '    printf \'%s\\n\' "$FAKE_GIT_MERGE_BASE"',
+      '    exit 0',
+      '    ;;',
+      '  diff)',
+      '    case "$*" in',
+      '      *head*) cat "$FAKE_GIT_HEAD_FILES" ;;',
+      '      *) cat "$FAKE_GIT_MAIN_FILES" ;;',
+      '    esac',
+      '    exit 0',
+      '    ;;',
+      'esac',
+      'exit 91',
+      '',
+    ].join('\n'));
+    writeFileSync(join(fakeBin, 'date'), [
+      '#!/bin/sh',
+      'case "$*" in',
+      '  *"+%Y-%m-%dT%H:%M:%SZ"*) printf \'%s\\n\' "$FAKE_CUTOFF_ISO" ;;',
+      '  *) printf \'%s\\n\' "$FAKE_NOW" ;;',
+      'esac',
+      '',
+    ].join('\n'));
+    writeFileSync(join(fakeBin, 'sleep'), [
+      '#!/bin/sh',
+      'echo "sleep:$1" >> "$FAKE_CALLS"',
+      'exit 0',
+      '',
+    ].join('\n'));
+    for (const command of ['gh', 'git', 'date', 'sleep']) chmodSync(join(fakeBin, command), 0o755);
+
+    let result;
+    const exitCodes = [];
+    for (let repetition = 0; repetition < repetitions; repetition++) {
+      result = runPhases({
+        cwd: repoRoot,
+        encoding: 'utf8',
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          FAKE_CALLS: callsFile,
+          FAKE_CURRENT_STATUSES: currentStatusesFile,
+          FAKE_STATUS_READ_FAILURES: statusReadFailuresFile,
+          FAKE_MALFORMED_STATUS: malformedStatusResponse ? '1' : '0',
+          FAKE_EXHAUSTED_SHA: exhaustedSha,
+          FAKE_CHECK_RUNS: runsFile,
+          FAKE_GIT_FETCH_FAILS: drifting.fetchFails ? '1' : '0',
+          FAKE_GIT_HEAD_FILES: driftHeadFilesFile,
+          FAKE_GIT_HEAD_TIP: drifting.headTip,
+          FAKE_GIT_MAIN_FILES: driftMainFilesFile,
+          FAKE_GIT_MAIN_TIP: drifting.mainTip,
+          FAKE_GIT_MERGE_BASE: drifting.mergeBase,
+          FAKE_GIT_MERGE_BASE_FAILS: drifting.mergeBaseFails ? '1' : '0',
+          FAKE_FIRST_CHECK_RUNS: firstRunsFile,
+          FAKE_CUTOFF_ISO: '2026-08-11T12:30:00Z',
+          FAKE_FAILED_RUN_CREATED_AT: failedRunCreatedAt,
+          FAKE_FAILED_RUN_SHA: failedRunSha,
+          FAKE_FAILURE_KIND: graphQlFailureKind,
+          FAKE_FAILURES: failuresFile,
+          FAKE_REST_CHECK_RUNS: restRunsFile,
+          FAKE_REST_FAILURE_KIND: restFailureKind,
+          FAKE_REST_FAILURES: restFailuresFile,
+          FAKE_POSTED: postedFile,
+          FAKE_POST_TARGETS: postTargetsFile,
+          FAKE_REJECTED: rejectedFile,
+          FAKE_NOW: String(Date.parse(now) / 1000),
+          FAKE_RESET_AT: String(Date.parse('2026-08-12T12:30:10Z') / 1000),
+          FAKE_RESET_AVAILABLE: resetAvailable ? '1' : '0',
+          FAKE_STATUS_FAILURE_KIND: statusFailureKind,
+          FAKE_STATUS_FAILURES: statusFailuresFile,
+          FAKE_STATUS_FAILURES_PER_SHA: statusFailuresPerSha ? '1' : '0',
+          FAKE_SWEEP_RESPONSES: sweepFile,
+          FAKE_SHA: SHA,
+          GH_TOKEN: 'test-token',
+          GITHUB_STEP_SUMMARY: summaryFile,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          REPO: 'koala73/worldmonitor',
+          RUNNER_TEMP: tempDir,
+          SHA: sweepStatus === undefined && sweepStatuses === undefined ? SHA : '',
+        },
+      }, tempDir);
+      exitCodes.push(result.status);
+    }
+
+    const parse = (file) => readFileSync(file, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const separator = line.indexOf('|');
+        return { state: line.slice(0, separator), description: line.slice(separator + 1) };
+      });
+
+    return {
+      ...result,
+      exitCodes,
+      statusReads: readFileSync(callsFile, 'utf8').split('\n').filter((call) => call === 'status-read').length,
+      calls: readFileSync(callsFile, 'utf8').split('\n').filter((call) => call && call !== 'status-read'),
+      postTargets: readFileSync(postTargetsFile, 'utf8').split('\n').filter(Boolean),
+      posted: parse(postedFile),
+      rejected: parse(rejectedFile),
+      summary: readFileSync(summaryFile, 'utf8'),
+    };
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+const conclusionsFor = (value) => Object.fromEntries(REQUIRED.map((name) => [name, value]));
+
+describe('deploy gate commit-status description', () => {
+  it('publishes one status across repeated unchanged evaluations', () => {
+    for (const conclusion of ['success', 'pending', 'failure']) {
+      const result = runGate(conclusionsFor(conclusion), { repetitions: 2 });
+      assert.deepEqual(result.exitCodes, [0, 0], result.stderr);
+      assert.equal(result.posted.length, 1, conclusion);
+      assert.equal(result.statusReads, 2);
+    }
+  });
+
+  it('replaces a previous green when a newer check is pending', () => {
+    const result = runGate({ ...conclusionsFor('success'), unit: 'pending' }, {
+      previousConclusions: conclusionsFor('success'),
+      previousStatus: { state: 'success', description: stamped('All required PR gates passed') },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted[0].state, 'pending');
+  });
+
+  it('keeps an exhausted pending head blocked without failing independent recovery', () => {
+    const secondSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const result = runGate(conclusionsFor('success'), {
+      exhaustedSha: SHA,
+      sweepStatuses: [SHA, secondSha].map((sha) => ({
+        sha, status: { state: 'PENDING', description: stamped('Waiting for checks') },
+      })),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.postTargets, [secondSha], result.stderr);
+    assert.equal(result.calls.filter((call) => call.startsWith('status:')).length, 2);
+    assert.match(result.summary, /status capacity exhausted/);
+    assert.match(result.summary, /remains blocked/);
+    assert.doesNotMatch(result.stdout + result.stderr, /::error::/);
+  });
+
+  it('stops polling the unchanged exhausted PR from run 34041600634', () => {
+    const exhausted = '6a6648de9e94cc739866b1c2523aca15ab9e1932';
+    const result = runGate({}, {
+      now: '2026-09-06T15:12:57Z',
+      exhaustedSha: exhausted,
+      repetitions: 2,
+      sweepStatuses: [{
+        sha: exhausted,
+        status: {
+          state: 'PENDING',
+          createdAt: '2026-09-05T06:25:21Z',
+          description: 'Waiting for required PR gates (18): typecheck-changes,lint-changes,consumer-prices,umami-postgres,dom-tests,... [gate-contract:5c196f971bc8]',
+        },
+      }],
+    });
+    assert.deepEqual(result.exitCodes, [0, 0], result.stderr);
+    assert.deepEqual(result.posted, []);
+    assert.equal(result.statusReads, 0);
+    assert.deepEqual(result.calls, Array(2).fill(['graphql-sweep-page', 'graphql-sweep-page']).flat());
+    assert.match(result.summary, new RegExp(exhausted));
+    assert.match(result.summary, /remains blocked/);
+    assert.match(result.summary, /Update the branch/);
+  });
+
+  for (const state of ['PENDING', 'FAILURE', 'ERROR']) {
+    it(`recovers only ${state} statuses newer than the 24-hour cutoff`, () => {
+      const shas = ['a', 'b', 'c'].map((letter) => letter.repeat(40));
+      const publications = ['2026-08-11T12:29:59Z', '2026-08-11T12:30:00Z', '2026-08-11T12:30:01Z'];
+      const result = runGate(conclusionsFor('success'), {
+        sweepStatuses: shas.map((sha, index) => ({
+          sha,
+          status: {
+            state,
+            createdAt: publications[index],
+            description: stamped('Waiting for checks'),
+          },
+        })),
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.postTargets, [shas[2]]);
+      assert.match(result.summary, new RegExp(shas[0]));
+      assert.match(result.summary, new RegExp(shas[1]));
+      assert.doesNotMatch(result.summary, new RegExp(shas[2]));
+    });
+  }
+
+  it('recovers a recent failed gate after the successful rerun event saw stale checks', () => {
+    const result = runGate(conclusionsFor('success'), {
+      sweepStatus: { state: 'FAILURE', description: stamped('Required PR gates did not pass (1): unit') },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.posted, [{ state: 'success', description: stamped('All required PR gates passed') }]);
+  });
+
+  it('keeps an unchanged failed gate blocked without repeated status writes', () => {
+    const result = runGate({ ...conclusionsFor('success'), unit: 'failure' }, {
+      sweepStatus: { state: 'FAILURE', description: stamped('Required PR gates did not pass (1): unit') },
+      repetitions: 2,
+    });
+    assert.deepEqual(result.exitCodes, [0, 0], result.stderr);
+    assert.ok(result.calls.includes('graphql-check-page'), 'the failed gate must be re-evaluated');
+    assert.deepEqual(result.posted, []);
+  });
+
+  for (const conclusion of ['success', 'pending', 'failure']) {
+    it(`rechecks a stale failed result before publishing ${conclusion}`, () => {
+      const result = runGate({ ...conclusionsFor('success'), unit: conclusion }, {
+        firstConclusions: { ...conclusionsFor('success'), unit: 'failure' },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.posted.map(({ state }) => state), [conclusion]);
+      assert.equal(result.calls.filter((call) => call === 'sleep:60').length, 1);
+      assert.equal(result.calls.filter((call) => call === 'graphql-check-page').length, 4);
+    });
+  }
+
+  it('allows an exact-SHA evaluation after scheduled recovery expires', () => {
+    const result = runGate(conclusionsFor('success'), {
+      previousStatus: {
+        state: 'pending',
+        createdAt: '2026-06-02T19:27:26Z',
+        description: 'Waiting for old checks',
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted.at(-1).state, 'success');
+  });
+
+  it('does not reopen expired failed gates when the required contract changes', () => {
+    const result = runGate(conclusionsFor('success'), {
+      sweepStatuses: ['FAILURE', 'ERROR'].map((state, index) => ({
+        sha: String(index + 1).repeat(40),
+        status: { state, createdAt: '2026-08-10T12:30:00Z', description: 'Blocked under an older contract' },
+      })),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, ['graphql-sweep-page', 'graphql-sweep-page']);
+    assert.deepEqual(result.posted, []);
+  });
+
+  it('still fails on exhaustion when the previous gate cannot be verified as blocked', () => {
+    for (const statusReadFailures of [0, 10]) {
+      const result = runGate(conclusionsFor('success'), { exhaustedSha: SHA, statusReadFailures });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stdout + result.stderr, /::error::Gate status capacity exhausted/);
+    }
+  });
+
+  it('accepts an exhausted gate already blocked by another writer after discovery', () => {
+    const result = runGate(conclusionsFor('success'), {
+      exhaustedSha: SHA,
+      sweepStatus: { state: 'SUCCESS', description: 'Old contract' },
+      previousStatus: { state: 'pending', description: stamped('Waiting for checks') },
+    });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.deepEqual(result.posted, []);
+    assert.deepEqual(result.calls, ['graphql-sweep-page', 'graphql-sweep-page', 'status:pending']);
+    assert.match(result.summary, /remains blocked/);
+  });
+
+  it('keeps evaluating other heads when a stale green cannot be invalidated', () => {
+    const secondSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const result = runGate(conclusionsFor('success'), {
+      exhaustedSha: SHA,
+      sweepStatuses: [
+        { sha: SHA, status: { state: 'SUCCESS', createdAt: '2026-06-02T19:27:26Z', description: 'Old contract' } },
+        { sha: secondSha, status: { state: 'PENDING', description: stamped('Waiting for checks') } },
+      ],
+    });
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(result.postTargets, [secondSha], result.stderr);
+    assert.equal(result.calls.filter((call) => call.startsWith('status:')).length, 2);
+  });
+
+  it('fails closed when the previous status is unavailable', () => {
+    const result = runGate(conclusionsFor('success'), {
+      statusReadFailures: 10,
+      previousStatus: { state: 'success', description: stamped('All required PR gates passed') },
+    });
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(result.posted.map(({ state }) => state), ['pending']);
+  });
+
+  it('retries pending when the status read and first fallback write fail', () => {
+    const result = runGate(conclusionsFor('success'), {
+      statusReadFailures: 10,
+      statusFailures: 1,
+      previousStatus: { state: 'success', description: stamped('All required PR gates passed') },
+    });
+    assert.notEqual(result.status, 0);
+    assert.equal(result.statusReads, 2);
+    assert.equal(result.calls.filter((call) => call === 'status:pending').length, 2);
+    assert.deepEqual(result.posted, [
+      { state: 'pending', description: stamped('Deploy Gate could not read status; retry scheduled') },
+    ]);
+  });
+
+  it('fails closed on an incomplete status response', () => {
+    const result = runGate(conclusionsFor('success'), { malformedStatusResponse: true });
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(result.posted.map(({ state }) => state), ['pending']);
+  });
+
+  it('continues the sweep after the first SHA cannot read its check results', () => {
+    const secondSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const result = runGate(conclusionsFor('success'), {
+      graphQlFailures: 1,
+      restFailures: 1,
+      sweepStatuses: [SHA, secondSha].map((sha) => ({
+        sha, status: { state: 'PENDING', description: stamped('Waiting for checks') },
+      })),
+    });
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(result.postTargets, [SHA, secondSha], result.stderr);
+    assert.deepEqual(result.posted.map(({ state }) => state), ['pending', 'success']);
+  });
+
+  it('recovers on replay after both publication attempts fail', () => {
+    const result = runGate(conclusionsFor('success'), { statusFailures: 2, repetitions: 3 });
+    assert.deepEqual(result.exitCodes, [1, 0, 0], result.stderr);
+    assert.deepEqual(result.posted, [{ state: 'success', description: stamped('All required PR gates passed') }]);
+  });
+
+  it('gates on enough checks for the cap to be reachable', () => {
+    // Anti-vacuity: with three required names the untruncated description fits
+    // and every assertion below would pass against the broken step too.
+    assert.ok(REQUIRED.length >= 10, `expected the full required list, found ${REQUIRED.length}`);
+    assert.ok(
+      `Waiting for required PR gates (${REQUIRED.length}): ${REQUIRED.join(',')}`.length > 140,
+      'the fabricated worst case must actually exceed the API cap',
+    );
+  });
+
+  it('posts a pending status when every required check is pending', () => {
+    // #6389 reproduced: 20 pending names is ~300 characters, and the step used
+    // to die on the 422 instead of posting anything.
+    const result = runGate({});
+
+    assert.deepEqual(result.rejected, [], `the API rejected a description: ${result.stderr}`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted.length, 1);
+    assert.equal(result.posted[0].state, 'pending');
+    assert.ok(result.posted[0].description.length <= 140);
+    assert.match(result.posted[0].description, new RegExp(`Waiting for required PR gates \\(${REQUIRED.length}\\):`));
+    assert.ok(
+      result.posted[0].description.endsWith(`... ${GATE_STAMP}`),
+      'a truncated description must say it was cut and preserve the contract stamp',
+    );
+    assert.deepEqual(
+      result.calls,
+      [
+        'graphql-check-page',
+        'graphql-check-page',
+        'sleep:60',
+        'graphql-check-page',
+        'graphql-check-page',
+        'status:pending',
+      ],
+      'the pending path must use four check pages and one write, with one bounded wait',
+    );
+    assert.equal(result.statusReads, 1);
+  });
+
+  it('posts a failure status when every required check failed', () => {
+    // The arm that matters most: crashing here left NO gate status, and every
+    // consumer reads a missing status as undecided rather than failed.
+    const result = runGate(conclusionsFor('failure'));
+
+    assert.deepEqual(result.rejected, [], `the API rejected a description: ${result.stderr}`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted.length, 1);
+    assert.equal(result.posted[0].state, 'failure');
+    assert.ok(result.posted[0].description.length <= 140);
+    assert.match(result.posted[0].description, new RegExp(`Required PR gates did not pass \\(${REQUIRED.length}\\):`));
+    assert.ok(
+      result.posted[0].description.endsWith(`... ${GATE_STAMP}`),
+      'a truncated failure description must preserve the contract stamp',
+    );
+  });
+
+  it('keeps the whole list when it fits', () => {
+    const conclusions = conclusionsFor('success');
+    delete conclusions.unit;
+    delete conclusions.biome;
+    const result = runGate(conclusions);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted[0].state, 'pending');
+    assert.equal(result.posted[0].description, stamped('Waiting for required PR gates (2): unit,biome'));
+    assert.doesNotMatch(result.posted[0].description, /\.\.\. /, 'a description that fits must not be cut');
+  });
+
+  it('still posts success when everything passed or skipped', () => {
+    const conclusions = conclusionsFor('success');
+    conclusions['desktop-rust'] = 'skipped';
+    const result = runGate(conclusions);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.posted, [
+      { state: 'success', description: stamped('All required PR gates passed') },
+    ]);
+    assert.deepEqual(result.calls, [
+      'graphql-check-page', 'graphql-check-page', 'git-fetch', 'git-merge-base', 'status:success',
+    ]);
+  });
+
+  it('does not let an older completed run mask a newer pending rerun', () => {
+    const current = conclusionsFor('success');
+    current.unit = 'pending';
+    const result = runGate(current, { previousConclusions: conclusionsFor('success') });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted.at(-1).state, 'pending');
+    assert.match(result.posted.at(-1).description, /unit/);
+  });
+
+  it('falls back to REST check-runs when GraphQL is unavailable', () => {
+    const result = runGate(conclusionsFor('success'), { graphQlFailures: 1 });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.posted, [
+      { state: 'success', description: stamped('All required PR gates passed') },
+    ]);
+    assert.deepEqual(result.calls, [
+      'graphql-check-page',
+      'rest-check-runs-page',
+      'git-fetch',
+      'git-merge-base',
+      'status:success',
+    ]);
+  });
+
+  it('leaves a named pending gate when GraphQL and REST check reads both crash, then self-heals on the next evaluation', () => {
+    const crashed = runGate(conclusionsFor('success'), { graphQlFailures: 1, restFailures: 1 });
+
+    assert.notEqual(crashed.status, 0, 'the forced API failure must actually crash the evaluation');
+    assert.deepEqual(crashed.posted, [
+      { state: 'pending', description: stamped('Deploy Gate could not evaluate; retry scheduled') },
+    ]);
+
+    const healed = runGate(conclusionsFor('success'), {
+      sweepStatus: {
+        state: 'PENDING',
+        description: stamped('Deploy Gate could not evaluate; retry scheduled'),
+      },
+    });
+    assert.equal(healed.status, 0, healed.stderr);
+    assert.deepEqual(healed.posted.at(-1), {
+      state: 'success',
+      description: stamped('All required PR gates passed'),
+    });
+    assert.deepEqual(
+      healed.calls.slice(0, 2),
+      ['graphql-sweep-page', 'graphql-sweep-page'],
+      'a pending gate beyond the first 100 open PRs must enter recovery',
+    );
+  });
+
+  it('invalidates and evaluates stale contracts before current pending gates', () => {
+    const staleSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const pendingSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const oldStamp = '[gate-contract:001122334455]';
+    const result = runGate(conclusionsFor('success'), {
+      // Put pending first in the API response and duplicate the stale SHA. The
+      // workflow must still invalidate/evaluate stale first, exactly once.
+      sweepStatuses: [
+        {
+          sha: pendingSha,
+          status: {
+            state: 'PENDING',
+            description: stamped('Deploy Gate could not evaluate; retry scheduled'),
+          },
+        },
+        {
+          sha: staleSha,
+          status: {
+            state: 'SUCCESS',
+            description: `All required PR gates passed ${oldStamp}`,
+          },
+        },
+        {
+          sha: staleSha,
+          status: {
+            state: 'SUCCESS',
+            description: `All required PR gates passed ${oldStamp}`,
+          },
+        },
+      ],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, [
+      'graphql-sweep-page',
+      'graphql-sweep-page',
+      'status:pending',
+      'graphql-check-page',
+      'graphql-check-page',
+      'git-fetch',
+      'git-merge-base',
+      'status:success',
+      'graphql-check-page',
+      'graphql-check-page',
+      'git-fetch',
+      'git-merge-base',
+      'status:success',
+    ]);
+    assert.deepEqual(result.posted, [
+      {
+        state: 'pending',
+        description: stamped('Required PR gate contract changed; re-evaluation scheduled'),
+      },
+      { state: 'success', description: stamped('All required PR gates passed') },
+      { state: 'success', description: stamped('All required PR gates passed') },
+    ]);
+    assert.deepEqual(result.postTargets, [staleSha, staleSha, pendingSha]);
+  });
+
+  it('does not sleep or retry a stale contract after invalidating it', () => {
+    const conclusions = conclusionsFor('success');
+    conclusions.unit = 'pending';
+    const result = runGate(conclusions, {
+      sweepStatus: {
+        state: 'SUCCESS',
+        description: 'All required PR gates passed [gate-contract:001122334455]',
+      },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, [
+      'graphql-sweep-page',
+      'graphql-sweep-page',
+      'status:pending',
+      'graphql-check-page',
+      'graphql-check-page',
+      'status:pending',
+    ]);
+    assert.deepEqual(result.posted, [
+      {
+        state: 'pending',
+        description: stamped('Required PR gate contract changed; re-evaluation scheduled'),
+      },
+      {
+        state: 'pending',
+        description: stamped('Waiting for required PR gates (1): unit'),
+      },
+    ]);
+  });
+
+  it('invalidates stale contracts before missing-status recovery reads', () => {
+    const staleSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const missingSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const result = runGate(conclusionsFor('success'), {
+      failedRunSha: missingSha,
+      sweepStatuses: [
+        {
+          sha: staleSha,
+          status: {
+            state: 'SUCCESS',
+            description: 'All required PR gates passed [gate-contract:001122334455]',
+          },
+        },
+        { sha: missingSha, status: null },
+      ],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(
+      result.calls.indexOf('status:pending') < result.calls.indexOf('rest-failed-runs-page'),
+      'stale success must become fail-closed before the missing-status API lookup can wait or fail',
+    );
+    assert.deepEqual(result.postTargets.slice(0, 3), [staleSha, staleSha, missingSha]);
+  });
+
+  it('retries every stale contract whose first invalidation write fails', () => {
+    const firstStaleSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const secondStaleSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const result = runGate(conclusionsFor('success'), {
+      statusFailuresPerSha: 1,
+      sweepStatuses: [
+        {
+          sha: firstStaleSha,
+          status: {
+            state: 'SUCCESS',
+            description: 'All required PR gates passed [gate-contract:001122334455]',
+          },
+        },
+        {
+          sha: secondStaleSha,
+          status: {
+            state: 'SUCCESS',
+            description: 'All required PR gates passed [gate-contract:001122334455]',
+          },
+        },
+      ],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls.slice(0, 6), [
+      'graphql-sweep-page',
+      'graphql-sweep-page',
+      'status:pending',
+      'status:pending',
+      'status:pending',
+      'status:pending',
+    ]);
+    assert.deepEqual(result.posted.slice(0, 2), [
+      {
+        state: 'pending',
+        description: stamped('Required PR gate contract changed; re-evaluation scheduled'),
+      },
+      {
+        state: 'pending',
+        description: stamped('Required PR gate contract changed; re-evaluation scheduled'),
+      },
+    ]);
+    assert.deepEqual(result.postTargets, [
+      firstStaleSha,
+      secondStaleSha,
+      firstStaleSha,
+      secondStaleSha,
+    ]);
+  });
+
+  it('backs off to the installation reset and retries a rate-limited read once', () => {
+    const result = runGate(conclusionsFor('success'), {
+      graphQlFailures: 1,
+      graphQlFailureKind: 'rate_limit',
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, [
+      'graphql-check-page',
+      'rate-limit:graphql',
+      'sleep:15',
+      'graphql-check-page',
+      'graphql-check-page',
+      'git-fetch',
+      'git-merge-base',
+      'status:success',
+    ]);
+  });
+
+  it('falls back to REST after a persistent GraphQL rate limit', () => {
+    const result = runGate(conclusionsFor('success'), {
+      graphQlFailures: 2,
+      graphQlFailureKind: 'rate_limit',
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.posted, [
+      { state: 'success', description: stamped('All required PR gates passed') },
+    ]);
+    assert.ok(result.calls.includes('rest-check-runs-page'));
+    assert.ok(result.calls.includes('status:success'));
+  });
+
+  it('posts pending when GraphQL reset is unavailable and REST also fails', () => {
+    const result = runGate(conclusionsFor('success'), {
+      graphQlFailures: 1,
+      graphQlFailureKind: 'rate_limit',
+      resetAvailable: false,
+      restFailures: 1,
+    });
+
+    assert.notEqual(result.status, 0, 'an unavailable reset plus REST failure must fail the evaluation');
+    assert.deepEqual(result.calls, [
+      'graphql-check-page',
+      'rate-limit:graphql',
+      'rest-check-runs-page',
+      'status:pending',
+    ]);
+    assert.deepEqual(result.posted, [
+      { state: 'pending', description: stamped('Deploy Gate could not evaluate; retry scheduled') },
+    ]);
+  });
+
+  it('posts pending when GraphQL reset is unavailable unless REST answers', () => {
+    const result = runGate(conclusionsFor('success'), {
+      graphQlFailures: 1,
+      graphQlFailureKind: 'rate_limit',
+      resetAvailable: false,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, [
+      'graphql-check-page',
+      'rate-limit:graphql',
+      'rest-check-runs-page',
+      'git-fetch',
+      'git-merge-base',
+      'status:success',
+    ]);
+    assert.deepEqual(result.posted, [
+      { state: 'success', description: stamped('All required PR gates passed') },
+    ]);
+  });
+
+  it('falls back to pending when the verdict status write fails', () => {
+    const result = runGate(conclusionsFor('success'), { statusFailures: 1 });
+
+    assert.notEqual(result.status, 0, 'the forced status failure must fail the evaluation');
+    assert.deepEqual(result.calls, [
+      'graphql-check-page',
+      'graphql-check-page',
+      'git-fetch',
+      'git-merge-base',
+      'status:success',
+      'status:pending',
+    ]);
+    assert.deepEqual(result.posted, [
+      { state: 'pending', description: stamped('Deploy Gate could not evaluate; retry scheduled') },
+    ]);
+  });
+
+  it('retries a rate-limited verdict status write', () => {
+    const result = runGate(conclusionsFor('success'), {
+      statusFailures: 1,
+      statusFailureKind: 'rate_limit',
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, [
+      'graphql-check-page',
+      'graphql-check-page',
+      'git-fetch',
+      'git-merge-base',
+      'status:success',
+      'rate-limit:core',
+      'sleep:15',
+      'status:success',
+    ]);
+    assert.deepEqual(result.posted, [
+      { state: 'success', description: stamped('All required PR gates passed') },
+    ]);
+  });
+
+  it('heals a recent missing gate after both status writes fail', () => {
+    const stranded = runGate(conclusionsFor('success'), { statusFailures: 2 });
+
+    assert.notEqual(stranded.status, 0, 'both status writes must fail the first evaluation');
+    assert.deepEqual(stranded.posted, []);
+    assert.deepEqual(stranded.calls.slice(-2), ['status:success', 'status:pending']);
+
+    const healed = runGate(conclusionsFor('success'), { sweepStatus: null });
+    assert.equal(healed.status, 0, healed.stderr);
+    assert.deepEqual(healed.calls.slice(0, 2), ['graphql-sweep-page', 'graphql-sweep-page']);
+    assert.equal(healed.calls[2], 'rest-failed-runs-page');
+    assert.deepEqual(healed.posted.at(-1), {
+      state: 'success',
+      description: stamped('All required PR gates passed'),
+    });
+  });
+
+  it('does not recover a missing gate without a matching recent failed run', () => {
+    const result = runGate(conclusionsFor('success'), {
+      failedRunSha: '0123456789abcdef0123456789abcdef01234567',
+      sweepStatus: null,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, [
+      'graphql-sweep-page',
+      'graphql-sweep-page',
+      'rest-failed-runs-page',
+    ]);
+    assert.deepEqual(result.posted, []);
+  });
+
+  it('does not recover a missing gate from a stale failed run', () => {
+    const result = runGate(conclusionsFor('success'), {
+      failedRunCreatedAt: '2026-08-10T12:15:00Z',
+      sweepStatus: null,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, [
+      'graphql-sweep-page',
+      'graphql-sweep-page',
+      'rest-failed-runs-page',
+    ]);
+    assert.deepEqual(result.posted, []);
+  });
+});
+
+// #8269 merged on checks that ran 3.6 days before #8376 added the line they
+// collided on. Both PRs were green; `main` was not. The gate is the only
+// required check that re-evaluates after a branch goes green, so the staleness
+// predicate belongs here rather than in a one-shot PR job.
+describe('deploy gate stale-base drift', () => {
+  const diverged = (extra) => ({ mergeBase: OLD_BASE, ...extra });
+
+  it('blocks a head whose files main changed since its merge base', () => {
+    // Two overlaps and a non-overlap on each side: the verdict must name the
+    // intersection, separated, and neither side's exclusive files.
+    const result = runGate(conclusionsFor('success'), {
+      drift: diverged({
+        headFiles: ['api/widget-agent.ts', 'docs/head-only.md', 'tests/widget-agent-auth.test.mts'],
+        mainFiles: ['api/widget-agent.ts', 'server/gateway.ts', 'tests/widget-agent-auth.test.mts'],
+      }),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.posted, [{
+      state: 'failure',
+      description: stamped(
+        'Stale base: main changed 2 file(s) here: api/widget-agent.ts,tests/widget-agent-auth.test.mts',
+      ),
+    }]);
+  });
+
+  it("passes a diverged head that shares no file with main's drift", () => {
+    const result = runGate(conclusionsFor('success'), {
+      drift: diverged({
+        headFiles: ['src/services/oref-alerts.ts'],
+        mainFiles: ['api/widget-agent.ts', 'server/gateway.ts'],
+      }),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.posted, [{
+      state: 'success', description: stamped('All required PR gates passed'),
+    }]);
+  });
+
+  it('never diffs a head that is already up to date or contained in main', () => {
+    // Deploy Gate evaluates push-to-main commits too, and a commit cannot be
+    // stale against the branch that contains it.
+    for (const mergeBase of [MAIN_TIP, HEAD_TIP]) {
+      const result = runGate(conclusionsFor('success'), {
+        drift: {
+          mergeBase,
+          headFiles: ['api/widget-agent.ts'],
+          mainFiles: ['api/widget-agent.ts'],
+        },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.posted, [{
+        state: 'success', description: stamped('All required PR gates passed'),
+      }], mergeBase);
+    }
+  });
+
+  it('leaves the gate pending when the comparison cannot be made', () => {
+    // Fail closed: an unreadable history must never publish a success the gate
+    // did not establish.
+    for (const broken of [{ fetchFails: true }, { mergeBaseFails: true }]) {
+      const result = runGate(conclusionsFor('success'), { drift: diverged(broken) });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.posted, [{
+        state: 'pending',
+        description: stamped('Deploy Gate could not compare this head against main; retry scheduled'),
+      }], JSON.stringify(broken));
+    }
+  });
+
+  it('does not spend a comparison on a head that is already failing', () => {
+    const result = runGate({ ...conclusionsFor('success'), unit: 'failure' }, {
+      drift: diverged({ headFiles: ['api/widget-agent.ts'], mainFiles: ['api/widget-agent.ts'] }),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted[0].state, 'failure');
+    assert.match(result.posted[0].description, /Required PR gates did not pass/);
+    assert.equal(result.calls.filter((call) => call.startsWith('git-')).length, 0);
+  });
+
+  it('invalidates greens stamped under the previous rules', () => {
+    // The sweep only revisits a SUCCESS whose stamp differs, so a rules change
+    // that reused the old stamp would inherit every pre-drift green.
+    const result = runGate(conclusionsFor('success'), {
+      sweepStatus: {
+        state: 'SUCCESS',
+        description: 'All required PR gates passed [gate-contract:001122334455]',
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted[0].state, 'pending');
+    assert.match(result.posted[0].description, /contract changed/);
+  });
+});
+
+/**
+ * The same predicate against a REAL repository, through the `drift` phase.
+ *
+ * The suite above stubs git so the status logic can be driven with synthetic
+ * SHAs. This one uses actual commits, so `merge-base` and `diff --name-only`
+ * are the real thing — which is what the previous implementation got wrong:
+ * it read the file sets from the compare API, whose `files` array is capped at
+ * 300 and does not paginate, and `main` moves far more than that between a
+ * PR's base and its tip.
+ */
+describe('deploy gate stale-base drift over a real repository', () => {
+  const git = (cwd, ...args) => execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'gate', GIT_AUTHOR_EMAIL: 'gate@example.invalid',
+      GIT_COMMITTER_NAME: 'gate', GIT_COMMITTER_EMAIL: 'gate@example.invalid',
+      GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null',
+    },
+  });
+
+  /**
+   * `shape` is { base, main, head }: files touched by the shared commit, then
+   * by main's commit, then by the head's. An empty `head` leaves the head at
+   * the base (contained in main); an empty `main` leaves the head up to date.
+   */
+  function fixture(root, shape) {
+    const remote = join(root, 'remote');
+    const work = join(root, 'work');
+    mkdirSync(remote, { recursive: true });
+    mkdirSync(work, { recursive: true });
+    const commit = (files, message) => {
+      for (const file of files) {
+        // `from>to` renames instead of writing, so a rename/modify collision
+        // can be built. The body is left alone so git scores it a rename.
+        const rename = file.split('>');
+        if (rename.length === 2) {
+          git(remote, 'mv', rename[0], rename[1]);
+          continue;
+        }
+        const path = join(remote, file);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, `${message}\n${'filler\n'.repeat(200)}`);
+      }
+      git(remote, 'add', '-A');
+      git(remote, 'commit', '-q', '-m', message);
+    };
+    git(remote, 'init', '-q', '--initial-branch=main');
+    // A local remote has to opt into both, exactly as github.com does.
+    git(remote, 'config', 'uploadpack.allowFilter', 'true');
+    git(remote, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
+    commit(shape.base ?? ['README.md'], 'base');
+    git(remote, 'checkout', '-q', '-b', 'feature');
+    if ((shape.head ?? []).length > 0) commit(shape.head, 'head');
+    const headSha = git(remote, 'rev-parse', 'HEAD').trim();
+    git(remote, 'checkout', '-q', 'main');
+    if ((shape.main ?? []).length > 0) commit(shape.main, 'main');
+    git(work, 'init', '-q');
+    // A partial clone needs a NAMED promisor remote: git refuses to register
+    // one whose name is a path, so the fixture wires `origin` the way a real
+    // checkout has it.
+    git(work, 'remote', 'add', 'origin', remote);
+    return { remote, work, headSha };
+  }
+
+  const drift = (shape) => {
+    const root = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-git-'));
+    try {
+      const { remote, work, headSha } = fixture(root, shape);
+      const result = spawnSync('bash', ['-e', gateScriptPath, 'drift'], {
+        cwd: work,
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: {
+          ...process.env,
+          BASE_DRIFT_REMOTE: 'origin',
+          GITHUB_OUTPUT: join(root, 'output'),
+          REPO: 'koala73/worldmonitor',
+          RUNNER_TEMP: root,
+          SHA: headSha,
+        },
+      });
+      return { ...result, stdout: result.stdout.trim() };
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  it('names exactly the files both sides touched', () => {
+    const result = drift({
+      base: ['api/widget-agent.ts', 'server/gateway.ts', 'docs/x.md'],
+      head: ['api/widget-agent.ts', 'docs/x.md'],
+      main: ['api/widget-agent.ts', 'server/gateway.ts'],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'api/widget-agent.ts');
+  });
+
+  it('stays silent when the two sides are disjoint', () => {
+    const result = drift({
+      base: ['a.ts', 'b.ts'],
+      head: ['a.ts'],
+      main: ['b.ts'],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, '');
+  });
+
+  it('sees past the 300 files the compare API would have truncated at', () => {
+    // The defect this replaced: `main` moved 577 files in 90 commits, the API
+    // returned its first 300, and the check reported truncation instead of
+    // drift. The overlapping file here sorts last, so a 300-file window that
+    // stopped early would miss it.
+    const bulk = Array.from({ length: 400 }, (_, index) => `src/bulk-${String(index).padStart(4, '0')}.ts`);
+    const result = drift({
+      base: [...bulk, 'zz-shared.ts'],
+      head: ['zz-shared.ts'],
+      main: [...bulk, 'zz-shared.ts'],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'zz-shared.ts');
+  });
+
+  it('sees an overlap main hid behind a rename', () => {
+    // Rename detection is on by default and --name-only prints the POST-image
+    // path, so main renaming a.ts to b.ts lists only b.ts. A head still editing
+    // a.ts would then intersect with nothing and the gate would publish a
+    // success — for a pair that actually conflicts on merge.
+    const result = drift({
+      base: ['api/a.ts', 'docs/x.md'],
+      head: ['api/a.ts'],
+      main: ['api/a.ts>api/b.ts'],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'api/a.ts');
+  });
+
+  it('says nothing for a head main already contains, or one that is up to date', () => {
+    assert.equal(drift({ base: ['a.ts'], head: [], main: ['b.ts'] }).stdout, '');
+    assert.equal(drift({ base: ['a.ts'], head: ['a.ts'], main: [] }).stdout, '');
+  });
+
+  it('fails rather than passes when the remote cannot be read', () => {
+    const root = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-git-'));
+    try {
+      const { work, headSha } = fixture(root, { base: ['a.ts'], head: ['a.ts'], main: ['a.ts'] });
+      const result = spawnSync('bash', ['-e', gateScriptPath, 'drift'], {
+        cwd: work,
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: {
+          ...process.env,
+          BASE_DRIFT_REMOTE: 'no-such-remote',
+          GITHUB_OUTPUT: join(root, 'output'),
+          REPO: 'koala73/worldmonitor',
+          RUNNER_TEMP: root,
+          SHA: headSha,
+        },
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /Could not fetch main/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

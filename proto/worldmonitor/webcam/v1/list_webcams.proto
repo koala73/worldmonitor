@@ -5,10 +5,15 @@ package worldmonitor.webcam.v1;
 import "sebuf/http/annotations.proto";
 
 message ListWebcamsRequest {
+  // Map zoom level used to decide whether to return webcams or clusters.
   int32 zoom = 1 [(sebuf.http.query) = {name: "zoom"}];
+  // Western longitude bound of the map viewport.
   double bound_w = 2 [(sebuf.http.query) = {name: "bound_w"}];
+  // Southern latitude bound of the map viewport.
   double bound_s = 3 [(sebuf.http.query) = {name: "bound_s"}];
+  // Eastern longitude bound of the map viewport.
   double bound_e = 4 [(sebuf.http.query) = {name: "bound_e"}];
+  // Northern latitude bound of the map viewport.
   double bound_n = 5 [(sebuf.http.query) = {name: "bound_n"}];
 }
 

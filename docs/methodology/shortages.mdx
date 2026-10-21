@@ -1,0 +1,150 @@
+---
+title: "Fuel Shortage Alert Methodology"
+description: "How World Monitor curates and publishes fuel shortage alerts (jet, petrol, diesel, heating oil) against a tiered evidence standard."
+---
+
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+
+## Start here
+
+Alerts appear in the **Global Fuel Shortage Registry** panel and as the Fuel Shortages map layer.
+
+This tracks one thing: **places where people cannot get fuel.** Jet fuel, petrol,
+diesel, and heating oil, anywhere in the world.
+
+### Expensive is not the same as unavailable
+
+A price spike is not a shortage. Prices rise for many reasons, most of them
+unremarkable, and treating every jump as a supply emergency produces a feed
+nobody can act on.
+
+So the trigger is always **physical**: flights cancelled for lack of fuel,
+filling stations closed, formal rationing announced, imports cut. Something has
+to have actually stopped.
+
+### Two tiers, and the difference between them
+
+| Tier | What it means |
+|---|---|
+| `watch` | One credible source reports a constraint. Worth knowing, not yet established. |
+| `confirmed` | Multiple independent sources, or a regulator plus a concrete operational impact. |
+
+Moving a row from `watch` to `confirmed` needs corroboration from genuinely
+separate outlets — two outlets plus a regulator, three outlets, or a regulator
+plus a hard operational signal like a cancelled flight. Ten stories rewriting one
+wire report do not add up to confirmation.
+
+<Warning>
+**Today this registry is maintained by hand, not by a classifier.** Alerts are
+curated in `scripts/data/fuel-shortages.json`; the seeder publishes that file as-is.
+There is no feed ingestion, no language-model second pass, and **no code that
+promotes, demotes, or expires a row** — `scripts/_fuel-shortage-registry.mjs:6-14`
+is explicit that the classifier pipeline was scoped but never shipped.
+
+So read the tiers below as the **evidence standard a curator applies**, not as
+automation you can rely on. In particular: a `confirmed` row is not
+self-expiring, and an alert that has stopped being true stays visible until
+someone edits it. Check each row's own timestamp rather than assuming staleness
+has been handled for you.
+</Warning>
+
+## What we track
+
+Four product categories, two severity tiers, global coverage:
+
+| Product   | `watch` tier | `confirmed` tier |
+|-----------|--------------|------------------|
+| Jet fuel  | ✓ | ✓ |
+| Petrol    | ✓ | ✓ |
+| Diesel    | ✓ | ✓ |
+| Heating oil | ✓ | ✓ (winter only) |
+
+Price spikes alone are not shortage signals. We key on physical supply constraints: flight cancellations, station closures, formal rationing, import cuts.
+
+## The evidence standard for each tier
+
+These are the thresholds a row must meet to carry each severity. They are the **curation contract** — the bar applied when the registry is edited — and they are what the planned classifier will enforce once it ships. Nothing below is currently checked by code.
+
+### Watch tier
+
+One credible source:
+
+- A regulator announcement (EPRA, NMDPRA, OGRA, CAA UK, DGCA), **or**
+- An airline / airport operational bulletin, **or**
+- A national wire story with ≥ 1 corroborating observation
+
+### Confirmed tier (stricter bar)
+
+Moving `watch → confirmed` requires:
+
+- **Two distinct outlets + one regulator**, or
+- **Three distinct outlets**, or
+- **One regulator + a direct operational-impact signal** (flight cancellation in an airline feed, formal rationing announcement, station-closure list)
+
+The designed pipeline adds a language-model second pass that must agree before a row is promoted, holding it at `watch` when it disagrees. That check is part of the planned classifier and is not running today.
+
+### Decay policy — designed, not yet enforced
+
+- `confirmed` without a new corroborating signal in 7 days → demote to `watch`
+- `watch` without a new signal in 14 days → remove
+
+<Warning>
+**No code enforces these ages today.** They are the maintenance contract, not a
+guarantee: nothing demotes or removes a row on its own, so a shortage that has
+resolved stays published until it is edited out. Treat the ages as the standard
+this registry is held to, and the row's own timestamp as the fact.
+</Warning>
+
+When the classifier ships, stale shortages will stop persisting silently — every demotion will write an entry to the planned public revision log. See [`/corrections`](/corrections) for the designed audit-surface shape and current status.
+
+## Evidence transparency
+
+Every public shortage row exposes its `evidenceSources[]` inline — you can read the sources the row was built from and judge it yourself. That is what makes the registry defensible: not that a machine graded it, but that the grading is shown.
+
+For any `confirmed` row, the panel surfaces:
+
+- Outlet / regulator names
+- Source dates
+- Classifier version + confidence
+
+Agents (MCP clients) receive the same structured evidence via the `ListFuelShortages` RPC — every `FuelShortageEntry` in the response includes the full `evidence.evidenceSources[]` array, matching what the UI drawer renders.
+
+## Root-cause attribution
+
+Every shortage row carries a cause chain, not just a severity:
+
+- `chokepoint` — physical supply constraint traced to a chokepoint status change
+- `pipeline_disruption` — specific pipeline in the registry is offline
+- `sanction` — new sanctions authority list triggered an import cut
+- `upstream_refinery` — refinery turnaround or outage
+- `logistics` — port / rail / truck bottleneck
+- `policy` — deliberate government restriction
+
+## Break-glass overrides (planned)
+
+An `energy_asset_overrides` persistence layer is the designed break-glass
+surface for the rare case where a reader flags a demonstrably wrong
+classification. Writes would be admin-only and off the critical path —
+the default flow would stay untouched, and every override would emit
+an `override`-trigger entry to the revision log.
+
+**Status (v1 launch):** the override persistence layer is not yet
+implemented. Reader-flagged corrections are handled manually today via
+[GitHub issues](https://github.com/koala73/worldmonitor/issues); they
+flow through the automated override path once that layer ships
+alongside the classifier. See [`/corrections`](/corrections) for the
+planned shape of override entries.
+
+## Known limits
+
+- Non-English regulator feeds surface with some lag; we're adding them incrementally.
+- "Watch" tier in a politically-noisy country can churn — that's intentional; readers can filter to `confirmed` only if they want the stricter view.
+- Heating-oil shortages are seasonal and under-reported in wire coverage; winter months have higher signal.
+
+## Corrections
+
+See [`/corrections`](/corrections) for the planned revision-log shape
+(every tier change will ship with its trigger — `classifier` / `source`
+/ `decay` / `override` — and the sources used). The classifier that
+writes entries ships post-launch; corrections are handled manually
+today via [GitHub issues](https://github.com/koala73/worldmonitor/issues).

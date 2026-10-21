@@ -137,28 +137,28 @@ export class VerificationChecklist extends Component {
       ),
       h('style', null, `
         .verification-checklist { background: var(--bg); border-radius: 8px; padding: 16px; max-width: 400px; }
-        .checklist-header h3 { margin: 0 0 4px; font-size: 14px; color: var(--accent); }
-        .hint { margin: 0; font-size: 11px; color: var(--text-muted); }
+        .checklist-header h3 { margin: 0 0 4px; font-size: calc(14px * var(--wm-panel-effective-scale, 1)); color: var(--accent); }
+        .hint { margin: 0; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-muted); }
         .score-display { margin: 16px 0; padding: 16px; border-radius: 8px; border: 2px solid; text-align: center; }
-        .score-value { font-size: 32px; font-weight: 700; color: var(--accent); }
-        .score-label { font-size: 12px; font-weight: 600; text-transform: uppercase; }
+        .score-value { font-size: calc(32px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: var(--accent); }
+        .score-label { font-size: calc(12px * var(--wm-panel-effective-scale, 1)); font-weight: 600; text-transform: uppercase; }
         .checks-grid { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
         .check-item { display: flex; align-items: center; gap: 8px; padding: 8px; background: var(--surface-hover); border-radius: 4px; cursor: pointer; transition: background 0.2s; }
         .check-item:hover { background: var(--border); }
         .check-item.checked { background: color-mix(in srgb, var(--semantic-normal) 15%, var(--bg)); }
         .check-item input { width: 16px; height: 16px; }
-        .icon { font-size: 14px; }
-        .label { font-size: 12px; color: var(--text); }
+        .icon { font-size: calc(14px * var(--wm-panel-effective-scale, 1)); }
+        .label { font-size: calc(12px * var(--wm-panel-effective-scale, 1)); color: var(--text); }
         .notes-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
-        .notes-section h4 { margin: 0 0 8px; font-size: 12px; color: var(--text-dim); }
+        .notes-section h4 { margin: 0 0 8px; font-size: calc(12px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim); }
         .notes-list { max-height: 100px; overflow-y: auto; }
-        .note-item { font-size: 11px; color: var(--text-faint); padding: 4px 0; }
-        .empty { font-size: 11px; color: var(--text-ghost); font-style: italic; }
+        .note-item { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-faint); padding: 4px 0; }
+        .empty { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-faint); font-style: italic; }
         .add-note { display: flex; gap: 8px; margin-top: 8px; }
-        .add-note input { flex: 1; padding: 6px 8px; background: var(--surface-hover); border: 1px solid var(--border-strong); border-radius: 4px; color: var(--text); font-size: 12px; }
-        .add-note button { padding: 6px 12px; background: var(--border-strong); border: none; border-radius: 4px; color: var(--accent); font-size: 12px; cursor: pointer; }
+        .add-note input { flex: 1; padding: 6px 8px; background: var(--surface-hover); border: 1px solid var(--border-strong); border-radius: 4px; color: var(--text); font-size: calc(12px * var(--wm-panel-effective-scale, 1)); }
+        .add-note button { padding: 6px 12px; background: var(--border-strong); border: none; border-radius: 4px; color: var(--accent); font-size: calc(12px * var(--wm-panel-effective-scale, 1)); cursor: pointer; }
         .checklist-actions { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
-        .reset-btn { width: 100%; padding: 8px; background: var(--border); border: none; border-radius: 4px; color: var(--text-dim); font-size: 12px; cursor: pointer; }
+        .reset-btn { width: 100%; padding: 8px; background: var(--border); border: none; border-radius: 4px; color: var(--text-dim); font-size: calc(12px * var(--wm-panel-effective-scale, 1)); cursor: pointer; }
         .reset-btn:hover { background: var(--border-strong); color: var(--text-faint); }
       `),
     );

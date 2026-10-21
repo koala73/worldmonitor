@@ -1,6 +1,8 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import type { ThermalEscalationCluster, ThermalEscalationWatch } from '@/services/thermal-escalation';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
+import { bindActivationKeys } from '@/utils/activation';
 
 // P1: allowlists prevent unescaped API values from injecting into class attribute context
 const STATUS_CLASS: Record<string, string> = {
@@ -23,12 +25,12 @@ export class ThermalEscalationPanel extends Panel {
   constructor() {
     super({
       id: 'thermal-escalation',
-      title: 'Thermal Escalation',
+      title: t('components.thermalEscalation.title'),
       showCount: true,
       trackActivity: true,
-      infoTooltip: 'Seeded FIRMS/VIIRS thermal anomaly clusters with baseline comparison, persistence tracking, and strategic context. This panel answers where thermal activity is abnormal and which clusters may signal conflict, industrial disruption, or escalation.',
+      infoTooltip: t('components.thermalEscalation.infoTooltip'),
     });
-    this.showLoading('Loading thermal data...');
+    this.showLoading(t('components.thermalEscalation.loading'));
 
     this.content.addEventListener('click', (e) => {
       const row = (e.target as HTMLElement).closest<HTMLElement>('.te-card');
@@ -37,6 +39,7 @@ export class ThermalEscalationPanel extends Panel {
       const lon = Number(row.dataset.lon);
       if (Number.isFinite(lat) && Number.isFinite(lon)) this.onLocationClick?.(lat, lon);
     });
+    bindActivationKeys(this.content, '.te-card');
   }
 
   public setLocationClickHandler(handler: (lat: number, lon: number) => void): void {
@@ -53,15 +56,15 @@ export class ThermalEscalationPanel extends Panel {
 
   private render(): void {
     if (this.clusters.length === 0) {
-      this.setContent('<div class="panel-empty">No thermal escalation clusters detected.</div>');
+      this.setSafeContent(unsafeRawHtml(`<div class="panel-empty">${escapeHtml(t('components.thermalEscalation.empty'))}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
     const footer = this.fetchedAt && this.fetchedAt.getTime() > 0
-      ? `Updated ${this.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      ? t('components.thermalEscalation.footer.updated', { time: this.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
       : '';
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="te-panel">
         ${this.renderSummary()}
         <div class="te-list">
@@ -69,29 +72,29 @@ export class ThermalEscalationPanel extends Panel {
         </div>
         ${footer ? `<div class="te-footer">${escapeHtml(footer)}</div>` : ''}
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private renderSummary(): string {
     const { clusterCount, elevatedCount, spikeCount, persistentCount, conflictAdjacentCount, highRelevanceCount } = this.summary;
     // Only show non-zero sub-stats to reduce visual noise
     const stats = [
-      { val: elevatedCount, label: 'Elevated', cls: 'te-stat-elevated' },
-      { val: spikeCount, label: 'Spikes', cls: 'te-stat-spike' },
-      { val: persistentCount, label: 'Persist', cls: 'te-stat-persistent' },
-      { val: conflictAdjacentCount, label: 'Conflict', cls: 'te-stat-conflict' },
-      { val: highRelevanceCount, label: 'Strategic', cls: 'te-stat-strategic' },
+      { val: elevatedCount, label: t('components.thermalEscalation.summary.elevated'), cls: 'te-stat-elevated' },
+      { val: spikeCount, label: t('components.thermalEscalation.summary.spikes'), cls: 'te-stat-spike' },
+      { val: persistentCount, label: t('components.thermalEscalation.summary.persist'), cls: 'te-stat-persistent' },
+      { val: conflictAdjacentCount, label: t('components.thermalEscalation.summary.conflict'), cls: 'te-stat-conflict' },
+      { val: highRelevanceCount, label: t('components.thermalEscalation.summary.strategic'), cls: 'te-stat-strategic' },
     ].filter(s => s.val > 0);
     return `
       <div class="te-summary">
         <div class="te-stat">
           <span class="te-stat-val">${clusterCount}</span>
-          <span class="te-stat-label">Total</span>
+          <span class="te-stat-label">${escapeHtml(t('components.thermalEscalation.summary.total'))}</span>
         </div>
         ${stats.map(s => `
         <div class="te-stat ${s.cls}">
           <span class="te-stat-val">${s.val}</span>
-          <span class="te-stat-label">${s.label}</span>
+          <span class="te-stat-label">${escapeHtml(s.label)}</span>
         </div>`).join('')}
       </div>
     `;
@@ -110,23 +113,23 @@ export class ThermalEscalationPanel extends Panel {
 
     // Status badge + at most one context badge (conflict > energy > industrial) + strategic if high
     const contextBadge =
-      c.context === 'conflict_adjacent' ? '<span class="te-badge te-badge-conflict">conflict-adj</span>' :
-      c.context === 'energy_adjacent' ? '<span class="te-badge te-badge-energy">energy-adj</span>' :
-      c.context === 'industrial' ? '<span class="te-badge te-badge-industrial">industrial</span>' : '';
+      c.context === 'conflict_adjacent' ? `<span class="te-badge te-badge-conflict">${escapeHtml(t('components.thermalEscalation.badges.conflictAdjacent'))}</span>` :
+      c.context === 'energy_adjacent' ? `<span class="te-badge te-badge-energy">${escapeHtml(t('components.thermalEscalation.badges.energyAdjacent'))}</span>` :
+      c.context === 'industrial' ? `<span class="te-badge te-badge-industrial">${escapeHtml(t('components.thermalEscalation.badges.industrial'))}</span>` : '';
     const badges = [
       `<span class="te-badge te-badge-${statusClass}">${escapeHtml(c.status)}</span>`,
       contextBadge,
-      c.strategicRelevance === 'high' ? '<span class="te-badge te-badge-strategic">strategic</span>' : '',
+      c.strategicRelevance === 'high' ? `<span class="te-badge te-badge-strategic">${escapeHtml(t('components.thermalEscalation.badges.strategic'))}</span>` : '',
     ].filter(Boolean).join('');
 
     const age = formatAge(c.lastDetectedAt);
 
     return `
-      <div class="te-card te-card-${statusClass}" data-lat="${c.lat}" data-lon="${c.lon}">
+      <div class="te-card te-card-${statusClass}" data-lat="${c.lat}" data-lon="${c.lon}" role="button" tabindex="0">
         <div class="te-card-accent"></div>
         <div class="te-card-body">
           <div class="te-region">${escapeHtml(c.regionLabel)}</div>
-          <div class="te-meta">${c.observationCount} obs · ${c.uniqueSourceCount} src</div>
+          <div class="te-meta">${escapeHtml(t('components.thermalEscalation.observations', { count: c.observationCount }))} · ${escapeHtml(t('components.thermalEscalation.sources', { count: c.uniqueSourceCount }))}</div>
           <div class="te-badges">${badges}</div>
         </div>
         <div class="te-metrics">
@@ -144,13 +147,13 @@ function formatAge(date: Date): string {
   const ageMs = Date.now() - date.getTime();
   if (ageMs < 60 * 60 * 1000) {
     const mins = Math.max(1, Math.floor(ageMs / (60 * 1000)));
-    return `${mins}m ago`;
+    return t('components.thermalEscalation.age.minutesAgo', { count: mins });
   }
   if (ageMs < 24 * 60 * 60 * 1000) {
     const hours = Math.max(1, Math.floor(ageMs / (60 * 60 * 1000)));
-    return `${hours}h ago`;
+    return t('components.thermalEscalation.age.hoursAgo', { count: hours });
   }
   const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
-  if (days < 30) return `${days}d ago`;
+  if (days < 30) return t('components.thermalEscalation.age.daysAgo', { count: days });
   return date.toISOString().slice(0, 10);
 }

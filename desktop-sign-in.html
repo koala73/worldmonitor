@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Sign in to the desktop app — WorldMonitor</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      :root{--bg:#0a0a0a;--card:#111;--line:#1e1e1e;--text:#e8e8e8;--muted:#8a8a8a;--accent:#2d8a6e;--bad:#ef4444}
+      :root[data-theme="light"]{--bg:#f6f6f4;--card:#fff;--line:#e2e2de;--text:#151515;--muted:#5c5c5c;--accent:#1f6f57;--bad:#c2372f}
+      body{font-family:ui-monospace,'SF Mono','Cascadia Code','JetBrains Mono',monospace;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem}
+      .wm-logo{display:flex;align-items:center;gap:.5rem;margin-bottom:2rem;color:var(--accent)}
+      .wm-logo-text{font-size:.75rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+      .card{width:100%;max-width:440px;background:var(--card);border:1px solid var(--line);padding:2rem}
+      h1{font-size:1rem;font-weight:600;margin-bottom:.75rem}
+      p{font-size:.82rem;color:var(--muted);line-height:1.6}
+      .account{color:var(--text);overflow-wrap:anywhere}
+      button{width:100%;margin-top:1.25rem;padding:.75rem;background:var(--accent);color:#fff;border:none;font-family:inherit;font-size:.9rem;cursor:pointer;font-weight:500}
+      button:disabled{opacity:.5;cursor:default}
+      .link{background:none;color:var(--muted);margin-top:.75rem;padding:.25rem;font-size:.78rem;text-decoration:underline}
+      .error{color:var(--bad);font-size:.8rem;margin-top:.75rem;line-height:1.5}
+      .spinner{display:inline-block;width:.8em;height:.8em;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .9s linear infinite;vertical-align:-.05em;margin-right:.5em}
+      @keyframes spin{to{transform:rotate(360deg)}}
+    </style>
+    <!-- No inline scripts: the global CSP is hash-based. src/desktop-sign-in-main.ts applies the saved theme. -->
+  </head>
+  <body>
+    <div class="wm-logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <span class="wm-logo-text">WorldMonitor desktop</span>
+    </div>
+    <main class="card">
+      <div id="loading"><span class="spinner" aria-hidden="true"></span><span>Loading…</span></div>
+      <div id="invalid" hidden>
+        <h1>Start from the desktop app</h1>
+        <p>This page signs in the World Monitor desktop app. Open it with Sign in in the app on this computer.</p>
+      </div>
+      <div id="signedOut" hidden>
+        <h1>Sign in to continue</h1>
+        <p>Sign in with your World Monitor account. You will then be asked to confirm the desktop sign-in.</p>
+        <button type="button" id="signInButton">Sign in</button>
+      </div>
+      <div id="confirm" hidden>
+        <h1>Sign in to the desktop app?</h1>
+        <p>This signs the World Monitor desktop app on <strong>this computer</strong> in as <span class="account" id="account"></span>.</p>
+        <p style="margin-top:.6rem">Continue only if you just clicked Sign in in the desktop app.</p>
+        <button type="button" id="continueButton">Continue to the desktop app</button>
+        <button type="button" class="link" id="switchButton">Use a different account</button>
+        <p class="error" id="error" role="alert" hidden></p>
+      </div>
+      <div id="done" hidden>
+        <h1>Returning to the desktop app</h1>
+        <p>You can close this tab once the app shows you as signed in.</p>
+      </div>
+    </main>
+    <script type="module" src="/src/desktop-sign-in-main.ts" nonce="wm-static-bootstrap"></script>
+  </body>
+</html>

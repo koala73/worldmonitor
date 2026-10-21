@@ -1,11 +1,12 @@
 ---
-title: "OSINT for Everyone: How World Monitor Democratizes Open Source Intelligence"
-description: "World Monitor brings professional-grade OSINT to everyone. 435+ feeds, live tracking, AI threat analysis, and 45 data layers in one free open source dashboard."
+title: "OSINT for Everyone: Open Source Intelligence with World Monitor"
+description: "World Monitor brings professional-grade OSINT to everyone. Curated feeds, live tracking, AI threat analysis, and map layers in one free open source dashboard."
 metaTitle: "OSINT for Everyone: Free Intelligence Dashboard"
 keywords: "OSINT tools free, open source intelligence software, OSINT dashboard, intelligence gathering tools, OSINT for beginners"
 audience: "OSINT researchers, security analysts, journalists, hobbyist investigators"
 heroImage: "/blog/images/blog/osint-for-everyone-open-source-intelligence-democratized.jpg"
 pubDate: "2026-02-17"
+modifiedDate: "2026-09-20"
 ---
 
 Open source intelligence used to require a dozen subscriptions, custom scrapers, and years of domain expertise. A professional OSINT analyst's browser might have 50+ tabs open at any given time: flight trackers, ship trackers, earthquake monitors, conflict databases, Telegram channels, RSS readers, and satellite imagery viewers.
@@ -16,24 +17,24 @@ World Monitor collapses that entire workflow into a single interactive dashboard
 
 If you've ever tried to monitor a developing situation, whether it's a military escalation, a natural disaster, or a supply chain disruption, you know the drill:
 
-1. Open FlightRadar24 for aircraft movements
-2. Open MarineTraffic for ship positions
-3. Open USGS for earthquake data
-4. Open ACLED for conflict events
-5. Open Liveuamap for real-time mapping
-6. Open Reuters, AP, and Al Jazeera for news
+1. Open [FlightRadar24](https://www.flightradar24.com/) for aircraft movements
+2. Open [MarineTraffic](https://www.marinetraffic.com/) for ship positions
+3. Open [USGS](https://earthquake.usgs.gov/) for earthquake data
+4. Open [ACLED](https://acleddata.com/) for conflict events
+5. Open [Liveuamap](https://liveuamap.com/) for real-time mapping
+6. Open [Reuters](https://www.reuters.com/), [AP](https://apnews.com/), and [Al Jazeera](https://www.aljazeera.com/) for news
 7. Open Telegram for raw OSINT channels
-8. Open Polymarket for prediction markets
-9. Open gpsjam.org for GPS interference
-10. Open NASA FIRMS for fire detection
+8. Open [Polymarket](https://polymarket.com/) for prediction markets
+9. Open [gpsjam.org](https://gpsjam.org/) for GPS interference
+10. Open [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) for fire detection
 
 Each tool has its own interface, its own refresh cycle, its own learning curve. Cross-referencing between them is manual and slow. By the time you've built a picture, the situation has moved.
 
 World Monitor integrates all of these data sources (and many more) into a single, layered map with real-time updates. Learn more about [what World Monitor is and how it works](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/).
 
-## 435+ Intelligence Feeds, Zero Configuration
+## Curated Intelligence Feeds, Zero Configuration
 
-World Monitor aggregates **435+ RSS feeds** organized across 15 categories:
+World Monitor aggregates a **curated RSS catalog** organized by signal category:
 
 - Geopolitics and defense
 - Middle East and North Africa
@@ -54,6 +55,8 @@ Three of World Monitor's most powerful layers bring live tracking to your screen
 
 Military and civilian aircraft positions update in real time via OpenSky and Wingbits enrichment. The system automatically identifies military aircraft and displays their callsigns, types, and flight paths on the map.
 
+For source coverage, observation timing, and historical-data limits, see [military flight tracking for OSINT](/blog/posts/military-flight-tracking-osint/).
+
 ### AIS Maritime Monitoring
 
 Ship positions from AISStream.io are merged with **USNI Fleet Reports**, giving you both transponder data and editorial context from the U.S. Naval Institute. This combination reveals the complete order-of-battle for major naval deployments, something that usually requires a classified briefing.
@@ -62,9 +65,9 @@ Ship positions from AISStream.io are merged with **USNI Fleet Reports**, giving 
 
 ADS-B anomaly data is processed through an H3 hexagonal grid to identify zones where GPS signals are being jammed or spoofed. This is a critical indicator of electronic warfare activity, and World Monitor maps it automatically.
 
-## 26 Telegram OSINT Channels
+## Telegram OSINT Channels
 
-World Monitor integrates **26 curated Telegram channels** via MTProto, organized by reliability tier:
+World Monitor integrates curated Telegram channels via MTProto, organized by reliability tier:
 
 - **Tier 1:** Verified primary sources
 - **Tier 2:** Established OSINT accounts (Aurora Intel, BNO News, DeepState, OSINT Defender, LiveUAMap)
@@ -99,7 +102,7 @@ World Monitor doesn't just show you where things are happening. It tells you whe
 
 - News activity (35%)
 - CII score (25%)
-- Geographic convergence (25%): when 3+ event types co-occur within the same 1-degree grid cell in 24 hours
+- [Geographic convergence](https://www.worldmonitor.app/docs/geographic-convergence) (25%): when 3+ event types co-occur within the same 1-degree grid cell in 24 hours
 - Military indicators (15%)
 
 When a region's escalation score spikes, it surfaces in the Strategic Risk panel before traditional media picks up the story.
@@ -125,7 +128,7 @@ No account needed. No API keys required for the web version. For local AI analys
 
 Closed-source intelligence tools are black boxes. You can't verify how they score threats, where their data comes from, or whether their algorithms have blind spots.
 
-World Monitor's AGPL-3.0 license means every scoring algorithm, every data pipeline, and every AI prompt is open for inspection. Security researchers can audit it. Academics can cite it. Developers can extend it. And anyone can self-host it for complete operational security.
+World Monitor's AGPL-3.0 license means every [scoring algorithm](https://www.worldmonitor.app/docs/algorithms), every data pipeline, and every AI prompt is open for inspection. Security researchers can audit it. Academics can cite it. Developers can extend it. And anyone can self-host it for complete operational security.
 
 ## Frequently Asked Questions
 
@@ -136,8 +139,8 @@ Yes. Every feature, data source, and AI capability is available at no cost with 
 No. The interface is designed for analysts of all skill levels. Toggle layers on the sidebar, click data points for details, and use the Command Palette (Cmd+K) to search across all intelligence sources instantly.
 
 **How does World Monitor compare to traditional OSINT tools?**
-World Monitor consolidates 435+ feeds, live tracking, AI analysis, and 45 data layers into one dashboard. Traditional tools require juggling dozens of separate platforms. See our [detailed comparison with traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
+World Monitor consolidates curated feeds, live tracking, AI analysis, and map layers into one dashboard. Traditional tools require juggling separate platforms. See our [detailed comparison with traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
 
 ---
 
-**Start your OSINT workflow at [worldmonitor.app](https://worldmonitor.app). Free, open source, and no login required.**
+**Start your OSINT workflow at [worldmonitor.app](https://www.worldmonitor.app). Free, open source, and no login required.**

@@ -1,12 +1,13 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
-import { getRpcBaseUrl } from '@/services/rpc-client';
-import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
-import type { ListBigMacPricesResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 
-const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+import type { ListBigMacPricesResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import { EconomicServiceClient } from '@/services/generated-rpc-clients';
+
+const getEconomicClient = createLazyClient(() => new EconomicServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 export class BigMacPanel extends Panel {
   constructor() {
@@ -19,13 +20,13 @@ export class BigMacPanel extends Panel {
       if (hydrated?.countries?.length) {
         if (!this.element?.isConnected) return;
         this.renderIndex(hydrated);
-        void client.listBigMacPrices({}).then(data => {
+        void getEconomicClient().listBigMacPrices({}).then(data => {
           if (!this.element?.isConnected || !data.countries?.length) return;
           this.renderIndex(data);
         }).catch(() => {});
         return;
       }
-      const data = await client.listBigMacPrices({});
+      const data = await getEconomicClient().listBigMacPrices({});
       if (!this.element?.isConnected) return;
       this.renderIndex(data);
     } catch (err) {
@@ -49,7 +50,7 @@ export class BigMacPanel extends Panel {
     const minCode = sorted[sorted.length - 1]?.code;
 
     const showWow = data.wowAvailable && data.wowAvgPct !== undefined;
-    const wowHeader = showWow ? `<th class="gb-cell">${t('panels.bigmacWow')}</th>` : '';
+    const wowHeader = showWow ? `<th scope="col" class="gb-cell">${t('panels.bigmacWow')}</th>` : '';
 
     const rows = sorted.map(c => {
       const cls = c.code === minCode ? 'gb-cheapest' : c.code === maxCode ? 'gb-priciest' : '';
@@ -87,8 +88,8 @@ export class BigMacPanel extends Panel {
         <div class="gb-scroll">
           <table class="gb-table">
             <thead><tr>
-              <th class="gb-item-col">${t('panels.bigmacCountry')}</th>
-              <th class="gb-cell">USD</th>
+              <th scope="col" class="gb-item-col">${t('panels.bigmacCountry')}</th>
+              <th scope="col" class="gb-cell">USD</th>
               ${wowHeader}
             </tr></thead>
             <tbody>${rows}</tbody>
@@ -98,6 +99,6 @@ export class BigMacPanel extends Panel {
       </div>
     `;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

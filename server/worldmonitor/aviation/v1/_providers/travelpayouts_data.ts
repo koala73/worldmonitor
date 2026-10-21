@@ -1,3 +1,4 @@
+/// <reference lib="es2022.intl" />
 /**
  * Travelpayouts Cached Data API provider
  * Auth: X-Access-Token header
@@ -10,8 +11,11 @@
  */
 
 import type { PriceQuote, CabinClass, Carrier } from '../../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { ValidationError } from '../../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../../_shared/redis';
 import { CHROME_UA } from '../../../../_shared/constants';
+import { normalizeCountryToIso2 } from '../../../../_shared/country-normalize';
+import { IATA_RE } from '../_shared';
 
 const BASE_V2 = 'https://api.travelpayouts.com/v2/prices';
 const BASE_V3 = 'https://api.travelpayouts.com/v3';
@@ -26,6 +30,16 @@ const CABIN_CLASS_MAP: Record<string, number> = {
     CABIN_CLASS_BUSINESS: 2,
     CABIN_CLASS_FIRST: 2,  // treat as business — most caches lack separate FIRST
 };
+
+const CURRENCIES = new Set(Intl.supportedValuesOf('currency').map(code => code.toLowerCase()));
+
+function validDate(value: string): boolean {
+    if (value === '') return true;
+    if (!/^\d{4}-\d{2}(?:-\d{2})?$/.test(value)) return false;
+    const date = value.length === 7 ? `${value}-01` : value;
+    const parsed = new Date(`${date}T00:00:00Z`);
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
+}
 
 // ---- Internal response shapes ----
 
@@ -185,6 +199,12 @@ async function fetchTp<T>(url: string, token: string): Promise<T | null> {
 export interface TravelpayoutsResult {
     quotes: PriceQuote[];
     isDemoMode: false;
+    // True when the underlying HTTP/network call failed (fetchTp returned
+    // null) — distinct from a successful upstream call that returned an
+    // empty `data` array (genuine no-results for this route). The
+    // search-flight-prices handler uses this to surface error:'upstream_error'
+    // vs error:'no_results'. See issue #3756 and the #3795 review-2 follow-up.
+    upstreamFailed: boolean;
 }
 
 export async function searchPricesTravelpayouts(opts: {
@@ -192,7 +212,6 @@ export async function searchPricesTravelpayouts(opts: {
     destination: string;
     departureDate: string;
     returnDate: string;
-    adults: number;
     cabin: string;
     nonstopOnly: boolean;
     maxResults: number;
@@ -200,11 +219,26 @@ export async function searchPricesTravelpayouts(opts: {
     market: string;
     token: string;
 }): Promise<TravelpayoutsResult> {
-    const { origin, destination, departureDate, returnDate, adults: _adults, cabin, nonstopOnly, maxResults, currency, market, token } = opts;
+    const { departureDate, returnDate, nonstopOnly, maxResults, token } = opts;
+    const origin = opts.origin.trim().toUpperCase();
+    const destination = opts.destination.trim().toUpperCase();
+    const cabin = !opts.cabin || opts.cabin === 'CABIN_CLASS_UNSPECIFIED' ? 'CABIN_CLASS_ECONOMY' : opts.cabin;
+    const currency_ = (opts.currency || 'usd').trim().toLowerCase();
+    const market_ = (opts.market || inferMarket(origin)).trim().toLowerCase();
+    // Validate before constructing cache keys or accessing the provider. Unknown
+    // cabin strings otherwise issue the same economy query under unique keys.
+    const invalidField = [
+        ['origin', IATA_RE.test(origin), 'Expected a three-letter airport code'],
+        ['destination', IATA_RE.test(destination), 'Expected a three-letter airport code'],
+        ['departure_date', validDate(departureDate), 'Expected a YYYY-MM-DD date'],
+        ['return_date', validDate(returnDate), 'Expected a YYYY-MM-DD date'],
+        ['cabin', Object.prototype.hasOwnProperty.call(CABIN_CLASS_MAP, cabin), 'Unsupported cabin class'],
+        ['currency', CURRENCIES.has(currency_), 'Unsupported currency'],
+        ['market', /^[a-z]{2}$/.test(market_) && Boolean(normalizeCountryToIso2(market_)), 'Expected a two-letter market country code'],
+    ].find(([, valid]) => !valid) as [string, boolean, string] | undefined;
+    if (invalidField) throw new ValidationError([{ field: invalidField[0], description: invalidField[2] }]);
     const now = Date.now();
-    const tripClass = CABIN_CLASS_MAP[cabin] ?? 0;
-    const currency_ = currency || 'usd';
-    const market_ = market || inferMarket(origin);
+    const tripClass = CABIN_CLASS_MAP[cabin]!;
 
     // Determine query style:
     // - Day-precision date given → v3 prices_for_dates (most precise)
@@ -214,6 +248,15 @@ export async function searchPricesTravelpayouts(opts: {
     const isMonthPrecision = /^\d{4}-\d{2}$/.test(departureDate);
 
     let quotes: PriceQuote[] = [];
+    // Track whether the underlying fetchTp call returned null (upstream
+    // HTTP/network failure). Pre-#3795-review-2, the fetcher wrapper did
+    // `.then(d => d ?? [])`, converting null to [], which (a) caused
+    // cachedFetchJson to write the empty array to Redis with the normal
+    // 1-hour TTL instead of the 2-minute NEG_SENTINEL TTL, and (b) hid
+    // the upstream failure from the handler. Now we pass null through
+    // unchanged so cachedFetchJson short-caches the NEG_SENTINEL and we
+    // can distinguish upstream failure from genuine no-results.
+    let upstreamFailed = false;
 
     if (isDayPrecision) {
         // v3: prices_for_dates
@@ -231,13 +274,13 @@ export async function searchPricesTravelpayouts(opts: {
         if (nonstopOnly) params.set('direct', 'true');
         if (market_) params.set('market', market_);
 
-        const cacheKey = `tp:v3:${origin}:${destination}:${departureDate}:${returnDate}:${cabin}:${currency_}:v1`;
+        const cacheKey = `tp:v3:${origin}:${destination}:${departureDate}:${returnDate}:${cabin}:${currency_}:${market_}:${nonstopOnly}:${Math.min(maxResults, 30)}:v2`;
         const data = await cachedFetchJson<TpV3Ticket[]>(cacheKey, 3600, () =>
             fetchTp<TpV3Ticket[]>(`${BASE_V3}/prices_for_dates?${params}`, token)
-                .then(d => d ?? [])
         );
 
-        quotes = (data ?? []).slice(0, maxResults).map(t => fromV3(t, origin, destination, currency_, cabin, now));
+        if (data === null) upstreamFailed = true;
+        else quotes = data.slice(0, maxResults).map(t => fromV3(t, origin, destination, currency_, cabin, now));
     } else if (isMonthPrecision) {
         // v2: month-matrix
         const params = new URLSearchParams({
@@ -252,12 +295,14 @@ export async function searchPricesTravelpayouts(opts: {
         const cacheKey = `tp:month:${origin}:${destination}:${departureDate}:${cabin}:${currency_}:v1`;
         const data = await cachedFetchJson<TpMonthMatrixTicket[]>(cacheKey, 7200, () =>
             fetchTp<TpMonthMatrixTicket[]>(`${BASE_V2}/month-matrix?${params}`, token)
-                .then(d => d ?? [])
         );
 
-        let rows = data ?? [];
-        if (nonstopOnly) rows = rows.filter(r => (r.number_of_changes ?? 0) === 0);
-        quotes = rows.slice(0, maxResults).map(t => fromMonthMatrix(t, origin, destination, currency_, now));
+        if (data === null) {
+            upstreamFailed = true;
+        } else {
+            const rows = nonstopOnly ? data.filter(r => (r.number_of_changes ?? 0) === 0) : data;
+            quotes = rows.slice(0, maxResults).map(t => fromMonthMatrix(t, origin, destination, currency_, now));
+        }
     } else {
         // v2: latest
         const params = new URLSearchParams({
@@ -272,15 +317,17 @@ export async function searchPricesTravelpayouts(opts: {
             show_to_affiliates: 'true',
         });
 
-        const cacheKey = `tp:latest:${origin}:${destination}:${cabin}:${currency_}:v1`;
+        const cacheKey = `tp:latest:${origin}:${destination}:${cabin}:${currency_}:${returnDate ? 'roundtrip' : 'oneway'}:${Math.min(maxResults, 30)}:v2`;
         const data = await cachedFetchJson<TpLatestTicket[]>(cacheKey, 3600, () =>
             fetchTp<TpLatestTicket[]>(`${BASE_V2}/latest?${params}`, token)
-                .then(d => d ?? [])
         );
 
-        let rows = data ?? [];
-        if (nonstopOnly) rows = rows.filter(r => (r.number_of_changes ?? 0) === 0);
-        quotes = rows.slice(0, maxResults).map(t => fromLatest(t, origin, destination, currency_, now));
+        if (data === null) {
+            upstreamFailed = true;
+        } else {
+            const rows = nonstopOnly ? data.filter(r => (r.number_of_changes ?? 0) === 0) : data;
+            quotes = rows.slice(0, maxResults).map(t => fromLatest(t, origin, destination, currency_, now));
+        }
     }
 
     // Save 7-day price snapshot for diff display
@@ -292,7 +339,7 @@ export async function searchPricesTravelpayouts(opts: {
         }));
     } catch { /* non-critical */ }
 
-    return { quotes, isDemoMode: false };
+    return { quotes, isDemoMode: false, upstreamFailed };
 }
 
 function inferMarket(originIata: string): string {

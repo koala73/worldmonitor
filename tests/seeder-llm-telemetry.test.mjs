@@ -1,0 +1,351 @@
+// Seeder-side llm_call telemetry parity (#4944 U5, refs #4948).
+//
+// seed-forecasts already emits per-attempt llm_call events; seed-insights,
+// the brief-llm injected chain (scripts/lib/llm-chain.cjs), and the
+// regional-snapshot narrative/weekly-brief transports were dark on cost.
+// They now emit the same events through scripts/lib/llm-telemetry.cjs,
+// gated on USAGE_TELEMETRY=1 + AXIOM_API_TOKEN, best-effort (a telemetry
+// failure must never fail the seed).
+
+import assert from 'node:assert/strict';
+import { test, afterEach } from 'node:test';
+
+import { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents } from '../scripts/lib/llm-telemetry.cjs';
+import { callLLM } from '../scripts/lib/llm-chain.cjs';
+import { callLlmDefault as callNarrativeLlm, __setNarrativeTransportForTests } from '../scripts/regional-snapshot/narrative.mjs';
+
+const ENV_KEYS = ['USAGE_TELEMETRY', 'AXIOM_API_TOKEN', 'OPENROUTER_API_KEY', 'OLLAMA_API_URL'];
+const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+const realFetch = global.fetch;
+
+afterEach(() => {
+  global.fetch = realFetch;
+  __setNarrativeTransportForTests(null);
+  for (const k of ENV_KEYS) {
+    if (originalEnv[k] === undefined) delete process.env[k];
+    else process.env[k] = originalEnv[k];
+  }
+});
+
+function baseEnv() {
+  process.env.USAGE_TELEMETRY = '1';
+  process.env.AXIOM_API_TOKEN = 'axiom-test-token';
+  process.env.OPENROUTER_API_KEY = 'or-test';
+  delete process.env.OLLAMA_API_URL;
+}
+
+function llmJson(
+  content,
+  usage = { total_tokens: 30, prompt_tokens: 20, completion_tokens: 10 },
+  finishReason = 'stop',
+) {
+  return { choices: [{ message: { content }, finish_reason: finishReason }], usage };
+}
+
+const CHAIN_PAID_MODEL = 'google/gemini-2.5-flash';
+
+function isPaidOpenRouter(init) {
+  return JSON.parse(String(init.body || '{}')).model === CHAIN_PAID_MODEL;
+}
+
+test('llm-telemetry: buildLlmCallEvent mirrors the LlmCallEvent field shape', () => {
+  const ev = buildLlmCallEvent({
+    provider: 'openrouter', model: 'm', stage: 's', ok: false,
+    durationMs: 12.6, tokensTotal: 3, tokensPrompt: 2, tokensCompletion: 1,
+    promptChars: 40, maxTokens: 500, fallbackIndex: 1, reason: 'http_500',
+  });
+  assert.equal(ev.event_type, 'llm_call');
+  assert.deepEqual(
+    Object.keys(ev).sort(),
+    ['_time', 'duration_ms', 'event_type', 'fallback_index', 'max_tokens', 'model', 'ok',
+      'prompt_chars', 'provider', 'reason', 'stage', 'tokens_completion', 'tokens_prompt', 'tokens_total'].sort(),
+  );
+  assert.equal(ev.duration_ms, 13);
+  assert.equal(ev.reason, 'http_500');
+});
+
+test('llm-chain: fallback emits one event per attempt with the caller stage', async () => {
+  baseEnv();
+  const captured = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) {
+      captured.push(...JSON.parse(String(init.body || '[]')));
+      return { ok: true, json: async () => ({}) };
+    }
+    if (raw.includes('openrouter.ai') && isPaidOpenRouter(init)) {
+      return { ok: false, status: 500, json: async () => ({}) };
+    }
+    if (raw.includes('openrouter.ai')) {
+      return { ok: true, json: async () => llmJson('brief prose output') };
+    }
+    throw new Error(`unexpected fetch: ${raw}`);
+  };
+
+  const text = await callLLM('system', 'user prompt', { stage: 'brief-digest-cron' });
+  assert.equal(text, 'brief prose output');
+  assert.equal(captured.length, 2, 'failed paid attempt + free fallback success');
+  const [fail, ok] = captured;
+  assert.equal(fail.provider, 'openrouter');
+  assert.equal(fail.ok, false);
+  assert.equal(fail.reason, 'http_500');
+  assert.equal(fail.fallback_index, 0);
+  assert.equal(fail.stage, 'brief-digest-cron');
+  assert.equal(ok.provider, 'openrouter-free');
+  assert.equal(ok.ok, true);
+  assert.equal(ok.fallback_index, 1);
+  assert.equal(ok.tokens_total, 30);
+  assert.ok(fail.prompt_chars > 0);
+});
+
+test('llm-chain: reaches both fixed OpenRouter free models with routing intact', async () => {
+  baseEnv();
+  const attempted = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) return { ok: true, json: async () => ({}) };
+    if (raw.includes('openrouter.ai')) {
+      const body = JSON.parse(String(init.body || '{}'));
+      attempted.push(body);
+      const content = body.model === 'nvidia/nemotron-3-super-120b-a12b:free' ? 'backup free answer' : '';
+      return { ok: true, json: async () => llmJson(content) };
+    }
+    throw new Error(`unexpected fetch: ${raw}`);
+  };
+
+  const text = await callLLM('system', 'user prompt', { stage: 'brief-digest-cron' });
+
+  assert.equal(text, 'backup free answer');
+  assert.deepEqual(attempted.map(body => body.model), [
+    'google/gemini-2.5-flash',
+    'google/gemma-4-26b-a4b-it:free',
+    'nvidia/nemotron-3-super-120b-a12b:free',
+  ]);
+  for (const body of attempted.slice(1)) {
+    assert.deepEqual(body.reasoning, { enabled: false });
+    assert.equal(body.provider?.sort, 'throughput');
+    assert.ok(body.provider?.ignore?.includes('deepseek'));
+  }
+});
+
+test('llm-chain: an exact allowlist prevents fallback models from changing a pinned surface', async () => {
+  baseEnv();
+  const attempted = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) return { ok: true, json: async () => ({}) };
+    if (!raw.includes('openrouter.ai')) throw new Error(`unexpected provider: ${raw}`);
+    const body = JSON.parse(String(init.body || '{}'));
+    attempted.push(body.model);
+    return { ok: false, status: 503, json: async () => ({}) };
+  };
+
+  const text = await callLLM('system', 'user prompt', {
+    allowedProviders: ['openrouter'],
+    stage: 'brief-digest-cron',
+  });
+
+  assert.equal(text, null);
+  assert.deepEqual(attempted, ['google/gemini-2.5-flash']);
+});
+
+test('llm-chain: a per-call model override moves both the request and its telemetry off the chain default', async () => {
+  baseEnv();
+  const attempted = [];
+  const captured = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) {
+      captured.push(...JSON.parse(String(init.body || '[]')));
+      return { ok: true, json: async () => ({}) };
+    }
+    if (!raw.includes('openrouter.ai')) throw new Error(`unexpected provider: ${raw}`);
+    attempted.push(JSON.parse(String(init.body || '{}')).model);
+    return { ok: true, json: async () => llmJson('overridden brief prose') };
+  };
+
+  const overridden = await callLLM('system', 'user prompt', {
+    allowedProviders: ['openrouter'],
+    modelOverrides: { openrouter: 'google/gemini-3.5-flash-lite' },
+    stage: 'brief-digest-cron',
+  });
+
+  assert.equal(overridden, 'overridden brief prose');
+  assert.deepEqual(attempted, ['google/gemini-3.5-flash-lite']);
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].model, 'google/gemini-3.5-flash-lite');
+
+  const unoverridden = await callLLM('system', 'user prompt', {
+    allowedProviders: ['openrouter'],
+    stage: 'brief-digest-cron',
+  });
+
+  assert.equal(unoverridden, 'overridden brief prose');
+  assert.deepEqual(attempted, ['google/gemini-3.5-flash-lite', 'google/gemini-2.5-flash']);
+  assert.equal(captured.length, 2);
+  assert.equal(captured[1].model, 'google/gemini-2.5-flash');
+});
+
+test('llm-chain: rejects length-limited prose and falls through to the next provider', async () => {
+  baseEnv();
+  const captured = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) {
+      captured.push(...JSON.parse(String(init.body || '[]')));
+      return { ok: true, json: async () => ({}) };
+    }
+    if (raw.includes('openrouter.ai') && isPaidOpenRouter(init)) {
+      return {
+        ok: true,
+        json: async () => llmJson(
+          'The response looks complete because it ends with the abbreviation U.S.',
+          undefined,
+          'length',
+        ),
+      };
+    }
+    if (raw.includes('openrouter.ai')) {
+      return { ok: true, json: async () => llmJson('Complete fallback prose.') };
+    }
+    throw new Error(`unexpected fetch: ${raw}`);
+  };
+
+  const text = await callLLM('system', 'user prompt', { stage: 'brief-whymatters-cron' });
+
+  assert.equal(text, 'Complete fallback prose.');
+  assert.equal(captured.length, 2);
+  assert.equal(captured[0].provider, 'openrouter');
+  assert.equal(captured[0].ok, false);
+  assert.equal(captured[0].reason, 'length');
+  assert.equal(captured[1].provider, 'openrouter-free');
+  assert.equal(captured[1].ok, true);
+});
+
+test('llm-chain: records empty length-limited responses as length before falling back', async () => {
+  baseEnv();
+  const captured = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) {
+      captured.push(...JSON.parse(String(init.body || '[]')));
+      return { ok: true, json: async () => ({}) };
+    }
+    if (raw.includes('openrouter.ai') && isPaidOpenRouter(init)) {
+      return { ok: true, json: async () => llmJson('', undefined, 'length') };
+    }
+    if (raw.includes('openrouter.ai')) {
+      return { ok: true, json: async () => llmJson('Complete fallback prose.') };
+    }
+    throw new Error(`unexpected fetch: ${raw}`);
+  };
+
+  const text = await callLLM('system', 'user prompt', { stage: 'brief-whymatters-cron' });
+
+  assert.equal(text, 'Complete fallback prose.');
+  assert.equal(captured.length, 2);
+  assert.equal(captured[0].provider, 'openrouter');
+  assert.equal(captured[0].ok, false);
+  assert.equal(captured[0].reason, 'length');
+  assert.equal(captured[1].provider, 'openrouter-free');
+  assert.equal(captured[1].ok, true);
+});
+
+test('llm-chain: emits nothing when USAGE_TELEMETRY is off', async () => {
+  baseEnv();
+  delete process.env.USAGE_TELEMETRY;
+  const captured = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) {
+      captured.push(...JSON.parse(String(init.body || '[]')));
+      return { ok: true, json: async () => ({}) };
+    }
+    return { ok: true, json: async () => llmJson('answer text here') };
+  };
+
+  const text = await callLLM('system', 'user prompt', {});
+  assert.equal(text, 'answer text here');
+  assert.equal(captured.length, 0, 'telemetry must stay opt-in');
+});
+
+test('flushPendingLlmEvents drains in-flight deliveries before an explicit exit', async () => {
+  baseEnv();
+  let delivered = false;
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  global.fetch = async (url) => {
+    if (String(url).includes('api.axiom.co')) {
+      await gate;
+      delivered = true;
+      return { ok: true, json: async () => ({}) };
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+
+  // Fire-and-forget (what the transports do) — delivery is still in flight.
+  void emitLlmEvents([buildLlmCallEvent({ provider: 'openrouter', model: 'm', stage: 's', ok: true, durationMs: 1 })]);
+  assert.equal(delivered, false, 'delivery must still be pending');
+
+  const flush = flushPendingLlmEvents();
+  release();
+  await flush;
+  assert.equal(delivered, true, 'flush must drain the pending delivery');
+});
+
+test('llm-chain: a telemetry delivery failure never fails the call', async () => {
+  baseEnv();
+  global.fetch = async (url) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) {
+      throw new Error('axiom down');
+    }
+    return { ok: true, json: async () => llmJson('resilient output text') };
+  };
+
+  const text = await callLLM('system', 'user prompt', { stage: 'brief-whymatters-cron' });
+  assert.equal(text, 'resilient output text', 'telemetry failure must not affect the result');
+});
+
+test('narrative: validate_reject and success attempts both reach the ingest', async () => {
+  baseEnv();
+  const captured = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) {
+      captured.push(...JSON.parse(String(init.body || '[]')));
+      return { ok: true, json: async () => ({}) };
+    }
+    throw new Error(`unexpected global fetch: ${raw}`);
+  };
+  // Provider transport is injected: the paid and primary free OpenRouter models
+  // fail validation, then the backup free model answers with the accepted payload.
+  __setNarrativeTransportForTests({
+    fetch: async (_url, init) => {
+      if (JSON.parse(String(init.body)).model !== 'nvidia/nemotron-3-super-120b-a12b:free') {
+        return { ok: true, json: async () => llmJson('not-json narrative') };
+      }
+      return { ok: true, json: async () => llmJson('{"ok":true}') };
+    },
+  });
+
+  const res = await callNarrativeLlm(
+    { systemPrompt: 'sys', userPrompt: 'user' },
+    { validate: (text) => text.startsWith('{') },
+  );
+  assert.ok(res);
+  assert.equal(res.provider, 'openrouter-free-backup');
+  assert.equal(captured.length, 3);
+  assert.equal(captured[0].stage, 'regional-narrative');
+  assert.equal(captured[0].provider, 'openrouter');
+  assert.equal(captured[0].ok, false);
+  assert.equal(captured[0].reason, 'validate_reject');
+  assert.equal(captured[0].fallback_index, 0);
+  assert.equal(captured[1].provider, 'openrouter-free');
+  assert.equal(captured[1].ok, false);
+  assert.equal(captured[1].reason, 'validate_reject');
+  assert.equal(captured[1].fallback_index, 1);
+  assert.equal(captured[2].provider, 'openrouter-free-backup');
+  assert.equal(captured[2].ok, true);
+  assert.equal(captured[2].fallback_index, 2);
+});

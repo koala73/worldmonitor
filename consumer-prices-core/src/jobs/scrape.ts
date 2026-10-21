@@ -2,7 +2,7 @@
  * Scrape job: discovers targets and writes price observations to Postgres.
  * Respects per-retailer rate limits and acquisition provider config.
  */
-import { query, closePool } from '../db/client.js';
+import { query, closePool, withTransaction } from '../db/client.js';
 import { insertObservation } from '../db/queries/observations.js';
 import { upsertRetailerProduct } from '../db/queries/products.js';
 import { parseSize, unitPrice as calcUnitPrice } from '../normalizers/size.js';
@@ -10,18 +10,44 @@ import { loadAllRetailerConfigs, loadRetailerConfig } from '../config/loader.js'
 import { initProviders, teardownAll } from '../acquisition/registry.js';
 import { GenericPlaywrightAdapter } from '../adapters/generic.js';
 import { ExaSearchAdapter } from '../adapters/exa-search.js';
-import { SearchAdapter } from '../adapters/search.js';
+import { SearchAdapter, SearchTargetError } from '../adapters/search.js';
 import { ExaProvider } from '../acquisition/exa.js';
 import { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext } from '../adapters/types.js';
 import { upsertCanonicalProduct } from '../db/queries/products.js';
-import { getBasketItemId, getPinnedUrlsForRetailer, upsertProductMatch } from '../db/queries/matches.js';
+import {
+  demoteAutoProductMatchToCandidate,
+  getBasketItemId,
+  getPinnedUrlsForRetailer,
+  getDisabledPinsForRecovery,
+  upsertProductMatch,
+} from '../db/queries/matches.js';
+import type { ValidatorResult } from '../adapters/validator.js';
+import {
+  classifyMatchAdmission,
+  classifyValidatorOutcome,
+  createScrapeRunStatement,
+  FailureReasonTally,
+  isMissingColumnError,
+  isRunBudgetExhausted,
+  legacyUpdateScrapeRunStatement,
+  resolveRunBudgetMs,
+  resolveRunStatus,
+  updateScrapeRunStatement,
+} from './scrape-coverage.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[scrape] ${msg}`, ...args),
   warn: (msg: string, ...args: unknown[]) => console.warn(`[scrape] ${msg}`, ...args),
   error: (msg: string, ...args: unknown[]) => console.error(`[scrape] ${msg}`, ...args),
 };
+
+class MatchAdmissionPersistenceError extends Error {
+  constructor(message: string, cause: unknown) {
+    super(message, { cause });
+    this.name = 'MatchAdmissionPersistenceError';
+  }
+}
 
 async function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -41,11 +67,8 @@ async function getOrCreateRetailer(slug: string, config: ReturnType<typeof loadR
 }
 
 async function createScrapeRun(retailerId: string): Promise<string> {
-  const result = await query<{ id: string }>(
-    `INSERT INTO scrape_runs (retailer_id, started_at, status, trigger_type, pages_attempted, pages_succeeded, errors_count, config_version)
-     VALUES ($1, NOW(), 'running', 'scheduled', 0, 0, 0, '1') RETURNING id`,
-    [retailerId],
-  );
+  const statement = createScrapeRunStatement(retailerId);
+  const result = await query<{ id: string }>(statement.sql, statement.params);
   return result.rows[0].id;
 }
 
@@ -55,25 +78,39 @@ async function updateScrapeRun(
   pagesAttempted: number,
   pagesSucceeded: number,
   errorsCount: number,
+  rejectedCount: number,
+  failureReasons: Record<string, number>,
 ) {
-  await query(
-    `UPDATE scrape_runs SET status=$2, finished_at=NOW(), pages_attempted=$3, pages_succeeded=$4, errors_count=$5 WHERE id=$1`,
-    [runId, status, pagesAttempted, pagesSucceeded, errorsCount],
-  );
-}
-
-async function handlePinError(productId: string, matchId: string, targetId: string) {
-  const { rows } = await query<{ c: string }>(
-    `UPDATE retailer_products SET pin_error_count = pin_error_count + 1
-     WHERE id = $1 RETURNING pin_error_count AS c`,
-    [productId],
-  );
-  const count = parseInt(rows[0]?.c ?? '0', 10);
-  if (count >= 3) {
-    await query(`UPDATE product_matches SET pin_disabled_at = NOW() WHERE id = $1`, [matchId]);
-    logger.info(`  [pin] soft-disabled stale pin for ${targetId} (${count}x errors)`);
+  const update = {
+    runId,
+    status,
+    pagesAttempted,
+    pagesSucceeded,
+    errorsCount,
+    rejectedCount,
+    failureReasons,
+  };
+  const statement = updateScrapeRunStatement(update);
+  try {
+    await query(statement.sql, statement.params);
+  } catch (err) {
+    // Migration 011 has not been applied yet (no Railway service runs the
+    // migration runner). Give up the diagnostic column, never the run row —
+    // an unwritten run stays status='running' and buildCoverageSnapshot,
+    // which only reads terminal runs, would freeze the market's coverage.
+    if (!isMissingColumnError(err)) throw err;
+    logger.warn(
+      `Run ${runId}: scrape_runs.failure_reasons is missing — apply migration 011; recording counts without failure attribution`,
+    );
+    const legacy = legacyUpdateScrapeRunStatement(update);
+    await query(legacy.sql, legacy.params);
   }
 }
+
+// Pin disable + auto-recovery helpers extracted to ./scrape-pin-recovery.ts
+// for unit-testability (avoids pulling scrape.ts's heavy transitive deps —
+// exa-js, playwright, etc. — into the test environment).
+import { handleStaleOnInStock, handleStaleOnOutOfStock, handlePinError } from './scrape-pin-recovery.js';
 
 export async function scrapeRetailer(slug: string) {
   const config = loadRetailerConfig(slug);
@@ -99,8 +136,30 @@ export async function scrapeRetailer(slug: string) {
   const runId = await createScrapeRun(retailerId);
   logger.info(`Run ${runId} started for ${slug}`);
 
-  const pinnedUrls = await getPinnedUrlsForRetailer(retailerId);
-  logger.info(`${slug}: ${pinnedUrls.size} pins loaded`);
+  // Active pins (healthy) — every cycle.
+  const activePins = await getPinnedUrlsForRetailer(retailerId);
+  // Recovery probes (sticky-disabled) — bounded slice per cycle so the
+  // disable trap can't make decay permanent (PR #3627 P1 review). The
+  // recovery counter (consecutive_in_stock) accumulates over multiple
+  // probe cycles; after 3 successful in-stock observations,
+  // handleStaleOnInStock clears pin_disabled_at and the pin returns to
+  // active rotation. Aggregation gates (worldmonitor.ts) keep filtering
+  // pin_disabled_at IS NULL so probed-but-still-disabled pins don't leak
+  // into spread until they've fully recovered.
+  const RECOVERY_PROBE_LIMIT = 10;
+  const recoveryPins = await getDisabledPinsForRecovery(retailerId, RECOVERY_PROBE_LIMIT);
+  // Merge: active pins take precedence on key collision (active set is
+  // healthier; collision is rare but possible if two retailer_products
+  // both match the same basket item).
+  const pinnedUrls = new Map(activePins);
+  let recoveryAdded = 0;
+  for (const [key, val] of recoveryPins) {
+    if (!pinnedUrls.has(key)) {
+      pinnedUrls.set(key, val);
+      recoveryAdded++;
+    }
+  }
+  logger.info(`${slug}: ${activePins.size} active pins + ${recoveryAdded} recovery probes (${pinnedUrls.size} total)`);
 
   const adapter =
     config.adapter === 'search'
@@ -115,11 +174,37 @@ export async function scrapeRetailer(slug: string) {
 
   let pagesAttempted = 0;
   let pagesSucceeded = 0;
-  let errorsCount = 0;
+  let rejectedCount = 0;
+  let matchAdmissionPersistenceFailed = false;
+  // #6182: the error count IS the tally's total. Keeping a separate
+  // `errorsCount` counter alongside it would make "every error has a recorded
+  // reason" a convention that any future `errorsCount++` could silently break;
+  // deriving it makes the two impossible to disagree.
+  const failureReasons = new FailureReasonTally();
 
   const delay = config.rateLimit?.delayBetweenRequestsMs ?? 2_000;
 
+  // Wall-clock ceiling for one retailer's target loop. Each candidate URL can
+  // now cost two bounded provider calls (Firecrawl, then the opt-in Exa
+  // fallback), so a provider brown-out that never trips the 2-strike cooldowns
+  // — every call slow but eventually answering — can run far past the cron
+  // slot. Without this the only stop is an external kill, which skips
+  // updateScrapeRun entirely and strands the row at status='running'; the
+  // active-run query has no age bound, so that row is served indefinitely.
+  // Stopping ourselves keeps the run's own accounting honest: whatever was
+  // scraped is committed and the status lands on 'partial'.
+  const runBudgetMs = resolveRunBudgetMs(process.env.CONSUMER_PRICES_RUN_BUDGET_MS);
+  const runStartedAt = Date.now();
+  let budgetExhausted = false;
+
   for (const target of targets) {
+    if (isRunBudgetExhausted(runStartedAt, Date.now(), runBudgetMs)) {
+      budgetExhausted = true;
+      logger.warn(
+        `  [budget] ${slug}: run budget ${runBudgetMs}ms exhausted after ${pagesAttempted}/${targets.length} targets — stopping early`,
+      );
+      break;
+    }
     pagesAttempted++;
     const isDirect = target.metadata?.direct === true;
     const pinnedProductId = target.metadata?.pinnedProductId as string | undefined;
@@ -130,7 +215,7 @@ export async function scrapeRetailer(slug: string) {
 
       if (products.length === 0) {
         logger.warn(`  [${target.id}] parsed 0 products — counting as error`);
-        errorsCount++;
+        failureReasons.recordParsedZeroProducts();
         if (isDirect && pinnedProductId && pinnedMatchId) {
           await handlePinError(pinnedProductId, pinnedMatchId, target.id);
         }
@@ -144,6 +229,31 @@ export async function scrapeRetailer(slug: string) {
         // so this correctly distinguishes "pin worked" from "pin failed, Exa used instead".
         const wasDirectHit = isDirect && product.rawPayload.direct === true;
 
+        // Direct-hit validator enforcement — the pin path's common steady
+        // state. The legacy isTitlePlausible gate inside _extractFromUrl
+        // already let this hit through, so the strict validator here acts
+        // as a second opinion that specifically catches pins that have
+        // drifted onto the wrong product (e.g. "White Sugar 1kg" now
+        // resolving to "mango sugar baby india"). If the validator
+        // disagrees, count the rejection for coverage. Direct-pin rejects
+        // still skip the observation entirely and route this target through
+        // the existing pin-error counter so the pin soft-disables after
+        // repeated failures. Aggregates never see the bad price.
+        const validator = product.rawPayload.validator as ValidatorResult | undefined;
+        const matchAdmission = classifyMatchAdmission(validator);
+        const validatorOutcome = classifyValidatorOutcome(validator, wasDirectHit);
+        rejectedCount += validatorOutcome.rejectedCount;
+        if (validatorOutcome.skipObservation) {
+          logger.warn(
+            `  [${target.id}] pin validator reject — skipping observation, counting as pin error. reasons=${validator?.reasons?.join(',') || 'unknown'} score=${validator?.score?.toFixed(2) || '0.00'} title="${product.rawTitle}"`,
+          );
+          if (validatorOutcome.errorCount > 0) failureReasons.recordPinValidatorRejection();
+          if (pinnedProductId && pinnedMatchId) {
+            await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+          }
+          continue;
+        }
+
         const productId = await upsertRetailerProduct({
           retailerId,
           retailerSku: product.retailerSku,
@@ -155,51 +265,7 @@ export async function scrapeRetailer(slug: string) {
           categoryText: product.categoryText ?? target.category,
         });
 
-        const parsed = parseSize(product.rawSizeText);
-        const up = parsed ? calcUnitPrice(product.price, parsed) : null;
-
-        await insertObservation({
-          retailerProductId: productId,
-          scrapeRunId: runId,
-          price: product.price,
-          listPrice: product.listPrice,
-          promoPrice: product.promoPrice,
-          currencyCode: config.currencyCode,
-          unitPrice: up,
-          unitBasisQty: parsed?.baseQuantity ?? null,
-          unitBasisUnit: parsed?.baseUnit ?? null,
-          inStock: product.inStock,
-          promoText: product.promoText,
-          rawPayloadJson: product.rawPayload,
-        });
-
-        // Stale-pin maintenance — only when the pin URL was actually used (not Exa fallback).
-        if (wasDirectHit && pinnedProductId && pinnedMatchId) {
-          if (product.inStock) {
-            await query(
-              `UPDATE retailer_products SET consecutive_out_of_stock = 0, pin_error_count = 0 WHERE id = $1`,
-              [pinnedProductId],
-            );
-          } else {
-            const { rows } = await query<{ c: string }>(
-              `UPDATE retailer_products
-               SET consecutive_out_of_stock = consecutive_out_of_stock + 1
-               WHERE id = $1 RETURNING consecutive_out_of_stock AS c`,
-              [pinnedProductId],
-            );
-            const count = parseInt(rows[0]?.c ?? '0', 10);
-            if (count >= 3) {
-              await query(`UPDATE product_matches SET pin_disabled_at = NOW() WHERE id = $1`, [pinnedMatchId]);
-              logger.info(`  [pin] soft-disabled stale pin for ${target.id} (${count}x out-of-stock)`);
-            }
-          }
-        }
-
-        // When a pinned target fell back to Exa (isDirect but !wasDirectHit),
-        // increment pin_error_count so the old broken pin eventually gets disabled.
-        if (isDirect && !wasDirectHit && pinnedProductId && pinnedMatchId) {
-          await handlePinError(pinnedProductId, pinnedMatchId, target.id);
-        }
+        let discoveredMatch: Parameters<typeof upsertProductMatch>[0] | undefined;
 
         // For search-based adapters: auto-create product → basket match.
         // Skip only when the pin URL was used directly — the match already exists.
@@ -220,35 +286,166 @@ export async function scrapeRetailer(slug: string) {
               product.rawPayload.canonicalName as string,
             );
             if (basketItemId) {
-              await upsertProductMatch({
+              // Use the validator result threaded through the adapter payload
+              // to pick the match state. No validator = legacy fallback at
+              // score 1.0 / auto (keeps the pre-validator adapters working
+              // unchanged). The strict path scores real hits and downgrades
+              // weak ones to 'candidate' so they never enter aggregates.
+              if (matchAdmission.status === 'candidate') {
+                logger.warn(
+                  `  [${target.id}] downgraded to candidate score=${matchAdmission.score.toFixed(2)} reasons=${validator?.reasons.join(',')}`,
+                );
+              }
+              discoveredMatch = {
                 retailerProductId: productId,
                 canonicalProductId: canonicalId,
                 basketItemId,
-                matchScore: 1.0,
-                matchStatus: 'auto',
-              });
+                matchScore: matchAdmission.score,
+                matchStatus: matchAdmission.status,
+                evidence: matchAdmission.evidence,
+              };
             }
           } catch (matchErr) {
             logger.warn(`  [${target.id}] product match failed: ${matchErr}`);
+            throw new MatchAdmissionPersistenceError(
+              `could not persist match admission for ${target.id}`,
+              matchErr,
+            );
           }
+        }
+
+        const parsed = parseSize(product.rawSizeText);
+        const up = parsed ? calcUnitPrice(product.price, parsed) : null;
+        const observation = {
+          retailerProductId: productId,
+          scrapeRunId: runId,
+          price: product.price,
+          listPrice: product.listPrice,
+          promoPrice: product.promoPrice,
+          currencyCode: config.currencyCode,
+          unitPrice: up,
+          unitBasisQty: parsed?.baseQuantity ?? null,
+          unitBasisUnit: parsed?.baseUnit ?? null,
+          inStock: product.inStock,
+          promoText: product.promoText,
+          rawPayloadJson: product.rawPayload,
+        };
+
+        const shouldDemoteDirectMatch =
+          wasDirectHit &&
+          Boolean(pinnedMatchId) &&
+          matchAdmission.status === 'candidate';
+
+        if (shouldDemoteDirectMatch || discoveredMatch) {
+          let demotedDirectMatch = false;
+          try {
+            // The match write acquires the conflicting row before the
+            // observation is inserted. Keeping both statements in one
+            // transaction prevents aggregate from observing either an old
+            // auto state with new candidate evidence or a new auto state with
+            // older candidate evidence. Concurrent scrape runs serialize on
+            // the match upsert/update row lock.
+            await withTransaction(async (execute) => {
+              if (shouldDemoteDirectMatch && pinnedMatchId) {
+                demotedDirectMatch = await demoteAutoProductMatchToCandidate({
+                  matchId: pinnedMatchId,
+                  matchScore: matchAdmission.score,
+                  evidence: matchAdmission.evidence,
+                }, execute);
+              }
+              if (discoveredMatch) await upsertProductMatch(discoveredMatch, execute);
+              await insertObservation(observation, execute);
+            });
+          } catch (cause) {
+            logger.warn(`  [${target.id}] match/observation transaction failed: ${cause}`);
+            throw new MatchAdmissionPersistenceError(
+              `could not persist matched observation for ${target.id}`,
+              cause,
+            );
+          }
+          if (demotedDirectMatch) {
+            logger.warn(
+              `  [${target.id}] direct auto pin downgraded to candidate score=${matchAdmission.score.toFixed(2)} reasons=${validator?.reasons.join(',')}`,
+            );
+          }
+        } else {
+          await insertObservation(observation);
+        }
+
+        // Stale-pin maintenance — only when the pin URL was actually used (not Exa fallback).
+        // Symmetric disable + auto-recovery (3 consecutive observations either way).
+        // See migration 009 + memory `sticky-disable-without-auto-recovery-decays`
+        // for why both halves matter: code alone leaves historical sticky-decay,
+        // migration alone restarts decay immediately on next nightly scrape.
+        if (wasDirectHit && pinnedProductId && pinnedMatchId) {
+          if (product.inStock) {
+            await handleStaleOnInStock(pinnedProductId, pinnedMatchId, target.id);
+          } else {
+            await handleStaleOnOutOfStock(pinnedProductId, pinnedMatchId, target.id);
+          }
+        }
+
+        // When a pinned target fell back to Exa (isDirect but !wasDirectHit),
+        // increment pin_error_count so the old broken pin eventually gets disabled.
+        if (isDirect && !wasDirectHit && pinnedProductId && pinnedMatchId) {
+          await handlePinError(pinnedProductId, pinnedMatchId, target.id);
         }
       }
 
       pagesSucceeded++;
     } catch (err) {
-      errorsCount++;
+      // `failures` carries the adapter's per-candidate classification. An error
+      // that is not a SearchTargetError has none, and recordPageFailure files
+      // it as unknown-error rather than dropping it — an unattributed page is
+      // itself a finding, and a silent drop would undercount the run's errors.
+      if (err instanceof MatchAdmissionPersistenceError) {
+        failureReasons.recordMatchAdmissionPersistenceFailure();
+        matchAdmissionPersistenceFailed = true;
+      } else {
+        failureReasons.recordPageFailure(err instanceof SearchTargetError ? err.failures : []);
+      }
+      if (err instanceof SearchTargetError) rejectedCount += err.rejectedCount;
       logger.error(`  [${target.id}] failed: ${err}`);
-      if (isDirect && pinnedProductId && pinnedMatchId) {
-        await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+      if (
+        !(err instanceof MatchAdmissionPersistenceError) &&
+        isDirect &&
+        pinnedProductId &&
+        pinnedMatchId
+      ) {
+        // We are already inside the failure handler: a throw here (transient
+        // DB blip in pin recovery) escapes the target loop and strands the
+        // scrape_run at status=running, freezing the market coverage snapshot.
+        try {
+          await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+        } catch (pinErr) {
+          logger.error(`  [${target.id}] pin recovery failed: ${pinErr}`);
+        }
       }
     }
 
     if (pagesAttempted < targets.length) await sleep(delay);
   }
 
-  const status = errorsCount === 0 ? 'completed' : pagesSucceeded > 0 ? 'partial' : 'failed';
-  await updateScrapeRun(runId, status, pagesAttempted, pagesSucceeded, errorsCount);
-  logger.info(`Run ${runId} finished: ${status} (${pagesSucceeded}/${pagesAttempted} pages)`);
+  const errorsCount = failureReasons.total;
+  // Admission persistence is the publication boundary. Even if other pages
+  // succeeded, do not refresh retailer health when that boundary could not be
+  // written; the last-good timestamp must remain authoritative.
+  const status = matchAdmissionPersistenceFailed
+    ? 'failed'
+    : resolveRunStatus(errorsCount, pagesSucceeded, budgetExhausted);
+  const failureReasonsJson = failureReasons.toJSON();
+  await updateScrapeRun(
+    runId,
+    status,
+    pagesAttempted,
+    pagesSucceeded,
+    errorsCount,
+    rejectedCount,
+    failureReasonsJson,
+  );
+  logger.info(
+    `Run ${runId} finished: ${status} (${pagesSucceeded}/${pagesAttempted} pages, rejected=${rejectedCount}, reasons=${JSON.stringify(failureReasonsJson)})`,
+  );
 
   const parseSuccessRate = pagesAttempted > 0 ? (pagesSucceeded / pagesAttempted) * 100 : 0;
   const isSuccess = status === 'completed' || status === 'partial';
@@ -322,4 +519,15 @@ async function main() {
 // process.exit() is required to flush lingering Playwright/Chromium handles
 // that would otherwise prevent the process from exiting naturally.
 // process.exitCode preserves failure signaling set in the catch block above.
-main().catch(() => { process.exitCode = 1; }).then(() => process.exit(process.exitCode ?? 0));
+const __runStartedAt = Date.now();
+main()
+  .then(() => {
+    // Terminal success marker (format mirrors runSeed() in scripts/_seed-utils.mjs) so the crash
+    // diagnostic can tell a clean run from a silent death; without it every run reads as unknown.
+    // main() CATCHES INTERNALLY and signals failure via process.exitCode, so it resolves even when
+    // the run failed — the guard is what stops this vouching for a failed scrape. Plain console.log
+    // rather than the logger: the marker must survive whatever transport/format the logger uses.
+    if (!process.exitCode) console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`);
+  })
+  .catch(() => { process.exitCode = 1; })
+  .then(() => process.exit(process.exitCode ?? 0));

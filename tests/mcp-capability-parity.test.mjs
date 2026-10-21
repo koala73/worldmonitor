@@ -1,0 +1,448 @@
+// MCP capability-parity test — catches two structural drift modes at once:
+//
+//   1. Drift between public/.well-known/mcp/server-card.json::capabilities
+//      (what external scanners read) and initialize.result.capabilities
+//      (what the wire serves). A future PR that flips one but forgets the
+//      other ships an advertised-but-unserved capability — discovery
+//      scanners 404 on the flagged surface.
+//
+//   2. Advertised-but-empty — a capability flag is on but the matching
+//      registry is empty at runtime. The list method returns
+//      `{ <capability>: [] }`, which is spec-valid but useless to clients
+//      and indistinguishable (to a casual reader) from "capability not
+//      offered". Catches accidental truncation of PROMPT_REGISTRY,
+//      RESOURCE_REGISTRY, or TOOL_REGISTRY.
+//
+// Normalization: server-card encodes capabilities as booleans (`tools: true`);
+// initialize emits an object per capability (`tools: {}` for passive,
+// `prompts: { listChanged: false }` for config). The value shapes are not
+// commensurable — only the KEY presence is. Both sides project to
+// Set<string> of advertised capability names; the value shape is per-spec
+// opaque.
+//
+// `logging` is structurally registry-less — it's a passive-ACK capability
+// (the handler returns `{}` for `logging/setLevel` but doesn't push
+// `notifications/message`). The allowlist exempts it from the non-empty
+// check. Adding a future passive-ACK capability requires editing this file
+// deliberately — that is the discipline this test is buying.
+
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+
+import { BASE_URL } from './helpers/mcp-pro-deps.mjs';
+import { resolveMcpBudget } from '../api/mcp/quota.ts';
+import { MCP_DEFAULT_BURST_PER_MINUTE, MCP_PROTOCOL_BURST_PER_MINUTE, resolveMcpBurstPerMinute } from '../api/mcp/auth.ts';
+import { PANEL_READ_LIMIT } from '../api/mcp/panel-requests.ts';
+import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
+import { OPERATOR_KEY_DAILY_CEILINGS } from '../server/_shared/high-usage-alarm.ts';
+
+const originalFetch = globalThis.fetch;
+const originalEnv = { ...process.env };
+
+const VALID_KEY = 'wm_test_key_capability_parity';
+
+// Capabilities that are structurally registry-less — advertised, but with no
+// `<cap>/list` method or backing registry to be non-empty.
+//   - `logging`: a passive receive-side capability — the handler ACKs
+//     `logging/setLevel` but the stateless edge transport can't push
+//     `notifications/message` (same reason `listChanged: false` on
+//     prompts/resources).
+//   - `extensions`: the MCP Apps / skills negotiation key
+//     (`extensions['io.modelcontextprotocol/ui']` and
+//     `extensions['io.modelcontextprotocol/skills']`, spec 2026-01-26). It is
+//     a handshake declaration, not a listable collection — the ui:// app-shell
+//     resources and tool `_meta.ui.resourceUri` are enumerated via
+//     resources/list + tools/list under the existing `resources`/`tools`
+//     capabilities, while skills/list + skills/get are asserted directly in
+//     tests/mcp-skills-extension.test.mts. Non-emptiness of `extensions`
+//     itself is guarded below (the declared value must name the ui and skills
+//     extensions).
+// Future passive/declaration-only additions require an explicit edit to this
+// allowlist AND a positive assertion in the "structurally exempt" tests below.
+const REGISTRYLESS_CAPABILITIES = new Set(['logging', 'extensions']);
+
+// Mapping from advertised-capability name → (list-method, response-key,
+// __testing__ registry name). Three entries; an abstraction would obscure
+// the deliberate per-capability discipline this test is enforcing.
+const CAPABILITY_WIRE = {
+  tools: { method: 'tools/list', responseKey: 'tools', registryKey: 'TOOL_REGISTRY' },
+  prompts: { method: 'prompts/list', responseKey: 'prompts', registryKey: 'PROMPT_REGISTRY' },
+  resources: { method: 'resources/list', responseKey: 'resources', registryKey: 'RESOURCE_REGISTRY' },
+};
+
+function makeReq(body) {
+  return new Request(BASE_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-WorldMonitor-Key': VALID_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+function loadServerCardCapabilities() {
+  const path = new URL('../public/.well-known/mcp/server-card.json', import.meta.url);
+  const raw = readFileSync(path, 'utf8');
+  const card = JSON.parse(raw);
+  assert.ok(card.capabilities && typeof card.capabilities === 'object',
+    'server-card.json must declare a capabilities object');
+  return card.capabilities;
+}
+
+// Project server-card { tools: true, logging: true, ... } → Set<string>.
+// Only `=== true` counts as advertised; a hypothetical `false` entry would
+// be a deliberate disable that the parity test must respect.
+function advertisedFromCard(capabilities) {
+  return new Set(
+    Object.entries(capabilities).filter(([, v]) => v === true).map(([k]) => k),
+  );
+}
+
+// Project initialize { tools: {}, prompts: { listChanged: false }, ... } →
+// Set<string>. Per spec, presence of a key in initialize.result.capabilities
+// is the advertised signal — the value is per-spec opaque (config object).
+function advertisedFromInitialize(capabilities) {
+  return new Set(Object.keys(capabilities));
+}
+
+let handler;
+let registries;
+// Snapshot of server-card.json::capabilities, captured once per test in
+// beforeEach. Hoisted out of the individual tests so all four assertions
+// within a single run observe the exact same on-disk snapshot — and so
+// the disk read isn't repeated three times per run.
+let cardCaps;
+
+describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
+  beforeEach(async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = VALID_KEY;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.MCP_TELEMETRY = 'false';
+
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}-cap-parity`);
+    handler = mod.default;
+    registries = mod.__testing__;
+    cardCaps = loadServerCardCapabilities();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    Object.keys(process.env).forEach((k) => {
+      if (!(k in originalEnv)) delete process.env[k];
+    });
+    Object.assign(process.env, originalEnv);
+  });
+
+  it('advertised-capability set parity between server-card.json and initialize', async () => {
+    const cardSet = advertisedFromCard(cardCaps);
+
+    const res = await handler(makeReq({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.capabilities && typeof body.result.capabilities === 'object',
+      'initialize.result.capabilities must be an object');
+    const initSet = advertisedFromInitialize(body.result.capabilities);
+
+    const onlyOnCard = [...cardSet].filter((k) => !initSet.has(k)).sort();
+    const onlyOnInit = [...initSet].filter((k) => !cardSet.has(k)).sort();
+    assert.deepEqual(
+      { onlyOnCard, onlyOnInit },
+      { onlyOnCard: [], onlyOnInit: [] },
+      `capability drift: server-card advertises [${[...cardSet].sort().join(', ')}]; ` +
+      `initialize advertises [${[...initSet].sort().join(', ')}]; ` +
+      `only on server-card: [${onlyOnCard.join(', ')}]; only on initialize: [${onlyOnInit.join(', ')}]`,
+    );
+  });
+
+  it('every advertised capability has a non-empty wire response (defense at the contract layer)', async () => {
+    const advertised = advertisedFromCard(cardCaps);
+
+    for (const cap of advertised) {
+      if (REGISTRYLESS_CAPABILITIES.has(cap)) continue;
+      const wire = CAPABILITY_WIRE[cap];
+      assert.ok(wire,
+        `capability "${cap}" is advertised but has no CAPABILITY_WIRE mapping — ` +
+        `add a {method, responseKey, registryKey} entry or extend LOGGING_HAS_NO_REGISTRY deliberately`,
+      );
+
+      const res = await handler(makeReq({ jsonrpc: '2.0', id: 2, method: wire.method, params: {} }));
+      assert.equal(res.status, 200, `${wire.method} must return 200`);
+      const body = await res.json();
+      const list = body.result?.[wire.responseKey];
+      assert.ok(Array.isArray(list),
+        `${wire.method} result.${wire.responseKey} must be an array; got ${typeof list}`,
+      );
+      assert.ok(list.length >= 1,
+        `'${cap}' is advertised but ${wire.method} returned 0 entries — advertised-but-empty`,
+      );
+    }
+  });
+
+  it('every advertised capability has a non-empty registry (defense at the source layer)', () => {
+    const advertised = advertisedFromCard(cardCaps);
+
+    for (const cap of advertised) {
+      if (REGISTRYLESS_CAPABILITIES.has(cap)) continue;
+      const wire = CAPABILITY_WIRE[cap];
+      assert.ok(wire,
+        `capability "${cap}" is advertised but has no CAPABILITY_WIRE mapping — see sibling test`,
+      );
+      const registry = registries[wire.registryKey];
+      assert.ok(Array.isArray(registry),
+        `__testing__.${wire.registryKey} must be an array; got ${typeof registry}`,
+      );
+      assert.ok(registry.length >= 1,
+        `'${cap}' is advertised but __testing__.${wire.registryKey} is empty — advertised-but-empty`,
+      );
+    }
+  });
+
+  it('logging capability is advertised AND structurally exempt from the registry check', () => {
+    const advertised = advertisedFromCard(cardCaps);
+    assert.ok(advertised.has('logging'),
+      `'logging' must remain advertised — removing it requires editing this test deliberately ` +
+      `(advertised: [${[...advertised].sort().join(', ')}])`,
+    );
+    assert.ok(REGISTRYLESS_CAPABILITIES.has('logging'),
+      `'logging' must remain in REGISTRYLESS_CAPABILITIES — removing it requires editing this test deliberately`,
+    );
+  });
+
+  it('extensions capability (MCP Apps + skills) is advertised, structurally exempt, AND names both extension keys on the wire', async () => {
+    const advertised = advertisedFromCard(cardCaps);
+    assert.ok(advertised.has('extensions'),
+      `'extensions' must remain advertised on the server-card — the MCP-Apps ` +
+      `negotiation key is how hosts/scanners classify an MCP-App surface ` +
+      `(advertised: [${[...advertised].sort().join(', ')}])`,
+    );
+    assert.ok(REGISTRYLESS_CAPABILITIES.has('extensions'),
+      `'extensions' must remain in REGISTRYLESS_CAPABILITIES — it is a handshake ` +
+      `declaration, not a listable registry`,
+    );
+
+    // Advertised-but-empty guard, extensions edition: the initialize wire must
+    // declare both extension keys, not just an empty `extensions: {}` object.
+    // An empty extensions map reads (to a scanner) as "no MCP Apps/skills
+    // support", the exact failure this capability exists to prevent.
+    const res = await handler(makeReq({
+      jsonrpc: '2.0', id: 3, method: 'initialize',
+      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } },
+    }));
+    const body = await res.json();
+    const extensions = body.result?.capabilities?.extensions;
+    assert.ok(extensions && typeof extensions === 'object',
+      'initialize.result.capabilities.extensions must be an object');
+    assert.deepEqual(extensions['io.modelcontextprotocol/ui'], {});
+    assert.deepEqual(extensions['io.modelcontextprotocol/skills'], {});
+  });
+
+  it('server-card daily-quota notes mirror metadata exemptions', () => {
+    const card = JSON.parse(
+      readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'),
+    );
+    // Derived from the resolver enforcement calls, never restated as literals.
+    // A literal table is what let the card publish 1,000/day while
+    // `resolveMcpBudget` returned 50 — the number was true of the price list
+    // and false of the meter, and a hardcoded expectation agreed with the card
+    // rather than with the code. Read in BOTH flag states, because the card is
+    // static and the ceiling it names must not depend on a deploy variable.
+    for (const restEnforced of [false, true]) {
+      const enforcedFor = (planKey) => {
+        const planLimits = PRODUCT_CATALOG[planKey]?.features?.planLimits;
+        assert.ok(planLimits, `${planKey} must exist in the catalog`);
+        return resolveMcpBudget(
+          planLimits.mcpCallsPerDay,
+          planLimits.apiRequestsPerDay,
+          restEnforced,
+        ).limit;
+      };
+      assert.deepEqual(
+        card.rateLimits?.dailyByPlan,
+        {
+          pro: enforcedFor('pro_monthly'),
+          proBusiness: enforcedFor('pro_business_monthly'),
+          apiStarter: enforcedFor('api_starter'),
+          apiBusiness: enforcedFor('api_business'),
+          enterprise: enforcedFor('enterprise'),
+        },
+        `server-card must mirror the caps the handler enforces (API_RATE_LIMIT_ENFORCE=${restEnforced})`,
+      );
+    }
+
+    // Same derivation for the burst ceiling, which had the identical failure
+    // mode: one hardcoded `slidingWindow(60)` throttled API Business to a fifth
+    // of the 300/min it sells, and a literal table here would have agreed with
+    // the price list rather than with the limiter.
+    const burstFor = (planKey) => {
+      const planLimits = PRODUCT_CATALOG[planKey]?.features?.planLimits;
+      assert.ok(planLimits, `${planKey} must exist in the catalog`);
+      return resolveMcpBurstPerMinute(planLimits.mcpBurstRequestsPerMinute);
+    };
+    assert.deepEqual(
+      card.rateLimits?.perMinuteByPlan,
+      {
+        pro: burstFor('pro_monthly'),
+        proBusiness: burstFor('pro_business_monthly'),
+        apiStarter: burstFor('api_starter'),
+        apiBusiness: burstFor('api_business'),
+        enterprise: burstFor('enterprise'),
+      },
+      'server-card must mirror the per-minute ceilings applyPerMinuteLimit actually applies',
+    );
+    assert.equal(
+      card.rateLimits?.perMinute,
+      MCP_DEFAULT_BURST_PER_MINUTE,
+      'the scalar perMinute is the documented DEFAULT — it must be the one the code falls back to',
+    );
+
+    const notes = card.rateLimits?.notes;
+    assert.equal(typeof notes, 'string', 'server-card rateLimits.notes must be a string');
+    assert.match(notes, /identical on the OAuth and dashboard-issued wm_ API-key doors/i,
+      'notes must disclose that both credential doors resolve the same budget');
+    assert.ok(
+      notes.includes(`Legacy operator keys explicitly allowlisted in WORLDMONITOR_VALID_KEYS reserve one unit per call against a separate ${OPERATOR_KEY_DAILY_CEILINGS.mcpUnits}/day ceiling per key.`),
+      'notes must publish the operator-key daily ceiling the dispatcher enforces',
+    );
+    // This assertion used to be `doesNotMatch(/1,000|10,000/)`, banning those
+    // numbers because the API tiers advertised MCP caps the meter never applied.
+    // They are enforced now, so the ban inverts: an agent planning a workload
+    // needs the real budget AND the weight, or it cannot predict its own spend.
+    assert.match(notes, /API Starter \(1000\/day\) and API Business \(10000\/day\)/,
+      'notes must publish the API-tier budgets now that they are enforced');
+    assert.match(notes, /per-tool weight of 1 for a cache-backed read, 2 for a tool that fetches live data/i,
+      'notes must publish the weight, or the shared budget is unpredictable');
+    for (const method of [
+      'initialize',
+      'tools/list',
+      'prompts/list',
+      'prompts/get',
+      'resources/list',
+      'resources/templates/list',
+      'logging/setLevel',
+      'notifications/initialized',
+      'ping',
+      'describe_tool',
+      'skills/list',
+      'skills/get',
+    ]) {
+      assert.ok(notes.includes(method), `${method} must be named in daily-quota notes`);
+    }
+    assert.equal(card.rateLimits.protocolPerMinute, MCP_PROTOCOL_BURST_PER_MINUTE);
+    assert.equal(card.rateLimits.panelReadsPerMinute, PANEL_READ_LIMIT);
+    assert.equal(card.rateLimits.panelCachedReadsPerMinute, PANEL_READ_LIMIT);
+    assert.match(notes, /separate 64\/minute uncached-read and 64\/minute cached-replay buckets/);
+    assert.match(notes, /Per-minute authenticated limiting bounds all methods/i);
+    assert.match(notes, /separate 192\/minute user bucket/i);
+    assert.match(notes, /Unsupported methods do not use the protocol bucket/i);
+  });
+
+  // The card carries identity fields BOTH top-level (the Server Card schema
+  // shape scanners read) AND nested under serverInfo (what initialize returns).
+  // The Server Card schema requires a reverse-DNS top-level name and a short
+  // description, so those follow the MCP Registry server.json; serverInfo keeps
+  // the initialize name and full description. Guard both from drifting.
+  it('top-level server-card identity mirrors the registry and serverInfo (no drift)', () => {
+    const card = JSON.parse(
+      readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'),
+    );
+    const registry = JSON.parse(readFileSync(new URL('../server.json', import.meta.url), 'utf8'));
+    assert.equal(card.name, registry.name, 'top-level name must mirror server.json name');
+    assert.equal(card.description, registry.description, 'top-level description must mirror server.json description');
+    assert.equal(card.serverInfo?.name, 'worldmonitor', 'serverInfo.name must match the initialize serverInfo');
+    assert.equal(card.version, card.serverInfo?.version, 'top-level version must mirror serverInfo.version');
+    assert.equal(card.serverUrl, card.transport?.endpoint, 'top-level serverUrl must mirror transport.endpoint');
+  });
+
+  // The card's `authentication` block is a hand-maintained copy of what the
+  // dynamic RFC 9728 handler emits, and scanners (isitagentready.com,
+  // mcp.cloudflare.com) reject an `authorization_servers` entry whose origin
+  // differs from `resource`. Assert the copy against the handler rather than
+  // against a second hardcoded origin list — a hand-copied constant is how it
+  // drifted to api.worldmonitor.app against an apex `resource` in the first place.
+  it('server-card authentication mirrors the RFC 9728 handler (same-origin, allowlisted, same scopes)', async () => {
+    const card = JSON.parse(
+      readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'),
+    );
+    const auth = card.authentication;
+    const resource = new URL(auth.resource);
+
+    for (const server of auth.authorization_servers) {
+      assert.equal(
+        new URL(server).origin,
+        resource.origin,
+        `authorization_servers entry ${server} must share origin with resource ${auth.resource}`,
+      );
+    }
+
+    // resolveMetadataOrigin coerces any host outside its allowlist to the apex,
+    // so an allowlisted origin is exactly one that round-trips through it.
+    const { resolveMetadataOrigin } = await import('../api/_agent-metadata.ts');
+    assert.equal(
+      resolveMetadataOrigin(new Request(resource.origin, { headers: { host: resource.host } })),
+      resource.origin,
+      `authentication.resource ${auth.resource} is not an origin resolveMetadataOrigin can return`,
+    );
+
+    // The card describes the MCP endpoint, so its `resource` is the endpoint's
+    // own identifier — the one the path-scoped document (RFC 9728 §3.1) and the
+    // connect-time challenge name — not the bare origin. A client that compares
+    // the card against the document it was challenged with must see one value.
+    assert.equal(
+      auth.resource,
+      card.transport.endpoint,
+      'authentication.resource must be the MCP endpoint the card advertises',
+    );
+
+    const prm = (await import('../api/oauth-protected-resource.ts')).default;
+    const emitted = await (
+      await prm(
+        new Request(`${resource.origin}/.well-known/oauth-protected-resource${resource.pathname}`, {
+          headers: { host: resource.host },
+        }),
+      )
+    ).json();
+    assert.equal(
+      emitted.resource,
+      auth.resource,
+      'authentication.resource must equal the resource the path-scoped PRM document emits',
+    );
+    assert.deepEqual(
+      auth.authorization_servers,
+      emitted.authorization_servers,
+      'authentication.authorization_servers must match what the PRM handler emits for that host',
+    );
+    assert.deepEqual(
+      auth.scopes,
+      emitted.scopes_supported,
+      'authentication.scopes must match the scopes_supported the PRM handler emits',
+    );
+  });
+});
+
+describe('docs/mcp-overview.mdx — API-key quota contract', () => {
+  it('distinguishes dashboard-issued and legacy operator API keys', () => {
+    const docs = readFileSync(new URL('../docs/mcp-overview.mdx', import.meta.url), 'utf8');
+    assert.doesNotMatch(docs, /Both modes check the same PRO entitlement/i,
+      'docs must not claim API-key requests use the OAuth/Pro entitlement pre-check path');
+    assert.match(docs, /OAuth bearer requests re-check[\s\S]*entitlement[\s\S]*before dispatch/i,
+      'docs must describe the OAuth entitlement re-check path');
+    assert.match(docs, /Dashboard-issued `X-WorldMonitor-Key: wm_…` requests[\s\S]*active entitlement[\s\S]*same per-user minute bucket and the same plan-resolved budget/i,
+      'docs must describe dashboard-key entitlement, minute, and daily enforcement');
+    assert.match(docs, /Legacy deployment-allowlisted operator keys[\s\S]*per-key minute bucket[\s\S]*skip the daily reservation/i,
+      'docs must keep operator-key limiting separate from dashboard-key metering');
+    // The API tiers no longer have a separate MCP number to keep apart from
+    // their REST allowance: one budget covers both. What must stay documented is
+    // that they are SHARED and at what weight, or a reader plans against a
+    // second allowance that does not exist.
+    assert.match(docs, /their MCP calls and REST requests share/i,
+      'docs must state that API-tier MCP calls and REST requests share one budget');
+    assert.match(docs, /cached MCP read costs 1 unit and a live downstream fetch costs 2/i,
+      'docs must publish the per-tool weight, or the shared budget is unpredictable');
+  });
+});

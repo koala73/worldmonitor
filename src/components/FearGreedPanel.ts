@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 
 interface FearGreedData {
@@ -101,18 +101,20 @@ function renderGauge(score: number, label: string, delta: number | null, color: 
   const dStr = delta != null ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} vs prev` : '';
   const dFill = delta != null ? (delta >= 0 ? '#2ecc71' : '#e74c3c') : '';
   const deltaLine = dStr
-    ? `<text x="${cx}" y="111" text-anchor="middle" font-size="9" fill="${dFill}" font-family="system-ui,-apple-system,sans-serif">${dStr}</text>`
+    ? `<div data-gauge-role="delta" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));line-height:1.25;color:${dFill}">${dStr}</div>`
     : '';
 
-  return `<svg viewBox="0 0 200 115" width="200" height="115" style="display:block;margin:0 auto">
-    ${segs}
-    <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="${cx}" cy="${cy}" r="6" fill="${color}"/>
-    <circle cx="${cx}" cy="${cy}" r="3" fill="rgba(8,8,8,0.9)"/>
-    <text x="${cx}" y="81" text-anchor="middle" font-size="26" font-weight="700" fill="${color}" font-family="system-ui,-apple-system,sans-serif">${Math.round(score)}</text>
-    <text x="${cx}" y="96" text-anchor="middle" font-size="9" font-weight="600" fill="${color}" letter-spacing="0.07em" font-family="system-ui,-apple-system,sans-serif">${label}</text>
+  return `<div data-gauge-role="root" style="display:flex;flex-direction:column;align-items:center;text-align:center;font-family:system-ui,-apple-system,sans-serif">
+    <svg viewBox="0 0 200 115" width="200" height="115" style="display:block;max-width:100%" aria-hidden="true">
+      ${segs}
+      <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="${cx}" cy="${cy}" r="6" fill="${color}"/>
+      <circle cx="${cx}" cy="${cy}" r="3" fill="rgba(8,8,8,0.9)"/>
+    </svg>
+    <div data-gauge-role="score" style="font-size:calc(26px * var(--wm-panel-effective-scale, 1));font-weight:700;line-height:1;color:${color}">${Math.round(score)}</div>
+    <div data-gauge-role="label" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:600;line-height:1.25;color:${color};letter-spacing:0.07em">${label}</div>
     ${deltaLine}
-  </svg>`;
+  </div>`;
 }
 
 function mapSeedPayload(raw: Record<string, unknown>): FearGreedData | null {
@@ -236,26 +238,26 @@ export class FearGreedPanel extends Panel {
       const s = Math.round(c.score ?? 50);
       const w = Math.round((c.weight ?? 0) * 100);
       const contrib = (c.contribution ?? 0).toFixed(1);
-      const deg = c.degraded ? ' <span style="color:#e67e22;font-size:10px">degraded</span>' : '';
+      const deg = c.degraded ? ' <span style="color:#e67e22;font-size:calc(10px * var(--wm-panel-effective-scale, 1))">degraded</span>' : '';
       const barColor = scoreColor(s);
       const displayName = CAT_DISPLAY[name] ?? name;
       return `
         <div style="margin:4px 0">
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim)">
+          <div style="display:flex;justify-content:space-between;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">
             <span>${escapeHtml(displayName)}${deg}</span>
             <span style="color:${barColor};font-weight:600">${s}</span>
           </div>
           <div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin:2px 0">
             <div style="width:${s}%;height:100%;background:${barColor};border-radius:2px;transition:width 0.3s"></div>
           </div>
-          <div style="font-size:10px;color:var(--text-dim)">${w}% weight &middot; +${contrib} pts</div>
+          <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${w}% weight &middot; +${contrib} pts</div>
         </div>`;
     }).join('');
 
     const hdrMetric = (lbl: string, val: string) =>
       `<div style="text-align:center;padding:6px 4px">
-        <div style="font-size:18px;font-weight:600;color:var(--text)">${escapeHtml(val)}</div>
-        <div style="font-size:10px;color:var(--text-dim);margin-top:2px">${escapeHtml(lbl)}</div>
+        <div style="font-size:calc(18px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text)">${escapeHtml(val)}</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">${escapeHtml(lbl)}</div>
       </div>`;
 
     const hdr = [
@@ -272,27 +274,27 @@ export class FearGreedPanel extends Panel {
 
     const warningsHtml = warnings.length > 0
       ? `<div style="margin-bottom:10px">
-          ${warnings.map(w => `<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;margin-bottom:4px;border-radius:4px;border:1px solid #e67e22;background:rgba(230,126,34,0.08);font-size:10px;color:#e67e22">&#9888; ${escapeHtml(w)}</div>`).join('')}
+          ${warnings.map(w => `<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;margin-bottom:4px;border-radius:4px;border:1px solid #e67e22;background:rgba(230,126,34,0.08);font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#e67e22">&#9888; ${escapeHtml(w)}</div>`).join('')}
         </div>`
       : '';
 
     const html = `
       <div style="padding:12px 14px">
         <div style="text-align:center;margin-bottom:12px">
-          <div style="text-align:center;font-size:11px;font-weight:600;color:${regime.color};letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px">${escapeHtml(regime.state)}</div>
+          <div style="text-align:center;font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${regime.color};letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px">${escapeHtml(regime.state)}</div>
           ${renderGauge(score, label, delta, color)}
           <div style="text-align:center;margin-top:6px;margin-bottom:8px">
-            <span style="display:inline-block;padding:3px 12px;border-radius:999px;font-size:10px;font-weight:700;color:#fff;background:${regime.color};letter-spacing:0.08em">${escapeHtml(regime.stance)}</span>
+            <span style="display:inline-block;padding:3px 12px;border-radius:999px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;color:#fff;background:${regime.color};letter-spacing:0.08em">${escapeHtml(regime.stance)}</span>
           </div>
         </div>
         ${warningsHtml}
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:rgba(255,255,255,0.04);border-radius:8px;padding:4px;margin-bottom:12px">
           ${hdr}
         </div>
-        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Category Breakdown</div>
+        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Category Breakdown</div>
         ${catRows}
       </div>`;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

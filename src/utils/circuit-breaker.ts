@@ -1,3 +1,5 @@
+import { isDesktopRuntime } from '@/services/desktop-runtime';
+
 interface CircuitState {
   failures: number;
   cooldownUntil: number;
@@ -8,6 +10,15 @@ interface CacheEntry<T> {
   data: T;
   timestamp: number;
 }
+
+type StaleRefreshOutcome<T> =
+  | { kind: 'cacheable'; data: T }
+  | { kind: 'not-cacheable' }
+  | { kind: 'failed' };
+
+type RecoveryProbeOutcome<T> =
+  | { kind: 'success'; data: T }
+  | { kind: 'failed' };
 
 export type BreakerDataMode = 'live' | 'cached' | 'unavailable';
 
@@ -36,6 +47,9 @@ export interface CircuitBreakerOptions<T = unknown> {
    *  Persistent entries older than this are discarded during hydration.
    *  Useful for time-sensitive data (e.g. risk scores → 1h). */
   persistentStaleCeilingMs?: number;
+  /** Bound for a half-open recovery probe. Default 30s. A timed-out probe
+   *  reopens cooldown and ignores a late `fn()` settlement. */
+  recoveryProbeTimeoutMs?: number;
 }
 
 const DEFAULT_MAX_FAILURES = 2;
@@ -44,11 +58,13 @@ const DEFAULT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const PERSISTENT_STALE_CEILING_MS = 24 * 60 * 60 * 1000; // 24h — discard persistent entries older than this
 const DEFAULT_CACHE_KEY = '__default__';
 const DEFAULT_MAX_CACHE_ENTRIES = 256;
+const DEFAULT_RECOVERY_PROBE_TIMEOUT_MS = 30_000;
 
 function isDesktopOfflineMode(): boolean {
-  if (typeof window === 'undefined') return false;
-  const hasTauri = Boolean((window as unknown as { __TAURI__?: unknown }).__TAURI__);
-  return hasTauri && typeof navigator !== 'undefined' && navigator.onLine === false;
+  // The shared detector, not a raw window.__TAURI__ read: the raw read said
+  // "web" in every desktop configuration that has no bridge global at that
+  // moment, so the offline stale-cache path never engaged there (#5912).
+  return isDesktopRuntime() && typeof navigator !== 'undefined' && navigator.onLine === false;
 }
 
 export class CircuitBreaker<T> {
@@ -63,9 +79,15 @@ export class CircuitBreaker<T> {
   private persistentLoadedKeys = new Set<string>();
   private persistentLoadPromises = new Map<string, Promise<void>>();
   private lastDataState: BreakerDataState = { mode: 'unavailable', timestamp: null, offline: false };
-  private backgroundRefreshPromises = new Map<string, Promise<void>>();
+  private backgroundRefreshPromises = new Map<string, Promise<StaleRefreshOutcome<T>>>();
+  private recoveryProbeInFlight = false;
+  private recoveryProbePromise: Promise<RecoveryProbeOutcome<T>> | null = null;
+  private recoveryProbeCacheKey: string | null = null;
+  private recoveryProbeRequired = false;
+  private recoveryProbeGeneration = 0;
   private maxCacheEntries: number;
   private persistentStaleCeilingMs: number;
+  private recoveryProbeTimeoutMs: number;
 
   constructor(options: CircuitBreakerOptions<T>) {
     this.name = options.name;
@@ -79,6 +101,10 @@ export class CircuitBreaker<T> {
     this.maxCacheEntries = options.maxCacheEntries ?? DEFAULT_MAX_CACHE_ENTRIES;
     const rawCeiling = options.persistentStaleCeilingMs ?? PERSISTENT_STALE_CEILING_MS;
     this.persistentStaleCeilingMs = Number.isFinite(rawCeiling) && rawCeiling >= 0 ? rawCeiling : PERSISTENT_STALE_CEILING_MS;
+    const rawProbeTimeout = options.recoveryProbeTimeoutMs ?? DEFAULT_RECOVERY_PROBE_TIMEOUT_MS;
+    this.recoveryProbeTimeoutMs = Number.isFinite(rawProbeTimeout) && rawProbeTimeout > 0
+      ? rawProbeTimeout
+      : DEFAULT_RECOVERY_PROBE_TIMEOUT_MS;
   }
 
   private resolveCacheKey(cacheKey?: string): string {
@@ -87,12 +113,71 @@ export class CircuitBreaker<T> {
   }
 
   private isStateOnCooldown(): boolean {
-    if (Date.now() < this.state.cooldownUntil) return true;
-    if (this.state.cooldownUntil > 0) {
-      this.state.failures = 0;
-      this.state.cooldownUntil = 0;
+    return Date.now() < this.state.cooldownUntil;
+  }
+
+  /** Move an expired or caller-cancelled breaker into one bounded recovery probe.
+   *
+   *  Cooldown reads must stay side-effect-free; recovery is decided only when
+   *  execute() is ready to start a new upstream call. Retaining one failure
+   *  below the threshold makes a failed probe reopen the breaker immediately.
+   *  Caller-owned cancellation keeps the next upstream call in half-open mode
+   *  without starting a cooldown that would block unrelated callers.
+   *  Call this only when creating that call — never when joining an in-flight
+   *  SWR — so the matching finally always owns the flag.
+   */
+  private beginRecoveryProbeIfCooldownExpired(cacheKey: string): boolean {
+    if (
+      this.isStateOnCooldown()
+      || this.recoveryProbeInFlight
+      || (this.state.cooldownUntil === 0 && !this.recoveryProbeRequired)
+    ) {
+      return false;
     }
-    return false;
+    this.state.cooldownUntil = 0;
+    this.state.failures = Math.max(0, this.maxFailures - 1);
+    this.recoveryProbeRequired = false;
+    this.recoveryProbeGeneration += 1;
+    this.recoveryProbeInFlight = true;
+    this.recoveryProbeCacheKey = cacheKey;
+    return true;
+  }
+
+  private isCurrentRecoveryProbe(generation: number): boolean {
+    return this.recoveryProbeInFlight && this.recoveryProbeGeneration === generation;
+  }
+
+  private requireRecoveryProbeRetry(generation: number): void {
+    if (this.isCurrentRecoveryProbe(generation)) {
+      this.recoveryProbeRequired = true;
+    }
+  }
+
+  private finishRecoveryProbe(generation: number): void {
+    if (!this.isCurrentRecoveryProbe(generation)) return;
+    this.recoveryProbeInFlight = false;
+    this.recoveryProbePromise = null;
+    this.recoveryProbeCacheKey = null;
+    this.recoveryProbeGeneration += 1;
+  }
+
+  private runWithTimeout<R>(fn: () => Promise<R>, timeoutMs: number): Promise<R> {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return fn();
+    return new Promise<R>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`[${this.name}] Recovery probe timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      fn().then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error: unknown) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
   }
 
   private getPersistKey(cacheKey: string): string {
@@ -163,12 +248,17 @@ export class CircuitBreaker<T> {
           const data = this.revivePersistedData ? this.revivePersistedData(entry.data) : entry.data;
           this.cache.set(cacheKey, { data, timestamp: entry.updatedAt });
           this.evictIfNeeded();
-          const withinTtl = (Date.now() - entry.updatedAt) < this.cacheTtlMs;
-          this.lastDataState = {
-            mode: withinTtl ? 'cached' : 'unavailable',
-            timestamp: entry.updatedAt,
-            offline: false,
-          };
+          // lastDataState is intentionally left untouched here. hydrate only
+          // ever runs from inside execute(), which recomputes lastDataState
+          // right after — synchronously on the cooldown/fresh/SWR-stale paths,
+          // and after the live fetch on the path where the hydrated entry is
+          // immediately evicted by shouldCache. It previously wrote
+          // { mode: withinTtl ? 'cached' : 'unavailable', timestamp:
+          // entry.updatedAt, offline: false }, which for a stale entry produced
+          // 'unavailable' paired with a non-null timestamp — a combo no other
+          // producer in this file emits — and on that eviction path could leak
+          // to an external getDataState() for the whole fetch. Removing it is
+          // what makes that window safe too (#6781 / audit R22).
         }
       } catch (err) {
         console.warn(`[${this.name}] Persistent cache hydration failed:`, err);
@@ -240,7 +330,14 @@ export class CircuitBreaker<T> {
     return null;
   }
 
+  /** Return fresh cache data only; expired entries require the explicit stale accessor below. */
   getCachedOrDefault(defaultValue: T, cacheKey?: string): T {
+    const resolvedKey = this.resolveCacheKey(cacheKey);
+    return this.getCached(resolvedKey) ?? defaultValue;
+  }
+
+  /** Return a cache entry even after its TTL, for explicit stale fallbacks. */
+  getCachedOrDefaultStale(defaultValue: T, cacheKey?: string): T {
     const resolvedKey = this.resolveCacheKey(cacheKey);
     return this.getCacheEntry(resolvedKey)?.data ?? defaultValue;
   }
@@ -253,6 +350,7 @@ export class CircuitBreaker<T> {
     this.state.failures = 0;
     this.state.cooldownUntil = 0;
     this.state.lastError = undefined;
+    this.recoveryProbeRequired = false;
     this.lastDataState = { mode: 'live', timestamp, offline: false };
   }
 
@@ -312,6 +410,7 @@ export class CircuitBreaker<T> {
     this.state.lastError = error;
     if (this.state.failures >= this.maxFailures) {
       this.state.cooldownUntil = Date.now() + this.cooldownMs;
+      this.recoveryProbeRequired = false;
       console.warn(`[${this.name}] On cooldown for ${this.cooldownMs / 1000}s after ${this.state.failures} failures`);
     }
   }
@@ -319,11 +418,66 @@ export class CircuitBreaker<T> {
   async execute<R extends T>(
     fn: () => Promise<R>,
     defaultValue: R,
-    options: { cacheKey?: string; shouldCache?: (result: R) => boolean } = {},
+    options: {
+      cacheKey?: string;
+      shouldCache?: (result: R) => boolean;
+      /**
+       * When true, a stale-while-revalidate background refresh whose
+       * result fails `shouldCache` EVICTS the existing stale cache
+       * entry instead of just skipping the write. Without this, SWR can
+       * pin a stale-but-valid entry indefinitely once the upstream
+       * starts returning degraded/empty responses — the read-side
+       * shouldCache check passes on the previously-good cached value,
+       * so the user keeps seeing stale data and never learns the
+       * upstream is now broken.
+       *
+       * Opt-in (default: false) because some callers — e.g. market
+       * quotes — explicitly WANT the old "preserve previous good data
+       * across transient upstream blips" behaviour. Set true for
+       * surfaces where the degraded state is itself the important
+       * signal (e.g. flight-price fail-closed). See PR #3795 review-2.
+       */
+      evictOnRefreshFailure?: boolean;
+      /**
+       * Controls stale-while-revalidate behavior for stale cache entries.
+       * The default remains fire-and-forget background refresh. `await`
+       * waits for the coalesced refresh and, if it fails, returns the
+       * existing stale entry with data mode `cached`.
+       */
+      staleRefreshMode?: 'background' | 'await';
+      /**
+       * Bypass a fresh cache entry and run the coalesced refresh path while
+       * retaining that entry as a fallback. Circuit cooldown still applies.
+       */
+      forceRefresh?: boolean;
+      /**
+       * Treat caller-owned cancellation as neither an upstream failure nor a
+       * fallback result. Matching errors are rethrown on the foreground path
+       * so the caller can stop its own lifecycle without opening cooldown.
+       */
+      ignoreError?: (error: unknown) => boolean;
+      /**
+       * Never serve a cache entry older than this, on any path (fresh hit,
+       * stale-while-revalidate, cooldown, recovery-probe fallback). An older
+       * entry — or one without a finite timestamp, e.g. a persisted envelope
+       * missing `updatedAt` — is evicted from memory and persistence and the
+       * call proceeds as if nothing were cached. Omit to keep serving stale
+       * entries until they are replaced.
+       */
+      maxServeAgeMs?: number;
+    } = {},
   ): Promise<R> {
     const offline = isDesktopOfflineMode();
     const cacheKey = this.resolveCacheKey(options.cacheKey);
     const shouldCache = options.shouldCache ?? (() => true);
+    const evictOnRefreshFailure = options.evictOnRefreshFailure ?? false;
+    const staleRefreshMode = options.staleRefreshMode ?? 'background';
+    const forceRefresh = options.forceRefresh ?? false;
+    const maxServeAgeMs = options.maxServeAgeMs;
+    const isServable = (entry: CacheEntry<T>): boolean => (
+      maxServeAgeMs === undefined
+      || (Number.isFinite(entry.timestamp) && Date.now() - entry.timestamp < maxServeAgeMs)
+    );
 
     // Hydrate from persistent storage on first call (~1-5ms IndexedDB read)
     if (this.persistEnabled && !this.persistentLoadedKeys.has(cacheKey)) {
@@ -332,14 +486,15 @@ export class CircuitBreaker<T> {
 
     let cachedEntry = this.getCacheEntry(cacheKey);
 
-    // If the cached data fails the shouldCache predicate, evict it and fetch
-    // fresh rather than serving known-invalid data for the full TTL.
+    // If the cached data fails the shouldCache predicate, or is older than
+    // the caller's maxServeAgeMs, evict it and fetch fresh rather than
+    // serving known-invalid or too-old data.
     // The default shouldCache (() => true) never returns false, so this only
     // fires when an explicit predicate is passed.
     // deletePersistentCache is fire-and-forget; on the rare case that
     // hydratePersistentCache runs again before the delete commits, the entry
     // is evicted once more — safe and self-resolving.
-    if (cachedEntry !== null && !shouldCache(cachedEntry.data as R)) {
+    if (cachedEntry !== null && (!shouldCache(cachedEntry.data as R) || !isServable(cachedEntry))) {
       this.evictCacheKey(cacheKey);
       if (this.persistEnabled) this.deletePersistentCache(cacheKey);
       cachedEntry = null;
@@ -347,16 +502,39 @@ export class CircuitBreaker<T> {
 
     if (this.isStateOnCooldown()) {
       console.log(`[${this.name}] Currently unavailable, ${this.getCooldownRemaining()}s remaining`);
-      if (cachedEntry !== null && this.isCacheEntryFresh(cachedEntry)) {
+      if (cachedEntry !== null) {
         this.lastDataState = { mode: 'cached', timestamp: cachedEntry.timestamp, offline };
         this.touchCacheKey(cacheKey);
         return cachedEntry.data as R;
       }
       this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
-      return (cachedEntry?.data ?? defaultValue) as R;
+      return defaultValue;
     }
 
-    if (cachedEntry !== null && this.isCacheEntryFresh(cachedEntry)) {
+    if (this.recoveryProbeInFlight) {
+      if (cachedEntry !== null) {
+        this.lastDataState = { mode: 'cached', timestamp: cachedEntry.timestamp, offline };
+        this.touchCacheKey(cacheKey);
+        return cachedEntry.data as R;
+      }
+      const pending = this.recoveryProbePromise;
+      const probeCacheKey = this.recoveryProbeCacheKey;
+      if (pending) {
+        const outcome = await pending;
+        if (outcome.kind === 'success') {
+          if (probeCacheKey === cacheKey) return outcome.data as R;
+        } else {
+          this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
+          return defaultValue;
+        }
+      }
+    }
+
+    if (
+      !forceRefresh
+      && cachedEntry !== null
+      && this.isCacheEntryFresh(cachedEntry)
+    ) {
       this.lastDataState = { mode: 'cached', timestamp: cachedEntry.timestamp, offline };
       this.touchCacheKey(cacheKey);
       return cachedEntry.data as R;
@@ -364,47 +542,136 @@ export class CircuitBreaker<T> {
 
     // Stale-while-revalidate: if we have stale cached data (outside TTL but
     // within the 24h persistent ceiling), return it instantly and refresh in
-    // the background. This prevents "Loading..." on every page reload when
-    // the persistent cache is older than the TTL. Skip SWR when cacheTtlMs === 0.
+    // the background. A forced refresh takes this same coalesced path even for
+    // a fresh entry, preserving it as fallback while awaiting the refresh.
+    // Skip SWR when cacheTtlMs === 0.
     if (cachedEntry !== null && this.cacheTtlMs > 0) {
       this.lastDataState = { mode: 'cached', timestamp: cachedEntry.timestamp, offline };
       this.touchCacheKey(cacheKey);
       // Fire-and-forget background refresh — guard against concurrent SWR fetches
       // so that multiple callers with the same stale cache key don't each
       // spawn a parallel request.
-      if (!this.backgroundRefreshPromises.has(cacheKey)) {
-        const refreshPromise = fn().then(result => {
-          const now = Date.now();
-          this.markSuccess(now);
-          if (shouldCache(result)) {
-            this.writeCacheEntry(result, cacheKey, now);
+      let refreshPromise = this.backgroundRefreshPromises.get(cacheKey);
+      if (!refreshPromise) {
+        const recoveryProbe = this.beginRecoveryProbeIfCooldownExpired(cacheKey);
+        const probeGeneration = this.recoveryProbeGeneration;
+        refreshPromise = (async (): Promise<StaleRefreshOutcome<T>> => {
+          try {
+            const result = recoveryProbe
+              ? await this.runWithTimeout(fn, this.recoveryProbeTimeoutMs)
+              : await fn();
+            if (recoveryProbe && !this.isCurrentRecoveryProbe(probeGeneration)) {
+              return { kind: 'failed' };
+            }
+            const now = Date.now();
+            this.markSuccess(now);
+            if (shouldCache(result)) {
+              this.writeCacheEntry(result, cacheKey, now);
+              return { kind: 'cacheable', data: result };
+            }
+            if (evictOnRefreshFailure) {
+              // Caller opted into surfacing the degraded state. Evict the
+              // stale entry so the NEXT call sees no cache, falls through
+              // to the live path, and surfaces the degraded shape. Without
+              // this, SWR keeps serving the stale entry indefinitely
+              // because (a) the read-side shouldCache check passes on the
+              // previously-good cached value, and (b) every refresh sees
+              // the same condition and silently skips writing again.
+              // Opt-in by design — see option doc. (#3795 review-2 P1.)
+              this.evictCacheKey(cacheKey);
+              if (this.persistEnabled) this.deletePersistentCache(cacheKey);
+            }
+            // Else: preserve the stale entry across transient upstream
+            // blips so the user keeps seeing valid (if old) data. This is
+            // the default and matches the market-quote use case.
+            return { kind: 'not-cacheable' };
+          } catch (e) {
+            if (options.ignoreError?.(e)) {
+              if (recoveryProbe) this.requireRecoveryProbeRetry(probeGeneration);
+              return { kind: 'failed' };
+            }
+            if (recoveryProbe && !this.isCurrentRecoveryProbe(probeGeneration)) {
+              return { kind: 'failed' };
+            }
+            console.warn(`[${this.name}] Background refresh failed:`, e);
+            this.recordFailure(String(e));
+            return { kind: 'failed' };
           }
-        }).catch(e => {
-          console.warn(`[${this.name}] Background refresh failed:`, e);
-          this.recordFailure(String(e));
-        }).finally(() => {
+        })().finally(() => {
+          if (recoveryProbe) this.finishRecoveryProbe(probeGeneration);
           this.backgroundRefreshPromises.delete(cacheKey);
         });
         this.backgroundRefreshPromises.set(cacheKey, refreshPromise);
+        if (recoveryProbe) {
+          this.recoveryProbePromise = refreshPromise.then((outcome) => (
+            outcome.kind === 'cacheable'
+              ? { kind: 'success', data: outcome.data }
+              : { kind: 'failed' }
+          ));
+        }
+      }
+
+      if (forceRefresh || staleRefreshMode === 'await') {
+        const outcome = await refreshPromise;
+        if (outcome.kind === 'cacheable') {
+          return outcome.data as R;
+        }
+
+        const fallbackEntry = this.getCacheEntry(cacheKey);
+        if (fallbackEntry !== null && isServable(fallbackEntry)) {
+          this.lastDataState = { mode: 'cached', timestamp: fallbackEntry.timestamp, offline };
+          this.touchCacheKey(cacheKey);
+          return fallbackEntry.data as R;
+        }
+
+        this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
+        return defaultValue;
       }
       return cachedEntry.data as R;
     }
 
-    try {
-      const result = await fn();
-      const now = Date.now();
-      this.markSuccess(now);
-      if (shouldCache(result)) {
-        this.writeCacheEntry(result, cacheKey, now);
+    const recoveryProbe = this.beginRecoveryProbeIfCooldownExpired(cacheKey);
+    const probeGeneration = this.recoveryProbeGeneration;
+    const liveWork = (async (): Promise<RecoveryProbeOutcome<T>> => {
+      try {
+        const result = recoveryProbe
+          ? await this.runWithTimeout(fn, this.recoveryProbeTimeoutMs)
+          : await fn();
+        if (recoveryProbe && !this.isCurrentRecoveryProbe(probeGeneration)) {
+          return { kind: 'failed' };
+        }
+        const now = Date.now();
+        this.markSuccess(now);
+        if (shouldCache(result)) {
+          this.writeCacheEntry(result, cacheKey, now);
+        }
+        return { kind: 'success', data: result };
+      } catch (e) {
+        if (options.ignoreError?.(e)) {
+          if (recoveryProbe) this.requireRecoveryProbeRetry(probeGeneration);
+          throw e;
+        }
+        if (recoveryProbe && !this.isCurrentRecoveryProbe(probeGeneration)) {
+          return { kind: 'failed' };
+        }
+        const msg = String(e);
+        console.error(`[${this.name}] Failed:`, msg);
+        this.recordFailure(msg);
+        this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
+        return { kind: 'failed' };
+      } finally {
+        if (recoveryProbe) this.finishRecoveryProbe(probeGeneration);
       }
-      return result;
-    } catch (e) {
-      const msg = String(e);
-      console.error(`[${this.name}] Failed:`, msg);
-      this.recordFailure(msg);
-      this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
-      return defaultValue;
+    })();
+    if (recoveryProbe) {
+      this.recoveryProbePromise = liveWork.then(
+        (outcome) => outcome,
+        () => ({ kind: 'failed' }),
+      );
     }
+    const liveOutcome = await liveWork;
+    if (liveOutcome.kind === 'success') return liveOutcome.data as R;
+    return defaultValue;
   }
 }
 

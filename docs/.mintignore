@@ -1,3 +1,53 @@
 roadmap-pro.md
+# Payments ops runbook (#6698). Tracked in git so the alert threshold and
+# owner ship with the code that reads them, but kept off the public site: it
+# names our provider rate-limit tier, counts failed purchases, and records an
+# unverified gap in the checkout retry ladder. docs/internal/ is gitignored,
+# so it cannot live there.
+payments-checkout-rate-limit-operations.md
+internal/
+plans/
 PRESS_KIT.md
 Docs_To_Review/
+archive/
+dev-artifacts/
+
+# Engineering records stay in Git, outside the public documentation site.
+analytics/
+architecture/
+audits/
+brainstorms/
+investigations/
+operations/
+perf/
+reports/
+research/
+residual-review-findings/
+security/
+solutions/
+validation/
+COMMUNITY-PROMOTION-GUIDE.md
+DEPLOYMENT-PLAN.md
+TAURI_VALIDATION_REPORT.md
+analytics-collector-operations.md
+api-plan-enforcement-runbook.md
+as-of-convention.md
+climate-variant-full.md
+desktop-parity-matrix.md
+fear-greed-index-2.0-brief.md
+harness-engineering-roadmap.md
+health-variant-full.md
+local-backend-audit.md
+market-data-cadence-audit.md
+methodology/cohort-sanity-release-gate.md
+methodology/country-resilience-index/golden-baseline.md
+methodology/country-resilience-index/reference-edition/2026/README.md
+methodology/education-flag-flip-runbook.md
+methodology/energy-v2-flag-flip-runbook.md
+methodology/financial-system-exposure-flag-flip-runbook.md
+railway-seed-consolidation-runbook.md
+relay-credentials.md
+tradingview-screener-integration.md
+user-requests.md
+zh/.glossary.md
+zh/.translation-spec.md

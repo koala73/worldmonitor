@@ -1,0 +1,632 @@
+// U7 (Tier 3) — MCP parity test. Asserts that every canonical seeded cache key
+// in `api/health.js::BOOTSTRAP_KEYS` ∪ `STANDALONE_KEYS` is either:
+//   (a) covered by some `TOOL_REGISTRY[i]._cacheKeys` array (CacheToolDef), OR
+//   (b) covered by some `TOOL_REGISTRY[i]._coverageKeys` array (RpcToolDef hybrid), OR
+//   (c) listed in `EXCLUDED_FROM_MCP` below with a non-empty documented reason.
+//
+// Fail-hard: a new seed shipping its cache key into BOOTSTRAP_KEYS/STANDALONE_KEYS
+// without a corresponding MCP tool will fail CI until the contributor adds a tool
+// or adds an EXCLUDED_FROM_MCP entry with a reason. This is the structural fix
+// preventing future drift between the canonical seeded-data inventory and the
+// MCP tool registry.
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { __testing__ as healthTesting } from '../api/health.js';
+import { __testing__ as mcpTesting } from '../api/mcp.ts';
+
+const { BOOTSTRAP_KEYS, STANDALONE_KEYS } = healthTesting;
+const { TOOL_REGISTRY } = mcpTesting;
+
+// -----------------------------------------------------------------------------
+// EXCLUDED_FROM_MCP — documented intentional omissions.
+//
+// Each entry: cache-key (verbatim from BOOTSTRAP_KEYS/STANDALONE_KEYS) → reason.
+// - Empty reasons are rejected.
+// - Dead exclusions (keys not in either inventory) are rejected.
+// - Redundant exclusions (keys ALSO covered by a tool) are rejected.
+//
+// Categories represented below (annotated inline):
+//   - intermediate:        low-level pipeline key whose data surfaces via a sibling tool.
+//   - on-demand:           populated lazily by RPC handlers; not seeded by cron.
+//   - cascade-mirror:      live/stale/backup fallback variant — covered by the canonical sibling.
+//   - shared-token-panel:  written by the shared token-panels seed run; covered by other panels.
+//   - deferred:            recognised gap; named follow-up tool/expansion not in this plan's scope.
+//   - dashboard-internal:  feeds a UI panel, not a queryable MCP slice.
+//   - operational:         relay heartbeats and similar — visible via /api/health, not MCP.
+// -----------------------------------------------------------------------------
+const EXCLUDED_FROM_MCP = new Map([
+  ['risk:scores:history:index',
+    'operational: string index for daily CII health; MCP country history and weekly movers read the per-country sorted sets directly.'],
+
+  ['live-video:resolved:v1',
+    'dashboard-internal: channel id to current live YouTube video id, read by the Live News and Live Webcams players to try a fresh embed before the channel entry (#8545); a playback hint with no analytical content, not a queryable MCP slice.'],
+
+  // ===========================================================================
+  // #4920 completeness-measurement ops keys (pipeline health, not content)
+  // ===========================================================================
+  ['news:feed-health:v1',
+    'ops surface: per-feed validation status + silent-zero streaks published by the daily feed-validation workflow; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
+  ['news:recall-benchmark:v1',
+    'ops surface: daily GDELT recall percentage + missed headlines for coverage monitoring; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
+  ['health:china-coverage:v1',
+    'operational: bounded China coverage verdict and reason codes consumed by api/health.js and the read-only operator audit; source content remains available through its domain tools, so this summary is not a queryable MCP slice (#5271).'],
+  ['company-monitoring:worker-health:v1',
+    'operational: bounded Company Monitoring worker control-plane heartbeat, outcome, and counters consumed by api/health.js and operators; durable scan state remains in Convex and provider/product query surfaces are deferred beyond #6007.'],
+  ['shipping:webhook-worker:v1',
+    'operational: per-tick status of the chokepoint webhook delivery worker (subscriber, delivery, and failure counts) consumed by api/health.js and operators; chokepoint scores stay queryable through get_chokepoint_status (#9217).'],
+  ['economic:global-tenders:v1:source:sam',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
+  ['economic:global-tenders:v1:source:ted',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
+  ['economic:global-tenders:v1:source:contracts-finder',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
+  ['economic:global-tenders:v1:source:canada-buys',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
+  ['economic:global-tenders:v1:source:gets',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
+  ['economic:global-tenders:v1:source:world-bank',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
+  ['military:cross-strait-activity:v1:source:taiwan-mnd',
+    'operational: Taiwan MND transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed official activity records.'],
+  ['maritime:ais-gaps:v1',
+    'intermediate: relay-published dark-ship count consumed server-side by the temporal-anomalies rebuild as the ais_gaps count source (COUNT_SOURCE_KEYS #7574); the signal surfaces through the temporal anomalies tool, not a standalone MCP slice.'],
+  ['gdelt:bulk:country-articles:v1',
+    'intermediate: rolling per-country GKG article index consumed by the search-gdelt-documents route\'s `country:<ISO2>` form for the weekly crawlable freeze (#7748); its rows reach agents through the prerendered country pages and their dataset downloads. Exposing the country form as an MCP tool input (and grounding get_country_brief on it) is the agent-native follow-up recorded on PR #7786, at which point this exclusion moves to that tool\'s _cacheKeys.'],
+  ['military:cross-strait-activity:v1:source:japan-mod',
+    'operational: Japan Joint Staff transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed reviewed activity records.'],
+  ['market:china:stock-connect:v1',
+    'seeded and health-monitored only: #6155 delivers the SSE/SZSE Stock Connect turnover and margin data layer with no dashboard or MCP consumer yet. Exposing it now would advertise a slice whose framing still needs product review -- the series is GROSS northbound turnover, never the net flow the name suggests, because both exchanges stopped publishing the buy/sell split on 2024-08-16.'],
+  ['transit:viarail:live',
+    'seeded and health-monitored only: #6615 ingests unofficial VIA Rail Tracker JSON as an optional standalone source with no dashboard, proto, panel, or MCP consumer. The feed is undocumented and has no SLA; exposing it would advertise a slice that is best-effort last-good positions only.'],
+  ['transit:ttc:alerts:v1',
+    'seeded and health-monitored only: #6623 rediscovers TTC GTFS-RT service alerts as a standalone ingest until a transit panel exists. Do not advertise an MCP slice before that product surface exists.'],
+  ['safety:toronto-tfs:v1',
+    'seeded and health-monitored only: #6682 ingests official Toronto Fire live CAD as a standalone source until a Toronto safety panel exists. Do not advertise an MCP slice before that product surface exists.'],
+  ['safety:toronto-tps:v1',
+    'seeded and health-monitored only: #6682 ingests official TPS Calls for Service as a standalone source until a Toronto safety panel exists. Do not advertise an MCP slice before that product surface exists.'],
+  ['economic:fred:batch:v1',
+    'operational: producer batch envelope written by seed-fred-rates for health and rollout validation; the individual FRED series are the queryable data surfaces, so the batch envelope is intentionally not exposed through MCP.'],
+
+  ['infra:ontario-511:v1',
+    'dashboard-internal: Ontario 511 records feed the canadaRoads map layer (#6608); not a queryable MCP slice.'],
+  ['infra:alberta-511:v1',
+    'dashboard-internal: Alberta 511 events and alerts union onto the canadaRoads map layer (#6612); not a queryable MCP slice.'],
+  ['infra:manitoba-511:v1',
+    'dashboard-internal: Manitoba 511 events and alerts union onto the canadaRoads map layer (#6622); not a queryable MCP slice.'],
+  ['infra:bc-open511:v1',
+    'dashboard-internal: DriveBC Open511 events union onto the canadaRoads map layer (#6611); not a queryable MCP slice.'],
+  ['prediction:markets-country-index:v1',
+    'dashboard-internal: per-country projection read by the country-brief prediction RPC. The MCP get_prediction_markets tool exposes the canonical prediction:markets-bootstrap:v1 feed; adding this index to its _cacheKeys would return the complete country map and change the tool response envelope.'],
+
+  // ===========================================================================
+  // Intermediate / pipeline keys (data surfaces through a sibling tool)
+  // ===========================================================================
+  ['supply_chain:corridorrisk:v1',
+    'intermediate: data flows through transit-summaries:v1 (matches api/health.js:461 ON_DEMAND_KEYS rationale; explicitly NOT bundled into get_chokepoint_status to avoid duplicate exposure).'],
+  ['military:forecast-inputs:stale:v1',
+    'intermediate: late-stage seed-to-seed pipeline output, health-monitored with its own freshness budget; no direct MCP slice exists.'],
+  ['military:surges:stale:v1',
+    'cascade-mirror: stale fallback of military:surges:v1, which is covered by get_military_surge; this copy is retained for the health freshness probe.'],
+  ['intelligence:military-cii:v1',
+    'intermediate: per-country military-presence aggregate (own/foreign flights+vessels, AIS disruption buckets) read by server/worldmonitor/intelligence/v1/get-risk-scores.ts to feed the CII Security component; surfaces transitively via the country-risk score returned by get_country_risk. Not a queryable MCP slice on its own.'],
+  ['alerts:canada:v1',
+    'map-only Alberta + B.C. + Saskatchewan provincial alert union (canadaAlerts). #6610 and #6659 ship province seeders and DeckGL dots; no MCP tool. Do not fold into weather:alerts:v1 (NWS).'],
+  ['alerts:canada:alberta-aea:v1',
+    'intermediate: Alberta Emergency Alert snapshot materialized into alerts:canada:v1; the map consumes only the shared union.'],
+  ['alerts:canada:bc-evacuation:v1',
+    'intermediate: OGL-BC Evacuation Orders and Alerts snapshot materialized into alerts:canada:v1; the map consumes only the shared union.'],
+  ['alerts:canada:saskalert:v1',
+    'intermediate: SaskAlert public JSON snapshot materialized into alerts:canada:v1; the map consumes only the shared union.'],
+  ['weather:hko-warnings:v1',
+    'intermediate: dedicated HKO warning snapshot is independently health-monitored, while its warning events are merged into natural:events:v1 and exposed by get_natural_disasters. The raw side snapshot has no separate MCP schema or filter surface.'],
+
+  // ===========================================================================
+  // Cascade-mirror fallbacks (live/stale/backup of a sibling already exposed)
+  // ===========================================================================
+  ['theater-posture:sebuf:backup:v1',
+    'cascade-mirror: backup counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
+  ['military:flights:stale:v1',
+    'cascade-mirror: stale fallback of military:flights:v1 — deferred to a future expanded military tool. CASCADE_GROUPS militaryFlights entry.'],
+  ['usni-fleet:sebuf:stale:v1',
+    'cascade-mirror: stale USNI fleet — deferred to a future military-fleet tool.'],
+  ['displacement:summary:v1:' + (new Date().getUTCFullYear() - 1),
+    'cascade-mirror: previous-year displacement snapshot used by the dashboard year-over-year diff. Current-year key is exposed via get_displacement_data; the executeTool label-walk would collide on both years (matches api/health.js:482 + api/mcp.ts:346-350 rationale).'],
+  ['positive-events:geo:v1',
+    'cascade-mirror: live counterpart of positive_events:geo-bootstrap:v1 (covered by get_positive_events).'],
+  ['research:tech-events:v1',
+    'cascade-mirror: RPC cache independently monitored for the hourly research seeder (#8572). get_research_signals reads research:tech-events-bootstrap:v1; adding this mirror would duplicate events and change the tool response envelope.'],
+  ['aviation:delays:faa:v1',
+    'cascade-mirror: RPC variant of aviation:delays-bootstrap:v2 (covered by get_aviation_status). Its own seed-meta:aviation:faa carries the FAA-only count; the aggregate counts itself since #6987.'],
+  ['cyber:threats:v2',
+    'cascade-mirror: RPC variant of cyber:threats-bootstrap:v2 (covered by get_cyber_threats). Same seed-meta key (seed-meta:cyber:threats).'],
+  ['conflict:ucdp-events-bootstrap:v1',
+    'cascade-mirror: pre-compacted dashboard view of conflict:ucdp-events:v1 (covered by get_conflict_events). Carries the 150 rows the panel renders plus precomputed classifications/aggregates; agents must read the canonical key, which carries all 2,000 events (#5300).'],
+  ['conflict:humanitarian:v1',
+    'deferred: per-country monthly humanitarian conflict-event/fatality aggregates (HDX HAPI) seeded by scripts/seed-conflict-intel.mjs. Different shape from get_conflict_events (event lists with geo-coordinates, not per-country monthly counts) — not a trivial _coverageKeys addition. No dedicated humanitarian/aid MCP tool exists yet; file a follow-up issue if/when one is planned rather than reusing #5554 (the bug fix this key\'s health-monitoring wiring shipped with).'],
+  ['wildfire:fires-bootstrap:v1',
+    'cascade-mirror: pre-compacted dashboard/RPC variant of wildfire:fires:v1 (covered by get_natural_events). It preserves the same top-500 response while avoiding canonical-payload Redis egress.'],
+  ['thermal:escalation-bootstrap:v1',
+    'cascade-mirror: pre-compacted dashboard view of thermal:escalation:v1 (the canonical key remains the tool/RPC source). Capped to the top-24 ranked clusters the dashboard renders — agents should read the canonical key, which carries the full cluster set (#5300).'],
+  ['forecast:predictions-bootstrap:v1',
+    'cascade-mirror: dashboard list projection of forecast:predictions:v2 (covered by get_forecast_predictions). It is the same predictions minus the caseFile dossiers — MCP callers want the dossiers, so the tool keeps reading the canonical key.'],
+  ['aviation:delays:intl:v3',
+    'cascade-mirror: international delays sibling of aviation:delays-bootstrap:v2 (covered by get_aviation_status) — deferred to a future expanded aviation tool that exposes the intl variant directly.'],
+  ['aviation:notam:closures:v2',
+    'cascade-mirror: NOTAM closures sibling of aviation:delays-bootstrap:v2 (covered by get_aviation_status) — deferred to a future expanded aviation tool that exposes NOTAMs directly.'],
+  ['supply_chain:portwatch:v1',
+    'cascade-mirror: PortWatch aggregate; per-port detail (supply_chain:portwatch-ports:v1:_countries) is the canonical key already exposed via get_chokepoint_status.'],
+
+  // ===========================================================================
+  // On-demand / RPC-populated keys (no dedicated seed cron)
+  // ===========================================================================
+  ['infra:service-statuses:v1',
+    'on-demand: RPC-populated, seed-meta written on fresh fetch only, goes stale between visits (matches api/health.js:462 ON_DEMAND_KEYS rationale).'],
+  ['economic:macro-signals:v1',
+    'on-demand: RPC cache for derived macro-signals panel; underlying inputs already exposed via get_economic_data.'],
+  ['economic:bis:policy:v1',
+    'on-demand: RPC cache for BIS policy-rates extras (matches api/health.js:456 ON_DEMAND_KEYS rationale).'],
+  ['economic:bis:eer:v1',
+    'on-demand: RPC cache for BIS effective exchange rates (matches api/health.js:456 ON_DEMAND_KEYS rationale).'],
+  ['economic:bis:credit:v1',
+    'on-demand: RPC cache for BIS credit-to-GDP (matches api/health.js:456 ON_DEMAND_KEYS rationale).'],
+  ['supply_chain:chokepoints:v4',
+    'on-demand: superseded by the transit-summaries + chokepoint-flows + portwatch-ports bundle exposed via get_chokepoint_status.'],
+  ['supply_chain:minerals:v2',
+    'on-demand: RPC cache populated only after first user query — deferred to a future minerals/strategic-materials tool.'],
+  ['giving:summary:v2',
+    'on-demand: RPC cache for philanthropy summary; not in v1 brainstorm inventory. Deferred to a future humanitarian/aid tool.'],
+  ['military:bases:active',
+    'on-demand: RPC cache for military bases — deferred to a future expanded military tool.'],
+  ['news:threat:summary:v1',
+    'on-demand: relay-classify-only, written only when classify produces country matches (matches api/health.js:468 ON_DEMAND_KEYS rationale). Underlying news inputs already exposed via get_news_intelligence.'],
+  ['resilience:ranking:v29',
+    'on-demand: RPC cache populated after Pro ranking requests (matches api/health.js:469 ON_DEMAND_KEYS rationale). Deferred to a future resilience tool.'],
+  ['forecast:simulation-package:latest',
+    'on-demand: written by writeSimulationPackage after deep forecast runs (matches api/health.js:466 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
+  ['forecast:simulation-outcome:latest',
+    'on-demand: written by writeSimulationOutcome after simulation runs (matches api/health.js:467 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
+  ['forecast:resolutions:v1',
+    'operational: persistent forecast resolution working ledger with raw per-forecast evidence and audit receipt state. Exposed through health and the sanitized get_forecast_scorecard archive view; raw ledger access remains private.'],
+  ['forecast:calibration-map:v1',
+    'operational: calibration map (#7070) written by seed-forecast-resolutions and read by seed-forecasts while its activation gate is eligible; the published probabilities reach MCP through the forecast tools, and its forward evaluation is internal to the scorecard, so no MCP tool.'],
+  ['correlation:market-alerts:ledger:v1',
+    'operational: raw per-alert working ledger (#8867) written by seed-market-alert-ledger, surfaced through health and summarized by correlation:market-alerts:scorecard:v1; the row-level evidence is not a queryable MCP slice.'],
+  ['forecast:bets:history:v1',
+    'operational: shadow bet-engine stream (#5233) written by seed-forecast-bets and ingested by the resolver into the get_forecast_scorecard bet_engine slice. Not a user-facing queryable slice (shadow, never in forecast:predictions:v2), so no MCP tool.'],
+  ['forecast:funnel:health:v1',
+    'operational: funnel-diversity guardrail signal (#5233) written by seed-forecasts afterPublish. Internal health/ops metric surfaced via /api/health (freshness only; a collapse is informational); not a queryable user-facing slice, so no MCP tool.'],
+
+  // Recovery and active resilience-indicator scorer inputs are covered by
+  // get_resilience_indicators. Ranking, interval, and health-only aggregate
+  // keys remain excluded below because that country-level tool does not expose
+  // those operational surfaces.
+  // ===========================================================================
+  // #5055 health-only seed probes added to strict /api/health monitoring.
+  // ===========================================================================
+  ['economic:energy:v1:all',
+    'deferred: strict health seed probe added by #5055; future economic-data MCP expansion can expose energy prices directly.'],
+  ['shared:fx-rates:v1',
+    'deferred to a future FX tool. Shared infrastructure consumed server-side by seeders for currency conversion, and since #6199 also rendered client-side by the FX panel Spot tab — but still exposed by no MCP tool.'],
+  ['patents:defense:latest',
+    'deferred: strict health seed probe added by #5055; future military or defense-innovation MCP expansion can expose patent summaries.'],
+  ['conflict:acled:v1:all:0:0',
+    'deferred: strict health seed probe added by #5055; ACLED aggregate currently feeds downstream intelligence and forecast inputs.'],
+  ['portwatch:disruptions:active:v1',
+    'deferred: strict health seed probe added by #5055; disruptions are consumed by chokepoint hazard scoring until a PortWatch MCP expansion exists.'],
+  ['seed-meta:comtrade:bilateral-hs4',
+    'operational: meta-only aggregate health probe added by #5055 for sharded comtrade:bilateral-hs4:{iso2}:v1 payloads; no queryable data slice lives at this key.'],
+  ['seed-meta:trade:tariffs',
+    'operational: meta-only aggregate health probe added by #6316 for sharded trade:tariffs:v2:{reporter} payloads; no queryable data slice lives at this key. The per-reporter payloads are Pro data, served by get_tariff_averages through the gated REST route (#9301).'],
+  ['seed-meta:economic:us-cpi',
+    'operational: meta-only health probe for the sharded CPI history. GetUsCpiMonthly serves the series; the history is too large for the composite economic cache tool (#8480).'],
+  ['seed-meta:economic:us-treasury-par-yield',
+    'operational: meta-only health probe for the sharded Treasury par curve. GetUsTreasuryParYieldCurve serves the series; the history is too large for the composite economic cache tool (#8480).'],
+  ['seed-meta:economic:us-interest-rates',
+    'operational: meta-only health probe for the sharded Fed funds, Treasury yield, and SOFR history. GetUsInterestRates serves the series; the history is too large for the composite economic cache tool (#8485).'],
+  ['seed-meta:economic:world-cpi-imf',
+    'operational: meta-only health probe for the worldwide IMF CPI payload (~1 MB across 190 countries). GetWorldCpiMonthly serves the data; the payload is too large for the composite economic cache tool (#8538).'],
+  ['seed-meta:economic:world-cpi-eurostat',
+    'operational: meta-only health probe for the Eurostat HICP overlay. GetWorldCpiMonthly serves the data; the 29-geo index history is too large for the composite economic cache tool (#8538).'],
+  ['seed-meta:economic:world-cpi-estat',
+    'operational: meta-only health probe for the Japan e-Stat national CPI overlay. GetWorldCpiMonthly serves the data; the 1970-onward index history is too large for the composite economic cache tool (#8538).'],
+  ['seed-meta:economic:world-cpi-abs',
+    'operational: meta-only health probe for the Australia ABS quarterly CPI overlay. GetWorldCpiMonthly serves the data; the 1948-onward index history is too large for the composite economic cache tool (#8538).'],
+  ['seed-meta:economic:yield-curve-jp',
+    'operational: meta-only health probe for the sharded JGB CMT history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-ca',
+    'operational: meta-only health probe for the sharded BoC benchmark + T-bill history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-de',
+    'operational: meta-only health probe for the sharded Bundesbank par-curve history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-gb',
+    'operational: meta-only health probe for the sharded BoE nominal spot history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-au',
+    'operational: meta-only health probe for the sharded RBA AGS history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-ch',
+    'operational: meta-only health probe for the sharded SNB spot history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-no',
+    'operational: meta-only health probe for the sharded Norges zero-coupon history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-se',
+    'operational: meta-only health probe for the sharded Riksbank fixing history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:oecd-lt-rates',
+    'operational: meta-only health probe for the OECD monthly 10Y fallback. GetGovernmentYieldCurve serves the uncovered markets through it; the multi-market history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:intelligence:pizzint:history:v1',
+    'operational: meta-only health heartbeat for the PizzINT retained archive (#8679). Daily per-provider buckets rotate by UTC date so they cannot sit in the static registry; this stable seed-meta key is what /api/health watches. Archive rows are not a queryable MCP slice — intelligence:pizzint:seed:v1 remains deferred to a future expanded intelligence tool.'],
+  ['research:arxiv:v1:cs.AI::50',
+    'deferred: strict health seed probe added by #5055; future research MCP expansion can expose the ArXiv/HN trending feed.'],
+
+  // ===========================================================================
+  // Deferred follow-up tools (explicit gaps named in the plan or related domain)
+  // ===========================================================================
+  ['intelligence:gpsjam:v2',
+    'deferred to a future intelligence tool (per plan U7 expected exclusions).'],
+  ['bls:series:v1',
+    'deferred to a future labor-statistics tool (per plan U7 expected exclusions). BLS economic series already partially surfaced via FRED bundles in get_economic_data.'],
+  ['economic:fx:yoy:v1',
+    'deferred to a future FX tool. The previous reason here claimed ECB FX already covered this and was wrong on the facts (#6199): economic:ecb-fx-rates:v1 carries seven majors (USD GBP JPY CHF CAD CNY AUD) while this key carries 45 currencies including ARS, TRY, EGP, NGN, PKR, UAH and LBP — precisely the currencies whose collapses this key measures, and none of which ECB quotes. It now has a dashboard consumer (the FX panel) but still no MCP tool.'],
+  ['intelligence:satellites:tle:v1',
+    'deferred to a future space-domain tool. Not in v1 brainstorm inventory.'],
+  ['intelligence:pizzint:seed:v1',
+    'deferred to a future expanded intelligence tool. Not in v1 brainstorm inventory.'],
+  ['gdelt:bulk:dyad-tension:v1',
+    'intermediate: daily event buckets and replay cursor for get-pizzint-status tension scores; that dashboard endpoint remains deferred to a future expanded intelligence tool.'],
+  ['gdelt:bulk:country-events:v1',
+    'intermediate: per-country daily GDELT conflict/protest buckets and baselines that feed the CII Conflict and Unrest components; agents read the result through the risk-score tools.'],
+  ['intelligence:wsb-tickers:v1',
+    'deferred: companion to get_social_velocity (Reddit r/wallstreetbets sentiment). Future expanded social-sentiment tool would bundle this with reddit feed.'],
+  ['intelligence:telegram-feed:v1',
+    'deferred to a future OSINT tool. Not in v1 brainstorm inventory.'],
+  ['intelligence:regional-snapshots:summary:v1',
+    'deferred to a future region-aware intelligence tool.'],
+  ['intelligence:regional-briefs:summary:v1',
+    'deferred to a future region-aware intelligence tool.'],
+  ['intelligence:market-implications:v1',
+    'deferred: LLM-generated narrative composite; underlying inputs already exposed via existing data tools. A future LLM-narrative tool would bundle this.'],
+  ['webcam:cameras:active',
+    'deferred: Windy webcam active-version pointer for app map markers. A future webcam MCP tool would expose decoded camera entries, not the raw Redis pointer.'],
+  ['supply_chain:hormuz_tracker:v1',
+    'deferred: specialized Strait-of-Hormuz tracker; broader chokepoint coverage via get_chokepoint_status. Hormuz-specific tool deferred.'],
+  ['resilience:static:index:v1',
+    'deferred to a future resilience tool (paired with resilience:ranking:v29).'],
+  ['resilience:static:fao',
+    'deferred to a future resilience tool (FAO Phase 3+ aggregate, paired with resilience:static:index:v1).'],
+  ['resilience:intervals:v12:US',
+    'deferred to a future resilience tool (formula-tagged sensitivity bands on top of resilience:ranking:v29).'],
+  ['product-catalog:v3',
+    'deferred to a future product-catalog tool. Used by the dashboard to render product metadata, not a queryable data slice.'],
+  ['climate:zone-normals:v1',
+    'deferred to a future climate-baseline tool. Reference data (30-year WMO normals) used as a denominator for climate:anomalies:v2 (already exposed via get_climate_data).'],
+  ['regulatory:actions:v1',
+    'deferred to a future regulatory/compliance tool. Not in v1 brainstorm inventory.'],
+  ['economic:grocery-basket:v1',
+    'deferred: per-country grocery basket index; complements consumer-prices (already exposed via get_consumer_prices). Future expanded consumer-prices tool would include this.'],
+  ['economic:bis-lbs:v1',
+    'deferred to a future expanded BIS tool. BIS DSR + property prices already exposed via get_economic_data; LBS (locational banking statistics) is a more specialised series.'],
+  ['economic:fatf-listing:v1',
+    'deferred to a future compliance/AML tool. FATF grey/black-listing is policy data, complement to sanctions (already exposed via get_sanctions_data).'],
+  ['economic:wb-external-debt:v1',
+    'deferred to a future World-Bank-detail tool. Annual external debt (WB IDS) companion to current account already in get_country_macro.'],
+  ['economic:boc-valet:v1',
+    'deferred: Bank of Canada Valet FX, policy rate, and yields replace CA IMF-lag placeholders in the Country Resilience Index. Scorer input, not a queryable MCP slice — CBR/ECB official rates already surface via get_economic_data. Future Canada-macro or resilience tool can expose the raw series (#6616).'],
+  ['economic:statcan-wds:v1',
+    'deferred: Statistics Canada WDS CPI/LFS cubes replace CA IMF-lag placeholders in the Country Resilience Index. Scorer input, not a queryable MCP slice — IMF labor/macro already surface via get_country_macro. Future Canada-macro or resilience tool can expose the raw cubes (#6676).'],
+  ['economic:worldbank-techreadiness:v1',
+    'deferred to a future World-Bank-detail tool. Tech-readiness composite — not in v1 brainstorm inventory.'],
+  ['economic:worldbank-progress:v1',
+    'deferred to a future World-Bank-detail tool. Development-progress composite — not in v1 brainstorm inventory.'],
+  ['economic:eurostat-country-data:v1',
+    'deferred: Eurostat aggregate panel; the three discrete Eurostat series (house prices, gov-debt-q, industrial production) are already individually exposed via dedicated tools. The aggregate is redundant for MCP consumers.'],
+  ['economic:fsi-eu:v1',
+    'deferred: EU Financial Stress Index composite — not in v1 brainstorm inventory.'],
+  ['economic:refinery-inputs:v1',
+    'deferred to a future expanded energy tool. EIA weekly refinery inputs — petroleum domain, complement to energy:eia-petroleum:v1.'],
+  ['economic:spr:v1',
+    'deferred to a future expanded energy tool. EIA SPR weekly volumes — companion to energy:spr-policies:v1 (also deferred).'],
+  ['economic:stress-index:v1',
+    'deferred: derived economic stress composite; underlying inputs already exposed via get_economic_data. A future composite-narrative tool would bundle this.'],
+  ['economic:fred:v1:WALCL:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:T10Y2Y:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:UNRATE:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:CPIAUCSL:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:DGS10:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:VIXCLS:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:GDP:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:M2SL:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:DCOILWTICO:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:ESTR:0',
+    'deferred: ECB €STR short-rate (single FRED series). Future expanded rates tool. Fed Funds (economic:fred:v1:FEDFUNDS:0) already exposed via get_economic_data.'],
+  ['economic:fred:v1:EURIBOR3M:0',
+    'deferred: EURIBOR 3-month rate (single FRED series). Future expanded rates tool.'],
+  ['economic:fred:v1:EURIBOR6M:0',
+    'deferred: EURIBOR 6-month rate (single FRED series). Future expanded rates tool.'],
+  ['economic:fred:v1:EURIBOR1Y:0',
+    'deferred: EURIBOR 1-year rate (single FRED series). Future expanded rates tool.'],
+  ['health:vpd-tracker:realtime:v1',
+    'deferred: vaccine-preventable disease tracker (realtime); covered partially by disease-outbreaks already in get_health_signals. Future expanded health tool would bundle the VPD-specific series.'],
+  ['health:vpd-tracker:historical:v1',
+    'deferred: vaccine-preventable disease tracker (historical); pair with health:vpd-tracker:realtime:v1.'],
+  ['market:hyperliquid:flow:v1',
+    'deferred to a future expanded crypto/DEX tool. Hyperliquid flow is a single-venue signal; broader crypto coverage via market:crypto:v1 (in get_market_data).'],
+  ['market:stablecoins:v1',
+    'deferred to a future expanded crypto tool. Stablecoin issuance is a specialised slice on top of market:crypto:v1 (already exposed via get_market_data).'],
+  ['market:defi-tokens:v1',
+    'deferred to a future expanded crypto tool. Shared seed-meta (seed-meta:market:token-panels) with ai-tokens + other-tokens.'],
+  ['market:ai-tokens:v1',
+    'deferred to a future expanded crypto tool. Shared seed-meta (seed-meta:market:token-panels) with defi-tokens + other-tokens.'],
+  ['market:other-tokens:v1',
+    'deferred to a future expanded crypto tool. Shared seed-meta (seed-meta:market:token-panels) with defi-tokens + ai-tokens.'],
+  ['market:gold-extended:v1',
+    'deferred to a future expanded commodities tool. Headline gold futures (GC=F) already exposed via get_market_data (market:commodities-bootstrap:v1).'],
+  ['market:gold-etf-flows:v1',
+    'deferred to a future expanded commodities tool. SPDR GLD flows; complement to market:gold-extended:v1.'],
+  ['market:gold-cb-reserves:v1',
+    'deferred to a future expanded commodities tool. IMF IFS monthly central-bank gold reserves.'],
+  ['market:breadth-history:v1',
+    'deferred to a future expanded markets tool. Equity breadth history is a specialised slice on top of market:sectors:v2 (already exposed via get_market_data).'],
+  ['market:aaii-sentiment:v1',
+    'deferred to a future expanded markets tool. AAII sentiment survey is a specialised weekly signal.'],
+  ['market:crypto-sectors:v1',
+    'deferred to a future expanded crypto tool. Sector-level crypto signal on top of market:crypto:v1.'],
+  ['correlation:cards-bootstrap:v1',
+    'deferred: derived market-correlation card deck used by the dashboard; underlying inputs (market:sectors:v2 etc.) already exposed via get_market_data. A future correlation-analysis tool would expose this.'],
+  ['energy:iea-oil-stocks:v1:index',
+    'deferred to a future expanded energy tool. IEA OECD oil-stocks index — companion to energy:eia-petroleum:v1 (US weekly petroleum stocks already exposed via get_energy_intelligence). Monthly IEA cadence vs weekly EIA — distinct release.'],
+  ['energy:intelligence:feed:v1',
+    'deferred: derived energy-intelligence narrative feed (LLM-generated); underlying energy inputs already exposed via get_energy_intelligence. A future LLM-narrative tool would expose this.'],
+
+  // ---- Energy supplementary keys not bundled into get_energy_intelligence ----
+  // get_energy_intelligence covers the 9 headline keys (EIA petroleum,
+  // electricity prices, Ember, gas storage, fuel shortages, disruptions,
+  // crisis policies, fossil/renewable shares). The keys below are
+  // specialised/per-country/infrastructure-registry slices on top of those —
+  // deferred to a future expanded energy tool, not legitimate exclusions
+  // (could be a follow-up tool).
+  ['energy:spine:v1:_countries',
+    'deferred: per-country energy spine index; covered indirectly via get_energy_intelligence headline aggregates. Future expanded per-country energy tool would expose this.'],
+  ['energy:exposure:v1:index',
+    'deferred: OWID energy-mix exposure index; get_energy_intelligence covers the headline energy bundle. Future detailed energy-mix tool would expose this.'],
+  ['energy:mix:v1:_all',
+    'deferred: OWID energy-mix full panel; future detailed energy-mix tool would expose this.'],
+  ['energy:oil-stocks-analysis:v1',
+    'deferred: LLM-generated narrative on top of energy:iea-oil-stocks:v1:index; future LLM-narrative tool would expose this.'],
+  ['energy:jodi-gas:v1:_countries',
+    'deferred: JODI per-country gas breakdown; future per-country energy tool.'],
+  ['energy:lng-vulnerability:v1',
+    'deferred: LNG vulnerability composite; future LNG-specific tool.'],
+  ['energy:jodi-oil:v1:_countries',
+    'deferred: JODI per-country oil breakdown; future per-country energy tool.'],
+  ['energy:spr-policies:v1',
+    'deferred: SPR policy registry; future SPR/policy tool. Distinct from energy volumes in get_energy_intelligence.'],
+  ['energy:pipelines:gas:v1',
+    'deferred: gas pipeline registry; future infrastructure-focused energy tool.'],
+  ['energy:pipelines:oil:v1',
+    'deferred: oil pipeline registry; future infrastructure-focused energy tool.'],
+  ['energy:storage-facilities:v1',
+    'deferred: energy storage-facility registry; future infrastructure-focused energy tool.'],
+
+  // ===========================================================================
+  // Operational (visible via /api/health, not user-facing data)
+  // ===========================================================================
+  ['relay:heartbeat:chokepoint-flows',
+    'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
+  ['relay:heartbeat:climate-news',
+    'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
+  ['bundle:heartbeat:static-ref',
+    'operational: seed-bundle-static-ref tick-execution heartbeat — covered by /api/health, not a user-facing data slice for MCP (#6691).'],
+  ['bundle:heartbeat:static-ref-heavy',
+    'operational: seed-bundle-static-ref-heavy tick-execution heartbeat — covered by /api/health, not a user-facing data slice for MCP (#6806).'],
+  ['digest:last-run',
+    'operational: digest-notifications cron heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
+  ['intel-history:ingest-health:conflict:acled-intel:v1',
+    'operational: per-collector intel-history ingest state (last successful append, last relay error, consecutive failures) published by scripts/_seed-history.mjs for /api/health + /api/seed-health (#5736). The history CONTENT it guards is already queryable through search_intel_history / get_intel_timeline / get_similar_events.'],
+  ['intel-history:ingest-health:military:cross-strait-activity:v1',
+    'operational: per-collector intel-history ingest state (last successful append, last relay error, consecutive failures) published by scripts/_seed-history.mjs for /api/health + /api/seed-health (#5736). The history CONTENT it guards is already queryable through search_intel_history / get_intel_timeline / get_similar_events.'],
+  ['intel-history:ingest-health:energy:intelligence:v1',
+    'operational: per-collector intel-history ingest state (last successful append, last relay error, consecutive failures) published by scripts/_seed-history.mjs for /api/health + /api/seed-health (#5736). The history CONTENT it guards is already queryable through search_intel_history / get_intel_timeline / get_similar_events.'],
+  ['consumer-prices:coverage:ae',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:au',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:br',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:gb',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:in',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:sa',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:sg',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:us',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['infra:ontario-511:v1',
+    'dashboard-internal: Ontario 511 events, alerts, and road conditions overlay on the canadaRoads map layer; not a queryable MCP slice (#6608).'],
+  ['infra:toronto-roads:v1',
+    'dashboard-internal: City of Toronto CART v3 road restrictions overlay on the same canadaRoads map layer; not a queryable MCP slice (#6609).'],
+]);
+
+// -----------------------------------------------------------------------------
+// Pure predicate helpers (no module-state coupling) — used by both the
+// live-state assertions below and the meta-tests at the bottom of the file
+// that verify these predicates actually fire on synthetic invalid inputs.
+//
+// Each helper takes inputs explicitly and returns the array of offending keys.
+// An empty array means "nothing wrong"; a non-empty array means "fail the test
+// and list these keys".
+// -----------------------------------------------------------------------------
+
+function collectSeededKeys(bootstrapKeys, standaloneKeys) {
+  return new Set([
+    ...Object.values(bootstrapKeys),
+    ...Object.values(standaloneKeys),
+  ]);
+}
+
+function collectCoveredKeys(toolRegistry) {
+  const covered = new Set();
+  for (const tool of toolRegistry) {
+    if (Array.isArray(tool._cacheKeys)) {
+      for (const k of tool._cacheKeys) covered.add(k);
+    }
+    if (Array.isArray(tool._coverageKeys)) {
+      for (const k of tool._coverageKeys) covered.add(k);
+    }
+  }
+  return covered;
+}
+
+/** Seeded keys that are neither covered nor excluded. */
+function findUncoveredKeys({ seededKeys, coveredKeys, excludedMap }) {
+  const uncovered = [];
+  for (const key of seededKeys) {
+    if (coveredKeys.has(key)) continue;
+    if (excludedMap.has(key)) continue;
+    uncovered.push(key);
+  }
+  return uncovered;
+}
+
+/** Excluded entries whose reason is missing / empty / non-string. */
+function findEmptyReasonExclusions(excludedMap) {
+  const offenders = [];
+  for (const [key, reason] of excludedMap) {
+    if (typeof reason !== 'string' || reason.trim().length === 0) offenders.push(key);
+  }
+  return offenders;
+}
+
+/** Excluded keys that are not actually in the seeded-key inventory. */
+function findDeadExclusions({ excludedMap, seededKeys }) {
+  const dead = [];
+  for (const key of excludedMap.keys()) {
+    if (!seededKeys.has(key)) dead.push(key);
+  }
+  return dead;
+}
+
+/** Excluded keys that ARE covered by a tool (mutually-exclusive contract). */
+function findRedundantExclusions({ excludedMap, coveredKeys }) {
+  const redundant = [];
+  for (const key of excludedMap.keys()) {
+    if (coveredKeys.has(key)) redundant.push(key);
+  }
+  return redundant;
+}
+
+describe('U7 — TOOL_REGISTRY ↔ BOOTSTRAP_KEYS+STANDALONE_KEYS parity', () => {
+  it('every seeded cache key is covered by a tool or explicitly excluded', () => {
+    const seededKeys = collectSeededKeys(BOOTSTRAP_KEYS, STANDALONE_KEYS);
+    const coveredKeys = collectCoveredKeys(TOOL_REGISTRY);
+    const uncovered = findUncoveredKeys({ seededKeys, coveredKeys, excludedMap: EXCLUDED_FROM_MCP });
+
+    if (uncovered.length > 0) {
+      const list = uncovered.map((k) => `  - ${k}`).join('\n');
+      throw new Error(
+        `${uncovered.length} seeded cache key(s) are not covered by any MCP tool and not in EXCLUDED_FROM_MCP:\n` +
+        `${list}\n\n` +
+        `Add the key(s) to a TOOL_REGISTRY entry (\`_cacheKeys\` for cache-tools, \`_coverageKeys\` ` +
+        `for \`_execute\` hybrids) OR add to EXCLUDED_FROM_MCP in tests/mcp-bootstrap-parity.test.mjs ` +
+        `with a documented reason.`
+      );
+    }
+  });
+
+  it('every EXCLUDED_FROM_MCP entry has a non-empty reason', () => {
+    const offenders = findEmptyReasonExclusions(EXCLUDED_FROM_MCP);
+    assert.deepEqual(offenders, [], `EXCLUDED_FROM_MCP entries with empty/missing reason: ${offenders.join(', ')}`);
+  });
+
+  it('every EXCLUDED_FROM_MCP entry is present in BOOTSTRAP_KEYS or STANDALONE_KEYS (no dead exclusions)', () => {
+    const seededKeys = collectSeededKeys(BOOTSTRAP_KEYS, STANDALONE_KEYS);
+    const dead = findDeadExclusions({ excludedMap: EXCLUDED_FROM_MCP, seededKeys });
+    assert.deepEqual(dead, [], `Dead EXCLUDED_FROM_MCP entries (not in BOOTSTRAP_KEYS/STANDALONE_KEYS): ${dead.join(', ')}`);
+  });
+
+  it('EXCLUDED_FROM_MCP keys are not also covered by a tool (no redundant exclusions)', () => {
+    const coveredKeys = collectCoveredKeys(TOOL_REGISTRY);
+    const redundant = findRedundantExclusions({ excludedMap: EXCLUDED_FROM_MCP, coveredKeys });
+    assert.deepEqual(redundant, [], `Redundant EXCLUDED_FROM_MCP entries (also covered by a tool): ${redundant.join(', ')}`);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Meta-tests — verify the predicate helpers above actually fire on synthetic
+// invalid fixtures. Without these, a regression that makes a predicate a no-op
+// (e.g. early return, predicate inversion, off-by-one filter) would ship
+// undetected because the live-state assertions only fail when the real
+// codebase is broken.
+// -----------------------------------------------------------------------------
+
+describe('U7 meta-tests — parity predicates fire on synthetic invalid inputs', () => {
+  it('findUncoveredKeys returns the synthetic seeded key that is neither covered nor excluded', () => {
+    const seededKeys = new Set(['ghost:key:v1', 'covered:key:v1', 'excluded:key:v1']);
+    const coveredKeys = new Set(['covered:key:v1']);
+    const excludedMap = new Map([['excluded:key:v1', 'documented reason']]);
+    const uncovered = findUncoveredKeys({ seededKeys, coveredKeys, excludedMap });
+    assert.deepEqual(uncovered, ['ghost:key:v1'], 'ghost:key:v1 must surface as uncovered');
+  });
+
+  it('findUncoveredKeys returns empty when every seeded key is covered or excluded', () => {
+    const seededKeys = new Set(['a:v1', 'b:v1']);
+    const coveredKeys = new Set(['a:v1']);
+    const excludedMap = new Map([['b:v1', 'because']]);
+    assert.deepEqual(findUncoveredKeys({ seededKeys, coveredKeys, excludedMap }), []);
+  });
+
+  it('findEmptyReasonExclusions catches empty-string and whitespace-only reasons', () => {
+    const excludedMap = new Map([
+      ['good:v1', 'documented reason'],
+      ['empty:v1', ''],
+      ['whitespace:v1', '   '],
+      ['nullish:v1', null],
+    ]);
+    const offenders = findEmptyReasonExclusions(excludedMap);
+    assert.deepEqual(offenders.sort(), ['empty:v1', 'nullish:v1', 'whitespace:v1']);
+  });
+
+  it('findDeadExclusions catches excluded keys absent from the seeded-key set', () => {
+    const excludedMap = new Map([
+      ['live:v1', 'reason'],
+      ['ghost:v1', 'reason'],
+    ]);
+    const seededKeys = new Set(['live:v1']);
+    assert.deepEqual(findDeadExclusions({ excludedMap, seededKeys }), ['ghost:v1']);
+  });
+
+  it('findRedundantExclusions catches keys that are both excluded AND covered by a tool', () => {
+    const excludedMap = new Map([
+      ['both:v1', 'reason'],
+      ['only-excluded:v1', 'reason'],
+    ]);
+    const coveredKeys = new Set(['both:v1']);
+    assert.deepEqual(findRedundantExclusions({ excludedMap, coveredKeys }), ['both:v1']);
+  });
+
+  it('collectCoveredKeys aggregates _cacheKeys + _coverageKeys across the registry', () => {
+    const registry = [
+      { name: 'cache_tool_a', _cacheKeys: ['a:v1', 'b:v1'] },
+      { name: 'cache_tool_b', _cacheKeys: ['c:v1'] },
+      { name: 'hybrid_tool', _coverageKeys: ['d:v1'], _execute: () => {} },
+      { name: 'rpc_tool_no_cache', _execute: () => {} }, // no _cacheKeys, no _coverageKeys
+    ];
+    const covered = collectCoveredKeys(registry);
+    assert.deepEqual([...covered].sort(), ['a:v1', 'b:v1', 'c:v1', 'd:v1']);
+  });
+
+  it('collectSeededKeys merges BOOTSTRAP and STANDALONE without duplicates', () => {
+    const bootstrap = { alpha: 'a:v1', beta: 'b:v1' };
+    const standalone = { gamma: 'c:v1', alphaAgain: 'a:v1' };
+    const seeded = collectSeededKeys(bootstrap, standalone);
+    assert.deepEqual([...seeded].sort(), ['a:v1', 'b:v1', 'c:v1']);
+  });
+});

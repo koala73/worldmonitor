@@ -1,8 +1,8 @@
-import { getApiBaseUrl, isDesktopRuntime } from './runtime';
+import { isDesktopRuntime } from './runtime';
+import { safeStorageSet } from '@/utils/safe-storage';
 import { invokeTauri } from './tauri-bridge';
 
 export type RuntimeSecretKey =
-  | 'GROQ_API_KEY'
   | 'OPENROUTER_API_KEY'
   | 'EXA_API_KEYS'
   | 'BRAVE_API_KEYS'
@@ -31,7 +31,6 @@ export type RuntimeSecretKey =
   | 'ICAO_API_KEY';
 
 export type RuntimeFeatureId =
-  | 'aiGroq'
   | 'aiOpenRouter'
   | 'stockNewsSearchExa'
   | 'stockNewsSearchBrave'
@@ -67,7 +66,9 @@ export interface RuntimeFeatureDefinition {
 }
 
 export interface RuntimeSecretState {
-  value: string;
+  /** Values are retained only for browser environment variables. Desktop vault
+   * entries intentionally expose presence/status without returning plaintext. */
+  value?: string;
   source: 'env' | 'vault';
 }
 
@@ -77,18 +78,8 @@ export interface RuntimeConfig {
 }
 
 const TOGGLES_STORAGE_KEY = 'worldmonitor-runtime-feature-toggles';
-function getSidecarEnvUpdateUrl(): string {
-  return `${getApiBaseUrl()}/api/local-env-update`;
-}
-function getSidecarEnvUpdateBatchUrl(): string {
-  return `${getApiBaseUrl()}/api/local-env-update-batch`;
-}
-function getSidecarSecretValidateUrl(): string {
-  return `${getApiBaseUrl()}/api/local-validate-secret`;
-}
 
 const defaultToggles: Record<RuntimeFeatureId, boolean> = {
-  aiGroq: true,
   aiOpenRouter: true,
   stockNewsSearchExa: true,
   stockNewsSearchBrave: true,
@@ -121,19 +112,12 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'Ollama local summarization',
     description: 'Local LLM provider via OpenAI-compatible endpoint (Ollama or LM Studio, desktop-first).',
     requiredSecrets: ['OLLAMA_API_URL', 'OLLAMA_MODEL'],
-    fallback: 'Falls back to Groq, then OpenRouter, then local browser model.',
-  },
-  {
-    id: 'aiGroq',
-    name: 'Groq summarization',
-    description: 'Primary fast LLM provider used for AI summary generation.',
-    requiredSecrets: ['GROQ_API_KEY'],
     fallback: 'Falls back to OpenRouter, then local browser model.',
   },
   {
     id: 'aiOpenRouter',
     name: 'OpenRouter summarization',
-    description: 'Secondary LLM provider for AI summary fallback.',
+    description: 'Hosted LLM provider used for AI summary generation.',
     requiredSecrets: ['OPENROUTER_API_KEY'],
     fallback: 'Falls back to local browser model only.',
   },
@@ -163,6 +147,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'FRED economic indicators',
     description: 'Macro indicators from Federal Reserve Economic Data.',
     requiredSecrets: ['FRED_API_KEY'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Economic panel remains available with non-FRED metrics.',
   },
   {
@@ -170,6 +156,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'EIA oil analytics',
     description: 'US Energy Information Administration oil metrics.',
     requiredSecrets: ['EIA_API_KEY'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Oil analytics cards show disabled state.',
   },
   {
@@ -177,6 +165,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'Cloudflare outage radar',
     description: 'Internet outages from Cloudflare Radar annotations API.',
     requiredSecrets: ['CLOUDFLARE_API_TOKEN'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Outage layer is disabled and map continues with other feeds.',
   },
   {
@@ -247,7 +237,7 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
   {
     id: 'finnhubMarkets',
     name: 'Finnhub market data',
-    description: 'Real-time stock quotes and market data from Finnhub.',
+    description: 'Delayed or seeded stock quotes via Finnhub when configured. A key is not a live tape.',
     requiredSecrets: ['FINNHUB_API_KEY'],
     fallback: 'Stock ticker uses limited free data.',
   },
@@ -263,6 +253,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'WTO trade policy data',
     description: 'Trade restrictions, tariff trends, barriers, and flows from WTO.',
     requiredSecrets: ['WTO_API_KEY'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Trade policy panel shows disabled state.',
   },
   {
@@ -270,6 +262,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'Supply Chain Intelligence',
     description: 'Shipping rates via FRED Baltic Dry Index. Chokepoints and minerals use public data.',
     requiredSecrets: ['FRED_API_KEY'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Chokepoints and minerals always available; shipping requires FRED key.',
   },
   {
@@ -295,9 +289,20 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
   },
 ];
 
+function readClientEnvOpenskyRelayUrl(): string {
+  try {
+    return typeof import.meta.env.VITE_OPENSKY_RELAY_URL === 'string'
+      ? import.meta.env.VITE_OPENSKY_RELAY_URL.trim()
+      : '';
+  } catch {
+    return '';
+  }
+}
+
 function readEnvSecret(key: RuntimeSecretKey): string {
-  const envValue = (import.meta as { env?: Record<string, unknown> }).env?.[key];
-  return typeof envValue === 'string' ? envValue.trim() : '';
+  return key === 'VITE_OPENSKY_RELAY_URL'
+    ? readClientEnvOpenskyRelayUrl()
+    : '';
 }
 
 function readStoredToggles(): Record<RuntimeFeatureId, boolean> {
@@ -364,8 +369,6 @@ const runtimeConfig: RuntimeConfig = {
   secrets: {},
 };
 
-let localApiTokenPromise: Promise<string | null> | null = null;
-
 function notifyConfigChanged(): void {
   for (const listener of listeners) listener();
 }
@@ -419,7 +422,11 @@ export function isFeatureEnabled(featureId: RuntimeFeatureId): boolean {
 export function getSecretState(key: RuntimeSecretKey): { present: boolean; valid: boolean; source: 'env' | 'vault' | 'missing' } {
   const state = runtimeConfig.secrets[key];
   if (!state) return { present: false, valid: false, source: 'missing' };
-  return { present: true, valid: validateSecret(key, state.value).valid, source: state.source };
+  return {
+    present: true,
+    valid: state.source === 'vault' || validateSecret(key, state.value ?? '').valid,
+    source: state.source,
+  };
 }
 
 export function isFeatureAvailable(featureId: RuntimeFeatureId): boolean {
@@ -443,7 +450,7 @@ export function getEffectiveSecrets(feature: RuntimeFeatureDefinition): RuntimeS
 
 export function setFeatureToggle(featureId: RuntimeFeatureId, enabled: boolean): void {
   runtimeConfig.featureToggles[featureId] = enabled;
-  localStorage.setItem(TOGGLES_STORAGE_KEY, JSON.stringify(runtimeConfig.featureToggles));
+  safeStorageSet(TOGGLES_STORAGE_KEY, JSON.stringify(runtimeConfig.featureToggles));
   notifyConfigChanged();
 }
 
@@ -456,18 +463,10 @@ export async function setSecretValue(key: RuntimeSecretKey, value: string): Prom
   const sanitized = value.trim();
   if (sanitized) {
     await invokeTauri<void>('set_secret', { key, value: sanitized });
-    runtimeConfig.secrets[key] = { value: sanitized, source: 'vault' };
+    runtimeConfig.secrets[key] = { source: 'vault' };
   } else {
     await invokeTauri<void>('delete_secret', { key });
     delete runtimeConfig.secrets[key];
-  }
-
-  // Push to sidecar so handlers pick it up immediately.
-  // This is best-effort: keyring persistence is the source of truth.
-  try {
-    await pushSecretToSidecar(key, sanitized || '');
-  } catch (error) {
-    console.warn(`[runtime-config] Failed to sync ${key} to sidecar`, error);
   }
 
   // Signal other windows (main ↔ settings) to reload secrets from keychain.
@@ -477,50 +476,6 @@ export async function setSecretValue(key: RuntimeSecretKey, value: string): Prom
   } catch { /* localStorage may be unavailable */ }
 
   notifyConfigChanged();
-}
-
-async function getLocalApiToken(): Promise<string | null> {
-  if (!localApiTokenPromise) {
-    localApiTokenPromise = invokeTauri<string>('get_local_api_token')
-      .then((token) => token.trim() || null)
-      .catch((error) => {
-        // Allow retries on subsequent calls if bridge/token is temporarily unavailable.
-        localApiTokenPromise = null;
-        throw error;
-      });
-  }
-  return localApiTokenPromise;
-}
-
-async function pushSecretToSidecar(key: string, value: string): Promise<void> {
-  const headers = new Headers({ 'Content-Type': 'application/json' });
-  const token = await getLocalApiToken();
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-
-  const response = await fetch(getSidecarEnvUpdateUrl(), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ key, value: value || null }),
-  });
-
-  if (!response.ok) {
-    let detail = '';
-    try {
-      detail = await response.text();
-    } catch { /* ignore non-readable body */ }
-    throw new Error(`Sidecar secret sync failed (${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`);
-  }
-}
-
-async function callSidecarWithAuth(url: string, init: RequestInit): Promise<Response> {
-  const headers = new Headers(init.headers ?? {});
-  const token = await getLocalApiToken();
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-  return fetch(url, { ...init, headers });
 }
 
 export async function verifySecretWithApi(
@@ -538,18 +493,14 @@ export async function verifySecretWithApi(
   }
 
   try {
-    const response = await callSidecarWithAuth(getSidecarSecretValidateUrl(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, value: value.trim(), context }),
+    const response = await invokeTauri<{ status: number; payload: unknown }>('validate_secret_with_sidecar', {
+      key,
+      value: value.trim(),
+      context,
     });
+    const { payload } = response;
 
-    let payload: unknown = null;
-    try {
-      payload = await response.json();
-    } catch { /* non-JSON response */ }
-
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       const message = payload && typeof payload === 'object'
         ? String(
           (payload as Record<string, unknown>).message
@@ -579,29 +530,14 @@ export async function loadDesktopSecrets(): Promise<void> {
   if (!isDesktopRuntime()) return;
 
   try {
-    const allSecrets = await invokeTauri<Record<string, string>>('get_all_secrets');
-
-    const entries: { key: string; value: string }[] = [];
-    for (const [key, value] of Object.entries(allSecrets)) {
-      if (value && value.trim().length > 0) {
-        runtimeConfig.secrets[key as RuntimeSecretKey] = { value, source: 'vault' };
-        entries.push({ key, value });
-      }
+    const configuredKeys = await invokeTauri<string[]>('list_configured_secret_keys');
+    for (const [key, state] of Object.entries(runtimeConfig.secrets)) {
+      if (state.source === 'vault') delete runtimeConfig.secrets[key as RuntimeSecretKey];
     }
-
-    if (entries.length > 0) {
-      try {
-        await pushSecretBatchToSidecar(entries);
-      } catch (batchErr) {
-        console.warn('[runtime-config] Batch env update failed, falling back to individual pushes', batchErr);
-        await Promise.allSettled(
-          entries.map(({ key, value }) =>
-            pushSecretToSidecar(key as RuntimeSecretKey, value).catch((error) => {
-              console.warn(`[runtime-config] Failed to sync ${key} to sidecar`, error);
-            })
-          )
-        );
-      }
+    for (const key of configuredKeys) {
+      // The native process reports only key names; sidecar startup receives the
+      // values directly from the keychain and renderer state remains opaque.
+      runtimeConfig.secrets[key as RuntimeSecretKey] = { source: 'vault' };
     }
 
     notifyConfigChanged();
@@ -609,23 +545,5 @@ export async function loadDesktopSecrets(): Promise<void> {
     console.warn('[runtime-config] Failed to load desktop secrets from vault', error);
   } finally {
     secretsReadyResolve();
-  }
-}
-
-async function pushSecretBatchToSidecar(entries: { key: string; value: string }[]): Promise<void> {
-  const headers = new Headers({ 'Content-Type': 'application/json' });
-  const token = await getLocalApiToken();
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-
-  const response = await fetch(getSidecarEnvUpdateBatchUrl(), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ entries }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Batch env update failed (${response.status})`);
   }
 }

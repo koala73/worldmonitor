@@ -1,0 +1,444 @@
+{
+  "protocolVersion": "cm_eval_v1",
+  "frozenAt": "2026-08-05T00:00:00.000Z",
+  "firstScoredRunStartedAt": null,
+  "approval": {
+    "status": "approved",
+    "approverName": "Elie Habib",
+    "approverRole": "WorldMonitor product owner",
+    "approvedAt": "2026-08-05T00:00:00.000Z",
+    "approvalEvidence": "github_issue_6003",
+    "approvedThresholdsSha256": "29ce1d431086f3b7a9a955776f0c2c009d87c809f810f32f8b10aef53f8ecfc2"
+  },
+  "changeControl": {
+    "thresholdChangeRequiresNewProtocolVersion": true,
+    "denominatorChangeRequiresNewProtocolVersion": true,
+    "metricDefinitionChangeRequiresNewProtocolVersion": true,
+    "boundMethodChangeRequiresNewProtocolVersion": true,
+    "postScoreChangeRequiresNewBlindCorpusVersion": true,
+    "currentRunMayNotBeRescuedByAmendment": true
+  },
+  "baseRate": {
+    "sampleId": "cm_base_rate_001",
+    "protocolStatus": "preregistered",
+    "population": {
+      "domiciles": [
+        "US",
+        "GB"
+      ],
+      "selectionFrozenBeforeQueryTuning": true,
+      "targetCompanyYears": 150,
+      "privateSelectionManifestRequired": true
+    },
+    "thresholds": {
+      "minimumCompanyYears": 150,
+      "minimumPointEstimate": 0.3,
+      "minimumLowerBound": 0.2,
+      "confidenceLevel": 0.9,
+      "boundMethod": "exact_one_sided_poisson_garwood"
+    },
+    "result": {
+      "status": "not_run",
+      "companyYears": 0,
+      "materialEventCount": 0,
+      "pointEstimate": null,
+      "lowerBound": null,
+      "privateSelectionManifestSha256": null,
+      "aggregateEvidenceSha256": null
+    }
+  },
+  "rediscovery": {
+    "pairSetId": "cm_rediscovery_001",
+    "protocolStatus": "preregistered",
+    "providerIndependence": {
+      "discoveryProviderMayNotSupplyReference": true,
+      "referenceAndRediscoveryQueriesAreDisjoint": true,
+      "pairSelectionFrozenBeforeQueryTuning": true,
+      "privatePairManifestRequired": true
+    },
+    "thresholds": {
+      "minimumPairs": 100,
+      "minimumPointEstimate": 0.6,
+      "minimumLowerBound": 0.5,
+      "confidenceLevel": 0.9,
+      "boundMethod": "exact_one_sided_clopper_pearson"
+    },
+    "result": {
+      "status": "not_run",
+      "pairCount": 0,
+      "rediscoveredCount": 0,
+      "pointEstimate": null,
+      "lowerBound": null,
+      "privatePairManifestSha256": null,
+      "aggregateEvidenceSha256": null
+    }
+  },
+  "historicalUsefulness": {
+    "protocolId": "cm_usefulness_001",
+    "status": "frozen",
+    "externalCustomerCount": 2,
+    "minimumIndependentCustomerCount": 1,
+    "sharedImpactCount": 10,
+    "sameImpactSetForEveryCustomer": true,
+    "requiredDirections": [
+      "positive",
+      "negative",
+      "mixed"
+    ],
+    "minimumUsefulRatePerCustomer": 0.7,
+    "unableToJudgeCountsAgainstDenominator": true,
+    "internalAnalystMayApprove": false,
+    "customerIdentityStoredOutsideRepository": true,
+    "labelsKeyedByOpaqueImpactId": true,
+    "result": {
+      "status": "not_run",
+      "impactSetId": null,
+      "impacts": [],
+      "customerJudgments": [],
+      "aggregateEvidenceSha256": null
+    }
+  },
+  "admissionQuality": {
+    "status": "frozen",
+    "rateBoundMethod": "exact_one_sided_clopper_pearson",
+    "rateConfidenceLevel": 0.9,
+    "insufficientDenominatorOutcome": "incomplete",
+    "metrics": [
+      {
+        "id": "published_material_impact_precision",
+        "kind": "rate",
+        "minimumDenominator": 100,
+        "minimumPointEstimate": 0.92,
+        "minimumLowerBound": 0.85
+      },
+      {
+        "id": "published_company_attribution_precision",
+        "kind": "rate",
+        "minimumDenominator": 100,
+        "minimumPointEstimate": 0.99,
+        "minimumLowerBound": 0.95
+      },
+      {
+        "id": "direction_accuracy_overall",
+        "kind": "rate",
+        "minimumDenominator": 75,
+        "minimumPointEstimate": 0.92,
+        "minimumLowerBound": 0.85
+      },
+      {
+        "id": "direction_accuracy_positive",
+        "kind": "rate",
+        "minimumDenominator": 25,
+        "minimumPointEstimate": 0.88,
+        "minimumLowerBound": 0.75
+      },
+      {
+        "id": "direction_accuracy_negative",
+        "kind": "rate",
+        "minimumDenominator": 25,
+        "minimumPointEstimate": 0.88,
+        "minimumLowerBound": 0.75
+      },
+      {
+        "id": "direction_accuracy_mixed",
+        "kind": "rate",
+        "minimumDenominator": 25,
+        "minimumPointEstimate": 0.88,
+        "minimumLowerBound": 0.75
+      },
+      {
+        "id": "confidence_calibration_stage3",
+        "kind": "calibration",
+        "minimumDenominator": 200,
+        "maximumPointEstimate": 0.1,
+        "maximumUpperBound": 0.15
+      },
+      {
+        "id": "confidence_calibration_stage4",
+        "kind": "calibration",
+        "minimumDenominator": 500,
+        "maximumPointEstimate": 0.1,
+        "maximumUpperBound": 0.15
+      }
+    ],
+    "calibration": {
+      "metric": "adaptive_expected_calibration_error",
+      "binning": "ten_equal_frequency_bins_sorted_by_confidence_then_opaque_id",
+      "bootstrapMethod": "stratified_percentile",
+      "bootstrapStrata": [
+        "gold_materiality",
+        "gold_direction"
+      ],
+      "bootstrapIterations": 10000,
+      "bootstrapSeed": 6003,
+      "confidenceLevel": 0.9,
+      "upperBoundOrderStatistic": "ceil_confidence_times_iterations_minus_one"
+    }
+  },
+  "economics": {
+    "workloadId": "cm_500_company_account_shared_discovery_v1",
+    "accountCount": 1,
+    "portfolioSize": 500,
+    "discoveryMode": "account_level_shared_discovery",
+    "workloadOrPortfolioChangeRequiresNewCostPackage": true,
+    "currency": "USD",
+    "maximumMonthlyCostUsd": 125,
+    "modeledMonthlyCostUsd": 110.8659375,
+    "modeledMonthlyCostPerCompanyUsd": 0.221731875,
+    "assumptions": {
+      "daysPerMonth": 30,
+      "exaSearchesPerDay": 12,
+      "exaResultsPerSearch": 25,
+      "exaBaseUsdPerSearch": 0.007,
+      "exaAdditionalResultUsd": 0.001,
+      "exaContentTypeUsdPerPage": 0.001,
+      "xPostsReadPerDay": 250,
+      "xPostReadUsd": 0.005,
+      "xUserReadsPerMonth": 500,
+      "xUserReadUsd": 0.01,
+      "classifierCandidatesPerDay": 250,
+      "classifierInputTokensPerCandidate": 4000,
+      "classifierOutputTokensPerCandidate": 1000,
+      "modelInputUsdPerMillionTokens": 0.09,
+      "modelOutputUsdPerMillionTokens": 0.18,
+      "openRouterCreditFeeRate": 0.055,
+      "allocatedInfrastructureUsd": 25,
+      "contingencyRate": 0.25
+    },
+    "requiresMeasuredTracerReplacementBeforePaidBeta": true
+  },
+  "providerPolicy": {
+    "reviewedAt": "2026-08-05T00:00:00.000Z",
+    "refreshRequiredBeforePaidRuntime": true,
+    "providers": {
+      "exa": {
+        "evaluationStatus": "approved",
+        "paidRuntimeApprovalRequired": true,
+        "access": "official_api_only",
+        "contentRetention": "permitted_content_only_with_source_specific_rights",
+        "priceSnapshot": "search_and_contents_pay_as_you_go"
+      },
+      "x": {
+        "access": "official_api_only",
+        "commercialApprovalRequired": true,
+        "contentRemovalDeadlineHours": 24,
+        "offlineContentMustTrackEditsProtectionAndWithholding": true,
+        "modelTrainingOnXContent": "prohibited",
+        "priceSnapshot": "pay_per_resource"
+      },
+      "model": {
+        "provider": "openrouter",
+        "model": "deepseek_v4_flash",
+        "zeroDataRetentionRequired": true,
+        "trainingOnPromptsAllowed": false,
+        "reasoningEnabled": false,
+        "modelAndProviderVersionMustBePinned": true
+      }
+    },
+    "result": {
+      "status": "blocked",
+      "exa": {
+        "status": "blocked",
+        "paidRuntimeApprovalEvidenceSha256": null
+      },
+      "x": {
+        "status": "blocked",
+        "writtenCommercialUseApprovalEvidenceSha256": null,
+        "offlineContentComplianceEnforcedByRuntime": false,
+        "modelTrainingProhibitionEnforcedByRuntime": false
+      },
+      "model": {
+        "status": "blocked",
+        "zeroDataRetentionEnforcedByRuntime": false,
+        "noTrainingEnforcedByRuntime": false,
+        "reasoningDisabledEnforcedByRuntime": false,
+        "modelAndProviderPinnedByRuntime": false
+      }
+    }
+  },
+  "syntheticVerification": {
+    "classification": "synthetic_arithmetic_only",
+    "eligibleForViabilityDecision": false,
+    "poisson": {
+      "companyYears": 150,
+      "materialEventCount": 45,
+      "confidenceLevel": 0.9,
+      "expectedPointEstimate": 0.3,
+      "expectedLowerBound": 0.2443036349401609
+    },
+    "binomial": {
+      "pairCount": 100,
+      "rediscoveredCount": 70,
+      "confidenceLevel": 0.9,
+      "expectedPointEstimate": 0.7,
+      "expectedLowerBound": 0.633580042218602
+    },
+    "calibration": {
+      "examples": [
+        {
+          "opaqueExampleId": "cm_example_000001",
+          "confidence": 0.51,
+          "correct": false,
+          "goldMateriality": "material",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000002",
+          "confidence": 0.54,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "negative"
+        },
+        {
+          "opaqueExampleId": "cm_example_000003",
+          "confidence": 0.57,
+          "correct": false,
+          "goldMateriality": "material",
+          "goldDirection": "mixed"
+        },
+        {
+          "opaqueExampleId": "cm_example_000004",
+          "confidence": 0.6,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000005",
+          "confidence": 0.63,
+          "correct": true,
+          "goldMateriality": "material",
+          "goldDirection": "negative"
+        },
+        {
+          "opaqueExampleId": "cm_example_000006",
+          "confidence": 0.66,
+          "correct": false,
+          "goldMateriality": "immaterial",
+          "goldDirection": "mixed"
+        },
+        {
+          "opaqueExampleId": "cm_example_000007",
+          "confidence": 0.69,
+          "correct": true,
+          "goldMateriality": "material",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000008",
+          "confidence": 0.72,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "negative"
+        },
+        {
+          "opaqueExampleId": "cm_example_000009",
+          "confidence": 0.75,
+          "correct": false,
+          "goldMateriality": "material",
+          "goldDirection": "mixed"
+        },
+        {
+          "opaqueExampleId": "cm_example_000010",
+          "confidence": 0.78,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000011",
+          "confidence": 0.8,
+          "correct": true,
+          "goldMateriality": "material",
+          "goldDirection": "negative"
+        },
+        {
+          "opaqueExampleId": "cm_example_000012",
+          "confidence": 0.82,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "mixed"
+        },
+        {
+          "opaqueExampleId": "cm_example_000013",
+          "confidence": 0.84,
+          "correct": false,
+          "goldMateriality": "material",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000014",
+          "confidence": 0.86,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "negative"
+        },
+        {
+          "opaqueExampleId": "cm_example_000015",
+          "confidence": 0.88,
+          "correct": true,
+          "goldMateriality": "material",
+          "goldDirection": "mixed"
+        },
+        {
+          "opaqueExampleId": "cm_example_000016",
+          "confidence": 0.9,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000017",
+          "confidence": 0.92,
+          "correct": true,
+          "goldMateriality": "material",
+          "goldDirection": "negative"
+        },
+        {
+          "opaqueExampleId": "cm_example_000018",
+          "confidence": 0.94,
+          "correct": false,
+          "goldMateriality": "immaterial",
+          "goldDirection": "mixed"
+        },
+        {
+          "opaqueExampleId": "cm_example_000019",
+          "confidence": 0.96,
+          "correct": true,
+          "goldMateriality": "material",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000020",
+          "confidence": 0.98,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "negative"
+        }
+      ],
+      "expectedPointEstimate": 0.1925,
+      "expectedUpperBound": 0.3395
+    }
+  },
+  "stage0": {
+    "evaluatedAt": "2026-08-18T13:03:05.000Z",
+    "decision": "stop",
+    "reasons": [
+      "base_rate_not_complete",
+      "historical_usefulness_not_complete",
+      "provider_policy_not_approved",
+      "rediscovery_not_complete"
+    ],
+    "permittedImplementation": [
+      "fixtures",
+      "dark_contracts"
+    ],
+    "forbiddenUntilContinue": [
+      "paid_provider_runtime",
+      "publication",
+      "rest_writes",
+      "workspace",
+      "alerts"
+    ]
+  }
+}

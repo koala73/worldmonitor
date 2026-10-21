@@ -1,0 +1,38 @@
+<?xml version='1.0' encoding='utf-8'?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:georss="http://www.georss.org/georss" xmlns:gml="http://www.opengis.net/gml">
+  <title>Earthquakes in the last 30 days (Canada)</title>
+  <id>https://www.earthquakescanada.nrcan.gc.ca/</id>
+  <link href="https://www.earthquakescanada.nrcan.gc.ca/cache/earthquakes/canada-30-en.atom" rel="self" />
+  <updated>2026-08-13T21:20:06Z</updated>
+  <category term="earthquakes" />
+  <author>
+    <name>Earthquakes Canada</name>
+  </author>
+  <entry>
+    <title>2026-08-13 11:11:27 UTC: M2.17 Suspected industry-related event, 27 km S of Woodland Cree 226, AB</title>
+    <id>https://www.earthquakescanada.nrcan.gc.ca/?eventid=20260813.1111001</id>
+    <content type="html">&lt;table&gt;&lt;tbody&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Date and time:&lt;/th&gt;&lt;td&gt;2026-08-13 11:11 UTC&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Magnitude:&lt;/th&gt;&lt;td&gt;2.2 MLy&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Latitude:&lt;/th&gt;&lt;td&gt;56.255°N&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Longitude:&lt;/th&gt;&lt;td&gt;116.579°W&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Event type:&lt;/th&gt;&lt;td&gt;suspected industry-related&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;For more information, please visit &lt;a href="https://www.earthquakescanada.nrcan.gc.ca/"&gt;https://www.earthquakescanada.nrcan.gc.ca/&lt;/a&gt;&lt;/p&gt;</content>
+    <updated>2026-08-13T00:00:00Z</updated>
+    <category term="suspected industry-related" />
+    <georss:point>56.2548 -116.5788</georss:point>
+    <georss:elev>-1000</georss:elev>
+  </entry>
+<entry>
+    <title>2026-08-13 09:54:32 UTC: M3.16 192 km SW of Port Hardy, BC</title>
+    <id>https://www.earthquakescanada.nrcan.gc.ca/?eventid=20260813.0954001</id>
+    <content type="html">&lt;table&gt;&lt;tbody&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Date and time:&lt;/th&gt;&lt;td&gt;2026-08-13 09:54 UTC&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Magnitude:&lt;/th&gt;&lt;td&gt;3.2 Mw'&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Latitude:&lt;/th&gt;&lt;td&gt;49.563°N&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Longitude:&lt;/th&gt;&lt;td&gt;129.483°W&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Event type:&lt;/th&gt;&lt;td&gt;known earthquake&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;For more information, please visit &lt;a href="https://www.earthquakescanada.nrcan.gc.ca/"&gt;https://www.earthquakescanada.nrcan.gc.ca/&lt;/a&gt;&lt;/p&gt;</content>
+    <updated>2026-08-13T00:00:00Z</updated>
+    <category term="known earthquake" />
+    <georss:point>49.563 -129.4835</georss:point>
+    <georss:elev>-10000</georss:elev>
+  </entry>
+<entry>
+    <title>2026-08-13 06:39:03 UTC: M0.04 13 km SW of La Malbaie, QC</title>
+    <id>https://www.earthquakescanada.nrcan.gc.ca/?eventid=20260813.0639001</id>
+    <content type="html">&lt;table&gt;&lt;tbody&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Date and time:&lt;/th&gt;&lt;td&gt;2026-08-13 06:39 UTC&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Magnitude:&lt;/th&gt;&lt;td&gt;0.0 MwN&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Latitude:&lt;/th&gt;&lt;td&gt;47.552°N&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Longitude:&lt;/th&gt;&lt;td&gt;70.249°W&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th style="text-align:left; padding-right:10px;"&gt;Event type:&lt;/th&gt;&lt;td&gt;known earthquake&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;For more information, please visit &lt;a href="https://www.earthquakescanada.nrcan.gc.ca/"&gt;https://www.earthquakescanada.nrcan.gc.ca/&lt;/a&gt;&lt;/p&gt;</content>
+    <updated>2026-08-13T00:00:00Z</updated>
+    <category term="known earthquake" />
+    <georss:point>47.552 -70.2495</georss:point>
+    <georss:elev>-15050</georss:elev>
+  </entry>
+</feed>

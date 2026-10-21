@@ -1,0 +1,266 @@
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
+/**
+ * The Pro-MCP access decision, shared by the five entitlement gates listed below.
+ *
+ * Five call sites previously re-implemented the same four-clause check
+ * (`tier >= 1 && mcpAccess === true && validUntil >= now`, plus the null case):
+ *
+ *   - `api/internal/mcp-grant-context.ts` — renders the consent card
+ *   - `api/internal/mcp-grant-mint.ts`    — mints the signed grant
+ *   - `api/oauth/authorize-pro.ts`        — finishes authorization on the
+ *                                          api subdomain
+ *   - `api/mcp/auth.ts`                   — protects MCP-edge requests
+ *   - `server/gateway.ts`                 — re-checks signed internal MCP calls
+ *
+ * The decision lives here so the OAuth handshake cannot authorize an account
+ * that the MCP edge or gateway later rejects. Each caller keeps its own response
+ * envelope and telemetry (#5622, #5653).
+ *
+ * What this module owns, precisely: the ACCESS decision, for all five. The
+ * `ProMcpGateDenial` union is consumed as a rendered decision only by the three
+ * grant-flow callers (via `proMcpGateDenialResponse`). `api/mcp/auth.ts` and
+ * `server/gateway.ts` read the return value as pass/deny and render billing
+ * denials through their own helpers — which bottom out in the same
+ * `entitlement-check.ts::classifyBillingVerification`. That function, not this
+ * one, is the single source for billing classification.
+ *
+ * Coverage validity is shared with the premium resolver and gateway through
+ * `hasCurrentEntitlementCoverage`. Convex token issuance retains its own check
+ * because the Convex runtime does not import from `server/_shared`.
+ */
+
+import {
+  classifyBillingVerification,
+  unverifiableEntitlementDenial,
+  type BillingVerificationDenial,
+  type BillingVerificationInput,
+} from './entitlement-check';
+
+/** The entitlement shape this gate reads. */
+export type ProMcpEntitlement = {
+  features: { tier: number; mcpAccess?: boolean };
+  validUntil: number;
+  /**
+   * Some request-layer dependency types expose the marker as boolean even
+   * though only literal true has billing semantics. False is normalized to
+   * absence before classification below.
+   */
+  verificationUnavailable?: boolean;
+} & Omit<BillingVerificationInput, 'verificationUnavailable'>;
+
+export type ProMcpGateDenial =
+  /**
+   * The entitlement could not be verified or a renewal re-check is in flight.
+   * Provider-confirmed ended coverage is reclassified to `free_account` by
+   * `checkProMcpAccess`; callers must not flatten these retryable verification
+   * states into a terminal tier verdict (#5600).
+   */
+  | { kind: 'billing_verification'; denial: BillingVerificationDenial }
+  /** A verified no-row or well-formed tier-0 account eligible at the MCP call site. */
+  | { kind: 'free_account' }
+  /**
+   * A confirmed answer that does not grant Pro MCP access and is not eligible
+   * for the free-account allowance: a tiered plan without mcpAccess, an expired
+   * validUntil, or a malformed entitlement shape. This is the honest upsell.
+   */
+  | { kind: 'insufficient_tier' };
+
+/**
+ * Free-account eligibility is intentionally narrower than "not Pro".
+ *
+ * A configured entitlement backend returning no row is an authoritative free
+ * verdict. A stored row must be a complete, internally consistent tier-0
+ * shape. Expired/disabled paid rows, malformed values, and unconfigured lookup
+ * nulls are not free accounts and must remain fail-closed.
+ */
+function isConfirmedFreeMcpAccount(
+  entitlements: unknown,
+  opts?: { backendConfigured?: boolean },
+): boolean {
+  if (entitlements === null) return opts?.backendConfigured === true;
+  if (!entitlements || typeof entitlements !== 'object') return false;
+
+  const candidate = entitlements as {
+    planKey?: unknown;
+    features?: { tier?: unknown; mcpAccess?: unknown };
+    validUntil?: unknown;
+  };
+  // `planKey === 'free'` is required so the free verdict is POSITIVELY
+  // confirmed rather than inferred from the absence of Pro. Every shape that
+  // legitimately reaches here as a free account carries it — the no-row
+  // synthesis in convex/entitlements.ts (FREE_TIER_DEFAULTS) and the edge
+  // fallback in server/_shared/entitlement-check.ts both set it — so this
+  // narrows nothing real. What it excludes is a row whose stored `features`
+  // were overridden to a tier-0 shape while `planKey` still names a paid plan:
+  // that is a data fault, and a data fault should fail closed rather than land
+  // on an allowance by looking enough like a free account.
+  return candidate.planKey === 'free'
+    && candidate.features?.tier === 0
+    && candidate.features.mcpAccess === false
+    && typeof candidate.validUntil === 'number'
+    && Number.isFinite(candidate.validUntil);
+}
+
+/**
+ * Returns null when the caller may proceed, else the reason.
+ *
+ * Ordering is load-bearing: an entitlement that currently grants Pro MCP access
+ * is authorized even if it carries a renewal-verification marker for a stronger
+ * plan, mirroring `checkEntitlementDetailed`'s tier-fallback. Classifying the
+ * billing metadata first would 503 a user whose access is fine.
+ */
+export function checkProMcpAccess(
+  entitlements: ProMcpEntitlement | null | undefined,
+  now: number,
+  opts?: { backendConfigured?: boolean },
+): ProMcpGateDenial | null {
+  if (
+    entitlements &&
+    entitlements.features &&
+    entitlements.features.tier >= 1 &&
+    entitlements.features.mcpAccess === true &&
+    hasCurrentEntitlementCoverage(entitlements, now)
+  ) {
+    return null;
+  }
+
+  // An absent row is a verdict only when a lookup could actually run. With the
+  // entitlement backend unconfigured, getEntitlements returns null before
+  // attempting one — for everyone — and INSUFFICIENT_TIER then tells a paying
+  // subscriber to buy the plan they own, on the OAuth consent card that has no
+  // client-side entitlement snapshot to contradict it (#5619 item 3).
+  //
+  // Passed in rather than read from the environment so this stays a pure
+  // predicate: the gateway's internal-MCP re-check and this file's unit tests
+  // keep their deterministic behavior, and a caller opts in by supplying it.
+  // Omitting the option preserves the previous behavior exactly.
+  if (!entitlements && opts?.backendConfigured === false) {
+    return { kind: 'billing_verification', denial: unverifiableEntitlementDenial() };
+  }
+
+  // Spread, never a hand-copied field list: every member of
+  // BillingVerificationInput must reach the classifier by construction. That
+  // Pick has grown before (#5622 added two of its three members), and because
+  // its members are all OPTIONAL a literal that forgets a future one stays
+  // assignable — typecheck passes while the field is silently dropped and a
+  // retryable state renders as terminal. `premium-check.ts` (see the
+  // verificationUnavailable comment there) documents that exact regression
+  // already shipping once as #5600.
+  //
+  // Only the marker is overridden: ProMcpEntitlement widens it to `boolean` for
+  // request-layer dependency types, while BillingVerificationInput wants the
+  // literal `true`. False normalizes to absence, matching the truthiness test
+  // the classifier already applied. The annotation is load-bearing — it supplies
+  // the contextual type that stops that `true` from widening back to `boolean`.
+  // Spread members are exempt from excess-property checking, so the extra
+  // `features` / `validUntil` riding along are fine.
+  const billingInput: BillingVerificationInput | null | undefined = entitlements
+    ? {
+        ...entitlements,
+        verificationUnavailable: entitlements.verificationUnavailable === true ? true : undefined,
+      }
+    : entitlements;
+  const denial = classifyBillingVerification(billingInput);
+  if (denial) {
+    // #6716 — a provider-CONFIRMED lapse is a free account, not a wall.
+    //
+    // `retryable: false` is documented as true "ONLY for a lapse the provider
+    // confirmed", so it is precisely the signal that we have stopped trying to
+    // collect. Dunning happens earlier, while the row is `on_hold`, and
+    // `isCoveringAt` (convex/payments/subscriptionHelpers.ts) keeps those users
+    // on FULL Pro throughout — so by the time a lapse is confirmed the billing
+    // attempts are over and the account is simply a free one.
+    //
+    // Every RETRYABLE state stays a billing_verification denial: renewal
+    // pending/failed and an unverifiable read are statements about the
+    // VERIFICATION, not the subscription, and treating them as free would grant
+    // an allowance on a read we could not trust — the flattening #5600 is about.
+    if (!denial.retryable) return { kind: 'free_account' };
+    return { kind: 'billing_verification', denial };
+  }
+  if (isConfirmedFreeMcpAccount(entitlements, opts)) return { kind: 'free_account' };
+  return { kind: 'insufficient_tier' };
+}
+
+// ---------------------------------------------------------------------------
+// JSON rendering for the two `api/internal/mcp-grant-*` handshake endpoints
+// ---------------------------------------------------------------------------
+
+/**
+ * The ONE new error code the grant handshake gained in #5622.
+ *
+ * Why only one, when the shared contract has three retryable states: the two
+ * grant endpoints exist to keep the apex `/mcp-grant` SPA "on a single canonical
+ * contract" (see each file's header), and inside an OAuth handshake the only
+ * distinction the SPA can act on is retry-vs-don't. The precise reason still
+ * travels, in `X-Billing-Verification` and `error_description`, for monitoring
+ * and support — it just does not fork the SPA's control flow three ways.
+ *
+ * `checkProMcpAccess` normally reclassifies a provider-confirmed lapse to
+ * `free_account`, so the handshake callers do not render a denial for it. The
+ * non-retryable billing branch below remains defensive for an explicitly
+ * constructed legacy denial and preserves its machine-readable header.
+ */
+export const GRANT_VERIFICATION_UNAVAILABLE_CODE = 'TIER_VERIFICATION_UNAVAILABLE';
+
+const NO_STORE_JSON: Record<string, string> = {
+  'Content-Type': 'application/json',
+  'Cache-Control': 'no-store',
+};
+
+/** Preserve the consent page's retryable error vocabulary for session outages. */
+export function grantSessionVerificationUnavailableResponse(): Response {
+  const denial = unverifiableEntitlementDenial();
+  return jsonError(
+    'SERVICE_UNAVAILABLE',
+    'Session verification is temporarily unavailable. Please try again in a moment.',
+    503,
+    { 'Retry-After': String(denial.retryAfterSeconds) },
+  );
+}
+
+/**
+ * Renders a gate denial in the grant handshake's `{error, error_description}`
+ * vocabulary. Shared so `mcp-grant-mint.ts` and `mcp-grant-context.ts` cannot
+ * answer the same entitlement state two different ways — the SPA branches on
+ * `error`, so a divergence would show the user a different outcome depending on
+ * whether they had clicked Authorize yet.
+ */
+export function proMcpGateDenialResponse(gate: ProMcpGateDenial): Response {
+  if (gate.kind === 'insufficient_tier' || gate.kind === 'free_account') {
+    return jsonError('INSUFFICIENT_TIER', 'A WorldMonitor Pro subscription is required.', 403, {});
+  }
+
+  const { denial } = gate;
+  if (!denial.retryable) {
+    return jsonError(
+      'INSUFFICIENT_TIER',
+      'Your WorldMonitor Pro subscription is no longer active. Renew it, then start the connection again.',
+      403,
+      { 'X-Billing-Verification': denial.code },
+    );
+  }
+
+  return jsonError(
+    GRANT_VERIFICATION_UNAVAILABLE_CODE,
+    `Your Pro subscription could not be verified just now (${denial.code}). `
+    + 'This is temporary — retry in a moment.',
+    503,
+    {
+      'X-Billing-Verification': denial.code,
+      'Retry-After': String(denial.retryAfterSeconds),
+    },
+  );
+}
+
+function jsonError(
+  error: string,
+  error_description: string,
+  status: number,
+  extraHeaders: Record<string, string>,
+): Response {
+  return new Response(JSON.stringify({ error, error_description }), {
+    status,
+    headers: { ...NO_STORE_JSON, ...extraHeaders },
+  });
+}

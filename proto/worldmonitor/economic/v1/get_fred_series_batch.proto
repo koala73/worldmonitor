@@ -7,10 +7,10 @@ import "worldmonitor/economic/v1/economic_data.proto";
 
 // GetFredSeriesBatchRequest looks up multiple FRED series in a single call.
 message GetFredSeriesBatchRequest {
-  // FRED series IDs (e.g., "WALCL", "FEDFUNDS"). Max 10.
+  // FRED series IDs (e.g., "WALCL", "FEDFUNDS"). Max 20.
   repeated string series_ids = 1 [
     (buf.validate.field).repeated.min_items = 1,
-    (buf.validate.field).repeated.max_items = 10
+    (buf.validate.field).repeated.max_items = 20
   ];
   // Maximum number of observations per series. Defaults to 120.
   int32 limit = 2;

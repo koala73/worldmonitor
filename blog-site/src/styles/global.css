@@ -75,19 +75,19 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   font-weight: 700;
   font-size: 0.875rem;
   letter-spacing: -0.01em;
+}
+
+.site-header .logo-mark {
+  display: flex;
+  color: inherit;
   transition: opacity 0.2s;
 }
-.site-header .logo:hover { opacity: 0.8; color: var(--wm-text); }
+.site-header .logo-mark:hover { opacity: 0.8; }
 
 .site-header .logo .logo-icon-img {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-}
-
-.site-header .logo .logo-text {
-  display: flex;
-  flex-direction: column;
 }
 
 .site-header .logo .logo-name {
@@ -96,17 +96,10 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   font-size: 0.8rem;
   letter-spacing: 0.02em;
   line-height: 1;
+  color: var(--wm-text);
+  transition: opacity 0.2s;
 }
-
-.site-header .logo .logo-sub {
-  font-family: var(--font-mono);
-  font-size: 0.5625rem;
-  color: var(--wm-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  line-height: 1;
-  margin-top: 3px;
-}
+.site-header .logo .logo-name:hover { opacity: 0.8; }
 
 .site-header .nav-links {
   display: flex;
@@ -165,11 +158,6 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   border-radius: 50%;
 }
 
-.site-footer .footer-brand-text {
-  display: flex;
-  flex-direction: column;
-}
-
 .site-footer .footer-name {
   font-family: var(--font-display);
   font-weight: 700;
@@ -178,16 +166,9 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   letter-spacing: 0.02em;
 }
 
-.site-footer .footer-sub {
-  font-family: var(--font-mono);
-  font-size: 0.5625rem;
-  color: var(--wm-muted);
-  text-transform: uppercase;
-  letter-spacing: 2px;
-}
-
 .site-footer .footer-links {
   display: flex;
+  flex-wrap: wrap;
   gap: 1.25rem;
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -328,6 +309,17 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   font-family: var(--font-mono);
 }
 
+.post-card.pinned {
+  border-color: var(--wm-green);
+}
+
+.post-card .tag .pin {
+  border: 1px solid var(--wm-green);
+  border-radius: 3px;
+  padding: 0.1rem 0.4rem;
+  margin-right: 0.5rem;
+}
+
 .post-card h2 {
   font-family: var(--font-display);
   font-size: 1.125rem;
@@ -336,6 +328,11 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   margin-bottom: 0.625rem;
   line-height: 1.35;
   letter-spacing: -0.01em;
+}
+
+.post-card:not(.pinned) h2 {
+  /* Replaces the former always-present .tag top spacer after audience removal (#7377). */
+  padding-top: 1.25rem;
 }
 
 .post-card p {
@@ -369,6 +366,13 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   line-height: 1.15;
   margin-bottom: 1rem;
   color: var(--wm-text);
+}
+
+.article-dek {
+  margin: -0.25rem 0 2rem;
+  color: var(--wm-muted);
+  font-size: clamp(1.05rem, 2vw, 1.2rem);
+  line-height: 1.65;
 }
 
 .prose h2 {
@@ -508,12 +512,76 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   font-family: var(--font-mono);
   margin-bottom: 2rem;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  line-height: 1.6;
 }
 
 .article-content {
   padding: 0 2rem 3rem;
+}
+
+/* ─── Related Posts ─── */
+.related-posts {
+  max-width: var(--max-width);
+  margin: 0 auto 3rem;
+  padding: 0 2rem;
+}
+
+.related-posts h2 {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--wm-text);
+  margin-bottom: 1rem;
+}
+
+.related-post-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.related-post-card {
+  display: flex;
+  min-height: 190px;
+  flex-direction: column;
+  border: 1px solid var(--wm-border);
+  border-radius: var(--radius);
+  background: var(--wm-card);
+  padding: 1rem;
+  color: inherit;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.related-post-card:hover {
+  border-color: var(--wm-green);
+  background: #151515;
+}
+
+.related-post-card span {
+  color: var(--wm-green);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.55rem;
+}
+
+.related-post-card h3 {
+  color: var(--wm-text);
+  font-family: var(--font-display);
+  font-size: 0.94rem;
+  line-height: 1.35;
+  margin-bottom: 0.5rem;
+}
+
+.related-post-card p {
+  color: var(--wm-muted);
+  font-size: 0.76rem;
+  line-height: 1.55;
 }
 
 /* ─── CTA Banner ─── */
@@ -554,6 +622,13 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   font-size: 0.9rem;
 }
 
+.cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
 .cta-banner a.btn {
   display: inline-block;
   background: var(--wm-green);
@@ -573,6 +648,17 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   color: var(--wm-bg);
 }
 
+.cta-banner a.btn-secondary {
+  background: transparent;
+  color: var(--wm-green);
+  border: 1px solid var(--wm-green);
+}
+
+.cta-banner a.btn-secondary:hover {
+  background: rgba(74, 222, 128, 0.1);
+  color: #86efac;
+}
+
 /* ─── Author Bio ─── */
 .author-bio {
   display: flex;
@@ -584,6 +670,11 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 10px;
+}
+
+.author-bio--header {
+  margin: 0 0 2rem;
+  max-width: none;
 }
 
 .author-avatar {
@@ -599,7 +690,7 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
 .author-name {
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--text);
+  color: var(--wm-text);
   margin-bottom: 0.3rem;
 }
 
@@ -612,7 +703,7 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
 
 .author-desc {
   font-size: 0.82rem;
-  color: var(--text-dim);
+  color: var(--wm-muted);
   line-height: 1.5;
 }
 
@@ -625,6 +716,7 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   .site-footer .footer-inner { flex-direction: column; text-align: center; }
   .site-footer .footer-links { justify-content: center; }
   .article-header { padding-top: 5rem; }
+  .related-post-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 480px) {
@@ -633,4 +725,7 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   .post-card { padding: 1.25rem; }
   .article-content { padding: 0 1.25rem 2rem; }
   .article-header { padding-left: 1.25rem; padding-right: 1.25rem; }
+  .related-posts { padding: 0 1.25rem; }
+  .cta-actions { align-items: stretch; flex-direction: column; }
+  .cta-banner a.btn { width: 100%; }
 }

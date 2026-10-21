@@ -1,0 +1,169 @@
+---
+title: "MCP 快速入门"
+description: "大约一分钟把 Claude、ChatGPT、Codex 或 Cursor 接入 World Monitor：粘贴一个地址，用 World Monitor 账户登录，然后直接提问。无需 API 密钥。"
+---
+
+World Monitor 以连接器的形式接入你的 AI 助手。粘贴一个地址并用 World Monitor 账户登录后，助手就能基于实时数据回答问题，覆盖以下领域：{/* mcp-domains:start */}市场、大宗商品与宏观经济；能源；冲突、国家风险、制裁、网络威胁与咽喉要道；海运、航空与供应链；气候与自然灾害；健康信号；流离失所与人道危机；AI 简报、预测与情报历史；关税与贸易政策{/* mcp-domains:end */}。
+
+<Info>
+**要粘贴的地址：** `https://worldmonitor.app/mcp`
+
+无需复制 API 密钥，也无需安装任何东西。使用你在 worldmonitor.app 上的同一邮箱登录即可。
+</Info>
+
+## Claude
+
+适用于 Claude 桌面应用、claude.ai 与移动应用。连接器只需添加一次，你账户下的所有 Claude 应用都能使用。
+
+<Steps>
+  <Step title="打开 Add custom connector">
+    在 Claude 中打开 **Customize → Connectors**，点击 **+ Add**，再选择 **Add custom connector**。
+
+    <Frame>
+      <img src="/images/mcp/claude-add-menu.webp" alt="Claude 的 Customize 页面 Connectors 标签，+ Add 菜单中显示 Add custom connector" />
+    </Frame>
+  </Step>
+  <Step title="粘贴地址">
+    名称填 `World Monitor`，粘贴 `https://worldmonitor.app/mcp`，点击 **Continue**。Claude 会在下一屏自动检测正确的登录设置，直接点击 **Add** 即可。
+
+    <Frame>
+      <img width="520" src="/images/mcp/claude-add-dialog.webp" alt="Add custom connector 对话框，已填写名称 World Monitor 和 URL https://worldmonitor.app/mcp" />
+    </Frame>
+  </Step>
+  <Step title="登录 World Monitor">
+    会弹出 World Monitor 窗口。点击 **Sign in with WorldMonitor Pro**，用邮箱验证码或通行密钥登录，然后点击 **Authorize**。
+
+    <Columns cols={2}>
+      <Frame>
+        <img src="/images/mcp/consent.webp" alt="World Monitor 窗口：Claude 请求访问，带有 Sign in with WorldMonitor Pro 按钮" />
+      </Frame>
+      <Frame>
+        <img src="/images/mcp/authorize.webp" alt="登录后的 World Monitor 窗口，显示已登录账户和 Authorize 按钮" />
+      </Frame>
+    </Columns>
+  </Step>
+  <Step title="在对话中开启">
+    新建对话，点击 **+**，打开 **Connectors**，确认 World Monitor 已开启。
+
+    <Frame>
+      <img width="474" src="/images/mcp/claude-enable-in-chat.webp" alt="Claude 对话的 + 菜单中打开 Connectors，World Monitor 开关已开启" />
+    </Frame>
+  </Step>
+  <Step title="提问">
+    用自然语言提问。Claude 第一次使用每个 World Monitor 工具时会请求许可，选择 **Always allow** 即可不再询问。
+
+    <Frame>
+      <img src="/images/mcp/claude-approve-tool.webp" alt="Claude 请求使用 World Monitor 的 get_market_data，带有 Deny、Always allow 与 Allow once 按钮" />
+    </Frame>
+    <Frame>
+      <img src="/images/mcp/claude-answer.webp" alt="Claude 基于 World Monitor 数据总结油价、黄金、美股与亚洲指数走势的回答" />
+    </Frame>
+  </Step>
+</Steps>
+
+<Note>
+在 Claude Team 与 Enterprise 上，需先由所有者在 **Organization settings → Connectors** 中添加连接器，成员再在 **Customize → Connectors** 中点击它旁边的 **Connect**。Claude 免费版可添加一个自定义连接器。
+</Note>
+
+## ChatGPT
+
+<Steps>
+  <Step title="添加服务器">
+    打开 **Plugins**，点击 **+**，选择 **Add custom MCP server**。名称填 `World Monitor`，粘贴 `https://worldmonitor.app/mcp`，认证方式选择 **OAuth**，然后确认。
+  </Step>
+  <Step title="登录并提问">
+    在弹出的窗口中用 World Monitor 账户登录，然后在对话的 **+** 菜单中选择 World Monitor。
+  </Step>
+</Steps>
+
+ChatGPT 的菜单位置会随版本变化，部分套餐或工作区也会关闭自定义服务器。如果找不到该入口，请参阅 [OpenAI 的自定义 MCP 服务器指南](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt)。
+
+## Codex
+
+运行两条命令，第二条会打开浏览器让你登录。
+
+```bash
+codex mcp add worldmonitor --url https://worldmonitor.app/mcp
+codex mcp login worldmonitor
+```
+
+Codex 应用、CLI 与 IDE 扩展共用这份配置。
+
+## Claude Code
+
+```bash
+claude mcp add --transport http worldmonitor https://worldmonitor.app/mcp
+```
+
+然后在 Claude Code 中输入 `/mcp`，选择 `worldmonitor`，再选择 **Authenticate**。
+
+## Cursor
+
+一键[把 World Monitor 添加到 Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=worldmonitor&config=eyJ1cmwiOiJodHRwczovL3dvcmxkbW9uaXRvci5hcHAvbWNwIn0=)，或在 `~/.cursor/mcp.json` 中写入：
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": { "url": "https://worldmonitor.app/mcp" }
+  }
+}
+```
+
+Cursor 会在 **Settings → MCP** 中的服务器旁显示 **Needs login**，点击即可登录。
+
+## 其他应用
+
+Perplexity、Mistral Le Chat、Grok、Microsoft 365 Copilot、VS Code、Gemini CLI 以及大多数支持 MCP 的助手，都可以把同一地址添加为自定义连接器或远程服务器。各应用的说明见[客户端配置](/zh/mcp-overview#客户端配置)。
+
+## 可以试试这些问题
+
+- _用今天的 World Monitor 数据，为我们在利雅得的员工起草一份注意义务（duty-of-care）简报。_
+- _比较美国、英国和澳大利亚对海湾国家的旅行警告，哪一个最近有变化？_
+- _霍尔木兹海峡现在有没有影响航班或航运的情况？_
+- _给我一份委内瑞拉的国家简报，并列出未来两周的主要风险。_
+- _今天油价、黄金和主要股指走势如何？原因是什么？_
+
+助手会自行挑选合适的 World Monitor 工具。回答会附带时间戳，方便你判断数据有多新。
+
+## 你的套餐包含什么
+
+| 套餐 | 助手可使用的内容 | 每日额度 |
+| --- | --- | --- |
+| 免费账户 | 来源列表与少量缓存数据集 | 5 次调用 |
+| Pro | 全部工具 | 50 次调用 |
+| Pro Business | 全部工具 | 250 次调用 |
+| API Starter、API Business | 全部工具，与 REST 额度共享 | 1,000 或 10,000 单位（多数调用消耗 1–2） |
+| Enterprise | 全部工具 | 25,000 次 |
+
+一次调用指助手向 World Monitor 发出的一次请求。额度在 UTC 00:00 重置。可在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 升级。完整限制见 [MCP Server 参考](/zh/mcp-overview)。
+
+## 遇到问题
+
+- **登录窗口没有弹出。** 删除连接器后重新添加，再点击 **Connect**。弹窗拦截器可能会阻止窗口。
+- **Claude 显示 "Connection has expired"。** 30 天未使用后登录会失效。打开 **Customize → Connectors → World Monitor** 并点击 **Reconnect**。
+- **通行密钥提示后 World Monitor 窗口显示登录已取消。** 通行密钥步骤被取消、超时，或被密码管理器关闭。点击 **Sign in** 重试，或改用邮箱验证码。
+- **没收到验证码邮件。** 检查垃圾邮件或隔离区，企业邮件过滤有时会拦下它。
+- **助手提示需要订阅。** 你的账户是免费套餐。升级后再问一次即可，无需重新连接。新套餐通常一分钟内生效，最迟 15 分钟。
+- **助手没有使用 World Monitor。** 确认该对话中连接器已开启，并在问题中提到 World Monitor。
+
+## 面向开发者：脚本与 API 密钥
+
+脚本和服务器可以用 API Starter 及以上套餐的 `wm_…` 密钥调用同一端点。在[控制台](https://www.worldmonitor.app/dashboard)的 **Settings → API Keys** 中创建。
+
+```bash
+export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # 替换为你的 API 密钥
+
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_market_data","arguments":{}}}'
+```
+
+请把密钥放在 `X-WorldMonitor-Key` 中，而不是作为 bearer 令牌；以 bearer 方式发送密钥会返回 `401 invalid_token`。如果你持有来自 `/api/oauth/token` 的 OAuth 访问令牌，请改用 `Authorization: Bearer $TOKEN`。
+
+面向开发者的后续阅读：
+
+- **[MCP Server 参考](/zh/mcp-overview)**：认证、`mcp-remote` 桥接、协议细节、响应字段与错误。
+- **[MCP 工具参考](/zh/mcp-tools-reference)**：每个工具的参数、新鲜度与示例。
+- **[JMESPath 指南](/zh/mcp-jmespath)**：在响应到达模型前于服务端裁剪大型响应。
+- **[命令行客户端](/zh/cli)** 与 **[SDK](/zh/sdks)**：在终端、Python、Ruby 或 Go 中使用同样的工具。

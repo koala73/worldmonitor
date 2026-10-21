@@ -3,49 +3,45 @@ import { t } from '@/services/i18n';
 import type { Monitor, NewsItem } from '@/types';
 import { MONITOR_COLORS } from '@/config';
 import { generateId, formatTime, getCSSColor } from '@/utils';
-import { sanitizeUrl } from '@/utils/sanitize';
-import { h, replaceChildren, clearChildren } from '@/utils/dom-utils';
+import { validateUrl } from '@/utils/sanitize';
+import { h, replaceChildren } from '@/utils/dom-utils';
 
 export class MonitorPanel extends Panel {
   private monitors: Monitor[] = [];
   private onMonitorsChange?: (monitors: Monitor[]) => void;
+  private readonly input = h('input', {
+    type: 'text',
+    className: 'monitor-input',
+    id: 'monitorKeywords',
+    placeholder: t('components.monitor.placeholder'),
+    onKeypress: (e: Event) => { if ((e as KeyboardEvent).key === 'Enter') this.addMonitor(); },
+  }) as HTMLInputElement;
+  private readonly monitorsList = h('div', { id: 'monitorsList' });
+  private readonly monitorsResults = h('div', { id: 'monitorsResults' });
 
   constructor(initialMonitors: Monitor[] = []) {
-    super({ id: 'monitors', title: t('panels.monitors') });
+    super({ id: 'monitors', title: t('panels.monitors'), infoTooltip: t('components.monitors.infoTooltip') });
     this.monitors = initialMonitors;
     this.renderInput();
   }
 
   private renderInput(): void {
-    clearChildren(this.content);
-
-    const input = h('input', {
-      type: 'text',
-      className: 'monitor-input',
-      id: 'monitorKeywords',
-      placeholder: t('components.monitor.placeholder'),
-      onKeypress: (e: Event) => { if ((e as KeyboardEvent).key === 'Enter') this.addMonitor(); },
-    });
-
     const inputContainer = h('div', { className: 'monitor-input-container' },
-      input,
+      this.input,
       h('button', { className: 'monitor-add-btn', id: 'addMonitorBtn', onClick: () => this.addMonitor() },
         t('components.monitor.add'),
       ),
     );
 
-    const monitorsList = h('div', { id: 'monitorsList' });
-    const monitorsResults = h('div', { id: 'monitorsResults' });
-
-    this.content.appendChild(inputContainer);
-    this.content.appendChild(monitorsList);
-    this.content.appendChild(monitorsResults);
+    // Route through the sanctioned helper (#6557): the monitor UI is the
+    // panel's authoritative content — atomic replace with error-state clear.
+    this.setContentNodes(inputContainer, this.monitorsList, this.monitorsResults);
 
     this.renderMonitorsList();
   }
 
   private addMonitor(): void {
-    const input = document.getElementById('monitorKeywords') as HTMLInputElement;
+    const input = this.input;
     const keywords = input.value.trim();
 
     if (!keywords) return;
@@ -69,10 +65,7 @@ export class MonitorPanel extends Panel {
   }
 
   private renderMonitorsList(): void {
-    const list = document.getElementById('monitorsList');
-    if (!list) return;
-
-    replaceChildren(list,
+    replaceChildren(this.monitorsList,
       ...this.monitors.map((m) =>
         h('span', { className: 'monitor-tag' },
           h('span', { className: 'monitor-tag-color', style: { background: m.color } }),
@@ -87,12 +80,11 @@ export class MonitorPanel extends Panel {
   }
 
   public renderResults(news: NewsItem[]): void {
-    const results = document.getElementById('monitorsResults');
-    if (!results) return;
+    const results = this.monitorsResults;
 
     if (this.monitors.length === 0) {
       replaceChildren(results,
-        h('div', { style: 'color: var(--text-dim); font-size: 10px; margin-top: 12px;' },
+        h('div', { style: 'color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-top: 12px;' },
           t('components.monitor.addKeywords'),
         ),
       );
@@ -127,7 +119,7 @@ export class MonitorPanel extends Panel {
 
     if (unique.length === 0) {
       replaceChildren(results,
-        h('div', { style: 'color: var(--text-dim); font-size: 10px; margin-top: 12px;' },
+        h('div', { style: 'color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-top: 12px;' },
           t('components.monitor.noMatches', { count: String(news.length) }),
         ),
       );
@@ -139,7 +131,7 @@ export class MonitorPanel extends Panel {
       : `${unique.length} ${unique.length === 1 ? t('components.monitor.match') : t('components.monitor.matches')}`;
 
     replaceChildren(results,
-      h('div', { style: 'color: var(--text-dim); font-size: 10px; margin: 12px 0 8px;' }, countText),
+      h('div', { style: 'color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin: 12px 0 8px;' }, countText),
       ...unique.slice(0, 10).map((item) =>
         h('div', {
           className: 'item',
@@ -148,7 +140,7 @@ export class MonitorPanel extends Panel {
           h('div', { className: 'item-source' }, item.source),
           h('a', {
             className: 'item-title',
-            href: sanitizeUrl(item.link),
+            href: validateUrl(item.link),
             target: '_blank',
             rel: 'noopener',
           }, item.title),

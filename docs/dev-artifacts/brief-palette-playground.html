@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Brief palette playground — WorldMonitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    background: #111;
+    color: #e8e8e8;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  body {
+    padding: 40px 24px 120px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+  .pg-title {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .pg-sub {
+    color: #888;
+    margin-bottom: 40px;
+    max-width: 800px;
+  }
+  .option {
+    margin-bottom: 56px;
+  }
+  .option-header {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #2a2a2a;
+    padding-bottom: 10px;
+  }
+  .option-name {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #e8e8e8;
+  }
+  .option-desc {
+    color: #aaa;
+    font-size: 12px;
+  }
+  .swatches {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+  }
+  .swatch {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 3px;
+  }
+  .swatch-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .swatch-label { color: #888; }
+  .swatch-hex { color: #e8e8e8; font-weight: 600; }
+
+  /* Side-by-side page preview */
+  .pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .page-frame {
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    position: relative;
+    border-radius: 4px;
+    font-family: 'Source Serif 4', Georgia, serif;
+  }
+  .page {
+    width: 1200px;
+    height: 675px;
+    transform: scale(0.6);
+    transform-origin: top left;
+    padding: 60px 72px 90px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  /* Scale math for responsiveness — recompute via CSS vars */
+  .page-frame { position: relative; }
+  .page { position: absolute; left: 0; top: 0; }
+
+  .running-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 2vh;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .running-head .left { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .page h2 {
+    font-family: 'Playfair Display', serif;
+    font-weight: 900;
+    font-size: 68px;
+    line-height: 0.98;
+    letter-spacing: -0.02em;
+    margin-top: 64px;
+    margin-bottom: 32px;
+    max-width: 18ch;
+  }
+  .page blockquote {
+    font-family: 'Source Serif 4', serif;
+    font-style: italic;
+    font-size: 22px;
+    line-height: 1.38;
+    max-width: 32ch;
+    margin-bottom: 28px;
+    padding-left: 18px;
+    border-left: 3px solid var(--accent);
+  }
+  .page .rule {
+    border: none;
+    height: 2px;
+    width: 80px;
+    margin-top: 32px;
+  }
+  .page .footer-caption {
+    position: absolute;
+    bottom: 36px;
+    left: 72px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+  .page .page-number {
+    position: absolute;
+    top: 40px;
+    right: 36px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    opacity: 0.55;
+  }
+
+  /* ── Option-specific CSS vars applied via wrapping class ── */
+
+  /* Current (sienna rust — today in prod) */
+  .opt-current .light {
+    --bg: #f1e9d8;
+    --ink-text: #1a1612;
+    --accent: #8b3a1f;
+    --accent-muted: #8b3a1f;
+  }
+  .opt-current .dark {
+    --bg: #0a0a0a;
+    --ink-text: #f2ede4;
+    --accent: #8b3a1f;
+    --accent-muted: #8b3a1f;
+  }
+
+  /* Option A — pure brand mint */
+  .opt-a .light {
+    --bg: #fafafa;
+    --ink-text: #0a0a0a;
+    --accent: #4ade80;
+    --accent-muted: #4ade80;
+  }
+  .opt-a .dark {
+    --bg: #0a0a0a;
+    --ink-text: #f2ede4;
+    --accent: #4ade80;
+    --accent-muted: #4ade80;
+  }
+
+  /* Option B — two-strength mint (muted on light, bright on dark) */
+  .opt-b .light {
+    --bg: #fafafa;
+    --ink-text: #0a0a0a;
+    --accent: #1f7a3f;
+    --accent-muted: #1f7a3f;
+  }
+  .opt-b .dark {
+    --bg: #0a0a0a;
+    --ink-text: #f2ede4;
+    --accent: #4ade80;
+    --accent-muted: #4ade80;
+  }
+
+  /* Option C — warm paper + editorial sage */
+  .opt-c .light {
+    --bg: #f5f5f3;
+    --ink-text: #1a1a1a;
+    --accent: #5d8b6a;
+    --accent-muted: #5d8b6a;
+  }
+  .opt-c .dark {
+    --bg: #0a0a0a;
+    --ink-text: #e8e8e8;
+    --accent: #7fc48f;
+    --accent-muted: #7fc48f;
+  }
+
+  /* Option D — monochrome, accent only for ekg / source */
+  .opt-d .light {
+    --bg: #fafafa;
+    --ink-text: #0a0a0a;
+    --accent: #0a0a0a;     /* no chromatic accent on rules */
+    --accent-muted: #4ade80; /* mint only on ekg dot + source line */
+  }
+  .opt-d .dark {
+    --bg: #0a0a0a;
+    --ink-text: #f2ede4;
+    --accent: #f2ede4;
+    --accent-muted: #4ade80;
+  }
+
+  /* Apply the vars to each inner page */
+  .page {
+    background: var(--bg);
+    color: var(--ink-text);
+  }
+  .page .running-head .left { color: var(--accent); }
+  .page blockquote { border-left-color: var(--accent); }
+  .page .label { color: var(--accent); margin-bottom: 24px; font-family: 'IBM Plex Mono', monospace; font-size: 14px; letter-spacing: 0.3em; text-transform: uppercase; }
+  .page .rule { background: var(--accent); }
+  .page .source { color: var(--accent-muted); }
+  .page .wm-ekg-dot { fill: var(--accent-muted); }
+  .page .running-head .left .wm-logo,
+  .page .footer-caption { color: var(--accent); }
+
+  .wm-logo { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; display: inline-block; vertical-align: middle; }
+  .wm-logo .wm-ekg { stroke-width: 2.4; }
+  .wm-logo .wm-ekg-dot { stroke: none; }
+
+  /* Tags for the story preview */
+  .tag-row { display: flex; gap: 10px; margin-bottom: 28px; }
+  .tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border: 1px solid currentColor;
+    opacity: 0.82;
+  }
+  .tag.crit { background: currentColor; }
+  .tag.crit { color: var(--bg); }  /* contrast-invert */
+  .dark .tag.crit, .light .tag.crit { position: relative; }
+  .dark .tag.crit::before, .light .tag.crit::before { content: attr(data-label); position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+
+  /* Story page body */
+  .story-h3 {
+    font-family: 'Playfair Display', serif;
+    font-weight: 900;
+    font-size: 42px;
+    line-height: 0.98;
+    letter-spacing: -0.02em;
+    margin-bottom: 24px;
+    max-width: 18ch;
+  }
+  .story-desc {
+    font-family: 'Source Serif 4', serif;
+    font-size: 15px;
+    line-height: 1.45;
+    max-width: 40ch;
+    margin-bottom: 22px;
+    opacity: 0.9;
+  }
+  .source {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    opacity: 0.8;
+  }
+
+  .pair-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: #888;
+    padding: 4px 0 6px;
+  }
+</style>
+</head>
+<body>
+  <svg aria-hidden="true" style="display:none;position:absolute;width:0;height:0" focusable="false">
+    <defs>
+      <symbol id="wm-logo-core" viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r="28"/>
+        <ellipse cx="32" cy="32" rx="5" ry="28"/>
+        <ellipse cx="32" cy="32" rx="14" ry="28"/>
+        <ellipse cx="32" cy="32" rx="22" ry="28"/>
+        <ellipse cx="32" cy="32" rx="28" ry="5"/>
+        <ellipse cx="32" cy="32" rx="28" ry="14"/>
+        <path class="wm-ekg" d="M 6 32 L 20 32 L 24 24 L 30 40 L 36 22 L 42 38 L 46 32 L 56 32"/>
+        <circle class="wm-ekg-dot" cx="57" cy="32" r="1.8"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div class="pg-title">Brief palette playground</div>
+  <div class="pg-sub">
+    Four options for the even/odd page palette on the WorldMonitor Brief magazine.
+    Each shows one light page (digest) and one dark page (story cover) so you can judge
+    the inversion balance. Current prod is shown first for reference.
+  </div>
+
+  <!-- ─────────────────────────── Option: CURRENT ─────────────────────────── -->
+  <section class="option opt-current">
+    <div class="option-header">
+      <div class="option-name">Current (prod today)</div>
+      <div class="option-desc">cream + sienna rust — doesn't match /pro or dashboard brand</div>
+    </div>
+    <div class="swatches">
+      <div class="swatch"><span class="swatch-dot" style="background:#0a0a0a"></span><span class="swatch-label">ink</span><span class="swatch-hex">#0a0a0a</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#f1e9d8"></span><span class="swatch-label">cream</span><span class="swatch-hex">#f1e9d8</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#f2ede4"></span><span class="swatch-label">bone</span><span class="swatch-hex">#f2ede4</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#8b3a1f"></span><span class="swatch-label">accent (sienna)</span><span class="swatch-hex">#8b3a1f</span></div>
+    </div>
+    <div class="pair">
+      <div>
+        <div class="pair-label">Light page · digest 03</div>
+        <div class="page-frame" style="height:405px">
+          <div class="page light">
+            <div class="running-head">
+              <span class="left"><svg class="wm-logo" width="22" height="22" viewBox="0 0 64 64"><use href="#wm-logo-core"/></svg> · WorldMonitor Brief · 18.04 ·</span>
+              <span>Digest / 03 — On The Desk</span>
+            </div>
+            <div class="label">Today's Threads</div>
+            <h2>What the desk is watching.</h2>
+            <blockquote>Iran's threats over the Strait of Hormuz dominate today, alongside the widening Gaza humanitarian crisis and South Sudan famine warnings.</blockquote>
+            <hr class="rule">
+            <div class="page-number">03 / 07</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pair-label">Dark page · story 01</div>
+        <div class="page-frame" style="height:405px">
+          <div class="page dark">
+            <div class="tag-row">
+              <span class="tag">Conflict</span>
+              <span class="tag">IR</span>
+              <span class="tag crit" data-label="Critical">Critical</span>
+            </div>
+            <h3 class="story-h3">Iran closes Strait of Hormuz as US blockade escalates</h3>
+            <div class="story-desc">Iran's Revolutionary Guard navy enforced a closure order on all commercial traffic passing east-west through the Persian Gulf chokepoint on Tuesday afternoon.</div>
+            <div class="source">Source · Guardian</div>
+            <div class="page-number">05 / 07</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── Option A ─────────────────────────── -->
+  <section class="option opt-a">
+    <div class="option-header">
+      <div class="option-name">Option A · pure brand mint</div>
+      <div class="option-desc">#4ade80 accent at one strength · unified crisp white paper</div>
+    </div>
+    <div class="swatches">
+      <div class="swatch"><span class="swatch-dot" style="background:#0a0a0a"></span><span class="swatch-label">ink</span><span class="swatch-hex">#0a0a0a</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#fafafa"></span><span class="swatch-label">paper</span><span class="swatch-hex">#fafafa</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#f2ede4"></span><span class="swatch-label">bone</span><span class="swatch-hex">#f2ede4</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#4ade80"></span><span class="swatch-label">mint</span><span class="swatch-hex">#4ade80</span></div>
+    </div>
+    <div class="pair">
+      <div>
+        <div class="pair-label">Light page · digest 03</div>
+        <div class="page-frame" style="height:405px">
+          <div class="page light">
+            <div class="running-head">
+              <span class="left"><svg class="wm-logo" width="22" height="22" viewBox="0 0 64 64"><use href="#wm-logo-core"/></svg> · WorldMonitor Brief · 18.04 ·</span>
+              <span>Digest / 03 — On The Desk</span>
+            </div>
+            <div class="label">Today's Threads</div>
+            <h2>What the desk is watching.</h2>
+            <blockquote>Iran's threats over the Strait of Hormuz dominate today, alongside the widening Gaza humanitarian crisis and South Sudan famine warnings.</blockquote>
+            <hr class="rule">
+            <div class="page-number">03 / 07</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pair-label">Dark page · story 01</div>
+        <div class="page-frame" style="height:405px">
+          <div class="page dark">
+            <div class="tag-row">
+              <span class="tag">Conflict</span>
+              <span class="tag">IR</span>
+              <span class="tag crit" data-label="Critical">Critical</span>
+            </div>
+            <h3 class="story-h3">Iran closes Strait of Hormuz as US blockade escalates</h3>
+            <div class="story-desc">Iran's Revolutionary Guard navy enforced a closure order on all commercial traffic passing east-west through the Persian Gulf chokepoint on Tuesday afternoon.</div>
+            <div class="source">Source · Guardian</div>
+            <div class="page-number">05 / 07</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── Option B (recommended) ─────────────────────────── -->
+  <section class="option opt-b">
+    <div class="option-header">
+      <div class="option-name">Option B · two-strength mint <span style="color:#4ade80;margin-left:8px">★ recommended</span></div>
+      <div class="option-desc">muted mint #1f7a3f on light (editorial) · bright #4ade80 on dark (brand) · same paper</div>
+    </div>
+    <div class="swatches">
+      <div class="swatch"><span class="swatch-dot" style="background:#0a0a0a"></span><span class="swatch-label">ink</span><span class="swatch-hex">#0a0a0a</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#fafafa"></span><span class="swatch-label">paper</span><span class="swatch-hex">#fafafa</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#4ade80"></span><span class="swatch-label">mint (dark)</span><span class="swatch-hex">#4ade80</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#1f7a3f"></span><span class="swatch-label">mint (light)</span><span class="swatch-hex">#1f7a3f</span></div>
+    </div>
+    <div class="pair">
+      <div>
+        <div class="pair-label">Light page · digest 03</div>
+        <div class="page-frame" style="height:405px">
+          <div class="page light">
+            <div class="running-head">
+              <span class="left"><svg class="wm-logo" width="22" height="22" viewBox="0 0 64 64"><use href="#wm-logo-core"/></svg> · WorldMonitor Brief · 18.04 ·</span>
+              <span>Digest / 03 — On The Desk</span>
+            </div>
+            <div class="label">Today's Threads</div>
+            <h2>What the desk is watching.</h2>
+            <blockquote>Iran's threats over the Strait of Hormuz dominate today, alongside the widening Gaza humanitarian crisis and South Sudan famine warnings.</blockquote>
+            <hr class="rule">
+            <div class="page-number">03 / 07</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pair-label">Dark page · story 01</div>
+        <div class="page-frame" style="height:405px">
+          <div class="page dark">
+            <div class="tag-row">
+              <span class="tag">Conflict</span>
+              <span class="tag">IR</span>
+              <span class="tag crit" data-label="Critical">Critical</span>
+            </div>
+            <h3 class="story-h3">Iran closes Strait of Hormuz as US blockade escalates</h3>
+            <div class="story-desc">Iran's Revolutionary Guard navy enforced a closure order on all commercial traffic passing east-west through the Persian Gulf chokepoint on Tuesday afternoon.</div>
+            <div class="source">Source · Guardian</div>
+            <div class="page-number">05 / 07</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── Option C ─────────────────────────── -->
+  <section class="option opt-c">
+    <div class="option-header">
+      <div class="option-name">Option C · warm paper + editorial sage</div>
+      <div class="option-desc">softer off-white · sage-green accent (further from brand, keeps editorial warmth)</div>
+    </div>
+    <div class="swatches">
+      <div class="swatch"><span class="swatch-dot" style="background:#1a1a1a"></span><span class="swatch-label">ink</span><span class="swatch-hex">#1a1a1a</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#f5f5f3"></span><span class="swatch-label">warm paper</span><span class="swatch-hex">#f5f5f3</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#5d8b6a"></span><span class="swatch-label">sage (light)</span><span class="swatch-hex">#5d8b6a</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#7fc48f"></span><span class="swatch-label">sage (dark)</span><span class="swatch-hex">#7fc48f</span></div>
+    </div>
+    <div class="pair">
+      <div>
+        <div class="pair-label">Light page · digest 03</div>
+        <div class="page-frame" style="height:405px">
+          <div class="page light">
+            <div class="running-head">
+              <span class="left"><svg class="wm-logo" width="22" height="22" viewBox="0 0 64 64"><use href="#wm-logo-core"/></svg> · WorldMonitor Brief · 18.04 ·</span>
+              <span>Digest / 03 — On The Desk</span>
+            </div>
+            <div class="label">Today's Threads</div>
+            <h2>What the desk is watching.</h2>
+            <blockquote>Iran's threats over the Strait of Hormuz dominate today, alongside the widening Gaza humanitarian crisis and South Sudan famine warnings.</blockquote>
+            <hr class="rule">
+            <div class="page-number">03 / 07</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pair-label">Dark page · story 01</div>
+        <div class="page-frame" style="height:405px">
+          <div class="page dark">
+            <div class="tag-row">
+              <span class="tag">Conflict</span>
+              <span class="tag">IR</span>
+              <span class="tag crit" data-label="Critical">Critical</span>
+            </div>
+            <h3 class="story-h3">Iran closes Strait of Hormuz as US blockade escalates</h3>
+            <div class="story-desc">Iran's Revolutionary Guard navy enforced a closure order on all commercial traffic passing east-west through the Persian Gulf chokepoint on Tuesday afternoon.</div>
+            <div class="source">Source · Guardian</div>
+            <div class="page-number">05 / 07</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── Option D ─────────────────────────── -->
+  <section class="option opt-d">
+    <div class="option-header">
+      <div class="option-name">Option D · monochrome, mint only on ekg + source</div>
+      <div class="option-desc">rules &amp; labels in pure ink — mint reserved for ekg dot + source line (most editorial)</div>
+    </div>
+    <div class="swatches">
+      <div class="swatch"><span class="swatch-dot" style="background:#0a0a0a"></span><span class="swatch-label">ink</span><span class="swatch-hex">#0a0a0a</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#fafafa"></span><span class="swatch-label">paper</span><span class="swatch-hex">#fafafa</span></div>
+      <div class="swatch"><span class="swatch-dot" style="background:#4ade80"></span><span class="swatch-label">mint spot</span><span class="swatch-hex">#4ade80</span></div>
+    </div>
+    <div class="pair">
+      <div>
+        <div class="pair-label">Light page · digest 03</div>
+        <div class="page-frame" style="height:405px">
+          <div class="page light">
+            <div class="running-head">
+              <span class="left"><svg class="wm-logo" width="22" height="22" viewBox="0 0 64 64"><use href="#wm-logo-core"/></svg> · WorldMonitor Brief · 18.04 ·</span>
+              <span>Digest / 03 — On The Desk</span>
+            </div>
+            <div class="label">Today's Threads</div>
+            <h2>What the desk is watching.</h2>
+            <blockquote>Iran's threats over the Strait of Hormuz dominate today, alongside the widening Gaza humanitarian crisis and South Sudan famine warnings.</blockquote>
+            <hr class="rule">
+            <div class="page-number">03 / 07</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pair-label">Dark page · story 01</div>
+        <div class="page-frame" style="height:405px">
+          <div class="page dark">
+            <div class="tag-row">
+              <span class="tag">Conflict</span>
+              <span class="tag">IR</span>
+              <span class="tag crit" data-label="Critical">Critical</span>
+            </div>
+            <h3 class="story-h3">Iran closes Strait of Hormuz as US blockade escalates</h3>
+            <div class="story-desc">Iran's Revolutionary Guard navy enforced a closure order on all commercial traffic passing east-west through the Persian Gulf chokepoint on Tuesday afternoon.</div>
+            <div class="source">Source · Guardian</div>
+            <div class="page-number">05 / 07</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div style="color:#666; font-size:12px; max-width:800px; margin-top:40px; border-top:1px solid #2a2a2a; padding-top:20px">
+    Reply with A / B / C / D (or a mix) and I'll wire the choice into
+    <code style="color:#aaa">server/_shared/brief-render.js</code>. Previews are scaled to 0.6×
+    so both pages sit side-by-side; in production each page is full-bleed 100vw × 100vh.
+  </div>
+</body>
+</html>

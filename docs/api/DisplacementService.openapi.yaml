@@ -2,26 +2,43 @@ openapi: 3.1.0
 info:
     title: DisplacementService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/displacement/v1/get-displacement-summary:
         get:
             tags:
                 - DisplacementService
             summary: GetDisplacementSummary
-            description: GetDisplacementSummary retrieves global refugee and IDP statistics from UNHCR.
+            description: |-
+                Global refugee and IDP statistics from UNHCR.
+                 Empty/absent summary with fetched_at=0 or data_available=false means the
+                 snapshot is unavailable/degraded, not that global displacement is zero.
             operationId: GetDisplacementSummary
             parameters:
                 - name: year
                   in: query
-                  description: Data year to retrieve (e.g., 2023). Uses latest available if zero.
+                  description: |-
+                    Data year: 1951 through the current year. Zero returns the latest seeded data.
+                     An explicit year is available only if it matches the published snapshot.
                   required: false
-                  schema:
-                    type: integer
-                    format: int32
+                  "schema":
+                      "oneOf":
+                          - "const": 0
+                            "type": "integer"
+                          - "type": "integer"
+                            "format": "int32"
+                            "minimum": 1951
+                            "maximum": 2026
+                  example: 0
                 - name: country_limit
                   in: query
                   description: Maximum number of country entries to return.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -29,14 +46,53 @@ paths:
                   in: query
                   description: Maximum number of displacement flows to return.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "dataAvailable": true
+                                "fetchedAt": 1717200000000
+                                "summary":
+                                    "countries":
+                                        - "asylumSeekers": 1
+                                          "code": "US"
+                                          "hostAsylumSeekers": 1
+                                          "hostRefugees": 1
+                                          "hostTotal": 1
+                                          "idps": 1
+                                    "globalTotals":
+                                        "asylumSeekers": 1
+                                        "idps": 1
+                                        "refugees": 1
+                                        "stateless": 1
+                                        "total": 1
+                                    "topFlows":
+                                        - "asylumCode": "US"
+                                          "asylumLocation":
+                                              "latitude": 40.7128
+                                              "longitude": -74.006
+                                          "asylumName": "WorldMonitor Analyst"
+                                          "originCode": "US"
+                                          "originLocation":
+                                              "latitude": 40.7128
+                                              "longitude": -74.006
+                                          "originName": "WorldMonitor Analyst"
+                                          "refugees": 1
+                                    "year": 2025
                             schema:
                                 $ref: '#/components/schemas/GetDisplacementSummaryResponse'
                 "400":
@@ -44,31 +100,386 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/displacement/v1/get-internal-displacement:
+        get:
+            tags:
+                - DisplacementService
+            summary: GetInternalDisplacement
+            description: IDPs by region from IOM DTM, latest survey round per operation.
+            operationId: GetInternalDisplacement
+            parameters:
+                - name: country_code
+                  in: query
+                  description: ISO 3166-1 alpha-3, such as SDN. Empty returns all.
+                  required: false
+                  example: "SDN"
+                  schema:
+                    type: string
+                    pattern: '^(?:|[A-Za-z]{3})$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "dataAvailable": true
+                                "fetchedAt": 1785542400000
+                                "operations":
+                                    - "countryCode": "SDN"
+                                      "countryName": "Sudan"
+                                      "flows":
+                                          - "destinationLocation":
+                                              "latitude": 15.66
+                                              "longitude": 35.87
+                                            "destinationName": "Kassala"
+                                            "destinationPcode": "SD11"
+                                            "idps": 13596
+                                            "originLocation":
+                                                "latitude": 14.4
+                                                "longitude": 33.5
+                                            "originName": "Aj Jazirah"
+                                            "originPcode": "SD15"
+                                      "operation": "Armed Clashes in Sudan (Overview)"
+                                      "reasons":
+                                          - "idps": 8622801
+                                            "reason": "Conflict"
+                                      "regions":
+                                          - "idps": 13596
+                                            "location":
+                                                "latitude": 15.66
+                                                "longitude": 35.87
+                                            "name": "Kassala"
+                                            "pcode": "SD11"
+                                      "reportingDate": "2026-07-31"
+                                      "roundNumber": 38
+                                      "totalIdps": 8622801
+                            schema:
+                                $ref: '#/components/schemas/GetInternalDisplacementResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/displacement/v1/get-cross-border-movements:
+        get:
+            tags:
+                - DisplacementService
+            summary: GetCrossBorderMovements
+            description: 200 describes unprojected movements; jmespath returns any JSON (array/scalar/null), with {data, _attribution} if attributed.
+            operationId: GetCrossBorderMovements
+            parameters:
+                - name: country_code
+                  in: query
+                  description: Two letters; no ISO assignment check.
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
+                    pattern: '^[A-Za-z]{2}$'
+                - name: route
+                  in: query
+                  description: Exact route or situation ID.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                    maxLength: 120
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "dataAvailable": true
+                                "movements":
+                                    - "asOf": "example"
+                                      "changePct": 1.5
+                                      "count": 1
+                                      "countryCode": "US"
+                                      "id": "example-id"
+                                "sources":
+                                    - "contentAt": 1717200000000
+                                      "fetchedAt": 1717200000000
+                                      "id": "example-id"
+                                      "maxContentAgeMin": 1
+                                      "name": "WorldMonitor Analyst"
+                            schema:
+                                $ref: '#/components/schemas/GetCrossBorderMovementsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/displacement/v1/get-population-exposure:
         get:
             tags:
                 - DisplacementService
             summary: GetPopulationExposure
-            description: GetPopulationExposure returns country population data or estimates population within a radius.
+            description: Country population or estimated population within a radius.
             operationId: GetPopulationExposure
             parameters:
                 - name: mode
                   in: query
                   description: 'Mode: "countries" (default) or "exposure".'
                   required: false
+                  example: "countries"
                   schema:
                     type: string
                 - name: lat
                   in: query
                   description: Latitude (required for exposure mode).
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
@@ -76,6 +487,7 @@ paths:
                   in: query
                   description: Longitude (required for exposure mode).
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -83,14 +495,35 @@ paths:
                   in: query
                   description: Radius in km (required for exposure mode, defaults to 50).
                   required: false
+                  example: 1.5
                   schema:
                     type: number
                     format: double
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "countries":
+                                    - "code": "US"
+                                      "densityPerKm2": 1
+                                      "name": "WorldMonitor Analyst"
+                                      "population": 1
+                                "exposure":
+                                    "densityPerKm2": 1
+                                    "exposedPopulation": 1
+                                    "exposureRadiusKm": 1.5
+                                    "nearestCountry": "US"
+                                "success": true
                             schema:
                                 $ref: '#/components/schemas/GetPopulationExposureResponse'
                 "400":
@@ -98,15 +531,121 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:
@@ -114,6 +653,82 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        BillingVerificationError:
+            type: object
+            description: "Returned with HTTP 503 when paid access cannot be confirmed right now: the billing provider is re-verifying a recently expired subscription, or the entitlement backend is unreachable. Retryable — honor Retry-After."
+            properties:
+                error:
+                    type: string
+                    description: Human-readable billing-verification failure reason.
+                code:
+                    type: string
+                    enum:
+                        - renewal_verification_pending
+                        - renewal_verification_failed
+                        - entitlement_verification_unavailable
+                    description: Machine-readable billing-verification state, mirrored in the X-Billing-Verification response header.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint, when the denial came from a tier gate.
+            required:
+                - error
+                - code
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                code:
+                    type: string
+                    enum:
+                        - subscription_lapsed
+                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -141,11 +756,15 @@ components:
         GetDisplacementSummaryRequest:
             type: object
             properties:
-                year:
-                    type: integer
-                    minimum: 0
-                    format: int32
-                    description: Data year to retrieve (e.g., 2023). Uses latest available if zero.
+                "year":
+                    "description": "Data year: 1951 through the current year. Zero returns the latest seeded data.\n An explicit year is available only if it matches the published snapshot."
+                    "oneOf":
+                        - "const": 0
+                          "type": "integer"
+                        - "type": "integer"
+                          "format": "int32"
+                          "minimum": 1951
+                          "maximum": 2026
                 countryLimit:
                     type: integer
                     minimum: 0
@@ -162,6 +781,19 @@ components:
             properties:
                 summary:
                     $ref: '#/components/schemas/DisplacementSummary'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Time the seed snapshot was fetched, as Unix epoch
+                         milliseconds. A value of 0 means the snapshot is unavailable/degraded, not
+                         that global displacement is zero.. Warning: Values > 2^53 may lose precision in JavaScript
+                dataAvailable:
+                    type: boolean
+                    description: |-
+                        True when summary came from the requested seed snapshot. False means
+                         an absent/empty summary is graceful degradation because the snapshot is
+                         unavailable.
             description: GetDisplacementSummaryResponse contains the global displacement summary.
         DisplacementSummary:
             type: object
@@ -302,6 +934,219 @@ components:
                 - originCode
                 - asylumCode
             description: DisplacementFlow represents a refugee movement corridor between two countries.
+        GetInternalDisplacementRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^(?:|[A-Za-z]{3})$
+                    description: ISO 3166-1 alpha-3, such as SDN. Empty returns all.
+        GetInternalDisplacementResponse:
+            type: object
+            properties:
+                operations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/InternalDisplacementOperation'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix ms. 0 when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                dataAvailable:
+                    type: boolean
+                    description: False when the snapshot is unavailable; an empty list then is not zero displacement.
+        InternalDisplacementOperation:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: ISO 3166-1 alpha-3.
+                countryName:
+                    type: string
+                operation:
+                    type: string
+                reportingDate:
+                    type: string
+                    description: YYYY-MM-DD.
+                roundNumber:
+                    type: integer
+                    format: int32
+                totalIdps:
+                    type: integer
+                    minimum: 0
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                reasons:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/InternalDisplacementReason'
+                regions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/InternalDisplacementRegion'
+                flows:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/InternalDisplacementFlow'
+            description: |-
+                Latest survey round of one IOM DTM operation. Operations in a country can
+                 overlap; do not add their totals.
+        InternalDisplacementReason:
+            type: object
+            properties:
+                reason:
+                    type: string
+                idps:
+                    type: integer
+                    minimum: 0
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+            description: IDPs by reported cause.
+        InternalDisplacementRegion:
+            type: object
+            properties:
+                pcode:
+                    type: string
+                    description: OCHA P-code. Empty when DTM gave no region.
+                name:
+                    type: string
+                idps:
+                    type: integer
+                    minimum: 0
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                location:
+                    $ref: '#/components/schemas/GeoCoordinates'
+            description: IDPs present in one first-level region.
+        InternalDisplacementFlow:
+            type: object
+            properties:
+                originPcode:
+                    type: string
+                originName:
+                    type: string
+                destinationPcode:
+                    type: string
+                destinationName:
+                    type: string
+                idps:
+                    type: integer
+                    minimum: 0
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                originLocation:
+                    $ref: '#/components/schemas/GeoCoordinates'
+                destinationLocation:
+                    $ref: '#/components/schemas/GeoCoordinates'
+            description: IDPs in one region who fled another region.
+        GetCrossBorderMovementsRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Za-z]{2}$
+                    description: Two letters; no ISO assignment check.
+                route:
+                    type: string
+                    maxLength: 120
+                    description: Exact route or situation ID.
+        GetCrossBorderMovementsResponse:
+            type: object
+            properties:
+                movements:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CrossBorderMovement'
+                    maxItems: 5000
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CrossBorderSourceStatus'
+                    maxItems: 5
+                dataAvailable:
+                    type: boolean
+        CrossBorderMovement:
+            type: object
+            properties:
+                id:
+                    type: string
+                route:
+                    type: string
+                name:
+                    type: string
+                kind:
+                    type: string
+                    description: arrival/outflow/return/encounter/death; encounters are not unique people.
+                measure:
+                    type: string
+                    description: stock, monthly, daily, or incident.
+                countryCode:
+                    type: string
+                originCode:
+                    type: string
+                asOf:
+                    type: string
+                period:
+                    type: string
+                count:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                last7Days:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                last30Days:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                changePct:
+                    type: number
+                    format: double
+                surge:
+                    type: boolean
+                stale:
+                    type: boolean
+                source:
+                    type: string
+                sourceUrl:
+                    type: string
+                license:
+                    type: string
+                licenseUrl:
+                    type: string
+                location:
+                    $ref: '#/components/schemas/GeoCoordinates'
+                notice:
+                    type: string
+                stockChange:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                stockChangeSince:
+                    type: string
+            description: Dated report. Do not sum measures.
+        CrossBorderSourceStatus:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                status:
+                    type: string
+                    description: ok, partial, stale, or unavailable.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                contentAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                maxContentAgeMin:
+                    type: integer
+                    format: int32
         GetPopulationExposureRequest:
             type: object
             properties:

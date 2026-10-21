@@ -41,6 +41,34 @@ export const US_MILITARY_CALLSIGNS: CallsignPattern[] = [
   { pattern: '^EVAC', operator: 'usaf', aircraftType: 'transport', description: 'Aeromedical evacuation' },
   { pattern: '^MOOSE', operator: 'usaf', aircraftType: 'transport', description: 'C-17 operations' },
   { pattern: '^HERKY', operator: 'usaf', aircraftType: 'transport', description: 'C-130 operations' },
+  { pattern: '^ATLAS', operator: 'usaf', aircraftType: 'transport', description: 'C-17 strategic airlift' },
+  { pattern: '^HERC(?!KY)', operator: 'usaf', aircraftType: 'transport', description: 'C-130 Hercules' },
+  { pattern: '^STEEL', operator: 'usaf', aircraftType: 'transport', description: 'USAF transport/tanker' },
+  { pattern: '^CASA', operator: 'usaf', aircraftType: 'transport', description: 'C-295/CN-235 tactical transport' },
+  { pattern: '^COMET', operator: 'usaf', aircraftType: 'transport', description: 'USAF transport' },
+  { pattern: '^TITAN', operator: 'usaf', aircraftType: 'transport', description: 'Heavy airlift' },
+  { pattern: '^SPAR', operator: 'usaf', aircraftType: 'vip', description: 'Special Priority Air Resource (VIP)' },
+  { pattern: '^IRON', operator: 'usaf', description: 'USAF operations' },
+  { pattern: '^HOMER', operator: 'usaf', description: 'USAF operations' },
+  { pattern: '^SCORE', operator: 'usaf', description: 'USAF operations' },
+  { pattern: '^TOPCT', operator: 'usaf', aircraftType: 'tanker', description: 'KC-135/KC-46 tanker' },
+  { pattern: '^KNIFE', operator: 'usaf', aircraftType: 'special_ops', description: 'AC-130/MC-130 special ops' },
+  { pattern: '^CSAR', operator: 'usaf', aircraftType: 'helicopter', description: 'Combat search and rescue' },
+  { pattern: '^NITE', operator: 'usaf', aircraftType: 'special_ops', description: 'Night operations' },
+  { pattern: '^PACK', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/tactical ops' },
+  { pattern: '^DAGGER', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/special ops' },
+  { pattern: '^DEMON', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter operations' },
+  { pattern: '^GHOST', operator: 'usaf', aircraftType: 'bomber', description: 'B-2 Spirit / stealth ops' },
+  { pattern: '^LANCE', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter operations' },
+  { pattern: '^REBEL', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter operations' },
+  { pattern: '^SKULL', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/bomber ops' },
+  { pattern: '^STORM', operator: 'usaf', aircraftType: 'fighter', description: 'Tactical operations' },
+  { pattern: '^SWORD', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter operations' },
+  { pattern: '^WOLF', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/special ops' },
+  { pattern: '^RAGE', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/bomber ops' },
+  { pattern: '^THUD', operator: 'usaf', aircraftType: 'fighter', description: 'Tactical fighter' },
+  { pattern: '^ODIN', operator: 'usaf', description: 'USAF operations' },
+  { pattern: '^WRATH', operator: 'usaf', aircraftType: 'bomber', description: 'Bomber operations' },
 
   // US Navy
   { pattern: '^NAVY', operator: 'usn', description: 'US Navy aircraft' },
@@ -49,6 +77,9 @@ export const US_MILITARY_CALLSIGNS: CallsignPattern[] = [
   { pattern: '^TRIDENT', operator: 'usn', aircraftType: 'patrol', description: 'P-8 maritime patrol' },
   { pattern: '^RED', operator: 'usn', aircraftType: 'patrol', description: 'P-8/P-3 operations' },
   { pattern: '^BRONCO', operator: 'usn', aircraftType: 'fighter', description: 'F/A-18 operations' },
+  { pattern: '^RHINO', operator: 'usn', aircraftType: 'fighter', description: 'F/A-18E/F Super Hornet' },
+  { pattern: '^BOXER', operator: 'usn', description: 'USN operations' },
+  { pattern: '^ORCA', operator: 'usn', description: 'USN operations' },
 
   // US Marine Corps
   { pattern: '^MARINE', operator: 'usmc', description: 'USMC aircraft' },
@@ -59,6 +90,7 @@ export const US_MILITARY_CALLSIGNS: CallsignPattern[] = [
   { pattern: '^ARMY', operator: 'usa', description: 'US Army aircraft' },
   { pattern: '^PAT', operator: 'usa', aircraftType: 'transport', description: 'Priority air transport' },
   { pattern: '^DUSTOFF', operator: 'usa', aircraftType: 'helicopter', description: 'Medevac helicopters' },
+  { pattern: '^PUMA', operator: 'usa', aircraftType: 'helicopter', description: 'Army helicopter ops' },
 
   // US Coast Guard
   { pattern: '^COAST GUARD', operator: 'other', aircraftType: 'patrol', description: 'USCG aircraft' },
@@ -99,6 +131,7 @@ export const NATO_ALLIED_CALLSIGNS: CallsignPattern[] = [
   // Turkey
   { pattern: '^THK', operator: 'other', description: 'Turkish Air Force' },
   { pattern: '^TUR', operator: 'other', description: 'Turkish military' },
+  { pattern: '^TUAF', operator: 'other', description: 'Turkish Air Force' },
 
   // Saudi Arabia
   { pattern: '^SVA', operator: 'other', description: 'Saudi Air Force' },
@@ -107,9 +140,13 @@ export const NATO_ALLIED_CALLSIGNS: CallsignPattern[] = [
   // UAE
   { pattern: '^UAF', operator: 'other', description: 'UAE Air Force' },
 
+  // Qatar
+  { pattern: '^QAF', operator: 'other', description: 'Qatar Air Force' },
+
   // India
   { pattern: '^AIR INDIA ONE', operator: 'other', aircraftType: 'vip', description: 'Indian Air Force One' },
   { pattern: '^IAM', operator: 'other', description: 'Indian Air Force' },
+  { pattern: '^INDIA[0-9]', operator: 'other', description: 'Indian military (INDIA + flight number)' },
 
   // Japan ASDF
   { pattern: '^JPN', operator: 'other', description: 'Japan Self-Defense Force' },
@@ -126,13 +163,31 @@ export const NATO_ALLIED_CALLSIGNS: CallsignPattern[] = [
   // Canada
   { pattern: '^CANFORCE', operator: 'other', aircraftType: 'transport', description: 'Canadian Armed Forces' },
   { pattern: '^CFC', operator: 'other', description: 'Canadian Forces' },
+  { pattern: '^CAAF', operator: 'other', description: 'Canadian Armed Forces air' },
 
   // Italy
   { pattern: '^IAM', operator: 'other', description: 'Italian Air Force' },
   { pattern: '^ITALY', operator: 'other', description: 'Italian military' },
+  { pattern: '^MMF', operator: 'other', description: 'Italian Aeronautica Militare' },
+
+  // France (alternate)
+  { pattern: '^FRAF', operator: 'faf', description: 'French Air Force' },
 
   // Spain
   { pattern: '^AME', operator: 'other', description: 'Spanish Air Force' },
+
+  // Belgium
+  { pattern: '^BAF', operator: 'other', description: 'Belgian Air Force' },
+
+  // Norway
+  { pattern: '^NAF', operator: 'other', description: 'Norwegian Air Force' },
+  { pattern: '^NOAF', operator: 'other', description: 'Norwegian Air Force' },
+
+  // Denmark
+  { pattern: '^DNAF', operator: 'other', description: 'Danish Air Force' },
+
+  // Romania
+  { pattern: '^ROF', operator: 'other', description: 'Romanian Air Force' },
 
   // Poland
   { pattern: '^PLF', operator: 'other', description: 'Polish Air Force' },
@@ -155,9 +210,9 @@ export const ADVERSARY_CALLSIGNS: CallsignPattern[] = [
   { pattern: '^RUSSIAN', operator: 'vks', description: 'Russian military' },
 
   // Chinese PLA
-  { pattern: '^CCA', operator: 'plaaf', description: 'PLA Air Force' },
-  { pattern: '^CHH', operator: 'plan', description: 'PLA Navy Air' },
-  { pattern: '^CHINA', operator: 'plaaf', description: 'Chinese military' },
+  { pattern: '^PLAAF', operator: 'plaaf', description: 'Chinese air force' },
+  { pattern: '^PLA[0-9]', operator: 'plaaf', description: 'Chinese military aircraft' },
+  { pattern: '^CHINA\\s?(AIR\\s?FORCE|MIL|NAVY)', operator: 'plaaf', description: 'Chinese military' },
 ];
 
 // All military callsign patterns combined
@@ -280,6 +335,18 @@ export const MILITARY_AIRCRAFT_TYPES: Record<string, { type: MilitaryAircraftTyp
  * These help identify military aircraft even without callsigns
  * Reference: https://www.ads-b.nl/icao.php
  */
+export const KNOWN_MILITARY_AIRCRAFT: Record<string, {
+  operator: MilitaryOperator;
+  country: string;
+  aircraftType: MilitaryAircraftType;
+}> = {
+  // Exact observed PLA aircraft; never expand this into China's national range.
+  '7A4262': { operator: 'plaaf', country: 'China', aircraftType: 'reconnaissance' },
+  '7A444F': { operator: 'plaaf', country: 'China', aircraftType: 'tanker' },
+  '7A446F': { operator: 'plaaf', country: 'China', aircraftType: 'transport' },
+  '7A4403': { operator: 'plaaf', country: 'China', aircraftType: 'transport' },
+};
+
 export const MILITARY_HEX_RANGES: { start: string; end: string; operator: MilitaryOperator; country: string }[] = [
   // United States DoD — civil N-numbers end at ADF7C7; everything above is military
   { start: 'ADF7C8', end: 'AFFFFF', operator: 'usaf', country: 'USA' },
@@ -461,8 +528,7 @@ export interface QueryRegion {
 }
 
 export const MILITARY_QUERY_REGIONS: QueryRegion[] = [
-  { name: 'PACIFIC', lamin: 10, lamax: 46, lomin: 107, lomax: 143 },
-  { name: 'WESTERN', lamin: 13, lamax: 85, lomin: -10, lomax: 57 },
+  { name: 'GLOBAL', lamin: -90, lamax: 90, lomin: -180, lomax: 180 },
 ];
 
 if (import.meta.env.DEV) {
@@ -475,70 +541,138 @@ if (import.meta.env.DEV) {
   }
 }
 
+/**
+ * Theater and port centroids for every <h2> heading USNI has published in the
+ * Fleet Tracker. Keep every key and coordinate identical to USNI_REGION_COORDS in
+ * scripts/lib/usni-fleet-parser.cjs — tests/dom/usni-region-coords-parity.test.mts
+ * fails if the two drift. An unmapped heading is not harmless: the lookup falls
+ * through to getUSNIRegionApproxCoords' hash-derived position, which plots the
+ * vessel at an arbitrary point on the globe (#7548).
+ */
 export const USNI_REGION_COORDINATES: Record<string, { lat: number; lon: number }> = {
-  // Seas & Oceans
+  // Seas & oceans
   'Philippine Sea': { lat: 18.0, lon: 130.0 },
   'South China Sea': { lat: 14.0, lon: 115.0 },
   'East China Sea': { lat: 28.0, lon: 125.0 },
   'Sea of Japan': { lat: 40.0, lon: 135.0 },
   'Arabian Sea': { lat: 18.0, lon: 63.0 },
+  'North Arabian Sea': { lat: 22.0, lon: 64.0 },
   'Red Sea': { lat: 20.0, lon: 38.0 },
   'Mediterranean Sea': { lat: 35.0, lon: 18.0 },
+  'Mediterranean': { lat: 35.0, lon: 18.0 },
   'Eastern Mediterranean': { lat: 34.5, lon: 33.0 },
   'Western Mediterranean': { lat: 37.0, lon: 3.0 },
   'Persian Gulf': { lat: 26.5, lon: 52.0 },
   'Gulf of Oman': { lat: 24.5, lon: 58.5 },
   'Gulf of Aden': { lat: 12.0, lon: 47.0 },
   'Caribbean Sea': { lat: 15.0, lon: -73.0 },
-  'North Atlantic': { lat: 45.0, lon: -30.0 },
+  'Caribbean': { lat: 15.0, lon: -73.0 },
   'Atlantic Ocean': { lat: 30.0, lon: -40.0 },
+  'Atlantic': { lat: 30.0, lon: -40.0 },
+  'North Atlantic': { lat: 45.0, lon: -30.0 },
   'Western Atlantic': { lat: 30.0, lon: -60.0 },
+  'Eastern Atlantic': { lat: 40.0, lon: -15.0 },
+  'South Atlantic': { lat: -25.0, lon: -20.0 },
+  'Southern Atlantic': { lat: -25.0, lon: -20.0 },
   'Pacific Ocean': { lat: 20.0, lon: -150.0 },
+  'Pacific': { lat: 20.0, lon: -150.0 },
   'Eastern Pacific': { lat: 18.0, lon: -125.0 },
   'Western Pacific': { lat: 20.0, lon: 140.0 },
+  'South Pacific': { lat: -20.0, lon: -160.0 },
+  'Southern Pacific': { lat: -20.0, lon: -160.0 },
   'Indian Ocean': { lat: -5.0, lon: 75.0 },
+  'Southern Indian Ocean': { lat: -35.0, lon: 80.0 },
   'Antarctic': { lat: -70.0, lon: 20.0 },
   'Baltic Sea': { lat: 58.0, lon: 20.0 },
   'Black Sea': { lat: 43.5, lon: 34.0 },
+  'North Sea': { lat: 56.0, lon: 3.0 },
+  'English Channel': { lat: 50.0, lon: -1.5 },
   'Bay of Bengal': { lat: 14.0, lon: 87.0 },
+  'Andaman Sea': { lat: 10.0, lon: 96.0 },
+  'Sulu Sea': { lat: 8.0, lon: 120.0 },
+  'Tasman Sea': { lat: -40.0, lon: 160.0 },
+  // Straits, chokepoints & features
   'Bab el-Mandeb Strait': { lat: 12.5, lon: 43.5 },
   'Strait of Hormuz': { lat: 26.5, lon: 56.5 },
   'Taiwan Strait': { lat: 24.5, lon: 119.5 },
   'Suez Canal': { lat: 30.0, lon: 32.5 },
-  // Ports & Bases
+  'Strait of Malacca': { lat: 3.5, lon: 100.5 },
+  'Tsushima Strait': { lat: 34.3, lon: 129.3 },
+  'Miyako Strait': { lat: 25.0, lon: 125.5 },
+  'Osumi Strait': { lat: 30.9, lon: 131.0 },
+  'La Perouse Strait': { lat: 45.7, lon: 142.0 },
+  'Yonaguni Island': { lat: 24.45, lon: 123.0 },
+  'Amami Oshima': { lat: 28.3, lon: 129.4 },
+  'Scarborough Shoal': { lat: 15.15, lon: 117.75 },
+  'Solomon Islands': { lat: -9.5, lon: 160.0 },
+  'Gulf Coast': { lat: 28.0, lon: -90.0 },
+  // Operating areas & exercises
+  'Hawaiian Operating Areas': { lat: 21.0, lon: -158.5 },
+  'Hawaii': { lat: 21.35, lon: -157.95 },
+  'California Operating Area': { lat: 32.5, lon: -119.0 },
+  'Exercise Valiant Shield': { lat: 15.0, lon: 145.0 },
+  // Indo-Pacific ports & bases
   'Yokosuka': { lat: 35.29, lon: 139.67 },
   'Japan': { lat: 35.29, lon: 139.67 },
   'Sasebo': { lat: 33.16, lon: 129.72 },
+  'Okinawa': { lat: 26.35, lon: 127.77 },
+  'Kure': { lat: 34.24, lon: 132.56 },
+  'Shimoda': { lat: 34.68, lon: 138.95 },
+  'Honshu': { lat: 36.0, lon: 138.0 },
+  'Southwest Japan': { lat: 32.5, lon: 131.0 },
   'Guam': { lat: 13.45, lon: 144.79 },
   'Pearl Harbor': { lat: 21.35, lon: -157.95 },
-  'San Diego': { lat: 32.68, lon: -117.15 },
-  'Norfolk': { lat: 36.95, lon: -76.30 },
-  'Mayport': { lat: 30.39, lon: -81.40 },
+  'Singapore': { lat: 1.35, lon: 103.82 },
+  'Hong Kong': { lat: 22.3, lon: 114.17 },
+  'Manila': { lat: 14.6, lon: 120.97 },
+  'Da Nang': { lat: 16.07, lon: 108.22 },
+  'Phuket': { lat: 7.88, lon: 98.39 },
+  'Laem Chabang': { lat: 13.08, lon: 100.88 },
+  'Tanjung Priok': { lat: -6.1, lon: 106.88 },
+  'Jakarta': { lat: -6.1, lon: 106.88 },
+  'Vladivostok': { lat: 43.12, lon: 131.9 },
+  'Diego Garcia': { lat: -7.32, lon: 72.42 },
+  'New Zealand': { lat: -41.0, lon: 174.0 },
+  'Wellington': { lat: -41.29, lon: 174.78 },
+  // Middle East, Africa & Europe ports
   'Bahrain': { lat: 26.23, lon: 50.55 },
+  'Djibouti': { lat: 11.55, lon: 43.15 },
   'Rota': { lat: 36.63, lon: -6.35 },
   'Rota Spain': { lat: 36.63, lon: -6.35 },
-  'Diego Garcia': { lat: -7.32, lon: 72.42 },
   'Souda Bay': { lat: 35.49, lon: 24.08 },
   'Naples': { lat: 40.84, lon: 14.25 },
+  'Split': { lat: 43.51, lon: 16.44 },
+  'Deveselu': { lat: 44.1, lon: 24.09 },           // NATO BMD site, Romania
+  'Norway': { lat: 60.39, lon: 5.32 },             // Bergen / Haakonsvern naval base
+  'Kiel': { lat: 54.32, lon: 10.14 },
+  'Zeebrugge': { lat: 51.33, lon: 3.2 },
+  'Portsmouth, England': { lat: 50.8, lon: -1.09 },
+  // Americas ports & bases
+  'San Diego': { lat: 32.68, lon: -117.15 },
+  'Norfolk': { lat: 36.95, lon: -76.3 },
+  'Mayport': { lat: 30.39, lon: -81.4 },
+  'Jacksonville': { lat: 30.39, lon: -81.4 },      // NAS Jax / Mayport area
+  'Kings Bay': { lat: 30.8, lon: -81.56 },
+  'Pensacola': { lat: 30.35, lon: -87.3 },
+  'Pascagoula': { lat: 30.37, lon: -88.55 },       // Ingalls shipbuilding
+  'New Orleans': { lat: 29.95, lon: -90.07 },
+  'Houston': { lat: 29.75, lon: -95.35 },
+  'Corpus Christi': { lat: 27.8, lon: -97.4 },
+  'Newport News': { lat: 37.0, lon: -76.43 },     // Huntington Ingalls / NNSY — carrier RCOH
+  'New York City': { lat: 40.7, lon: -74.0 },
+  'Portsmouth': { lat: 43.07, lon: -70.76 },       // Portsmouth Naval Shipyard (Kittery, ME — submarine)
+  'Groton': { lat: 41.35, lon: -72.09 },           // Naval Submarine Base New London
+  'New London': { lat: 41.35, lon: -72.09 },
   'Bremerton': { lat: 47.57, lon: -122.63 },
-  'Everett': { lat: 47.97, lon: -122.22 },
-  'Kings Bay': { lat: 30.80, lon: -81.56 },
-  'Bangor': { lat: 47.73, lon: -122.71 },
-  'Djibouti': { lat: 11.55, lon: 43.15 },
-  'Singapore': { lat: 1.35, lon: 103.82 },
-  // Additional homeports / shipyards
-  'Newport News': { lat: 37.00, lon: -76.43 },      // Huntington Ingalls / NNSY — carrier RCOH
-  'Puget Sound': { lat: 47.57, lon: -122.63 },       // alias for Bremerton / PSNS
+  'Puget Sound': { lat: 47.57, lon: -122.63 },     // alias for Bremerton / PSNS
   'Naval Station Kitsap': { lat: 47.57, lon: -122.63 },
   'Kitsap': { lat: 47.57, lon: -122.63 },
-  'Portsmouth': { lat: 43.07, lon: -70.76 },         // Portsmouth Naval Shipyard (Kittery, ME — submarine)
-  'Groton': { lat: 41.35, lon: -72.09 },             // Naval Submarine Base New London
-  'New London': { lat: 41.35, lon: -72.09 },
-  'Pascagoula': { lat: 30.37, lon: -88.55 },         // Ingalls shipbuilding
-  'Jacksonville': { lat: 30.39, lon: -81.40 },       // NAS Jax / Mayport area
-  'Pensacola': { lat: 30.35, lon: -87.30 },
-  'Corpus Christi': { lat: 27.80, lon: -97.40 },
-  'Deveselu': { lat: 44.10, lon: 24.09 },            // NATO BMD site, Romania
+  'Everett': { lat: 47.97, lon: -122.22 },
+  'Bangor': { lat: 47.73, lon: -122.71 },
+  'Panama': { lat: 8.95, lon: -79.55 },
+  'La Guaira': { lat: 10.6, lon: -66.93 },
+  'Kingston': { lat: 17.97, lon: -76.79 },
+  'St. Thomas': { lat: 18.34, lon: -64.93 },
 };
 
 /**
@@ -582,16 +716,42 @@ export function normalizeUSNIRegion(regionText: string): string {
     .trim();
 }
 
+function longestContainedUSNIRegion(
+  lower: string,
+): { key: string; coords: { lat: number; lon: number } } | undefined {
+  let best: { key: string; coords: { lat: number; lon: number } } | undefined;
+  for (const [key, coords] of Object.entries(USNI_REGION_COORDINATES)) {
+    const normalizedKey = key.toLowerCase();
+    if (normalizedKey === lower) return { key, coords };
+    if (lower.includes(normalizedKey) && (!best || key.length > best.key.length)) {
+      best = { key, coords };
+    }
+  }
+  return best;
+}
+
+/**
+ * Mirrors usniGetRegionCoords in scripts/lib/usni-fleet-parser.cjs: exact key;
+ * then a contained key that itself spans a comma ("Portsmouth, England"); then,
+ * for a "City, Country" heading, the first segment naming a known place
+ * ("Kure, Japan" resolves to Kure although "Japan" is the longer key); then the
+ * longest key contained anywhere ("Eastern Mediterranean Sea" resolves to
+ * Eastern Mediterranean).
+ */
 export function getUSNIRegionCoords(regionText: string): { lat: number; lon: number } | undefined {
   const normalized = normalizeUSNIRegion(regionText);
   if (USNI_REGION_COORDINATES[normalized]) return USNI_REGION_COORDINATES[normalized];
   const lower = normalized.toLowerCase();
-  for (const [key, coords] of Object.entries(USNI_REGION_COORDINATES)) {
-    if (key.toLowerCase() === lower || lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) {
-      return coords;
+  const whole = longestContainedUSNIRegion(lower);
+  if (whole?.key.includes(',')) return whole.coords;
+  const segments = lower.split(',').map((part) => part.trim()).filter(Boolean);
+  if (segments.length > 1) {
+    for (const segment of segments) {
+      const match = longestContainedUSNIRegion(segment);
+      if (match) return match.coords;
     }
   }
-  return undefined;
+  return whole?.coords;
 }
 
 export function getUSNIRegionApproxCoords(regionText: string): { lat: number; lon: number } {
@@ -656,11 +816,18 @@ export function identifyByAircraftType(typeCode: string): { type: MilitaryAircra
 /**
  * Helper to check if a hex code is in known military range
  */
-export function isKnownMilitaryHex(hexCode: string): { operator: MilitaryOperator; country: string } | undefined {
+export function isKnownMilitaryHex(hexCode: string): {
+  operator: MilitaryOperator;
+  country: string;
+  aircraftType?: MilitaryAircraftType;
+  confidence: 'high' | 'medium';
+} | undefined {
   const hex = hexCode.toUpperCase();
+  const exact = KNOWN_MILITARY_AIRCRAFT[hex];
+  if (exact) return { ...exact, confidence: 'high' };
   for (const range of MILITARY_HEX_RANGES) {
     if (hex >= range.start && hex <= range.end) {
-      return { operator: range.operator, country: range.country };
+      return { operator: range.operator, country: range.country, confidence: 'medium' };
     }
   }
   return undefined;

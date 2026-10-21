@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+// Request for the pre-seeded stream of recent SEC 8-K material-event filings.
+message ListMaterialEventsRequest {
+  // Filter to a single 8-K item code, such as "5.02" (executive changes).
+  string item_code = 1 [(sebuf.http.query) = {name: "item_code"}];
+  // Maximum events to return (default 25, capped at 100).
+  int32 limit = 2 [(sebuf.http.query) = {name: "limit"}];
+}
+
+// Recent SEC 8-K material-event filings across all filers, newest first.
+message ListMaterialEventsResponse {
+  repeated MaterialEvent events = 1;
+
+  // True when the seeded stream is not available in the cache.
+  bool unavailable = 2;
+
+  // Unix timestamp in milliseconds when the stream was last seeded.
+  int64 fetched_at_ms = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+message MaterialEvent {
+  // Filer display name.
+  string company = 1;
+  // SEC Central Index Key of the filer (zero-padded 10 digits).
+  string cik = 2;
+  // Form type, such as "8-K" or "8-K/A".
+  string form = 3;
+  // EDGAR accession number.
+  string accession = 4;
+  // Unix timestamp in milliseconds when the filing was accepted.
+  int64 filed_at_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Disclosed 8-K items.
+  repeated MaterialEventItem items = 6;
+  // Link to the filing index on sec.gov.
+  string url = 7;
+}
+
+message MaterialEventItem {
+  // 8-K item code, such as "2.02".
+  string code = 1;
+  // Human-readable item description, such as "Results of Operations and Financial Condition".
+  string description = 2;
+}

@@ -13,6 +13,15 @@ export interface WeatherAlert {
   expires: Date;
   coordinates: [number, number][];
   centroid?: [number, number];
+  countryCode?: string;
+  source?: string;
+  geometryPrecision?: 'polygon' | 'point' | 'country';
+  productKind?: string;
+  issuedBy?: string;
+  wind?: string;
+  visibility?: string;
+  seaState?: string;
+  sourceUrl?: string;
 }
 
 interface BootstrapAlert {
@@ -26,11 +35,16 @@ interface BootstrapAlert {
   expires: string;
   coordinates: [number, number][];
   centroid?: [number, number];
+  countryCode?: string;
+  source?: string;
+  geometryPrecision?: 'polygon' | 'point' | 'country';
 }
 
-const breaker = createCircuitBreaker<WeatherAlert[]>({ name: 'NWS Weather', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
+const breaker = createCircuitBreaker<WeatherAlert[]>({ name: 'NWS + ECCC + WMO SWIC Weather', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
-function mapAlert(a: BootstrapAlert): WeatherAlert {
+/** Exported for the embed loader, which receives this wire shape from the
+ *  composed map-frame endpoint rather than from this module's own fetch. */
+export function mapAlert(a: BootstrapAlert): WeatherAlert {
   return {
     id: a.id,
     event: a.event,
@@ -42,6 +56,9 @@ function mapAlert(a: BootstrapAlert): WeatherAlert {
     expires: new Date(a.expires),
     coordinates: a.coordinates,
     centroid: a.centroid,
+    countryCode: a.countryCode,
+    source: a.source,
+    geometryPrecision: a.geometryPrecision,
   };
 }
 
@@ -52,7 +69,20 @@ export async function fetchWeatherAlerts(): Promise<WeatherAlert[]> {
       return hydrated.alerts.map(mapAlert);
     }
 
-    const resp = await fetch(toApiUrl('/api/bootstrap?keys=weatherAlerts'), { signal: AbortSignal.timeout(8000) });
+    // `&public=1` + credentials:'omit' is the CDN-shielded read (#5386). The
+    // bare `?keys=weatherAlerts` URL still answers anonymously but is no-store,
+    // because it is also the URL credentialed callers use and a cached entry
+    // there would answer an invalid key with this anonymous 200. The map embed
+    // has no tier hydration, so this fetch — not getHydratedData — is its
+    // primary path and the one that needs the cache entry.
+    // The literal matches getHydratedData('weatherAlerts') above and is pinned by
+    // tests/weather-public-bootstrap-url.test.mts. Deliberately NOT imported from
+    // shared/bootstrap-tier-keys.js: this module is in the embed bundle, and that
+    // import would pull the whole 127-entry registry in for one 13-char string.
+    const resp = await fetch(
+      toApiUrl('/api/bootstrap?keys=weatherAlerts&public=1'),
+      { credentials: 'omit', signal: AbortSignal.timeout(8000) },
+    );
     if (!resp.ok) throw new Error(`Bootstrap fetch failed: ${resp.status}`);
     const json = await resp.json() as { data?: { weatherAlerts?: { alerts?: BootstrapAlert[] } } };
     const alerts = json.data?.weatherAlerts?.alerts;

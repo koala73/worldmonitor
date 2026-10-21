@@ -18,6 +18,28 @@ message GetCountryIntelBriefRequest {
   string framework = 2 [(sebuf.http.query) = {name: "framework"}];
 }
 
+// BriefSource describes one article used to ground an AI-generated brief.
+message BriefSource {
+  // Source article headline.
+  string title = 1;
+  // Source outlet or feed label.
+  string source = 2;
+  // Absolute http(s) source article URL.
+  string url = 3;
+  // Article publication time, when available.
+  string published_at = 4;
+}
+
+message BriefEvidence {
+  string id = 1;
+  string kind = 2;
+  string label = 3;
+  string value = 4;
+  string fact_text = 5;
+  string as_of = 6;
+  string url = 7;
+}
+
 // GetCountryIntelBriefResponse contains an AI-generated intelligence brief for a country.
 message GetCountryIntelBriefResponse {
   // ISO 3166-1 alpha-2 country code.
@@ -30,4 +52,7 @@ message GetCountryIntelBriefResponse {
   string model = 4;
   // Brief generation time, as Unix epoch milliseconds.
   int64 generated_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Source articles used to ground the generated brief.
+  repeated BriefSource sources = 6;
+  repeated BriefEvidence evidence = 7;
 }

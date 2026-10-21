@@ -4,9 +4,12 @@ import type { AcquisitionProvider, ExtractResult, ExtractSchema, FetchOptions, F
 export class ExaProvider implements AcquisitionProvider {
   readonly name = 'exa' as const;
 
+  private readonly apiKey: string;
+  private readonly baseUrl = 'https://api.exa.ai';
   private client: Exa;
 
   constructor(apiKey: string) {
+    this.apiKey = apiKey;
     this.client = new Exa(apiKey);
   }
 
@@ -31,19 +34,29 @@ export class ExaProvider implements AcquisitionProvider {
   }
 
   async search(query: string, opts: SearchOptions = {}): Promise<SearchResult[]> {
-    const result = await this.client.search(query, {
+    const result = await this.request<{
+      results?: Array<{
+        url: string;
+        title?: string;
+        text?: string;
+        highlights?: string[];
+        score?: number;
+        publishedDate?: string;
+      }>;
+    }>('/search', {
+      query,
       numResults: opts.numResults ?? 10,
       type: opts.type ?? 'neural',
       includeDomains: opts.includeDomains,
       startPublishedDate: opts.startPublishedDate,
       useAutoprompt: true,
-    });
+    }, opts.timeout);
 
-    return result.results.map((r) => ({
+    return (result.results ?? []).map((r) => ({
       url: r.url,
       title: r.title ?? '',
       text: r.text,
-      highlights: (r as Record<string, unknown>).highlights as string[] | undefined,
+      highlights: r.highlights,
       score: r.score,
       publishedDate: r.publishedDate,
     }));
@@ -52,25 +65,53 @@ export class ExaProvider implements AcquisitionProvider {
   async extract<T = Record<string, unknown>>(
     url: string,
     schema: ExtractSchema,
-    _opts: FetchOptions = {},
+    opts: FetchOptions = {},
   ): Promise<ExtractResult<T>> {
-    const prompt = `Extract the following fields from this product page: ${Object.entries(schema.fields)
+    const prompt = `${schema.prompt ? `${schema.prompt} ` : ''}Extract the following fields from this product page: ${Object.entries(schema.fields)
       .map(([k, v]) => `${k} (${v.type}): ${v.description}`)
       .join(', ')}`;
+    const outputSchema = {
+      type: 'object',
+      properties: Object.fromEntries(
+        Object.entries(schema.fields).map(([key, field]) => [
+          key,
+          // Exa's /contents validator accepts only a SCALAR `type`. The JSON
+          // Schema `type: [T, 'null']` union form is rejected outright with
+          // HTTP 400 INVALID_REQUEST_BODY, which silently disabled every
+          // nullable extraction (#6182). Express nullability with `anyOf`,
+          // which Exa accepts and which returns a genuine null price.
+          field.nullable
+            ? { anyOf: [{ type: field.type }, { type: 'null' }], description: field.description }
+            : { type: field.type, description: field.description },
+        ]),
+      ),
+      required: Object.entries(schema.fields)
+        .filter(([, field]) => field.required !== false)
+        .map(([key]) => key),
+      additionalProperties: false,
+    };
 
-    const result = await this.client.getContents([url], {
-      text: { maxCharacters: 50_000 },
-      summary: { query: prompt },
-    });
-
-    const item = result.results[0];
+    // exa-js does not expose an AbortSignal for getContents, so use the API
+    // directly here to keep the opt-in fallback genuinely bounded.
+    // `text` rides along in the same call as ground truth for the caller's
+    // on-page price verification (price-evidence.ts) — same request, no
+    // second fetch.
+    const result = await this.request<{ results?: Array<{ summary?: unknown; text?: unknown }> }>('/contents', {
+      urls: [url],
+      summary: { query: prompt, schema: outputSchema },
+      text: { maxCharacters: 30_000 },
+    }, opts.timeout);
+    const item = result.results?.[0];
     if (!item) throw new Error(`Exa returned no content for ${url}`);
+    const data = parseStructuredSummary<T>(item.summary);
+    if (data === null) throw new Error(`Exa returned malformed structured summary for ${url}`);
 
     return {
       url,
-      data: (item as unknown as { summary?: T }).summary ?? ({} as T),
+      data,
       provider: this.name,
       fetchedAt: new Date(),
+      ...(typeof item.text === 'string' && item.text.trim() ? { pageContent: item.text } : {}),
     };
   }
 
@@ -81,5 +122,39 @@ export class ExaProvider implements AcquisitionProvider {
     } catch {
       return false;
     }
+  }
+
+  private async request<T>(endpoint: string, body: Record<string, unknown>, timeout = 30_000): Promise<T> {
+    const response = await globalThis.fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': this.apiKey,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-consumer-prices/1.0',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeout),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(`Exa ${endpoint.slice(1)} failed HTTP ${response.status}: ${detail.slice(0, 120)}`);
+    }
+
+    return (await response.json()) as T;
+  }
+}
+
+function parseStructuredSummary<T>(summary: unknown): T | null {
+  if (summary && typeof summary === 'object') return summary as T;
+  if (typeof summary !== 'string') return null;
+
+  const trimmed = summary.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  if (!trimmed) return null;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return parsed && typeof parsed === 'object' ? (parsed as T) : null;
+  } catch {
+    return null;
   }
 }

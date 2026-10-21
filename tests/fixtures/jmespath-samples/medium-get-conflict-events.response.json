@@ -1,0 +1,2207 @@
+{
+  "cached_at": "2026-05-17T10:30:42.462Z",
+  "stale": false,
+  "data": {
+    "ucdp-events": {
+      "events": [
+        {
+          "id": "565175",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": -1.86032,
+            "longitude": -79.97683
+          },
+          "country": "Ecuador",
+          "sideA": "Fatales, Los Aguilas",
+          "sideB": "Los Lobos , Los Tiguerones",
+          "deathsBest": 2,
+          "deathsLow": 0,
+          "deathsHigh": 2,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "Extra"
+        },
+        {
+          "id": "565999",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 0.25911,
+            "longitude": 28.96896
+          },
+          "country": "DR Congo (Zaire)",
+          "sideA": "IS",
+          "sideB": "Civilians",
+          "deathsBest": 17,
+          "deathsLow": 17,
+          "deathsHigh": 17,
+          "violenceType": "UCDP_VIOLENCE_TYPE_ONE_SIDED",
+          "sourceOriginal": "According to Mwami Kahindo Nzanzu Bonane, chief of the Baswagha chiefdom"
+        },
+        {
+          "id": "568494",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 34.820728,
+            "longitude": 44.361441
+          },
+          "country": "Iraq",
+          "sideA": "Government of Iraq",
+          "sideB": "IS",
+          "deathsBest": 7,
+          "deathsLow": 7,
+          "deathsHigh": 7,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "the Iraqi Security Information Cell"
+        },
+        {
+          "id": "569222",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": -22.90278,
+            "longitude": -43.2075
+          },
+          "country": "Brazil",
+          "sideA": "Comando Vermelho",
+          "sideB": "Terceiro Comando Puro",
+          "deathsBest": 1,
+          "deathsLow": 1,
+          "deathsHigh": 1,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "G1"
+        },
+        {
+          "id": "560968",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": -1.05458,
+            "longitude": -80.45445
+          },
+          "country": "Ecuador",
+          "sideA": "Los Choneros",
+          "sideB": "Los Lobos",
+          "deathsBest": 0,
+          "deathsLow": 0,
+          "deathsHigh": 2,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "Manabi Noticias"
+        },
+        {
+          "id": "560970",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": -1.05,
+            "longitude": -80.68333
+          },
+          "country": "Ecuador",
+          "sideA": "Los Choneros",
+          "sideB": "Los Lobos",
+          "deathsBest": 2,
+          "deathsLow": 0,
+          "deathsHigh": 2,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "Manabi Noticias"
+        },
+        {
+          "id": "561048",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 31.739444,
+            "longitude": -106.486944
+          },
+          "country": "Mexico",
+          "sideA": "Juarez Cartel",
+          "sideB": "Sinaloa Cartel",
+          "deathsBest": 1,
+          "deathsLow": 1,
+          "deathsHigh": 1,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "El Heraldo de Juarez"
+        },
+        {
+          "id": "561049",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 31.739444,
+            "longitude": -106.486944
+          },
+          "country": "Mexico",
+          "sideA": "Juarez Cartel",
+          "sideB": "Sinaloa Cartel",
+          "deathsBest": 1,
+          "deathsLow": 1,
+          "deathsHigh": 1,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "El Heraldo de Juarez"
+        },
+        {
+          "id": "561050",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 26.9464,
+            "longitude": -105.5621
+          },
+          "country": "Mexico",
+          "sideA": "Juarez Cartel",
+          "sideB": "Sinaloa Cartel",
+          "deathsBest": 1,
+          "deathsLow": 1,
+          "deathsHigh": 1,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "El Heraldo de Juarez"
+        },
+        {
+          "id": "561051",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 31.739444,
+            "longitude": -106.486944
+          },
+          "country": "Mexico",
+          "sideA": "Juarez Cartel",
+          "sideB": "Sinaloa Cartel",
+          "deathsBest": 1,
+          "deathsLow": 1,
+          "deathsHigh": 1,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "El Heraldo de Juarez"
+        },
+        {
+          "id": "561052",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 31.739444,
+            "longitude": -106.486944
+          },
+          "country": "Mexico",
+          "sideA": "Juarez Cartel",
+          "sideB": "Sinaloa Cartel",
+          "deathsBest": 1,
+          "deathsLow": 1,
+          "deathsHigh": 1,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "El Heraldo de Juarez"
+        },
+        {
+          "id": "561053",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 31.739444,
+            "longitude": -106.486944
+          },
+          "country": "Mexico",
+          "sideA": "Juarez Cartel",
+          "sideB": "Sinaloa Cartel",
+          "deathsBest": 2,
+          "deathsLow": 2,
+          "deathsHigh": 2,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "El Heraldo de Juarez"
+        },
+        {
+          "id": "561249",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 15.354722,
+            "longitude": 44.206667
+          },
+          "country": "Yemen (North Yemen)",
+          "sideA": "Government of United Kingdom, Government of United States of America",
+          "sideB": "Government of Yemen (North Yemen)",
+          "deathsBest": 0,
+          "deathsLow": 0,
+          "deathsHigh": 2,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "al-Masirah TV"
+        },
+        {
+          "id": "561375",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 31.7325,
+            "longitude": 70.3375
+          },
+          "country": "Pakistan",
+          "sideA": "Government of Pakistan",
+          "sideB": "TTP",
+          "deathsBest": 2,
+          "deathsLow": 2,
+          "deathsHigh": 2,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "police"
+        },
+        {
+          "id": "562716",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 2.46446,
+            "longitude": -77.23534
+          },
+          "country": "Colombia",
+          "sideA": "FARC-EMC",
+          "sideB": "ELN",
+          "deathsBest": 4,
+          "deathsLow": 4,
+          "deathsHigh": 4,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": ""
+        },
+        {
+          "id": "563077",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": -0.220914,
+            "longitude": 42.176961
+          },
+          "country": "Somalia",
+          "sideA": "Government of Somalia",
+          "sideB": "Al-Shabaab",
+          "deathsBest": 10,
+          "deathsLow": 10,
+          "deathsHigh": 10,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": ""
+        },
+        {
+          "id": "563993",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 48.87686,
+            "longitude": 38.27261
+          },
+          "country": "Ukraine",
+          "sideA": "Government of Russia (Soviet Union)",
+          "sideB": "Government of Ukraine",
+          "deathsBest": 7,
+          "deathsLow": 1,
+          "deathsHigh": 13,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "Russo-Ukrainian Warspotting"
+        },
+        {
+          "id": "564230",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 12.25,
+            "longitude": 39.75
+          },
+          "country": "Ethiopia",
+          "sideA": "Government of Ethiopia",
+          "sideB": "Fano",
+          "deathsBest": 2,
+          "deathsLow": 2,
+          "deathsHigh": 200,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "Fano, local sources"
+        },
+        {
+          "id": "559550",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": -3.98417,
+            "longitude": -38.62028
+          },
+          "country": "Brazil",
+          "sideA": "Comando Vermelho",
+          "sideB": "GDE",
+          "deathsBest": 2,
+          "deathsLow": 2,
+          "deathsHigh": 2,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "Secretariat of Public Security and Social Defense (SSPDS)"
+        },
+        {
+          "id": "559640",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 47.91801,
+            "longitude": 37.22885
+          },
+          "country": "Ukraine",
+          "sideA": "Government of Russia (Soviet Union)",
+          "sideB": "Government of Ukraine",
+          "deathsBest": 1,
+          "deathsLow": 1,
+          "deathsHigh": 1,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "Ukraine (head of the Donetsk OVA, Vadym Filashkin)"
+        },
+        {
+          "id": "559716",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 10.46314,
+            "longitude": -73.253224
+          },
+          "country": "Colombia",
+          "sideA": "EGC",
+          "sideB": "Civilians",
+          "deathsBest": 2,
+          "deathsLow": 2,
+          "deathsHigh": 2,
+          "violenceType": "UCDP_VIOLENCE_TYPE_ONE_SIDED",
+          "sourceOriginal": "uia_jep (www.infobae.com)"
+        },
+        {
+          "id": "559890",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 10,
+            "longitude": 50
+          },
+          "country": "Somalia",
+          "sideA": "Government of Somalia",
+          "sideB": "IS",
+          "deathsBest": 27,
+          "deathsLow": 27,
+          "deathsHigh": 31,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "Long War Journal"
+        },
+        {
+          "id": "560065",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": -3.87667,
+            "longitude": -38.62556
+          },
+          "country": "Brazil",
+          "sideA": "Comando Vermelho",
+          "sideB": "GDE",
+          "deathsBest": 2,
+          "deathsLow": 2,
+          "deathsHigh": 2,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "Secretariat of Public Security and Social Defense (SSPDS)"
+        },
+        {
+          "id": "560134",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 20.67675,
+            "longitude": -101.35628
+          },
+          "country": "Mexico",
+          "sideA": "Jalisco Cartel New Generation",
+          "sideB": "Santa Rosa de Lima Cartel",
+          "deathsBest": 1,
+          "deathsLow": 1,
+          "deathsHigh": 1,
+          "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE",
+          "sourceOriginal": "El Sol de Irapuato"
+        },
+        {
+          "id": "560220",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 48.178318,
+            "longitude": 37.630405
+          },
+          "country": "Ukraine",
+          "sideA": "Government of Russia (Soviet Union)",
+          "sideB": "Government of Ukraine",
+          "deathsBest": 1,
+          "deathsLow": 1,
+          "deathsHigh": 1,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "Russo-Ukrainian Warspotting"
+        },
+        {
+          "id": "560225",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 48.243849,
+            "longitude": 37.61202
+          },
+          "country": "Ukraine",
+          "sideA": "Government of Russia (Soviet Union)",
+          "sideB": "Government of Ukraine",
+          "deathsBest": 3,
+          "deathsLow": 1,
+          "deathsHigh": 6,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "Russo-Ukrainian Warspotting"
+        },
+        {
+          "id": "560226",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 48.221848,
+            "longitude": 37.198509
+          },
+          "country": "Ukraine",
+          "sideA": "Government of Russia (Soviet Union)",
+          "sideB": "Government of Ukraine",
+          "deathsBest": 30,
+          "deathsLow": 5,
+          "deathsHigh": 60,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "Russo-Ukrainian Warspotting"
+        },
+        {
+          "id": "560227",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 48.39489,
+            "longitude": 37.79102
+          },
+          "country": "Ukraine",
+          "sideA": "Government of Russia (Soviet Union)",
+          "sideB": "Government of Ukraine",
+          "deathsBest": 5,
+          "deathsLow": 1,
+          "deathsHigh": 10,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "Russo-Ukrainian Warspotting"
+        },
+        {
+          "id": "560228",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 48.592436,
+            "longitude": 37.99993
+          },
+          "country": "Ukraine",
+          "sideA": "Government of Russia (Soviet Union)",
+          "sideB": "Government of Ukraine",
+          "deathsBest": 1,
+          "deathsLow": 1,
+          "deathsHigh": 1,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "Russo-Ukrainian Warspotting"
+        },
+        {
+          "id": "560229",
+          "dateStart": 1735603200000,
+          "dateEnd": 1735603200000,
+          "location": {
+            "latitude": 48.01274,
+            "longitude": 37.25884
+          },
+          "country": "Ukraine",
+          "sideA": "Government of Russia (Soviet Union)",
+          "sideB": "Government of Ukraine",
+          "deathsBest": 1,
+          "deathsLow": 1,
+          "deathsHigh": 1,
+          "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+          "sourceOriginal": "Russo-Ukrainian Warspotting"
+        }
+      ],
+      "fetchedAt": 1779013841770,
+      "version": "25.1",
+      "totalRaw": 5918,
+      "filteredCount": 4858
+    },
+    "iran-events": {
+      "events": [
+        {
+          "id": "22841273",
+          "title": "CENTCOM: U.S. forces disabled the Iranian-flagged tankers Sea Star III and Sevda on May 8 as they attempted to enter an Iranian port in violation of the U.S. blockade. A U.S. Navy F/A-18 Super Hornet from USS George H.W. Bush struck both vessels’ smokestacks with precision munitions, preventing them from reaching Iran",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/8-may-14-centcom-us-forces-disabled-the-iranianflagged-tankers",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778252823107,
+          "severity": "high"
+        },
+        {
+          "id": "22841187",
+          "title": "Fox News, citing a US official: Airstrikes today targeted empty oil tankers attempting to breach the blockade on Iran. The targeted vessels were supertankers trying to return to Iran.",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/8-may-13-fox-news-citing-a-us-official-airstrikes-today-targeted",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778249223107,
+          "severity": "high"
+        },
+        {
+          "id": "22841176",
+          "title": "UAE Defense Ministry: Air defenses intercepted two ballistic missiles and three drones",
+          "category": "political",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/8-may-11-uae-defense-ministry-air-defenses-intercepted-two",
+          "latitude": 24.4539,
+          "longitude": 54.3773,
+          "locationName": "uae",
+          "timestamp": 1778242023107,
+          "severity": "high"
+        },
+        {
+          "id": "22841167",
+          "title": "Reports of a new attack on Bandar Abbas and Qeshm in southern Iran",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/8-may-10-reports-of-a-new-attack-on-bandar-abbas-and-qeshm",
+          "latitude": 27.1865,
+          "longitude": 56.2808,
+          "locationName": "bandar abbas",
+          "timestamp": 1778238423107,
+          "severity": "moderate"
+        },
+        {
+          "id": "22841151",
+          "title": "Chinese Foreign Ministry: No reports of injuries, even among the crew of the Chinese tanker in the Strait of Hormuz.",
+          "category": "intelligence",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/8-may-07-chinese-foreign-ministry-no-reports-of-injuries",
+          "latitude": 27,
+          "longitude": 56.5,
+          "locationName": "hormuz",
+          "timestamp": 1778227623107,
+          "severity": "moderate"
+        },
+        {
+          "id": "22841136",
+          "title": "The UAE Ministry of Defense announces that its air defenses intercepted missile and drone attacks coming from Iranian territory.",
+          "category": "political",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/8-may-06-the-uae-ministry-of-defense-announces-that-its-air",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778224023107,
+          "severity": "high"
+        },
+        {
+          "id": "22841147",
+          "title": "U.S. destroyers have made two Strait of Hormuz transits this week, both times under fire—this time U.S. forces hit back striking targets in Iran yesterday, including Qeshm Island and Bandar Abbas",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/8-may-05-us-destroyers-have-made-two-strait-of-hormuz-transits",
+          "latitude": 27.1865,
+          "longitude": 56.2808,
+          "locationName": "bandar abbas",
+          "timestamp": 1778220423107,
+          "severity": "moderate"
+        },
+        {
+          "id": "22841066",
+          "title": "President Trump tells in a phone call the retaliatory strikes against Iranian targets are just a \"love tap.\" \"It's just a love tap.\" When I asked if it means the ceasefire is over. \"No, no, the ceasefire is going. It's in effect",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-22-president-trump-tells-in-a-phone-call-the-retaliatory",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778213223108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22841062",
+          "title": "The American military confirms carrying out \"self-defense\" strikes in Iran in response to \"unprovoked Iranian attacks\" against US Navy missile destroyers that transited the Strait of Hormuz to the Gulf of Oman. \"Iranian forces launched multiple missiles, drones and small boats as USS Truxtun (DDG 103), USS Rafael Peralta (DDG 115), and USS Mason (DDG 87) transited the international sea passage,\" US Central Command says in a statement. CENTCOM says it intercepted the \"inbound threats,\" and \"no US",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-21-the-american-military-confirms-carrying-out-selfdefense",
+          "latitude": 27,
+          "longitude": 56.5,
+          "locationName": "hormuz",
+          "timestamp": 1778213223108,
+          "severity": "high"
+        },
+        {
+          "id": "22841063",
+          "title": "US military: Our forces carried out defensive strikes against Iranian military installations",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-21-us-military-our-forces-carried-out-defensive-strikes",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778213223108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22841064",
+          "title": "US destroyers USS Truxtun and USS Mason came under a sustained Iranian attack in the Strait of Hormuz; fast-attack boats, drones and missiles. American forces fought back. No casualties or damage reported - CBS News",
+          "category": "military",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-21-us-destroyers-uss-truxtun-and-uss-mason-came-under",
+          "latitude": 27,
+          "longitude": 56.5,
+          "locationName": "hormuz",
+          "timestamp": 1778213223108,
+          "severity": "critical"
+        },
+        {
+          "id": "22841057",
+          "title": "The IRGC Navy in and statement said US naval forces came under attack by Iranian forces while attempting to approach an Iranian oil tanker near Jask, claiming that American warships suffered heavy damage in the confrontation",
+          "category": "military",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-21-the-irgc-navy-in-and-statement-said-us-naval-forces",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778213223108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22841055",
+          "title": "Governor of Minab, southern Iran: The naval base in the province was targeted by the US",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-21-governor-of-minab-southern-iran-the-naval-base-in",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778213223108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22841056",
+          "title": "A US official confirmed to Fox News: We attacked an Iranian base in Bandar Qarghan in the Minab province.",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-21-a-us-official-confirmed-to-fox-news-we-attacked",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778213223108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22841060",
+          "title": "Iran's joint military command says the U.S. carried out air strikes in civilian areas with cooperation of some regional countries",
+          "category": "military",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-21-irans-joint-military-command-says-the-us-carried",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778213223108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22841061",
+          "title": "In a statement, Khatam al-Anbiya Central Headquarters said the US with several regional countries, attacked an Iranian oil tanker in the Strait of Hormuz as well as the cities of Minab, Bandar Abbas, Khamir, Sirik and Qeshm. The statement said that Iranian responded immediately",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-21-in-a-statement-khatam-alanbiya-central-headquarters",
+          "latitude": 27.1865,
+          "longitude": 56.2808,
+          "locationName": "bandar abbas",
+          "timestamp": 1778213223108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22841059",
+          "title": "US military just carried out strikes on Iran's Qeshm Port and Bandar Abbas: Senior US official tells, but this is NOT a restarting of the war",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-20-us-military-just-carried-out-strikes-on-irans-qeshm",
+          "latitude": 27.1865,
+          "longitude": 56.2808,
+          "locationName": "bandar abbas",
+          "timestamp": 1778213223108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22841000",
+          "title": "The UAE announces the establishment of a national committee to document Iranian acts of aggression, international crimes, and the resulting damages.",
+          "category": "political",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-12-the-uae-announces-the-establishment-of-a-national",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778213223108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22840991",
+          "title": "The Iranian president: I recently met with Supreme Leader Mojtaba Khamenei for two and a half hours in an atmosphere of trust and dialogue.",
+          "category": "military",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-10-the-iranian-president-i-recently-met-with-supreme",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778213223108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22840897",
+          "title": "Trump paused his plan to reopen the Strait of Hormuz after Saudi Arabia blocked the U.S. military from using its bases and airspace for the operation. The restriction cut off critical access needed for aircraft, refueling, and protection missions, forcing the White House to halt “Project Freedom” shortly after it began.",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/7-may-04-trump-paused-his-plan-to-reopen-the-strait-of-hormuz",
+          "latitude": 27,
+          "longitude": 56.5,
+          "locationName": "hormuz",
+          "timestamp": 1778126823108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22840893",
+          "title": "Trump on Iran: It will end \"quickly\".",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/6-may-23-trump-on-iran-it-will-end-quickly",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778126823108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22840839",
+          "title": "The UAE condemns the Iranian Foreign Ministry's statement and affirms its categorical rejection of any claims or threats that infringe upon its sovereignty, national security, or independence of decision-making.",
+          "category": "political",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/6-may-18-the-uae-condemns-the-iranian-foreign-ministrys-statement",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778126823108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22840840",
+          "title": "Trump to Fox News: Timeframe for an Iran deal is one week",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/6-may-18-trump-to-fox-news-timeframe-for-an-iran-deal-is",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778126823108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22840829",
+          "title": "A U.S. Navy F/A-18 Super Hornet fired on an Iranian-flagged vessel attempting to breach the naval blockade, according to CENTCOM. The tanker is \"no longer transiting to Iran\" after the rudder was hit by 20mm rounds fired from the jet's gatling gun",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/6-may-17-a-us-navy-fa18-super-hornet-fired-on-an-iranianflagged",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778126823108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22840957",
+          "title": "Iran to run out of onshore and offshore oil storage in 40-45 days, will begin closing oil wells, some closures will be permanent, an Iranian Oil Ministry official tells NYT",
+          "category": "military",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/6-may-16-iran-to-run-out-of-onshore-and-offshore-oil-storage",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778126823108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22840836",
+          "title": "France's only aircraft carrier, The FS Charles de Gaulle has crossed the Suez Canal and is en route to enter the Red Sea. The French Ministry of Defense has stated that the carrier group will deploy to the Southern Red Sea/Gulf of Aden Area in preparation for a future freedom of navigation operation in the Strait of Hormuz",
+          "category": "international",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/6-may-15-frances-only-aircraft-carrier-the-fs-charles-de",
+          "latitude": 27,
+          "longitude": 56.5,
+          "locationName": "hormuz",
+          "timestamp": 1778126823108,
+          "severity": "elevated"
+        },
+        {
+          "id": "22840815",
+          "title": "Trump told PBS: The agreement stipulates that Iran will export highly enriched uranium to the United States.",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/6-may-14-trump-told-pbs-the-agreement-stipulates-that-iran",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778126823108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22840813",
+          "title": "Trump tells PBS: Special envoys Steve Wittkoff and Jared Kushner unlikely to be sent to participate in talks",
+          "category": "airstrike",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/6-may-14-trump-tells-pbs-special-envoys-steve-wittkoff-and",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "Iran",
+          "timestamp": 1778126823108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22840809",
+          "title": "Iran says it's reviewing latest US proposal to end the war, according to the country's state-owned news agency @isna_farsi. The news agency however pours cold water on the Axios report, saying it contains \"ambitious and unrealistic proposals",
+          "category": "military",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/6-may-13-iran-says-its-reviewing-latest-us-proposal-to-end",
+          "latitude": 32.4279,
+          "longitude": 53.688,
+          "locationName": "iran",
+          "timestamp": 1778126823108,
+          "severity": "moderate"
+        },
+        {
+          "id": "22840817",
+          "title": "Iranian air defenses reportedly shot down a drone overnight near the Strait of Hormuz, close to Qeshm Island. Source: Fars",
+          "category": "military",
+          "sourceUrl": "https://iran.liveuamap.com/en/2026/6-may-12-iranian-air-defenses-reportedly-shot-down-a-drone",
+          "latitude": 27,
+          "longitude": 56.5,
+          "locationName": "hormuz",
+          "timestamp": 1778126823108,
+          "severity": "elevated"
+        }
+      ],
+      "scrapedAt": 1778299623108
+    },
+    "events": {
+      "events": [
+        {
+          "id": "gdelt-32.00-53.00-1779013877943",
+          "title": "Iran (105 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Iran",
+          "country": "Iran",
+          "region": "",
+          "location": {
+            "latitude": 32,
+            "longitude": 53
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_HIGH",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://kfgo.com/2026/05/16/gucci-takes-over-times-square-for-cruise-show-as-kering-eyes-revival/",
+            "http://www.cfi.net.cn/p20260517000040.html",
+            "https://www.diariodemallorca.es/opinion/2026/05/17/cumbre-taiwan-130315009.html",
+            "http://www.utahindependent.com/news/279055876/marshall-islands-flagged-lpg-tanker-symi-arrives-at-kandla-port-after-crossing-strait-of-hormuz",
+            "https://profile.ru/news/abroad/vmesto-korablej-fury-sudohodnye-kompanii-nashli-vyhod-iz-blokady-ormuzskogo-proliva-1860860/"
+          ]
+        },
+        {
+          "id": "gdelt-35.00-105.00-1779013877943",
+          "title": "China (113 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "China",
+          "country": "China",
+          "region": "",
+          "location": {
+            "latitude": 35,
+            "longitude": 105
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_HIGH",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "http://www.pambazuka.org/index.php/South-Africa-Nuclear",
+            "https://finance.sina.com.cn/roll/2026-05-17/doc-inhyezxf1667016.shtml",
+            "https://news.cts.com.tw/cna/local/202605/202605173032526.html",
+            "https://www.vecernji.hr/vijesti/konfucije-i-rambo-u-pekingu-xi-govori-o-prijateljstvu-i-harmoniji-a-trump-o-sili-ali-obojica-igraju-istu-igru-moci-i-dominacije-1960343",
+            "https://www.diariodemallorca.es/opinion/2026/05/17/cumbre-taiwan-130315009.html"
+          ]
+        },
+        {
+          "id": "gdelt-35.00-38.00-1779013877943",
+          "title": "Syria (106 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Syria",
+          "country": "Syria",
+          "region": "",
+          "location": {
+            "latitude": 35,
+            "longitude": 38
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_HIGH",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://www.wcbe.org/npr-news/2026-05-17/the-foreign-fighters-who-helped-topple-assad-and-why-china-worries-about-them"
+          ]
+        },
+        {
+          "id": "gdelt-39.00-22.00-1779013877943",
+          "title": "Greece (38 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Greece",
+          "country": "Greece",
+          "region": "",
+          "location": {
+            "latitude": 39,
+            "longitude": 22
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://www.patrisnews.com/eurovision-2026-akylas-i-proti-toy-anartisi-meta-tin-10i-thesi-ston-diagonismo/",
+            "https://www.news247.gr/politismos/mousiki/eurovision-2026-nea-anartisi-akyla-stenaxorithika-eixa-ena-varos-sto-stithos/",
+            "https://www.inewsgr.com/182/st-kontadakis-sto-synedrio-nd-i-nd-einai-i-monadiki-dynami-pou-borei-na-engyithei-tin-omali-poreia-tis-choras-mesa-se-ena-perivallon-diethnon-kriseon-kai-geopolitikon-anataraxeon.htm",
+            "https://www.newsit.gr/politikh/konstantinos-tasoulas-dianyktereyse-sto-fylakio-5-edo-ston-evro-yparxei-enas-aeras-o-opoios-se-gemizei-aytopepoithisi/4677989/",
+            "https://www.lykavitos.gr/news/politics/synedrio-nd-oloklironontai-oi-ergasies-me-psifoforia-gia-ti-nea-politiki-epitropi-kai-om"
+          ]
+        },
+        {
+          "id": "gdelt-43.00-25.00-1779013877943",
+          "title": "Bulgaria (33 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Bulgaria",
+          "country": "Bulgaria",
+          "region": "",
+          "location": {
+            "latitude": 43,
+            "longitude": 25
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://www.patrisnews.com/eurovision-2026-akylas-i-proti-toy-anartisi-meta-tin-10i-thesi-ston-diagonismo/",
+            "https://www.vesti.bg/bulgaria/vasil-terziev-za-pod-sedem-hiliadi-deca-niama-da-ima-mesta-v-iasli-i-gradini-v-sofiia-6259834",
+            "https://www.brentwoodlive.co.uk/news/national/uk-today/26113646.won-eurovision-2026-full-leaderboard-scores/",
+            "https://www.weser-kurier.de/kultur/film/esc-finale-holt-erneut-sehr-gute-quote-doc85vt0vohk8l171ndnjw9",
+            "https://www.heute.at/s/vermummte-mit-protest-bei-esc-finale-14-festnahmen-120196471"
+          ]
+        },
+        {
+          "id": "gdelt-46.00-2.00-1779013877943",
+          "title": "France (44 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "France",
+          "country": "France",
+          "region": "",
+          "location": {
+            "latitude": 46,
+            "longitude": 2
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://kfgo.com/2026/05/16/gucci-takes-over-times-square-for-cruise-show-as-kering-eyes-revival/",
+            "https://www.brentwoodlive.co.uk/news/national/uk-today/26113646.won-eurovision-2026-full-leaderboard-scores/",
+            "https://www.standardmedia.co.ke/national/article/2001548024/shame-of-security-lapses-scuffles-at-high-profile-african-summit",
+            "https://24tv.ua/trends24/ru/pervyj-zvukovoj-film-sssr-ego-sozdali-ukraine-chto-izvestno_n3069276",
+            "https://www.laopiniondezamora.es/economia/2026/05/17/bizum-pay-visa-mastercard-estrategia-union-europea-130313305.html"
+          ]
+        },
+        {
+          "id": "gdelt-42.83-12.83-1779013877943",
+          "title": "Italy (42 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Italy",
+          "country": "Italy",
+          "region": "",
+          "location": {
+            "latitude": 42.8333,
+            "longitude": 12.8333
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://kfgo.com/2026/05/16/gucci-takes-over-times-square-for-cruise-show-as-kering-eyes-revival/",
+            "https://www.expressen.se/nyheter/varlden/experten-reglerna-brots-saknade-tillstand-/",
+            "https://www.ilgiornale.it/news/retrogusto/maritozzo-massari-diventa-estivo-2665778.html",
+            "https://www.laopiniondezamora.es/medio-ambiente/2026/05/17/10-animales-avisan-llegada-desastre-112547473.html",
+            "https://24tv.ua/trends24/ru/pervyj-zvukovoj-film-sssr-ego-sozdali-ukraine-chto-izvestno_n3069276"
+          ]
+        },
+        {
+          "id": "gdelt-49.00-32.00-1779013877943",
+          "title": "Ukraine (49 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Ukraine",
+          "country": "Ukraine",
+          "region": "",
+          "location": {
+            "latitude": 49,
+            "longitude": 32
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://www.bgonair.bg/a/4-world/418954-rusiya-nad-550-ukrainski-drona-sa-neutralizirani-za-denonoshtie",
+            "https://podrobnosti.ua/2515751-u-rumun-blja-kordonu-z-ukranoju-vpav-nerozrvanij-snarjad.html",
+            "https://24tv.ua/trends24/ru/pervyj-zvukovoj-film-sssr-ego-sozdali-ukraine-chto-izvestno_n3069276",
+            "https://www.actualitati-arad.ro/romania-pe-locul-trei-la-concursul-eurovision/",
+            "https://24tv.ua/law/ru/vzyskanie-dolgov-skolko-deneg-mozhet-ispolzovat-chelovek-s-arestovannogo-scheta_n3068965"
+          ]
+        },
+        {
+          "id": "gdelt-60.00-100.00-1779013877943",
+          "title": "Russia (87 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Russia",
+          "country": "Russia",
+          "region": "",
+          "location": {
+            "latitude": 60,
+            "longitude": 100
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://www.bgonair.bg/a/4-world/418954-rusiya-nad-550-ukrainski-drona-sa-neutralizirani-za-denonoshtie",
+            "https://www.vesti.bg/bulgaria/vasil-terziev-za-pod-sedem-hiliadi-deca-niama-da-ima-mesta-v-iasli-i-gradini-v-sofiia-6259834",
+            "http://www.pambazuka.org/index.php/South-Africa-Nuclear",
+            "https://24tv.ua/trends24/ru/pervyj-zvukovoj-film-sssr-ego-sozdali-ukraine-chto-izvestno_n3069276",
+            "https://www.stiripesurse.ro/cel-mai-mare-lac-din-lume-dispare-ecosisteme-dispar-efectele-sunt-resimtite-de-milioane-de-oameni_3886748"
+          ]
+        },
+        {
+          "id": "gdelt-55.75-37.62-1779013877943",
+          "title": "Moscow, Moskva, Russia (27 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Moscow",
+          "country": "Russia",
+          "region": "",
+          "location": {
+            "latitude": 55.7522,
+            "longitude": 37.6156
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://www.bgonair.bg/a/4-world/418954-rusiya-nad-550-ukrainski-drona-sa-neutralizirani-za-denonoshtie",
+            "https://www.interfax.ru/russia/1089977",
+            "https://www.respublika.lt/lt/naujienos/pasaulis/kitos_pasaulio_naujienos/po-dronu-atakos-maskvos-srityje---gaisrai-naftos-krovos-terminale-mokslo-parke-ir-seremetjevo-oro-uoste/,coments.1",
+            "http://www.iraqsun.com/news/279055993/iran-says-30-people-executed-since-start-of-war",
+            "https://magyarnemzet.hu/kulfold/2026/05/dronhaboru-moszkva-felett-hazak-gyulladtak-ki"
+          ]
+        },
+        {
+          "id": "gdelt-51.50-10.50-1779013877943",
+          "title": "Germany (81 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Germany",
+          "country": "Germany",
+          "region": "",
+          "location": {
+            "latitude": 51.5,
+            "longitude": 10.5
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://eturbonews.com/pal-adds-capacity-comfort-largest-model-a320/",
+            "https://time.mk/sc/25f261f4df/mk/",
+            "https://www.weser-kurier.de/kultur/film/esc-finale-holt-erneut-sehr-gute-quote-doc85vt0vohk8l171ndnjw9",
+            "https://www.laopiniondezamora.es/economia/2026/05/17/bizum-pay-visa-mastercard-estrategia-union-europea-130313305.html",
+            "http://www.cfi.net.cn/p20260517000040.html"
+          ]
+        },
+        {
+          "id": "gdelt-54.00--4.00-1779013877943",
+          "title": "United Kingdom (53 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "United Kingdom",
+          "country": "United Kingdom",
+          "region": "",
+          "location": {
+            "latitude": 54,
+            "longitude": -4
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://www.brentwoodlive.co.uk/news/national/uk-today/26113646.won-eurovision-2026-full-leaderboard-scores/",
+            "https://www.northwichguardian.co.uk/news/national/26113785.spitfire-return-production-90-years-first-flight/",
+            "http://www.cfi.net.cn/p20260517000040.html",
+            "https://orainfo.net/thellohet-tragjedia-ne-maldive-zhytesi-humb-jeten-gjate-kerkimit-te-trupave-te-italianeve-te-zhdukur/",
+            "https://www.boredpanda.com/boss-asks-adjust-dads-funeral-prioritize-work/?cexp_id=153182&cexp_var=7&_f=homepage_featured"
+          ]
+        },
+        {
+          "id": "gdelt-31.50-34.75-1779013877943",
+          "title": "Israel (92 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Israel",
+          "country": "Israel",
+          "region": "",
+          "location": {
+            "latitude": 31.5,
+            "longitude": 34.75
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://www.brentwoodlive.co.uk/news/national/uk-today/26113646.won-eurovision-2026-full-leaderboard-scores/",
+            "https://www.maariv.co.il/news/opinions/article-1321537",
+            "http://www.pambazuka.org/index.php/South-Africa-Nuclear",
+            "https://www.laopiniondezamora.es/economia/2026/05/17/bizum-pay-visa-mastercard-estrategia-union-europea-130313305.html",
+            "https://www.actualitati-arad.ro/romania-pe-locul-trei-la-concursul-eurovision/"
+          ]
+        },
+        {
+          "id": "gdelt-20.00-77.00-1779013877943",
+          "title": "India (50 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "India",
+          "country": "India",
+          "region": "",
+          "location": {
+            "latitude": 20,
+            "longitude": 77
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://aninews.in/news/national/general-news/gujarat-cm-bhupendra-patel-formally-launches-self-enumeration-process-for-census-202720260517135110/",
+            "http://www.pambazuka.org/index.php/South-Africa-Nuclear",
+            "http://www.utahindependent.com/news/279055876/marshall-islands-flagged-lpg-tanker-symi-arrives-at-kandla-port-after-crossing-strait-of-hormuz",
+            "https://www.maalaimalar.com/cinema/cinemanews/director-atlee-and-priya-couple-name-their-daughter-miyou",
+            "https://aninews.in/news/national/general-news/over-63000-high-value-jobs-will-be-created-says-amit-shah-at-gujarats-first-sez-it-million-minds-tech-park-launch20260517141447/"
+          ]
+        },
+        {
+          "id": "gdelt-37.00-127.50-1779013877943",
+          "title": "South Korea (38 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "South Korea",
+          "country": "South Korea",
+          "region": "",
+          "location": {
+            "latitude": 37,
+            "longitude": 127.5
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://biz.heraldcorp.com/article/10739552",
+            "https://www.jutarnji.hr/domidizajn/inspiracije/preobrazba-kuhinje-bijeli-ormarici-marmoleum-rasvjeta-mali-budzet-15709137",
+            "https://wallstreetcn.com/articles/3772450",
+            "https://www.wcbe.org/npr-news/2026-05-17/the-foreign-fighters-who-helped-topple-assad-and-why-china-worries-about-them"
+          ]
+        },
+        {
+          "id": "gdelt--30.00-26.00-1779013877943",
+          "title": "South Africa (29 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "South Africa",
+          "country": "South Africa",
+          "region": "",
+          "location": {
+            "latitude": -30,
+            "longitude": 26
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "http://www.pambazuka.org/index.php/South-Africa-Nuclear",
+            "https://www.thecable.ng/maryland-mall-a-xenophobic-impulse/"
+          ]
+        },
+        {
+          "id": "gdelt-37.60--4.50-1779013877943",
+          "title": "Andalusia, Spain (General), Spain (25 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Andalusia",
+          "country": "Spain",
+          "region": "",
+          "location": {
+            "latitude": 37.6,
+            "longitude": -4.5
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://www.laregion.es/foro-la-region/juan-manuel-fernandez-presidente-audencia-nacional-xustiza_1_20260517-4278220.html",
+            "https://www.laprovincia.es/fotos/nacional/2026/05/17/elecciones-andaluzas-imagenes-130316635.html",
+            "http://www.gentedigital.es/sevilla/noticia/4322859/un-colegio-de-pedroche-cordoba-ha-sido-la-primera-en-constituirse-en-andalucia-y-otro-de-sevilla-este-el-ultimo/",
+            "https://viajar.elperiodico.com/viajeros/pueblo-matias-prats-cordoba-castillo-130177050",
+            "https://www.laverdad.es/elecciones/andaluzas/andalucia-define-terreno-juego-sanchez-feijoo-generales-20260513001759-ntrc.html"
+          ]
+        },
+        {
+          "id": "gdelt-40.00--4.00-1779013877943",
+          "title": "Spain (60 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Spain",
+          "country": "Spain",
+          "region": "",
+          "location": {
+            "latitude": 40,
+            "longitude": -4
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://www.laregion.es/foro-la-region/juan-manuel-fernandez-presidente-audencia-nacional-xustiza_1_20260517-4278220.html",
+            "https://24tv.ua/trends24/ru/pervyj-zvukovoj-film-sssr-ego-sozdali-ukraine-chto-izvestno_n3069276",
+            "https://www.laopiniondezamora.es/economia/2026/05/17/bizum-pay-visa-mastercard-estrategia-union-europea-130313305.html",
+            "https://www.derstandard.at/consent/tcf/story/3000000320982/offiziell-xabi-alonso-wird-neuer-chelsea-trainer",
+            "https://www.laprovincia.es/economia/2026/05/17/nueva-medida-seguridad-social-pension-dv-130247424.html"
+          ]
+        },
+        {
+          "id": "gdelt--30.00--71.00-1779013877943",
+          "title": "Chile (76 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Chile",
+          "country": "Chile",
+          "region": "",
+          "location": {
+            "latitude": -30,
+            "longitude": -71
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://auto.sina.com.cn/newcar/2026-05-17/detail-inhyezxf1663154.shtml",
+            "https://links.org.au/strikes-and-resurgent-trade-unionism-chile-interview-domingo-perez-valenzuela",
+            "https://variety.com/2026/film/global/sylvie-pialat-cannes-pablo-fendrik-felipe-galvez-hu-wei-1236750868/",
+            "https://auto.sina.com.cn/newcar/2026-05-15/detail-inhxyyic3272763.shtml?oaid=00111",
+            "https://www.heraldo.es/noticias/deportes/futbol/2026/05/17/increible-golazo-chilena-aragones-enrique-clemente-van-basten-2020976.html"
+          ]
+        },
+        {
+          "id": "gdelt-52.00-20.00-1779013877943",
+          "title": "Poland (54 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Poland",
+          "country": "Poland",
+          "region": "",
+          "location": {
+            "latitude": 52,
+            "longitude": 20
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_MEDIUM",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://www.actualitati-arad.ro/romania-pe-locul-trei-la-concursul-eurovision/",
+            "https://www.portalsamorzadowy.pl/zmiany-w-prawie/rejestracja-najmu-krotkoterminowego-unijne-przepisy-wchodza-w-zycie-co-z-polskimi,661242.html",
+            "https://www.elperiodico.com/es/vida-y-estilo/20260517/benito-antonio-coleccion-exclusiva-bad-130315572",
+            "https://vz.ru/news/2026/5/17/1419726.html",
+            "https://www.jns.org/news/world/israels-noam-bettan-finishes-second-behind-bulgaria-at-eurovision"
+          ]
+        },
+        {
+          "id": "gdelt-45.47-9.20-1779013877943",
+          "title": "Milan, Lombardia, Italy (5 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Milan",
+          "country": "Italy",
+          "region": "",
+          "location": {
+            "latitude": 45.4667,
+            "longitude": 9.2
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_LOW",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_MEDIUM",
+          "sourceUrls": [
+            "https://kfgo.com/2026/05/16/gucci-takes-over-times-square-for-cruise-show-as-kering-eyes-revival/",
+            "https://www.ilgiornale.it/news/retrogusto/maritozzo-massari-diventa-estivo-2665778.html",
+            "https://www.savonanews.it/2026/05/17/leggi-notizia/argomenti/attualit/articolo/millesimo-visita-dei-vertici-dellarma-dei-carabinieri-e-della-procura-generale-di-milano.html",
+            "https://www.ilfattoquotidiano.it/2026/05/17/omogeneizzati-che-gocciolano-sulla-tastiera-torte-rustiche-e-un-unico-computer-da-dividersi-paola-cortellesi-svela-al-salone-del-libro-i-segreti-della-scrittura-di-ce-ancora-domani/8389394/"
+          ]
+        },
+        {
+          "id": "gdelt-42.15--74.94-1779013877943",
+          "title": "New York, United States (17 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "New York",
+          "country": "United States",
+          "region": "",
+          "location": {
+            "latitude": 42.1497,
+            "longitude": -74.9384
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_LOW",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_MEDIUM",
+          "sourceUrls": [
+            "https://kfgo.com/2026/05/16/gucci-takes-over-times-square-for-cruise-show-as-kering-eyes-revival/",
+            "https://www.expressen.se/nyheter/varlden/experten-reglerna-brots-saknade-tillstand-/",
+            "https://lethbridgeherald.com/entertainment/entertainment-news/2026/05/17/researchers-stunned-by-a-forgotten-medieval-book-in-rome-hiding-the-oldest-english-poem/",
+            "https://www.denverpost.com/2026/05/17/today-in-history-may-17-televised-watergate-hearings-begin/",
+            "https://calgarysun.com/sunshine-girls/sunshine-girl-breahna-7"
+          ]
+        },
+        {
+          "id": "gdelt-48.20-16.37-1779013877943",
+          "title": "Vienna, Wien, Austria (14 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Vienna",
+          "country": "Austria",
+          "region": "",
+          "location": {
+            "latitude": 48.2,
+            "longitude": 16.3667
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_LOW",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_MEDIUM",
+          "sourceUrls": [
+            "https://www.heute.at/s/13-jaehrige-bei-unfall-mit-e-scooter-schwer-verletzt-120196495",
+            "https://www.brentwoodlive.co.uk/news/national/uk-today/26113646.won-eurovision-2026-full-leaderboard-scores/",
+            "https://www.news247.gr/politismos/mousiki/eurovision-2026-nea-anartisi-akyla-stenaxorithika-eixa-ena-varos-sto-stithos/",
+            "https://www.actualitati-arad.ro/romania-pe-locul-trei-la-concursul-eurovision/",
+            "https://www.vesti.bg/pari/koia-dyrzhava-e-otdelila-naj-goliam-biudzhet-za-evroviziia-2026-6259831"
+          ]
+        },
+        {
+          "id": "gdelt-42.68-23.32-1779013877943",
+          "title": "Sofia, Sofiya-Grad, Bulgaria (14 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Sofia",
+          "country": "Bulgaria",
+          "region": "",
+          "location": {
+            "latitude": 42.6833,
+            "longitude": 23.3167
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_LOW",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_MEDIUM",
+          "sourceUrls": [
+            "https://www.vesti.bg/bulgaria/vasil-terziev-za-pod-sedem-hiliadi-deca-niama-da-ima-mesta-v-iasli-i-gradini-v-sofiia-6259834",
+            "https://www.brentwoodlive.co.uk/news/national/uk-today/26113646.won-eurovision-2026-full-leaderboard-scores/",
+            "https://www.witneygazette.co.uk/news/26113718.won-eurovision-2026-full-leaderboard-scores/",
+            "https://www.burgasinfo.com/news/view/5/151370"
+          ]
+        },
+        {
+          "id": "gdelt--25.00-135.00-1779013877943",
+          "title": "Australia (9 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Australia",
+          "country": "Australia",
+          "region": "",
+          "location": {
+            "latitude": -25,
+            "longitude": 135
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_LOW",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_MEDIUM",
+          "sourceUrls": [
+            "https://www.brentwoodlive.co.uk/news/national/uk-today/26113646.won-eurovision-2026-full-leaderboard-scores/",
+            "https://www.tvguide.co.uk/schedule/057f4ad3-67d5-565f-b124-7982cf839c18/nothing-to-declare",
+            "https://www.muswellbrookchronicle.com.au/story/9248244/land-levy-planned-despite-anti-forever-tax-pledge/",
+            "https://www.cosmo.com.ua/people/news/yevrobachennya-2026-khto-peremih-i-yake-mistse-posila-ukrayina/",
+            "https://www.jns.org/news/world/israels-noam-bettan-finishes-second-behind-bulgaria-at-eurovision"
+          ]
+        },
+        {
+          "id": "gdelt-47.33-13.33-1779013877943",
+          "title": "Austria (8 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Austria",
+          "country": "Austria",
+          "region": "",
+          "location": {
+            "latitude": 47.3333,
+            "longitude": 13.3333
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_LOW",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_MEDIUM",
+          "sourceUrls": [
+            "https://www.brentwoodlive.co.uk/news/national/uk-today/26113646.won-eurovision-2026-full-leaderboard-scores/",
+            "https://www.heute.at/s/vermummte-mit-protest-bei-esc-finale-14-festnahmen-120196471",
+            "https://www.inewsgr.com/184/telos-epochis-H-BMW-Z4-perase-oristika-stin-istoria.htm",
+            "https://www.jns.org/news/world/israels-noam-bettan-finishes-second-behind-bulgaria-at-eurovision",
+            "https://www.witneygazette.co.uk/news/26113718.won-eurovision-2026-full-leaderboard-scores/"
+          ]
+        },
+        {
+          "id": "gdelt-64.00-26.00-1779013877943",
+          "title": "Finland (12 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Finland",
+          "country": "Finland",
+          "region": "",
+          "location": {
+            "latitude": 64,
+            "longitude": 26
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_LOW",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_MEDIUM",
+          "sourceUrls": [
+            "https://www.brentwoodlive.co.uk/news/national/uk-today/26113646.won-eurovision-2026-full-leaderboard-scores/",
+            "https://www.expressen.se/nyheter/varlden/experten-reglerna-brots-saknade-tillstand-/",
+            "https://yle.fi/a/74-20226394",
+            "https://orainfo.net/thellohet-tragjedia-ne-maldive-zhytesi-humb-jeten-gjate-kerkimit-te-trupave-te-italianeve-te-zhdukur/",
+            "https://www.witneygazette.co.uk/news/26113718.won-eurovision-2026-full-leaderboard-scores/"
+          ]
+        },
+        {
+          "id": "gdelt-46.00-25.00-1779013877943",
+          "title": "Romania (21 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Romania",
+          "country": "Romania",
+          "region": "",
+          "location": {
+            "latitude": 46,
+            "longitude": 25
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_LOW",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_HIGH",
+          "sourceUrls": [
+            "https://www.brentwoodlive.co.uk/news/national/uk-today/26113646.won-eurovision-2026-full-leaderboard-scores/",
+            "https://podrobnosti.ua/2515751-u-rumun-blja-kordonu-z-ukranoju-vpav-nerozrvanij-snarjad.html",
+            "https://www.actualitati-arad.ro/romania-pe-locul-trei-la-concursul-eurovision/",
+            "https://www.cosmo.com.ua/people/news/yevrobachennya-2026-khto-peremih-i-yake-mistse-posila-ukrayina/",
+            "https://www.witneygazette.co.uk/news/26113718.won-eurovision-2026-full-leaderboard-scores/"
+          ]
+        },
+        {
+          "id": "gdelt-31.42-34.33-1779013877943",
+          "title": "Gaza, Israel (General), Israel (7 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Gaza",
+          "country": "Israel",
+          "region": "",
+          "location": {
+            "latitude": 31.4167,
+            "longitude": 34.3333
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_LOW",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_MEDIUM",
+          "sourceUrls": [
+            "https://www.brentwoodlive.co.uk/news/national/uk-today/26113646.won-eurovision-2026-full-leaderboard-scores/",
+            "http://www.pambazuka.org/index.php/South-Africa-Nuclear",
+            "https://www.witneygazette.co.uk/news/26113718.won-eurovision-2026-full-leaderboard-scores/",
+            "https://www.bssnews.net/international/387744",
+            "https://www.jns.org/feature/shlomit-dedicates-first-synagogue-in-memory-of-fallen-defenders"
+          ]
+        },
+        {
+          "id": "gdelt-35.75-51.51-1779013877943",
+          "title": "Tehran, Tehran, Iran (11 reports)",
+          "summary": "",
+          "eventType": "UNREST_EVENT_TYPE_PROTEST",
+          "city": "Tehran",
+          "country": "Iran",
+          "region": "",
+          "location": {
+            "latitude": 35.75,
+            "longitude": 51.5148
+          },
+          "occurredAt": 1779013877943,
+          "severity": "SEVERITY_LEVEL_LOW",
+          "fatalities": 0,
+          "sources": [
+            "GDELT"
+          ],
+          "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+          "tags": [],
+          "actors": [],
+          "confidence": "CONFIDENCE_LEVEL_MEDIUM",
+          "sourceUrls": [
+            "https://www.maariv.co.il/news/opinions/article-1321537",
+            "https://www.stiripesurse.ro/cel-mai-mare-lac-din-lume-dispare-ecosisteme-dispar-efectele-sunt-resimtite-de-milioane-de-oameni_3886748",
+            "http://www.utahindependent.com/news/279055876/marshall-islands-flagged-lpg-tanker-symi-arrives-at-kandla-port-after-crossing-strait-of-hormuz",
+            "https://profile.ru/news/abroad/vmesto-korablej-fury-sudohodnye-kompanii-nashli-vyhod-iz-blokady-ormuzskogo-proliva-1860860/",
+            "http://www.iraqsun.com/news/279055993/iran-says-30-people-executed-since-start-of-war"
+          ]
+        }
+      ],
+      "clusters": []
+    },
+    "scores": {
+      "ciiScores": [
+        {
+          "region": "UA",
+          "staticBaseline": 50,
+          "dynamicScore": 17,
+          "combinedScore": 67,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 1,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "SY",
+          "staticBaseline": 50,
+          "dynamicScore": 11,
+          "combinedScore": 61,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "YE",
+          "staticBaseline": 50,
+          "dynamicScore": 10,
+          "combinedScore": 60,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 0
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "MM",
+          "staticBaseline": 45,
+          "dynamicScore": 15,
+          "combinedScore": 60,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "AF",
+          "staticBaseline": 45,
+          "dynamicScore": 15,
+          "combinedScore": 60,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 30
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "LB",
+          "staticBaseline": 40,
+          "dynamicScore": 20,
+          "combinedScore": 60,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 4,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 10
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "IR",
+          "staticBaseline": 40,
+          "dynamicScore": 10,
+          "combinedScore": 50,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 6,
+            "ciiContribution": 0,
+            "geoConvergence": 50,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "IL",
+          "staticBaseline": 45,
+          "dynamicScore": 5,
+          "combinedScore": 50,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 4,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 7
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "PK",
+          "staticBaseline": 35,
+          "dynamicScore": 15,
+          "combinedScore": 50,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 30
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "VE",
+          "staticBaseline": 40,
+          "dynamicScore": 10,
+          "combinedScore": 50,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 30
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "CU",
+          "staticBaseline": 45,
+          "dynamicScore": 5,
+          "combinedScore": 50,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 15
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "MX",
+          "staticBaseline": 35,
+          "dynamicScore": 15,
+          "combinedScore": 50,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "IQ",
+          "staticBaseline": 40,
+          "dynamicScore": 10,
+          "combinedScore": 50,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "RU",
+          "staticBaseline": 35,
+          "dynamicScore": 5,
+          "combinedScore": 40,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 6,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "CN",
+          "staticBaseline": 25,
+          "dynamicScore": 15,
+          "combinedScore": 40,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "TR",
+          "staticBaseline": 25,
+          "dynamicScore": 4,
+          "combinedScore": 29,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "IN",
+          "staticBaseline": 20,
+          "dynamicScore": 3,
+          "combinedScore": 23,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "KP",
+          "staticBaseline": 45,
+          "dynamicScore": -26,
+          "combinedScore": 19,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 5
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "US",
+          "staticBaseline": 5,
+          "dynamicScore": 12,
+          "combinedScore": 17,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 2,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "EG",
+          "staticBaseline": 20,
+          "dynamicScore": -5,
+          "combinedScore": 15,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "BR",
+          "staticBaseline": 15,
+          "dynamicScore": -1,
+          "combinedScore": 14,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "TW",
+          "staticBaseline": 30,
+          "dynamicScore": -18,
+          "combinedScore": 12,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 0
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "SA",
+          "staticBaseline": 20,
+          "dynamicScore": -8,
+          "combinedScore": 12,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "AE",
+          "staticBaseline": 10,
+          "dynamicScore": 0,
+          "combinedScore": 10,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 8,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "KR",
+          "staticBaseline": 15,
+          "dynamicScore": -5,
+          "combinedScore": 10,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0.5,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 5
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "FR",
+          "staticBaseline": 10,
+          "dynamicScore": -1,
+          "combinedScore": 9,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 0
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "PL",
+          "staticBaseline": 10,
+          "dynamicScore": -3,
+          "combinedScore": 7,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 15
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "JP",
+          "staticBaseline": 5,
+          "dynamicScore": 2,
+          "combinedScore": 7,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0.5,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 35
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "DE",
+          "staticBaseline": 5,
+          "dynamicScore": 1,
+          "combinedScore": 6,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 0
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "QA",
+          "staticBaseline": 10,
+          "dynamicScore": -5,
+          "combinedScore": 5,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 10
+          },
+          "computedAt": 1779013428197
+        },
+        {
+          "region": "GB",
+          "staticBaseline": 5,
+          "dynamicScore": -1,
+          "combinedScore": 4,
+          "trend": "TREND_DIRECTION_STABLE",
+          "components": {
+            "newsActivity": 0,
+            "ciiContribution": 0,
+            "geoConvergence": 0,
+            "militaryActivity": 0
+          },
+          "computedAt": 1779013428197
+        }
+      ],
+      "strategicRisks": [
+        {
+          "region": "global",
+          "level": "SEVERITY_LEVEL_MEDIUM",
+          "score": 59,
+          "factors": [
+            "UA",
+            "SY",
+            "YE",
+            "MM",
+            "AF"
+          ],
+          "trend": "TREND_DIRECTION_STABLE"
+        }
+      ]
+    }
+  }
+}

@@ -15,10 +15,29 @@ message GetVesselSnapshotRequest {
   double sw_lat = 3 [(sebuf.http.query) = { name: "sw_lat" }];
   // South-west corner longitude of bounding box.
   double sw_lon = 4 [(sebuf.http.query) = { name: "sw_lon" }];
+  // When true, populate VesselSnapshot.candidate_reports with per-vessel
+  // position reports. Clients with no position callbacks should leave this
+  // false to keep responses small.
+  bool include_candidates = 5 [(sebuf.http.query) = { name: "include_candidates" }];
+  // When true, populate VesselSnapshot.tanker_reports with per-vessel
+  // position reports for AIS ship-type 80-89 (tanker class). Used by the
+  // Energy Atlas live-tanker map layer. Stored separately from
+  // candidate_reports (which is military-only) so consumers self-select
+  // via this flag rather than the response field changing meaning.
+  bool include_tankers = 6 [(sebuf.http.query) = { name: "include_tankers" }];
 }
 
 // GetVesselSnapshotResponse contains the vessel traffic snapshot.
 message GetVesselSnapshotResponse {
   // The vessel traffic snapshot.
   VesselSnapshot snapshot = 1;
+
+  // Time the relay snapshot was fetched, as Unix epoch milliseconds. A value
+  // of 0 means the snapshot is unavailable/degraded, not that vessel traffic is
+  // confirmed absent.
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+
+  // True when snapshot is populated. False means an absent snapshot is
+  // graceful degradation because the relay snapshot is unavailable.
+  bool data_available = 3;
 }

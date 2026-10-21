@@ -6,6 +6,7 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/thermal/v1/thermal_escalation_cluster.proto";
 
 message ListThermalEscalationsRequest {
+  // Maximum number of thermal escalation clusters to return.
   int32 max_items = 1 [(sebuf.http.query) = { name: "max_items" }];
 }
 
@@ -19,9 +20,15 @@ message ThermalEscalationSummary {
 }
 
 message ListThermalEscalationsResponse {
+  // ISO-8601 time the seed snapshot was fetched. Empty string means the
+  // snapshot is unavailable/degraded, not that thermal escalation is confirmed
+  // absent.
   string fetched_at = 1;
   int32 observation_window_hours = 2;
   string source_version = 3;
   repeated ThermalEscalationCluster clusters = 4;
   ThermalEscalationSummary summary = 5;
+  // True when clusters came from a seed snapshot. False means an empty payload
+  // is graceful degradation because the snapshot is unavailable.
+  bool data_available = 6;
 }

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.batch.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/batch/v1/execute_batch.proto";
+
+// BatchService executes multiple documented read operations in a single HTTP request.
+service BatchService {
+  option (sebuf.http.service_config) = {base_path: "/api/batch/v1"};
+
+  // ExecuteBatch runs a bulk batch of up to 20 read (GET) operations concurrently in one round trip and returns per-operation statuses and bodies. Use it instead of looping single calls when acting on many items; add a per-operation ?jmespath= projection to keep each body small.
+  rpc ExecuteBatch(ExecuteBatchRequest) returns (ExecuteBatchResponse) {
+    option (sebuf.http.config) = {path: "/execute", method: HTTP_METHOD_POST};
+  }
+}

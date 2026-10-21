@@ -1,0 +1,155 @@
+{
+  "artifactVersion": 1,
+  "issue": 6519,
+  "capturedAt": "2026-08-12T15:50:39.328Z",
+  "source": "Live production Redis before and after a fail-closed seed-wb-external-debt run, followed by the documented seed-resilience-scores force-refresh path.",
+  "debtPayload": {
+    "key": "economic:wb-external-debt:v1",
+    "before": {
+      "capturedAt": "2026-08-12T15:45:59.860Z",
+      "fetchedAt": "2026-08-01T08:04:36.606Z",
+      "schemaVersion": 1,
+      "recordCount": 119,
+      "nonDrsCountryCodeCount": null
+    },
+    "activationRun": {
+      "runId": "1786549576493-63vjcc",
+      "completedAt": "2026-08-12T15:46:18.279Z",
+      "state": "OK",
+      "recordCount": 119,
+      "payloadBytes": 19084
+    },
+    "verifiedAfter": {
+      "verifiedAt": "2026-08-12T15:46:39.785Z",
+      "fetchedAt": "2026-08-12T15:46:17.184Z",
+      "schemaVersion": 2,
+      "state": "OK",
+      "recordCount": 119,
+      "countryCount": 119,
+      "nonDrsCountryCodeCount": 72,
+      "nonDrsCountryCodesUnique": true,
+      "nonDrsCountryCodesValidIso2": true
+    }
+  },
+  "rankingTransition": {
+    "key": "resilience:ranking:v27",
+    "beforeFetchedAt": "2026-08-12T15:11:29.976Z",
+    "afterFetchedAt": "2026-08-12T15:49:47.770Z",
+    "countryOverlap": 196,
+    "spearman": 0.99997,
+    "countriesWithAbsDeltaUnder3": 196,
+    "countriesWithAbsDeltaUnder3Pct": 100,
+    "maxAbsDelta": 0.35,
+    "countriesWithAbsDeltaOver12": [],
+    "headlineEligibilityChanges": [],
+    "verdict": "PASS"
+  },
+  "nonDrsActivation": {
+    "preSeedMissingDebtWithBisCount": 71,
+    "confirmedLnxActivatedCount": 48,
+    "unconfirmedLnxRemainedDroppedCount": 23,
+    "activatedContract": {
+      "coverageBefore": 0.65,
+      "coverageAfter": 0.76,
+      "imputedWeightBefore": 0,
+      "imputedWeightAfter": 0.35,
+      "slotImputationClass": "not-applicable",
+      "publishedAggregateImputationClass": null
+    },
+    "aggregateImputationClassNote": "weightedBlend reports a dimension-level imputationClass only when the dimension is fully imputed. These countries retain observed BIS and FATF inputs, so the published aggregate class is null while imputedWeight=0.35 proves the debt slot used the configured not-applicable imputation.",
+    "activatedCountryCodes": [
+      "AD",
+      "AE",
+      "AT",
+      "AU",
+      "BE",
+      "BH",
+      "BN",
+      "BS",
+      "CA",
+      "CH",
+      "CY",
+      "CZ",
+      "DE",
+      "DK",
+      "EE",
+      "ES",
+      "FI",
+      "FR",
+      "GB",
+      "GR",
+      "HK",
+      "HU",
+      "IE",
+      "IL",
+      "IS",
+      "IT",
+      "JP",
+      "KR",
+      "KW",
+      "LI",
+      "LT",
+      "LU",
+      "LV",
+      "MO",
+      "MT",
+      "NL",
+      "NO",
+      "NZ",
+      "OM",
+      "PT",
+      "QA",
+      "SA",
+      "SE",
+      "SG",
+      "SI",
+      "SK",
+      "SM",
+      "US"
+    ],
+    "unconfirmedLnxCountryCodes": [
+      "AG",
+      "BB",
+      "CL",
+      "CR",
+      "FM",
+      "GQ",
+      "HR",
+      "KI",
+      "KN",
+      "LY",
+      "MH",
+      "MY",
+      "NA",
+      "NR",
+      "PA",
+      "PL",
+      "PW",
+      "RO",
+      "SC",
+      "TT",
+      "TV",
+      "UY",
+      "VE"
+    ]
+  },
+  "representativeCountries": {
+    "US": {
+      "before": { "overallScore": 59.22, "dimensionScore": 90, "coverage": 0.65, "imputedWeight": 0 },
+      "after": { "overallScore": 59.19, "dimensionScore": 85, "coverage": 0.76, "imputedWeight": 0.35 }
+    },
+    "LU": {
+      "before": { "overallScore": 66.93, "dimensionScore": 70, "coverage": 0.65, "imputedWeight": 0 },
+      "after": { "overallScore": 66.95, "dimensionScore": 72, "coverage": 0.76, "imputedWeight": 0.35 }
+    },
+    "CH": {
+      "before": { "overallScore": 77.71, "dimensionScore": 84, "coverage": 0.65, "imputedWeight": 0 },
+      "after": { "overallScore": 77.36, "dimensionScore": 81, "coverage": 0.76, "imputedWeight": 0.35 }
+    },
+    "SG": {
+      "before": { "overallScore": 57.91, "dimensionScore": 70, "coverage": 0.65, "imputedWeight": 0 },
+      "after": { "overallScore": 58.07, "dimensionScore": 72, "coverage": 0.76, "imputedWeight": 0.35 }
+    }
+  },
+  "scopeCorrection": "The pre-seed 71-country bucket meant no WB IDS row plus a valid BIS row. Only 48 of those countries are explicitly classified as lendingType=LNX by the World Bank catalog. The other 23 must remain unknown; imputing them from row absence alone would restore the partial-payload defect fixed in PR #6463."
+}

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+message GetChinaCorridorControlTowersRequest {}
+
+message GetChinaCorridorControlTowersResponse {
+  // Canonical JSON keeps the shared #5581 provenance envelope byte-for-byte
+  // equivalent across cache, API, UI, and later MCP adapters.
+  string payload_json = 1;
+  string generated_at = 2;
+  // True only when every reviewed corridor is unavailable. Agents and API
+  // callers must treat a true value as upstream degradation, not as evidence
+  // that corridor conditions are normal or zero.
+  bool upstream_unavailable = 3;
+}

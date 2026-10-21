@@ -1,13 +1,98 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, getRedisCredentials, runSeed } from './_seed-utils.mjs';
-import { clusterItems, selectTopStories } from './_clustering.mjs';
-import { extractCountryCode } from './shared/geo-extract.mjs';
+import {
+  loadEnvFile,
+  CHROME_UA,
+  getRedisCredentials,
+  runSeed,
+  withRetry,
+  httpRetryError,
+  createLlmBudgetError,
+  extendExistingTtl,
+  isLlmBudgetError,
+  readExistingSeedMeta,
+  writeExtraKey,
+} from './_seed-utils.mjs';
+import {
+  clusterItems,
+  computeEntityCorroboration,
+  selectTopStories,
+  DIPLOMACY_KEYWORDS,
+  ENTITY_BIGRAMS,
+} from './_clustering.mjs';
+import { MIN_CORROBORATING_PUBLISHERS } from './shared/publisher-families.js';
+import { isAcceptableDigest } from './shared/digest-acceptance.mjs';
+import { extractStoryCountries } from './shared/geo-extract.mjs';
+import { buildChinaNewsCoverage } from './_china-news-coverage.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import {
+  pickBriefCluster,
+  briefSystemPrompt,
+  briefUserPrompt,
+  synthesisSystemPrompt,
+  synthesisUserPrompt,
+  synthesisRejectionFeedback,
+} from './_insights-brief.mjs';
+import {
+  INSIGHTS_COMPOSER_THREW,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES,
+  classifyInsightsSynthesisFailure,
+  composeInsightsSynthesis,
+  resolveInsightsSynthesis,
+  insightsSynthesisSignature,
+  shouldSkipInsightsSynthesis,
+  formatInsightsBreakerOpenWarning,
+} from './_insights-synthesis-diagnostics.mjs';
+export {
+  INSIGHTS_COMPOSER_THREW,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES,
+  classifyInsightsSynthesisFailure,
+  composeInsightsSynthesis,
+  resolveInsightsSynthesis,
+};
+import { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
+import {
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
+  OPENROUTER_PROVIDER_ROUTING,
+} from './_llm-model-timeouts.mjs';
+// Import from the scripts mirror (`scripts/shared/`) — NOT the repo-root
+// `shared/`. Railway services with nixpacks `rootDirectory=scripts` only
+// package files under scripts/; a `../shared/` import resolves to
+// `/shared/...` at runtime which is absent in the container and crashes
+// the seeder on startup. The local pattern is the `./shared/geo-extract.mjs`
+// line above. PR #3836 review caught this. See skill
+// railway-deploy-gotchas/reference/nixpacks-root-dir-scripts-cross-dir-import-escape.
+import { validateNoHallucinatedProperNouns, validateNoHallucinatedStatusQualifiers } from './shared/brief-llm-core.js';
 
-loadEnvFile(import.meta.url);
+// Hallucination validator rollout mode (PR-2 of brief-content-quality
+// regressions). `shadow` = log violations to Sentry but ship the LLM
+// output unchanged (default, safe). `enforce` = on violation, replace
+// the LLM summary with the source headline. Flip via Railway env after
+// the 7-day shadow window confirms <5% violation rate.
+// #4921: enforce is the DEFAULT — the shadow window measured its
+// false-positive rate; shipping detected hallucinations was the residual
+// risk. Set BRIEF_VALIDATOR_MODE=shadow to revert during an incident.
+const BRIEF_VALIDATOR_MODE =
+  process.env.BRIEF_VALIDATOR_MODE === 'shadow' ? 'shadow' : 'enforce';
+
+// True only when run directly as a cron entry (node seed-insights.mjs), false
+// when imported by tests — so importing the module doesn't load .env or fire a
+// live seed. Mirrors seed-forecasts.mjs.
+const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
+
+if (_isDirectRun) loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'news:insights:v1';
 const DIGEST_KEY = 'news:digest:v1:full:en';
+const CHINA_COVERAGE_KEY = 'news:insights:v1:CN';
+const CHINA_NEWS_DIGEST_LANGUAGE = 'zh';
+
+// Defense-in-depth auth — see seed-infra.mjs for the same pattern + rationale.
+// Set WORLDMONITOR_RELAY_KEY on the Railway service (must match a value in
+// Vercel's WORLDMONITOR_VALID_KEYS). Origin alone is no longer reliable
+// because CF/Vercel intermediaries may strip it and CF can cache the 401.
+const RELAY_API_KEY = process.env.WORLDMONITOR_RELAY_KEY || '';
 
 // Digest items store proto enum strings (THREAT_LEVEL_HIGH etc.) from toProtoItem().
 // Normalize to client-side lowercase values before propagating into insights output.
@@ -25,10 +110,167 @@ function normalizeThreat(threat) {
   return { ...threat, level };
 }
 
-const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval (was 1x = key expired on any missed run)
-const MAX_HEADLINES = 10;
+const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval. Shorter = key expires on any missed
+                         // cron tick and /api/bootstrap loses insights entirely. Bad brief content
+                         // is gated at brief-selection time (see pickBriefCluster + briefSystemPrompt
+                         // in _insights-brief.mjs), not by aging out fast.
 const MAX_HEADLINE_LEN = 500;
-const GROQ_MODEL = 'llama-3.1-8b-instant';
+const INSIGHTS_SOURCE_VERSION = 'digest-clustering-v2-importance-diversity';
+const INSIGHTS_MAX_CONSECUTIVE_FAILURES = 100;
+const INSIGHTS_RUN_OUTCOMES = Object.freeze({
+  LKG_PRESERVED: 'lkg_preserved',
+  PUBLISHED: 'published',
+  DEGRADED: 'degraded',
+});
+
+const INSIGHTS_SYNTHESIS_FAILURE_CODE_SET = new Set(Object.values(INSIGHTS_SYNTHESIS_FAILURE_CODES));
+const INSIGHTS_RUN_META = Symbol('worldmonitor.insightsRunMeta');
+
+function normalizeInsightsFailureCode(code) {
+  return INSIGHTS_SYNTHESIS_FAILURE_CODE_SET.has(code)
+    ? code
+    : INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
+}
+
+function attachInsightsRunMeta(payload, runMeta) {
+  const decorated = { ...(payload || {}) };
+  Object.defineProperty(decorated, INSIGHTS_RUN_META, {
+    value: Object.freeze({ ...(runMeta || {}) }),
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return decorated;
+}
+
+/**
+ * Attach non-serialized run state to an insights payload. The marker lets the
+ * runSeed validation seam distinguish a true LKG preservation from a fresh
+ * payload without ever writing the marker to Redis.
+ */
+export function decorateInsightsRun(payload, runMeta) {
+  return attachInsightsRunMeta(payload, runMeta);
+}
+
+function insightsRunMeta(payload) {
+  return payload?.[INSIGHTS_RUN_META] || null;
+}
+
+/**
+ * Strip audit-only China coverage while retaining the non-serialized run
+ * marker for validation and afterPublish hooks.
+ */
+export function publishInsightsPayload(data) {
+  const { chinaNewsCoverage: _chinaNewsCoverage, ...payload } = data || {};
+  const runMeta = insightsRunMeta(data);
+  return runMeta ? attachInsightsRunMeta(payload, runMeta) : payload;
+}
+
+export function validateInsightsPayload(data) {
+  if (insightsRunMeta(data)?.outcome === INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED) return false;
+  return declareRecords(data) > 0;
+}
+
+export function resolveInsightsFallbackStatus({ synthesisFailureCode, legacyStatus }) {
+  return synthesisFailureCode ? 'degraded' : legacyStatus;
+}
+
+/**
+ * #5947: how many corroborated (brief-eligible) clusters the corpus held on
+ * this run. Bounded and numeric so it is safe for seed-meta/health/logs, and
+ * it is the field that separates the two very different worlds behind a
+ * MISSING_CLUSTER rejection: 0 means the corpus genuinely had nothing to lead
+ * with (legitimately degraded), while >0 means selection failed to surface a
+ * cluster that existed — the production incident this issue tracked. Absent
+ * stats normalize to null, never 0, so a telemetry failure cannot impersonate
+ * a bare corpus.
+ */
+const INSIGHTS_MAX_BRIEF_ELIGIBLE_CLUSTERS = 1000;
+
+function normalizeBriefEligibleClusters(value) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null;
+  return Math.min(INSIGHTS_MAX_BRIEF_ELIGIBLE_CLUSTERS, value);
+}
+
+/**
+ * Build only the diagnostic patch owned by the insights seeder. `fetchedAt`
+ * remains under runSeed's control: on a rejected LKG attempt it is mirrored
+ * from the old canonical envelope, while a successful publish gets `now`.
+ */
+export function buildInsightsFreshnessMetaPatch({
+  previousMeta,
+  outcome,
+  failureCode = null,
+  failureDetail = null,
+  storiesSignature = null,
+  nowMs = Date.now(),
+  servedGeneratedAt = null,
+  briefEligibleClusters = null,
+} = {}) {
+  const previous = previousMeta && typeof previousMeta === 'object' ? previousMeta : {};
+  const now = Number.isFinite(nowMs) && nowMs > 0 ? Math.floor(nowMs) : Date.now();
+  const previousFailures = Number.isInteger(previous.consecutiveFailures) && previous.consecutiveFailures > 0
+    ? previous.consecutiveFailures
+    : 0;
+  const servedAt = typeof servedGeneratedAt === 'string' && servedGeneratedAt.length <= 64
+    ? servedGeneratedAt
+    : (typeof previous.servedGeneratedAt === 'string' ? previous.servedGeneratedAt : null);
+  const normalizedFailureCode = failureCode == null ? null : normalizeInsightsFailureCode(failureCode);
+  const eligibleClusters = normalizeBriefEligibleClusters(briefEligibleClusters);
+
+  // Bounded breaker inputs (see shouldSkipInsightsSynthesis): what failed and
+  // against which story set. Cleared on publish so a stale pair can never
+  // suppress a later synthesis of a genuinely different run.
+  const boundedDetail = typeof failureDetail === 'string' && failureDetail.length > 0
+    ? failureDetail.replace(/\s+/g, ' ').trim().slice(0, 80)
+    : null;
+  const boundedSignature = typeof storiesSignature === 'string' && storiesSignature.length > 0
+    ? storiesSignature.slice(0, 16)
+    : null;
+  // Per-signature repeat counter (#7255 review). consecutiveFailures counts
+  // every degraded run producer-wide, so provider noise inflated it past the
+  // breaker threshold before a gate failure ever repeated. This counter
+  // increments only while the (code, detail, signature) triple repeats
+  // EXACTLY, and resets to 1 on any change.
+  const previousSameSignature = Number.isInteger(previous.sameSignatureFailures) && previous.sameSignatureFailures > 0
+    ? previous.sameSignatureFailures
+    : 0;
+  const failureCodeForMeta = normalizedFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
+  const repeatsPrevious = previousSameSignature > 0 || previous.lastSynthesisFailureCode
+    ? failureCodeForMeta === previous.lastSynthesisFailureCode
+      && (boundedDetail ?? null) === (previous.lastSynthesisFailureDetail ?? null)
+      && boundedSignature !== null
+      && boundedSignature === (previous.failedStoriesSignature ?? null)
+    : false;
+
+  if (outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED) {
+    return {
+      lastAttemptAt: now,
+      lastSuccessAt: now,
+      servedGeneratedAt: servedAt,
+      consecutiveFailures: 0,
+      sameSignatureFailures: 0,
+      lastSynthesisFailureCode: normalizedFailureCode,
+      lastSynthesisFailureDetail: null,
+      failedStoriesSignature: null,
+      briefEligibleClusters: eligibleClusters,
+    };
+  }
+
+  return {
+    lastAttemptAt: now,
+    lastSuccessAt: Number.isFinite(previous.lastSuccessAt) ? previous.lastSuccessAt : null,
+    servedGeneratedAt: servedAt,
+    consecutiveFailures: Math.min(INSIGHTS_MAX_CONSECUTIVE_FAILURES, previousFailures + 1),
+    sameSignatureFailures: repeatsPrevious
+      ? Math.min(INSIGHTS_MAX_CONSECUTIVE_FAILURES, previousSameSignature + 1)
+      : 1,
+    lastSynthesisFailureCode: failureCodeForMeta,
+    lastSynthesisFailureDetail: boundedDetail,
+    failedStoriesSignature: boundedSignature,
+    briefEligibleClusters: eligibleClusters,
+  };
+}
 
 const TASK_NARRATION = /^(we need to|i need to|let me|i'll |i should|i will |the task is|the instructions|according to the rules|so we need to|okay[,.]\s*(i'll|let me|so|we need|the task|i should|i will)|sure[,.]\s*(i'll|let me|so|we need|the task|i should|i will|here)|first[, ]+(i|we|let)|to summarize (the headlines|the task|this)|my task (is|was|:)|step \d)/i;
 const PROMPT_ECHO = /^(summarize the top story|summarize the key|rules:|here are the rules|the top story is likely)/i;
@@ -52,15 +294,109 @@ function sanitizeTitle(title) {
     .trim();
 }
 
-async function readDigestFromRedis() {
+function clipText(value, maxLen) {
+  const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  return text.length > maxLen ? `${text.slice(0, maxLen - 1).trim()}...` : text;
+}
+
+function normalizeBriefSourceUrl(value) {
+  if (typeof value !== 'string') return '';
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
+function normalizePublishedAt(value) {
+  if (!value) return undefined;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+}
+
+function briefSourceFromStory(story) {
+  const url = normalizeBriefSourceUrl(story?.primaryLink);
+  const title = clipText(story?.primaryTitle, 160);
+  const source = clipText(story?.primarySource, 80);
+  if (!url || !title || !source) return null;
+  const publishedAt = normalizePublishedAt(story?.pubDate);
+  return publishedAt ? { title, source, url, publishedAt } : { title, source, url };
+}
+
+/**
+ * #4928: the legacy single-headline brief, extracted intact from the main
+ * flow (L2 of the fallback chain). Corroboration-gated via
+ * pickBriefCluster; enforce/shadow semantics unchanged.
+ */
+async function generateLegacySingleHeadlineBrief(topStories, { callBudgetMs } = {}) {
+  const briefCluster = pickBriefCluster(topStories);
+  const topHeadline = briefCluster ? sanitizeTitle(briefCluster.primaryTitle) : '';
+  const worldBriefSources = briefCluster ? [briefSourceFromStory(briefCluster)].filter(Boolean) : [];
+
+  if (!topHeadline) {
+    console.warn('  No multi-source cluster available — publishing degraded (stories without brief)');
+    return { worldBrief: '', briefProvider: '', briefModel: '', worldBriefSources, status: 'degraded' };
+  }
+
+  const llmResult = await callLLM(topHeadline, Number.isFinite(callBudgetMs) ? { callBudgetMs } : {});
+  if (!llmResult) {
+    console.warn('  No LLM available — publishing degraded (stories without brief)');
+    return { worldBrief: '', briefProvider: '', briefModel: '', worldBriefSources, status: 'degraded' };
+  }
+
+  // Hallucination check: did the LLM invent proper nouns not in the
+  // headline? (May 19 incident: "Lebanese President Michel Aoun pledged…"
+  // against a nameless headline. docs/plans/2026-05-19-001 U2.)
+  // The proper-noun gate reads "Former President" as a title prefix and
+  // grounds only "Trump", so the qualifier needs its own check (#8441).
+  const nounValidation = validateNoHallucinatedProperNouns(llmResult.text, topHeadline);
+  const qualifierValidation = validateNoHallucinatedStatusQualifiers(llmResult.text, topHeadline);
+  if (!nounValidation.ok || !qualifierValidation.ok) {
+    const hallucinated = [
+      ...(nounValidation.hallucinated || []),
+      ...(qualifierValidation.hallucinated || []),
+    ].join(' ');
+    if (BRIEF_VALIDATOR_MODE === 'enforce') {
+      console.warn(`  [brief_hallucination ENFORCE] dropped LLM summary: invented "${hallucinated}" not in headline; fell back to headline`);
+      return {
+        worldBrief: topHeadline,
+        briefProvider: `${llmResult.provider}+headline-fallback`,
+        briefModel: llmResult.model,
+        worldBriefSources,
+        status: 'ok',
+      };
+    }
+    console.warn(`  [brief_hallucination SHADOW] would have dropped LLM summary: invented "${hallucinated}" not in headline`);
+  }
+  return {
+    worldBrief: llmResult.text,
+    briefProvider: llmResult.provider,
+    briefModel: llmResult.model,
+    worldBriefSources,
+    status: 'ok',
+  };
+}
+
+function digestKeyForLanguage(language) {
+  return `news:digest:v1:full:${language}`;
+}
+
+async function readDigestFromRedis(key = DIGEST_KEY) {
   const { url, token } = getRedisCredentials();
-  const resp = await fetch(`${url}/get/${encodeURIComponent(DIGEST_KEY)}`, {
+  const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(5_000),
   });
   if (!resp.ok) return null;
   const data = await resp.json();
-  return data.result ? JSON.parse(data.result) : null;
+  if (!data.result) return null;
+  try {
+    const digest = unwrapEnvelope(JSON.parse(data.result)).data;
+    return isAcceptableDigest(digest) ? digest : null;
+  } catch {
+    return null;
+  }
 }
 
 async function readExistingInsights() {
@@ -71,11 +407,12 @@ async function readExistingInsights() {
   });
   if (!resp.ok) return null;
   const data = await resp.json();
-  return data.result ? JSON.parse(data.result) : null;
+  return data.result ? unwrapEnvelope(JSON.parse(data.result)).data : null;
 }
 
 // Provider config — mirrors server/_shared/llm.ts getProviderCredentials()
-// Order: ollama → groq → openrouter (canonical chain)
+// Order: Ollama → paid OpenRouter → two fixed free OpenRouter models.
+// Each free model stays a separate application-validated attempt.
 const LLM_PROVIDERS = [
   {
     name: 'ollama',
@@ -92,74 +429,196 @@ const LLM_PROVIDERS = [
     timeout: 25_000,
   },
   {
-    name: 'groq',
-    envKey: 'GROQ_API_KEY',
-    apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: GROQ_MODEL,
-    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
-    timeout: 15_000,
-  },
-  {
     name: 'openrouter',
     envKey: 'OPENROUTER_API_KEY',
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'google/gemini-2.5-flash',
+    model: 'deepseek/deepseek-v4-flash',
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
     timeout: 20_000,
+  },
+  {
+    name: 'openrouter-free',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_PRIMARY_MODEL,
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    timeout: 20_000,
+    maxRetries: 0,
+  },
+  {
+    name: 'openrouter-free-backup',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_BACKUP_MODEL,
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    timeout: 20_000,
+    maxRetries: 0,
   },
 ];
 
-async function callLLM(headlines) {
-  const headlineText = headlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
-  const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}. Provide geopolitical context appropriate for the current date.`;
+// Bounded retry for the brief LLM call. seed-insights holds a 120s seed lock,
+// and since #6001 a run may walk the whole provider chain for L1 and then make
+// a second callLLM for the L2 fallback — so the budget below is threaded as a
+// RUN-level remainder (see fetchInsights) rather than spent twice. Honor a
+// provider's Retry-After (429/503) instead of dropping straight to the next
+// provider, but never sleep/fetch past the remaining call budget.
+const INSIGHTS_LLM_MAX_RETRIES = 2;
+const INSIGHTS_LLM_TEMPERATURE = 0.1;
+const INSIGHTS_LLM_RESAMPLE_TEMPERATURE = 0.7;
+const INSIGHTS_LLM_RETRY_BASE_MS = 1_000;
+const INSIGHTS_LLM_RETRY_AFTER_MAX_MS = 10_000;
+const INSIGHTS_LLM_CALL_BUDGET_MS = 60_000;
+const INSIGHTS_LLM_CALL_BUDGET_GUARD_MS = 5_000;
 
-  const systemPrompt = `${dateContext}
+let insightsLlmFetchForTests = null;
+function __setInsightsLlmTransportForTests(overrides = null) {
+  insightsLlmFetchForTests = typeof overrides?.fetch === 'function' ? overrides.fetch : null;
+}
 
-Summarize the single most important headline in 2 concise sentences MAX (under 60 words total).
-Rules:
-- Each numbered headline below is a SEPARATE, UNRELATED story
-- Pick the ONE most significant headline and summarize ONLY that story
-- NEVER combine or merge people, places, or facts from different headlines into one sentence
-- Lead with WHAT happened and WHERE - be specific
-- NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings
-- Start directly with the subject of the chosen headline
-- No bullet points, no meta-commentary, no elaboration beyond the core facts`;
+async function callLLM(headline, options = {}) {
+  // #4921: callers may supply explicit prompts (the top-8 synthesis call);
+  // the headline default keeps the legacy single-headline path and its
+  // retry tests unchanged.
+  const systemPrompt = options.systemPrompt
+    ?? briefSystemPrompt(new Date().toISOString().split('T')[0]);
+  const userPrompt = options.userPrompt ?? briefUserPrompt(headline);
+  const maxTokens = Number.isFinite(options.maxTokens) ? options.maxTokens : 300;
 
-  const userPrompt = `Each headline below is a separate story. Pick the most important ONE and summarize only that story:\n${headlineText}`;
+  const insightsFetch = insightsLlmFetchForTests || ((...args) => globalThis.fetch(...args));
+  const callBudgetMs = Number.isFinite(options.callBudgetMs)
+    ? Math.max(0, Math.floor(options.callBudgetMs))
+    : INSIGHTS_LLM_CALL_BUDGET_MS;
+  const retryDelayMs = Number.isFinite(options.retryDelayMs)
+    ? Math.max(0, Math.floor(options.retryDelayMs))
+    : INSIGHTS_LLM_RETRY_BASE_MS;
+  const budgetStartedAtMs = Date.now();
+  const usableBudgetMs = () => Math.max(0, budgetStartedAtMs + callBudgetMs - Date.now() - INSIGHTS_LLM_CALL_BUDGET_GUARD_MS);
 
-  for (const provider of LLM_PROVIDERS) {
+  // llm_call telemetry (#4944 U5): one event per provider OUTCOME (the
+  // withRetry duration covers in-provider retries), unified with the
+  // Vercel-side stream via scripts/lib/llm-telemetry.cjs.
+  const events = [];
+  let attemptIndex = 0;
+  // 0.1 keeps the first sample stable and cheap to reason about. But after a
+  // gate rejection, determinism is the enemy: the same prompt at the same
+  // temperature returns the same draft, so #6995's resample-once was a second
+  // identical call — 25 consecutive identical rejections on 2026-08-28 proved
+  // it. Once any sample has been gate-rejected, later samples run hot enough
+  // to actually vary, and carry the gate's correction (options.rejectionFeedback)
+  // appended to the user prompt. Both persist past the resample into the rest
+  // of the provider chain: a weaker model needs the correction more, not less.
+  let samplingTemperature = INSIGHTS_LLM_TEMPERATURE;
+  let gateFeedbackNote = null;
+
+  // #6001: the chain used to fall through on TRANSPORT failures only. A model
+  // that reliably returns well-formed text the brief composer then rejects on
+  // its editorial gates would strand the run on `degraded` forever without
+  // ever trying a fallback model that passes — measured against a live digest,
+  // the primary composed 2/6 while the fallback composed 6/6, yet only the
+  // primary was ever asked. `accept` lets the caller veto a response and keep
+  // the chain moving. When every provider is vetoed we return the LAST
+  // response rather than null, so the caller still classifies the failure by
+  // its real stage (parse/gate) instead of mislabelling it a provider outage.
+  // Keep the FIRST rejection, not the last: the caller classifies the failure
+  // stage from this response, and the primary model's stage is the actionable
+  // one. A candidate whose acceptor THREW is held separately and only used if
+  // nothing was cleanly rejected — handing back text the caller's own gate
+  // chokes on would just move the fault downstream.
+  const accept = typeof options.accept === 'function' ? options.accept : null;
+  let firstRejected = null;
+  let firstFaulted = null;
+  const rejectedResult = () => firstRejected ?? firstFaulted;
+
+  // A gate rejection is not evidence that the PROVIDER is unhealthy — it says
+  // this SAMPLE was unusable. Advancing on it demotes the chain to a weaker
+  // model, which is less likely to produce a grounded lead than a second sample
+  // from the stronger one, so the strictness of an editorial gate was buying
+  // worse published prose.
+  //
+  // Measured on seed-insights 2026-08-20 before this change: of 9 gate
+  // rejections, the fallback rescued 2 and the other 7 reached the
+  // single-headline brief anyway, while 5 of 14 shipped briefs came from
+  // google/gemma-4-26b-a4b-it:free rather than deepseek-v4-flash. So the
+  // demotion mostly did not save the run, and when it did it shipped the weaker
+  // writer.
+  //
+  // Resample the SAME provider once, then fall through to the rest of the chain
+  // exactly as before. Transport failures still advance immediately — withRetry
+  // already covers transient ones, and a provider that is genuinely down should
+  // not be asked twice.
+  const queue = [...LLM_PROVIDERS];
+  const resampled = new Set();
+  while (queue.length > 0) {
+    const provider = queue.shift();
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
 
     const apiUrl = provider.apiUrlFn ? provider.apiUrlFn(envVal) : provider.apiUrl;
     const model = typeof provider.model === 'function' ? provider.model() : provider.model;
+    // Captured per attempt, BEFORE the request: a correction collected during
+    // this attempt's rejection belongs to the NEXT request. The request body
+    // and the telemetry both derive from this one variable, so the recorded
+    // promptChars is the size of what was actually sent — a corrected resample
+    // is larger than the base prompt, and the events must say so (#7248
+    // review: every event recorded the base-only size).
+    const effectiveUserPrompt = gateFeedbackNote ? `${userPrompt}\n\n${gateFeedbackNote}` : userPrompt;
+    const attemptPromptChars = (systemPrompt?.length ?? 0) + effectiveUserPrompt.length;
+    const t0 = Date.now();
+    const record = (ok, extra = {}) => {
+      events.push(buildLlmCallEvent({
+        provider: provider.name, model, stage: 'seed-insights', ok,
+        durationMs: Date.now() - t0, promptChars: attemptPromptChars, maxTokens,
+        fallbackIndex: attemptIndex++,
+        ...extra,
+      }));
+    };
 
     try {
-      const resp = await fetch(apiUrl, {
-        method: 'POST',
-        headers: provider.headers(envVal),
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          max_tokens: 300,
-          temperature: 0.3,
-          ...provider.extraBody,
-        }),
-        signal: AbortSignal.timeout(provider.timeout),
-      });
-
-      if (!resp.ok) {
-        console.warn(`  ${provider.name} API error: ${resp.status}`);
-        continue;
-      }
+      const resp = await withRetry(async () => {
+        const usable = usableBudgetMs();
+        if (usable <= 0) throw createLlmBudgetError('insights llm budget exhausted');
+        const response = await insightsFetch(apiUrl, {
+          method: 'POST',
+          headers: provider.headers(envVal),
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: effectiveUserPrompt },
+            ],
+            max_tokens: maxTokens,
+            temperature: samplingTemperature,
+            ...provider.extraBody,
+          }),
+          signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usable))),
+        });
+        if (!response.ok) {
+          // #6110: `usableBudgetMs()` is a real remaining wall clock, so pass it
+          // as `remainingBudgetMs` — a hint longer than that (a daily-quota
+          // 429 can ask for ~20 minutes) makes the error nonRetryable and we fall
+          // through to the next provider immediately, instead of clamping the
+          // hint to the ceiling and sleeping it away twice.
+          throw httpRetryError(response, {
+            maxRetryAfterMs: INSIGHTS_LLM_RETRY_AFTER_MAX_MS,
+            remainingBudgetMs: usableBudgetMs(),
+          });
+        }
+        return response;
+      }, provider.maxRetries ?? INSIGHTS_LLM_MAX_RETRIES, retryDelayMs);
 
       const json = await resp.json();
+      const usage = {
+        tokensTotal: json.usage?.total_tokens ?? 0,
+        tokensPrompt: json.usage?.prompt_tokens ?? 0,
+        tokensCompletion: json.usage?.completion_tokens ?? 0,
+      };
       const rawText = json.choices?.[0]?.message?.content?.trim();
       if (!rawText) {
         console.warn(`  ${provider.name}: empty response`);
+        record(false, { ...usage, reason: 'empty' });
         continue;
       }
 
@@ -171,16 +630,74 @@ Rules:
 
       if (text.length < 20) {
         console.warn(`  ${provider.name}: output too short (${text.length} chars)`);
+        record(false, { ...usage, reason: 'too_short' });
         continue;
       }
 
-      return { text, model: json.model || model, provider: provider.name };
+      const candidate = { text, model: json.model || model, provider: provider.name };
+
+      if (accept) {
+        let accepted = null;
+        let faulted = false;
+        try {
+          accepted = accept(text);
+        } catch (acceptErr) {
+          // A faulty acceptor must never mark unvalidated output as good.
+          faulted = true;
+          console.warn(`  ${provider.name}: output acceptor threw (${acceptErr.message})`);
+        }
+        if (!accepted) {
+          if (!faulted) console.warn(`  ${provider.name}: output rejected by caller gates`);
+          // `validate_reject` is the shared vocabulary from server/_shared/usage.ts,
+          // so these unify with the Vercel-side llm_call stream in one query.
+          record(false, { ...usage, model: json.model || model, reason: 'validate_reject' });
+          if (faulted) { if (!firstFaulted) firstFaulted = candidate; }
+          else if (!firstRejected) firstRejected = candidate;
+          if (!faulted) {
+            // A FAULTED acceptor teaches the sampler nothing — the fault is in
+            // our own gate, so neither the temperature bump nor a correction
+            // note applies.
+            samplingTemperature = INSIGHTS_LLM_RESAMPLE_TEMPERATURE;
+            const feedback = typeof options.rejectionFeedback === 'function'
+              ? options.rejectionFeedback()
+              : null;
+            if (typeof feedback === 'string' && feedback.trim()) gateFeedbackNote = feedback.trim();
+          }
+          // One resample before demoting (see the queue comment above). A
+          // FAULTED acceptor is excluded deliberately: that fault is in our own
+          // gate, not in the sample, so a second identical call would throw
+          // identically and only burn budget.
+          if (!faulted && !resampled.has(provider.name)) {
+            resampled.add(provider.name);
+            queue.unshift(provider);
+            console.warn(`  ${provider.name}: resampling once before falling back to a weaker model`);
+          }
+          continue;
+        }
+      }
+
+      record(true, { ...usage, model: json.model || model });
+      void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
+      return candidate;
     } catch (err) {
       console.warn(`  ${provider.name} failed: ${err.message}`);
+      const httpMatch = /HTTP (\d{3})/.exec(err.message || '');
+      record(false, {
+        reason: isLlmBudgetError(err) ? 'budget_exhausted'
+          : err?.name === 'TimeoutError' || err?.name === 'AbortError' ? 'timeout'
+          : httpMatch ? `http_${httpMatch[1]}`
+          : 'fetch_error',
+      });
+      // Budget spent — give up rather than burning the next provider's timeout.
+      if (isLlmBudgetError(err)) {
+        void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
+        return rejectedResult();
+      }
     }
   }
 
-  return null;
+  void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
+  return rejectedResult();
 }
 
 function categorizeStory(title) {
@@ -204,51 +721,190 @@ function categorizeStory(title) {
   return { category: 'general', threatLevel: 'moderate' };
 }
 
-async function warmDigestCache() {
+function normalizedSignalText(text) {
+  return (text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function clusterHasDiplomacySignal(cluster) {
+  const titles = Array.isArray(cluster.memberTitles) && cluster.memberTitles.length > 0
+    ? cluster.memberTitles
+    : [cluster.primaryTitle];
+  return titles.some((title) => {
+    const text = normalizedSignalText(title);
+    return DIPLOMACY_KEYWORDS.some((kw) => text.includes(kw)) ||
+      ENTITY_BIGRAMS.some(([entity, action]) => text.includes(entity) && text.includes(action));
+  });
+}
+
+function percentile(sortedNumbers, pct) {
+  if (sortedNumbers.length === 0) return 0;
+  const idx = Math.min(sortedNumbers.length - 1, Math.floor((sortedNumbers.length - 1) * pct));
+  return sortedNumbers[idx];
+}
+
+function buildImportanceObservability(clusters, topStories) {
+  const clusterSizes = clusters.map(c => Number(c.sourceCount) || 1).sort((a, b) => a - b);
+  return {
+    llmDrivenRanked: topStories.filter(s => s.threat?.source === 'llm').length,
+    keywordFallbackRanked: topStories.filter(s => s.threat?.source !== 'llm' && !s.upstreamImportanceScore).length,
+    diplomacyHits: clusters.filter(clusterHasDiplomacySignal).length,
+    corroborationHits: clusters.filter(c => c.entityCorroboration === true).length,
+    clusterSizeP50: percentile(clusterSizes, 0.5),
+    clusterSizeP90: percentile(clusterSizes, 0.9),
+  };
+}
+
+async function warmDigestCache(language = 'en') {
   const apiBase = process.env.API_BASE_URL || 'https://api.worldmonitor.app';
+  const headers = {
+    'User-Agent': CHROME_UA,
+    Origin: 'https://worldmonitor.app',
+  };
+  if (RELAY_API_KEY) headers['X-WorldMonitor-Key'] = RELAY_API_KEY;
   try {
-    const resp = await fetch(`${apiBase}/api/news/v1/list-feed-digest?variant=full&lang=en`, {
-      headers: { 'User-Agent': CHROME_UA },
+    const resp = await fetch(`${apiBase}/api/news/v1/list-feed-digest?variant=full&lang=${encodeURIComponent(language)}`, {
+      headers,
       signal: AbortSignal.timeout(30_000),
     });
-    if (resp.ok) console.log('  Digest cache warmed via RPC');
-    else console.warn(`  Digest warm failed: HTTP ${resp.status}`);
+    if (resp.ok) {
+      const digest = await resp.json();
+      if (isAcceptableDigest(digest)) {
+        console.log(`  ${language} digest cache warmed via RPC`);
+        return digest;
+      }
+      console.warn(`  Digest warm returned no acceptable ${language} digest`);
+    } else {
+      const keyNote = RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set — Origin-only auth)';
+      console.warn(`  Digest warm failed: HTTP ${resp.status}${keyNote}`);
+    }
   } catch (err) {
     console.warn(`  Digest warm failed: ${err.message}`);
   }
+  return null;
+}
+
+export async function readOrWarmDigest(language) {
+  const key = digestKeyForLanguage(language);
+  let digest = await readDigestFromRedis(key);
+  if (digest) return digest;
+  console.log(`  ${language} digest not in Redis, warming cache via RPC...`);
+  const warmedDigest = await warmDigestCache(language);
+  // The RPC response has passed the endpoint's current revocation filter.
+  // Return it before any Redis readback can discard it or replace it with the
+  // unfiltered canonical body.
+  if (warmedDigest) return warmedDigest;
+  // Wait for the Edge write to propagate before the readback. This is the
+  // fallback when the RPC response did not contain an acceptable digest.
+  await new Promise(r => setTimeout(r, 3_000));
+  digest = await readDigestFromRedis(key);
+  return digest;
+}
+
+async function readChinaNewsDigest() {
+  try {
+    return await readOrWarmDigest(CHINA_NEWS_DIGEST_LANGUAGE);
+  } catch (err) {
+    // China-source coverage must degrade independently. A Redis or Edge
+    // failure for the supplemental locale digest must not suppress the global
+    // insights payload that the existing English path can still publish.
+    console.warn(`  ${CHINA_NEWS_DIGEST_LANGUAGE} digest coverage check failed: ${err.message}`);
+    return null;
+  }
+}
+
+// A degraded global brief may reuse the last known-good public payload even
+// though this run obtained fresh per-source digest evidence. Keep that audit
+// projection attached for afterPublish; publishTransform still prevents it
+// from entering the public insights cache.
+export function preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage) {
+  return chinaNewsCoverage ? { ...existing, chinaNewsCoverage } : existing;
+}
+
+export function normalizeDigestItemsForInsights(items) {
+  return items.map(item => ({
+    title: sanitizeTitle(item.title || item.headline || ''),
+    source: item.source || item.feed || '',
+    // #9095: clusterItems compares title + lead to count same-copy outlets once.
+    ...(typeof item.snippet === 'string' && item.snippet.trim() !== '' ? { snippet: item.snippet } : {}),
+    link: item.link || item.url || '',
+    pubDate: item.pubDate || item.publishedAt || item.date || new Date().toISOString(),
+    isAlert: item.isAlert || false,
+    tier: item.tier,
+    threat: normalizeThreat(item.threat),
+    importanceScore: item.importanceScore,
+    ...(Number.isFinite(item.credibilityScore) ? { credibilityScore: item.credibilityScore } : {}),
+    corroborationCount: item.corroborationCount ?? item.storyMeta?.sourceCount,
+    storyMeta: item.storyMeta,
+  })).filter(item => item.title.length > 10);
+}
+
+export function digestItemsForInsights(digest) {
+  if (Array.isArray(digest)) return digest;
+  if (digest?.categories && typeof digest.categories === 'object') {
+    return Object.values(digest.categories)
+      .flatMap(bucket => (Array.isArray(bucket?.items) ? bucket.items : []));
+  }
+  return digest?.items || digest?.articles || digest?.headlines || [];
+}
+
+/**
+ * Acceptance gate for the synthesis provider walk. Exported so the composer-
+ * fault contract is directly testable — the #7248 review found the contained
+ * composer sentinel riding the ordinary-rejection path, and the fix lived in
+ * an inline closure no test could reach.
+ *
+ * Contract:
+ *   - editorial rejection -> returns null and records {code, detail} for the
+ *     resample-feedback path;
+ *   - composer FAULT (the contained INSIGHTS_COMPOSER_THREW sentinel) ->
+ *     THROWS, so callLLM takes its faulted-acceptor path: no temperature bump,
+ *     no correction note, no resample. The sample may have been fine; the
+ *     fault is in OUR gate. resolveInsightsSynthesis still classifies the run
+ *     as COMPOSER_ERROR from its own contained composer call.
+ */
+export function createSynthesisAcceptor(topStories, composerOptions) {
+  let lastSynthesisRejection = null;
+  return {
+    accept: (text) => {
+      const result = composeInsightsSynthesis(text, topStories, composerOptions);
+      if (result?.rejection === INSIGHTS_COMPOSER_THREW) {
+        lastSynthesisRejection = null;
+        throw new Error(`composer fault: ${INSIGHTS_COMPOSER_THREW}`);
+      }
+      lastSynthesisRejection = result?.brief
+        ? null
+        : { code: result?.rejection ?? null, detail: result?.rejectionDetail ?? null };
+      return result?.brief ?? null;
+    },
+    lastRejection: () => lastSynthesisRejection,
+  };
 }
 
 async function fetchInsights() {
-  let digest = await readDigestFromRedis();
-  if (!digest) {
-    console.log('  Digest not in Redis, warming cache via RPC...');
-    await warmDigestCache();
-    // Wait for RPC write to propagate to Redis
-    await new Promise(r => setTimeout(r, 3_000));
-    digest = await readDigestFromRedis();
-  }
+  const digest = await readOrWarmDigest('en');
   if (!digest) {
     // LKG fallback: reuse existing insights if digest is unavailable
     const existing = await readExistingInsights();
     if (existing?.topStories?.length) {
       console.log('  Digest unavailable — reusing existing insights (LKG)');
-      return existing;
+      return decorateInsightsRun(existing, {
+        outcome: INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED,
+        failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+      });
     }
     throw new Error('No news digest found in Redis');
   }
 
+  // The global top-eight list is intentionally rank-limited and cannot prove
+  // that a China source completed. Preserve the digest's per-feed outcome as
+  // a compact, audit-only projection before the global ranking can discard it.
+  const chinaNewsCoverage = buildChinaNewsCoverage({
+    en: digest,
+    [CHINA_NEWS_DIGEST_LANGUAGE]: await readChinaNewsDigest(),
+  });
+
   // Digest shape: { categories: { politics: { items: [...] }, ... }, feedStatuses, generatedAt }
-  let items;
-  if (Array.isArray(digest)) {
-    items = digest;
-  } else if (digest.categories && typeof digest.categories === 'object') {
-    items = [];
-    for (const bucket of Object.values(digest.categories)) {
-      if (Array.isArray(bucket.items)) items.push(...bucket.items);
-    }
-  } else {
-    items = digest.items || digest.articles || digest.headlines || [];
-  }
+  const items = digestItemsForInsights(digest);
 
   if (items.length === 0) {
     const keys = typeof digest === 'object' && digest !== null ? Object.keys(digest).join(', ') : typeof digest;
@@ -257,45 +913,203 @@ async function fetchInsights() {
 
   console.log(`  Digest items: ${items.length}`);
 
-  const normalizedItems = items.map(item => ({
-    title: sanitizeTitle(item.title || item.headline || ''),
-    source: item.source || item.feed || '',
-    link: item.link || item.url || '',
-    pubDate: item.pubDate || item.publishedAt || item.date || new Date().toISOString(),
-    isAlert: item.isAlert || false,
-    tier: item.tier,
-    threat: normalizeThreat(item.threat),
-  })).filter(item => item.title.length > 10);
+  const normalizedItems = normalizeDigestItemsForInsights(items);
 
   const clusters = clusterItems(normalizedItems);
   console.log(`  Clusters: ${clusters.length}`);
 
-  const topStories = selectTopStories(clusters, 8);
+  // #4920 coverage ledger: capture what the selection gates dropped.
+  const selectionStats = {};
+  const topStories = selectTopStories(clusters, 8, selectionStats);
   console.log(`  Top stories: ${topStories.length}`);
+  const observability = buildImportanceObservability(clusters, topStories);
+  console.log(
+    `  Importance signals: llm=${observability.llmDrivenRanked} ` +
+      `keywordFallback=${observability.keywordFallbackRanked} ` +
+      `diplomacy=${observability.diplomacyHits} ` +
+      `entityCorroboration=${observability.corroborationHits} ` +
+      `clusterSizeP50=${observability.clusterSizeP50} ` +
+      `clusterSizeP90=${observability.clusterSizeP90}`,
+  );
 
   if (topStories.length === 0) throw new Error('No top stories after scoring');
 
-  const headlines = topStories
-    .slice(0, MAX_HEADLINES)
-    .map(s => sanitizeTitle(s.primaryTitle));
-
+  // Corroboration gate: only brief a story at least two outlets have reported.
+  // See pickBriefCluster() in _insights-brief.mjs for rationale + unit tests.
+  // Note: this gates ONLY brief generation — the topStories payload itself
+  // continues to include single-source clusters, rendered as the headline list
+  // under the brief. The brief paragraph is the one surface where corroboration
+  // matters; the list is already visually marked with per-story sourceCount.
+  // #4921/#4928: L1 = top-8 synthesis via the pure composer (parse +
+  // corroboration gate + lead noun/anchor gates + per-line enforcement +
+  // citation verification + index-locked sources — all unit-tested in
+  // _insights-brief.mjs). L2 = legacy single-headline brief. Degraded last.
+  // The brief always ships.
   let worldBrief = '';
   let briefProvider = '';
   let briefModel = '';
+  let briefStoryLines = [];
+  let worldBriefSources = [];
   let status = 'ok';
+  let synthesisFailureCode = null;
 
-  const llmResult = await callLLM(headlines);
-  if (llmResult) {
-    worldBrief = llmResult.text;
-    briefProvider = llmResult.provider;
-    briefModel = llmResult.model;
-    console.log(`  Brief generated via ${briefProvider} (${briefModel})`);
-  } else {
+  const briefCluster = pickBriefCluster(topStories);
+  const hasBriefCluster = briefCluster != null;
+  // #5947: a MISSING_CLUSTER rejection is only legitimate when the corpus had
+  // nothing corroborated to lead with. Log the corpus count (and whether the
+  // reservation had to fire) so a recurrence is diagnosable from the run log
+  // and seed-meta alone.
+  // Do NOT default to 0 here: 0 is the meaningful value "the corpus had nothing
+  // corroborated to lead with". Substituting it for absent stats would make a
+  // telemetry failure read exactly like a benign bare-corpus run.
+  const briefEligibleClusters = typeof selectionStats.briefEligibleConsidered === 'number'
+    ? selectionStats.briefEligibleConsidered
+    : null;
+  if (selectionStats.briefEligiblePromoted) {
+    console.log(
+      `  Brief lead reserved: promoted a corroborated cluster into top-${topStories.length} ` +
+        `(${briefEligibleClusters ?? 'unknown'} eligible in corpus, source=${briefCluster?.primarySource ?? 'unknown'})`,
+    );
+  } else if (!hasBriefCluster) {
+    console.warn(`  [brief_synthesis] no corroborated cluster in corpus (eligible=${briefEligibleClusters ?? 'unknown'})`);
+  }
+  // The acceptance gate is the composer itself (#6001), so the chain can never
+  // accept output the composer would later reject.
+  // One read drives BOTH the prompt and the gate: symmetry between what the
+  // model sees and what grounds it is the whole point of the flag, and two
+  // separate reads could drift.
+  const promptMemberTitlesEnabled = process.env.INSIGHTS_PROMPT_MEMBER_TITLES === '1';
+  const synthesisComposerOptions = {
+    briefCluster,
+    validatorMode: BRIEF_VALIDATOR_MODE,
+    sanitizeTitle,
+    sourceFromStory: briefSourceFromStory,
+    promptScopedMembers: promptMemberTitlesEnabled,
+  };
+  const { accept: composeFromText, lastRejection } = createSynthesisAcceptor(topStories, synthesisComposerOptions);
+
+  // #6001: L1 may now walk the whole provider chain, and L2 below makes a
+  // SECOND callLLM. Stamp the run's LLM start so L2 gets only the remainder —
+  // otherwise two full 60s budgets could outlast the 120s seed lock.
+  const llmRunStartedAtMs = Date.now();
+  // Repeat breaker: same gate failure, same story set, three cycles running —
+  // a fourth identical paid call cannot succeed where three did not, and the
+  // resample/repair machinery has already had its chance on each. Re-arms the
+  // moment the story set (and therefore the prompt) changes.
+  const previousFreshnessMeta = await readExistingSeedMeta('news', 'insights');
+  // The signature hashes the exact prompts callLLM is about to send — computed
+  // here, passed there, one source of truth.
+  const synthesisSystem = synthesisSystemPrompt(new Date().toISOString().split('T')[0]);
+  const synthesisUser = synthesisUserPrompt(topStories, {
+    includeMemberTitles: promptMemberTitlesEnabled,
+  });
+  const storiesSignature = insightsSynthesisSignature(synthesisSystem, synthesisUser);
+  const synthesisBreakerOpen = hasBriefCluster && shouldSkipInsightsSynthesis({
+    previousMeta: previousFreshnessMeta,
+    synthesisSignature: storiesSignature,
+  });
+  if (synthesisBreakerOpen) {
+    console.warn(formatInsightsBreakerOpenWarning(previousFreshnessMeta));
+  }
+  const synthesisResult = hasBriefCluster && !synthesisBreakerOpen
+    ? await callLLM(null, {
+        systemPrompt: synthesisSystem,
+        userPrompt: synthesisUser,
+        maxTokens: 900,
+        // A model whose output trips the editorial gates must not strand the
+        // run. callLLM resamples this model once before demoting to a weaker
+        // one, so a single unusable sample no longer costs the better writer —
+        // and the resample carries the gate's correction plus real sampling
+        // variance, so it is a different draft rather than the same one twice.
+        accept: composeFromText,
+        rejectionFeedback: () => synthesisRejectionFeedback(lastRejection()),
+      })
+    : null;
+  let breakerCarriedDetail = null;
+  const { composed, failureCode, failureDetail } = synthesisBreakerOpen
+    ? { composed: null, failureCode: null, failureDetail: null }
+    : resolveInsightsSynthesis({
+      synthesisResult,
+      topStories,
+      ...synthesisComposerOptions,
+    });
+  synthesisFailureCode = failureCode;
+
+  if (synthesisBreakerOpen) {
+    // Preserve the TRUE cause. Classifying this run's null synthesisResult
+    // would report PROVIDER — but no provider was asked; the standing failure
+    // is whatever kept failing before the breaker opened. L2 is skipped as
+    // well: it is a second paid call, and the LKG it would lose to is already
+    // being served.
+    synthesisFailureCode = normalizeInsightsFailureCode(previousFreshnessMeta?.lastSynthesisFailureCode)
+      ?? INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
     status = 'degraded';
-    console.warn('  No LLM available — publishing degraded (stories without brief)');
+    // Carry the standing detail too: a skipped run repeats the previous
+    // failure identically, and the per-signature counter downstream matches on
+    // (code, detail, signature) — a null detail here would read as a CHANGED
+    // failure, reset the counter, and flap the breaker open/closed every other
+    // run.
+    breakerCarriedDetail = typeof previousFreshnessMeta?.lastSynthesisFailureDetail === 'string'
+      ? previousFreshnessMeta.lastSynthesisFailureDetail
+      : null;
+  } else if (composed) {
+    worldBrief = composed.lead;
+    briefStoryLines = composed.lines;
+    worldBriefSources = composed.sources;
+    briefProvider = synthesisResult.provider;
+    briefModel = synthesisResult.model;
+    if (composed.strippedCitations > 0) {
+      console.warn(`  [brief_citation ENFORCE] stripped ${composed.strippedCitations} out-of-range citation(s)`);
+    }
+    if (composed.droppedLeadSentences > 0) {
+      // Bounded vocabulary only — the detail may quote model output, and this
+      // line reaches Railway logs, so name the gate, not the text.
+      console.warn(`  [brief_repair ${BRIEF_VALIDATOR_MODE.toUpperCase()}] dropped ${composed.droppedLeadSentences} lead sentence(s) (first: ${composed.droppedLeadRejection}) — published the surviving lead`);
+    }
+    if (composed.hallucinatedLines > 0) {
+      console.warn(`  [brief_hallucination ${BRIEF_VALIDATOR_MODE.toUpperCase()}] ${composed.hallucinatedLines}/${topStories.length} synthesis lines flagged`);
+    }
+    if (composed.sourceAttributions > 0) {
+      // Accept-side counterpart to the `validate_reject` reason below: how many
+      // lead sentences named their own outlet. Only the reject path was ever
+      // reported, so a quiet alarm could not be told apart from a gate that had
+      // started accepting too much. A count is enough to see that — the reason
+      // vocabulary stays a bounded literal on purpose (these reach seed-meta and
+      // Railway logs, where the payload may be sensitive), so no offending text
+      // is logged here either.
+      console.log(`  [brief_attribution] ${composed.sourceAttributions} lead sentence(s) named their source outlet`);
+    }
+    console.log(`  Brief synthesized (top-${topStories.length}) via ${briefProvider} (${briefModel})`);
+  } else {
+    console.warn(
+      `  [brief_synthesis] rejected (${synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER})`
+      + `${failureDetail ? ` on "${failureDetail}"` : ''} — `
+      + 'falling back to single-headline brief',
+    );
+    const legacy = await generateLegacySingleHeadlineBrief(topStories, {
+      callBudgetMs: Math.max(0, INSIGHTS_LLM_CALL_BUDGET_MS - (Date.now() - llmRunStartedAtMs)),
+    });
+    worldBrief = legacy.worldBrief;
+    briefProvider = legacy.briefProvider;
+    briefModel = legacy.briefModel;
+    worldBriefSources = legacy.worldBriefSources;
+    // A usable L2 headline must not clear an L1 synthesis failure. Keep this
+    // run degraded so an existing LKG remains the freshness anchor and the
+    // bounded failure metadata advances until L1 publishes successfully.
+    status = resolveInsightsFallbackStatus({
+      synthesisFailureCode,
+      legacyStatus: legacy.status,
+    });
   }
 
-  const multiSourceCount = clusters.filter(c => c.sourceCount >= 2).length;
+  // #6428: "multi-source" is a claim about publishers. Counting c.sources
+  // counted feed labels, so a cluster carried only by one newsroom's own
+  // editions was published as multi-source. clusterItems already resolved the
+  // families onto the cluster — read it rather than recomputing.
+  const multiSourceCount = clusters.filter(
+    c => (c.uniquePublisherCount ?? 0) >= MIN_CORROBORATING_PUBLISHERS
+      || c.entityCorroboration === true,
+  ).length;
   const fastMovingCount = 0; // velocity not available in digest items
 
   const enrichedStories = topStories.map(story => {
@@ -305,24 +1119,78 @@ async function fetchInsights() {
     const { category, threatLevel } = hasDigestThreat
       ? { category: story.threat.category ?? 'general', threatLevel: story.threat.level }
       : categorizeStory(story.primaryTitle);
-    const countryCode = extractCountryCode(story.primaryTitle) ?? null;
+    const { countryCode, countryCodes } = extractStoryCountries(story.primaryTitle);
     return {
       primaryTitle: story.primaryTitle,
       primarySource: story.primarySource,
       primaryLink: story.primaryLink,
       pubDate: story.pubDate,
       sourceCount: story.sourceCount,
+      // #6428: uniqueSourceCount is the corroboration breadth number every
+      // consumer (InsightsPanel badge, MCP get_news_intelligence) quotes back
+      // to a user, so it counts PUBLISHERS. `sources` stays the label list —
+      // it is what the UI credits and links, and collapsing it would drop
+      // attribution the publisher is owed.
+      uniqueSourceCount: story.uniquePublisherCount ?? 0,
+      sources: Array.isArray(story.sources) ? story.sources : [],
+      // #6419: `sources` holds only the labels that survived the digest's
+      // per-category cap; the digest's origin-aware publisher count is the
+      // floor a single-publisher verdict has to respect.
+      corroborationCount: story.corroborationCount ?? 0,
+      // #9095: publisher families in `sources` that carried the same copy;
+      // each group counts as one publisher wherever `sources` is judged.
+      ...(Array.isArray(story.sameCopy) && story.sameCopy.length > 0 ? { sameCopy: story.sameCopy } : {}),
+      lastUpdated: story.lastUpdated,
+      memberTitles: Array.isArray(story.memberTitles) ? story.memberTitles : [story.primaryTitle],
+      sourceTier: story.sourceTier,
+      upstreamImportanceScore: story.upstreamImportanceScore,
+      entityCorroboration: story.entityCorroboration === true,
+      corroborationSourceCount: story.corroborationSourceCount ?? 0,
       importanceScore: story.importanceScore,
+      effectiveImportanceScore: story.effectiveImportanceScore,
+      ...(Number.isFinite(story.credibilityScore) ? { credibilityScore: story.credibilityScore } : {}),
       velocity: { level: 'normal', sourcesPerHour: 0 },
       isAlert: story.isAlert,
       category,
       threatLevel,
       countryCode,
+      countryCodes,
     };
   });
 
+  // #4920: user-facing provenance — "compiled from N stories across M
+  // sources" — plus the selection-gate drop counts. Read by
+  // insights-loader/InsightsPanel; no proto involved (plain Redis JSON).
+  const provenance = {
+    storiesConsidered: normalizedItems.length,
+    sourcesConsidered: new Set(normalizedItems.map(item => item.source).filter(Boolean)).size,
+    selectionDrops: {
+      admissibility: selectionStats.admissibilityDropped ?? 0,
+      sourceCap: selectionStats.sourceCapDropped ?? 0,
+      overflow: selectionStats.overflowDropped ?? 0,
+    },
+  };
+  console.log(
+    `  Provenance: ${provenance.storiesConsidered} stories / ${provenance.sourcesConsidered} sources; ` +
+      `drops adm=${provenance.selectionDrops.admissibility} srcCap=${provenance.selectionDrops.sourceCap} overflow=${provenance.selectionDrops.overflow}`,
+  );
+
+  // #4921 staleness footer: the age window of the BRIEF'S OWN material —
+  // the top stories the synthesis cites — not the whole digest pool
+  // (#4928 external review: an unrelated fresh item made the footer claim
+  // the brief's sources were fresher than they are).
+  const pubTimes = topStories
+    .map(story => new Date(story.pubDate).getTime())
+    .filter(Number.isFinite);
+  const sourceAgeRange = pubTimes.length > 0
+    ? { newestMs: Math.max(...pubTimes), oldestMs: Math.min(...pubTimes) }
+    : null;
+
   const payload = {
     worldBrief,
+    briefStoryLines,
+    sourceAgeRange,
+    worldBriefSources,
     briefProvider,
     briefModel,
     status,
@@ -331,6 +1199,9 @@ async function fetchInsights() {
     clusterCount: clusters.length,
     multiSourceCount,
     fastMovingCount,
+    importanceSignals: observability,
+    provenance,
+    chinaNewsCoverage,
   };
 
   // LKG preservation: don't overwrite "ok" with "degraded"
@@ -338,23 +1209,112 @@ async function fetchInsights() {
     const existing = await readExistingInsights();
     if (existing?.status === 'ok') {
       console.log('  LKG preservation: existing payload is "ok", skipping degraded overwrite');
-      return existing;
+      return decorateInsightsRun(
+        preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage),
+        {
+          outcome: INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED,
+          failureCode: synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+          failureDetail: breakerCarriedDetail ?? failureDetail,
+          storiesSignature,
+          briefEligibleClusters,
+        },
+      );
     }
   }
 
-  return payload;
+  return decorateInsightsRun(payload, {
+    outcome: status === 'ok' ? INSIGHTS_RUN_OUTCOMES.PUBLISHED : INSIGHTS_RUN_OUTCOMES.DEGRADED,
+    failureCode: synthesisFailureCode,
+    failureDetail: breakerCarriedDetail ?? failureDetail,
+    storiesSignature,
+    briefEligibleClusters,
+  });
 }
 
-function validate(data) {
-  return Array.isArray(data?.topStories) && data.topStories.length >= 1;
+export function declareRecords(data) {
+  return Array.isArray(data?.topStories) ? data.topStories.length : 0;
 }
 
-runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'digest-clustering-v1',
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  // Exit gracefully for cron — health endpoint flags stale data via seed-meta.
-  process.exit(0);
-});
+async function writeInsightsChinaCoverage(data) {
+  if (!data?.chinaNewsCoverage) {
+    // LKG fallback predates the projection. Keep its timestamp honest: an
+    // extended old projection will become CONTENT_STALE rather than green.
+    await extendExistingTtl([CHINA_COVERAGE_KEY], CACHE_TTL);
+    return;
+  }
+  await writeExtraKey(CHINA_COVERAGE_KEY, data.chinaNewsCoverage, CACHE_TTL);
+}
+
+/**
+ * Project a decorated run's non-serialized metadata onto the freshness-patch
+ * inputs. Exported so the run-meta -> seed-meta seam is unit-testable without
+ * Redis I/O: a source-text guard over finalizeInsightsRun would still pass
+ * with the wiring cut, so the mapping lives here as a pure function instead.
+ */
+export function insightsFreshnessPatchArgs(data, outcome, previousMeta, nowMs = Date.now()) {
+  const runMeta = insightsRunMeta(data);
+  return {
+    previousMeta,
+    outcome,
+    failureCode: runMeta?.failureCode,
+    failureDetail: runMeta?.failureDetail ?? null,
+    storiesSignature: runMeta?.storiesSignature ?? null,
+    nowMs,
+    servedGeneratedAt: data?.generatedAt,
+    briefEligibleClusters: runMeta?.briefEligibleClusters ?? null,
+  };
+}
+
+async function finalizeInsightsRun(data, outcome, { previousMeta } = {}) {
+  const [resolvedPreviousMeta] = await Promise.all([
+    previousMeta === undefined
+      ? readExistingSeedMeta('news', 'insights')
+      : Promise.resolve(previousMeta),
+    writeInsightsChinaCoverage(data),
+  ]);
+  return {
+    freshnessMetaPatch: buildInsightsFreshnessMetaPatch(
+      insightsFreshnessPatchArgs(data, outcome, resolvedPreviousMeta, Date.now()),
+    ),
+  };
+}
+
+export { callLLM, generateLegacySingleHeadlineBrief, __setInsightsLlmTransportForTests };
+
+if (_isDirectRun) {
+  runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {
+    validateFn: validateInsightsPayload,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: INSIGHTS_SOURCE_VERSION,
+
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 30,
+    // The source-status projection is not user-facing digest content. It is
+    // retained separately so the China audit can distinguish an unavailable
+    // source from a globally outranked one without changing the public payload.
+    preserveKeys: [CHINA_COVERAGE_KEY],
+    publishTransform: publishInsightsPayload,
+    afterPublish: async (data) => {
+      const runMeta = insightsRunMeta(data);
+      return finalizeInsightsRun(
+        data,
+        runMeta?.outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED
+          ? INSIGHTS_RUN_OUTCOMES.PUBLISHED
+          : INSIGHTS_RUN_OUTCOMES.DEGRADED,
+      );
+    },
+    afterValidationSkip: async (data, context) => {
+      return finalizeInsightsRun(data, INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED, {
+        previousMeta: context.existingSeedMeta,
+      });
+    },
+  }).catch(async (err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    // Exit gracefully for cron — health endpoint flags stale data via
+    // seed-meta. process.exit does not drain in-flight promises — flush
+    // llm_call telemetry first (bounded by the 1.5s fetch timeout).
+    await flushPendingLlmEvents();
+    process.exit(0);
+  });
+}

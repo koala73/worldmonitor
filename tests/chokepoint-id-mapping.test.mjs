@@ -6,6 +6,9 @@ import {
   portwatchNameToId,
   corridorRiskNameToId,
 } from '../server/worldmonitor/supply-chain/v1/_chokepoint-ids.ts';
+import { CHOKEPOINTS } from '../server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts';
+import { THREAT_LEVEL } from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
+import { CHOKEPOINT_THREAT_LEVELS } from '../shared/chokepoint-threat-levels.js';
 
 describe('CANONICAL_CHOKEPOINTS registry', () => {
   it('contains exactly 13 canonical chokepoints', () => {
@@ -73,22 +76,28 @@ import { readFileSync } from 'node:fs';
 const relaySrc = readFileSync('scripts/ais-relay.cjs', 'utf8');
 const handlerSrc = readFileSync('server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts', 'utf8');
 
-describe('relay CHOKEPOINT_THREAT_LEVELS sync', () => {
+describe('chokepoint threat levels', () => {
+  // The relay reads shared/chokepoint-threat-levels.js; the RPC handler
+  // declares the same levels beside their prose descriptions. Both are
+  // imported and compared. The previous version scraped both files with
+  // regexes and wrapped the comparison in `if (relayMatch && handlerMatch)`,
+  // so a rename on either side skipped the assertion and stayed green.
+  it('cover every canonical chokepoint on both sides', () => {
+    const canonical = CANONICAL_CHOKEPOINTS.map((c) => c.id).sort();
+    assert.deepEqual(Object.keys(CHOKEPOINT_THREAT_LEVELS).sort(), canonical);
+    assert.deepEqual(CHOKEPOINTS.map((c) => c.id).sort(), canonical);
+  });
 
-  it('relay has a threat level entry for every canonical chokepoint', () => {
-    for (const cp of CANONICAL_CHOKEPOINTS) {
-      assert.match(relaySrc, new RegExp(`${cp.id}:\\s*'`), `Missing relay threat level for ${cp.id}`);
+  it('agree on the level for each chokepoint', () => {
+    const handlerLevels = new Map(CHOKEPOINTS.map((c) => [c.id, c.threatLevel]));
+    for (const [id, level] of Object.entries(CHOKEPOINT_THREAT_LEVELS)) {
+      assert.equal(handlerLevels.get(id), level, `threat level mismatch for ${id}`);
     }
   });
 
-  it('relay threat levels match handler CHOKEPOINTS config', () => {
-    const relayBlock = relaySrc.match(/CHOKEPOINT_THREAT_LEVELS\s*=\s*\{([^}]+)\}/)?.[1] || '';
-    for (const cp of CANONICAL_CHOKEPOINTS) {
-      const relayMatch = relayBlock.match(new RegExp(`${cp.id}:\\s*'(\\w+)'`));
-      const handlerMatch = handlerSrc.match(new RegExp(`id:\\s*'${cp.id}'[^}]*threatLevel:\\s*'(\\w+)'`));
-      if (relayMatch && handlerMatch) {
-        assert.equal(relayMatch[1], handlerMatch[1], `Threat level mismatch for ${cp.id}: relay=${relayMatch[1]} handler=${handlerMatch[1]}`);
-      }
+  it('only use levels the scoring table can price', () => {
+    for (const [id, level] of Object.entries(CHOKEPOINT_THREAT_LEVELS)) {
+      assert.ok(level in THREAT_LEVEL, `${id} has unknown threat level ${level}`);
     }
   });
 

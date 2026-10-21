@@ -1,10 +1,27 @@
+import type { SignalArticle } from '@/services/analysis-core';
 import type { CorrelationSignal } from '@/services/correlation';
 import type { UnifiedAlert } from '@/services/cross-module-integration';
-import { suppressTrendingTerm } from '@/services/trending-keywords';
-import { escapeHtml } from '@/utils/sanitize';
+import { readSignalMapPoint } from '@/utils/signal-map-point';
+import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
+import { declareOverlay } from '@/utils/open-modal';
+
+// Render-side display ceiling for a keyword spike's evidence list. Independent
+// of the emitter's own cap (MAX_SPIKE_ARTICLES) and deliberately higher, so it
+// bounds an untrusted producer without ever truncating what handleSpike emits.
+const MAX_RENDERED_EVIDENCE_ITEMS = 12;
+
+function suppressTrendingTermLazy(term: string): void {
+  void import('@/services/trending-keywords')
+    .then(module => module.suppressTrendingTerm(term))
+    .catch((err) => {
+      console.warn('[SignalModal] suppressTrendingTerm failed (chunk load?):', err);
+    });
+}
 
 export class SignalModal {
   private element: HTMLElement;
@@ -13,11 +30,22 @@ export class SignalModal {
   private audio: HTMLAudioElement | null = null;
   private onLocationClick?: (lat: number, lon: number) => void;
   private escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') this.hide(); };
+  private focusTrap: FocusTrap | null = null;
 
   constructor() {
     this.element = document.createElement('div');
     this.element.className = 'signal-modal-overlay';
-    this.element.innerHTML = `
+    this.element.setAttribute('role', 'dialog');
+    this.element.setAttribute('aria-modal', 'true');
+    // Read-only on every path: background correlation (`show`), a click on a
+    // finding (`showSignal`), a click on an alert (`showAlert`). The sound
+    // toggle is the only control and it resets on reload anyway, so the
+    // contract is constant and declared once. Before this line the modal was
+    // silent, silence blocks, and `show` has no auto-dismiss, so an ignored
+    // background popup wedged both reload consumers for the whole session
+    // (WORLDMONITOR-15X/15Z, 150 of 198 deferrals named this overlay).
+    declareOverlay(this.element, { reload: 'safe' });
+    setTrustedHtml(this.element, trustedHtml(`
       <div class="signal-modal">
         <div class="signal-modal-header">
           <span class="signal-modal-title">🎯 ${t('modals.signal.title')}</span>
@@ -32,7 +60,7 @@ export class SignalModal {
           <button class="signal-dismiss-btn">${t('modals.signal.dismiss')}</button>
         </div>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     document.body.appendChild(this.element);
     this.setupEventListeners();
@@ -86,7 +114,7 @@ export class SignalModal {
       if (target.classList.contains('suppress-keyword-btn')) {
         const term = (target.dataset.term || '').trim();
         if (!term) return;
-        suppressTrendingTerm(term);
+        suppressTrendingTermLazy(term);
         this.currentSignals = this.currentSignals.filter(signal => {
           const signalTerm = (signal.data as Record<string, unknown>).term;
           return typeof signalTerm !== 'string' || signalTerm.toLowerCase() !== term.toLowerCase();
@@ -100,8 +128,18 @@ export class SignalModal {
     this.onLocationClick = handler;
   }
 
-  private activateEsc(): void {
+  /**
+   * Wires the dialog's keyboard behavior. `trapFocus` is false for surfaces the
+   * user did not ask for: an unsolicited popup must not pull the caret out of
+   * whatever they were typing in, so those get Escape without focus containment.
+   */
+  private activateEsc(trapFocus = true): void {
     document.addEventListener('keydown', this.escHandler);
+    if (!trapFocus) return;
+    this.focusTrap ??= createFocusTrap(this.element, {
+      initialFocus: () => this.element.querySelector<HTMLElement>('.signal-modal-close'),
+    });
+    this.focusTrap.activate();
   }
 
   public show(signals: CorrelationSignal[]): void {
@@ -111,7 +149,9 @@ export class SignalModal {
     this.currentSignals = [...signals, ...this.currentSignals].slice(0, 50);
     this.renderSignals();
     this.element.classList.add('active');
-    this.activateEsc();
+    // Reached from background correlation and military-surge analysis, not from
+    // a user gesture, so this path does not take focus.
+    this.activateEsc(false);
     this.playSound();
   }
 
@@ -268,7 +308,7 @@ export class SignalModal {
       `;
     }
 
-    content.innerHTML = `
+    setTrustedHtml(content, trustedHtml(`
       <div class="signal-item" style="border-left-color: ${color}">
         <div class="signal-type">${icon} ${alert.type.toUpperCase().replace('_', ' ')}</div>
         <div class="signal-title">${escapeHtml(alert.title)}</div>
@@ -286,7 +326,7 @@ export class SignalModal {
           </div>
         ` : ''}
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     this.element.classList.add('active');
     this.activateEsc();
@@ -302,6 +342,7 @@ export class SignalModal {
   public hide(): void {
     this.element.classList.remove('active');
     document.removeEventListener('keydown', this.escHandler);
+    this.focusTrap?.deactivate();
   }
 
   private renderSignals(): void {
@@ -329,7 +370,7 @@ export class SignalModal {
       const data = signal.data as Record<string, unknown>;
       const newsCorrelation = data?.newsCorrelation as string | null;
       const focalPoints = data?.focalPointContext as string[] | null;
-      const locationData = { lat: data?.lat as number | undefined, lon: data?.lon as number | undefined, regionName: data?.regionName as string | undefined };
+      const locationData = readSignalMapPoint(signal);
 
       return `
         <div class="signal-item ${escapeHtml(signal.type)}">
@@ -355,7 +396,7 @@ export class SignalModal {
               <pre class="news-correlation-text">${escapeHtml(newsCorrelation)}</pre>
             </div>
           ` : ''}
-          ${locationData.lat && locationData.lon ? `
+          ${locationData ? `
             <div class="signal-location">
               <button class="location-link" data-lat="${locationData.lat}" data-lon="${locationData.lon}">
                 📍 ${t('modals.signal.viewOnMap')}: ${locationData.regionName ? escapeHtml(locationData.regionName) : `${locationData.lat.toFixed(2)}°, ${locationData.lon.toFixed(2)}°`}
@@ -381,6 +422,7 @@ export class SignalModal {
               ${signal.data.relatedTopics.map(t => `<span class="signal-topic">${escapeHtml(t)}</span>`).join('')}
             </div>
           ` : ''}
+          ${this.renderSpikeEvidence(signal)}
           ${signal.type === 'keyword_spike' && typeof data?.term === 'string' ? `
             <div class="signal-actions">
               <button class="suppress-keyword-btn" data-term="${escapeHtml(data.term)}">${t('modals.signal.suppress')}</button>
@@ -390,7 +432,83 @@ export class SignalModal {
       `;
     }).join('');
 
-    content.innerHTML = html;
+    setTrustedHtml(content, trustedHtml(html, "legacy direct innerHTML migration"));
+  }
+
+  /**
+   * A keyword spike reports "N mentions across M sources"; until #6414 the
+   * sources and articles behind that count were dropped at the emit site, so
+   * the only thing a user could do with the alert was silence it. The payload
+   * now carries them — render them so the alert is reachable from the news it
+   * is about.
+   *
+   * Shape is validated rather than trusted: `signal.data` is a loose bag that
+   * already carries undeclared fields (`newsCorrelation`, `focalPointContext`,
+   * `lat`/`lon`), and signals reach this modal from several producers — the
+   * main-thread correlation engine, the analysis worker, and the unified-alert
+   * adapter — so the render boundary cannot assume the declared type.
+   */
+  private renderSpikeEvidence(signal: CorrelationSignal): string {
+    if (signal.type !== 'keyword_spike') return '';
+
+    const data = signal.data as { sourceNames?: unknown; articles?: unknown };
+
+    const sourceNames = Array.isArray(data.sourceNames)
+      ? data.sourceNames.filter(
+          (name): name is string => typeof name === 'string' && name.trim().length > 0,
+        )
+      : [];
+
+    const articles = Array.isArray(data.articles)
+      ? (data.articles as SignalArticle[]).filter(
+          article => !!article && typeof article.title === 'string' && article.title.length > 0,
+        )
+      : [];
+
+    if (sourceNames.length === 0 && articles.length === 0) return '';
+
+    // A display ceiling, deliberately set ABOVE the emitter's MAX_SPIKE_ARTICLES
+    // so it never truncates a legitimate payload — it exists only so a producer
+    // this boundary does not trust cannot make the modal render an arbitrarily
+    // long list. A term trending across dozens of feeds is normal, so the chips
+    // overflow into a "+N" counter rather than being silently dropped.
+    const shownSources = sourceNames.slice(0, MAX_RENDERED_EVIDENCE_ITEMS);
+    const hiddenSourceCount = sourceNames.length - shownSources.length;
+
+    // Deliberately reusing `header.sources` and `popups.relatedHeadlines`:
+    // both already carry vetted translations in every locale, and nothing in
+    // CI backfills a brand-new key, so a fresh `modals.signal.*` pair would
+    // ship as English to every non-English user. `header.sources` is already
+    // mirrored in en.shell.json, so this costs no first-paint shell budget.
+    const sourcesBlock = sourceNames.length ? `
+      <div class="signal-sources">
+        <span class="signal-sources-label">${t('header.sources')}</span>
+        ${shownSources.map(name => `<span class="signal-source-chip">${escapeHtml(name)}</span>`).join('')}
+        ${hiddenSourceCount > 0 ? `<span class="signal-source-chip signal-source-chip-more">+${hiddenSourceCount}</span>` : ''}
+      </div>
+    ` : '';
+
+    const articlesBlock = articles.length ? `
+      <div class="signal-articles">
+        <div class="signal-articles-header">📰 ${t('popups.relatedHeadlines')}</div>
+        ${articles.slice(0, MAX_RENDERED_EVIDENCE_ITEMS).map(article => {
+          // sanitizeUrl returns '' for anything that is not http(s) — render
+          // the headline as text rather than as a link that cannot be trusted.
+          const href = typeof article.link === 'string' ? sanitizeUrl(article.link) : '';
+          const title = escapeHtml(article.title);
+          return `
+            <div class="signal-article-item">
+              <span class="news-source">${escapeHtml(article.source ?? '')}</span>
+              ${href
+                ? `<a class="news-title" href="${href}" target="_blank" rel="noopener noreferrer">${title}</a>`
+                : `<span class="news-title">${title}</span>`}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    ` : '';
+
+    return `${sourcesBlock}${articlesBlock}`;
   }
 
   private formatTime(date: Date): string {

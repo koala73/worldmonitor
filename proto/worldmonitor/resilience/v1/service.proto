@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package worldmonitor.resilience.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/resilience/v1/get_demographics_capability.proto";
+import "worldmonitor/resilience/v1/get_food_stocks.proto";
+import "worldmonitor/resilience/v1/get_resilience_indicators.proto";
+import "worldmonitor/resilience/v1/get_resilience_ranking.proto";
+import "worldmonitor/resilience/v1/get_resilience_runtime_manifest.proto";
+import "worldmonitor/resilience/v1/get_resilience_score.proto";
+
+service ResilienceService {
+  option (sebuf.http.service_config) = {base_path: "/api/resilience/v1"};
+
+  rpc GetResilienceScore(GetResilienceScoreRequest) returns (GetResilienceScoreResponse) {
+    option (sebuf.http.config) = {path: "/get-resilience-score", method: HTTP_METHOD_GET};
+  }
+
+  // GetResilienceIndicators explains one country's score at indicator level.
+  rpc GetResilienceIndicators(GetResilienceIndicatorsRequest) returns (GetResilienceIndicatorsResponse) {
+    option (sebuf.http.config) = {path: "/get-resilience-indicators", method: HTTP_METHOD_GET};
+  }
+
+  // Returns seeded PSD cereal balances with FAOSTAT gap fill.
+  rpc GetFoodStocks(GetFoodStocksRequest) returns (GetFoodStocksResponse) {
+    option (sebuf.http.config) = {path: "/get-food-stocks", method: HTTP_METHOD_GET};
+  }
+
+  // GetDemographicsCapability returns age, education and industrial-workforce observations for one country.
+  rpc GetDemographicsCapability(GetDemographicsCapabilityRequest) returns (GetDemographicsCapabilityResponse) {
+    option (sebuf.http.config) = {path: "/get-demographics-capability", method: HTTP_METHOD_GET};
+  }
+
+  // Retrieve country structural resilience rankings with coverage, confidence and snapshot metadata for comparison. PRO-gated. Requires an active Pro subscription.
+  rpc GetResilienceRanking(GetResilienceRankingRequest) returns (GetResilienceRankingResponse) {
+    option (sebuf.http.config) = {path: "/get-resilience-ranking", method: HTTP_METHOD_GET};
+  }
+
+  // GetResilienceRuntimeManifest returns the public resilience-scoring runtime manifest: manifest version, generation timestamp, active formula tag, cache state, construct versions, and interval availability.
+  rpc GetResilienceRuntimeManifest(GetResilienceRuntimeManifestRequest) returns (GetResilienceRuntimeManifestResponse) {
+    option (sebuf.http.config) = {path: "/get-runtime-manifest", method: HTTP_METHOD_GET};
+  }
+}

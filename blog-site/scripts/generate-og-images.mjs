@@ -32,6 +32,10 @@ for (const file of files) {
 
   const raw = readFileSync(join(BLOG_DIR, file), 'utf-8');
   const { data } = matter(raw);
+  if (data.heroImage) {
+    console.log(`  skip ${slug} (committed cover)`);
+    continue;
+  }
   const title = data.title || slug;
   const audience = data.audience || '';
 

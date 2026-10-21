@@ -1,0 +1,29 @@
+"TERMS AND CONDITIONS"
+"https://www.bankofcanada.ca/terms/"
+
+"NAME"
+"Selected Treasury Bill Yields"
+
+"DESCRIPTION"
+"1, 3, 6 and 12 month Treasury bill data."
+
+"LINK"
+"https://www.bankofcanada.ca/?p=39889"
+
+"SERIES"
+"id","label","description"
+"V1592248173","1 month","Because the Canadian Dollar Offered Rate (CDOR) ceased publication in June 2024, one-month treasury bills were temporarily issued between May 2024 and July 2025 to support an orderly transition away from Bankers’ Acceptances (BAs)."
+"V80691303","3 month","Treasury bill auction - Average yields"
+"V80691304","6 month","Treasury bill auction - Average yields"
+"V80691305","1 year","Treasury bill auction - Average yields"
+"V80691342","1 month","Treasury bills"
+"V80691344","3 month","Treasury bills"
+"V80691345","6 month","Treasury bills"
+"V80691346","1 year","Treasury bills"
+
+"OBSERVATIONS"
+"date","V1592248173","V80691303","V80691304","V80691305","V80691342","V80691344","V80691345","V80691346"
+"2000-01-04","","4.99","5.36","5.83","","","",""
+"2000-01-05","","","","","4.65","5.00","5.36","5.85"
+"2026-09-16","","","","","2.27","2.34","2.57","2.99"
+"2026-09-22","","2.39","2.59","2.97","","","",""

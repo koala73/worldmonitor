@@ -1,0 +1,62 @@
+---
+title: "Proxies & Raw-Data Passthroughs"
+description: "Thin server-side proxies for upstream APIs — used by the dashboard to avoid CORS, hide credentials, and add rate-limiting and edge caching."
+---
+
+These endpoints pass caller requests through to an upstream data source. They exist to:
+
+1. Hide upstream API keys server-side
+2. Work around CORS
+3. Add caching + per-IP rate limiting
+4. Normalize response shapes
+
+<Warning>
+Most proxies are intended for **our own dashboard** and are lightly gated. They are not part of the public API contract and may change or be removed without notice. Prefer the domain RPC services (`/api/<domain>/v1/*`) for stable integrations.
+</Warning>
+
+## Raw-data passthroughs
+
+| Endpoint | Upstream | Purpose |
+|----------|----------|---------|
+| `GET /api/polymarket` | Polymarket gamma-api | Active event contracts. |
+| `GET /api/gpsjam` | gpsjam.org | GPS interference hotspot reports. |
+| `GET /api/oref-alerts` | OREF (Israel Home Front Command) | Tzeva Adom rocket alert mirror. |
+| `GET /api/supply-chain/hormuz-tracker` | Internal AIS + registry | Real-time Hormuz transit dashboard data. |
+
+All proxies:
+- Respect the origin CORS allowlist.
+- Apply per-IP rate limits via `api/_rate-limit.js` or `server/_shared/rate-limit.ts` (600 req/min/IP default) where the handler opts in, with stricter per-route budgets declared in `ENDPOINT_RATE_POLICIES` — see [Rate Limits](/usage-rate-limits). Rate limiting is per-route, not platform-wide: `/api/polymarket` opts in, while `/api/gpsjam` and `/api/oref-alerts` are currently unmetered.
+- Cache aggressively (`s-maxage` varies by upstream).
+
+## Content proxies
+
+### `GET /api/rss-proxy?url=<allowed-feed>`
+
+Fetches an RSS/Atom feed and returns the parsed JSON. The URL must match one of the patterns in `_rss-allowed-domains.js` — arbitrary URLs are refused to prevent SSRF.
+
+The route is API-key gated. Responses use `Cache-Control: private, max-age=180` and omit `CDN-Cache-Control`, because shared caches do not key on the credential header. Browser clients may still reuse the body for three minutes.
+
+## Skills registry
+
+### `POST /api/skills/fetch-agentskills`
+
+Fetches a single agentskills.io skill definition — pass either `url` or `id` in the JSON body — and returns its name, description, and instructions, truncated to 2,000 characters. Only the three `agentskills.io` hosts are accepted and redirects are refused, so the route cannot be used to reach an arbitrary host. Used by the settings skill importer. Limited to 30 req/min/IP; a successful lookup is cached in Redis for one hour.
+
+## Legacy / internal
+
+### `GET /api/fwdstart`
+
+Scrapes the FwdStart newsletter archive and republishes it as an RSS 2.0 XML feed (30-minute cache). Internal feed shim, not a JSON API.
+
+### `GET|POST /api/mcp-proxy`
+
+Pro-gated outbound MCP proxy: forwards MCP traffic to a caller-supplied third-party MCP server with SSRF protection (private/link-local targets are refused) and its own 30 requests/minute/IP limit. It does **not** forward to WorldMonitor's own [`/api/mcp`](/mcp-overview) — call that directly.
+
+
+Use `GET ?serverUrl=...` for tool discovery without custom headers. Query-string `headers` are rejected with 400. For authenticated upstream discovery, send a JSON POST body:
+
+```json
+{ "action": "tools/list", "serverUrl": "https://mcp.example.com/mcp", "customHeaders": { "Authorization": "Bearer YOUR_UPSTREAM_KEY" } }
+```
+
+The response remains `{ "tools": [...] }`. Existing POST tool calls with `serverUrl`, `toolName`, `toolArgs`, and optional `customHeaders` remain supported. Proxy errors use bounded messages owned by WorldMonitor; raw upstream error text is not returned.

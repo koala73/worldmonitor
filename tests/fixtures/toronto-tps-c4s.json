@@ -1,0 +1,91 @@
+{
+  "objectIdFieldName": "OBJECTID",
+  "geometryType": "esriGeometryPoint",
+  "spatialReference": { "wkid": 4326 },
+  "features": [
+    {
+      "attributes": {
+        "OBJECTID": 69,
+        "OCCURRENCE_TIME": 1787261102000,
+        "DIVISION": "D41",
+        "LATITUDE": 43.689442239975186,
+        "LONGITUDE": -79.26389087611648,
+        "CALL_TYPE_CODE": "BREEN",
+        "CALL_TYPE": "BREAK & ENTER",
+        "CROSS_STREETS": "KINGSBURY CRES - KINGSTON RD",
+        "OCCURRENCE_TIME_AGOL": 1787261102000
+      },
+      "geometry": { "x": -79.26389087611648, "y": 43.689442239975186 }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 51,
+        "OCCURRENCE_TIME": 1787261014000,
+        "DIVISION": "D52",
+        "LATITUDE": 43.65042918953283,
+        "LONGITUDE": -79.3906662393632,
+        "CALL_TYPE_CODE": "THEPR",
+        "CALL_TYPE": "THEFT IN PROGRESS",
+        "CROSS_STREETS": "ST PATRICKS MARKET - JOHN ST",
+        "OCCURRENCE_TIME_AGOL": 1787261014000
+      },
+      "geometry": { "x": -79.3906662393632, "y": 43.65042918953283 }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 9001,
+        "OCCURRENCE_TIME": 1787260000000,
+        "DIVISION": "D51",
+        "LATITUDE": 43.66,
+        "LONGITUDE": -79.37,
+        "CALL_TYPE_CODE": "DOMVI",
+        "CALL_TYPE": "DOMESTIC",
+        "CROSS_STREETS": "SHOULD NOT APPEAR - PRIVACY",
+        "OCCURRENCE_TIME_AGOL": 1787260000000
+      },
+      "geometry": { "x": -79.37, "y": 43.66 }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 9002,
+        "OCCURRENCE_TIME": 1787260001000,
+        "DIVISION": "D52",
+        "LATITUDE": 43.65,
+        "LONGITUDE": -79.38,
+        "CALL_TYPE_CODE": "SEXAS",
+        "CALL_TYPE": "SEXUAL ASSAULT",
+        "CROSS_STREETS": "SHOULD NOT APPEAR - PRIVACY",
+        "OCCURRENCE_TIME_AGOL": 1787260001000
+      },
+      "geometry": { "x": -79.38, "y": 43.65 }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 9003,
+        "OCCURRENCE_TIME": 1787260002000,
+        "DIVISION": "D14",
+        "LATITUDE": 43.64,
+        "LONGITUDE": -79.41,
+        "CALL_TYPE_CODE": "MEDIC",
+        "CALL_TYPE": "MEDICAL",
+        "CROSS_STREETS": "SHOULD NOT APPEAR - PRIVACY",
+        "OCCURRENCE_TIME_AGOL": 1787260002000
+      },
+      "geometry": { "x": -79.41, "y": 43.64 }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 9004,
+        "OCCURRENCE_TIME": 1787260003000,
+        "DIVISION": "D11",
+        "LATITUDE": 43.67,
+        "LONGITUDE": -79.45,
+        "CALL_TYPE_CODE": "ACTOP",
+        "CALL_TYPE": "ACTIVE OPS",
+        "CROSS_STREETS": "SHOULD NOT APPEAR - PRIVACY",
+        "OCCURRENCE_TIME_AGOL": 1787260003000
+      },
+      "geometry": { "x": -79.45, "y": 43.67 }
+    }
+  ]
+}

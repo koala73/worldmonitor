@@ -9,12 +9,6 @@ import {
 } from '../services/webcams/pinned-store';
 
 const MAX_SLOTS = 4;
-const PLAYER_FALLBACK = 'https://webcams.windy.com/webcams/public/embed/player';
-
-function buildPlayerUrl(webcamId: string, playerUrl?: string): string {
-  if (playerUrl) return playerUrl;
-  return `${PLAYER_FALLBACK}/${encodeURIComponent(webcamId)}/day`;
-}
 
 export class PinnedWebcamsPanel extends Panel {
   private unsubscribe: (() => void) | null = null;
@@ -26,7 +20,8 @@ export class PinnedWebcamsPanel extends Panel {
   }
 
   private render(): void {
-    while (this.content.firstChild) this.content.removeChild(this.content.firstChild);
+    // #6557: build all nodes first, then one atomic write through the
+    // sanctioned helper — replaces the manual clear + progressive appendChild.
     this.content.className = 'panel-content pinned-webcams-content';
 
     const active = getActiveWebcams();
@@ -43,7 +38,7 @@ export class PinnedWebcamsPanel extends Panel {
       if (cam) {
         const iframe = document.createElement('iframe');
         iframe.className = 'pinned-webcam-iframe';
-        iframe.src = buildPlayerUrl(cam.webcamId, cam.playerUrl);
+        iframe.src = cam.playerUrl;
         iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
         iframe.setAttribute('frameborder', '0');
         iframe.title = cam.title || cam.webcamId;
@@ -86,7 +81,7 @@ export class PinnedWebcamsPanel extends Panel {
       grid.appendChild(slot);
     }
 
-    this.content.appendChild(grid);
+    const children: HTMLElement[] = [grid];
 
     if (allPinned.length > MAX_SLOTS) {
       const listSection = document.createElement('div');
@@ -127,9 +122,11 @@ export class PinnedWebcamsPanel extends Panel {
 
         listSection.appendChild(row);
       });
-
-      this.content.appendChild(listSection);
+      children.push(listSection);
     }
+
+    // #6557: one atomic write — grid plus the optional overflow list.
+    this.setContentNodes(...children);
   }
 
   public refresh(): void {

@@ -1,16 +1,42 @@
 import type { Feed, NewsItem } from '@/types';
 import { SITE_VARIANT } from '@/config';
-import { chunkArray, fetchWithProxy } from '@/utils';
+import { chunkArray, fetchWithProxy, hasNoStoreCacheDirective, isMobileDevice } from '@/utils';
 import { classifyByKeyword, classifyWithAI } from './threat-classifier';
 import { inferGeoHubsFromTitle } from './geo-hub-index';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
 import { dataFreshness } from './data-freshness';
 import { ingestHeadlines } from './trending-keywords';
 import { getCurrentLanguage } from './i18n';
-import { parseFeedDateOrNow } from './feed-date';
+import { filterFeedsByLanguage } from './feed-language';
+import { parseFeedDate, effectivePubDateMs } from './feed-date';
 import { canQueueAiClassification, AI_CLASSIFY_MAX_PER_FEED } from './ai-classify-queue';
 import { mlWorker } from './ml-worker';
 import { isHeadlineMemoryEnabled } from './ai-flow-settings';
+import { yieldToMain } from '@/utils/after-paint';
+import { createYieldingWorkQueue } from '@/utils/yielding-work-queue';
+
+export interface RssFetchPolicy {
+  ingestGlobalTrends: boolean;
+  ingestVectorMemory: boolean;
+  classifyWithAi: boolean;
+}
+
+export const DEFAULT_RSS_FETCH_POLICY: RssFetchPolicy = Object.freeze({
+  ingestGlobalTrends: true,
+  ingestVectorMemory: true,
+  classifyWithAi: true,
+});
+
+export const BRIEF_ONLY_RSS_FETCH_POLICY: RssFetchPolicy = Object.freeze({
+  ingestGlobalTrends: false,
+  ingestVectorMemory: false,
+  classifyWithAi: false,
+});
+
+export interface FetchFeedOptions {
+  policy?: RssFetchPolicy;
+  signal?: AbortSignal;
+}
 
 const FEED_COOLDOWN_MS = 5 * 60 * 1000;
 const MAX_FAILURES = 2;
@@ -19,6 +45,15 @@ const FEED_SCOPE_SEPARATOR = '::';
 const feedFailures = new Map<string, { count: number; cooldownUntil: number }>();
 const feedCache = new Map<string, { items: NewsItem[]; timestamp: number }>();
 const CACHE_TTL = 30 * 60 * 1000;
+const enqueueFeedParse = createYieldingWorkQueue(yieldToMain);
+
+function parseFeedXml(text: string, isMobile: boolean): Promise<Document> {
+  // Desktop keeps its established concurrent feed path. The queue is only a
+  // mobile guard against several completed requests synchronously parsing XML
+  // in the same post-hydration task. (#5165)
+  if (!isMobile) return Promise.resolve(new DOMParser().parseFromString(text, 'text/xml'));
+  return enqueueFeedParse(() => new DOMParser().parseFromString(text, 'text/xml'));
+}
 
 function toSerializable(items: NewsItem[]): Array<Omit<NewsItem, 'pubDate'> & { pubDate: string }> {
   return items.map(item => ({ ...item, pubDate: item.pubDate.toISOString() }));
@@ -27,6 +62,14 @@ function toSerializable(items: NewsItem[]): Array<Omit<NewsItem, 'pubDate'> & { 
 function fromSerializable(items: Array<Omit<NewsItem, 'pubDate'> & { pubDate: string }>): NewsItem[] {
   return items.map(item => ({ ...item, pubDate: new Date(item.pubDate) }));
 }
+
+// Cache key prefix. Bumped from `feed:` → `feed:v2:` when the item schema
+// gained `pubDateMissing` (U3 of plan 2026-05-23-001). Old `feed:`-prefix
+// entries deserialize without the flag, which would silently keep the
+// false-freshness bug alive in cached items until natural TTL. The bump
+// invalidates cleanly; old entries can be left to expire. See skill
+// `redis-cache-staleness-gotchas` for the recipe.
+const CACHE_PREFIX = 'feed:v2:';
 
 function getFeedScope(feedName: string, lang: string): string {
   return `${feedName}${FEED_SCOPE_SEPARATOR}${lang}`;
@@ -42,7 +85,7 @@ function parseFeedScope(feedScope: string): { feedName: string; lang: string } {
 }
 
 function getPersistentFeedKey(feedScope: string): string {
-  return `feed:${feedScope}`;
+  return `${CACHE_PREFIX}${feedScope}`;
 }
 
 async function readPersistentFeed(key: string): Promise<NewsItem[] | null> {
@@ -56,11 +99,16 @@ async function loadPersistentFeed(feedScope: string): Promise<NewsItem[] | null>
   const scoped = await readPersistentFeed(scopedKey);
   if (scoped) return scoped;
 
-  // Migration fallback: older builds stored feeds as `feed:<feedName>` without language scope.
-  // Only use this for English to avoid mixing cached content across locales.
+  // Language-scope migration fallback (carried forward from the pre-v2
+  // prefix era): some older v2 cache rows that predate the language-scope
+  // refactor were written without a `::<lang>` suffix. For English only,
+  // also try the unscoped key under the CURRENT v2 prefix. Pre-v2
+  // `feed:<feedScope>` and `feed:<feedName>` entries are deliberately NOT
+  // consulted — they predate the pubDateMissing schema and would
+  // re-introduce false-freshness for cached items.
   const { feedName, lang } = parseFeedScope(feedScope);
   if (lang !== 'en') return null;
-  return readPersistentFeed(`feed:${feedName}`);
+  return readPersistentFeed(`${CACHE_PREFIX}${feedName}`);
 }
 
 // Clean up stale entries to prevent unbounded growth
@@ -197,7 +245,20 @@ function extractImageUrl(item: Element): string | undefined {
   return undefined;
 }
 
-export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new DOMException('The operation was aborted.', 'AbortError');
+}
+
+function isAbortError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
+}
+
+export async function fetchFeed(feed: Feed, options: FetchFeedOptions = {}): Promise<NewsItem[]> {
+  const policy = options.policy ?? DEFAULT_RSS_FETCH_POLICY;
+  const signal = options.signal;
+  throwIfAborted(signal);
   if (feedCache.size > MAX_CACHE_ENTRIES / 2) cleanupCaches();
   const currentLang = getCurrentLanguage();
   const feedScope = getFeedScope(feed.name, currentLang);
@@ -221,11 +282,21 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
 
     if (!url) throw new Error(`No URL found for feed ${feed.name}`);
 
-    const response = await fetchWithProxy(url);
+    const response = await fetchWithProxy(url, signal ? { signal } : {});
+    throwIfAborted(signal);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const noStoreResponse = hasNoStoreCacheDirective(response.headers);
     const text = await response.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(text, 'text/xml');
+    throwIfAborted(signal);
+    const isMobile = isMobileDevice();
+    const doc = await parseFeedXml(text, isMobile);
+    throwIfAborted(signal);
+
+    // XML parsing is synchronous. It is serialized behind a yield so several
+    // completed mobile feed requests cannot parse back-to-back in one
+    // post-hydration task; yield again before querying and mapping entries.
+    // (#5165)
+    if (isMobile) await yieldToMain();
 
     const parseError = doc.querySelector('parsererror');
     if (parseError) {
@@ -239,51 +310,81 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
     const isAtom = items.length === 0;
     if (isAtom) items = doc.querySelectorAll('entry');
 
-    const parsed = Array.from(items)
-      .slice(0, 5)
-      .map((item) => {
-        const title = item.querySelector('title')?.textContent || '';
-        let link = '';
-        if (isAtom) {
-          const linkEl = item.querySelector('link[href]');
-          link = linkEl?.getAttribute('href') || '';
-        } else {
-          link = item.querySelector('link')?.textContent || '';
-        }
+    const itemNodes = Array.from(items).slice(0, 5);
+    const parsed: Array<NewsItem & { threat: ReturnType<typeof classifyByKeyword> }> = [];
+    for (const [index, item] of itemNodes.entries()) {
+      const title = item.querySelector('title')?.textContent || '';
+      let link = '';
+      if (isAtom) {
+        const linkEl = item.querySelector('link[href]');
+        link = linkEl?.getAttribute('href') || '';
+      } else {
+        link = item.querySelector('link')?.textContent || '';
+      }
 
-        const pubDateStr = isAtom
-          ? (item.querySelector('published')?.textContent || item.querySelector('updated')?.textContent || '')
-          : (item.querySelector('pubDate')?.textContent || '');
-        const pubDate = parseFeedDateOrNow(pubDateStr);
-        const threat = classifyByKeyword(title, SITE_VARIANT);
-        const isAlert = threat.level === 'critical' || threat.level === 'high';
-        const geoMatches = inferGeoHubsFromTitle(title);
-        const topGeo = geoMatches[0];
+      // Dublin Core (<dc:date>) fallback for RSS feeds. ArXiv RSS (already
+      // in the feed registry as "ArXiv AI", "ArXiv ML") ships dc:date with
+      // no <pubDate>; without this fallback every ArXiv item would land
+      // with pubDateMissing=true and get demoted in every freshness ranking.
+      // Prior precedent: PR #3417. querySelector('dc\\:date') escapes the
+      // CSS-selector colon so the XML qname matches; getElementsByTagName
+      // is an alternative that also works under browser DOMParser in XML
+      // mode. textContent reads the element's inner text without namespace
+      // gymnastics.
+      const pubDateStr = isAtom
+        ? (item.querySelector('published')?.textContent || item.querySelector('updated')?.textContent || '')
+        : (item.querySelector('pubDate')?.textContent
+          || item.querySelector('dc\\:date')?.textContent
+          || item.getElementsByTagName('dc:date')[0]?.textContent
+          || '');
+      const { date: pubDate, missing: pubDateMissing } = parseFeedDate(pubDateStr);
+      const threat = classifyByKeyword(title, SITE_VARIANT);
+      const isAlert = threat.level === 'critical' || threat.level === 'high';
+      const geoMatches = inferGeoHubsFromTitle(title);
+      const topGeo = geoMatches[0];
 
-        return {
-          source: feed.name,
-          title,
-          link,
-          pubDate,
-          isAlert,
-          threat,
-          ...(topGeo && { lat: topGeo.hub.lat, lon: topGeo.hub.lon, locationName: topGeo.hub.name }),
-          lang: feed.lang,
-          ...(SITE_VARIANT === 'happy' && { imageUrl: extractImageUrl(item) }),
-        };
+      parsed.push({
+        source: feed.name,
+        title,
+        link,
+        pubDate,
+        pubDateMissing,
+        isAlert,
+        threat,
+        ...(topGeo && { lat: topGeo.hub.lat, lon: topGeo.hub.lon, locationName: topGeo.hub.name }),
+        lang: feed.lang,
+        ...(SITE_VARIANT === 'happy' && { imageUrl: extractImageUrl(item) }),
       });
 
-    feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });
-    void setPersistentCache(getPersistentFeedKey(feedScope), toSerializable(parsed));
-    recordFeedSuccess(feedScope);
-    ingestHeadlines(parsed.map(item => ({
-      title: item.title,
-      pubDate: item.pubDate,
-      source: item.source,
-      link: item.link,
-    })));
+      // Each item performs DOM queries, date normalization, classification,
+      // and geo inference. Let paint/input run before the next item instead
+      // of concatenating all five into the same task on mobile. (#5165)
+      if (isMobile && index < itemNodes.length - 1) await yieldToMain();
+    }
 
-    if (isHeadlineMemoryEnabled() && mlWorker.isAvailable && mlWorker.isModelLoaded('embeddings') && parsed.length > 0) {
+    throwIfAborted(signal);
+    if (!noStoreResponse) {
+      feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });
+      void setPersistentCache(getPersistentFeedKey(feedScope), toSerializable(parsed));
+    }
+    recordFeedSuccess(feedScope);
+    if (policy.ingestGlobalTrends) {
+      ingestHeadlines(parsed.map(item => ({
+        title: item.title,
+        pubDate: item.pubDate,
+        pubDateMissing: item.pubDateMissing,
+        source: item.source,
+        link: item.link,
+      })));
+    }
+
+    if (
+      policy.ingestVectorMemory
+      && isHeadlineMemoryEnabled()
+      && mlWorker.isAvailable
+      && mlWorker.isModelLoaded('embeddings')
+      && parsed.length > 0
+    ) {
       mlWorker.vectorStoreIngest(parsed.map(item => ({
         text: item.title,
         pubDate: item.pubDate.getTime(),
@@ -293,24 +394,29 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
       }))).catch(() => {});
     }
 
-    const aiCandidates = parsed
-      .filter(item => item.threat.source === 'keyword')
-      .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
-      .slice(0, AI_CLASSIFY_MAX_PER_FEED);
+    if (policy.classifyWithAi) {
+      const aiCandidates = parsed
+        .filter(item => item.threat.source === 'keyword')
+        .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))
+        .slice(0, AI_CLASSIFY_MAX_PER_FEED);
 
-    for (const item of aiCandidates) {
-      if (!canQueueAiClassification(item.title)) continue;
-      classifyWithAI(item.title, SITE_VARIANT).then((aiResult) => {
-        if (aiResult && aiResult.confidence > item.threat.confidence) {
-          item.threat = aiResult;
-          item.isAlert = aiResult.level === 'critical' || aiResult.level === 'high';
-        }
-      }).catch(() => { });
+      for (const item of aiCandidates) {
+        if (!canQueueAiClassification({ link: item.link, title: item.title })) continue;
+        classifyWithAI(item.title, SITE_VARIANT).then((aiResult) => {
+          if (aiResult && aiResult.confidence > item.threat.confidence) {
+            item.threat = aiResult;
+            item.isAlert = aiResult.level === 'critical' || aiResult.level === 'high';
+          }
+        }).catch(() => { });
+      }
     }
 
     return parsed;
   } catch (e) {
-    console.error(`Failed to fetch ${feed.name}:`, e);
+    if (signal?.aborted || isAbortError(e)) {
+      throw e instanceof Error ? e : new DOMException('The operation was aborted.', 'AbortError');
+    }
+    console.error('Failed to fetch feed:', feed.name, e);
     recordFeedFailure(feedScope);
     const persistent = await loadPersistentFeed(feedScope);
     return cached?.items || persistent || [];
@@ -326,39 +432,40 @@ export async function fetchCategoryFeeds(
 ): Promise<NewsItem[]> {
   const topLimit = 20;
   const batchSize = options.batchSize ?? 5;
-  const currentLang = getCurrentLanguage();
 
   // Filter feeds by language:
   // 1. Feeds with no explicit 'lang' are universal (or multi-url handled inside fetchFeed)
   // 2. Feeds with explicit 'lang' must match current UI language
-  const filteredFeeds = feeds.filter(feed => !feed.lang || feed.lang === currentLang);
+  // Shared with callers that must reason about a category's REACHABLE feed set
+  // before calling in — see feed-language.ts.
+  const filteredFeeds = filterFeedsByLanguage(feeds, getCurrentLanguage());
 
   const batches = chunkArray(filteredFeeds, batchSize);
   const topItems: NewsItem[] = [];
   let totalItems = 0;
 
-  const ensureSortedDescending = () => [...topItems].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+  const ensureSortedDescending = () => [...topItems].sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a));
 
   const insertTopItem = (item: NewsItem) => {
     totalItems += 1;
     if (topItems.length < topLimit) {
       topItems.push(item);
-      if (topItems.length === topLimit) topItems.sort((a, b) => a.pubDate.getTime() - b.pubDate.getTime());
+      if (topItems.length === topLimit) topItems.sort((a, b) => effectivePubDateMs(a) - effectivePubDateMs(b));
       return;
     }
 
-    const itemTime = item.pubDate.getTime();
-    if (itemTime <= topItems[0]!.pubDate.getTime()) return;
+    const itemTime = effectivePubDateMs(item);
+    if (itemTime <= effectivePubDateMs(topItems[0]!)) return;
 
     topItems[0] = item;
     for (let i = 0; i < topItems.length - 1; i += 1) {
-      if (topItems[i]!.pubDate.getTime() <= topItems[i + 1]!.pubDate.getTime()) break;
+      if (effectivePubDateMs(topItems[i]!) <= effectivePubDateMs(topItems[i + 1]!)) break;
       [topItems[i], topItems[i + 1]] = [topItems[i + 1]!, topItems[i]!];
     }
   };
 
   for (const batch of batches) {
-    const results = await Promise.all(batch.map(fetchFeed));
+    const results = await Promise.all(batch.map(feed => fetchFeed(feed)));
     results.flat().forEach(insertTopItem);
     options.onBatch?.(ensureSortedDescending());
   }

@@ -1,0 +1,544 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { performance } from 'node:perf_hooks';
+import { describe, it } from 'node:test';
+
+import { TRUSTED_RETURN_URL_ORIGINS } from '../convex/payments/returnUrlOrigin.ts';
+import { getCorsHeaders, isAllowedOrigin } from '../server/cors.ts';
+import {
+  getCorsHeaders as getCorsHeadersJs,
+  getPublicCorsHeaders as getPublicCorsHeadersJs,
+  isDisallowedOrigin as isDisallowedOriginJs,
+} from '../api/_cors.js';
+import {
+  default as corsWorker,
+  buildCorsHeaders as buildCorsHeadersWorker,
+  isAllowedOrigin as isAllowedOriginWorker,
+} from '../workers/api-cors-preflight/src/index.js';
+
+// Regression coverage for issue #3705: CORS-header generation errors must
+// fail closed rather than fall back to a wildcard ACAO.
+
+// Named for self-documenting failure messages and so a future companion
+// guard elsewhere can re-use the same shape.
+const WILDCARD_ACAO_LITERAL = /Access-Control-Allow-Origin['"]?\s*:\s*['"]\*['"]/i;
+
+// Strip JS line and block comments so the wildcard-literal guard only
+// fires on real code, not on a comment that documents the anti-pattern
+// (e.g. a future PR description quoted in JSDoc above the fail-closed
+// branch). This keeps the test honest if someone documents the original
+// bug verbatim while keeping the fix intact.
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+}
+
+const corsRequest = () =>
+  new Request('https://api.worldmonitor.app/api/notification-channels', {
+    headers: { Origin: 'https://worldmonitor.app' },
+  });
+
+const exposedHeaders = (headers: Record<string, string>) =>
+  headers['Access-Control-Expose-Headers']
+    .split(',')
+    .map((name) => name.trim());
+
+const CORS_SURFACES: Array<[string, () => Record<string, string>]> = [
+  ['server/cors.ts getCorsHeaders', () => getCorsHeaders(corsRequest())],
+  ['api/_cors.js getCorsHeaders', () => getCorsHeadersJs(corsRequest())],
+  ['api/_cors.js getPublicCorsHeaders', () => getPublicCorsHeadersJs()],
+  ['workers/api-cors-preflight buildCorsHeaders', () => buildCorsHeadersWorker('https://worldmonitor.app')],
+];
+
+describe('cors helper', () => {
+  it('returns headers for a well-formed request', () => {
+    const req = new Request('https://worldmonitor.app/x', {
+      headers: { Origin: 'https://worldmonitor.app' },
+    });
+    const headers = getCorsHeaders(req);
+    assert.equal(headers['Access-Control-Allow-Origin'], 'https://worldmonitor.app');
+    assert.match(
+      headers['Access-Control-Allow-Headers'],
+      /(?:^|,\s*)Idempotency-Key(?:,|$)/,
+      'browser clients must be allowed to send Idempotency-Key on POST preflights',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)Idempotency-Key(?:,|$)/,
+      'browser clients must be able to read echoed Idempotency-Key',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)Idempotent-Replayed(?:,|$)/,
+      'browser clients must be able to read idempotent replay status',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-RateLimit-Limit(?:,|$)/,
+      'browser clients must be able to read rate-limit ceilings',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-RateLimit-Remaining(?:,|$)/,
+      'browser clients must be able to read remaining rate-limit budget',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-RateLimit-Reset(?:,|$)/,
+      'browser clients must be able to read rate-limit reset timestamps',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-RateLimit-Mode(?:,|$)/,
+      'browser clients must be able to read limiter degradation (X-RateLimit-Mode)',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-Wm-Upstream-Timeout(?:,|$)/,
+      'premium-fetch must read the mcp-proxy upstream-timeout marker cross-origin (WORLDMONITOR-17A)',
+    );
+  });
+
+  it('propagates exceptions (caller must wrap in fail-closed try/catch)', () => {
+    const throwingReq = {
+      headers: {
+        get(): string {
+          throw new Error('simulated header failure');
+        },
+      },
+    } as unknown as Request;
+    assert.throws(() => getCorsHeaders(throwingReq), /simulated header failure/);
+  });
+});
+
+// The Vercel project moved from the personal scope (worldmonitor-*-elie-<hash>)
+// to the "eliewm" team scope. Browsers send Origin on the POST to
+// /api/wm-session, so a stale allowlist 403s every preview deployment and the
+// anonymous session can never be minted (dashboard + /welcome teasers stay dark).
+describe('isAllowedOrigin — Vercel preview allowlist (eliewm team scope)', () => {
+  // Origin for the JS twin (api/_cors.js exports isDisallowedOrigin, not the
+  // bare predicate) — same allow/deny outcome proves both files stay in sync.
+  const allowedByJsTwin = (origin: string) =>
+    !isDisallowedOriginJs(new Request('https://worldmonitor.app/x', { headers: { Origin: origin } }));
+
+  const ALLOWED = [
+    ['git-branch alias URL', 'https://worldmonitor-git-feature-eliewm.vercel.app'],
+    ['hash deployment URL', 'https://worldmonitor-abc123def456-eliewm.vercel.app'],
+    ['apex production origin', 'https://worldmonitor.app'],
+    ['production subdomain', 'https://tech.worldmonitor.app'],
+    ['trailing-dot FQDN apex (#6411)', 'https://worldmonitor.app.'],
+    ['trailing-dot FQDN subdomain (#6411)', 'https://tech.worldmonitor.app.'],
+    ['Google Translate www proxy (#6411)', 'https://www-worldmonitor-app.translate.goog'],
+    ['Google Translate apex proxy (#6411)', 'https://worldmonitor-app.translate.goog'],
+    ['Google Translate tech proxy (#6411)', 'https://tech-worldmonitor-app.translate.goog'],
+  ];
+
+  const REJECTED = [
+    ['non-worldmonitor vercel.app origin', 'https://some-other-app-eliewm.vercel.app'],
+    ['foreign team scope', 'https://worldmonitor-git-feature-attacker.vercel.app'],
+    ['bare worldmonitor vercel.app (no scope segment)', 'https://worldmonitor.vercel.app'],
+    ['suffix-spoofed eliewm origin', 'https://worldmonitor-git-feature-eliewm.vercel.app.evil.com'],
+    ['dead personal-scope preview (post-migration)', 'https://worldmonitor-feature-elie-abc123.vercel.app'],
+    ['unrelated translate.goog host', 'https://evil-example-com.translate.goog'],
+    ['hyphen-encoded lookalike translate host', 'https://evil--worldmonitor-app.translate.goog'],
+    ['trailing-dot unrelated origin', 'https://evil.example.com.'],
+  ];
+
+  for (const [label, origin] of ALLOWED) {
+    it(`allows ${label}`, () => {
+      assert.equal(isAllowedOrigin(origin), true, `server/cors.ts must allow ${origin}`);
+      assert.equal(allowedByJsTwin(origin), true, `api/_cors.js must allow ${origin}`);
+    });
+  }
+
+  for (const [label, origin] of REJECTED) {
+    it(`rejects ${label}`, () => {
+      assert.equal(isAllowedOrigin(origin), false, `server/cors.ts must reject ${origin}`);
+      assert.equal(allowedByJsTwin(origin), false, `api/_cors.js must reject ${origin}`);
+    });
+  }
+});
+
+/**
+ * #5622: every billing-verification denial sets `X-Billing-Verification`
+ * (server/_shared/entitlement-check.ts) and the public docs tell clients to
+ * branch on it — but it was missing from Access-Control-Expose-Headers, so a
+ * cross-origin browser client could not read it and had to fall back to parsing
+ * `code` out of the body.
+ *
+ * Asserted against the header each surface actually produces, not against the
+ * source constant: a list is only exposed if it reaches the response.
+ *
+ * The IETF RateLimit fields have their own parity assertion below because all
+ * four browser-facing CORS surfaces must expose the same standard fields.
+ */
+describe('X-Billing-Verification is readable cross-origin (#5622)', () => {
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} exposes X-Billing-Verification`, () => {
+      assert.ok(
+        exposedHeaders(build()).includes('X-Billing-Verification'),
+        `${label} must expose X-Billing-Verification so clients can tell a retryable `
+        + 'verification blip from a terminal lapse without reading the body',
+      );
+    });
+
+    it(`${label} still exposes Retry-After alongside it`, () => {
+      // The two travel together on a retryable denial; exposing one without the
+      // other leaves the client knowing it should retry but not when.
+      assert.ok(exposedHeaders(build()).includes('Retry-After'), `${label} must expose Retry-After`);
+    });
+  }
+});
+
+/**
+ * #7270: oauth/token, wm-session, and the gateway set `X-RateLimit-Mode: degraded`
+ * when the Upstash limiter is unconfigured or throws. The Limit/Remaining/Reset
+ * triplet was already exposed; Mode was not, so a cross-origin browser or
+ * desktop-webview client saw `response.headers.get('X-RateLimit-Mode') === null`.
+ */
+describe('X-RateLimit-Mode is readable cross-origin (#7270)', () => {
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} exposes X-RateLimit-Mode`, () => {
+      assert.ok(
+        exposedHeaders(build()).includes('X-RateLimit-Mode'),
+        `${label} must expose X-RateLimit-Mode so clients can tell fail-open limiter `
+        + 'degradation from a healthy grant without parsing the body',
+      );
+    });
+  }
+});
+
+describe('RFC 9745 / RFC 8594 lifecycle headers are readable cross-origin', () => {
+  const LIFECYCLE_HEADERS = ['Link', 'Deprecation', 'Sunset'];
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} exposes Link, Deprecation, and Sunset`, () => {
+      const exposed = new Set(exposedHeaders(build()));
+      for (const name of LIFECYCLE_HEADERS) {
+        assert.ok(
+          exposed.has(name),
+          `${label} must expose ${name} so agents can read policy-discovery and sunset signals`,
+        );
+      }
+    });
+  }
+});
+
+/**
+ * The per-header suites above only guard the headers someone remembered to
+ * list. #9140 added X-Wm-Upstream-Timeout to api/_cors.js and server/cors.ts
+ * but not to the Worker, which overwrites Expose-Headers on every
+ * api.worldmonitor.app response. Browsers could not read the marker, so
+ * premium-fetch kept reporting relayed MCP timeouts (Sentry WORLDMONITOR-17A).
+ * Every surface must expose exactly the set api/_cors.js does.
+ */
+describe('every CORS surface exposes the same header set', () => {
+  const canonical = [...new Set(exposedHeaders(getCorsHeadersJs(corsRequest())))].sort();
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} matches api/_cors.js getCorsHeaders`, () => {
+      assert.deepEqual([...new Set(exposedHeaders(build()))].sort(), canonical);
+    });
+  }
+});
+
+describe('IETF RateLimit headers are readable across every CORS surface', () => {
+  const IETF_RATE_LIMIT_HEADERS = [
+    'RateLimit',
+    'RateLimit-Policy',
+    'RateLimit-Limit',
+    'RateLimit-Remaining',
+    'RateLimit-Reset',
+  ];
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} exposes every IETF RateLimit field`, () => {
+      const exposed = new Set(exposedHeaders(build()));
+      for (const name of IETF_RATE_LIMIT_HEADERS) {
+        assert.ok(exposed.has(name), `${label} must expose ${name}`);
+      }
+    });
+  }
+});
+
+describe('CORS triplet parity — Google Translate + trailing-dot helpers stay in sync (#6411)', () => {
+  const TWINS = [
+    '../server/cors.ts',
+    '../api/_cors.js',
+    '../workers/api-cors-preflight/src/index.js',
+  ];
+
+  for (const rel of TWINS) {
+    it(`${rel} decodes Google Translate hosts before allowlisting`, async () => {
+      const source = await readFile(new URL(rel, import.meta.url), 'utf8');
+      assert.ok(
+        source.includes('isWorldMonitorGoogleTranslateOrigin'),
+        `${rel} must share the Translate decode helper`,
+      );
+      assert.ok(
+        source.includes('replace(/--/g,'),
+        `${rel} must decode Google's -- hyphen escape before matching`,
+      );
+      assert.ok(
+        !source.includes('(?:[a-z0-9-]+-)*worldmonitor-app\\.translate\\.goog'),
+        `${rel} must not use the suffix-only Translate pattern (hyphen bypass)`,
+      );
+    });
+
+    it(`${rel} normalizes trailing-dot FQDN origins before matching`, async () => {
+      const source = await readFile(new URL(rel, import.meta.url), 'utf8');
+      assert.ok(
+        source.includes('originForAllowlistMatch'),
+        `${rel} must share the trailing-dot normalizer name`,
+      );
+      assert.ok(
+        !source.includes('replace(/\\.+$/'),
+        `${rel} must avoid backtracking when stripping trailing DNS dots`,
+      );
+    });
+  }
+});
+
+describe('bounded CORS Origin validation (#9315)', () => {
+  const surfaces = [
+    ['API', (origin: string) => !isDisallowedOriginJs(new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } }))],
+    ['gateway', isAllowedOrigin],
+    ['Worker', isAllowedOriginWorker],
+  ] as const;
+
+  for (const [surface, allows] of surfaces) {
+    it(`${surface} accepts 300 bytes and rejects 301 bytes before normalization`, () => {
+      for (const base of ['https://worldmonitor.app', 'https://worldmonitor-app.translate.goog']) {
+        const atLimit = base + '.'.repeat(300 - base.length);
+        assert.equal(allows(atLimit), true);
+        assert.equal(allows(`${atLimit}.`), false);
+      }
+    });
+
+    it(`${surface} limits UTF-8 bytes rather than only code units`, () => {
+      const origin = 'https://worldmonitor.app' + '\u00ad'.repeat(140) + '.';
+      assert.ok(origin.length < 300);
+      assert.ok(new TextEncoder().encode(origin).byteLength > 300);
+      assert.equal(allows(origin), false);
+    });
+
+    it(`${surface} preserves raw trailing-dot origins and rejects internal empty labels`, () => {
+      for (const origin of ['https://worldmonitor.app...', 'https://tech-worldmonitor-app.translate.goog...']) {
+        assert.equal(allows(origin), true);
+        const req = new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } });
+        for (const headers of [getCorsHeaders(req), getCorsHeadersJs(req), buildCorsHeadersWorker(origin)]) {
+          assert.equal(headers['Access-Control-Allow-Origin'], origin);
+        }
+      }
+      assert.equal(allows(`https://a${'.'.repeat(280)}a`), false);
+    });
+
+    it(`${surface} rejects 60000 internal dots within a generous CPU budget`, () => {
+      const origin = `https://a${'.'.repeat(60_000)}a`;
+      const start = performance.now();
+      assert.equal(allows(origin), false);
+      const elapsed = performance.now() - start;
+      assert.ok(elapsed < 250, `${surface} validation took ${elapsed.toFixed(1)}ms`);
+    });
+  }
+
+  it('rejects oversized origins before URL parsing in all three implementations', () => {
+    const origin = 'https://worldmonitor.app' + '.'.repeat(300);
+    const req = new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } });
+    const OriginalURL = globalThis.URL;
+    let parses = 0;
+    globalThis.URL = class extends OriginalURL {
+      constructor(input: string | URL, base?: string | URL) {
+        parses++;
+        super(input, base);
+      }
+    };
+    try {
+      assert.equal(isDisallowedOriginJs(req), true);
+      assert.equal(isAllowedOrigin(origin), false);
+      assert.equal(isAllowedOriginWorker(origin), false);
+      assert.equal(parses, 0);
+    } finally {
+      globalThis.URL = OriginalURL;
+    }
+  });
+
+  it('Worker keeps oversized preflight denials readable without granting successful responses', async () => {
+    const origin = 'https://worldmonitor.app' + '.'.repeat(300);
+    const req = new Request('https://api.worldmonitor.app/api/test', { method: 'OPTIONS', headers: { Origin: origin } });
+    const response = await corsWorker.fetch(req, {}, {});
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin);
+    assert.equal(buildCorsHeadersWorker(origin)['Access-Control-Allow-Origin'], 'https://worldmonitor.app');
+  });
+});
+
+describe('CORS triplet parity — eliewm preview pattern stays tight in all three twins', () => {
+  // Root cause of the original 403s was twins drifting. THREE surfaces gate
+  // Vercel-preview CORS and must move together; guard each for:
+  // (1) the eliewm-scoped preview pattern is present, and
+  // (2) no bare *.vercel.app wildcard sneaks in as a "fix".
+  // The Cloudflare Worker is the load-bearing one: it short-circuits OPTIONS at
+  // the edge, so if it drifts narrower the browser blocks the preflight before
+  // Vercel is ever consulted.
+  const TWINS = [
+    '../server/cors.ts',
+    '../api/_cors.js',
+    '../workers/api-cors-preflight/src/index.js',
+  ];
+
+  for (const rel of TWINS) {
+    it(`${rel} scopes Vercel previews to the eliewm team`, async () => {
+      const source = await readFile(new URL(rel, import.meta.url), 'utf8');
+      assert.ok(
+        source.includes('-eliewm\\.vercel\\.app'),
+        `${rel} must allow worldmonitor-*-eliewm.vercel.app previews`,
+      );
+      assert.ok(
+        !source.includes('worldmonitor-[a-z0-9-]+\\.vercel\\.app'),
+        `${rel} must not widen to a bare *.vercel.app wildcard (security allowlist)`,
+      );
+    });
+  }
+});
+
+describe('CORS Worker superset invariant — edge allowlist ⊇ function allowlist', () => {
+  // The api-cors-preflight Worker (workers/api-cors-preflight) short-circuits
+  // OPTIONS preflights at the edge, so its allowlist MUST be a superset of
+  // api/_cors.js. If the Worker rejects an origin the function would accept,
+  // the preflight echoes the canonical worldmonitor.app fallback and the
+  // browser blocks the request before it reaches Vercel.
+  //
+  // The Worker's own test (workers/api-cors-preflight/index.test.mjs) lives
+  // OUTSIDE the test:data glob and only runs in deploy-worker.yml on
+  // workers/** changes — so a function-only change can silently leave the
+  // Worker narrower. THIS gate-resident check is what actually catches
+  // function↔Worker drift (the bug that left eliewm previews dark).
+  //
+  // Localhost/127 are intentionally omitted: they are DEV-only on the function
+  // side (NODE_ENV-gated) and never reach the prod-only Worker.
+  const fnAllows = (origin: string) =>
+    !isDisallowedOriginJs(new Request('https://worldmonitor.app/x', { headers: { Origin: origin } }));
+
+  const PROD_ORIGINS = [
+    'https://worldmonitor.app',
+    'https://www.worldmonitor.app',
+    'https://tech.worldmonitor.app',
+    'https://worldmonitor.app.',
+    'https://tech.worldmonitor.app.',
+    'https://www-worldmonitor-app.translate.goog',
+    'https://worldmonitor-app.translate.goog',
+    'https://tech-worldmonitor-app.translate.goog',
+    'https://worldmonitor-git-feature-eliewm.vercel.app',
+    'https://worldmonitor-abc123def456-eliewm.vercel.app',
+    'tauri://localhost',
+    'asset://localhost',
+    // Negatives — the function rejects these, so the superset assertion is a
+    // no-op for them; included to document the boundary.
+    'https://some-other-app-eliewm.vercel.app',
+    'https://worldmonitor-git-feature-attacker.vercel.app',
+    'https://worldmonitor-feature-elie-abc123.vercel.app',
+    'https://evil.com',
+    'https://evil-example-com.translate.goog',
+    'https://evil--worldmonitor-app.translate.goog',
+  ];
+
+  for (const origin of PROD_ORIGINS) {
+    it(`Worker allows everything the function allows: ${origin}`, () => {
+      if (fnAllows(origin)) {
+        assert.equal(
+          isAllowedOriginWorker(origin),
+          true,
+          `Worker rejects ${origin} that api/_cors.js accepts — its OPTIONS preflight will echo the worldmonitor.app fallback and the browser will block it`,
+        );
+      }
+    });
+  }
+});
+
+describe('gateway CORS error path (issue #3705)', () => {
+  it('does not contain a wildcard ACAO fallback in source (comments stripped)', async () => {
+    const source = await readFile(
+      new URL('../server/gateway.ts', import.meta.url),
+      'utf8',
+    );
+    // The pre-#3705 fallback was:
+    //   corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+    // After stripping comments, no such literal should remain — that
+    // would mean the wildcard widening regressed back into real code.
+    assert.ok(
+      !WILDCARD_ACAO_LITERAL.test(stripComments(source)),
+      'gateway.ts must not emit wildcard ACAO in code — see issue #3705',
+    );
+  });
+
+  it('routes CORS exceptions through captureSilentError + 500 (no wildcard)', async () => {
+    const source = await readFile(
+      new URL('../server/gateway.ts', import.meta.url),
+      'utf8',
+    );
+    // The fail-closed branch must log the original error to Sentry AND
+    // return a 5xx instead of a permissive CORS response. The gap is
+    // bounded so we can tolerate minor refactoring inside the catch
+    // (additional tags, intermediate variable names) without losing
+    // the structural assertion.
+    assert.ok(
+      /catch \(err\)[\s\S]{0,500}captureSilentError\(err/.test(source),
+      'gateway.ts cors catch must pass the original error to captureSilentError',
+    );
+    assert.ok(
+      /step:\s*['"]cors_headers['"]/.test(source),
+      'gateway.ts cors catch must tag Sentry events with step="cors_headers"',
+    );
+  });
+
+  it('returns a non-cacheable 500 on CORS error so CDNs cannot pin it', async () => {
+    const source = await readFile(
+      new URL('../server/gateway.ts', import.meta.url),
+      'utf8',
+    );
+    // Find the catch block for cors_headers and assert Cache-Control:
+    // no-store appears inside the response headers within it.
+    const catchBlock = source.match(/catch \(err\)[\s\S]{0,1500}?\n\s{4}\}/);
+    assert.ok(catchBlock, 'expected to find the cors catch block in gateway.ts');
+    assert.ok(
+      /['"]Cache-Control['"]:\s*['"]no-store['"]/.test(catchBlock![0]),
+      'cors fail-closed 500 must set Cache-Control: no-store',
+    );
+  });
+});
+
+// App hosts follow the existing checkout-return boundary. Vendor and future
+// sibling hosts must not inherit credentialed CORS access from the DNS suffix.
+describe('credentialed CORS app-host boundary', () => {
+  const checks = [
+    ['Edge', (origin: string) => !isDisallowedOriginJs(new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } }))],
+    ['gateway', isAllowedOrigin],
+    ['Worker', isAllowedOriginWorker],
+  ] as const;
+  for (const [surface, allows] of checks) {
+    it(`${surface} retains every supported app host and its translated form`, () => {
+      for (const appOrigin of TRUSTED_RETURN_URL_ORIGINS) {
+        const host = new URL(appOrigin).hostname;
+        for (const origin of [`https://${host}`, `https://${host}.`, `https://${host.replaceAll('.', '-')}.translate.goog`]) {
+          assert.equal(allows(origin), true, origin);
+        }
+      }
+    });
+    it(`${surface} rejects non-default ports on translated app origins`, () => {
+      assert.equal(allows('https://worldmonitor-app.translate.goog:8443'), false);
+      assert.equal(allows('https://tech-worldmonitor-app.translate.goog.:8443'), false);
+      assert.equal(allows('https://worldmonitor-app.translate.goog:443'), true);
+    });
+    it(`${surface} rejects vendor, unknown and nested hosts including translated forms`, () => {
+      for (const label of ['clerk.', 'abacus.', 'unknown.', 'nested.tech.']) {
+        const host = `${label}worldmonitor.app`;
+        for (const origin of [`https://${host}`, `https://${host}.`, `https://${host.replaceAll('.', '-')}.translate.goog`]) {
+          assert.equal(allows(origin), false, origin);
+          const request = new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } });
+          for (const headers of [getCorsHeaders(request), getCorsHeadersJs(request), buildCorsHeadersWorker(origin)]) {
+            assert.notEqual(headers['Access-Control-Allow-Origin'], origin, 'successful responses must not grant the refused origin');
+          }
+        }
+      }
+    });
+  }
+});

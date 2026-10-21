@@ -4,16 +4,73 @@ import type {
     TrackAircraftResponse,
     PositionSample,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { checkScopedRateLimit, getClientRateLimitKey, RATE_LIMIT_DEGRADED_HEADERS } from '../../../_shared/rate-limit';
+import { setResponseHeader } from '../../../_shared/response-headers';
+import { attachApiErrorHttpResponseMetadata } from '../../../error-mapper';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
 import { cachedFetchJson } from '../../../_shared/redis';
-import { CHROME_UA } from '../../../_shared/constants';
+import { sha256Hex } from '../../../_shared/hash';
+import { isOpenSkyProvider, requiresRedistributableProviders } from '../../../_shared/provider-redistribution';
 
-// 120s for anonymous OpenSky tier (~10 req/min limit); TODO: reduce to 10s on commercial tier
+// 120s. This TTL was originally sized for the anonymous OpenSky tier's ~10 req/min
+// ceiling; that tier was removed in #6222, so the binding constraint is now the shared
+// authenticated credit pool the relay draws on — a shorter TTL multiplies bbox misses
+// straight into it. Revisit only alongside that budget, not on its own.
 const CACHE_TTL = 120;
 // Callsign searches hit the relay's in-memory index (5min TTL); cache positive hits 60s,
 // negative hits 10s so a retry after panning into view returns fresh data quickly.
 const CALLSIGN_CACHE_TTL = 60;
 const CALLSIGN_NEGATIVE_TTL = 10;
+const BBOX_RELAY_TIMEOUT_MS = 6_000;
+const IDENTIFIER_RATE_SCOPE = 'track-aircraft-identifiers';
+const IDENTIFIER_RATE_LIMIT = 30;
+const IDENTIFIER_RATE_WINDOW_MS = 60_000;
+let nativeIdentifierAdmissions: number[] = [];
+
+function rejectIdentifierQuota(resetMs: number): never {
+    throw attachApiErrorHttpResponseMetadata(
+        Object.assign(new ApiError(429, 'Too many requests', ''), {
+            retryAfter: Math.max(1, Math.ceil((resetMs - Date.now()) / 1000)),
+        }),
+        { envelope: 'error', rateLimit: { limit: IDENTIFIER_RATE_LIMIT, remaining: 0, resetMs, windowSec: 60 } },
+    );
+}
+
+async function admitIdentifierLookup(request: Request): Promise<void> {
+    setResponseHeader(request, 'RateLimit-Policy', '"default";q=30;w=60');
+    setResponseHeader(request, 'RateLimit-Limit', String(IDENTIFIER_RATE_LIMIT));
+    // Native transport authentication precedes the handler; its cache and budget
+    // remain local, while cloud and Docker require a healthy shared limiter.
+    if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+        const now = Date.now();
+        nativeIdentifierAdmissions = nativeIdentifierAdmissions.filter(time => time > now - IDENTIFIER_RATE_WINDOW_MS);
+        if (nativeIdentifierAdmissions.length >= IDENTIFIER_RATE_LIMIT) rejectIdentifierQuota(nativeIdentifierAdmissions[0]! + IDENTIFIER_RATE_WINDOW_MS);
+        nativeIdentifierAdmissions.push(now);
+        return;
+    }
+    const limit = await checkScopedRateLimit(IDENTIFIER_RATE_SCOPE, IDENTIFIER_RATE_LIMIT, '60 s', getClientRateLimitKey(request));
+    if (limit.degraded) {
+        for (const [key, value] of Object.entries(RATE_LIMIT_DEGRADED_HEADERS)) setResponseHeader(request, key, value);
+        throw Object.assign(new ApiError(503, 'Rate-limit service temporarily unavailable', ''), { retryAfter: 5, exposeMessage: true });
+    }
+    if (!limit.allowed) rejectIdentifierQuota(limit.reset);
+}
+
+function isDegenerateBbox(req: TrackAircraftRequest): boolean {
+    return req.swLat === req.neLat && req.swLon === req.neLon;
+}
+
+// The Wingbits relay tiles a viewport into 30-degree areas and rejects more
+// than 36 (scripts/ais-relay.cjs WINGBITS_MAX_VIEWPORT_AREAS). Expects the
+// clamped, sorted viewport trackAircraft builds.
+const RELAY_TILE_DEGREES = 30;
+const RELAY_MAX_VIEWPORT_AREAS = 36;
+function exceedsRelayAreaLimit(req: TrackAircraftRequest): boolean {
+    const latTiles = Math.max(1, Math.ceil((req.neLat - req.swLat) / RELAY_TILE_DEGREES));
+    const lonTiles = Math.max(1, Math.ceil((req.neLon - req.swLon) / RELAY_TILE_DEGREES));
+    return latTiles * lonTiles > RELAY_MAX_VIEWPORT_AREAS;
+}
 
 interface OpenSkyResponse {
     states?: unknown[][];
@@ -44,46 +101,56 @@ function parseOpenSkyStates(states: unknown[][]): PositionSample[] {
 }
 
 
-const OPENSKY_PUBLIC_BASE = 'https://opensky-network.org/api';
+// There is deliberately no anonymous OpenSky path here. The unauthenticated tier
+// is 400 credits/day PER IP, and these handlers run on Vercel's shared egress —
+// the quota is consumed by every other tenant on the same address, so the call
+// essentially always 429s while still costing a full 6s timeout on the very
+// request that was already failing over. Removing it also returns that 6s to
+// the response budget below (#6222).
 
-async function fetchOpenSkyAnonymous(req: TrackAircraftRequest): Promise<PositionSample[]> {
-    let url: string;
-    if (req.swLat != null && req.neLat != null) {
-        url = `${OPENSKY_PUBLIC_BASE}/states/all?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
-    } else if (req.icao24) {
-        url = `${OPENSKY_PUBLIC_BASE}/states/all?icao24=${req.icao24}`;
-    } else {
-        url = `${OPENSKY_PUBLIC_BASE}/states/all`;
+async function buildCacheKey(req: TrackAircraftRequest): Promise<string> {
+    if (!isDegenerateBbox(req)) {
+        return `aviation:track:bbox:v2:${await sha256Hex(JSON.stringify([req.swLat, req.swLon, req.neLat, req.neLon, req.icao24, req.callsign]))}`;
     }
-
-    const resp = await fetch(url, {
-        signal: AbortSignal.timeout(6_000),
-        headers: { 'Accept': 'application/json', 'User-Agent': CHROME_UA },
-    });
-    if (!resp.ok) throw new Error(`OpenSky anonymous HTTP ${resp.status}`);
-    const data = await resp.json() as OpenSkyResponse;
-    return parseOpenSkyStates(data.states ?? []);
-}
-
-function buildCacheKey(req: TrackAircraftRequest): string {
-    if (req.icao24) return `aviation:track:icao:${req.icao24}:v1`;
-    if (req.swLat != null && req.neLat != null) {
-        return `aviation:track:bbox:${Math.floor(req.swLat)}:${Math.floor(req.swLon)}:${Math.ceil(req.neLat)}:${Math.ceil(req.neLon)}:v1`;
-    }
-    if (req.callsign) return `aviation:track:callsign:${req.callsign.toUpperCase()}:v1`;
-    return 'aviation:track:all:v1';
+    if (req.icao24) return `aviation:track:icao:${req.icao24}:v2`;
+    if (req.callsign) return `aviation:track:callsign:${req.callsign.toUpperCase()}:v2`;
+    return 'aviation:track:all:v2';
 }
 
 // Response-level source values (TrackAircraftResponse.source):
 //   'opensky'           — data from OpenSky via relay
-//   'opensky-anonymous' — data from OpenSky public API (no auth, rate-limited)
 //   'wingbits'          — data from Wingbits via relay
 //   'none'              — all real sources returned empty or failed; positions = []
 export async function trackAircraft(
-    _ctx: ServerContext,
+    ctx: ServerContext,
     req: TrackAircraftRequest,
 ): Promise<TrackAircraftResponse> {
-    const cacheKey = buildCacheKey(req);
+    const rawIcao24 = req.icao24 ?? '';
+    const rawCallsign = req.callsign ?? '';
+    if (rawIcao24.length > 16) throw new ValidationError([{ field: 'icao24', description: 'Aircraft identifier is too long' }]);
+    if (rawCallsign.length > 16) throw new ValidationError([{ field: 'callsign', description: 'Aircraft identifier is too long' }]);
+    const icao24 = rawIcao24.trim().toLowerCase();
+    const callsign = rawCallsign.trim().toUpperCase();
+    if (rawIcao24 && !/^[0-9a-f]{6}$/.test(icao24)) throw new ValidationError([{ field: 'icao24', description: 'Expected a six-character hexadecimal ICAO address' }]);
+    if (rawCallsign && !/^[A-Z0-9]{1,8}$/.test(callsign)) throw new ValidationError([{ field: 'callsign', description: 'Expected an alphanumeric callsign of at most eight characters' }]);
+    const viewport = { sw_lat: req.swLat, sw_lon: req.swLon, ne_lat: req.neLat, ne_lon: req.neLon };
+    const badCorner = Object.entries(viewport).find(([, value]) => !Number.isFinite(value));
+    if (badCorner) throw new ValidationError([{ field: badCorner[0], description: 'Expected finite viewport coordinates' }]);
+    const lat1 = Math.max(-90, Math.min(90, req.swLat));
+    const lat2 = Math.max(-90, Math.min(90, req.neLat));
+    const lon1 = Math.max(-180, Math.min(180, req.swLon));
+    const lon2 = Math.max(-180, Math.min(180, req.neLon));
+    req = { ...req, icao24, callsign, swLat: Math.min(lat1, lat2), neLat: Math.max(lat1, lat2), swLon: Math.min(lon1, lon2), neLon: Math.max(lon1, lon2) };
+    // An oversized viewport gets an empty answer, not a 4xx: the client's
+    // track breaker opens after two failures and would blank the flights
+    // layer for five minutes after one zoom-out. Identifier lookups keep their
+    // own provider tiers.
+    const oversizedViewport = exceedsRelayAreaLimit(req);
+    if (oversizedViewport && !icao24 && !callsign) return { positions: [], source: 'none', updatedAt: Date.now() };
+    if (icao24 || callsign) await admitIdentifierLookup(ctx.request);
+
+    const redistributableOnly = requiresRedistributableProviders(ctx.request);
+    const cacheKey = `${await buildCacheKey(req)}${redistributableOnly ? ':redistributable' : ''}`;
 
     let result: { positions: PositionSample[]; source: string } | null = null;
     try {
@@ -92,7 +159,7 @@ export async function trackAircraft(
         result = await cachedFetchJson<{ positions: PositionSample[]; source: string }>(
             cacheKey, positiveTtl, async () => {
                 const relayBase = getRelayBaseUrl();
-                const isCallsignOnly = !!req.callsign && req.swLat == null && req.icao24 == null;
+                const isCallsignOnly = !!req.callsign && !req.icao24 && isDegenerateBbox(req);
 
                 // For callsign-only searches, try Wingbits first — commercial flights like UAE20
                 // are Wingbits-exclusive and not visible in OpenSky. Trying OpenSky first wastes
@@ -115,51 +182,62 @@ export async function trackAircraft(
                     }
                 }
 
-                // For bbox queries: run OpenSky relay and Wingbits relay in parallel.
-                // Sequential was 10s + 6s + 15s = 31s worst-case, exceeding Vercel's 25s limit.
-                // Parallel caps at 10s and gives merged coverage from both sources.
-                if (!isCallsignOnly && relayBase && req.swLat != null && req.neLat != null) {
-                    const osUrl = `${relayBase}/opensky/states/all?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
+                // Wingbits is the normal bbox source. A successful response — including an
+                // empty one — is authoritative for that viewport, so do not also debit the
+                // shared authenticated OpenSky account. OpenSky is recovery-only when the
+                // Wingbits request itself fails.
+                //
+                // Skip a degenerate (zero-span) bbox. The generated GET decoder coerces
+                // absent query params to 0 rather than leaving them null, so an icao24-only
+                // request would otherwise issue a real authenticated bbox relay call for
+                // `lamin=0&lomin=0&lamax=0&lomax=0` before reaching its own 8s tier.
+                if (!isCallsignOnly && relayBase && !isDegenerateBbox(req) && !oversizedViewport) {
                     const wbUrl = `${relayBase}/wingbits/track?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
-
-                    const [osResult, wbResult] = await Promise.allSettled([
-                        fetch(osUrl, { headers: getRelayHeaders({}), signal: AbortSignal.timeout(10_000) })
-                            .then(r => r.ok ? r.json() as Promise<OpenSkyResponse> : Promise.resolve(null))
-                            .then(d => d ? parseOpenSkyStates(d.states ?? []) : [])
-                            .catch(() => [] as PositionSample[]),
-                        fetch(wbUrl, { headers: getRelayHeaders({}), signal: AbortSignal.timeout(10_000) })
-                            .then(r => r.ok ? r.json() as Promise<WingbitsRelayResponse> : Promise.resolve(null))
-                            .then(d => d?.positions ?? [])
-                            .catch(() => [] as PositionSample[]),
-                    ]);
-
-                    const osPositions = osResult.status === 'fulfilled' ? osResult.value : [];
-                    const wbPositions = wbResult.status === 'fulfilled' ? wbResult.value : [];
-
-                    // Merge: Wingbits preferred for duplicates (more accurate for commercial flights).
-                    const seenIcao = new Set(wbPositions.map(p => p.icao24));
-                    const merged = [...wbPositions, ...osPositions.filter(p => !seenIcao.has(p.icao24))];
-                    if (merged.length > 0) {
-                        const source = wbPositions.length > 0 && osPositions.length > 0 ? 'wingbits'
-                            : wbPositions.length > 0 ? 'wingbits' : 'opensky';
-                        return { positions: merged, source };
-                    }
-
-                    // Both relay sources empty — try OpenSky anonymous as last resort
                     try {
-                        const directPositions = await fetchOpenSkyAnonymous(req);
-                        if (directPositions.length > 0) {
-                            return { positions: directPositions, source: 'opensky-anonymous' };
+                        const wbResp = await fetch(wbUrl, {
+                            headers: getRelayHeaders({}),
+                            signal: AbortSignal.timeout(BBOX_RELAY_TIMEOUT_MS),
+                        });
+                        if (wbResp.ok) {
+                            const wbData = await wbResp.json() as WingbitsRelayResponse;
+                            return { positions: wbData.positions ?? [], source: 'wingbits' };
                         }
+                        // Invalid/admission/auth requests are not provider outages.
+                        if (wbResp.status >= 400 && wbResp.status < 500
+                            && wbResp.status !== 408 && wbResp.status !== 429) return null;
                     } catch (err) {
-                        console.warn(`[Aviation] OpenSky anonymous failed: ${err instanceof Error ? err.message : err}`);
+                        // sentry-coverage-ok: provider failure is expected here and the bounded OpenSky fallback owns recovery.
+                        console.warn(`[Aviation] Wingbits bbox relay failed: ${err instanceof Error ? err.message : err}`);
                     }
+
+                    if (!redistributableOnly) {
+                        try {
+                            const osUrl = `${relayBase}/opensky/states/all?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
+                            const osResp = await fetch(osUrl, {
+                                headers: getRelayHeaders({}),
+                                signal: AbortSignal.timeout(BBOX_RELAY_TIMEOUT_MS),
+                            });
+                            if (osResp.ok) {
+                                const osData = await osResp.json() as OpenSkyResponse;
+                                const osPositions = parseOpenSkyStates(osData.states ?? []);
+                                if (osPositions.length > 0) return { positions: osPositions, source: 'opensky' };
+                            }
+                        } catch (err) {
+                            // sentry-coverage-ok: relay failure degrades to an empty viewport by design;
+                            // there is no further provider tier that can succeed from shared egress.
+                            console.warn(`[Aviation] OpenSky bbox relay failed: ${err instanceof Error ? err.message : err}`);
+                        }
+                    }
+
+                    // Both relay paths exhausted. A bbox-only request now spends at most
+                    // 6s + 6s here. An icao24-only request is also nondegenerate-bbox-gated
+                    // so it skips this block entirely and goes straight to its own 8s tier.
                 }
 
-                // For icao24-only queries, try OpenSky relay then Wingbits
-                if (!isCallsignOnly && relayBase && req.icao24) {
+                // For icao24-only queries, try the OpenSky relay
+                if (!redistributableOnly && !isCallsignOnly && relayBase && req.icao24) {
                     try {
-                        const osUrl = `${relayBase}/opensky/states/all?icao24=${req.icao24}`;
+                        const osUrl = `${relayBase}/opensky/states/all?icao24=${encodeURIComponent(req.icao24)}`;
                         const resp = await fetch(osUrl, { headers: getRelayHeaders({}), signal: AbortSignal.timeout(8_000) });
                         if (resp.ok) {
                             const data = await resp.json() as OpenSkyResponse;
@@ -180,9 +258,20 @@ export async function trackAircraft(
 
     if (result) {
         let positions = result.positions;
+        let source = result.source;
+        if (!isDegenerateBbox(req)) {
+            positions = positions.filter(p => p.lat >= req.swLat && p.lat <= req.neLat && p.lon >= req.swLon && p.lon <= req.neLon);
+        }
+        if (redistributableOnly) {
+            positions = positions.filter((position) => position.source !== 'POSITION_SOURCE_OPENSKY');
+            if (isOpenSkyProvider(source)) {
+                positions = [];
+                source = 'none';
+            }
+        }
         if (req.icao24) positions = positions.filter(p => p.icao24 === req.icao24);
         if (req.callsign) positions = positions.filter(p => p.callsign.includes(req.callsign.toUpperCase()));
-        return { positions, source: result.source, updatedAt: Date.now() };
+        return { positions, source, updatedAt: Date.now() };
     }
 
     return { positions: [], source: 'none', updatedAt: Date.now() };

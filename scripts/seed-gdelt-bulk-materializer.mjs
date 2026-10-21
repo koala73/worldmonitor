@@ -1,0 +1,1007 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import {
+  dyadDayExportTimestamps,
+  mergeDyadBuckets,
+  parseDyadExport,
+  planDyadRepair,
+  rebuildDyadDay,
+  replaceDyadDays,
+  scoreDyads,
+} from './_gdelt-dyad-tension.mjs';
+import { GDELT_BULK_COUNTRY_EVENTS_KEY, GDELT_BULK_DYAD_KEY } from './_gdelt-bulk-contract.mjs';
+import {
+  countryEventsDayStamps,
+  mergeCountryEventsBuckets,
+  parseCountryEventsExport,
+  planCountryEventsRepair,
+  rebuildCountryEventsDay,
+  replaceCountryEventsDays,
+  summarizeCountryEvents,
+} from './_gdelt-country-events.mjs';
+
+import {
+  loadEnvFile,
+  readSeedSnapshot,
+  runSeed,
+  writeExtraKey,
+  writeExtraKeyWithMeta,
+} from './_seed-utils.mjs';
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
+import {
+  extractGdeltBulkCsv,
+  GDELT_BULK_TOPICS,
+  isGdeltGeoMaterializationRecord,
+  materializeGdeltBulk,
+  parseGdeltBulkDescriptors,
+  parseGdeltGkgCsv,
+} from './_gdelt-bulk-materializer.mjs';
+import {
+  extractGdeltExportCsv,
+  GDELT_MASTER_FILELIST_URL,
+  GDELT_PUBLICATION_LEAD_MS,
+  GDELT_ROLLING_WINDOW_MS,
+  gdeltTimestampToMs,
+  mapGdeltExportToConflictEvents,
+  mergeGdeltBulkRollingWindow,
+  parseGdeltRecentExports,
+} from './_conflict-gdelt-bulk.mjs';
+export {
+  GDELT_INTEL_KEY,
+  GDELT_BULK_STATE_KEY,
+  GDELT_BULK_CONFLICT_KEY,
+  GDELT_BULK_UNREST_KEY,
+  GDELT_BULK_ARTICLES_KEY,
+  GDELT_BULK_COUNTRY_ARTICLES_KEY,
+  POSITIVE_EVENTS_RPC_KEY,
+  POSITIVE_EVENTS_BOOTSTRAP_KEY,
+} from './_gdelt-bulk-contract.mjs';
+import {
+  GDELT_INTEL_KEY,
+  GDELT_BULK_STATE_KEY,
+  GDELT_BULK_CONFLICT_KEY,
+  GDELT_BULK_UNREST_KEY,
+  GDELT_BULK_ARTICLES_KEY,
+  GDELT_BULK_COUNTRY_ARTICLES_KEY,
+  POSITIVE_EVENTS_RPC_KEY,
+  POSITIVE_EVENTS_BOOTSTRAP_KEY,
+} from './_gdelt-bulk-contract.mjs';
+
+loadEnvFile(import.meta.url);
+
+const MASTER_TAIL_BYTES = 65_536;
+const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
+const REQUEST_TIMEOUT_MS = 30_000;
+// The state key runs ~4MB. The 5s default timed out its body read on the
+// first attempt of every Railway run and exhausted all retries 1 run in 8.
+const SNAPSHOT_READ_TIMEOUT_MS = 30_000;
+const FETCH_CONCURRENCY = 4;
+const MAX_CATCHUP_FILES_PER_KIND = 8;
+// Dyad history repair. A day is 96 export ZIPs, about 3.6 MB and 11 s at this
+// concurrency (measured 2026-09-28). The live tick takes about 37 s of a 120 s
+// lock, so two days per tick fits and fills a 90-day window in about 11 hours.
+// The manifest lists about 288 lines (export, mentions, gkg) of about 107 bytes
+// per UTC day; 4 MB reaches 90 days back with margin, and each target day's
+// coverage is still checked before it is used.
+// Per-country conflict history repair shares this per-tick allowance with the
+// dyads (days downloaded by either count against the same two, inside the same
+// 60 s budget), so the lock math above is unchanged. Dyad history is complete
+// in steady state, which leaves both slots to the country baseline: its 29
+// past days fill in about 15 ticks (~4 hours) after first deploy instead of
+// four weeks of live accrual.
+const DYAD_REPAIR_DAYS_PER_TICK = 2;
+const DYAD_REPAIR_BUDGET_MS = 60_000;
+const DYAD_REPAIR_TAIL_BYTES = 4_000_000;
+const RECENT_GKG_WINDOW_MS = 2 * 60 * 60 * 1000;
+export const GDELT_BULK_MAX_CONTENT_AGE_MIN = 3 * 60;
+const GDELT_SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000;
+const MAX_RECENT_GEO_RECORDS = 5_000;
+
+const INTEL_TTL = 86_400;
+const TIMELINE_TTL = 7 * 86_400;
+const STATE_TTL = 14 * 86_400;
+const DYAD_TTL = 92 * 86_400;
+// Outlives the 30-day history so a long materializer outage resumes from the
+// stored days instead of rebuilding all of them.
+const COUNTRY_EVENTS_TTL = 32 * 86_400;
+export const COUNTRY_EVENTS_META_KEY = 'seed-meta:gdelt:bulk:country-events';
+export const COUNTRY_EVENTS_ACTIVATION_KEY = 'seed-activated:gdelt:bulk:country-events';
+const CONFLICT_TTL = 6 * 60 * 60;
+const UNREST_TTL = 4.5 * 60 * 60;
+// 3h, NOT 45min: api/health.js gates positiveGeoEvents at maxStaleMin 60 AND
+// treats a missing payload as a hard failure, so a TTL under that window makes a
+// merely-late materializer page as EMPTY/crit before STALE_SEED can warn — the
+// #5309 ACLED_TTL zero-headroom class. The old warm relay masked this with a
+// 5-min in-process retry loop; a single-shot 15-min cron has no such cover, and
+// a skipped tick must degrade to a warning, not a page (#5863 review).
+const POSITIVE_TTL = 3 * 60 * 60;
+const ARTICLES_TTL = 2 * 86_400;
+// The per-country index (#7748) is read by a weekly freeze; two days, like the
+// reference articles, so a materializer that stops surfaces as
+// `seed-unavailable` on the search route within two days instead of serving
+// a week-old index as current.
+const COUNTRY_ARTICLES_TTL = ARTICLES_TTL;
+const POSITIVE_EVENTS_META_KEY = 'seed-meta:positive-events:geo';
+// The index has no dashboard consumer — only the search route's country form
+// and the weekly freeze read it — so it is a standalone health dataset
+// (AGENTS.md): published with its own seed-meta record and gated in
+// api/health.js at the same 45-minute budget as the canonical intel key,
+// or an evicted or stale index would stay invisible until the next Monday's
+// freeze answered `seed-unavailable` and failed its coverage floor.
+export const COUNTRY_ARTICLES_META_KEY = 'seed-meta:gdelt:bulk:country-articles';
+// Durable activation marker (no TTL), SET after the first successful index
+// publish. api/health.js reads the probe as pending until it exists, so the
+// window between this deploy and the materializer's first tick is not a
+// crit, and strict afterwards — a marker that cannot expire is what keeps a
+// materializer that published once and died from reading as pending again.
+export const COUNTRY_ARTICLES_ACTIVATION_KEY = 'seed-activated:gdelt:bulk:country-articles';
+
+/** Rows across every country in the index — the seed-meta recordCount health reads. */
+export function countryIndexRecordCount(index) {
+  const byCountry = index?.byCountry && typeof index.byCountry === 'object' ? index.byCountry : {};
+  return Object.values(byCountry).reduce((total, rows) => total + (Array.isArray(rows) ? rows.length : 0), 0);
+}
+
+// Best-effort by design (mirrors seed-cbr-rates): failing to write the marker
+// must not degrade a run that already published good data. The cost of a
+// miss is one more tick of pending, not a wrong verdict.
+async function writeActivation(key) {
+  try {
+    const creds = getOptionalUpstashCreds();
+    if (!creds) return;
+    await upstashCommand(creds, ['SET', key, '1']);
+  } catch (error) {
+    console.warn(`  WARN: ${key} activation marker write failed: ${error?.message || error}`);
+  }
+}
+
+function timelineKey(series, topic) {
+  return `gdelt:intel:${series}:${topic}`;
+}
+
+function feedTimestamps(values, kind) {
+  return values
+    .filter(({ descriptor }) => descriptor?.kind === kind)
+    .map(({ descriptor }) => descriptor.timestamp)
+    .filter((timestamp) => /^\d{14}$/.test(timestamp))
+    .sort();
+}
+
+function validateCurrentFeedCohort(values, nowMs) {
+  const latestByKind = {};
+  for (const kind of ['gkg', 'export']) {
+    const timestamps = feedTimestamps(values, kind);
+    if (timestamps.length === 0) {
+      throw new Error(`GDELT bulk materializer received no current ${kind === 'gkg' ? 'GKG' : kind} snapshot`);
+    }
+    latestByKind[kind] = timestamps.at(-1);
+    const latestMs = gdeltTimestampToMs(latestByKind[kind]);
+    if (!Number.isFinite(latestMs) || nowMs - latestMs > RECENT_GKG_WINDOW_MS) {
+      throw new Error(
+        `GDELT bulk materializer latest ${kind === 'gkg' ? 'GKG' : kind} snapshot is outside the 2h freshness window`,
+      );
+    }
+    for (let index = 1; index < timestamps.length; index += 1) {
+      const previousTimestamp = timestamps[index - 1];
+      const currentTimestamp = timestamps[index];
+      const gapMs = gdeltTimestampToMs(currentTimestamp)
+        - gdeltTimestampToMs(previousTimestamp);
+      if (gapMs > GDELT_SNAPSHOT_INTERVAL_MS) {
+        throw new Error(
+          `GDELT bulk materializer received a non-contiguous ${kind} cohort between `
+          + `${previousTimestamp} and ${currentTimestamp}`,
+        );
+      }
+    }
+  }
+  if (latestByKind.gkg !== latestByKind.export) {
+    throw new Error(
+      `GDELT bulk materializer requires a symmetric GKG and export cohort; `
+      + `latest GKG is ${latestByKind.gkg}, latest export is ${latestByKind.export}`,
+    );
+  }
+}
+
+async function fetchBoundedBuffer(fetchImpl, url, maxBytes, { expectedStatus, discardRangePrefix = false, signal, ...options } = {}) {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const response = await fetchImpl(url, {
+    ...options,
+    headers: {
+      Accept: '*/*',
+      'User-Agent': USER_AGENT,
+      ...(options.headers ?? {}),
+    },
+    // engines allows Node 20.0-20.2, which lack AbortSignal.any; the service
+    // runs Node 24 (.nvmrc). Without it only the caller's signal is honored.
+    signal: !signal ? timeout
+      : typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal,
+  });
+  if (!response.ok) throw new Error(`GDELT bulk HTTP ${response.status} for ${url}`);
+  if (expectedStatus && response.status !== expectedStatus) {
+    throw new Error(`GDELT bulk expected HTTP ${expectedStatus}, got ${response.status}`);
+  }
+  const declaredLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new Error(`GDELT bulk response exceeds ${maxBytes} bytes`);
+  }
+  if (!response.body) throw new Error('GDELT bulk response has no body');
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of response.body) {
+    total += chunk.byteLength;
+    if (total > maxBytes) throw new Error(`GDELT bulk response exceeds ${maxBytes} bytes`);
+    chunks.push(Buffer.from(chunk));
+  }
+  const buffer = Buffer.concat(chunks, total);
+  if (!discardRangePrefix) return buffer;
+  const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get('content-range') ?? '');
+  const [start, end, size] = range ? range.slice(1).map(Number) : [];
+  if (!range || ![start, end, size].every(Number.isSafeInteger)
+    || start < 0 || end < start || end >= size || end - start + 1 !== total) {
+    throw new Error('GDELT bulk manifest has invalid Content-Range');
+  }
+  // A nonzero offset can split the size field, leaving a valid-looking "0".
+  // Only byte zero establishes that the first descriptor is complete.
+  if (start === 0) return buffer;
+  const newline = buffer.indexOf(10);
+  return newline < 0 ? Buffer.alloc(0) : buffer.subarray(newline + 1);
+}
+
+async function mapWithConcurrency(values, limit, fn) {
+  const results = new Array(values.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await fn(values[index], index);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, values.length) }, () => worker()),
+  );
+  return results;
+}
+
+export async function fetchGdeltBulkFiles({
+  afterTimestamp = {},
+  fetchImpl = globalThis.fetch,
+  nowMs = Date.now(),
+} = {}) {
+  const manifest = await fetchBoundedBuffer(
+    fetchImpl,
+    GDELT_MASTER_FILELIST_URL,
+    MASTER_TAIL_BYTES,
+    {
+      headers: { Range: `bytes=-${MASTER_TAIL_BYTES}` },
+      expectedStatus: 206,
+      discardRangePrefix: true,
+    },
+  );
+  const descriptors = parseGdeltBulkDescriptors(manifest.toString('utf8'), {
+    afterTimestamp,
+    maxPerKind: MAX_CATCHUP_FILES_PER_KIND,
+  });
+  if (descriptors.length === 0) {
+    throw new Error('GDELT bulk manifest has no newer GKG or export snapshot');
+  }
+  validateCurrentFeedCohort(descriptors.map((descriptor) => ({ descriptor })), nowMs);
+  const downloaded = await mapWithConcurrency(
+    descriptors,
+    FETCH_CONCURRENCY,
+    async (descriptor) => {
+      const maxBytes = descriptor.kind === 'gkg' ? 15_000_000 : 5_000_000;
+      const zip = await fetchBoundedBuffer(fetchImpl, descriptor.url, maxBytes);
+      if (zip.length !== descriptor.size) {
+        throw new Error(
+          `GDELT ${descriptor.kind} download size mismatch: expected ${descriptor.size}, got ${zip.length}`,
+        );
+      }
+      const md5 = createHash('md5').update(zip).digest('hex');
+      if (md5 !== descriptor.md5) throw new Error(`GDELT ${descriptor.kind} checksum mismatch`);
+      const csv = extractGdeltBulkCsv(zip, descriptor);
+      return descriptor.kind === 'gkg'
+        ? { descriptor, records: parseGdeltGkgCsv(csv) }
+        : {
+            descriptor,
+            events: mapGdeltExportToConflictEvents(csv),
+            dyads: parseDyadExport(csv),
+            countries: parseCountryEventsExport(csv),
+          };
+    },
+  );
+  return downloaded;
+}
+
+// Rebuild incomplete past days of an export-derived history, newest first.
+// Days a run skips without downloading (an upstream gap, or a manifest tail
+// that does not reach them) do not use the download budget. A day whose
+// download or verification fails is recorded in `failures` so the planner
+// backs it off. Completed days and failures are written to `into` and
+// `failures` as they happen, so a caller that stops waiting still keeps them.
+// `signal` aborts in-flight downloads and stops new ones. Outcomes use a fixed
+// vocabulary; no upstream text. `parse` maps one export CSV to the per-cohort
+// fields that `rebuild(date, [{ timestamp, ...parsed }])` sums into one day.
+async function repairExportDays({
+  dates,
+  parse,
+  rebuild,
+  stampsFor = dyadDayExportTimestamps,
+  nowMs,
+  fetchImpl,
+  maxDays,
+  into,
+  failures,
+  signal,
+  deadlineAt,
+  clock,
+}) {
+  const outcomes = {};
+  const count = (outcome) => { outcomes[outcome] = (outcomes[outcome] ?? 0) + 1; };
+  const done = () => ({ days: into, outcomes, failures });
+  if (dates.length === 0 || maxDays <= 0) return done();
+  let manifest;
+  try {
+    manifest = await fetchBoundedBuffer(
+      fetchImpl,
+      GDELT_MASTER_FILELIST_URL,
+      DYAD_REPAIR_TAIL_BYTES,
+      {
+        headers: { Range: `bytes=-${DYAD_REPAIR_TAIL_BYTES}` },
+        expectedStatus: 206,
+        discardRangePrefix: true,
+        signal,
+      },
+    );
+  } catch (error) {
+    if (signal?.aborted) { count('over_budget'); return done(); }
+    throw error;
+  }
+  const descriptors = parseGdeltRecentExports(manifest.toString('utf8'), Number.MAX_SAFE_INTEGER);
+  const byTimestamp = new Map(descriptors.map((descriptor) => [descriptor.exportTimestamp, descriptor]));
+  const earliest = descriptors[0]?.exportTimestamp ?? '';
+  let downloaded = 0;
+  for (const date of dates) {
+    if (downloaded >= maxDays) break;
+    if (signal?.aborted || clock() >= deadlineAt) { count('over_budget'); break; }
+    const stamps = stampsFor(date);
+    // A suffix range can start mid-day; only a tail that begins before the
+    // day proves a missing cohort is an upstream gap. Dates run newest first,
+    // so every later date predates the tail too.
+    if (!earliest || earliest > stamps[0]) { count('manifest_short'); break; }
+    const dayDescriptors = stamps.map((stamp) => byTimestamp.get(stamp));
+    if (dayDescriptors.some((descriptor) => !descriptor)) { count('upstream_gap'); continue; }
+    downloaded += 1;
+    try {
+      const batches = await mapWithConcurrency(dayDescriptors, FETCH_CONCURRENCY, async (descriptor) => {
+        signal?.throwIfAborted();
+        const zip = await fetchBoundedBuffer(fetchImpl, descriptor.url, descriptor.size, { signal });
+        if (zip.length !== descriptor.size
+          || createHash('md5').update(zip).digest('hex') !== descriptor.md5) {
+          throw Object.assign(new Error('history repair verification failed'), { repairOutcome: 'verify_failed' });
+        }
+        const csv = extractGdeltExportCsv(zip, descriptor.exportTimestamp);
+        return { timestamp: descriptor.exportTimestamp, ...parse(csv) };
+      });
+      into[date] = rebuild(date, batches);
+      count('repaired');
+    } catch (error) {
+      // An abort is the budget running out, not the day's fault.
+      if (signal?.aborted) { count('over_budget'); break; }
+      failures[date] = nowMs;
+      count(error?.repairOutcome ?? 'fetch_failed');
+    }
+  }
+  return done();
+}
+
+/** Days a repair result spent its download allowance on (rebuilt or failed). */
+export function repairDaysUsed(result) {
+  return Object.keys(result?.days ?? {}).length + Object.keys(result?.failures ?? {}).length;
+}
+
+export async function repairDyadHistory({
+  snapshot,
+  nowMs,
+  fetchImpl = globalThis.fetch,
+  maxDays = DYAD_REPAIR_DAYS_PER_TICK,
+  into = {},
+  failures = {},
+  signal,
+  deadlineAt = Infinity,
+  clock = Date.now,
+}) {
+  return repairExportDays({
+    dates: planDyadRepair(snapshot, nowMs, 90),
+    parse: (csv) => ({ dyads: parseDyadExport(csv) }),
+    rebuild: rebuildDyadDay,
+    nowMs, fetchImpl, maxDays, into, failures, signal, deadlineAt, clock,
+  });
+}
+
+export async function repairCountryEventsHistory({
+  snapshot,
+  nowMs,
+  fetchImpl = globalThis.fetch,
+  maxDays = DYAD_REPAIR_DAYS_PER_TICK,
+  into = {},
+  failures = {},
+  signal,
+  deadlineAt = Infinity,
+  clock = Date.now,
+}) {
+  // Today is rebuilt through the cursor only; later cohorts are the live merge's.
+  return repairExportDays({
+    dates: planCountryEventsRepair(snapshot, nowMs, 30),
+    parse: (csv) => ({ countries: parseCountryEventsExport(csv) }),
+    rebuild: (date, batches) => rebuildCountryEventsDay(date, batches, snapshot.cursor),
+    stampsFor: (date) => countryEventsDayStamps(date, snapshot.cursor),
+    nowMs, fetchImpl, maxDays, into, failures, signal, deadlineAt, clock,
+  });
+}
+
+function recentBatches(previous, current, nowMs) {
+  const cutoff = nowMs - RECENT_GKG_WINDOW_MS;
+  const byTimestamp = new Map();
+  for (const batch of [
+    ...(Array.isArray(previous) ? previous : []),
+    ...current,
+  ]) {
+    const batchMs = gdeltTimestampToMs(batch?.timestamp);
+    if (!Number.isFinite(batchMs) || batchMs < cutoff || !Array.isArray(batch.records)) continue;
+    byTimestamp.set(batch.timestamp, batch);
+  }
+  return [...byTimestamp.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+function compactRecentGeoBatches(batches) {
+  let remaining = MAX_RECENT_GEO_RECORDS;
+  const newestFirst = [];
+  for (const batch of [...batches].reverse()) {
+    if (remaining <= 0) break;
+    const records = batch.records
+      .filter(isGdeltGeoMaterializationRecord)
+      .slice(-remaining);
+    remaining -= records.length;
+    if (records.length > 0) newestFirst.push({ ...batch, records });
+  }
+  return newestFirst.reverse();
+}
+
+function newestFetchedAt(...values) {
+  return values
+    .filter((value) => Number.isFinite(Date.parse(value)))
+    .sort((a, b) => Date.parse(a) - Date.parse(b))
+    .at(-1);
+}
+
+async function readLegacyTimelines(readSnapshot) {
+  const snapshots = await Promise.all(
+    GDELT_BULK_TOPICS.flatMap(({ id: topic }) =>
+      ['tone', 'vol'].map(async (series) => ({
+        topic,
+        series,
+        snapshot: await readSnapshot(timelineKey(series, topic)),
+      }))),
+  );
+  const timelines = Object.fromEntries(
+    GDELT_BULK_TOPICS.map(({ id }) => [id, {
+      tone: [],
+      vol: [],
+      toneFetchedAt: undefined,
+      volFetchedAt: undefined,
+      fetchedAt: undefined,
+    }]),
+  );
+  for (const { topic, series, snapshot } of snapshots) {
+    timelines[topic][series] = Array.isArray(snapshot?.data)
+      ? snapshot.data
+      : (Array.isArray(snapshot) ? snapshot : []);
+    timelines[topic][`${series}FetchedAt`] = Number.isFinite(Date.parse(snapshot?.fetchedAt))
+      ? snapshot.fetchedAt
+      : undefined;
+  }
+  for (const timeline of Object.values(timelines)) {
+    timeline.fetchedAt = newestFetchedAt(
+      timeline.toneFetchedAt,
+      timeline.volFetchedAt,
+    );
+  }
+  return timelines;
+}
+
+function timestampFromMs(value) {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  return new Date(value).toISOString().replace(/\D/g, '').slice(0, 14);
+}
+
+function feedCoverage({
+  kind,
+  downloaded,
+  previousState,
+  nowMs,
+}) {
+  const timestamps = feedTimestamps(downloaded, kind);
+  const oldestTimestamp = timestamps.at(0);
+  const latestTimestamp = timestamps.at(-1);
+  const previousCursor = previousState?.cursor?.[kind];
+  const previousCursorMs = gdeltTimestampToMs(previousCursor);
+  const oldestMs = gdeltTimestampToMs(oldestTimestamp);
+  const gapMs = oldestMs - previousCursorMs;
+  const hasGap = Number.isFinite(previousCursorMs)
+    && Number.isFinite(oldestMs)
+    && gapMs > GDELT_SNAPSHOT_INTERVAL_MS;
+  const previousCoverage = previousState?.coverage?.[kind];
+  const legacyConflictCoverage = kind === 'export'
+    ? timestampFromMs(Number(previousState?.conflict?.pagination?.rollingWindowStartedAt))
+    : '';
+  return {
+    continuousSince: hasGap
+      ? oldestTimestamp
+      : (
+          previousCoverage?.continuousSince
+          || legacyConflictCoverage
+          || previousCursor
+          || oldestTimestamp
+        ),
+    latestTimestamp,
+    lastGap: hasGap
+      ? {
+          previousCursor,
+          resumedAt: oldestTimestamp,
+          gapMs,
+          detectedAt: nowMs,
+        }
+      : (previousCoverage?.lastGap ?? null),
+  };
+}
+
+export async function fetchMaterializedGdelt(deps = {}) {
+  const {
+    _now = () => Date.now(),
+    _readSnapshot = (key) => readSeedSnapshot(key, { strict: true, timeoutMs: SNAPSHOT_READ_TIMEOUT_MS }),
+    _fetchFiles = fetchGdeltBulkFiles,
+    _repairDyadHistory = repairDyadHistory,
+    _repairCountryEventsHistory = repairCountryEventsHistory,
+    _dyadRepairBudgetMs = DYAD_REPAIR_BUDGET_MS,
+  } = deps;
+  const nowMs = _now();
+  // The country index is read back from its own key rather than carried in
+  // the state key: the state already holds the compacted geo batches and the
+  // conflict window, and ~250 countries of rows would push it toward the 5MB
+  // write ceiling (#7748).
+  const [previousIntel, previousState, previousCountryIndex, previousDyads, previousCountryEvents] = await Promise.all([
+    _readSnapshot(GDELT_INTEL_KEY),
+    _readSnapshot(GDELT_BULK_STATE_KEY),
+    _readSnapshot(GDELT_BULK_COUNTRY_ARTICLES_KEY),
+    _readSnapshot(GDELT_BULK_DYAD_KEY),
+    _readSnapshot(GDELT_BULK_COUNTRY_EVENTS_KEY),
+  ]);
+  const downloaded = await _fetchFiles({
+    afterTimestamp: previousState?.cursor || {},
+    nowMs,
+  });
+  validateCurrentFeedCohort(downloaded, nowMs);
+  const previousTimelines = previousState
+    ? previousState.timelines
+    : await readLegacyTimelines(_readSnapshot);
+  const currentGkgBatches = downloaded
+    .filter(({ descriptor }) => descriptor.kind === 'gkg')
+    .map(({ descriptor, records, csv }) => ({
+      timestamp: descriptor.timestamp,
+      records: records ?? parseGdeltGkgCsv(csv),
+    }));
+  if (currentGkgBatches.reduce((total, batch) => total + batch.records.length, 0) === 0) {
+    throw new Error('GDELT bulk materializer has no usable GKG records');
+  }
+  const currentRecentGkgBatches = recentBatches(
+    [],
+    currentGkgBatches,
+    nowMs,
+  );
+  if (currentRecentGkgBatches.length === 0) {
+    throw new Error('GDELT bulk materializer has no new GKG snapshot inside the 2h freshness window');
+  }
+  const geoBatches = recentBatches(
+    previousState?.recentGkgBatches,
+    currentRecentGkgBatches,
+    nowMs,
+  );
+  const compactedGeoBatches = compactRecentGeoBatches(geoBatches);
+  const materialized = materializeGdeltBulk({
+    batches: currentGkgBatches,
+    geoRecords: compactedGeoBatches.flatMap((batch) => batch.records),
+    previous: {
+      intel: previousIntel,
+      timelines: previousTimelines,
+      reference: previousState?.reference,
+      countryIndex: previousCountryIndex,
+    },
+    nowMs,
+  });
+  if (materialized.freshTopicCount === 0) {
+    throw new Error('GDELT bulk materializer has no fresh GDELT topic matches');
+  }
+
+  const exportBatches = downloaded
+    .filter(({ descriptor }) => descriptor.kind === 'export')
+    .map(({ descriptor, events, csv }) => ({
+      timestamp: descriptor.timestamp,
+      events: events ?? mapGdeltExportToConflictEvents(csv),
+    }));
+  const latestExport = exportBatches.map(({ timestamp }) => timestamp).sort().at(-1);
+  const oldestExport = exportBatches.map(({ timestamp }) => timestamp).sort().at(0);
+  const coverage = {
+    gkg: feedCoverage({ kind: 'gkg', downloaded, previousState, nowMs }),
+    export: feedCoverage({ kind: 'export', downloaded, previousState, nowMs }),
+  };
+  const conflict = exportBatches.length > 0
+    ? mergeGdeltBulkRollingWindow(
+        {
+          events: exportBatches.flatMap(({ events }) => events),
+          oldestExportTimestamp: oldestExport,
+          exportTimestamp: latestExport,
+        },
+        previousState?.conflict,
+        nowMs,
+      )
+    : null;
+  const coverageStartedAt = gdeltTimestampToMs(coverage.export.continuousSince);
+  const rollingWindowStartedAt = Number.isFinite(coverageStartedAt)
+    ? Math.max(conflict?.rollingWindowStartedAt ?? coverageStartedAt, coverageStartedAt)
+    : conflict?.rollingWindowStartedAt;
+  const rollingWindowComplete = Number.isFinite(rollingWindowStartedAt)
+    && rollingWindowStartedAt <= nowMs - GDELT_ROLLING_WINDOW_MS;
+  const conflictPayload = conflict
+    ? {
+        events: conflict.events,
+        source: 'gdelt-bulk',
+        pagination: {
+          exportTimestamp: latestExport,
+          oldestExportTimestamp: oldestExport,
+          rollingWindowStartedAt,
+          rollingWindowComplete,
+        },
+      }
+    : previousState?.conflict ?? null;
+  if (!conflictPayload?.events?.length) {
+    throw new Error('GDELT bulk materializer has no conflict export data');
+  }
+
+  const mergedDyads = mergeDyadBuckets(previousDyads, downloaded
+    .filter(({ descriptor }) => descriptor.kind === 'export')
+    .map(({ descriptor, dyads, csv }) => ({
+      timestamp: descriptor.timestamp, dyads: dyads ?? parseDyadExport(csv),
+    })), nowMs);
+  // mergeDyadBuckets keeps only the cursor and days; carry the repair backoff.
+  const liveDyads = previousDyads?.repairFailures
+    ? { ...mergedDyads, repairFailures: previousDyads.repairFailures }
+    : mergedDyads;
+  const exportCountryBatches = downloaded
+    .filter(({ descriptor }) => descriptor.kind === 'export')
+    .map(({ descriptor, countries, csv }) => ({
+      timestamp: descriptor.timestamp, countries: countries ?? parseCountryEventsExport(csv),
+    }));
+  const mergedCountryEvents = mergeCountryEventsBuckets(previousCountryEvents, exportCountryBatches, nowMs);
+  const liveCountryEvents = previousCountryEvents?.repairFailures
+    ? { ...mergedCountryEvents, repairFailures: previousCountryEvents.repairFailures }
+    : mergedCountryEvents;
+  // History repair is best-effort: a failure or an overrun keeps whatever days
+  // finished and never holds or fails the live publication.
+  // The budget aborts the repair's downloads, not just the wait for them.
+  // Dyads go first; the country history gets whatever day allowance and time
+  // they leave, so both together stay inside one tick's repair budget.
+  const repairedDays = {};
+  const repairFailures = {};
+  const repairedCountryDays = {};
+  const countryRepairFailures = {};
+  const repairAbort = new AbortController();
+  const repairDeadlineAt = Date.now() + _dyadRepairBudgetMs;
+  let repairTimer;
+  const repairOutcome = await Promise.race([
+    Promise.resolve()
+      .then(() => _repairDyadHistory({
+        snapshot: liveDyads, nowMs, into: repairedDays, failures: repairFailures,
+        signal: repairAbort.signal, deadlineAt: repairDeadlineAt,
+      }))
+      .then((result) => {
+        Object.assign(repairedDays, result?.days ?? {});
+        Object.assign(repairFailures, result?.failures ?? {});
+        return result?.outcomes ?? {};
+      }, () => ({ failed: 1 }))
+      .then(async (dyadOutcomes) => {
+        const daysLeft = DYAD_REPAIR_DAYS_PER_TICK - repairDaysUsed({ days: repairedDays, failures: repairFailures });
+        if (daysLeft <= 0 || repairAbort.signal.aborted) return dyadOutcomes;
+        const countryOutcomes = await Promise.resolve()
+          .then(() => _repairCountryEventsHistory({
+            snapshot: liveCountryEvents, nowMs, maxDays: daysLeft,
+            into: repairedCountryDays, failures: countryRepairFailures,
+            signal: repairAbort.signal, deadlineAt: repairDeadlineAt,
+          }))
+          .then((result) => {
+            Object.assign(repairedCountryDays, result?.days ?? {});
+            Object.assign(countryRepairFailures, result?.failures ?? {});
+            return result?.outcomes ?? {};
+          }, () => ({ failed: 1 }));
+        return {
+          ...dyadOutcomes,
+          ...Object.fromEntries(Object.entries(countryOutcomes).map(([outcome, n]) => [`country_${outcome}`, n])),
+        };
+      }),
+    new Promise((resolve) => {
+      repairTimer = setTimeout(() => {
+        repairAbort.abort();
+        resolve({ over_budget: 1 });
+      }, _dyadRepairBudgetMs);
+      repairTimer.unref?.();
+    }),
+  ]).finally(() => clearTimeout(repairTimer));
+  const dyads = replaceDyadDays(liveDyads, repairedDays, nowMs, repairFailures);
+  const countryEvents = replaceCountryEventsDays(
+    liveCountryEvents, repairedCountryDays, nowMs, countryRepairFailures,
+  );
+  if (Object.keys(repairOutcome).length > 0) {
+    const remaining = planDyadRepair(dyads, nowMs, 90).length;
+    const countryRemaining = planCountryEventsRepair(countryEvents, nowMs, 30).length;
+    const summary = Object.entries(repairOutcome).map(([outcome, n]) => `${outcome}=${n}`).join(' ');
+    console.log(`  History repair: ${summary} remaining=${remaining} country_remaining=${countryRemaining}`);
+  }
+
+  return {
+    ...materialized.intel,
+    _dyads: { ...dyads, ...scoreDyads(dyads, nowMs), updatedAt: nowMs },
+    _countryEvents: { ...countryEvents, ...summarizeCountryEvents(countryEvents, nowMs), updatedAt: nowMs },
+    _timelines: materialized.timelines,
+    _unrest: materialized.unrest,
+    _positive: materialized.positive,
+    _reference: materialized.reference,
+    _countryIndex: materialized.countryIndex,
+    _conflict: conflictPayload,
+    _state: {
+      cursor: {
+        gkg: downloaded
+          .filter(({ descriptor }) => descriptor.kind === 'gkg')
+          .map(({ descriptor }) => descriptor.timestamp)
+          .sort()
+          .at(-1) || previousState?.cursor?.gkg || '',
+        export: downloaded
+          .filter(({ descriptor }) => descriptor.kind === 'export')
+          .map(({ descriptor }) => descriptor.timestamp)
+          .sort()
+          .at(-1) || previousState?.cursor?.export || '',
+      },
+      recentGkgBatches: compactedGeoBatches,
+      timelines: materialized.timelines,
+      reference: materialized.reference,
+      conflict: conflictPayload,
+      coverage,
+      updatedAt: nowMs,
+    },
+  };
+}
+
+function publishTransform(data) {
+  return {
+    topics: data.topics,
+    fetchedAt: data.fetchedAt,
+  };
+}
+
+function validate(data) {
+  return Array.isArray(data?.topics) && data.topics.length === 6;
+}
+
+export function gdeltBulkContentMeta(data, nowMs = Date.now()) {
+  if (!Number.isFinite(nowMs)) return null;
+  const requiredSourceTimes = ['gkg', 'export'].map((kind) => {
+    const sourceClock = data?._state?.cursor?.[kind];
+    return typeof sourceClock === 'string' && /^\d{14}$/.test(sourceClock)
+      ? gdeltTimestampToMs(sourceClock)
+      : NaN;
+  });
+  if (requiredSourceTimes.some((timestamp) =>
+    !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > nowMs + GDELT_PUBLICATION_LEAD_MS)) return null;
+  const observedAt = Math.min(nowMs, ...requiredSourceTimes);
+  return { newestItemAt: observedAt, oldestItemAt: observedAt };
+}
+
+export function declareRecords(data) {
+  return (data?.topics ?? []).reduce(
+    (total, topic) => total + (Array.isArray(topic?.articles) ? topic.articles.length : 0),
+    0,
+  );
+}
+
+export async function afterPublish(data, _meta, deps = {}) {
+  const {
+    _writeExtraKey = writeExtraKey,
+    _writeExtraKeyWithMeta = writeExtraKeyWithMeta,
+    _writeActivationMarker = () => writeActivation(COUNTRY_ARTICLES_ACTIVATION_KEY),
+    _writeDyadActivationMarker = () => writeActivation('seed-activated:gdelt:bulk:dyad-tension'),
+    _writeCountryEventsActivationMarker = () => writeActivation(COUNTRY_EVENTS_ACTIVATION_KEY),
+  } = deps;
+  const outputOperations = Object.entries(data._timelines ?? {}).flatMap(
+    ([topic, series]) => [
+      {
+        label: timelineKey('tone', topic),
+        run: () => _writeExtraKey(
+          timelineKey('tone', topic),
+          { data: series.tone, fetchedAt: series.toneFetchedAt ?? series.fetchedAt },
+          TIMELINE_TTL,
+        ),
+      },
+      {
+        label: timelineKey('vol', topic),
+        run: () => _writeExtraKey(
+          timelineKey('vol', topic),
+          { data: series.vol, fetchedAt: series.volFetchedAt ?? series.fetchedAt },
+          TIMELINE_TTL,
+        ),
+      },
+    ],
+  );
+  outputOperations.push(
+    {
+      label: GDELT_BULK_DYAD_KEY,
+      run: () => _writeExtraKeyWithMeta(
+        GDELT_BULK_DYAD_KEY, data._dyads, DYAD_TTL,
+        Object.keys(data._dyads?.days ?? {}).length,
+        'seed-meta:gdelt:bulk:dyad-tension',
+      ),
+    },
+    {
+      label: COUNTRY_EVENTS_META_KEY,
+      run: () => _writeExtraKeyWithMeta(
+        GDELT_BULK_COUNTRY_EVENTS_KEY, data._countryEvents, COUNTRY_EVENTS_TTL,
+        Object.keys(data._countryEvents?.byCountry ?? {}).length,
+        COUNTRY_EVENTS_META_KEY,
+      ),
+    },
+    {
+      label: GDELT_BULK_CONFLICT_KEY,
+      run: () => _writeExtraKey(GDELT_BULK_CONFLICT_KEY, data._conflict, CONFLICT_TTL),
+    },
+    {
+      label: GDELT_BULK_UNREST_KEY,
+      run: () => _writeExtraKey(GDELT_BULK_UNREST_KEY, data._unrest, UNREST_TTL),
+    },
+    {
+      label: GDELT_BULK_ARTICLES_KEY,
+      run: () => _writeExtraKey(GDELT_BULK_ARTICLES_KEY, data._reference, ARTICLES_TTL),
+    },
+    {
+      label: COUNTRY_ARTICLES_META_KEY,
+      run: () => _writeExtraKeyWithMeta(
+        GDELT_BULK_COUNTRY_ARTICLES_KEY,
+        data._countryIndex,
+        COUNTRY_ARTICLES_TTL,
+        countryIndexRecordCount(data._countryIndex),
+        COUNTRY_ARTICLES_META_KEY,
+      ),
+    },
+    {
+      label: POSITIVE_EVENTS_META_KEY,
+      run: () => _writeExtraKeyWithMeta(
+        POSITIVE_EVENTS_RPC_KEY,
+        data._positive,
+        POSITIVE_TTL,
+        data._positive.events.length,
+        POSITIVE_EVENTS_META_KEY,
+      ),
+    },
+    {
+      label: POSITIVE_EVENTS_BOOTSTRAP_KEY,
+      run: () => _writeExtraKey(
+        POSITIVE_EVENTS_BOOTSTRAP_KEY,
+        data._positive,
+        POSITIVE_TTL,
+      ),
+    },
+  );
+  const settled = await Promise.allSettled(
+    outputOperations.map(({ run }) => Promise.resolve().then(run)),
+  );
+  // The index's marker depends only on the index's own publish (data and
+  // seed-meta both landed), not on its siblings: a failed unrest write must
+  // not keep the country probe pending, and a failed index write must not
+  // activate it.
+  const countryIndexResult = settled[outputOperations.findIndex(({ label }) => label === COUNTRY_ARTICLES_META_KEY)];
+  if (countryIndexResult?.status === 'fulfilled' && countryIndexResult.value !== false) {
+    await _writeActivationMarker();
+  }
+  const dyadResult = settled[outputOperations.findIndex(({ label }) => label === GDELT_BULK_DYAD_KEY)];
+  if (dyadResult?.status === 'fulfilled' && dyadResult.value !== false) {
+    await _writeDyadActivationMarker();
+  }
+  const countryEventsResult = settled[outputOperations.findIndex(({ label }) => label === COUNTRY_EVENTS_META_KEY)];
+  if (countryEventsResult?.status === 'fulfilled' && countryEventsResult.value !== false) {
+    await _writeCountryEventsActivationMarker();
+  }
+  const failures = settled.flatMap((result, index) => {
+    if (result.status === 'rejected') return [result.reason];
+    if (result.value === false) {
+      return [new Error(`${outputOperations[index].label} metadata write returned false`)];
+    }
+    return [];
+  });
+  if (failures.length > 0) {
+    // DEGRADE, do not throw (#5863 review). This runs AFTER atomicPublish has
+    // already written the canonical key, so throwing turns an
+    // already-successful publish into FATAL exit 1 — precisely the #5478
+    // incident the predecessor fixed with a degrade-not-crash afterPublish.
+    // The cursor is deliberately NOT advanced, so the next tick replays the
+    // same static cohort idempotently, and the error status + reason land on
+    // seed-meta so health alarms instead of the process crash-looping.
+    const summary = failures.map((error) => error?.message || error).join('; ');
+    console.warn(`  WARNING: GDELT bulk output publication incomplete (cursor held): ${summary}`);
+    return {
+      completionState: 'DEGRADED',
+      freshnessMetaPatch: {
+        status: 'error',
+        errorReason: 'gdelt_bulk_outputs_incomplete',
+        failedOutputs: failures.length,
+      },
+    };
+  }
+  // State is the cursor/rolling accumulator. Write it last so a partial output
+  // failure replays the same static files on the next tick.
+  try {
+    await _writeExtraKey(GDELT_BULK_STATE_KEY, data._state, STATE_TTL);
+  } catch (error) {
+    // Same reasoning: a cursor write failure must not crash a run whose
+    // products all landed. Holding the cursor replays the cohort next tick.
+    console.warn(`  WARNING: GDELT bulk cursor write failed (cohort will replay): ${error?.message || error}`);
+    return {
+      completionState: 'DEGRADED',
+      freshnessMetaPatch: {
+        status: 'error',
+        errorReason: 'gdelt_bulk_cursor_write_failed',
+      },
+    };
+  }
+  return { completionState: 'OK' };
+}
+
+export const RUN_SEED_OPTS = {
+  validateFn: validate,
+  ttlSeconds: INTEL_TTL,
+  sourceVersion: 'gdelt-bulk-v2',
+  publishTransform,
+  afterPublish,
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 45,
+  contentMeta: gdeltBulkContentMeta,
+  // The fetch boundary accepts a source cohort up to two hours old. One more
+  // hour lets the 15-minute worker recover without flapping at that boundary.
+  maxContentAgeMin: GDELT_BULK_MAX_CONTENT_AGE_MIN,
+  preserveKeyTtls: [
+    ...GDELT_BULK_TOPICS.flatMap(({ id }) => [
+      { key: timelineKey('tone', id), ttlSeconds: TIMELINE_TTL },
+      { key: timelineKey('vol', id), ttlSeconds: TIMELINE_TTL },
+    ]),
+    { key: GDELT_BULK_CONFLICT_KEY, ttlSeconds: CONFLICT_TTL },
+    { key: GDELT_BULK_UNREST_KEY, ttlSeconds: UNREST_TTL },
+    { key: GDELT_BULK_ARTICLES_KEY, ttlSeconds: ARTICLES_TTL },
+    { key: GDELT_BULK_COUNTRY_ARTICLES_KEY, ttlSeconds: COUNTRY_ARTICLES_TTL },
+    { key: COUNTRY_ARTICLES_META_KEY, ttlSeconds: TIMELINE_TTL },
+    { key: POSITIVE_EVENTS_RPC_KEY, ttlSeconds: POSITIVE_TTL },
+    { key: POSITIVE_EVENTS_BOOTSTRAP_KEY, ttlSeconds: POSITIVE_TTL },
+    { key: POSITIVE_EVENTS_META_KEY, ttlSeconds: TIMELINE_TTL },
+    { key: GDELT_BULK_STATE_KEY, ttlSeconds: STATE_TTL },
+  ],
+};
+
+if (process.argv[1]?.endsWith('seed-gdelt-bulk-materializer.mjs')) {
+  runSeed(
+    'intelligence',
+    'gdelt-intel',
+    GDELT_INTEL_KEY,
+    fetchMaterializedGdelt,
+    RUN_SEED_OPTS,
+  ).catch((error) => {
+    console.error('FATAL:', error?.message || error);
+    process.exit(1);
+  });
+}

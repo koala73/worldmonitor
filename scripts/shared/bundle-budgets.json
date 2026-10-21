@@ -1,0 +1,221 @@
+{
+  "comment": "Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk ±max(2048 B, 2%), total ±max(16384 B, 0.25%). The \"deferred\" section gates the application graph the entry imports on every visit with the same tolerances. Tolerance fields here are informational — the gate enforces its own constants and rejects a snapshot that disagrees. Regenerate after \"npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build\" with: npm run bundle:budgets",
+  "surface": "dashboard",
+  "variant": "full",
+  "tolerancePct": 2,
+  "toleranceBytes": 2048,
+  "totalTolerancePct": 0.25,
+  "totalToleranceBytes": 16384,
+  "total": {
+    "raw": 453402
+  },
+  "chunks": {
+    "analytics": {
+      "raw": 47710,
+      "files": 1
+    },
+    "clerk": {
+      "raw": 21242,
+      "files": 1
+    },
+    "convex-client": {
+      "raw": 5338,
+      "files": 1
+    },
+    "debugbear-rum": {
+      "raw": 2929,
+      "files": 1
+    },
+    "dom-utils": {
+      "raw": 2980,
+      "files": 1
+    },
+    "entitlements": {
+      "raw": 2618,
+      "files": 1
+    },
+    "font-settings": {
+      "raw": 574,
+      "files": 1
+    },
+    "geo-convergence": {
+      "raw": 5044,
+      "files": 1
+    },
+    "geo-distance": {
+      "raw": 28576,
+      "files": 1
+    },
+    "globe-marker-probe": {
+      "raw": 541,
+      "files": 1
+    },
+    "i18n": {
+      "raw": 52560,
+      "files": 1
+    },
+    "main": {
+      "raw": 123044,
+      "files": 1
+    },
+    "map-layer-definitions": {
+      "raw": 27282,
+      "files": 1
+    },
+    "panels": {
+      "raw": 37687,
+      "files": 1
+    },
+    "runtime-config": {
+      "raw": 10194,
+      "files": 1
+    },
+    "safe-storage": {
+      "raw": 1212,
+      "files": 1
+    },
+    "tab-store": {
+      "raw": 8979,
+      "files": 1
+    },
+    "tauri-bridge": {
+      "raw": 1572,
+      "files": 1
+    },
+    "theme-colors": {
+      "raw": 70837,
+      "files": 1
+    },
+    "theme-manager": {
+      "raw": 1616,
+      "files": 1
+    },
+    "web-origin": {
+      "raw": 867,
+      "files": 1
+    }
+  },
+  "deferred": {
+    "total": {
+      "raw": 1454202
+    },
+    "chunks": {
+      "App": {
+        "raw": 917337,
+        "files": 1
+      },
+      "ai-flow-settings": {
+        "raw": 2155,
+        "files": 1
+      },
+      "analysis-framework-store": {
+        "raw": 9675,
+        "files": 1
+      },
+      "base": {
+        "raw": 2457,
+        "files": 1
+      },
+      "cached-risk-scores": {
+        "raw": 15073,
+        "files": 1
+      },
+      "checkout": {
+        "raw": 13699,
+        "files": 1
+      },
+      "cloud-prefs-sync": {
+        "raw": 6955,
+        "files": 1
+      },
+      "continuous": {
+        "raw": 4613,
+        "files": 1
+      },
+      "corroboration": {
+        "raw": 13002,
+        "files": 1
+      },
+      "cross-domain-storage": {
+        "raw": 533,
+        "files": 1
+      },
+      "desktop-cloud-auth": {
+        "raw": 1478,
+        "files": 1
+      },
+      "feeds": {
+        "raw": 97042,
+        "files": 1
+      },
+      "gdelt-intel": {
+        "raw": 121886,
+        "files": 1
+      },
+      "index": {
+        "raw": 39123,
+        "files": 2
+      },
+      "layout-batch": {
+        "raw": 17465,
+        "files": 1
+      },
+      "markets": {
+        "raw": 9518,
+        "files": 1
+      },
+      "news-credibility": {
+        "raw": 9373,
+        "files": 1
+      },
+      "panel-gating": {
+        "raw": 3445,
+        "files": 1
+      },
+      "panel-storage": {
+        "raw": 1857,
+        "files": 1
+      },
+      "persistent-cache": {
+        "raw": 3936,
+        "files": 1
+      },
+      "pinned-webcams": {
+        "raw": 2183,
+        "files": 1
+      },
+      "sanitize": {
+        "raw": 1280,
+        "files": 1
+      },
+      "settings-persistence": {
+        "raw": 7819,
+        "files": 1
+      },
+      "source-provenance": {
+        "raw": 88495,
+        "files": 1
+      },
+      "storage-facility-registry-store": {
+        "raw": 14773,
+        "files": 1
+      },
+      "storage-quota": {
+        "raw": 356,
+        "files": 1
+      },
+      "string": {
+        "raw": 20925,
+        "files": 1
+      },
+      "user-location": {
+        "raw": 4734,
+        "files": 1
+      },
+      "widget-store": {
+        "raw": 23015,
+        "files": 1
+      }
+    }
+  }
+}

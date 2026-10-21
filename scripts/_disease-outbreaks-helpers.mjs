@@ -1,0 +1,401 @@
+// Pure helpers extracted from seed-disease-outbreaks.mjs so tests can import
+// them without triggering the seeder's top-level runSeed() call (which would
+// exit the process on import).
+//
+// The seeder's three parsers (WHO DON / RSS / TGH) do network I/O, but the
+// PER-ITEM normalization shape is pure and what we want to lock in tests:
+//
+//   - synthetic-timestamp tagging (WHO/RSS fall back to nowMs when upstream
+//     omits a date; TGH always carries a real date by the time it reaches
+//     this layer because the line-198 filter rejects undated records earlier)
+//   - mapItem composition (id, disease/location detection, lat/lng defaults)
+//   - contentMeta (filters synthetic + clock-skew, picks newest/oldest)
+//   - publishTransform (strips helpers before atomicPublish)
+//
+// Extracting these out of the seeder gives Sprint 2's tests a single source
+// of truth — drift between test fixtures and seeder shape is impossible
+// because the test imports the same code.
+
+import { extractCountryCode } from './shared/geo-extract.mjs';
+import { decodeHtmlEntities } from './_html-entities.mjs';
+import { countryCentroid } from './lib/country-centroid.mjs';
+import outbreakPlaces from './data/outbreak-places.json' with { type: 'json' };
+
+// WHO DON uses multi-word or hyphenated country names that the bigram scanner misses.
+// These override extractCountryCode for exact substring matches (checked first, case-insensitive).
+const WHO_NAME_OVERRIDES = {
+  'democratic republic of the congo': 'CD',
+  'dr congo': 'CD',
+  'timor-leste': 'TL',
+  'east timor': 'TL',
+  'papua new guinea': 'PG',
+  'kingdom of saudi arabia': 'SA',
+  'united kingdom': 'GB',
+  // The US state, not Mexico: the main US plague and hantavirus focus.
+  'new mexico': 'US',
+};
+
+export function extractCountryCodeFull(text) {
+  const lower = text.toLowerCase();
+  for (const [name, iso2] of Object.entries(WHO_NAME_OVERRIDES)) {
+    if (lower.includes(name)) return iso2;
+  }
+  return extractCountryCode(text) ?? '';
+}
+
+export function stableHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return Math.abs(h).toString(36);
+}
+
+/**
+ * Extract location string from WHO-style titles.
+ * Handles: "Disease – Country" (em-dash), "Disease - Country" (hyphen), "Disease in Country".
+ */
+export function extractLocationFromTitle(title) {
+  // WHO DON pattern: "Disease – Country" or "Disease - Country" (one or more dash-separated segments)
+  // Split on em-dash, en-dash, or " - " / " – " to get all segments, then take the last capitalized one.
+  const segments = title.split(/\s*[–—]\s*|\s+-\s+/);
+  if (segments.length >= 2) {
+    const last = segments[segments.length - 1].trim();
+    if (/^[A-Z]/.test(last)) return last;
+  }
+  // Fallback: "... in <Country/Region>"
+  const inMatch = title.match(/\bin\s+([A-Z][^,.(]+)/);
+  if (inMatch) return inMatch[1].trim();
+  return '';
+}
+
+// Editorial keyword classifier — NOT derived from a published index.
+// Maps disease-outbreak titles/descriptions to a 3-level severity bucket
+// (alert / warning / watch) by matching whole-word keywords. Last reviewed
+// 2026-05-18. See docs/methodology/disease-alert-level.mdx and #3791 for the
+// rationale, known limitations, and the change protocol if you adjust these.
+//
+// Word boundaries are mandatory: prior substring matching let "epidemic" fire
+// inside "antiepidemic" and "spread" fire inside "widespread vaccination",
+// silently over-promoting items to a higher alert level.
+//
+// Prefixed `DISEASE_` to avoid collision with the unrelated geopolitical
+// `ALERT_KEYWORDS` export in src/config/feeds.ts (war/invasion/nuclear).
+/** Callers MUST use the exported `DISEASE_ALERT_RE` regex, not substring matching (#3791). */
+export const DISEASE_ALERT_KEYWORDS = Object.freeze(['outbreak', 'emergency', 'epidemic', 'pandemic']);
+/** Callers MUST use the exported `DISEASE_WARNING_RE` regex, not substring matching (#3791). */
+export const DISEASE_WARNING_KEYWORDS = Object.freeze(['warning', 'spread', 'cases increasing']);
+export const ALERT_LEVEL_METHODOLOGY_VERSION = 'v1';
+
+// Precompiled regexes exposed so external callers don't reach for
+// `text.includes(kw)` and silently re-introduce the substring bug.
+export const DISEASE_ALERT_RE = new RegExp(`\\b(?:${DISEASE_ALERT_KEYWORDS.join('|')})\\b`, 'i');
+export const DISEASE_WARNING_RE = new RegExp(`\\b(?:${DISEASE_WARNING_KEYWORDS.join('|')})\\b`, 'i');
+
+export function detectAlertLevel(title, desc) {
+  const text = `${title ?? ''} ${desc ?? ''}`;
+  if (DISEASE_ALERT_RE.test(text)) return 'alert';
+  if (DISEASE_WARNING_RE.test(text)) return 'warning';
+  return 'watch';
+}
+
+export function detectDisease(title) {
+  const lower = title.toLowerCase();
+  const known = ['mpox', 'monkeypox', 'ebola', 'cholera', 'covid', 'dengue', 'measles',
+    'polio', 'marburg', 'lassa', 'plague', 'yellow fever', 'typhoid', 'influenza',
+    'avian flu', 'h5n1', 'h5n2', 'anthrax', 'rabies', 'meningitis', 'hepatitis',
+    'nipah', 'rift valley', 'crimean-congo', 'leishmaniasis', 'malaria', 'diphtheria',
+    'chikungunya', 'botulism', 'brucellosis', 'salmonella', 'listeria', 'e. coli',
+    'norovirus', 'legionella', 'campylobacter', 'cyclospora'];
+  for (const d of known) {
+    if (lower.includes(d)) return d.charAt(0).toUpperCase() + d.slice(1);
+  }
+  // Short names need word boundaries: a bare 'mers' matches 'farmers'.
+  if (/\bMERS\b/.test(title)) return 'MERS';
+  if (/\bhantavirus\b/i.test(title)) return 'Hantavirus';
+  if (UNEXPLAINED_PNEUMONIA_RE.test(title)) return 'Pneumonia of unknown cause';
+  return 'Unknown Disease';
+}
+
+// Health authorities report an unidentified respiratory death as "pneumonia of
+// unknown etiology" before naming a pathogen (Irkutsk, 2026-10).
+export const UNEXPLAINED_PNEUMONIA_RE = /\bpneumonia of (?:unknown|unexplained|undetermined|unspecified) (?:origin|etiology|aetiology|cause)\b/i;
+
+// ── Per-item normalization (shape contract for content-age) ──────────────
+//
+// All three parsers produce items in the SAME shape so contentMeta and
+// publishTransform can be uniform. The pre-publish in-memory shape carries:
+//   - publishedMs:                  non-null number (Date.now() fallback for
+//                                   UI/RPC consumer compat)
+//   - _originalPublishedMs:         parsed-ms or null (null when synthetic)
+//   - _publishedAtIsSynthetic:      boolean — true when publishedMs was a fallback
+// publishTransform strips the underscore-prefixed helpers before publish.
+
+/**
+ * Normalize one WHO DON API item.
+ * @param {object} item - raw WHO DON API entry: { Title, ItemDefaultUrl, PublicationDateAndTime }
+ * @param {number} nowMs - injectable "now" for deterministic tests; defaults to Date.now()
+ */
+export function whoNormalizeItem(item, nowMs = Date.now()) {
+  const origMs = item.PublicationDateAndTime ? new Date(item.PublicationDateAndTime).getTime() : null;
+  const hasOrig = origMs != null && Number.isFinite(origMs);
+  return {
+    title: (item.Title || '').trim(),
+    link: item.ItemDefaultUrl ? `https://www.who.int${item.ItemDefaultUrl}` : '',
+    desc: '',
+    publishedMs: hasOrig ? origMs : nowMs,
+    _originalPublishedMs: hasOrig ? origMs : null,
+    _publishedAtIsSynthetic: !hasOrig,
+    sourceName: 'WHO',
+  };
+}
+
+// CIDRAP and UN Geneva escape their HTML body twice, so `&amp;nbsp;` survives
+// the single decode as `&nbsp;`. Only entities with no markup meaning get the
+// second decode; `&lt;`, `&quot;` and numeric references stay as text.
+const TYPOGRAPHIC_ENTITY_RE = /&(?:nbsp|hellip|mdash|ndash|lsquo|rsquo|ldquo|rdquo);/gi;
+
+// Strip until nothing changes, then drop any `<` an unclosed tag start
+// ("<script src=x") leaves: the result is plain text.
+function stripTags(html) {
+  let text = html;
+  let previous;
+  do {
+    previous = text;
+    text = text.replace(/<[^>]+>/g, '');
+  } while (text !== previous);
+  return text.replace(/</g, '');
+}
+
+/**
+ * Clean one RSS <description> body: decode entities, strip tags, trim,
+ * truncate to 300 chars. Order matters — decode before tag-strip so escaped
+ * markup publishers intended as text survives the strip. Decoding is a
+ * single pass via the shared decoder (#5436): `&amp;lt;` stays `&lt;`.
+ */
+export function cleanRssDescription(rawDesc) {
+  return stripTags(decodeHtmlEntities(rawDesc || ''))
+    .replace(TYPOGRAPHIC_ENTITY_RE, (entity) => decodeHtmlEntities(entity))
+    .replace(/\s+/g, ' ').trim().slice(0, 300);
+}
+
+/**
+ * Normalize one RSS item (CDC HAN, ECDC, CIDRAP).
+ * @param {object} parsed - { title, link, desc, pubDate, sourceName }
+ * @param {number} nowMs - injectable "now"
+ */
+export function rssNormalizeItem({ title, link, desc, pubDate, sourceName }, nowMs = Date.now()) {
+  const origMs = pubDate ? new Date(pubDate).getTime() : null;
+  const hasOrig = origMs != null && Number.isFinite(origMs);
+  return {
+    title, link, desc,
+    publishedMs: hasOrig ? origMs : nowMs,
+    sourceName,
+    _originalPublishedMs: hasOrig ? origMs : null,
+    _publishedAtIsSynthetic: !hasOrig,
+  };
+}
+
+/**
+ * Normalize one ThinkGlobalHealth record.
+ * Caller is expected to have already filtered out records with missing/unparseable dates
+ * (the seeder does this at line ~198), so TGH items are always non-synthetic.
+ * @param {object} rec - parsed TGH record
+ */
+export function tghNormalizeItem(rec) {
+  const publishedMs = new Date(rec.date).getTime();
+  const cases = typeof rec.cases === 'string' ? Number(rec.cases) : rec.cases;
+  // place_name from TGH is often "City, District, Country" — take only the first segment for display.
+  const cityName = (rec.placeName || '').split(',')[0].trim() || rec.country || '';
+  return {
+    title: `${rec.disease}${rec.country ? ` - ${rec.country}` : ''}`,
+    link: rec.sourceUrl || '',
+    desc: rec.summary ? rec.summary.slice(0, 300) : '',
+    publishedMs,
+    sourceName: 'ThinkGlobalHealth',
+    // One TGH article covers several countries under one link, so the id
+    // hashes the row's place and disease too.
+    _idSeed: [rec.sourceUrl, rec.disease, rec.country, rec.placeName, rec.lat, rec.lng].join('|'),
+    _country: rec.country || '',
+    _disease: rec.disease || '',
+    _location: cityName,
+    _lat: Number.isFinite(rec.lat) ? rec.lat : null,
+    _lng: Number.isFinite(rec.lng) ? rec.lng : null,
+    _cases: Number.isSafeInteger(cases) && cases >= 0 ? cases : 0,
+    _originalPublishedMs: publishedMs,
+    _publishedAtIsSynthetic: false,
+  };
+}
+
+/**
+ * Map a normalized parser item to the cached `outbreaks[]` shape.
+ * Carries pre-publish helpers (`_publishedAtIsSynthetic`, `_originalPublishedMs`)
+ * for contentMeta to read at runSeed time. publishTransform strips them
+ * before atomicPublish so they never reach the canonical key or clients.
+ */
+// CIDRAP "Quick takes" roundups bundle unrelated stories under one headline,
+// so disease and country detection would pair one story's disease with
+// another's country.
+export function isRoundupHeadline(title) {
+  return /^\s*quick takes\b/i.test(title || '');
+}
+
+// News-style sources whose headlines are sentences, not WHO's
+// "Disease - Country" form: the "in <Country>" fallback would capture the rest
+// of the sentence ("DR Congo grows to 7"), so the location is the detected
+// country's English name instead.
+const HEADLINE_SOURCES = new Set(['ECDC', 'CIDRAP', 'WHO briefing']);
+const REGION_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
+// Avian flu coverage names turkey farms and flocks constantly; the bird must
+// not geocode to Türkiye.
+const TURKEY_BIRD_RE = /\bturkeys\b|\bturkey(?=\s+(?:farms?|flocks?|poults?|breeders?|growers?|producers?|operations?|barns?)\b)/gi;
+
+function headlineCountryCode(text) {
+  return extractCountryCodeFull(text.replace(TURKEY_BIRD_RE, 'poultry'));
+}
+
+// Headline sources also publish research, policy and opinion pieces; only a
+// story that names a known disease AND a country is treated as an outbreak.
+// The CDC newsroom feed also carries obituaries, conference notes and
+// surveillance reports, and returns its whole archive back to 2017; a CDC item
+// must name a known disease (its location defaults to the US). WHO DON posts
+// are rare and stay current for months, so WHO DON keeps no window.
+// Every CIDRAP feed returns its last 20 items however old; match the
+// ThinkGlobalHealth window so a quiet topic cannot resurface year-old stories.
+export const HEADLINE_LOOKBACK_DAYS = 90;
+
+export function isReportableHeadline(outbreak, nowMs = Date.now()) {
+  const cdc = outbreak.sourceName === 'CDC';
+  if (!cdc && !HEADLINE_SOURCES.has(outbreak.sourceName)) return true;
+  // An undated item carries a "now" fallback that would pass the lookback.
+  if (outbreak._publishedAtIsSynthetic === true) return false;
+  if (outbreak.disease === 'Unknown Disease' || (!cdc && !outbreak.countryCode)) return false;
+  return outbreak.publishedAt >= nowMs - HEADLINE_LOOKBACK_DAYS * 86_400_000;
+}
+
+// A headline-source headline states the event ("Suspected plague incident
+// leaves 1 dead"); its description often only adds context, so the summary
+// leads with the headline.
+function headlineSummary(title, desc) {
+  if (!desc || desc.startsWith(title)) return (desc || title).slice(0, 300);
+  return `${title}${/[.?!]$/.test(title) ? '' : '.'} ${desc}`.slice(0, 300);
+}
+
+// Headline sources name a city or region ("a laboratory worker in Irkutsk")
+// without coordinates. Names come from scripts/data/outbreak-places.json
+// (GeoNames, see scripts/build-outbreak-places.mjs), longest first, and are
+// searched only within the detected country. A story naming several distinct
+// places is about none of them in particular, so it keeps the centroid; a
+// name inside a longer match ("Virginia" in "West Virginia") is not counted.
+const placeRes = new Map();
+
+export function namedPlace(countryCode, text) {
+  let found = null;
+  const spans = [];
+  for (const [name, lat, lng] of outbreakPlaces[countryCode] ?? []) {
+    // Matching is case-sensitive, so a substring miss rules the name out
+    // without compiling its word-boundary regex.
+    if (!text.includes(name)) continue;
+    let re = placeRes.get(name);
+    if (!re) {
+      re = new RegExp(`(?<![\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'gu');
+      placeRes.set(name, re);
+    }
+    for (const { index } of text.matchAll(re)) {
+      const end = index + name.length;
+      if (spans.some(([s, e]) => index >= s && end <= e)) continue;
+      spans.push([index, end]);
+      if (!found) found = { name, lat, lng };
+      else if (found.lat !== lat || found.lng !== lng) return null;
+    }
+  }
+  return found;
+}
+
+export function mapItem(item) {
+  const headline = HEADLINE_SOURCES.has(item.sourceName);
+  const text = `${item.title} ${item.desc}`;
+  const headlineCountry = headline ? headlineCountryCode(text) : '';
+  const place = headlineCountry ? namedPlace(headlineCountry, text) : null;
+  const location = item._location
+    || (headline
+      ? (place?.name ?? (headlineCountry ? REGION_NAMES.of(headlineCountry) : ''))
+      : extractLocationFromTitle(item.title) || (item.sourceName === 'CDC' ? 'United States' : ''));
+  const disease = item._disease || detectDisease(item.title);
+  const countryCode = headline
+    ? headlineCountry
+    : item._country
+      ? (extractCountryCodeFull(item._country) || extractCountryCodeFull(location || item.title))
+      : extractCountryCodeFull(location || `${item.title} ${item.desc}`);
+  return {
+    id: `${item.sourceName.toLowerCase()}-${stableHash(item._idSeed || item.link || item.title)}-${item._publishedAtIsSynthetic ? 'undated' : item.publishedMs}`,
+    disease,
+    location,
+    countryCode,
+    alertLevel: detectAlertLevel(item.title, item.desc),
+    summary: headline ? headlineSummary(item.title, item.desc) : item.desc,
+    sourceUrl: item.link,
+    publishedAt: item.publishedMs,
+    sourceName: item.sourceName,
+    // No source point: a named place, else the country's centroid. 0,0 only
+    // when the country is unknown.
+    ...(item._lat != null && item._lng != null
+      ? { lat: item._lat, lng: item._lng }
+      : place ? { lat: place.lat, lng: place.lng } : countryCentroid(countryCode) ?? { lat: 0, lng: 0 }),
+    cases: item._cases || 0,
+    // PRE-PUBLISH HELPERS — see header comment.
+    _publishedAtIsSynthetic: item._publishedAtIsSynthetic === true,
+    _originalPublishedMs: item._originalPublishedMs ?? null,
+  };
+}
+
+// ── Content-age contract surfaces (Sprint 2) ─────────────────────────────
+
+/**
+ * Compute newest/oldest content timestamps from the disease-outbreaks payload.
+ *
+ * - Excludes items whose timestamp was synthetic (Date.now() fallback when
+ *   upstream omitted a date) — preserving them would falsely report content
+ *   as fresh and mask real upstream silence.
+ * - Excludes future-dated items beyond 1h clock-skew tolerance.
+ * - Returns null when no items have a usable timestamp — runSeed writes
+ *   newestItemAt: null, classifier reads as STALE_CONTENT.
+ *
+ * @param {{outbreaks: Array}} data
+ * @param {number} nowMs - injectable "now" for deterministic tests
+ */
+export function diseaseContentMeta(data, nowMs = Date.now()) {
+  const items = Array.isArray(data?.outbreaks) ? data.outbreaks : [];
+  let newest = -Infinity, oldest = Infinity, validCount = 0;
+  const skewLimit = nowMs + 60 * 60 * 1000;
+  for (const item of items) {
+    if (item._publishedAtIsSynthetic === true) continue;
+    const ts = item._originalPublishedMs;
+    if (typeof ts !== 'number' || !Number.isFinite(ts) || ts <= 0) continue;
+    if (ts > skewLimit) continue;
+    validCount++;
+    if (ts > newest) newest = ts;
+    if (ts < oldest) oldest = ts;
+  }
+  if (validCount === 0) return null;
+  return { newestItemAt: newest, oldestItemAt: oldest };
+}
+
+/**
+ * Strip pre-publish helper fields from every outbreak before atomicPublish.
+ * Helpers (_publishedAtIsSynthetic, _originalPublishedMs) MUST NOT appear in:
+ *   - the Redis canonical key (health:disease-outbreaks:v1)
+ *   - /api/bootstrap response (data.diseaseOutbreaks)
+ *   - list-disease-outbreaks RPC response
+ *   - the DiseaseOutbreakItem proto-generated type
+ */
+export function diseasePublishTransform(data) {
+  const outbreaks = Array.isArray(data?.outbreaks) ? data.outbreaks : [];
+  return {
+    ...data,
+    outbreaks: outbreaks.map((item) => {
+      const { _publishedAtIsSynthetic: _a, _originalPublishedMs: _b, ...rest } = item;
+      return rest;
+    }),
+  };
+}
+
+export const DISEASE_MAX_CONTENT_AGE_MIN = 14 * 24 * 60;

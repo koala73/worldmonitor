@@ -1,89 +1,459 @@
 #!/usr/bin/env node
 /**
- * Postbuild prerender script — injects critical SEO content into the built HTML
- * so search engines see real content without executing JavaScript.
- *
- * This is a lightweight SSG alternative: it embeds key text content
- * (headings, descriptions, FAQ answers) directly into the HTML body
- * as a hidden div that gets replaced when React hydrates.
+ * Postbuild prerender script — injects critical CSS and the user-visible
+ * server-rendered welcome app into the built HTML.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'vite';
+
+import {
+  injectStarsInteractionCounter,
+  latestValidGithubStarsSnapshot,
+} from '../scripts/github-stars-snapshot.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const htmlPath = resolve(__dirname, '../public/pro/index.html');
 
-const en = JSON.parse(readFileSync(resolve(__dirname, 'src/locales/en.json'), 'utf-8'));
+const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
+const DASHBOARD_SCREENSHOT_BASENAME = 'worldmonitor-7-mar-2026';
+const DASHBOARD_SCREENSHOT_ASSETS = [
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME, extension: '.jpg' },
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-640', extension: '.avif' },
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-960', extension: '.avif' },
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-1280', extension: '.avif' },
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-640', extension: '.webp' },
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-960', extension: '.webp' },
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-1280', extension: '.webp' },
+];
 
-const seoContent = `
-<div id="seo-prerender" style="position:absolute;left:-9999px;top:-9999px;overflow:hidden;width:1px;height:1px;">
-  <h1>${en.hero.title1} ${en.hero.title2}</h1>
-  <p>${en.hero.subtitle}</p>
-  <p>${en.hero.missionLine}</p>
+// The region-scoped rules in this inline critical CSS are UNLAYERED, so they
+// win the cascade over the full Tailwind stylesheet (which lives in @layer
+// utilities) regardless of specificity/media -- even after the deferred sheet
+// loads. The preflight-equivalent reset is the ONE exception: it sits in
+// @layer base so element-level defaults like `a{color:inherit}` lose to the
+// utilities that are supposed to override them (an unlayered reset held the
+// nav CTA at 1.58:1 contrast). That means any
+// `hidden <bp>:<display>` reveal (e.g. `hidden lg:flex` / `hidden md:block`
+// nav rows, `hidden sm:block`) must ALSO be re-shown here in the matching
+// @media block, or the
+// unlayered `nav[data-wm-nav] .hidden`/`main .hidden` rules keep those elements
+// hidden at ALL widths (regressed the pro/welcome desktop nav in #4603; see the
+// responsive nav and `main [class~="sm:block"]` reveals below).
+//
+// For the same reason every selector is anchored to a region — `main` or
+// `nav[data-wm-nav]`, the sticky header's marker — never to a bare element that
+// a landmark added elsewhere on the page can also match (#6983).
+const CRITICAL_CSS = [
+  // Declare Tailwind's cascade-layer order up front. This inline block loads
+  // BEFORE the external sheet, so whatever it names first fixes the order the
+  // external sheet's @layer blocks slot into. Without it the reset below is
+  // unlayered — and unlayered CSS outranks EVERY layer, so Tailwind's
+  // `@layer utilities` text-colour utilities lost to `a{color:inherit}` on
+  // every anchor. That painted the nav's "Upgrade to Pro" CTA #f3f4f6 on
+  // #4ade80: 1.58:1, against a 4.5:1 requirement.
+  '@layer properties,theme,base,components,utilities;',
+  ':root{--font-sans:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;--font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;--font-display:system-ui,sans-serif;--color-wm-bg:#050505;--color-wm-card:#111;--color-wm-border:#222;--color-wm-green:#4ade80;--color-wm-blue:#60a5fa;--color-wm-text:#f3f4f6;--color-wm-muted:#9ca3af}',
+  // Preflight-equivalent reset, layered so utilities outrank it once the
+  // external sheet lands. The region-scoped mirrors below stay UNLAYERED on
+  // purpose: they must win during the pre-stylesheet window, and they carry
+  // the same values Tailwind resolves to afterwards.
+  //
+  // Every GEOMETRY declaration Tailwind's preflight makes must be mirrored
+  // here, not just the ones the welcome hero happens to need. The region
+  // mirrors below are all scoped to `main`/`nav[data-wm-nav]`, and index.html's
+  // crawlable #root block is plain semantic markup whose <h1> is a SIBLING of
+  // <main> — so none of them reach it, and any preflight declaration missing
+  // from this reset is a reflow the moment the deferred sheet lands. The three
+  // that were missing (heading font-size/weight, the universal margin/padding
+  // zero, and the list-style reset) moved all 80 elements of that block at
+  // 360px: the <h1> collapsed 32px/700 -> 16px/400 and lost 120px of height,
+  // every <h2> lost 48px, each <ul> lost its 16px margin and 40px indent, and
+  // the document shrank 2558px -> 2048px. DebugBear scored the result 0.28 CLS
+  // on mobile /pro. e2e/pro-critical-css-cls.spec.ts re-derives the comparison
+  // from the built sheet, so a Tailwind upgrade that adds another geometry
+  // reset fails there instead of silently reintroducing the shift.
+  '@layer base{*,::before,::after{box-sizing:border-box;border:0 solid #222;margin:0;padding:0}html{background:#050505;color:#f3f4f6;-webkit-text-size-adjust:100%;tab-size:4}body{margin:0;background:#050505;color:#f3f4f6;font-family:var(--font-sans);line-height:1.5;-webkit-font-smoothing:antialiased}a{color:inherit;text-decoration:none}img,svg{display:block;vertical-align:middle}img{max-width:100%;height:auto}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}ol,ul,menu{list-style:none}table{text-indent:0;border-color:inherit;border-collapse:collapse}}',
+  // The welcome skip link sits outside every region, before the fixed nav, so
+  // until the deferred sheet supplies `sr-only` it paints as an inline line
+  // that pushes <main> down, then vanishes (0.0375 CLS on /). `:not(:focus)`
+  // leaves the focused state to Tailwind's layered `focus:not-sr-only`.
+  'a[href="#main-content"]:not(:focus){position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border-width:0}',
+  '#root,#root>div{min-height:100vh}.glass-panel{background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222}.text-glow{text-shadow:0 0 20px rgba(74,222,128,.3)}.border-glow{box-shadow:0 0 20px rgba(74,222,128,.1)}',
+  // Every rule here is scoped to `nav[data-wm-nav]` — the sticky header — and
+  // never to the bare `nav` element. This CSS is unlayered, so a bare type
+  // selector would pin EVERY nav landmark on the page to the top of the
+  // viewport at z-index 50, including ones added later somewhere else: the
+  // legal footer row (#6982) shipped exactly that, painted across the header
+  // and over the Launch CTA on both / and /pro. deploy-config.test.mjs proves
+  // the containment against the prerendered welcome page.
+  'nav[data-wm-nav]{position:fixed;top:0;left:0;right:0;z-index:50;background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222;border-inline-width:0;border-bottom-width:0}nav[data-wm-nav]>div{max-width:80rem;margin-inline:auto;padding-inline:1rem;height:4rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem}nav[data-wm-nav] a{display:flex;align-items:center;gap:.5rem}nav[data-wm-nav] a[aria-label*="Launch"]{flex-shrink:0;background:#4ade80;color:#050505;padding:.5rem .75rem;border-radius:.25rem;font:700 .75rem/1 ui-monospace,SFMono-Regular,monospace;text-transform:uppercase;letter-spacing:.025em}',
+  // The nav's lucide icons ship literal width="24" height="24" attributes and
+  // are resized purely by `w-*`/`h-*` utilities, so without these mirrors every
+  // one of them paints at 24px and snaps to 12/16/20/24/32px when the deferred
+  // sheet lands — the residue that kept / at 0.014 CLS after the preflight fix
+  // above. The display-setting mirrors deliberately sit BEFORE the `.hidden`
+  // rule: they carry equal specificity, so ordering them after it would let a
+  // future `hidden flex` nav element win the cascade and un-hide itself, which
+  // is the #4603 failure in reverse.
+  'nav[data-wm-nav] [class~=flex]{display:flex}nav[data-wm-nav] [class~=relative]{position:relative}nav[data-wm-nav] [class~=absolute]{position:absolute}nav[data-wm-nav] [class~=z-10]{z-index:10}nav[data-wm-nav] [class~=items-center]{align-items:center}nav[data-wm-nav] [class~=justify-center]{justify-content:center}nav[data-wm-nav] [class~=overflow-hidden]{overflow:hidden}nav[data-wm-nav] [class~=rounded-full]{border-radius:9999px}nav[data-wm-nav] .border{border-style:solid;border-width:1px;border-color:#222}nav[data-wm-nav] [class~=opacity-50]{opacity:.5}nav[data-wm-nav] [class~=w-3]{width:.75rem}nav[data-wm-nav] [class~=h-3]{height:.75rem}nav[data-wm-nav] [class~=w-4]{width:1rem}nav[data-wm-nav] [class~=h-4]{height:1rem}nav[data-wm-nav] [class~=w-5]{width:1.25rem}nav[data-wm-nav] [class~=h-5]{height:1.25rem}nav[data-wm-nav] [class~=w-6]{width:1.5rem}nav[data-wm-nav] [class~=h-6]{height:1.5rem}nav[data-wm-nav] [class~=w-8]{width:2rem}nav[data-wm-nav] [class~=h-8]{height:2rem}',
+  'nav[data-wm-nav] .hidden{display:none}nav[data-wm-nav] [class~=font-display]{font-family:var(--font-display);font-weight:700}nav[data-wm-nav] [class~=text-wm-muted],main [class~=text-wm-muted]{color:#9ca3af}nav[data-wm-nav] [class~=text-wm-green],main [class~=text-wm-green]{color:#4ade80}nav[data-wm-nav] [class~=text-wm-blue]{color:#60a5fa}nav[data-wm-nav] [class~=text-wm-bg]{color:#050505}nav[data-wm-nav] [class~=text-sm]{font-size:.875rem;line-height:1.25rem}nav[data-wm-nav] [class~=leading-none]{line-height:1}nav[data-wm-nav] [class~=tracking-tight]{letter-spacing:-.025em}',
+  'main>section:first-child{position:relative;overflow:hidden;padding:7rem 1rem 4rem}main>section:first-child>div:first-child{position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(74,222,128,.10) 0%,transparent 55%);pointer-events:none}main>section:first-child>div:nth-child(2){position:relative;z-index:10;max-width:64rem;margin-inline:auto;text-align:center}main h1{font-family:var(--font-display);font-weight:700;font-size:2.25rem;line-height:1.08;letter-spacing:-.025em}main p{margin:1.5rem auto 0;max-width:42rem;color:#9ca3af;font-size:1rem;line-height:1.5}',
+  'main [class~=relative]{position:relative}main [class~=absolute]{position:absolute}main [class~=inset-0]{inset:0}main [class~=z-10]{z-index:10}main [class~=pointer-events-none]{pointer-events:none}main [class~=flex]{display:flex}main [class~=inline-flex]{display:inline-flex}main [class~=grid]{display:grid}main [class~=block]{display:block}main .hidden{display:none}main [class~=items-center]{align-items:center}main [class~=items-stretch]{align-items:stretch}main [class~=justify-center]{justify-content:center}main [class~=justify-between]{justify-content:space-between}main [class~=flex-col]{flex-direction:column}main [class~=flex-wrap]{flex-wrap:wrap}main [class~=grid-cols-2]{grid-template-columns:repeat(2,minmax(0,1fr))}',
+  'main [class~=mx-auto]{margin-inline:auto}main [class~=mt-1]{margin-top:.25rem}main [class~=mt-3]{margin-top:.75rem}main [class~=mt-6]{margin-top:1.5rem}main [class~=mt-8]{margin-top:2rem}main [class~=mt-9]{margin-top:2.25rem}main [class~=mt-10]{margin-top:2.5rem}main [class~=mb-5]{margin-bottom:1.25rem}main [class~=gap-1]{gap:.25rem}main [class~=gap-2]{gap:.5rem}main [class~=gap-3]{gap:.75rem}main [class~=gap-4]{gap:1rem}main [class~=gap-x-6]{column-gap:1.5rem}main [class~=gap-y-3]{row-gap:.75rem}',
+  'main [class~=w-full]{width:100%}main [class~=max-w-full]{max-width:100%}main [class~=max-w-2xl]{max-width:42rem}main [class~=max-w-3xl]{max-width:48rem}main [class~=max-w-5xl]{max-width:64rem}main [class~=min-w-0]{min-width:0}main [class~=shrink-0]{flex-shrink:0}main [class~=overflow-hidden]{overflow:hidden}',
+  // Same lucide problem as the nav, for the hero: the icons carry
+  // width="24" height="24" and only a `w-*`/`h-*` utility shrinks them, so an
+  // unmirrored size paints 24px and snaps down when the sheet lands. These are
+  // every size the first <section> of <main> uses; a new one must be added
+  // here too, and e2e/pro-critical-css-cls.spec.ts is what says so.
+  'main [class~="w-1.5"]{width:.375rem}main [class~="h-1.5"]{height:.375rem}main [class~=w-2]{width:.5rem}main [class~=h-2]{height:.5rem}main [class~="w-2.5"]{width:.625rem}main [class~="h-2.5"]{height:.625rem}main [class~=w-3]{width:.75rem}main [class~=h-3]{height:.75rem}main [class~="w-3.5"]{width:.875rem}main [class~="h-3.5"]{height:.875rem}main [class~=w-4]{width:1rem}main [class~=h-4]{height:1rem}main [class~=h-9]{height:2.25rem}',
+  'main [class~=rounded-full]{border-radius:9999px}main [class~=rounded-sm]{border-radius:.25rem}main [class~=rounded-md]{border-radius:.375rem}main .border{border-style:solid;border-width:1px;border-color:#222}main .border-l{border-left-style:solid;border-left-width:1px}main .border-t{border-top-style:solid;border-top-width:1px}main .border-b{border-bottom-style:solid;border-bottom-width:1px}main [class~=bg-wm-card]{background:#111}main [class~=bg-wm-bg]{background:#050505}main [class~=bg-wm-green]{background:#4ade80;color:#050505}main [class~="bg-[#ff5f57]"]{background:#ff5f57}main [class~="bg-[#febc2e]"]{background:#febc2e}main [class~="bg-[#28c840]"]{background:#28c840}',
+  'main [class~=px-3]{padding-inline:.75rem}main [class~=px-4]{padding-inline:1rem}main [class~=px-5]{padding-inline:1.25rem}main [class~=py-1]{padding-block:.25rem}main [class~=py-2]{padding-block:.5rem}main [class~=py-3]{padding-block:.75rem}main [class~="py-1.5"]{padding-block:.375rem}main [class~="py-3.5"]{padding-block:.875rem}main [class~=font-mono]{font-family:var(--font-mono)}main [class~=font-display]{font-family:var(--font-display)}main [class~=font-bold]{font-weight:700}main [class~=uppercase]{text-transform:uppercase}main [class~=text-center]{text-align:center}main [class~=text-left]{text-align:left}',
+  'main [class~=text-2xl]{font-size:1.5rem;line-height:1.33}main [class~=text-4xl]{font-size:2.25rem;line-height:1.11}main [class~=text-base]{font-size:1rem;line-height:1.5}main [class~=text-sm]{font-size:.875rem;line-height:1.25rem}main [class~=text-xs]{font-size:.75rem;line-height:1rem}main [class~=leading-none]{line-height:1}main [class~=leading-relaxed]{line-height:1.625}main [class~=tracking-tight]{letter-spacing:-.025em}main [class~=tracking-wide]{letter-spacing:.025em}main [class~=tracking-wider]{letter-spacing:.05em}main [class~=tracking-widest]{letter-spacing:.1em}main [class~="tracking-[1px]"]{letter-spacing:1px}main [class~="tracking-[4px]"]{letter-spacing:4px}main [class~=break-words]{overflow-wrap:break-word}',
+  'main [class~=text-wm-bg]{color:#050505}main [class~=text-wm-border]{color:#222}main [class~=text-wm-muted]{color:#9ca3af}main [class~=text-wm-text]{color:#f3f4f6}main [class~=text-wm-blue]{color:#60a5fa}main [class~=opacity-50]{opacity:.5}main [class~=opacity-60]{opacity:.6}main [class~=backdrop-blur-sm]{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}main picture{display:block}main picture img{display:block;width:100%}',
+  // Keyed off the analytics marker, not the href: the hero CTA's query string
+  // is attribution surface and moved once already (#6493 took it from
+  // `?ref=welcome-hero` to `?utm_source=welcome`), which would silently leave
+  // this rule matching nothing and paint the primary CTA unstyled above the
+  // fold. deploy-config.test.mjs fails if any selector here stops matching a
+  // prerendered anchor.
+  // `[href="#moments"]`, not `[href*="moments"]`. The hero CTA is an exact
+  // fragment link (welcome/Hero.tsx), and since #7608 `main` also contains
+  // headline anchors whose href is a third-party article URL — a substring
+  // match would paint any story slug containing "moments" as a full-width
+  // uppercase CTA button until the deferred stylesheet lands. Same element,
+  // same painted result, no reach into feed-supplied hrefs.
+  'main a[data-umami-event-target="welcome-hero"],main a[href="#moments"]{width:100%;justify-content:center;padding:.875rem 1.25rem;border-radius:.25rem;font:700 .875rem/1.25 var(--font-mono);letter-spacing:.025em;text-transform:uppercase}main a[href="#moments"]{background:transparent;color:#f3f4f6}',
+  '@media (min-width:640px){nav[data-wm-nav]>div{padding-inline:1.5rem}main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem;line-height:1.05}main [class~="sm:flex-row"]{flex-direction:row}main [class~="sm:items-center"]{align-items:center}main [class~="sm:w-auto"]{width:auto}main [class~="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class~="sm:max-w-3xl"]{max-width:48rem}main [class~="sm:max-w-none"]{max-width:none}main [class~="sm:px-4"]{padding-inline:1rem}main [class~="sm:px-6"]{padding-inline:1.5rem}main [class~="sm:px-8"]{padding-inline:2rem}main [class~="sm:tracking-wider"]{letter-spacing:.05em}main [class~="sm:block"]{display:block}}',
+  '@media (min-width:768px){main h1{font-size:4.5rem}main p{font-size:1.125rem;line-height:1.75rem}main [class~="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}nav[data-wm-nav] [class~="md:block"]{display:block}nav[data-wm-nav] [class~="md:flex"]{display:flex}}',
+  '@media (min-width:1024px){nav[data-wm-nav] [class~="lg:flex"]{display:flex}nav[data-wm-nav] [class~="lg:hidden"]{display:none}}',
+].join('');
 
-  <h2>Plans</h2>
-  <h3>${en.twoPath.proTitle}</h3>
-  <p>${en.twoPath.proDesc}</p>
-  <p>${en.twoPath.proF1}</p>
-  <p>${en.twoPath.proF2}</p>
-  <p>${en.twoPath.proF3}</p>
-  <p>${en.twoPath.proF4}</p>
+// /pro-only mirrors for the prerendered nav + hero (pro-first-viewport-prerender.tsx),
+// emitted into index.html alone so welcome.html's bytes and geometry cannot move.
+// Unlike the region mirrors above, these sit in @layer utilities under the same
+// single-class selectors Tailwind emits: pre-sheet they still beat the base
+// reset, and once the sheet lands Tailwind's identical rules, later in the
+// layer, take over -- so responsive and hover variants keep working and the
+// React page's geometry is exactly what it was. The shared unlayered rules still
+// win over both, which is the production target (h1 36/48/72px, `main p` sizing).
+const PRO_CRITICAL_CSS = [
+  '@layer base{button{font:inherit;letter-spacing:inherit;color:inherit;background-color:transparent;border-radius:0;opacity:1}}',
+  '@layer utilities{',
+  '.sr-only{clip-path:inset(50%);white-space:nowrap;border-width:0;width:1px;height:1px;margin:-1px;padding:0;position:absolute;overflow:hidden}',
+  '.flex{display:flex}.inline-flex{display:inline-flex}.flex-col{flex-direction:column}.flex-1{flex:1}.items-center{align-items:center}.items-end{align-items:flex-end}.justify-center{justify-content:center}',
+  '.gap-2{gap:.5rem}.gap-3{gap:.75rem}.gap-8{gap:2rem}.gap-\\[3px\\]{gap:3px}',
+  '.mx-3{margin-inline:.75rem}.-mx-6{margin-inline:-1.5rem}.my-4{margin-block:1rem}.mt-4{margin-top:1rem}.mt-8{margin-top:2rem}.mb-4{margin-bottom:1rem}',
+  '.px-3{padding-inline:.75rem}.px-4{padding-inline:1rem}.px-6{padding-inline:1.5rem}.py-1\\.5{padding-block:.375rem}.py-2{padding-block:.5rem}.py-3{padding-block:.75rem}',
+  '.w-full{width:100%}.w-3{width:.75rem}.h-3{height:.75rem}.w-4{width:1rem}.h-4{height:1rem}.w-64{width:16rem}.h-28{height:7rem}.h-40{height:10rem}.max-w-2{max-width:.5rem}',
+  '.border{border-style:solid;border-width:1px}.border-wm-border{border-color:#222}.rounded-sm{border-radius:.25rem}.rounded-full{border-radius:3.40282e38px}',
+  '.font-mono{font-family:var(--font-mono)}.font-bold{font-weight:700}.font-light{font-weight:300}.uppercase{text-transform:uppercase}.tracking-wider{letter-spacing:.05em}.text-xs{font-size:.75rem;line-height:var(--tw-leading,calc(1/.75))}.text-sm{font-size:.875rem;line-height:var(--tw-leading,calc(1.25/.875))}',
+  '.text-wm-text{color:#f3f4f6}.text-wm-muted{color:#9ca3af}.text-wm-green{color:#4ade80}.text-wm-bg{color:#050505}.text-transparent{color:#0000}',
+  '.text-wm-muted\\/40{color:color-mix(in oklab,#9ca3af 40%,transparent)}.text-wm-border\\/50{color:color-mix(in oklab,#222 50%,transparent)}',
+  '.bg-wm-green{background-color:#4ade80}.bg-wm-card{background-color:#111}.bg-wm-card\\/50{background-color:color-mix(in oklab,#111 50%,transparent)}.bg-wm-green\\/8{background-color:color-mix(in oklab,#4ade80 8%,transparent)}.bg-wm-muted\\/20{background-color:color-mix(in oklab,#9ca3af 20%,transparent)}',
+  '.bg-clip-text{-webkit-background-clip:text;background-clip:text}.bg-gradient-to-r.from-wm-green.to-emerald-300{background-image:linear-gradient(to right in oklab,#4ade80 0%,oklch(84.5% .143 164.978) 100%)}.blur-\\[80px\\]{filter:blur(80px)}',
+  '@media (min-width:640px){.sm\\:flex-row{flex-direction:row}}',
+  '@media (min-width:768px){.md\\:mx-5{margin-inline:1.25rem}.md\\:my-8{margin-block:2rem}.md\\:gap-1{gap:.25rem}.md\\:w-96{width:24rem}.md\\:h-44{height:11rem}.md\\:h-56{height:14rem}.md\\:max-w-3{max-width:.75rem}}',
+  '}',
+].join('');
 
-  <h3>${en.twoPath.entTitle}</h3>
-  <p>${en.twoPath.entDesc}</p>
+const PAGE_CRITICAL_CSS = { 'index.html': CRITICAL_CSS + PRO_CRITICAL_CSS };
 
-  <h2>${en.whyUpgrade.title}</h2>
-  <h3>${en.whyUpgrade.noiseTitle}</h3><p>${en.whyUpgrade.noiseDesc}</p>
-  <h3>${en.whyUpgrade.fasterTitle}</h3><p>${en.whyUpgrade.fasterDesc}</p>
-  <h3>${en.whyUpgrade.controlTitle}</h3><p>${en.whyUpgrade.controlDesc}</p>
-  <h3>${en.whyUpgrade.deeperTitle}</h3><p>${en.whyUpgrade.deeperDesc}</p>
+// Flip each deferred preload to a real stylesheet on load, on error (retry a
+// failed fetch as a stylesheet), and after a timeout (covers browsers that
+// ignore `rel=preload as=style` and never fire an event) -- without a timeout
+// or error arm a failed/unsupported preload leaves JS users on critical-CSS
+// only, with the full sheet never applied. Idempotent (guarded rel check) and
+// CSP-safe (no inline onload; runs inside the nonce'd bootstrap script).
+const DEFERRED_STYLES_SCRIPT = "(function(){var links=document.querySelectorAll('link[data-wm-deferred-style]');for(var i=0;i<links.length;i++){(function(l){function a(){if(l.rel!=='stylesheet'){l.rel='stylesheet';}}l.addEventListener('load',a,{once:true});l.addEventListener('error',a,{once:true});setTimeout(a,3000);})(links[i]);}})();";
 
-  <h2>${en.proShowcase.title}</h2>
-  <p>${en.proShowcase.subtitle}</p>
-  <h3>${en.proShowcase.equityResearch}</h3><p>${en.proShowcase.equityResearchDesc}</p>
-  <h3>${en.proShowcase.geopoliticalAnalysis}</h3><p>${en.proShowcase.geopoliticalAnalysisDesc}</p>
-  <h3>${en.proShowcase.economyAnalytics}</h3><p>${en.proShowcase.economyAnalyticsDesc}</p>
-  <h3>${en.proShowcase.riskMonitoring}</h3><p>${en.proShowcase.riskMonitoringDesc}</p>
-  <h3>${en.proShowcase.morningBriefs}</h3><p>${en.proShowcase.morningBriefsDesc}</p>
-  <h3>${en.proShowcase.oneKey}</h3><p>${en.proShowcase.oneKeyDesc}</p>
+function findStylesheetTags(html) {
+  return [...html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*>/gi)]
+    .map((match) => match[0]);
+}
 
-  <h2>${en.audience.title}</h2>
-  <h3>${en.audience.investorsTitle}</h3><p>${en.audience.investorsDesc}</p>
-  <h3>${en.audience.tradersTitle}</h3><p>${en.audience.tradersDesc}</p>
-  <h3>${en.audience.researchersTitle}</h3><p>${en.audience.researchersDesc}</p>
-  <h3>${en.audience.journalistsTitle}</h3><p>${en.audience.journalistsDesc}</p>
-  <h3>${en.audience.govTitle}</h3><p>${en.audience.govDesc}</p>
-  <h3>${en.audience.teamsTitle}</h3><p>${en.audience.teamsDesc}</p>
+function tagAttribute(tag, name) {
+  const marker = name + '="';
+  const start = tag.indexOf(marker);
+  if (start === -1) return '';
+  const valueStart = start + marker.length;
+  const valueEnd = tag.indexOf('"', valueStart);
+  return valueEnd === -1 ? '' : tag.slice(valueStart, valueEnd);
+}
 
-  <h2>${en.dataCoverage.title}</h2>
-  <p>${en.dataCoverage.subtitle}</p>
+// On tall desktop screens the hero screenshot is the welcome page's LCP
+// element, but React only emits an image preload for a bare <img> -- it skips
+// one inside <picture> because it cannot know which <source> the browser will
+// pick. Mirror the AVIF <source> (every browser that preloads also decodes AVIF
+// or ignores the hint by type) into a head preload so the fetch starts before
+// the body is parsed. Read from the rendered markup so the srcset and sizes can
+// never drift from Hero.tsx.
+//
+// Desktop only: below 640px the screenshot sits about two screens under the
+// fold (the <h1> is the LCP), and at 3x DPR the preload would pull the 1280w
+// AVIF at high priority ahead of the deferred stylesheet and entry script.
+const HERO_IMAGE_PRELOAD_MEDIA = '(min-width: 640px)';
+function heroImagePreloadTag(markup) {
+  const source = markup.match(/<picture><source type="image\/avif" srcSet="([^"]+)" sizes="([^"]+)"\/>/);
+  if (!source) {
+    console.error('[prerender] ERROR: Could not find the hero AVIF <source> in welcome markup to preload.');
+    process.exit(1);
+  }
+  return '    <link rel="preload" as="image" type="image/avif" media="' + HERO_IMAGE_PRELOAD_MEDIA + '" imagesrcset="' + source[1] + '" imagesizes="' + source[2] + '" fetchpriority="high">';
+}
 
-  <h2>${en.apiSection.title}</h2>
-  <p>${en.apiSection.subtitle}</p>
+function inlineCriticalCss(html, file, headTags = []) {
+  const stylesheetTags = findStylesheetTags(html);
+  if (stylesheetTags.length !== 1) {
+    console.error("[prerender] ERROR: Expected exactly one stylesheet tag for " + file + ", found " + stylesheetTags.length + ".");
+    process.exit(1);
+  }
 
-  <h2>${en.enterpriseShowcase.title}</h2>
-  <p>${en.enterpriseShowcase.subtitle}</p>
+  const stylesheetTag = stylesheetTags[0];
 
-  <h2>${en.pricingTable.title}</h2>
+  const href = tagAttribute(stylesheetTag, 'href');
+  if (!href) {
+    console.error('[prerender] ERROR: Could not parse stylesheet href for ' + file + '.');
+    process.exit(1);
+  }
 
-  <h2>${en.faq.title}</h2>
-  <dl>
-    <dt>${en.faq.q1}</dt><dd>${en.faq.a1}</dd>
-    <dt>${en.faq.q2}</dt><dd>${en.faq.a2}</dd>
-    <dt>${en.faq.q3}</dt><dd>${en.faq.a3}</dd>
-    <dt>${en.faq.q4}</dt><dd>${en.faq.a4}</dd>
-    <dt>${en.faq.q5}</dt><dd>${en.faq.a5}</dd>
-    <dt>${en.faq.q6}</dt><dd>${en.faq.a6}</dd>
-    <dt>${en.faq.q7}</dt><dd>${en.faq.a7}</dd>
-    <dt>${en.faq.q8}</dt><dd>${en.faq.a8}</dd>
-  </dl>
+  const crossorigin = stylesheetTag.includes(' crossorigin') ? ' crossorigin' : '';
+  const criticalTags = [
+    ...headTags,
+    '    <style nonce="' + STATIC_SCRIPT_NONCE + '">' + (PAGE_CRITICAL_CSS[file] ?? CRITICAL_CSS) + '</style>',
+    '    <link rel="preload" as="style" href="' + href + '"' + crossorigin + ' data-wm-deferred-style nonce="' + STATIC_SCRIPT_NONCE + '">',
+    '    <script nonce="' + STATIC_SCRIPT_NONCE + '">' + DEFERRED_STYLES_SCRIPT + '</script>',
+    '    <noscript><link rel="stylesheet" href="' + href + '"' + crossorigin + '></noscript>',
+  ].join('\n');
+  // Function replacement, for the same $-expansion reason as spliceEmptyRoot() below.
+  return html.replace(stylesheetTag, () => criticalTags);
+}
 
-  <h2>${en.finalCta.title}</h2>
-  <p>${en.finalCta.subtitle}</p>
-</div>`;
+// index.html's #root ships an <h1> and the curated crawlable section. The prerender
+// moves that section inside the rendered shell's <main>, after the hero, and
+// folds the <h1> text into the hero heading as a visually hidden lead, so the
+// built page keeps one <h1> and one <main>.
+function parseProTemplateRoot(html) {
+  const matches = [...html.matchAll(/<div id="root">\s*<h1>([^<&]+)<\/h1>\s*(<section id="pro-overview"[\s\S]*?<\/section>)\s*<\/div>/g)];
+  if (matches.length !== 1) {
+    console.error(`[prerender] ERROR: index.html #root must hold exactly one <h1> followed by <section id="pro-overview">; found ${matches.length} matches.`);
+    process.exit(1);
+  }
+  const [whole, heroSrLead, overview] = matches[0];
+  return { whole, heroSrLead: heroSrLead.trim(), overview };
+}
 
-let html = readFileSync(htmlPath, 'utf-8');
-html = html.replace('<div id="root"></div>', `<div id="root">${seoContent}</div>`);
-writeFileSync(htmlPath, html, 'utf-8');
-console.log('[prerender] Injected SEO content into public/pro/index.html');
+async function renderSsrRoots() {
+  const server = await createServer({
+    configFile: resolve(__dirname, 'vite.config.ts'),
+    appType: 'custom',
+    logLevel: 'error',
+    server: { hmr: false, middlewareMode: true },
+  });
+  try {
+    const {
+      renderWelcomeApp,
+      localizeWelcomeDocument,
+      INDEXABLE_LANDING_LOCALES,
+    } = await server.ssrLoadModule('/src/welcome-prerender.tsx');
+    const { htmlToMarkdown } = await server.ssrLoadModule('../api/_md-url-twin.ts');
+    const rendered = [];
+    for (const locale of INDEXABLE_LANDING_LOCALES) {
+      const { html, copy } = await renderWelcomeApp(locale.id);
+      rendered.push({
+        locale,
+        copy,
+        html: rewriteBuiltAssetUrls(html, DASHBOARD_SCREENSHOT_ASSETS, `welcome ${locale.id}`),
+        markdown: locale.isDefault ? htmlToMarkdown(html, 'World Monitor') : null,
+      });
+    }
+    const { renderProFirstViewport, PRO_CONTENT_SLOT } = await server.ssrLoadModule('/src/pro-first-viewport-prerender.tsx');
+    const { heroSrLead } = parseProTemplateRoot(readFileSync(resolve(__dirname, '../public/pro/index.html'), 'utf-8'));
+    const proShell = rewriteBuiltAssetUrls(await renderProFirstViewport(heroSrLead), [], '/pro first viewport').split(PRO_CONTENT_SLOT);
+    if (proShell.length !== 2) {
+      console.error(`[prerender] ERROR: the /pro first viewport must carry exactly one content slot; found ${proShell.length - 1}.`);
+      process.exit(1);
+    }
+
+    return { rendered, localizeWelcomeDocument, proShell: { before: proShell[0], after: proShell[1] } };
+  } finally {
+    await server.close();
+  }
+}
+
+function builtAssetHref(filenamePrefix, extension) {
+  const assetsDir = resolve(__dirname, '../public/pro/assets');
+  const file = readdirSync(assetsDir).find((candidate) => (
+    candidate.startsWith(`${filenamePrefix}-`) && candidate.endsWith(extension)
+  ));
+  if (!file) {
+    console.error(`[prerender] ERROR: Could not find built asset for ${filenamePrefix}${extension}`);
+    process.exit(1);
+  }
+  return `/pro/assets/${file}`;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function rewriteBuiltAssetUrls(markup, assets, label) {
+  let rewritten = markup;
+  for (const { filenamePrefix, extension } of assets) {
+    const builtHref = builtAssetHref(filenamePrefix, extension);
+    const sourceAssetPattern = new RegExp(
+      `(?:/pro/src/assets/|/@fs/[^"'<>\\s]*/)${escapeRegExp(filenamePrefix + extension)}`,
+      'g',
+    );
+    if (!rewritten.match(sourceAssetPattern)) {
+      console.error(`[prerender] ERROR: Could not find SSR asset URL for ${filenamePrefix}${extension} in ${label} markup.`);
+      process.exit(1);
+    }
+    rewritten = rewritten.replace(sourceAssetPattern, () => builtHref);
+  }
+
+  // Catch any OTHER dev-only asset URL — a newly added asset import the rewrite
+  // map above doesn't cover would otherwise ship a broken /pro/src/assets or
+  // /@fs path into the static HTML and break hydration on the hashed client URL.
+  const leaked = rewritten.match(/(?:\/pro\/src\/assets\/|\/@fs\/)[^"'<>\s]+/);
+  if (leaked) {
+    console.error(`[prerender] ERROR: Unrewritten dev asset URL in ${label} markup: ${leaked[0]}. Pass its built asset to rewriteBuiltAssetUrls().`);
+    process.exit(1);
+  }
+  return rewritten;
+}
+
+const { rendered: welcomeDocuments, localizeWelcomeDocument, proShell } = await renderSsrRoots();
+const englishWelcome = welcomeDocuments.find((page) => page.locale.isDefault);
+if (!englishWelcome) {
+  console.error('[prerender] ERROR: indexable landing locales must include a default English row.');
+  process.exit(1);
+}
+const welcomeMarkdown = englishWelcome.markdown;
+
+// GitHub star InteractionCounter: populated from the committed freeze
+// snapshot, never hardcoded and never fetched at build time (offline builds
+// stay deterministic). Refresh via `npm run freeze:github-stars` (monthly via
+// .github/workflows/github-stars-refresh.yml); the lookup rejects snapshots
+// older than MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS, so a stale freeze reds the
+// build instead of publishing a rotting figure.
+// Pages whose committed template carries a #software node must leave the
+// build with the counter injected — a missing node is a dropped counter,
+// not an optional page.
+const GITHUB_STARS_PAGES = ['welcome.html'];
+
+function injectGithubStars(html, file) {
+  let snapshot;
+  try {
+    snapshot = latestValidGithubStarsSnapshot();
+  } catch (error) {
+    console.error(`[prerender] ERROR: ${error.message}`);
+    process.exit(1);
+  }
+  const { html: next, injected } = injectStarsInteractionCounter(html, snapshot);
+  if (!injected && GITHUB_STARS_PAGES.includes(file)) {
+    console.error('[prerender] ERROR: welcome.html carries no #software JSON-LD node to receive the star counter.');
+    process.exit(1);
+  }
+  return next;
+}
+
+// The FAQPage JSON-LD mirrors the FAQ locale strings verbatim, `{{token}}`
+// placeholders included, so it says what the visible answers say. Fill them
+// with the same build-measured figures the rendered answers interpolate, and
+// fail rather than publish a raw placeholder to search engines. Runs on the
+// template before the SSR markup is spliced in, so third-party headline text
+// can never reach the substitution.
+const PROOF_FACTS = JSON.parse(readFileSync(resolve(__dirname, 'src/generated/depth-stats.json'), 'utf-8'));
+
+function fillProofFacts(html, file) {
+  const filled = html.replace(/\{\{(\w+)\}\}/g, (token, key) => (Object.hasOwn(PROOF_FACTS, key) ? String(PROOF_FACTS[key]) : token));
+  const unfilled = filled.match(/\{\{\w+\}\}/);
+  if (unfilled) {
+    console.error(`[prerender] ERROR: ${file} carries ${unfilled[0]}, which no build-measured figure fills.`);
+    process.exit(1);
+  }
+  return filled;
+}
+
+function spliceProFirstViewport(html) {
+  const { whole, overview } = parseProTemplateRoot(html);
+  // Function replacement, for the same $-expansion reason as injectWelcomeRoot.
+  return html.replace(whole, () => `<div id="root">${proShell.before}${overview}${proShell.after}</div>`);
+}
+
+function injectWelcomeRoot(html, file, content, localeId) {
+  const emptyRoot = '<div id="root"></div>';
+  if (!html.includes(emptyRoot)) {
+    console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
+    process.exit(1);
+  }
+  // Replacer FUNCTION, not a replacement string: `String.prototype.replace`
+  // expands `$$`, `$&`, `` $` `` and `$'` in a string replacement. Since #7608
+  // the SSR markup carries headline text from ~461 third-party RSS feeds, so
+  // those sequences are no longer ours to rule out. React escapes `'` to
+  // `&#x27;`, which turns a title containing `$'` into a literal `$&` — that
+  // splices a SECOND `<div id="root">` into the page and hydration mounts on
+  // the wrong one; a backtick (which React does not escape) splices the whole
+  // preceding document. A function replacement is taken literally.
+  const rootAttributes = ` data-wm-prerendered="welcome" data-wm-prerender-lang="${localeId}"`;
+  return html.replace(emptyRoot, () => `<div id="root"${rootAttributes}>${content}</div>`);
+}
+
+const indexPath = resolve(__dirname, '../public/pro', 'index.html');
+let indexHtml = readFileSync(indexPath, 'utf-8');
+indexHtml = inlineCriticalCss(indexHtml, 'index.html');
+indexHtml = injectGithubStars(indexHtml, 'index.html');
+indexHtml = fillProofFacts(indexHtml, 'index.html');
+indexHtml = spliceProFirstViewport(indexHtml);
+if (!indexHtml.includes('<div id="root">')) {
+  console.error('[prerender] ERROR: index.html has no #root mount point.');
+  process.exit(1);
+}
+writeFileSync(indexPath, indexHtml, 'utf-8');
+console.log('[prerender] Injected critical CSS and visible content into public/pro/index.html');
+
+const welcomePath = resolve(__dirname, '../public/pro', 'welcome.html');
+let welcomeBase = readFileSync(welcomePath, 'utf-8');
+welcomeBase = inlineCriticalCss(welcomeBase, 'welcome.html', [heroImagePreloadTag(englishWelcome.html)]);
+welcomeBase = injectGithubStars(welcomeBase, 'welcome.html');
+welcomeBase = fillProofFacts(welcomeBase, 'welcome.html');
+
+for (const page of welcomeDocuments) {
+  const injected = injectWelcomeRoot(welcomeBase, 'welcome.html', page.html, page.locale.id);
+  const html = localizeWelcomeDocument(injected, page.locale, page.copy);
+  if (page.locale.isDefault) {
+    writeFileSync(welcomePath, html, 'utf-8');
+    console.log('[prerender] Injected critical CSS and visible content into public/pro/welcome.html');
+    continue;
+  }
+  const outDir = resolve(__dirname, '../public', page.locale.pathSegment);
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(resolve(outDir, 'index.html'), html, 'utf-8');
+  console.log(`[prerender] Wrote localized welcome landing public/${page.locale.pathSegment}/index.html`);
+}
+
+// Both homepage markdown selectors use the rendered HTML's content. Keep the
+// curated authentication and discovery guidance as a supplement, not a second
+// independently maintained copy of the homepage's measured statistics.
+const agentContext = readFileSync(resolve(__dirname, '../public/home.md'), 'utf8');
+const metadata = agentContext.match(/^---\n[\s\S]*?\n---\n/);
+if (!metadata) throw new Error('Homepage agent context must have document metadata');
+// The curated file repeats hero lines (slogan, audience) so it reads on its
+// own at /home.md; drop any one-line prose paragraph the rendered page already
+// states. Headings, lists and fences are never dropped.
+const renderedLines = new Set(welcomeMarkdown.split('\n').map((line) => line.trim()).filter(Boolean));
+const isRepeatedProse = (paragraph) => /^[A-Za-z][^\n]*$/.test(paragraph) && renderedLines.has(paragraph);
+const supplement = agentContext
+  .slice(metadata[0].length)
+  .trim()
+  .replace(/^# .+\n+/, '')
+  .split('\n\n')
+  .filter((paragraph) => !isRepeatedProse(paragraph))
+  .join('\n\n');
+writeFileSync(
+  resolve(__dirname, '../public/pro/home.md'),
+  `${metadata[0].replace('https://www.worldmonitor.app/home.md', 'https://www.worldmonitor.app/')}\n${welcomeMarkdown}\n\n${supplement}\n`,
+  'utf8',
+);
