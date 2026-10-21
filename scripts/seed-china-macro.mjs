@@ -597,13 +597,9 @@ export async function recordChinaMacroTransportFreshness(
     'china-macro-required-official-sources-v2',
     CHINA_MACRO_TTL_SECONDS,
     transportAt,
-    // A snapshot that is not launch-ready is rejected at publish, so its null
-    // content age makes /api/health report STALE_CONTENT instead of OK while
-    // the canonical key stays frozen behind reachable sources.
     {
       newestItemAt: null,
       oldestItemAt: null,
-      ...chinaMacroContentMeta(snapshot),
       maxContentAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN,
     },
   );
@@ -614,10 +610,20 @@ export async function recordChinaMacroCompletedRun(
   writeMetadataFn = writeFreshnessMetadataSafely,
   now = Date.now(),
 ) {
-  if (!validateChinaMacroTransportSnapshot(snapshot, now)) {
+  if (!validateChinaMacroSnapshot(snapshot, now)) {
     throw new Error('China macro snapshot is not a structurally valid completed run');
   }
-  await writeMetadataFn(
+  const transportMeta = await writeMetadataFn(
+    'economic',
+    'china-macro-transport',
+    CHINA_MACRO_REQUIRED_SERIES.length,
+    'china-macro-required-official-sources-v2',
+    CHINA_MACRO_TTL_SECONDS,
+    chinaMacroTransportMeta(snapshot, now),
+    { ...chinaMacroContentMeta(snapshot), maxContentAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN },
+  );
+  if (transportMeta === null) throw new Error('China macro published content metadata write failed');
+  const completionMeta = await writeMetadataFn(
     'economic',
     'china-macro-complete',
     CHINA_MACRO_REQUIRED_SERIES.length,
@@ -625,6 +631,7 @@ export async function recordChinaMacroCompletedRun(
     CHINA_MACRO_TTL_SECONDS,
     now,
   );
+  if (completionMeta === null) throw new Error('China macro completion metadata write failed');
 }
 
 export const CHINA_MACRO_SEED_OPTIONS = Object.freeze({

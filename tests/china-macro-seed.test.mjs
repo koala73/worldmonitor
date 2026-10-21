@@ -1089,20 +1089,10 @@ describe('China official macro source adapters', () => {
     );
     assert.equal(writes.length, 1);
 
-    const completionWrites = [];
-    await recordChinaMacroCompletedRun(
-      snapshot,
-      async (...args) => { completionWrites.push(args); },
-      staleContentNow,
+    await assert.rejects(
+      recordChinaMacroCompletedRun(snapshot, async () => assert.fail('must not write completion'), staleContentNow),
+      /structurally valid completed run/,
     );
-    assert.deepEqual(completionWrites, [[
-      'economic',
-      'china-macro-complete',
-      5,
-      'china-macro-required-official-sources-v2',
-      CHINA_MACRO_TTL_SECONDS,
-      staleContentNow,
-    ]]);
   });
 
   it('does not attest content health until a launch-ready snapshot is published', async () => {
@@ -1121,6 +1111,20 @@ describe('China official macro source adapters', () => {
       maxContentAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN,
     });
     assert.equal(assessContentAge(transportMetaFromWrite(writes[0]), now).contentStale, true);
+
+    await recordChinaMacroCompletedRun(snapshot, async (...args) => { writes.push(args); }, now);
+    assert.equal(assessContentAge(transportMetaFromWrite(writes[1]), now).contentStale, false);
+    assert.equal(writes[2][1], 'china-macro-complete');
+
+    const failedWrites = [];
+    await assert.rejects(recordChinaMacroCompletedRun(snapshot, async (...args) => {
+      failedWrites.push(args);
+      return null;
+    }, now), /published content metadata write failed/);
+    assert.equal(failedWrites.length, 1, 'failed content attestation must not stamp completion');
+    await assert.rejects(recordChinaMacroCompletedRun(snapshot, async (...args) => (
+      args[1] === 'china-macro-complete' ? null : {}
+    ), now), /completion metadata write failed/);
   });
 
   for (const publishFails of [true, false]) {
