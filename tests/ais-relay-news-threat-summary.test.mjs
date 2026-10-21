@@ -79,7 +79,10 @@ async function startUpstash(t, { failSetKeys = [], cachedLabel = 'high' } = {}) 
 
 // list-feed-digest stand-in. `busy` serves one country-naming headline per
 // variant, `quiet` serves an empty digest, `stale` serves that headline as a
-// stale replay (coverage.servedStale), `down` answers 500 (not retried).
+// stale replay (coverage.servedStale), `down` answers 500 (not retried),
+// `malformed` serves a digest whose items are not a list, so the variant throws,
+// `unavailable` serves the handler's no-digest body (coverage.state
+// 'unavailable', empty categories, servedStale false).
 // An object maps a variant to its mode, with `default` for the rest.
 async function startDigestApi(t, modes) {
   const server = http.createServer((req, res) => {
@@ -93,7 +96,12 @@ async function startDigestApi(t, modes) {
       res.writeHead(500);
       return res.end();
     }
-    const items = mode === 'quiet' ? [] : [{ title: HEADLINE, publishedAt: Date.now(), source: 'Reuters' }];
+    if (mode === 'unavailable') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ categories: {}, coverage: { state: 'unavailable', itemsServed: 0, servedStale: false, staleAgeSeconds: 0, staleReason: 'digest-build-failed' } }));
+    }
+    const title = mode === 'nocountry' ? 'Markets rally after earnings beat forecasts' : HEADLINE;
+    const items = mode === 'quiet' ? [] : mode === 'malformed' ? 5 : [{ title, publishedAt: Date.now(), source: 'Reuters' }];
     const coverage = mode === 'stale' ? { servedStale: true, staleReason: 'feeds-unavailable', staleAgeSeconds: 1800 } : undefined;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ categories: { world: { items } }, ...(coverage ? { coverage } : {}) }));
@@ -158,6 +166,7 @@ test('a classify cycle publishes the threat summary with a TTL that outlives the
   // The headline is served on all five variants and counted once.
   assert.deepEqual(data.byCountry, { IL: { critical: 0, high: 1, medium: 0, low: 0, info: 0 } });
   assert.equal(_seed.recordCount, Object.keys(data.byCountry).length);
+  assert.equal(_seed.state, 'OK');
 
   // A restart costs one full cycle, and back-to-back deploys several. Health
   // must go STALE_SEED before the payload expires, never the other way round.
@@ -209,6 +218,8 @@ test('an empty result from stale digest replays keeps the last summary instead o
 // `byCountry: {}` would zero their scores behind a healthy-looking quiet input.
 for (const [name, cycle] of [
   ['a digest fetch failed', { digest: { full: 'down', default: 'quiet' } }],
+  ['a variant threw', { digest: { full: 'malformed', default: 'quiet' } }],
+  ['the digest API had no digest to serve', { digest: { full: 'unavailable', default: 'quiet' } }],
   ['the LLM could not label fresh headlines', { digest: 'busy', cachedLabel: null }],
   ['the headlines carry an earlier unlabelled verdict', { digest: 'busy', cachedLabel: '_skip' }],
 ]) {
@@ -218,6 +229,25 @@ for (const [name, cycle] of [
     assert.equal(upstash.sets(SUMMARY_META_KEY).length, 0, 'seed-meta ages so health shows STALE_SEED');
   });
 }
+
+test('an unlabelled headline that names no country does not block the quiet write', async (t) => {
+  // Its label could not have added a country, so the empty result is still quiet.
+  const { upstash, output } = await runClassifyCycle(t, { digest: 'nocountry', cachedLabel: '_skip' });
+  const writes = upstash.sets(SUMMARY_KEY);
+  assert.equal(writes.length, 1, `a country-less skip must not hold the summary\n${output()}`);
+  assert.equal(envelopeOf(writes[0])._seed.state, 'OK_ZERO');
+});
+
+test('a degraded cycle that still names countries publishes those counts', async (t) => {
+  // Holding the last summary through every partial outage would let the key
+  // expire again once the outage outlasts the TTL; only an empty result from a
+  // degraded cycle keeps it.
+  const { upstash, output } = await runClassifyCycle(t, { digest: { full: 'down', default: 'busy' } });
+  const writes = upstash.sets(SUMMARY_KEY);
+  assert.equal(writes.length, 1, `partial cycles with matches still publish\n${output()}`);
+  assert.deepEqual(envelopeOf(writes[0]).data.byCountry, { IL: { critical: 0, high: 1, medium: 0, low: 0, info: 0 } });
+  assert.equal(upstash.sets(SUMMARY_META_KEY).length, 1);
+});
 
 test('a rejected summary write leaves the seed-meta untouched so health ages it', async (t) => {
   const { upstash } = await runClassifyCycle(t, { digest: 'busy', failSetKeys: [SUMMARY_KEY] });

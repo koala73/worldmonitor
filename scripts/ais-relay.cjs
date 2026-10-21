@@ -5243,9 +5243,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // #7084: stale RSS titles already had their alert pass when served fresh.
   // Exclude only those digest-derived candidates; fresh X candidates remain
   // eligible because they are an independent input to the combined pass.
-  const staleReplay = isStaleDigestReplay(digest);
+  // The digest API answers 200 with `coverage.state: 'unavailable'` and no
+  // categories when it has no digest to serve; that is no news, not quiet news.
+  const staleReplay = isStaleDigestReplay(digest) || digest?.coverage?.state === 'unavailable';
   if (staleReplay) {
-    console.log(`[Classify] digest is a stale replay (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping digest-derived candidates for ${variant}`);
+    console.log(`[Classify] digest is a stale replay or unavailable (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping digest-derived candidates for ${variant}`);
   }
 
   // Map of title → item metadata; recency gate: skip articles older than 6h.
@@ -5270,9 +5272,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // byCountry accumulates threat counts while title+level are in scope
   const byCountry = {};
   const emptyLevel = () => ({ critical: 0, high: 0, medium: 0, low: 0, info: 0 });
-  // Titles with no usable label (a cached `_skip` or an unreadable entry), so
-  // an empty byCountry cannot be read as a quiet cycle.
+  // Country-naming titles with no usable label (a cached `_skip`, an unreadable
+  // entry, or one the LLM skipped below), so an empty byCountry cannot be read
+  // as a quiet cycle. A title that names no country cannot change byCountry.
   let unlabelled = 0;
+  const countUnlabelled = (title) => { if (threatSummaryCountries(title).length > 0) unlabelled++; };
 
   for (let i = 0; i < titleArr.length; i++) {
     const hit = cached[i];
@@ -5282,9 +5286,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
     // Attribute cached hits while we still have the title
     let parsed = hit;
-    if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { unlabelled++; continue; } }
+    if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { countUnlabelled(titleArr[i]); continue; } }
     const level = parsed?.level;
-    if (!CLASSIFY_VALID_LEVELS.includes(level)) { unlabelled++; continue; }
+    if (!CLASSIFY_VALID_LEVELS.includes(level)) { countUnlabelled(titleArr[i]); continue; }
     if (seenTitles.has(titleArr[i])) continue;
     seenTitles.add(titleArr[i]);
     for (const code of threatSummaryCountries(titleArr[i])) {
@@ -5307,6 +5311,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       for (const title of chunk) {
         await upstashSet(classifyCacheKey(title), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
         skipped++;
+        countUnlabelled(title);
       }
       continue;
     }
@@ -5396,6 +5401,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       if (!classifiedSet.has(i)) {
         await upstashSet(classifyCacheKey(chunk[i]), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
         skipped++;
+        countUnlabelled(chunk[i]);
       }
     }
 
@@ -5409,7 +5415,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
   if (shadow.asked > 0) {
     console.log(`[Classify] Jev shadow ${variant}: asked ${shadow.asked}, answered ${shadow.answered}, agreed ${shadow.agreed}, alert flips ${shadow.alertFlips}`);
   }
-  return { total: titleArr.length, classified, skipped, byCountry, staleReplay, unlabelled: unlabelled + skipped };
+  return { total: titleArr.length, classified, skipped, byCountry, staleReplay, unlabelled };
 }
 
 async function seedClassify() {
@@ -5450,6 +5456,7 @@ async function seedClassify() {
     let fetchFailed = 0;
     let staleReplays = 0;
     let unlabelled = 0;
+    let variantErrors = 0;
     const mergedByCountry = {};
     const seenTitles = new Set();
     for (let v = 0; v < CLASSIFY_VARIANTS.length; v++) {
@@ -5470,6 +5477,7 @@ async function seedClassify() {
           }
         }
       } catch (e) {
+        variantErrors += 1;
         console.warn(`[Classify] ${CLASSIFY_VARIANTS[v]} error:`, e?.message || e);
       }
     }
@@ -5483,19 +5491,19 @@ async function seedClassify() {
     // headline named a country (`byCountry: {}`): the CII reads an empty summary
     // as a quiet input and a missing one as a dead input. An empty result is
     // quiet only when every headline was fetched fresh and labelled: after a
-    // failed digest fetch, a stale replay (headlines skipped above) or titles
-    // the LLM could not label, the countries it would have named are unknown,
-    // so the last summary stays and its seed-meta ages. seed-meta advances only
+    // failed digest fetch, a variant that threw, a stale or unavailable digest
+    // (headlines skipped above) or country-naming titles the LLM could not
+    // label, the countries it would have named are unknown, so the last summary stays and its seed-meta ages. seed-meta advances only
     // after the payload lands, so health never vouches for a missing key.
     const threatCountryCount = Object.keys(mergedByCountry).length;
     const threatSummaryAt = Date.now();
-    const threatSummaryDegraded = threatCountryCount === 0 && (fetchFailed > 0 || staleReplays > 0 || unlabelled > 0);
+    const threatSummaryDegraded = threatCountryCount === 0 && (fetchFailed > 0 || variantErrors > 0 || staleReplays > 0 || unlabelled > 0);
     const threatSummaryWritten = !threatSummaryDegraded && await envelopeWrite(NEWS_THREAT_SUMMARY_KEY, { byCountry: mergedByCountry, generatedAt: threatSummaryAt }, NEWS_THREAT_SUMMARY_TTL, { fetchedAt: threatSummaryAt, recordCount: threatCountryCount, zeroOk: true, sourceVersion: 'news-threat-summary' });
     if (threatSummaryWritten) {
       await upstashSet('seed-meta:news:threat-summary', { fetchedAt: threatSummaryAt, recordCount: threatCountryCount }, 604800);
       console.log(`[Classify] Threat summary written for ${threatCountryCount} countries`);
     } else if (threatSummaryDegraded) {
-      console.warn(`[Classify] No country matches from a degraded cycle (${fetchFailed} digest fetch failure(s), ${staleReplays} stale replay(s), ${unlabelled} unlabelled title(s)) — keeping the last threat summary`);
+      console.warn(`[Classify] No country matches from a degraded cycle (${fetchFailed} digest fetch failure(s), ${variantErrors} variant error(s), ${staleReplays} stale replay(s), ${unlabelled} unlabelled title(s)) — keeping the last threat summary`);
     } else {
       console.warn('[Classify] Threat summary write failed — seed-meta:news:threat-summary not advanced');
     }
