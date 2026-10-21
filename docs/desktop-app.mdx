@@ -14,7 +14,7 @@ Running the app entirely against your own API keys and local sources needs no pl
 ### Desktop Application (Tauri)
 
 - **Native desktop app** for macOS, Windows, and Linux — packages the full dashboard with a local Node.js sidecar that runs the supported API handler catalog locally
-- **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager, Linux Secret Service), never in plaintext files
+- **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager, Linux Secret Service, or the kernel session keyring when no Secret Service is running), never in plaintext files
 - **Token-authenticated sidecar** — a unique session token prevents other local processes from accessing the sidecar on localhost. Generated per launch using randomized hashing
 - **Cloud fallback** — when a local API handler fails or is missing, requests transparently fall through to the cloud deployment (worldmonitor.app) with origin headers stripped
 - **Settings window** — dedicated configuration UI (Cmd+,) with three tabs: **LLMs** (Ollama endpoint, model selection, OpenRouter), **API Keys** (the supported data-source credential catalog with per-key validation), and **Debug & Logs** (traffic log, verbose mode, log files). Each tab runs an independent verification pipeline — saving in the LLMs tab doesn't block API Keys validation
@@ -141,7 +141,7 @@ The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following k
 - `AISSTREAM_API_KEY`
 - `OLLAMA_API_URL`
 - `OLLAMA_MODEL`
-- `WORLDMONITOR_API_KEY` — gates cloud fallback access (min 16 chars)
+- `WORLDMONITOR_API_KEY` — forwarded on cloud requests for API-key access (min 16 chars). Without it, cloud requests use an anonymous session (see [Cloud Fallback](#cloud-fallback))
 - `WTO_API_KEY`
 - `AVIATIONSTACK_API`
 - `ICAO_API_KEY`
@@ -168,13 +168,14 @@ Secrets are **not stored in plaintext files** by the frontend.
 If required secrets are missing/disabled:
 
 - Summarization: OpenRouter disabled, browser model fallback.
-- FRED / EIA / Finnhub: economic, oil analytics, and stock data return empty state.
-- Cloudflare / ACLED: outages/conflicts return empty state.
+- FRED, EIA, Cloudflare outages, WTO trade policy, and shipping rates need no local key on desktop. The sidecar always reads them from the cloud seed cache, so a local vendor key is never used for them.
+- Finnhub: stock data returns empty state.
+- ACLED: conflicts return empty state.
 - Cyber threat feeds (URLhaus, OTX, AbuseIPDB): cyber threat layer returns empty state.
 - NASA FIRMS: satellite fire detection returns empty state.
 - Wingbits: flight enrichment disabled, heuristic-only flight classification remains.
 - AIS / OpenSky relay: live tracking features are disabled cleanly.
-- World Monitor API key: cloud fallback is blocked; desktop operates local-only.
+- World Monitor API key and no Pro sign-in: cloud requests use an anonymous session, so the desktop sees what a signed-out browser sees. Tier-gated and premium routes stay unavailable.
 
 ## Sidecar
 
@@ -209,6 +210,8 @@ The sidecar employs multiple resilience patterns to maintain data availability w
 ## Cloud Fallback
 
 When a local API handler is missing, throws an error, or returns a 5xx status, the sidecar transparently proxies the request to the cloud deployment. Endpoints that fail are marked as `cloudPreferred` — subsequent requests skip the local handler and go directly to the cloud until the sidecar is restarted. Origin and Referer headers are stripped before proxying to maintain server-to-server parity.
+
+Cloud requests carry the strongest credential the desktop has. A configured `WORLDMONITOR_API_KEY` is sent as `X-WorldMonitor-Key`, and a signed-in Pro desktop also forwards its session bearer. A request with no API key carries an anonymous session that the sidecar mints and caches, the same kind a browser holds. The gateway accepts it on public routes and refuses it on tier-gated and premium ones, so a signed-out desktop reaches exactly what a signed-out browser reaches.
 
 ## Observability
 

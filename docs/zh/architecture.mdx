@@ -249,7 +249,11 @@ Page Load → parallel fetch ─┬─ /api/bootstrap?tier=fast  (s-maxage=1200)
 | `seed-unrest-events` | ACLED 抗议 + GDELT | 45 分钟 | `unrest:events:v1` |
 | `seed-ucdp-events` | UCDP GED API | 6 小时 | `conflict:ucdp-events:v1` |
 | `ais-relay`（中东打击循环） | Telegram 频道 + GDELT 事件导出 | 10 分钟 | `conflict:iran-events:v1`、`conflict:strike-pressure:v1`（供 CII 使用的 30 天按国家计数） |
-| `seed-displacement-summary` | UNHCR / IOM | 30 分钟 | N/A |
+| `seed-displacement-summary` | UNHCR Population API | 每日 | `displacement:summary:v1:<year>` |
+| `seed-idmc-idu-displacement` | IDMC 境内流离失所更新（HDX） | 每日 | `displacement:idmc-idu:v1` |
+| `seed-dtm-displacement` | IOM 流离失所追踪矩阵 API | 每日 | `displacement:dtm:v1` |
+| `seed-cross-border-arrivals` | UNHCR 业务数据门户 | 每日 | `displacement:cross-border:v1` |
+| `seed-border-{uk,cbp,frontex,panama}` | 英国内政部、美国 CBP、Frontex、巴拿马移民统计 | 每日 | `displacement:border-<source>:v1` |
 | `seed-military-bases` | 经审核的军事基地注册表 | 每日 | N/A |
 | `seed-wb-indicators` | World Bank 技术准备度 | 每日 | `economic:worldbank-techreadiness:v1` |
 | `seed-forecasts` | OpenRouter LLM + 多领域信号 | 15 分钟 | `forecast:predictions:v2` |
