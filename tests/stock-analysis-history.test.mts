@@ -606,6 +606,8 @@ describe('server-backed stock analysis history', () => {
     };
     const response = await analyzeStock(ctx as never, { symbol: 'AAPL', name: 'Apple', includeNews: false });
     assert.equal(response.symbol, 'AAPL');
+    // Non-empty first: `every` is vacuously true when no LLM call was made.
+    assert.ok(llmHosts.length > 0, 'expected the restricted analysis to call Anthropic');
     assert.ok(llmHosts.every((host) => host === 'api.anthropic.com'), llmHosts.join(','));
     assert.equal(state.sortedSets.get('market:stock-analysis-history:index:v6:AAPL:core'), undefined);
   });
