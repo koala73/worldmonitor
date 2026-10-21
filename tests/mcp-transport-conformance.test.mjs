@@ -208,6 +208,32 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     }
   });
 
+  it('enforces MCP request IDs and object params on the wire', async () => {
+    const cases = [
+      ...[null, 1.25, -1.25, true, {}, []].map(id => [{ jsonrpc: '2.0', id, method: 'ping' }, null]),
+      ...[null, [], 17, 'params', false].map(params => [{ jsonrpc: '2.0', id: 'params', method: 'ping', params }, 'params']),
+      [{ jsonrpc: '2.0', method: 'notifications/initialized', params: null }, null],
+      [{ jsonrpc: '2.0', id: null, method: 'notifications/initialized' }, null],
+    ];
+    for (const [body, errorId] of cases) {
+      const res = await fetch(server.url, { method: 'POST', body: JSON.stringify(body) });
+      const result = await res.json();
+      assert.equal(res.status, 200);
+      assert.equal(result.error?.code, -32600, JSON.stringify(body));
+      assert.equal(result.id, errorId);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+    }
+    for (const id of [0, -1, 1e100, '', 'wire-id']) {
+      const res = await fetch(server.url, { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id, method: 'ping' }) });
+      assert.deepEqual(await res.json(), { jsonrpc: '2.0', id, result: {} });
+    }
+    for (const method of ['notifications/initialized', 'notifications/cancelled', 'ping']) {
+      const res = await fetch(server.url, { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', method, params: {} }) });
+      assert.equal(res.status, 202);
+      assert.equal(await res.text(), '');
+    }
+  });
+
   it('rejects invalid origins on every HTTP entry before transport or auth', async () => {
     for (const origin of [
       'not a valid origin', 'null', '', 'https://client.example/path',
