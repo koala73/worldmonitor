@@ -34,7 +34,7 @@ const INPUTS = {
   oref:               { maxQuietMin: null, sourceCheck: null, missingIsQuiet: true },
   outages:            { maxQuietMin: null, sourceCheck: 'outages' },
   climate:            { maxQuietMin: null, sourceCheck: 'climateAnomalies' },
-  fires:              { maxQuietMin: 1440, sourceCheck: 'wildfires' },
+  fires:              { maxQuietMin: 1440, sourceCheck: 'wildfiresSummary' },
   gpsjam:             { maxQuietMin: 720, sourceCheck: 'gpsjam' },
   advisories:         { maxQuietMin: 1440, sourceCheck: null },
   displacement:       { maxQuietMin: 1440, sourceCheck: null },

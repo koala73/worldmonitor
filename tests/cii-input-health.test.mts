@@ -259,6 +259,11 @@ describe('assessCiiInputs', () => {
     assert.deepEqual(result.dead, [{ id: 'gdeltCountryEvents', state: 'stale', sourceCheck: 'gdeltCountryEvents' }]);
   });
 
+  it('the fires input is graded against the summary probe the build reads (#9509)', () => {
+    const result = assessCiiInputs({ inputs: allLive() }, NOW, { fires: 'STALE_SEED' });
+    assert.deepEqual(result.dead, [{ id: 'fires', state: 'stale', sourceCheck: 'wildfiresSummary' }]);
+  });
+
   it('seed-meta without an inputs block cannot prove anything', () => {
     assert.equal(assessCiiInputs({ fetchedAt: NOW, recordCount: 3 }, NOW).valid, false);
     assert.equal(assessCiiInputs(null, NOW).valid, false);

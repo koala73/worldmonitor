@@ -14,6 +14,12 @@ import { getCachedJson, readCachedJson, readCachedEnvelopeJson, setCachedJson, c
 import { CLIMATE_ANOMALIES_KEY, CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
 import { ciiCountryAt, ciiCountryForIso2, ciiIsLand } from '../../../../scripts/shared/cii-country-borders.mjs';
+import {
+  parseWildfireFiresSummary,
+  summarizeWildfireDetections,
+  WILDFIRE_FIRES_SUMMARY_KEY,
+  type WildfireFireIntensity,
+} from '../../../../scripts/shared/wildfire-fires-summary.mjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import { isAcledConfigured } from '../../../_shared/acled-auth';
@@ -828,7 +834,10 @@ interface AuxiliarySources {
   ucdpEvents: any[];
   outages: any[];
   climate: any[];
-  fires: any[];
+  // Detections inside each Tier-1 country, from wildfire:fires-summary:v1
+  // (scripts/shared/wildfire-fires-summary.mjs). Null when the summary was
+  // present but unscorable.
+  fires: Record<string, WildfireFireIntensity[]> | null;
   gpsHexes: any[];
   iranEvents: any[];
   orefData: { activeAlertCount: number; historyCount24h: number } | null;
@@ -887,7 +896,7 @@ function emptyAuxiliarySources(): AuxiliarySources {
     ucdpEvents: [],
     outages: [],
     climate: [],
-    fires: [],
+    fires: {},
     gpsHexes: [],
     iranEvents: [],
     orefData: null,
@@ -962,11 +971,14 @@ async function readRiskInputs(inputs: ReadonlyArray<RiskInput | null>): Promise<
 
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
-  const [ucdpRaw, outagesRaw, climateRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw, countryEventsRaw, strikePressureRaw] = await readRiskInputs([
+  const [ucdpRaw, outagesRaw, climateRaw, firesSummaryRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw, countryEventsRaw, strikePressureRaw] = await readRiskInputs([
     { key: 'conflict:ucdp-events:v1', raw: true },
     { key: 'infra:outages:v1', raw: true },
     { key: CLIMATE_ANOMALIES_KEY, raw: true },
-    { key: 'wildfire:fires:v1', raw: true },
+    // Per-country intensity rows derived by seed-fire-detections (#9509). The
+    // canonical wildfire:fires:v1 is 2-5 MB and used to time out the 1.5 s GET,
+    // which rejected the whole build.
+    { key: WILDFIRE_FIRES_SUMMARY_KEY, raw: true },
     { key: 'intelligence:gpsjam:v2', raw: true },
     IRAN_EVENTS_ENABLED ? { key: 'conflict:iran-events:v1', raw: true } : null,
     { key: 'relay:oref:history:v1', raw: true },
@@ -997,6 +1009,13 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   // read has already thrown above, so it never masquerades as that.
   const displacementRaw = displacementCurrentRaw
     ?? (await readRiskInputs([{ key: `displacement:summary:v1:${currentYear - 1}`, raw: true }]))[0];
+  // The summary is written by the same seeder run as the canonical key, after
+  // it. A miss therefore means the reader deployed before the seeder's next
+  // tick or that extra-key write failed; recompute the projection from the
+  // canonical key then, and only then, so a present-but-unusable summary still
+  // surfaces in health instead of hiding behind the fallback.
+  const firesRaw = firesSummaryRaw
+    ?? summarizeWildfireDetections((await readRiskInputs([{ key: 'wildfire:fires:v1', raw: true }]))[0]);
   const borderSnapshots = await readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true })));
   const read = (raw: unknown): CiiInputRead => (raw == null ? 'missing' : 'present');
   const inputReads: Partial<Record<CiiInputId, CiiInputRead>> = {
@@ -1079,7 +1098,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     ucdpEvents: arr(ucdpRaw, 'events'),
     outages: arr(outagesRaw, 'outages'),
     climate: arr(climateRaw, 'anomalies'),
-    fires: arr(firesRaw, 'fireDetections').length ? arr(firesRaw, 'fireDetections') : arr(firesRaw, 'fires'),
+    fires: parseWildfireFiresSummary(firesRaw)?.byCountry ?? null,
     gpsHexes: arr(gpsRaw, 'hexes'),
     iranEvents: arr(iranRaw, 'events'),
     orefData,
@@ -1153,7 +1172,7 @@ const CII_INPUT_AUX_FIELD: Record<Exclude<CiiInputId, 'acled'>, keyof AuxiliaryS
 // Parsers that return null when they reject a present payload: past their own
 // age gate (GDELT 6h, strike tally 72h) or without the field they score.
 const CII_INPUT_REJECTED_AS_NULL = new Set<CiiInputId>([
-  'gdeltCountryEvents', 'strikePressure', 'oref', 'advisories', 'threatSummary', 'militaryCii',
+  'gdeltCountryEvents', 'strikePressure', 'oref', 'advisories', 'threatSummary', 'militaryCii', 'fires',
 ]);
 
 /**
@@ -1321,15 +1340,14 @@ export function computeCIIScores(
   // each row's country is where the malicious IP or URL is hosted, not the victim, so
   // they scored datacenter countries (US, GB, DE, FR) instead of countries under attack.
 
-  // --- Fires ---
-  for (const f of aux.fires) {
-    const lat = safeNum(f.lat || f.latitude || f.location?.latitude);
-    const lon = safeNum(f.lon || f.longitude || f.location?.longitude);
-    const code = geoToCountry(lat, lon);
-    if (!code || !data[code]) continue;
-    data[code].fireCount++;
-    // "High" fire — bright or high radiative power (Phase 3b / D8, matches the frontend).
-    if (safeNonNegativeNum(f.brightness) >= 360 || safeNonNegativeNum(f.frp) >= 50) data[code].fireHighCount++;
+  // --- Fires --- (already attributed to Tier-1 countries by the summary producer)
+  for (const [code, fires] of Object.entries(aux.fires ?? {})) {
+    if (!data[code]) continue;
+    for (const f of fires) {
+      data[code].fireCount++;
+      // "High" fire — bright or high radiative power (Phase 3b / D8, matches the frontend).
+      if (safeNonNegativeNum(f.brightness) >= 360 || safeNonNegativeNum(f.frp) >= 50) data[code].fireHighCount++;
+    }
   }
 
   // --- GPS hex severity split ---

@@ -576,7 +576,7 @@ function emptyAux() {
     ucdpEvents: [] as any[],
     outages: [] as any[],
     climate: [] as any[],
-    fires: [] as any[],
+    fires: {} as Record<string, Array<{ brightness: number; frp: number }>> | null,
     gpsHexes: [] as any[],
     iranEvents: [] as any[],
     orefData: null as { activeAlertCount: number; historyCount24h: number } | null,
@@ -950,9 +950,13 @@ describe('CII signal wiring', () => {
   it('Phase 3b D8: high-brightness fires raise the score', () => {
     const base = scoreFor(computeCIIScores([], emptyAux()), 'US');
     const aux = emptyAux();
-    aux.fires = [{ lat: 39, lon: -98, brightness: 400, frp: 60 }];
+    aux.fires = { US: [{ brightness: 400, frp: 60 }] };
     const us = scoreFor(computeCIIScores([], aux), 'US');
     assert.ok(us!.combinedScore > base!.combinedScore, 'a bright fire feeds fireBoost');
+    const dim = emptyAux();
+    dim.fires = { US: Array.from({ length: 8 }, () => ({ brightness: 300, frp: 5 })) };
+    const usDim = scoreFor(computeCIIScores([], dim), 'US');
+    assert.ok(usDim!.combinedScore > base!.combinedScore, 'dim fires still feed the count term of fireBoost');
   });
 
   it('Phase 3b D6: sanctions duplicate-ISO2 rows accumulate across the tier boundary', () => {

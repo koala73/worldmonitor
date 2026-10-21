@@ -489,3 +489,30 @@ test('empty-result snapshot write failures preserve worldwide data without repla
     assert.deepEqual(failed.calls, { firms: 27, active: 2, prescribed: 1 });
   }
 });
+
+// The CII and temporal-anomaly hot paths read the derived summary instead of
+// the multi-MB canonical key (#9509). It must be published by the same run,
+// from the same detections, with its own seed-meta and the activation marker
+// that ends the health probe's pre-rollout softening.
+test('the real seeder publishes the fires summary from the canonical set with its seed-meta and activation marker', async () => {
+  const { summarizeWildfireDetections, WILDFIRE_FIRES_SUMMARY_KEY, WILDFIRE_FIRES_SUMMARY_META_KEY, WILDFIRE_FIRES_SUMMARY_ACTIVATION_KEY } = await import('../scripts/shared/wildfire-fires-summary.mjs');
+  const captured = runSeedFixture([], NOW, 'bc-ok');
+  assert.equal(captured.status, 0, captured.output);
+  const store = new Map(captured.store);
+  const expiries = new Map(captured.expiries);
+
+  const canonical = JSON.parse(store.get('wildfire:fires:v1'));
+  const summaryEnvelope = JSON.parse(store.get(WILDFIRE_FIRES_SUMMARY_KEY));
+  assert.deepEqual(summaryEnvelope.data, summarizeWildfireDetections(canonical.data, { nowMs: NOW + 3 * MIN }));
+  assert.equal(summaryEnvelope.data.totalCount, canonical.data.fireDetections.length);
+  assert.equal(summaryEnvelope.data.firms.newestDetectedAt, NOW - MIN);
+  assert.equal(summaryEnvelope._seed.recordCount, canonical.data.fireDetections.length);
+  assert.equal(summaryEnvelope._seed.fetchedAt, canonical._seed.fetchedAt);
+  assert.equal(expiries.get(WILDFIRE_FIRES_SUMMARY_KEY), 7200, 'the summary expires with the canonical key so a dead feed stays loud');
+
+  const meta = JSON.parse(store.get(WILDFIRE_FIRES_SUMMARY_META_KEY));
+  assert.equal(meta.recordCount, canonical.data.fireDetections.length);
+  assert.equal(meta.fetchedAt, NOW + 3 * MIN);
+  assert.equal(store.get(WILDFIRE_FIRES_SUMMARY_ACTIVATION_KEY), '1');
+  assert.equal(expiries.has(WILDFIRE_FIRES_SUMMARY_ACTIVATION_KEY), false, 'the activation marker is durable');
+});
