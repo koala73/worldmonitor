@@ -335,7 +335,9 @@ Invalid JSON text returns `-32700` with `id: null`. Valid JSON with an invalid r
 
 ### `-32600` — Invalid request envelope
 
-Fires when the body cannot be read, isn't a JSON object, lacks `jsonrpc: "2.0"`, lacks a string `method`, or carries an invalid `id`. A string `id` longer than 256 UTF-8 bytes is invalid. The SSE-replay preconditions reuse this code. A replay `GET` without `Accept: text/event-stream` gets HTTP 406. A replay without `Mcp-Session-Id` gets HTTP 400. An invalid or unsupported `MCP-Protocol-Version` header gets HTTP 400 before body parsing, with `id: null`.
+Fires when the body cannot be read, isn't a JSON object, lacks `jsonrpc: "2.0"`, lacks a string `method`, or carries an invalid `id` or `params`. Request IDs must be strings or integers. Null, fractional, non-finite, boolean, and structured IDs are invalid and return `id: null`. A string `id` longer than 256 UTF-8 bytes is invalid. When present, `params` must be a non-null object, not an array or scalar. An invalid `params` envelope echoes a valid request ID. Valid notifications omit `id` and receive HTTP 202 with no response body. Omitted `params` and object `params` remain valid. These rules follow the [MCP base protocol](https://modelcontextprotocol.io/specification/2025-06-18/basic).
+
+The SSE-replay preconditions reuse this code. A replay `GET` without `Accept: text/event-stream` gets HTTP 406. A replay without `Mcp-Session-Id` gets HTTP 400. An invalid or unsupported `MCP-Protocol-Version` header gets HTTP 400 before body parsing, with `id: null`.
 
 The code is also reused at **HTTP 413** for a request body over the 256 KiB cap (`MAX_JSON_RPC_BODY_BYTES`). That case is **not** an encoder bug — a perfectly well-formed client hits it by sending an oversized `tools/call` argument, and because the body is rejected before parsing the server cannot echo your `id` (it is always `null`).
 

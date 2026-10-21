@@ -16,7 +16,7 @@ const MAX_JSON_RPC_ID_BYTES = 256;
 
 /** Normalize a caller-controlled JSON-RPC id to the bounded echo-safe shape. */
 export function safeJsonRpcId(value: unknown): string | number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'number') return Number.isInteger(value) ? value : null;
   if (typeof value !== 'string' || value.length > MAX_JSON_RPC_ID_BYTES) return null;
   return utf8ByteLength(value) <= MAX_JSON_RPC_ID_BYTES ? value : null;
 }

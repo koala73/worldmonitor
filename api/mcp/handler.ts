@@ -131,8 +131,8 @@ type JsonRpcRequest = {
   params?: unknown;
 };
 
-function validJsonRpcId(id: unknown): id is string | number | null | undefined {
-  if (id === null || id === undefined) return true;
+function validJsonRpcId(id: unknown): id is string | number | undefined {
+  if (id === undefined) return true;
   return safeJsonRpcId(id) !== null;
 }
 
@@ -997,6 +997,11 @@ async function mcpHandlerInner(
     return rpcError(body.id ?? null, -32600, 'Invalid request: missing method', corsHeaders);
   }
 
+  if (body.params !== undefined && (body.params === null || typeof body.params !== 'object' || Array.isArray(body.params))) {
+    usage.phase = 'malformed';
+    return rpcError(body.id ?? null, -32600, 'Invalid request: params must be an object', corsHeaders);
+  }
+
   const { id, method } = body;
 
   // #8403 — attribute JSON-RPC method (and registry-bounded tool name) before
@@ -1014,6 +1019,10 @@ async function mcpHandlerInner(
     return id === undefined
       ? new Response(null, { status: 410, headers: mcpMigrationHeaders(corsHeaders) })
       : mcpAliasRpcError(id, corsHeaders);
+  }
+
+  if (id === undefined) {
+    return new Response(null, { status: 202, headers: withMcpNoStore(corsHeaders) });
   }
 
   // Connect-time challenge. An unauthenticated `initialize` on the transport is

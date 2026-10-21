@@ -164,11 +164,18 @@ describe('product MCP host aliases are migration-only', () => {
       }
     }
 
-    for (const id of ['', null]) {
+    for (const id of ['', 'alias-id']) {
       const res = await post(`https://${'api'}.worldmonitor.app/api/mcp`, rpc('initialize', INIT_PARAMS, id));
       assert.equal(res.status, 410);
       const body = await res.json();
       assert.equal(body.id, id);
+    }
+
+    for (const id of [null, 1.25]) {
+      const res = await post('https://api.worldmonitor.app/api/mcp', rpc('initialize', INIT_PARAMS, id));
+      const body = await res.json();
+      assert.equal(body.id, null);
+      assert.equal(body.error.code, -32600);
     }
 
     for (const host of PRODUCT_MCP_ALIASES) {
