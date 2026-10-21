@@ -106,6 +106,47 @@ describe('China official policy adapters (#5576)', () => {
     assert.equal(parsed.effectiveDate, '2026-08-01');
   });
 
+  it('reads NDRC publication dates from document metadata when the listing has no date column', async () => {
+    const listing = '<a href="iteminfo.jsp?id=20630">国家发展改革委等关于印发《核电厂退役准备管理暂行办法》的通知<small>(发改能源规〔2026〕582号 2026年4月23日印发)</small></a>';
+    const detail = '<meta name="PubDate" content="2026-04-24"><div class="article-content">现印发管理办法，请遵照执行。本办法自2026年7月1日起施行。</div>';
+    const requested: string[] = [];
+    const result = await fetchAgencyDocuments('NDRC', {
+      fetchImpl: async (input) => {
+        const url = String(input);
+        requested.push(url);
+        return officialResponse(url, url === CHINA_POLICY_SOURCES.NDRC.listUrl ? listing : detail);
+      },
+      sleep: async () => {},
+    });
+
+    assert.equal(result.status, 'ok');
+    assert.deepEqual(requested, [
+      CHINA_POLICY_SOURCES.NDRC.listUrl,
+      'https://zfxxgk.ndrc.gov.cn/web/iteminfo.jsp?id=20630',
+    ]);
+    assert.equal(result.documents[0].publicationDate, '2026-04-24');
+    assert.equal(result.documents[0].effectiveDate, '2026-07-01');
+    assert.match(result.documents[0].originalText, /请遵照执行/);
+  });
+
+  it('rejects an undated NDRC document and keeps other agencies dependent on dated listings', async () => {
+    const listing = '<a href="iteminfo.jsp?id=20630">国家发展改革委关于印发管理办法的通知</a>';
+    const result = await fetchAgencyDocuments('NDRC', {
+      fetchImpl: async (input) => officialResponse(String(input),
+        String(input) === CHINA_POLICY_SOURCES.NDRC.listUrl
+          ? listing
+          : '<div class="article-content">现印发管理办法，请遵照执行。</div>'),
+      sleep: async () => {},
+    });
+
+    assert.equal(result.status, 'error');
+    assert.equal(result.requestCount, 2);
+    assert.equal(result.documents.length, 0);
+    assert.equal(result.failures[0].reason, 'document body or date missing');
+    assert.deepEqual(parseAgencyListing('PBOC',
+      '<a href="/tiaofasi/144941/144957/123456/index.html">关于印发管理办法的通知</a>'), []);
+  });
+
   it('fetches the MIIT detail document instead of publishing its listing snippet', async () => {
     const listing = await fixture('miit.json');
     const detail = await fixture('detail.html');
