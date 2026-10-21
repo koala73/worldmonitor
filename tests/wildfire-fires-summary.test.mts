@@ -148,6 +148,8 @@ describe('parseWildfireFiresSummary', () => {
     assert.equal(parseWildfireFiresSummary({ ...summary, firms: withoutRows }), null);
     assert.equal(parseWildfireFiresSummary({ ...summary, firms: { ...summary.firms, rows: 'one' } }), null);
     assert.equal(parseWildfireFiresSummary({ ...summary, firms: { ...summary.firms, rows: -1 } }), null);
+    assert.equal(parseWildfireFiresSummary({ ...summary, firms: { ...summary.firms, rows: 0.5 } }), null);
+    assert.equal(parseWildfireFiresSummary({ ...summary, totalCount: 0.5 }), null);
     const { partial: _partial, ...withoutPartial } = summary.firms;
     assert.equal(parseWildfireFiresSummary({ ...summary, firms: withoutPartial }), null);
     assert.equal(parseWildfireFiresSummary({ ...summary, firms: { ...summary.firms, partial: 'no' } }), null);

@@ -113,7 +113,7 @@ export function summarizeWildfireDetections(payload, { nowMs = Date.now() } = {}
 }
 
 function isCount(value) {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  return Number.isSafeInteger(value) && value >= 0;
 }
 
 /**
