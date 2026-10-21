@@ -202,10 +202,10 @@ describe('#7818 — credentialed per-minute denials correlate to the request', (
 });
 
 // ---------------------------------------------------------------------------
-// The cases that must KEEP a null id
+// Missing and invalid request IDs
 // ---------------------------------------------------------------------------
 
-describe('#7818 — branches with no request id stay null', () => {
+describe('#7818 — request and notification IDs stay distinct', () => {
   it('the GET/SSE replay caller has no JSON-RPC id and must not invent one', async () => {
     deniedKeyPrefixes = [PRO_MIN_KEYS];
     const { deps } = makeProDeps();
@@ -222,17 +222,12 @@ describe('#7818 — branches with no request id stay null', () => {
     assert.equal(body.error.code, -32029);
   });
 
-  it('a rate-limited notification has no id to echo and keeps null', async () => {
-    // `notifications/initialized` normally dispatches to a bodyless 202. The
-    // limiter sits upstream of dispatch, so a denied notification gets the
-    // error envelope instead — and a notification carries no id by definition,
-    // so `undefined ?? null` is the correct answer, not a lost id. This is the
-    // second documented `"id": null` case alongside the SSE replay channel.
+  it('acknowledges a valid notification without a JSON-RPC response or quota charge', async () => {
     deniedKeyPrefixes = [ANON_KEYS];
     const res = await mcpHandler(anonPost({ jsonrpc: '2.0', method: 'notifications/initialized' }));
-    const body = await res.json();
-    assert.equal(body.id, null, 'a notification carries no id to correlate');
-    assert.equal(body.error.code, -32029);
+    assert.equal(res.status, 202);
+    assert.equal(await res.text(), '');
+    assert.deepEqual(limiterCalls, []);
   });
 
   it('an ALLOWED notification still dispatches to the bodyless 202', async () => {
