@@ -14,7 +14,12 @@ import { buildCancellationConfirmEmail } from "./cancellationEmailCopy";
 import { signDunningPortalToken } from "../lib/identitySigning";
 import { buildUnsubscribeUrl, listUnsubscribeHeaders } from "../lib/emailUnsubscribe";
 import { ResendSendError, sendResendEmail, type EmailPurpose } from "../lib/resendEmail";
-import { billingDeletionForEvent, billingDeletionForUser, isCoveringAt } from "./subscriptionHelpers";
+import {
+  billingDeletionForEvent,
+  billingDeletionForUser,
+  isCancellationScheduled,
+  isCoveringAt,
+} from "./subscriptionHelpers";
 
 export { formatAccessEndDate } from "./cancellationEmailCopy";
 
@@ -687,6 +692,7 @@ export const getDunningContext = internalQuery({
       status: sub.status,
       episodeAnchor: sub.onHoldAt ?? sub.updatedAt,
       cancelledAt: sub.cancelledAt ?? null,
+      cancelScheduledAt: isCancellationScheduled(sub) ? (sub.cancelScheduledAt ?? null) : null,
       currentPeriodEnd: sub.currentPeriodEnd,
       email: email.trim(),
       hasLiveSub,
@@ -979,6 +985,7 @@ type DunningContext = {
   status: string;
   episodeAnchor: number;
   cancelledAt: number | null;
+  cancelScheduledAt: number | null;
   currentPeriodEnd: number;
   email: string;
   hasLiveSub: boolean;
@@ -1045,9 +1052,14 @@ function evaluateDunningEligibility(
     // the cancelled sub is STILL covering. Re-checked here, not just at
     // schedule time, because the action runs detached — a reactivation or
     // an expiry can land in between, and "your access continues until
-    // <past date>" is worse than saying nothing.
-    if (sub.status !== "cancelled") return { ok: false, reason: "not_cancelled" };
-    if (sub.cancelledAt !== episodeAt) return { ok: false, reason: "stale_episode" };
+    // <past date>" is worse than saying nothing. A portal cancel keeps the
+    // row active until period end, so its episode is the scheduled-cancel
+    // anchor (null once the cancel is withdrawn).
+    const cancellationEpisode = sub.status === "cancelled" ? sub.cancelledAt : sub.cancelScheduledAt;
+    if (sub.status !== "cancelled" && cancellationEpisode === null) {
+      return { ok: false, reason: "not_cancelled" };
+    }
+    if (cancellationEpisode !== episodeAt) return { ok: false, reason: "stale_episode" };
     if (sub.currentPeriodEnd <= now) return { ok: false, reason: "not_covering" };
     return { ok: true };
   }
@@ -1301,6 +1313,24 @@ export const runDunningScan = internalMutation({
         dodoSubscriptionId: sub.dodoSubscriptionId,
         step: "cancellation_confirm",
         episodeAt: sub.cancelledAt,
+      });
+    }
+    const recentScheduledCancels = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_status_cancelScheduledAt", (q) =>
+        q
+          .eq("status", "active")
+          .gte("cancelScheduledAt", now - CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS),
+      )
+      .collect();
+    for (const sub of recentScheduledCancels) {
+      if (sub.cancelScheduledAt === undefined || !isCancellationScheduled(sub)) continue;
+      if (sub.currentPeriodEnd < now) continue;
+      paidThroughCancelled.push(sub);
+      due.push({
+        dodoSubscriptionId: sub.dodoSubscriptionId,
+        step: "cancellation_confirm",
+        episodeAt: sub.cancelScheduledAt,
       });
     }
 
