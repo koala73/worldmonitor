@@ -2451,6 +2451,7 @@ const ACTIVATION_MARKERS = {
 export const COVERAGE_FAILURE_REASONS = Object.freeze([
   'provider-cooldown',
   'provider-error',
+  'source-http-error',
   'missing-price',
   'price-evidence-missing',
   'quantity-as-price',

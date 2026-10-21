@@ -200,7 +200,7 @@ describe('price-evidence gate', () => {
     expect((err as SearchTargetError).rejectedCount).toBe(0);
   });
 
-  it('escalates to the Exa fallback when Firecrawl fails the evidence check', async () => {
+  it.each([undefined, 403])('uses the configured fallback after a source failure or missing price evidence (status %s)', async (sourceStatusCode) => {
     const exa = {
       search: vi.fn().mockResolvedValue([{ url: PRODUCT_URL }]),
       extract: vi.fn().mockResolvedValue({
@@ -211,7 +211,8 @@ describe('price-evidence gate', () => {
     const firecrawl = {
       extract: vi.fn().mockResolvedValue({
         data: goodExtract,
-        pageContent: 'unrelated shell content',
+        sourceStatusCode,
+        pageContent: sourceStatusCode ? '# 403 Forbidden\n4.60' : 'unrelated shell content',
       }),
     } as unknown as FirecrawlProvider;
 
