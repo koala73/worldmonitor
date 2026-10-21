@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { existsSync, globSync, readFileSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { matchesGlob, resolve } from 'node:path';
 import { test } from 'node:test';
+import { parse } from 'yaml';
 
 // `node --test` ignores a path argument that names no file and exits 0
 // (Node 24.20.0: `node --test ok.test.mjs missing.test.mjs` runs one test
@@ -144,4 +145,36 @@ test('test:data owns every resilience-validation-smoke suite', () => {
     [],
     'resilience-validation-smoke is skipped on code PRs (#7772 A), so test:data must run every file it lists',
   );
+});
+
+test('Zapier suites have a CI owner on integration and shared registry changes', () => {
+  const workflowPath = '.github/workflows/zapier-tests.yml';
+  assert.ok(existsSync(resolve(root, workflowPath)), 'Zapier suites need a CI workflow owner');
+  const workflow = parse(readFileSync(resolve(root, workflowPath), 'utf8'));
+  const integrationFiles = globSync('integrations/zapier/**', {
+    cwd: root, exclude: ['**/node_modules/**'],
+  }).filter((path) => statSync(resolve(root, path)).isFile());
+  assert.ok(integrationFiles.filter((path) => path.endsWith('.test.js')).length >= 15);
+  const inputs = [...integrationFiles, 'shared/event-triggers.json', workflowPath,
+    'tests/package-test-command-paths.test.mjs'];
+  for (const event of ['pull_request', 'push']) {
+    const trigger = workflow.on[event];
+    assert.ok(trigger, `Zapier CI must run on ${event}`);
+    assert.deepEqual(inputs.filter((path) => !trigger.paths.some((pattern) => matchesGlob(path, pattern))), [],
+      `${event} must cover the integration, shared registry and ownership guard`);
+  }
+  assert.ok(workflow.on.push.branches.includes('main'));
+  const job = workflow.jobs.zapier;
+  assert.equal(job.if, undefined, 'the owner must not conditionally skip its suites');
+  assert.equal(job.defaults.run['working-directory'], 'integrations/zapier');
+  const commands = job.steps.filter((step) => step.run).map((step) => {
+    assert.equal(step.if, undefined);
+    assert.equal(step['working-directory'], undefined);
+    return step.run;
+  });
+  assert.ok(commands.includes('npm ci --ignore-scripts --no-audit --no-fund'), 'CI must install the committed lockfile');
+  assert.ok(commands.includes('npm test'), 'CI must run the integration test command');
+  const manifest = JSON.parse(readFileSync(resolve(root, 'integrations/zapier/package.json'), 'utf8'));
+  assert.match(manifest.scripts.test, /^mocha --recursive test(?:\s|$)/);
+  assert.ok(existsSync(resolve(root, 'integrations/zapier/package-lock.json')));
 });
