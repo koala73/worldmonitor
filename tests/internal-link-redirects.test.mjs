@@ -230,10 +230,12 @@ function generatedRoutes(outDir) {
 }
 
 /**
- * Published documentation routes. Mintlify serves `/docs/<page>` only when the
- * page is BOTH a file on disk and listed in docs.json navigation, so the
- * intersection is the route set — a nav entry with no file 404s, and this repo
- * currently has three of those.
+ * Published documentation routes. A nav entry with no file 404s (this repo has
+ * three), so nav pages count only when the file exists. A file OUTSIDE the nav
+ * is still served unless docs/.mintignore excludes it: on 2026-10-21 all six
+ * unlisted, unignored pages (cross-border-movements, country-history-operations
+ * and four more) answered 200 on www.worldmonitor.app, and sampled ignored
+ * pages answered 404. .mintignore holds only exact paths and `dir/` prefixes.
  */
 function docsRoutes() {
   const config = JSON.parse(readRepo('docs/docs.json'));
@@ -257,7 +259,14 @@ function docsRoutes() {
     }
   };
   visit('.');
-  return new Set(navPages.filter((page) => files.has(page)).map((page) => `/docs/${page}`));
+  const ignorePatterns = readRepo('docs/.mintignore').split('\n').map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
+  assert.ok(ignorePatterns.every((p) => !/[*?[\]!]/.test(p)), 'docs/.mintignore gained a glob; teach docsRoutes to match it');
+  const ignored = (file) => ignorePatterns.some((p) => (p.endsWith('/')
+    ? `${file}/`.startsWith(p)
+    : [`${file}.md`, `${file}.mdx`].includes(p)));
+  const published = [...navPages.filter((page) => files.has(page)), ...[...files].filter((file) => !ignored(file))];
+  return new Set(published.map((page) => `/docs/${page}`));
 }
 
 /** Astro blog routes: the index pages plus one route per post, author and glossary term. */
