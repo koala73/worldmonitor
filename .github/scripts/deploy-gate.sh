@@ -155,7 +155,7 @@ required='["changes","typecheck-changes","lint-changes","docs-stats","unit","con
 # every success earned under the old rules, because the sweep only re-evaluates
 # a SUCCESS whose stamp differs (#5851). Bump this whenever the meaning of a
 # passing gate changes.
-gate_rules='base-drift-v2'
+gate_rules='base-drift-v3'
 gate_contract=$(REQUIRED_JOBS="$required" GATE_RULES="$gate_rules" python3 -c 'import hashlib, os; print(hashlib.sha256((os.environ["REQUIRED_JOBS"] + "\n" + os.environ["GATE_RULES"]).encode()).hexdigest()[:12])')
 gate_stamp="[gate-contract:$gate_contract]"
 BASE_DRIFT_REMOTE=${BASE_DRIFT_REMOTE:-origin}
@@ -564,9 +564,29 @@ if ! base_drift "$SHA"; then
 fi
 
 if [ -n "$drift_files" ]; then
-  post_gate_status "failure" "Stale base: main changed $(name_count "$drift_files") file(s) here: $drift_files"
-  active_sha=""
-  return 0
+  # Squash and rebase merges do not retain the PR head's ancestry.
+  if ! merged_head=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/commits/$SHA/pulls?per_page=100" --paginate --slurp |
+    jq -r --arg sha "$SHA" '
+      if type == "array" and length > 0 and all(.[];
+        type == "array" and all(.[];
+          (.head.sha | type) == "string" and
+          (.state == "open" or .state == "closed") and
+          (.merged_at == null or (.merged_at | type) == "string")))
+      then [.[][] | select(.head.sha == $sha)] as $prs |
+        (any($prs[]; .state == "closed" and .merged_at != null) and
+         (any($prs[]; .state == "open") | not))
+      else error("Incomplete associated pull-request response") end'); then
+    post_gate_status "pending" "Deploy Gate could not read associated PRs; retry scheduled"
+    active_sha=""
+    return 0
+  fi
+  if [ "$merged_head" != "true" ]; then
+    post_gate_status "failure" "Stale base: main changed $(name_count "$drift_files") file(s) here: $drift_files"
+    active_sha=""
+    return 0
+  fi
+  echo "Skipping base drift for merged PR head $SHA"
 fi
 
 post_gate_status "success" "All required PR gates passed"

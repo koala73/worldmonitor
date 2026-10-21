@@ -746,6 +746,9 @@
     "entry": "scripts/seed-bundle-energy-sources.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-energy-sources",
+    "requiredEnv": [
+      "COMTRADE_API_KEYS"
+    ],
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
       "scripts/_content-age-helpers.mjs",
