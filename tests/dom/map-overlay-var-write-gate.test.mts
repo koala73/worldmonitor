@@ -20,7 +20,9 @@ describe('map overlay counter-scale writes', () => {
       emitStateChange: () => {},
     }) as TransformMap;
     const write = vi.spyOn(wrapper.style, 'setProperty');
-    const overlayWrites = () => write.mock.calls.filter(([name]) => name.startsWith('--'));
+    const overlayWrites = () => write.mock.calls
+      .filter(([name]) => name.startsWith('--'))
+      .sort(([left], [right]) => left.localeCompare(right));
 
     map.applyTransform();
     expect(overlayWrites()).toEqual([
