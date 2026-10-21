@@ -3170,6 +3170,7 @@ paths:
                             example:
                                 "cbReserves":
                                     "asOfMonth": "example"
+                                    "indicator": "example"
                                     "topBuyers12m":
                                         - "deltaTonnes12m": 1.5
                                           "iso3": "USA"
@@ -3183,7 +3184,6 @@ paths:
                                         - "deltaTonnes12m": 1.5
                                           "iso3": "USA"
                                           "name": "WorldMonitor Analyst"
-                                    "totalTonnes": 1
                                 "cot":
                                     "managedMoney":
                                         "longPositions": "1717200000000"
@@ -5631,6 +5631,7 @@ components:
                 totalTonnes:
                     type: number
                     format: double
+                    description: Absent when the source does not report physical quantities.
                 topHolders:
                     type: array
                     items:
@@ -5643,6 +5644,14 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/GoldCbMover'
+                indicator:
+                    type: string
+                    description: IMF IRFCL indicator used by the reserve snapshot.
+                valueIsOunces:
+                    type: boolean
+                    description: |-
+                        True for ounce-based measurements. False for the USD fallback, where
+                         tonne quantities and physical movers are unavailable. Absent if unknown.
         GoldCbHolder:
             type: object
             properties:
@@ -5653,6 +5662,7 @@ components:
                 tonnes:
                     type: number
                     format: double
+                    description: Absent when the source does not report a physical quantity.
                 pctOfReserves:
                     type: number
                     format: double

@@ -17,11 +17,11 @@ interface SessionRange { dayHigh: number; dayLow: number; prevClose: number }
 interface Returns { w1: number; m1: number; ytd: number; y1: number }
 interface Range52w { hi: number; lo: number; positionPct: number }
 interface Driver { symbol: string; label: string; value: number; changePct: number; correlation30d: number }
-interface CbHolder { iso3: string; name: string; tonnes: number; pctOfReserves: number }
+interface CbHolder { iso3: string; name: string; tonnes?: number; pctOfReserves: number }
 interface CbMover { iso3: string; name: string; deltaTonnes12m: number }
 interface CbReserves {
   asOfMonth: string;
-  totalTonnes: number;
+  totalTonnes?: number;
   topHolders: CbHolder[];
   topBuyers12m: CbMover[];
   topSellers12m: CbMover[];
@@ -316,7 +316,7 @@ export class GoldIntelligencePanel extends Panel {
 
     const holderRow = (h: CbHolder, rank: number) => `<div style="display:flex;justify-content:space-between;font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:1px 0">
       <span style="color:var(--text-dim)">${rank}. ${escapeHtml(h.name)}</span>
-      <span style="font-weight:600">${h.tonnes > 0 ? `${h.tonnes.toFixed(1)}t` : '—'}</span>
+      <span style="font-weight:600">${h.tonnes != null && h.tonnes > 0 ? `${h.tonnes.toFixed(1)}t` : '—'}</span>
     </div>`;
     const moverRow = (m: CbMover) => {
       const color = m.deltaTonnes12m >= 0 ? '#2ecc71' : '#e74c3c';
