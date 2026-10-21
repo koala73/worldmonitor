@@ -8,8 +8,9 @@ fallbacks, no OpenRouter unless the list names it.
 
 ## What it covers
 
-Every LLM call made at request time on behalf of a restricted account,
-through the REST API, MCP, or a dashboard session:
+Every LLM call that carries a restricted account's own input: request-time
+calls made through the REST API, MCP or a dashboard session, and the Railway
+jobs that put that user's data into a prompt.
 
 | Surface | Handler | Under an `anthropic`-only policy |
 |---|---|---|
@@ -21,8 +22,22 @@ through the REST API, MCP, or a dashboard session:
 | Dashboard chat analyst | `api/chat-analyst.ts` | Anthropic (streamed) |
 | Widget builder | `scripts/ais-relay.cjs` widget agent | Already Anthropic for every account |
 | `search_intel_history`, `get_similar_events` | query embeddings (OpenRouter only) | Refused with 403; no keyword index exists to fall back to |
+| AI alert impact (user's alert profile) | `scripts/notification-relay.cjs` `generateEventImpact` | Anthropic |
+| Personalised digest prose (profile, greeting) | `scripts/seed-digest-notifications.mjs` → `brief-llm.mjs` `generateDigestProse` | Anthropic, both synthesis levels |
+| Company Monitoring admission classifier | `convex/companyMonitoring/admission.ts` claim | Candidate rejected (`ai_routing_policy_excludes_classifier`) before evidence is sent |
 
-Each of these handlers adds `:ai=<providers>` to its Redis cache key for a
+The Railway jobs read the policy through `/relay/ai-routing-policy` with the
+delivery relay secret (`scripts/lib/ai-routing-policy.cjs`, 60 s in-process
+cache, fail closed) and call Anthropic through `scripts/lib/llm-chain.cjs`,
+where `anthropic` is opt-in only.
+
+The Company Monitoring classifier runs one frozen, evaluated model route
+through OpenRouter (`docs/internal/company-monitoring/provider-policy.md`).
+Swapping in another provider per account would invalidate that evaluation, so
+an owner whose policy excludes `openrouter` gets no classification at all
+rather than a rerouted one. Allowing `openrouter` in the policy re-enables it.
+
+Each request-time handler adds `:ai=<providers>` to its Redis cache key for a
 restricted caller, so the caller is never served text another provider wrote.
 Unrestricted callers keep the existing keys. These RPCs are tier-gated, so the
 gateway marks their responses private and the CDN never stores them.
@@ -30,20 +45,9 @@ gateway marks their responses private and the CDN never stores them.
 ## What it does not cover
 
 - **Shared content generated in the background** (insights, forecasts, the
-  shared country brief, feed classification, digests of public headlines).
-  It contains no customer input and is the same for everyone.
-- **Background jobs that use one user's data** run on Railway and still use
-  their own chains:
-  - `scripts/notification-relay.cjs`: AI alert summaries that include the
-    user's alert profile (via `scripts/lib/llm-chain.cjs`).
-  - `scripts/lib/brief-llm.mjs` `generateDigestProse(userId, …)`: per-user
-    digest prose.
-  - `scripts/lib/company-monitoring-classifier-client.mjs`: hard-codes
-    OpenRouter. Company Monitoring is dark (`COMPANY_MONITORING_ROLLOUT_FLAGS`);
-    this must be covered before it ships.
-
-  Until those honour the policy, do not enable AI alert summaries, AI digests
-  or Company Monitoring for a restricted account.
+  shared country brief, feed classification, the public digest, and per-story
+  "why it matters" and descriptions inside a digest). It contains no customer
+  input and is the same for everyone.
 - **Operator keys** (`WORLDMONITOR_VALID_KEYS`) carry no user id and are never
   restricted. Provision a restricted customer with account-bound access:
   `wm_` user keys, MCP OAuth, or dashboard sign-in.
@@ -86,8 +90,11 @@ Anthropic model.
 
 ## Configuration
 
-- `ANTHROPIC_API_KEY` must be set on Vercel. Without it the `anthropic`
-  provider is unavailable and restricted accounts get no AI answers.
+- `ANTHROPIC_API_KEY` must be set on Vercel and on the Railway
+  `notification-relay` and digest services. Without it the `anthropic`
+  provider is unavailable and restricted accounts get no AI answers there.
+  The Railway jobs also need `CONVEX_NOTIFICATION_RELAY_SECRET` and
+  `CONVEX_SITE_URL` (or `CONVEX_URL`), which they already use.
 - `ANTHROPIC_MODEL` (default `claude-opus-5-5`) and optional
   `ANTHROPIC_REASONING_MODEL`. Utility calls run at effort `low`, reasoning
   calls at `medium`. Current models reject `temperature`, so it is not sent.

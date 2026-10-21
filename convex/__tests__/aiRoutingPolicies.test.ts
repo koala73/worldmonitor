@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
-import { internalAiRoutingPolicyHttpHandler } from "../http";
+import { internalAiRoutingPolicyHttpHandler, relayAiRoutingPolicyHttpHandler } from "../http";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -117,5 +117,45 @@ describe("/api/internal-ai-routing-policy HTTP action", () => {
   test("rejects a missing user id", async () => {
     const res = await call(vi.fn(), { "x-convex-shared-secret": CONVEX_SECRET }, {});
     expect(res.status).toBe(400);
+  });
+});
+
+describe("/relay/ai-routing-policy HTTP action", () => {
+  const DELIVERY = "delivery-secret-ai-routing-41aa";
+
+  beforeEach(() => {
+    vi.stubEnv("CONVEX_NOTIFICATION_RELAY_SECRET", DELIVERY);
+    vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "gateway-secret-ai-routing-77bb");
+    vi.stubEnv("RELAY_SHARED_SECRET", "ingestion-secret-ai-routing-99cc");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function call(runQuery: ReturnType<typeof vi.fn>, bearer: string | null, body: unknown) {
+    return relayAiRoutingPolicyHttpHandler(
+      { runQuery } as unknown as ActionCtx,
+      new Request("https://example.convex.site/relay/ai-routing-policy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
+        body: JSON.stringify(body),
+      }),
+    );
+  }
+
+  test("accepts only the delivery relay secret", async () => {
+    const runQuery = vi.fn().mockResolvedValue({ allowedProviders: ["anthropic"] });
+    for (const bearer of [null, "wrong", "gateway-secret-ai-routing-77bb", "ingestion-secret-ai-routing-99cc"]) {
+      expect((await call(runQuery, bearer, { userId: USER })).status).toBe(401);
+    }
+    expect(runQuery).not.toHaveBeenCalled();
+    const res = await call(runQuery, DELIVERY, { userId: USER });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ policy: { allowedProviders: ["anthropic"] } });
+  });
+
+  test("rejects a missing user id", async () => {
+    expect((await call(vi.fn(), DELIVERY, {})).status).toBe(400);
   });
 });

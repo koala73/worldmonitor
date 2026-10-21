@@ -220,6 +220,7 @@
       "CONVEX_NOTIFICATION_RELAY_SECRET"
     ],
     "watchPatterns": [
+      "scripts/lib/ai-routing-policy.cjs",
       "scripts/lib/corroboration-text.cjs",
       "scripts/lib/crypto.cjs",
       "scripts/lib/email-unsubscribe.cjs",
@@ -311,6 +312,7 @@
       "scripts/_digest-markdown.mjs",
       "scripts/clear-delivered-entry.mjs",
       "scripts/lib/_upstash-pipeline.mjs",
+      "scripts/lib/ai-routing-policy.cjs",
       "scripts/lib/brief-compose.mjs",
       "scripts/lib/brief-dedup-consts.mjs",
       "scripts/lib/brief-dedup-embed.mjs",

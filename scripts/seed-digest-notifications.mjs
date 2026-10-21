@@ -39,6 +39,7 @@ const {
 } = require('./lib/notification-webhook-signing.cjs');
 const { buildTeamsDigestPayload, sendTeamsPayload } = require('./lib/notification-teams.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
+const { createAiRoutingPolicyResolver, withAiRoutingPolicy } = require('./lib/ai-routing-policy.cjs');
 const { flushPendingLlmEvents } = require('./lib/llm-telemetry.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { fetchFollowedCountries } = require('./lib/followed-countries-fetch.cjs');
@@ -340,6 +341,11 @@ async function callAnalystWhyMatters(story) {
     return null;
   }
 }
+
+// Personalised digest prose carries the user's profile and greeting, so it
+// honours that user's AI routing policy (docs/internal/ai-routing-policy.md).
+// Story-level calls (why-matters, descriptions) use shared story content only.
+const resolveAiRoutingPolicy = createAiRoutingPolicyResolver({ siteUrl: CONVEX_SITE_URL, secret: RELAY_SECRET });
 
 // Dependencies injected into brief-llm.mjs. Defined near the top so
 // the upstashRest helper below is in scope when this closure runs
@@ -1747,7 +1753,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
         synthesisStories,
         sensitivity,
         ctx,
-        briefLlmDeps,
+        withAiRoutingPolicy(briefLlmDeps, await resolveAiRoutingPolicy(userId)),
         (level, kind, err) => {
           if (kind === 'throw') {
             console.warn(
