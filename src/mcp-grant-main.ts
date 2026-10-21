@@ -119,6 +119,14 @@ const SIGN_IN_CANCELLED_MESSAGE = 'Sign-in was cancelled. Try again or use your 
 const SIGN_IN_NOT_OPENED_MESSAGE = 'The sign-in window did not open. Try again.';
 
 let signInWatch: SignInDismissalWatch | null = null;
+/**
+ * Set by every prompt, automatic or not. Clerk emits on every client change,
+ * including the abandoned attempt a dismissed modal leaves behind and a stale
+ * user being cleared after a context 401. Re-opening the modal on those
+ * signed-out emissions would override the user's dismissal, so the page opens
+ * it unprompted at most once; after that the "Sign in" button is the way back.
+ */
+let signInPrompted = false;
 
 function stopSignInWatch(): void {
   signInWatch?.cancel();
@@ -145,6 +153,7 @@ function showSignInView(message: string | null): void {
  * view through `reactToAuth` first, which is what tells the two apart.
  */
 function promptSignIn(): void {
+  signInPrompted = true;
   stopSignInWatch();
   showSignInView(null);
   const watch = watchSignInDismissal({
@@ -409,15 +418,9 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
-  // Clerk emits on every client change, including the in-progress sign-in
-  // attempt a dismissed modal leaves behind. Re-opening the modal on each
-  // signed-out emission would trap the user in it, so only the first signed-out
-  // pass opens it; after that the "Sign in" button is the way back in.
-  let autoPrompted = false;
   const reactToAuth = async (): Promise<void> => {
     if (!getCurrentClerkUser()) {
-      if (!autoPrompted) {
-        autoPrompted = true;
+      if (!signInPrompted) {
         // On success subscribeClerk() fires reactToAuth again with a user.
         promptSignIn();
         return;
@@ -442,10 +445,7 @@ async function bootstrap(): Promise<void> {
     void loadContext(nonce);
   });
   $('authorizeBtn').addEventListener('click', () => { void onAuthorizeClick(nonce); });
-  $('signInBtn').addEventListener('click', () => {
-    autoPrompted = true;
-    promptSignIn();
-  });
+  $('signInBtn').addEventListener('click', () => { promptSignIn(); });
 
   subscribeClerk(() => { void reactToAuth(); });
   await reactToAuth();

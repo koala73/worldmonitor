@@ -74,6 +74,10 @@ async function stubClerkModule(
         window.__dismissClerkSignIn = () => {
           document.querySelector('.cl-modalBackdrop')?.remove();
         };
+        window.__signOutClerk = () => {
+          user = null;
+          window.__emitClerkSubscription?.();
+        };
         window.__completeClerkSignIn = () => {
           user = { email: 'e2e@worldmonitor.app' };
           document.querySelector('.cl-modalBackdrop')?.remove();
@@ -872,5 +876,27 @@ test.describe('MCP grant consent page (#5654)', () => {
       'Sign-in was cancelled. Try again or use your email code.',
     );
     await expect(page.locator('#loading')).toBeHidden();
+
+    // Clerk can clear the stale user and emit a signed-out update after the
+    // dismissal. That must not reopen the modal over the user's choice or wipe
+    // the reason they were shown.
+    const opensBefore = await page.evaluate(
+      () => (window as unknown as { __openSignInCount: number }).__openSignInCount,
+    );
+    await page.evaluate(() => {
+      (window as unknown as { __signOutClerk: () => void }).__signOutClerk();
+    });
+    await page.evaluate(
+      () => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+    );
+    expect(
+      await page.evaluate(() => (window as unknown as { __openSignInCount: number }).__openSignInCount),
+    ).toBe(opensBefore);
+    await expect(page.locator('.cl-modalBackdrop')).toHaveCount(0);
+    await expect(page.locator('#signInMessage')).toHaveText(
+      'Sign-in was cancelled. Try again or use your email code.',
+    );
   });
 });
