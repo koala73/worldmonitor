@@ -846,6 +846,45 @@ test.describe('MCP grant consent page (#5654)', () => {
     ).toBe(false);
   });
 
+  test('a sign-out while the context loads keeps the sign-in view, not a late consent card', async ({
+    page,
+  }) => {
+    await stubClerkModule(page);
+    let releaseContext: () => void = () => {};
+    const held = new Promise<void>((resolve) => { releaseContext = resolve; });
+    let contextRequests = 0;
+    await page.route('**/api/internal/mcp-grant-context*', async (route) => {
+      contextRequests += 1;
+      await held;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ client_name: 'Claude Desktop', redirect_host: 'api.worldmonitor.app' }),
+      });
+    });
+
+    await page.goto(GRANT_PAGE);
+    await expect.poll(() => contextRequests).toBeGreaterThan(0);
+
+    // Signed out mid-load: the page prompts sign-in. The held response that
+    // arrives afterwards belongs to the old session and must not paint consent
+    // over the sign-in view, or a later dismissal has nothing to return to.
+    await page.evaluate(() => {
+      (window as unknown as { __signOutClerk: () => void }).__signOutClerk();
+    });
+    await expect(page.locator('#signInView')).toBeVisible();
+    releaseContext();
+    await page.waitForTimeout(300);
+    await expect(page.locator('#consent')).toBeHidden();
+    await expect(page.locator('#signInView')).toBeVisible();
+
+    await dismissClerkSignIn(page);
+    await expect(page.locator('#signInMessage')).toHaveText(
+      'Sign-in was cancelled. Try again or use your email code.',
+    );
+    await expect(page.locator('#signInBtn')).toBeVisible();
+  });
+
   test('401 from context triggers sign-in (consent never renders)', async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as { __openSignInCalled: boolean }).__openSignInCalled = false;

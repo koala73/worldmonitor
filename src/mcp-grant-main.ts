@@ -134,6 +134,9 @@ function stopSignInWatch(): void {
 }
 
 function showSignInView(message: string | null): void {
+  // A context load still in flight belongs to the session that just went away;
+  // retire it so its late response cannot paint consent over this view.
+  contextLoadGeneration += 1;
   resetMintPhase();
   hide('loading');
   hide('consent');
