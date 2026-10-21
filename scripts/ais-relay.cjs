@@ -5210,11 +5210,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
         console.warn(formatClassifyDigestFetchFailure(resp.statusCode, RELAY_API_KEY));
         return { total: 0, classified: 0, skipped: 0, fetchFailed: true };
       }
-      const body = await new Promise((resolve) => {
-        let d = '';
-        resp.on('data', (c) => { d += c; });
-        resp.on('end', () => resolve(d));
-      });
+      let body = '';
+      resp.setEncoding('utf8');
+      for await (const chunk of resp) body += chunk;
       digest = JSON.parse(body);
       break;
     } catch (e) {
