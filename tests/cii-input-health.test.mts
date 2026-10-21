@@ -29,7 +29,15 @@ const { __clearLocalUnavailableBackoffForTests } = await import('../server/_shar
 const { __testing__ } = await import('../api/health.js');
 const { assessCiiInputs, CII_INPUT_POLICY } = await import('../api/_cii-input-health.js');
 
-const { classifyKey, composeRiskScoresInputHealth, isContainedHealthWarning, BOOTSTRAP_KEYS, SEED_META, STATUS_COUNTS } = __testing__;
+const {
+  classifyKey,
+  composeRiskScoresInputHealth,
+  healthResponseBody,
+  isContainedHealthWarning,
+  BOOTSTRAP_KEYS,
+  SEED_META,
+  STATUS_COUNTS,
+} = __testing__;
 
 const SEED_META_KEY = 'seed-meta:intelligence:risk-scores';
 const NOW = Date.now();
@@ -319,6 +327,43 @@ describe('composeRiskScoresInputHealth', () => {
     const entry = riskScoresHealth(meta({ ...allLive(), fires: { state: 'missing' } }, { fetchedAt: NOW - 120 * MIN }));
     assert.equal(entry.status, 'STALE_SEED');
     assert.deepEqual(entry.ciiInputs.dead.map((input: { id: string }) => input.id), ['fires']);
+  });
+
+  it('a stale report with an unfed family is not contained either', () => {
+    // Otherwise the warning would turn into a contained HEALTHY once the seed-meta ages past 30 min.
+    const raw = JSON.stringify(meta(
+      { ...allLive(), acled: { state: 'not_configured' }, gdeltCountryEvents: { state: 'missing' } },
+      { fetchedAt: NOW - 120 * MIN },
+    ));
+    const ctx = {
+      containmentEvidenceByName: new Map(),
+      keyStrens: new Map([[BOOTSTRAP_KEYS.riskScores, 4096]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[SEED_META.riskScores.key, raw]]),
+      keyMetaErrors: new Map(),
+      now: NOW,
+    };
+    const entry = composeRiskScoresInputHealth(
+      classifyKey('riskScores', BOOTSTRAP_KEYS.riskScores, { allowOnDemand: false }, ctx),
+      raw, {}, NOW, ctx.containmentEvidenceByName,
+    );
+    assert.equal(entry.status, 'STALE_SEED');
+    assert.equal(isContainedHealthWarning(entry, ctx.containmentEvidenceByName.get('riskScores'), NOW), false);
+  });
+
+  it('keeps the per-input detail out of the anonymous compact body', () => {
+    // Which sources a deployment has not configured, or has lost, is operator-only.
+    const entry = riskScoresHealth(meta({ ...allLive(), acled: { state: 'not_configured' }, gdeltCountryEvents: { state: 'missing' } }));
+    const snapshot = { status: 'WARNING', summary: {}, checkedAt: new Date(NOW).toISOString(), checks: { riskScores: entry } };
+    const compact = healthResponseBody(snapshot, true);
+    assert.equal(compact.problems.riskScores.status, 'COVERAGE_DEGRADED');
+    assert.equal(compact.problems.riskScores.ciiInputs, undefined);
+    assert.equal(
+      healthResponseBody({ ...snapshot, checks: undefined, problems: { riskScores: entry } }, true).problems.riskScores.ciiInputs,
+      undefined,
+      'a compact snapshot cached before the rule is scrubbed too',
+    );
+    assert.deepEqual(healthResponseBody(snapshot, false).checks.riskScores.ciiInputs, entry.ciiInputs);
   });
 });
 

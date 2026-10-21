@@ -447,7 +447,8 @@ for them), `information` (news insights and the threat summary), `security`
 (military activity, GPS jamming and aviation) and `cyber`. These verdicts
 only raise an `OK` or `COVERAGE_PARTIAL` result, and they are never contained
 behind the served payload: the payload is present, but its scores are missing
-a signal. `/api/seed-health` grades the same report for
+a signal. `ciiInputs` is operator-only: the anonymous `?compact=1` body keeps
+the status and drops the block. `/api/seed-health` grades the same report for
 `intelligence:risk-scores` and reports `coverage_partial` with the same
 `ciiInputs` block, without the sibling staleness checks.
 

@@ -4307,10 +4307,11 @@ function composeRiskScoresInputHealth(entry, rawMeta, checks, now, containmentEv
   }
   const ciiInputs = assessCiiInputs(meta, now, sourceStatuses);
   const unfed = !ciiInputs.valid || ciiInputs.unfedFamilies.length > 0;
-  if ((entry.status !== 'OK' && entry.status !== 'COVERAGE_PARTIAL') || (!unfed && ciiInputs.dead.length === 0)) {
-    return { ...entry, ciiInputs };
-  }
+  if (!unfed && ciiInputs.dead.length === 0) return { ...entry, ciiInputs };
+  // Also on a stale verdict: otherwise it becomes a contained HEALTHY as the
+  // seed-meta ages, while the served scores still lack the input.
   containmentEvidenceByName?.delete('riskScores');
+  if (entry.status !== 'OK' && entry.status !== 'COVERAGE_PARTIAL') return { ...entry, ciiInputs };
   return { ...entry, status: unfed ? 'COVERAGE_DEGRADED' : 'COVERAGE_PARTIAL', ciiInputs };
 }
 
@@ -5128,11 +5129,14 @@ function healthResponseBody(snapshot, compact) {
       }
       if (check?.contentFreshness === undefined
         && check?.decisionGroups === undefined
-        && check?.chinaRow === undefined) continue;
+        && check?.chinaRow === undefined
+        && check?.ciiInputs === undefined) continue;
+      // `ciiInputs` names which CII sources are unconfigured or dead.
       const {
         contentFreshness: _detail,
         decisionGroups: _groups,
         chinaRow: _chinaRow,
+        ciiInputs: _ciiInputs,
         ...publicFields
       } = check;
       collection[name] = publicFields;

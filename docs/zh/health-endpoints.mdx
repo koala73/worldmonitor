@@ -142,7 +142,7 @@ OREF 历史键缺失视为安静，因为中继仅在警报变化时写入。`no
 
 系列包括 `conflict`（ACLED 与 GDELT 国家事件，即动荡与冲突背后的实时订阅源；UCDP 是年度下限，不能替代它们）、
 `information`（新闻洞察与威胁摘要）、`security`（军事活动、GPS 干扰与航空）以及 `cyber`。这些判定只会提升
-`OK` 或 `COVERAGE_PARTIAL` 结果，并且永远不会因已提供的负载而被抑制：负载存在，但其分数缺少一个信号。
+`OK` 或 `COVERAGE_PARTIAL` 结果，并且永远不会因已提供的负载而被抑制：负载存在，但其分数缺少一个信号。`ciiInputs` 仅对运营者可见：匿名的 `?compact=1` 响应保留状态并移除该块。
 `/api/seed-health` 对 `intelligence:risk-scores` 评估同一报告，报告 `coverage_partial` 并附带相同的
 `ciiInputs` 块，但不含同级过期检查。
 
