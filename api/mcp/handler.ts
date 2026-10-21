@@ -999,7 +999,7 @@ async function mcpHandlerInner(
 
   if (body.params !== undefined && (body.params === null || typeof body.params !== 'object' || Array.isArray(body.params))) {
     usage.phase = 'malformed';
-    return rpcError(body.id ?? null, -32600, 'Invalid request: params must be an object', corsHeaders);
+    return rpcError(body.id ?? null, -32600, 'Invalid request: params must be an object', corsHeaders, undefined, body.id === undefined ? 400 : 200);
   }
 
   const { id, method } = body;
@@ -1022,6 +1022,11 @@ async function mcpHandlerInner(
   }
 
   if (id === undefined) {
+    const limited = await applyAnonDiscoveryLimit(req, corsHeaders);
+    if (limited) {
+      usage.phase = 'limit';
+      return new Response(null, { status: 429, headers: limited.headers });
+    }
     return new Response(null, { status: 202, headers: withMcpNoStore(corsHeaders) });
   }
 

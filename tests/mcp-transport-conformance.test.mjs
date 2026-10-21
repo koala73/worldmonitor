@@ -212,13 +212,13 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     const cases = [
       ...[null, 1.25, -1.25, true, {}, []].map(id => [{ jsonrpc: '2.0', id, method: 'ping' }, null]),
       ...[null, [], 17, 'params', false].map(params => [{ jsonrpc: '2.0', id: 'params', method: 'ping', params }, 'params']),
-      [{ jsonrpc: '2.0', method: 'notifications/initialized', params: null }, null],
+      ...[null, [], 17, 'params', false].map(params => [{ jsonrpc: '2.0', method: 'notifications/initialized', params }, null]),
       [{ jsonrpc: '2.0', id: null, method: 'notifications/initialized' }, null],
     ];
     for (const [body, errorId] of cases) {
       const res = await fetch(server.url, { method: 'POST', body: JSON.stringify(body) });
       const result = await res.json();
-      assert.equal(res.status, 200);
+      assert.equal(res.status, body.id === undefined ? 400 : 200);
       assert.equal(result.error?.code, -32600, JSON.stringify(body));
       assert.equal(result.id, errorId);
       assert.equal(res.headers.get('cache-control'), 'no-store');
