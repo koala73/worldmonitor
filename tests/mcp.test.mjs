@@ -349,7 +349,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.message, `Method not found: ${method.slice(0, 100)}`);
   });
 
-  it('malformed body returns JSON-RPC -32600', async () => {
+  it('malformed body returns JSON-RPC -32700', async () => {
     const req = new Request(BASE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
@@ -357,7 +357,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     });
     const res = await handler(req);
     const body = await res.json();
-    assert.equal(body.error?.code, -32600);
+    assert.equal(body.error?.code, -32700);
   });
 
   it('rejects an oversized JSON-RPC body before parsing (#7406)', async () => {
