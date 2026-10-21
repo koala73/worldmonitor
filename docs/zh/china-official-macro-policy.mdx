@@ -17,7 +17,7 @@ WorldMonitor 维护两条独立官方文件管线：修订感知的数值宏观�
 | `nbs_fixed_asset_investment_yoy` | 中国国家统计局 | 投资/房地产 | 百分比 | 75 天 |
 | `nbs_real_estate_investment_yoy` | 中国国家统计局 | 投资/房地产 | 百分比 | 75 天 |
 | `safe_fx_reserves` | 国家外汇管理局 | 外部压力 | 1 亿美元 | 45 天 |
-| `safe_bank_fx_settlement` | 国家外汇管理局 | 外部压力 | 1 亿元人民币 | 45 天 |
+| `safe_bank_fx_settlement` | 国家外汇管理局 | 外部压力 | 1 亿元人民币 | 60 天 |
 
 NBS 从 `www.stats.gov.cn/english/PressRelease/` 采集；SAFE 从
 `www.safe.gov.cn/safe/` 采集。两者都有有界请求预算、手动重定向处理、响应大小
@@ -45,7 +45,10 @@ NBS 从 `www.stats.gov.cn/english/PressRelease/` 采集；SAFE 从
 
 只有发布序列契约提供有效比较时才计算方向。缺失比较值保持不可用。只有五个必需
 观测都有效并位于各自年龄预算内，快照才是 launch-ready。传输新鲜度与快照完整性
-写入独立 seed metadata。
+写入独立 seed metadata。只有已发布的快照才记录完成运行，因此被拒绝的快照会在下一次
+宏观 bundle 运行（每日 UTC 08:00 与 09:00）重试，而不是等待 36 小时间隔。传输
+metadata 携带所抓取快照的内容年龄；非 launch-ready 快照没有内容年龄，因此在快照
+重新发布前，health 会将 `chinaMacro` 报告为 `STALE_CONTENT`。
 
 `GET /api/economic/v1/get-china-macro-snapshot` 仅读取规范
 `economic:china:macro:v2` seed，缓存缺失时不会向上游发布者扇出。Railway 宏观成员
