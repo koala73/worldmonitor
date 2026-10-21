@@ -230,21 +230,15 @@ function generatedRoutes(outDir) {
 }
 
 /**
- * Published documentation routes. Mintlify serves `/docs/<page>` only when the
- * page is BOTH a file on disk and listed in docs.json navigation, so the
- * intersection is the route set — a nav entry with no file 404s, and this repo
- * currently has three of those.
+ * Published documentation routes: every page file on disk that docs/.mintignore
+ * does not exclude, whether or not docs.json lists it. A nav entry with no file
+ * 404s (this repo has three), an ignored file is never built even when listed,
+ * and a file outside the nav is still served: on 2026-10-21 all six unlisted,
+ * unignored pages (cross-border-movements, country-history-operations and four
+ * more) answered 200 on www.worldmonitor.app, and sampled ignored pages
+ * answered 404. .mintignore holds only exact paths and `dir/` prefixes.
  */
 function docsRoutes() {
-  const config = JSON.parse(readRepo('docs/docs.json'));
-  const navPages = [];
-  const walk = (node) => {
-    if (typeof node === 'string') navPages.push(node);
-    else if (Array.isArray(node)) node.forEach(walk);
-    else if (node && typeof node === 'object') Object.values(node).forEach(walk);
-  };
-  walk(config.navigation);
-  assert.ok(navPages.length > 100, `docs.json navigation extraction found ${navPages.length} pages`);
   const files = new Set();
   const visit = (relative) => {
     for (const entry of readdirSync(join(repoRoot, 'docs', relative), { withFileTypes: true })) {
@@ -257,7 +251,14 @@ function docsRoutes() {
     }
   };
   visit('.');
-  return new Set(navPages.filter((page) => files.has(page)).map((page) => `/docs/${page}`));
+  const ignorePatterns = readRepo('docs/.mintignore').split('\n').map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
+  assert.ok(ignorePatterns.every((p) => !/[*?[\]!]/.test(p)), 'docs/.mintignore gained a glob; teach docsRoutes to match it');
+  const ignored = (file) => ignorePatterns.some((p) => (p.endsWith('/')
+    ? file.startsWith(p) // `architecture/` hides docs/architecture/*, not architecture.mdx
+    : [`${file}.md`, `${file}.mdx`].includes(p)));
+  assert.ok(files.size > 100, `docs page extraction found ${files.size} files`);
+  return new Set([...files].filter((file) => !ignored(file)).map((page) => `/docs/${page}`));
 }
 
 /** Astro blog routes: the index pages plus one route per post, author and glossary term. */

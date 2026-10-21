@@ -2342,17 +2342,19 @@ UNHCR 单一报告年度的年度流离失所统计：全球总数、按来源�
 
 传入 `view: "events"` 时，工具改为在 `iduEvents` 中返回 IDMC 国内流离失所更新：各国过去 30 天在本国境内流离失所的人数（分冲突和灾害）、`newlyReported7d`（IDMC 在过去 7 天发布的数字，不论流离失所日期）、`surge` 标志（至少 5,000 人且为此前 150 天月均值的三倍），以及过去 180 天内带位置的 IDMC 数字，按时间由新到旧排列。IDMC 发布数字的中位滞后约为三周，因此最近几周的数据并不完整。
 
+传入 `view: "regions"` 时，工具在 `dtmRegions` 中返回 IOM 流离失所跟踪矩阵（DTM）数据：过去 18 个月内每个 DTM 行动的最新一轮调查，按规模由大到小排列，包括国内流离失所者总数、按原因的划分、各一级行政区的人数（已知时附 OCHA P-code 和坐标）以及最多 30 条区域间流向。同一国家的行动可能重叠（全国性行动与省级行动），因此不要将其总数相加。调查轮次最多每月一次。
+
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `countries` | `array<string>` | 要保留的 ISO 3166-1 alpha-3 国家代码（例如 ["SYR","UKR","AFG"]）。匹配逐国总数和来源/庇护流。省略则返回全部。 |
-| `limit` | number | 将逐国和顶级流列表限制为最多这么多项（默认 30，传 0 表示不限）。事件最多 100 条。 |
-| `view` | `string: annual / movements / events` | `annual`（默认）：`summary` 中的 UNHCR 年度存量。`movements`：按来源日期的跨境流动报告。`events`：`iduEvents` 中的 IDMC 国内流离失所数据。 |
+| `countries` | `array<string>` | 要保留的国家名称、ISO alpha-2 或 alpha-3 代码（例如 ["Syria","UA","AFG"]）。匹配逐国总数、来源/庇护流、IDMC 数据和 DTM 行动。省略则返回全部。无法解析的国家名称和 alpha-3 代码返回 Invalid params；未知的两字母代码不会报错，只是没有匹配结果。 |
+| `limit` | number | 将逐国、顶级流、IDMC 和 DTM 行动列表限制为最多这么多项（默认 30，传 0 表示不限）。IDMC 事件最多 100 条。 |
+| `view` | `string: annual / movements / events / regions` | `annual`（默认）：`summary` 中的 UNHCR 年度存量。`movements`：按来源日期的跨境流动报告。`events`：`iduEvents` 中的 IDMC 国内流离失所数据。`regions`：`dtmRegions` 中的 IOM DTM 行动数据。 |
 
 - **API 端点：** `GET /api/displacement/v1/get-displacement-summary`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 年度视图最多 **2.5 天**、事件视图最多 **2 天**后标记 `stale: true`（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 年度视图最多 **2.5 天**、事件和区域视图最多 **2 天**后标记 `stale: true`（由 seeder cron 的预期间隔设定）；区域视图的最新调查轮次超过 90 天时也标记为过期。
 
 <CodeGroup>
 
