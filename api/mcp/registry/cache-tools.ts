@@ -6,6 +6,8 @@ import { CAPITAL_FLOW_PAIR_LEG_SCHEMA, CAPITAL_FLOWS_MAX_COUNTRIES, CAPITAL_FLOW
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
 import { MARKET_ASSET_CLASSES } from '../../../shared/panel-admission';
 import { normalizeSocialVelocity } from '../../_social-velocity.js';
+// @ts-expect-error - existing Edge-safe JavaScript module has no declaration.
+import { assessContentAge } from '../../_content-age.js';
 import { projectNaturalEventsRetention } from '../../_natural-events-dashboard.js';
 import { NATURAL_DISASTER_EVENT_LISTS, presentNaturalDisastersPanel } from '../_natural-disasters-reuse';
 import { GEO_FILTER_OUTPUT_SCHEMA, GEO_FILTER_PROPERTIES, attachGeoFilter, filterEventLists, locationPoint, locator, oldestDatedRows, parseEventFilter, pointAt, type EventList } from '../_geo-filter';
@@ -299,7 +301,10 @@ export function conflictPanelReuseUntil(value: unknown, now = Date.now()): numbe
   const cachedAt = Date.parse(value.cached_at as string);
   const source = value.conflict_source as ConflictSourceObservation;
   if (cachedAt > now || (source.ucdp.fetchedAt ?? Number.POSITIVE_INFINITY) > now) return null;
-  const deadline = cachedAt + Math.min(...CONFLICT_EVENTS_FRESHNESS_CHECKS.map(check => check.maxStaleMin)) * 60_000;
+  const content = assessContentAge(source.ucdp, now);
+  if (content?.contentStale) return null;
+  const contentDeadline = content ? content.newestItemAt! + (content.maxContentAgeMin + 0.5) * 60_000 : Number.POSITIVE_INFINITY;
+  const deadline = Math.min(contentDeadline, cachedAt + Math.min(...CONFLICT_EVENTS_FRESHNESS_CHECKS.map(check => check.maxStaleMin)) * 60_000);
   return deadline > now ? deadline : null;
 }
 
@@ -310,6 +315,8 @@ export function projectConflictSourceObservation(value: unknown): ConflictSource
     if (typeof value.candidateVersion === 'string' || value.candidateVersion === null) ucdp.candidateVersion = value.candidateVersion;
     if (typeof value.candidateComplete === 'boolean') ucdp.candidateComplete = value.candidateComplete;
     if (Number.isSafeInteger(value.annualFailedPages) && (value.annualFailedPages as number) >= 0) ucdp.annualFailedPages = value.annualFailedPages as number;
+    if ('newestItemAt' in value) ucdp.newestItemAt = typeof value.newestItemAt === 'number' && Number.isFinite(value.newestItemAt) ? value.newestItemAt : null;
+    if (typeof value.maxContentAgeMin === 'number' && Number.isFinite(value.maxContentAgeMin)) ucdp.maxContentAgeMin = value.maxContentAgeMin;
   }
   return { ucdp };
 }
@@ -1427,6 +1434,7 @@ export const CACHE_TOOLS: ToolDef[] = [
             properties: { ucdp: { type: 'object', properties: {
               fetchedAt: { type: 'number' }, candidateVersion: { type: ['string', 'null'] },
               candidateComplete: { type: 'boolean' }, annualFailedPages: { type: 'integer', minimum: 0 },
+              newestItemAt: { type: ['number', 'null'] }, maxContentAgeMin: { type: 'number' },
             } } },
           },
         },

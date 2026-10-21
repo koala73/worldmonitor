@@ -123,6 +123,7 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
     const token = envelope(first).panelRequest.token;
     const cacheSet = pipe.ops.flat().find(command => command[0] === 'SET' && command[1].includes(':data:'));
     assert.equal(cacheSet.at(-1), 30, 'reuse ends when rounded content age exceeds 90 days');
+    assert.deepEqual(envelope(first).conflict_source.ucdp, ucdpMeta);
     clock += 29_000;
     await invoke(deps, { panel_request: token });
     assert.equal(fetched.length, readCount);
