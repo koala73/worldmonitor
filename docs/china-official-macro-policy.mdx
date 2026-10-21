@@ -18,7 +18,7 @@ The launched macro snapshot requires five series:
 | `nbs_fixed_asset_investment_yoy` | National Bureau of Statistics of China | Investment/property | Percent | 75 days |
 | `nbs_real_estate_investment_yoy` | National Bureau of Statistics of China | Investment/property | Percent | 75 days |
 | `safe_fx_reserves` | State Administration of Foreign Exchange | External pressure | USD 100 million | 45 days |
-| `safe_bank_fx_settlement` | State Administration of Foreign Exchange | External pressure | CNY 100 million | 45 days |
+| `safe_bank_fx_settlement` | State Administration of Foreign Exchange | External pressure | CNY 100 million | 60 days |
 
 NBS is collected from `www.stats.gov.cn/english/PressRelease/`; SAFE is
 collected from `www.safe.gov.cn/safe/`. Both sources have bounded request
@@ -54,7 +54,12 @@ Direction is calculated only when the published series contract supplies a
 valid comparison. Missing comparison values remain unavailable. The snapshot
 is launch-ready only when all five required observations are valid and within
 their individual age budgets. Transport freshness and snapshot completeness
-are written as separate seed metadata.
+are written as separate seed metadata. Only a published snapshot records a
+completed run, so a rejected snapshot is retried on the next macro bundle tick
+(08:00 and 09:00 UTC daily) instead of waiting out the 36-hour interval. The
+transport metadata carries the content age of the fetched snapshot, and a
+snapshot that is not launch-ready has none, so health reports `STALE_CONTENT`
+for `chinaMacro` until the snapshot publishes again.
 
 `GET /api/economic/v1/get-china-macro-snapshot` reads the canonical
 `economic:china:macro:v2` seed and never fans out to upstream publishers on a
