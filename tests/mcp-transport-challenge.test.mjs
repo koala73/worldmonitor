@@ -94,7 +94,7 @@ describe('product MCP host aliases are migration-only', () => {
           const res = await request(`https://${host}${path}?caller-controlled=1`, { method, headers: { Accept: 'text/html' } });
           assert.equal(res.status, 308, `${host}${path} ${method}`);
           assert.equal(res.headers.get('location'), expected);
-          assert.equal(res.headers.get('vary'), 'Accept, Last-Event-ID');
+          assert.equal(res.headers.get('vary'), 'Accept, Last-Event-ID, Origin, MCP-Protocol-Version');
           assert.equal(res.headers.get('cache-control'), 'no-store');
           assert.equal(res.headers.get('access-control-allow-origin'), '*');
         }
