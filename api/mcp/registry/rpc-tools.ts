@@ -2544,20 +2544,11 @@ export const RPC_TOOLS: ToolDef[] = [
         `consumer-prices:freshness:${code}`,
       ];
 
-      // Freshness checks use the producer's actual meta keys. Note the spread
-      // entry: scripts/seed-consumer-prices.mjs:151 writes
-      // `seed-meta:consumer-prices:spread:<code>` (NO `retailer-` prefix,
-      // NO `:essentials-<code>` suffix). api/health.js:337 has the documented
-      // drift bug (expects `retailer-spread:<code>:essentials-<code>` which
-      // never exists) and so would always report stale; we deliberately
-      // diverge from health.js here to match the actual producer.
-      const freshnessChecks: FreshnessCheck[] = [
-        { key: `seed-meta:consumer-prices:overview:${code}`,      maxStaleMin: 1500 }, // 25h = 24h cron + 1h grace
-        { key: `seed-meta:consumer-prices:categories:${code}:30d`, maxStaleMin: 1500 },
-        { key: `seed-meta:consumer-prices:movers:${code}:30d`,     maxStaleMin: 1500 },
-        { key: `seed-meta:consumer-prices:spread:${code}`,         maxStaleMin: 1500 }, // producer's actual key shape
-        { key: `seed-meta:consumer-prices:freshness:${code}`,      maxStaleMin: 1500 },
-      ];
+      // consumer-prices-core/src/jobs/publish.ts stamps seed-meta:<data key>.
+      const freshnessChecks: FreshnessCheck[] = dataKeys.map(key => ({
+        key: `seed-meta:${key}`,
+        maxStaleMin: 1500, // 24h cron + 1h grace
+      }));
 
       // Seeder-owned keys (#7674): the consumer-prices seeder writes the data
       // keys and their seed-meta freshness stamps bare — read them raw in
