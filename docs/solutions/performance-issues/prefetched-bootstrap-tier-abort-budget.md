@@ -33,7 +33,7 @@ PR #9152 started the fast bootstrap tier from `src/main.ts` so the first data no
 
 ## Solution
 
-Charge elapsed time against the budget only while the primed request still awaits a response. Once headers arrive, the body read gets the whole budget.
+Charge elapsed time against the budget only while the primed request still awaits a response. Once headers arrive, the body read gets its own 1.2 s allowance from the moment boot adopts the response.
 
 ```ts
 // bootstrap-prefetch.ts
@@ -55,7 +55,12 @@ The adopted request links the caller's signal to the primed `AbortController`, s
 
 ## Why This Works
 
-The budget's contract is "a fast tier slower than 1.2 s is abandoned." Before the prefetch, the request start and App's wait coincided, so either reading was correct. Once the request moves earlier, only time spent waiting for a response counts against that contract. Time spent loading App while the response sits in the buffer does not. With the fix, the success condition matches the pre-prefetch code, and boot never waits longer than it did.
+Before the prefetch, one 1.2 s timer covered the whole fetch, headers and body, and it started when App asked. After the prefetch the budget has two parts:
+
+- **Waiting for headers** is limited to 1.2 s from the primed request's start. A server that has not answered by then is abandoned, as before.
+- **Reading the body** gets a separate 1.2 s allowance, counted from when `fetchBootstrapData()` adopts the response. A primed request can therefore succeed more than 1.2 s after `startedAt`, as long as its headers arrived within the first 1.2 s.
+
+The separate allowance exists because the body may already sit in the browser buffer while App loads. Aborting it would discard complete data. Boot still waits at most 1.2 s after it asks for the tier, the same bound as before.
 
 ## Prevention
 
