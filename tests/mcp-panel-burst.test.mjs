@@ -173,6 +173,11 @@ describe('bounded panel reads with an enabled minute limiter', () => {
     assert.equal(pipe.count, 1);
     assert.equal(fetched.length, 1);
     assert.equal(counts.get(userBucket), 1);
+    assert.equal(counts.get(`rl:mcp:pro-min:pro-protocol:${PRO_USER_ID}`), 128);
+    for (let i = 0; i < 64; i++) {
+      const setup = await handler(proReq('POST', { jsonrpc: '2.0', id: `setup-fill-${i}`, method: 'ping' }), deps);
+      assert.equal((await setup.json()).error, undefined);
+    }
     const response = await handler(proReq('POST', { jsonrpc: '2.0', id: 'setup-193', method: 'initialize' }), deps);
     const denied = await response.json();
     assert.equal(denied.id, 'setup-193');
