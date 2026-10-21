@@ -60,7 +60,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 - **UCDP** (Uppsala Conflict Data Program): Armed conflict datasets
 - **GDELT** (Global Database of Events, Language, and Tone): Global event detection
 - **OREF** (Israel Home Front Command): Real-time rocket alert sirens
-- **LiveUAMap**: Conflict event mapping (Iran theater)
+- **Middle East strike feed**: Telegram and GDELT strike reports (Iran theater)
 - **Government travel advisories**: US State Department, UK FCDO, Australia DFAT
 - **US Embassy feeds** for country-specific security updates
 

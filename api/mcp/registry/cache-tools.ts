@@ -2606,28 +2606,28 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_displacement_data',
     _validateArgs: params => {
       resolveCountryFilter(params.countries, 'countries');
-      if (params.view !== undefined && params.view !== 'annual' && params.view !== 'movements' && params.view !== 'events') {
-        throw new RpcValidationError('get_displacement_data', [{ field: 'view', description: 'Expected "annual", "movements" or "events".' }]);
+      if (params.view !== undefined && !['annual', 'movements', 'events', 'regions'].includes(params.view as string)) {
+        throw new RpcValidationError('get_displacement_data', [{ field: 'view', description: 'Expected "annual", "movements", "events" or "regions".' }]);
       }
     },
     title: 'Refugee and displacement counts',
     _outputBudgetBytes: 131072,
-    description: 'Read UNHCR annual displacement stocks for summary.year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, hosted totals and major origin-to-asylum flows with known centroids. Defaults to annual; no year selection, and the latest published year may be prior. Annual data stale after 60 hours. view=movements returns dated UNHCR reports, UK arrivals, CBP encounters, Frontex detections and Panama Darién arrivals with separate source health. Encounters are events, not unique people. Sources overlap; do not sum. route selects an exact movement route/situation ID. view=events returns IDMC internal displacement: per-country 30-day totals (conflict/disaster), newlyReported7d, surge vs prior 150 days, and located figures from 180 days; IDMC posts ~3 weeks late; stale after 48 hours. countries matches origin or asylum. limit caps lists (default 30, 0 for all projected rows; events stay capped at 100). Read-only seeded cache; API weight 1, included in signed-in free allowance.',
+    description: 'Read UNHCR annual displacement stocks for summary.year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, hosted totals and top origin-to-asylum flows. Default view annual; the latest published year may be prior; stale after 60 hours. view=movements: dated UNHCR reports, UK arrivals, CBP encounters, Frontex detections and Panama Darién arrivals with per-source health; encounters are events, not people; route picks one route/situation ID. view=events: IDMC internal displacement, per-country 30-day totals (conflict/disaster), newlyReported7d, surge vs prior 150 days, located figures from 180 days; posted ~3 weeks late. view=regions: IOM DTM latest round per operation: IDPs by cause, first-level region and region-to-region flow. Sources and operations overlap; never sum. events/regions stale after 48 hours. countries matches origin or asylum. limit caps lists (default 30, 0 = all; events max 100). Read-only seeded cache; API weight 1, included in signed-in free allowance.',
     inputSchema: {
       type: 'object',
       properties: {
-        view: { type: 'string', enum: ['annual', 'movements', 'events'], description: 'Default annual. movements returns source-dated operational movement reports. events returns IDMC internal displacement in iduEvents.' },
+        view: { type: 'string', enum: ['annual', 'movements', 'events', 'regions'], description: 'Default annual. movements returns source-dated operational movement reports. events returns IDMC internal displacement in iduEvents. regions returns IOM DTM operations in dtmRegions.' },
         route: { type: 'string', maxLength: 120, description: 'Exact route or situation ID in the movements view.' },
         countries: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all. Unresolved inputs return Invalid params.',
+          description: 'Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches per-country totals, origin/asylum flows, IDMC rows and DTM operations. Omit for all. Unresolved names and alpha-3 codes return Invalid params; an unknown two-letter code matches nothing.',
         },
-        limit: { type: 'number', description: 'Cap the per-country and top-flow lists to at most this many items (default 30, pass 0 for no cap).' },
+        limit: { type: 'number', description: 'Cap the per-country, top-flow, IDMC and DTM operation lists to at most this many items (default 30, pass 0 for no cap; IDMC events stay capped at 100).' },
       },
       required: [],
     },
-    _attribution: 'data.crossBorderMovements.movements[].{source: source, sourceUrl: sourceUrl, license: license, licenseUrl: licenseUrl, notice: notice} || data.iduEvents.attribution',
+    _attribution: 'data.crossBorderMovements.movements[].{source: source, sourceUrl: sourceUrl, license: license, licenseUrl: licenseUrl, notice: notice} || data.iduEvents.attribution || data.dtmRegions.attribution',
     outputSchema: cacheEnvelope({
       iduEvents: {
         type: ['object', 'null'],
@@ -2656,6 +2656,29 @@ export const CACHE_TOOLS: ToolDef[] = [
           attribution: { type: 'object', properties: {
             source: { type: 'string' }, sourceUrl: { type: 'string' }, hdxUrl: { type: 'string' }, license: { type: 'string' }, licenseUrl: { type: 'string' },
           } },
+        },
+      },
+      dtmRegions: {
+        type: ['object', 'null'],
+        description: 'Present with view "regions".',
+        properties: {
+          source: { type: 'string' },
+          lookbackFrom: { type: 'string', description: 'Oldest reporting date (YYYY-MM-DD) an operation may have.' },
+          operations: { type: 'array', description: 'Latest survey round per IOM DTM operation, largest first. Operations in one country can overlap; do not add them.', items: { type: 'object', properties: {
+            countryCode: { type: 'string' }, countryName: { type: 'string' }, operation: { type: 'string' },
+            reportingDate: { type: 'string' }, roundNumber: { type: 'number' }, totalIdps: { type: 'number' },
+            reasons: { type: 'array', items: { type: 'object', properties: { reason: { type: 'string' }, idps: { type: 'number' } } } },
+            regions: { type: 'array', items: { type: 'object', properties: {
+              pcode: { type: 'string', description: 'OCHA P-code; empty when DTM gave none.' }, name: { type: 'string' }, idps: { type: 'number' },
+              location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+            } } },
+            flows: { type: 'array', description: 'Largest region-to-region routes, up to 30: IDPs in the destination who fled the origin.', items: { type: 'object', properties: {
+              originPcode: { type: 'string' }, originName: { type: 'string' }, destinationPcode: { type: 'string' }, destinationName: { type: 'string' }, idps: { type: 'number' },
+              originLocation: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+              destinationLocation: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+            } } },
+          } } },
+          attribution: { type: 'object', properties: { source: { type: 'string' }, sourceUrl: { type: 'string' }, notice: { type: 'string' } } },
         },
       },
       crossBorderMovements: { type: 'object', properties: { movements: { type: 'array', items: { type: 'object', properties: { id: {type: 'string'}, route: {type: 'string'}, kind: {type: 'string'}, measure: {type: 'string'}, countryCode: {type: 'string'}, originCode: {type: 'string'}, asOf: {type: 'string'}, count: {type: 'number'}, last7Days: {type: 'number'}, last30Days: {type: 'number'}, changePct: {type: 'number'}, stockChange: {type: 'number'}, stockChangeSince: {type: 'string'}, surge: {type: 'boolean'}, stale: {type: 'boolean'}, source: {type: 'string'}, sourceUrl: {type: 'string'}, license: {type: 'string'}, licenseUrl: {type: 'string'}, notice: {type: 'string'} } } }, sources: {type: 'array', items: {type: 'object'}}, dataAvailable: {type: 'boolean'} } },
@@ -2703,23 +2726,36 @@ export const CACHE_TOOLS: ToolDef[] = [
         narrowNested(data, 'summary', 'topFlows', (f) => matchesCode(f.originCode, codes) || matchesCode(f.asylumCode, codes));
         narrowNested(data, 'iduEvents', 'countries', (c) => matchesCode(c.countryCode, codes));
         narrowNested(data, 'iduEvents', 'events', (e) => matchesCode(e.countryCode, codes));
+        narrowNested(data, 'dtmRegions', 'operations', (op) => matchesCode(op.countryCode, codes));
       }
       capNested(data, 'summary', 'countries', limit);
       capNested(data, 'summary', 'topFlows', limit);
       capNested(data, 'iduEvents', 'countries', limit);
       capNested(data, 'iduEvents', 'events', limit > 0 ? Math.min(limit, IDU_EVENTS_MAX) : IDU_EVENTS_MAX);
+      capNested(data, 'dtmRegions', 'operations', limit);
       return data;
     },
     _project: (data) => {
-      const snapshot = data.iduEvents;
-      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return data;
-      return { ...data, iduEvents: { ...snapshot, attribution: {
-        source: 'Internal Displacement Monitoring Centre (IDMC), Internal Displacement Updates',
-        sourceUrl: 'https://www.internal-displacement.org/',
-        hdxUrl: 'https://data.humdata.org/organization/international-displacement-monitoring-centre-idmc',
-        license: 'CC BY-IGO',
-        licenseUrl: 'https://creativecommons.org/licenses/by/3.0/igo/',
-      } } };
+      const isSnapshot = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+      const { iduEvents, dtmRegions } = data;
+      let projected = data;
+      if (isSnapshot(iduEvents)) {
+        projected = { ...projected, iduEvents: { ...iduEvents, attribution: {
+          source: 'Internal Displacement Monitoring Centre (IDMC), Internal Displacement Updates',
+          sourceUrl: 'https://www.internal-displacement.org/',
+          hdxUrl: 'https://data.humdata.org/organization/international-displacement-monitoring-centre-idmc',
+          license: 'CC BY-IGO',
+          licenseUrl: 'https://creativecommons.org/licenses/by/3.0/igo/',
+        } } };
+      }
+      if (isSnapshot(dtmRegions)) {
+        projected = { ...projected, dtmRegions: { ...dtmRegions, attribution: {
+          source: 'International Organization for Migration (IOM), Displacement Tracking Matrix (DTM)',
+          sourceUrl: 'https://dtm.iom.int/',
+          notice: 'Latest survey round per operation. Operations in one country can overlap; do not add their totals.',
+        } } };
+      }
+      return projected;
     },
     // Dynamic-year key resolved once at module evaluation — mirrors the
     // STANDALONE_KEYS pattern in api/health.js:147. The UNHCR seeder publishes
@@ -2727,16 +2763,19 @@ export const CACHE_TOOLS: ToolDef[] = [
     // is intentionally excluded — the executeTool label-walk would strip the
     // year segment from both keys and collide on the same `summary` label,
     // causing the second result to overwrite the first.
-    _cacheKeys: [`displacement:summary:v1:${new Date().getUTCFullYear()}`, 'displacement:idmc-idu:v1', ...CROSS_BORDER_SOURCES.map(source => source.key)],
-    _cacheLabels: { 'displacement:idmc-idu:v1': 'iduEvents', ...Object.fromEntries(CROSS_BORDER_SOURCES.map(source => [source.key, source.id])) },
-    // The events budget matches SEED_META.idmcIduDisplacement in api/health.js.
-    _freshnessChecks: [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }, { key: 'seed-meta:displacement:idmc-idu', maxStaleMin: 2880, minRecordCount: 500 }, ...CROSS_BORDER_SOURCES.map(source => ({ key: `seed-meta:${source.key.replace(/:v1$/, '')}`, maxStaleMin: 2880, honorContentAge: true, ...(source.id === 'odp' ? {} : { contentFreshnessActivationKey: `seed-activated:displacement:border-${source.id}` }) }))],
+    _cacheKeys: [`displacement:summary:v1:${new Date().getUTCFullYear()}`, 'displacement:idmc-idu:v1', 'displacement:dtm:v1', ...CROSS_BORDER_SOURCES.map(source => source.key)],
+    _cacheLabels: { 'displacement:idmc-idu:v1': 'iduEvents', 'displacement:dtm:v1': 'dtmRegions', ...Object.fromEntries(CROSS_BORDER_SOURCES.map(source => [source.key, source.id])) },
+    // The events and regions budgets match SEED_META.idmcIduDisplacement and
+    // SEED_META.dtmDisplacement in api/health.js; the DTM seed-meta also
+    // carries the 90-day round-age budget.
+    _freshnessChecks: [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }, { key: 'seed-meta:displacement:idmc-idu', maxStaleMin: 2880, minRecordCount: 500 }, { key: 'seed-meta:displacement:dtm', maxStaleMin: 2880, minRecordCount: 15, honorContentAge: true }, ...CROSS_BORDER_SOURCES.map(source => ({ key: `seed-meta:${source.key.replace(/:v1$/, '')}`, maxStaleMin: 2880, honorContentAge: true, ...(source.id === 'odp' ? {} : { contentFreshnessActivationKey: `seed-activated:displacement:border-${source.id}` }) }))],
     // Audit miss: handler uses cachedFetchJson with a year-suffixed key the
     // audit's regex couldn't statically resolve. The op IS covered by this
     // tool — same underlying displacement:summary:v1:<year> cache.
     _apiPaths: [
       'GET /api/displacement/v1/get-displacement-summary',
       'GET /api/displacement/v1/get-cross-border-movements',
+      'GET /api/displacement/v1/get-internal-displacement',
     ],
   },
   {

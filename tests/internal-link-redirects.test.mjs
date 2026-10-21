@@ -230,9 +230,13 @@ function generatedRoutes(outDir) {
 }
 
 /**
- * Mintlify publishes page files outside navigation too. .mintignore excludes
- * files even when docs.json lists them. Its current rules are exact paths and
- * directory prefixes; unsupported patterns must fail rather than weaken this gate.
+ * Published documentation routes: every page file on disk that docs/.mintignore
+ * does not exclude, whether or not docs.json lists it. A nav entry with no file
+ * 404s (this repo has three), an ignored file is never built even when listed,
+ * and a file outside the nav is still served: on 2026-10-21 all six unlisted,
+ * unignored pages (cross-border-movements, country-history-operations and four
+ * more) answered 200 on www.worldmonitor.app, and sampled ignored pages
+ * answered 404. .mintignore holds only exact paths and `dir/` prefixes.
  */
 function docsRoutes() {
   const files = new Set();
@@ -251,7 +255,7 @@ function docsRoutes() {
     .filter((line) => line && !line.startsWith('#'));
   assert.ok(ignorePatterns.every((p) => !/[*?[\]!]/.test(p)), 'docs/.mintignore gained a glob; teach docsRoutes to match it');
   const ignored = (file) => ignorePatterns.some((p) => (p.endsWith('/')
-    ? file.startsWith(p)
+    ? file.startsWith(p) // `architecture/` hides docs/architecture/*, not architecture.mdx
     : [`${file}.md`, `${file}.mdx`].includes(p)));
   assert.ok(files.size > 100, `docs page extraction found ${files.size} files`);
   return new Set([...files].filter((file) => !ignored(file)).map((page) => `/docs/${page}`));
