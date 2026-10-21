@@ -445,6 +445,18 @@ describe('WEO fiscal-period table', () => {
       else assert.ok(['HKG', 'THA'].includes(iso3), `${iso3} cites no WEO mapping and has no staff-report check`);
     }
   });
+
+  it('ends each row in the month its quoted WEO reporting year ends', () => {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    let checked = 0;
+    for (const [iso3, row] of Object.entries(table.countries)) {
+      const quoted = row.labelEvidence.match(/(?:reporting year|reports) ([A-Z][a-z]+)(?:\/| to )([A-Z][a-z]+)/);
+      if (!quoted) continue;
+      assert.equal(months[row.endMonth - 1], quoted[2], iso3);
+      checked += 1;
+    }
+    assert.ok(checked >= 20, `only ${checked} rows quote their reporting months`);
+  });
 });
 
 describe('rolling WEO year window', () => {
