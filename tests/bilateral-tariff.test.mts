@@ -83,6 +83,9 @@ let witsFaults: Set<string>;
 let relayCalls: { url: string; headers: Headers }[];
 let relayStatus: number | undefined;
 let directHeaders: Headers[];
+let edgeRedirectValidation: boolean;
+let redirectStatus: number | undefined;
+let upstreamRedirects: RequestRedirect[];
 
 beforeEach(() => {
   redisStore = new Map();
@@ -91,6 +94,9 @@ beforeEach(() => {
   relayCalls = [];
   relayStatus = undefined;
   directHeaders = [];
+  edgeRedirectValidation = false;
+  redirectStatus = undefined;
+  upstreamRedirects = [];
   delete process.env.WS_RELAY_URL;
   delete process.env.RELAY_SHARED_SECRET;
   delete process.env.RELAY_AUTH_HEADER;
@@ -119,6 +125,10 @@ beforeEach(() => {
     }
     const isRelay = url.origin === 'https://relay.test';
     if (isRelay || url.origin === 'https://wits.worldbank.org') {
+      upstreamRedirects.push(init?.redirect ?? 'follow');
+      if (edgeRedirectValidation && init?.redirect === 'error') {
+        throw new TypeError('Invalid redirect value, must be one of "follow" or "manual"');
+      }
       const target = isRelay ? `https://wits.worldbank.org${url.searchParams.get('path')}` : href;
       if (isRelay) {
         assert.equal(url.pathname, '/wits');
@@ -128,6 +138,9 @@ beforeEach(() => {
       } else {
         witsCalls.push(href);
         directHeaders.push(new Headers(init?.headers));
+      }
+      if (redirectStatus !== undefined) {
+        return new Response(null, { status: redirectStatus, headers: { Location: 'https://untrusted.test/wits' } });
       }
       if (witsFaults.has(target)) return new Response('Service Unavailable', { status: 503 });
       const route = WITS_ROUTES[target];
@@ -395,6 +408,39 @@ describe('getBilateralTariff', () => {
 });
 
 describe('WITS relay transport', () => {
+  for (const configuredRelay of [false, true]) {
+    test(`Edge fetch accepts WITS reads with configuredRelay=${configuredRelay}`, async () => {
+      edgeRedirectValidation = true;
+      if (configuredRelay) {
+        process.env.WS_RELAY_URL = 'https://relay.test';
+        process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
+      }
+      const res = await getBilateralTariff(premiumCtx(), request({}));
+      assert.equal(res.upstreamUnavailable, false);
+      assert.equal(res.appliedRate?.rate, 2.5);
+      assert.deepEqual(new Set(upstreamRedirects), new Set(['manual']));
+    });
+
+    for (const status of [302, 307]) {
+      test(`WITS HTTP ${status} stays unavailable without following Location with configuredRelay=${configuredRelay}`, async () => {
+        redirectStatus = status;
+        if (configuredRelay) {
+          process.env.WS_RELAY_URL = 'https://relay.test';
+          process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
+        }
+        const res = await getBilateralTariff(premiumCtx(), request({}));
+        assert.equal(res.upstreamUnavailable, true);
+        assert.equal(res.unavailableReason, R.upstreamUnavailable);
+        assert.equal(res.appliedRate, undefined);
+        assert.deepEqual(new Set(upstreamRedirects), new Set(['manual']));
+        assert.deepEqual(witsCalls, configuredRelay ? [] : [
+          `${META}/dataavailability/country/840/year/all`,
+          trainsRowsUrl('840', '870323', 2021),
+        ]);
+      });
+    }
+  }
+
   test('configured relay carries rows and metadata with auth and no direct WITS request', async () => {
     process.env.WS_RELAY_URL = 'wss://relay.test/';
     process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
