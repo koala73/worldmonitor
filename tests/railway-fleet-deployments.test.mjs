@@ -14,6 +14,8 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import {
+  RAILWAY_CALL_TIMEOUT_MS,
+  RAILWAY_INVENTORY_TIMEOUT_MS,
   createRailwayCliEnv,
   DEPLOYMENT_READ_DEADLINE_ERROR,
   readAllDeployments,
@@ -21,6 +23,7 @@ import {
   readDeploymentsForFleet,
   readExpectedRepositoryFleet,
   readFleetDeployments,
+  readServices,
   runRailway,
   runRailwayApiAsync,
   selectExpectedRepositoryServices,
@@ -54,6 +57,21 @@ describe('Railway CLI child capability boundary', () => {
       RAILWAY_PROJECT_ID: 'project-1',
       RAILWAY_TOKEN: 'railway-token',
     });
+  });
+
+  it('gives the whole-project service list longer than one per-call read', () => {
+    // Observed 2026-10-22: the same `service list` took 2 s to 72 s, and three
+    // Deploy Drift runs died at the 60 s per-call ceiling with valid tokens.
+    const timeouts = [];
+    const spawnImpl = (_command, _args, options) => {
+      timeouts.push(options.timeout);
+      return { status: 0, signal: null, error: null, stdout: '[]' };
+    };
+    readServices('production', { projectId: 'project-1', spawnImpl });
+    readServices('production', { projectId: 'project-1', timeoutMs: 5_000, spawnImpl });
+    assert.equal(RAILWAY_INVENTORY_TIMEOUT_MS, 3 * 60_000);
+    assert.ok(RAILWAY_INVENTORY_TIMEOUT_MS > RAILWAY_CALL_TIMEOUT_MS);
+    assert.deepEqual(timeouts, [RAILWAY_INVENTORY_TIMEOUT_MS, 5_000]);
   });
 
   it('applies the allowlist to sync and async Railway children', async () => {
