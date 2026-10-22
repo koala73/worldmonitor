@@ -36,6 +36,7 @@ export interface ProviderCredentials {
 
 const PROVIDER_CHAIN = [
   'ollama',
+  'atlascloud',
   'openrouter',
   'openrouter-free',
   'openrouter-free-backup',
@@ -59,6 +60,10 @@ export interface ProviderCredentialOverrides {
 const OLLAMA_HOST_ALLOWLIST = new Set([
   'localhost', '127.0.0.1', '::1', '[::1]', 'host.docker.internal',
 ]);
+
+function openAiChatCompletionsUrl(baseUrl: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+}
 
 function isLocalDeployment(): boolean {
   const mode = typeof process !== 'undefined' ? (process.env?.LOCAL_API_MODE || '') : '';
@@ -125,6 +130,22 @@ export function getProviderCredentials(
       extraBody: {
         ...(overrides.enableReasoning ? {} : { reasoning: { enabled: false } }),
         provider: OPENROUTER_PROVIDER_ROUTING,
+      },
+    };
+  }
+
+  if (provider === 'atlascloud') {
+    const apiKey = process.env.ATLASCLOUD_API_KEY;
+    if (!apiKey) return null;
+    const baseUrl = process.env.ATLASCLOUD_API_BASE || 'https://api.atlascloud.ai/v1';
+    return {
+      apiUrl: openAiChatCompletionsUrl(baseUrl),
+      model: overrides.model
+        || process.env.ATLASCLOUD_MODEL
+        || (overrides.enableReasoning ? 'deepseek-ai/deepseek-v4-pro' : 'qwen/qwen3.5-flash'),
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
       },
     };
   }
@@ -197,6 +218,8 @@ export function stripThinkingTags(text: string): string {
 // model is its own validated attempt, so malformed JSON or empty content can
 // advance the chain; OpenRouter's random `openrouter/free` router cannot.
 // Ollama stays first so self-hosted deployments are untouched.
+// Atlas Cloud sits right after ollama and is skipped unless ATLASCLOUD_API_KEY
+// is configured, so deployments without it keep the previous chain order.
 const PROVIDER_SET = new Set<string>(PROVIDER_CHAIN);
 const OPENROUTER_FREE_ATTEMPT_TIMEOUT_MS = 8_000;
 const INDEPENDENT_FALLBACK_RESERVE_MS = 5_000;

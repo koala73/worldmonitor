@@ -3,6 +3,7 @@ import { safeStorageSet } from '@/utils/safe-storage';
 import { invokeTauri } from './tauri-bridge';
 
 export type RuntimeSecretKey =
+  | 'ATLASCLOUD_API_KEY'
   | 'OPENROUTER_API_KEY'
   | 'EXA_API_KEYS'
   | 'BRAVE_API_KEYS'
@@ -31,6 +32,7 @@ export type RuntimeSecretKey =
   | 'ICAO_API_KEY';
 
 export type RuntimeFeatureId =
+  | 'aiAtlasCloud'
   | 'aiOpenRouter'
   | 'stockNewsSearchExa'
   | 'stockNewsSearchBrave'
@@ -80,6 +82,7 @@ export interface RuntimeConfig {
 const TOGGLES_STORAGE_KEY = 'worldmonitor-runtime-feature-toggles';
 
 const defaultToggles: Record<RuntimeFeatureId, boolean> = {
+  aiAtlasCloud: true,
   aiOpenRouter: true,
   stockNewsSearchExa: true,
   stockNewsSearchBrave: true,
@@ -112,6 +115,13 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'Ollama local summarization',
     description: 'Local LLM provider via OpenAI-compatible endpoint (Ollama or LM Studio, desktop-first).',
     requiredSecrets: ['OLLAMA_API_URL', 'OLLAMA_MODEL'],
+    fallback: 'Falls back to Atlas Cloud, OpenRouter, then local browser model.',
+  },
+  {
+    id: 'aiAtlasCloud',
+    name: 'Atlas Cloud summarization',
+    description: 'OpenAI-compatible LLM provider via Atlas Cloud unified model API.',
+    requiredSecrets: ['ATLASCLOUD_API_KEY'],
     fallback: 'Falls back to OpenRouter, then local browser model.',
   },
   {
