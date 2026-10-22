@@ -112,6 +112,15 @@ import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw
 import { validate as validateJsonSchema } from './helpers/json-schema-mini.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+
+// Rendering tests need independent mutable data, but not repeated Git and source scans.
+// Loader, clock, snapshot-injection and build tests below still load fresh data.
+let renderingFixture;
+async function corpusDataForRendering() {
+  renderingFixture ??= loadCorpusData({ rootDir: repoRoot });
+  return structuredClone(await renderingFixture);
+}
+
 // data.sources keys whose files decide the related-country links on every
 // country page (scripts/country-related-links.mjs), so they move its lastmod.
 const COUNTRY_RELATED_LINK_SOURCES = ['crisisRegistry', 'tensionPairs', 'countryCentroids', 'countryBboxes'];
@@ -1167,7 +1176,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('rejects a microstate coverage story when its cited source gap becomes observed', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const tuvalu = structuredClone(data.countries.find(({ code }) => code === 'TV'));
     const debtDimension = tuvalu.domains
       .flatMap(({ dimensions }) => dimensions)
@@ -1187,7 +1196,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('rejects a below-floor microstate story when displayed coverage reaches the floor', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const tuvalu = structuredClone(data.countries.find(({ code }) => code === 'TV'));
     tuvalu.dimensionCoverage = 0.65;
 
@@ -1202,7 +1211,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('rejects a microstate story when a cited gap changes imputation class', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const sanMarino = structuredClone(data.countries.find(({ code }) => code === 'SM'));
     const cohesionDimension = sanMarino.domains
       .flatMap(({ dimensions }) => dimensions)
@@ -1237,7 +1246,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('derives the San Marino gap count while preserving cited-gap subset validation', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const baseline = data.countries.find(({ code }) => code === 'SM');
     const buildStory = (country) => buildMicrostateCoverageStory({
       country,
@@ -1266,7 +1275,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('rejects the Macau story when a cited observed dimension loses its reading', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const macau = structuredClone(data.countries.find(({ code }) => code === 'MO'));
     const tradeDimension = macau.domains
       .flatMap(({ dimensions }) => dimensions)
@@ -1285,7 +1294,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('uses current crisis membership in a microstate coverage story', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const tuvalu = structuredClone(data.countries.find(({ code }) => code === 'TV'));
     tuvalu.crisisMemberships = [{ slug: 'test-tracker', shortTitle: 'Test tracker' }];
     const story = buildMicrostateCoverageStory({
@@ -1308,7 +1317,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('formats observed readings in a microstate coverage story', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const sanMarino = data.countries.find(({ code }) => code === 'SM');
     const story = buildMicrostateCoverageStory({
       country: sanMarino,
@@ -1428,7 +1437,7 @@ describe('crawlable corpus generator', () => {
   }
 
   it('requires the exact shared Tier-1 country set for CII publication', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const livePulse = structuredClone(data.livePulse);
     livePulse.countries.NO = { ...livePulse.countries.US };
     delete livePulse.countries.US;
@@ -1440,7 +1449,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('rejects a calendar-invalid CII observation timestamp', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const livePulse = structuredClone(data.livePulse);
     const countryCode = Object.keys(livePulse.countries).find((code) => {
       const pulse = livePulse.countries[code];
@@ -1459,7 +1468,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('rejects a chokepoint pulse key that is not in the registry', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     assert.doesNotThrow(
       () => buildChokepointHubRows(data.chokepoints, data.livePulse),
       'the committed pulse must match the registry exactly',
@@ -1544,7 +1553,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('never ranks a withheld pillar or domain as weakest or strongest', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const source = data.countries.find((entry) => Number.isInteger(entry.rank)
       && (entry.pillars?.length ?? 0) >= 3
       && (entry.domains?.length ?? 0) >= 6);
@@ -1591,7 +1600,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('rejects invalid chokepoint hub status and congestion before publication', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const [firstChokepoint] = data.chokepoints;
     const validPulse = data.livePulse.chokepoints[firstChokepoint.id];
     assert.ok(validPulse, 'committed pulse must include the first registry chokepoint');
@@ -1831,7 +1840,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('publishes CII movement and reference copy in reader terms', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const capturedAtMs = Date.parse(`${data.livePulse.capturedAt}T00:00:00Z`);
     const now = capturedAtMs + 86_400_000;
     const egypt = data.countries.find((country) => country.code === 'EG');
@@ -1909,7 +1918,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('derives CII movement copy from live-pulse snapshot age', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const capturedAtMs = Date.parse(`${data.livePulse.capturedAt}T00:00:00Z`);
     assert.ok(Number.isFinite(capturedAtMs), 'loaded pulse must have a capturedAt date');
 
@@ -5467,7 +5476,7 @@ describe('crawlable corpus generator', () => {
   });
 
   it('uses the same chokepoint timestamp window as the freeze producer', async () => {
-    const corpusData = await loadCorpusData({ rootDir: repoRoot });
+    const corpusData = await corpusDataForRendering();
     const [firstChokepoint] = corpusData.chokepoints;
     const validPulse = corpusData.livePulse.chokepoints[firstChokepoint.id];
     const capturedAtMs = corpusData.livePulse.capturedAtMs;
@@ -7049,7 +7058,7 @@ describe('country recent developments', () => {
   });
 
   it('wires developments into the rendered country page and its JSON-LD', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const country = data.countries.find((entry) => entry.code === 'NO');
     assert.ok(country, 'fixture must include Norway');
     const livePulse = structuredClone(data.livePulse);
@@ -7088,7 +7097,7 @@ describe('country recent developments', () => {
   });
 
   it('sweeps every frozen pulse brief for markdown and ISO heading leaks (#7738)', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const data = await corpusDataForRendering();
     const names = new Map(data.countries.map((entry) => [entry.code, entry.name]));
     let briefCount = 0;
     let withheldCount = 0;
@@ -7906,7 +7915,7 @@ it('checks rendered brief claims as visible text after HTML escaping', () => {
 it('retains API country-name aliases through the final country page renderer', async () => {
   const { renderEvidenceGroundedCountryBrief } = await import('../server/worldmonitor/intelligence/v1/get-country-intel-brief.ts');
   const { displayNameForIso2 } = await import('../server/_shared/country-normalize.ts');
-  const data = await loadCorpusData({ rootDir: repoRoot });
+  const data = await corpusDataForRendering();
   const capturedAt = new Date(data.livePulse.capturedAt).toISOString();
   for (const [code, name] of [['HK', 'Hong Kong'], ['CD', 'DR Congo']]) {
     const country = data.countries.find((entry) => entry.code === code);

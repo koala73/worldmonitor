@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { parse } from 'yaml';
 import { partitionTests, readsBuiltOutput, selectByBuiltOutput } from '../scripts/run-data-tests.mjs';
+import { refreshDurations } from '../scripts/refresh-data-test-durations.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const runner = join(root, 'scripts/run-data-tests.mjs');
@@ -22,6 +23,29 @@ const inventory = globSync(patterns, { cwd: root });
 const childEnv = { ...process.env };
 delete childEnv.NODE_TEST_CONTEXT;
 const run = (args) => spawnSync(process.execPath, [runner, ...args], { cwd: root, encoding: 'utf8', timeout: 30_000, env: childEnv });
+
+test('refresh uses hosted medians, adds measured files and retains unmeasured estimates', () => {
+  const row = (file, duration_ms, passed = 1) => ({ file, duration_ms, success: true, counts: { passed } });
+  const previous = { slow: 1, unmeasured: 42, skipped: 100 };
+  const artifacts = [
+    [row('slow', 200), row('new', 10), row('deleted', 1), row('skipped', 2, 0)],
+    [row('slow', 100), row('new', 21), row(null, 500)],
+    [row('slow', 900)],
+  ];
+  assert.deepEqual(refreshDurations(previous, new Set(['slow', 'new', 'unmeasured', 'skipped']), artifacts),
+    { new: 16, skipped: 100, slow: 200, unmeasured: 42 });
+  assert.deepEqual(previous, { slow: 1, unmeasured: 42, skipped: 100 });
+});
+
+test('refresh rejects failed, empty, duplicate and invalid timing input', () => {
+  const row = { file: 'suite', duration_ms: 10, success: true, counts: { passed: 1 } };
+  const inventory = new Set(['suite']);
+  for (const artifacts of [[], [[]], [[{ ...row, success: false }]], [[row, { file: null, success: false }]],
+    [[row, row]], [[{ ...row, duration_ms: 0 }]], [[{ ...row, duration_ms: NaN }]],
+    [[{ ...row, counts: { passed: 0 } }]], [[{ ...row, file: 'deleted' }]]]) {
+    assert.throws(() => refreshDurations({}, inventory, artifacts));
+  }
+});
 
 test('the shards and the built-output job together execute the complete data inventory exactly once, including new files', () => {
   assert.ok(ciShardCount >= 2, `unit-shards matrix must list at least two shards, got ${JSON.stringify(ciShards)}`);

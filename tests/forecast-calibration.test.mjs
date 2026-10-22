@@ -1111,11 +1111,16 @@ describe('refit triggers in a rolling-window steady state (review of #9027)', ()
       forward.push(entry({ probability: p, outcome: random() < truth(p) ? 'YES' : 'NO', generatedAt: fitAt + DAY_MS + i * DAY_MS }));
       const now = fitAt + 10 * DAY_MS + i * DAY_MS;
       const ledger = ledgerOf([...base, ...forward]);
-      const { activationGate: gate, forward: cohort } = evaluateCalibrationShadow(ledger, map, now, shadowOptions);
-      const inferior = [cohort.brierDelta, ...cohort.byDomain.filter((row) => row.domain === 'cyber').map((row) => row.brierDelta)]
-        .some((delta) => delta.ci95?.[0] > gate.thresholds.nonInferiorityMargin);
-      if (inferior) inferiorAt.push(forward.length);
       const run = resolveCalibrationMapForRun(map, ledger, now);
+      // The assertions inspect inferiority from the growth threshold onward,
+      // plus any unexpected early refit. Keep every daily resolver call, but
+      // avoid bootstrapping diagnostic rows that neither assertion reads.
+      if (forward.length >= map.domains.cyber.families || run.action === 'fitted') {
+        const { activationGate: gate, forward: cohort } = evaluateCalibrationShadow(ledger, map, now, shadowOptions);
+        const inferior = [cohort.brierDelta, ...cohort.byDomain.filter((row) => row.domain === 'cyber').map((row) => row.brierDelta)]
+          .some((delta) => delta.ci95?.[0] > gate.thresholds.nonInferiorityMargin);
+        if (inferior) inferiorAt.push(forward.length);
+      }
       if (run.action === 'fitted') return { refitAt: forward.length, reason: run.reason, inferiorAt, fitted: map.domains.cyber.families };
     }
     return { refitAt: null, inferiorAt, fitted: map.domains.cyber.families };
