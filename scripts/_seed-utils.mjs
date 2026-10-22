@@ -1727,11 +1727,13 @@ export async function fredFetchJson(url, proxyAuth) {
       return await fredDirectFetchJson(url);
     } catch (directErr) {
       const proxyMaintenance = lastProxyErr?.preservableFetchFailure === true;
-      const message = `${proxyMaintenance ? `proxy: ${lastProxyErr.message}; ` : ''}direct: ${directErr.message}`;
+      const connectTimeout = directErr.cause?.code === 'UND_ERR_CONNECT_TIMEOUT';
+      const directMessage = `${directErr.message}${connectTimeout ? ' (UND_ERR_CONNECT_TIMEOUT)' : ''}`;
+      const message = `${proxyMaintenance ? `proxy: ${lastProxyErr.message}; ` : ''}direct: ${directMessage}`;
       throw Object.assign(new Error(message), {
         cause: directErr,
         preservableFetchFailure: directErr.preservableFetchFailure === true
-          || (proxyMaintenance && (directErr.status === 403 || directErr.name === 'TimeoutError')),
+          || (proxyMaintenance && (directErr.status === 403 || directErr.name === 'TimeoutError' || connectTimeout)),
       });
     }
   }
