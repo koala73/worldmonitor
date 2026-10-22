@@ -1657,7 +1657,7 @@ async function fredDirectFetchJson(url) {
       if (r.ok) {
         if (/\btext\/html\b/i.test(r.headers?.get?.('content-type') || '')) {
           const body = await r.text();
-          if (/<h1[^>]*>\s*We(?:'ll| will) be back soon!?\s*<\/h1>/i.test(body)) {
+          if (/<h1[^>]*>\s*We(?:['\u2019]ll| will) be back soon!?\s*<\/h1>/i.test(body)) {
             throw markPreservableFetchFailure(new Error('FRED API is under maintenance'));
           }
           return JSON.parse(body);
