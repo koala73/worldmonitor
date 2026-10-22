@@ -126,7 +126,8 @@ node --import tsx --test tests/data-test-shards.test.mjs
 The command uses the median duration for each current file that executed passing
 tests. It retains unmeasured estimates and requires each artifact to end with a
 successful aggregate summary. Failed, truncated, empty, duplicate or invalid input
-is rejected. Use the same runner class and test concurrency across input runs. Review
+is rejected, as is an existing estimates file that is not an object of positive
+numbers. Use the same runner class and test concurrency across input runs. Review
 the resulting diff; local benchmark times do not replace hosted estimates.
 
 ## Browser failure evidence

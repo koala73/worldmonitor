@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 import { globSync, readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { isMainModule } from './lib/main-module.mjs';
 
 export function refreshDurations(previous, inventory, artifacts) {
+  if (!previous || typeof previous !== 'object' || Array.isArray(previous)
+    || Object.values(previous).some((duration) => !Number.isFinite(duration) || duration <= 0)) {
+    throw new Error('Existing duration estimates must be an object of positive numbers');
+  }
   const observations = new Map();
   if (!artifacts.length) throw new Error('Supply timing JSONL files from successful CI runs');
   for (const rows of artifacts) {
@@ -37,7 +42,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
     const root = new URL('../', import.meta.url);
     const patterns = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'))
       .scripts['test:data'].trim().split(/\s+/).slice(2);
-    const inventory = new Set(globSync(patterns, { cwd: root }));
+    const inventory = new Set(globSync(patterns, { cwd: fileURLToPath(root) }));
     const artifacts = process.argv.slice(2).map((path) => readFileSync(path, 'utf8').trim()
       .split('\n').filter(Boolean).map((line) => JSON.parse(line)));
     const updated = refreshDurations(JSON.parse(readFileSync(target, 'utf8')), inventory, artifacts);

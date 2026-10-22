@@ -57,6 +57,13 @@ test('refresh rejects a truncated artifact even when every written file passed',
   assert.deepEqual(refreshDurations({}, inventory, [[row, { file: null, success: true }]]), { suite: 10 });
 });
 
+test('refresh rejects invalid existing state instead of discarding unmeasured estimates', () => {
+  const artifacts = [[{ file: 'suite', duration_ms: 10, success: true, counts: { passed: 1 } }, { file: null, success: true }]];
+  for (const previous of [null, [], 1, 'invalid', { unmeasured: 0 }, { unmeasured: '10' }, { unmeasured: -1 }]) {
+    assert.throws(() => refreshDurations(previous, new Set(['suite']), artifacts), /object of positive numbers/);
+  }
+});
+
 test('the shards and the built-output job together execute the complete data inventory exactly once, including new files', () => {
   assert.ok(ciShardCount >= 2, `unit-shards matrix must list at least two shards, got ${JSON.stringify(ciShards)}`);
   assert.deepEqual(ciShards, Array.from({ length: ciShardCount }, (_, i) => i + 1), 'shard indices must be 1..N');
