@@ -112,9 +112,10 @@ async function trapSeedExit(fn) {
   }
 }
 
-function installExpiryAwareRedis(clock, entries, pipelines) {
+function installExpiryAwareRedis(clock, entries, pipelines, commands = []) {
   globalThis.fetch = async (url, init = {}) => {
     const body = init.body ? JSON.parse(init.body) : null;
+    commands.push(body);
     if (String(url).endsWith('/pipeline')) {
       const result = body.map((command) => {
         const [, key, ttlSeconds] = command;
@@ -201,6 +202,55 @@ function makeRunSeedHarness(events) {
 }
 
 describe('FRED publication gates', () => {
+  for (const state of ['fresh', 'stale', 'missing']) {
+    it(`reports an unavailable source without crashing when last-good is ${state}`, async () => {
+      const clock = { now: Date.now() };
+      const entries = state === 'missing' ? new Map() : primeFredConsumerCohort(clock);
+      if (state !== 'missing') {
+        entries.get('seed-meta:economic:fred-rates').value.fetchedAt = clock.now
+          - (state === 'stale' ? 48 * 60 : 1) * 60_000;
+      }
+      const before = new Map([...entries].map(([key, entry]) => [key, clone(entry.value)]));
+      const commands = [];
+      installExpiryAwareRedis(clock, entries, [], commands);
+      const lines = [];
+      const originalConsole = { log: console.log, warn: console.warn, error: console.error };
+      for (const method of Object.keys(originalConsole)) {
+        console[method] = (...args) => lines.push(args.join(' '));
+      }
+      let exitCode;
+      try {
+        exitCode = await trapSeedExit(() => runFredRatesSeed({
+          fetchFredSeriesImpl: async () => ({}),
+          fetchGscpiFromRedisImpl: async () => { throw new Error('must not compute stress without FRED'); },
+          publishFredCohortImpl: async () => { throw new Error('must not publish unavailable data'); },
+          markFredRatesActivatedImpl: async () => { throw new Error('must not activate unavailable data'); },
+        }));
+      } finally {
+        Object.assign(console, originalConsole);
+      }
+
+      assert.equal(exitCode, 0);
+      assert.match(lines.join('\n'), /FRED returned no usable series/);
+      assert.match(lines.join('\n'), /NO SOURCE/);
+      assertCohortContentAndTtl(entries, before, clock);
+      assert.equal(entries.size, before.size);
+      assert.equal(commands.some((command) => ['MSET', 'SETEX'].includes(command?.[0])), false);
+      assert.equal(commands.some((command) => command?.[0] === 'SET'
+        && !String(command[1]).startsWith('seed-lock:')), false);
+    });
+  }
+
+  it('keeps unexpected fetch exceptions as failures', async () => {
+    installExpiryAwareRedis({ now: Date.now() }, new Map(), []);
+    const exitCode = await trapSeedExit(() => runFredRatesSeed({
+      fetchFredSeriesImpl: async () => {
+        throw Object.assign(new Error('Missing FRED_API_KEY'), { nonRetryable: true });
+      },
+    }));
+    assert.equal(exitCode, GRACEFUL_FETCH_FAILURE_EXIT_CODE);
+  });
+
   it('retains every FRED consumer payload and its unchanged companion metadata across repeated source failures', async () => {
     const captured = await captureFredSeedOptions();
     assert.equal(captured.domain, 'economic');
