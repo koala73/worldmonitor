@@ -209,7 +209,7 @@ function makeRunSeedHarness(events) {
 }
 
 describe('FRED publication gates', () => {
-  for (const route of ['direct-maintenance', 'proxy-maintenance-direct-403', 'proxy-maintenance-direct-timeout', 'proxy-maintenance-direct-connect-timeout']) {
+  for (const route of ['direct-maintenance', 'proxy-maintenance-direct-403', 'proxy-maintenance-direct-timeout', 'proxy-maintenance-direct-connect-timeout', 'proxy-maintenance-503-direct-403']) {
     for (const state of ['fresh', 'stale', 'missing']) {
       it(`reports ${route} without crashing when last-good is ${state}`, async (t) => {
         const clock = { now: Date.now() };
@@ -224,7 +224,8 @@ describe('FRED publication gates', () => {
         const redisFetch = globalThis.fetch;
         let directCalls = 0;
         const proxy = t.mock.method(proxyUtils, 'proxyFetch', async () => ({
-          ok: true, buffer: Buffer.from('<h1>We\u2019ll be back soon!</h1>'), contentType: 'text/html',
+          ok: !route.includes('-503-'), status: route.includes('-503-') ? 503 : 200,
+          buffer: Buffer.from('<h1>We\u2019ll be back soon!</h1>'), contentType: 'text/html',
         }));
         globalThis.fetch = async (url, init) => {
           if (!String(url).startsWith('https://api.stlouisfed.org/')) return redisFetch(url, init);
