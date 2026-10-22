@@ -271,21 +271,29 @@ for (const heading of ["We'll be back soon!", 'We’ll be back soon!', 'We will 
     });
   }
 
-  for (const failure of ['403', 'timeout']) {
+  for (const failure of ['403', 'timeout', 'connect-timeout']) {
     test(`FRED retains proxy maintenance "${heading}" after direct ${failure}`, async (t) => {
       t.mock.method(proxyUtils, 'proxyFetch', async () => ({
         ok: true, buffer: Buffer.from(`<h1>${heading}</h1>`), contentType: 'text/html; charset=utf-8',
       }));
       const direct = t.mock.method(globalThis, 'fetch', async () => {
         if (failure === 'timeout') throw new DOMException('direct timed out', 'TimeoutError');
+        if (failure === 'connect-timeout') throw new TypeError('fetch failed', {
+          cause: Object.assign(new Error('Connection timed out'), { code: 'UND_ERR_CONNECT_TIMEOUT' }),
+        });
         return new Response('', { status: 403 });
       });
       await assert.rejects(() => fredFetchJson('https://api.stlouisfed.org/fred/series/observations',
         'https://fake:secret@gate.decodo.com:10001'), (error) => {
         assert.equal(error.preservableFetchFailure, true);
         assert.match(error.message, /maintenance/);
-        assert.match(error.message, failure === '403' ? /direct: HTTP 403/ : /direct: direct timed out/);
-        assert.equal(failure === '403' ? error.cause.status : error.cause.name, failure === '403' ? 403 : 'TimeoutError');
+        if (failure === 'connect-timeout') {
+          assert.match(error.message, /direct: fetch failed \(UND_ERR_CONNECT_TIMEOUT\)/);
+          assert.equal(error.cause.cause.code, 'UND_ERR_CONNECT_TIMEOUT');
+        } else {
+          assert.match(error.message, failure === '403' ? /direct: HTTP 403/ : /direct: direct timed out/);
+          assert.equal(failure === '403' ? error.cause.status : error.cause.name, failure === '403' ? 403 : 'TimeoutError');
+        }
         return true;
       });
       assert.equal(direct.mock.callCount(), 1);
@@ -303,13 +311,16 @@ test('FRED can recover through direct JSON after proxy maintenance', async (t) =
   assert.equal(result.observations[0].value, '7');
 });
 
-for (const failure of ['400', '401', 'malformed-json', 'unexpected-html']) {
+for (const failure of ['400', '401', 'malformed-json', 'unexpected-html', 'unknown-fetch-error']) {
   test(`proxy maintenance does not hide direct ${failure}`, async (t) => {
     t.mock.method(proxyUtils, 'proxyFetch', async () => ({
       ok: true, buffer: Buffer.from("<h1>We'll be back soon!</h1>"), contentType: 'text/html',
     }));
     t.mock.method(globalThis, 'fetch', async () => {
       if (failure === '400' || failure === '401') return new Response('', { status: Number(failure) });
+      if (failure === 'unknown-fetch-error') throw new TypeError('fetch failed', {
+        cause: Object.assign(new Error('Unknown transport error'), { code: 'UNKNOWN_ERROR' }),
+      });
       return new Response(failure === 'malformed-json' ? '{' : '<h1>Unknown response</h1>', {
         headers: { 'Content-Type': failure === 'malformed-json' ? 'application/json' : 'text/html' },
       });
@@ -319,13 +330,16 @@ for (const failure of ['400', '401', 'malformed-json', 'unexpected-html']) {
   });
 }
 
-for (const failure of ['403', 'timeout']) {
+for (const failure of ['403', 'timeout', 'connect-timeout']) {
   test(`unknown proxy HTML followed by direct ${failure} is not confirmed maintenance`, async (t) => {
     t.mock.method(proxyUtils, 'proxyFetch', async () => ({
       ok: true, buffer: Buffer.from('<h1>Unknown response</h1>'), contentType: 'text/html',
     }));
     t.mock.method(globalThis, 'fetch', async () => {
       if (failure === 'timeout') throw new DOMException('direct timed out', 'TimeoutError');
+      if (failure === 'connect-timeout') throw new TypeError('fetch failed', {
+        cause: Object.assign(new Error('Connection timed out'), { code: 'UND_ERR_CONNECT_TIMEOUT' }),
+      });
       return new Response('', { status: 403 });
     });
     await assert.rejects(() => fredFetchJson('https://api.stlouisfed.org/fred/series/observations',

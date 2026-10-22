@@ -209,7 +209,7 @@ function makeRunSeedHarness(events) {
 }
 
 describe('FRED publication gates', () => {
-  for (const route of ['direct-maintenance', 'proxy-maintenance-direct-403', 'proxy-maintenance-direct-timeout']) {
+  for (const route of ['direct-maintenance', 'proxy-maintenance-direct-403', 'proxy-maintenance-direct-timeout', 'proxy-maintenance-direct-connect-timeout']) {
     for (const state of ['fresh', 'stale', 'missing']) {
       it(`reports ${route} without crashing when last-good is ${state}`, async (t) => {
         const clock = { now: Date.now() };
@@ -230,6 +230,9 @@ describe('FRED publication gates', () => {
           if (!String(url).startsWith('https://api.stlouisfed.org/')) return redisFetch(url, init);
           directCalls += 1;
           if (route.endsWith('-403')) return new Response('', { status: 403 });
+          if (route.endsWith('-connect-timeout')) throw new TypeError('fetch failed', {
+            cause: Object.assign(new Error('Connection timed out'), { code: 'UND_ERR_CONNECT_TIMEOUT' }),
+          });
           if (route.endsWith('-timeout')) throw new DOMException('direct timed out', 'TimeoutError');
           return new Response("<!doctype html><h1>We'll be back soon!</h1>", { headers: { 'Content-Type': 'text/html' } });
         };
@@ -259,7 +262,8 @@ describe('FRED publication gates', () => {
         assert.match(lines.join('\n'), /FRED returned no usable series/);
         assert.match(lines.join('\n'), /maintenance/);
         if (route.endsWith('-403')) assert.match(lines.join('\n'), /direct: HTTP 403/);
-        if (route.endsWith('-timeout')) assert.match(lines.join('\n'), /direct: direct timed out/);
+        if (route.endsWith('-connect-timeout')) assert.match(lines.join('\n'), /direct: fetch failed \(UND_ERR_CONNECT_TIMEOUT\)/);
+        else if (route.endsWith('-timeout')) assert.match(lines.join('\n'), /direct: direct timed out/);
         assert.match(lines.join('\n'), /NO SOURCE/);
         assertCohortContentAndTtl(entries, before, clock);
         assert.equal(entries.size, before.size);
