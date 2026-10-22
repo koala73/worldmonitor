@@ -67,7 +67,10 @@ export async function fetchFredBatch({
       .map((seriesId) => [seriesId, seriesById[seriesId]]),
   );
   const seriesIds = Object.keys(usableSeriesById);
-  if (seriesIds.length === 0) throw new Error('FRED returned no usable series');
+  if (seriesIds.length === 0) {
+    console.error('  FETCH FAILED: FRED returned no usable series');
+    return { seriesCount: 0, sourceUnavailable: true };
+  }
 
   const stressInputs = { ...usableSeriesById };
   const gscpi = await fetchGscpiFromRedisImpl();

@@ -415,20 +415,13 @@ describe('FRED publication gates', () => {
   });
 
   it('publishes every consumer key and activation after a retained source failure recovers', async () => {
-    const captured = await captureFredSeedOptions();
     const clock = { now: 1_700_000_000_000 };
     const entries = primeFredConsumerCohort(clock);
     installExpiryAwareRedis(clock, entries, []);
-    const exitCode = await trapSeedExit(() => runSeed(
-      captured.domain,
-      captured.resource,
-      captured.canonicalKey,
-      async () => {
-        throw Object.assign(new Error('FRED upstream unavailable'), { nonRetryable: true });
-      },
-      captured.options,
-    ));
-    assert.equal(exitCode, GRACEFUL_FETCH_FAILURE_EXIT_CODE);
+    const exitCode = await trapSeedExit(() => runFredRatesSeed({
+      fetchFredSeriesImpl: async () => ({}),
+    }));
+    assert.equal(exitCode, 0);
 
     const events = [];
     const writtenKeys = [];
