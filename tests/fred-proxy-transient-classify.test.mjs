@@ -256,17 +256,21 @@ for (const status of [429, 503]) {
   });
 }
 
-test('FRED maintenance classification survives the proxy-to-direct fallback', async (t) => {
-  t.mock.method(proxyUtils, 'proxyFetch', async () => ({
-    ok: true, buffer: Buffer.from("<h1>We'll be back soon!</h1>"),
-  }));
-  t.mock.method(globalThis, 'fetch', async () => new Response("<h1>We'll be back soon!</h1>", {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
-  }));
-  await assert.rejects(() => fredFetchJson('https://api.stlouisfed.org/fred/series/observations',
-    'https://fake:secret@gate.decodo.com:10001'),
-  (error) => error.preservableFetchFailure === true && /maintenance/.test(error.message));
-});
+for (const heading of ["We'll be back soon!", 'We’ll be back soon!', 'We will be back soon!']) {
+  for (const proxy of [undefined, 'https://fake:secret@gate.decodo.com:10001']) {
+    test(`FRED recognizes maintenance heading "${heading}" via ${proxy ? 'proxy fallback' : 'direct'}`, async (t) => {
+      const body = `<h1>${heading}</h1>`;
+      t.mock.method(proxyUtils, 'proxyFetch', async () => ({
+        ok: true, buffer: Buffer.from(body),
+      }));
+      t.mock.method(globalThis, 'fetch', async () => new Response(body, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      }));
+      await assert.rejects(() => fredFetchJson('https://api.stlouisfed.org/fred/series/observations', proxy),
+        (error) => error.preservableFetchFailure === true && /maintenance/.test(error.message));
+    });
+  }
+}
 
 test('direct FRED leg does NOT retry a timeout — it has already burned its budget', async (t) => {
   t.after(() => { globalThis.fetch = originalFetch; });
