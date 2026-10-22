@@ -1929,8 +1929,29 @@
   {
     "entry": "scripts/seed-country-history.mjs",
     "deployMode": "nixpacks-root-scripts",
-    "lifecycle": "planned",
     "service": "seed-country-history",
+    "startCommand": "node seed-country-history.mjs",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-payload-codec.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/seed-country-history.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/rankable-universe.mjs",
+      "scripts/shared/sovereign-status.json"
+    ],
+    "cronSchedule": "30 0 * * *",
     "documentedAt": "docs/country-history-operations.md"
   },
   {
