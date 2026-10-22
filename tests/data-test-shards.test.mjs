@@ -27,10 +27,11 @@ const run = (args) => spawnSync(process.execPath, [runner, ...args], { cwd: root
 test('refresh uses hosted medians, adds measured files and retains unmeasured estimates', () => {
   const row = (file, duration_ms, passed = 1) => ({ file, duration_ms, success: true, counts: { passed } });
   const previous = { slow: 1, unmeasured: 42, skipped: 100 };
+  const complete = (...rows) => [...rows, row(null, 500)];
   const artifacts = [
-    [row('slow', 200), row('new', 10), row('deleted', 1), row('skipped', 2, 0)],
-    [row('slow', 100), row('new', 21), row(null, 500)],
-    [row('slow', 900)],
+    complete(row('slow', 200), row('new', 10), row('deleted', 1), row('skipped', 2, 0)),
+    complete(row('slow', 100), row('new', 21)),
+    complete(row('slow', 900)),
   ];
   assert.deepEqual(refreshDurations(previous, new Set(['slow', 'new', 'unmeasured', 'skipped']), artifacts),
     { new: 16, skipped: 100, slow: 200, unmeasured: 42 });
@@ -40,11 +41,20 @@ test('refresh uses hosted medians, adds measured files and retains unmeasured es
 test('refresh rejects failed, empty, duplicate and invalid timing input', () => {
   const row = { file: 'suite', duration_ms: 10, success: true, counts: { passed: 1 } };
   const inventory = new Set(['suite']);
-  for (const artifacts of [[], [[]], [[{ ...row, success: false }]], [[row, { file: null, success: false }]],
-    [[row, row]], [[{ ...row, duration_ms: 0 }]], [[{ ...row, duration_ms: NaN }]],
-    [[{ ...row, counts: { passed: 0 } }]], [[{ ...row, file: 'deleted' }]]]) {
+  const complete = (...rows) => [[...rows, { file: null, success: true }]];
+  for (const artifacts of [[], [[]], complete({ ...row, success: false }), [[row, { file: null, success: false }]],
+    complete(row, row), complete({ ...row, duration_ms: 0 }), complete({ ...row, duration_ms: NaN }),
+    complete({ ...row, counts: { passed: 0 } }), complete({ ...row, file: 'deleted' })]) {
     assert.throws(() => refreshDurations({}, inventory, artifacts));
   }
+});
+
+test('refresh rejects a truncated artifact even when every written file passed', () => {
+  const row = { file: 'suite', duration_ms: 10, success: true, counts: { passed: 1 } };
+  const inventory = new Set(['suite']);
+  assert.throws(() => refreshDurations({}, inventory, [[row]]), /successful aggregate summary/);
+  assert.throws(() => refreshDurations({}, inventory, [[{ file: null, success: true }, row]]), /successful aggregate summary/);
+  assert.deepEqual(refreshDurations({}, inventory, [[row, { file: null, success: true }]]), { suite: 10 });
 });
 
 test('the shards and the built-output job together execute the complete data inventory exactly once, including new files', () => {

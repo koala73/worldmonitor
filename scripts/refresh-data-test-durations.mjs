@@ -6,8 +6,8 @@ export function refreshDurations(previous, inventory, artifacts) {
   const observations = new Map();
   if (!artifacts.length) throw new Error('Supply timing JSONL files from successful CI runs');
   for (const rows of artifacts) {
-    if (!rows.length || rows.some((row) => row.success !== true)) {
-      throw new Error('Every timing artifact must contain only successful summaries');
+    if (!rows.length || rows.at(-1).file !== null || rows.some((row) => row.success !== true)) {
+      throw new Error('Every timing artifact must end with a successful aggregate summary and contain only successful summaries');
     }
     const seen = new Set();
     for (const { file, duration_ms: duration, counts } of rows) {
