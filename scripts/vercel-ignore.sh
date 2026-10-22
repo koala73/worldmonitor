@@ -4,6 +4,13 @@
 
 # On main: skip if ONLY scripts/, docs/, .github/, or non-web files changed
 if [ "$VERCEL_GIT_COMMIT_REF" = "main" ] && [ -n "$VERCEL_GIT_PREVIOUS_SHA" ]; then
+  # PREVIOUS_SHA is the last successful deployment, so it equals HEAD only on a
+  # deliberate redeploy of that commit, usually to pick up a changed env var.
+  # The path diff would be empty and cancel it (#8216).
+  if [ "$VERCEL_GIT_PREVIOUS_SHA" = "$(git rev-parse HEAD 2>/dev/null)" ]; then
+    echo "Building: redeploy of the last deployed commit"
+    exit 1
+  fi
   git cat-file -e "$VERCEL_GIT_PREVIOUS_SHA" 2>/dev/null && {
     WEB_CHANGES=$(git diff --name-only "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- \
       'src/' 'api/' 'server/' 'shared/' 'public/' 'blog-site/' 'pro-test/' 'proto/' 'convex/' \
