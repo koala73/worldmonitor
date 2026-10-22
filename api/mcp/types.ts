@@ -171,8 +171,8 @@ export interface BaseToolDef {
   //          analyze_situation) — the model output is
   //          non-deterministic across calls.
   //       2. Live external-API reads with rapidly-changing content
-  //          (get_airspace, get_maritime_activity, search_flights,
-  //          search_flight_prices_by_date) — flight prices and live
+  //          (get_airspace, get_maritime_activity, search_flights) —
+  //          flight prices and live
   //          positions drift minute-to-minute, so a client that dedupes
   //          on `idempotentHint: true` would silently serve stale data
   //          as authoritative.
@@ -257,6 +257,10 @@ export interface CacheToolDef extends BaseToolDef {
   // element) — every cache tool must declare at least one freshness budget, and
   // the dispatcher reads this list directly with no synthesized fallback.
   _freshnessChecks: [FreshnessCheck, ...FreshnessCheck[]];
+  // Optional `dataset` value → the cache and seed-meta keys it owns. When a
+  // call names datasets, keys owned only by unselected datasets are neither
+  // read nor judged for staleness. Keys no dataset owns are always read.
+  _datasetKeys?: Readonly<Record<string, readonly string[]>>;
   _execute?: never;
   // Optional argument-free projection of the stored values onto the fields the
   // tool's `outputSchema` declares, applied to the label-walked `data` map

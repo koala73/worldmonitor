@@ -123,9 +123,10 @@ Three things worth knowing:
   400 that serves no data, there is nothing to accompany and no rider.
 
 The tools and endpoints that carry a rider today: `get_resilience_indicators`,
-`get_toronto_reported_occurrences`, `get_toronto_calls_attended`,
 `get_imd_cyclone_marine`, `GET /api/resilience/v1/get-resilience-indicators`,
-and `GET /api/safety/v1/get-toronto-safety`. The list is derived from the tool
+and `GET /api/safety/v1/get-toronto-safety`. The retired Toronto tools
+(`get_toronto_reported_occurrences`, `get_toronto_calls_attended`) are off
+`tools/list` but stay callable, and keep their rider. The list is derived from the tool
 schemas rather than hand-maintained — a tool that grows a licence field without
 declaring its attribution extraction fails the build.
 
@@ -486,7 +487,7 @@ Generated `riskSummary` and `riskReportAction` prose is withheld as empty string
 { "risk": "critical", "count": 627 }
 ```
 
-**Why this works.** Object-as-map shapes are everywhere in this server — chokepoints, weights inside `fear-greed.categories`, EU member-keyed series in `get_eu_housing_cycle`. Treat them as dotted path navigation: known key → use the key directly. If you don't know the key, see the next example.
+**Why this works.** Object-as-map shapes are everywhere in this server — chokepoints, weights inside `fear-greed.categories`, EU member-keyed series in `get_country_macro`'s `house-prices` dataset. Treat them as dotted path navigation: known key → use the key directly. If you don't know the key, see the next example.
 
 ---
 

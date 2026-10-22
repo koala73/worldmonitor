@@ -5,12 +5,12 @@
   "description": "Real-time global intelligence across conflict, markets, energy, trade, shipping and cyber.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.44.0",
+  "version": "1.45.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.44.0",
+    "version": "1.45.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -39,22 +39,6 @@
       "description": "Read cached daily country CII, resilience and linked headlines. Account depth: Pro 90 days; API/Enterprise 365. Starts at activation; gaps and formula breaks remain explicit. One request. Large outputs retain one headline per day, marked events_reduced_for_output_budget.",
       "_meta": {
         "worldmonitor/access": "subscription",
-        "worldmonitor/category": "geopolitical-security"
-      }
-    },
-    {
-      "name": "get_toronto_reported_occurrences",
-      "description": "Return Toronto Police Service Major Crime Indicators rows: reported occurrences with offence, division, neighbourhood, approximate coordinates and report dates, from the seeded open-data extract (flagged stale after 2 weeks). Retrospective reported crime only; not live dispatch, and coordinates are approximate by design. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. division, neighbourhood and offence are case-insensitive substring filters; limit returns 1-100 rows (default 50). Attribution rides with every projection.",
-      "_meta": {
-        "worldmonitor/access": "free-account",
-        "worldmonitor/category": "geopolitical-security"
-      }
-    },
-    {
-      "name": "get_toronto_calls_attended",
-      "description": "Bounded Toronto Police Service Calls for Service Attended annual aggregates. These are neighbourhood and division counts, not incident points.",
-      "_meta": {
-        "worldmonitor/access": "free-account",
         "worldmonitor/category": "geopolitical-security"
       }
     },
@@ -136,31 +120,7 @@
     },
     {
       "name": "get_country_macro",
-      "description": "Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (current account USD, import/export volume % changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags. NOTE: export/import LEVELS in USD (exportsUsd, importsUsd, tradeBalanceUsd) are returned as null — WEO retracted broad coverage for BX/BM indicators in 2026-04; use currentAccountUsd or volume changes (import/exportVolumePctChg) instead.",
-      "_meta": {
-        "worldmonitor/access": "free-account",
-        "worldmonitor/category": "markets-economy"
-      }
-    },
-    {
-      "name": "get_eu_housing_cycle",
-      "description": "Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes the latest value, prior value, date, unit, and a 10-year sparkline series. Complements BIS WS_SPP with broader EU coverage for the Housing cycle tile.",
-      "_meta": {
-        "worldmonitor/access": "free-account",
-        "worldmonitor/category": "markets-economy"
-      }
-    },
-    {
-      "name": "get_eu_quarterly_gov_debt",
-      "description": "Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, quarter label, and an 8-quarter sparkline series. Provides fresher debt-trajectory signal than annual IMF GGXWDG_NGDP for EU panels.",
-      "_meta": {
-        "worldmonitor/access": "free-account",
-        "worldmonitor/category": "markets-economy"
-      }
-    },
-    {
-      "name": "get_eu_industrial_production",
-      "description": "Return the Eurostat monthly industrial production index (sts_inpr_m: NACE B-D industry excluding construction, seasonally and calendar adjusted, 2021=100) for the 27 EU members plus the EA20 and EU27_2020 aggregates. Each country entry has the latest value, prior value, month label and a 12-month series. Monthly data; the seed is flagged stale after 5 days. Covers the EU industrial index only; no other production or GDP measures. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. countries uses Eurostat geo codes (ISO alpha-2 except EL for Greece); limit caps the country map when no filter is given (default 30, 0 for no cap).",
+      "description": "Per-country macroeconomic indicators by dataset. IMF WEO, ~210 countries, latest year per series: macro (inflation, CPI, current account, government revenue, expenditure, primary balance), growth (real GDP growth, GDP per capita USD and PPP, savings and investment rates), labor (unemployment, population), external (current account USD, import/export volume changes; exportsUsd, importsUsd and tradeBalanceUsd are null since WEO retracted them in 2026-04). Eurostat, 27 EU members plus EA20 and EU27_2020: house-prices (annual index, 2015=100, 10-year series), gov-debt-q (quarterly gross debt, % of GDP, 8 quarters), industrial-production (monthly index excluding construction, 2021=100, 12 months). Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. Omit dataset for all seven; stale covers only the datasets read. countries takes ISO codes, names, EA20 or EU27_2020; limit caps each country map (default 30, 0 for no cap).",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "markets-economy"
@@ -466,15 +426,7 @@
     },
     {
       "name": "get_five_factor_scorecard",
-      "description": "Return the frozen v1 food, energy, demographics, technology, and defense scorecard for exactly one country or bloc. Select a country_code, one official preset, or a custom members list. Read every hasScore, available, and hasValue flag before numeric fields; zero is a proto3 placeholder when its flag is false. Requires a WorldMonitor subscription.",
-      "_meta": {
-        "worldmonitor/access": "subscription",
-        "worldmonitor/category": "markets-economy"
-      }
-    },
-    {
-      "name": "list_five_factor_scorecards",
-      "description": "List compact v1 scorecards; hasScore=false makes numeric zero an insufficient-data placeholder. Returns bands, coverage, and insufficient-data reasons without the full evidence ledger. Source provenance and raw observations are in the single-country scorecard. Requires a WorldMonitor subscription.",
+      "description": "Return the frozen v1 food, energy, demographics, technology and defense scorecard. Pass one of country_code, preset or members for one country or bloc with its full evidence: per-pillar inputs, source provenance, raw observations and member weights. Pass none of them for the compact list of every scored country: bands, coverage and insufficient-data reasons without the evidence ledger. Read every hasScore, available and hasValue flag before numeric fields; zero is a proto3 placeholder when its flag is false. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
@@ -522,15 +474,7 @@
     },
     {
       "name": "search_flights",
-      "description": "Live Google Flights itineraries between two airports on one date, read from the Google Flights results page. Each itinerary has its total USD price for all passengers, stops, duration, and per-leg airline, flight number, airports, and local departure and arrival times. With return_date the price covers the round trip and the legs are the outbound journey. degraded with an error means the provider failed; an empty list without degraded means no itineraries were found. Airports are IATA codes (e.g. \"JFK\", \"LHR\", \"DXB\").",
-      "_meta": {
-        "worldmonitor/access": "subscription",
-        "worldmonitor/category": "movement-infrastructure"
-      }
-    },
-    {
-      "name": "search_flight_prices_by_date",
-      "description": "Return the cheapest Google Flights fare for each departure date between two airports across a range of at most 31 days (one results-page search per date, so a long range is slow). Each row has the date, the return date for round trips (departure plus trip_duration) and the lowest total USD price for all passengers; a date with no itineraries is omitted. degraded with an error means some or all dates failed and the list holds only the dates that answered. Prices change minute to minute. Requires a paid plan; one live search request, weight 2 on API plans, up to 25 s. Airports are IATA codes; is_round_trip needs trip_duration; passengers is 1-9. Read-only.",
+      "description": "Live Google Flights search between two airports, read from the Google Flights results page. With departure_date: the itineraries on that date, each with its total USD price for all passengers, stops, duration and per-leg airline, flight number, airports and local times; return_date prices the round trip and the legs are the outbound journey. With start_date and end_date instead (at most 31 days, one results-page search per date, so a long range is slow): the cheapest fare per departure date, a round trip when trip_duration is set; a date with no itineraries is omitted. degraded with an error means the provider failed, and in a range the list holds only the dates that answered; an empty list without degraded means nothing was found. Prices change minute to minute. Requires a paid plan; one live search request, weight 2 on API plans, up to 25 s. Airports are IATA codes such as JFK, LHR or DXB; passengers is 1-9. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "movement-infrastructure"

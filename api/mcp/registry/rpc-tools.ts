@@ -1098,6 +1098,45 @@ const VULNERABILITY_COMPONENTS_OUTPUT_SCHEMA = {
     } },
   },
 };
+// get_five_factor_scorecard takes one of country_code, preset or members, or
+// none of them for the list. Checked before any allowance is reserved.
+function fiveFactorSelectorCount(params: Record<string, unknown>): number {
+  const selectors = Number(argStr(params.country_code).trim().length > 0)
+    + Number(argStr(params.preset).trim().length > 0)
+    + Number(Array.isArray(params.members) && params.members.length > 0);
+  if (selectors > 1) {
+    throw new RpcValidationError('get-five-factor-scorecard', [{
+      field: 'selection',
+      description: 'provide at most one of country_code, preset, or members; omit all three for the list.',
+    }]);
+  }
+  return selectors;
+}
+
+// search_flights runs an itinerary search for departure_date or a cheapest-fare
+// scan for start_date + end_date; each mode rejects the other mode's arguments.
+function flightSearchMode(params: Record<string, unknown>): 'itineraries' | 'range' {
+  const has = (field: string) => params[field] !== undefined && params[field] !== '';
+  const violations: { field: string; description: string }[] = [];
+  const range = has('start_date') || has('end_date');
+  if (range) {
+    if (has('departure_date')) violations.push({ field: 'departure_date', description: 'Pass departure_date or start_date with end_date, not both.' });
+    if (has('trip_duration') && !(Number.isInteger(params.trip_duration) && (params.trip_duration as number) >= 1)) {
+      violations.push({ field: 'trip_duration', description: 'trip_duration must be a whole number of days, 1 or more.' });
+    }
+    if (!has('start_date') || !has('end_date')) violations.push({ field: has('start_date') ? 'end_date' : 'start_date', description: 'A date range needs both start_date and end_date.' });
+    for (const field of ['return_date', 'max_stops']) {
+      if (has(field)) violations.push({ field, description: `${field} applies to a departure_date search only.` });
+    }
+    if (has('sort_by') && params.sort_by !== 'price') violations.push({ field: 'sort_by', description: 'A date range sorts by date, or by price with sort_by "price".' });
+  } else {
+    if (!has('departure_date')) violations.push({ field: 'departure_date', description: 'Pass departure_date, or start_date with end_date for a date range.' });
+    if (has('trip_duration')) violations.push({ field: 'trip_duration', description: 'trip_duration applies to a date range only; use return_date.' });
+  }
+  if (violations.length > 0) throw new RpcValidationError('search-flights', violations);
+  return range ? 'range' : 'itineraries';
+}
+
 export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_defense_industrial_base',
@@ -2370,14 +2409,15 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'get_five_factor_scorecard',
     title: 'Five-factor country scorecard',
     _outputBudgetBytes: 1_048_576,
-    description: 'Return the frozen v1 food, energy, demographics, technology, and defense scorecard for exactly one country or bloc. Select a country_code, one official preset, or a custom members list. Read every hasScore, available, and hasValue flag before numeric fields; zero is a proto3 placeholder when its flag is false. Requires a WorldMonitor subscription.',
+    _validateArgs: params => { fiveFactorSelectorCount(params); },
+    description: 'Return the frozen v1 food, energy, demographics, technology and defense scorecard. Pass one of country_code, preset or members for one country or bloc with its full evidence: per-pillar inputs, source provenance, raw observations and member weights. Pass none of them for the compact list of every scored country: bands, coverage and insufficient-data reasons without the evidence ledger. Read every hasScore, available and hasValue flag before numeric fields; zero is a proto3 placeholder when its flag is false. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
         country_code: {
           type: 'string',
           pattern: '^[A-Za-z]{2}$',
-          description: 'ISO 3166-1 alpha-2 country code. Mutually exclusive with preset and members.',
+          description: 'ISO 3166-1 alpha-2 country code. Mutually exclusive with preset and members; omit all three for the list.',
         },
         preset: {
           type: 'string',
@@ -2394,30 +2434,25 @@ export const RPC_TOOLS: ToolDef[] = [
         },
       },
       required: [],
-      oneOf: [
-        { required: ['country_code'] },
-        { required: ['preset'] },
-        { required: ['members'] },
-      ],
     },
-    outputSchema: FIVE_FACTOR_SCORECARD_OUTPUT_SCHEMA,
+    outputSchema: {
+      type: 'object' as const,
+      properties: { ...FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA.properties, ...FIVE_FACTOR_SCORECARD_OUTPUT_SCHEMA.properties },
+      anyOf: [FIVE_FACTOR_SCORECARD_OUTPUT_SCHEMA, FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA],
+    },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _coverageKeys: ['scorecard:five-factor:v1', 'seed-meta:scorecard:five-factor'],
     _execute: async (params, base, context, execution) => {
       const countryCode = argStr(params.country_code).trim().toUpperCase();
       const preset = argStr(params.preset).trim().toUpperCase();
       const members = Array.isArray(params.members) ? params.members : [];
-      const selectors = Number(countryCode.length > 0) + Number(preset.length > 0) + Number(members.length > 0);
-      if (selectors !== 1) {
-        throw new RpcValidationError('get-five-factor-scorecard', [{
-          field: 'selection',
-          description: 'provide exactly one of country_code, preset, or members.',
-        }]);
-      }
+      const selectors = fiveFactorSelectorCount(params);
 
       const q = new URLSearchParams();
       let path: string;
-      if (countryCode) {
+      if (selectors === 0) {
+        path = '/api/scorecard/v1/list-five-factor-scorecards';
+      } else if (countryCode) {
         if (!/^[A-Z]{2}$/.test(countryCode)) {
           throw new RpcValidationError('get-five-factor-scorecard', [{
             field: 'country_code',
@@ -2432,40 +2467,19 @@ export const RPC_TOOLS: ToolDef[] = [
         else members.forEach((member) => q.append('members', String(member)));
       }
 
-      const url = `${base}${path}?${q.toString()}`;
+      const query = q.toString();
+      const url = query ? `${base}${path}?${query}` : `${base}${path}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
       const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
       }, execution);
-      await assertToolFetchOk(res, 'get-five-factor-scorecard');
+      await assertToolFetchOk(res, selectors === 0 ? 'list-five-factor-scorecards' : 'get-five-factor-scorecard');
       return res.json();
     },
     _apiPaths: [
       'GET /api/scorecard/v1/get-five-factor-scorecard',
       'GET /api/scorecard/v1/get-bloc-scorecard',
-    ],
-  },
-  {
-    name: 'list_five_factor_scorecards',
-    title: 'List five-factor scorecards',
-    _outputBudgetBytes: 262144,
-    description: 'List compact v1 scorecards; hasScore=false makes numeric zero an insufficient-data placeholder. Returns bands, coverage, and insufficient-data reasons without the full evidence ledger. Source provenance and raw observations are in the single-country scorecard. Requires a WorldMonitor subscription.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-    outputSchema: FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA,
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _coverageKeys: ['scorecard:five-factor:v1', 'seed-meta:scorecard:five-factor'],
-    _execute: async (_params, base, context, execution) => {
-      const url = `${base}/api/scorecard/v1/list-five-factor-scorecards`;
-      const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetchMcpDownstream(url, {
-        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
-        signal: AbortSignal.timeout(8_000),
-      }, execution);
-      await assertToolFetchOk(res, 'list-five-factor-scorecards');
-      return res.json();
-    },
-    _apiPaths: [
       'GET /api/scorecard/v1/list-five-factor-scorecards',
     ],
   },
@@ -3034,25 +3048,29 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'search_flights',
     title: 'Search flights',
     _outputBudgetBytes: 262144,
-    description: 'Live Google Flights itineraries between two airports on one date, read from the Google Flights results page. Each itinerary has its total USD price for all passengers, stops, duration, and per-leg airline, flight number, airports, and local departure and arrival times. With return_date the price covers the round trip and the legs are the outbound journey. degraded with an error means the provider failed; an empty list without degraded means no itineraries were found. Airports are IATA codes (e.g. "JFK", "LHR", "DXB").',
+    description: 'Live Google Flights search between two airports, read from the Google Flights results page. With departure_date: the itineraries on that date, each with its total USD price for all passengers, stops, duration and per-leg airline, flight number, airports and local times; return_date prices the round trip and the legs are the outbound journey. With start_date and end_date instead (at most 31 days, one results-page search per date, so a long range is slow): the cheapest fare per departure date, a round trip when trip_duration is set; a date with no itineraries is omitted. degraded with an error means the provider failed, and in a range the list holds only the dates that answered; an empty list without degraded means nothing was found. Prices change minute to minute. Requires a paid plan; one live search request, weight 2 on API plans, up to 25 s. Airports are IATA codes such as JFK, LHR or DXB; passengers is 1-9. Read-only.',
+    _validateArgs: params => { flightSearchMode(params); },
     inputSchema: {
       type: 'object',
       properties: {
         origin: { type: 'string', description: 'IATA code for the departure airport, e.g. "JFK"' },
         destination: { type: 'string', description: 'IATA code for the arrival airport, e.g. "LHR"' },
-        departure_date: { type: 'string', description: 'Departure date in YYYY-MM-DD format' },
-        return_date: { type: 'string', description: 'Return date in YYYY-MM-DD format for round trips (optional)' },
+        departure_date: { type: 'string', description: 'Departure date in YYYY-MM-DD format for an itinerary search. Omit when searching a date range.' },
+        return_date: { type: 'string', description: 'Return date in YYYY-MM-DD format for a round-trip itinerary search (optional)' },
+        start_date: { type: 'string', description: 'Start of a date range in YYYY-MM-DD format, for the cheapest fare per date. Requires end_date; omit departure_date.' },
+        end_date: { type: 'string', description: 'End of the date range in YYYY-MM-DD format, at most 30 days after start_date' },
+        trip_duration: { type: 'integer', minimum: 1, description: 'Trip length in whole days for a round-trip date range, e.g. 7 for a one-week trip (optional)' },
         cabin_class: { type: 'string', description: 'Cabin class: "economy", "premium_economy", "business", or "first" (optional, default economy)' },
-        max_stops: { type: 'string', description: 'Max stops: "0" or "non_stop" for nonstop, "1" or "one_stop" for max one stop, or omit for any (optional)' },
+        max_stops: { type: 'string', description: 'Itinerary search only. Max stops: "0" or "non_stop" for nonstop, "1" or "one_stop" for max one stop, or omit for any (optional)' },
         passengers: { type: 'number', description: 'Number of passengers (1-9, default 1)' },
-        sort_by: { type: 'string', description: 'Sort order: "price" (cheapest), "duration", "departure", or "arrival" (optional)' },
+        sort_by: { type: 'string', description: 'Sort order: "price" (cheapest), "duration", "departure", or "arrival" (optional). A date range accepts only "price"; it is sorted by date otherwise.' },
       },
-      required: ['origin', 'destination', 'departure_date'],
+      required: ['origin', 'destination'],
     },
     outputSchema: {
       type: 'object',
       properties: {
-        flights: { type: 'array', items: { type: 'object', properties: {
+        flights: { type: 'array', description: 'Itinerary search only.', items: { type: 'object', properties: {
           price: { type: 'number', description: 'Total USD price for all passengers.' },
           durationMinutes: { type: 'number' },
           stops: { type: 'number' },
@@ -3064,90 +3082,52 @@ export const RPC_TOOLS: ToolDef[] = [
             durationMinutes: { type: 'number' },
           } } },
         } } },
-        degraded: { type: 'boolean', description: 'True when the provider search failed.' },
+        dates: { type: 'array', description: 'Date-range search only.', items: { type: 'object', properties: {
+          date: { type: 'string' },
+          returnDate: { type: 'string', description: 'Empty for one-way searches.' },
+          price: { type: 'number', description: 'Lowest total USD price for all passengers.' },
+        } } },
+        degraded: { type: 'boolean', description: 'True when the provider search failed; in a date range, some or all dates failed and the list holds only the dates that answered.' },
         error: { type: 'string', description: 'The provider failure when degraded is true.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     _execute: async (params, base, context, execution) => {
-      const qs = new URLSearchParams({
-        origin: String(params.origin ?? ''),
-        destination: String(params.destination ?? ''),
-        departure_date: String(params.departure_date ?? ''),
-        ...(params.return_date ? { return_date: String(params.return_date) } : {}),
-        cabin_class: String(params.cabin_class ?? 'economy'),
-        ...(params.max_stops ? { max_stops: String(params.max_stops) } : {}),
-        ...(params.sort_by ? { sort_by: String(params.sort_by) } : {}),
-        passengers: String(normalizePassengerCount(params.passengers)),
-      });
-      const url = `${base}/api/aviation/v1/search-google-flights?${qs}`;
+      const range = flightSearchMode(params) === 'range';
+      const qs = range
+        ? new URLSearchParams({
+          origin: String(params.origin ?? ''),
+          destination: String(params.destination ?? ''),
+          start_date: String(params.start_date ?? ''),
+          end_date: String(params.end_date ?? ''),
+          is_round_trip: String(params.trip_duration !== undefined),
+          ...(params.trip_duration !== undefined ? { trip_duration: String(params.trip_duration) } : {}),
+          cabin_class: String(params.cabin_class ?? 'economy'),
+          sort_by_price: String(params.sort_by === 'price'),
+          passengers: String(normalizePassengerCount(params.passengers)),
+        })
+        : new URLSearchParams({
+          origin: String(params.origin ?? ''),
+          destination: String(params.destination ?? ''),
+          departure_date: String(params.departure_date ?? ''),
+          ...(params.return_date ? { return_date: String(params.return_date) } : {}),
+          cabin_class: String(params.cabin_class ?? 'economy'),
+          ...(params.max_stops ? { max_stops: String(params.max_stops) } : {}),
+          ...(params.sort_by ? { sort_by: String(params.sort_by) } : {}),
+          passengers: String(normalizePassengerCount(params.passengers)),
+        });
+      const route = range ? 'search-google-dates' : 'search-google-flights';
+      const url = `${base}/api/aviation/v1/${route}?${qs}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
       const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(25_000),
       }, execution);
-      await assertToolFetchOk(res, 'search-google-flights');
+      await assertToolFetchOk(res, route, range ? { preserveBackoff: true } : undefined);
       return res.json();
     },
     _apiPaths: [
       "GET /api/aviation/v1/search-google-flights",
-    ],
-  },
-  {
-    name: 'search_flight_prices_by_date',
-    title: 'Flight prices across dates',
-    _outputBudgetBytes: 262144,
-    description: 'Return the cheapest Google Flights fare for each departure date between two airports across a range of at most 31 days (one results-page search per date, so a long range is slow). Each row has the date, the return date for round trips (departure plus trip_duration) and the lowest total USD price for all passengers; a date with no itineraries is omitted. degraded with an error means some or all dates failed and the list holds only the dates that answered. Prices change minute to minute. Requires a paid plan; one live search request, weight 2 on API plans, up to 25 s. Airports are IATA codes; is_round_trip needs trip_duration; passengers is 1-9. Read-only.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        origin: { type: 'string', description: 'IATA code for the departure airport, e.g. "JFK"' },
-        destination: { type: 'string', description: 'IATA code for the arrival airport, e.g. "LHR"' },
-        start_date: { type: 'string', description: 'Start of the date range in YYYY-MM-DD format' },
-        end_date: { type: 'string', description: 'End of the date range in YYYY-MM-DD format, at most 30 days after start_date' },
-        is_round_trip: { type: 'boolean', description: 'Whether to search round-trip prices (default false). Requires trip_duration when true.' },
-        trip_duration: { type: 'number', description: 'Trip duration in days — required when is_round_trip is true (e.g. 7 for a one-week trip)' },
-        cabin_class: { type: 'string', description: 'Cabin class: "economy", "premium_economy", "business", or "first" (optional, default economy)' },
-        passengers: { type: 'number', description: 'Number of passengers (1-9, default 1)' },
-        sort_by_price: { type: 'boolean', description: 'Sort results by price ascending (default false, sorts by date)' },
-      },
-      required: ['origin', 'destination', 'start_date', 'end_date'],
-    },
-    outputSchema: {
-      type: 'object',
-      properties: {
-        dates: { type: 'array', items: { type: 'object', properties: {
-          date: { type: 'string' },
-          returnDate: { type: 'string', description: 'Empty for one-way searches.' },
-          price: { type: 'number', description: 'Lowest total USD price for all passengers.' },
-        } } },
-        degraded: { type: 'boolean', description: 'True when some or all dates failed; the list holds only the dates that answered.' },
-        error: { type: 'string' },
-      },
-    },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    _execute: async (params, base, context, execution) => {
-      const qs = new URLSearchParams({
-        origin: String(params.origin ?? ''),
-        destination: String(params.destination ?? ''),
-        start_date: String(params.start_date ?? ''),
-        end_date: String(params.end_date ?? ''),
-        is_round_trip: String(params.is_round_trip ?? false),
-        ...(params.trip_duration ? { trip_duration: String(params.trip_duration) } : {}),
-        cabin_class: String(params.cabin_class ?? 'economy'),
-        sort_by_price: String(params.sort_by_price ?? false),
-        passengers: String(normalizePassengerCount(params.passengers)),
-      });
-      const url = `${base}/api/aviation/v1/search-google-dates?${qs}`;
-      const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetchMcpDownstream(url, {
-        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
-        signal: AbortSignal.timeout(25_000),
-      }, execution);
-      await assertToolFetchOk(res, 'search-google-dates', { preserveBackoff: true });
-      return res.json();
-    },
-    _apiPaths: [
       "GET /api/aviation/v1/search-google-dates",
     ],
   },

@@ -8,13 +8,16 @@ const AUTH = { kind: 'pro', userId: 'user_flight_passengers', mcpTokenId: 'mcp_f
 const originalFetch = globalThis.fetch;
 const originalHmacSecret = process.env.MCP_INTERNAL_HMAC_SECRET;
 
+// search_flights runs both Google Flights routes: one date, or a date range.
 const TOOL_CASES = [
   {
     name: 'search_flights',
+    label: 'search_flights (one date)',
     params: { origin: 'JFK', destination: 'LHR', departure_date: '2026-09-01' },
   },
   {
-    name: 'search_flight_prices_by_date',
+    name: 'search_flights',
+    label: 'search_flights (date range)',
     params: { origin: 'JFK', destination: 'LHR', start_date: '2026-09-01', end_date: '2026-09-08' },
   },
 ] as const;
@@ -40,8 +43,8 @@ function rpcTool(name: string) {
 }
 
 describe('MCP Google Flights passenger validation', () => {
-  for (const { name, params } of TOOL_CASES) {
-    it(`${name} keeps the existing numeric passenger schema`, () => {
+  for (const { name, label, params } of TOOL_CASES) {
+    it(`${label} keeps the existing numeric passenger schema`, () => {
       assert.deepEqual(rpcTool(name).inputSchema.properties.passengers, {
         type: 'number',
         description: 'Number of passengers (1-9, default 1)',
@@ -55,7 +58,7 @@ describe('MCP Google Flights passenger validation', () => {
       { passengers: 10, expected: '9' },
       { passengers: 1.5, expected: '1' },
     ]) {
-      it(`${name} normalizes passengers=${String(passengers)} to ${expected}`, async () => {
+      it(`${label} normalizes passengers=${String(passengers)} to ${expected}`, async () => {
         let capturedUrl = '';
         globalThis.fetch = (async (input: string | URL | Request) => {
           capturedUrl = String(input);
@@ -67,7 +70,7 @@ describe('MCP Google Flights passenger validation', () => {
       });
     }
 
-    it(`${name} defaults an omitted passenger count to 1`, async () => {
+    it(`${label} defaults an omitted passenger count to 1`, async () => {
       let capturedUrl = '';
       globalThis.fetch = (async (input: string | URL | Request) => {
         capturedUrl = String(input);

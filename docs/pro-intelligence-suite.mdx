@@ -170,17 +170,17 @@ See [Supply vulnerability methodology](/methodology/supply-vulnerability).
 
 ## Five-factor country scorecard
 
-A per-country read, a bloc read, and a cohort list. The first two share one MCP tool.
+A per-country read, a bloc read, and a cohort list. All three share one MCP tool; called with no selector it returns the list.
 
 | Route | MCP tool | Returns |
 | --- | --- | --- |
 | `GET /api/scorecard/v1/get-five-factor-scorecard?countryCode=DE` | `get_five_factor_scorecard` | One country, full evidence ledger |
 | `GET /api/scorecard/v1/get-bloc-scorecard?preset=NATO` | `get_five_factor_scorecard` | One bloc — preset or custom `members` |
-| `GET /api/scorecard/v1/list-five-factor-scorecards` | `list_five_factor_scorecards` | Compact scorecards for the cohort |
+| `GET /api/scorecard/v1/list-five-factor-scorecards` | `get_five_factor_scorecard` (no selector) | Compact scorecards for the cohort |
 
 Five pillar scores — food, energy, demographics, technology, defense — projected over the resilience engine and served with per-pillar sub-scores, bands, input coverage, and machine-readable insufficient-data reasons.
 
-The single rule that matters when parsing these: **read `hasScore`, `available` and `hasValue` before any numeric field.** These are proto3 messages, so an absent number serializes as `0`. A pillar with `hasScore: false` and `subScore: 0` has insufficient data — it is not a country scoring zero on defense. `get_five_factor_scorecard` carries source provenance and raw observations; `list_five_factor_scorecards` drops the evidence ledger for a compact cohort read.
+The single rule that matters when parsing these: **read `hasScore`, `available` and `hasValue` before any numeric field.** These are proto3 messages, so an absent number serializes as `0`. A pillar with `hasScore: false` and `subScore: 0` has insufficient data — it is not a country scoring zero on defense. A country or bloc read carries source provenance and raw observations; the list drops the evidence ledger for a compact cohort read.
 
 A degraded snapshot returns `unavailable: true` with `unavailableReason: "scorecard-snapshot-unavailable"` rather than a stale or partial scorecard.
 

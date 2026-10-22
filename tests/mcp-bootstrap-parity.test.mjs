@@ -86,6 +86,10 @@ const EXCLUDED_FROM_MCP = new Map([
     'seeded and health-monitored only: #6682 ingests official Toronto Fire live CAD as a standalone source until a Toronto safety panel exists. Do not advertise an MCP slice before that product surface exists.'],
   ['safety:toronto-tps:v1',
     'seeded and health-monitored only: #6682 ingests official TPS Calls for Service as a standalone source until a Toronto safety panel exists. Do not advertise an MCP slice before that product surface exists.'],
+  ['safety:toronto:tps-mci:v1',
+    'deferred: the Toronto-only get_toronto_reported_occurrences tool left tools/list (it stays callable as a retired name). A city-specific tool does not belong in a global tool list; a public-safety tool taking a jurisdiction receives this slice once a second city or province is seeded.'],
+  ['safety:toronto:tps-calls-attended:v1',
+    'deferred: the Toronto-only get_toronto_calls_attended tool left tools/list (it stays callable as a retired name). A city-specific tool does not belong in a global tool list; a public-safety tool taking a jurisdiction receives this slice once a second city or province is seeded.'],
   ['economic:fred:batch:v1',
     'operational: producer batch envelope written by seed-fred-rates for health and rollout validation; the individual FRED series are the queryable data surfaces, so the batch envelope is intentionally not exposed through MCP.'],
 

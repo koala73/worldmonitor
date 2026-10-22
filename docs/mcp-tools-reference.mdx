@@ -372,19 +372,35 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_country_macro`
 
-Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (current account USD, import/export volume % changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags. NOTE: export/import LEVELS in USD (exportsUsd, importsUsd, tradeBalanceUsd) are returned as null — WEO retracted broad coverage for BX/BM indicators in 2026-04; use currentAccountUsd or volume changes (import/exportVolumePctChg) instead.
+Per-country macroeconomic indicators, selected by `dataset`. IMF WEO covers ~210 countries with the latest available year per series:
+
+- `macro`: inflation, CPI, current account, government revenue, expenditure and primary balance.
+- `growth`: real GDP growth, GDP per capita (USD and PPP), savings and investment rates, savings-investment gap.
+- `labor`: unemployment and population.
+- `external`: current account (USD) and import/export volume % changes. Export and import LEVELS in USD (`exportsUsd`, `importsUsd`, `tradeBalanceUsd`) are null because WEO retracted broad BX/BM coverage in 2026-04; use `currentAccountUsd` or the volume changes instead.
+
+Eurostat covers the 27 EU members plus the EA20 and EU27_2020 aggregates:
+
+- `house-prices`: annual house price index (prc_hpi_a, 2015=100) with a 10-year series.
+- `gov-debt-q`: quarterly general government gross debt (gov_10q_ggdebt, % of GDP) with an 8-quarter series.
+- `industrial-production`: monthly industrial production index (sts_inpr_m, NACE B-D excluding construction, seasonally and calendar adjusted, 2021=100) with a 12-month series.
+
+Each Eurostat country entry carries `latest`, `prior`, the period label (`date`, `quarter` or `month`) and `series`.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `countries` | `array<string>` | ISO 3166-1 alpha-2 country codes to keep across all four IMF datasets (e.g. ["US","DE","CN"]). Omit for all ~210 countries. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
-| `limit` | integer | Cap each IMF dataset country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
+| `dataset` | `array<string: macro / growth / labor / external / house-prices / gov-debt-q / industrial-production>` | Restrict the response to one or more datasets. Omit for all seven. |
+| `countries` | `array<string>` | ISO 3166-1 alpha-2 country codes to keep in every dataset (e.g. ["US","DE","GR"]); Greece is keyed EL in the Eurostat datasets. EA20 and EU27_2020 select the Eurostat aggregates. Omit for all. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
+| `limit` | integer | Cap each dataset country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
-- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+The IMF maps are keyed by ISO-2 and the Eurostat maps by Eurostat geo code, so one `countries: ["Greece"]` call returns `GR` in the IMF datasets and `EL` in the Eurostat ones.
+
+- **API endpoints:** none directly — reads from bootstrap-aggregate cache keys (no 1:1 REST endpoint).
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **70 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** per dataset — IMF **70 d**, `house-prices` **50 d**, `gov-debt-q` **14 d**, `industrial-production` **5 d**. A call reads, and judges `stale` on, only the datasets it selects; omitting `dataset` judges all seven.
 
 <CodeGroup>
 
@@ -395,7 +411,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_country_macro","arguments":{}}
+    "params":{"name":"get_country_macro","arguments":{"dataset":["gov-debt-q"],"countries":["DE","EL","EA20"]}}
   }'
 ```
 
@@ -403,96 +419,15 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_eu_housing_cycle`
 
-Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes the latest value, prior value, date, unit, and a 10-year sparkline series. Complements BIS WS_SPP with broader EU coverage for the Housing cycle tile.
-
-**Parameters (tool-specific):**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `countries` | `array<string>` | Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
-| `limit` | integer | Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
-
-- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **50 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_eu_housing_cycle","arguments":{}}
-  }'
-```
-
-</CodeGroup>
+Retired. This Eurostat series is the `house-prices` dataset of [`get_country_macro`](#get_country_macro), with the same fields. Calls to the old name still work: they run `get_country_macro` with that dataset, keep the `countries` and `limit` arguments, and return a `deprecation` notice that names the replacement. A dataset the old tool never served is rejected.
 
 ### `get_eu_quarterly_gov_debt`
 
-Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, quarter label, and an 8-quarter sparkline series. Provides fresher debt-trajectory signal than annual IMF GGXWDG_NGDP for EU panels.
-
-**Parameters (tool-specific):**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `countries` | `array<string>` | Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
-| `limit` | integer | Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
-
-- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **14 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_eu_quarterly_gov_debt","arguments":{}}
-  }'
-```
-
-</CodeGroup>
+Retired. This Eurostat series is the `gov-debt-q` dataset of [`get_country_macro`](#get_country_macro), with the same fields. Calls to the old name still work: they run `get_country_macro` with that dataset, keep the `countries` and `limit` arguments, and return a `deprecation` notice that names the replacement. A dataset the old tool never served is rejected.
 
 ### `get_eu_industrial_production`
 
-Return the Eurostat monthly industrial production index (sts_inpr_m: NACE B-D industry excluding construction, seasonally and calendar adjusted, 2021=100) for the 27 EU members plus the EA20 and EU27_2020 aggregates. Each country entry has the latest value, prior value, month label and a 12-month series. Monthly data; the seed is flagged stale after 5 days. Covers the EU industrial index only; no other production or GDP measures. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. countries uses Eurostat geo codes (ISO alpha-2 except EL for Greece); limit caps the country map when no filter is given (default 30, 0 for no cap).
-
-**Parameters (tool-specific):**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `countries` | `array<string>` | Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
-| `limit` | integer | Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
-
-- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **5 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_eu_industrial_production","arguments":{}}
-  }'
-```
-
-</CodeGroup>
+Retired. This Eurostat series is the `industrial-production` dataset of [`get_country_macro`](#get_country_macro), with the same fields. Calls to the old name still work: they run `get_country_macro` with that dataset, keep the `countries` and `limit` arguments, and return a `deprecation` notice that names the replacement. A dataset the old tool never served is rejected.
 
 ### `get_price_and_debt_indicators`
 
@@ -823,22 +758,26 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_five_factor_scorecard`
 
-Return the frozen v1 scorecard for exactly one country or bloc. Choose one of a country code, an official bloc preset, or a custom member list. The response comes from one atomic seeded snapshot, so its country and bloc evidence share the same cohort and methodology version.
+Return the frozen v1 scorecard. Pass one of a country code, an official bloc preset, or a custom member list for that country or bloc with its full evidence; pass none of them for the compact list of every scored country. The response comes from one atomic seeded snapshot, so its country, bloc and list evidence share the same cohort and methodology version.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
-| `country_code` | string | one selector | ISO 3166-1 alpha-2 country code. Case-insensitive. |
-| `preset` | string | one selector | `USMCA`, `EU27`, `BRICS`, `GCC`, `ASEAN`, or `NATO`. |
-| `members` | string[] | one selector | Custom bloc of 2–30 unique uppercase ISO-2 codes. |
+| `country_code` | string | at most one selector | ISO 3166-1 alpha-2 country code. Case-insensitive. |
+| `preset` | string | at most one selector | `USMCA`, `EU27`, `BRICS`, `GCC`, `ASEAN`, or `NATO`. |
+| `members` | string[] | at most one selector | Custom bloc of 2–30 unique uppercase ISO-2 codes. |
 
-- **API endpoints:** `GET /api/scorecard/v1/get-five-factor-scorecard`, `GET /api/scorecard/v1/get-bloc-scorecard`
+Two selectors in one call return Invalid params before any allowance is spent.
+
+- **API endpoints:** `GET /api/scorecard/v1/get-five-factor-scorecard`, `GET /api/scorecard/v1/get-bloc-scorecard`, `GET /api/scorecard/v1/list-five-factor-scorecards`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument; use `jmespath` to trim evidence.
 - **Kind:** canonical RPC proxy over `scorecard:five-factor:v1`; it does not fetch source datasets at request time.
 - **Freshness:** daily seed with a 36-hour freshness budget. Read `computedAt`, `methodologyVersion`, and the seed health metadata separately when operational freshness matters.
 
 Read `hasScore` before every pillar `score` and `subScore`. A false flag means the proto3 zero is a placeholder, not a resilience score. Read each input's `available` and `hasValue` before its numeric `value`. `insufficientReasons` and `unavailableReason` explain missing coverage, including the source-policy case `redistribution-blocked`.
+
+The list (no selector) keeps each country's pillar score, band, input coverage and insufficient-data reasons, but omits raw inputs and source observations so the complete country set stays within the output budget. Use a selector when you need input provenance, raw observations, or bloc aggregation.
 
 Food and energy blocs aggregate physical production and consumption before scoring. Demographics, technology, and defense continuous sub-scores use population weighting. This means a bloc score is deliberately not an average of member bands. See the [Five-Factor Scorecard methodology](/methodology/five-factor-scorecard).
 
@@ -866,30 +805,22 @@ curl -s https://worldmonitor.app/mcp \
   }'
 ```
 
-</CodeGroup>
-
-### `list_five_factor_scorecards`
-
-List a compact summary for every country in the frozen scorecard cohort. Each row keeps the pillar score, band, input coverage, and insufficient-data reasons, but omits raw inputs and source observations so the complete country set stays within the MCP output budget.
-
-- **Parameters:** none
-- **API endpoint:** `GET /api/scorecard/v1/list-five-factor-scorecards`
-- **Access:** `subscription` — requires a Pro subscription.
-- **Kind:** compact projection of the same atomic `scorecard:five-factor:v1` snapshot.
-
-Use `get_five_factor_scorecard` when you need input provenance, raw observations, or bloc aggregation.
-Always read `hasScore` before `score` or `subScore`. When `hasScore` is false, both numeric zeros are protobuf placeholders for insufficient data, not measured zero resilience.
-
-```bash
+```bash Every country
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"list_five_factor_scorecards","arguments":{}}
+    "params":{"name":"get_five_factor_scorecard","arguments":{}}
   }'
 ```
+
+</CodeGroup>
+
+### `list_five_factor_scorecards`
+
+Retired. The compact list of every scored country is [`get_five_factor_scorecard`](#get_five_factor_scorecard) called with no `country_code`, `preset` or `members`. Calls to the old name still work: they run that list call and return a `deprecation` notice that names the replacement.
 
 ### `get_resilience_indicators`
 
@@ -1242,69 +1173,11 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_toronto_reported_occurrences`
 
-Toronto Police Service Major Crime Indicators records. These are retrospective reported occurrences, not live dispatch. TPS deliberately offsets the coordinates, so do not treat them as precise addresses. Contains information licensed under the Open Government Licence - Ontario.
-
-**Parameters (tool-specific):**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `division` | `string` | Case-insensitive TPS division filter. |
-| `neighbourhood` | `string` | Case-insensitive neighbourhood filter. |
-| `offence` | `string` | Case-insensitive offence filter. |
-| `limit` | `number` | Maximum rows to return, from 1 to 100 (default 50). |
-
-- **API endpoints:** `GET /api/safety/v1/get-toronto-safety`
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** bounded cache read from the on-demand TPS Major Crime Indicators snapshot.
-- **Freshness budget:** up to **14 days** before `stale: true` is flagged; source-content freshness is also validated before the canonical snapshot is published.
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_toronto_reported_occurrences","arguments":{"division":"52","limit":25}}
-  }'
-```
-
-</CodeGroup>
+Retired from `tools/list`, together with `get_toronto_calls_attended`: a city-specific tool does not belong in a global tool list. Both names stay callable with their previous arguments and response, including the source attribution rider, so a client that hard-coded them keeps working. The data remains available over REST at `GET /api/safety/v1/get-toronto-safety`.
 
 ### `get_toronto_calls_attended`
 
-Toronto Police Service Calls for Service Attended annual aggregates, via [City of Toronto Open Data](https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/). These are neighbourhood and division counts, not incident points or live dispatch.
-
-**Parameters (tool-specific):**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `year` | `number` | Exact event year. |
-| `division` | `string` | Case-insensitive original or final TPS division filter. |
-| `neighbourhood` | `string` | Case-insensitive neighbourhood filter. |
-| `limit` | `number` | Maximum rows to return, from 1 to 100 (default 50). |
-
-- **API endpoints:** `GET /api/safety/v1/get-toronto-safety`
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** bounded cache read from the on-demand TPS Calls for Service Attended snapshot.
-- **Freshness budget:** up to **14 days** before `stale: true` is flagged; source-content freshness is also validated before the canonical snapshot is published.
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_toronto_calls_attended","arguments":{"year":2025,"limit":25}}
-  }'
-```
-
-</CodeGroup>
+Retired from `tools/list`; see [`get_toronto_reported_occurrences`](#get_toronto_reported_occurrences).
 
 ### `get_country_risk`
 
@@ -2609,7 +2482,12 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `search_flights`
 
-Live Google Flights itineraries between two airports on one date, read from the Google Flights results page. Each itinerary has its total USD price for all passengers, stops, duration, and per-leg airline, flight number, airports, and local departure and arrival times. With return_date the price covers the round trip and the legs are the outbound journey. degraded with an error means the provider failed; an empty list without degraded means no itineraries were found. Airports are IATA codes (e.g. "JFK", "LHR", "DXB").
+Live Google Flights search between two airports, read from the Google Flights results page. It runs in one of two modes, chosen by the date arguments:
+
+- **One date** (`departure_date`): the itineraries on that date, each with its total USD price for all passengers, stops, duration, and per-leg airline, flight number, airports, and local departure and arrival times. With `return_date` the price covers the round trip and the legs are the outbound journey. Returns `flights`.
+- **Date range** (`start_date` and `end_date`, at most 31 days): the cheapest fare per departure date, one results-page search per date, so a long range is slow. `trip_duration` makes it a round trip and sets each row's `returnDate`; `sort_by: "price"` sorts by fare instead of date. A date with no itineraries is omitted. Returns `dates`.
+
+Each mode rejects the other mode's arguments (`return_date` and `max_stops` apply to one date; `trip_duration` to a range) with Invalid params before any allowance is spent. `degraded` with an `error` means the provider failed; in a range, the list holds only the dates that answered. An empty list without `degraded` means nothing was found. Prices change minute to minute. Airports are IATA codes (e.g. "JFK", "LHR", "DXB").
 
 **Parameters:**
 
@@ -2617,20 +2495,23 @@ Live Google Flights itineraries between two airports on one date, read from the 
 |------|------|---------:|-------------|
 | `origin` | string | **yes** | IATA code for the departure airport, e.g. "JFK" |
 | `destination` | string | **yes** | IATA code for the arrival airport, e.g. "LHR" |
-| `departure_date` | string | **yes** | Departure date in YYYY-MM-DD format |
-| `return_date` | string | no | Return date in YYYY-MM-DD format for round trips (optional) |
+| `departure_date` | string | one date | Departure date in YYYY-MM-DD format for an itinerary search. Omit when searching a date range. |
+| `return_date` | string | no | Return date in YYYY-MM-DD format for a round-trip itinerary search (optional) |
+| `start_date` | string | date range | Start of a date range in YYYY-MM-DD format, for the cheapest fare per date. Requires end_date; omit departure_date. |
+| `end_date` | string | date range | End of the date range in YYYY-MM-DD format, at most 30 days after start_date |
+| `trip_duration` | integer | no | Trip length in whole days for a round-trip date range, e.g. 7 for a one-week trip (optional) |
 | `cabin_class` | string | no | Cabin class: "economy", "premium_economy", "business", or "first" (optional, default economy) |
-| `max_stops` | string | no | Max stops: "0" or "non_stop" for nonstop, "1" or "one_stop" for max one stop, or omit for any (optional) |
+| `max_stops` | string | no | Itinerary search only. Max stops: "0" or "non_stop" for nonstop, "1" or "one_stop" for max one stop, or omit for any (optional) |
 | `passengers` | number | no | Number of passengers (1-9, default 1) |
-| `sort_by` | string | no | Sort order: "price" (cheapest), "duration", "departure", or "arrival" (optional) |
+| `sort_by` | string | no | Sort order: "price" (cheapest), "duration", "departure", or "arrival" (optional). A date range accepts only "price"; it is sorted by date otherwise. |
 
-- **API endpoints:** `GET /api/aviation/v1/search-google-flights`
+- **API endpoints:** `GET /api/aviation/v1/search-google-flights`, `GET /api/aviation/v1/search-google-dates`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
 
 <CodeGroup>
 
-```bash curl
+```bash One date
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
@@ -2641,44 +2522,22 @@ curl -s https://worldmonitor.app/mcp \
   }'
 ```
 
-</CodeGroup>
-
-### `search_flight_prices_by_date`
-
-Return the cheapest Google Flights fare for each departure date between two airports across a range of at most 31 days (one results-page search per date, so a long range is slow). Each row has the date, the return date for round trips (departure plus trip_duration) and the lowest total USD price for all passengers; a date with no itineraries is omitted. degraded with an error means some or all dates failed and the list holds only the dates that answered. Prices change minute to minute. Requires a paid plan; one live search request, weight 2 on API plans, up to 25 s. Airports are IATA codes; is_round_trip needs trip_duration; passengers is 1-9. Read-only.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|------|------|---------:|-------------|
-| `origin` | string | **yes** | IATA code for the departure airport, e.g. "JFK" |
-| `destination` | string | **yes** | IATA code for the arrival airport, e.g. "LHR" |
-| `start_date` | string | **yes** | Start of the date range in YYYY-MM-DD format |
-| `end_date` | string | **yes** | End of the date range in YYYY-MM-DD format, at most 30 days after start_date |
-| `is_round_trip` | boolean | no | Whether to search round-trip prices (default false). Requires trip_duration when true. |
-| `trip_duration` | number | no | Trip duration in days — required when is_round_trip is true (e.g. 7 for a one-week trip) |
-| `cabin_class` | string | no | Cabin class: "economy", "premium_economy", "business", or "first" (optional) |
-| `passengers` | number | no | Number of passengers (1-9, default 1) |
-| `sort_by_price` | boolean | no | Sort results by price ascending (default false, sorts by date) |
-
-- **API endpoints:** `GET /api/aviation/v1/search-google-dates`
-- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
-- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
-
-<CodeGroup>
-
-```bash curl
+```bash Date range
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"search_flight_prices_by_date","arguments":{"origin":"JFK","destination":"LHR","start_date":"2026-08-01","end_date":"2026-08-31"}}
+    "params":{"name":"search_flights","arguments":{"origin":"JFK","destination":"LHR","start_date":"2026-08-01","end_date":"2026-08-31","trip_duration":7,"sort_by":"price"}}
   }'
 ```
 
 </CodeGroup>
+
+### `search_flight_prices_by_date`
+
+Retired. The cheapest fare per date is the date-range mode of [`search_flights`](#search_flights): pass `start_date` and `end_date`. Calls to the old name still work: `is_round_trip: true` with `trip_duration` becomes a round-trip range, `sort_by_price: true` becomes `sort_by: "price"`, and the response carries a `deprecation` notice that names the replacement.
 
 ## Environment & science
 

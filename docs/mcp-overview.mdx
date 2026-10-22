@@ -299,7 +299,9 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## Tool catalog
 
-The server exposes a registry of tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the five live LLM/external-API tools (`get_country_brief`, `analyze_situation`, `search_flights`, `search_flight_prices_by_date`, `classify_event`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), the bounded canonical procurement proxy (`get_procurement_opportunities`), the corporate-intelligence proxy (`get_company_intelligence`), the canonical China decision-signal RPC (`get_china_decision_signals`), and the three durable-history RPCs (`search_intel_history`, `get_intel_timeline`, `get_similar_events`). `get_world_brief` reads the dashboard's precomputed, citation-grounded `news:insights:v1` snapshot and does not make a request-time LLM call. The on-demand NLP utilities (`classify_event`, `extract_entities`, `get_news_clusters`, `get_keyword_spikes`, `verify_claim`) accept bounded caller text or compute over live seeded data; all but `classify_event` are fully deterministic. One (`describe_tool`, added v1.5.0) returns the complete definition of any other tool by name — the same entry `tools/list` ships, for re-reading one tool without re-listing the catalog; exempt from the Pro daily quota.
+The server exposes a registry of tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the four live LLM/external-API tools (`get_country_brief`, `analyze_situation`, `search_flights`, `classify_event`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), the bounded canonical procurement proxy (`get_procurement_opportunities`), the corporate-intelligence proxy (`get_company_intelligence`), the canonical China decision-signal RPC (`get_china_decision_signals`), and the three durable-history RPCs (`search_intel_history`, `get_intel_timeline`, `get_similar_events`). `get_world_brief` reads the dashboard's precomputed, citation-grounded `news:insights:v1` snapshot and does not make a request-time LLM call. The on-demand NLP utilities (`classify_event`, `extract_entities`, `get_news_clusters`, `get_keyword_spikes`, `verify_claim`) accept bounded caller text or compute over live seeded data; all but `classify_event` are fully deterministic. One (`describe_tool`, added v1.5.0) returns the complete definition of any other tool by name — the same entry `tools/list` ships, for re-reading one tool without re-listing the catalog; exempt from the Pro daily quota.
+
+Tools that were merged or retired keep answering under their old names, so a client that hard-coded one keeps working. A call to a merged name returns a `deprecation` notice naming the tool that ran; a retired tool, such as the two Toronto tools, returns its previous response unchanged. The [MCP Tools Reference](/mcp-tools-reference) lists every retired name and its replacement.
 
 <Tip>
 For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference). For payload projection — every tool accepts an optional `jmespath` argument that typically cuts response size by 80-95% — see the [JMESPath guide](/mcp-jmespath).
@@ -311,10 +313,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 |------|-------------|
 | `get_market_data` | Equity quotes, commodity prices (incl. gold GC=F), crypto, FX, sector performance and valuation coverage, ETF flows, Gulf markets. Sector coverage separates write age from completeness and exposes bounded unavailable/last-good/direct-proxy diagnostics. |
 | `get_economic_data` | Fed Funds, economic calendar, fuel prices, ECB FX, EU yield curve, earnings, COT, energy storage, BIS DSR + property prices. |
-| `get_country_macro` | IMF WEO bundle per country: inflation, current account, GDP/capita, unemployment, savings-investment gap (~210 countries). |
-| `get_eu_housing_cycle` | Eurostat annual house price index (prc_hpi_a), 10-yr sparkline per EU member + EA20/EU27. |
-| `get_eu_quarterly_gov_debt` | Eurostat quarterly gross government debt (%GDP), 8-quarter sparkline. |
-| `get_eu_industrial_production` | Eurostat monthly industrial production index, 12-month sparkline. |
+| `get_country_macro` | Per-country macro indicators by `dataset`: IMF WEO inflation, current account, GDP/capita, unemployment and trade (~210 countries), plus Eurostat house prices, quarterly government debt and industrial production for EU members and the EA20/EU27_2020 aggregates. |
 | `get_prediction_markets` | Prediction markets with current probabilities: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. |
 | `get_supply_chain_data` | Dry bulk shipping stress index, customs flows, COMTRADE bilateral trade. |
 | `get_price_and_debt_indicators` | Price and debt indicators: Big Mac index, FAO Food Price Index, and per-country national debt levels. |
@@ -330,8 +329,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `get_mineral_production` | Who mines / refines a commodity (USGS MCS shares + HHI; BGS fill). |
 | `get_food_stocks` | USDA PSD cereal stocks-to-use per country (or `WORLD`) by marketing year, optional per-commodity filter. |
 | `get_demographics_capability` | Country age structure, education capacity, and industrial-workforce observations (UN WPP, UNESCO UIS, ILOSTAT). |
-| `get_five_factor_scorecard` | Frozen v1 food, energy, demographics, technology, and defense scorecard for one country, official bloc preset, or validated custom bloc. Preserves input availability and source provenance. |
-| `list_five_factor_scorecards` | Compact country-by-country five-factor pillar scores, bands, coverage, and insufficient-data reasons. Read `hasScore` before numeric scores; false means zero is an insufficient-data placeholder. Use the single-scorecard tool for the full evidence ledger. |
+| `get_five_factor_scorecard` | Frozen v1 food, energy, demographics, technology, and defense scorecard for one country, official bloc preset, or validated custom bloc, with input availability and source provenance. With no selector, compact pillar scores, bands, coverage, and insufficient-data reasons for every country. Read `hasScore` before a pillar `score` or `subScore`, and in the detailed response read `available` and `hasValue` before an input `value`; when the flag is false, zero is a proto3 placeholder. |
 
 ### Energy
 
@@ -362,8 +360,6 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `get_test_site_seismicity` | USGS earthquakes within 100 km of known nuclear test sites, scored for proliferation concern. |
 | `get_population_exposure` | Estimated people within the impact radius of active earthquakes, wildfires, and conflict events. |
 | `simulate_infrastructure_cascade` | Breadth-first failure propagation across submarine cables, pipelines, ports, and chokepoints. |
-| `get_toronto_reported_occurrences` | Toronto Police Service Major Crime Indicators records (retrospective, coordinate-offset). |
-| `get_toronto_calls_attended` | Toronto Police Service Calls-for-Service-Attended annual aggregates by neighbourhood and division. |
 | `list_x_feed` | Curated public news-account posts from monitored X accounts — permalinks plus derived facts, never tweet bodies. |
 
 ### NLP utilities (on-demand)
@@ -396,8 +392,7 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 | `get_maritime_activity` | AIS density zones, dark-ship events, chokepoint congestion per country. Params: `country_code`. |
 | `get_aviation_status` | FAA airport delays, NOTAM closures, tracked military aircraft. |
 | `get_infrastructure_status` | Cloudflare Radar outages, major cloud/internet service status. |
-| `search_flights` | Google Flights real-time search between IATA airport codes on a specific date. |
-| `search_flight_prices_by_date` | Cheapest fare per departure date across a range of up to 31 days. |
+| `search_flights` | Google Flights real-time search between IATA airport codes: itineraries on one `departure_date`, or the cheapest fare per date across a `start_date`–`end_date` range of up to 31 days. |
 
 ### Environment & science
 
@@ -474,8 +469,7 @@ Reverse lookup workflow:
 | `get_consumer_prices` | `GET /api/consumer-prices/v1/get-consumer-price-freshness`<br/>`GET /api/consumer-prices/v1/get-consumer-price-overview`<br/>`GET /api/consumer-prices/v1/list-consumer-price-categories`<br/>`GET /api/consumer-prices/v1/list-consumer-price-movers`<br/>`GET /api/consumer-prices/v1/list-retailer-price-spreads` |
 | `get_supply_chain_data` | `GET /api/supply-chain/v1/get-shipping-stress`<br/>`GET /api/trade/v1/get-customs-revenue` |
 | `get_chokepoint_status` | `GET /api/intelligence/v1/get-country-port-activity`<br/>`GET /api/supply-chain/v1/get-chokepoint-status` |
-| `get_five_factor_scorecard` | `GET /api/scorecard/v1/get-five-factor-scorecard`<br/>`GET /api/scorecard/v1/get-bloc-scorecard` |
-| `list_five_factor_scorecards` | `GET /api/scorecard/v1/list-five-factor-scorecards` |
+| `get_five_factor_scorecard` | `GET /api/scorecard/v1/get-five-factor-scorecard`<br/>`GET /api/scorecard/v1/get-bloc-scorecard`<br/>`GET /api/scorecard/v1/list-five-factor-scorecards` |
 | `get_climate_data` | `GET /api/climate/v1/get-co2-monitoring`<br/>`GET /api/climate/v1/get-ocean-ice-data`<br/>`GET /api/climate/v1/list-air-quality-data`<br/>`GET /api/climate/v1/list-climate-anomalies`<br/>`GET /api/climate/v1/list-climate-disasters`<br/>`GET /api/climate/v1/list-climate-news` |
 | `get_health_signals` | `GET /api/health/v1/list-air-quality-alerts`<br/>`GET /api/health/v1/list-disease-outbreaks` |
 | `get_conflict_events` | `GET /api/conflict/v1/list-iran-events`<br/>`GET /api/conflict/v1/list-ucdp-events`<br/>`GET /api/unrest/v1/list-unrest-events` |
@@ -508,12 +502,11 @@ Reverse lookup workflow:
 | `get_news_clusters` | `GET /api/news/v1/list-feed-digest` |
 | `verify_claim` | `GET /api/news/v1/list-feed-digest`, `GET /api/news/v1/search-fact-checks`, `GET /api/news/v1/search-claim-headlines` |
 | `analyze_situation` | `POST /api/intelligence/v1/deduct-situation` |
-| `search_flights` | `GET /api/aviation/v1/search-google-flights` |
-| `search_flight_prices_by_date` | `GET /api/aviation/v1/search-google-dates` |
+| `search_flights` | `GET /api/aviation/v1/search-google-flights`<br/>`GET /api/aviation/v1/search-google-dates` |
 
 Tools with no declared API paths still return data via `tools/call`, but they should not be read as REST equivalents:
 
-- **Cache-backed bootstrap aggregates** — read Redis keys seeded directly by Railway crons (e.g. `get_aviation_status`, `get_cyber_threats`, `get_country_macro`, the three EU Eurostat tools).
+- **Cache-backed bootstrap aggregates** — read Redis keys seeded directly by Railway crons (e.g. `get_aviation_status`, `get_cyber_threats`, `get_country_macro`).
 - **Seeded synthesis snapshots** — `get_world_brief` reads the dashboard's accepted `news:insights:v1` payload through the bootstrap path; it has no direct REST-equivalent operation or request-time LLM call.
 - **Static in-memory registries** — filter a constant bundled with the MCP server's edge binary, no upstream call at all (e.g. `get_commodity_geo`).
 

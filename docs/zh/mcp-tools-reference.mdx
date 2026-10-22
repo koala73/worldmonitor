@@ -369,18 +369,36 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_country_macro`
 
-来自 IMF WEO 的逐国宏观经济指标（约 210 个国家，月度节奏）。捆绑财政/外部平衡（通胀、经常账户、政府收入/支出/初级余额、CPI）、增长与人均（实际 GDP 增长、人均 GDP 美元和 PPP、储蓄和投资率、储蓄-投资缺口）、劳动力和人口统计（失业率、人口），以及对外贸易（经常账户美元、进口/出口量百分比变化）。每个序列取最新可用年份。用于国家级经济筛选、同侪基准对比和滞胀/失衡标志。注意：以美元计的出口/进口水平（exportsUsd、importsUsd、tradeBalanceUsd）返回 null — WEO 在 2026-04 收回了 BX/BM 指标的广泛覆盖；请改用 currentAccountUsd 或量变化（import/exportVolumePctChg）。
+按 `dataset` 选择的逐国宏观经济指标。IMF WEO 覆盖约 210 个国家，每个序列取最新可用年份：
+
+- `macro`：通胀、CPI、经常账户、政府收入、支出与初级余额。
+- `growth`：实际 GDP 增长、人均 GDP（美元与 PPP）、储蓄与投资率、储蓄-投资缺口。
+- `labor`：失业率与人口。
+- `external`：经常账户（美元）与进口/出口量百分比变化。以美元计的出口/进口水平（`exportsUsd`、`importsUsd`、`tradeBalanceUsd`）返回 null，因为 WEO 在 2026-04 收回了 BX/BM 指标的广泛覆盖；请改用 `currentAccountUsd` 或量变化。
+
+Eurostat 覆盖 27 个欧盟成员国以及 EA20 与 EU27_2020 汇总：
+
+- `house-prices`：年度房价指数（prc_hpi_a，2015=100），附 10 年序列。
+- `gov-debt-q`：季度一般政府总债务（gov_10q_ggdebt，占 GDP 百分比），附 8 个季度序列。
+- `industrial-production`：月度工业生产指数（sts_inpr_m，NACE B-D 不含建筑业，经季节与日历调整，2021=100），附 12 个月序列。
+
+每个 Eurostat 国家条目包含 `latest`、`prior`、期间标签（`date`、`quarter` 或 `month`）与 `series`。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `countries` | `array<string>` | 在所有四个 IMF 数据集中要保留的 ISO 3166-1 alpha-2 国家代码（例如 ["US","DE","CN"]）。省略则返回全部约 210 个国家。 |
-| `limit` | integer | 在未提供 countries 筛选时，将每个 IMF 数据集国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
+| `dataset` | `array<string: macro / growth / labor / external / house-prices / gov-debt-q / industrial-production>` | 将响应限制为一个或多个数据集。省略则返回全部七个。 |
+| `countries` | `array<string>` | 在每个数据集中要保留的 ISO 3166-1 alpha-2 国家代码（例如 ["US","DE","GR"]）；希腊在 Eurostat 数据集中以 EL 为键。EA20 与 EU27_2020 选择 Eurostat 汇总。省略则返回全部。接受国家名称与 alpha-3 代码；无法解析的输入返回 Invalid params。 |
+| `limit` | integer | 在未提供 countries 筛选时，将每个数据集国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
+
+IMF 映射以 ISO-2 为键，Eurostat 映射以 Eurostat 地理代码为键，因此一次 `countries: ["Greece"]` 调用会在 IMF 数据集中返回 `GR`，在 Eurostat 数据集中返回 `EL`。
 
 - **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **70 天**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 按数据集 — IMF **70 天**，`house-prices` **50 天**，`gov-debt-q` **14 天**，`industrial-production` **5 天**。一次调用只读取所选数据集，并只据此判断 `stale`；省略 `dataset` 时按全部七个判断。
+
+旧名称 `get_eu_housing_cycle`、`get_eu_quarterly_gov_debt` 与 `get_eu_industrial_production` 已退役，但仍可调用：它们以各自的数据集调用 `get_country_macro`，并返回指明替代工具的 `deprecation` 通知。
 
 <CodeGroup>
 
@@ -391,97 +409,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_country_macro","arguments":{}}
-  }'
-```
-
-</CodeGroup>
-
-### `get_eu_housing_cycle`
-
-Eurostat 年度房价指数（prc_hpi_a，基准 2015=100），覆盖所有 27 个欧盟成员国以及 EA20 和 EU27_2020 汇总。每个国家条目包含最新值、前值、日期、单位和 10 年迷你图序列。以更广泛的 EU 覆盖补充 BIS WS_SPP，用于 Housing 周期磁贴。
-
-**参数（工具特定）：**
-
-| 名称 | 类型 | 描述 |
-|------|------|-------------|
-| `countries` | `array<string>` | 要保留的 Eurostat 地理代码 — ISO 3166-1 alpha-2，但希腊用 "EL"，外加汇总 "EA20" 和 "EU27_2020"。省略则返回全部。 |
-| `limit` | integer | 在未提供 countries 筛选时，将国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
-
-- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
-- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **50 天**（由 seeder cron 的预期间隔设定）。
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_eu_housing_cycle","arguments":{}}
-  }'
-```
-
-</CodeGroup>
-
-### `get_eu_quarterly_gov_debt`
-
-Eurostat 季度一般政府总债务（gov_10q_ggdebt，%GDP），覆盖所有 27 个欧盟成员国以及 EA20 和 EU27_2020 汇总。每个国家条目包含最新值、前值、季度标签和 8 季度迷你图序列。为 EU 面板提供比年度 IMF GGXWDG_NGDP 更新的债务轨迹信号。
-
-**参数（工具特定）：**
-
-| 名称 | 类型 | 描述 |
-|------|------|-------------|
-| `countries` | `array<string>` | 要保留的 Eurostat 地理代码 — ISO 3166-1 alpha-2，但希腊用 "EL"，外加汇总 "EA20" 和 "EU27_2020"。省略则返回全部。 |
-| `limit` | integer | 在未提供 countries 筛选时，将国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
-
-- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
-- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **14 天**（由 seeder cron 的预期间隔设定）。
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_eu_quarterly_gov_debt","arguments":{}}
-  }'
-```
-
-</CodeGroup>
-
-### `get_eu_industrial_production`
-
-Eurostat 月度工业生产指数（sts_inpr_m，NACE B-D 工业，不含建筑业，SCA，基准 2021=100），覆盖所有 27 个欧盟成员国以及 EA20 和 EU27_2020 汇总。每个国家条目包含最新值、前值、月份标签和 12 个月迷你图序列。作为实体经济活动的领先指标，被 "Real economy pulse" 迷你图使用。
-
-**参数（工具特定）：**
-
-| 名称 | 类型 | 描述 |
-|------|------|-------------|
-| `countries` | `array<string>` | 要保留的 Eurostat 地理代码 — ISO 3166-1 alpha-2，但希腊用 "EL"，外加汇总 "EA20" 和 "EU27_2020"。省略则返回全部。 |
-| `limit` | integer | 在未提供 countries 筛选时，将国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
-
-- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
-- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **5 天**（由 seeder cron 的预期间隔设定）。
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_eu_industrial_production","arguments":{}}
+    "params":{"name":"get_country_macro","arguments":{"dataset":["gov-debt-q"],"countries":["DE","EL","EA20"]}}
   }'
 ```
 
@@ -738,22 +666,26 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_five_factor_scorecard`
 
-返回冻结版 v1 五因素评分卡。一次调用必须且只能选择一个国家、一个官方集团，或一个自定义成员列表。响应读取同一个原子快照，因此国家与集团使用相同的证据批次和方法版本。
+返回冻结版 v1 五因素评分卡。传入国家代码、官方集团或自定义成员列表之一，返回该国家或集团的完整证据；三者都不传时，返回所有已评分国家的紧凑列表。响应读取同一个原子快照，因此国家、集团与列表使用相同的证据批次和方法版本。
 
 **参数：**
 
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|-----:|------|
-| `country_code` | string | 三选一 | ISO 3166-1 alpha-2 国家代码，不区分大小写。 |
-| `preset` | string | 三选一 | `USMCA`、`EU27`、`BRICS`、`GCC`、`ASEAN` 或 `NATO`。 |
-| `members` | string[] | 三选一 | 2–30 个唯一的大写 ISO-2 代码组成的自定义集团。 |
+| `country_code` | string | 至多选一 | ISO 3166-1 alpha-2 国家代码，不区分大小写。 |
+| `preset` | string | 至多选一 | `USMCA`、`EU27`、`BRICS`、`GCC`、`ASEAN` 或 `NATO`。 |
+| `members` | string[] | 至多选一 | 2–30 个唯一的大写 ISO-2 代码组成的自定义集团。 |
 
-- **API 端点：** `GET /api/scorecard/v1/get-five-factor-scorecard`、`GET /api/scorecard/v1/get-bloc-scorecard`
+一次调用传入两个选择器时，会在消耗任何额度之前返回 Invalid params。
+
+- **API 端点：** `GET /api/scorecard/v1/get-five-factor-scorecard`、`GET /api/scorecard/v1/get-bloc-scorecard`、`GET /api/scorecard/v1/list-five-factor-scorecards`
 - **访问：** `subscription`，需要 Pro 订阅。
 - **类型：** 规范 RPC 代理，读取 `scorecard:five-factor:v1`；请求时不获取上游来源。
 - **新鲜度：** 每日播种，新鲜度预算为 36 小时。
 
 读取每个支柱的 `score` 与 `subScore` 前，必须先检查 `hasScore`。当标志为 false 时，proto3 的零只是占位值，不是评分。读取输入数值前，必须先检查 `available` 与 `hasValue`。`insufficientReasons` 与 `unavailableReason` 会说明缺失原因，包括来源政策限制 `redistribution-blocked`。
+
+列表（不传选择器）保留每个国家的支柱评分、档位、输入覆盖率和数据不足原因，但省略原始输入和来源观测，确保完整国家集合不超过输出预算。如需输入来源、原始观测或集团汇总，请传入选择器。旧名称 `list_five_factor_scorecards` 已退役但仍可调用，它执行列表调用并返回 `deprecation` 通知。
 
 集团的食品和能源支柱先汇总实际生产与消费，再计算评分。人口结构、科技与国防的连续子分数按人口加权。因此，集团评分不是成员档位的简单平均。参见[五因素评分卡方法](/zh/methodology/five-factor-scorecard)。
 
@@ -781,30 +713,18 @@ curl -s https://worldmonitor.app/mcp \
   }'
 ```
 
-</CodeGroup>
-
-### `list_five_factor_scorecards`
-
-紧凑列出冻结评分卡批次中的所有国家。每条记录保留支柱评分、档位、输入覆盖率和数据不足原因，但省略原始输入和来源观测，确保完整国家集合不超过 MCP 输出预算。
-
-- **参数：** 无
-- **API 端点：** `GET /api/scorecard/v1/list-five-factor-scorecards`
-- **访问：** `subscription`，需要 Pro 订阅。
-- **类型：** 同一个原子 `scorecard:five-factor:v1` 快照的紧凑投影。
-
-如需输入来源、原始观测或集团汇总，请使用 `get_five_factor_scorecard`。
-读取 `score` 或 `subScore` 前必须检查 `hasScore`。若 `hasScore` 为 false，两个数值零只是 protobuf 的数据不足占位符，并不表示韧性实测为零。
-
-```bash
+```bash 全部国家
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"list_five_factor_scorecards","arguments":{}}
+    "params":{"name":"get_five_factor_scorecard","arguments":{}}
   }'
 ```
+
+</CodeGroup>
 
 ### `get_resilience_indicators`
 
@@ -2090,7 +2010,12 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `search_flights`
 
-从 Google Flights 结果页实时读取特定日期两个机场之间的行程。每个行程包含全部乘客的美元总价、经停、时长，以及每个航段的航空公司、航班号、机场和当地出发与到达时间。提供 return_date 时价格覆盖往返行程，航段为去程。degraded 带 error 表示数据源失败；无 degraded 的空列表表示未找到行程。机场使用 IATA 代码（例如 "JFK"、"LHR"、"DXB"）。
+从 Google Flights 结果页实时搜索两个机场之间的航班。按日期参数选择两种模式之一：
+
+- **单日**（`departure_date`）：该日期的行程，每个行程包含全部乘客的美元总价、经停、时长，以及每个航段的航空公司、航班号、机场和当地出发与到达时间。提供 `return_date` 时价格覆盖往返行程，航段为去程。返回 `flights`。
+- **日期范围**（`start_date` 与 `end_date`，最多 31 天）：每个出发日期的最低票价，每个日期一次结果页搜索，因此范围越长越慢。`trip_duration` 使其成为往返并设置每行的 `returnDate`；`sort_by: "price"` 按票价而非日期排序。没有行程的日期不列出。返回 `dates`。
+
+每种模式都会在消耗任何额度之前，以 Invalid params 拒绝另一种模式的参数（`return_date` 与 `max_stops` 仅用于单日；`trip_duration` 仅用于范围）。`degraded` 带 `error` 表示数据源失败；在日期范围中，列表只包含有结果的日期。无 `degraded` 的空列表表示未找到结果。价格随时变化。机场使用 IATA 代码（例如 "JFK"、"LHR"、"DXB"）。旧名称 `search_flight_prices_by_date` 已退役但仍可调用：`is_round_trip: true` 加 `trip_duration` 变为往返日期范围，`sort_by_price: true` 变为 `sort_by: "price"`，响应带有 `deprecation` 通知。
 
 **参数：**
 
@@ -2098,19 +2023,22 @@ curl -s https://worldmonitor.app/mcp \
 |------|------|---------:|-------------|
 | `origin` | string | **是** | 出发机场的 IATA 代码，例如 "JFK" |
 | `destination` | string | **是** | 到达机场的 IATA 代码，例如 "LHR" |
-| `departure_date` | string | **是** | 出发日期，格式为 YYYY-MM-DD |
-| `return_date` | string | 否 | 往返行程的返程日期，格式为 YYYY-MM-DD（可选） |
+| `departure_date` | string | 单日 | 行程搜索的出发日期，格式为 YYYY-MM-DD。搜索日期范围时省略。 |
+| `return_date` | string | 否 | 往返行程搜索的返程日期，格式为 YYYY-MM-DD（可选） |
+| `start_date` | string | 日期范围 | 日期范围起始，格式为 YYYY-MM-DD，用于每日最低票价。需要 end_date；省略 departure_date。 |
+| `end_date` | string | 日期范围 | 日期范围结束，格式为 YYYY-MM-DD，最多在 start_date 之后 30 天 |
+| `trip_duration` | integer | 否 | 往返日期范围的行程整天数，例如 7 表示一周行程（可选） |
 | `cabin_class` | string | 否 | 舱位等级："economy"、"premium_economy"、"business" 或 "first"（可选，默认 economy） |
-| `max_stops` | string | 否 | 最大经停数："0" 或 "non_stop" 表示直飞，"1" 或 "one_stop" 表示最多一次经停，省略表示不限（可选） |
+| `max_stops` | string | 否 | 仅用于行程搜索。最大经停数："0" 或 "non_stop" 表示直飞，"1" 或 "one_stop" 表示最多一次经停，省略表示不限（可选） |
 | `passengers` | number | 否 | 乘客人数（1-9，默认 1） |
-| `sort_by` | string | 否 | 排序方式："price"（最便宜）、"duration"、"departure" 或 "arrival"（可选） |
+| `sort_by` | string | 否 | 排序方式："price"（最便宜）、"duration"、"departure" 或 "arrival"（可选）。日期范围只接受 "price"，否则按日期排序。 |
 
-- **API 端点：** `GET /api/aviation/v1/search-google-flights`
+- **API 端点：** `GET /api/aviation/v1/search-google-flights`、`GET /api/aviation/v1/search-google-dates`
 - **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**25.0s**。
 
 <CodeGroup>
 
-```bash curl
+```bash 单日
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
@@ -2121,39 +2049,14 @@ curl -s https://worldmonitor.app/mcp \
   }'
 ```
 
-</CodeGroup>
-
-### `search_flight_prices_by_date`
-
-两个机场之间每个出发日期的 Google Flights 最低票价，日期范围最多 31 天（每个日期一次结果页搜索）。每行包含日期、往返行程的返程日期（出发日期加 trip_duration），以及全部乘客的最低美元总价。没有行程的日期不列出。degraded 带 error 表示部分或全部日期失败，列表只包含有结果的日期。机场使用 IATA 代码。
-
-**参数：**
-
-| 名称 | 类型 | 必填 | 描述 |
-|------|------|---------:|-------------|
-| `origin` | string | **是** | 出发机场的 IATA 代码，例如 "JFK" |
-| `destination` | string | **是** | 到达机场的 IATA 代码，例如 "LHR" |
-| `start_date` | string | **是** | 日期范围起始，格式为 YYYY-MM-DD |
-| `end_date` | string | **是** | 日期范围结束，格式为 YYYY-MM-DD，最多在 start_date 之后 30 天 |
-| `is_round_trip` | boolean | 否 | 是否搜索往返价格（默认 false）。为 true 时需要 trip_duration。 |
-| `trip_duration` | number | 否 | 行程天数 — is_round_trip 为 true 时必填（例如 7 表示一周行程） |
-| `cabin_class` | string | 否 | 舱位等级："economy"、"premium_economy"、"business" 或 "first"（可选） |
-| `passengers` | number | 否 | 乘客人数（1-9，默认 1） |
-| `sort_by_price` | boolean | 否 | 按价格升序排序结果（默认 false，按日期排序） |
-
-- **API 端点：** `GET /api/aviation/v1/search-google-dates`
-- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**25.0s**。
-
-<CodeGroup>
-
-```bash curl
+```bash 日期范围
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"search_flight_prices_by_date","arguments":{"origin":"JFK","destination":"LHR","start_date":"2026-08-01","end_date":"2026-08-31"}}
+    "params":{"name":"search_flights","arguments":{"origin":"JFK","destination":"LHR","start_date":"2026-08-01","end_date":"2026-08-31","trip_duration":7,"sort_by":"price"}}
   }'
 ```
 

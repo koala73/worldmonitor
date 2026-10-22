@@ -135,6 +135,15 @@ function resolveEurostatCountryFilter(raw: unknown): string[] {
   });
 }
 
+// get_country_macro datasets; each name is also the output label of its cache key.
+const COUNTRY_MACRO_DATASETS = ['macro', 'growth', 'labor', 'external', 'house-prices', 'gov-debt-q', 'industrial-production'] as const;
+// Eurostat datasets keyed by Eurostat geo codes (EL for Greece) rather than ISO-2.
+const EUROSTAT_MACRO_KEYS: Readonly<Record<string, readonly [string, string]>> = {
+  'house-prices': ['economic:eurostat:house-prices:v1', 'seed-meta:economic:eurostat-house-prices'],
+  'gov-debt-q': ['economic:eurostat:gov-debt-q:v1', 'seed-meta:economic:eurostat-gov-debt-q'],
+  'industrial-production': ['economic:eurostat:industrial-production:v1', 'seed-meta:economic:eurostat-industrial-production'],
+};
+
 // IDMC rows per events-view call: 100 full rows stay well inside the output budget.
 const IDU_EVENTS_MAX = 100;
 
@@ -845,118 +854,6 @@ function filterForecastScorecard(data: Record<string, unknown>, params: Record<s
 
 export const CACHE_TOOLS: ToolDef[] = [
   COUNTRY_HISTORY_TOOL,
-  {
-    name: 'get_toronto_reported_occurrences',
-    title: 'Toronto reported crime occurrences',
-    _outputBudgetBytes: 65536,
-    // TPS rows are licensed for reuse with attribution. Extract it from the
-    // cache envelope so a projection over `records` cannot leave the rows
-    // without the licence assertion that permits redistributing them.
-    _attribution: 'data.reported_occurrences.{attribution: attribution, source: source, fetchedAt: fetchedAt}',
-    description: 'Return Toronto Police Service Major Crime Indicators rows: reported occurrences with offence, division, neighbourhood, approximate coordinates and report dates, from the seeded open-data extract (flagged stale after 2 weeks). Retrospective reported crime only; not live dispatch, and coordinates are approximate by design. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. division, neighbourhood and offence are case-insensitive substring filters; limit returns 1-100 rows (default 50). Attribution rides with every projection.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        division: { type: 'string', description: 'Case-insensitive TPS division filter.' },
-        neighbourhood: { type: 'string', description: 'Case-insensitive neighbourhood filter.' },
-        offence: { type: 'string', description: 'Case-insensitive offence filter.' },
-        limit: { type: 'number', description: 'Maximum rows to return, from 1 to 100 (default 50).' },
-      },
-      required: [],
-    },
-    outputSchema: cacheEnvelope({
-      reported_occurrences: {
-        type: ['object', 'null'],
-        properties: {
-          semantic: { type: 'string', enum: ['reported_occurrence'] },
-          source: { type: 'string', enum: ['tps-mci'] },
-          attribution: { type: 'string' },
-          fetchedAt: { type: 'string' },
-          newestContentAt: { type: ['number', 'null'] },
-          records: { type: 'array', maxItems: 100, items: { type: 'object' } },
-        },
-      },
-    }),
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _postFilter: (data, params) => {
-      const division = argStr(params.division);
-      const neighbourhood = argStr(params.neighbourhood);
-      const offence = argStr(params.offence);
-      narrowNested(data, 'reported_occurrences', 'records', (row) => (
-        (!division || ciIncludes(row.division, division))
-        && (!neighbourhood || ciIncludes(row.neighbourhood158, neighbourhood))
-        && (!offence || ciIncludes(row.offence, offence))
-      ));
-      const requested = argNum(params.limit);
-      capNested(data, 'reported_occurrences', 'records', Math.min(Math.max(requested ?? 50, 1), 100));
-      return data;
-    },
-    _cacheKeys: ['safety:toronto:tps-mci:v1'],
-    _cacheLabels: { 'safety:toronto:tps-mci:v1': 'reported_occurrences' },
-    _freshnessChecks: [{ key: 'seed-meta:safety:tps-mci', maxStaleMin: 20160 }],
-    _apiPaths: ['GET /api/safety/v1/get-toronto-safety'],
-  },
-  {
-    name: 'get_toronto_calls_attended',
-    title: 'Toronto police calls attended',
-    _outputBudgetBytes: 65536,
-    // Read AFTER `_postFilter`, which rewrites `attribution` from the source
-    // descriptor — a pre-CKAN cached blob still carries the retired
-    // OGL-Ontario claim, and the rider must publish the current licence.
-    _attribution: 'data.annual_aggregates.{attribution: attribution, source: source, fetchedAt: fetchedAt}',
-    description: 'Bounded Toronto Police Service Calls for Service Attended annual aggregates. These are neighbourhood and division counts, not incident points.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        year: { type: 'number', description: 'Exact event year.' },
-        division: { type: 'string', description: 'Case-insensitive original or final TPS division filter.' },
-        neighbourhood: { type: 'string', description: 'Case-insensitive neighbourhood filter.' },
-        limit: { type: 'number', description: 'Maximum rows to return, from 1 to 100 (default 50).' },
-      },
-      required: [],
-    },
-    outputSchema: cacheEnvelope({
-      annual_aggregates: {
-        type: ['object', 'null'],
-        properties: {
-          semantic: { type: 'string', enum: ['annual_aggregate'] },
-          source: { type: 'string', enum: ['tps-calls-attended'] },
-          attribution: { type: 'string' },
-          fetchedAt: { type: 'string' },
-          newestContentYear: { type: ['number', 'null'] },
-          records: { type: 'array', maxItems: 100, items: { type: 'object' } },
-        },
-      },
-    }),
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _postFilter: (data, params) => {
-      const year = argNum(params.year);
-      const division = argStr(params.division);
-      const neighbourhood = argStr(params.neighbourhood);
-      narrowNested(data, 'annual_aggregates', 'records', (row) => (
-        (year == null || row.eventYear === year)
-        && (!division || ciIncludes(row.divisionOriginal, division) || ciIncludes(row.divisionFinal, division))
-        && (!neighbourhood || ciIncludes(row.neighbourhood158, neighbourhood))
-      ));
-      const requested = argNum(params.limit);
-      capNested(data, 'annual_aggregates', 'records', Math.min(Math.max(requested ?? 50, 1), 100));
-      // Attribution is a licence assertion, so it comes from the descriptor —
-      // never from whatever snapshot happens to be cached. A pre-CKAN blob
-      // still carries the retired OGL-Ontario claim until it is overwritten.
-      const aggregates = (data as Record<string, unknown>).annual_aggregates;
-      if (aggregates && typeof aggregates === 'object') {
-        const descriptor = torontoSafetySourceById('tps-calls-attended');
-        if (descriptor?.attribution) {
-          (aggregates as Record<string, unknown>).attribution = descriptor.attribution;
-        }
-      }
-      return data;
-    },
-    _cacheKeys: ['safety:toronto:tps-calls-attended:v1'],
-    _cacheLabels: { 'safety:toronto:tps-calls-attended:v1': 'annual_aggregates' },
-    _freshnessChecks: [{ key: 'seed-meta:safety:tps-calls-attended', maxStaleMin: 20160 }],
-    _apiPaths: ['GET /api/safety/v1/get-toronto-safety'],
-  },
   {
     // Intentionally fixed-universe, unlike the ListMarketQuotes RPC: this reads
     // and filters the seeded bootstrap snapshot and never gap-fetches an
@@ -2118,73 +2015,33 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_country_macro',
-    _validateArgs: params => { resolveCountryFilter(params.countries, 'countries'); },
+    _validateArgs: params => { resolveEurostatCountryFilter(params.countries); },
     title: 'Country macroeconomic indicators',
     _outputBudgetBytes: 131072,
-    description: 'Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (current account USD, import/export volume % changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags. NOTE: export/import LEVELS in USD (exportsUsd, importsUsd, tradeBalanceUsd) are returned as null — WEO retracted broad coverage for BX/BM indicators in 2026-04; use currentAccountUsd or volume changes (import/exportVolumePctChg) instead.',
+    description: 'Per-country macroeconomic indicators by dataset. IMF WEO, ~210 countries, latest year per series: macro (inflation, CPI, current account, government revenue, expenditure, primary balance), growth (real GDP growth, GDP per capita USD and PPP, savings and investment rates), labor (unemployment, population), external (current account USD, import/export volume changes; exportsUsd, importsUsd and tradeBalanceUsd are null since WEO retracted them in 2026-04). Eurostat, 27 EU members plus EA20 and EU27_2020: house-prices (annual index, 2015=100, 10-year series), gov-debt-q (quarterly gross debt, % of GDP, 8 quarters), industrial-production (monthly index excluding construction, 2021=100, 12 months). Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. Omit dataset for all seven; stale covers only the datasets read. countries takes ISO codes, names, EA20 or EU27_2020; limit caps each country map (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
+        dataset: {
+          type: 'array',
+          items: { type: 'string', enum: [...COUNTRY_MACRO_DATASETS] },
+          description: 'Restrict the response to one or more datasets. Omit for all seven.',
+        },
         countries: {
           type: 'array',
           items: { type: 'string' },
-          description: 'ISO 3166-1 alpha-2 country codes to keep across all four IMF datasets (e.g. ["US","DE","CN"]). Omit for all ~210 countries. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
+          description: 'ISO 3166-1 alpha-2 country codes to keep in every dataset (e.g. ["US","DE","GR"]); Greece is keyed EL in the Eurostat datasets. EA20 and EU27_2020 select the Eurostat aggregates. Omit for all. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
-        limit: { type: 'integer', minimum: 0, description: 'Cap each IMF dataset country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
+        limit: { type: 'integer', minimum: 0, description: 'Cap each dataset country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
-    // Each IMF label maps to `{ countries: { [iso2]: { ... per-series metrics ... } } }`.
+    // Each label maps to `{ countries: { [geo]: { ... per-series metrics ... } } }`.
     outputSchema: cacheEnvelope({
       macro: { type: ['object', 'null'], properties: { countries: { type: 'object', additionalProperties: { type: 'object' } } } },
       growth: { type: ['object', 'null'], properties: { countries: { type: 'object', additionalProperties: { type: 'object' } } } },
       labor: { type: ['object', 'null'], properties: { countries: { type: 'object', additionalProperties: { type: 'object' } } } },
       external: { type: ['object', 'null'], properties: { countries: { type: 'object', additionalProperties: { type: 'object' } } } },
-    }),
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _postFilter: (data, params) => {
-      const codes = resolveCountryFilter(params.countries, 'countries');
-      if (codes.length > 0) {
-        for (const label of ['macro', 'growth', 'labor', 'external']) pickNestedMap(data, label, 'countries', codes);
-        return data;
-      }
-      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
-      for (const label of ['macro', 'growth', 'labor', 'external']) capNestedMap(data, label, 'countries', limit);
-      return data;
-    },
-    _cacheKeys: [
-      'economic:imf:macro:v2',
-      'economic:imf:growth:v1',
-      'economic:imf:labor:v1',
-      'economic:imf:external:v1',
-    ],
-    _freshnessChecks: [
-      { key: 'seed-meta:economic:imf-macro', maxStaleMin: 100800 },
-      { key: 'seed-meta:economic:imf-growth', maxStaleMin: 100800 },
-      { key: 'seed-meta:economic:imf-labor', maxStaleMin: 100800 },
-      { key: 'seed-meta:economic:imf-external', maxStaleMin: 100800 },
-    ],
-    _apiPaths: [],
-  },
-  {
-    name: 'get_eu_housing_cycle',
-    _validateArgs: params => { resolveEurostatCountryFilter(params.countries); },
-    title: 'EU house price index',
-    _outputBudgetBytes: 131072,
-    description: 'Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes the latest value, prior value, date, unit, and a 10-year sparkline series. Complements BIS WS_SPP with broader EU coverage for the Housing cycle tile.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        countries: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
-        },
-        limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
-      },
-      required: [],
-    },
-    outputSchema: cacheEnvelope({
       'house-prices': {
         type: ['object', 'null'],
         properties: { countries: { type: 'object', additionalProperties: { type: 'object', properties: {
@@ -2192,40 +2049,6 @@ export const CACHE_TOOLS: ToolDef[] = [
           date: { type: 'string' }, unit: { type: 'string' }, series: { type: 'array', items: { type: 'object' } },
         } } } },
       },
-    }),
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _postFilter: (data, params) => {
-      const codes = resolveEurostatCountryFilter(params.countries);
-      if (codes.length > 0) {
-        pickNestedMap(data, 'house-prices', 'countries', codes);
-        return data;
-      }
-      capNestedMap(data, 'house-prices', 'countries', argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
-      return data;
-    },
-    _cacheKeys: ['economic:eurostat:house-prices:v1'],
-    _freshnessChecks: [{ key: 'seed-meta:economic:eurostat-house-prices', maxStaleMin: 60 * 24 * 50 }], // weekly cron, annual data
-    _apiPaths: [],
-  },
-  {
-    name: 'get_eu_quarterly_gov_debt',
-    _validateArgs: params => { resolveEurostatCountryFilter(params.countries); },
-    title: 'EU quarterly government debt',
-    _outputBudgetBytes: 131072,
-    description: 'Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, quarter label, and an 8-quarter sparkline series. Provides fresher debt-trajectory signal than annual IMF GGXWDG_NGDP for EU panels.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        countries: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
-        },
-        limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
-      },
-      required: [],
-    },
-    outputSchema: cacheEnvelope({
       'gov-debt-q': {
         type: ['object', 'null'],
         properties: { countries: { type: 'object', additionalProperties: { type: 'object', properties: {
@@ -2233,40 +2056,6 @@ export const CACHE_TOOLS: ToolDef[] = [
           quarter: { type: 'string' }, series: { type: 'array', items: { type: 'object' } },
         } } } },
       },
-    }),
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _postFilter: (data, params) => {
-      const codes = resolveEurostatCountryFilter(params.countries);
-      if (codes.length > 0) {
-        pickNestedMap(data, 'gov-debt-q', 'countries', codes);
-        return data;
-      }
-      capNestedMap(data, 'gov-debt-q', 'countries', argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
-      return data;
-    },
-    _cacheKeys: ['economic:eurostat:gov-debt-q:v1'],
-    _freshnessChecks: [{ key: 'seed-meta:economic:eurostat-gov-debt-q', maxStaleMin: 60 * 24 * 14 }], // quarterly data, 2-day cron
-    _apiPaths: [],
-  },
-  {
-    name: 'get_eu_industrial_production',
-    _validateArgs: params => { resolveEurostatCountryFilter(params.countries); },
-    title: 'EU industrial production',
-    _outputBudgetBytes: 131072,
-    description: 'Return the Eurostat monthly industrial production index (sts_inpr_m: NACE B-D industry excluding construction, seasonally and calendar adjusted, 2021=100) for the 27 EU members plus the EA20 and EU27_2020 aggregates. Each country entry has the latest value, prior value, month label and a 12-month series. Monthly data; the seed is flagged stale after 5 days. Covers the EU industrial index only; no other production or GDP measures. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. countries uses Eurostat geo codes (ISO alpha-2 except EL for Greece); limit caps the country map when no filter is given (default 30, 0 for no cap).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        countries: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
-        },
-        limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
-      },
-      required: [],
-    },
-    outputSchema: cacheEnvelope({
       'industrial-production': {
         type: ['object', 'null'],
         properties: { countries: { type: 'object', additionalProperties: { type: 'object', properties: {
@@ -2277,16 +2066,39 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = resolveEurostatCountryFilter(params.countries);
-      if (codes.length > 0) {
-        pickNestedMap(data, 'industrial-production', 'countries', codes);
+      const eurostat = resolveEurostatCountryFilter(params.countries);
+      if (eurostat.length > 0) {
+        const imf = eurostat.map((code) => code === 'el' ? 'gr' : code);
+        for (const label of COUNTRY_MACRO_DATASETS) pickNestedMap(data, label, 'countries', label in EUROSTAT_MACRO_KEYS ? eurostat : imf);
         return data;
       }
-      capNestedMap(data, 'industrial-production', 'countries', argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
+      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+      for (const label of COUNTRY_MACRO_DATASETS) capNestedMap(data, label, 'countries', limit);
       return data;
     },
-    _cacheKeys: ['economic:eurostat:industrial-production:v1'],
-    _freshnessChecks: [{ key: 'seed-meta:economic:eurostat-industrial-production', maxStaleMin: 60 * 24 * 5 }], // monthly data, daily cron
+    _cacheKeys: [
+      'economic:imf:macro:v2',
+      'economic:imf:growth:v1',
+      'economic:imf:labor:v1',
+      'economic:imf:external:v1',
+      ...Object.values(EUROSTAT_MACRO_KEYS).map(([key]) => key),
+    ],
+    _freshnessChecks: [
+      { key: 'seed-meta:economic:imf-macro', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:imf-growth', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:imf-labor', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:imf-external', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:eurostat-house-prices', maxStaleMin: 60 * 24 * 50 }, // weekly cron, annual data
+      { key: 'seed-meta:economic:eurostat-gov-debt-q', maxStaleMin: 60 * 24 * 14 }, // quarterly data, 2-day cron
+      { key: 'seed-meta:economic:eurostat-industrial-production', maxStaleMin: 60 * 24 * 5 }, // monthly data, daily cron
+    ],
+    _datasetKeys: {
+      macro: ['economic:imf:macro:v2', 'seed-meta:economic:imf-macro'],
+      growth: ['economic:imf:growth:v1', 'seed-meta:economic:imf-growth'],
+      labor: ['economic:imf:labor:v1', 'seed-meta:economic:imf-labor'],
+      external: ['economic:imf:external:v1', 'seed-meta:economic:imf-external'],
+      ...EUROSTAT_MACRO_KEYS,
+    },
     _apiPaths: [],
   },
   {
@@ -4557,4 +4369,122 @@ export const CACHE_TOOLS: ToolDef[] = [
     _apiPaths: [],
   },
 
+];
+
+// Off tools/list but still callable, so a client that hard-coded a name keeps
+// working while usage telemetry shows who still calls it. The Toronto tools left
+// because a city-specific tool does not belong in a global tool list.
+export const RETIRED_CACHE_TOOLS: ToolDef[] = [
+  {
+    name: 'get_toronto_reported_occurrences',
+    title: 'Toronto reported crime occurrences',
+    _outputBudgetBytes: 65536,
+    // TPS rows are licensed for reuse with attribution. Extract it from the
+    // cache envelope so a projection over `records` cannot leave the rows
+    // without the licence assertion that permits redistributing them.
+    _attribution: 'data.reported_occurrences.{attribution: attribution, source: source, fetchedAt: fetchedAt}',
+    description: 'Return Toronto Police Service Major Crime Indicators rows: reported occurrences with offence, division, neighbourhood, approximate coordinates and report dates, from the seeded open-data extract (flagged stale after 2 weeks). Retrospective reported crime only; not live dispatch, and coordinates are approximate by design. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. division, neighbourhood and offence are case-insensitive substring filters; limit returns 1-100 rows (default 50). Attribution rides with every projection.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        division: { type: 'string', description: 'Case-insensitive TPS division filter.' },
+        neighbourhood: { type: 'string', description: 'Case-insensitive neighbourhood filter.' },
+        offence: { type: 'string', description: 'Case-insensitive offence filter.' },
+        limit: { type: 'number', description: 'Maximum rows to return, from 1 to 100 (default 50).' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      reported_occurrences: {
+        type: ['object', 'null'],
+        properties: {
+          semantic: { type: 'string', enum: ['reported_occurrence'] },
+          source: { type: 'string', enum: ['tps-mci'] },
+          attribution: { type: 'string' },
+          fetchedAt: { type: 'string' },
+          newestContentAt: { type: ['number', 'null'] },
+          records: { type: 'array', maxItems: 100, items: { type: 'object' } },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const division = argStr(params.division);
+      const neighbourhood = argStr(params.neighbourhood);
+      const offence = argStr(params.offence);
+      narrowNested(data, 'reported_occurrences', 'records', (row) => (
+        (!division || ciIncludes(row.division, division))
+        && (!neighbourhood || ciIncludes(row.neighbourhood158, neighbourhood))
+        && (!offence || ciIncludes(row.offence, offence))
+      ));
+      const requested = argNum(params.limit);
+      capNested(data, 'reported_occurrences', 'records', Math.min(Math.max(requested ?? 50, 1), 100));
+      return data;
+    },
+    _cacheKeys: ['safety:toronto:tps-mci:v1'],
+    _cacheLabels: { 'safety:toronto:tps-mci:v1': 'reported_occurrences' },
+    _freshnessChecks: [{ key: 'seed-meta:safety:tps-mci', maxStaleMin: 20160 }],
+    _apiPaths: ['GET /api/safety/v1/get-toronto-safety'],
+  },
+  {
+    name: 'get_toronto_calls_attended',
+    title: 'Toronto police calls attended',
+    _outputBudgetBytes: 65536,
+    // Read AFTER `_postFilter`, which rewrites `attribution` from the source
+    // descriptor — a pre-CKAN cached blob still carries the retired
+    // OGL-Ontario claim, and the rider must publish the current licence.
+    _attribution: 'data.annual_aggregates.{attribution: attribution, source: source, fetchedAt: fetchedAt}',
+    description: 'Bounded Toronto Police Service Calls for Service Attended annual aggregates. These are neighbourhood and division counts, not incident points.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        year: { type: 'number', description: 'Exact event year.' },
+        division: { type: 'string', description: 'Case-insensitive original or final TPS division filter.' },
+        neighbourhood: { type: 'string', description: 'Case-insensitive neighbourhood filter.' },
+        limit: { type: 'number', description: 'Maximum rows to return, from 1 to 100 (default 50).' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      annual_aggregates: {
+        type: ['object', 'null'],
+        properties: {
+          semantic: { type: 'string', enum: ['annual_aggregate'] },
+          source: { type: 'string', enum: ['tps-calls-attended'] },
+          attribution: { type: 'string' },
+          fetchedAt: { type: 'string' },
+          newestContentYear: { type: ['number', 'null'] },
+          records: { type: 'array', maxItems: 100, items: { type: 'object' } },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const year = argNum(params.year);
+      const division = argStr(params.division);
+      const neighbourhood = argStr(params.neighbourhood);
+      narrowNested(data, 'annual_aggregates', 'records', (row) => (
+        (year == null || row.eventYear === year)
+        && (!division || ciIncludes(row.divisionOriginal, division) || ciIncludes(row.divisionFinal, division))
+        && (!neighbourhood || ciIncludes(row.neighbourhood158, neighbourhood))
+      ));
+      const requested = argNum(params.limit);
+      capNested(data, 'annual_aggregates', 'records', Math.min(Math.max(requested ?? 50, 1), 100));
+      // Attribution is a licence assertion, so it comes from the descriptor —
+      // never from whatever snapshot happens to be cached. A pre-CKAN blob
+      // still carries the retired OGL-Ontario claim until it is overwritten.
+      const aggregates = (data as Record<string, unknown>).annual_aggregates;
+      if (aggregates && typeof aggregates === 'object') {
+        const descriptor = torontoSafetySourceById('tps-calls-attended');
+        if (descriptor?.attribution) {
+          (aggregates as Record<string, unknown>).attribution = descriptor.attribution;
+        }
+      }
+      return data;
+    },
+    _cacheKeys: ['safety:toronto:tps-calls-attended:v1'],
+    _cacheLabels: { 'safety:toronto:tps-calls-attended:v1': 'annual_aggregates' },
+    _freshnessChecks: [{ key: 'seed-meta:safety:tps-calls-attended', maxStaleMin: 20160 }],
+    _apiPaths: ['GET /api/safety/v1/get-toronto-safety'],
+  },
 ];

@@ -233,7 +233,9 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/economic/v1/get-fred-series-batch",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
 
-  // === deferred-to-future-tool (55) ===
+  // === deferred-to-future-tool (56) ===
+  ["GET /api/safety/v1/get-toronto-safety",
+    "deferred-to-future-tool: pure-read of the seeded Toronto Police Service extracts. The two Toronto-only tools left tools/list (both names stay callable as retired tools); a public-safety tool taking a jurisdiction receives them once a second city or province is seeded."],
   ["GET /api/aviation/v1/list-aircraft-emergencies",
     "deferred-to-future-tool: reported transponder observations belong in a future aircraft-signals tool with explicit reception and freshness limits. This change adds only the dashboard layer and details."],
   ["GET /api/news/v1/list-country-headlines",

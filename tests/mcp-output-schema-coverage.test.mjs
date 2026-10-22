@@ -656,9 +656,8 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     'get_mineral_production',
     'get_resilience_indicators',
     'get_similar_events',
-    'list_five_factor_scorecards',
+    'get_five_factor_scorecard',
     'get_supply_vulnerabilities',
-    'search_flight_prices_by_date',
     'search_flights',
     'search_intel_history',
   ];
@@ -731,6 +730,26 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       return { ...target, properties: out };
     };
     return { properties: resolve(schema, '').properties ?? {}, unresolved };
+  }
+
+  // Deep union of two resolved property maps: a field present in either
+  // response is on the wire, at any depth.
+  function unionWireProperties(left, right) {
+    const out = { ...left };
+    for (const [key, node] of Object.entries(right)) {
+      const prior = out[key];
+      if (!prior) {
+        out[key] = node;
+        continue;
+      }
+      const merged = { ...prior, ...node };
+      if (prior.properties || node.properties) merged.properties = unionWireProperties(prior.properties ?? {}, node.properties ?? {});
+      if (prior.items?.properties && node.items?.properties) {
+        merged.items = { ...prior.items, ...node.items, properties: unionWireProperties(prior.items.properties, node.items.properties) };
+      }
+      out[key] = merged;
+    }
+    return out;
   }
 
   // The two comparisons the population loop and the positive control below
@@ -810,15 +829,25 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === toolName);
       assert.ok(tool, `tool ${toolName} not found in registry`);
       assert.equal(typeof tool._execute, 'function', `${toolName} is listed as an RPC passthrough but has no _execute`);
-      assert.equal(
-        (tool._apiPaths ?? []).length, 1,
-        `${toolName} must declare exactly one _apiPaths entry to be checked against a single OpenAPI operation`,
+      assert.ok(
+        (tool._apiPaths ?? []).length >= 1,
+        `${toolName} must declare at least one _apiPaths entry to be checked against its OpenAPI operations`,
       );
 
-      const entry = loadOpenApiOperations().get(tool._apiPaths[0].replace(/\s+/g, ' ').trim());
-      assert.ok(entry, `${toolName}: no OpenAPI operation for "${tool._apiPaths[0]}"`);
-      const wire = wireResponseProperties(entry);
-      assert.ok(wire, `${toolName}: OpenAPI operation declares no resolvable 200 JSON response schema`);
+      // A tool that picks one of several operations per call (search_flights,
+      // get_five_factor_scorecard) is checked against the union of their
+      // responses: every declared field must appear in at least one of them.
+      const wires = tool._apiPaths.map((apiPath) => {
+        const entry = loadOpenApiOperations().get(apiPath.replace(/\s+/g, ' ').trim());
+        assert.ok(entry, `${toolName}: no OpenAPI operation for "${apiPath}"`);
+        const one = wireResponseProperties(entry);
+        assert.ok(one, `${toolName}: OpenAPI operation "${apiPath}" declares no resolvable 200 JSON response schema`);
+        return one;
+      });
+      const wire = {
+        properties: wires.reduce((merged, one) => unionWireProperties(merged, one.properties), {}),
+        unresolved: wires.flatMap((one) => one.unresolved),
+      };
       // An unresolvable $ref would become an untyped {} and quietly make that
       // property unverifiable — shrink coverage loudly, never silently.
       assert.deepEqual(
@@ -879,9 +908,8 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     const candidates = mod.__testing__.TOOL_REGISTRY
       .filter(t => typeof t._execute === 'function'
         && RETURNS_RESPONSE_VERBATIM.test(t._execute.toString())
-        // A tool with no single declared OpenAPI operation has no contract to
-        // check against.
-        && (t._apiPaths ?? []).length === 1)
+        // A tool with no declared OpenAPI operation has no contract to check against.
+        && (t._apiPaths ?? []).length >= 1)
       .map(t => t.name)
       .sort();
 

@@ -5,7 +5,11 @@ import { afterEach, describe, test } from 'node:test';
 import jmespath from 'jmespath';
 
 import { executeTool } from '../api/mcp/dispatch.ts';
-import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { RETIRED_TOOLS, TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+
+// Retired tools leave tools/list but stay callable, so their licence fields
+// still need the rider.
+const CALLABLE_TOOLS = [...TOOL_REGISTRY, ...RETIRED_TOOLS];
 import { torontoSafetySourceById } from '../shared/toronto-safety.js';
 import {
   TPS_CALLS_ATTRIBUTION,
@@ -47,7 +51,7 @@ const LICENCE_MARKER_EXEMPT_TOOLS = new Set([
 ]);
 
 function licenceBearingTools() {
-  return TOOL_REGISTRY
+  return CALLABLE_TOOLS
     .map((tool) => ({ tool, markers: findLicenceMarkerFields(tool.outputSchema) }))
     .filter((entry) => entry.markers.length > 0);
 }
@@ -83,7 +87,7 @@ describe('attribution rider — build-time gate', () => {
     // carries licence fields is dead weight charged against every projected
     // response's output budget.
     const withMarkers = new Set(licenceBearingTools().map(({ tool }) => tool.name));
-    const stale = TOOL_REGISTRY
+    const stale = CALLABLE_TOOLS
       .filter((tool) => typeof tool._attribution === 'string' && !withMarkers.has(tool.name))
       .map((tool) => tool.name);
     assert.deepEqual(stale, [], 'these tools declare `_attribution` but carry no licence marker');
@@ -102,7 +106,7 @@ describe('attribution rider — build-time gate', () => {
   });
 
   test('every declared extraction is a parseable JMESPath expression', () => {
-    for (const tool of TOOL_REGISTRY) {
+    for (const tool of CALLABLE_TOOLS) {
       if (typeof tool._attribution !== 'string') continue;
       assert.doesNotThrow(
         () => jmespath.search({}, tool._attribution),
@@ -120,7 +124,7 @@ describe('attribution rider — build-time gate', () => {
 
 describe('attribution rider — extraction against real payload shapes', () => {
   function extractionFor(name) {
-    const tool = TOOL_REGISTRY.find((candidate) => candidate.name === name);
+    const tool = CALLABLE_TOOLS.find((candidate) => candidate.name === name);
     assert.ok(tool, `${name} missing from the registry`);
     assert.equal(typeof tool._attribution, 'string', `${name} must declare _attribution`);
     return tool._attribution;
@@ -392,7 +396,7 @@ function serveCacheKeys(values) {
 }
 
 function toolNamed(name) {
-  const tool = TOOL_REGISTRY.find((candidate) => candidate.name === name);
+  const tool = CALLABLE_TOOLS.find((candidate) => candidate.name === name);
   assert.ok(tool, `${name} missing from the registry`);
   return tool;
 }

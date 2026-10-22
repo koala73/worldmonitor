@@ -23,7 +23,7 @@ import {
   downstreamErrorTags,
 } from './downstream';
 import { mcpErrorFingerprint } from './error-fingerprint';
-import { argBool, summarizeData } from './filters';
+import { argBool, argStrList, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
 import { admitChokepointPanel, admitConflictPanel, admitCountryPanel, admitDisasterPanel, admitForecastPanel, admitMarketPanel, admitNewsIntelligencePanel, admitNewsPanel, admitPredictionPanel, admitWorldBriefPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
@@ -106,6 +106,16 @@ export async function executeChokepointPanelRead(params: Record<string, unknown>
 
 type CachePanelDomain = 'natural-disasters' | 'news-intelligence' | 'chokepoints';
 
+// Keeps a key unless only unselected datasets own it (see CacheToolDef._datasetKeys).
+function datasetKeyFilter(tool: CacheToolDef, params: Record<string, unknown>): (key: string) => boolean {
+  const owners = tool._datasetKeys;
+  const selected = argStrList(params.dataset);
+  if (!owners || selected.length === 0) return () => true;
+  const wanted = new Set(selected.flatMap(dataset => owners[dataset] ?? []));
+  const owned = new Set(Object.values(owners).flat());
+  return key => !owned.has(key) || wanted.has(key);
+}
+
 async function executeCacheTool(
   tool: CacheToolDef,
   params: Record<string, unknown>,
@@ -133,12 +143,14 @@ async function executeCacheTool(
     : key.includes('displacement:idmc-idu') ? 'events' : key.includes('displacement:dtm') ? 'regions' : 'movements';
   const movementMode = displacementView && selectedView === 'movements';
   const selectedKeys = displacementView ? tool._cacheKeys.filter(key => viewOfKey(key) === selectedView) : tool._cacheKeys;
-  const cacheKeys = tool.name === 'get_sanctions_data'
-    ? tool._cacheKeys.filter(key => (key === 'sanctions:changes:v1') === historyMode) : selectedKeys;
+  const datasetScoped = datasetKeyFilter(tool, params);
+  const cacheKeys = (tool.name === 'get_sanctions_data'
+    ? tool._cacheKeys.filter(key => (key === 'sanctions:changes:v1') === historyMode) : selectedKeys).filter(datasetScoped);
   const reads = cacheKeys.map((k) => settleRead((panel !== undefined || movementMode ? readRawJsonFromUpstash : readJsonFromUpstash)(k, 3_000, !isAppOwnedRedisKey(k))));
   const selectedChecks = displacementView ? tool._freshnessChecks.filter(check => viewOfKey(check.key) === selectedView) : tool._freshnessChecks;
-  const freshnessChecks = tool.name === 'get_sanctions_data'
-    ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:sanctions:changes') === historyMode) : selectedChecks;
+  const freshnessChecks = (tool.name === 'get_sanctions_data'
+    ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:sanctions:changes') === historyMode) : selectedChecks)
+    .filter(check => datasetScoped(check.key));
   const metaReads = freshnessChecks.map((check) => settleRead(readJsonFromUpstash(check.key, 3_000, !isAppOwnedRedisKey(check.key))));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
   // for this read, so it is one extra command on get_chokepoint_status and

@@ -262,7 +262,9 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## 工具目录
 
-服务器暴露实时工具目录。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括五个实时 LLM/外部 API 工具（`get_country_brief`、`analyze_situation`、`search_flights`、`search_flight_prices_by_date`、`classify_event`）、实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`）、受预算约束的规范采购代理（`get_procurement_opportunities`）、企业情报代理（`get_company_intelligence`）、规范化中国决策信号 RPC（`get_china_decision_signals`），以及三个持久化历史 RPC（`search_intel_history`、`get_intel_timeline`、`get_similar_events`）。`get_world_brief` 读取仪表板使用的预计算、有引用依据的 `news:insights:v1` 快照，不会在请求时调用 LLM。按需 NLP 实用工具（`classify_event`、`extract_entities`、`get_news_clusters`、`get_keyword_spikes`、`verify_claim`）接受有严格上限的调用方文本或基于实时种子数据计算；除 `classify_event` 外全部为确定性计算。有一个工具（`describe_tool`，v1.5.0 新增）按名称返回任何其他工具的完整定义 —— 与 `tools/list` 提供的条目相同，用于在不重新列出目录的情况下重读单个工具；不计入 Pro 每日配额。
+服务器暴露实时工具目录。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括四个实时 LLM/外部 API 工具（`get_country_brief`、`analyze_situation`、`search_flights`、`classify_event`）、实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`）、受预算约束的规范采购代理（`get_procurement_opportunities`）、企业情报代理（`get_company_intelligence`）、规范化中国决策信号 RPC（`get_china_decision_signals`），以及三个持久化历史 RPC（`search_intel_history`、`get_intel_timeline`、`get_similar_events`）。`get_world_brief` 读取仪表板使用的预计算、有引用依据的 `news:insights:v1` 快照，不会在请求时调用 LLM。按需 NLP 实用工具（`classify_event`、`extract_entities`、`get_news_clusters`、`get_keyword_spikes`、`verify_claim`）接受有严格上限的调用方文本或基于实时种子数据计算；除 `classify_event` 外全部为确定性计算。有一个工具（`describe_tool`，v1.5.0 新增）按名称返回任何其他工具的完整定义 —— 与 `tools/list` 提供的条目相同，用于在不重新列出目录的情况下重读单个工具；不计入 Pro 每日配额。
+
+已合并或退役的工具仍以旧名称响应，硬编码旧名称的客户端可以继续工作。调用已合并的旧名称会返回指明实际执行工具的 `deprecation` 通知；已退役的工具（例如两个多伦多工具）则原样返回之前的响应。
 
 <Tip>
 如需各工具的参数、新鲜度预算、超时以及具体的 `curl` 示例，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。关于 payload 投影 —— 每个工具都接受一个可选的 `jmespath` 参数，通常可将响应大小缩减 80-95% —— 请参阅 [JMESPath 指南](/zh/mcp-jmespath)。
@@ -274,10 +276,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 |------|-------------|
 | `get_market_data` | 股票报价、商品价格、实物金银溢价与背离状态、加密货币、外汇、板块表现及估值覆盖、ETF 资金流、海湾市场。板块覆盖将写入年龄与完整度分开，并提供有界的 unavailable/last-good/direct-proxy 诊断。 |
 | `get_economic_data` | Fed Funds、经济日历、燃料价格、ECB 外汇、欧盟收益率曲线、财报、COT、能源库存、BIS DSR + 房价。 |
-| `get_country_macro` | 每个国家一份的 IMF WEO 数据包：通胀、经常账户、人均 GDP、失业率、储蓄-投资缺口（约 210 个国家）。 |
-| `get_eu_housing_cycle` | Eurostat 年度房价指数（prc_hpi_a），每个欧盟成员国 + EA20/EU27 的 10 年迷你图。 |
-| `get_eu_quarterly_gov_debt` | Eurostat 季度政府总债务（占 GDP 比例），8 个季度迷你图。 |
-| `get_eu_industrial_production` | Eurostat 月度工业生产指数，12 个月迷你图。 |
+| `get_country_macro` | 按 `dataset` 选择的逐国宏观指标：IMF WEO 通胀、经常账户、人均 GDP、失业率与贸易（约 210 个国家），以及欧盟成员国与 EA20/EU27_2020 汇总的 Eurostat 房价、季度政府债务与工业生产。 |
 | `get_prediction_markets` | 含当前概率的预测市场：`geopolitical`（地缘政治/选举）、`tech`（有标签的科技：人工智能/加密货币/科学）以及 `finance`（金融/经济或未分类回退）。 |
 | `get_supply_chain_data` | 干散货航运压力指数、海关流量、COMTRADE 双边贸易。 |
 | `get_price_and_debt_indicators` | 价格和债务指标：巨无霸指数、FAO 食品价格指数以及各国国债水平。 |
@@ -291,8 +290,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_company_intelligence` | 经 SEC 身份验证的逐公司情报：丰富化、带时间戳的信号、申报搜索与全市场重大 8-K 事件。 |
 | `get_commodity_geo` | 全球 71 个主要矿场（金、银、铜、锂、钴、稀土、镍、铂、钯、铁矿石、铀）。 |
 | `get_mineral_production` | 各国矿产开采/冶炼份额与 HHI（USGS MCS，BGS 补缺）。 |
-| `get_five_factor_scorecard` | 冻结版 v1 五因素韧性评分卡：食品、能源、人口结构、科技与国防。可查询一个国家、官方集团或已验证的自定义集团，并保留输入可用性与来源信息。 |
-| `list_five_factor_scorecards` | 紧凑列出各国五因素支柱评分、档位、覆盖率和数据不足原因。读取数值前必须检查 `hasScore`；若为 false，零值只是数据不足占位符。完整证据账本请使用单项评分卡工具。 |
+| `get_five_factor_scorecard` | 冻结版 v1 五因素韧性评分卡：食品、能源、人口结构、科技与国防。可查询一个国家、官方集团或已验证的自定义集团，并保留输入可用性与来源信息；不传选择器时，紧凑列出所有国家的支柱评分、档位、覆盖率和数据不足原因。读取支柱 `score` 或 `subScore` 前必须检查 `hasScore`；在详细响应中读取输入 `value` 前必须同时检查 `available` 和 `hasValue`。相关标志为 false 时，零值只是 proto3 占位符。 |
 
 ### 能源
 
@@ -344,8 +342,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_maritime_activity` | 各国 AIS 密度区域、暗船事件、咽喉要道拥堵。参数：`country_code`。 |
 | `get_aviation_status` | FAA 机场延误、NOTAM 关闭、被跟踪的军用飞机。 |
 | `get_infrastructure_status` | Cloudflare Radar 中断、主要云/互联网服务状态。 |
-| `search_flights` | Google Flights 在指定日期在 IATA 机场代码之间的实时搜索。 |
-| `search_flight_prices_by_date` | 最多 31 天日期范围内每个出发日期的最低票价。 |
+| `search_flights` | IATA 机场代码之间的 Google Flights 实时搜索：单个 `departure_date` 的行程，或 `start_date`–`end_date` 范围（最多 31 天）内每个出发日期的最低票价。 |
 
 ### 环境与科学
 
@@ -414,8 +411,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_consumer_prices` | `GET /api/consumer-prices/v1/get-consumer-price-freshness`<br/>`GET /api/consumer-prices/v1/get-consumer-price-overview`<br/>`GET /api/consumer-prices/v1/list-consumer-price-categories`<br/>`GET /api/consumer-prices/v1/list-consumer-price-movers`<br/>`GET /api/consumer-prices/v1/list-retailer-price-spreads` |
 | `get_supply_chain_data` | `GET /api/supply-chain/v1/get-shipping-stress`<br/>`GET /api/trade/v1/get-customs-revenue` |
 | `get_chokepoint_status` | `GET /api/intelligence/v1/get-country-port-activity`<br/>`GET /api/supply-chain/v1/get-chokepoint-status` |
-| `get_five_factor_scorecard` | `GET /api/scorecard/v1/get-five-factor-scorecard`<br/>`GET /api/scorecard/v1/get-bloc-scorecard` |
-| `list_five_factor_scorecards` | `GET /api/scorecard/v1/list-five-factor-scorecards` |
+| `get_five_factor_scorecard` | `GET /api/scorecard/v1/get-five-factor-scorecard`<br/>`GET /api/scorecard/v1/get-bloc-scorecard`<br/>`GET /api/scorecard/v1/list-five-factor-scorecards` |
 | `get_climate_data` | `GET /api/climate/v1/get-co2-monitoring`<br/>`GET /api/climate/v1/get-ocean-ice-data`<br/>`GET /api/climate/v1/list-air-quality-data`<br/>`GET /api/climate/v1/list-climate-anomalies`<br/>`GET /api/climate/v1/list-climate-disasters`<br/>`GET /api/climate/v1/list-climate-news` |
 | `get_health_signals` | `GET /api/health/v1/list-air-quality-alerts`<br/>`GET /api/health/v1/list-disease-outbreaks` |
 | `get_conflict_events` | `GET /api/conflict/v1/list-iran-events`<br/>`GET /api/conflict/v1/list-ucdp-events`<br/>`GET /api/unrest/v1/list-unrest-events` |
@@ -448,12 +444,11 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_news_clusters` | `GET /api/news/v1/list-feed-digest` |
 | `verify_claim` | `GET /api/news/v1/list-feed-digest`、`GET /api/news/v1/search-fact-checks`、`GET /api/news/v1/search-claim-headlines` |
 | `analyze_situation` | `POST /api/intelligence/v1/deduct-situation` |
-| `search_flights` | `GET /api/aviation/v1/search-google-flights` |
-| `search_flight_prices_by_date` | `GET /api/aviation/v1/search-google-dates` |
+| `search_flights` | `GET /api/aviation/v1/search-google-flights`<br/>`GET /api/aviation/v1/search-google-dates` |
 
 没有声明 API 路径的工具仍通过 `tools/call` 返回数据，但不应将它们视为 REST 等价物：
 
-- **缓存支撑的 bootstrap 聚合** —— 读取由 Railway cron 直接填充的 Redis key（例如 `get_aviation_status`、`get_cyber_threats`、`get_country_macro`，以及三个 EU Eurostat 工具）。
+- **缓存支撑的 bootstrap 聚合** —— 读取由 Railway cron 直接填充的 Redis key（例如 `get_aviation_status`、`get_cyber_threats`、`get_country_macro`）。
 - **种子合成快照** —— `get_world_brief` 通过仪表板 bootstrap 路径读取已接受的 `news:insights:v1` payload；没有直接 REST 等价操作，也不会在请求时调用 LLM。
 - **静态内存注册表** —— 过滤随 MCP 服务器 edge 二进制文件一起打包的一个常量，完全无需上游调用（例如 `get_commodity_geo`）。
 在此表中，`covered` 意味着某个工具在 `_apiPaths` 中声明了确切的操作。`tests/mcp-api-parity.test.mjs` 中常见的仅限 REST 排除项：

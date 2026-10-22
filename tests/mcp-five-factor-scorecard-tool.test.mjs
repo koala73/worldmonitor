@@ -48,7 +48,7 @@ describe('get_five_factor_scorecard MCP tool', () => {
     Object.assign(process.env, originalEnv);
   });
 
-  it('lists one country-or-bloc tool and preserves the canonical API response byte-for-byte', async () => {
+  it('lists one country, bloc or list tool and preserves the canonical API response byte-for-byte', async () => {
     const listed = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
@@ -58,11 +58,9 @@ describe('get_five_factor_scorecard MCP tool', () => {
     assert.ok(tool.inputSchema.properties.country_code);
     assert.ok(tool.inputSchema.properties.preset);
     assert.ok(tool.inputSchema.properties.members);
-    assert.deepEqual(tool.inputSchema.oneOf, [
-      { required: ['country_code'] },
-      { required: ['preset'] },
-      { required: ['members'] },
-    ]);
+    // No selector is the list, so the input schema cannot require one.
+    assert.equal(tool.inputSchema.oneOf, undefined);
+    assert.deepEqual(tool.inputSchema.required, []);
     assert.deepEqual(tool.inputSchema.properties.preset.enum, ['USMCA', 'EU27', 'BRICS', 'GCC', 'ASEAN', 'NATO']);
     assert.equal(tool.inputSchema.properties.members.minItems, 2);
     assert.equal(tool.inputSchema.properties.members.maxItems, 30);
@@ -75,12 +73,13 @@ describe('get_five_factor_scorecard MCP tool', () => {
     assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.pillars.items.properties.includedMembers);
     assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.pillars.items.properties.excludedMembers);
     assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.pillars.items.properties.memberWeights);
-    assert.equal(documentedOutputSchema(tool).oneOf.length, 2);
-    assert.deepEqual(documentedOutputSchema(tool).oneOf[0].properties, {
+    const [single] = documentedOutputSchema(tool).anyOf;
+    assert.equal(single.oneOf.length, 2);
+    assert.deepEqual(single.oneOf[0].properties, {
       unavailable: { const: false },
       unavailableReason: { const: '' },
     });
-    assert.deepEqual(documentedOutputSchema(tool).oneOf[1].properties, {
+    assert.deepEqual(single.oneOf[1].properties, {
       unavailable: { const: true },
       unavailableReason: {
         enum: ['country-unavailable', 'bloc-members-unavailable', 'scorecard-snapshot-unavailable'],
@@ -123,11 +122,11 @@ describe('get_five_factor_scorecard MCP tool', () => {
     assert.deepEqual(requestUrl.searchParams.getAll('members'), ['US', 'CA', 'MX']);
   });
 
-  it('rejects mixed or absent country/bloc selection before fetching', async () => {
+  it('rejects mixed country/bloc selection before fetching', async () => {
     const { deps } = makeProDeps();
-    let response = await mcpHandler(proReq('POST', callBody('get_five_factor_scorecard', {})), deps);
+    let response = await mcpHandler(proReq('POST', callBody('get_five_factor_scorecard', { country_code: 'US', preset: 'NATO' })), deps);
     assert.equal((await response.json()).error.code, -32602);
-    response = await mcpHandler(proReq('POST', callBody('get_five_factor_scorecard', { country_code: 'US', preset: 'NATO' })), deps);
+    response = await mcpHandler(proReq('POST', callBody('get_five_factor_scorecard', { preset: 'NATO', members: ['US', 'CA'] })), deps);
     assert.equal((await response.json()).error.code, -32602);
     assert.equal(requests.length, 0);
   });
@@ -167,7 +166,7 @@ describe('get_five_factor_scorecard MCP tool', () => {
     assert.deepEqual(JSON.parse(body.result.content[0].text), downstreamResponse);
   });
 
-  it('lists compact country summaries through the bulk REST route', async () => {
+  it('lists compact country summaries through the bulk REST route when no selector is passed', async () => {
     downstreamResponse = {
       methodologyVersion: '1.0.0',
       computedAt: '2026-08-29T00:00:00.000Z',
@@ -190,11 +189,12 @@ describe('get_five_factor_scorecard MCP tool', () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
     }));
-    const listTool = (await listed.json()).result.tools.find((entry) => entry.name === 'list_five_factor_scorecards');
-    assert.ok(listTool);
-    assert.match(listTool.description, /hasScore=false makes numeric zero an insufficient-data placeholder/);
+    const tools = (await listed.json()).result.tools;
+    assert.equal(tools.some((entry) => entry.name === 'list_five_factor_scorecards'), false);
+    const listTool = tools.find((entry) => entry.name === 'get_five_factor_scorecard');
+    assert.match(listTool.description, /Pass none of them for the compact list of every scored country/);
     assert.match(documentedOutputSchema(listTool).properties.scorecards.items.properties.pillars.items.properties.hasScore.description, /proto3 zero placeholders/);
-    assert.deepEqual(documentedOutputSchema(listTool).oneOf, [
+    assert.deepEqual(documentedOutputSchema(listTool).anyOf[1].oneOf, [
       {
         properties: {
           unavailable: { const: false },
@@ -214,14 +214,25 @@ describe('get_five_factor_scorecard MCP tool', () => {
     ]);
 
     const { deps } = makeProDeps();
-    const response = await mcpHandler(proReq('POST', callBody('list_five_factor_scorecards', {})), deps);
+    const response = await mcpHandler(proReq('POST', callBody('get_five_factor_scorecard', {})), deps);
     const body = JSON.parse((await response.json()).result.content[0].text);
     assert.equal(new URL(requests[0].url).pathname, '/api/scorecard/v1/list-five-factor-scorecards');
+    assert.equal(new URL(requests[0].url).search, '');
     assert.equal(body.scorecards[0].countryCode, 'ZW');
     assert.equal(body.scorecards[0].pillars[0].hasScore, false);
     assert.equal(body.scorecards[0].pillars[0].inputCoverage, 0.55);
     assert.deepEqual(body, downstreamResponse);
     assert.ok(Buffer.byteLength(JSON.stringify(body)) < 262_144);
+  });
+
+  it('serves the retired list_five_factor_scorecards name as the list, with a deprecation notice', async () => {
+    downstreamResponse = { methodologyVersion: '1.0.0', computedAt: '2026-08-29T00:00:00.000Z', scorecards: [], unavailable: false, unavailableReason: '' };
+    const { deps } = makeProDeps();
+    const response = await mcpHandler(proReq('POST', callBody('list_five_factor_scorecards', {})), deps);
+    const result = (await response.json()).result;
+    assert.equal(new URL(requests[0].url).pathname, '/api/scorecard/v1/list-five-factor-scorecards');
+    assert.deepEqual(result.structuredContent.scorecards, []);
+    assert.equal(result.structuredContent.deprecation.replacement, 'get_five_factor_scorecard');
   });
 });
 
@@ -249,12 +260,11 @@ describe('five-factor scorecard MCP tools refuse a free principal', () => {
     .map((tool) => tool.name);
 
   it('covers every gated scorecard tool in the registry', () => {
-    assert.ok(scorecardTools.length >= 2, `expected the scorecard tools in TOOL_REGISTRY, got ${JSON.stringify(scorecardTools)}`);
-    assert.ok(scorecardTools.includes('get_five_factor_scorecard'));
-    assert.ok(scorecardTools.includes('list_five_factor_scorecards'));
+    assert.deepEqual(scorecardTools, ['get_five_factor_scorecard']);
   });
 
-  for (const toolName of ['get_five_factor_scorecard', 'list_five_factor_scorecards']) {
+  // The retired list name is an alias and must meet the same gate.
+  for (const toolName of [...scorecardTools, 'list_five_factor_scorecards']) {
     it(`refuses ${toolName} without an entitlement`, async () => {
       const res = await call(toolName);
       const body = await res.json();

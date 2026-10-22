@@ -979,7 +979,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // map, multi-key bundle) must now declare ≥1 filter property.
     for (const name of [
       'get_market_data', 'get_country_macro', 'get_conflict_events',
-      'get_economic_data', 'get_chokepoint_status', 'get_eu_housing_cycle',
+      'get_economic_data', 'get_chokepoint_status', 'get_energy_intelligence',
       'get_sanctions_data', 'get_forecast_predictions',
     ]) {
       const props = byName[name]?.inputSchema?.properties ?? {};
@@ -1935,11 +1935,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- limit on country/EU/displacement tools ---
   //
-  // Five tools — get_country_macro, get_eu_housing_cycle,
-  // get_eu_quarterly_gov_debt, get_eu_industrial_production,
-  // get_displacement_data — return per-country payloads that can exceed the
-  // per-tool output budget on default args. The IMF/Eurostat tools cap their
-  // keyed-object country maps via `capNestedMap`; displacement caps arrays.
+  // get_country_macro (IMF and Eurostat datasets) and get_displacement_data
+  // return per-country payloads that can exceed the per-tool output budget on
+  // default args. get_country_macro caps its keyed-object country maps via
+  // `capNestedMap`; displacement caps arrays.
   // `limit: 0` is the customer-facing opt-out and always returns the full
   // payload.
 
@@ -2005,43 +2004,47 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       'limit: 0 is the customer-facing opt-out and returns the full payload');
   });
 
-  it('limit: get_eu_housing_cycle default args → cap to 30, limit:0 → full', async () => {
-    const hp = { countries: makeCountryMap('EU', 40) };
-    const meta = { 'seed-meta:economic:eurostat-house-prices': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
+  for (const [dataset, key, metaKey] of [
+    ['house-prices', 'economic:eurostat:house-prices:v1', 'seed-meta:economic:eurostat-house-prices'],
+    ['gov-debt-q', 'economic:eurostat:gov-debt-q:v1', 'seed-meta:economic:eurostat-gov-debt-q'],
+    ['industrial-production', 'economic:eurostat:industrial-production:v1', 'seed-meta:economic:eurostat-industrial-production'],
+  ]) {
+    it(`limit: get_country_macro dataset ${dataset} default args → cap to 30, limit:0 → full`, async () => {
+      const map = { countries: makeCountryMap('EU', 40) };
+      const meta = { [metaKey]: { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
 
-    mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
-    const capped = await callTool('get_eu_housing_cycle', {});
-    assert.equal(Object.keys(capped.data['house-prices'].countries).length, 30, 'default args → cap to 30');
+      mockCacheKeys({ [key]: map }, meta);
+      const capped = await callTool('get_country_macro', { dataset: [dataset] });
+      assert.equal(Object.keys(capped.data[dataset].countries).length, 30, 'default args → cap to 30');
 
-    mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
-    const optOut = await callTool('get_eu_housing_cycle', { limit: 0 });
-    assert.equal(Object.keys(optOut.data['house-prices'].countries).length, 40, 'limit: 0 → full payload');
+      mockCacheKeys({ [key]: map }, meta);
+      const optOut = await callTool('get_country_macro', { dataset: [dataset], limit: 0 });
+      assert.equal(Object.keys(optOut.data[dataset].countries).length, 40, 'limit: 0 → full payload');
+    });
+  }
+
+  it('get_country_macro reads and judges staleness on only the selected datasets', async () => {
+    // Only the Eurostat house-price seed exists. Reading the IMF keys too would
+    // judge the response on four seed-meta keys that are absent, so stale.
+    const meta = { 'seed-meta:economic:eurostat-house-prices': { fetchedAt: Date.now() - 60_000, recordCount: 2 } };
+    mockCacheKeys({ 'economic:eurostat:house-prices:v1': { countries: { DE: { latest: 1 }, EL: { latest: 2 } } } }, meta);
+    const scoped = await callTool('get_country_macro', { dataset: ['house-prices'] });
+    assert.deepEqual(Object.keys(scoped.data), ['house-prices']);
+    assert.equal(scoped.stale, false);
+
+    mockCacheKeys({ 'economic:eurostat:house-prices:v1': { countries: { DE: { latest: 1 } } } }, meta);
+    const everything = await callTool('get_country_macro', {});
+    assert.equal(everything.stale, true, 'the full bundle is judged on every dataset');
   });
 
-  it('limit: get_eu_quarterly_gov_debt default args → cap to 30, limit:0 → full', async () => {
-    const gd = { countries: makeCountryMap('EU', 40) };
-    const meta = { 'seed-meta:economic:eurostat-gov-debt-q': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
-
-    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
-    const capped = await callTool('get_eu_quarterly_gov_debt', {});
-    assert.equal(Object.keys(capped.data['gov-debt-q'].countries).length, 30, 'default args → cap to 30');
-
-    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
-    const optOut = await callTool('get_eu_quarterly_gov_debt', { limit: 0 });
-    assert.equal(Object.keys(optOut.data['gov-debt-q'].countries).length, 40, 'limit: 0 → full payload');
-  });
-
-  it('limit: get_eu_industrial_production default args → cap to 30, limit:0 → full', async () => {
-    const ip = { countries: makeCountryMap('EU', 40) };
-    const meta = { 'seed-meta:economic:eurostat-industrial-production': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
-
-    mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
-    const capped = await callTool('get_eu_industrial_production', {});
-    assert.equal(Object.keys(capped.data['industrial-production'].countries).length, 30, 'default args → cap to 30');
-
-    mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
-    const optOut = await callTool('get_eu_industrial_production', { limit: 0 });
-    assert.equal(Object.keys(optOut.data['industrial-production'].countries).length, 40, 'limit: 0 → full payload');
+  it('the retired get_eu_* names call get_country_macro for their own dataset', async () => {
+    const meta = { 'seed-meta:economic:eurostat-gov-debt-q': { fetchedAt: Date.now() - 60_000, recordCount: 1 } };
+    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': { countries: { DE: { latest: 63.2 } } } }, meta);
+    const out = await callTool('get_eu_quarterly_gov_debt', { countries: ['Germany'] });
+    assert.deepEqual(Object.keys(out.data), ['gov-debt-q']);
+    assert.deepEqual(out.data['gov-debt-q'].countries, { DE: { latest: 63.2 } });
+    assert.equal(out.stale, false);
+    assert.equal(out.deprecation.replacement, 'get_country_macro');
   });
 
   it('limit: get_displacement_data default args → ≤30 items, limit:0 → full payload', async () => {

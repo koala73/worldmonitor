@@ -106,8 +106,6 @@ const EXECUTE_PASSTHROUGH_FETCHES = {
   ],
   search_flights: [
     'GET /api/aviation/v1/search-google-flights',
-  ],
-  search_flight_prices_by_date: [
     'GET /api/aviation/v1/search-google-dates',
   ],
   search_intel_history: [

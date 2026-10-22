@@ -112,6 +112,10 @@
     "1.44.0": {
       "tools": 95,
       "manifestSha256": "2a6ea6bb7a7b20970b1358335fd4a65b94286aad08ccec20b1581bad4ca7b047"
+    },
+    "1.45.0": {
+      "tools": 88,
+      "manifestSha256": "a633e5dc2e8c167f0d9877da68cd8dddf8135328af1842aa4db0fc681627edf0"
     }
   }
 }

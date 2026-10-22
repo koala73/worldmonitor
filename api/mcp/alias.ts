@@ -39,7 +39,7 @@ export type ResolvedCall =
   | { readonly kind: 'invalid'; readonly violations: readonly RpcValidationViolation[] }
   | { readonly kind: 'unknown' };
 
-export type AliasFamily = DatasetSplitFamily | MergeFamily;
+export type AliasFamily = DatasetSplitFamily | MergeFamily | RenameFamily;
 
 type DatasetSplitFamily = {
   readonly kind: 'dataset-split';
@@ -57,6 +57,15 @@ type MergeFamily = {
   readonly name: string;
   readonly target: string;
   readonly datasets: readonly string[];
+};
+
+// A retired tool whose calls now run one mode of another tool. `translate` maps
+// the retired argument shape onto the target's; omitted, arguments pass as-is.
+type RenameFamily = {
+  readonly kind: 'rename';
+  readonly name: string;
+  readonly target: string;
+  readonly translate?: (args: Record<string, unknown>) => Translation;
 };
 
 export type AliasOptOut = { readonly name: string; readonly reason: string };
@@ -95,6 +104,11 @@ const PRODUCTION_FAMILIES: readonly AliasFamily[] = [
     target: 'get_infrastructure_status',
     datasets: ['traffic', 'ddos'],
   },
+  { kind: 'merge', name: 'get_eu_housing_cycle', target: 'get_country_macro', datasets: ['house-prices'] },
+  { kind: 'merge', name: 'get_eu_quarterly_gov_debt', target: 'get_country_macro', datasets: ['gov-debt-q'] },
+  { kind: 'merge', name: 'get_eu_industrial_production', target: 'get_country_macro', datasets: ['industrial-production'] },
+  { kind: 'rename', name: 'list_five_factor_scorecards', target: 'get_five_factor_scorecard' },
+  { kind: 'rename', name: 'search_flight_prices_by_date', target: 'search_flights', translate: translateFlightDateSearch },
 ];
 
 const PRODUCTION_OPT_OUTS: readonly AliasOptOut[] = [];
@@ -120,6 +134,13 @@ type SealedFamily = {
   readonly name: string;
   readonly target: ToolDef;
   readonly datasets: readonly string[];
+  readonly replacements: readonly string[];
+  readonly hint: string;
+} | {
+  readonly kind: 'rename';
+  readonly name: string;
+  readonly target: ToolDef;
+  readonly translate?: RenameFamily['translate'];
   readonly replacements: readonly string[];
   readonly hint: string;
 };
@@ -170,6 +191,20 @@ export function sealAliases(
       });
       continue;
     }
+    if (family.kind === 'rename') {
+      const target = registryByName.get(family.target);
+      if (!target) fail(family.name, `unregistered target ${family.target}`);
+      aliasForTarget.set(target.name, family.name);
+      sealed.push({
+        kind: 'rename',
+        name: family.name,
+        target,
+        translate: family.translate,
+        replacements: [target.name],
+        hint: `${family.name} is not listed. Call ${target.name}.`,
+      });
+      continue;
+    }
     const pro = registryByName.get(family.proTarget);
     if (!pro) fail(family.name, `unregistered target ${family.proTarget}`);
     if (accessOf(pro) !== 'subscription') fail(family.name, `${pro.name} is not subscription`);
@@ -204,7 +239,7 @@ export function sealAliases(
 
   const checked = new Set<string>();
   for (const family of sealed) {
-    for (const target of family.kind === 'merge' ? [family.target] : [family.pro, family.rest]) {
+    for (const target of family.kind === 'dataset-split' ? [family.pro, family.rest] : [family.target]) {
       if (checked.has(target.name)) continue;
       checked.add(target.name);
       const advertised = advertisedOutputSchema(target.outputSchema, { permitDeprecation: true });
@@ -290,6 +325,7 @@ export function deprecationNotice(input: {
 
 function resolveFamily(family: SealedFamily, args: unknown): ResolvedCall {
   if (family.kind === 'merge') return resolveMerge(family, args);
+  if (family.kind === 'rename') return resolveRename(family, args);
   const rawDataset = isPlainObject(args) ? args.dataset : undefined;
   if (!isPrimitive(rawDataset) && !(Array.isArray(rawDataset) && rawDataset.every(isPrimitive))) {
     return { kind: 'invalid', violations: [{ field: 'dataset', description: 'dataset must be a string or an array of strings.' }] };
@@ -361,6 +397,49 @@ function resolveMerge(family: Extract<SealedFamily, { kind: 'merge' }>, args: un
       replacement: family.target.name,
       message: `${family.name} now calls ${family.target.name} with dataset ${requested.join(', ')}. Call ${family.target.name} directly.`,
     }),
+  };
+}
+
+function resolveRename(family: Extract<SealedFamily, { kind: 'rename' }>, args: unknown): ResolvedCall {
+  if (args !== undefined && !isPlainObject(args)) {
+    return { kind: 'invalid', violations: [{ field: 'arguments', description: 'arguments must be an object.' }] };
+  }
+  const translated = family.translate ? family.translate(args ?? {}) : { ok: true as const, arguments: args ?? {} };
+  if (!translated.ok) return { kind: 'invalid', violations: translated.violations };
+  return {
+    kind: 'alias',
+    tool: family.target,
+    arguments: translated.arguments,
+    argumentsShape: 'target',
+    notice: deprecationNotice({
+      alias: family.name,
+      replacement: family.target.name,
+      message: `${family.name} now calls ${family.target.name}. Call ${family.target.name} directly.`,
+    }),
+  };
+}
+
+// search_flight_prices_by_date took is_round_trip with trip_duration and a
+// sort_by_price flag; search_flights reads a range as round-trip when
+// trip_duration is set and sorts by price with sort_by "price".
+function translateFlightDateSearch(args: Record<string, unknown>): Translation {
+  const { is_round_trip: roundTrip, trip_duration: tripDuration, sort_by_price: byPrice, ...rest } = args;
+  if (roundTrip !== undefined && typeof roundTrip !== 'boolean') {
+    return { ok: false, violations: [{ field: 'is_round_trip', description: 'is_round_trip must be a boolean.' }] };
+  }
+  if (byPrice !== undefined && typeof byPrice !== 'boolean') {
+    return { ok: false, violations: [{ field: 'sort_by_price', description: 'sort_by_price must be a boolean.' }] };
+  }
+  if (roundTrip === true && tripDuration === undefined) {
+    return { ok: false, violations: [{ field: 'trip_duration', description: 'trip_duration is required when is_round_trip is true.' }] };
+  }
+  return {
+    ok: true,
+    arguments: {
+      ...rest,
+      ...(roundTrip === true ? { trip_duration: tripDuration } : {}),
+      ...(byPrice === true ? { sort_by: 'price' } : {}),
+    },
   };
 }
 

@@ -26,10 +26,10 @@ describe('/agent page content', () => {
     assert.ok(PAGE.includes(`<p class="lede" id="approved-description">${APPROVED_DESCRIPTION}</p>`));
   });
 
-  it('says "90+ MCP tools", never an exact count, and the claim holds', () => {
-    assert.match(PAGE, /90\+ MCP tools/);
+  it('says "85+ MCP tools", never an exact count, and the claim holds', () => {
+    assert.match(PAGE, /85\+ MCP tools/);
     assert.doesNotMatch(PAGE, /\b\d{2,3} (?:MCP )?tools\b/, 'no exact tool count');
-    assert.ok(TOOL_LIST_RESPONSE.length >= 90, `registry has ${TOOL_LIST_RESPONSE.length} tools; the page promises 90+`);
+    assert.ok(TOOL_LIST_RESPONSE.length >= 85, `registry has ${TOOL_LIST_RESPONSE.length} tools; the page promises 85+`);
   });
 
   it('has a setup section for every client the page names', () => {

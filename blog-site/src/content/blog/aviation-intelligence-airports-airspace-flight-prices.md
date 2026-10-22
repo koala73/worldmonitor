@@ -36,13 +36,13 @@ That combination matters because absence is a signal too. Civilian traffic thinn
 
 ## Flight prices are a sensor
 
-WorldMonitor can search real-time flight options and prices between any two airports (`search_flights`), and scan a whole date range for the cheapest fare per day (`search_flight_prices_by_date`) — live Google Flights data, exposed to both the Prices tab and MCP agents.
+WorldMonitor can search real-time flight options and prices between any two airports (`search_flights`), and scan a whole date range for the cheapest fare per day (the same tool with `start_date` and `end_date`) — live Google Flights data, exposed to both the Prices tab and MCP agents.
 
 The obvious use is practical: an AI travel assistant with real fares. The less obvious use is analytical. Prices out of a stressed city spiking while inbound fares collapse is demand-side evidence of departure pressure. Routes quietly disappearing from results tell you about airspace and slot decisions before they're announced. When you need to know whether "people are leaving" is a rumor or a fact, the booking engine is a witness.
 
 ## For developers and agents
 
-All of it is queryable: `get_aviation_status` and `get_airspace` for the intelligence layer, `search_flights` and `search_flight_prices_by_date` for fares, alongside the versioned aviation REST endpoints in the [API reference](https://www.worldmonitor.app/docs/api-reference). An agent can chain them: check a country's airspace activity, confirm airport status, then price the exit routes — the full [risk-agent pattern](/blog/posts/build-geopolitical-risk-agent-worldmonitor-mcp/).
+All of it is queryable: `get_aviation_status` and `get_airspace` for the intelligence layer, `search_flights` for fares, alongside the versioned aviation REST endpoints in the [API reference](https://www.worldmonitor.app/docs/api-reference). An agent can chain them: check a country's airspace activity, confirm airport status, then price the exit routes — the full [risk-agent pattern](/blog/posts/build-geopolitical-risk-agent-worldmonitor-mcp/).
 
 ## Limits
 
