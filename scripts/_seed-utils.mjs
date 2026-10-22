@@ -1562,12 +1562,17 @@ async function httpsProxyFetchJson(url, proxyAuth, proxyAttempt = 0) {
 
 // `headers` are forwarded to the origin (e.g. an API subscription key); the
 // shared User-Agent is applied unless a caller sets its own.
-export async function httpsProxyFetchRaw(url, proxyAuth, { accept = '*/*', timeoutMs = 20_000, signal, proxyAttempt = 0, headers = {} } = {}) {
+export async function httpsProxyFetchRaw(url, proxyAuth, {
+  accept = '*/*', timeoutMs = 20_000, signal, proxyAttempt = 0, headers = {}, onErrorResponse,
+} = {}) {
   const { proxyFetch, parseProxyConfigForAttempt } = createRequire(import.meta.url)('./_proxy-utils.cjs');
   const proxyConfig = parseProxyConfigForAttempt(proxyAuth, proxyAttempt);
   if (!proxyConfig) throw new Error('Invalid proxy auth string');
   const result = await proxyFetch(url, proxyConfig, { accept, timeoutMs, signal, headers: { 'User-Agent': CHROME_UA, ...headers } });
-  if (!result.ok) throw Object.assign(new Error(`HTTP ${result.status}`), { status: result.status });
+  if (!result.ok) {
+    onErrorResponse?.(result);
+    throw Object.assign(new Error(`HTTP ${result.status}`), { status: result.status });
+  }
   return { buffer: result.buffer, contentType: result.contentType };
 }
 
@@ -1628,11 +1633,15 @@ export function isExitRefusalError(error) {
 
 const FRED_JSON_HEADERS = { Accept: 'application/json', 'User-Agent': CHROME_UA };
 
-function parseFredJson(body, contentType) {
+function throwIfFredMaintenance(body, contentType) {
   if (/\btext\/html\b/i.test(contentType || '')
     && /<h1[^>]*>\s*We(?:['\u2019]ll| will) be back soon!?\s*<\/h1>/i.test(body)) {
     throw markPreservableFetchFailure(new Error('FRED API is under maintenance'));
   }
+}
+
+function parseFredJson(body, contentType) {
+  throwIfFredMaintenance(body, contentType);
   return JSON.parse(body);
 }
 
@@ -1706,6 +1715,9 @@ export async function fredFetchJson(url, proxyAuth) {
       try {
         const { buffer, contentType } = await httpsProxyFetchRaw(url, proxyAuth, {
           accept: 'application/json', proxyAttempt: attempt - 1,
+          onErrorResponse: ({ buffer: errorBody, contentType: errorContentType }) => {
+            throwIfFredMaintenance(errorBody.toString('utf8'), errorContentType);
+          },
         });
         return parseFredJson(buffer.toString('utf8'), contentType);
       } catch (proxyErr) {
