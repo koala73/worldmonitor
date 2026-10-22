@@ -37,6 +37,24 @@ updates:
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
 
+  - package-ecosystem: "docker"
+    directory: "/demos/verification-desk"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # Hold the Node base image at the current LTS major (24). See PR #4709.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "docker"
+    directory: "/.oss-scanner"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # Hold the Node base image at the current LTS major (24). See PR #4709.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
   # Every npm manifest in the repo. Without this block Dependabot raises alerts
   # but can never open a fix PR for them, which is how 69 open advisories
   # accumulated while `security-audit.yml` stayed green — the gate only blocks on

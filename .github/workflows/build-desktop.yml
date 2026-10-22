@@ -219,7 +219,6 @@ jobs:
       - name: Bundle Node.js runtime
         shell: bash
         env:
-          NODE_VERSION: '22.14.0'
           NODE_TARGET: ${{ matrix.node_target }}
         run: bash scripts/download-node.sh --target "$NODE_TARGET"
 

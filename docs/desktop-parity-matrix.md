@@ -138,8 +138,9 @@ release-candidate checklist:
    `workflow_dispatch` defaults to `draft: false` so a dispatched build is
    actually served, and the unbuildable tech/finance packaging surface is gone.
    `tests/desktop-one-binary-model.test.mjs` fails if any surface drifts back.
-2. Bundled Node 22.14.0 vs CI Node 24 everywhere; SHASUMS fetched without GPG
-   verification. → #5909.
+2. Bundled Node 22.23.4 vs CI Node 24 everywhere; SHASUMS fetched without GPG
+   verification. → #5909. The bundle stays on 22.x because the Node 24 macOS
+   binaries require macOS 13.5, while 22.x runs on macOS 11.
 3. README/docs drift: "Stable" label, missing Linux ARM64 row, `windows-exe`
    badges vs `windows-msi` in-app, wrong updater host/TTL in
    `docs/desktop-app.mdx`, phantom 50 MB cap in `docs/usage-rate-limits.mdx`,
