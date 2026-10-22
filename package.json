@@ -292,7 +292,7 @@
     "convex": "^1.32.0",
     "d3": "^7.9.0",
     "deck.gl": "^9.4.0",
-    "dompurify": "^3.4.16",
+    "dompurify": "^3.4.17",
     "fast-xml-parser": "^5.8.0",
     "fflate": "0.8.3",
     "globe.gl": "^2.45.0",
