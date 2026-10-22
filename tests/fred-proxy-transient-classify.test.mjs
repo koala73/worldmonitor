@@ -248,6 +248,26 @@ test('direct FRED leg does NOT retry a 4xx — a bad series id never fixes itsel
   assert.equal(calls, 1, 'a 4xx must fail fast, not burn a retry');
 });
 
+for (const status of [429, 503]) {
+  test(`direct FRED ${status} keeps a confirmed upstream failure classification`, async (t) => {
+    t.mock.method(globalThis, 'fetch', async () => new Response('', { status }));
+    await assert.rejects(() => fredFetchJson('https://api.stlouisfed.org/fred/series/observations'),
+      (error) => error.status === status && error.preservableFetchFailure === true);
+  });
+}
+
+test('FRED maintenance classification survives the proxy-to-direct fallback', async (t) => {
+  t.mock.method(proxyUtils, 'proxyFetch', async () => ({
+    ok: true, buffer: Buffer.from("<h1>We'll be back soon!</h1>"),
+  }));
+  t.mock.method(globalThis, 'fetch', async () => new Response("<h1>We'll be back soon!</h1>", {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  }));
+  await assert.rejects(() => fredFetchJson('https://api.stlouisfed.org/fred/series/observations',
+    'https://fake:secret@gate.decodo.com:10001'),
+  (error) => error.preservableFetchFailure === true && /maintenance/.test(error.message));
+});
+
 test('direct FRED leg does NOT retry a timeout — it has already burned its budget', async (t) => {
   t.after(() => { globalThis.fetch = originalFetch; });
   let calls = 0;

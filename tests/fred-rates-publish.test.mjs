@@ -13,23 +13,28 @@ import {
   FRED_SEED_SERIES,
   FRED_KEY_PREFIX,
   FRED_TTL,
+  fetchFredSeries,
   STRESS_INDEX_KEY,
   STRESS_INDEX_TTL,
 } from '../scripts/_fred-seeder.mjs';
 import { upstashCommand } from '../scripts/_upstash-rest.mjs';
-import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, runSeed, writeSeedMeta } from '../scripts/_seed-utils.mjs';
+import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, markPreservableFetchFailure, runSeed, writeSeedMeta } from '../scripts/_seed-utils.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalRetryDelay = process.env.WM_SEED_RETRY_DELAY_MS;
+const originalFredApiKey = process.env.FRED_API_KEY;
 
 beforeEach(() => {
   process.env.WM_SEED_RETRY_DELAY_MS = '0';
+  process.env.FRED_API_KEY = 'test-key';
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   if (originalRetryDelay === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
   else process.env.WM_SEED_RETRY_DELAY_MS = originalRetryDelay;
+  if (originalFredApiKey === undefined) delete process.env.FRED_API_KEY;
+  else process.env.FRED_API_KEY = originalFredApiKey;
 });
 
 function makeSeriesMap(count) {
@@ -213,6 +218,10 @@ describe('FRED publication gates', () => {
       const before = new Map([...entries].map(([key, entry]) => [key, clone(entry.value)]));
       const commands = [];
       installExpiryAwareRedis(clock, entries, [], commands);
+      const redisFetch = globalThis.fetch;
+      globalThis.fetch = async (url, init) => String(url).startsWith('https://api.stlouisfed.org/')
+        ? new Response("<!doctype html><h1>We'll be back soon!</h1>", { headers: { 'Content-Type': 'text/html' } })
+        : redisFetch(url, init);
       const lines = [];
       const originalConsole = { log: console.log, warn: console.warn, error: console.error };
       for (const method of Object.keys(originalConsole)) {
@@ -221,7 +230,9 @@ describe('FRED publication gates', () => {
       let exitCode;
       try {
         exitCode = await trapSeedExit(() => runFredRatesSeed({
-          fetchFredSeriesImpl: async () => ({}),
+          fetchFredSeriesImpl: () => fetchFredSeries({
+            proxyAuth: null, readMetaCache: async () => ({}), throwOnEmpty: true,
+          }),
           fetchGscpiFromRedisImpl: async () => { throw new Error('must not compute stress without FRED'); },
           publishFredCohortImpl: async () => { throw new Error('must not publish unavailable data'); },
           markFredRatesActivatedImpl: async () => { throw new Error('must not activate unavailable data'); },
@@ -238,6 +249,30 @@ describe('FRED publication gates', () => {
       assert.equal(commands.some((command) => ['MSET', 'SETEX'].includes(command?.[0])), false);
       assert.equal(commands.some((command) => command?.[0] === 'SET'
         && !String(command[1]).startsWith('seed-lock:')), false);
+    });
+  }
+
+  for (const failure of ['invalid-key', 'malformed-observations', 'empty-observations', 'unexpected-html', 'mixed-failures']) {
+    it(`does not classify settled ${failure} failures as a confirmed upstream outage`, async () => {
+      installExpiryAwareRedis({ now: Date.now() }, new Map(), []);
+      const redisFetch = globalThis.fetch;
+      globalThis.fetch = async (url, init) => {
+        if (!String(url).startsWith('https://api.stlouisfed.org/')) return redisFetch(url, init);
+        if (failure === 'invalid-key') return Response.json({ error_code: 400 }, { status: 400 });
+        if (failure === 'mixed-failures') return new URL(url).searchParams.get('series_id') === FRED_SEED_SERIES[0]
+          ? Response.json({ error_code: 400 }, { status: 400 })
+          : new Response("<h1>We'll be back soon!</h1>", { headers: { 'Content-Type': 'text/html' } });
+        if (failure === 'unexpected-html') return new Response('<html>Unknown response</html>', {
+          headers: { 'Content-Type': 'text/html' },
+        });
+        return Response.json({ observations: failure === 'empty-observations' ? [] : {} });
+      };
+      const exitCode = await trapSeedExit(() => runFredRatesSeed({
+        fetchFredSeriesImpl: () => fetchFredSeries({
+          proxyAuth: null, readMetaCache: async () => ({}), throwOnEmpty: true,
+        }),
+      }));
+      assert.equal(exitCode, GRACEFUL_FETCH_FAILURE_EXIT_CODE);
     });
   }
 
@@ -419,7 +454,9 @@ describe('FRED publication gates', () => {
     const entries = primeFredConsumerCohort(clock);
     installExpiryAwareRedis(clock, entries, []);
     const exitCode = await trapSeedExit(() => runFredRatesSeed({
-      fetchFredSeriesImpl: async () => ({}),
+      fetchFredSeriesImpl: async () => {
+        throw markPreservableFetchFailure(new Error('FRED API is under maintenance'));
+      },
     }));
     assert.equal(exitCode, 0);
 

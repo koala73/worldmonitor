@@ -1654,7 +1654,16 @@ async function fredDirectFetchJson(url) {
   for (let attempt = 1; attempt <= FRED_DIRECT_ATTEMPTS; attempt += 1) {
     try {
       const r = await fetch(url, { headers: FRED_JSON_HEADERS, signal: AbortSignal.timeout(20_000) });
-      if (r.ok) return await r.json();
+      if (r.ok) {
+        if (/\btext\/html\b/i.test(r.headers?.get?.('content-type') || '')) {
+          const body = await r.text();
+          if (/<h1[^>]*>\s*We(?:'ll| will) be back soon!?\s*<\/h1>/i.test(body)) {
+            throw markPreservableFetchFailure(new Error('FRED API is under maintenance'));
+          }
+          return JSON.parse(body);
+        }
+        return await r.json();
+      }
       throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
     } catch (error) {
       lastError = error;
@@ -1662,6 +1671,7 @@ async function fredDirectFetchJson(url) {
         await new Promise((resolve) => setTimeout(resolve, 350 * attempt + Math.random() * 250));
         continue;
       }
+      if (isRetriableFredStatus(error?.status) || error?.status === 429) markPreservableFetchFailure(error);
       throw error;
     }
   }
@@ -1709,7 +1719,10 @@ export async function fredFetchJson(url, proxyAuth) {
     try {
       return await fredDirectFetchJson(url);
     } catch (directErr) {
-      throw Object.assign(new Error(`direct: ${directErr.message}`), { cause: directErr });
+      throw Object.assign(new Error(`direct: ${directErr.message}`), {
+        cause: directErr,
+        preservableFetchFailure: directErr.preservableFetchFailure === true,
+      });
     }
   }
   return fredDirectFetchJson(url);

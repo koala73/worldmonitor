@@ -56,21 +56,25 @@ function fredPreserveKeyTtls() {
 }
 
 export async function fetchFredBatch({
-  fetchFredSeriesImpl = fetchFredSeries,
+  fetchFredSeriesImpl = () => fetchFredSeries({ throwOnEmpty: true }),
   fetchGscpiFromRedisImpl = fetchGscpiFromRedis,
   computeStressIndexImpl = computeStressIndex,
 } = {}) {
-  const seriesById = await fetchFredSeriesImpl();
+  let seriesById;
+  try {
+    seriesById = await fetchFredSeriesImpl();
+  } catch (error) {
+    if (error?.preservableFetchFailure !== true) throw error;
+    console.error(`  FETCH FAILED: ${error.message}`);
+    return { seriesCount: 0, sourceUnavailable: true };
+  }
   const usableSeriesById = Object.fromEntries(
     FRED_SEED_SERIES
       .filter((seriesId) => isUsableFredSeries(seriesById[seriesId]))
       .map((seriesId) => [seriesId, seriesById[seriesId]]),
   );
   const seriesIds = Object.keys(usableSeriesById);
-  if (seriesIds.length === 0) {
-    console.error('  FETCH FAILED: FRED returned no usable series');
-    return { seriesCount: 0, sourceUnavailable: true };
-  }
+  if (seriesIds.length === 0) throw new Error('FRED returned no usable series');
 
   const stressInputs = { ...usableSeriesById };
   const gscpi = await fetchGscpiFromRedisImpl();
