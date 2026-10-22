@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
@@ -23,6 +24,7 @@ import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, markPreservableFetchFailure, runSeed,
 const originalFetch = globalThis.fetch;
 const originalRetryDelay = process.env.WM_SEED_RETRY_DELAY_MS;
 const originalFredApiKey = process.env.FRED_API_KEY;
+const proxyUtils = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
 
 beforeEach(() => {
   process.env.WM_SEED_RETRY_DELAY_MS = '0';
@@ -207,49 +209,65 @@ function makeRunSeedHarness(events) {
 }
 
 describe('FRED publication gates', () => {
-  for (const state of ['fresh', 'stale', 'missing']) {
-    it(`reports an unavailable source without crashing when last-good is ${state}`, async () => {
-      const clock = { now: Date.now() };
-      const entries = state === 'missing' ? new Map() : primeFredConsumerCohort(clock);
-      if (state !== 'missing') {
-        entries.get('seed-meta:economic:fred-rates').value.fetchedAt = clock.now
-          - (state === 'stale' ? 48 * 60 : 1) * 60_000;
-      }
-      const before = new Map([...entries].map(([key, entry]) => [key, clone(entry.value)]));
-      const commands = [];
-      installExpiryAwareRedis(clock, entries, [], commands);
-      const redisFetch = globalThis.fetch;
-      globalThis.fetch = async (url, init) => String(url).startsWith('https://api.stlouisfed.org/')
-        ? new Response("<!doctype html><h1>We'll be back soon!</h1>", { headers: { 'Content-Type': 'text/html' } })
-        : redisFetch(url, init);
-      const lines = [];
-      const originalConsole = { log: console.log, warn: console.warn, error: console.error };
-      for (const method of Object.keys(originalConsole)) {
-        console[method] = (...args) => lines.push(args.join(' '));
-      }
-      let exitCode;
-      try {
-        exitCode = await trapSeedExit(() => runFredRatesSeed({
-          fetchFredSeriesImpl: () => fetchFredSeries({
-            proxyAuth: null, readMetaCache: async () => ({}), throwOnEmpty: true,
-          }),
-          fetchGscpiFromRedisImpl: async () => { throw new Error('must not compute stress without FRED'); },
-          publishFredCohortImpl: async () => { throw new Error('must not publish unavailable data'); },
-          markFredRatesActivatedImpl: async () => { throw new Error('must not activate unavailable data'); },
+  for (const route of ['direct-maintenance', 'proxy-maintenance-direct-403', 'proxy-maintenance-direct-timeout']) {
+    for (const state of ['fresh', 'stale', 'missing']) {
+      it(`reports ${route} without crashing when last-good is ${state}`, async (t) => {
+        const clock = { now: Date.now() };
+        const entries = state === 'missing' ? new Map() : primeFredConsumerCohort(clock);
+        if (state !== 'missing') {
+          entries.get('seed-meta:economic:fred-rates').value.fetchedAt = clock.now
+            - (state === 'stale' ? 48 * 60 : 1) * 60_000;
+        }
+        const before = new Map([...entries].map(([key, entry]) => [key, clone(entry.value)]));
+        const commands = [];
+        installExpiryAwareRedis(clock, entries, [], commands);
+        const redisFetch = globalThis.fetch;
+        let directCalls = 0;
+        const proxy = t.mock.method(proxyUtils, 'proxyFetch', async () => ({
+          ok: true, buffer: Buffer.from('<h1>We\u2019ll be back soon!</h1>'), contentType: 'text/html',
         }));
-      } finally {
-        Object.assign(console, originalConsole);
-      }
+        globalThis.fetch = async (url, init) => {
+          if (!String(url).startsWith('https://api.stlouisfed.org/')) return redisFetch(url, init);
+          directCalls += 1;
+          if (route.endsWith('-403')) return new Response('', { status: 403 });
+          if (route.endsWith('-timeout')) throw new DOMException('direct timed out', 'TimeoutError');
+          return new Response("<!doctype html><h1>We'll be back soon!</h1>", { headers: { 'Content-Type': 'text/html' } });
+        };
+        const lines = [];
+        const originalConsole = { log: console.log, warn: console.warn, error: console.error };
+        for (const method of Object.keys(originalConsole)) {
+          console[method] = (...args) => lines.push(args.join(' '));
+        }
+        let exitCode;
+        try {
+          exitCode = await trapSeedExit(() => runFredRatesSeed({
+            fetchFredSeriesImpl: () => fetchFredSeries({
+              proxyAuth: route === 'direct-maintenance' ? null : 'https://fake:secret@gate.decodo.com:10001',
+              readMetaCache: async () => ({}), throwOnEmpty: true,
+            }),
+            fetchGscpiFromRedisImpl: async () => { throw new Error('must not compute stress without FRED'); },
+            publishFredCohortImpl: async () => { throw new Error('must not publish unavailable data'); },
+            markFredRatesActivatedImpl: async () => { throw new Error('must not activate unavailable data'); },
+          }));
+        } finally {
+          Object.assign(console, originalConsole);
+        }
 
-      assert.equal(exitCode, 0);
-      assert.match(lines.join('\n'), /FRED returned no usable series/);
-      assert.match(lines.join('\n'), /NO SOURCE/);
-      assertCohortContentAndTtl(entries, before, clock);
-      assert.equal(entries.size, before.size);
-      assert.equal(commands.some((command) => ['MSET', 'SETEX'].includes(command?.[0])), false);
-      assert.equal(commands.some((command) => command?.[0] === 'SET'
-        && !String(command[1]).startsWith('seed-lock:')), false);
-    });
+        assert.equal(exitCode, 0);
+        assert.equal(directCalls, FRED_SEED_SERIES.length * 2);
+        assert.equal(proxy.mock.callCount(), route === 'direct-maintenance' ? 0 : FRED_SEED_SERIES.length * 2);
+        assert.match(lines.join('\n'), /FRED returned no usable series/);
+        assert.match(lines.join('\n'), /maintenance/);
+        if (route.endsWith('-403')) assert.match(lines.join('\n'), /direct: HTTP 403/);
+        if (route.endsWith('-timeout')) assert.match(lines.join('\n'), /direct: direct timed out/);
+        assert.match(lines.join('\n'), /NO SOURCE/);
+        assertCohortContentAndTtl(entries, before, clock);
+        assert.equal(entries.size, before.size);
+        assert.equal(commands.some((command) => ['MSET', 'SETEX'].includes(command?.[0])), false);
+        assert.equal(commands.some((command) => command?.[0] === 'SET'
+          && !String(command[1]).startsWith('seed-lock:')), false);
+      });
+    }
   }
 
   for (const failure of ['invalid-key', 'malformed-observations', 'empty-observations', 'unexpected-html', 'mixed-failures']) {
