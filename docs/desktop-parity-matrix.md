@@ -29,7 +29,7 @@ Classifications: `parity` · `intentional difference` · `blocked` · `n/a`.
 
 | Blocker | Issue | Status |
 | --- | --- | --- |
-| Tauri origin-confusion CVE-2026-42184 (CVSS 8.8): lockfile pins tauri 2.10.3, needs ≥ 2.11.1; `Cargo.toml` carries an unbounded `version = "2"` caret | #5518 | open — release-blocking security finding |
+| Tauri origin-confusion CVE-2026-42184 (CVSS 8.8): needs tauri ≥ 2.11.1 | #5518 | **Fixed by #5934**: `Cargo.lock` pins tauri 2.11.5, `Cargo.toml` requires `>=2.11.1, <3`, and `scripts/check-rust-security-floors.mjs` fails the desktop build if the lockfile drops below the floor |
 | Desktop build env omits Clerk/Convex/VAPID/cyber `VITE_*` vars → sign-in, Pro, push, Cyber Threats dead in shipped builds | #5905 | fix landed (env declared + completeness gate + release preflight); remaining ops step: provision the four new repo secrets, after which release builds hard-fail if they go empty again |
 | Linux secret storage fails without an activatable Secret Service; every keyring error in `SecretsCache::load_from_keychain` is silently swallowed (`if let Ok`), so users get an empty vault with zero diagnostics | #802 / #1905 | open — needs secure fallback + migration + diagnostics |
 | Released 2.5.23 lacks Internet Outages / Cyber Threats layers | #5829 | diagnosed — three compounding causes, see row below |
