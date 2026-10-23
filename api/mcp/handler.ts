@@ -63,7 +63,7 @@ import {
   setUsageRpc,
   type McpUsage,
 } from './usage';
-import { safeJsonRpcId, utf8ByteLength } from './utils';
+import { clientAcceptsSse, safeJsonRpcId, utf8ByteLength } from './utils';
 import {
   isMcpAliasRequest,
   MCP_CANONICAL_ENDPOINT_ERROR_CODE,
@@ -131,7 +131,7 @@ const PUBLIC_MCP_METHODS: ReadonlySet<string> = new Set([
   'logging/setLevel',
 ]);
 
-// MCP 2026-07-28 (KTD4): `server/discover` and `subscriptions/listen` take the
+// MCP 2026-07-28: `server/discover` and `subscriptions/listen` take the
 // `initialize` path. Public, so a credentialed call gets identity validation
 // and the protocol bucket but no entitlement pre-check or data burst, and an
 // anonymous alias call stays behind applyAnonDiscoveryLimit. Public on modern
@@ -220,7 +220,7 @@ function authRequiredResponse(id: unknown, resourceMetadataUrl: string, corsHead
 // object per spec (extension carries no negotiation parameters here).
 //
 // `initialize` advertises this object as is; `server/discover` advertises it
-// minus `logging` (KTD7), which the modern era does not serve.
+// minus `logging`, which the modern era does not serve.
 function serverCapabilities() {
   return {
     tools: {},
@@ -290,18 +290,6 @@ function getMcpCorsHeaders(methods = 'POST, GET, HEAD, OPTIONS'): Record<string,
     ...getPublicCorsHeaders(methods),
     'Cache-Control': MCP_CACHE_CONTROL,
   };
-}
-
-function clientAcceptsSse(req: Request): boolean {
-  const accept = req.headers.get('accept') ?? '';
-  return accept.split(',').some((entry) => {
-    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
-    if (type !== 'text/event-stream') return false;
-    const qParam = params.find((part) => part.startsWith('q='));
-    if (!qParam) return true;
-    const q = Number(qParam.slice(2));
-    return Number.isFinite(q) && q > 0;
-  });
 }
 
 function formatSseEvent(event: StoredSseEvent): string {
@@ -836,7 +824,7 @@ async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, 
 // still emits — with status 500 — before re-throwing, so platform 500s are
 // visible in Axiom even though they bypass every structured error path.
 //
-// MCP 2026-07-28 (KTD3): a response to a modern request is shaped here, on the
+// MCP 2026-07-28: a response to a modern request is shaped here, on the
 // single return, so every early return (auth, limits, pre-checks, validation)
 // carries the modern result and error contract. A legacy response never passes
 // through the shaping step.
@@ -1067,7 +1055,7 @@ async function mcpHandlerInner(
     const modern = validateModernRequest(req, parsed, usage, corsHeaders);
     if (modern.era === 'modern' && modern.response) return modern.response;
     modernEra = modern.era === 'modern';
-    if (unsupportedProtocolVersion && modern.era === 'legacy' && !isInitializeRequest(parsed)) {
+    if (unsupportedProtocolVersion && !modernEra && !isInitializeRequest(parsed)) {
       return rejectProtocolVersion();
     }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -1137,7 +1125,7 @@ async function mcpHandlerInner(
       : mcpAliasRpcError(id, corsHeaders);
   }
 
-  // R8: a modern request naming a removed or unknown method is answered 404
+  // A modern request naming a removed or unknown method is answered 404
   // -32601 here, ahead of the notification 202 and the auth gate below.
   if (modernEra) {
     const notFound = modernMethodNotFound(method, id, corsHeaders);
@@ -1204,7 +1192,7 @@ async function mcpHandlerInner(
   // anonymous handshake remains available on the machine-discovery aliases,
   // which is where agent-readiness scanners POST theirs.
   //
-  // A modern request (KTD4, KTD4a) is challenged for every method, not only
+  // A modern request is challenged for every method, not only
   // the handshake: 2026-07-28 has no `initialize`, so `server/discover` is the
   // probe a hosted connector reads sign-in from, and a modern client may open
   // with `tools/list` instead. The modern era has no shipped keyless clients.
@@ -1312,7 +1300,7 @@ async function mcpHandlerInner(
   // SSE replay buffer this request stores is bound to the principal that
   // actually passed the gates above.
   const sseOwner = sseReplayOwner(context);
-  // A modern request has no session (R10): it ignores a client Mcp-Session-Id,
+  // A modern request has no session: it ignores a client Mcp-Session-Id,
   // so its answer is never framed as a replayable SSE stream or stored for
   // Last-Event-ID replay. It goes out as the plain JSON response, which
   // mcpHandler shapes and, for tools/call, frames as session-free SSE.

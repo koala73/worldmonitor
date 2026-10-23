@@ -510,6 +510,11 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       assert.equal(JSON.parse(res.text).error.code, -32600);
     });
 
+    it('refuses a listen whose Accept rules out a stream with q=0', async () => {
+      const res = await listenRaw(modernHeaders('subscriptions/listen', { Accept: 'application/json, text/event-stream;q=0' }));
+      assert.equal(res.status, 406, res.text);
+    });
+
     it('refuses a non-object notifications filter with 400 -32602', async () => {
       const res = await listenRaw(modernHeaders('subscriptions/listen'), 8, ['toolsListChanged']);
       assert.equal(res.status, 400, res.text);
@@ -610,7 +615,8 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
     });
 
     it('answers removed and unknown modern methods with 404 -32601, credentialed or not, before auth', async () => {
-      for (const method of ['ping', 'logging/setLevel', 'initialize', 'notifications/initialized', 'no/such/method']) {
+      // Object.prototype keys are unknown methods too, not tools/call-style names.
+      for (const method of ['ping', 'logging/setLevel', 'initialize', 'notifications/initialized', 'no/such/method', 'constructor', 'toString', '__proto__']) {
         const params = method === 'logging/setLevel' ? { level: 'info' } : {};
         for (const [label, headers] of [['credentialed', modernHeaders(method)], ['anonymous', anonModernHeaders(method)]]) {
           const res = await expectError(modernBody(15, method, params), headers, -32601, 404);

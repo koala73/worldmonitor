@@ -67,3 +67,20 @@ export function compressDescription(text: string, maxBytes: number): string {
   }
   return out;
 }
+
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** True when the request's Accept lists text/event-stream with a non-zero q. */
+export function clientAcceptsSse(req: Request): boolean {
+  const accept = req.headers.get('accept') ?? '';
+  return accept.split(',').some((entry) => {
+    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
+    if (type !== 'text/event-stream') return false;
+    const qParam = params.find((part) => part.startsWith('q='));
+    if (!qParam) return true;
+    const q = Number(qParam.slice(2));
+    return Number.isFinite(q) && q > 0;
+  });
+}

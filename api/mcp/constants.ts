@@ -456,7 +456,7 @@ export const TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES = 65536;
 // ~550 bytes per session.
 const JMESPATH_SPEC_URL = 'https://jmespath.org/specification.html';
 
-// KTD5a: one template, rendered per era. The text names the JSON-RPC codes an
+// One template, rendered per era. The text names the JSON-RPC codes an
 // agent branches on, and the 2026-07-28 era moves two of them out of the
 // reserved range (-32029 → -31029, -32002 → -31002), so `server/discover`
 // renders the modern pair while `initialize` keeps the legacy text unchanged.

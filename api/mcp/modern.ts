@@ -23,17 +23,17 @@
 // Header).
 //
 // On the way out, `shapeModernResponse` applies the modern result and error
-// contract once, to every response a modern request gets (KTD3), early-return
+// contract once, to every response a modern request gets, early-return
 // denials included:
 //   - every result carries resultType "complete" and
 //     _meta["io.modelcontextprotocol/serverInfo"] (spec: basic/index)
 //   - list/read/discover results carry ttlMs + cacheScope (spec:
-//     server/utilities/caching; KTD6 picks the values)
-//   - -32029 → -31029 and -32002 → -31002, whatever the reason (KTD5): the spec
+//     server/utilities/caching)
+//   - -32029 → -31029 and -32002 → -31002, whatever the reason: the spec
 //     reserves -32020..-32099 and bans -32002. Status, headers, message and
 //     error.data are unchanged.
 // A modern tools/call whose Accept allows SSE is then framed by the
-// session-free encoder `modernSseResponse` (KTD3a).
+// session-free encoder `modernSseResponse`.
 import {
   allSupportedProtocolVersionsNewestFirst,
   MCP_MODERN_PROTOCOL_VERSION,
@@ -43,7 +43,7 @@ import {
 } from './constants';
 import { rpcError } from './rpc';
 import type { McpUsage } from './usage';
-import { safeJsonRpcId } from './utils';
+import { clientAcceptsSse, isPlainObject, safeJsonRpcId } from './utils';
 
 const PROTOCOL_VERSION_KEY = 'io.modelcontextprotocol/protocolVersion';
 const CLIENT_CAPABILITIES_KEY = 'io.modelcontextprotocol/clientCapabilities';
@@ -82,10 +82,6 @@ const BASE64_SENTINEL_SUFFIX = '?=';
 export type ModernOutcome =
   | { era: 'legacy' }
   | { era: 'modern'; response?: Response };
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
 
 function requestMeta(body: unknown): Record<string, unknown> | null {
   if (!isPlainObject(body) || !isPlainObject(body.params)) return null;
@@ -129,7 +125,10 @@ function headerMismatch(req: Request, body: Record<string, unknown>): string | n
   if (method === null) return 'Header mismatch: Mcp-Method header is required';
   if (method !== body.method) return 'Header mismatch: Mcp-Method header does not match the body method';
 
-  const source = typeof body.method === 'string' ? MCP_NAME_SOURCE[body.method] : undefined;
+  // Own keys only: an Object.prototype name such as `constructor` is not one.
+  const source = typeof body.method === 'string' && Object.prototype.hasOwnProperty.call(MCP_NAME_SOURCE, body.method)
+    ? MCP_NAME_SOURCE[body.method]
+    : undefined;
   if (source === undefined) return null;
   const name = req.headers.get('Mcp-Name');
   if (name === null) return `Header mismatch: Mcp-Name header is required for ${body.method}`;
@@ -203,9 +202,14 @@ export function modernMethodNotFound(
 }
 
 const SERVER_INFO_META_KEY = 'io.modelcontextprotocol/serverInfo';
+const SUBSCRIPTION_ID_META_KEY = 'io.modelcontextprotocol/subscriptionId';
 const ONE_HOUR_MS = 3_600_000;
 
-// KTD5: the modern form of each legacy-range denial code.
+function serverInfoMeta(): Record<string, unknown> {
+  return { [SERVER_INFO_META_KEY]: { name: SERVER_NAME, version: SERVER_VERSION } };
+}
+
+// The modern form of each legacy-range denial code.
 const MODERN_ERROR_CODES: ReadonlyMap<number, number> = new Map([
   [-32029, -31029],
   [-32002, -31002],
@@ -213,7 +217,7 @@ const MODERN_ERROR_CODES: ReadonlyMap<number, number> = new Map([
 
 type CacheHint = { ttlMs: number; cacheScope: 'public' | 'private' };
 
-// KTD6. tools/list, prompts/list and resources/templates/list are identical
+// tools/list, prompts/list and resources/templates/list are identical
 // for every caller. resources/list adds account resources for user-bound
 // callers, and a shared cache cannot key on the caller, so it is private for
 // everyone. server/discover is private on /mcp, so a shared cache cannot let
@@ -260,7 +264,7 @@ function shapeMessage(message: Record<string, unknown>, options: ModernShapeOpti
       ...cacheHint(options.method, options.onAlias),
       _meta: {
         ...(isPlainObject(result._meta) ? result._meta : {}),
-        [SERVER_INFO_META_KEY]: { name: SERVER_NAME, version: SERVER_VERSION },
+        ...serverInfoMeta(),
       },
     },
   };
@@ -270,8 +274,8 @@ function shapeMessage(message: Record<string, unknown>, options: ModernShapeOpti
  * Apply the modern result and error contract to a response for a modern
  * request. Bodiless responses (202, the notification 429) and non-JSON bodies
  * pass through untouched. A JSON body is re-serialized with a recomputed
- * Content-Length (KTD3b: jsonResponse stamped the original byte count, which
- * would truncate the larger body on the wire); every other header is kept.
+ * Content-Length (jsonResponse stamped the original byte count, which would
+ * truncate the larger body on the wire); every other header is kept.
  */
 export async function shapeModernResponse(response: Response, options: ModernShapeOptions): Promise<Response> {
   if (response.body === null) return response;
@@ -292,25 +296,14 @@ export async function shapeModernResponse(response: Response, options: ModernSha
     return modernSseResponse([shaped], init.headers);
   }
   if (shaped === parsed) return new Response(text, init);
-  const json = JSON.stringify(shaped);
+  const bytes = new TextEncoder().encode(JSON.stringify(shaped));
   // Only a response that advertised a length gets the recomputed one, so the
   // header set stays exactly the source's.
-  if (init.headers.has('Content-Length')) {
-    init.headers.set('Content-Length', String(new TextEncoder().encode(json).byteLength));
-  }
-  return new Response(json, init);
+  if (init.headers.has('Content-Length')) init.headers.set('Content-Length', String(bytes.byteLength));
+  return new Response(bytes, init);
 }
 
-/**
- * A session-free SSE response (KTD3a): each message is one `data:` event, in
- * order, and the stream closes after the last, which is the final JSON-RPC
- * response. No `id:` lines (2026-07-28 streams are not resumable), no
- * Mcp-Session-Id, nothing stored for replay. `headers` supplies the CORS and
- * rate-limit headers to keep; the framing headers are set here.
- */
-const SUBSCRIPTION_ID_META_KEY = 'io.modelcontextprotocol/subscriptionId';
-
-// subscriptions/listen (R9). /mcp emits no change notifications and advertises
+// subscriptions/listen. /mcp emits no change notifications and advertises
 // no listChanged, so it honors none of the requested types: it acknowledges an
 // empty filter, sends the graceful completion result and closes the stream at
 // once. The stream is already shaped here: shapeModernResponse passes SSE
@@ -321,7 +314,7 @@ export function modernListenResponse(
   params: unknown,
   corsHeaders: Record<string, string>,
 ): Response {
-  if (!/text\/event-stream/i.test(req.headers.get('accept') ?? '')) {
+  if (!clientAcceptsSse(req)) {
     return rpcError(id, -32600, 'subscriptions/listen requires Accept: text/event-stream', corsHeaders, undefined, 406);
   }
   const notifications = isPlainObject(params) ? params.notifications : undefined;
@@ -338,16 +331,20 @@ export function modernListenResponse(
     id,
     result: {
       resultType: 'complete',
-      _meta: {
-        [SUBSCRIPTION_ID_META_KEY]: id,
-        [SERVER_INFO_META_KEY]: { name: SERVER_NAME, version: SERVER_VERSION },
-      },
+      _meta: { [SUBSCRIPTION_ID_META_KEY]: id, ...serverInfoMeta() },
     },
   };
   return modernSseResponse([acknowledged, completed], corsHeaders);
 }
 
-export function modernSseResponse(messages: readonly unknown[], headers: HeadersInit = {}, status = 200): Response {
+/**
+ * A session-free SSE response: each message is one `data:` event, in order,
+ * and the stream closes after the last, which is the final JSON-RPC response.
+ * No `id:` lines (2026-07-28 streams are not resumable), no Mcp-Session-Id,
+ * nothing stored for replay. `headers` supplies the CORS and rate-limit
+ * headers to keep; the framing headers are set here.
+ */
+export function modernSseResponse(messages: readonly unknown[], headers: HeadersInit): Response {
   const out = new Headers(headers);
   out.set('Content-Type', 'text/event-stream; charset=utf-8');
   // no-transform keeps proxies from compressing or buffering the framing.
@@ -365,5 +362,5 @@ export function modernSseResponse(messages: readonly unknown[], headers: Headers
       controller.close();
     },
   });
-  return new Response(body, { status, headers: out });
+  return new Response(body, { status: 200, headers: out });
 }
