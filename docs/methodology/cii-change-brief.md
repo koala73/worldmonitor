@@ -105,9 +105,14 @@ Replay only on the committed multi-date fixtures in `tests/fixtures/cii/`. A sna
 - the scored version is `next`. The seam must reproduce `expected[next]`, and `KNOWN_GAPS[next]` in `tests/cii-invariants.test.mts` lists the gaps;
 - `--write-expected` writes, or overwrites, only `expected[next]`. Every PR on the branch regenerates it after each rebase, and only through `--write-expected`;
 - the production check stays as provenance. Each stored production table must equal `expected[methodologyVersion]`, the table recorded at that version. Only the seam-against-production assertion is skipped, with a message, because the tree no longer runs the released scorer. It runs again once `next` ships and is captured;
-- capture fixtures from a released checkout (main). `scripts/cii-capture-fixture.mts` refuses to run on the branch, then the branch records `next` with `--write-expected`.
+- capture fixtures from a released checkout (main). `scripts/cii-capture-fixture.mts` refuses to run on the branch, then the branch records `next` with `--write-expected`;
+- the protocol snapshot in `tests/cii-scoring.test.mts` follows the same rule. It covers every literal in `computeCIIScores` and the guarded constants. The test checks the current snapshot against `CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION[next]`. A digest pins every released entry, so editing the `v14` hash fails CI. Regenerate the `next` entry only from the hash this command prints, and say in the PR body that the hash changed:
 
-The PR that ships `next` to main bumps `CII_FORMULA_VERSION`, clears `inProgress`, and moves the claim on (section 4).
+  ```
+  node --import tsx --test --test-name-pattern="snapshot-keyed" tests/cii-scoring.test.mts | grep "CII protocol snapshot hash"
+  ```
+
+The PR that ships `next` to main bumps `CII_FORMULA_VERSION`, clears `inProgress`, and moves the claim on (section 4). It also freezes the `next` hash as released, by updating `CII_RELEASED_PROTOCOL_HASHES_SHA256`.
 
 Capture a new fixture GET-only, with no Redis writes:
 
