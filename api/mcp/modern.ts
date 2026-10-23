@@ -17,7 +17,10 @@
 //     Mcp-Name missing or unequal on tools/call, resources/read, prompts/get
 //     → 400 -32020 HeaderMismatch (spec: transports/streamable-http)
 // Notification POSTs skip the header rules: the spec defines none for them.
-// A request that passes continues into the existing dispatch unchanged.
+// A request that passes continues into the existing dispatch, where
+// `modernMethodNotFound` answers removed and unknown methods with 404 -32601
+// before authentication (spec: transports/streamable-http, Protocol Version
+// Header).
 import {
   allSupportedProtocolVersionsNewestFirst,
   MCP_MODERN_PROTOCOL_VERSION,
@@ -36,6 +39,27 @@ const MCP_NAME_SOURCE: Readonly<Record<string, 'name' | 'uri'>> = {
   'prompts/get': 'name',
   'resources/read': 'uri',
 };
+
+// The methods a modern request may name: every method the handler serves,
+// minus the ones 2026-07-28 removed (`initialize`, `notifications/initialized`,
+// `ping`, `logging/setLevel`), plus the modern-only `server/discover` and
+// `subscriptions/listen`. `skills/*` is our served extension, not a removal.
+export const MODERN_ONLY_METHODS: ReadonlySet<string> = new Set([
+  'server/discover',
+  'subscriptions/listen',
+]);
+const MODERN_METHODS: ReadonlySet<string> = new Set([
+  ...MODERN_ONLY_METHODS,
+  'tools/list',
+  'tools/call',
+  'prompts/list',
+  'prompts/get',
+  'resources/list',
+  'resources/templates/list',
+  'resources/read',
+  'skills/list',
+  'skills/get',
+]);
 
 const BASE64_SENTINEL_PREFIX = '=?base64?';
 const BASE64_SENTINEL_SUFFIX = '?=';
@@ -145,4 +169,20 @@ export function validateModernRequest(
     if (mismatch !== null) return reject('malformed', -32020, mismatch);
   }
   return { era: 'modern' };
+}
+
+/**
+ * The 404 -32601 a modern request gets for a removed or unknown method, or null
+ * for a method the modern era serves. Decided ahead of the auth gate, so an
+ * anonymous caller learns "not found" rather than "sign in". A notification
+ * gets the same body with a null id. The echoed name is capped like the
+ * legacy default case's.
+ */
+export function modernMethodNotFound(
+  method: string,
+  id: unknown,
+  corsHeaders: Record<string, string>,
+): Response | null {
+  if (MODERN_METHODS.has(method)) return null;
+  return rpcError(id, -32601, `Method not found: ${method.slice(0, 100)}`, corsHeaders, undefined, 404);
 }

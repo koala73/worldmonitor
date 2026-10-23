@@ -7,14 +7,17 @@
 // exactly today's. Binds the real handler to a localhost listener, like
 // tests/mcp-transport-conformance.test.mjs.
 
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
+import { Ratelimit } from '@upstash/ratelimit';
 
+import { SERVER_INSTRUCTIONS } from '../api/mcp/constants.ts';
 import { HMAC_SECRET, PRO_BEARER, makeProDeps } from './helpers/mcp-pro-deps.mjs';
 
 const originalEnv = { ...process.env };
+const ORIGINAL_SLIDING_WINDOW = Ratelimit.slidingWindow;
 const MODERN = '2026-07-28';
 const PV_KEY = 'io.modelcontextprotocol/protocolVersion';
 const CAPS_KEY = 'io.modelcontextprotocol/clientCapabilities';
@@ -44,6 +47,26 @@ function baseHeaders(extra = {}) {
 function modernHeaders(method, extra = {}) {
   return baseHeaders({ 'MCP-Protocol-Version': MODERN, 'Mcp-Method': method, ...extra });
 }
+
+function anonModernHeaders(method, extra = {}) {
+  const { Authorization: _omit, ...headers } = modernHeaders(method, extra);
+  return headers;
+}
+
+function anonLegacyHeaders(extra = {}) {
+  return { Accept: 'application/json, text/event-stream', 'Content-Type': 'application/json', ...extra };
+}
+
+function legacyInitializeBody(id = 1) {
+  return {
+    jsonrpc: '2.0', id, method: 'initialize',
+    params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 't', version: '1' } },
+  };
+}
+
+const ALL_VERSIONS_NEWEST_FIRST = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26'];
+const UI_URI = 'ui://worldmonitor/country-risk.html';
+const RESOURCE_METADATA_MCP = /resource_metadata="[^"]*\/\.well-known\/oauth-protected-resource\/mcp"/;
 
 function sentinel(value) {
   return `=?base64?${Buffer.from(value, 'utf8').toString('base64')}?=`;
@@ -118,8 +141,8 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
     server = await startMcpServer(mod.mcpHandler, deps);
   }
 
-  async function post(body, headers) {
-    const res = await fetch(server.url, {
+  async function post(body, headers, path = '/mcp') {
+    const res = await fetch(server.url.replace(/\/mcp$/, path), {
       method: 'POST',
       headers,
       body: typeof body === 'string' ? body : JSON.stringify(body),
@@ -310,13 +333,14 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       assert.equal(res.status, 200, res.brief);
     });
 
-    it('accepts an enveloped notification POST without the standard headers', async () => {
-      const res = await post(
+    it('skips the header rules for an enveloped notification POST (U2 then refuses the removed method)', async () => {
+      const res = await expectError(
         { jsonrpc: '2.0', method: 'notifications/initialized', params: { _meta: modernMeta() } },
         baseHeaders(),
+        -32601,
+        404,
       );
-      assert.equal(res.status, 202);
-      assert.equal(res.text, '');
+      assert.equal(res.json.id, null);
     });
 
     it('still refuses an enveloped notification that names an unsupported version', async () => {
@@ -358,6 +382,229 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       const allowed = res.headers.get('access-control-allow-headers') ?? '';
       assert.match(allowed, /\bMcp-Method\b/);
       assert.match(allowed, /\bMcp-Name\b/);
+    });
+  });
+
+  // U2 — the modern method surface: server/discover, the per-era instructions,
+  // the /mcp sign-in challenge for anonymous modern traffic (KTD4, KTD4a), the
+  // 404 -32601 for removed and unknown methods (R8), and no sessions (R10).
+  describe('flag on — modern method surface (U2)', () => {
+    beforeEach(async () => { await boot('on'); });
+
+    async function discover(headers = modernHeaders('server/discover'), path = '/mcp', id = 'd-1') {
+      return post(modernBody(id, 'server/discover'), headers, path);
+    }
+
+    it('serves server/discover with every version, initialize capabilities minus logging, and serverInfo', async () => {
+      const init = await post(legacyInitializeBody(), baseHeaders({ Accept: 'application/json' }));
+      assert.equal(init.status, 200, init.brief);
+      const res = await discover();
+      assert.equal(res.status, 200, res.brief);
+      assert.equal(res.json.id, 'd-1');
+      const { result } = res.json;
+      assert.deepEqual(result.supportedVersions, ALL_VERSIONS_NEWEST_FIRST);
+      const { logging, ...expectedCapabilities } = init.json.result.capabilities;
+      assert.deepEqual(logging, {}, 'initialize still advertises logging');
+      assert.deepEqual(result.capabilities, expectedCapabilities);
+      assert.equal('logging' in result.capabilities, false);
+      assert.deepEqual(result._meta, { 'io.modelcontextprotocol/serverInfo': init.json.result.serverInfo });
+      assert.equal(result.serverInfo, undefined, 'modern serverInfo lives in _meta only');
+      assert.equal(typeof result.instructions, 'string');
+    });
+
+    it('names the modern codes in discover instructions and keeps initialize instructions byte-identical', async () => {
+      const init = await post(legacyInitializeBody(), baseHeaders({ Accept: 'application/json' }));
+      const legacy = init.json.result.instructions;
+      assert.equal(legacy, SERVER_INSTRUCTIONS);
+      assert.ok(legacy.includes('-32029/429 reason=allowance-exhausted, and -32002/403'), 'legacy text names the legacy codes');
+
+      const modern = (await discover()).json.result.instructions;
+      assert.equal(modern.includes('-32029'), false);
+      assert.equal(modern.includes('-32002'), false);
+      assert.equal(
+        modern,
+        legacy.replace('-32029/429', '-31029/429').replace('-32002/403', '-31002/403'),
+        'the modern copy differs from the legacy one only in the two denial codes',
+      );
+    });
+
+    it('challenges an anonymous server/discover and subscriptions/listen on /mcp with the sign-in 401', async () => {
+      for (const method of ['server/discover', 'subscriptions/listen']) {
+        const res = await post(modernBody('anon-1', method), anonModernHeaders(method));
+        assert.equal(res.status, 401, `${method}: ${res.brief}`);
+        assert.equal(res.json.id, 'anon-1', method);
+        assert.match(res.headers.get('www-authenticate') ?? '', RESOURCE_METADATA_MCP, method);
+      }
+    });
+
+    it('serves an anonymous server/discover on /.well-known/mcp', async () => {
+      const res = await discover(anonModernHeaders('server/discover'), '/.well-known/mcp');
+      assert.equal(res.status, 200, res.brief);
+      assert.deepEqual(res.json.result.supportedVersions, ALL_VERSIONS_NEWEST_FIRST);
+    });
+
+    it('challenges every anonymous modern catalog request on /mcp (KTD4a), but not on /.well-known/mcp', async () => {
+      for (const method of ['tools/list', 'resources/list', 'prompts/list', 'resources/templates/list', 'skills/list']) {
+        const res = await post(modernBody(11, method), anonModernHeaders(method));
+        assert.equal(res.status, 401, `${method}: ${res.brief}`);
+        assert.equal(res.json.id, 11, method);
+        assert.match(res.headers.get('www-authenticate') ?? '', RESOURCE_METADATA_MCP, method);
+
+        const alias = await post(modernBody(12, method), anonModernHeaders(method), '/.well-known/mcp');
+        assert.equal(alias.status, 200, `${method} on the alias: ${alias.brief}`);
+        assert.ok(alias.json.result, `${method} on the alias: ${alias.brief}`);
+      }
+    });
+
+    it('serves an anonymous modern ui:// read on /mcp', async () => {
+      const res = await post(
+        modernBody(13, 'resources/read', { uri: UI_URI }),
+        anonModernHeaders('resources/read', { 'Mcp-Name': UI_URI }),
+      );
+      assert.equal(res.status, 200, res.brief);
+      assert.equal(res.json.result.contents[0].uri, UI_URI);
+    });
+
+    it('keeps an anonymous legacy tools/list on /mcp at 200 (unchanged)', async () => {
+      const res = await post({ jsonrpc: '2.0', id: 14, method: 'tools/list', params: {} }, anonLegacyHeaders());
+      assert.equal(res.status, 200, res.brief);
+      assert.ok(res.json.result.tools.length > 0);
+    });
+
+    it('answers removed and unknown modern methods with 404 -32601, credentialed or not, before auth', async () => {
+      for (const method of ['ping', 'logging/setLevel', 'initialize', 'notifications/initialized', 'no/such/method']) {
+        const params = method === 'logging/setLevel' ? { level: 'info' } : {};
+        for (const [label, headers] of [['credentialed', modernHeaders(method)], ['anonymous', anonModernHeaders(method)]]) {
+          const res = await expectError(modernBody(15, method, params), headers, -32601, 404);
+          assert.equal(res.json.id, 15, `${label} ${method}`);
+          assert.equal(res.headers.get('www-authenticate'), null, `${label} ${method}`);
+        }
+      }
+    });
+
+    it('keeps the legacy answers for the methods the modern era removed', async () => {
+      const ping = await post({ jsonrpc: '2.0', id: 16, method: 'ping' }, baseHeaders());
+      assert.equal(ping.status, 200, ping.brief);
+      assert.deepEqual(ping.json.result, {});
+      const level = await post({ jsonrpc: '2.0', id: 17, method: 'logging/setLevel', params: { level: 'info' } }, baseHeaders());
+      assert.equal(level.status, 200, level.brief);
+      assert.deepEqual(level.json.result, {});
+      const unknown = await post({ jsonrpc: '2.0', id: 18, method: 'no/such/method' }, baseHeaders());
+      assert.equal(unknown.status, 200, unknown.brief);
+      assert.equal(unknown.json.error.code, -32601);
+      const note = await post({ jsonrpc: '2.0', method: 'notifications/initialized' }, anonLegacyHeaders());
+      assert.equal(note.status, 202);
+    });
+
+    it('serves the skills extension on a modern request', async () => {
+      const res = await post(modernBody(19, 'skills/list'), modernHeaders('skills/list'));
+      assert.equal(res.status, 200, res.brief);
+      assert.ok(Array.isArray(res.json.result.skills), res.brief);
+    });
+
+    it('never echoes Mcp-Session-Id or stores a replay buffer for a modern response', async () => {
+      const { __sseReplayStoreForTest: store } = await import('../api/mcp/handler.ts');
+      const sessionHeaders = { 'Mcp-Session-Id': 'client-chosen-session' };
+
+      store.reset();
+      const legacy = await fetch(server.url, {
+        method: 'POST',
+        headers: baseHeaders(sessionHeaders),
+        // prompts/list, not tools/list: the full catalog exceeds the 128 KiB
+        // replay cap and would never be stored either way.
+        body: JSON.stringify({ jsonrpc: '2.0', id: 20, method: 'prompts/list', params: {} }),
+      });
+      assert.equal(legacy.status, 200);
+      assert.match(legacy.headers.get('content-type') ?? '', /text\/event-stream/, 'control: legacy streams on the session id');
+      await legacy.text();
+      assert.ok(store.totalBytes() > 0, 'control: the same legacy request stores a replay buffer');
+
+      store.reset();
+      for (const method of ['prompts/list', 'server/discover']) {
+        const res = await post(modernBody(21, method), modernHeaders(method, sessionHeaders));
+        assert.equal(res.status, 200, `${method}: ${res.brief}`);
+        assert.match(res.headers.get('content-type') ?? '', /application\/json/, method);
+        assert.equal(res.headers.get('mcp-session-id'), null, method);
+        assert.equal(store.totalBytes(), 0, `${method} must not store a replay buffer`);
+      }
+    });
+
+    it('keeps a GET with Last-Event-ID exactly as with the flag off', async () => {
+      const get = async () => {
+        const res = await fetch(server.url, {
+          headers: { Accept: 'text/event-stream', 'Last-Event-ID': 'stream:0', 'Mcp-Session-Id': 's', Authorization: `Bearer ${PRO_BEARER}` },
+        });
+        return { status: res.status, text: await res.text() };
+      };
+      const on = await get();
+      await boot(undefined);
+      assert.deepEqual(on, await get());
+    });
+
+    it('keeps the 410 migration answer for a valid modern request on a product alias host', async () => {
+      const mod = await import('../api/mcp.ts');
+      const res = await mod.mcpHandler(new Request('https://www.worldmonitor.app/mcp', {
+        method: 'POST',
+        headers: modernHeaders('server/discover'),
+        body: JSON.stringify(modernBody(22, 'server/discover')),
+      }), deps);
+      assert.equal(res.status, 410);
+      const json = await res.json();
+      assert.equal(json.id, 22);
+      assert.equal(json.error.code, -32000);
+    });
+  });
+
+  // Last in the file: the limiter singletons in api/mcp/auth.ts memoize the
+  // first construction, so the stub is installed before any can be built and
+  // reads its verdict at call time (see tests/mcp-rate-limit-request-id.test.mjs).
+  describe('flag on — modern method surface limits (U2)', () => {
+    let deniedKeyPrefixes = [];
+    let limiterKeys = [];
+
+    before(() => {
+      Ratelimit.slidingWindow = (tokens) => () => ({
+        async limit(_ctx, key) {
+          limiterKeys.push(key);
+          const denied = deniedKeyPrefixes.some((prefix) => key.startsWith(prefix));
+          return { success: !denied, limit: tokens, remaining: denied ? 0 : tokens - 1, reset: Date.now() + 60_000, pending: Promise.resolve() };
+        },
+      });
+    });
+
+    after(() => { Ratelimit.slidingWindow = ORIGINAL_SLIDING_WINDOW; });
+
+    beforeEach(async () => {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash.invalid';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'stub-token';
+      deniedKeyPrefixes = [];
+      limiterKeys = [];
+      await boot('on');
+    });
+
+    it('charges a credentialed server/discover to the protocol bucket, never the data burst bucket', async () => {
+      const res = await post(modernBody(30, 'server/discover'), modernHeaders('server/discover'));
+      assert.equal(res.status, 200, res.brief);
+      assert.ok(limiterKeys.some((key) => key.startsWith('rl:mcp:pro-min:pro-protocol:')), JSON.stringify(limiterKeys));
+      assert.equal(limiterKeys.some((key) => key.startsWith('rl:mcp:pro-min:pro-user:')), false, JSON.stringify(limiterKeys));
+    });
+
+    it('meters an anonymous server/discover on /.well-known/mcp through the anonymous discovery limiter', async () => {
+      deniedKeyPrefixes = ['rl:mcp:anon:'];
+      const res = await post(modernBody(31, 'server/discover'), anonModernHeaders('server/discover'), '/.well-known/mcp');
+      assert.equal(res.json.error?.code, -32029, res.brief);
+      assert.equal(res.json.id, 31);
+      assert.ok(limiterKeys.some((key) => key.startsWith('rl:mcp:anon:')), JSON.stringify(limiterKeys));
+    });
+
+    it('serves an anonymous modern get_sources call on /mcp under the free-tier ceiling', async () => {
+      const res = await post(
+        modernBody(32, 'tools/call', { name: 'get_sources', arguments: {} }),
+        anonModernHeaders('tools/call', { 'Mcp-Name': 'get_sources' }),
+      );
+      assert.equal(res.status, 200, res.brief);
+      assert.ok(res.json.result, res.brief);
+      assert.ok(limiterKeys.some((key) => key.startsWith('rl:mcp:free:')), JSON.stringify(limiterKeys));
     });
   });
 });
