@@ -389,7 +389,7 @@ Runs before every `git push`:
 
 | Workflow | Trigger | Checks |
 |----------|---------|--------|
-| `typecheck.yml` | PR, push to main | `tsc --noEmit` for src and API tsconfigs |
+| `typecheck.yml` | PR, push to main | `tsc --noEmit` (TypeScript 7) for src, API, contract-test, e2e and Convex tsconfigs |
 | `lint-code.yml` | PR, push to main | Biome lint + sebuf API-contract enforcement; markdownlint-cli2 in a `markdown` job that runs on every push to main and, on PRs, only when markdown, its config, or package.json changes; `doc-anchors` exports the authored docs with `mint export --disable-openapi` (preloading `scripts/mint-export-preload.mjs`, which stubs Mint's crash-prone online probe and names pages that fail to render) and checks every anchor against the rendered pages |
 | `test.yml` | PR, push to main | Unit/integration suite, always-on docs-stats and published-link guardrails (including docs-only changes), plus conditional digest-image, resilience-validation and Zapier Mocha gates. Zapier uses a locked npm install on integration, shared event registry, workflow or ownership guard changes |
 | `e2e-visual.yml` | Path-filtered PR, push to main (chrome only), nightly cron, manual | Deterministic map goldens (`test:e2e:visual`) plus named harness chrome captures; evidence only — not a deploy-gate required check |
@@ -425,7 +425,7 @@ Runs before every `git push`:
 | `orphaned-stacked-merge-monitor.yml` | PR closed and merged | Post-merge safety net for #7006: fails when the merge commit is not an ancestor of `main`, then opens an issue and comments on the purple PR |
 | `deploy-gate.yml` | After Test/Typecheck/Lint Code/Security Audit/Stacked Merge Guard complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection |
 | `indexnow-submit.yml` | Successful Production deployment, manual | Submits deployment-relevant canonical URLs to IndexNow only after their host-specific ownership keys are directly reachable |
-| `convex-deploy.yml` | Push to main, manual | Deploys Convex backend functions |
+| `convex-deploy.yml` | Push to main, manual | Type-checks `convex/` with TypeScript 7, then deploys Convex backend functions |
 | `deploy-worker.yml` | Push to main (worker paths), manual | Deploys the `api-cors-preflight` Cloudflare Worker |
 | `deploy-railway-reconcile-control.yml` | Push to main (control-plane paths), manual | Tests and deploys the isolated SQLite-backed Durable Object used for Railway reconciliation leases, attempts, dispatch holds, and the global mutation-uncertain barrier; deployment does not itself activate the trigger cutover |
 | `railway-deploy-trigger-watchdog.yml` | Manual rollback only | Checks the legacy rollback surface only when an operator dispatches it; it can authorize a fenced replacement only when both legacy activation flags are explicitly enabled |

@@ -193,12 +193,18 @@ jobs:
       # the platform binary from the optional dependency without its
       # postinstall, and convex/ imports nothing the root postinstall generates.
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      # The Convex CLI only looks for node_modules/typescript/bin/tsc, which the
+      # TypeScript 6 API alias does not ship, and its default `--typecheck=try`
+      # turns a missing compiler into a silent skip. Type-check here with the
+      # repo's TypeScript 7 `tsc` instead, and disable the CLI's own probe.
+      - name: Type-check Convex functions
+        run: npx tsc --noEmit -p convex/tsconfig.json
       - id: deploy
         name: Convex deploy (prod)
         # `--yes` skips the interactive "Are you sure?" prompt. The deploy
         # key in CONVEX_DEPLOY_KEY pins the target deployment, so there is
         # no ambiguity about which environment we're pushing to.
-        run: npx convex deploy --yes
+        run: npx convex deploy --yes --typecheck=disable
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
       - id: seed_dodo_webhook_failure_summary

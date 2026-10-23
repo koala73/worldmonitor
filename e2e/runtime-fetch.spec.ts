@@ -486,7 +486,7 @@ test.describe('desktop runtime routing guardrails', () => {
           options?: unknown
         ) {
           if (contextId.toLowerCase().includes('webgl')) webglProbeCalls += 1;
-          return originalGetContext.call(this, contextId, options as never);
+          return Reflect.apply(originalGetContext, this, [contextId, options]);
         }) as typeof HTMLCanvasElement.prototype.getContext;
 
         map = new MapContainer(mapHost, {
@@ -601,7 +601,7 @@ test.describe('desktop runtime routing guardrails', () => {
           options?: unknown,
         ) {
           if (contextId === 'webgl2') return fakeWebGL2 as unknown as RenderingContext;
-          return originalGetContext.call(this, contextId, options as never);
+          return Reflect.apply(originalGetContext, this, [contextId, options]);
         }) as typeof HTMLCanvasElement.prototype.getContext;
 
         map = new MapContainer(mapHost, {
@@ -704,7 +704,7 @@ test.describe('desktop runtime routing guardrails', () => {
           options?: unknown,
         ) {
           if (contextId === 'webgl2') return fakeWebGL2 as unknown as RenderingContext;
-          return originalGetContext.call(this, contextId, options as never);
+          return Reflect.apply(originalGetContext, this, [contextId, options]);
         }) as typeof HTMLCanvasElement.prototype.getContext;
 
         map = new MapContainer(mapHost, {
@@ -1220,7 +1220,7 @@ test.describe('desktop runtime routing guardrails', () => {
           options?: unknown
         ) {
           if (contextId === 'webgl2') return null;
-          return originalGetContext.call(this, contextId, options as never);
+          return Reflect.apply(originalGetContext, this, [contextId, options]);
         }) as typeof HTMLCanvasElement.prototype.getContext;
 
         map = new MapContainer(mapHost, {
@@ -1295,7 +1295,7 @@ test.describe('desktop runtime routing guardrails', () => {
               getParameter: () => null,
             } as unknown as WebGL2RenderingContext;
           }
-          return originalGetContext.call(this, contextId, options as never);
+          return Reflect.apply(originalGetContext, this, [contextId, options]);
         }) as typeof HTMLCanvasElement.prototype.getContext;
 
         Document.prototype.getElementById = (function (
@@ -1381,7 +1381,7 @@ test.describe('desktop runtime routing guardrails', () => {
               getParameter: (param: number) => param === rendererInfo.UNMASKED_RENDERER_WEBGL ? 'Google SwiftShader' : null,
             } as unknown as WebGL2RenderingContext;
           }
-          return originalGetContext.call(this, contextId, options as never);
+          return Reflect.apply(originalGetContext, this, [contextId, options]);
         }) as typeof HTMLCanvasElement.prototype.getContext;
 
         map = new MapContainer(mapHost, {

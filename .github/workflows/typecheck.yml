@@ -62,6 +62,9 @@ jobs:
       # were never type-checked by any job. Runs inside the existing required `typecheck` context
       # rather than as a new job, so no branch-protection context list has to change.
       - run: npm run typecheck:contract-tests
+      # Playwright strips types without checking them, so e2e/ had drifted to
+      # 616 errors before the TypeScript 7 move. Same required context.
+      - run: npm run typecheck:e2e
       # Mirror the pre-push convex typecheck so direct pushes to main
       # and `--no-verify` bypasses can't land stale convex/_generated
       # types. See .husky/pre-push for the rationale.

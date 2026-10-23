@@ -360,7 +360,7 @@ test.describe('public map embed', () => {
           } as WebGL2RenderingContext;
         }
 
-        return originalGetContext.call(this, contextId, options as never);
+        return Reflect.apply(originalGetContext, this, [contextId, options]);
       } as typeof HTMLCanvasElement.prototype.getContext;
     });
 
