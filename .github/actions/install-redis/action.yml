@@ -29,13 +29,16 @@ runs:
       run: |
         set -euo pipefail
         mkdir -p ~/.cache/wm-redis-debs/partial
-        # --download-only fetches the named packages and whichever of their
-        # dependencies the image lacks, and installs nothing. The image's
-        # package lists go stale when Ubuntu supersedes a redis build
+        # --download-only fetches whichever of the packages and their
+        # dependencies the image lacks, and installs nothing. It writes no
+        # archive for a package that is already installed, so apt-get download
+        # fetches the two named packages too: the cache always holds both. The
+        # image's package lists go stale when Ubuntu supersedes a redis build
         # (2026-10-08), so refresh them only when the fast path fails.
         download() {
           sudo apt-get install -y --no-install-recommends --download-only \
             -o Dir::Cache::archives="$HOME/.cache/wm-redis-debs" redis-server redis-tools
+          (cd ~/.cache/wm-redis-debs && sudo apt-get download redis-server redis-tools)
         }
         download || { sudo apt-get update -qq && download; }
         sudo rm -rf ~/.cache/wm-redis-debs/partial ~/.cache/wm-redis-debs/lock
