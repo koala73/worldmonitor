@@ -106,6 +106,9 @@ export type RequestReason =
   | 'internal_mcp_replay'
   | 'unknown_route'
   | 'method_not_allowed'
+  // MCP-Protocol-Version names a version /mcp does not serve. Split from
+  // malformed_request, where it hid 17% of weekly /mcp POSTs (2026-10-23).
+  | 'unsupported_protocol_version'
   | 'canonical_endpoint_required'
   | 'cors_error'
   // #3199 per-account API rate limit. `_429` = enforced reject; `_shadow` =

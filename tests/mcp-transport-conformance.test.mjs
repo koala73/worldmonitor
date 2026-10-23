@@ -188,7 +188,7 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     }
   });
 
-  it('rejects unsupported transport versions before reading or dispatching a request', async () => {
+  it('rejects unsupported transport versions before dispatching a request', async () => {
     for (const [method, version] of [
       ['POST', '2099-99-99'], ['GET', '2099-99-99'], ['HEAD', '2099-99-99'],
       ['POST', ''], ['POST', '2026-07-28'], ['POST', 'not-a-version'],
@@ -203,6 +203,70 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
       if (method !== 'HEAD') {
         assert.equal((await res.json()).error.code, -32600);
       }
+    }
+  });
+
+  // Production 2026-10-23: ~124k of 127k weekly 400s were `initialize` requests
+  // from clients (the Python SDK, Hermes) that send their newest version in the
+  // header while negotiating. No version has been agreed before `initialize`
+  // answers, so the body governs it there; every later request keeps the 400.
+  it('negotiates initialize from the body when the header names an unsupported version', async () => {
+    for (const version of ['2025-11-25', '2026-07-28', '2099-99-99']) {
+      const body = initBody(1);
+      body.params.protocolVersion = version;
+      const res = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': version }),
+        body: JSON.stringify(body),
+      });
+      assert.equal(res.status, 200, version);
+      const result = await res.json();
+      assert.equal(result.id, 1, version);
+      assert.equal(result.result.protocolVersion, '2025-06-18', version);
+
+      const next = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': result.result.protocolVersion }),
+        body: JSON.stringify(rpcBody(2, 'ping')),
+      });
+      assert.deepEqual(await next.json(), { jsonrpc: '2.0', id: 2, result: {} }, version);
+    }
+  });
+
+  it('challenges an anonymous initialize instead of refusing its newer header', async () => {
+    const body = initBody(1);
+    body.params.protocolVersion = '2025-11-25';
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'MCP-Protocol-Version': '2025-11-25' },
+      body: JSON.stringify(body),
+    });
+    assert.equal(res.status, 401);
+    assert.match(res.headers.get('www-authenticate') ?? '', /resource_metadata=/);
+    assert.equal((await res.json()).id, 1);
+  });
+
+  it('keeps refusing an unsupported header on every request other than initialize', async () => {
+    const init = initBody(1);
+    init.params.protocolVersion = '2025-11-25';
+    for (const body of [
+      rpcBody(1, 'ping'),
+      rpcBody(1, 'tools/list'),
+      { jsonrpc: '2.0', method: 'notifications/initialized' },
+      [init],
+      { ...init, jsonrpc: '1.0' },
+      { ...init, id: null },
+    ]) {
+      const res = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2025-11-25' }),
+        body: JSON.stringify(body),
+      });
+      assert.equal(res.status, 400, JSON.stringify(body));
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      const result = await res.json();
+      assert.equal(result.error.code, -32600, JSON.stringify(body));
+      assert.equal(result.error.message, 'Unsupported MCP-Protocol-Version', JSON.stringify(body));
     }
   });
 

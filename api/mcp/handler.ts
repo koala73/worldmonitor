@@ -136,6 +136,17 @@ function validJsonRpcId(id: unknown): id is string | number | undefined {
   return safeJsonRpcId(id) !== null;
 }
 
+// A well-formed `initialize` request: the only body an unsupported
+// MCP-Protocol-Version header does not refuse.
+function isInitializeRequest(parsed: unknown): boolean {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+  const { jsonrpc, id, method, params } = parsed as JsonRpcRequest;
+  return jsonrpc === '2.0'
+    && method === 'initialize'
+    && id !== undefined && validJsonRpcId(id)
+    && !!params && typeof params === 'object' && !Array.isArray(params);
+}
+
 function isAllowedMcpOrigin(origin: string | null): boolean {
   if (origin === null) return true;
   try {
@@ -795,11 +806,18 @@ async function mcpHandlerInner(
   }
 
   const protocolVersion = req.headers.get('MCP-Protocol-Version');
-  if (protocolVersion !== null && negotiateProtocolVersion(protocolVersion) !== protocolVersion) {
-    usage.phase = 'transport';
+  const unsupportedProtocolVersion = protocolVersion !== null
+    && negotiateProtocolVersion(protocolVersion) !== protocolVersion;
+  const rejectProtocolVersion = (): Response => {
+    usage.phase = 'protocol_version';
     const response = rpcError(null, -32600, 'Unsupported MCP-Protocol-Version', corsHeaders, undefined, 400);
     return req.method === 'HEAD' ? new Response(null, response) : response;
-  }
+  };
+  // A POST is held until its body is read: `initialize` negotiates the version
+  // from params.protocolVersion, and no version is agreed before it answers, so
+  // clients that send their newest version in the header while negotiating
+  // must still reach negotiation. Every other request is refused here.
+  if (unsupportedProtocolVersion && req.method !== 'POST') return rejectProtocolVersion();
 
   if (req.method === 'OPTIONS') {
     usage.skip = true;
@@ -956,12 +974,14 @@ async function mcpHandlerInner(
   try {
     const bodyBytes = await readBoundedRequestBody(req, MAX_JSON_RPC_BODY_BYTES);
     const parsed: unknown = JSON.parse(new TextDecoder().decode(bodyBytes));
+    if (unsupportedProtocolVersion && !isInitializeRequest(parsed)) return rejectProtocolVersion();
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       usage.phase = 'malformed';
       return rpcError(null, -32600, 'Invalid request: expected object', corsHeaders);
     }
     body = parsed as JsonRpcRequest;
   } catch (err) {
+    if (unsupportedProtocolVersion) return rejectProtocolVersion();
     usage.phase = 'malformed';
     if (err instanceof RequestBodyTooLargeError) {
       // Structured `data` so an agent can self-correct without parsing the

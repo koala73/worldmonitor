@@ -255,6 +255,11 @@ describe('product MCP host aliases are migration-only', () => {
     assert.equal(mcpReasonFor('migration', 405), 'canonical_endpoint_required');
   });
 
+  it('classifies an unsupported MCP-Protocol-Version as its own reason, not a malformed request', async () => {
+    const { mcpReasonFor } = await import('../api/mcp/usage.ts');
+    assert.equal(mcpReasonFor('protocol_version', 400), 'unsupported_protocol_version');
+  });
+
   it('emits bounded migration events for alias redirects and rejections', async () => {
     const originalFetch = globalThis.fetch;
     const originalUsage = process.env.USAGE_TELEMETRY;
