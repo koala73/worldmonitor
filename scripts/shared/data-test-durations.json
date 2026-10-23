@@ -783,7 +783,7 @@
   "tests/fred-series-meta-cache.test.mjs": 52,
   "tests/fred-series-supported-ids.test.mts": 244,
   "tests/free-tier-gate.test.mts": 47,
-  "tests/freeze-crawlable-live-pulse.test.mjs": 55372,
+  "tests/freeze-crawlable-live-pulse.test.mjs": 4940,
   "tests/freeze-resilience-ranking-metadata-parity.test.mts": 65,
   "tests/freeze-resilience-ranking-metadata.test.mjs": 23,
   "tests/freight-indices.test.mjs": 309,

@@ -27,7 +27,7 @@ Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / c
 
 | 端点 | 用途 |
 |----------|---------|
-| `https://worldmonitor.app/mcp` | JSON-RPC 服务器（Streamable HTTP 传输；默认返回 JSON 响应，当客户端声明 `text/event-stream` 时返回 SSE 响应；`initialize` 默认协商协议 `2025-06-18`，对旧客户端为 `2025-03-26`） |
+| `https://worldmonitor.app/mcp` | JSON-RPC 服务器（Streamable HTTP 传输；默认返回 JSON 响应，当客户端声明 `text/event-stream` 时返回 SSE 响应；`initialize` 默认协商协议 `2025-11-25`，对旧客户端为 `2025-06-18` 或 `2025-03-26`） |
 | `https://api.worldmonitor.app/api/oauth/register` | 动态客户端注册（RFC 7591） |
 | `https://api.worldmonitor.app/api/oauth/authorize` | OAuth 2.1 授权端点（要求 PKCE） |
 | `https://api.worldmonitor.app/api/oauth/token` | Token 端点（authorization_code + refresh_token） |
@@ -42,11 +42,13 @@ Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / c
 
 ### 协议协商
 
-WorldMonitor 位于 `/.well-known/mcp/server-card.json` 的静态服务器卡片声明协议版本 `2025-06-18`，而实时的 `initialize` 握手默认会协商该版本 —— 因此所声明的底线版本与实际协商出的版本保持一致：
+WorldMonitor 位于 `/.well-known/mcp/server-card.json` 的静态服务器卡片声明协议版本 `2025-11-25`，而实时的 `initialize` 握手默认会协商该版本 —— 因此所声明的底线版本与实际协商出的版本保持一致：
 
-- 默认情况下，`initialize` 同时支持 `2025-03-26` 和 `2025-06-18`。
-- 请求 `2025-06-18` 的客户端会得到 `2025-06-18`；固定使用 `2025-03-26` 的客户端继续得到 `2025-03-26`。
-- 设置 `MCP_PROTOCOL_FLOOR_2025_06_18=off` 会将服务器固定回仅支持 `2025-03-26` 的旧版底线；此后请求 `2025-06-18` 的客户端会收到安全默认值 `2025-03-26`。
+- 默认情况下，`initialize` 支持 `2025-03-26`、`2025-06-18` 和 `2025-11-25`。
+- 请求其中任一版本的客户端会原样得到该版本；请求其他版本的客户端会得到 `2025-11-25`。
+- 在 `2025-11-25` 下，参数未通过校验的 `tools/call` 会返回一个模型可以读取并据此修正的 `isError` 工具结果，而不是早期版本收到的 `-32602` 错误（见[错误目录](/zh/mcp-error-catalog)）。
+- 设置 `MCP_PROTOCOL_2025_11_25=off` 会再次移除 `2025-11-25`；设置 `MCP_PROTOCOL_FLOOR_2025_06_18=off` 会将服务器固定回仅支持 `2025-03-26` 的旧版底线。
+- 不提供无握手的 `2026-07-28` 版本。该版本的客户端会回退到 `initialize`。
 
 无论协商出的协议版本如何，工具的 `outputSchema` 元数据都会在 `tools/list` 中发出。较旧的 `2025-03-26` 客户端应忽略未知字段，而较新的客户端可以立即使用该 schema。每次成功的 `tools/call` 还会以 `structuredContent` 返回载荷；一旦发布了 schema，严格的客户端就要求如此。投影与软信封的表示方式见[工具参考](/zh/mcp-tools-reference)。
 

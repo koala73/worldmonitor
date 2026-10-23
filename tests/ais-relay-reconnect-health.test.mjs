@@ -94,6 +94,54 @@ async function stopChild(child) {
   await once(child, 'exit');
 }
 
+// The relay exits at boot when a build-owned artifact is missing (for example the
+// gitignored scripts/shared/inventory-facts.generated.json that `npm install`
+// generates). Fail on that exit with the relay's own output instead of polling a
+// dead process for the whole startup timeout.
+function waitForRelayStartup(child, readOutput, timeoutMs = 15_000) {
+  return new Promise((resolve, reject) => {
+    const onClose = (code, signal) => {
+      clearInterval(timer);
+      reject(new Error(`relay exited before startup (code=${code}, signal=${signal}):\n${readOutput()}`));
+    };
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      if (readOutput().includes('WebSocket relay on port')) {
+        clearInterval(timer);
+        child.off('close', onClose);
+        resolve();
+      } else if (Date.now() - startedAt >= timeoutMs) {
+        clearInterval(timer);
+        child.off('close', onClose);
+        reject(new Error(`timed out waiting for relay startup:\n${readOutput()}`));
+      }
+    }, 20);
+    child.once('close', onClose);
+  });
+}
+
+// Holds the listed upstream WebSocket upgrades (1-based attempt numbers) until the
+// test releases them. With a compressed reconnect ladder the relay redials within
+// ~100ms, so a state that only exists BETWEEN two connections (the failure that
+// ended one, before the next delivers data) would otherwise be a race to sample.
+// Holding the next upgrade pins that state until the test has read it, the way the
+// production 5s first rung used to by accident.
+function createUpgradeGate(heldAttempts) {
+  let attempts = 0;
+  const held = new Map();
+  return {
+    verifyClient(_info, accept) {
+      attempts += 1;
+      if (heldAttempts.includes(attempts)) held.set(attempts, accept);
+      else accept(true);
+    },
+    async release(attempt) {
+      await waitFor(() => held.has(attempt), `upstream upgrade attempt ${attempt} to arrive`);
+      held.get(attempt)(true);
+    },
+  };
+}
+
 test('AISstream 429 keeps one reconnect cooldown under snapshot traffic and degrades top-level health', async (t) => {
   let upstreamAttempts = 0;
   const upstream = http.createServer((_req, res) => {
@@ -121,7 +169,7 @@ test('AISstream 429 keeps one reconnect cooldown under snapshot traffic and degr
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const portMatch = output.match(/WebSocket relay on port (\d+)/);
   assert.ok(portMatch, `expected bound relay port in startup output:\n${output}`);
   const relayPort = Number(portMatch[1]);
@@ -202,7 +250,7 @@ test('non-429 handshake errors record one terminal failure and keep the reconnec
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const portMatch = output.match(/WebSocket relay on port (\d+)/);
   assert.ok(portMatch, `expected bound relay port in startup output:\n${output}`);
   const relayPort = Number(portMatch[1]);
@@ -256,7 +304,7 @@ test('stalled WebSocket handshakes time out into the bounded reconnect schedule'
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const portMatch = output.match(/WebSocket relay on port (\d+)/);
   assert.ok(portMatch, `expected bound relay port in startup output:\n${output}`);
   const relayPort = Number(portMatch[1]);
@@ -281,8 +329,10 @@ test('stalled WebSocket handshakes time out into the bounded reconnect schedule'
 test('AIS recovery requires an accepted frame and snapshot freshness requires a current PositionReport', async (t) => {
   let upstreamAttempts = 0;
   const upstreamSockets = [];
+  // Every reconnect is held until the failure that preceded it has been sampled.
+  const gate = createUpgradeGate([2, 3, 4]);
   const upstream = http.createServer();
-  const upstreamWss = new WebSocketServer({ server: upstream });
+  const upstreamWss = new WebSocketServer({ server: upstream, verifyClient: gate.verifyClient });
   upstreamWss.on('connection', (socket) => {
     const attempt = ++upstreamAttempts;
     upstreamSockets[attempt] = socket;
@@ -344,6 +394,9 @@ test('AIS recovery requires an accepted frame and snapshot freshness requires a 
       AISSTREAM_API_KEY: 'test-key',
       AISSTREAM_URL: `ws://127.0.0.1:${upstreamPort}/stream`,
       AIS_SNAPSHOT_INTERVAL_MS: '2000',
+      // Compress the ladder (production first rung is 5s, second 10s); the gate
+      // above keeps each between-connections state observable.
+      AIS_RECONNECT_BASE_MS: '100',
       RELAY_SHARED_SECRET: 'relay-secret',
       RELAY_TEST_MODE: 'true',
       NODE_ENV: 'test',
@@ -361,7 +414,7 @@ test('AIS recovery requires an accepted frame and snapshot freshness requires a 
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const portMatch = output.match(/WebSocket relay on port (\d+)/);
   assert.ok(portMatch, `expected bound relay port in startup output:\n${output}`);
   const relayPort = Number(portMatch[1]);
@@ -408,6 +461,7 @@ test('AIS recovery requires an accepted frame and snapshot freshness requires a 
   assert.equal(retainedFallback.health.ingestion.aisSnapshot.currentPositionReady, false);
   assert.equal(retainedFallback.health.ingestion.aisSnapshot.upstream.reconnectFailures, 1);
 
+  await gate.release(2);
   const junkHealth = await waitForAsync(async () => {
     if (upstreamAttempts !== 2) return null;
     const health = await getJson(relayPort, '/health');
@@ -429,6 +483,7 @@ test('AIS recovery requires an accepted frame and snapshot freshness requires a 
   assert.equal(terminalFailure.ingestion.aisSnapshot.upstream.lastFailure, 'closed_without_data');
   assert.equal(terminalFailure.ingestion.aisSnapshot.upstream.reconnectFailures, 2);
 
+  await gate.release(3);
   const staticOnly = await waitForAsync(async () => {
     if (upstreamAttempts !== 3) return null;
     const health = await getJson(relayPort, '/health');
@@ -458,6 +513,7 @@ test('AIS recovery requires an accepted frame and snapshot freshness requires a 
   assert.equal(staticDisconnect.ingestion.aisSnapshot.upstream.lastFailure, 'disconnected');
   assert.equal(staticDisconnect.ingestion.aisSnapshot.upstream.reconnectFailures, 1);
 
+  await gate.release(4);
   const recovered = await waitForAsync(async () => {
     if (upstreamAttempts !== 4) return null;
     const health = await getJson(relayPort, '/health');
@@ -512,7 +568,7 @@ test('late compression callbacks cannot overwrite a newer AIS snapshot generatio
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const portMatch = output.match(/WebSocket relay on port (\d+)/);
   assert.ok(portMatch, `expected bound relay port in startup output:\n${output}`);
   const relayPort = Number(portMatch[1]);
@@ -560,8 +616,10 @@ test('late compression callbacks cannot overwrite a newer AIS snapshot generatio
 test('AIS health expires an open stream that stops delivering current positions', async (t) => {
   let upstreamAttempts = 0;
   const upstreamSockets = [];
+  // The reconnect is held until the timed-out, disconnected state has been sampled.
+  const gate = createUpgradeGate([2]);
   const upstream = http.createServer();
-  const upstreamWss = new WebSocketServer({ server: upstream });
+  const upstreamWss = new WebSocketServer({ server: upstream, verifyClient: gate.verifyClient });
   upstreamWss.on('connection', (socket) => {
     const attempt = ++upstreamAttempts;
     upstreamSockets.push(socket);
@@ -590,6 +648,8 @@ test('AIS health expires an open stream that stops delivering current positions'
       AISSTREAM_URL: `ws://127.0.0.1:${upstreamPort}/stream`,
       AIS_POSITION_FRESHNESS_MS: '1000',
       AIS_SNAPSHOT_INTERVAL_MS: '2000',
+      // Compress the production 5s first rung; the gate above holds the reconnect.
+      AIS_RECONNECT_BASE_MS: '100',
       RELAY_SHARED_SECRET: 'relay-secret',
       RELAY_TEST_MODE: 'true',
       NODE_ENV: 'test',
@@ -607,7 +667,7 @@ test('AIS health expires an open stream that stops delivering current positions'
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const portMatch = output.match(/WebSocket relay on port (\d+)/);
   assert.ok(portMatch, `expected bound relay port in startup output:\n${output}`);
   const relayPort = Number(portMatch[1]);
@@ -638,6 +698,7 @@ test('AIS health expires an open stream that stops delivering current positions'
   assert.equal(snapshot.status.currentPositionReady, false);
   assert.equal(snapshot.status.vessels, 1);
 
+  await gate.release(2);
   const recovered = await waitForAsync(async () => {
     if (upstreamAttempts !== 2) return null;
     await getJson(relayPort, '/ais/snapshot', auth);
@@ -684,7 +745,7 @@ test('sustained upstream throttling escalates the reconnect ceiling beyond the o
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
 
   // Upstream connection is lazy — a snapshot request kicks off the first attempt,
@@ -737,7 +798,7 @@ test('a non-throttle failure resets throttle escalation back to the ordinary cei
       RELAY_TEST_MODE: 'true',
       NODE_ENV: 'test',
       PORT: '0',
-      AIS_RECONNECT_BASE_MS: '100',
+      AIS_RECONNECT_BASE_MS: '50',
       AIS_RECONNECT_MAX_MS: '300',
       AIS_THROTTLE_RECONNECT_MAX_MS: '4000',
       AIS_THROTTLE_ESCALATE_AFTER: '3',
@@ -749,7 +810,7 @@ test('a non-throttle failure resets throttle escalation back to the ordinary cei
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
 
   // Upstream connection is lazy — a snapshot request kicks off the first attempt.
@@ -810,7 +871,7 @@ test('a throttle ceiling configured below the ordinary ceiling cannot shorten th
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
 
   await get(relayPort, '/ais/snapshot', { 'x-relay-key': 'relay-secret' });
@@ -830,9 +891,13 @@ test('a throttle ceiling configured below the ordinary ceiling cannot shorten th
 
 // Throttle-escalated upstream that answers the first `throttleUpgrades` WebSocket
 // upgrades with HTTP 429, then accepts. `onOpen` decides what the accepted socket
-// does, which is what selects the production reset site under test.
+// does, which is what selects the production reset site under test. The first
+// accepted upgrade is held until `releaseAccept()`, so the escalated state stays
+// observable however fast the compressed ladder redials.
 async function startThrottleThenAcceptUpstream({ throttleUpgrades, onOpen }) {
   let upgradeAttempts = 0;
+  let heldAccept = null;
+  let acceptReleased = false;
   const accepted = [];
   const upstream = http.createServer();
   const wss = new WebSocketServer({ noServer: true });
@@ -843,11 +908,18 @@ async function startThrottleThenAcceptUpstream({ throttleUpgrades, onOpen }) {
       socket.destroy();
       return;
     }
-    wss.handleUpgrade(req, socket, head, (ws) => {
+    const accept = () => wss.handleUpgrade(req, socket, head, (ws) => {
       accepted.push(ws);
       onOpen(ws);
     });
+    if (acceptReleased) accept();
+    else heldAccept = accept;
   });
+  const releaseAccept = async () => {
+    await waitFor(() => heldAccept !== null, 'the first accepted upstream upgrade to arrive');
+    acceptReleased = true;
+    heldAccept();
+  };
   const port = await listen(upstream);
   // http.Server#close waits for live connections to end, so an accepted socket
   // left open would stall teardown until the relay's position watchdog fires
@@ -856,13 +928,13 @@ async function startThrottleThenAcceptUpstream({ throttleUpgrades, onOpen }) {
     for (const ws of accepted) ws.terminate();
     upstream.close(resolve);
   });
-  return { upstream, port, close, attempts: () => upgradeAttempts };
+  return { upstream, port, close, releaseAccept, attempts: () => upgradeAttempts };
 }
 
 test('an accepted frame clears throttle escalation', async (t) => {
   // Accepted socket immediately delivers a valid PositionReport, so recovery runs
   // through the accepted-frame reset rather than any failure path.
-  const { close: closeUpstream, port: upstreamPort } = await startThrottleThenAcceptUpstream({
+  const { close: closeUpstream, port: upstreamPort, releaseAccept } = await startThrottleThenAcceptUpstream({
     throttleUpgrades: 4,
     onOpen: (ws) => {
       const sendPosition = () => ws.send(JSON.stringify({
@@ -894,7 +966,7 @@ test('an accepted frame clears throttle escalation', async (t) => {
       RELAY_TEST_MODE: 'true',
       NODE_ENV: 'test',
       PORT: '0',
-      AIS_RECONNECT_BASE_MS: '100',
+      AIS_RECONNECT_BASE_MS: '50',
       AIS_RECONNECT_MAX_MS: '300',
       AIS_THROTTLE_RECONNECT_MAX_MS: '2000',
       AIS_THROTTLE_ESCALATE_AFTER: '3',
@@ -909,7 +981,7 @@ test('an accepted frame clears throttle escalation', async (t) => {
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
 
   await get(relayPort, '/ais/snapshot', { 'x-relay-key': 'relay-secret' });
@@ -917,6 +989,7 @@ test('an accepted frame clears throttle escalation', async (t) => {
     const health = await getJson(relayPort, '/health');
     return health.ingestion.aisSnapshot.upstream.throttleEscalated === true ? health : null;
   }, 'throttle escalation engaged', 20_000);
+  await releaseAccept();
 
   // `connected === true` is the isolation: the socket is still open, so no close
   // handler has run and the accepted-frame reset is the only path that could have
@@ -938,7 +1011,7 @@ test('an accepted frame clears throttle escalation', async (t) => {
 test('a clean close with no recorded error clears throttle escalation', async (t) => {
   // Accepted socket stays open and silent, so the position watchdog terminates it.
   // That close records no error, exercising the clean-close reset specifically.
-  const { close: closeUpstream, port: upstreamPort } = await startThrottleThenAcceptUpstream({
+  const { close: closeUpstream, port: upstreamPort, releaseAccept } = await startThrottleThenAcceptUpstream({
     throttleUpgrades: 4,
     onOpen: () => { /* accept, then deliver nothing */ },
   });
@@ -953,7 +1026,7 @@ test('a clean close with no recorded error clears throttle escalation', async (t
       RELAY_TEST_MODE: 'true',
       NODE_ENV: 'test',
       PORT: '0',
-      AIS_RECONNECT_BASE_MS: '100',
+      AIS_RECONNECT_BASE_MS: '50',
       AIS_RECONNECT_MAX_MS: '300',
       AIS_THROTTLE_RECONNECT_MAX_MS: '2000',
       AIS_THROTTLE_ESCALATE_AFTER: '3',
@@ -966,7 +1039,7 @@ test('a clean close with no recorded error clears throttle escalation', async (t
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
 
   await get(relayPort, '/ais/snapshot', { 'x-relay-key': 'relay-secret' });
@@ -974,6 +1047,7 @@ test('a clean close with no recorded error clears throttle escalation', async (t
     const health = await getJson(relayPort, '/health');
     return health.ingestion.aisSnapshot.upstream.throttleEscalated === true ? health : null;
   }, 'throttle escalation engaged', 20_000);
+  await releaseAccept();
 
   const recovered = await waitForAsync(async () => {
     const health = await getJson(relayPort, '/health');
@@ -1026,7 +1100,7 @@ test('a refused credential is terminal and probed slowly instead of walking the 
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
   const auth = { 'x-relay-key': 'relay-secret' };
 
@@ -1052,9 +1126,10 @@ test('a refused credential is terminal and probed slowly instead of walking the 
     `expected the slow auth probe, got a ${rejected.reconnectCooldownRemainingMs}ms cooldown`,
   );
 
-  // Sticky: the compressed ordinary ladder would have produced several attempts by
-  // now, so staying at one attempt is the observable proof of the terminal state.
-  await new Promise((resolve) => setTimeout(resolve, 3_000));
+  // Sticky: five ordinary-ladder ceilings (AIS_RECONNECT_MAX_MS=200 above) would
+  // have produced several attempts by now, so staying at one attempt is the
+  // observable proof of the terminal state.
+  await new Promise((resolve) => setTimeout(resolve, 5 * 200));
   assert.equal(upstreamAttempts, 1, 'a refused credential must not walk the fast ladder');
   const stillRejected = await getJson(relayPort, '/health');
   assert.equal(stillRejected.ingestion.aisSnapshot.upstream.connectionAttemptsSinceBoot, 1);
@@ -1095,7 +1170,7 @@ test('a 429 Retry-After overrides the ladder and the socket is still recycled', 
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
   const auth = { 'x-relay-key': 'relay-secret' };
 
@@ -1152,10 +1227,10 @@ test('a silent stream is reported stale before it is recycled', async (t) => {
       ...process.env,
       AISSTREAM_API_KEY: 'test-key',
       AISSTREAM_URL: `ws://127.0.0.1:${upstreamPort}/stream`,
-      // A wide gap between the two budgets so the reported-stale window is big
-      // enough to sample reliably.
-      AIS_POSITION_FRESHNESS_MS: '8000',
-      AIS_POSITION_STALE_MS: '1000',
+      // The reported-stale window is the gap between the two budgets (1.25s here),
+      // wide enough to sample reliably without waiting out a long recycle.
+      AIS_POSITION_FRESHNESS_MS: '1500',
+      AIS_POSITION_STALE_MS: '250',
       AIS_SNAPSHOT_INTERVAL_MS: '500',
       RELAY_SHARED_SECRET: 'relay-secret',
       RELAY_TEST_MODE: 'true',
@@ -1174,7 +1249,7 @@ test('a silent stream is reported stale before it is recycled', async (t) => {
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
-  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  await waitForRelayStartup(child, () => output);
   const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
   const auth = { 'x-relay-key': 'relay-secret' };
 
@@ -1194,7 +1269,7 @@ test('a silent stream is reported stale before it is recycled', async (t) => {
   // Stale is a REPORT: the position is still inside the freshness budget, so the
   // connection is healthy as far as recycling is concerned.
   assert.equal(stale.currentPositionReady, true);
-  assert.equal(stale.positionStaleMs, 1_000);
+  assert.equal(stale.positionStaleMs, 250);
   assert.equal(stale.upstream.lastFailure, null, 'nothing has failed yet, only gone quiet');
 
   const recycled = await waitForAsync(async () => {
@@ -1227,6 +1302,12 @@ for (const rejection of ['error frame', 'close reason', 'generic policy close', 
       });
     });
     const upstreamPort = await listen(upstream);
+    const authFailure = rejection === 'error frame' || rejection === 'close reason';
+    const throttled = rejection === 'throttled close';
+    // The non-auth cases sample the ladder cooldown itself, so it stays wide enough
+    // to read. The auth cases sample the 60s probe instead; their ladder only has to
+    // be short enough that walking it would show inside the sticky window below.
+    const ladderMs = authFailure ? 100 : 1000;
     const child = spawn(process.execPath, [relayScript], {
       env: {
         ...process.env,
@@ -1236,8 +1317,8 @@ for (const rejection of ['error frame', 'close reason', 'generic policy close', 
         RELAY_TEST_MODE: 'true',
         NODE_ENV: 'test',
         PORT: '0',
-        AIS_RECONNECT_BASE_MS: '1000',
-        AIS_RECONNECT_MAX_MS: '1000',
+        AIS_RECONNECT_BASE_MS: String(ladderMs),
+        AIS_RECONNECT_MAX_MS: String(ladderMs),
         AIS_AUTH_PROBE_MS: '60000',
         AIS_THROTTLE_ESCALATE_AFTER: '2',
         AIS_THROTTLE_RECONNECT_MAX_MS: '2000',
@@ -1253,11 +1334,9 @@ for (const rejection of ['error frame', 'close reason', 'generic policy close', 
     let output = '';
     child.stdout.on('data', chunk => { output += chunk.toString('utf8'); });
     child.stderr.on('data', chunk => { output += chunk.toString('utf8'); });
-    await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+    await waitForRelayStartup(child, () => output);
     const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
     await getJson(relayPort, '/ais/snapshot', { 'x-relay-key': 'relay-secret' });
-    const authFailure = rejection === 'error frame' || rejection === 'close reason';
-    const throttled = rejection === 'throttled close';
     const failure = await waitForAsync(async () => {
       const health = (await getJson(relayPort, '/health')).ingestion.aisSnapshot.upstream;
       return health.lastFailure === (authFailure ? 'auth_rejected' : throttled ? 'http_429' : 'closed_without_data')
@@ -1268,10 +1347,10 @@ for (const rejection of ['error frame', 'close reason', 'generic policy close', 
     assert.equal(failure.connected, false);
     if (authFailure) {
       assert.ok(failure.reconnectCooldownRemainingMs > 30_000);
-      await new Promise(resolve => setTimeout(resolve, 1_500));
+      await new Promise(resolve => setTimeout(resolve, 5 * ladderMs));
       assert.equal(upstreamAttempts, 1, 'subscription auth must not use the fast ladder');
     } else {
-      assert.ok(failure.reconnectCooldownRemainingMs <= 1_000);
+      assert.ok(failure.reconnectCooldownRemainingMs <= ladderMs);
       await waitFor(() => upstreamAttempts >= 2, 'ordinary retry after a non-auth policy close');
       if (throttled) {
         await waitForAsync(async () => {

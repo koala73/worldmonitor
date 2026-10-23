@@ -24,6 +24,17 @@
 //     spec-native `outputSchema` per tool. The server supports BOTH
 //     2025-03-26 and 2025-06-18 so old and new clients are both served; set
 //     `MCP_PROTOCOL_FLOOR_2025_06_18=off` to pin back to the legacy floor.
+//   - 2025-11-25 (default since 2026-10-23) — the last handshake revision.
+//     Server-side delta audited against its changelog: tool names (SEP-986),
+//     2020-12 schemas, the Origin 403, Client ID Metadata Documents and single
+//     `mcp` scope were already compliant; input validation failures are now
+//     `isError` tool results on 2025-11-25+ (SEP-1303, api/mcp/dispatch.ts).
+//     Everything else in it (icons, tasks, URL elicitation, sampling tools) is
+//     optional. `MCP_PROTOCOL_2025_11_25=off` drops it again.
+//   - 2026-07-28 is NOT served: it is the handshake-free "modern" era. Never
+//     answer with its -32022 UnsupportedProtocolVersionError until it is: that
+//     error marks a server as modern and stops dual-era clients falling back
+//     to `initialize`.
 //
 // Env is read at CALL time (not module-init) so dynamic re-imports of the
 // thin shim under different `process.env` snapshots — see
@@ -34,15 +45,15 @@
 // exports also reflect the per-import env state.
 import { MCP_UPGRADE_URL } from './upgrade';
 
-function supportedProtocolVersions(): readonly string[] {
-  return process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'off'
-    ? ['2025-03-26']
-    : ['2025-03-26', '2025-06-18'];
+export function supportedProtocolVersions(): readonly string[] {
+  if (process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'off') return ['2025-03-26'];
+  return process.env.MCP_PROTOCOL_2025_11_25 === 'off'
+    ? ['2025-03-26', '2025-06-18']
+    : ['2025-03-26', '2025-06-18', '2025-11-25'];
 }
-function latestProtocolVersion(): string {
-  return process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'off'
-    ? '2025-03-26'
-    : '2025-06-18';
+export function latestProtocolVersion(): string {
+  const supported = supportedProtocolVersions();
+  return supported[supported.length - 1]!;
 }
 
 // Negotiate the protocol version returned in the initialize response.

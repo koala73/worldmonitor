@@ -211,7 +211,7 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
   // header while negotiating. No version has been agreed before `initialize`
   // answers, so the body governs it there; every later request keeps the 400.
   it('negotiates initialize from the body when the header names an unsupported version', async () => {
-    for (const version of ['2025-11-25', '2026-07-28', '2099-99-99']) {
+    for (const version of ['2026-07-28', '2024-11-05', '2099-99-99']) {
       const body = initBody(1);
       body.params.protocolVersion = version;
       const res = await fetch(server.url, {
@@ -222,7 +222,7 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
       assert.equal(res.status, 200, version);
       const result = await res.json();
       assert.equal(result.id, 1, version);
-      assert.equal(result.result.protocolVersion, '2025-06-18', version);
+      assert.equal(result.result.protocolVersion, '2025-11-25', version);
 
       const next = await fetch(server.url, {
         method: 'POST',
@@ -237,7 +237,7 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     legacy.params.protocolVersion = '2025-03-26';
     const res = await fetch(server.url, {
       method: 'POST',
-      headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2025-11-25' }),
+      headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28' }),
       body: JSON.stringify(legacy),
     });
     assert.equal(res.status, 200);
@@ -246,10 +246,10 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
 
   it('challenges an anonymous initialize instead of refusing its newer header', async () => {
     const body = initBody(1);
-    body.params.protocolVersion = '2025-11-25';
+    body.params.protocolVersion = '2026-07-28';
     const res = await fetch(server.url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'MCP-Protocol-Version': '2025-11-25' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28' },
       body: JSON.stringify(body),
     });
     assert.equal(res.status, 401);
@@ -259,7 +259,7 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
 
   it('keeps refusing an unsupported header on every request other than initialize', async () => {
     const init = initBody(1);
-    init.params.protocolVersion = '2025-11-25';
+    init.params.protocolVersion = '2026-07-28';
     for (const body of [
       rpcBody(1, 'ping'),
       rpcBody(1, 'tools/list'),
@@ -269,11 +269,11 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
       { ...init, id: null },
       // No body version to negotiate from, so the header is the only signal.
       { ...init, params: {} },
-      { ...init, params: { ...init.params, protocolVersion: 20251125 } },
+      { ...init, params: { ...init.params, protocolVersion: 20260728 } },
     ]) {
       const res = await fetch(server.url, {
         method: 'POST',
-        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2025-11-25' }),
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28' }),
         body: JSON.stringify(body),
       });
       assert.equal(res.status, 400, JSON.stringify(body));
@@ -282,6 +282,75 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
       assert.equal(result.error.code, -32600, JSON.stringify(body));
       assert.equal(result.error.message, 'Unsupported MCP-Protocol-Version', JSON.stringify(body));
     }
+  });
+
+  // SEP-1303 (MCP 2025-11-25): input validation failures are tool execution
+  // errors the model can read and correct. Older revisions keep the documented
+  // -32602 + error.data.violations contract (#6559).
+  it('reports invalid tool arguments as an isError result on 2025-11-25 and as -32602 before it', async () => {
+    // Each argument-validation path: alias resolution, the registered tool's
+    // input schema, and a tool-specific argument check.
+    const cases = [
+      ['alias', { name: 'get_tariff_trends', arguments: { dataset: ['tariffs', 'bigmac'], country: 'DE' } },
+        (data) => assert.equal(data.violations[0].field, 'dataset')],
+      ['input schema', { name: 'get_consumer_prices', arguments: { limit: 'many' } },
+        (data) => assert.ok(data.violations.length > 0)],
+      ['tool-specific', { name: 'start_upgrade', arguments: { plan: 'no_such_plan' } },
+        (data) => assert.ok(Array.isArray(data.plans) && data.plans.length > 0)],
+    ];
+    for (const [label, params, checkData] of cases) {
+      for (const version of ['2025-11-25', '2025-06-18', null]) {
+        const res = await fetch(server.url, {
+          method: 'POST',
+          headers: mcpHeaders({ Accept: 'application/json', ...(version ? { 'MCP-Protocol-Version': version } : {}) }),
+          body: JSON.stringify(rpcBody(9, 'tools/call', params)),
+        });
+        const where = `${label} ${version}`;
+        assert.equal(res.status, 200, where);
+        const body = await res.json();
+        if (version === '2025-11-25') {
+          assert.equal(body.error, undefined, `${where}: ${JSON.stringify(body)}`);
+          assert.equal(body.result.isError, true, where);
+          assert.equal(body.result.structuredContent, undefined, where);
+          const payload = JSON.parse(body.result.content[0].text);
+          assert.equal(typeof payload.error, 'string', where);
+          // The payload is flat, so a message must not point at `data.*`.
+          assert.doesNotMatch(payload.error, /\bdata\./, where);
+          checkData(payload);
+        } else {
+          assert.equal(body.result, undefined, `${where}: ${JSON.stringify(body)}`);
+          assert.equal(body.error.code, -32602, where);
+          checkData(body.error.data);
+        }
+      }
+    }
+
+    // Panel arguments the strict panel view rejects after registry validation
+    // (an undeclared property here) are argument errors too (review: coderabbit).
+    for (const version of ['2025-11-25', '2025-06-18']) {
+      const res = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': version }),
+        body: JSON.stringify(rpcBody(11, 'tools/call', { name: 'get_market_data', arguments: { unexpected: 'x' } })),
+      });
+      assert.equal(res.status, 200, version);
+      const body = await res.json();
+      if (version === '2025-11-25') {
+        assert.equal(body.error, undefined, `panel ${version}: ${JSON.stringify(body)}`);
+        assert.equal(body.result.isError, true);
+        assert.equal(typeof JSON.parse(body.result.content[0].text).error, 'string');
+      } else {
+        assert.equal(body.error.code, -32602, `panel ${version}: ${JSON.stringify(body)}`);
+      }
+    }
+
+    // An unknown tool is still a protocol error on every revision.
+    const unknown = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2025-11-25' }),
+      body: JSON.stringify(rpcBody(10, 'tools/call', { name: 'no_such_tool', arguments: {} })),
+    });
+    assert.equal((await unknown.json()).error.code, -32602);
   });
 
   it('uses the active protocol floor for headers as well as initialize negotiation', async () => {
@@ -383,7 +452,7 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
         ...(origin === undefined ? {} : { Origin: origin }) };
       const preflight = await fetch(server.url, { method: 'OPTIONS', headers });
       assert.equal(preflight.status, 204, origin);
-      for (const version of ['2025-03-26', '2025-06-18', '2026-07-28']) {
+      for (const version of ['2025-03-26', '2025-06-18', '2025-11-25', '2026-07-28']) {
         const body = initBody(0);
         body.params.protocolVersion = version;
         const res = await fetch(server.url, { method: 'POST',
@@ -391,9 +460,9 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
         assert.equal(res.status, 200, origin);
         const result = await res.json();
         assert.equal(result.id, 0);
-        assert.equal(result.result.protocolVersion, version === '2026-07-28' ? '2025-06-18' : version);
+        assert.equal(result.result.protocolVersion, version === '2026-07-28' ? '2025-11-25' : version);
       }
-      for (const version of ['2025-03-26', '2025-06-18']) {
+      for (const version of ['2025-03-26', '2025-06-18', '2025-11-25']) {
         const res = await fetch(server.url, { method: 'POST',
           headers: { ...headers, 'MCP-Protocol-Version': version },
           body: JSON.stringify(rpcBody('', 'ping')) });
