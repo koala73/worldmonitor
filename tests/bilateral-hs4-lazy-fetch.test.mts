@@ -41,7 +41,12 @@ beforeEach(() => {
   const realSetTimeout = globalThis.setTimeout;
   mock.method(globalThis, 'setTimeout', ((callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
     timeline.push(`delay:${ms}`);
-    return realSetTimeout(callback, ms === UPSTREAM_GAP_MS ? 0 : ms, ...args);
+    if (ms !== UPSTREAM_GAP_MS) return realSetTimeout(callback, ms, ...args);
+    // Record when the gap ends, so a request that does not wait for it shows up.
+    return realSetTimeout((...callbackArgs: unknown[]) => {
+      timeline.push('gap-elapsed');
+      callback(...callbackArgs);
+    }, 0, ...args);
   }) as typeof setTimeout);
   globalThis.fetch = (async (url: string | URL | Request) => {
     const href = String(url);
@@ -72,7 +77,7 @@ test('lazy fallback waits the upstream gap between its two catalogue batches, an
   // pause is skipped above, so this is what keeps the throttle honest.
   await lazyFetchBilateralHs4('DE');
 
-  assert.deepEqual(timeline, ['comtrade', `delay:${UPSTREAM_GAP_MS}`, 'comtrade']);
+  assert.deepEqual(timeline, ['comtrade', `delay:${UPSTREAM_GAP_MS}`, 'gap-elapsed', 'comtrade']);
   assert.ok(UPSTREAM_GAP_MS >= 1000, `gap ${UPSTREAM_GAP_MS} ms is under the route's 1 req/s limit`);
 });
 
