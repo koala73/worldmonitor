@@ -231,6 +231,17 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
       });
       assert.deepEqual(await next.json(), { jsonrpc: '2.0', id: 2, result: {} }, version);
     }
+
+    // The body decides, not the header: a supported body version must win.
+    const legacy = initBody(3);
+    legacy.params.protocolVersion = '2025-03-26';
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2025-11-25' }),
+      body: JSON.stringify(legacy),
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).result.protocolVersion, '2025-03-26');
   });
 
   it('challenges an anonymous initialize instead of refusing its newer header', async () => {
