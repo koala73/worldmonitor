@@ -58,6 +58,11 @@ PR #8966:
   library install runs beside the `/pro` build. `node_modules` does not exist
   yet in the smoke shards, so the apt step reads the Playwright version from
   `package-lock.json` and runs `npx -y "playwright@$v" install-deps chromium`.
+  Since #9583 the unit shards install Redis from a package cache with `dpkg`,
+  before `install-root-deps` rather than beside it. Both composite actions use
+  `actions/cache`, and two parallel steps that each pull an action the job
+  does not reference at the top level download it at once; one copy then
+  fails (run 39936254975).
 
 Three alternating runs of the old and new workflow on one commit took the wall
 from 273-280s to 216-223s, for about 14% more runner-seconds. The PR's own run
