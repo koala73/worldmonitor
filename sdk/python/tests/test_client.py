@@ -1,7 +1,9 @@
 """Offline tests for the worldmonitor-sdk client (fake transport, no network)."""
 
+import http.server
 import json
 import sys
+import threading
 import unittest
 from pathlib import Path
 
@@ -179,6 +181,57 @@ class TestRest(unittest.TestCase):
             Client(env={}, transport=transport).health()
         self.assertEqual(ctx.exception.status, 401)
         self.assertIn("WORLDMONITOR_API_KEY", str(ctx.exception))
+
+class TestDefaultTransportRedirects(unittest.TestCase):
+    def _serve(self, handler):
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return "http://127.0.0.1:%d" % server.server_address[1]
+
+    def test_redirects_are_not_followed(self):
+        leaked = []
+
+        class Target(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                leaked.append(self.headers.get(EXPECTED_API_KEY_HEADER))
+                self.send_response(200)
+                self.send_header("content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            do_POST = do_GET
+
+            def log_message(self, *args):
+                pass
+
+        target_url = self._serve(Target)
+
+        class Origin(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(302)
+                self.send_header("location", target_url + self.path)
+                self.send_header("content-length", "0")
+                self.end_headers()
+
+            do_POST = do_GET
+
+            def log_message(self, *args):
+                pass
+
+        origin_url = self._serve(Origin)
+        client = Client(
+            api_key=EXAMPLE_CLIENT_VALUE,
+            base_url=origin_url,
+            mcp_url=origin_url + "/mcp",
+            env={},
+        )
+        for call in (client.health, client.list_tools):
+            with self.assertRaises(APIError) as ctx:
+                call()
+            self.assertEqual(ctx.exception.status, 302)
+        self.assertEqual(leaked, [])
 
 
 if __name__ == "__main__":
