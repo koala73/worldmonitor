@@ -34,7 +34,7 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 ## 快速指引
 
 - **HTTP 状态码**是传输层的回答。大多数 JSON-RPC 回复 —— 无论成功还是错误 —— 按 JSON-RPC 2.0 惯例都会以 **HTTP 200** 返回。只有当失败属于通用 HTTP 客户端必须响应的情况（鉴权、每日上限、服务不可用）且受益于 `Retry-After` / `WWW-Authenticate` 头时，handler 才会升级状态码。
-- **JSON-RPC `error.code`** 是应用层的回答。共使用十个代码：`-32000`、`-32001`、`-32002`、`-32003`、`-32004`、`-32029`、`-32600`、`-32601`、`-32602`、`-32603`。`-32000` 是已退役别名主机传输的文档化迁移代码（HTTP 410 / `canonical_endpoint_required`），不是协议 bug。列表之外的任何代码才是协议 bug —— 请提交 issue。
+- **JSON-RPC `error.code`** 是应用层的回答。使用的代码有：`-32000`、`-32001`、`-32002`、`-32003`、`-32004`、`-32029`、`-32600`、`-32601`、`-32602`、`-32603`。MCP `2026-07-28` 请求还可能收到 `-32020`、`-32022`、`-31002` 和 `-31029`，见 [MCP 2026-07-28 请求](#mcp-2026-07-28-请求)。`-32000` 是已退役别名主机传输的文档化迁移代码（HTTP 410 / `canonical_endpoint_required`），不是协议 bug。列表之外的任何代码才是协议 bug —— 请提交 issue。
 - **软行为信封**是高频失败模式。`tools/call` 在 JSON-RPC 层成功（HTTP 200，无 `error` 字段），但位于 `result.content[0].text` 中的 JSON 携带了一个 `_budget_exceeded` 或 `_jmespath_error` 判别字段。只检查 JSON-RPC 信封的客户端会默默地把这些当作成功 —— 请解析 `result.content[0].text`，并在将该负载作为数据消费前检查是否存在前导下划线 `_` 键。
 - **已执行的调用仍计费。** `_budget_exceeded`、`_jmespath_error` 和工具执行错误（`-32603`）都发生在工具已运行之后，因此它们会消耗 Pro 每日配额槽位。只有预分发失败（如每日上限拒绝或配额预留服务失败）才不消耗槽位。
 - **两条 401 路径都设置了 `WWW-Authenticate`**，包含 `realm="worldmonitor"` 以及指向所调用路由的受保护资源文档的 `resource_metadata` 指针：`/mcp` 对应 `/.well-known/oauth-protected-resource/mcp`，`/api/mcp` 对应 `/.well-known/oauth-protected-resource/api/mcp`。支持 RFC 9728 的客户端（Claude Desktop、MCP Inspector）会凭此头自动跳转 OAuth 流程，无需进一步干预。
@@ -354,6 +354,25 @@ Content-Type: application/json
 **HTTP 200 —— `resources/read` 负载为空或不可解析。** `resources/read` 内部的防御性检查，针对内部 `tools/call` 分发器返回的 `content[0].text` 为空或非 JSON 文本的不应发生情形。
 
 **如何处理。** 对于 HTTP 200 工具错误：约 1 秒后重试一次；若某个工具持续返回 `-32603`，请在 [status.worldmonitor.app](https://status.worldmonitor.app) 查看相关种子程序。对于 HTTP 503：遵循 `Retry-After`。对于 `resources/read` 防御性情形：提交 issue —— 它表明你调用上游存在分发器契约违规。
+
+### MCP 2026-07-28 请求
+
+这些规则仅在 `MCP_PROTOCOL_2026_07_28=on` 时生效，且仅适用于 `params._meta` 带有 `io.modelcontextprotocol/protocolVersion` 的请求。其他请求保持上文的代码。
+
+| 代码 | HTTP | 何时 |
+|------|------|------|
+| `-32602` | 400 | `_meta` 格式错误：`io.modelcontextprotocol/protocolVersion` 不是字符串，或 `io.modelcontextprotocol/clientCapabilities` 不是对象。 |
+| `-32022` | 400 | `UnsupportedProtocolVersion`：`_meta` 中的版本不是 `2026-07-28`。`error.data` 为 `{ "supported": [...], "requested": "..." }`，按从新到旧列出所有支持的版本。请改用列出的版本重试。 |
+| `-32020` | 400 | `HeaderMismatch`：`MCP-Protocol-Version` 或 `Mcp-Method` 缺失或与请求体不一致，或在 `tools/call`、`prompts/get`、`resources/read` 上 `Mcp-Name` 缺失或与 `params.name` / `params.uri` 不一致。`=?base64?…?=` 形式的值会先解码再比较。 |
+| `-32601` | 404 | `2026-07-28` 版本已移除的方法（`initialize`、`notifications/initialized`、`ping`、`logging/setLevel`）或未知方法。在认证之前判定。 |
+| `-32600` | 406 | `Accept` 中不含 `text/event-stream` 的 `subscriptions/listen`。 |
+
+`2026-07-28` 版本将 `-32020` 到 `-32099` 保留给规范使用，并停用了 `-32002`，因此仅在这些请求上有两个 WorldMonitor 代码发生变化：
+
+- `-32029`（速率限制、每日上限或额度）改为 `-31029`。
+- `-32002`（所有终止性权益拒绝）改为 `-31002`。
+
+HTTP 状态码、请求头、`error.message` 和 `error.data` 与 `2025` 版本的响应完全相同。`server/discover` 返回的说明使用新代码。
 
 ## HTTP 状态码
 

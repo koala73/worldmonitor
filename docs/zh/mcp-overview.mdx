@@ -48,7 +48,8 @@ WorldMonitor 位于 `/.well-known/mcp/server-card.json` 的静态服务器卡片
 - 请求其中任一版本的客户端会原样得到该版本；请求其他版本的客户端会得到 `2025-11-25`。
 - 在 `2025-11-25` 下，参数未通过校验的 `tools/call` 会返回一个模型可以读取并据此修正的 `isError` 工具结果，而不是早期版本收到的 `-32602` 错误（见[错误目录](/zh/mcp-error-catalog)）。
 - 设置 `MCP_PROTOCOL_2025_11_25=off` 会再次移除 `2025-11-25`；设置 `MCP_PROTOCOL_FLOOR_2025_06_18=off` 会将服务器固定回仅支持 `2025-03-26` 的旧版底线。
-- 不提供无握手的 `2026-07-28` 版本。该版本的客户端会回退到 `initialize`。
+- 无握手的 `2026-07-28` 版本默认关闭。关闭时，该版本的客户端会按上文回退到 `initialize`。
+- 设置 `MCP_PROTOCOL_2026_07_28=on` 后，`params._meta` 中带有 `io.modelcontextprotocol/protocolVersion` 的请求会按 `2026-07-28` 规则逐个处理：`server/discover`、必需的 `MCP-Protocol-Version`、`Mcp-Method` 和 `Mcp-Name` 请求头、结果中的 `resultType` 与缓存提示，以及最简的 `subscriptions/listen`。在 `/mcp` 上，匿名的 `2026-07-28` 请求会收到登录质询，免费的 `get_sources` 调用和 `ui://` 应用读取除外；机器发现别名保持匿名。不带该信封的请求保持上文行为。这些请求可能收到的错误代码见[错误目录](/zh/mcp-error-catalog#mcp-2026-07-28-请求)。
 
 无论协商出的协议版本如何，工具的 `outputSchema` 元数据都会在 `tools/list` 中发出。较旧的 `2025-03-26` 客户端应忽略未知字段，而较新的客户端可以立即使用该 schema。每次成功的 `tools/call` 还会以 `structuredContent` 返回载荷；一旦发布了 schema，严格的客户端就要求如此。投影与软信封的表示方式见[工具参考](/zh/mcp-tools-reference)。
 

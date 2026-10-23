@@ -50,7 +50,8 @@ WorldMonitor's static server card at `/.well-known/mcp/server-card.json` adverti
 - Clients requesting one of those receive it unchanged; a client requesting any other version receives `2025-11-25`.
 - On `2025-11-25`, a `tools/call` whose arguments fail validation returns an `isError` tool result the model can read and correct, instead of the `-32602` error earlier versions receive (see the [error catalog](/mcp-error-catalog)).
 - Setting `MCP_PROTOCOL_2025_11_25=off` drops `2025-11-25` again, and `MCP_PROTOCOL_FLOOR_2025_06_18=off` pins the server back to the legacy `2025-03-26`-only floor.
-- The handshake-free `2026-07-28` revision is not served. Its clients fall back to `initialize`.
+- The handshake-free `2026-07-28` revision is off by default. While it is off, its clients fall back to `initialize` as above.
+- With `MCP_PROTOCOL_2026_07_28=on`, a request whose `params._meta` carries `io.modelcontextprotocol/protocolVersion` is served per request on the `2026-07-28` rules: `server/discover`, the required `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers, `resultType` and cache hints on results, and a minimal `subscriptions/listen`. On `/mcp`, an anonymous `2026-07-28` request gets the sign-in challenge except the free `get_sources` call and `ui://` app reads; the machine-discovery aliases stay anonymous. Requests without that envelope keep the behavior above. The [error catalog](/mcp-error-catalog#mcp-2026-07-28-requests) lists the error codes these requests can receive.
 
 Tool `outputSchema` metadata is emitted on `tools/list` regardless of the negotiated protocol version. Older `2025-03-26` clients should ignore unknown fields, while newer clients can use the schema immediately. Every successful `tools/call` also returns the payload as `structuredContent`, which strict clients require once a schema is advertised; the [tools reference](/mcp-tools-reference) describes how projections and soft envelopes are represented.
 

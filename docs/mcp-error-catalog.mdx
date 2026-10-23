@@ -39,7 +39,7 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 ## Quick orientation
 
 - **HTTP status** is the transport-layer answer. Most JSON-RPC replies — successes AND errors — come back as **HTTP 200**, per the JSON-RPC 2.0 convention. The handler only escalates the status when the failure is something a generic HTTP client must react to (auth, daily cap, service unavailable) and benefits from a `Retry-After` / `WWW-Authenticate` header.
-- **JSON-RPC `error.code`** is the application-layer answer. Eleven codes are in use: `-32000`, `-32001`, `-32002`, `-32003`, `-32004`, `-32029`, `-32700`, `-32600`, `-32601`, `-32602`, `-32603`. `-32000` is a documented migration code for retired alias-host transport (HTTP 410 / `canonical_endpoint_required`).
+- **JSON-RPC `error.code`** is the application-layer answer. These codes are in use: `-32000`, `-32001`, `-32002`, `-32003`, `-32004`, `-32029`, `-32700`, `-32600`, `-32601`, `-32602`, `-32603`. Requests on MCP `2026-07-28` can also receive `-32020`, `-32022`, `-31002` and `-31029`; see [MCP 2026-07-28 requests](#mcp-2026-07-28-requests). `-32000` is a documented migration code for retired alias-host transport (HTTP 410 / `canonical_endpoint_required`).
 - **Soft-behavior envelopes** are the high-volume failure mode. `tools/call` succeeds at the JSON-RPC layer (HTTP 200, no `error` field), but the JSON sitting inside `result.content[0].text` carries a `_budget_exceeded` or `_jmespath_error` discriminator. Clients that only inspect the JSON-RPC envelope will silently treat these as successes — parse `result.content[0].text` and check for a leading `_` key before consuming the payload as data.
 - **Executed calls stay charged.** `_budget_exceeded`, `_jmespath_error`, upstream failures, empty results, stored-contract errors and tool-execution errors (`-32603`) consume the daily allowance once execution starts. Before reserving free-account, Pro or API allowance, `tools/call` checks the tool's input schema and synchronous caller-input hooks, including country resolution, required scopes, option combinations and cursor syntax. Rejected arguments return `-32602` without spending allowance or opening a paid panel. Defaults remain optional; arguments are not coerced. Downstream validation discovered after execution starts remains charged.
 - **Every 401 sets `WWW-Authenticate`** with `realm="worldmonitor"` and a `resource_metadata` pointer at the protected-resource document for the route you called: `/.well-known/oauth-protected-resource/mcp` for `/mcp`, `/.well-known/oauth-protected-resource/api/mcp` for `/api/mcp`. RFC 9728-aware clients (Claude Desktop, MCP Inspector) bounce through the OAuth flow on this header without further intervention.
@@ -446,6 +446,25 @@ Recovery for the first three is identical (honour `Retry-After: 5`). The billing
 **HTTP 200 — `resources/read` payload was empty or unparseable.** Defensive guard inside `resources/read` for the never-should-happen case where the inner `tools/call` dispatcher returned no `content[0].text` or non-JSON text.
 
 **What to do.** For HTTP 200 tool errors: retry once after ~1 second; if a specific tool returns `-32603` consistently, check [status.worldmonitor.app](https://status.worldmonitor.app) for the relevant seeder. For HTTP 503: honour `Retry-After`. For the `resources/read` defensive case: file an issue — it indicates a dispatcher contract violation upstream of your call.
+
+### MCP 2026-07-28 requests
+
+These rules apply only while `MCP_PROTOCOL_2026_07_28=on`, and only to requests whose `params._meta` carries `io.modelcontextprotocol/protocolVersion`. Every other request keeps the codes above.
+
+| Code | HTTP | When |
+|------|------|------|
+| `-32602` | 400 | `_meta` is malformed: `io.modelcontextprotocol/protocolVersion` is not a string, or `io.modelcontextprotocol/clientCapabilities` is not an object. |
+| `-32022` | 400 | `UnsupportedProtocolVersion`: the `_meta` version is not `2026-07-28`. `error.data` is `{ "supported": [...], "requested": "..." }`, with every served version newest first. Retry with a listed version. |
+| `-32020` | 400 | `HeaderMismatch`: `MCP-Protocol-Version` or `Mcp-Method` is missing or differs from the body, or `Mcp-Name` is missing or differs from `params.name` / `params.uri` on `tools/call`, `prompts/get` and `resources/read`. A `=?base64?…?=` value is decoded before the comparison. |
+| `-32601` | 404 | A method the `2026-07-28` revision removed (`initialize`, `notifications/initialized`, `ping`, `logging/setLevel`) or an unknown method. Decided before authentication. |
+| `-32600` | 406 | `subscriptions/listen` without `text/event-stream` in `Accept`. |
+
+The `2026-07-28` revision reserves the codes from `-32020` to `-32099` for the specification and retires `-32002`, so two WorldMonitor codes change on these requests only:
+
+- `-32029` (rate limit, daily cap or allowance) is sent as `-31029`.
+- `-32002` (every terminal entitlement denial) is sent as `-31002`.
+
+The HTTP status, headers, `error.message` and `error.data` are identical to the `2025` responses. The instructions `server/discover` returns name the new codes.
 
 ## HTTP statuses
 
