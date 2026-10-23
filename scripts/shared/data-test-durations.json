@@ -735,7 +735,7 @@
   "tests/food-stocks-seed.test.mjs": 117,
   "tests/forecast-bets-seeder.test.mjs": 96,
   "tests/forecast-calibration-publication.test.mjs": 112,
-  "tests/forecast-calibration.test.mjs": 197922,
+  "tests/forecast-calibration.test.mjs": 28458,
   "tests/forecast-cohort.test.mjs": 120,
   "tests/forecast-dashboard-projection.test.mjs": 86,
   "tests/forecast-detectors.test.mjs": 594,
