@@ -279,11 +279,37 @@ function measureP5c(): Measurement {
   return { pass: counts.every((c) => c.n === 0), value: `${counts.map((c) => c.n).join(' / ')} pairs ordered against the blend across fixtures (max ${w.n}, ${w.label}); limit 0` };
 }
 
+/**
+ * Nulls each input in turn. Every country whose terms change must report a
+ * coverage below 1 and below its coverage with the input present; a field
+ * that exists but never falls does not pass.
+ */
 function measureP7a(): Measurement {
-  const { f } = fixtureTables[0]!;
-  const row = scoreCiiAuxiliarySources(parse(f), { nowMs: f.nowMs }).rows[0] as unknown as Record<string, unknown>;
-  const has = 'coverage' in row;
-  return { pass: has, value: has ? 'coverage emitted' : 'no coverage output: a nulled input is indistinguishable from a calm one' };
+  const coverage = (row: CiiScoreTableRow) => (row as unknown as { coverage?: unknown }).coverage;
+  let affected = 0;
+  const silent: string[] = [];
+  for (const { f, table } of fixtureTables) {
+    const aux = parse(f);
+    for (const [input, failed] of Object.entries(FAILED_INPUT)) {
+      const next = score({ ...aux, ...failed }, f.nowMs);
+      for (const code of CODES) {
+        const { combinedScore: _a, ...before } = table[code]!;
+        const { combinedScore: _b, ...after } = next[code]!;
+        if (JSON.stringify(before) === JSON.stringify(after)) continue;
+        affected++;
+        const was = coverage(table[code]!);
+        const now = coverage(next[code]!);
+        if (!(typeof now === 'number' && now < 1 && typeof was === 'number' && now < was)) silent.push(`${code}/${input}`);
+      }
+    }
+  }
+  const emitted = typeof coverage(Object.values(fixtureTables[0]!.table)[0]!) === 'number';
+  return {
+    pass: affected > 0 && silent.length === 0,
+    value: emitted
+      ? `${silent.length}/${affected} (country, nulled input) cases keep their coverage, e.g. ${silent.slice(0, 4).join(', ')}`
+      : `no coverage output: in ${affected} (country, nulled input) cases a missing input reads as calm`,
+  };
 }
 
 function measureP7b(): Measurement {
@@ -390,16 +416,29 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-/** ±10% on every magnitude; each list record dropped or duplicated with probability 5% each. */
+/**
+ * ±10% on every magnitude, including the scored numbers inside list records
+ * (UCDP deaths, quake magnitude, fire brightness and radiative power, numeric
+ * climate severity); dates and locations stay fixed. Each list record is also
+ * dropped or duplicated with probability 5% each.
+ */
 function perturb(aux: AuxiliarySources, rand: () => number): AuxiliarySources {
   const jitter = (n: number) => n * (0.9 + 0.2 * rand());
   const resample = <T,>(rows: T[]) => rows.flatMap((row) => { const u = rand(); return u < 0.05 ? [] : u < 0.1 ? [row, row] : [row]; });
   const mapValues = <T,>(o: Record<string, T> | null | undefined, fn: (v: T) => T) => (o ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, fn(v)])) : o);
+  const jitterFields = (row: any, fields: string[]) => {
+    const out = { ...row };
+    for (const field of fields) if (typeof out[field] === 'number') out[field] = jitter(out[field]);
+    return out;
+  };
   const next = clone(aux);
   for (const field of ['ucdpEvents', 'outages', 'climate', 'gpsHexes', 'iranEvents', 'aviationAlerts', 'earthquakes', 'newsTopStories'] as const) {
     (next as any)[field] = resample((next as any)[field] ?? []);
   }
-  next.fires = mapValues(next.fires, (rows) => resample(rows));
+  next.ucdpEvents = next.ucdpEvents.map((e) => jitterFields(e, ['deathsBest']));
+  next.earthquakes = next.earthquakes.map((e) => jitterFields(e, ['magnitude']));
+  next.climate = next.climate.map((a) => jitterFields(a, ['severity', 'score']));
+  next.fires = mapValues(next.fires, (rows) => resample(rows).map((f) => jitterFields(f, ['brightness', 'frp'])));
   next.displacedByIso3 = mapValues(next.displacedByIso3, jitter) ?? {};
   next.threatSummaryByCountry = mapValues(next.threatSummaryByCountry, (row) => mapValues(row as any, jitter) as any);
   next.sanctionsCountryCounts = mapValues(next.sanctionsCountryCounts, jitter);

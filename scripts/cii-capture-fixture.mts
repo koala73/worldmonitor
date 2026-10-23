@@ -82,7 +82,9 @@ const after = await get(scoreKey) as StoredTable;
 // Production's table matches these inputs only if it was not rebuilt while
 // they were read; score at its computedAt so every age gate agrees.
 const stored = after?.ciiScores?.length ? after : null;
-const sameBuild = stored && before?.ciiScores?.[0]?.computedAt === stored.ciiScores![0]!.computedAt;
+if (stored && before?.ciiScores?.[0]?.computedAt !== stored.ciiScores![0]!.computedAt) {
+  throw new Error(`${scoreKey} was rebuilt while the inputs were read; capture again`);
+}
 const nowMs = stored ? stored.ciiScores![0]!.computedAt : capturedAt;
 const label = `${new Date(nowMs).toISOString().slice(0, 16).replace(':', '')}Z`;
 const fixture = buildCiiFixture({
@@ -95,7 +97,9 @@ const fixture = buildCiiFixture({
   nowMs,
   iranEventsEnabled,
   notes: [
-    `Inputs read GET-only from production Redis ${Math.round((capturedAt - nowMs) / 1000)} s after production computed ${scoreKey}${sameBuild ? '' : ' (the table was rebuilt during the read)'}.`,
+    stored
+      ? `Inputs read GET-only from production Redis ${Math.round((capturedAt - nowMs) / 1000)} s after production computed ${scoreKey}.`
+      : `Inputs read GET-only from production Redis; ${scoreKey} was not stored.`,
     ...['oref', 'threatSummary', 'gdeltCountryEvents', 'strikePressure', 'advisories']
       .filter((id) => ({ oref, threatSummary, gdeltCountryEvents, strikePressure, advisories } as Record<string, unknown>)[id] == null)
       .map((id) => `${id} was missing from Redis.`),
@@ -109,13 +113,22 @@ const fixture = buildCiiFixture({
   } : null,
 });
 
-const path = resolve(CII_FIXTURE_DIR, `${label}.json`);
-writeFileSync(path, `${JSON.stringify(fixture)}\n`);
+// A fixture that carries production's table must reproduce it, or it would
+// fail tests/cii-fixtures.test.mts: inputs that moved after the stored build
+// are the usual cause, which --wait-for-rebuild avoids.
 const table = scoreCiiFixture(fixture);
-const matches = fixture.production
-  ? table.scores.filter((s) => s.combinedScore === fixture.production!.scores[s.region]).length
-  : null;
+if (fixture.production) {
+  const mismatches = table.scores
+    .filter((s) => s.combinedScore !== fixture.production!.scores[s.region])
+    .map((s) => `${s.region} seam ${s.combinedScore} vs stored ${fixture.production!.scores[s.region]}`);
+  if (mismatches.length || Object.keys(fixture.production.scores).length !== table.scores.length) {
+    throw new Error(`the seam does not reproduce ${scoreKey} (${mismatches.join(', ') || 'country sets differ'}); capture again with --wait-for-rebuild`);
+  }
+}
+const path = resolve(CII_FIXTURE_DIR, `${label}.json`);
+// Never replace a fixture: it may hold expected tables for earlier versions.
+writeFileSync(path, `${JSON.stringify(fixture)}\n`, { flag: 'wx' });
 console.log(`wrote ${path}`);
-console.log(matches == null
-  ? 'no stored table to compare'
-  : `seam reproduces ${scoreKey} for ${matches}/${table.scores.length} countries`);
+console.log(fixture.production
+  ? `seam reproduces ${scoreKey} for ${table.scores.length}/${table.scores.length} countries`
+  : 'no stored table to compare');

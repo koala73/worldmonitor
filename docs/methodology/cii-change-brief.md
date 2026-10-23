@@ -66,12 +66,12 @@ The suite injects evidence into parsed sources (`buildCiiAuxiliarySources` outpu
 - **P3a.** Strike units are added one at a time, up to 30. The largest step must be at most 3.
 - **P3b, P3c.** A campaign of 5 units/day for 3 days, then nothing. The score is sampled every 3 hours for 8 days. No 3-hour drop may exceed 5. The campaign's contribution (score with it minus score without it) must halve in 4–6 days.
 - **P5c.** "Against the evidence" means against the blend: A blends above B but scores below it.
-- **P7a** looks for a coverage output. **P7b** asks input health to call a reader that maps none of its records unusable; outages, which read `countryCode` from rows that carry only a name, are the live case.
+- **P7a** nulls each input in turn. Every country whose terms change must report a coverage below 1 and below its coverage with the input present. **P7b** asks input health to call a reader that maps none of its records unusable; outages, which read `countryCode` from rows that carry only a name, are the live case.
 - **P8.** Each parsed input is replaced by its empty value. For advisories that is null, which brings in the fallback table, as a failed read does. No country may move by more than **K = 10**.
 - **P9** compares the span of the cached UCDP rows with the 2-year window the UCDP classes assume. It needs at least 90% of that window.
 - **P10.** Ten more delayed airports per country must not raise S.
 - **P11a.** A critical headline naming country A and a non-Tier-1 target (an attack abroad) must not raise A. **P11b.** +50 own military flights and +20 own vessels must not raise A.
-- **P12a.** Every magnitude is scaled by a uniform factor in 0.9–1.1. Every list record is dropped or duplicated with probability 0.05 each. The run uses 40 seeded draws per fixture. **P12b.** GDELT counts and classified headline counts are scaled ×0.5, ×2 and ×4 with every share unchanged.
+- **P12a.** Every magnitude is scaled by a uniform factor in 0.9–1.1. That includes the scored numbers inside list records: UCDP deaths, quake magnitude, fire brightness and radiative power. Dates and locations stay fixed. Every list record is dropped or duplicated with probability 0.05 each. The run uses 40 seeded draws per fixture. **P12b.** GDELT counts and classified headline counts are scaled ×0.5, ×2 and ×4 with every share unchanged.
 - **P14.** |final − blend| must be at most 0.5. The blend is baseline × 0.4 + eventScore × 0.6 + every boost.
 - **P15.** Each anchor is built on an empty background with live, empty advisories.
   - Quiet week, riots and strike campaign apply to the stable OECD members DE, FR, GB, JP, KR, PL and US.
