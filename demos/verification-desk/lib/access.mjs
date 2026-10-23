@@ -34,6 +34,24 @@ export function authorized(req, now = Date.now()) {
 
 export const passwordMatches = (given) => enabled() && same(given ?? '', password());
 
+export function loginThrottle() {
+  let busy = false;
+  let failures = 0;
+  let nextAt = 0;
+  return {
+    retryAfter(now = Date.now()) {
+      if (busy || now < nextAt) return Math.max(1, Math.ceil((nextAt - now) / 1000));
+      busy = true;
+      return 0;
+    },
+    finish(success, now = Date.now()) {
+      busy = false;
+      failures = success ? 0 : Math.min(failures + 1, 7);
+      nextAt = success ? 0 : now + Math.min(30_000, 800 * 2 ** (failures - 1));
+    },
+  };
+}
+
 export const LOGIN_PAGE = (failed) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Verification Desk</title>
