@@ -159,6 +159,7 @@ const REQUIRED_PR_SCRIPTS = [
 const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/variant-live-smoke.spec.ts',
   'e2e/country-brief.spec.ts',
+  'e2e/country-brief-reports.spec.ts',
   'e2e/mcp-grant-consent.spec.ts',
   'e2e/dashboard-news-request-budget.spec.ts',
   'e2e/bootstrap-request-budget.spec.ts',
