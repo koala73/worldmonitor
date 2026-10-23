@@ -31,10 +31,12 @@
 //     `isError` tool results on 2025-11-25+ (SEP-1303, api/mcp/dispatch.ts).
 //     Everything else in it (icons, tasks, URL elicitation, sampling tools) is
 //     optional. `MCP_PROTOCOL_2025_11_25=off` drops it again.
-//   - 2026-07-28 is NOT served: it is the handshake-free "modern" era. Never
-//     answer with its -32022 UnsupportedProtocolVersionError until it is: that
-//     error marks a server as modern and stops dual-era clients falling back
-//     to `initialize`.
+//   - 2026-07-28 is the handshake-free "modern" era, served per request
+//     (api/mcp/modern.ts) only while `MCP_PROTOCOL_2026_07_28=on`. It never
+//     joins the initialize-negotiated set below. With the flag off (the
+//     default) the server must never answer with its -32022
+//     UnsupportedProtocolVersionError: that error marks a server as modern and
+//     stops dual-era clients falling back to `initialize`.
 //
 // Env is read at CALL time (not module-init) so dynamic re-imports of the
 // thin shim under different `process.env` snapshots — see
@@ -54,6 +56,21 @@ export function supportedProtocolVersions(): readonly string[] {
 export function latestProtocolVersion(): string {
   const supported = supportedProtocolVersions();
   return supported[supported.length - 1]!;
+}
+
+// The modern (per-request `_meta`) era. Default off; `on` is the only value
+// that enables it. Read at call time, like the legacy switches above.
+export const MCP_MODERN_PROTOCOL_VERSION = '2026-07-28';
+export function modernProtocolEnabled(): boolean {
+  return process.env.MCP_PROTOCOL_2026_07_28 === 'on';
+}
+export function modernProtocolVersions(): readonly string[] {
+  return modernProtocolEnabled() ? [MCP_MODERN_PROTOCOL_VERSION] : [];
+}
+// Every version this server serves in either era, newest first: the
+// `data.supported` list of a modern -32022, as in the spec's own example.
+export function allSupportedProtocolVersionsNewestFirst(): string[] {
+  return [...modernProtocolVersions(), ...[...supportedProtocolVersions()].reverse()];
 }
 
 // Negotiate the protocol version returned in the initialize response.

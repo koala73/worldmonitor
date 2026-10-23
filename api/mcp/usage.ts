@@ -114,7 +114,12 @@ export interface McpUsage {
   toolOutcome: McpToolOutcome | null;
   /** MCP-Protocol-Version the client sent: a known revision, 'other', or null when absent. */
   protocolVersion: string | null;
+  /** 'modern' once a request takes the 2026-07-28 per-request path (api/mcp/modern.ts). */
+  era: McpEra;
 }
+
+/** Protocol era of a request: initialize-based legacy, or 2026-07-28 modern. */
+export type McpEra = 'legacy' | 'modern';
 
 // Every published MCP revision. The header is client-chosen, so anything else
 // collapses to 'other' to keep the Axiom dimension bounded (#8403). Add new
@@ -143,6 +148,7 @@ export function createMcpUsage(): McpUsage {
     requestedTool: null,
     toolOutcome: null,
     protocolVersion: null,
+    era: 'legacy',
   };
 }
 

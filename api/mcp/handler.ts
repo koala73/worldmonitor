@@ -35,6 +35,7 @@ import {
   RESOURCE_TEMPLATE_LIST_RESPONSE,
 } from './resources/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
+import { validateModernRequest } from './modern';
 import {
   buildSkillResourceRead,
   buildSkillsGetResponse,
@@ -984,7 +985,15 @@ async function mcpHandlerInner(
   try {
     const bodyBytes = await readBoundedRequestBody(req, MAX_JSON_RPC_BODY_BYTES);
     const parsed: unknown = JSON.parse(new TextDecoder().decode(bodyBytes));
-    if (unsupportedProtocolVersion && !isInitializeRequest(parsed)) return rejectProtocolVersion();
+    // MCP 2026-07-28: while MCP_PROTOCOL_2026_07_28 is on, an enveloped body is
+    // validated before the #9563 header pre-check, so its -32022/-32020/-32602
+    // answers are reachable whatever the header says. Off, or without the
+    // envelope, this is `legacy` and nothing below changes.
+    const modern = validateModernRequest(req, parsed, usage, corsHeaders);
+    if (modern.era === 'modern' && modern.response) return modern.response;
+    if (unsupportedProtocolVersion && modern.era === 'legacy' && !isInitializeRequest(parsed)) {
+      return rejectProtocolVersion();
+    }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       usage.phase = 'malformed';
       return rpcError(null, -32600, 'Invalid request: expected object', corsHeaders);
