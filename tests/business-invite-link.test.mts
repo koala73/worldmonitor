@@ -34,14 +34,25 @@ function browserGet(pathAndQuery: string): Response | void {
 
 // Page paths linked from `src` that the middleware would 404. Same-file
 // string constants are inlined first so `${APP_ORIGIN}${SOME_PATH}` is
-// checked as the URL it builds.
+// checked as the URL it builds. A name declared with different values in
+// different scopes cannot be resolved without scope analysis, so it is
+// reported instead of guessed.
 function unservedPageLinks(src: string): string[] {
-  const constants = new Map<string, string>();
+  const constants = new Map<string, Set<string>>();
   for (const m of src.matchAll(/const ([A-Z][A-Z0-9_]*)(?:: string)? = (["'`])([^"'`$]*)\2(?: as const)?;/g)) {
-    constants.set(m[1]!, m[3]!);
+    if (!constants.has(m[1]!)) constants.set(m[1]!, new Set());
+    constants.get(m[1]!)!.add(m[3]!);
   }
-  const expanded = src.replace(/\$\{([A-Z][A-Z0-9_]*)\}/g, (hole, name: string) => constants.get(name) ?? hole);
   const pages: string[] = [];
+  const expanded = src.replace(/\$\{([A-Z][A-Z0-9_]*)\}/g, (hole, name: string) => {
+    const values = constants.get(name);
+    if (!values) return hole;
+    if (values.size > 1) {
+      pages.push(`ambiguous constant ${name}`);
+      return hole;
+    }
+    return [...values][0]!;
+  });
   // Take the whole URL up to a delimiter or a template hole, then let URL
   // parsing decide the pathname.
   for (const m of expanded.matchAll(/https:\/\/(?:www\.)?worldmonitor\.app(?:(?!\$\{)[^\s"'<>`)\\])*/g)) {
@@ -105,6 +116,18 @@ describe('Business seat invite link', () => {
       '/settingz',
       '/billing',
       '/brief',
+    ]);
+  });
+
+  it('refuses to guess between same-named constants in different scopes', () => {
+    const source = [
+      'const APP_ORIGIN = "https://www.worldmonitor.app";',
+      'function a() { const PAGE_PATH = "/brief"; return `${APP_ORIGIN}${PAGE_PATH}`; }',
+      'function b() { const PAGE_PATH = "/dashboard" as const; return `${APP_ORIGIN}${PAGE_PATH}`; }',
+    ].join('\n');
+    assert.deepEqual(unservedPageLinks(source), [
+      'ambiguous constant PAGE_PATH',
+      'ambiguous constant PAGE_PATH',
     ]);
   });
 
