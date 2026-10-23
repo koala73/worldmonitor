@@ -81,22 +81,24 @@ describe('root dependency cache (#8710)', () => {
     const installIndex = steps.findIndex((step) => step.run === 'npm ci');
     assert.ok(restore, 'the action must restore the npm download cache on a miss');
     assert.match(restore.uses, /^actions\/cache\/restore@[a-f0-9]{40}$/);
-    assert.equal(restore.if, "steps.node-modules.outputs.cache-hit != 'true'");
+    assert.equal(restore.if, "steps.node-modules.outputs.cache-hit != 'true' && inputs.npm-cache == 'true'");
+    assert.equal(readAction().inputs['npm-cache'].default, 'true');
     assert.equal(restore.with.path, '~/.npm');
     assert.equal(restore.with.key, "npm-cache-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}");
     assert.ok(steps.indexOf(restore) < installIndex);
     const save = steps.find((step) => step.uses?.startsWith('actions/cache/save@') && step.with?.path === '~/.npm');
     assert.ok(steps.indexOf(save) > installIndex + 1, 'the clean node_modules save stays first after npm ci');
-    assert.equal(save.if, "steps.node-modules.outputs.cache-hit != 'true' && steps.npm-cache.outputs.cache-hit != 'true'");
+    assert.equal(save.if, "steps.node-modules.outputs.cache-hit != 'true' && inputs.npm-cache == 'true' && steps.npm-cache.outputs.cache-hit != 'true'");
     assert.equal(save.with.key, '${{ steps.npm-cache.outputs.cache-primary-key }}');
   });
 
   // Jobs that install nothing beyond the action leave setup-node's cache off
   // and use the action's miss-only fallback. Jobs with another npm install
-  // (blog-site, pro-test) keep setup-node's cache for it.
+  // (blog-site, pro-test, including through build:pro) keep setup-node's
+  // cache for it and turn the action's off, so a miss restores it once.
   for (const [workflowText, jobIds, setupCache] of [
-    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'variant-smoke-pro-webmcp', 'resilience-validation-smoke'], undefined],
-    [testWorkflow, ['unit-shards', 'unit-built-output'], 'npm'],
+    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke'], undefined],
+    [testWorkflow, ['unit-shards', 'unit-built-output', 'variant-smoke-pro-webmcp'], 'npm'],
     [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure'], undefined],
     [lintCodeWorkflow, ['biome', 'markdown'], undefined],
     [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], 'npm'],
@@ -112,6 +114,7 @@ describe('root dependency cache (#8710)', () => {
         assert.ok(install, `${jobId} must use the shared root dependency action`);
         assert.equal(setup.with['node-version'], '24');
         assert.equal(setup.with.cache, setupCache);
+        assert.equal(install.with?.['npm-cache'], setupCache === 'npm' ? 'false' : undefined);
         assert.ok(steps.indexOf(setup) < steps.indexOf(install));
         assert.equal(steps.some((step) => step.run === 'npm ci'), false);
       });

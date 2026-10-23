@@ -1,5 +1,9 @@
 name: Install root dependencies
 description: Restore the exact Node 24 dependency tree or install it, then prepare repository inventory.
+inputs:
+  npm-cache:
+    description: Restore and save the npm download cache on a node_modules miss. Pass 'false' when setup-node already restores it for another npm install in the job.
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -14,7 +18,7 @@ runs:
     # node_modules cache above, so callers that install nothing else leave
     # setup-node's cache off and get the download cache here, on a miss.
     - name: Restore the npm download cache on a dependency miss
-      if: steps.node-modules.outputs.cache-hit != 'true'
+      if: steps.node-modules.outputs.cache-hit != 'true' && inputs.npm-cache == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       id: npm-cache
       with:
@@ -32,7 +36,7 @@ runs:
         path: node_modules
         key: ${{ steps.node-modules.outputs.cache-primary-key }}
     - name: Save the npm download cache
-      if: steps.node-modules.outputs.cache-hit != 'true' && steps.npm-cache.outputs.cache-hit != 'true'
+      if: steps.node-modules.outputs.cache-hit != 'true' && inputs.npm-cache == 'true' && steps.npm-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ~/.npm
