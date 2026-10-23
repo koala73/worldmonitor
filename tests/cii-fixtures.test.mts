@@ -7,10 +7,14 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import {
+  buildCiiFixture,
   CII_FIXTURE_DIR,
   CII_FIXTURE_SCHEMA,
+  ciiScoredVersion,
   expectedFromTable,
   loadCiiFixtures,
+  readCiiVersionClaim,
+  recordExpectedTable,
   scoreCiiFixture,
   trimCiiRawInputs,
 } from '../scripts/lib/cii-fixtures.mts';
@@ -19,6 +23,10 @@ import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_ris
 import { TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.ts';
 
 const FIXTURES = loadCiiFixtures();
+const CLAIM = readCiiVersionClaim();
+// The version whose table this tree's scorer must reproduce: the in-progress
+// next version on an integration branch, else CII_FORMULA_VERSION.
+const SCORED = ciiScoredVersion(CLAIM);
 const TIER1_NAMES = new Set(Object.values(TIER1_COUNTRIES));
 
 describe('CII fixtures', () => {
@@ -50,16 +58,35 @@ describe('CII fixtures', () => {
     }
   });
 
-  it(`reproduce the recorded ${CII_FORMULA_VERSION} table on every fixture`, () => {
+  it(`reproduce the recorded ${SCORED} table on every fixture`, () => {
     for (const f of FIXTURES) {
-      const expected = f.expected[CII_FORMULA_VERSION];
-      assert.ok(expected, `${f.label} has no ${CII_FORMULA_VERSION} table; record one with scripts/cii-table-diff.mts --write-expected`);
+      const expected = f.expected[SCORED];
+      assert.ok(expected, `${f.label} has no ${SCORED} table; record one with scripts/cii-table-diff.mts --write-expected`);
       assert.deepEqual(expectedFromTable(scoreCiiFixture(f)), expected,
-        `${f.label}: scores moved without a CII_FORMULA_VERSION bump`);
+        SCORED === CII_FORMULA_VERSION
+          ? `${f.label}: scores moved without a CII_FORMULA_VERSION bump`
+          : `${f.label}: the ${SCORED} table is out of date; regenerate it with scripts/cii-table-diff.mts --write-expected`);
     }
   });
 
-  it('reproduce the table production stored, 31/31, wherever it was captured', () => {
+  it('keep the table production stored as provenance: it equals the recorded table of its own version, 31/31', () => {
+    const captured = FIXTURES.filter((f) => f.production);
+    assert.ok(captured.filter((f) => f.production!.methodologyVersion === 'v14').length >= 2, 'v14 has two production captures');
+    for (const f of captured) {
+      const { methodologyVersion, scores } = f.production!;
+      const recorded = f.expected[methodologyVersion];
+      assert.ok(recorded, `${f.label}: no ${methodologyVersion} table to compare ${f.production!.key} with`);
+      assert.equal(Object.keys(scores).length, 31);
+      assert.deepEqual(Object.fromEntries(Object.entries(recorded).map(([code, row]) => [code, row.combinedScore])), scores,
+        `${f.label}: the recorded ${methodologyVersion} table disagrees with ${f.production!.key}`);
+    }
+  });
+
+  it('reproduce the table production stored, 31/31, wherever it was captured', {
+    skip: CLAIM.inProgress === true
+      ? `cii-next.json marks ${CLAIM.next} in progress on ${CLAIM.branch}: this tree scores ${CLAIM.next}, not the ${CII_FORMULA_VERSION} production stored (provenance is checked above); runs again once ${CLAIM.next} ships and is captured`
+      : false,
+  }, () => {
     const proofs = FIXTURES.filter((f) => f.production?.methodologyVersion === CII_FORMULA_VERSION);
     if (CII_FORMULA_VERSION === 'v14') assert.ok(proofs.length >= 2, 'v14 has two production captures');
     for (const f of proofs) {
@@ -67,6 +94,34 @@ describe('CII fixtures', () => {
       assert.equal(Object.keys(scores).length, 31);
       assert.deepEqual(scores, f.production!.scores, `${f.label}: the seam disagrees with ${f.production!.key}`);
     }
+  });
+
+  it('never overwrite a released version\'s table; only the in-progress next version is regenerated', () => {
+    const fixture = structuredClone(FIXTURES.at(-1)!);
+    const v14 = structuredClone(fixture.expected.v14!);
+    const moved = structuredClone(v14);
+    moved.US = { ...moved.US!, combinedScore: moved.US!.combinedScore + 1 };
+    const released = { next: 'v15', claimedBy: 'test', claimedAt: '2026-10-23T00:00:00Z' };
+    const inProgress = { ...released, inProgress: true, branch: 'cii-v15' };
+
+    assert.throws(() => recordExpectedTable(fixture, moved, released, 'v14'), /v14 is released/);
+    assert.equal(recordExpectedTable(fixture, v14, released, 'v14'), false, 'an identical table is a no-op');
+    assert.deepEqual(fixture.expected.v14, v14);
+
+    assert.equal(ciiScoredVersion(inProgress, 'v14'), 'v15');
+    assert.equal(recordExpectedTable(fixture, moved, inProgress, 'v14'), true);
+    assert.equal(recordExpectedTable(fixture, v14, inProgress, 'v14'), true, 'the in-progress table may be overwritten');
+    assert.deepEqual(fixture.expected.v15, v14);
+    assert.deepEqual(fixture.expected.v14, v14, 'writing the in-progress table leaves v14 untouched');
+  });
+
+  it('refuse a capture on an integration branch, whose scorer is not the released one', {
+    skip: CLAIM.inProgress === true ? false : 'no version is in progress',
+  }, () => {
+    const f = FIXTURES.at(-1)!;
+    assert.throws(() => buildCiiFixture(f.inputs, {
+      label: 'x', capturedAt: f.capturedAt, nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null,
+    }), /capture fixtures from a released checkout/);
   });
 });
 

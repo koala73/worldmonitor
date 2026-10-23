@@ -2,5 +2,7 @@
   "next": "v15",
   "claimedBy": "cii-stage-b",
   "claimedAt": "2026-10-23T10:00:00Z",
-  "note": "Version claim for the next CII formula change; see docs/methodology/cii-change-brief.md section 4. One claim at a time: a PR that changes CII scores must hold it."
+  "inProgress": true,
+  "branch": "cii-v15",
+  "note": "Version claim for the next CII formula change; see docs/methodology/cii-change-brief.md section 4. One claim at a time: a PR that changes CII scores must hold it. inProgress marks an integration branch that scores the unreleased next version while CII_FORMULA_VERSION stays at the released one; fixture tables are then recorded and checked under next (section 3). Clear it in the PR that ships next."
 }

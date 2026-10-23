@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
 
 import iso3ToIso2 from '../shared/iso3-to-iso2.json' with { type: 'json' };
-import { loadCiiFixtures, pairsOrderedAgainstBlend, type CiiFixture } from '../scripts/lib/cii-fixtures.mts';
+import { ciiScoredVersion, loadCiiFixtures, pairsOrderedAgainstBlend, type CiiFixture } from '../scripts/lib/cii-fixtures.mts';
 import {
   assessCiiInputAvailability,
   buildCiiAuxiliarySources,
@@ -21,21 +21,28 @@ import {
   type AuxiliarySources,
   type CiiScoreTableRow,
 } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
-import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
 import { TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.ts';
 
 /**
- * Properties the formula named by CII_FORMULA_VERSION is known to fail. Shrink
- * it; never grow it to pass CI. A new formula version starts with no entry,
- * so every property asserts until its PR lists, with measured values, the
- * gaps it still has.
+ * Properties each formula version is known to fail, keyed like the fixture
+ * tables (ciiScoredVersion: the in-progress next version on an integration
+ * branch, else CII_FORMULA_VERSION). Shrink it; never grow it to pass CI. A
+ * released version's entry is a record and does not change. A new formula
+ * version starts with no entry, so every property asserts until its PR lists,
+ * with measured values, the gaps it still has. v15 starts from v14's list
+ * because the cii-v15 integration branch began at the v14 formula.
  */
 const KNOWN_GAPS: Record<string, ReadonlySet<string>> = {
   v14: new Set([
     'P1', 'P2', 'P3a', 'P3b', 'P3c', 'P4', 'P5a', 'P5c', 'P7a', 'P7b', 'P8', 'P9', 'P10',
     'P11a', 'P12a', 'P12b', 'P14', 'P15b', 'P15e',
   ]),
+  v15: new Set([
+    'P1', 'P2', 'P3a', 'P3b', 'P3c', 'P4', 'P5a', 'P5c', 'P7a', 'P7b', 'P8', 'P9', 'P10',
+    'P11a', 'P12a', 'P12b', 'P14', 'P15b', 'P15e',
+  ]),
 };
+const SCORED = ciiScoredVersion();
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -600,19 +607,19 @@ const NOT_COMPUTABLE: Array<{ id: string; title: string; reason: string }> = [
   { id: 'P16', title: 'benchmark agreement ρ ≥ 0.75 vs GPI/FSI/INFORM/ACLED', reason: 'needs external benchmark tables; measure with the methodology review, not CI' },
 ];
 
-const gaps = KNOWN_GAPS[CII_FORMULA_VERSION] ?? new Set<string>();
+const gaps = KNOWN_GAPS[SCORED] ?? new Set<string>();
 const results = PROPERTIES.map((p) => ({ ...p, ...p.measure(), known: gaps.has(p.id) }));
 
-describe(`CII invariants (${CII_FORMULA_VERSION}, ${FIXTURES.length} fixtures)`, () => {
+describe(`CII invariants (${SCORED}, ${FIXTURES.length} fixtures)`, () => {
   it('runs on at least three committed fixture dates', () => {
     assert.ok(FIXTURES.length >= 3, `found ${FIXTURES.length} fixtures in tests/fixtures/cii/`);
   });
 
   for (const r of results) {
-    const name = `${r.id} ${r.title} [${CII_FORMULA_VERSION}: ${r.value}]`;
+    const name = `${r.id} ${r.title} [${SCORED}: ${r.value}]`;
     // A known gap was measured above and its value is in the name; the ratchet
     // below fails once it passes, so its body has nothing left to assert.
-    if (r.known) it(name, { todo: `known ${CII_FORMULA_VERSION} gap` }, () => {});
+    if (r.known) it(name, { todo: `known ${SCORED} gap` }, () => {});
     else it(name, () => assert.ok(r.pass, r.value));
   }
   for (const p of NOT_COMPUTABLE) it(`${p.id} ${p.title}`, { todo: `not computable in CI: ${p.reason}` });
@@ -627,7 +634,7 @@ describe(`CII invariants (${CII_FORMULA_VERSION}, ${FIXTURES.length} fixtures)`,
 
 after(() => {
   const lines = [
-    `CII invariants, ${CII_FORMULA_VERSION}, fixtures ${FIXTURES.map((f) => f.label).join(', ')}`,
+    `CII invariants, ${SCORED}, fixtures ${FIXTURES.map((f) => f.label).join(', ')}`,
     ...results.map((r) => `${r.id.padEnd(5)} ${(r.pass ? 'pass' : r.known ? 'todo' : 'FAIL').padEnd(5)} ${r.value}`),
     ...NOT_COMPUTABLE.map((p) => `${p.id.padEnd(5)} todo  not computable: ${p.reason}`),
     `pass ${results.filter((r) => r.pass).length}, todo ${results.filter((r) => !r.pass && r.known).length + NOT_COMPUTABLE.length}, fail ${results.filter((r) => !r.pass && !r.known).length}`,

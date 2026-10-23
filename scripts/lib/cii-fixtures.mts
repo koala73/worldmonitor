@@ -60,6 +60,57 @@ export function loadCiiFixtures(dir = CII_FIXTURE_DIR): CiiFixture[] {
     .filter((fixture) => fixture.schema === CII_FIXTURE_SCHEMA);
 }
 
+// ------------------------------------------------------------------------
+// Which expected table the working tree must reproduce. A released formula
+// version's table is immutable. While docs/methodology/cii-next.json marks
+// the next version in progress on an integration branch, the working tree
+// already scores that unreleased version under the released
+// CII_FORMULA_VERSION, so its table is recorded and checked under `next`,
+// which each rebase may regenerate.
+// ------------------------------------------------------------------------
+
+export const CII_VERSION_CLAIM_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../../docs/methodology/cii-next.json');
+
+export interface CiiVersionClaim {
+  next: string;
+  claimedBy: string | null;
+  claimedAt: string | null;
+  /** Set while `branch` integrates `next` before it ships; CII_FORMULA_VERSION stays at the released version meanwhile. */
+  inProgress?: boolean;
+  branch?: string;
+}
+
+export function readCiiVersionClaim(path = CII_VERSION_CLAIM_PATH): CiiVersionClaim {
+  return JSON.parse(readFileSync(path, 'utf8')) as CiiVersionClaim;
+}
+
+/** The fixture table key the working tree's scorer reproduces: the in-progress `next`, else the released version. */
+export function ciiScoredVersion(claim: CiiVersionClaim = readCiiVersionClaim(), released = CII_FORMULA_VERSION): string {
+  return claim.inProgress === true ? claim.next : released;
+}
+
+/**
+ * Records `table` as the fixture's expected table for the scored version and
+ * returns whether the fixture changed. The in-progress `next` key may be
+ * written or overwritten. A released version's key may be written once, when
+ * absent, and is never overwritten; this throws instead.
+ */
+export function recordExpectedTable(
+  fixture: CiiFixture,
+  table: Record<string, CiiFixtureExpectedRow>,
+  claim: CiiVersionClaim = readCiiVersionClaim(),
+  released = CII_FORMULA_VERSION,
+): boolean {
+  const version = ciiScoredVersion(claim, released);
+  const existing = fixture.expected[version];
+  if (existing && JSON.stringify(existing) === JSON.stringify(table)) return false;
+  if (existing && claim.inProgress !== true) {
+    throw new Error(`${fixture.label}: ${version} is released and already has a different expected table. A score change needs a new CII_FORMULA_VERSION.`);
+  }
+  fixture.expected[version] = table;
+  return true;
+}
+
 export function expectedFromTable(table: CiiScoreTable): Record<string, CiiFixtureExpectedRow> {
   const out: Record<string, CiiFixtureExpectedRow> = {};
   for (const row of [...table.rows].sort((a, b) => a.region.localeCompare(b.region))) {
@@ -323,6 +374,12 @@ export function buildCiiFixture(raw: CiiRawInputs, meta: {
   notes: string[];
   production: CiiFixture['production'];
 }): CiiFixture {
+  const claim = readCiiVersionClaim();
+  if (claim.inProgress === true) {
+    // This tree scores the unreleased next version, so its table is not the
+    // released version production stored. Capture from a released checkout.
+    throw new Error(`cii-next.json marks ${claim.next} in progress on ${claim.branch ?? 'an integration branch'}: capture fixtures from a released checkout (main), then record ${claim.next} with scripts/cii-table-diff.mts --write-expected`);
+  }
   const inputs = trimCiiRawInputs(raw);
   const options = { nowMs: meta.nowMs, iranEventsEnabled: meta.iranEventsEnabled };
   const full = computeCiiScoreTable(raw, options);

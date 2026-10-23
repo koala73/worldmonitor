@@ -504,7 +504,7 @@ describe('CII docs drift guards', () => {
 
   it('the CII version claim names a version after the current formula, and the change protocols point at the brief', () => {
     const claim = JSON.parse(readFileSync(resolve(root, 'docs/methodology/cii-next.json'), 'utf8')) as {
-      next?: unknown; claimedBy?: unknown; claimedAt?: unknown;
+      next?: unknown; claimedBy?: unknown; claimedAt?: unknown; inProgress?: unknown; branch?: unknown;
     };
     assert.match(String(claim.next), /^v\d+$/, 'cii-next.json `next` must be a version such as v15');
     const versionNumber = (v: string) => Number(v.slice(1));
@@ -514,6 +514,11 @@ describe('CII docs drift guards', () => {
     );
     assert.ok(claim.claimedBy === null || (typeof claim.claimedBy === 'string' && claim.claimedBy.length > 0));
     if (claim.claimedBy !== null) assert.ok(Number.isFinite(Date.parse(String(claim.claimedAt))), 'a claim needs an ISO claimedAt');
+    assert.ok(claim.inProgress === undefined || typeof claim.inProgress === 'boolean', 'cii-next.json `inProgress` must be a boolean');
+    if (claim.inProgress === true) {
+      assert.ok(claim.claimedBy !== null, 'an in-progress version must be claimed');
+      assert.ok(typeof claim.branch === 'string' && claim.branch.length > 0, 'an in-progress version names its integration branch');
+    }
 
     const brief = readFileSync(resolve(root, 'docs/methodology/cii-change-brief.md'), 'utf8');
     for (const path of [

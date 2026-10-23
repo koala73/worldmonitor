@@ -7,8 +7,10 @@
 //   node --import tsx scripts/cii-table-diff.mts [--base origin/main] [--write-expected]
 //
 // --write-expected records the working tree's output as the fixtures'
-// expected table for the current CII_FORMULA_VERSION. It refuses to change a
-// version's existing entry: a score change needs a new formula version.
+// expected table for the scored version (ciiScoredVersion): the in-progress
+// `next` of docs/methodology/cii-next.json, which it may overwrite, else
+// CII_FORMULA_VERSION, which it writes only when absent. A released version's
+// table is never changed: a score change needs a new formula version.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -18,11 +20,13 @@ import { fileURLToPath } from 'node:url';
 
 import {
   CII_FIXTURE_DIR,
+  ciiScoredVersion,
   distinctScoreCount,
   expectedFromTable,
   floorLiftedCount,
   loadCiiFixtures,
   pairsOrderedAgainstBlend,
+  recordExpectedTable,
   scoreCiiFixture,
   spearman,
   type CiiFixture,
@@ -70,6 +74,7 @@ function scoreWithBase(base: any, fixture: CiiFixture): Row[] {
 const fmt = (n: number | null, digits = 1) => (n == null ? '–' : n.toFixed(digits));
 const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `${n}` : '0');
 
+const scoredVersion = ciiScoredVersion();
 const fixtures = loadCiiFixtures();
 if (!fixtures.length) throw new Error(`no fixtures in ${CII_FIXTURE_DIR}`);
 const { module: base, cleanup } = await loadBaseScorer(values.base!);
@@ -79,7 +84,7 @@ const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: REPO_ROOT, e
 const out: string[] = [
   `## CII whole-table diff`,
   '',
-  `Base \`${values.base}\` (${baseSha}) vs head \`${headRef}\`${dirty ? ' plus uncommitted changes' : ''}, formula ${CII_FORMULA_VERSION}, ${fixtures.length} fixtures.`,
+  `Base \`${values.base}\` (${baseSha}) vs head \`${headRef}\`${dirty ? ' plus uncommitted changes' : ''}, formula ${CII_FORMULA_VERSION}${scoredVersion === CII_FORMULA_VERSION ? '' : ` (head scores the in-progress ${scoredVersion})`}, ${fixtures.length} fixtures.`,
   'Blended is the score before floors, rounding and the cap. A floor binds when it exceeds the rounded blend.',
 ];
 let writes = 0;
@@ -108,21 +113,13 @@ try {
     out.push(footer('Countries moved by ≥ 3', moved, '–'));
     out.push('', `Spearman ρ of final scores, base vs head: ${spearman(baseList.map((r) => r.combinedScore), rows.map((r) => r.combinedScore)).toFixed(4)}.`);
 
-    if (values['write-expected']) {
-      const expected = expectedFromTable(scoreCiiFixture(fixture));
-      const existing = fixture.expected[CII_FORMULA_VERSION];
-      if (existing && JSON.stringify(existing) !== JSON.stringify(expected)) {
-        throw new Error(`${fixture.label}: ${CII_FORMULA_VERSION} already has a different expected table. A score change needs a new CII_FORMULA_VERSION.`);
-      }
-      if (!existing) {
-        fixture.expected[CII_FORMULA_VERSION] = expected;
-        writeFileSync(join(CII_FIXTURE_DIR, `${fixture.label}.json`), `${JSON.stringify(fixture)}\n`);
-        writes++;
-      }
+    if (values['write-expected'] && recordExpectedTable(fixture, expectedFromTable(scoreCiiFixture(fixture)))) {
+      writeFileSync(join(CII_FIXTURE_DIR, `${fixture.label}.json`), `${JSON.stringify(fixture)}\n`);
+      writes++;
     }
   }
 } finally {
   cleanup();
 }
 console.log(out.join('\n'));
-if (values['write-expected']) console.error(`recorded ${CII_FORMULA_VERSION} expected tables in ${writes} fixture(s)`);
+if (values['write-expected']) console.error(`recorded ${scoredVersion} expected tables in ${writes} fixture(s)`);
