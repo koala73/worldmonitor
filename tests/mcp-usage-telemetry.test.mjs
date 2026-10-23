@@ -155,6 +155,61 @@ describe('api/mcp — usage telemetry (#4866)', () => {
     assert.equal(events[1].reason, 'unsupported_protocol_version');
   });
 
+  // MCP 2026-07-28 rollout (R14): rows split by era, the new methods are named,
+  // and each modern rejection has its own reason. Header values never land.
+  it('records the era, the modern methods and a distinct reason per modern rejection', async () => {
+    const MODERN = '2026-07-28';
+    const meta = (overrides = {}) => ({
+      'io.modelcontextprotocol/protocolVersion': MODERN,
+      'io.modelcontextprotocol/clientCapabilities': {},
+      ...overrides,
+    });
+    const body = (id, method, params = {}, metaOverrides = {}) => ({
+      jsonrpc: '2.0', id, method, params: { ...params, _meta: meta(metaOverrides) },
+    });
+    const modernHeaders = (method, extra = {}) => ({
+      'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
+      Authorization: `Bearer ${PRO_BEARER}`, 'MCP-Protocol-Version': MODERN, 'Mcp-Method': method, ...extra,
+    });
+    const run = async (flag, cases) => {
+      if (flag === null) delete process.env.MCP_PROTOCOL_2026_07_28;
+      else process.env.MCP_PROTOCOL_2026_07_28 = flag;
+      const mod = await import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
+      const { deps } = makeProDeps();
+      const events = captureAxiom();
+      const { ctx, settle } = makeCtx();
+      for (const [payload, headers] of cases) {
+        const res = await mod.mcpHandler(new Request(BASE_URL, { method: 'POST', headers, body: JSON.stringify(payload) }), deps, ctx);
+        await res.text();
+      }
+      await settle();
+      return events;
+    };
+
+    const on = await run('on', [
+      [body(1, 'tools/list'), modernHeaders('tools/list')],
+      [body(2, 'server/discover'), modernHeaders('server/discover')],
+      [body(3, 'tools/list'), modernHeaders('tools/call')],
+      [body(4, 'tools/list', {}, { 'io.modelcontextprotocol/clientCapabilities': null }), modernHeaders('tools/list')],
+      [body(5, 'tools/list', {}, { 'io.modelcontextprotocol/protocolVersion': '2027-01-01' }), modernHeaders('tools/list', { 'MCP-Protocol-Version': '2027-01-01' })],
+      [body(6, 'tools/call', { name: 'get_sources', arguments: {} }), modernHeaders('tools/call', { 'Mcp-Name': 'secret-header-value' })],
+      [{ jsonrpc: '2.0', id: 7, method: 'tools/list', params: {} }, { 'Content-Type': 'application/json', Authorization: `Bearer ${PRO_BEARER}` }],
+    ]);
+    assert.deepEqual(on.map((e) => e.mcp_era), ['modern', 'modern', 'modern', 'modern', 'modern', 'modern', 'legacy']);
+    assert.equal(on[0].reason, 'ok');
+    assert.equal(on[1].rpc_method, 'server/discover');
+    assert.equal(on[2].reason, 'header_mismatch');
+    assert.equal(on[3].reason, 'invalid_request_meta');
+    assert.equal(on[4].reason, 'unsupported_protocol_version');
+    assert.equal(on[5].reason, 'header_mismatch');
+    assert.doesNotMatch(JSON.stringify(on), /secret-header-value/);
+
+    // Flag off: an enveloped request is served as legacy.
+    const off = await run(null, [[body(8, 'tools/list'), { 'Content-Type': 'application/json', Authorization: `Bearer ${PRO_BEARER}` }]]);
+    assert.equal(off[0].mcp_era, 'legacy');
+    delete process.env.MCP_PROTOCOL_2026_07_28;
+  });
+
   it('invalid wm_ key on tools/call emits status 401 reason auth_401 (the #4859 symptom, now visible)', async () => {
     const { deps } = makeProDeps();
     const events = captureAxiom();

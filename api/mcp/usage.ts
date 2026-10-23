@@ -46,6 +46,8 @@ export type McpPhase =
   | 'malformed'
   | 'transport'  // method/SSE-transport level (405, replay 4xx)
   | 'protocol_version' // MCP-Protocol-Version header names a version this server does not serve (400)
+  | 'header_mismatch'  // 2026-07-28: a required request header is missing or disagrees with the body (-32020)
+  | 'invalid_meta'     // 2026-07-28: a required per-request _meta field is missing or malformed (-32602)
   | 'migration'  // a product-host alias was refused before auth or dispatch
   | 'ok';        // served (JSON-RPC-level errors still ride HTTP 200 → ok)
 
@@ -70,6 +72,9 @@ const SERVED_RPC_METHODS: ReadonlySet<string> = new Set([
   'resources/templates/list',
   'resources/read',
   'logging/setLevel',
+  // MCP 2026-07-28 (modern era only).
+  'server/discover',
+  'subscriptions/listen',
 ]);
 
 /** Fixed bucket for methods outside SERVED_RPC_METHODS — one cardinality slot. */
@@ -259,6 +264,10 @@ export function mcpReasonFor(phase: McpPhase, status: number): RequestReason {
       return status === 405 ? 'method_not_allowed' : 'malformed_request';
     case 'protocol_version':
       return 'unsupported_protocol_version';
+    case 'header_mismatch':
+      return 'header_mismatch';
+    case 'invalid_meta':
+      return 'invalid_request_meta';
     case 'migration':
       return 'canonical_endpoint_required';
     default:
@@ -341,6 +350,7 @@ export function emitMcpRequestEvent(
       toolResultBytes: usage.toolOutcome?.resultBytes ?? null,
       toolJmespath: usage.toolOutcome?.jmespathUsed ?? null,
       mcpProtocolVersion: usage.protocolVersion,
+      mcpEra: usage.era,
     });
     emitUsageEvents(ctx, [event]);
   } catch {

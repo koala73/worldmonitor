@@ -159,14 +159,14 @@ export function validateModernRequest(
   const meta = requestMeta(body)!;
   const isNotification = request.id === undefined;
   const id = isNotification ? null : safeJsonRpcId(request.id);
-  const reject = (phase: 'malformed' | 'protocol_version', code: number, message: string, data?: unknown) => {
+  const reject = (phase: 'invalid_meta' | 'protocol_version' | 'header_mismatch', code: number, message: string, data?: unknown) => {
     usage.phase = phase;
     return { era: 'modern' as const, response: rpcError(id, code, message, corsHeaders, data, 400) };
   };
 
   const requested = meta[PROTOCOL_VERSION_KEY];
   if (typeof requested !== 'string') {
-    return reject('malformed', -32602, `Invalid params: _meta["${PROTOCOL_VERSION_KEY}"] must be a string`);
+    return reject('invalid_meta', -32602, `Invalid params: _meta["${PROTOCOL_VERSION_KEY}"] must be a string`);
   }
   if (requested !== MCP_MODERN_PROTOCOL_VERSION) {
     // `requested` is client input: capped like the other echoed values.
@@ -176,12 +176,12 @@ export function validateModernRequest(
     });
   }
   if (!isPlainObject(meta[CLIENT_CAPABILITIES_KEY])) {
-    return reject('malformed', -32602, `Invalid params: _meta["${CLIENT_CAPABILITIES_KEY}"] must be an object`);
+    return reject('invalid_meta', -32602, `Invalid params: _meta["${CLIENT_CAPABILITIES_KEY}"] must be an object`);
   }
 
   if (!isNotification) {
     const mismatch = headerMismatch(req, request);
-    if (mismatch !== null) return reject('malformed', -32020, mismatch);
+    if (mismatch !== null) return reject('header_mismatch', -32020, mismatch);
   }
   return { era: 'modern' };
 }
