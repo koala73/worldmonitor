@@ -3,11 +3,12 @@
  * accept-business-invite hook in src/App.ts. The middleware returns a real
  * 404 for every path outside the public page allowlist (#6955), so the link
  * must target a known page, and links already sent to /settings must still
- * reach the dashboard with their query string intact.
+ * reach the dashboard with their query string intact. The same rule covers
+ * every worldmonitor.app link in a Convex-sent email.
  */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
 import middleware from '../middleware.ts';
@@ -45,6 +46,27 @@ describe('Business seat invite link', () => {
     assert.equal(browserGet(`${url.pathname}${url.search}`)?.status === 404, false);
     assert.equal(url.searchParams.has('accept-business-invite'), true);
     assert.equal(url.searchParams.has('token'), true);
+  });
+
+  it('links every Convex email CTA to a page the middleware serves', () => {
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name !== '__tests__' && entry.name !== '_generated') walk(path);
+        } else if (entry.name.endsWith('.ts')) {
+          const src = readFileSync(path, 'utf8');
+          for (const m of src.matchAll(/https:\/\/(?:www\.)?worldmonitor\.app(\/[A-Za-z0-9_\-./]*)?/g)) {
+            const page = (m[1] ?? '/').replace(/\/+$/, '') || '/';
+            if (/\.[a-z0-9]{2,5}$/i.test(page) || page.startsWith('/api/')) continue;
+            if (!isKnownPublicPagePath(page)) offenders.push(`${relative(root, path)}: ${page}`);
+          }
+        }
+      }
+    };
+    walk(resolve(root, 'convex'));
+    assert.deepEqual(offenders, [], 'these links open the not-found page');
   });
 
   it('keeps already-sent /settings invite links working', () => {
