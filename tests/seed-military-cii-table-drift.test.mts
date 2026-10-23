@@ -92,7 +92,7 @@ test('seed geoToCountry agrees with server geoToCountry on real border cases', (
     { name: 'north Hokkaido, Japan side of RU/JP overlap', lat: 44.3500, lon: 142.4600, expected: 'JP' },
     { name: 'Wakkanai, Japan side of RU/JP overlap', lat: 45.4150, lon: 141.6730, expected: 'JP' },
     { name: 'Sapporo, Japan side of RU/JP overlap', lat: 43.0618, lon: 141.3545, expected: 'JP' },
-    { name: 'Jericho (West Bank) counts toward the Israel row', lat: 31.8560, lon: 35.4590, expected: 'IL' },
+    { name: 'Jericho (West Bank) is Palestine, not a Tier-1 row', lat: 31.8560, lon: 35.4590, expected: null },
     { name: 'Daraa, Syria next to the Jordan border', lat: 32.6200, lon: 36.1000, expected: 'SY' },
     { name: 'northern Jordan, not Tier-1', lat: 32.4500, lon: 36.1000, expected: null },
     { name: 'Amman, Jordan is not Tier-1', lat: 31.9539, lon: 35.9106, expected: null },

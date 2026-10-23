@@ -156,16 +156,18 @@ describe('geoToCountry places points by real borders, worldwide', () => {
     }
   });
 
-  it('places every strike-gazetteer town in its own country (Palestinian places count toward Israel)', () => {
+  it('places every strike-gazetteer town in its own country (Palestinian places in none)', () => {
     // Known exceptions, all outside 1:50m land resolution: Quneitra sits on the
     // Golan ceasefire line the map draws on Israel's side; Kharg Island is
     // missing from the 1:50m map; the Strait of Hormuz is open water (strike
-    // events carry countryCode for exactly these).
-    const KNOWN = new Set(['Quneitra', 'Kharg Island', 'Strait of Hormuz']);
+    // events carry countryCode for exactly these). GeoNames' two Jerusalem
+    // points (31.77-31.78 N, 35.22 E) sit within the 1:50m map's ~2 km of the
+    // Green Line and fall on its West Bank side; their events carry IL.
+    const KNOWN = new Set(['Quneitra', 'Kharg Island', 'Strait of Hormuz', 'Jerusalem', 'West Jerusalem']);
     const wrong: string[] = [];
     for (const place of gazetteer.gazetteerPlaces()) {
       if (KNOWN.has(place.name)) continue;
-      const expected = place.iso2 === 'PS' ? 'IL' : place.iso2 in TIER1_COUNTRIES ? place.iso2 : null;
+      const expected = place.iso2 in TIER1_COUNTRIES ? place.iso2 : null;
       const got = geoToCountry(place.lat, place.lon);
       if (got !== expected) wrong.push(`${place.name} ${place.iso2} -> ${got}`);
     }

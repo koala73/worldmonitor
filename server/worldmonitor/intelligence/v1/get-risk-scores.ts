@@ -98,7 +98,8 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   CN: ['china', 'chinese', 'beijing', 'xi jinping', 'prc'],
   UA: ['ukraine', 'ukrainian', 'kyiv', 'zelensky', 'donbas'],
   IR: ['iran', 'iranian', 'tehran', 'khamenei', 'irgc'],
-  IL: ['israel', 'israeli', 'tel aviv', 'netanyahu', 'idf', 'gaza'],
+  // No Palestinian place: an event in Gaza or the West Bank scores Palestine, which has no row.
+  IL: ['israel', 'israeli', 'tel aviv', 'netanyahu', 'idf'],
   TW: ['taiwan', 'taiwanese', 'taipei'],
   KP: ['north korea', 'north korean', 'pyongyang', 'kim jong'],
   SA: ['saudi arabia', 'saudi', 'riyadh'],
@@ -259,7 +260,11 @@ export function strikeEventCountry(s: any): string | null {
   }
   const lat = safeNum(s?.lat || s?.latitude);
   const lon = safeNum(s?.lon || s?.longitude);
-  return geoToCountry(lat, lon) || normalizeCountryName(s?.title || s?.location || '');
+  // Coordinates on land decide, as for earthquakes: the text names the
+  // attacker as often as the place ("Israeli strike on Gaza").
+  const code = geoToCountry(lat, lon);
+  if (code || ciiIsLand(lat, lon)) return code;
+  return normalizeCountryName(s?.title || s?.location || '');
 }
 
 function safeNum(v: unknown): number {
@@ -724,8 +729,8 @@ function strikeTallyWeight(tally: unknown): number | null {
  * Weighted confirmed strikes per Tier-1 country and day from the relay's
  * 30-day tally (conflict:strike-pressure:v1), or null when it is missing,
  * malformed or older than CII_STRIKE_CONFIRMED_MAX_AGE_MS (GDELT then carries
- * every country alone). Countries map like every strike input
- * (Gaza to Israel); a non-Tier-1 country scores nowhere.
+ * every country alone). Countries map like every strike input: a non-Tier-1
+ * country or territory (PS, Gaza and the West Bank) scores nowhere.
  */
 export function confirmedStrikeDaysFromSeed(raw: unknown, nowMs: number): Record<string, StrikeDays> | null {
   if (!raw || typeof raw !== 'object') return null;

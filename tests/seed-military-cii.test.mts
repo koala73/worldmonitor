@@ -13,7 +13,8 @@ import {
 
 test('geoToCountry resolves points inside a Tier-1 border', () => {
   assert.equal(geoToCountry(39, -98), 'US');
-  assert.equal(geoToCountry(31.5, 35), 'IL');
+  assert.equal(geoToCountry(31.5, 34.8), 'IL');
+  assert.equal(geoToCountry(31.5, 35), null); // south Hebron hills: the West Bank, not Israel
   assert.equal(geoToCountry(55.7, 37.6), 'RU'); // Moscow
   assert.equal(geoToCountry(0, -150), null); // open Pacific
   assert.equal(geoToCountry(NaN, 35), null);
@@ -59,11 +60,11 @@ test('classifyVessel: military by pattern / known name / ship type, civilian rej
 test('aggregate splits own vs foreign presence and buckets AIS disruptions', () => {
   const agg = aggregate(
     // a US-operated flight physically over Israel
-    [{ operatorCountry: 'USA', lat: 31.5, lon: 35 }],
+    [{ operatorCountry: 'USA', lat: 31.5, lon: 34.8 }],
     // a US Navy vessel in US waters
     [{ mmsi: '369970123', name: '', lat: 39, lon: -98, shipType: 0 }],
     [
-      { lat: 31.5, lon: 35, severity: 'high' },
+      { lat: 31.5, lon: 34.8, severity: 'high' },
       { lat: 39, lon: -98, severity: 'elevated' },
       { lat: 39, lon: -98, severity: 'low' },
     ],

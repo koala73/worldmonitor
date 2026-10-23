@@ -129,14 +129,15 @@ describe('confirmed strike days', () => {
     assert.deepEqual(strikes.PRESSURE_SEVERITIES, ['critical', 'high', 'elevated', 'moderate']);
   });
 
-  it('weighs the relay tally by severity and moves Gaza to Israel like every strike input', () => {
+  it('weighs the relay tally by severity and scores Gaza (PS) nowhere, like every strike input', () => {
     const days = confirmedStrikeDaysFromSeed(tally({
       [daysAgo(0)]: { SA: [1, 2, 1, 2], PS: [0, 1, 0, 0], IL: [0, 0, 1, 0] },
       [daysAgo(1)]: { SA: [0, 0, 0, 1], KW: [0, 1, 0, 0] },
     }), NOW)!;
     const w = CII_STRIKE_SEVERITY_WEIGHTS;
     assert.equal(days.SA![daysAgo(0)], w.critical + 2 * w.high + w.elevated + 2 * w.moderate);
-    assert.equal(days.IL![daysAgo(0)], w.high + w.elevated);
+    assert.equal(days.IL![daysAgo(0)], w.elevated, 'the PS day stays in Palestine, which has no row');
+    assert.equal(days.PS, undefined);
     assert.equal(days.SA![daysAgo(1)], w.moderate);
     assert.equal(days.KW, undefined, 'a non-Tier-1 country scores nowhere');
   });

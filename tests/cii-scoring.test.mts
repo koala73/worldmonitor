@@ -127,7 +127,7 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // Each Stage B PR regenerates this entry, and only this one, with the command in
   // docs/methodology/cii-change-brief.md section 3, and says so in its PR body. It
   // is frozen as released when v15 ships.
-  v15: 'dbfde746fb27478461511b21a72c0d5922b40cae005c41b5ab2ed0f20e025675',
+  v15: '8abeaceaf7e3e76ae281d13b48ea73f989270da889c5d1d8c0e4748c13b2fd98',
 };
 
 // The released entries above are a record. This digest of every entry except
@@ -759,7 +759,7 @@ describe('CII signal wiring', () => {
     assert.equal(geoToCountry(44.3500, 142.4600), 'JP', 'north Hokkaido must resolve to Japan, not Russia');
     assert.equal(geoToCountry(45.4150, 141.6730), 'JP', 'Wakkanai remains Japan');
     assert.equal(geoToCountry(43.0618, 141.3545), 'JP', 'Sapporo remains Japan');
-    assert.equal(geoToCountry(31.8560, 35.4590), 'IL', 'Jericho (West Bank) counts toward the Israel row');
+    assert.equal(geoToCountry(31.8560, 35.4590), null, 'Jericho (West Bank) is Palestine, which has no Tier-1 row');
     assert.equal(geoToCountry(32.6200, 36.1000), 'SY', 'Daraa remains Syria next to the Jordan border');
     assert.equal(geoToCountry(32.4500, 36.1000), null, 'northern Jordan is not a Tier-1 CII country');
     assert.equal(geoToCountry(31.9539, 35.9106), null, 'Amman must fail closed because Jordan is not a Tier-1 CII country');
@@ -1361,10 +1361,10 @@ describe('CII scoring', () => {
   it('a strike event\'s country wins over its coordinates, and a non-Tier-1 country scores nowhere', () => {
     const baseline = computeCIIScores([], emptyAux());
     const scoreOf = (scores: ReturnType<typeof computeCIIScores>, code: string) => scoreFor(scores, code)!.combinedScore;
-    // Gaza's coordinates and its PS code both count toward the Israel row.
+    // Gaza is Palestine, which has no Tier-1 row: neither its PS code nor its coordinates reach Israel.
     const gaza = emptyAux();
     gaza.iranEvents = strikesAt({ latitude: 31.5, longitude: 34.47, countryCode: 'PS', title: 'Strike in Gaza City' });
-    assert.ok(scoreOf(computeCIIScores([], gaza), 'IL') > scoreOf(baseline, 'IL'));
+    assert.equal(scoreOf(computeCIIScores([], gaza), 'IL'), scoreOf(baseline, 'IL'));
     // Kuwait is not Tier-1: neither Iraq nor Iran (the old bounding-box answers) may absorb it.
     const kuwait = emptyAux();
     kuwait.iranEvents = strikesAt({ latitude: 29.3759, longitude: 47.9774, countryCode: 'KW', title: 'Drone strike near Kuwait City, Iraq border' });
@@ -2517,8 +2517,8 @@ describe('CII scoring', () => {
     );
     assert.match(
       methodologyDoc,
-      /`gaza`[\s\S]{0,120}IL/i,
-      'methodology doc must disclose that Gaza text fallback routes to IL.',
+      /no\s+Palestinian\s+place\s+\(`gaza`[\s\S]{0,240}reaches\s+no\s+Tier-1\s+row/i,
+      'methodology doc must state that Gaza and West Bank events score no Tier-1 row (location rule).',
     );
     // v12 strike pressure: decay, both mappings, the GDELT intensity and the
     // replaced 72h term must all be published with their constants.

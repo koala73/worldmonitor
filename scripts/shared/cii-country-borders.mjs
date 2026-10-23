@@ -86,17 +86,15 @@ const ALL_POLYGONS = [...TIER1_POLYGONS, ...OTHER_LAND_POLYGONS];
 /** The Tier-1 countries the border file covers. */
 export const CII_BORDER_COUNTRIES = Object.freeze(Object.keys(borders.countries).sort());
 const TIER1 = new Set(CII_BORDER_COUNTRIES);
-const ATTRIBUTED_TERRITORIES = borders.attributedTerritories;
 
 /**
  * The Tier-1 row an event already tagged with an ISO2 country scores to: the
- * country itself, the row a territory with no row of its own counts toward
- * (PS -> IL, as on the map), or null for any other country.
+ * country itself, or null for any other country or territory. An event scores
+ * where it happens, so PS (Gaza, the West Bank) scores no Tier-1 row.
  */
 export function ciiCountryForIso2(iso2) {
   const code = typeof iso2 === 'string' ? iso2.trim().toUpperCase() : '';
-  if (TIER1.has(code)) return code;
-  return Object.hasOwn(ATTRIBUTED_TERRITORIES, code) ? ATTRIBUTED_TERRITORIES[code] : null;
+  return TIER1.has(code) ? code : null;
 }
 
 function inRing(lon, lat, ring) {
