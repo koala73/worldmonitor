@@ -46,7 +46,7 @@ vi.mock('@/services/account-operation', () => ({
   ) => run(),
 }));
 
-const { requestOwnAccountDeletion } = await import('@/services/account-deletion');
+const { getOwnAccountDeletionStatus, requestOwnAccountDeletion } = await import('@/services/account-deletion');
 
 function pending(overrides: Partial<DeletionStatus> = {}): DeletionStatus {
   return { status: 'pending', step: 'external', userIdHash: 'hash', ...overrides };
@@ -130,5 +130,20 @@ describe('account deletion completion proof', () => {
     const assertion = expect(promise).rejects.toThrow(/DODO_TIMEOUT/);
     await vi.advanceTimersByTimeAsync(1_000);
     await assertion;
+  });
+});
+
+describe('own account deletion status', () => {
+  it('returns the server row for the signed-in account', async () => {
+    const row = pending({ status: 'failed', step: 'grants', lastError: 'ERASE_BATCH_FAILED' });
+    queryMock.mockResolvedValue(row);
+    await expect(getOwnAccountDeletionStatus()).resolves.toEqual(row);
+    expect(queryMock).toHaveBeenCalledWith('q', {});
+  });
+
+  it('does not query when signed out', async () => {
+    currentUser = null;
+    await expect(getOwnAccountDeletionStatus()).resolves.toBeNull();
+    expect(queryMock).not.toHaveBeenCalled();
   });
 });
