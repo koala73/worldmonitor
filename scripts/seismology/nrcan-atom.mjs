@@ -225,10 +225,12 @@ function defaultNrcanProxyFetch(url, { attempt, proxyAuth, maxBytes }) {
 
 // NRCan moved behind Cloudflare on 2026-10-22, which answers Railway's datacenter
 // egress with 403 and residential exits with 200. Only a 403 earns the proxy leg:
-// every exit would answer a 5xx or 404 the same way. A refused or dropped exit
-// rotates to the next sticky port; any other proxied status is final.
+// every exit would answer a 5xx or 404 the same way. A refused, dropped, or
+// temporarily down exit rotates to the next sticky port. A gateway 4xx (rejected
+// credentials, quota, policy) and any other proxied status are final.
 async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, maxBytes }) {
   let last;
+  let refused = false;
   for (let attempt = 0; attempt < NRCAN_PROXY_EXITS; attempt++) {
     let result;
     try {
@@ -237,8 +239,13 @@ async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, m
       if (error?.code === 'RESPONSE_TOO_LARGE') {
         throw Object.assign(new Error('RESPONSE_TOO_LARGE'), { nonRetryable: true });
       }
-      if (error?.nonRetryable || error?.proxyConnect) throw error;
+      if (error?.nonRetryable) throw error;
+      if (error?.proxyConnect && error.status >= 400 && error.status < 500) {
+        error.nonRetryable = true;
+        throw error;
+      }
       last = redactProxyCredentials(error?.message || error);
+      refused = false;
       continue;
     }
     if (result.ok) {
@@ -249,10 +256,19 @@ async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, m
     }
     last = `HTTP ${result.status}`;
     if (result.status !== 403) {
-      throw Object.assign(new Error(`direct HTTP ${directStatus}; proxy ${last}`), { status: result.status });
+      // httpRetryError carries nonRetryable and Retry-After for the seeder's withRetry.
+      const error = httpRetryError(result, { remainingBudgetMs: 2_000 });
+      error.message = `direct HTTP ${directStatus}; proxy ${last}`;
+      throw error;
     }
+    refused = true;
   }
-  throw Object.assign(new Error(`direct HTTP ${directStatus}; proxy ${last}`), { status: directStatus });
+  // Every exit refused: an immediate retry restarts at exit 0 and meets the same
+  // refusals. A dropped tunnel on the last exit may recover, so that stays retryable.
+  throw Object.assign(new Error(`direct HTTP ${directStatus}; proxy ${last}`), {
+    status: directStatus,
+    nonRetryable: refused,
+  });
 }
 
 export async function fetchApprovedAtom(url, {

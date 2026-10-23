@@ -548,6 +548,67 @@ describe('approved NRCan transport', () => {
     assert.equal(seenMax, 10, 'the transport is told the cap so it can stop reading');
   });
 
+  const connectError = (status) => Object.assign(new Error(`Proxy CONNECT: HTTP/1.1 ${status}`), { status, proxyConnect: true });
+
+  it('rotates past a temporarily down exit but stops on a gateway auth or policy denial', async () => {
+    const attempts = [];
+    const xml = await fetchApprovedAtom(NRCAN_ATOM_URL, {
+      fetchFn: forbidden,
+      proxyAuth: 'user:pass@gate.example:7000',
+      proxyFetchFn: async (_url, { attempt }) => {
+        attempts.push(attempt);
+        if (attempt === 0) throw connectError(502);
+        return proxyOk();
+      },
+    });
+    assert.equal(xml, EMPTY_ATOM);
+    assert.deepEqual(attempts, [0, 1]);
+
+    let calls = 0;
+    await assert.rejects(
+      fetchApprovedAtom(NRCAN_ATOM_URL, {
+        fetchFn: forbidden,
+        proxyAuth: 'user:pass@gate.example:7000',
+        proxyFetchFn: async () => { calls++; throw connectError(407); },
+      }),
+      (err) => err.proxyConnect === true && err.status === 407,
+    );
+    assert.equal(calls, 1, 'no exit fixes rejected proxy credentials');
+  });
+
+  it('keeps withRetry semantics on proxy failures', async () => {
+    const proxied = (status, headers = {}) => fetchApprovedAtom(NRCAN_ATOM_URL, {
+      fetchFn: forbidden,
+      proxyAuth: 'user:pass@gate.example:7000',
+      proxyFetchFn: async () => ({ ok: false, status, headers, buffer: Buffer.alloc(0), contentType: '' }),
+    }).catch(err => err);
+
+    const missing = await proxied(404);
+    assert.equal(missing.status, 404);
+    assert.equal(missing.nonRetryable, true, 'every exit and every retry answers a 404 the same way');
+
+    const limited = await proxied(429, { 'retry-after': '1' });
+    assert.equal(limited.status, 429);
+    assert.notEqual(limited.nonRetryable, true);
+    assert.equal(limited.retryAfterMs, 1_000, 'the retry waits as long as the server asked');
+
+    // Same 2s budget as the direct leg: a hint that outlasts it is not worth sleeping on.
+    const lockedOut = await proxied(429, { 'retry-after': '30' });
+    assert.equal(lockedOut.nonRetryable, true);
+    assert.equal(lockedOut.retryAfterMs, 30_000);
+
+    const refused = await proxied(403);
+    assert.equal(refused.nonRetryable, true, 'all three exits refused; an immediate retry restarts at exit 0');
+
+    const dropped = await fetchApprovedAtom(NRCAN_ATOM_URL, {
+      fetchFn: forbidden,
+      proxyAuth: 'user:pass@gate.example:7000',
+      proxyFetchFn: async () => { throw new Error('proxy fetch timeout'); },
+    }).catch(err => err);
+    assert.match(dropped.message, /direct HTTP 403; proxy proxy fetch timeout/);
+    assert.notEqual(dropped.nonRetryable, true, 'dropped tunnels may recover on the retry');
+  });
+
   it('wires the seeder proxy into the NRCan fetch', () => {
     const seederSrc = readFileSync(resolve(here, '../scripts/seed-earthquakes.mjs'), 'utf8');
     assert.match(seederSrc, /fetchNrcanAtom\(\{[^}]*proxyAuth: resolveProxyForConnect\(\)/);
