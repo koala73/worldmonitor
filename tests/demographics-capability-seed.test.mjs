@@ -19,6 +19,7 @@ import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
 import {
   demographicsCapabilityAfterPublish,
   fetchDemographicsCapability,
+  recordDemographicsCapabilityCompletedRun,
 } from '../scripts/seed-demographics-capability.mjs';
 import { resolveSourceOrigin } from '../scripts/source-origin.mjs';
 
@@ -375,11 +376,13 @@ describe('demographics partial-stage publication', () => {
     });
   });
 
-  it('stamps the completion marker only after a fully fresh three-stage publish', async () => {
+  it('defers complete-run attestation until freshness metadata has been published', async () => {
     const writes = [];
-    const completeResult = await demographicsCapabilityAfterPublish(previous, async (...args) => {
+    const writeMetadata = async (...args) => {
       writes.push(args);
-    }, 1_755_500_000_000);
+    };
+    const completeResult = await demographicsCapabilityAfterPublish(previous, writeMetadata, 1_755_500_000_000);
+    assert.deepEqual(writes, [], 'afterPublish must not attest completion before runSeed writes freshness metadata');
     assert.deepEqual(completeResult, {
       completionState: 'OK',
       freshnessMetaPatch: {
@@ -392,13 +395,14 @@ describe('demographics partial-stage publication', () => {
         },
       },
     });
+    await recordDemographicsCapabilityCompletedRun(previous, writeMetadata, 1_755_500_000_222);
     assert.deepEqual(writes, [[
       'demographics',
       'capability-complete',
       1,
       'demographics-capability-v1',
       30 * 24 * 60 * 60,
-      1_755_500_000_000,
+      1_755_500_000_222,
     ]]);
 
     const partialWrites = [];
@@ -408,6 +412,9 @@ describe('demographics partial-stage publication', () => {
       partialWrites.push(args);
     }, 1_755_500_000_000);
     assert.equal(partialResult.completionState, 'DEGRADED');
+    await recordDemographicsCapabilityCompletedRun(partial, async (...args) => {
+      partialWrites.push(args);
+    }, 1_755_500_000_222);
     assert.equal(partialWrites.length, 0);
   });
 });
