@@ -37,7 +37,12 @@ import {
   RESOURCE_TEMPLATE_LIST_RESPONSE,
 } from './resources/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
-import { MODERN_ONLY_METHODS, modernMethodNotFound, validateModernRequest } from './modern';
+import {
+  MODERN_ONLY_METHODS,
+  modernMethodNotFound,
+  shapeModernResponse,
+  validateModernRequest,
+} from './modern';
 import {
   buildSkillResourceRead,
   buildSkillsGetResponse,
@@ -829,6 +834,11 @@ async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, 
 // uncaught throw from the inner handler (the raw-500 class hardened in #4860)
 // still emits — with status 500 — before re-throwing, so platform 500s are
 // visible in Axiom even though they bypass every structured error path.
+//
+// MCP 2026-07-28 (KTD3): a response to a modern request is shaped here, on the
+// single return, so every early return (auth, limits, pre-checks, validation)
+// carries the modern result and error contract. A legacy response never passes
+// through the shaping step.
 export async function mcpHandler(
   req: Request,
   deps: McpHandlerDeps,
@@ -836,9 +846,17 @@ export async function mcpHandler(
 ): Promise<Response> {
   const t0 = Date.now();
   const usage = createMcpUsage();
+  const exchange: McpExchange = { method: null };
   let res: Response;
   try {
-    res = await mcpHandlerInner(req, deps, usage, ctx);
+    res = await mcpHandlerInner(req, deps, usage, exchange, ctx);
+    if (usage.era === 'modern') {
+      res = await shapeModernResponse(res, {
+        method: exchange.method,
+        onAlias: WELL_KNOWN_MCP_PATHS.has(new URL(req.url).pathname),
+        acceptsSse: clientAcceptsSse(req),
+      });
+    }
   } catch (err) {
     emitMcpRequestEvent(req, new Response(null, { status: 500 }), usage, Date.now() - t0, ctx);
     throw err;
@@ -847,10 +865,16 @@ export async function mcpHandler(
   return res;
 }
 
+// The parsed JSON-RPC method, recorded for the modern shaping step, which picks
+// cache hints by method. `usage.rpcMethod` is bounded for telemetry, so it is
+// not the source.
+type McpExchange = { method: string | null };
+
 async function mcpHandlerInner(
   req: Request,
   deps: McpHandlerDeps,
   usage: McpUsage,
+  exchange: McpExchange,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
   const corsHeaders = getMcpCorsHeaders();
@@ -1093,6 +1117,7 @@ async function mcpHandlerInner(
   }
 
   const { id, method } = body;
+  exchange.method = method;
 
   // #8403 — attribute JSON-RPC method (and registry-bounded tool name) before
   // any auth/limit return so Axiom can tell initialize / tools/list /
@@ -1288,7 +1313,8 @@ async function mcpHandlerInner(
   const sseOwner = sseReplayOwner(context);
   // A modern request has no session (R10): it ignores a client Mcp-Session-Id,
   // so its answer is never framed as a replayable SSE stream or stored for
-  // Last-Event-ID replay. It goes out as the plain JSON response.
+  // Last-Event-ID replay. It goes out as the plain JSON response, which
+  // mcpHandler shapes and, for tools/call, frames as session-free SSE.
   const respond = (response: Response): Promise<Response> => modernEra
     ? Promise.resolve(response)
     : maybeStreamJsonRpcResponse(req, sseOwner, response);
@@ -1302,13 +1328,13 @@ async function mcpHandlerInner(
 
   // MCP 2026-07-28 `server/discover`: the modern era's handshake-free view of
   // what `initialize` returns. Modern requests only; a legacy one reaches the
-  // switch's unknown-method default exactly as before.
+  // switch's unknown-method default exactly as before. serverInfo, resultType
+  // and the cache hint are stamped by shapeModernResponse in mcpHandler.
   if (modernEra && method === 'server/discover') {
     return respond(rpcOk(id, {
       supportedVersions: allSupportedProtocolVersionsNewestFirst(),
       capabilities: modernServerCapabilities(),
       instructions: MODERN_SERVER_INSTRUCTIONS,
-      _meta: { 'io.modelcontextprotocol/serverInfo': { name: SERVER_NAME, version: SERVER_VERSION } },
     }, corsHeaders));
   }
 

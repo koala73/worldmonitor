@@ -11,6 +11,7 @@ import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
+import { isDeepStrictEqual } from 'node:util';
 import { Ratelimit } from '@upstash/ratelimit';
 
 import { SERVER_INSTRUCTIONS } from '../api/mcp/constants.ts';
@@ -72,6 +73,43 @@ function sentinel(value) {
   return `=?base64?${Buffer.from(value, 'utf8').toString('base64')}?=`;
 }
 
+// The data payloads of an SSE body, in order. Throws on an `id:` line: modern
+// streams are session-free and never resumable.
+function sseEvents(text) {
+  return text.split('\n\n').filter((block) => block.trim() !== '').map((block) => {
+    const lines = block.split('\n');
+    assert.equal(lines.some((line) => line.startsWith('id:')), false, `modern SSE carries no id: lines: ${block}`);
+    return JSON.parse(lines.filter((line) => line.startsWith('data: ')).map((line) => line.slice(6)).join('\n'));
+  });
+}
+
+function parseBody(text, contentType) {
+  if (!text) return null;
+  if (/text\/event-stream/.test(contentType ?? '')) return sseEvents(text).at(-1);
+  return JSON.parse(text);
+}
+
+// Every response the handler gives a modern request while the flag is on, for
+// the suite-wide sweep at the end of the file (R13).
+const modernResponses = [];
+
+function recordingHandler(mcpHandler) {
+  return async (request, deps) => {
+    const bodyText = request.method === 'POST' ? await request.clone().text() : '';
+    const response = await mcpHandler(request, deps);
+    let modern = false;
+    try {
+      modern = process.env.MCP_PROTOCOL_2026_07_28 === 'on'
+        && Object.prototype.hasOwnProperty.call(JSON.parse(bodyText)?.params?._meta ?? {}, PV_KEY);
+    } catch { /* unparseable bodies are legacy */ }
+    if (modern) {
+      const text = await response.clone().text();
+      modernResponses.push({ method: JSON.parse(bodyText).method, status: response.status, json: parseBody(text, response.headers.get('content-type')) });
+    }
+    return response;
+  };
+}
+
 async function readIncomingBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -131,14 +169,25 @@ const LEGACY_VERSION_REJECTION = JSON.stringify({
 describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
   let server;
   let deps;
+  let handler;
 
-  async function boot(flag) {
+  async function boot(flag, depsOverrides = {}) {
     if (server) await server.close();
     if (flag === undefined) delete process.env.MCP_PROTOCOL_2026_07_28;
     else process.env.MCP_PROTOCOL_2026_07_28 = flag;
     const mod = await import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
-    deps = makeProDeps().deps;
-    server = await startMcpServer(mod.mcpHandler, deps);
+    deps = makeProDeps(depsOverrides).deps;
+    handler = recordingHandler(mod.mcpHandler);
+    server = await startMcpServer(handler, deps);
+  }
+
+  // Calls the handler in process, for tests that stub globalThis.fetch.
+  async function invoke(body, headers, path = '/mcp') {
+    const res = await handler(new Request(`https://worldmonitor.app${path}`, {
+      method: 'POST', headers, body: JSON.stringify(body),
+    }), deps);
+    const text = await res.text();
+    return { status: res.status, text, brief: text.slice(0, 300), json: parseBody(text, res.headers.get('content-type')), headers: res.headers };
   }
 
   async function post(body, headers, path = '/mcp') {
@@ -149,7 +198,13 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
     });
     const text = await res.text();
     // `brief` keeps assertion messages readable when a full catalog comes back.
-    return { status: res.status, text, brief: text.slice(0, 300), json: text ? JSON.parse(text) : null, headers: res.headers };
+    return { status: res.status, text, brief: text.slice(0, 300), json: parseBody(text, res.headers.get('content-type')), headers: res.headers };
+  }
+
+  // Status, body and every header but Date: what "byte-identical" compares.
+  function wire(res) {
+    const headers = [...res.headers].filter(([name]) => name !== 'date' && name !== 'keep-alive' && name !== 'connection');
+    return { status: res.status, text: res.text, headers };
   }
 
   async function expectError(body, headers, code, status = 400) {
@@ -385,6 +440,30 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
     });
   });
 
+  // U3 guard (KTD3): the modern shaping step never touches a legacy response.
+  // Each legacy request is answered byte-for-byte the same with the flag on and
+  // off; only Date may differ.
+  describe('legacy responses are byte-identical with the flag on and off (U3 guard)', () => {
+    const LEGACY_REQUESTS = [
+      ['credentialed tools/list', { jsonrpc: '2.0', id: 40, method: 'tools/list', params: {} }, () => baseHeaders({ Accept: 'application/json' })],
+      ['anonymous tools/list', { jsonrpc: '2.0', id: 41, method: 'tools/list', params: {} }, () => anonLegacyHeaders({ Accept: 'application/json' })],
+      ['resources/list', { jsonrpc: '2.0', id: 42, method: 'resources/list', params: {} }, () => baseHeaders({ Accept: 'application/json' })],
+      ['tools/call get_sources', { jsonrpc: '2.0', id: 43, method: 'tools/call', params: { name: 'get_sources', arguments: {} } }, () => baseHeaders({ Accept: 'application/json' })],
+      ['unknown method', { jsonrpc: '2.0', id: 44, method: 'no/such/method' }, () => baseHeaders()],
+    ];
+
+    for (const [label, body, headers] of LEGACY_REQUESTS) {
+      it(`answers a legacy ${label} identically`, async () => {
+        await boot(undefined);
+        const off = wire(await post(body, headers()));
+        await boot('on');
+        const on = wire(await post(body, headers()));
+        assert.ok(isDeepStrictEqual(on, off), `flag on differs from off:\n${JSON.stringify(on).slice(0, 400)}\n${JSON.stringify(off).slice(0, 400)}`);
+        assert.equal(/"resultType"|"ttlMs"|"cacheScope"|io\.modelcontextprotocol\/serverInfo/.test(on.text), false, on.text.slice(0, 300));
+      });
+    }
+  });
+
   // U2 — the modern method surface: server/discover, the per-era instructions,
   // the /mcp sign-in challenge for anonymous modern traffic (KTD4, KTD4a), the
   // 404 -32601 for removed and unknown methods (R8), and no sessions (R10).
@@ -542,8 +621,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
     });
 
     it('keeps the 410 migration answer for a valid modern request on a product alias host', async () => {
-      const mod = await import('../api/mcp.ts');
-      const res = await mod.mcpHandler(new Request('https://www.worldmonitor.app/mcp', {
+      const res = await handler(new Request('https://www.worldmonitor.app/mcp', {
         method: 'POST',
         headers: modernHeaders('server/discover'),
         body: JSON.stringify(modernBody(22, 'server/discover')),
@@ -552,6 +630,257 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       const json = await res.json();
       assert.equal(json.id, 22);
       assert.equal(json.error.code, -32000);
+    });
+  });
+
+  // U3 — the modern result and error contract, applied once on the way out:
+  // resultType + serverInfo on every result (R11), cache hints by method and
+  // caller (R12, KTD6), -32029/-32002 remapped by code (R13, KTD5), and the
+  // session-free SSE encoder for tools/call (KTD3a).
+  describe('flag on — modern result shaping (U3)', () => {
+    const SERVER_INFO_KEY = 'io.modelcontextprotocol/serverInfo';
+    const HOUR_MS = 3_600_000;
+    const OPERATOR_KEY = 'wm_modern_operator_fixture';
+    const JSON_ONLY = { Accept: 'application/json' };
+    let serverInfo;
+    const originalFetch = globalThis.fetch;
+
+    beforeEach(async () => {
+      process.env.WORLDMONITOR_VALID_KEYS = OPERATOR_KEY;
+      await boot('on');
+      const init = await post(legacyInitializeBody(), baseHeaders(JSON_ONLY));
+      serverInfo = init.json.result.serverInfo;
+      assert.equal(typeof serverInfo.name, 'string');
+      assert.equal(typeof serverInfo.version, 'string');
+    });
+
+    afterEach(() => { globalThis.fetch = originalFetch; });
+
+    function assertComplete(res, label) {
+      assert.equal(res.status, 200, `${label}: ${res.brief}`);
+      assert.equal(res.json.result.resultType, 'complete', label);
+      assert.deepEqual(res.json.result._meta?.[SERVER_INFO_KEY], serverInfo, label);
+    }
+
+    function assertCacheHint(res, ttlMs, cacheScope, label) {
+      assert.equal(res.json.result.ttlMs, ttlMs, label);
+      assert.equal(res.json.result.cacheScope, cacheScope, label);
+    }
+
+    function assertNoCacheHint(res, label) {
+      assert.equal('ttlMs' in res.json.result, false, label);
+      assert.equal('cacheScope' in res.json.result, false, label);
+    }
+
+    it('stamps tools/list with resultType, serverInfo and a public one-hour cache hint', async () => {
+      const res = await post(modernBody(50, 'tools/list'), modernHeaders('tools/list'));
+      assertComplete(res, 'tools/list');
+      assertCacheHint(res, HOUR_MS, 'public', 'tools/list');
+      assert.ok(res.json.result.tools.length > 0);
+    });
+
+    it('marks the caller-independent catalogs public for one hour', async () => {
+      for (const method of ['prompts/list', 'resources/templates/list']) {
+        const res = await post(modernBody(51, method), modernHeaders(method));
+        assertComplete(res, method);
+        assertCacheHint(res, HOUR_MS, 'public', method);
+      }
+    });
+
+    it('re-serializes the body so Content-Length equals its byte length and it parses completely', async () => {
+      for (const method of ['tools/list', 'server/discover']) {
+        const res = await post(modernBody(52, method), modernHeaders(method, JSON_ONLY));
+        assert.equal(res.status, 200, res.brief);
+        assert.equal(res.headers.get('content-length'), String(Buffer.byteLength(res.text, 'utf8')), method);
+        assert.equal(JSON.parse(res.text).result.resultType, 'complete', method);
+        assert.equal(res.headers.get('cache-control'), 'no-store', method);
+      }
+    });
+
+    it('marks resources/list private with TTL 0 for an anonymous caller and for a Pro caller', async () => {
+      const pro = await post(modernBody(53, 'resources/list'), modernHeaders('resources/list'));
+      assertComplete(pro, 'pro resources/list');
+      assertCacheHint(pro, 0, 'private', 'pro resources/list');
+      assert.ok(pro.json.result.resources.some((r) => r.uri === 'worldmonitor://account/mcp-allowance'), 'the Pro list carries account resources');
+
+      const anon = await post(modernBody(54, 'resources/list'), anonModernHeaders('resources/list'), '/.well-known/mcp');
+      assertComplete(anon, 'anonymous resources/list');
+      assertCacheHint(anon, 0, 'private', 'anonymous resources/list');
+      assert.equal(anon.json.result.resources.some((r) => r.uri === 'worldmonitor://account/mcp-allowance'), false);
+    });
+
+    it('marks resources/read private with TTL 0 for data, account and ui:// reads', async () => {
+      for (const [uri, headers] of [
+        ['worldmonitor://seed-meta/freshness', (h) => modernHeaders('resources/read', h)],
+        ['worldmonitor://account/mcp-allowance', (h) => modernHeaders('resources/read', h)],
+        [UI_URI, (h) => anonModernHeaders('resources/read', h)],
+      ]) {
+        const res = await post(modernBody(55, 'resources/read', { uri }), headers({ 'Mcp-Name': uri }));
+        assertComplete(res, uri);
+        assertCacheHint(res, 0, 'private', uri);
+        assert.ok(res.json.result.contents.length > 0, uri);
+      }
+    });
+
+    it('marks server/discover private on /mcp and public on /.well-known/mcp, one hour each', async () => {
+      const transport = await post(modernBody(56, 'server/discover'), modernHeaders('server/discover'));
+      assertComplete(transport, 'discover on /mcp');
+      assertCacheHint(transport, HOUR_MS, 'private', 'discover on /mcp');
+
+      for (const path of ['/.well-known/mcp', '/.well-known/mcp.json']) {
+        const alias = await post(modernBody(57, 'server/discover'), anonModernHeaders('server/discover'), path);
+        assertComplete(alias, `discover on ${path}`);
+        assertCacheHint(alias, HOUR_MS, 'public', `discover on ${path}`);
+      }
+    });
+
+    it('stamps a successful tools/call and the uncached methods without cache hints', async () => {
+      const call = await post(
+        modernBody(58, 'tools/call', { name: 'get_sources', arguments: {} }),
+        modernHeaders('tools/call', { 'Mcp-Name': 'get_sources', ...JSON_ONLY }),
+      );
+      assertComplete(call, 'tools/call');
+      assertNoCacheHint(call, 'tools/call');
+      assert.match(call.headers.get('content-type') ?? '', /application\/json/);
+
+      const prompt = await post(modernBody(59, 'prompts/list'), modernHeaders('prompts/list'));
+      const { name } = prompt.json.result.prompts.find((entry) => !(entry.arguments ?? []).some((arg) => arg.required));
+      for (const [method, params, extra] of [
+        ['skills/list', {}, {}],
+        ['prompts/get', { name }, { 'Mcp-Name': name }],
+      ]) {
+        const res = await post(modernBody(60, method, params), modernHeaders(method, extra));
+        assertComplete(res, method);
+        assertNoCacheHint(res, method);
+      }
+    });
+
+    it('streams a tools/call as session-free SSE when Accept allows it, final event shaped', async () => {
+      const { __sseReplayStoreForTest: store } = await import('../api/mcp/handler.ts');
+      store.reset();
+      const res = await post(
+        modernBody(61, 'tools/call', { name: 'get_sources', arguments: {} }),
+        modernHeaders('tools/call', { 'Mcp-Name': 'get_sources', 'Mcp-Session-Id': 'client-chosen-session' }),
+      );
+      assert.equal(res.status, 200, res.brief);
+      assert.match(res.headers.get('content-type') ?? '', /^text\/event-stream/);
+      assert.equal(res.headers.get('x-accel-buffering'), 'no');
+      assert.equal(res.headers.get('mcp-session-id'), null);
+      assert.equal(res.headers.get('content-length'), null);
+      assert.doesNotMatch(res.text, /^id:/m);
+      const events = sseEvents(res.text);
+      assert.equal(events.length, 1);
+      assert.equal(events[0].id, 61);
+      assert.equal(events[0].result.resultType, 'complete');
+      assert.deepEqual(events[0].result._meta[SERVER_INFO_KEY], serverInfo);
+      assert.equal(store.totalBytes(), 0, 'a modern stream is never stored for replay');
+    });
+
+    it('keeps non-tools/call modern methods on plain JSON even when Accept allows SSE', async () => {
+      const res = await post(modernBody(62, 'tools/list'), modernHeaders('tools/list'));
+      assert.match(res.headers.get('content-type') ?? '', /application\/json/);
+    });
+
+    it('merges serverInfo into an existing result _meta without dropping worldmonitor/usage', async () => {
+      const { shapeModernResponse } = await import('../api/mcp/modern.ts');
+      const usage = { remaining: 3, limit: 5 };
+      const original = new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: 63, result: { content: [], _meta: { 'worldmonitor/usage': usage } } }),
+        { status: 200, headers: { 'Content-Type': 'application/json', 'Content-Length': '1', 'X-Custom': 'kept' } },
+      );
+      const shaped = await shapeModernResponse(original, { method: 'tools/call', onAlias: false, acceptsSse: false });
+      const text = await shaped.text();
+      const json = JSON.parse(text);
+      assert.deepEqual(json.result._meta, { 'worldmonitor/usage': usage, [SERVER_INFO_KEY]: serverInfo });
+      assert.equal(json.result.resultType, 'complete');
+      assert.equal(shaped.headers.get('content-length'), String(Buffer.byteLength(text)));
+      assert.equal(shaped.headers.get('x-custom'), 'kept');
+    });
+
+    it('passes empty, 202 and non-JSON bodies through untouched', async () => {
+      const { shapeModernResponse } = await import('../api/mcp/modern.ts');
+      const options = { method: 'tools/call', onAlias: false, acceptsSse: true };
+      for (const original of [
+        new Response(null, { status: 202, headers: { 'X-A': '1' } }),
+        new Response(null, { status: 429, headers: { 'Retry-After': '9' } }),
+        new Response('Forbidden origin', { status: 403, headers: { 'Content-Type': 'text/plain' } }),
+        new Response('not json', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      ]) {
+        const status = original.status;
+        const headers = [...original.headers];
+        const shaped = await shapeModernResponse(original, options);
+        assert.equal(shaped.status, status);
+        assert.deepEqual([...shaped.headers], headers);
+      }
+      const garbled = await shapeModernResponse(new Response('not json', { status: 200, headers: { 'Content-Type': 'application/json' } }), options);
+      assert.equal(await garbled.text(), 'not json');
+    });
+
+    // The three -32002 sources, each answered for a legacy request and the
+    // same modern request. Only the code may differ (KTD5).
+    async function compareDenial(label, method, params, extraHeaders, expectStatus) {
+      // A null header value drops that header (the operator key replaces the bearer).
+      const finish = (headers) => Object.fromEntries(Object.entries(headers).filter(([, value]) => value !== null));
+      const legacyBody = { jsonrpc: '2.0', id: 70, method, params };
+      const legacy = await invoke(legacyBody, finish({ ...baseHeaders(JSON_ONLY), ...extraHeaders }));
+      const modern = await invoke(modernBody(70, method, params), finish(modernHeaders(method, { 'Mcp-Name': params.name, ...JSON_ONLY, ...extraHeaders })));
+      assert.equal(legacy.status, expectStatus, `${label} legacy: ${legacy.brief}`);
+      assert.equal(legacy.json.error.code, -32002, `${label} legacy: ${legacy.brief}`);
+      assert.equal(modern.status, expectStatus, `${label} modern: ${modern.brief}`);
+      assert.equal(modern.json.error.code, -31002, `${label} modern: ${modern.brief}`);
+      assert.equal(modern.json.error.message, legacy.json.error.message, label);
+      assert.deepEqual(modern.json.error.data, legacy.json.error.data, label);
+      assert.deepEqual(wire(modern).headers, wire(legacy).headers, label);
+      return { legacy, modern };
+    }
+
+    it('remaps a confirmed-lapse -32002 to -31002 with the same 403, headers and data', async () => {
+      globalThis.fetch = async (url, init) => {
+        if (String(url).includes('/api/aviation/v1/track-aircraft')) {
+          return new Response(JSON.stringify({ error: 'Subscription lapsed', code: 'subscription_lapsed' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Billing-Verification': 'subscription_lapsed' },
+          });
+        }
+        return originalFetch(url, init);
+      };
+      const { modern } = await compareDenial(
+        'lapse', 'tools/call', { name: 'get_airspace', arguments: { country_code: 'DE', type: 'civilian' } },
+        { Authorization: null, 'X-WorldMonitor-Key': OPERATOR_KEY }, 403,
+      );
+      assert.equal(modern.headers.get('x-billing-verification'), 'subscription_lapsed');
+      assert.equal(modern.json.error.data.code, 'subscription_lapsed');
+    });
+
+    it('remaps an upgrade-required -32002 to -31002 with the same 403 and data', async () => {
+      await boot('on', {
+        getEntitlements: async () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: true }, validUntil: Date.now() - 1000 }),
+      });
+      const { modern } = await compareDenial('upgrade-required', 'tools/call', { name: 'get_market_data', arguments: {} }, {}, 403);
+      assert.equal(modern.json.error.data.reason, 'upgrade-required');
+    });
+
+    it('remaps a daily-quota -32029 to -31029 with the same 429, Retry-After and data', async () => {
+      await boot('on', { pipelineOpts: { initialCount: 1_000_000 } });
+      const params = { name: 'get_market_data', arguments: {} };
+      const legacy = await invoke({ jsonrpc: '2.0', id: 71, method: 'tools/call', params }, baseHeaders(JSON_ONLY));
+      const modern = await invoke(modernBody(71, 'tools/call', params), modernHeaders('tools/call', { 'Mcp-Name': params.name, ...JSON_ONLY }));
+      for (const [label, res, code] of [['legacy', legacy, -32029], ['modern', modern, -31029]]) {
+        assert.equal(res.status, 429, `${label}: ${res.brief}`);
+        assert.equal(res.json.error.code, code, `${label}: ${res.brief}`);
+        assert.ok(res.headers.get('retry-after'), label);
+      }
+      assert.equal(modern.json.error.message, legacy.json.error.message);
+      assert.deepEqual(modern.json.error.data, legacy.json.error.data);
+      assert.deepEqual(wire(modern).headers, wire(legacy).headers);
+    });
+
+    it('remaps a user-bound-credential -32002 to -31002 with the same status', async () => {
+      const { modern } = await compareDenial(
+        'user-bound', 'tools/call', { name: 'get_mcp_allowance', arguments: {} },
+        { Authorization: null, 'X-WorldMonitor-Key': OPERATOR_KEY }, 200,
+      );
+      assert.match(modern.json.error.message, /user-bound credential/);
     });
   });
 
@@ -592,9 +921,50 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
     it('meters an anonymous server/discover on /.well-known/mcp through the anonymous discovery limiter', async () => {
       deniedKeyPrefixes = ['rl:mcp:anon:'];
       const res = await post(modernBody(31, 'server/discover'), anonModernHeaders('server/discover'), '/.well-known/mcp');
-      assert.equal(res.json.error?.code, -32029, res.brief);
+      assert.equal(res.json.error?.code, -31029, res.brief);
       assert.equal(res.json.id, 31);
       assert.ok(limiterKeys.some((key) => key.startsWith('rl:mcp:anon:')), JSON.stringify(limiterKeys));
+    });
+
+    // U3 (KTD5): the anonymous limiter answers -32029 at HTTP 200; the modern
+    // form keeps the status and headers and changes only the code.
+    it('remaps the anonymous discovery limiter -32029 to -31029, legacy unchanged', async () => {
+      deniedKeyPrefixes = ['rl:mcp:anon:'];
+      const legacy = await post({ jsonrpc: '2.0', id: 33, method: 'tools/list', params: {} }, anonLegacyHeaders({ Accept: 'application/json' }), '/.well-known/mcp');
+      const modern = await post(modernBody(33, 'tools/list'), anonModernHeaders('tools/list'), '/.well-known/mcp');
+      assert.equal(legacy.json.error?.code, -32029, legacy.brief);
+      assert.equal(modern.json.error?.code, -31029, modern.brief);
+      assert.equal(modern.status, legacy.status);
+      assert.equal(modern.json.error.message, legacy.json.error.message);
+      assert.deepEqual(wire(modern).headers, wire(legacy).headers);
+    });
+
+    it('remaps the per-minute limiter -32029 to -31029 with the same status and X-RateLimit headers', async () => {
+      deniedKeyPrefixes = ['rl:mcp:pro-min:'];
+      const legacy = await post({ jsonrpc: '2.0', id: 34, method: 'tools/list', params: {} }, baseHeaders({ Accept: 'application/json' }));
+      const modern = await post(modernBody(34, 'tools/list'), modernHeaders('tools/list'));
+      assert.equal(legacy.json.error?.code, -32029, legacy.brief);
+      assert.equal(modern.json.error?.code, -31029, modern.brief);
+      assert.equal(modern.status, legacy.status);
+      assert.equal(modern.headers.get('x-ratelimit-remaining'), '0');
+      assert.equal(modern.json.error.message, legacy.json.error.message);
+      assert.deepEqual(wire(modern).headers, wire(legacy).headers);
+    });
+
+    it('answers a legacy rate-limited request byte-identically with the flag on and off (U3 guard)', async () => {
+      deniedKeyPrefixes = ['rl:mcp:pro-min:', 'rl:mcp:anon:'];
+      const requests = [
+        [{ jsonrpc: '2.0', id: 35, method: 'tools/list', params: {} }, baseHeaders({ Accept: 'application/json' }), '/mcp'],
+        [{ jsonrpc: '2.0', id: 36, method: 'tools/list', params: {} }, anonLegacyHeaders({ Accept: 'application/json' }), '/.well-known/mcp'],
+      ];
+      const on = [];
+      for (const [body, headers, path] of requests) on.push(wire(await post(body, headers, path)));
+      await boot(undefined);
+      for (const [index, [body, headers, path]] of requests.entries()) {
+        const off = wire(await post(body, headers, path));
+        assert.match(off.text, /-32029/);
+        assert.deepEqual(on[index], off);
+      }
     });
 
     it('serves an anonymous modern get_sources call on /mcp under the free-tier ceiling', async () => {
@@ -669,6 +1039,29 @@ describe('api/mcp/modern.ts — era recorded on the usage object', () => {
       { params: { protocolVersion: MODERN } },
     ]) {
       assert.equal(modern.isModernEnvelope(body), false, JSON.stringify(body));
+    }
+  });
+});
+
+// R13 sweep: no modern response produced anywhere in this file carries -32002,
+// or a code from the spec's reserved -32020..-32099 range other than the two it
+// defines (-32020 HeaderMismatch, -32022 UnsupportedProtocolVersion). Runs last
+// so the recording handler has seen every modern request above.
+describe('api/mcp.ts — modern error codes across the whole suite (U3)', () => {
+  it('never answers a modern request with -32002 or an undefined reserved-range code', () => {
+    assert.ok(modernResponses.length >= 50, `the sweep saw only ${modernResponses.length} modern responses`);
+    const codes = new Set();
+    for (const { method, status, json } of modernResponses) {
+      const code = json?.error?.code;
+      if (typeof code !== 'number') continue;
+      codes.add(code);
+      assert.notEqual(code, -32002, `${method} (${status}) answered -32002`);
+      if (code <= -32020 && code >= -32099) {
+        assert.ok(code === -32020 || code === -32022, `${method} (${status}) answered reserved code ${code}`);
+      }
+    }
+    for (const expected of [-31029, -31002, -32020, -32022]) {
+      assert.ok(codes.has(expected), `the sweep must observe ${expected}; saw ${[...codes].join(', ')}`);
     }
   });
 });

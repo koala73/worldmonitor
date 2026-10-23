@@ -253,6 +253,9 @@ const RENDER = `
         [-32602, "Panel request only covers bounded forecast lists, original cases and latest theater summaries."],
         [-32029, "This panel reached its read budget. Refresh to start another request."],
         [-32029, "Too many requests"],
+        // MCP 2026-07-28 carries the same budget denials as -31029.
+        [-31029, "This panel reached its read budget. Refresh to start another request."],
+        [-31029, "Too many requests"],
         [-32603, "Service temporarily unavailable, retry in a moment."],
         [-32603, "Service temporarily unavailable"],
         [-32603, "Internal error: data fetch failed"],
