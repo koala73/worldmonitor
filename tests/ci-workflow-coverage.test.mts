@@ -1114,6 +1114,35 @@ describe('CI workflow coverage', () => {
     }
   });
 
+  // The Redis-backed suites self-skip without the binaries, so the install must
+  // fail loudly, and it must not wait on the Ubuntu mirror: a slow mirror put
+  // 24-58s on the slowest unit shard in 9 of 12 runs (run 39922207309: 29s for
+  // 1.5 MB at 51 kB/s).
+  it('installs Redis in every unit shard from a package cache with dpkg, and fails without the binaries', () => {
+    const unitSteps = YAML.parse(testWorkflow).jobs['unit-shards'].steps
+      .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step]);
+    const redis = unitSteps.find((step: { uses?: string }) => step.uses === './.github/actions/install-redis');
+    assert.ok(redis, 'unit shards must install Redis through the cached action');
+    assert.equal(redis['continue-on-error'], undefined, 'a failed Redis install must fail the shard');
+    assert.equal(unitSteps.some((step: { run?: string }) => /apt-get install[^\n]*redis-server/.test(step.run ?? '')), false,
+      'unit shards must not install Redis from the mirror directly');
+
+    const steps = YAML.parse(read(resolve(root, '.github/actions/install-redis/action.yml'))).runs.steps;
+    const restore = steps.find((step: { id?: string }) => step.id === 'redis-debs');
+    assert.match(restore.uses, /^actions\/cache\/restore@[a-f0-9]{40}$/);
+    const download = steps.find((step: { name?: string }) => step.name === 'Download Redis packages on cache miss');
+    assert.equal(download.if, "steps.redis-debs.outputs.cache-hit != 'true'");
+    assert.match(download.run, /--download-only/);
+    const install = steps.find((step: { name?: string }) => step.name === 'Install Redis packages');
+    assert.match(install.run, /sudo dpkg -i "\$\{debs\[@\]\}"/);
+    assert.doesNotMatch(install.run, /apt-get install[^\n]*\.deb/, 'apt-get must not install the cached .deb paths');
+    assert.match(install.run, /redis-server --version/);
+    assert.match(install.run, /redis-cli --version/);
+    assert.equal(install['continue-on-error'], undefined);
+    const save = steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/cache/save@'));
+    assert.equal(save.if, download.if);
+  });
+
   it('installs the locale font subset from a package cache in every browser job', () => {
     const action = YAML.parse(read(resolve(root, '.github/actions/install-browser-fonts/action.yml')));
     const steps = action.runs.steps;
