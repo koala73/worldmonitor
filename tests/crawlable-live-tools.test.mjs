@@ -258,7 +258,10 @@ describe('crawlable live intelligence view models', () => {
     assert.doesNotMatch(document.body.textContent, /\b0 a day\b|\b0% of\b/);
   });
 
-  it('headlines the IMF PortWatch daily count and never publishes the relay AIS count as transits (Hormuz 2026-10-22)', async () => {
+  it('headlines the IMF PortWatch daily count and never publishes the relay AIS count as transits (Hormuz 2026-10-22)', async (t) => {
+    // The page prints its reading time, and /\b38\b/ below would match a
+    // clock minute of :38. Pin the clock so the check sees only data.
+    t.mock.timers.enable({ apis: ['Date'], now: NOW });
     const view = chokepointStatusViewModel(HORMUZ_PORTWATCH_PAYLOAD, 'hormuz_strait', NOW);
     assert.equal(view.officialLatestDate, '2026-10-18');
     assert.equal(view.officialLatestTotal, 4);
@@ -973,7 +976,10 @@ describe('crawlable live intelligence view models', () => {
     assert.doesNotMatch(JSON.stringify(view), /\b9\b|\b40\b/);
   });
 
-  it('withholds the official count in prose without blaming a feed, and recovers on the next reading', async () => {
+  it('withholds the official count in prose without blaming a feed, and recovers on the next reading', async (t) => {
+    // The page prints its reading time, and /\b38\b/ below would match a
+    // clock minute of :38. Pin the clock so the check sees only data.
+    t.mock.timers.enable({ apis: ['Date'], now: NOW });
     const window = new Window({ url: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' });
     window.document.body.innerHTML = `<section data-live-chokepoint data-chokepoint-id="hormuz_strait"
       data-chokepoint-name="Strait of Hormuz"><p data-chokepoint-open-status></p>
