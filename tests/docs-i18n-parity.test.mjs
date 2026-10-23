@@ -12,6 +12,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { parse as parseYaml } from 'yaml';
 
 const ROOT = new URL('../', import.meta.url).pathname;
 const DOCS_JSON = join(ROOT, 'docs', 'docs.json');
@@ -26,12 +27,10 @@ function readZhDoc(page) {
   return readFileSync(join(DOCS_DIR, 'zh', `${page}.mdx`), 'utf8');
 }
 
-/** Leading YAML frontmatter `key: "value"` pairs; empty when the block is absent. */
+/** Parsed leading YAML frontmatter; empty when the block is absent. */
 function frontmatterFields(content) {
-  const block = content.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
-  return Object.fromEntries(
-    [...block.matchAll(/^(\w+):\s*"?(.*?)"?\s*$/gm)].map(([, key, value]) => [key, value]),
-  );
+  const block = content.match(/^---\n([\s\S]*?\n)?---\n/)?.[1] ?? '';
+  return parseYaml(block) ?? {};
 }
 
 function sectionBetween(content, startHeading, endHeading) {
@@ -122,18 +121,26 @@ describe('docs i18n parity', () => {
       for (const [label, path] of [[page, join(DOCS_DIR, page + '.mdx')], [`zh/${page}`, zhPath]]) {
         if (!existsSync(path)) continue; // covered by existence test above
         const fields = frontmatterFields(readFileSync(path, 'utf8'));
-        assert.ok(fields.title, `${label}.mdx has no frontmatter title`);
-        assert.ok(fields.description, `${label}.mdx has no frontmatter description`);
+        for (const key of ['title', 'description']) {
+          const value = fields[key];
+          assert.ok(typeof value === 'string' && value.trim(), `${label}.mdx has no frontmatter ${key}`);
+        }
       }
     });
 
     it(`zh/ title is translated (has Chinese) for ${page}`, () => {
       const zhPath = join(DOCS_DIR, 'zh', page + '.mdx');
       if (!existsSync(zhPath)) return; // covered by existence test above
-      const { title = '' } = frontmatterFields(readFileSync(zhPath, 'utf8'));
-      assert.match(title, /[一-鿿]/, `zh/${page}.mdx title "${title}" has no Chinese characters`);
+      const title = String(frontmatterFields(readFileSync(zhPath, 'utf8')).title ?? '');
+      assert.match(title, /[\u4e00-\u9fff]/, `zh/${page}.mdx title "${title}" has no Chinese characters`);
     });
   }
+
+  it('frontmatter parsing reads block scalars as values, not their markers', () => {
+    assert.equal(frontmatterFields('---\ntitle: "T"\ndescription: >-\n  Folded text.\n---\n').description, 'Folded text.');
+    assert.ok(!frontmatterFields('---\ntitle: "T"\ndescription: >-\n---\n').description);
+    assert.deepEqual(frontmatterFields('\n## No frontmatter\n'), {});
+  });
 
   it('every zh nav page path starts with zh/', () => {
     const zhPages = collectPagePaths(zhLang);
