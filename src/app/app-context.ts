@@ -140,6 +140,8 @@ export interface AppContext {
   clustersSettled: boolean;
   resolvedLocation: 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
   activeChokepoint: string | null;
+  /** A ?country deep link whose brief has not opened yet; the URL keeps it meanwhile. */
+  pendingCountryBrief: { code: string; expanded: boolean } | null;
 
   initialUrlState: import('@/utils').ParsedMapUrlState | null;
   readonly PANEL_ORDER_KEY: string;

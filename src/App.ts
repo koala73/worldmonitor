@@ -1589,6 +1589,9 @@ export class App {
       clustersSettled: false,
       resolvedLocation: 'global',
       activeChokepoint: initialUrlState.chokepoint ?? null,
+      pendingCountryBrief: initialUrlState.country
+        ? { code: initialUrlState.country, expanded: initialUrlState.expanded === true }
+        : null,
       initialUrlState,
       PANEL_ORDER_KEY,
       PANEL_SPANS_KEY,
@@ -3014,7 +3017,8 @@ export class App {
       document.documentElement.dataset.wmEventHandlersReady = 'true';
     }
 
-    this.state.countryBriefPage?.onStateChange?.(() => {
+    this.countryIntel.onBriefStateChange(() => {
+      this.state.pendingCountryBrief = null;
       this.eventHandlers.syncUrlState();
     });
 
@@ -3868,6 +3872,8 @@ export class App {
         }).catch((err) => {
           console.error('[CountryBrief] Failed to open country brief:', err);
           this.state.map?.setRenderPaused(false);
+          this.state.pendingCountryBrief = null;
+          this.eventHandlers.syncUrlState();
           showToast('Country brief failed to open. Please try again.');
         });
         this.eventHandlers.syncUrlState();

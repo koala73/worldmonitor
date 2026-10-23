@@ -317,6 +317,37 @@ test('country brief recovers from a failed RPC when the user reloads', async ({ 
   await screenshot(page, testInfo, 'rpc-recovered');
 });
 
+// The brief panel is a lazy chunk (#4382). When it arrived after the deep
+// link's single debounced URL write, that write ran with no visible brief and
+// dropped ?country, and nothing rewrote it: the panel's state listener was
+// registered before the panel existed. Slow CI runners hit this as a flake.
+test('a country deep link keeps ?country when the brief chunk loads slowly, and closing drops it', async ({ page, countryBrief }) => {
+  void countryBrief;
+  // A later map move can rewrite the URL with the country once the brief is
+  // visible, which hides the drop; so check every write, not the final URL.
+  await page.addInitScript(() => {
+    const writes: string[] = [];
+    (window as unknown as { __wmUrlWrites: string[] }).__wmUrlWrites = writes;
+    const replaceState = history.replaceState.bind(history);
+    history.replaceState = (state, unused, url) => {
+      writes.push(String(url ?? location.href));
+      replaceState(state, unused, url);
+    };
+  });
+  await page.route('**/src/components/CountryDeepDivePanel.ts*', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await route.continue();
+  });
+  await page.goto('/dashboard?country=UA');
+  await expectCountry(page);
+  const writes = await page.evaluate(() => (window as unknown as { __wmUrlWrites: string[] }).__wmUrlWrites);
+  expect(writes.length).toBeGreaterThan(0);
+  for (const url of writes) expect(new URL(url, page.url()).searchParams.get('country'), url).toBe('UA');
+  await page.locator('#deep-dive-close').click();
+  await expect(page.locator('#country-deep-dive-panel')).toHaveAttribute('aria-hidden', 'true');
+  await expect.poll(() => new URL(page.url()).searchParams.get('country')).toBeNull();
+});
+
 test('US brief keeps late evidence, metric design and report data connected', async ({ page, countryBrief }, testInfo) => {
   countryBrief.response = { markets: [], dataAvailable: true, fetchedAt: 0 };
   const data = await installCountryBriefDesignData(page);
