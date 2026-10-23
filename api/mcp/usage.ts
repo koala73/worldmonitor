@@ -112,6 +112,23 @@ export interface McpUsage {
   requestedTool: string | null;
   /** Set by recordToolCall when a tool ran; null otherwise (#9431). */
   toolOutcome: McpToolOutcome | null;
+  /** MCP-Protocol-Version the client sent: a known revision, 'other', or null when absent. */
+  protocolVersion: string | null;
+}
+
+// Every published MCP revision. The header is client-chosen, so anything else
+// collapses to 'other' to keep the Axiom dimension bounded (#8403). Add new
+// revisions here when the spec publishes them.
+const KNOWN_PROTOCOL_VERSIONS: ReadonlySet<string> = new Set([
+  '2024-11-05',
+  '2025-03-26',
+  '2025-06-18',
+  '2025-11-25',
+  '2026-07-28',
+]);
+
+export function setUsageProtocolVersion(usage: McpUsage, header: string | null): void {
+  usage.protocolVersion = header === null ? null : KNOWN_PROTOCOL_VERSIONS.has(header) ? header : 'other';
 }
 
 export function createMcpUsage(): McpUsage {
@@ -125,6 +142,7 @@ export function createMcpUsage(): McpUsage {
     toolName: null,
     requestedTool: null,
     toolOutcome: null,
+    protocolVersion: null,
   };
 }
 
@@ -316,6 +334,7 @@ export function emitMcpRequestEvent(
       toolErrorKind: usage.toolOutcome?.errorKind ?? null,
       toolResultBytes: usage.toolOutcome?.resultBytes ?? null,
       toolJmespath: usage.toolOutcome?.jmespathUsed ?? null,
+      mcpProtocolVersion: usage.protocolVersion,
     });
     emitUsageEvents(ctx, [event]);
   } catch {

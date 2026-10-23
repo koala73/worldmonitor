@@ -46,7 +46,14 @@ import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from 
 import { emitTelemetry, principalIdForLog } from './telemetry';
 import { classifyAgentClientHints, sanitizeClientName } from '../../shared/agent-client-source';
 import { hashKeySync } from '../../server/_shared/usage-identity';
-import { createMcpUsage, emitMcpRequestEvent, setUsageContext, setUsageRpc, type McpUsage } from './usage';
+import {
+  createMcpUsage,
+  emitMcpRequestEvent,
+  setUsageContext,
+  setUsageProtocolVersion,
+  setUsageRpc,
+  type McpUsage,
+} from './usage';
 import { safeJsonRpcId, utf8ByteLength } from './utils';
 import {
   isMcpAliasRequest,
@@ -808,6 +815,7 @@ async function mcpHandlerInner(
   }
 
   const protocolVersion = req.headers.get('MCP-Protocol-Version');
+  setUsageProtocolVersion(usage, protocolVersion);
   const unsupportedProtocolVersion = protocolVersion !== null
     && negotiateProtocolVersion(protocolVersion) !== protocolVersion;
   const rejectProtocolVersion = (): Response => {

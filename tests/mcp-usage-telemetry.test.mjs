@@ -121,6 +121,40 @@ describe('api/mcp — usage telemetry (#4866)', () => {
     assert.ok(ev.res_bytes > 0);
   });
 
+  // 2026-10-23: 17% of /mcp POSTs were refused for MCP-Protocol-Version, and
+  // whether they carried 2025-11-25 (a handshake revision we could add) or
+  // 2026-07-28 (dual-era probes that fall back by design) was unknowable
+  // because the header value was never recorded.
+  it('records the requested MCP-Protocol-Version, bounded to known revisions', async () => {
+    const { deps } = makeProDeps();
+    const events = captureAxiom();
+    const { ctx, settle } = makeCtx();
+    const post = (version, body) => mcpHandler(new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(version === null ? {} : { 'MCP-Protocol-Version': version }) },
+      body: JSON.stringify(body),
+    }), deps, ctx);
+    const list = { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} };
+    const init = { jsonrpc: '2.0', id: 2, method: 'initialize',
+      params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'probe', version: '1' } } };
+    const cases = [
+      ['2025-06-18', list, 200, '2025-06-18'],
+      ['2026-07-28', list, 400, '2026-07-28'],
+      ['2025-11-25', init, 401, '2025-11-25'],
+      ['2099-01-01', list, 400, 'other'],
+      ['not-a-version', list, 400, 'other'],
+      [null, list, 200, null],
+    ];
+    for (const [version, body, status] of cases) {
+      const res = await post(version, body);
+      assert.equal(res.status, status, String(version));
+      await res.text();
+    }
+    await settle();
+    assert.deepEqual(events.map((e) => e.mcp_protocol_version), cases.map((c) => c[3]));
+    assert.equal(events[1].reason, 'unsupported_protocol_version');
+  });
+
   it('invalid wm_ key on tools/call emits status 401 reason auth_401 (the #4859 symptom, now visible)', async () => {
     const { deps } = makeProDeps();
     const events = captureAxiom();

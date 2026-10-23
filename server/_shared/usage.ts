@@ -184,6 +184,9 @@ export interface RequestEvent {
   tool_error_kind: string | null;
   tool_result_bytes: number | null;
   tool_jmespath: boolean | null;
+  // MCP-Protocol-Version the client sent, bounded to published revisions or
+  // 'other'; null when absent and on REST rows.
+  mcp_protocol_version: string | null;
 }
 
 export interface UpstreamEvent {
@@ -304,6 +307,8 @@ export function buildRequestEvent(p: {
   toolResultBytes?: number | null;
   /** Whether a JMESPath projection was requested; null when no tool ran (#9431). */
   toolJmespath?: boolean | null;
+  /** MCP-Protocol-Version header, bounded to known revisions or 'other'; null when absent. */
+  mcpProtocolVersion?: string | null;
 }): RequestEvent {
   return {
     _time: new Date().toISOString(),
@@ -342,6 +347,7 @@ export function buildRequestEvent(p: {
     tool_error_kind: p.toolErrorKind ?? null,
     tool_result_bytes: p.toolResultBytes ?? null,
     tool_jmespath: p.toolJmespath ?? null,
+    mcp_protocol_version: p.mcpProtocolVersion ?? null,
   };
 }
 
