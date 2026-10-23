@@ -1273,7 +1273,7 @@
   "tests/natural-events-request-diagnostics.test.mjs": 526,
   "tests/natural-events-resilience.test.mts": 3327,
   "tests/natural-events-source-recovery.test.mjs": 9196,
-  "tests/natural-events-transport.test.mjs": 111237,
+  "tests/natural-events-transport.test.mjs": 10189,
   "tests/natural-events-western-pacific-seed.test.mjs": 54,
   "tests/nested-workspace-install-topology.test.mjs": 22,
   "tests/news-classifier-historical-downgrade.test.mts": 84,
