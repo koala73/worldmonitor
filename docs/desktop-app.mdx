@@ -230,3 +230,61 @@ Update prompts are dismissable per-version — dismissing v2.5.0 won't suppress 
 A version the updater cannot parse is reported as `version_unparsable` and never treated as "up to date" — silently concluding "no update" from an unreadable version is exactly how a single malformed release tag could stop every client updating (#5908).
 
 The `/api/version` endpoint reads the latest GitHub Release tag and caches the result for 1 hour, so version checks don't hit the GitHub API on every request.
+
+## Uninstall
+
+One binary ships for every variant, so there is one app to remove, one data directory name (`app.worldmonitor.desktop`, the bundle identifier) and one keychain service (`world-monitor`). The bundled uninstaller on Windows and dragging the app to the Trash on macOS remove the program but leave data and keychain entries behind; the steps below cover all of it.
+
+### Manual steps
+
+**macOS**
+
+1. Quit World Monitor.
+2. Move `World Monitor.app` from `/Applications` (or `~/Applications`) to the Trash.
+3. Delete the data directories, all named after the bundle identifier:
+   - `~/Library/Application Support/app.worldmonitor.desktop` (settings, local cache)
+   - `~/Library/Caches/app.worldmonitor.desktop`
+   - `~/Library/WebKit/app.worldmonitor.desktop` and `~/Library/HTTPStorages/app.worldmonitor.desktop` (WebView storage)
+   - `~/Library/Logs/app.worldmonitor.desktop`
+   - `~/Library/Preferences/app.worldmonitor.desktop.plist` and `~/Library/Saved Application State/app.worldmonitor.desktop.savedState`
+4. In Keychain Access, delete the entries whose service is `world-monitor`: `secrets-vault` (API keys), `clerk-client` (sign-in state), and any per-key entries left by an install from before the consolidated vault.
+
+**Windows**
+
+1. Quit World Monitor.
+2. Uninstall from **Settings → Apps → Installed apps**. The NSIS uninstaller stops the bundled sidecar runtime first (`src-tauri/nsis/installer-hooks.nsh`); the MSI build does the same through Windows Installer.
+3. Delete `%APPDATA%\app.worldmonitor.desktop` and `%LOCALAPPDATA%\app.worldmonitor.desktop` (the second holds the WebView2 profile).
+4. In **Credential Manager → Windows Credentials**, remove the entries whose target contains `world-monitor`.
+
+**Linux**
+
+1. Quit World Monitor.
+2. Delete the AppImage (`World Monitor_<version>_amd64.AppImage` or `_aarch64.AppImage`) from wherever you saved it.
+3. If you integrated it into your launcher, remove the `.desktop` entry it created under `~/.local/share/applications` and the icon your integration tool copied under `~/.local/share/icons`.
+4. Delete `~/.config/app.worldmonitor.desktop`, `~/.local/share/app.worldmonitor.desktop` and `~/.cache/app.worldmonitor.desktop`.
+5. Remove the Secret Service entries for service `world-monitor`, with `secret-tool clear service world-monitor username secrets-vault` (repeat for `clerk-client`) or from your keyring manager.
+
+### Scripted uninstall
+
+The repository ships the same steps as scripts. Run them from a checkout of the repository after reading them; they are not meant to be piped from a URL into a shell.
+
+```bash
+# macOS and Linux
+bash scripts/uninstall-desktop.sh --dry-run   # list what would be removed
+bash scripts/uninstall-desktop.sh             # remove after confirmation
+```
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File scripts\uninstall-desktop.ps1 -DryRun
+powershell -ExecutionPolicy Bypass -File scripts\uninstall-desktop.ps1
+```
+
+Both scripts list everything they found and ask for confirmation before removing anything. On Windows the script runs the bundled uninstaller from the registry and then removes what it leaves behind. Any process stop is scoped to the installed app: sidecar runtimes whose parent is the app binary or that run from the install path, never another Node process on the machine.
+
+| Option | Effect |
+|---|---|
+| `--keep-data` / `-KeepData` | Keep app data, caches, WebView storage and logs |
+| `--keep-secrets` / `-KeepSecrets` | Keep API keys and sign-in state stored in the OS keychain |
+| `--dry-run` / `-DryRun` | Preview what would be removed |
+| `--yes` / `-Yes` | Skip the confirmation prompt |
