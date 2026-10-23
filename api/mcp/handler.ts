@@ -1305,6 +1305,8 @@ async function mcpHandlerInner(
         burstPerMinute ?? MCP_DEFAULT_BURST_PER_MINUTE,
         planKey,
         usage,
+        // Supported versions are YYYY-MM-DD, so string order is date order.
+        protocolVersion !== null && protocolVersion >= '2025-11-25',
       );
       classifyDispatchedUsage(usage, dispatched);
       return maybeStreamJsonRpcResponse(req, sseOwner, dispatched);

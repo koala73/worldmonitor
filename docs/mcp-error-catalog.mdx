@@ -391,6 +391,8 @@ The most common error code, shared across list methods, `tools/call`, `prompts/g
 }
 ```
 
+On protocol `2025-11-25`, a `tools/call` whose arguments are rejected is not a JSON-RPC error. This covers the input schema or caller-input hook, downstream proto validation, alias argument checks, panel arguments rejected by a panel view, and tool-specific argument checks such as `start_upgrade`'s plan. Per [SEP-1303](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1303), a request sent with `MCP-Protocol-Version: 2025-11-25` gets a tool execution error that the model can read and correct. `result.isError` is `true`, and `result.content[0].text` is JSON holding the same message and data the `-32602` error would carry, for example `{"error": "Invalid params", "violations": […]}`. Requests on earlier versions, or without the header, keep the `-32602` shape. An unknown or missing tool name stays `-32602` on every version.
+
 List methods return the complete catalog without `nextCursor`. An absent cursor or any string cursor, including an unknown token, returns that same terminal list. Other cursor types return `-32602`. Prompt arguments can be omitted or supplied as an object containing only string values. This also applies to undeclared argument names. Values are not coerced to strings.
 
 **What to do.** Read the `message` — it always tells you what was missing or wrong. For tools, names are in `tools/list`. For prompts, names + argument schemas are in `prompts/list`. For resources, the concrete URIs are in `resources/list` and the parameterised URI templates are in `resources/templates/list`. For `logging/setLevel`, valid levels are the [RFC 5424 subset](https://www.rfc-editor.org/rfc/rfc5424#section-6.2.1) listed above.

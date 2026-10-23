@@ -303,6 +303,8 @@ Content-Type: application/json
 }
 ```
 
+在协议 `2025-11-25` 下，参数被拒绝的 `tools/call` 不再是 JSON-RPC 错误。这包括输入 schema 或调用方输入钩子、下游 proto 校验、别名参数检查、被面板视图拒绝的面板参数，以及 `start_upgrade` 的 plan 等工具特定的参数检查。根据 [SEP-1303](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1303)，带有 `MCP-Protocol-Version: 2025-11-25` 的请求会收到一个模型可以读取并据此修正的工具执行错误。`result.isError` 为 `true`，`result.content[0].text` 是一段 JSON，携带 `-32602` 错误本会给出的同一消息和数据，例如 `{"error": "Invalid params", "violations": […]}`。早期版本或未带该请求头的请求保持 `-32602` 形式。未知或缺失的工具名在所有版本下仍为 `-32602`。
+
 **如何处理。** 阅读 `message` —— 它总是告诉你缺少或错误了什么。对于工具，名称在 `tools/list` 中。对于提示，名称 + 参数 schema 在 `prompts/list` 中。对于资源，具体 URI 在 `resources/list` 中，参数化 URI 模板在 `resources/templates/list` 中。对于 `logging/setLevel`，有效级别是上面列出的 [RFC 5424 子集](https://www.rfc-editor.org/rfc/rfc5424#section-6.2.1)。
 
 ### `-32603` —— 内部错误

@@ -29,7 +29,7 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 
 | Endpoint | Purpose |
 |----------|---------|
-| `https://worldmonitor.app/mcp` | JSON-RPC server (Streamable HTTP transport; JSON responses by default, SSE responses when clients advertise `text/event-stream`; `initialize` negotiates protocol `2025-06-18` by default, `2025-03-26` for older clients) |
+| `https://worldmonitor.app/mcp` | JSON-RPC server (Streamable HTTP transport; JSON responses by default, SSE responses when clients advertise `text/event-stream`; `initialize` negotiates protocol `2025-11-25` by default, `2025-06-18` or `2025-03-26` for older clients) |
 | `https://worldmonitor.app/oauth/register` | Dynamic Client Registration (RFC 7591). Clients on the [trusted list](#client-id-metadata-documents) can skip it and use their Client ID Metadata Document URL as `client_id` |
 | `https://worldmonitor.app/oauth/authorize` | OAuth 2.1 authorization endpoint (PKCE required) |
 | `https://worldmonitor.app/oauth/token` | Token endpoint (authorization_code + refresh_token) |
@@ -44,11 +44,13 @@ Registry listings: the server is published in the [official MCP registry](https:
 
 ### Protocol negotiation
 
-WorldMonitor's static server card at `/.well-known/mcp/server-card.json` advertises protocol version `2025-06-18`, and the live `initialize` handshake negotiates it by default — so the advertised floor and the negotiated version stay in lock-step:
+WorldMonitor's static server card at `/.well-known/mcp/server-card.json` advertises protocol version `2025-11-25`, and the live `initialize` handshake negotiates it by default — so the advertised floor and the negotiated version stay in lock-step:
 
-- By default, `initialize` supports both `2025-03-26` and `2025-06-18`.
-- Clients requesting `2025-06-18` receive `2025-06-18`; clients pinned to `2025-03-26` continue receiving `2025-03-26`.
-- Setting `MCP_PROTOCOL_FLOOR_2025_06_18=off` pins the server back to the legacy `2025-03-26`-only floor; a client that then requests `2025-06-18` receives the safe default `2025-03-26`.
+- By default, `initialize` supports `2025-03-26`, `2025-06-18`, and `2025-11-25`.
+- Clients requesting one of those receive it unchanged; a client requesting any other version receives `2025-11-25`.
+- On `2025-11-25`, a `tools/call` whose arguments fail validation returns an `isError` tool result the model can read and correct, instead of the `-32602` error earlier versions receive (see the [error catalog](/mcp-error-catalog)).
+- Setting `MCP_PROTOCOL_2025_11_25=off` drops `2025-11-25` again, and `MCP_PROTOCOL_FLOOR_2025_06_18=off` pins the server back to the legacy `2025-03-26`-only floor.
+- The handshake-free `2026-07-28` revision is not served. Its clients fall back to `initialize`.
 
 Tool `outputSchema` metadata is emitted on `tools/list` regardless of the negotiated protocol version. Older `2025-03-26` clients should ignore unknown fields, while newer clients can use the schema immediately. Every successful `tools/call` also returns the payload as `structuredContent`, which strict clients require once a schema is advertised; the [tools reference](/mcp-tools-reference) describes how projections and soft envelopes are represented.
 
