@@ -308,6 +308,45 @@ export async function shapeModernResponse(response: Response, options: ModernSha
  * Mcp-Session-Id, nothing stored for replay. `headers` supplies the CORS and
  * rate-limit headers to keep; the framing headers are set here.
  */
+const SUBSCRIPTION_ID_META_KEY = 'io.modelcontextprotocol/subscriptionId';
+
+// subscriptions/listen (R9). /mcp emits no change notifications and advertises
+// no listChanged, so it honors none of the requested types: it acknowledges an
+// empty filter, sends the graceful completion result and closes the stream at
+// once. The stream is already shaped here: shapeModernResponse passes SSE
+// bodies through untouched.
+export function modernListenResponse(
+  req: Request,
+  id: string | number,
+  params: unknown,
+  corsHeaders: Record<string, string>,
+): Response {
+  if (!/text\/event-stream/i.test(req.headers.get('accept') ?? '')) {
+    return rpcError(id, -32600, 'subscriptions/listen requires Accept: text/event-stream', corsHeaders, undefined, 406);
+  }
+  const notifications = isPlainObject(params) ? params.notifications : undefined;
+  if (notifications !== undefined && !isPlainObject(notifications)) {
+    return rpcError(id, -32602, 'Invalid params: notifications must be an object', corsHeaders, undefined, 400);
+  }
+  const acknowledged = {
+    jsonrpc: '2.0',
+    method: 'notifications/subscriptions/acknowledged',
+    params: { _meta: { [SUBSCRIPTION_ID_META_KEY]: id }, notifications: {} },
+  };
+  const completed = {
+    jsonrpc: '2.0',
+    id,
+    result: {
+      resultType: 'complete',
+      _meta: {
+        [SUBSCRIPTION_ID_META_KEY]: id,
+        [SERVER_INFO_META_KEY]: { name: SERVER_NAME, version: SERVER_VERSION },
+      },
+    },
+  };
+  return modernSseResponse([acknowledged, completed], corsHeaders);
+}
+
 export function modernSseResponse(messages: readonly unknown[], headers: HeadersInit = {}, status = 200): Response {
   const out = new Headers(headers);
   out.set('Content-Type', 'text/event-stream; charset=utf-8');

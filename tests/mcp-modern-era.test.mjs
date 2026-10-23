@@ -467,6 +467,65 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
   // U2 — the modern method surface: server/discover, the per-era instructions,
   // the /mcp sign-in challenge for anonymous modern traffic (KTD4, KTD4a), the
   // 404 -32601 for removed and unknown methods (R8), and no sessions (R10).
+  // R9: /mcp emits no change notifications, so a listen stream is acknowledged
+  // with an empty honored filter and closed gracefully at once (KTD3a encoder).
+  describe('flag on — subscriptions/listen (U4)', () => {
+    beforeEach(async () => { await boot('on'); });
+
+    async function listenRaw(headers, id = 7, notifications = { toolsListChanged: true }) {
+      const res = await fetch(server.url, {
+        method: 'POST', headers,
+        body: JSON.stringify(modernBody(id, 'subscriptions/listen', { notifications })),
+      });
+      return { status: res.status, headers: res.headers, text: await res.text() };
+    }
+
+    it('acknowledges an empty filter, then closes with the graceful completion result', async () => {
+      const res = await listenRaw(modernHeaders('subscriptions/listen'), 7);
+      assert.equal(res.status, 200, res.text);
+      assert.match(res.headers.get('content-type') ?? '', /^text\/event-stream/);
+      assert.equal(res.headers.get('mcp-session-id'), null);
+      const events = sseEvents(res.text);
+      assert.equal(events.length, 2, res.text);
+      const [ack, done] = events;
+      assert.equal(ack.method, 'notifications/subscriptions/acknowledged');
+      assert.equal(ack.id, undefined);
+      assert.deepEqual(ack.params.notifications, {});
+      assert.equal(ack.params._meta['io.modelcontextprotocol/subscriptionId'], 7);
+      assert.equal(done.id, 7);
+      assert.equal(done.result.resultType, 'complete');
+      assert.equal(done.result._meta['io.modelcontextprotocol/subscriptionId'], 7);
+      assert.equal(done.result._meta['io.modelcontextprotocol/serverInfo'].name, 'worldmonitor');
+    });
+
+    it('carries a string listen id through both events', async () => {
+      const [ack, done] = sseEvents((await listenRaw(modernHeaders('subscriptions/listen'), 'sub-a')).text);
+      assert.equal(ack.params._meta['io.modelcontextprotocol/subscriptionId'], 'sub-a');
+      assert.equal(done.id, 'sub-a');
+    });
+
+    it('refuses a listen whose Accept cannot take a stream with 406 -32600', async () => {
+      const res = await listenRaw(modernHeaders('subscriptions/listen', { Accept: 'application/json' }));
+      assert.equal(res.status, 406, res.text);
+      assert.equal(JSON.parse(res.text).error.code, -32600);
+    });
+
+    it('refuses a non-object notifications filter with 400 -32602', async () => {
+      const res = await listenRaw(modernHeaders('subscriptions/listen'), 8, ['toolsListChanged']);
+      assert.equal(res.status, 400, res.text);
+      assert.equal(JSON.parse(res.text).error.code, -32602);
+    });
+
+    it('serves an anonymous listen on the machine-discovery alias', async () => {
+      const res = await fetch(server.url.replace(/\/mcp$/, '/.well-known/mcp'), {
+        method: 'POST', headers: anonModernHeaders('subscriptions/listen'),
+        body: JSON.stringify(modernBody(9, 'subscriptions/listen', { notifications: {} })),
+      });
+      assert.equal(res.status, 200);
+      assert.equal(sseEvents(await res.text()).at(-1).result.resultType, 'complete');
+    });
+  });
+
   describe('flag on — modern method surface (U2)', () => {
     beforeEach(async () => { await boot('on'); });
 

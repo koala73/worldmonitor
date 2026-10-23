@@ -39,6 +39,7 @@ import {
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import {
   MODERN_ONLY_METHODS,
+  modernListenResponse,
   modernMethodNotFound,
   shapeModernResponse,
   validateModernRequest,
@@ -1336,6 +1337,9 @@ async function mcpHandlerInner(
       capabilities: modernServerCapabilities(),
       instructions: MODERN_SERVER_INSTRUCTIONS,
     }, corsHeaders));
+  }
+  if (modernEra && method === 'subscriptions/listen') {
+    return modernListenResponse(req, id, body.params, corsHeaders);
   }
 
   // Dispatch
