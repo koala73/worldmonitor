@@ -607,6 +607,17 @@ describe('approved NRCan transport', () => {
     }).catch(err => err);
     assert.match(dropped.message, /direct HTTP 403; proxy proxy fetch timeout/);
     assert.notEqual(dropped.nonRetryable, true, 'dropped tunnels may recover on the retry');
+
+    const mixed = await fetchApprovedAtom(NRCAN_ATOM_URL, {
+      fetchFn: forbidden,
+      proxyAuth: 'user:pass@gate.example:7000',
+      proxyFetchFn: async (_url, { attempt }) => {
+        if (attempt === 0) throw new Error('proxy fetch timeout');
+        return { ok: false, status: 403, buffer: Buffer.alloc(0), contentType: '' };
+      },
+    }).catch(err => err);
+    assert.equal(mixed.status, 403);
+    assert.notEqual(mixed.nonRetryable, true, 'exit 0 never answered, so the retry may still reach it');
   });
 
   it('wires the seeder proxy into the NRCan fetch', () => {

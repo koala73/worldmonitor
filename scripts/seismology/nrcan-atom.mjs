@@ -230,7 +230,7 @@ function defaultNrcanProxyFetch(url, { attempt, proxyAuth, maxBytes }) {
 // credentials, quota, policy) and any other proxied status are final.
 async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, maxBytes }) {
   let last;
-  let refused = false;
+  let everyExitRefused = true;
   for (let attempt = 0; attempt < NRCAN_PROXY_EXITS; attempt++) {
     let result;
     try {
@@ -245,7 +245,7 @@ async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, m
         throw error;
       }
       last = redactProxyCredentials(error?.message || error);
-      refused = false;
+      everyExitRefused = false;
       continue;
     }
     if (result.ok) {
@@ -261,13 +261,12 @@ async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, m
       error.message = `direct HTTP ${directStatus}; proxy ${last}`;
       throw error;
     }
-    refused = true;
   }
-  // Every exit refused: an immediate retry restarts at exit 0 and meets the same
-  // refusals. A dropped tunnel on the last exit may recover, so that stays retryable.
+  // Only when every exit refused is the failure permanent: an immediate retry restarts
+  // at exit 0 and meets the same refusals. Any dropped tunnel may recover, so stays retryable.
   throw Object.assign(new Error(`direct HTTP ${directStatus}; proxy ${last}`), {
     status: directStatus,
-    nonRetryable: refused,
+    nonRetryable: everyExitRefused,
   });
 }
 
