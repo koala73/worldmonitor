@@ -129,7 +129,7 @@
   "tests/bet-templates.test.mjs": 27,
   "tests/beta-console-toggle.test.mts": 36,
   "tests/bigmac-seed.test.mjs": 724,
-  "tests/bilateral-hs4-lazy-fetch.test.mts": 28673,
+  "tests/bilateral-hs4-lazy-fetch.test.mts": 153,
   "tests/bilateral-tariff.test.mts": 245,
   "tests/billing-convex-error.test.mts": 51,
   "tests/billing-marker-ttl-parity.test.mjs": 100,
