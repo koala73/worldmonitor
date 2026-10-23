@@ -2,9 +2,11 @@
 
 import http.server
 import json
+import os
 import sys
 import threading
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -211,7 +213,7 @@ class TestDefaultTransportRedirects(unittest.TestCase):
         class Origin(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
                 self.send_response(302)
-                self.send_header("location", target_url + self.path)
+                self.send_header("location", target_url + "/redirected")
                 self.send_header("content-length", "0")
                 self.end_headers()
 
@@ -232,6 +234,26 @@ class TestDefaultTransportRedirects(unittest.TestCase):
                 call()
             self.assertEqual(ctx.exception.status, 302)
         self.assertEqual(leaked, [])
+
+    def test_proxy_env_set_after_import_is_honoured(self):
+        seen = []
+
+        class Proxy(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append(self.path)
+                self.send_response(200)
+                self.send_header("content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            def log_message(self, *args):
+                pass
+
+        proxy_url = self._serve(Proxy)
+        cleared = {k: "" for k in os.environ if k.lower().endswith("_proxy")}
+        with mock.patch.dict(os.environ, {**cleared, "http_proxy": proxy_url, "no_proxy": ""}):
+            Client(base_url="http://wm.invalid", env={}).health()
+        self.assertEqual(seen, ["http://wm.invalid/api/health"])
 
 
 if __name__ == "__main__":

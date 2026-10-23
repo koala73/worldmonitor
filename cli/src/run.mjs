@@ -66,6 +66,7 @@ async function fetchSpec(fetchImpl, specUrl, headers, signal) {
     const res = await fetchImpl(url, { headers: hopHeaders, redirect: 'manual', signal });
     const location = res.status >= 300 && res.status < 400 && res.headers.get('location');
     if (!location || hops === 5) return res;
+    await res.body?.cancel();
     url = new URL(location, url).toString();
   }
 }

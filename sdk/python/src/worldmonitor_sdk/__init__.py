@@ -119,9 +119,6 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-_opener = urllib.request.build_opener(_NoRedirect)
-
-
 def _default_transport(request, timeout):
     """Perform an HTTP request with urllib; returns (status, content_type, text).
 
@@ -135,8 +132,11 @@ def _default_transport(request, timeout):
         headers=request.get("headers") or {},
         method=request.get("method", "GET"),
     )
+    # Built per request, like urlopen's default opener, so proxy environment
+    # variables set after import still apply.
+    opener = urllib.request.build_opener(_NoRedirect)
     try:
-        with _opener.open(req, timeout=timeout) as res:
+        with opener.open(req, timeout=timeout) as res:
             return (
                 res.status,
                 res.headers.get("content-type", ""),
