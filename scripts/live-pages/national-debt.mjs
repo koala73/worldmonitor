@@ -10,9 +10,35 @@ import {
   UnpublishableReading,
 } from './common.mjs';
 import ISO2_TO_ISO3 from '../../shared/iso2-to-iso3.js';
+import weoFiscalPeriods from '../shared/weo-fiscal-periods.mjs';
 
 // Monthly seed; health allows 60 days (api/health.js nationalDebt).
 const MAX_AGE_MS = 60 * 24 * 3_600_000;
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** One line per period end in the verified WEO fiscal table, earliest first. */
+function fiscalPeriodList() {
+  const groups = new Map();
+  for (const row of Object.values(weoFiscalPeriods.countries)) {
+    const key = `${row.yearLabel === 'start' ? 1 : 0}-${String(row.endMonth).padStart(2, '0')}-${String(row.endDay).padStart(2, '0')}`;
+    const group = groups.get(key) ?? {
+      label: `${MONTHS[row.endMonth - 1]} ${row.endDay} of ${row.yearLabel === 'start' ? 'the following year' : 'the WEO-labelled year'}`,
+      names: [],
+    };
+    group.names.push(row.name);
+    groups.set(key, group);
+  }
+  const sortName = (name) => name.replace(/^The /, '');
+  const items = [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, { label, names }]) => {
+      const sorted = names.sort((a, b) => sortName(a).localeCompare(sortName(b)));
+      return `        <li>${label}: ${escapeHtml(sorted.join(', '))}</li>`;
+    });
+  return `      <ul>\n${items.join('\n')}\n      </ul>`;
+}
+
 const TOP_COUNTRIES = 10;
 
 // Inverted from the JS map: Vercel's middleware bundler rejects JSON import
@@ -117,7 +143,9 @@ export const nationalDebtPage = Object.freeze({
   },
   explainer: `      <h2>How the clock is estimated</h2>
       <p>World Monitor starts from each country's government debt-to-GDP ratio and GDP in the IMF World Economic Outlook, which measures debt at the end of its reporting period. A country running a deficit accrues debt at its projected annual deficit spread evenly over the year, reaching the IMF figure at the period end; a country in surplus does not tick upward.</p>
-      <p>Egypt's verified fiscal period ends on June 30 of the WEO-labelled year. India's ends on March 31 of the following year. The clock uses midnight UTC immediately after each period ends. Other countries use the December 31 calendar-year fallback. When US Treasury FiscalData is available, it replaces the IMF figure for the United States and the clock starts from its record date.</p>
+      <p>These economies report government finance on a fiscal year, so their IMF figure is reached at the verified end of that year:</p>
+${fiscalPeriodList()}
+      <p>The clock uses midnight UTC immediately after each period ends. Other countries use the December 31 calendar-year fallback, as does Singapore, whose IMF calendar-year figures already blend two fiscal years. When US Treasury FiscalData is available, it replaces the IMF figure for the United States and the clock starts from its record date.</p>
       <p>The result is an estimate, not an official count: official debt figures move in steps when governments borrow and repay.</p>
       <h2>What counts as government debt</h2>
       <p>The IMF measure is general government gross debt: central, state and local government and social security funds. It is broader than the US "debt subject to limit" and is not netted against government-held assets.</p>`,

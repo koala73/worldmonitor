@@ -395,6 +395,12 @@ describe('MCP tool aliases', { concurrency: false }, () => {
     assert.equal(scalar.body.result.structuredContent.deprecation.replacement, 'get_tariff_averages');
     assertValid(advertised('get_tariff_averages'), scalar.body.result.structuredContent, 'scalar projection');
 
+    const missing = await call('get_tariff_trends', { dataset: 'tariffs', jmespath: 'nonexistent' });
+    assert.equal(missing.body.result.content[0].text, 'null');
+    assert.equal(missing.body.result.structuredContent.projection, null);
+    assert.equal(missing.body.result.structuredContent.deprecation.replacement, 'get_tariff_averages');
+    assertValid(advertised('get_tariff_averages'), missing.body.result.structuredContent, 'null projection');
+
     seedPriceBundle();
     const list = await call('get_tariff_trends', { dataset: 'bigmac', jmespath: 'data.bigmac.countries[].code' });
     const direct = await call('get_price_and_debt_indicators', { dataset: ['bigmac'], jmespath: 'data.bigmac.countries[].code' });
@@ -411,6 +417,15 @@ describe('MCP tool aliases', { concurrency: false }, () => {
     assert.equal(object.body.result.structuredContent.deprecation.replacement, 'get_tariff_averages');
     assertValid(advertised('get_tariff_averages'), object.body.result.structuredContent, 'object projection');
     assertValid(advertised('get_tariff_averages'), objectText, 'object projection text');
+  });
+
+  it('keeps the deprecation notice on an invalid-expression envelope in both channels', async () => {
+    const reply = await call('get_tariff_trends', { dataset: 'tariffs', jmespath: '[[[' });
+    const structured = reply.body.result.structuredContent;
+    assert.match(structured._jmespath_error, /^invalid_expression/);
+    assert.equal(structured.deprecation.replacement, 'get_tariff_averages');
+    assert.deepEqual(JSON.parse(reply.body.result.content[0].text), structured);
+    assertValid(advertised('get_tariff_averages'), structured, 'invalid-expression alias');
   });
 
   it('keeps unknown names unknown and the direct tariffs dataset on the price tool', async () => {

@@ -14,8 +14,15 @@ import { getCachedJson, readCachedJson, readCachedEnvelopeJson, setCachedJson, c
 import { CLIMATE_ANOMALIES_KEY, CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
 import { ciiCountryAt, ciiCountryForIso2, ciiIsLand } from '../../../../scripts/shared/cii-country-borders.mjs';
+import {
+  parseWildfireFiresSummary,
+  summarizeWildfireDetections,
+  WILDFIRE_FIRES_SUMMARY_KEY,
+  type WildfireFireIntensity,
+} from '../../../../scripts/shared/wildfire-fires-summary.mjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
+import { isAcledConfigured } from '../../../_shared/acled-auth';
 import {
   CII_CONFLICT_ACTIVITY_CAP,
   CII_CONFLICT_ACTIVITY_PIVOT,
@@ -68,6 +75,10 @@ import { CII_CLIMATE_ZONE_COUNTRIES } from '../../../../shared/cii-climate-zones
 // lives in shared/cii-weights.ts so browser-side scoring and server-side
 // scoring cannot drift.
 //
+// Before any change that can move a score, read
+// docs/methodology/cii-change-brief.md: claim the version in
+// docs/methodology/cii-next.json, run tests/cii-invariants.test.mts and post
+// scripts/cii-table-diff.mts output for tests/fixtures/cii/.
 // Change protocol when editing coefficient values in shared/cii-weights.ts:
 //   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts if server/API scores shift.
 //   2. Update docs/methodology/cii-risk-scores.mdx in the SAME commit.
@@ -242,7 +253,7 @@ function countryNamedExactly(text: string): string | null {
 // countryCode from its gazetteer) scores there, including at sea where no
 // polygon reaches; a non-Tier-1 country scores nowhere. Older events without
 // it fall back to their coordinates, then to the country named in the text.
-function strikeEventCountry(s: any): string | null {
+export function strikeEventCountry(s: any): string | null {
   if (typeof s?.countryCode === 'string' && /^[A-Za-z]{2}$/.test(s.countryCode.trim())) {
     return ciiCountryForIso2(s.countryCode);
   }
@@ -424,9 +435,6 @@ interface CountrySignals {
   outageMajorCount: number;
   outagePartialCount: number;
   climateSeverity: number;
-  cyberCriticalCount: number;
-  cyberHighCount: number;
-  cyberMediumCount: number;
   fireCount: number;
   fireHighCount: number;
   gpsHighCount: number;
@@ -474,7 +482,6 @@ function emptySignals(): CountrySignals {
     ucdpWar: false, ucdpMinor: false,
     outageTotalCount: 0, outageMajorCount: 0, outagePartialCount: 0,
     climateSeverity: 0,
-    cyberCriticalCount: 0, cyberHighCount: 0, cyberMediumCount: 0,
     fireCount: 0, fireHighCount: 0,
     gpsHighCount: 0, gpsMediumCount: 0,
     strikePressure: 0,
@@ -827,12 +834,14 @@ export function strikePressureBoost(pressure: number): number {
   return Math.min(CII_STRIKE_BOOST_CAP, CII_STRIKE_BOOST_PER_DOUBLING * Math.log2(1 + pressure / CII_STRIKE_BOOST_PIVOT));
 }
 
-interface AuxiliarySources {
+export interface AuxiliarySources {
   ucdpEvents: any[];
   outages: any[];
   climate: any[];
-  cyber: any[];
-  fires: any[];
+  // Detections inside each Tier-1 country, from wildfire:fires-summary:v1
+  // (scripts/shared/wildfire-fires-summary.mjs). Null when the summary was
+  // present but unscorable.
+  fires: Record<string, WildfireFireIntensity[]> | null;
   gpsHexes: any[];
   iranEvents: any[];
   orefData: { activeAlertCount: number; historyCount24h: number } | null;
@@ -858,6 +867,8 @@ interface AuxiliarySources {
   // Weighted confirmed strikes per country and day from the relay's 30-day tally
   // (conflict:strike-pressure:v1); null when missing or stale.
   confirmedStrikes?: Record<string, StrikeDays> | null;
+  // What each Redis-backed input's read returned, for health only; never scored.
+  inputReads?: Partial<Record<CiiInputId, CiiInputRead>>;
 }
 
 type NewsTopStory = { countryCode: string | null; countryCodes?: string[]; threatLevel: string; primaryTitle: string };
@@ -880,15 +891,16 @@ const NEWS_THREAT_WEIGHT: Record<string, number> = {
   info: 0,
 };
 
-export const CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT = 3;
+// Conflict and news. Cyber IOC rows were dropped in v14: they place attacker
+// infrastructure, not the country under attack, so they no longer score or count here.
+export const CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT = 2;
 
 function emptyAuxiliarySources(): AuxiliarySources {
   return {
     ucdpEvents: [],
     outages: [],
     climate: [],
-    cyber: [],
-    fires: [],
+    fires: {},
     gpsHexes: [],
     iranEvents: [],
     orefData: null,
@@ -963,12 +975,14 @@ async function readRiskInputs(inputs: ReadonlyArray<RiskInput | null>): Promise<
 
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
-  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw, countryEventsRaw, strikePressureRaw] = await readRiskInputs([
+  const [ucdpRaw, outagesRaw, climateRaw, firesSummaryRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw, countryEventsRaw, strikePressureRaw] = await readRiskInputs([
     { key: 'conflict:ucdp-events:v1', raw: true },
     { key: 'infra:outages:v1', raw: true },
     { key: CLIMATE_ANOMALIES_KEY, raw: true },
-    { key: 'cyber:threats-bootstrap:v2', raw: true },
-    { key: 'wildfire:fires:v1', raw: true },
+    // Per-country intensity rows derived by seed-fire-detections (#9509). The
+    // canonical wildfire:fires:v1 is 2-5 MB and used to time out the 1.5 s GET,
+    // which rejected the whole build.
+    { key: WILDFIRE_FIRES_SUMMARY_KEY, raw: true },
     { key: 'intelligence:gpsjam:v2', raw: true },
     IRAN_EVENTS_ENABLED ? { key: 'conflict:iran-events:v1', raw: true } : null,
     { key: 'relay:oref:history:v1', raw: true },
@@ -999,8 +1013,132 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   // read has already thrown above, so it never masquerades as that.
   const displacementRaw = displacementCurrentRaw
     ?? (await readRiskInputs([{ key: `displacement:summary:v1:${currentYear - 1}`, raw: true }]))[0];
+  // The summary is written by the same seeder run as the canonical key, after
+  // it. A miss therefore means the reader deployed before the seeder's next
+  // tick or that extra-key write failed; recompute the projection from the
+  // canonical key then, and only then, so a present-but-unusable summary still
+  // surfaces in health instead of hiding behind the fallback. A canonical
+  // payload that cannot be summarized is passed through so the parser below
+  // reports it unusable rather than missing.
+  const firesCanonicalRaw = firesSummaryRaw == null
+    ? (await readRiskInputs([{ key: 'wildfire:fires:v1', raw: true }]))[0]
+    : null;
+  const firesRaw = firesSummaryRaw
+    ?? (firesCanonicalRaw == null ? null : summarizeWildfireDetections(firesCanonicalRaw) ?? firesCanonicalRaw);
   const borderSnapshots = await readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true })));
-  const borderMovements = projectCrossBorderSnapshots(Object.fromEntries(CROSS_BORDER_SOURCES.map((source, i) => [source.id, borderSnapshots[i]]))).movements;
+  return buildCiiAuxiliarySources({
+    ucdp: ucdpRaw,
+    outages: outagesRaw,
+    climate: climateRaw,
+    fires: firesRaw,
+    gpsjam: gpsRaw,
+    iranEvents: iranRaw,
+    oref: orefRaw,
+    advisories: advisoriesRaw,
+    displacement: displacementRaw,
+    newsInsights: insightsRaw,
+    threatSummary: threatSummaryRaw,
+    aviation: aviationRaw,
+    earthquakes: earthquakesRaw,
+    sanctionsPressure: sanctionsRaw,
+    sanctionsCounts: sanctionsCountsRaw,
+    temporalAnomalies: temporalRaw,
+    militaryCii: militaryCiiRaw,
+    gdeltCountryEvents: countryEventsRaw,
+    strikePressure: strikePressureRaw,
+    crossBorder: Object.fromEntries(CROSS_BORDER_SOURCES.map((source, i) => [source.id, borderSnapshots[i]])),
+  }, Date.now(), { iranEventsEnabled: IRAN_EVENTS_ENABLED });
+}
+
+/**
+ * Every payload the CII build reads, as the Redis reads return it (null or
+ * absent for a miss), keyed by input id rather than Redis key. `fires` is the
+ * wildfire summary (or the canonical payload when the summary is missing),
+ * `displacement` the current year's summary or else the previous year's, and
+ * `crossBorder` each CROSS_BORDER_SOURCES seed envelope by source id.
+ * tests/fixtures/cii/ stores captured production inputs in this shape.
+ */
+export interface CiiRawInputs {
+  ucdp?: unknown;
+  outages?: unknown;
+  climate?: unknown;
+  fires?: unknown;
+  gpsjam?: unknown;
+  iranEvents?: unknown;
+  oref?: unknown;
+  advisories?: unknown;
+  displacement?: unknown;
+  newsInsights?: unknown;
+  threatSummary?: unknown;
+  aviation?: unknown;
+  earthquakes?: unknown;
+  sanctionsPressure?: unknown;
+  sanctionsCounts?: unknown;
+  temporalAnomalies?: unknown;
+  militaryCii?: unknown;
+  gdeltCountryEvents?: unknown;
+  strikePressure?: unknown;
+  crossBorder?: Record<string, unknown>;
+}
+
+export interface CiiAuxiliaryOptions {
+  /** IRAN_EVENTS_ENABLED: when false the strike feed and its tally are ignored, as production skips reading them. */
+  iranEventsEnabled: boolean;
+}
+
+/**
+ * Parses raw input payloads into the scorer's sources. Pure: no Redis, no
+ * clock and no environment; `nowMs` drives every age gate.
+ */
+export function buildCiiAuxiliarySources(
+  raw: CiiRawInputs,
+  nowMs: number,
+  options: CiiAuxiliaryOptions,
+): AuxiliarySources {
+  const { iranEventsEnabled } = options;
+  const ucdpRaw = raw.ucdp ?? null;
+  const outagesRaw = raw.outages ?? null;
+  const climateRaw = raw.climate ?? null;
+  const firesRaw = raw.fires ?? null;
+  const gpsRaw = raw.gpsjam ?? null;
+  const iranRaw = iranEventsEnabled ? raw.iranEvents ?? null : null;
+  const orefRaw = raw.oref ?? null;
+  const advisoriesRaw = raw.advisories ?? null;
+  const displacementRaw = raw.displacement ?? null;
+  const insightsRaw = raw.newsInsights ?? null;
+  const threatSummaryRaw = raw.threatSummary ?? null;
+  const aviationRaw = raw.aviation ?? null;
+  const earthquakesRaw = raw.earthquakes ?? null;
+  const sanctionsRaw = raw.sanctionsPressure ?? null;
+  const sanctionsCountsRaw = raw.sanctionsCounts ?? null;
+  const temporalRaw = raw.temporalAnomalies ?? null;
+  const militaryCiiRaw = raw.militaryCii ?? null;
+  const countryEventsRaw = raw.gdeltCountryEvents ?? null;
+  const strikePressureRaw = iranEventsEnabled ? raw.strikePressure ?? null : null;
+  const borderSnapshots = CROSS_BORDER_SOURCES.map((source) => raw.crossBorder?.[source.id] ?? null);
+  const read = (value: unknown): CiiInputRead => (value == null ? 'missing' : 'present');
+  const inputReads: Partial<Record<CiiInputId, CiiInputRead>> = {
+    ucdp: read(ucdpRaw),
+    outages: read(outagesRaw),
+    climate: read(climateRaw),
+    fires: read(firesRaw),
+    gpsjam: read(gpsRaw),
+    iranEvents: iranEventsEnabled ? read(iranRaw) : 'not_configured',
+    oref: read(orefRaw),
+    advisories: read(advisoriesRaw),
+    displacement: read(displacementRaw),
+    crossBorder: borderSnapshots.some(snapshot => snapshot != null) ? 'present' : 'missing',
+    newsInsights: read(insightsRaw),
+    threatSummary: read(threatSummaryRaw),
+    aviation: read(aviationRaw),
+    earthquakes: read(earthquakesRaw),
+    sanctionsPressure: read(sanctionsRaw),
+    sanctionsCounts: read(sanctionsCountsRaw),
+    militaryCii: read(militaryCiiRaw),
+    gdeltCountryEvents: read(countryEventsRaw),
+    strikePressure: iranEventsEnabled ? read(strikePressureRaw) : 'not_configured',
+  };
+  const borderMovements = projectCrossBorderSnapshots(Object.fromEntries(CROSS_BORDER_SOURCES.map((source, i) => [source.id, borderSnapshots[i]])), nowMs).movements;
   const arr = (v: any, field?: string, maxLen = 10000) => {
     let a: any[];
     if (field && v && Array.isArray(v[field])) a = v[field];
@@ -1059,8 +1197,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     ucdpEvents: arr(ucdpRaw, 'events'),
     outages: arr(outagesRaw, 'outages'),
     climate: arr(climateRaw, 'anomalies'),
-    cyber: arr(cyberRaw, 'threats'),
-    fires: arr(firesRaw, 'fireDetections').length ? arr(firesRaw, 'fireDetections') : arr(firesRaw, 'fires'),
+    fires: parseWildfireFiresSummary(firesRaw)?.byCountry ?? null,
     gpsHexes: arr(gpsRaw, 'hexes'),
     iranEvents: arr(iranRaw, 'events'),
     orefData,
@@ -1081,15 +1218,150 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     militaryCii: militaryCiiRaw && typeof militaryCiiRaw === 'object' && (militaryCiiRaw as any).byCountry
       ? (militaryCiiRaw as any).byCountry
       : null,
-    gdeltCountryEvents: gdeltCountryEventsFromSeed(countryEventsRaw, Date.now()),
-    confirmedStrikes: confirmedStrikeDaysFromSeed(strikePressureRaw, Date.now()),
+    gdeltCountryEvents: gdeltCountryEventsFromSeed(countryEventsRaw, nowMs),
+    confirmedStrikes: confirmedStrikeDaysFromSeed(strikePressureRaw, nowMs),
+    inputReads,
   };
+}
+
+// ========================================================================
+// Input availability (health)
+// ------------------------------------------------------------------------
+// ACLED credentials went missing around 2026-07 (#5134) and Unrest and
+// Conflict read 0 everywhere for months without any health signal. Each build
+// therefore reports every scored input's availability on its seed-meta;
+// api/_cii-input-health.js owns the verdict and must list the same ids.
+// temporal:anomalies:v1 is read but not scored (its producer emits only
+// region 'global'), so it is not reported.
+// ========================================================================
+
+export const CII_HEALTH_INPUT_IDS = [
+  'acled', 'ucdp', 'gdeltCountryEvents', 'iranEvents', 'strikePressure', 'oref',
+  'outages', 'climate', 'fires', 'gpsjam', 'advisories', 'displacement',
+  'crossBorder', 'newsInsights', 'threatSummary', 'aviation', 'earthquakes',
+  'sanctionsPressure', 'sanctionsCounts', 'militaryCii',
+] as const;
+export type CiiInputId = typeof CII_HEALTH_INPUT_IDS[number];
+type CiiInputRead = 'present' | 'missing' | 'not_configured';
+export type CiiInputState = 'live' | 'quiet' | 'missing' | 'unusable' | 'not_configured';
+export interface CiiInputReport { state: CiiInputState; quietSince?: number }
+
+const CII_INPUT_AUX_FIELD: Record<Exclude<CiiInputId, 'acled'>, keyof AuxiliarySources> = {
+  ucdp: 'ucdpEvents',
+  gdeltCountryEvents: 'gdeltCountryEvents',
+  iranEvents: 'iranEvents',
+  strikePressure: 'confirmedStrikes',
+  oref: 'orefData',
+  outages: 'outages',
+  climate: 'climate',
+  fires: 'fires',
+  gpsjam: 'gpsHexes',
+  advisories: 'advisories',
+  displacement: 'displacedByIso3',
+  crossBorder: 'crossBorderSurgeCountries',
+  newsInsights: 'newsTopStories',
+  threatSummary: 'threatSummaryByCountry',
+  aviation: 'aviationAlerts',
+  earthquakes: 'earthquakes',
+  sanctionsPressure: 'sanctionsCountries',
+  sanctionsCounts: 'sanctionsCountryCounts',
+  militaryCii: 'militaryCii',
+};
+
+// Parsers that return null when they reject a present payload: past their own
+// age gate (GDELT 6h, strike tally 72h) or without the field they score.
+const CII_INPUT_REJECTED_AS_NULL = new Set<CiiInputId>([
+  'gdeltCountryEvents', 'strikePressure', 'oref', 'advisories', 'threatSummary', 'militaryCii', 'fires',
+]);
+
+/**
+ * Classifies each scored input for health. An input is `live` when it moves
+ * at least one Tier-1 score on its own: the scorer runs once per input against
+ * an otherwise empty build and the result is compared with the all-empty
+ * build. This reuses computeCIIScores as-is, so it follows any formula change
+ * and measures exactly "zero across all Tier-1 countries". A standby input
+ * (GDELT while ACLED is live) is still graded on what it would contribute.
+ * An input whose whole effect lands under a score floor (UCDP, advisory)
+ * reads quiet; the quiet budgets in api/_cii-input-health.js are set only for
+ * feeds that move unfloored countries every day.
+ */
+export function assessCiiInputAvailability(
+  acled: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }>,
+  aux: AuxiliarySources,
+  nowMs: number,
+  acledConfigured = isAcledConfigured(),
+): Record<CiiInputId, CiiInputState> {
+  const fingerprint = (rows: typeof acled, sources: AuxiliarySources) => JSON.stringify(computeCIIScores(rows, sources, { nowMs }));
+  const baseline = fingerprint([], emptyAuxiliarySources());
+  const states = {
+    acled: !acledConfigured ? 'not_configured' : fingerprint(acled, emptyAuxiliarySources()) !== baseline ? 'live' : 'quiet',
+  } as Record<CiiInputId, CiiInputState>;
+  for (const [id, field] of Object.entries(CII_INPUT_AUX_FIELD) as Array<[Exclude<CiiInputId, 'acled'>, keyof AuxiliarySources]>) {
+    const read = aux.inputReads?.[id] ?? 'missing';
+    if (read !== 'present') {
+      states[id] = read;
+    } else if (aux[field] == null && CII_INPUT_REJECTED_AS_NULL.has(id)) {
+      states[id] = 'unusable';
+    } else {
+      states[id] = fingerprint([], { ...emptyAuxiliarySources(), [field]: aux[field] }) !== baseline ? 'live' : 'quiet';
+    }
+  }
+  return states;
+}
+
+/** Attaches `quietSince`, carried from the previous report while the input stays quiet. */
+export function withCiiInputQuietClocks(
+  states: Record<CiiInputId, CiiInputState>,
+  previousInputs: unknown,
+  nowMs: number,
+): Record<CiiInputId, CiiInputReport> {
+  const previous = previousInputs && typeof previousInputs === 'object'
+    ? previousInputs as Record<string, Partial<CiiInputReport> | undefined>
+    : {};
+  const reports = {} as Record<CiiInputId, CiiInputReport>;
+  for (const id of CII_HEALTH_INPUT_IDS) {
+    const state = states[id];
+    if (state !== 'quiet') {
+      reports[id] = { state };
+      continue;
+    }
+    const since = previous[id]?.state === 'quiet' ? Number(previous[id]?.quietSince) : NaN;
+    reports[id] = { state, quietSince: Number.isFinite(since) && since > 0 && since <= nowMs ? since : nowMs };
+  }
+  return reports;
+}
+
+/** Every term behind one country's score, as computeCIIScores combined them. */
+export interface CiiCountryTerms {
+  baseline: number;
+  eventMultiplier: number;
+  components: { unrest: number; conflict: number; security: number; information: number };
+  /** The parts of each component, before its cap and rounding. */
+  parts: {
+    unrestBase: number; unrestFatalityBoost: number; unrestSeverityBoost: number; outageBoost: number; gdeltUnrest: number;
+    acledScore: number; fatalityScore: number; civilianBoost: number; orefBoost: number; gdeltConflict: number;
+    flightScore: number; vesselScore: number; aviationScore: number; gpsJammingScore: number;
+    newsScore: number; threatSummaryScore: number;
+  };
+  eventScore: number;
+  boosts: {
+    climate: number; fire: number; advisory: number; orefBlend: number; displacement: number; crossBorder: number;
+    newsUrgency: number; earthquake: number; sanctions: number; ais: number; strikePressure: number;
+  };
+  /** baseline and eventScore weighted, plus every boost: the score before floors, rounding and the cap. */
+  blended: number;
+  floors: { ucdp: number; advisory: number; strike: number };
+  /** The largest floor candidate; it binds when it exceeds the rounded blend. */
+  floor: number;
+  strikePressure: number;
+  combinedScore: number;
 }
 
 export function computeCIIScores(
   acled: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }>,
   aux: AuxiliarySources,
   trendOptions: CiiTrendComparisonOptions = {},
+  termsSink?: Record<string, CiiCountryTerms>,
 ): CiiScore[] {
   const computedAt = Number.isFinite(trendOptions.nowMs) ? Number(trendOptions.nowMs) : Date.now();
   const priorByRegion = buildPriorCiiScoreMap(trendOptions.priorScores);
@@ -1190,34 +1462,18 @@ export function computeCIIScores(
     }
   }
 
-  // --- Cyber ---
-  for (const t of aux.cyber) {
-    const code = (t.country || '').toUpperCase();
-    if (!data[code]) continue;
-    // Split by the severity the cached cyber threat already carries (Phase 3b / D7).
-    // seed-cyber-threats.mjs emits the proto enum form ('CRITICALITY_LEVEL_CRITICAL' etc.)
-    // — strip the prefix so bare lowercase fixtures and the production enum both bucket.
-    // NOTE: 'low' / 'info' / unknown severities are intentionally dropped. Pre-unification
-    // the server used a flat `cyberCount++` for every threat regardless of severity, but
-    // the only consumer (cyberBoost in the blend below) reads critical/high/medium with
-    // weights 3 / 1.8 / 0.9 — matching the frontend formula at
-    // src/services/country-instability.ts:609. A 'low' would have no coefficient to land
-    // on, so counting it would be a no-op anyway; the drop just makes the contract explicit.
-    const sev = String(t.severity || '').toLowerCase().replace(/^criticality_level_/, '');
-    if (sev === 'critical') data[code].cyberCriticalCount++;
-    else if (sev === 'high') data[code].cyberHighCount++;
-    else if (sev === 'medium') data[code].cyberMediumCount++;
-  }
+  // Cyber IOC feeds (AbuseIPDB, Feodo, URLhaus, C2Intel, OTX) are not read since v14:
+  // each row's country is where the malicious IP or URL is hosted, not the victim, so
+  // they scored datacenter countries (US, GB, DE, FR) instead of countries under attack.
 
-  // --- Fires ---
-  for (const f of aux.fires) {
-    const lat = safeNum(f.lat || f.latitude || f.location?.latitude);
-    const lon = safeNum(f.lon || f.longitude || f.location?.longitude);
-    const code = geoToCountry(lat, lon);
-    if (!code || !data[code]) continue;
-    data[code].fireCount++;
-    // "High" fire — bright or high radiative power (Phase 3b / D8, matches the frontend).
-    if (safeNonNegativeNum(f.brightness) >= 360 || safeNonNegativeNum(f.frp) >= 50) data[code].fireHighCount++;
+  // --- Fires --- (already attributed to Tier-1 countries by the summary producer)
+  for (const [code, fires] of Object.entries(aux.fires ?? {})) {
+    if (!data[code]) continue;
+    for (const f of fires) {
+      data[code].fireCount++;
+      // "High" fire — bright or high radiative power (Phase 3b / D8, matches the frontend).
+      if (safeNonNegativeNum(f.brightness) >= 360 || safeNonNegativeNum(f.frp) >= 50) data[code].fireHighCount++;
+    }
   }
 
   // --- GPS hex severity split ---
@@ -1288,6 +1544,7 @@ export function computeCIIScores(
   }
 
   // --- Military activity (Phase 2) — per-country aggregate from intelligence:military-cii:v1 ---
+  // Own counts are gathered but not scored since v14 (see the Security score below).
   for (const [code, m] of Object.entries(aux.militaryCii ?? {})) {
     const d = data[code];
     if (!d || !m || typeof m !== 'object') continue;
@@ -1385,12 +1642,13 @@ export function computeCIIScores(
     );
 
     // --- Security score (Phase 3b / decision C3 — full 4-input calcSecurityScore) ---
-    // Was GPS-only (issue #3738). Now flights + vessels + aviation + GPS, matching the
-    // frontend. Military counts reconstruct the frontend's array length: foreign presence
-    // is weighted ×2 (the intent of ingestMilitaryForCII's synthetic-{} push), applied
-    // here in the formula instead of as a representation hack.
-    const milFlights = d.militaryOwnFlights + d.militaryForeignFlights * 2;
-    const milVessels = d.militaryOwnVessels + d.militaryForeignVessels * 2;
+    // Flights + vessels + aviation + GPS. Military presence counts only FOREIGN aircraft
+    // and vessels located in the country, weighted ×2 as before. Since v14 a country's own
+    // air force and navy score nothing: own counts follow the operator anywhere in the
+    // world, so routine training (RAF/French sorties took GB 9 → 31, FR 9 → 25 overnight)
+    // and own vessels saturated Security for GB/FR/DE/US every day.
+    const milFlights = d.militaryForeignFlights * 2;
+    const milVessels = d.militaryForeignVessels * 2;
     const flightScore = Math.min(50, milFlights * 3);
     const vesselScore = Math.min(30, milVessels * 5);
     const aviationScore = Math.min(
@@ -1410,10 +1668,7 @@ export function computeCIIScores(
     const eventScore = unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25;
 
     const climateBoost = Math.min(15, d.climateSeverity * 3);
-    // cyber + fire (Phase 3b / D7, D8) — severity-weighted, ported from the frontend
-    // getSupplementalSignalBoost. Was total-count based; the cached cyber/fire feeds
-    // already carry severity / brightness, so this is a faithful port, not a partial one.
-    const cyberBoost = Math.min(12, d.cyberCriticalCount * 3 + d.cyberHighCount * 1.8 + d.cyberMediumCount * 0.9);
+    // fire (Phase 3b / D8) — severity-weighted. (The cyber boost beside it was removed in v14.)
     const fireBoost = Math.min(8, d.fireHighCount * 1.5 + Math.min(20, d.fireCount) * 0.25);
 
     // --- Advisory boost ---
@@ -1451,9 +1706,9 @@ export function computeCIIScores(
         : d.sanctionsEntryCount >= 101 ? 5 : 3;
       if (d.sanctionsNewEntryCount > 0) sanctionsBoost += 2;
     }
-    // supplementalSignalBoost (D4): the frontend's helper sums AIS + fire + cyber +
-    // temporal. AIS is its own blend term below; cyber + fire are the severity-weighted
-    // terms above. The temporal sub-boost is NOT wired — the temporal:anomalies:v1
+    // supplementalSignalBoost (D4): the frontend's helper summed AIS + fire + cyber +
+    // temporal. AIS is its own blend term below; fire is the severity-weighted
+    // term above; cyber was removed in v14. The temporal sub-boost is NOT wired — the temporal:anomalies:v1
     // producer (list-temporal-anomalies.ts) emits every anomaly with region:'global', so
     // they cannot be country-attributed. `temporalAnomaly*Count` stay gathered-not-scored
     // (Phase 1 intent); re-wire a temporalBoost only if the producer emits country-scoped
@@ -1463,15 +1718,16 @@ export function computeCIIScores(
       d.aisDisruptionHighCount * 2.5 + d.aisDisruptionElevatedCount * 1.5 + d.aisDisruptionLowCount * 0.5,
     );
 
+    // Assigned inside the sum so termsSink reports it without restating its constant.
+    let crossBorderBoost: number;
     const blended = baseline * 0.4
       + eventScore * 0.6
       + climateBoost
-      + cyberBoost
       + fireBoost
       + advisoryBoost
       + orefBlendBoost
       + displacementBoost
-      + (aux.crossBorderSurgeCountries?.includes(code) ? 5 : 0)
+      + (crossBorderBoost = aux.crossBorderSurgeCountries?.includes(code) ? 5 : 0)
       + newsUrgencyBoost
       + earthquakeBoost
       + sanctionsBoost
@@ -1488,6 +1744,31 @@ export function computeCIIScores(
 
     const composite = Math.min(100, Math.max(floor, Math.round(blended)));
     const { dynamicScore, trend } = deriveCiiTrendDelta(composite, priorByRegion.get(code), computedAt);
+    if (termsSink) {
+      termsSink[code] = {
+        baseline,
+        eventMultiplier: multiplier,
+        components: { unrest, conflict, security, information },
+        parts: {
+          unrestBase, unrestFatalityBoost, unrestSeverityBoost, outageBoost, gdeltUnrest: d.gdeltUnrestEscalation,
+          acledScore, fatalityScore, civilianBoost, orefBoost, gdeltConflict: d.gdeltConflictEscalation,
+          flightScore, vesselScore, aviationScore, gpsJammingScore,
+          newsScore: d.newsScore, threatSummaryScore: d.threatSummaryScore,
+        },
+        eventScore,
+        boosts: {
+          climate: climateBoost, fire: fireBoost, advisory: advisoryBoost, orefBlend: orefBlendBoost,
+          displacement: displacementBoost, crossBorder: crossBorderBoost, newsUrgency: newsUrgencyBoost,
+          earthquake: earthquakeBoost, sanctions: sanctionsBoost, ais: aisBoost,
+          strikePressure: strikePressureBoost(d.strikePressure),
+        },
+        blended,
+        floors: { ucdp: ucdpFloor, advisory: advisoryFloor, strike: strikeFloor },
+        floor,
+        strikePressure: d.strikePressure,
+        combinedScore: composite,
+      };
+    }
 
     scores.push({
       region: code,
@@ -1520,6 +1801,68 @@ export function computeCIIScores(
 
   scores.sort((a, b) => b.combinedScore - a.combinedScore);
   return scores;
+}
+
+// ========================================================================
+// Scoring seam
+// ------------------------------------------------------------------------
+// The whole score table from explicit inputs and a clock value, with every
+// term. Production builds call the same code (fetchAuxiliarySources ->
+// buildCiiAuxiliarySources, then computeCIIScores), so the fixtures in
+// tests/fixtures/cii/, scripts/cii-table-diff.mts and
+// tests/cii-invariants.test.mts measure the deployed formula. See
+// docs/methodology/cii-change-brief.md before changing any score.
+// ========================================================================
+
+export type CiiFloorName = keyof CiiCountryTerms['floors'];
+
+export interface CiiScoreTableRow extends CiiCountryTerms {
+  region: string;
+  /** Floors equal to the binding value when it exceeds the rounded blend; empty when the blend set the score. */
+  bindingFloors: CiiFloorName[];
+}
+
+export interface CiiScoreTable {
+  /** Exactly what computeCIIScores returns: sorted by combinedScore, descending. */
+  scores: CiiScore[];
+  /** One row per country, in the order of `scores`. */
+  rows: CiiScoreTableRow[];
+  aux: AuxiliarySources;
+}
+
+export interface CiiScoreOptions {
+  nowMs: number;
+  /** ACLED rows; production has had none since 2026-07 (no ACLED access). */
+  acledEvents?: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }>;
+  priorScores?: CiiScore[] | null;
+}
+
+/** Scores already-parsed sources. Pure. */
+export function scoreCiiAuxiliarySources(aux: AuxiliarySources, options: CiiScoreOptions): CiiScoreTable {
+  const terms: Record<string, CiiCountryTerms> = {};
+  const scores = computeCIIScores(options.acledEvents ?? [], aux, { nowMs: options.nowMs, priorScores: options.priorScores }, terms);
+  const rows = scores.map((score): CiiScoreTableRow => {
+    const t = terms[score.region]!;
+    const binds = t.floor > Math.round(t.blended);
+    const bindingFloors = binds
+      ? (Object.keys(t.floors) as CiiFloorName[]).filter((name) => t.floors[name] === t.floor)
+      : [];
+    return { region: score.region, ...t, bindingFloors };
+  });
+  return { scores, rows, aux };
+}
+
+/**
+ * The scoring seam: the full CII table from raw input payloads and `nowMs`.
+ * Pure: no Redis, no clock, no environment. IRAN_EVENTS_ENABLED and ACLED
+ * rows are parameters.
+ */
+export function computeCiiScoreTable(
+  raw: CiiRawInputs,
+  options: CiiScoreOptions & CiiAuxiliaryOptions,
+): CiiScoreTable {
+  const aux = buildCiiAuxiliarySources(raw, options.nowMs, { iranEventsEnabled: options.iranEventsEnabled });
+  return scoreCiiAuxiliarySources(aux, options);
 }
 
 export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
@@ -1574,7 +1917,7 @@ export function countCiiRealtimeSignalDensityCoverage(
   // realtime families, not a raw feed heartbeat. Quiet-but-available feeds may
   // produce 0 here; underlying feed freshness is monitored by their own
   // seed-meta/TTL health entries where available.
-  const coveredFamilies = new Set<'conflict' | 'news' | 'cyber'>();
+  const coveredFamilies = new Set<'conflict' | 'news'>();
 
   // Conflict family: satisfied by EITHER the ACLED API path OR the UCDP aux feed.
   // ACLED is only one of two live conflict sources both consumed by computeCIIScores —
@@ -1615,18 +1958,6 @@ export function countCiiRealtimeSignalDensityCoverage(
         coveredFamilies.add('news');
         break;
       }
-    }
-  }
-
-  for (const threat of aux?.cyber ?? []) {
-    const code = String(threat.country || '').trim().toUpperCase();
-    const severity = String(threat.severity || '').toLowerCase().replace(/^criticality_level_/, '');
-    if (
-      isTier1CountryCode(code)
-      && (severity === 'critical' || severity === 'high' || severity === 'medium')
-    ) {
-      coveredFamilies.add('cyber');
-      break;
     }
   }
 
@@ -1884,6 +2215,7 @@ async function recordRejectedRiskScoresBuild(err: RiskInputsUnavailableError): P
 async function buildRiskScoresPayload(): Promise<{
   response: GetRiskScoresResponse;
   realtimeSignalDensityCoverageCount: number;
+  ciiInputs: Record<CiiInputId, CiiInputState>;
 }> {
   const nowMs = Date.now();
   const [acled, aux, priorCiiScores] = await Promise.all([
@@ -1901,21 +2233,32 @@ async function buildRiskScoresPayload(): Promise<{
   return {
     response: { ciiScores, strategicRisks, degraded: false, stale: false },
     realtimeSignalDensityCoverageCount,
+    ciiInputs: assessCiiInputAvailability(acled, aux, nowMs),
   };
 }
+
+const RISK_SEED_META_KEY = 'seed-meta:intelligence:risk-scores';
 
 async function persistFreshRiskScorePayload(
   freshResult: GetRiskScoresResponse,
   realtimeSignalDensityCoverageCount: number,
+  ciiInputs: Record<CiiInputId, CiiInputState> | null,
   options: { liveCache?: boolean } = {},
 ): Promise<void> {
+  const fetchedAt = Date.now();
+  // The previous report carries each quiet input's clock. An unreadable one
+  // restarts the clocks, which can only delay a quiet-too-long verdict.
+  const previousMeta = ciiInputs ? await getCachedJson(RISK_SEED_META_KEY).catch(() => null) : null;
+  const inputs = ciiInputs
+    ? withCiiInputQuietClocks(ciiInputs, (previousMeta as { inputs?: unknown } | null)?.inputs, fetchedAt)
+    : undefined;
   const writes: Array<Promise<unknown>> = [
     setCachedJson(RISK_STALE_CACHE_KEY, freshResult, RISK_STALE_TTL),
     persistCiiTrendSnapshot(freshResult),
     persistCiiDailyHistory(freshResult),
     setCachedJson(
-      'seed-meta:intelligence:risk-scores',
-      { fetchedAt: Date.now(), recordCount: realtimeSignalDensityCoverageCount },
+      RISK_SEED_META_KEY,
+      { fetchedAt, recordCount: realtimeSignalDensityCoverageCount, ...(inputs ? { inputs } : {}) },
       604800,
     ),
   ];
@@ -1934,12 +2277,14 @@ export async function getRiskScores(
 ): Promise<GetRiskScoresResponse> {
   try {
     let realtimeSignalDensityCoverageCount = 0;
+    let ciiInputs: Record<CiiInputId, CiiInputState> | null = null;
     const { data: result, source, leader } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
       RISK_CACHE_KEY,
       RISK_CACHE_TTL,
       async () => {
         const built = await buildRiskScoresPayload();
         realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
+        ciiInputs = built.ciiInputs;
         return built.response;
       },
       undefined,
@@ -1954,6 +2299,7 @@ export async function getRiskScores(
         try {
           const built = await buildRiskScoresPayload();
           realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
+          ciiInputs = built.ciiInputs;
           freshResult = withRiskScoreRuntimeState(built.response, { degraded: false, stale: false });
           liveCacheBackfill = true;
         } catch {
@@ -1988,7 +2334,7 @@ export async function getRiskScores(
       // 7-day TTL matches the warm-ping write so health.maxStaleMin (30min)
       // logic is unchanged.
       if ((source === 'fresh' && leader) || liveCacheBackfill) {
-        await persistFreshRiskScorePayload(freshResult, realtimeSignalDensityCoverageCount, {
+        await persistFreshRiskScorePayload(freshResult, realtimeSignalDensityCoverageCount, ciiInputs, {
           liveCache: liveCacheBackfill,
         });
       }

@@ -57,6 +57,8 @@ export interface ExtractResult<T = Record<string, unknown>> {
   data: T;
   provider: AcquisitionProviderName;
   fetchedAt: Date;
+  /** Retailer HTTP status, distinct from the acquisition provider's response. */
+  sourceStatusCode?: number;
   /** Rendered page content (markdown/text) captured by the SAME provider call
    * that produced `data`, when the provider can return it. Callers use it as
    * ground truth to verify an extracted price actually appears on the page

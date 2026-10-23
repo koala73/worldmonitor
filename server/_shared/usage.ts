@@ -106,6 +106,13 @@ export type RequestReason =
   | 'internal_mcp_replay'
   | 'unknown_route'
   | 'method_not_allowed'
+  // MCP-Protocol-Version names a version /mcp does not serve. Split from
+  // malformed_request, where it hid 17% of weekly /mcp POSTs (2026-10-23).
+  | 'unsupported_protocol_version'
+  // MCP 2026-07-28 per-request validation: a required header missing or
+  // disagreeing with the body (-32020), or a malformed per-request _meta (-32602).
+  | 'header_mismatch'
+  | 'invalid_request_meta'
   | 'canonical_endpoint_required'
   | 'cors_error'
   // #3199 per-account API rate limit. `_429` = enforced reject; `_shadow` =
@@ -181,6 +188,12 @@ export interface RequestEvent {
   tool_error_kind: string | null;
   tool_result_bytes: number | null;
   tool_jmespath: boolean | null;
+  // MCP-Protocol-Version the client sent, bounded to published revisions or
+  // 'other'; null when absent and on REST rows.
+  mcp_protocol_version: string | null;
+  // 'modern' when /mcp served the request on the 2026-07-28 per-request path,
+  // 'legacy' otherwise; null on REST rows.
+  mcp_era: string | null;
 }
 
 export interface UpstreamEvent {
@@ -301,6 +314,10 @@ export function buildRequestEvent(p: {
   toolResultBytes?: number | null;
   /** Whether a JMESPath projection was requested; null when no tool ran (#9431). */
   toolJmespath?: boolean | null;
+  /** MCP-Protocol-Version header, bounded to known revisions or 'other'; null when absent. */
+  mcpProtocolVersion?: string | null;
+  /** MCP protocol era of the request ('modern' | 'legacy'); null on REST. */
+  mcpEra?: string | null;
 }): RequestEvent {
   return {
     _time: new Date().toISOString(),
@@ -339,6 +356,8 @@ export function buildRequestEvent(p: {
     tool_error_kind: p.toolErrorKind ?? null,
     tool_result_bytes: p.toolResultBytes ?? null,
     tool_jmespath: p.toolJmespath ?? null,
+    mcp_protocol_version: p.mcpProtocolVersion ?? null,
+    mcp_era: p.mcpEra ?? null,
   };
 }
 

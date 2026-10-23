@@ -1,0 +1,6 @@
+{
+  "next": "v15",
+  "claimedBy": "cii-stage-b",
+  "claimedAt": "2026-10-23T10:00:00Z",
+  "note": "Version claim for the next CII formula change; see docs/methodology/cii-change-brief.md section 4. One claim at a time: a PR that changes CII scores must hold it."
+}

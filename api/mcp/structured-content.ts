@@ -1,4 +1,5 @@
 import type { AttributionRider } from '../../shared/attribution-rider';
+import { isPlainObject } from './utils';
 
 // ---------------------------------------------------------------------------
 // `structuredContent` + the schema it is advertised under (#8328)
@@ -106,10 +107,6 @@ function hasNestedDeprecationProperty(root: Record<string, unknown>): boolean {
     return Object.values(node).some((value) => visit(value, false));
   };
   return visit(root, true);
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**

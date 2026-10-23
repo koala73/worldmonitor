@@ -14,7 +14,6 @@ const BUILT_URL = `${PAGE_URL}?wm-built=1`;
 const HORMUZ = {
   id: 'hormuz_strait',
   displayName: 'Strait of Hormuz',
-  transitMeasurementNote: 'Counts cover AIS-visible crossings & exclude "dark" transits.',
 };
 
 const PUBLISHED_PULSE = {
@@ -26,8 +25,12 @@ const PUBLISHED_PULSE = {
   aisDisruptions: '1 AIS disruption',
   aisSnapshotAvailable: true,
   description: null,
-  todayTransits: '76',
-  todayCountsAvailable: true,
+  officialLatestDate: '2026-10-08',
+  officialLatestTotal: 76,
+  officialAvg7d: 70.4,
+  baselineAvgDaily: 87.4,
+  baselineFrom: '2024-10-12',
+  baselineTo: '2025-10-11',
   weekMovement: '-13.6% vs prior week',
   partial: false,
   asOf: '2026-10-12T05:02:00.000Z',
@@ -55,7 +58,14 @@ function statusPayload(fetchedAt = new Date(Date.now() - 60_000).toISOString()) 
       aisDisruptions: 0,
       aisSnapshotAvailable: true,
       description: 'Tanker traffic recovering',
-      transitSummary: { dataAvailable: true, todayTotal: 91, todayCountsAvailable: true, wowChangePct: 4.2 },
+      // todayTotal is the relay's AIS zone-exit count (port traffic included);
+      // the page must never present it as transits. The official figures are
+      // the IMF PortWatch tail of 2026-10-22.
+      transitSummary: {
+        dataAvailable: true, todayTotal: 91, todayCountsAvailable: true, wowChangePct: 4.2,
+        officialLatestDate: '2026-10-18', officialLatestTotal: 4, officialAvg7d: 3.7,
+        baselineAvgDaily: 87.4, baselineFrom: '2024-10-22', baselineTo: '2025-10-21',
+      },
     }],
   };
 }
@@ -114,14 +124,21 @@ describe('live chokepoint page HTML', () => {
     assert.equal(response.headers.get('cdn-cache-control'), 'public, s-maxage=300, stale-while-revalidate=60');
     assert.equal(response.headers.get('etag'), null, 'the built file validator does not describe the live body');
     assert.equal(response.headers.get('last-modified'), null);
-    assert.match(html, /data-chokepoint-transits>91</);
+    assert.match(html, /data-chokepoint-official-transits>4<\/span><small data-chokepoint-official-date>Oct 18, 2026</);
+    assert.match(html, /data-chokepoint-official-average>3\.7 a day · 4% of 87\.4</);
+    assert.match(html, /data-chokepoint-movement>\+4\.2% vs prior week</);
+    assert.match(
+      html,
+      /IMF PortWatch counted 4 transits through the Strait of Hormuz on Oct 18, 2026 \(latest published day\)\. The 7-day average is 3\.7 a day, 4% of the 87\.4-a-day average for Oct 2024–Oct 2025\./,
+    );
     assert.match(html, /data-chokepoint-score>62</);
     assert.match(html, /Live reading /);
     assert.match(html, /data-live-at-request/);
-    assert.doesNotMatch(html, /data-chokepoint-transits>76</, 'week-old count is gone');
+    assert.doesNotMatch(html, /data-chokepoint-official-transits>76</, 'week-old count is gone');
+    assert.doesNotMatch(html, /\b91\b/, 'the relay AIS zone-exit count is not presented as transits');
+    assert.doesNotMatch(html, /Today's transits|data-chokepoint-transits\b|data-transit-measurement-note/);
     assert.doesNotMatch(html, /Published pulse/);
     assert.equal(html.split(CHOKEPOINT_LIVE_START).length, 2, 'exactly one live section');
-    assert.match(html, /exclude &quot;dark&quot; transits/, 'measurement note round-trips through the attribute');
 
     assert.ok(calls.some((call) => call.url === BUILT_URL), 'the built page is fetched under its own cache key');
     const statusFetch = calls.find((call) => call.url.includes('get-chokepoint-status'));

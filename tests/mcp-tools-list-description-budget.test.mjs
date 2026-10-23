@@ -498,7 +498,14 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
         const listed = tools.find(t => t.name === name).description;
         assert.ok(mod.utf8ByteLength(listed) <= mod.TOOL_DESCRIPTION_MAX_BYTES);
         assert.match(listed, /schedule/i);
-        assert.match(listed, /2023/);
+        if (name === 'get_tariff_averages') {
+          assert.match(listed, /coverage\.dataset/);
+          assert.match(listed, /coverage\.latestYear/);
+          assert.doesNotMatch(listed, /schedule rates through \d{4}|Series run from about 1990 to \d{4}/);
+          assert.match(listed, /US preferences.*2021/);
+        } else {
+          assert.match(listed, /2023/);
+        }
         assert.match(listed, /Section 301/);
         const full = await callDescribeTool(name);
         assert.match(full.description, /unilateral duties are NOT included/);

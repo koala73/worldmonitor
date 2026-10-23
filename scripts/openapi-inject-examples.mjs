@@ -857,6 +857,30 @@ function getPriceHistoryExample() {
   };
 }
 
+function getGoldIntelligenceExample() {
+  return {
+    goldPrice: 3200,
+    goldChangePct: 0,
+    goldSparkline: [],
+    silverPrice: 0,
+    platinumPrice: 0,
+    palladiumPrice: 0,
+    crossCurrencyPrices: [],
+    drivers: [],
+    updatedAt: '2026-09-30T00:00:00Z',
+    unavailable: false,
+    cbReserves: {
+      asOfMonth: '2026-09',
+      indicator: 'IRFCLDT1_IRFCL56_USD',
+      valueIsOunces: false,
+      totalTonnes: 0,
+      topHolders: [{ iso3: 'USA', name: 'United States', tonnes: 0, pctOfReserves: 50 }],
+      topBuyers12m: [],
+      topSellers12m: [],
+    },
+  };
+}
+
 // One real DTM operation, trimmed to one region and one route.
 function getInternalDisplacementExample() {
   const kassala = { latitude: 15.66, longitude: 35.87 };
@@ -1147,6 +1171,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getPriceHistoryExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getgoldintelligence'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getGoldIntelligenceExample();
   }
   if (
     depth === 0

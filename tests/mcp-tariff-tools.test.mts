@@ -318,6 +318,15 @@ describe('coverage on tariff answers', () => {
     assert.equal(result.coverage.latestYear, 2023);
   });
 
+  it('WTO MFN coverage follows newer provider years without imposing the WITS ending year', async () => {
+    for (const year of [2025, 2027]) {
+      const wire = { ...MFN_WIRE, datapoints: [{ ...MFN_WIRE.datapoints[0], year }], coverageEndYear: year };
+      reply = () => json(wire);
+      const result = await averages._execute({}, BASE, CTX, {});
+      assert.deepEqual(result, { ...wire, coverage: { ...SCHEDULE_COVERAGE, dataset: 'WTO_MFN', latestYear: year, seeAlso: US_SEE_ALSO } });
+    }
+  });
+
   it('bilateral with the US as reporter: the answering year and a pointer to the US duty', async () => {
     const wire = { reportingCountry: '840', partnerCountry: '156', hsCode: '870380', year: 2021, basis: 'APPLIED_TARIFF_BASIS_MFN', unavailableReason: '' };
     reply = () => json(wire);

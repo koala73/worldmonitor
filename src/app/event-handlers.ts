@@ -1536,16 +1536,22 @@ export class EventHandlerManager implements AppModule {
     const center = this.ctx.map.getCenter();
     const baseUrl = `${window.location.origin}${window.location.pathname}`;
     const briefPage = this.ctx.countryBriefPage;
-    const isCountryVisible = briefPage?.isVisible() ?? false;
+    // A loading or error panel is visible with a placeholder code such as
+    // `__loading__`, which is not a country.
+    const code = briefPage?.getCode();
+    const isCountryVisible = (briefPage?.isVisible() ?? false) && !!code && !code.startsWith('__');
+    // A deep-linked brief loads a lazy chunk and its data first; until it
+    // shows, keep its country in the URL so a refresh or copied link keeps it.
+    const pending = isCountryVisible ? null : this.ctx.pendingCountryBrief;
     return buildMapUrl(baseUrl, {
       view: state.view,
       zoom: state.zoom,
       center,
       timeRange: state.timeRange,
       layers: state.layers,
-      country: isCountryVisible ? (briefPage?.getCode() ?? undefined) : undefined,
-      expanded: isCountryVisible && briefPage?.getIsMaximized?.() ? true : undefined,
-      chokepoint: !isCountryVisible ? (this.ctx.activeChokepoint ?? undefined) : undefined,
+      country: isCountryVisible ? code : pending?.code,
+      expanded: (isCountryVisible ? briefPage?.getIsMaximized?.() : pending?.expanded) ? true : undefined,
+      chokepoint: !isCountryVisible && !pending ? (this.ctx.activeChokepoint ?? undefined) : undefined,
     });
   }
 

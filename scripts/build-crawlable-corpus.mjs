@@ -1755,7 +1755,20 @@ function gitEnvForRoot() {
   return env;
 }
 
+// One build asks for the same few dozen paths in every loadCorpusData call,
+// and each answer cost two git subprocesses. The corpus test file alone spawned
+// 2,657 of them (41 s of its 55 s locally). Answers are cached per process:
+// every caller is a one-shot build or a test, none commits to a root and then
+// re-asks about it.
+const completeHistoryByRoot = new Map();
 function hasCompleteGitHistory(rootDir) {
+  if (!completeHistoryByRoot.has(rootDir)) {
+    completeHistoryByRoot.set(rootDir, probeCompleteGitHistory(rootDir));
+  }
+  return completeHistoryByRoot.get(rootDir);
+}
+
+function probeCompleteGitHistory(rootDir) {
   try {
     return execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
       cwd: rootDir,
@@ -1768,7 +1781,16 @@ function hasCompleteGitHistory(rootDir) {
   }
 }
 
+const gitLastmodByPath = new Map();
 export function gitFileLastmod(rootDir, relativePath) {
+  const key = `${rootDir}\0${relativePath}`;
+  if (!gitLastmodByPath.has(key)) {
+    gitLastmodByPath.set(key, probeGitFileLastmod(rootDir, relativePath));
+  }
+  return gitLastmodByPath.get(key);
+}
+
+function probeGitFileLastmod(rootDir, relativePath) {
   if (!hasCompleteGitHistory(rootDir)) return null;
   try {
     // Committer date rendered in UTC, not the commit's recorded timezone —
@@ -4247,7 +4269,7 @@ function renderChokepointsIndex({ chokepoints, chokepointHubRows, livePulse, bas
     },
     {
       question: 'Why do some chokepoint pages show fewer metrics than others?',
-      answer: 'A metric appears only when the source behind it reported for that snapshot. Navigational warnings, AIS disruptions and AIS congestion each depend on their own feed. The daily transit count and PortWatch week-over-week movement each depend on their own source availability, so either can appear without the other. Unavailable values can appear as an em dash or be hidden, depending on the metric, so a sparse page means missing evidence, not a calm waterway. Published revisions to these rules are in the corrections log.',
+      answer: 'A metric appears only when the source behind it reported for that snapshot. Navigational warnings, AIS disruptions and AIS congestion each depend on their own feed. The latest daily transit count, its 7-day average and the week-over-week movement are IMF PortWatch figures and are withheld together when PortWatch has no history for the waterway; the year-earlier comparison is omitted when no baseline was stored. Unavailable values can appear as an em dash or be hidden, depending on the metric, so a sparse page means missing evidence, not a calm waterway. Published revisions to these rules are in the corrections log.',
     },
   ];
   const datasetId = `${absoluteUrl(baseUrl, path)}#status-dataset`;
@@ -4308,7 +4330,7 @@ ${chokepointHubRows.map((row) => {
       <h2>How this list is scoped</h2>
       <p>The ${chokepointHubRows.length} waterways come from a committed registry, not from whatever is in the news. Each has a detail page carrying the same four-source status block, the modelled corridors that route through it, and its alternatives when it is unavailable. A waterway enters the registry because traffic there has no cheap substitute — the test is substitutability, not incident count — so the list changes rarely and changes are recorded in the corrections log.</p>
       <h2>What these pages are not</h2>
-      <p>They are not a navigation product and not an open/closed declaration. A score is a triage signal built from the sources named above; it does not authorise or discourage a transit, and it carries no view on the legality or safety of any particular voyage. Transit counts are a relay observation of vessels seen, not a port authority figure, and the oil volumes above are a ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} annual-average baseline rather than current throughput.</p>
+      <p>They are not a navigation product and not an open/closed declaration. A score is a triage signal built from the sources named above; it does not authorise or discourage a transit, and it carries no view on the legality or safety of any particular voyage. Daily transit counts are IMF PortWatch figures from satellite AIS, published about four days after the day they cover, not a port authority figure, and the oil volumes above are a ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} annual-average baseline rather than current throughput.</p>
       <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)} ${CHOKEPOINT_REGISTRY_PATH}">Sources: World Monitor weekly pulse snapshot and World Monitor chokepoint registry. Published ${escapeHtml(prettyDate(livePulse.capturedAt))}. Methodology: <a href="/docs/methodology/chokepoints">chokepoint disruption scoring</a>. Published revisions: <a href="/docs/corrections">corrections log</a>.</p>`;
   return pageDocument({
     baseUrl,

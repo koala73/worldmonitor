@@ -288,8 +288,8 @@ Strategic risk and Country Instability Index (CII) scores are pre-computed serve
 The `GetRiskScores` RPC handler (`get-risk-scores.ts`):
 
 1. Fetches recent protest/riot/battle/explosion/civilian-violence data from ACLED. While ACLED returns no events (WorldMonitor has no ACLED access), Conflict and Unrest instead read GDELT terms (escalation or sustained level) from `gdelt:bulk:country-events:v1`.
-2. Fetches auxiliary sources from Redis, including UCDP conflicts, outages, climate, cyber threats, fires, GPS jamming, Iran events, OREF alerts, advisories, displacement, classified news summaries, aviation alerts, earthquakes, sanctions, and military/AIS CII aggregates.
-3. Computes CII v13 scores for 31 Tier-1 countries using the shared coefficient table documented in [CII Risk Scoring Methodology](/methodology/cii-risk-scores).
+2. Fetches auxiliary sources from Redis, including UCDP conflicts, outages, climate, fires, GPS jamming, Iran events, OREF alerts, advisories, displacement, classified news summaries, aviation alerts, earthquakes, sanctions, and military/AIS CII aggregates.
+3. Computes CII v14 scores for 31 Tier-1 countries using the shared coefficient table documented in [CII Risk Scoring Methodology](/methodology/cii-risk-scores).
 4. Derives Strategic Risk from the weighted top 5 CII scores.
 5. Caches results in Redis with versioned live and stale keys tied to the current CII formula version.
 
@@ -305,7 +305,7 @@ Each country's score combines a static baseline (40%) with a dynamic event score
 |---------------|--------|---------|
 | Unrest | 25% | ACLED protests/riots, protest fatalities, high-severity unrest, and outage severity; GDELT protest escalation or sustained level while ACLED returns no events |
 | Conflict | 30% | Weighted ACLED battles/explosions/civilian violence, fatalities, and OREF alert pressure; GDELT conflict escalation or sustained level while ACLED returns no events. Strikes count through strike pressure on the composite (v12), not here |
-| Security | 20% | Military flights, military vessels, aviation closures/delays, and GPS/GNSS jamming |
+| Security | 20% | Foreign military flights and vessels located in the country, aviation closures/delays, and GPS/GNSS jamming |
 | Information | 25% | Classified news headlines and country-attributed threat summaries |
 
 **Floors** (minimum score guarantees):
@@ -318,7 +318,7 @@ Each country's score combines a static baseline (40%) with a dynamic event score
 | Advisory reconsider | >= 50 | Live advisory feed when present; otherwise embedded State Department fallback table |
 | Strike pressure (v12) | 40-70 | Decayed strike pressure `P >= 5`: `min(70, 40 + 8 * log2(P / 5))` |
 
-**Supplemental Boosts**: Advisory boost (+15/+10/+5), OREF blend boost for IL (+15 active + history tiers), climate (+15 max), cyber (+12 max), fires (+8 max), displacement (+20 max), news urgency (+5 max), earthquakes (+25 max), sanctions (+14 max), AIS disruptions (+10 max), and strike pressure (+10 max).
+**Supplemental Boosts**: Advisory boost (+15/+10/+5), OREF blend boost for IL (+15 active + history tiers), climate (+15 max), fires (+8 max), displacement (+20 max), news urgency (+5 max), earthquakes (+25 max), sanctions (+14 max), AIS disruptions (+10 max), and strike pressure (+10 max).
 
 Advisory outputs expose both `advisoryLevel` and `advisoryProvenance` on each
 `CiiScore`. `advisoryProvenance` is `live` when the score used the seeded
@@ -358,10 +358,9 @@ The top countries contribute most heavily, with diminishing influence for lower-
 | UCDP | `conflict:ucdp-events:v1` | War/minor conflict floors |
 | Outages | `infra:outages:v1` | Unrest outage boost |
 | Climate | `climate:anomalies:v2` | Climate severity boost |
-| Cyber | `cyber:threats-bootstrap:v2` | Severity-weighted cyber boost |
-| Fires | `wildfire:fires:v1` | Severity-weighted wildfire boost |
+| Fires | `wildfire:fires-summary:v1` (per-country rows derived from `wildfire:fires:v1`) | Severity-weighted wildfire boost |
 | GPS Jamming | `intelligence:gpsjam:v2` | Security score |
-| Military CII | Relay/seeded military aggregate | Security score and AIS disruption boost |
+| Military CII | Relay/seeded military aggregate | Security score (foreign flights and vessels only since v14) and AIS disruption boost |
 | Aviation Alerts | Seeded aviation disruption data | Security score |
 | Middle East strikes | `conflict:iran-events:v1` (72h) and `conflict:strike-pressure:v1` (30-day tally) | Strike pressure: severity-weighted strikes per day, decayed, into a floor and a boost |
 | GDELT strikes | `gdelt:bulk:country-events:v1` (strike counter) | Strike pressure worldwide while ACLED returns no events |
@@ -389,6 +388,6 @@ The relay CII warm-ping loop is active in `scripts/ais-relay.cjs`: it calls
 refresh live/stale cache state, and writes `seed-meta:intelligence:risk-scores`
 for health monitoring when scores are returned. That seed-meta `recordCount`
 is real-time signal-density coverage, not raw feed availability: it counts the
-score-relevant Tier-1 conflict (ACLED, UCDP, or a live GDELT baseline while ACLED returns no events), news, and cyber signal families
+score-relevant Tier-1 conflict (ACLED, UCDP, or a live GDELT baseline while ACLED returns no events) and news signal families
 present in the CII refresh. Quiet-but-fresh real-time feeds can therefore produce
 `COVERAGE_PARTIAL`; source-specific freshness remains the feed-heartbeat view.

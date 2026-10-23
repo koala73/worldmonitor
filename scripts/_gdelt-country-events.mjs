@@ -20,7 +20,7 @@
 // incomplete are rebuilt from the public export archive, a bounded number per
 // tick, so a fresh deploy reaches a full baseline in hours rather than weeks.
 //
-// The fourth counter (CII v13) is kinetic strikes that hit the country: CAMEO
+// The fourth counter (since CII v12) is kinetic strikes that hit the country: CAMEO
 // 194 (artillery, tanks) and 195 (aerial weapons: air, drone and missile
 // strikes) where the target (Actor2) is the country the event is located in.
 // GDELT geocodes many war stories to their dateline, so without the target

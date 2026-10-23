@@ -1330,7 +1330,61 @@ Recovery is accepted only when:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
-| **Members** | GIE Gas Storage (daily), Gas Storage Countries (daily), JODI Gas (monthly), JODI Oil (monthly), OWID Energy Mix (monthly), IEA Oil Stocks (monthly) |
+| **Members** | GIE Gas Storage (daily), Gas Storage Countries (daily), JODI Gas (monthly), JODI Oil (monthly), Oil-Trade-Series (weekly), OWID Energy Mix (monthly), IEA Oil Stocks (monthly) |
+| **Required env** | `COMTRADE_API_KEYS` for the weekly Oil-Trade-Series Comtrade mirror lane. Without it, the other oil sources can publish while all mirrors report `unavailable`. |
+
+#### Activate the oil-trade mirror lane
+
+The October 21, 2026 MCP audit found all 24 exporter mirrors unavailable in the
+October 19 publication. Deployment `8715f5d0-26f4-4dc5-9ecd-c226cd9ac559`, from
+commit `0ec794835060fc2e7b24146683c183963886c385`, logged
+`Comtrade mirror unavailable: COMTRADE_API_KEYS not set` for every exporter at
+07:33 UTC on October 19. The production service still lacked that variable on
+October 21. This failure occurs before a Comtrade request, so these logs do not
+establish provider refusal or missing monthly filings.
+
+Configuration changes, deployment, and manual publication require separate
+operator authorization. After that authorization, use this procedure.
+
+1. Select project `29419572-0b0d-437f-8e71-4fa68daf514f`, production environment
+   `91a05726-0b83-4d44-a33e-6aec94e58780`, and service
+   `c989eee4-3336-46b7-b7cd-39700cd56a0f` in Railway.
+2. Configure `COMTRADE_API_KEYS` with one or more approved Comtrade API-key values
+   for this service. Separate multiple keys with commas. Use the secure variable
+   editor. Do not put keys in logs, commands, evidence files, or pull requests.
+   Coordinate the provider quota with the other Comtrade workers before activation.
+3. Apply the variable change and its deployment only after deployment approval.
+   Record the exact deployment ID and source SHA. Confirm that the deployment
+   receives the variable by name without printing its value.
+4. Use a trusted checkout whose Railway CLI context is linked to the project
+   above. Run `node scripts/audit-railway-watch-paths.mjs --environment production`.
+   Confirm that the energy bundle no longer reports the
+   missing prerequisite. Registry sync reports runtime prerequisites separately
+   from configuration drift. Its success alone does not prove source health.
+5. Let the daily 07:30 UTC bundle tick run the weekly Oil-Trade-Series section
+   when due. The section uses `seed-completion:energy:oil-trade-series` with a
+   seven-day interval. A restart does not override that interval. Any earlier
+   manual publication needs separate approval. Do not delete completion or
+   canonical keys to force a retry.
+6. For the first due run, inspect logs for the recorded deployment. Search for
+   `Oil-Trade-Series`, `Comtrade mirror unavailable`, and `FATAL`. Distinguish
+   missing configuration, HTTP refusal, rate limits, and successful empty data.
+   If requests fail, stop manual retries and investigate the reported cause.
+7. Read `energy:oil-trade-series:v1` and its seed metadata after publication.
+   Confirm a new publication clock, then check the mirror source status and
+   `lastObserved` for covered exporters such as SA and AE. Confirm that monthly
+   rows contain named buyer observations and the declared kg-to-kb/d conversion.
+   A successful empty source remains `not_reported` with null observations.
+8. Call `get_oil_trade_series` for SA with `window_months: 3`. Compare its mirror
+   observations, provenance, source clock, and unavailable list with the cache.
+   Record partial filing coverage and stale observations without turning them
+   into zeros. JP is outside this 24-exporter dataset.
+
+The operator who authorizes activation owns the first due weekly publication
+and its acceptance record. Keep the incident open if all mirrors remain
+unavailable. Overall cache freshness and the health production count do not prove
+mirror coverage. The four sources stay separate, and provider failure retains
+last-good observations with an unavailable source status.
 
 ### Bundle 8: seed-bundle-macro
 
@@ -1403,9 +1457,9 @@ Both snapshots must pass the same coverage check as the other catalogue entries.
 | **Initial source** | Reviewed PR #8543 commit `041f66dd06e00b97506bd8f01272d14f76aa215e` on `feat/government-yield-curves`. After merge, clear the commit pin and switch the source branch to `main`. |
 | **Replaces** | 0 services (new bundle, #8522) |
 | **Net savings** | n/a |
-| **Members** | Yield-Curve-JP (daily), Yield-Curve-CA (daily), Yield-Curve-DE (daily), Yield-Curve-GB (daily), Yield-Curve-AU (daily), Yield-Curve-CH (daily), Yield-Curve-NO (daily), Yield-Curve-SE (daily), OECD-LT-Rates (weekly) |
+| **Members** | Yield-Curve-JP (daily), Yield-Curve-CA (daily), Yield-Curve-DE (daily), Yield-Curve-GB (daily), Yield-Curve-AU (daily), Yield-Curve-CH (daily), Yield-Curve-NO (daily), Yield-Curve-SE (daily), OECD-LT-Rates (daily) |
 | **Required env** | Upstash Redis (shared). No upstream API keys — all nine sources are keyless official publishers. |
-| **Note** | Serves GetGovernmentYieldCurve (`/api/economic/v1/get-government-yield-curve`). Split from seed-bundle-macro because that bundle's 570s budget is already saturated by 22 sections. GB refreshes the 39 MB BoE archive on cold start and month rollover to recover missed month-end observations; other daily runs merge the ~370 KB current-month zip into accumulated history. SE paces its four SWEA requests (2s gaps plus Retry-After-honoring backoff) because the API throttles bursts with escalating 429s. Every market publishes per-year shards plus a `:latest` key; the OECD fallback is monthly and covers markets without a daily fitted curve. |
+| **Note** | Serves GetGovernmentYieldCurve (`/api/economic/v1/get-government-yield-curve`). Split from seed-bundle-macro because that bundle's 570s budget is already saturated by 22 sections. GB refreshes the 39 MB BoE archive on cold start and month rollover to recover missed month-end observations; other daily runs merge the ~370 KB current-month zip into accumulated history. SE paces its four SWEA requests (2s gaps plus Retry-After-honoring backoff) because the API throttles bursts with escalating 429s. Every market publishes per-year shards plus a `:latest` key; the OECD-LT fallback is monthly and covers markets without a daily fitted curve, serving EU members from the ECB IRS dataset (one CSV, published ~41 days after the period start) on top of FRED's OECD MEI history, and the other markets from FRED alone. Each market records the `source` of its latest print; health judges ECB-sourced markets at a 114-day content budget and FRED-sourced ones at 120 days (one skipped OECD release is normal, a second miss is STALE_CONTENT). |
 
 ---
 

@@ -13,6 +13,32 @@ const PAGE_SIZE = 2000;
 const FETCH_TIMEOUT = 30_000;
 const HISTORY_DAYS = 180;
 const CONCURRENCY = 3;
+const DAY_MS = 24 * 60 * 60 * 1000;
+// Year-earlier baseline: the 12 months ending one year before the seed, so a
+// disruption that has run for months does not drag the "normal" it is measured
+// against. Computed server-side by ArcGIS outStatistics (one row per
+// chokepoint), not by paging 365 more days of features.
+export const BASELINE_WINDOW_DAYS = 365;
+export const BASELINE_LAG_DAYS = 365;
+// Below this many published days the mean is not a year's normal.
+export const BASELINE_MIN_DAYS = 300;
+// Wall-clock budget for the whole baseline pass. The baseline only qualifies
+// the daily history, so it must never push the fetch phase past its deadline
+// (300s bundle section, ~260s fetch) and cost the fresh counts. Chokepoints
+// still waiting when the budget runs out keep baseline: null.
+export const BASELINE_BUDGET_MS = 45_000;
+const BASELINE_REQUEST_TIMEOUT_MS = 15_000;
+// Left between the end of the baseline pass and runSeed's fetch deadline.
+const BASELINE_DEADLINE_MARGIN_MS = 10_000;
+
+/**
+ * The baseline budget: BASELINE_BUDGET_MS, cut to what runSeed's fetch
+ * deadline leaves after the history fetch, minus a margin. 0 skips the pass.
+ */
+export function baselineBudgetMs(fetchDeadlineAtMs, nowMs = Date.now()) {
+  if (!Number.isFinite(fetchDeadlineAtMs)) return BASELINE_BUDGET_MS;
+  return Math.max(0, Math.min(BASELINE_BUDGET_MS, fetchDeadlineAtMs - nowMs - BASELINE_DEADLINE_MARGIN_MS));
+}
 
 export const CHOKEPOINTS = [
   { name: 'Suez Canal',          id: 'suez' },
@@ -94,6 +120,50 @@ export async function fetchAllPages(portname, sinceEpoch) {
   return all;
 }
 
+/**
+ * The baseline window, day-aligned in UTC: [now - 730d, now - 365d).
+ * `from` and `to` are the first and last calendar days inside it, so the
+ * stored record reads as an inclusive range.
+ */
+export function baselineWindow(nowMs = Date.now()) {
+  const dayStart = Math.floor(nowMs / DAY_MS) * DAY_MS;
+  const toEpoch = dayStart - BASELINE_LAG_DAYS * DAY_MS;
+  const fromEpoch = toEpoch - BASELINE_WINDOW_DAYS * DAY_MS;
+  return { fromEpoch, toEpoch, from: formatDate(fromEpoch), to: formatDate(toEpoch - DAY_MS) };
+}
+
+export async function fetchBaselineStats(portname, { fromEpoch, toEpoch }, timeoutMs = BASELINE_REQUEST_TIMEOUT_MS) {
+  const params = new URLSearchParams({
+    where: `portname='${portname.replace(/'/g, "''")}' AND date >= ${epochToTimestamp(fromEpoch)} AND date < ${epochToTimestamp(toEpoch)}`,
+    outStatistics: JSON.stringify([
+      { statisticType: 'avg', onStatisticField: 'n_total', outStatisticFieldName: 'avg_total' },
+      { statisticType: 'count', onStatisticField: 'n_total', outStatisticFieldName: 'day_count' },
+    ]),
+    f: 'json',
+  });
+  const resp = await fetch(`${ARCGIS_BASE}?${params}`, {
+    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!resp.ok) throw new Error(`ArcGIS HTTP ${resp.status} for ${portname} baseline`);
+  const body = await resp.json();
+  if (body.error) throw new Error(`ArcGIS baseline error for ${portname}: ${body.error.message}`);
+  return body.features?.[0]?.attributes ?? null;
+}
+
+/**
+ * `{ avgDaily, days, from, to }` from an outStatistics row, or null when the
+ * window holds fewer than BASELINE_MIN_DAYS published days or the row is
+ * malformed. Null is stored as-is: consumers withhold the comparison rather
+ * than compare against a partial year.
+ */
+export function buildBaseline(stats, window) {
+  const avg = Number(stats?.avg_total);
+  const days = Number(stats?.day_count);
+  if (!Number.isFinite(avg) || avg < 0 || !Number.isInteger(days) || days < BASELINE_MIN_DAYS) return null;
+  return { avgDaily: Math.round(avg * 10) / 10, days, from: window.from, to: window.to };
+}
+
 export function buildHistory(features) {
   return features
     .filter(f => f.attributes?.date)
@@ -150,8 +220,19 @@ export function buildHistory(features) {
  * The retry is intentionally "1 attempt" — a permanent ArcGIS issue
  * for a given chokepoint should still surface as missing in seed-meta
  * recordCount so /api/health can flag it.
+ *
+ * Baselines run as a third pass over the chokepoints that have history, with
+ * the same batch concurrency and one sequential retry. A baseline failure
+ * stores `baseline: null` and never drops the chokepoint: the daily history
+ * is the primary record and the baseline only qualifies it.
  */
-export async function runFetchPipeline(chokepoints, sinceEpoch, fetchPagesFn, retryDelayMs = 500) {
+export async function runFetchPipeline(
+  chokepoints,
+  sinceEpoch,
+  fetchPagesFn,
+  retryDelayMs = 500,
+  { fetchBaselineFn = null, baselineWindow: window = null, baselineBudgetMs: budgetOverride = null, fetchDeadlineAtMs = null } = {},
+) {
   const result = {};
   const missing = [];
 
@@ -174,7 +255,7 @@ export async function runFetchPipeline(chokepoints, sinceEpoch, fetchPagesFn, re
         continue;
       }
       const history = buildHistory(outcome.value);
-      result[cp.id] = { history, wowChangePct: computeWow(history) };
+      result[cp.id] = { history, wowChangePct: computeWow(history), baseline: null };
     }
   }
 
@@ -191,7 +272,7 @@ export async function runFetchPipeline(chokepoints, sinceEpoch, fetchPagesFn, re
           continue;
         }
         const history = buildHistory(features);
-        result[cp.id] = { history, wowChangePct: computeWow(history) };
+        result[cp.id] = { history, wowChangePct: computeWow(history), baseline: null };
         console.log(`  [PortWatch] ${cp.name}: recovered ${features.length} features on retry`);
       } catch (e) {
         console.warn(`  [PortWatch] ${cp.name}: retry rejected — ${e?.message || e}`);
@@ -199,12 +280,78 @@ export async function runFetchPipeline(chokepoints, sinceEpoch, fetchPagesFn, re
     }
   }
 
+  if (fetchBaselineFn && window) {
+    // Measured after the history passes, so slow history shrinks the budget.
+    const budget = Number.isFinite(budgetOverride) ? budgetOverride : baselineBudgetMs(fetchDeadlineAtMs);
+    await attachBaselines(result, chokepoints, fetchBaselineFn, window, retryDelayMs, budget);
+  }
+
   return result;
 }
 
-export async function fetchAll() {
-  const sinceEpoch = Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000;
-  const result = await runFetchPipeline(CHOKEPOINTS, sinceEpoch, fetchAllPages);
+// Settles within `ms` even if the request ignores its own timeout, so the
+// baseline budget is a wall-clock bound.
+function withinMs(promise, ms) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`baseline budget exhausted after ${ms}ms`)), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+async function attachBaselines(result, chokepoints, fetchBaselineFn, window, retryDelayMs, budgetMs) {
+  const deadline = Date.now() + budgetMs;
+  const remaining = () => deadline - Date.now();
+  const request = (cp) => {
+    const ms = Math.min(BASELINE_REQUEST_TIMEOUT_MS, remaining());
+    return withinMs(fetchBaselineFn(cp.name, window, ms), ms);
+  };
+  const covered = chokepoints.filter(cp => result[cp.id]);
+  const failed = [];
+  const store = (cp, stats) => {
+    const baseline = buildBaseline(stats, window);
+    result[cp.id].baseline = baseline;
+    if (!baseline) {
+      console.warn(`  [PortWatch] ${cp.name}: baseline withheld — ${Number(stats?.day_count) || 0} published days in ${window.from}..${window.to} (need ${BASELINE_MIN_DAYS})`);
+    }
+  };
+  const skip = (cps) => {
+    if (cps.length) console.warn(`[PortWatch] Baseline budget (${budgetMs}ms) spent; history kept, baseline null for: ${cps.map(cp => cp.id).join(', ')}`);
+  };
+
+  for (let i = 0; i < covered.length; i += CONCURRENCY) {
+    if (remaining() <= 0) { skip(covered.slice(i)); return; }
+    const batch = covered.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(batch.map(request));
+    for (let j = 0; j < batch.length; j++) {
+      const outcome = settled[j];
+      if (outcome.status === 'rejected') {
+        console.warn(`  [PortWatch] ${batch[j].name}: baseline rejected — ${outcome.reason?.message || outcome.reason}`);
+        failed.push(batch[j]);
+        continue;
+      }
+      store(batch[j], outcome.value);
+    }
+  }
+
+  for (const [k, cp] of failed.entries()) {
+    if (retryDelayMs > 0) await new Promise(r => setTimeout(r, Math.min(retryDelayMs, Math.max(0, remaining()))));
+    if (remaining() <= 0) { skip(failed.slice(k)); return; }
+    try {
+      store(cp, await request(cp));
+    } catch (e) {
+      console.warn(`  [PortWatch] ${cp.name}: baseline retry rejected — ${e?.message || e}; history kept, baseline null`);
+    }
+  }
+}
+
+export async function fetchAll({ fetchDeadlineAtMs = null } = {}) {
+  const sinceEpoch = Date.now() - HISTORY_DAYS * DAY_MS;
+  const result = await runFetchPipeline(CHOKEPOINTS, sinceEpoch, fetchAllPages, 500, {
+    fetchBaselineFn: fetchBaselineStats,
+    baselineWindow: baselineWindow(),
+    fetchDeadlineAtMs,
+  });
   if (Object.keys(result).length === 0) throw new Error('No chokepoints returned data');
   return result;
 }

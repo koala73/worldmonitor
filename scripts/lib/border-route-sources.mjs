@@ -9,7 +9,7 @@ const CBP = 'https://www.cbp.gov';
 const USER_AGENT = 'WorldMonitor/1.0 (+https://worldmonitor.app)';
 
 export const BORDER_SOURCES = {
-  uk: { name: 'UK Home Office', url: `${UK}${UK_PATH}`, license: 'Open Government Licence v3.0', licenseUrl: 'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/', maxContentAgeMin: 3 * 1440 },
+  uk: { name: 'UK Home Office', url: `${UK}${UK_PATH}`, license: 'Open Government Licence v3.0', licenseUrl: 'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/', maxContentAgeMin: 7.5 * 1440 },
   cbp: { name: 'US Customs and Border Protection', url: `${CBP}/document/stats/nationwide-encounters`, license: 'US public domain', licenseUrl: `${CBP}/site-policy-notices/copyright-notice`, maxContentAgeMin: 75 * 1440 },
   frontex: { name: 'Frontex', url: 'https://www.frontex.europa.eu/what-we-do/monitoring-and-risk-analysis/migratory-map/', license: 'Used with permission', licenseUrl: 'https://www.frontex.europa.eu/legal-disclaimer/', maxContentAgeMin: 75 * 1440 },
   panama: { name: 'Panama Servicio Nacional de Migración', url: 'https://www.migracion.gob.pa/estadisticas/', license: 'Used with permission', licenseUrl: 'https://www.migracion.gob.pa/estadisticas/', maxContentAgeMin: 75 * 1440 },

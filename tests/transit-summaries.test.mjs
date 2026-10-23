@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectTrafficAnomaly, THREAT_LEVEL } from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
+import { summarizePortwatchHistory } from '../shared/chokepoint-traffic-anomaly.js';
 import {
   CANONICAL_CHOKEPOINTS,
   corridorRiskNameToId,
@@ -123,10 +124,10 @@ describe('seedTransitSummaries (relay)', () => {
   // hand-copied literals — a future rename/edit in ais-relay.cjs breaks this
   // extraction (loud) instead of silently testing stale duplicated code.
   //
-  // `detectTrafficAnomaly` and `CHOKEPOINT_THREAT_LEVELS` are injected as the
-  // real imported modules rather than sliced out of the relay: the relay now
-  // requires both from shared/, so there is nothing to extract and nothing to
-  // hold in sync.
+  // `detectTrafficAnomaly`, `summarizePortwatchHistory` and
+  // `CHOKEPOINT_THREAT_LEVELS` are injected as the real imported modules rather
+  // than sliced out of the relay: the relay requires them from shared/, so
+  // there is nothing to extract and nothing to hold in sync.
   const seedHarnessSrc = [
     extractConstLine('PORTWATCH_REDIS_KEY'),
     extractConstLine('CORRIDOR_RISK_REDIS_KEY'),
@@ -199,12 +200,12 @@ describe('seedTransitSummaries (relay)', () => {
     // eslint-disable-next-line no-new-func
     const factory = new Function(
       'envelopeRead', 'envelopeWrite', 'upstashSet', 'console', 'UPSTASH_ENABLED', 'chokepointCrossings',
-      'detectTrafficAnomaly', 'CHOKEPOINT_THREAT_LEVELS', 'readTransitWindow', 'upstashEval',
+      'detectTrafficAnomaly', 'summarizePortwatchHistory', 'CHOKEPOINT_THREAT_LEVELS', 'readTransitWindow', 'upstashEval',
       seedHarnessSrc,
     );
     return factory(
       envelopeRead, envelopeWrite, upstashSet, { warn, log }, upstashEnabled, chokepointCrossings,
-      detectTrafficAnomaly, CHOKEPOINT_THREAT_LEVELS, readTransitWindow, upstashEval,
+      detectTrafficAnomaly, summarizePortwatchHistory, CHOKEPOINT_THREAT_LEVELS, readTransitWindow, upstashEval,
     );
   }
 
@@ -461,7 +462,7 @@ describe('seedTransitSummaries (relay)', () => {
       const notifications = [];
       const seed = new Function(
         'fetch', 'envelopeRead', 'envelopeWrite', 'upstashSet', 'console', 'UPSTASH_ENABLED',
-        'chokepointCrossings', 'detectTrafficAnomaly', 'CHOKEPOINT_THREAT_LEVELS',
+        'chokepointCrossings', 'detectTrafficAnomaly', 'summarizePortwatchHistory', 'CHOKEPOINT_THREAT_LEVELS',
         'CORRIDOR_RISK_NAME_MAP', 'deriveCorridorRiskLevel', 'CHROME_UA', 'publishNotificationEvent', 'readTransitWindow', 'upstashEval',
         source,
       )(
@@ -472,7 +473,7 @@ describe('seedTransitSummaries (relay)', () => {
           : null,
         async (key, data) => { writes.set(key, data); return true; },
         async () => {}, { log() {}, warn(message) { assert.fail(message); } }, true,
-        new Map(), detectTrafficAnomaly, CHOKEPOINT_THREAT_LEVELS,
+        new Map(), detectTrafficAnomaly, summarizePortwatchHistory, CHOKEPOINT_THREAT_LEVELS,
         CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel, 'test-agent',
         async event => { notifications.push(event); },
         readTransitWindow, transitStore(),
@@ -514,6 +515,81 @@ describe('seedTransitSummaries (relay)', () => {
     assert.equal(summary.incidentCount7d, 628);
     assert.equal(summary.todayTotal, null);
     assert.equal(summary.dataAvailable, true);
+  });
+
+  it('publishes the official IMF PortWatch figures next to the relay count and withholds them without PortWatch history', async () => {
+    // Production 2026-10-22: the relay's AIS zone-exit count said Hormuz had 38
+    // "transits" while PortWatch's published tail was 3,7,3,2,7,0,4 against a
+    // 87.4-a-day year-earlier baseline. The summary must carry the official
+    // figures so the public page can headline them; a chokepoint without a
+    // baseline keeps its latest day, and one without history keeps nothing.
+    const now = Date.now();
+    const hormuzTail = [3, 7, 3, 2, 7, 0, 4].map((total, index) => ({
+      date: new Date(Date.UTC(2026, 9, 12 + index)).toISOString().slice(0, 10),
+      tanker: 0, cargo: total, other: 0, total,
+    }));
+    const fakePortwatch = {
+      hormuz_strait: {
+        // Fixed dates ending the day before the tail, so the tail stays the
+        // latest week whatever day the suite runs (Date.now() filler overtook
+        // it from 2026-10-30).
+        history: [
+          ...Array.from({ length: 30 }, (_, i) => ({
+            date: new Date(Date.UTC(2026, 9, 11 - i)).toISOString().slice(0, 10),
+            tanker: 0, cargo: 80, other: 0, total: 80,
+          })),
+          ...hormuzTail,
+        ],
+        wowChangePct: -10.3,
+        baseline: { avgDaily: 87.4, days: 365, from: '2024-10-22', to: '2025-10-21' },
+      },
+      suez: { history: makeDays(40, 38, 0), wowChangePct: 2.8, baseline: null },
+      panama: { history: makeDays(3, 30, 0), wowChangePct: 0 },
+    };
+    const writes = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async key => (key === 'supply_chain:portwatch:v1' ? fakePortwatch : null),
+      envelopeWrite: async (key, data) => { writes.push({ key, data }); return true; },
+      upstashSet: async () => {},
+      chokepointCrossings: new Map([
+        ['Strait of Hormuz', Array.from({ length: 38 }, (_, i) => ({ mmsi: String(100000000 + i), ts: now - 1_000 - i, type: 'tanker' }))],
+      ]),
+    });
+
+    await seed();
+
+    const { summaries } = writes.find(w => w.key === 'supply_chain:transit-summaries:v1').data;
+    const hormuz = summaries.hormuz_strait;
+    assert.equal(hormuz.todayTotal, 38, 'the relay count is still published for its own consumers');
+    assert.equal(hormuz.officialLatestDate, '2026-10-18');
+    assert.equal(hormuz.officialLatestTotal, 4);
+    assert.equal(hormuz.officialAvg7d, 3.7);
+    assert.equal(hormuz.baselineAvgDaily, 87.4);
+    assert.equal(hormuz.baselineFrom, '2024-10-22');
+    assert.equal(hormuz.baselineTo, '2025-10-21');
+    assert.equal(hormuz.wowChangePct, -10.3);
+
+    // No baseline stored: the latest day and 7-day mean still publish.
+    assert.equal(summaries.suez.officialLatestTotal, 38);
+    assert.equal(summaries.suez.officialAvg7d, 38);
+    assert.equal(summaries.suez.baselineAvgDaily, null);
+    assert.equal(summaries.suez.baselineFrom, null);
+    assert.equal(summaries.suez.baselineTo, null);
+
+    // Three days of history: a latest day but no 7-day mean.
+    assert.equal(summaries.panama.officialLatestTotal, 30);
+    assert.equal(summaries.panama.officialAvg7d, null);
+
+    // No PortWatch row at all: every official field is null, never 0.
+    for (const id of ALL_CANONICAL_IDS.filter(cp => !(cp in fakePortwatch))) {
+      assert.equal(summaries[id].dataAvailable, false);
+      for (const field of ['officialLatestDate', 'officialLatestTotal', 'officialAvg7d', 'baselineAvgDaily', 'baselineFrom', 'baselineTo']) {
+        assert.equal(summaries[id][field], null, `${id}.${field}`);
+      }
+    }
+    // The summary stays compact: no history array rides along with the figures.
+    assert.equal('history' in hormuz, false);
+    assert.equal('baseline' in hormuz, false);
   });
 
   it('still publishes a real Panama disruptionPct of 0 from corridor risk', async () => {
@@ -671,6 +747,46 @@ describe('corridorRiskNameToId', () => {
 // The relay and the RPC handler both call this exact function now, so there is
 // no second implementation left to hold in sync.
 // ---------------------------------------------------------------------------
+
+describe('summarizePortwatchHistory (shared/chokepoint-traffic-anomaly.js)', () => {
+  const baseline = { avgDaily: 87.42, days: 365, from: '2024-10-22', to: '2025-10-21' };
+  const tail = [3, 7, 3, 2, 7, 0, 4].map((total, index) => ({ date: `2026-10-${12 + index}`, total }));
+
+  it('reports the latest published day, the 7-day mean and the baseline to one decimal', () => {
+    assert.deepEqual(summarizePortwatchHistory([...tail].reverse(), baseline), {
+      latestDate: '2026-10-18', latestTotal: 4, avg7d: 3.7,
+      baselineAvgDaily: 87.4, baselineFrom: '2024-10-22', baselineTo: '2025-10-21',
+    });
+  });
+
+  it('publishes a measured zero on the latest day', () => {
+    const summary = summarizePortwatchHistory([...tail, { date: '2026-10-19', total: 0 }], baseline);
+    assert.equal(summary.latestDate, '2026-10-19');
+    assert.equal(summary.latestTotal, 0);
+  });
+
+  it('withholds the 7-day mean below seven published days and everything without history', () => {
+    const sixDays = summarizePortwatchHistory(tail.slice(0, 6), baseline);
+    assert.equal(sixDays.avg7d, null);
+    assert.equal(sixDays.latestDate, '2026-10-17');
+    assert.equal(sixDays.latestTotal, 0, 'the latest day still publishes, and a measured 0 is a value');
+    const empty = { latestDate: null, latestTotal: null, avg7d: null, baselineAvgDaily: null, baselineFrom: null, baselineTo: null };
+    assert.deepEqual(summarizePortwatchHistory([], null), empty);
+    assert.deepEqual(summarizePortwatchHistory(undefined, undefined), empty);
+  });
+
+  it('drops a baseline missing any part and ignores malformed days', () => {
+    for (const broken of [null, {}, { avgDaily: 87.4 }, { avgDaily: 'x', from: '2024-10-22', to: '2025-10-21' }, { avgDaily: 87.4, from: '2024-10-22', to: 'last year' }, { avgDaily: -1, from: '2024-10-22', to: '2025-10-21' }]) {
+      const summary = summarizePortwatchHistory(tail, broken);
+      assert.equal(summary.baselineAvgDaily, null, JSON.stringify(broken));
+      assert.equal(summary.baselineFrom, null);
+      assert.equal(summary.baselineTo, null);
+      assert.equal(summary.latestTotal, 4, 'the history still publishes');
+    }
+    const summary = summarizePortwatchHistory([...tail, { date: '2026-10-19', total: 'n/a' }, { date: 'yesterday', total: 9 }, { total: 5 }], baseline);
+    assert.equal(summary.latestDate, '2026-10-18');
+  });
+});
 
 describe('detectTrafficAnomaly edge cases (_scoring.mjs)', () => {
   it('null history returns no signal', () => {

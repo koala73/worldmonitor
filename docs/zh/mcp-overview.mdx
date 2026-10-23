@@ -27,7 +27,7 @@ Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / c
 
 | 端点 | 用途 |
 |----------|---------|
-| `https://worldmonitor.app/mcp` | JSON-RPC 服务器（Streamable HTTP 传输；默认返回 JSON 响应，当客户端声明 `text/event-stream` 时返回 SSE 响应；`initialize` 默认协商协议 `2025-06-18`，对旧客户端为 `2025-03-26`） |
+| `https://worldmonitor.app/mcp` | JSON-RPC 服务器（Streamable HTTP 传输；默认返回 JSON 响应，当客户端声明 `text/event-stream` 时返回 SSE 响应；`initialize` 默认协商协议 `2025-11-25`，对旧客户端为 `2025-06-18` 或 `2025-03-26`） |
 | `https://api.worldmonitor.app/api/oauth/register` | 动态客户端注册（RFC 7591） |
 | `https://api.worldmonitor.app/api/oauth/authorize` | OAuth 2.1 授权端点（要求 PKCE） |
 | `https://api.worldmonitor.app/api/oauth/token` | Token 端点（authorization_code + refresh_token） |
@@ -42,11 +42,14 @@ Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / c
 
 ### 协议协商
 
-WorldMonitor 位于 `/.well-known/mcp/server-card.json` 的静态服务器卡片声明协议版本 `2025-06-18`，而实时的 `initialize` 握手默认会协商该版本 —— 因此所声明的底线版本与实际协商出的版本保持一致：
+WorldMonitor 位于 `/.well-known/mcp/server-card.json` 的静态服务器卡片声明协议版本 `2025-11-25`，而实时的 `initialize` 握手默认会协商该版本 —— 因此所声明的底线版本与实际协商出的版本保持一致：
 
-- 默认情况下，`initialize` 同时支持 `2025-03-26` 和 `2025-06-18`。
-- 请求 `2025-06-18` 的客户端会得到 `2025-06-18`；固定使用 `2025-03-26` 的客户端继续得到 `2025-03-26`。
-- 设置 `MCP_PROTOCOL_FLOOR_2025_06_18=off` 会将服务器固定回仅支持 `2025-03-26` 的旧版底线；此后请求 `2025-06-18` 的客户端会收到安全默认值 `2025-03-26`。
+- 默认情况下，`initialize` 支持 `2025-03-26`、`2025-06-18` 和 `2025-11-25`。
+- 请求其中任一版本的客户端会原样得到该版本；请求其他版本的客户端会得到 `2025-11-25`。
+- 在 `2025-11-25` 下，参数未通过校验的 `tools/call` 会返回一个模型可以读取并据此修正的 `isError` 工具结果，而不是早期版本收到的 `-32602` 错误（见[错误目录](/zh/mcp-error-catalog)）。
+- 设置 `MCP_PROTOCOL_2025_11_25=off` 会再次移除 `2025-11-25`；设置 `MCP_PROTOCOL_FLOOR_2025_06_18=off` 会将服务器固定回仅支持 `2025-03-26` 的旧版底线。
+- 无握手的 `2026-07-28` 版本默认关闭。关闭时，该版本的客户端会按上文回退到 `initialize`。
+- 设置 `MCP_PROTOCOL_2026_07_28=on` 后，`params._meta` 中带有 `io.modelcontextprotocol/protocolVersion` 的请求会按 `2026-07-28` 规则逐个处理：`server/discover`、必需的 `MCP-Protocol-Version`、`Mcp-Method` 和 `Mcp-Name` 请求头、结果中的 `resultType` 与缓存提示，以及最简的 `subscriptions/listen`。在 `/mcp` 上，匿名的 `2026-07-28` 请求会收到登录质询，免费的 `get_sources` 调用和 `ui://` 应用读取除外；机器发现别名保持匿名。不带该信封的请求保持上文行为。这些请求可能收到的错误代码见[错误目录](/zh/mcp-error-catalog#mcp-2026-07-28-请求)。
 
 无论协商出的协议版本如何，工具的 `outputSchema` 元数据都会在 `tools/list` 中发出。较旧的 `2025-03-26` 客户端应忽略未知字段，而较新的客户端可以立即使用该 schema。每次成功的 `tools/call` 还会以 `structuredContent` 返回载荷；一旦发布了 schema，严格的客户端就要求如此。投影与软信封的表示方式见[工具参考](/zh/mcp-tools-reference)。
 
@@ -96,6 +99,7 @@ OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户
 | Glama | `https://glama.ai/api/app/mcp/oauth/callback`（连接器与测试配置）、`https://glama.ai/mcp/inspector/oauth/callback`（[Glama MCP Inspector](https://glama.ai/mcp/inspector)） |
 | Make.com | `https://www.make.com/oauth/cb/mcp`（[Make MCP 客户端](https://apps.make.com/mcp-client)） |
 | Microsoft 365 Copilot | `https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect`（[构建 MCP 插件](https://learn.microsoft.com/microsoft-365/copilot/extensibility/build-mcp-plugins)） |
+| Meta Muse | `https://agent.meta.ai/api/hatch/oauth/callback` |
 | Notion | `https://www.notion.so/workflows/mcp/oauth/callback`、`https://app.notion.com/workflows/mcp/oauth/callback`（[客户端元数据](https://www.notion.so/oauth/mcp-client-metadata.json)） |
 | Linear | `https://linear.app/connect/mcp/callback`（[客户端元数据](https://linear.app/.well-known/oauth-client-metadata/mcp.json)） |
 | Lovable | `https://api.lovable.dev/workspaces/connectors/mcp/oauth/callback`（[客户端元数据](https://api.lovable.dev/.well-known/oauth-client)） |
@@ -114,7 +118,7 @@ Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、goose�
 |----------|-----|
 | 授权码 | 10 分钟 |
 | Access token | 1 小时 |
-| Refresh token | 7 天 |
+| Refresh token | 30 天（滑动：每次刷新都会签发拥有完整期限的新 token） |
 | 已注册客户端记录 | 90 天（滑动） |
 
 ## Pro 登录流程
@@ -131,7 +135,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 
 2. **在授权页点击 "Sign in with WorldMonitor Pro"**。这是默认 CTA。你会跳转到 `worldmonitor.app/mcp-grant`（受 Clerk 保护 —— 如需登录请先登录），然后回到 `api.worldmonitor.app/oauth/authorize-pro`，最后跳转到你客户端的 redirect。
 
-3. **完成。** 你的机器上不会创建或存储任何 `wm_…` key。客户端会收到一个标准 OAuth 2.1 access token（1 小时 TTL，7 天 refresh）。
+3. **完成。** 你的机器上不会创建或存储任何 `wm_…` key。客户端会收到一个标准 OAuth 2.1 access token（1 小时 TTL，refresh token 在最近一次刷新后 30 天内有效）。
 
 <Note>
 如果登录步骤提示无法校验你的订阅 —— 例如返回 `503` 页面或 `503 TIER_VERIFICATION_UNAVAILABLE` —— 这是可重试的校验状态，并不代表你的订阅已失效。请等待响应中的 `Retry-After`，然后从客户端重新发起连接；授权会话是一次性的，不要只刷新页面。服务方确认已失效且付费覆盖期已结束的订阅会转为免费账户，以受限的 `free-account` 令牌完成 OAuth，并按免费额度计量；它不会因该失效标记收到 `403`。真正的权益不足或已停用套餐仍会收到 `403 INSUFFICIENT_TIER`。参见[错误处理](/zh/usage-errors)。
@@ -365,7 +369,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 | 工具 | 描述 |
 |------|-------------|
-| `get_displacement_data` | 按国家统计的难民、寻求庇护者、IDP 和无国籍者数量及主要流向（UNHCR 年度数据）；`view: "events"` 返回过去 180 天的 IDMC 国内流离失所数据及激增标志。 |
+| `get_displacement_data` | 按国家统计的难民、寻求庇护者、IDP 和无国籍者数量及主要流向（UNHCR 年度数据）；`view: "events"` 返回过去 180 天的 IDMC 国内流离失所数据及激增标志；`view: "regions"` 返回按区域划分的 IOM DTM 国内流离失所数据。 |
 
 ### AI 情报
 

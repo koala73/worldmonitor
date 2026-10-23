@@ -46,6 +46,22 @@ function seed(data = snapshot, metadata = meta) {
   return installRedis({ [KEY]: { _seed: { fetchedAt: metadata.fetchedAt }, data }, [META]: metadata });
 }
 
+test('trend tuple uses an object schema for Inspector portability with identical validation', () => {
+  const point = tool.outputSchema.properties.data.properties.crossBorderArrivals.properties.situations.items.properties.trend.properties.points.items;
+  assert.equal(typeof point.items, 'object', 'Inspector strict rejects a bare boolean tuple terminator');
+  const portable = ajv.compile(point);
+  const standard = ajv.compile({ ...point, items: false });
+  for (const [value, valid] of [
+    [['2026-10-07', 100], true], [['2026-10-07', 0], true],
+    [[], false], [['2026-10-07'], false], [['2026-10-07', 100, 200], false],
+    [[100, '2026-10-07'], false], [['2026-10-07', '100'], false],
+    [['2026-10-07', null], false], [null, false], [{ date: '2026-10-07', number: 100 }, false],
+  ]) {
+    assert.equal(standard(value), valid, JSON.stringify(value));
+    assert.equal(portable(value), valid, JSON.stringify(value));
+  }
+});
+
 test('ordinary cached aggregate contract preserves partial data, source clocks and overlap', async () => {
   seed();
   assert.deepEqual(tool._cacheKeys, [KEY]);

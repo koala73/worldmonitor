@@ -34,9 +34,11 @@ const REQUIRED_FIELDS = [
 
 const OPTIONAL_FIELDS = new Set([
   'lockTtlMs',
+  'maxPayloadBytes',
   'extraKeys',
   'afterPublish',
   'publishAtomically',
+  'compressPayload',
   'publishTransform',
   'emptyDataIsFailure',
   'extendTtlOnFailure',

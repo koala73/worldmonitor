@@ -128,8 +128,9 @@ async function executeCacheTool(
   const historyMode = params.changes_since_days !== undefined;
   // get_displacement_data reads, and is judged stale on, only the selected view's dataset.
   const displacementView = tool.name === 'get_displacement_data';
-  const selectedView = params.view === 'movements' || params.view === 'events' ? params.view : 'annual';
-  const viewOfKey = (key: string) => key.includes('displacement:summary') ? 'annual' : key.includes('displacement:idmc-idu') ? 'events' : 'movements';
+  const selectedView = params.view === 'movements' || params.view === 'events' || params.view === 'regions' ? params.view : 'annual';
+  const viewOfKey = (key: string) => key.includes('displacement:summary') ? 'annual'
+    : key.includes('displacement:idmc-idu') ? 'events' : key.includes('displacement:dtm') ? 'regions' : 'movements';
   const movementMode = displacementView && selectedView === 'movements';
   const selectedKeys = displacementView ? tool._cacheKeys.filter(key => viewOfKey(key) === selectedView) : tool._cacheKeys;
   const cacheKeys = tool.name === 'get_sanctions_data'
@@ -448,8 +449,20 @@ export async function dispatchToolsCall(
   // The request's wm_api_usage row (#9431). Omitted → only the mcp.toolcall
   // console line is emitted.
   usage?: McpUsage,
+  // SEP-1303 (MCP 2025-11-25): report argument validation failures as a tool
+  // execution error the model can read and correct, instead of -32602. Only
+  // tools/call on 2025-11-25+ opts in; resources/read re-wraps JSON-RPC errors.
+  inputErrorsAsToolResults?: boolean,
 ): Promise<Response> {
   const id = body.id ?? null;
+  // Every argument-validation failure goes through here. Protocol errors (a
+  // missing or unknown tool name) keep calling rpcError directly.
+  const invalidArguments = (message: string, data?: Record<string, unknown>): Response => inputErrorsAsToolResults
+    ? rpcOk(id, {
+      content: [{ type: 'text', text: JSON.stringify({ error: message, ...data }) }],
+      isError: true,
+    }, corsHeaders)
+    : rpcError(id, -32602, message, corsHeaders, data);
   // Only a user-bound caller can call start_upgrade, so only they get a
   // checkout hint. The free allowance is upgraded as free even when a lapsed
   // paid row still carries its old plan key.
@@ -483,7 +496,7 @@ export async function dispatchToolsCall(
       const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
       if (limited) return limited;
     }
-    return rpcError(id, -32602, 'Invalid params', corsHeaders, { violations: resolved.violations });
+    return invalidArguments('Invalid params', { violations: resolved.violations });
   }
   const tool = resolved.tool;
   const notice = resolved.kind === 'alias' ? resolved.notice : null;
@@ -515,7 +528,7 @@ export async function dispatchToolsCall(
     }
     if (Object.keys(p.arguments ?? {}).some(key => key !== 'jmespath')
       || (p.arguments?.jmespath !== undefined && typeof p.arguments.jmespath !== 'string')) {
-      return rpcError(id, -32602, 'Allowance status accepts only the optional jmespath projection.', corsHeaders);
+      return invalidArguments('Allowance status accepts only the optional jmespath projection.');
     }
   }
 
@@ -532,12 +545,16 @@ export async function dispatchToolsCall(
     // only copy of checkoutUrl. The result is three small fields anyway.
     const upgradeArgs = p.arguments ?? {};
     if (Object.keys(upgradeArgs).some(key => key !== 'plan')) {
-      return rpcError(id, -32602, 'start_upgrade accepts only plan; it takes no jmespath projection.', corsHeaders);
+      return invalidArguments('start_upgrade accepts only plan; it takes no jmespath projection.');
     }
     const plan = typeof upgradeArgs.plan === 'string' ? upgradeArgs.plan : '';
     const productId = checkoutProductIdForPlan(plan);
     if (!productId) {
-      return rpcError(id, -32602, 'Unknown plan. Pass one of the self-serve plans listed in data.plans.', corsHeaders, { plans: MCP_CHECKOUT_PLANS });
+      return invalidArguments(
+        // The tool-result payload is flat; the -32602 error nests it under data.
+        `Unknown plan. Pass one of the self-serve plans listed in ${inputErrorsAsToolResults ? 'plans' : 'data.plans'}.`,
+        { plans: MCP_CHECKOUT_PLANS },
+      );
     }
     const upgrade = await startUpgradeCheckout(deps.createCheckout, context.userId, plan, productId, id, corsHeaders, ctx);
     if (upgrade instanceof Response) return upgrade;
@@ -586,7 +603,7 @@ export async function dispatchToolsCall(
       const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
       if (limited) return limited;
     }
-    return rpcError(id, -32602, 'Invalid params', corsHeaders, { violations: error.violations });
+    return invalidArguments('Invalid params', { violations: error.violations });
   }
 
   let panelRequest: PaidPanelAdmission | undefined;
@@ -795,7 +812,9 @@ export async function dispatchToolsCall(
     }
     if (error.code === 'quota') return mcpDenialResponse({ reason: 'quota-exceeded', limit: error.limit ?? 0, sharedWithRestApi: false, upgradeFrom }, -32029, 429, id, corsHeaders, { retryAfter: String(secondsUntilUtcMidnight()) });
     if (error.code === 'backend') return quotaBackendUnavailableResponse(id, corsHeaders);
-    return rpcError(id, error.code === 'reads' ? -32029 : -32602, error.message, { ...corsHeaders, ...(error.retryAfter ? { 'Retry-After': String(error.retryAfter) } : {}) }, undefined, error.code === 'reads' ? 429 : 200);
+    // Only `reads` carries retryAfter; `invalid` is a panel argument rejection.
+    if (error.code === 'invalid') return invalidArguments(error.message);
+    return rpcError(id, -32029, error.message, { ...corsHeaders, ...(error.retryAfter ? { 'Retry-After': String(error.retryAfter) } : {}) }, undefined, 429);
   }
   reportPanelAllocation();
 
@@ -1263,13 +1282,11 @@ export async function dispatchToolsCall(
       );
     }
     // #6559: proto/sebuf ValidationError 400s keep their field/detail pairs as
-    // structured JSON-RPC error data (`error.data.violations`). This is NOT a
-    // tools/call result envelope (`result.content` / `isError`) — agents read
-    // `error.code === -32602` and `error.data.violations[]`.
+    // structured JSON-RPC error data (`error.data.violations`) — agents read
+    // `error.code === -32602` and `error.data.violations[]`. A 2025-11-25+
+    // tools/call gets the same violations in an `isError` result (SEP-1303).
     if (err instanceof RpcValidationError) {
-      return rpcError(id, -32602, 'Invalid params', corsHeaders, {
-        violations: err.violations,
-      });
+      return invalidArguments('Invalid params', { violations: err.violations });
     }
     return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
   }

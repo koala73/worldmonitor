@@ -407,11 +407,8 @@ describe('CORS Worker superset invariant — edge allowlist ⊇ function allowli
   // the preflight echoes the canonical worldmonitor.app fallback and the
   // browser blocks the request before it reaches Vercel.
   //
-  // The Worker's own test (workers/api-cors-preflight/index.test.mjs) lives
-  // OUTSIDE the test:data glob and only runs in deploy-worker.yml on
-  // workers/** changes — so a function-only change can silently leave the
-  // Worker narrower. THIS gate-resident check is what actually catches
-  // function↔Worker drift (the bug that left eliewm previews dark).
+  // The Worker suites also run in test:data. This cross-boundary check catches
+  // function/Worker drift when either allowlist changes.
   //
   // Localhost/127 are intentionally omitted: they are DEV-only on the function
   // side (NODE_ENV-gated) and never reach the prod-only Worker.

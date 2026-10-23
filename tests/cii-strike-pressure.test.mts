@@ -48,7 +48,7 @@ function campaign(perDay: number, days: number, endAgo = 0): Record<string, numb
 
 function aux(extra: Record<string, unknown> = {}) {
   return {
-    ucdpEvents: [], outages: [], climate: [], cyber: [], fires: [], gpsHexes: [], iranEvents: [],
+    ucdpEvents: [], outages: [], climate: [], fires: {}, gpsHexes: [], iranEvents: [],
     orefData: null, advisories: null, displacedByIso3: {}, newsTopStories: [], threatSummaryByCountry: null,
     aviationAlerts: [], earthquakes: [], sanctionsCountries: [], sanctionsCountryCounts: null,
     temporalAnomalies: [], militaryCii: null, gdeltCountryEvents: null, confirmedStrikes: null,

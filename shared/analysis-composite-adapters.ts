@@ -8,7 +8,7 @@
  * - seismology:earthquakes:v1  (scripts/seed-earthquakes.mjs)
  * - wildfire:fires:v1          (scripts/seed-fire-detections.mjs)
  * - conflict:ucdp-events:v1    (scripts/seed-ucdp-events.mjs)
- * - risk:scores:sebuf:v13       (get-risk-scores.ts — `region`/`combinedScore`)
+ * - risk:scores:sebuf:v14       (get-risk-scores.ts — `region`/`combinedScore`)
  * - military:surges:v1         (scripts/_military-surges.mjs)
  * - cable-health-v1            (get-cable-health.ts `{ generatedAt, cables }`)
  * - infra:outages:v1           (scripts/seed-internet-outages.mjs)

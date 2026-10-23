@@ -149,6 +149,7 @@ export class CountryIntelManager implements AppModule {
   private briefRequestToken = 0;
   private pendingBriefRequest: PendingCountryBriefRequest | null = null;
   private visibleBriefOwner: PendingCountryBriefRequest['owner'] | null = null;
+  private briefStateListener: ((state: { visible: boolean; maximized: boolean }) => void) | null = null;
   private frameworkUnsubscribe: (() => void) | null = null;
   private _fwDebounce: ReturnType<typeof setTimeout> | null = null;
   // Re-fire PRO-gated country sections on false→true entitlement transition.
@@ -337,6 +338,15 @@ export class CountryIntelManager implements AppModule {
     return this.countryController;
   }
 
+  /**
+   * Listen to the brief's open/close/maximize state. The page is a lazy chunk
+   * created on first open, so the listener is held here and attached then.
+   */
+  onBriefStateChange(cb: (state: { visible: boolean; maximized: boolean }) => void): void {
+    this.briefStateListener = cb;
+    this.ctx.countryBriefPage?.onStateChange?.(cb);
+  }
+
   private async ensureCountryBriefPage(): Promise<boolean> {
     if (this.ctx.countryBriefPage) return true;
     if (!this.ctx.map || this.ctx.isDestroyed) return false;
@@ -355,6 +365,7 @@ export class CountryIntelManager implements AppModule {
     if (this.ctx.isDestroyed || !this.ctx.map) return false;
     this.ctx.countryBriefPage = new CountryDeepDivePanel(this.ctx.map);
     this.getCountryController(this.ctx.countryBriefPage);
+    if (this.briefStateListener) this.ctx.countryBriefPage.onStateChange?.(this.briefStateListener);
 
     this.ctx.countryBriefPage.onClose(() => {
       this.currentCountryPresentation = null;

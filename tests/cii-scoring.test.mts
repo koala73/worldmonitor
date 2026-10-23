@@ -119,6 +119,9 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   v12: '65bce5e1570edb82984c26b2161fab83656009baecbd45efe713b7cf28b01e0b',
   // v13 retains strike pressure and adds the fresh arrival surge boost.
   v13: '973a91e2a1064f5b409aabe3f96f847681d759f1fe689c833356a412b32c7967',
+  // v14 drops the cyber boost (hosting-location IOC feeds) and scores only foreign
+  // military flights and vessels in Security.
+  v14: 'dbfde746fb27478461511b21a72c0d5922b40cae005c41b5ab2ed0f20e025675',
 };
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
@@ -573,8 +576,7 @@ function emptyAux() {
     ucdpEvents: [] as any[],
     outages: [] as any[],
     climate: [] as any[],
-    cyber: [] as any[],
-    fires: [] as any[],
+    fires: {} as Record<string, Array<{ brightness: number; frp: number }>> | null,
     gpsHexes: [] as any[],
     iranEvents: [] as any[],
     orefData: null as { activeAlertCount: number; historyCount24h: number } | null,
@@ -945,30 +947,16 @@ describe('CII signal wiring', () => {
     );
   });
 
-  it('Phase 3b D7/D8: cyber severity + high-brightness fires raise the score', () => {
+  it('Phase 3b D8: high-brightness fires raise the score', () => {
     const base = scoreFor(computeCIIScores([], emptyAux()), 'US');
     const aux = emptyAux();
-    aux.cyber = [{ country: 'US', severity: 'critical' }, { country: 'US', severity: 'high' }];
-    aux.fires = [{ lat: 39, lon: -98, brightness: 400, frp: 60 }];
+    aux.fires = { US: [{ brightness: 400, frp: 60 }] };
     const us = scoreFor(computeCIIScores([], aux), 'US');
-    assert.ok(us!.combinedScore > base!.combinedScore,
-      'critical/high cyber feed the severity-weighted cyberBoost; a bright fire feeds fireBoost');
-  });
-
-  it('Phase 3b D7: cyber severity accepts the production proto enum form (CRITICALITY_LEVEL_*)', () => {
-    // The cyber seed (seed-cyber-threats.mjs lines 52-55) emits the proto enum strings,
-    // not bare lowercase — the ingestion must bucket both. Without the prefix-strip,
-    // these would all fall through and cyberBoost would be 0 in production.
-    const baseAux = emptyAux();
-    const protoAux = emptyAux();
-    protoAux.cyber = [
-      { country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' },
-      { country: 'US', severity: 'CRITICALITY_LEVEL_HIGH' },
-    ];
-    const protoScore = scoreFor(computeCIIScores([], protoAux), 'US');
-    const baseScore = scoreFor(computeCIIScores([], baseAux), 'US');
-    assert.ok(protoScore!.combinedScore > baseScore!.combinedScore,
-      'production CRITICALITY_LEVEL_* enums must feed cyberBoost');
+    assert.ok(us!.combinedScore > base!.combinedScore, 'a bright fire feeds fireBoost');
+    const dim = emptyAux();
+    dim.fires = { US: Array.from({ length: 8 }, () => ({ brightness: 300, frp: 5 })) };
+    const usDim = scoreFor(computeCIIScores([], dim), 'US');
+    assert.ok(usDim!.combinedScore > base!.combinedScore, 'dim fires still feed the count term of fireBoost');
   });
 
   it('Phase 3b D6: sanctions duplicate-ISO2 rows accumulate across the tier boundary', () => {
@@ -1000,14 +988,14 @@ describe('CII signal wiring', () => {
     // must now pick up military activity and aviation.
     const aux = emptyAux();
     aux.militaryCii = {
-      US: { ownFlights: 5, foreignFlights: 0, ownVessels: 0, foreignVessels: 0, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
+      US: { ownFlights: 0, foreignFlights: 3, ownVessels: 0, foreignVessels: 1, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
     };
     aux.aviationAlerts = [{ country: 'United States', delayType: 'closure' }];
     const us = scoreFor(computeCIIScores([], aux), 'US');
     assert.ok(us, 'US scored');
-    // flightScore = min(50, 5·3=15) = 15; aviationScore (one closure) = 20; vessels/GPS = 0
-    assert.equal(us!.components!.militaryActivity, 35,
-      'security = flightScore(15) + aviationScore(20), no GPS');
+    // flightScore = 3·2·3 = 18; vesselScore = 1·2·5 = 10; aviationScore (one closure) = 20; GPS = 0
+    assert.equal(us!.components!.militaryActivity, 48,
+      'security = flightScore(18) + vesselScore(10) + aviationScore(20), no GPS');
   });
 
   it('Phase 3b C1: a riot adds severityBoost vs a plain protest', () => {
@@ -1027,6 +1015,68 @@ describe('CII signal wiring', () => {
     };
     const us = scoreFor(computeCIIScores([], aux), 'US');
     assert.equal(us!.components!.militaryActivity, 30, 'foreign flights weighted x2: 5·2·3 = 30');
+  });
+});
+
+describe('CII v14: own military activity and hosting-location cyber feeds', () => {
+  // Live 2026-10-20T09:41Z intelligence:military-cii:v1 rows. GB's ownFlights went
+  // 9 → 31 overnight on RAF training sorties; its 53 "own vessels" are constant.
+  const GB_LIVE = { ownFlights: 31, foreignFlights: 2, ownVessels: 53, foreignVessels: 1, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 };
+
+  it('a country\'s own air force and navy do not raise its Security component', () => {
+    const aux = emptyAux();
+    aux.militaryCii = { GB: { ...GB_LIVE, foreignFlights: 0, foreignVessels: 0 } };
+    const gb = scoreFor(computeCIIScores([], aux), 'GB')!;
+    const base = scoreFor(computeCIIScores([], emptyAux()), 'GB')!;
+    assert.equal(gb.components!.militaryActivity, 0, 'own flights/vessels are routine, not instability');
+    assert.equal(gb.combinedScore, base.combinedScore);
+  });
+
+  it('own training sorties no longer swing Security between two days', () => {
+    const yesterday = emptyAux();
+    yesterday.militaryCii = { GB: { ...GB_LIVE, ownFlights: 9, foreignFlights: 0, foreignVessels: 3 } };
+    const today = emptyAux();
+    today.militaryCii = { GB: { ...GB_LIVE, foreignFlights: 0, foreignVessels: 3 } };
+    assert.equal(
+      scoreFor(computeCIIScores([], today), 'GB')!.combinedScore,
+      scoreFor(computeCIIScores([], yesterday), 'GB')!.combinedScore,
+      '9 → 31 own RAF flights must not move GB',
+    );
+  });
+
+  it('foreign military flights over a country still register at the v13 foreign weight', () => {
+    const aux = emptyAux();
+    // e.g. foreign aircraft over Israel or Poland: 6 foreign flights → 6·2·3 = 36.
+    aux.militaryCii = {
+      IL: { ownFlights: 40, foreignFlights: 6, ownVessels: 12, foreignVessels: 2, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
+      PL: { ownFlights: 0, foreignFlights: 10, ownVessels: 0, foreignVessels: 0, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
+    };
+    const scores = computeCIIScores([], aux);
+    assert.equal(scoreFor(scores, 'IL')!.components!.militaryActivity, 36 + 20, 'flight 36 + foreign vessels 2·2·5 = 20');
+    assert.equal(scoreFor(scores, 'PL')!.components!.militaryActivity, 50, 'a surge of 10 foreign flights saturates the flight term');
+  });
+
+  it('hosting-location cyber IOC rows do not move any country', () => {
+    // Live 2026-10-20T09:47Z cyber:threats-bootstrap:v2 rows for GB: 40 AbuseIPDB
+    // CRITICAL; every source in the feed geolocates attacker infrastructure.
+    const aux = emptyAux();
+    const row = (source: string, severity: string) => ({ country: 'GB', source: `CYBER_THREAT_SOURCE_${source}`, severity: `CRITICALITY_LEVEL_${severity}` });
+    Object.assign(aux, {
+      cyber: [
+        ...Array.from({ length: 40 }, () => row('ABUSEIPDB', 'CRITICAL')),
+        row('FEODO', 'CRITICAL'), row('URLHAUS', 'HIGH'), row('C2INTEL', 'HIGH'), row('OTX', 'MEDIUM'),
+      ],
+    });
+    const gb = scoreFor(computeCIIScores([], aux), 'GB')!;
+    const base = scoreFor(computeCIIScores([], emptyAux()), 'GB')!;
+    assert.equal(gb.combinedScore, base.combinedScore, 'hosting location is not the victim; no cyberBoost');
+  });
+
+  it('cyber IOC rows do not count as a realtime family in risk-score health coverage', () => {
+    const aux = emptyAux();
+    Object.assign(aux, { cyber: [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }] });
+    assert.equal(countCiiRealtimeSignalDensityCoverage([], aux), 0);
+    assert.equal(CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT, 2, 'conflict and news are the scored realtime families');
   });
 });
 
@@ -2060,7 +2110,7 @@ describe('CII scoring', () => {
 
   it('riskScores health coverage reports partial when only one required real-time family is alive', () => {
     const aux = emptyAux();
-    aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
+    aux.newsTopStories = [{ countryCode: 'GB', threatLevel: 'high', primaryTitle: 'UK security alert' }];
 
     assert.equal(
       countCiiRealtimeSignalDensityCoverage([], aux),
@@ -2072,7 +2122,6 @@ describe('CII scoring', () => {
   it('riskScores health coverage counts normal mixed real-time source families', () => {
     const acled = [acledEvent('Ukraine', 'Battles', 0)];
     const aux = emptyAux();
-    aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
     aux.newsTopStories = [{ countryCode: 'GB', threatLevel: 'high', primaryTitle: 'UK security alert' }];
     const scores = computeCIIScores(acled, aux);
 
@@ -2084,7 +2133,7 @@ describe('CII scoring', () => {
     assert.equal(
       countCiiRealtimeSignalDensityCoverage(acled, aux),
       CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT,
-      'health coverage counts ACLED, news, and cyber source families even when cyber lands as supplemental boost',
+      'health coverage counts the ACLED and news source families',
     );
   });
 
@@ -2092,14 +2141,13 @@ describe('CII scoring', () => {
     const acled = [acledEvent('Andorra', 'Battles', 0)];
     const aux = emptyAux();
     aux.newsTopStories = [{ countryCode: null, threatLevel: 'high', primaryTitle: 'Andorra security alert' }];
-    aux.cyber = [{ country: 'AD', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
     // Non-Tier-1 UCDP events must not satisfy the conflict family either.
     aux.ucdpEvents = ucdpWarEvents('Andorra');
 
     assert.equal(
       countCiiRealtimeSignalDensityCoverage(acled, aux),
       0,
-      'non-Tier-1 ACLED/news/cyber/UCDP inputs must not satisfy Tier-1 CII realtime health coverage',
+      'non-Tier-1 ACLED/news/UCDP inputs must not satisfy Tier-1 CII realtime health coverage',
     );
   });
 
@@ -2110,7 +2158,6 @@ describe('CII scoring', () => {
     const aux = emptyAux();
     aux.ucdpEvents = ucdpWarEvents('Ukraine'); // healthy UCDP conflict, no ACLED
     aux.newsTopStories = [{ countryCode: 'GB', threatLevel: 'high', primaryTitle: 'UK security alert' }];
-    aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
 
     assert.equal(
       countCiiRealtimeSignalDensityCoverage([], aux),
@@ -2123,11 +2170,10 @@ describe('CII scoring', () => {
     const aux = emptyAux();
     aux.ucdpEvents = [ucdpEvent('Ukraine', 1500, TREND_TEST_NOW + 365 * CII_TEST_DAY_MS)];
     aux.newsTopStories = [{ countryCode: 'GB', threatLevel: 'high', primaryTitle: 'UK security alert' }];
-    aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
 
     assert.equal(
       countCiiRealtimeSignalDensityCoverage([], aux, TREND_TEST_NOW),
-      2,
+      1,
       'future-dated UCDP rows must not satisfy the conflict family when ACLED is empty',
     );
   });
@@ -2136,7 +2182,6 @@ describe('CII scoring', () => {
     const aux = emptyAux();
     aux.ucdpEvents = [ucdpEvent('Ukraine', 1500, TREND_TEST_NOW - CII_TEST_DAY_MS)];
     aux.newsTopStories = [{ countryCode: 'GB', threatLevel: 'high', primaryTitle: 'UK security alert' }];
-    aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
 
     const originalDateNow = Date.now;
     Date.now = () => TREND_TEST_NOW + 3 * 365 * 24 * 60 * 60 * 1000;
@@ -2154,12 +2199,11 @@ describe('CII scoring', () => {
   it('riskScores conflict family stays uncovered when both ACLED and UCDP are empty', () => {
     const aux = emptyAux();
     aux.newsTopStories = [{ countryCode: 'GB', threatLevel: 'high', primaryTitle: 'UK security alert' }];
-    aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
 
     assert.equal(
       countCiiRealtimeSignalDensityCoverage([], aux),
-      2,
-      'with no ACLED and no UCDP, only news + cyber families count → below minRecordCount',
+      1,
+      'with no ACLED and no UCDP, only the news family counts → below minRecordCount',
     );
   });
 

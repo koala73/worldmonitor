@@ -8,7 +8,11 @@
 // index, peer-reviewed paper, or external risk product. Treat them as
 // opinionated, not empirical.
 //
-// Change protocol:
+// Change protocol: read docs/methodology/cii-change-brief.md first. It sets
+// the construct, the forbidden moves, the required properties
+// (tests/cii-invariants.test.mts) and the evidence a CII change must show
+// (scripts/cii-table-diff.mts on tests/fixtures/cii/). Then:
+//   0. Claim the version in docs/methodology/cii-next.json.
 //   1. Bump CII_FORMULA_VERSION below.
 //   2. Update docs/methodology/cii-risk-scores.mdx (the public methodology
 //      note) in the same commit. Tests assert the doc lists every coefficient
@@ -17,7 +21,9 @@
 //      public-facing section so downstream users of the proto API see why score
 //      values or movement semantics may shift between deploys.
 //
-// Last reviewed: 2026-10-20 (v13 adds a bounded fresh arrival surge boost;
+// Last reviewed: 2026-10-21 (v14 drops the cyber boost, whose feeds place attacker
+// infrastructure rather than victims, and scores only foreign military flights and
+// vessels in Security; v13 adds a bounded fresh arrival surge boost;
 // v12 — strike pressure: strikes on a country, from the
 // strike feed and GDELT worldwide, decay over days into a floor and a boost on the
 // composite, replacing the 72h strikeBoost in Conflict; v11 — real country borders replace bounding boxes for geo
@@ -36,7 +42,7 @@
  * Bump on coefficient or scoring-contract changes so API clients can detect
  * score or movement-semantics drift.
  */
-export const CII_FORMULA_VERSION = 'v13';
+export const CII_FORMULA_VERSION = 'v14';
 
 /**
  * Conflict event activity log curve used before fatality/civilian/strike boosts.

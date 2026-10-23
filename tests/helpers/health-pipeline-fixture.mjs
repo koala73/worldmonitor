@@ -1,4 +1,13 @@
 import { __testing__ as health } from '../../api/health.js';
+import { CII_INPUT_POLICY } from '../../api/_cii-input-health.js';
+
+export const CII_RISK_SCORES_META_KEY = 'seed-meta:intelligence:risk-scores';
+
+// The riskScores seed-meta reports every scored CII input, and health fails
+// closed without that report. A healthy-fleet fixture reports them all live.
+export function healthyCiiInputs() {
+  return Object.fromEntries(Object.keys(CII_INPUT_POLICY.inputs).map((id) => [id, { state: 'live' }]));
+}
 
 // Domain fixtures keep asserting logical Redis operations. Preserve the wire
 // response cardinality when an atomic script expands to multiple fixture ops.

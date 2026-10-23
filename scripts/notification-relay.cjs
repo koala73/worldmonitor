@@ -20,6 +20,11 @@ const {
   sendTeamsPayload,
 } = require('./lib/notification-teams.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
+const {
+  aiRoutingCacheSuffix,
+  allowedProvidersFor,
+  createAiRoutingPolicyResolver,
+} = require('./lib/ai-routing-policy.cjs');
 const { corroborationFromItemCount, corroborationText } = require('./lib/corroboration-text.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
@@ -58,6 +63,9 @@ const RELAY_SECRET = process.env.CONVEX_NOTIFICATION_RELAY_SECRET ?? '';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? '';
 const RESEND_FROM = process.env.RESEND_FROM_EMAIL ?? 'WorldMonitor <alerts@worldmonitor.app>';
+// AI impact text is built from one user's profile, so it honours that user's
+// AI routing policy (docs/internal/ai-routing-policy.md).
+const resolveAiRoutingPolicy = createAiRoutingPolicyResolver({ siteUrl: CONVEX_SITE_URL, secret: RELAY_SECRET });
 // When QUIET_HOURS_BATCH_ENABLED=0, treat batch_on_wake as critical_only.
 // Useful during relay rollout to disable queued batching before drainBatchOnWake is fully tested.
 const QUIET_HOURS_BATCH_ENABLED = process.env.QUIET_HOURS_BATCH_ENABLED !== '0';
@@ -1662,7 +1670,8 @@ async function generateEventImpact(event, rule) {
   const variant = rule.variant ?? 'full';
   const eventHash = sha256Hex(`${event.eventType}:${event.payload?.title ?? ''}`);
   const ctxHash = sha256Hex(JSON.stringify({ ...ctx, variant })).slice(0, 16);
-  const cacheKey = `impact:ai:v1:${eventHash.slice(0, 16)}:${ctxHash}`;
+  const aiRouting = await resolveAiRoutingPolicy(rule.userId);
+  const cacheKey = `impact:ai:v1:${eventHash.slice(0, 16)}:${ctxHash}${aiRoutingCacheSuffix(aiRouting)}`;
 
   try {
     const cached = await upstashRest('GET', cacheKey);
@@ -1689,7 +1698,12 @@ ${profile}`;
   let impact;
   try {
     impact = await Promise.race([
-      callLLM(systemPrompt, userPrompt, { maxTokens: 200, temperature: 0.2, timeoutMs: 8000 }),
+      callLLM(systemPrompt, userPrompt, {
+        maxTokens: 200,
+        temperature: 0.2,
+        timeoutMs: 8000,
+        allowedProviders: allowedProvidersFor(aiRouting),
+      }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('global timeout')), 10000)),
     ]);
   } catch {
@@ -1992,6 +2006,8 @@ if (require.main === module) {
 
 module.exports = {
   processEvent,
+  // Exported so the AI routing policy suite drives the real impact path.
+  generateEventImpact,
   safePushClickUrl,
   sendTelegram,
   // Exported so the signing suite drives the real delivery path.

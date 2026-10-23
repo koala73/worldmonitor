@@ -87,7 +87,11 @@ export const IMD_PRODUCTS = Object.freeze({
     areaFields: COASTAL_AREA_FIELDS,
     pages: Object.freeze([
       Object.freeze({ key: 'west-bengal-andaman-nicobar', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php` }),
-      Object.freeze({ key: 'kerala-karnataka-lakshadweep', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=2` }),
+      Object.freeze({
+        key: 'kerala-karnataka-lakshadweep',
+        url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=2`,
+        fallbackUrl: 'https://mausam.imd.gov.in/thiruvananthapuram/mcdata/coastal%20bulletin.pdf',
+      }),
       Object.freeze({ key: 'gujarat', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=3` }),
       Object.freeze({ key: 'maharashtra-goa', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=4` }),
       Object.freeze({ key: 'odisha', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=5` }),
@@ -383,6 +387,70 @@ export function parseImdBulletinHtml(html, productId) {
   };
 }
 
+const KERALA_COASTAL_AREAS = Object.freeze([
+  'Karnataka coast', 'North Kerala coast', 'South Kerala coast', 'Lakshadweep area',
+]);
+
+function escapeHtml(value) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function parseImdKeralaPdfText(text) {
+  if (text.length > 64_000) fail('BULLETIN_RESPONSE_TOO_LARGE');
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const firstArea = lines.indexOf(KERALA_COASTAL_AREAS[0]);
+  if (firstArea < 0) fail('BULLETIN_AREAS_MISSING');
+  const header = lines.slice(0, firstArea).join(' ');
+  if (!/\bCWC THIRUVANANTHAPURAM\s*\//.test(header)) fail('BULLETIN_OFFICE_MISSING');
+  const synoptic = header.match(/\bSynoptic Situation\s*(.*)$/i)?.[1] || '';
+  const issueIndex = lines.findIndex((line, index) => index > firstArea && /^Time of Issue\b/i.test(line));
+  if (issueIndex < 0) fail('BULLETIN_ISSUE_TIME_MISSING');
+  const issue = lines.slice(issueIndex).join(' ').replace(/^Time of Issue\s*/i, '');
+  const tables = [];
+  let cursor = firstArea;
+  for (const area of KERALA_COASTAL_AREAS) {
+    if (lines[cursor] !== area) fail('BULLETIN_AREAS_MISSING');
+    cursor++;
+    const fields = new Map();
+    let label;
+    while (cursor < issueIndex && !KERALA_COASTAL_AREAS.includes(lines[cursor])) {
+      const line = lines[cursor++];
+      if (/^[A-Za-z -]+(?: coast| area)$/i.test(line)) fail('BULLETIN_AREAS_MISSING');
+      const field = line.match(/^(Storm Surge\/Tidal Warning|Sea Condition|Port Signal|Visibility|Weather|Wind)(?:\s+|$)(.*)$/i);
+      if (field) {
+        label = normalizeLabel(field[1]);
+        if (fields.has(label)) fail('BULLETIN_AREA_INCOMPLETE');
+        fields.set(label, field[2]);
+      } else {
+        if (!label) fail('BULLETIN_AREA_INCOMPLETE');
+        fields.set(label, `${fields.get(label)} ${line}`);
+      }
+    }
+    tables.push(`<table><caption>${escapeHtml(area)}</caption>${[...fields].map(([key, value]) =>
+      `<tr><td>${escapeHtml(key)}</td><td>${escapeHtml(value)}</td></tr>`).join('')}</table>`);
+  }
+  if (cursor !== issueIndex) fail('BULLETIN_AREAS_MISSING');
+  const metadata = `<table><tr><td>Synoptic Situation</td><td>${escapeHtml(synoptic)}</td></tr>`
+    + `<tr><td>Time of Issue</td><td>${escapeHtml(issue)}</td></tr></table>`;
+  return parseImdBulletinHtml(`<div>${escapeHtml(header)}</div>${metadata}${tables.join('')}`, 'coastalBulletin');
+}
+
+async function parseImdKeralaPdf(bytes) {
+  if (bytes.subarray(0, 5).toString() !== '%PDF-') fail('BULLETIN_PDF_INVALID');
+  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const task = getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, useSystemFonts: false, verbosity: 0 });
+  try {
+    const doc = await task.promise;
+    if (doc.numPages !== 1) fail('BULLETIN_PDF_PAGE_COUNT');
+    const page = await doc.getPage(1);
+    const content = await page.getTextContent();
+    const text = content.items.map((item) => `${item.str || ''}${item.hasEOL ? '\n' : ' '}`).join('');
+    return parseImdKeralaPdfText(text);
+  } finally {
+    await task.destroy();
+  }
+}
+
 function compactUtcHour(ms) {
   return new Date(ms).toISOString().slice(0, 13).replace(/\D/g, '');
 }
@@ -454,18 +522,20 @@ function evaluatePage(productId, page, result, previousRecords, now) {
   if (!failure) {
     const { bulletin } = result;
     const timing = { issuedAt: bulletin.issuedAt, validFrom: bulletin.validFrom, validUntil: bulletin.validUntil };
+    const source = result.fallbackUsed
+      ? { fallbackUsed: true, primaryFailure: result.primaryFailure, sourceUrl: result.sourceUrl } : {};
     if (bulletin.validUntil <= now) {
-      return { health: { status: 'expired', reason: null, ...timing }, records: [], carried: false };
+      return { health: { status: 'expired', reason: null, ...timing, ...source }, records: [], carried: false };
     }
     return {
-      health: { status: 'ok', reason: null, ...timing },
-      records: dropExpiredRecords(bulletinRecords(bulletin, productId, page), now),
+      health: { status: 'ok', reason: null, ...timing, ...source },
+      records: dropExpiredRecords(bulletinRecords(bulletin, productId, { ...page, url: result.sourceUrl || page.url }), now),
       carried: false,
     };
   }
   const carried = dropExpiredRecords(previousRecords.filter((record) => record?.page === page.key), now);
   return {
-    health: { status: 'failed', reason: failure },
+    health: { status: 'failed', reason: failure, ...(result?.fallbackFailure ? { fallbackFailure: result.fallbackFailure } : {}) },
     records: carried,
     carried: carried.length > 0,
   };
@@ -512,8 +582,11 @@ export function assembleImdSnapshot({ pageResults = {}, previous = null, now = D
     const pages = {};
     const records = [];
     let carried = false;
+    let requestCount = spec.pages.length;
     for (const page of spec.pages) {
-      const evaluated = evaluatePage(id, page, pageResults[id]?.[page.key], previousRecords, now);
+      const result = pageResults[id]?.[page.key];
+      if (result?.fallbackUsed || result?.fallbackFailure) requestCount++;
+      const evaluated = evaluatePage(id, page, result, previousRecords, now);
       pages[page.key] = evaluated.health;
       records.push(...evaluated.records);
       carried ||= evaluated.carried;
@@ -527,7 +600,7 @@ export function assembleImdSnapshot({ pageResults = {}, previous = null, now = D
       recordCount: records.length,
       warningCount: records.filter(isWarningRecord).length,
       carried,
-      requestCount: spec.pages.length,
+      requestCount,
       emptyMeans: status === 'ok' && records.length === 0 ? 'no-current-bulletin' : null,
       pages,
     };
@@ -565,13 +638,14 @@ export function assembleImdSnapshot({ pageResults = {}, previous = null, now = D
   };
 }
 
-async function readBoundedText(response, maxBytes) {
+async function readBoundedBytes(response, maxBytes) {
   const declared = Number(response.headers?.get?.('content-length'));
   if (Number.isFinite(declared) && declared > maxBytes) fail('BULLETIN_RESPONSE_TOO_LARGE');
   if (!response.body || typeof response.body.getReader !== 'function') {
-    const text = await response.text();
-    if (Buffer.byteLength(text, 'utf8') > maxBytes) fail('BULLETIN_RESPONSE_TOO_LARGE');
-    return text;
+    const bytes = typeof response.arrayBuffer === 'function'
+      ? Buffer.from(await response.arrayBuffer()) : Buffer.from(await response.text());
+    if (bytes.length > maxBytes) fail('BULLETIN_RESPONSE_TOO_LARGE');
+    return bytes;
   }
   const reader = response.body.getReader();
   const chunks = [];
@@ -586,7 +660,7 @@ async function readBoundedText(response, maxBytes) {
     }
     chunks.push(Buffer.from(value));
   }
-  return new TextDecoder('utf-8').decode(Buffer.concat(chunks));
+  return Buffer.concat(chunks);
 }
 
 function pageFailureReason(err) {
@@ -601,6 +675,8 @@ export async function fetchImdBulletinPage(productId, page, {
   userAgent = CHROME_UA,
   maxBytes = IMD_MAX_BYTES,
   timeoutMs = IMD_TIMEOUT_MS,
+  delayMs = IMD_PAGE_DELAY_MS,
+  sleep = defaultSleep,
 } = {}) {
   if (!isAllowedImdUrl(page.url)) return { status: 'failed', reason: 'UNTRUSTED_SOURCE_HOST' };
   try {
@@ -610,10 +686,26 @@ export async function fetchImdBulletinPage(productId, page, {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const html = await readBoundedText(response, maxBytes);
+    const html = new TextDecoder('utf-8').decode(await readBoundedBytes(response, maxBytes));
     return { status: 'parsed', bulletin: parseImdBulletinHtml(html, productId) };
   } catch (err) {
-    return { status: 'failed', reason: pageFailureReason(err) };
+    const primary = { status: 'failed', reason: pageFailureReason(err) };
+    const registered = IMD_PRODUCTS[productId]?.pages?.find((entry) => entry.key === page.key && entry.url === page.url);
+    if (!registered?.fallbackUrl || !isAllowedImdUrl(registered.fallbackUrl)) return primary;
+    try {
+      await sleep(delayMs);
+      const response = await fetchFn(registered.fallbackUrl, {
+        headers: { Accept: 'application/pdf', 'User-Agent': userAgent },
+        redirect: 'error',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!/^application\/pdf(?:;|$)/i.test(response.headers?.get?.('content-type') || '')) fail('BULLETIN_PDF_INVALID');
+      const bulletin = await parseImdKeralaPdf(await readBoundedBytes(response, maxBytes));
+      return { status: 'parsed', bulletin, sourceUrl: registered.fallbackUrl, fallbackUsed: true, primaryFailure: primary.reason };
+    } catch (fallbackError) {
+      return { ...primary, fallbackFailure: pageFailureReason(fallbackError) };
+    }
   }
 }
 
@@ -634,7 +726,7 @@ export async function fetchImdCycloneMarine({
     for (const page of IMD_PRODUCTS[id].pages) {
       if (!first) await sleep(delayMs);
       first = false;
-      pageResults[id][page.key] = await fetchImdBulletinPage(id, page, { fetchFn, userAgent });
+      pageResults[id][page.key] = await fetchImdBulletinPage(id, page, { fetchFn, userAgent, delayMs, sleep });
     }
   }
   return assembleImdSnapshot({ pageResults, previous, now });

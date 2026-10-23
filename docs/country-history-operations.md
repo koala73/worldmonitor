@@ -5,7 +5,7 @@ noindex: true
 
 # Activate daily country history
 
-The repository registers `seed-country-history` as planned. Creating or deploying its Railway service requires operator approval.
+Railway service `seed-country-history` (`d295b2c7-59ba-4748-9525-62292c5bc98c`) is provisioned and registry-managed. Steps 1–5 record how it was created; recreating or redeploying it still requires operator approval.
 
 1. Use the existing scripts-root Nixpacks pattern with root directory `scripts`.
 2. Set the start command to `node seed-country-history.mjs`.
@@ -16,7 +16,7 @@ The repository registers `seed-country-history` as planned. Creating or deployin
 7. Verify `seed-meta:history:country`, `history:country:index` and the permanent activation marker belong to that publication.
 8. Read anonymous, Pro and API windows. Check the `effectiveDays`, `allowedDays`, source versions and no-store headers.
 
-The worker reads `risk:scores:sebuf:stale:v13`, `resilience:ranking:v29` and `news:digest:v1:full:en`.
+The worker reads `risk:scores:sebuf:stale:v14`, `resilience:ranking:v29` and `news:digest:v1:full:en`.
 Update these source keys when their publishers change namespace. Fixture tests verify the current source-key wiring.
 It accepts CII and news at most 30 minutes old, and resilience ranking at most 12 hours old.
 Unavailable inputs fail the run without advancing the archive heartbeat.

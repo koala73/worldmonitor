@@ -641,6 +641,11 @@ export default defineSchema({
     currentPeriodStart: v.number(),
     currentPeriodEnd: v.number(),
     cancelledAt: v.optional(v.number()),
+    // Epoch ms when a portal cancel was first seen on an active row
+    // (`cancel_at_next_billing_date`). Only the confirmation email's episode
+    // key; whether a cancel is scheduled is read from rawPayload by
+    // `isCancellationScheduled`.
+    cancelScheduledAt: v.optional(v.number()),
     // Stable first-class projection of `rawPayload.customer.customer_id`
     // (the Dodo customer this sub was paid as). Optional because
     // `DodoSubscriptionData.customer` is itself optional and lifecycle
@@ -729,7 +734,10 @@ export default defineSchema({
     // the three-day retry cohort instead of every paid-through cancellation.
     // Rows without cancelledAt are omitted (optional field) — the scan
     // already skips those as having no stable episode key.
-    .index("by_status_cancelledAt", ["status", "cancelledAt"]),
+    .index("by_status_cancelledAt", ["status", "cancelledAt"])
+    // Same three-day confirmation retry cohort for portal-scheduled cancels,
+    // which stay `active` until period end.
+    .index("by_status_cancelScheduledAt", ["status", "cancelScheduledAt"]),
 
   // What happened in a Pro-activation session, one row per subscription per
   // cohort (see `cohort` below).
@@ -833,6 +841,18 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_validUntil", ["validUntil"]),
+
+  // Customer AI routing restriction (contractual, e.g. "Anthropic only").
+  // Kept out of `entitlements.features` on purpose: billing webhooks rewrite
+  // that object, and a compliance control must not ride on it. When a row
+  // exists, the edge uses `allowedProviders` as the whole LLM provider chain
+  // for this user's own input (server/_shared/ai-routing-policy.ts).
+  aiRoutingPolicies: defineTable({
+    userId: v.string(),
+    allowedProviders: v.array(v.string()),
+    reason: v.string(),
+    updatedAt: v.number(),
+  }).index("by_userId", ["userId"]),
 
   apiUsageRollups: defineTable({
     userId: v.string(),

@@ -13,6 +13,7 @@ import { cachedFetchJson, cachedFetchJsonWithMeta, getCachedJson, setCachedJsonI
 import { displayNameForIso2 } from '../../../_shared/country-normalize';
 import { UPSTREAM_TIMEOUT_MS, TIER1_COUNTRIES, sha256Hex } from './_shared';
 import { callLlm } from '../../../_shared/llm';
+import { aiRoutingCacheSuffix, resolveAiRouting, toLlmRoutingPolicy } from '../../../_shared/ai-routing-policy';
 import { verifyCitationIndexes, checkLeadGrounding, validateNoHallucinatedProperNouns, validateNoHallucinatedFacts, validateNoHallucinatedStatusQualifiers } from '../../../../shared/brief-llm-core.js';
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { markUnservedLlmResponse } from '../../../_shared/response-headers';
@@ -418,6 +419,7 @@ export async function getCountryIntelBrief(
     cacheContext ? sha256Hex(cacheContext) : Promise.resolve('base'),
     frameworkRaw    ? sha256Hex(frameworkRaw)    : Promise.resolve(''),
   ]);
+  const aiRouting = await resolveAiRouting(ctx.request);
   const cacheKey = deriveCountryIntelCacheKey({
     countryCode: req.countryCode.toUpperCase(),
     lang,
@@ -428,7 +430,7 @@ export async function getCountryIntelBrief(
     frameworkHash: frameworkRaw ? frameworkHashFull : '',
     energyYear,
     energyImportYear,
-  });
+  }) + aiRoutingCacheSuffix(aiRouting);
   const countryCode = req.countryCode.toUpperCase();
   const countryName = TIER1_COUNTRIES[countryCode]
     || displayNameForIso2(countryCode)
@@ -576,6 +578,7 @@ Rules:
         timeoutMs: UPSTREAM_TIMEOUT_MS,
         systemAppend: frameworkRaw || undefined,
         stage: 'country-intel-brief',
+        routingPolicy: toLlmRoutingPolicy(aiRouting),
         validate: english
           ? content => renderEvidenceGroundedCountryBrief(content, entrySources, evidence, countryName) !== null
           : undefined,

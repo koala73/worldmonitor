@@ -771,6 +771,8 @@ export interface GoldCbReserves {
   topHolders: GoldCbHolder[];
   topBuyers12m: GoldCbMover[];
   topSellers12m: GoldCbMover[];
+  indicator: string;
+  valueIsOunces?: boolean;
 }
 
 export interface GoldCbHolder {

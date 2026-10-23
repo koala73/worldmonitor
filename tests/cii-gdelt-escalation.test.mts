@@ -64,7 +64,7 @@ function seed(byCountry: Record<string, { conflict?: Signal; protest?: Signal; w
 
 function aux(snapshot: unknown = null) {
   return {
-    ucdpEvents: [], outages: [], climate: [], cyber: [], fires: [], gpsHexes: [], iranEvents: [],
+    ucdpEvents: [], outages: [], climate: [], fires: {}, gpsHexes: [], iranEvents: [],
     orefData: null, advisories: null, displacedByIso3: {}, newsTopStories: [], threatSummaryByCountry: null,
     aviationAlerts: [], earthquakes: [], sanctionsCountries: [], sanctionsCountryCounts: null,
     temporalAnomalies: [], militaryCii: null,

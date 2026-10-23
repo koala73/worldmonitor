@@ -1155,7 +1155,9 @@ export class UnifiedSettings {
       if (sub?.currentPeriodEnd) {
         const dateStr = new Date(sub.currentPeriodEnd).toLocaleDateString();
         if (sub.status === 'active') {
-          statusLine = `Renews: ${dateStr}`;
+          statusLine = sub.cancelAtPeriodEnd
+            ? `Cancellation scheduled -- access until ${dateStr}`
+            : `Renews: ${dateStr}`;
         } else if (sub.status === 'on_hold') {
           statusLine = 'On hold -- please update payment method';
         } else if (sub.status === 'cancelled') {

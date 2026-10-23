@@ -221,6 +221,7 @@ export type ExtractionProviderName = Extract<AcquisitionProviderName, 'firecrawl
 export type ExtractionFailureReason =
   | 'provider-error'
   | 'provider-cooldown'
+  | 'source-http-error'
   | 'missing-price'
   | 'price-evidence-missing'
   | 'title-mismatch'
@@ -503,6 +504,10 @@ export class SearchAdapter implements RetailerAdapter {
           ctx.logger.info(
             `  [search:provider-cooldown] ${ctx.config.slug}: ${provider === 'firecrawl' ? 'Firecrawl' : 'Exa'} extraction recovered — cooldown closed after a successful probe`,
           );
+        }
+        if (result.sourceStatusCode != null && result.sourceStatusCode >= 400) {
+          failures.push({ provider, reason: 'source-http-error', detail: `HTTP ${result.sourceStatusCode}` });
+          continue;
         }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);

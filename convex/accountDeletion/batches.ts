@@ -37,6 +37,7 @@ export const PERSONAL_DELETE_TABLES = [
   "userReferralCodes",
   "userReferralCredits",
   "entitlements",
+  "aiRoutingPolicies",
   "apiUsageRollups",
   "apiPlanLimitNotices",
   "checkoutAdmissions",
@@ -120,6 +121,11 @@ async function takePersonalRows(
     case "entitlements":
       return ctx.db
         .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "aiRoutingPolicies":
+      return ctx.db
+        .query("aiRoutingPolicies")
         .withIndex("by_userId", (q) => q.eq("userId", userId))
         .take(limit);
     case "apiUsageRollups":

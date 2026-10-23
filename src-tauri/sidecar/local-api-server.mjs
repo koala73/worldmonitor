@@ -1101,6 +1101,18 @@ function isCloudPreferred(pathname) {
     || cloudPreferredPrefixes.some(p => pathname.startsWith(p));
 }
 
+async function isLocalOnlyRequest(req, pathname) {
+  if (req.method !== 'POST' || pathname !== '/api/news/v1/summarize-article') return false;
+  const body = await readBody(req);
+  if (!body?.length) return false;
+  try {
+    const parsed = JSON.parse(body.toString('utf8'));
+    return parsed?.provider === 'ollama' && parsed?.mode === 'translate';
+  } catch {
+    return false;
+  }
+}
+
 const TRAFFIC_LOG_MAX = 200;
 const trafficLog = [];
 let verboseMode = false;
@@ -2093,12 +2105,13 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  const cloudPreferredAttempted = context.cloudFallback && isCloudPreferred(requestUrl.pathname);
+  const localOnly = await isLocalOnlyRequest(req, requestUrl.pathname);
+  const cloudPreferredAttempted = !localOnly && context.cloudFallback && isCloudPreferred(requestUrl.pathname);
   if (cloudPreferredAttempted) {
     const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'cloud-preferred');
     if (cloudResponse) return cloudResponse;
   }
-  const allowCloudFallback = context.cloudFallback && !cloudPreferredAttempted;
+  const allowCloudFallback = !localOnly && context.cloudFallback && !cloudPreferredAttempted;
 
   const modulePath = pickModule(requestUrl.pathname, routes);
   if (!modulePath || !existsSync(modulePath)) {

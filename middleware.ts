@@ -502,11 +502,7 @@ function liveChokepointPage(url: URL): Promise<Response> {
     // rather than return a reading it cannot vouch for.
     const view = chokepointStatusViewModel(await fetchPublicReading(url, CHOKEPOINT_STATUS_PUBLIC_PATH), id);
     const section = renderChokepointLiveSection({
-      chokepoint: {
-        id,
-        displayName,
-        transitMeasurementNote: sectionAttribute(html, 'data-transit-measurement-note') ?? '',
-      },
+      chokepoint: { id, displayName },
       pulse: chokepointPulseRecord(view),
       live: true,
     });

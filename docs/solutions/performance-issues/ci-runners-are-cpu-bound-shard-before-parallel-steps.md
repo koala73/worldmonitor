@@ -53,11 +53,16 @@ PR #8966:
   by recorded file durations, so only the matrix and the `/N` denominator
   changed. The slowest single files (111s, 92s, 81s) set a floor that more
   shards cannot go below.
-- **Parallel setup.** `install-root-deps` runs beside the apt install (Redis in
-  unit shards, Playwright OS libraries in smoke shards). The pro-webmcp OS
-  library install runs beside the `/pro` build. `node_modules` does not exist
-  yet in the smoke shards, so the apt step reads the Playwright version from
+- **Parallel setup.** In the smoke shards, `install-root-deps` runs beside the
+  apt install of Playwright's OS libraries. The pro-webmcp OS library install
+  runs beside the `/pro` build. `node_modules` does not exist yet in the smoke
+  shards, so the apt step reads the Playwright version from
   `package-lock.json` and runs `npx -y "playwright@$v" install-deps chromium`.
+  The unit shards ran the Redis apt install beside `install-root-deps` too,
+  until #9583. They now install Redis from a package cache with `dpkg`, before
+  `install-root-deps`: both composite actions use `actions/cache`, and two
+  parallel steps that each pull an action the job does not reference at the
+  top level download it at once, so one copy fails (run 39936254975).
 
 Three alternating runs of the old and new workflow on one commit took the wall
 from 273-280s to 216-223s, for about 14% more runner-seconds. The PR's own run
@@ -82,8 +87,11 @@ The browser jobs now:
 - Install only the fonts the shipped locales need beyond the image's DejaVu,
   Liberation and Noto Color Emoji: `fonts-wqy-zenhei` (zh, ja and ko),
   `fonts-tlwg-loma-otf` (th) and `fonts-lohit-deva` (hi). The
-  `install-browser-fonts` action caches the `.deb` files, so most runs download
-  nothing. The step takes 9-11s and runs beside the dependency restore. A
+  `install-browser-fonts` action caches the `.deb` files and installs them with
+  `dpkg -i`. Until #9554 it passed them to `apt-get install`, which downloaded
+  them again from the mirror on every run (see
+  [apt-get-install-local-deb-redownloads-from-mirror.md](apt-get-install-local-deb-redownloads-from-mirror.md)).
+  The step takes 3-14s and runs beside the dependency restore. A
   failed font install only warns, because fonts affect only the evidence
   screenshots.
 

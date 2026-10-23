@@ -71,6 +71,28 @@ const goodExtract = {
 };
 
 describe('price-evidence gate', () => {
+  it.each([null, 4.6])('reports a blocked source before interpreting price %s and does not open provider cooldown', async (price) => {
+    const exa = { search: vi.fn().mockResolvedValue([{ url: PRODUCT_URL }]) } as unknown as ExaProvider;
+    const firecrawl = {
+      extract: vi.fn().mockResolvedValue({
+        sourceStatusCode: 403,
+        data: { ...goodExtract, price },
+        pageContent: '# 403 Forbidden\n4.60',
+      }),
+    } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const context = makeContext(makeConfig());
+
+    for (let i = 0; i < 3; i++) {
+      const error = await adapter.fetchTarget(context, makeTarget()).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(SearchTargetError);
+      expect((error as SearchTargetError).failures).toEqual([
+        { provider: 'firecrawl', reason: 'source-http-error', detail: 'HTTP 403' },
+      ]);
+    }
+    expect(firecrawl.extract).toHaveBeenCalledTimes(3);
+  });
+
   it('rejects a price whose digits are absent from the rendered page', async () => {
     const exa = {
       search: vi.fn().mockResolvedValue([{ url: PRODUCT_URL }]),
@@ -178,7 +200,7 @@ describe('price-evidence gate', () => {
     expect((err as SearchTargetError).rejectedCount).toBe(0);
   });
 
-  it('escalates to the Exa fallback when Firecrawl fails the evidence check', async () => {
+  it.each([undefined, 403])('uses the configured fallback after a source failure or missing price evidence (status %s)', async (sourceStatusCode) => {
     const exa = {
       search: vi.fn().mockResolvedValue([{ url: PRODUCT_URL }]),
       extract: vi.fn().mockResolvedValue({
@@ -189,7 +211,8 @@ describe('price-evidence gate', () => {
     const firecrawl = {
       extract: vi.fn().mockResolvedValue({
         data: goodExtract,
-        pageContent: 'unrelated shell content',
+        sourceStatusCode,
+        pageContent: sourceStatusCode ? '# 403 Forbidden\n4.60' : 'unrelated shell content',
       }),
     } as unknown as FirecrawlProvider;
 

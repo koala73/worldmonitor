@@ -126,8 +126,8 @@ function productGroupParam(raw: unknown, operation: string): string {
 // ---------------------------------------------------------------------------
 // coverage: what answered and where it stops, in data rather than prose.
 //
-// The two schedule tools answer from WTO/WITS schedules that end around 2023
-// and never carry Section 301 or 232 duties; get_us_import_duty answers from
+// The two schedule tools answer from WTO/WITS schedules with dataset-specific
+// coverage and never carry Section 301 or 232 duties; get_us_import_duty answers from
 // the live HTS with them. An agent that reads only the payload must still be
 // able to tell those apart, so every answer except an upstream outage
 // (upstreamUnavailable: true, which answers nothing) carries `coverage`.
@@ -232,7 +232,7 @@ export const TARIFF_TOOLS: ToolDef[] = [
     },
     title: 'Average tariff rates',
     _outputBudgetBytes: 65536,
-    description: 'Average tariff a country applies by year: schedule rates through 2023, no Section 301/232 duties. Optionally limited to one partner\'s goods and/or one product group. With no partner and no product group it is the WTO MFN average over all products (TP_A_0010) for any reporter. With a partner other than World, or a product group, it is the effectively applied average from UNCTAD TRAINS via World Bank WITS: tariffRate is the simple average (AHS-SMPL-AVRG, preferences counted), weightedRate the import-weighted one. Series run from about 1990 to 2023 for most reporters; US preferences are reported only through 2021. These are schedule rates: Section 301, 232 and other unilateral duties are NOT included. unavailableReason NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault worth retrying later.',
+    description: 'Average tariff a country applies by year: schedule rates, no Section 301/232 duties. Read coverage.dataset and coverage.latestYear for the answering series and its latest year. With no partner and no product group it is the WTO MFN average over all products (TP_A_0010). With a partner other than World, or a product group, it is the effectively applied average from UNCTAD TRAINS via World Bank WITS: tariffRate is the simple average (AHS-SMPL-AVRG, preferences counted), weightedRate the import-weighted one. WTO MFN years follow the seeded provider series. WITS coverage varies by reporter, starting around 1990; US preferences are reported only through 2021. These are schedule rates: Section 301, 232 and other unilateral duties are NOT included. unavailableReason NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault worth retrying later.',
     inputSchema: {
       type: 'object',
       properties: {

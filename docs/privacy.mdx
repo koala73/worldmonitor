@@ -5,7 +5,7 @@ description: "How World Monitor handles personal data: what we collect, subproce
 
 {/* REVIEW — operator based in the UAE (party naming decided 20 August 2026: "World Monitor", country only); effective date 20 August 2026 (DebugBear RUM and the self-hosted Umami collector disclosed, #6978/#5388). Still optional: (1) a dedicated privacy@ inbox vs support@; (2) PIPEDA coverage and a DPA are still open (#6638). NOT legal advice — a legal review is still recommended. */}
 
-_Last updated: 21 September 2026_
+_Last updated: 21 October 2026_
 
 **Download:** [PDF](https://www.worldmonitor.app/legal/privacy.pdf) · [Markdown](https://www.worldmonitor.app/docs/privacy.md)
 
@@ -22,15 +22,15 @@ This page is written in plain language and is not legal advice.
 
 ## Information we collect
 
-**Account information.** If you create an account or upgrade to Pro, our authentication providers (Clerk and WorkOS) process your email address, name, and login credentials. We store account identifiers and your plan/entitlement state in our database (Convex).
+**Account information.** If you create an account or upgrade to Pro, our authentication provider (Clerk) processes your email address, name, and login credentials. We store account identifiers and your plan/entitlement state in our database (Convex).
 
 **Payment information.** Subscriptions are processed by Dodo Payments, which acts as the merchant of record. Your full card details are entered with and held by the payment processor — **World Monitor never receives or stores your full card number.** We receive limited billing metadata (such as plan, status, country, and the last four digits) needed to manage your subscription.
 
 **Usage and diagnostics.** To keep the Service reliable we collect:
 
 - **Error and crash diagnostics** via Sentry (e.g. error messages, stack traces, browser and device type).
-- **Aggregate, privacy-oriented analytics** via Vercel Web Analytics, Cloudflare, and our self-hosted Umami instance (`abacus.worldmonitor.app`) — used to understand traffic patterns. These are designed to avoid cross-site tracking, and where configured are cookieless.
-- **Page-performance monitoring (RUM)** via DebugBear on a 10% sample of page loads. It receives the page path, viewport and device pixel ratio, navigation and web-vitals timings, and the user agent, along with the IP address inherent in any web request. **URL query parameters are not collected** — the dashboard state your address bar carries (map view, time range, selected layers) is not part of what DebugBear stores. It is used to find slow and unstable pages, not to identify or track you.
+- **Privacy-oriented product analytics** via Vercel Web Analytics, Cloudflare, and our self-hosted Umami instance (`abacus.worldmonitor.app`) — used to understand traffic patterns. These are designed to avoid cross-site tracking, and where configured are cookieless. For signed-in users, Umami events also carry your account identifier, plan, and subscription status, so we can see how each plan uses the product.
+- **Page-performance monitoring (RUM)** via DebugBear on a 10% sample of page loads. It receives the page path, viewport and device pixel ratio, navigation and web-vitals timings, and the user agent, along with the IP address inherent in any web request, plus any browser errors raised on a sampled page (error messages, stack traces, and source URLs). **URL query parameters are not part of its page data** — the dashboard state your address bar carries (map view, time range, selected layers) is not stored with page views. A browser error report can still include the page address with its query string, so that dashboard state may appear in error data. DebugBear does not load while the address carries sign-in tokens, checkout or referral codes, or email parameters. It is used to find slow and unstable pages, not to identify or track you.
 - **Server and request logs** via Axiom and our hosting/CDN providers (Vercel, Cloudflare), including IP address, user agent, and request metadata, retained for security and debugging.
 
 **Content you submit to AI features.** When you use AI briefings, analysis, forecasts, or the research assistant, the text of your query and the relevant context are sent to our AI providers (Anthropic and, via OpenRouter, other model providers) to generate a response. Do not submit sensitive personal data into AI prompts.
@@ -39,7 +39,7 @@ This page is written in plain language and is not legal advice.
 
 ## Cookies and local storage
 
-- **Essential** — authentication sessions (Clerk/WorkOS) and security use cookies or equivalent storage that are required for signed-in features to work.
+- **Essential** — authentication sessions (Clerk) and security use cookies or equivalent storage that are required for signed-in features to work.
 - **Preferences** — dashboard settings are stored locally in your browser.
 - **Analytics** — our analytics are designed to be privacy-friendly and, where configured, do not use tracking cookies.
 
@@ -49,26 +49,27 @@ If you use the Service to process personal data and need a processor agreement, 
 
 ## Subprocessors
 
-We share personal data only with service providers that process it on our behalf to run the Service. The table also names the one analytics collector we host ourselves, so it can be reconciled against anything you see in a network log:
+We share personal data only with the service providers below, which process it on our behalf to run the Service. Each row says what personal data reaches that provider. The table also names the one analytics collector we host ourselves, so it can be reconciled against anything you see in a network log.
 
-| Provider | Purpose |
-|----------|---------|
-| Clerk | Authentication and account management |
-| WorkOS | Authentication, OAuth, and enterprise/agent sign-in |
-| Convex | Application database (accounts, entitlements, alerts, preferences) |
-| Dodo Payments | Payment processing and subscription billing (merchant of record) |
-| Sentry | Error and crash monitoring |
-| DebugBear | Real-user page-performance monitoring (10% sample) |
-| Umami (self-hosted, `abacus.worldmonitor.app`) | Product analytics on our own infrastructure — no third party receives this data |
-| Upstash | Rate-limit and cache store; rate-limit keys are derived from your IP address |
-| Railway | Container hosting for our analytics service and for notification delivery |
-| Mintlify | Documentation site hosting (`worldmonitor.app/docs`, including this page) |
-| Vercel | Application hosting and web analytics |
-| Cloudflare | Content delivery, edge security, bot challenges (Turnstile), and web analytics |
-| Axiom | Application logging and observability |
-| Anthropic | AI model provider for analysis and briefings |
-| OpenRouter | AI model routing for analysis and forecasts |
-| Resend | Transactional email delivery |
+| Provider | Purpose | Personal data it processes |
+|----------|---------|----------------------------|
+| Clerk | Authentication and account management | Name, email address, login credentials, and session tokens |
+| Convex | Application database (accounts, billing records, entitlements, API keys, alerts, preferences) | Account identifiers, name and email address, subscription and payment records (including payment-provider customer details), plan and entitlement state, API keys (stored as hashes), alert rules and the destinations you connect, saved preferences, and messages you send through our contact forms |
+| Dodo Payments | Payment processing and subscription billing (merchant of record) | Name, email address, billing details, and card details, which Dodo Payments holds; we receive the plan, status, country, and last four digits |
+| Sentry | Error and crash monitoring | Error messages, stack traces, browser and device type, and the IP address inherent in any web request |
+| DebugBear | Real-user page-performance monitoring (10% sample of page loads) | Page path, viewport, navigation and web-vitals timings, user agent, IP address, and browser errors on a sampled page (error messages, stack traces, and source URLs) |
+| Umami (self-hosted, `abacus.worldmonitor.app`) | Product analytics, running in our own Railway project — no analytics vendor receives this data | Page views and product events, with the browser and device details a web request carries; for signed-in users, your account identifier, plan, and subscription status |
+| Upstash | Rate-limit and cache store | Rate-limit keys derived from your IP address, cached entitlement records, and short-lived cached responses |
+| Railway | Container hosting for our background services: alert and digest delivery, the data relay (including the widget builder), and our Umami analytics instance and its database | Alert and digest content and the destination identifiers it is delivered to, prompts you send to the widget builder, and the Umami analytics events stored in its database (including, for signed-in users, your account identifier, plan, and subscription status) |
+| Mintlify | Documentation site hosting (`worldmonitor.app/docs`, including this page) | IP address and user agent of documentation page requests |
+| Vercel | Application and API hosting, and web analytics | IP address, user agent, and request metadata, and the content of API requests and responses in transit |
+| Cloudflare | Content delivery, edge security, bot challenges (Turnstile), web analytics, and object storage (R2) | IP address, user agent, request metadata, and Turnstile challenge signals |
+| Axiom | Application logging and observability | IP address and approximate location (city, region), user agent, referrer, request metadata, and your account identifier |
+| Anthropic | AI model provider for analysis, briefings, and the widget builder | The text of your AI queries and the context sent with them |
+| OpenRouter | AI model routing for analysis and forecasts; it passes each request to the model provider it routes to | The text of your AI queries and the context sent with them |
+| Resend | Transactional email delivery | Recipient email address and the email's content |
+
+We give at least 30 days' notice before a new subprocessor starts processing personal data, as set out in section 8 of the [Data Processing Addendum](/dpa).
 
 ## Where your alerts go
 

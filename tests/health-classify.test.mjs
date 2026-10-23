@@ -675,6 +675,7 @@ test('classifyKey: consumer-price coverage relays bounded failure reasons and dr
           rejectedCount: 3,
           failureReasons: {
             'missing-price': 2,
+            'source-http-error': 1,
             'validator-rejected': 1,
             'not-a-real-reason': 9,
             'provider-error': -4,
@@ -688,7 +689,7 @@ test('classifyKey: consumer-price coverage relays bounded failure reasons and dr
             failedPages: 2,
             rejectedCount: 1,
             completionRatio: 0,
-            failureReasons: { 'missing-price': 2, 'bogus-code': 1 },
+            failureReasons: { 'source-http-error': 2, 'bogus-code': 1 },
           }],
         },
       }),
@@ -697,9 +698,10 @@ test('classifyKey: consumer-price coverage relays bounded failure reasons and dr
 
   assert.deepEqual(entry.coverage.failureReasons, {
     'missing-price': 2,
+    'source-http-error': 1,
     'validator-rejected': 1,
   });
-  assert.deepEqual(entry.coverage.retailers[0].failureReasons, { 'missing-price': 2 });
+  assert.deepEqual(entry.coverage.retailers[0].failureReasons, { 'source-http-error': 2 });
 });
 
 test('classifyKey: consumer-price coverage without failure reasons reports an empty map', () => {
@@ -1485,7 +1487,7 @@ test('classifyKey: riskScores partial realtime family coverage → COVERAGE_PART
 
   assert.equal(entry.status, 'COVERAGE_PARTIAL');
   assert.equal(entry.records, 1);
-  assert.equal(entry.minRecordCount, 3);
+  assert.equal(entry.minRecordCount, 2, 'conflict + news families since CII v14');
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
@@ -2869,12 +2871,12 @@ test('classifyKey: an UNREADABLE activation marker earns nothing (fails closed)'
 });
 
 test('classifyKey: a key with no activation marker is untouched by the change', () => {
-  // newsThreatSummary is in both sets too, but configures no marker — so it is
+  // recoveryFiscalSpace is in both sets too, but configures no marker — so it is
   // permanently `unknown` and MUST keep EMPTY_DATA_OK_KEYS' behaviour. This is
   // what stops the reorder from silencing producers that run and then stop.
   const entry = classifyKey(
-    'newsThreatSummary',
-    STANDALONE_KEYS.newsThreatSummary,
+    'recoveryFiscalSpace',
+    STANDALONE_KEYS.recoveryFiscalSpace,
     { allowOnDemand: true },
     makeCtx({ activationStates: IMD_MARKER_ABSENT }),
   );

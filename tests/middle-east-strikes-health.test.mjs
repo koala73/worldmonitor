@@ -74,7 +74,7 @@ test('seed-health marks the feed stale on the same budget', async () => {
   assert.ok(interval * 2 <= SEED_META.iranEvents.maxStaleMin && interval * 2 >= 30, `intervalMin ${interval}`);
 });
 
-// CII v13: the relay also keeps a 30-day per-country strike tally
+// Since CII v12: the relay also keeps a 30-day per-country strike tally
 // (conflict:strike-pressure:v1), read only by the CII strike pressure.
 const PRESSURE_KEY = 'conflict:strike-pressure:v1';
 function pressureCtx({ present = true, metaAgeMin = 1, recordCount = 0, activated = true } = {}) {

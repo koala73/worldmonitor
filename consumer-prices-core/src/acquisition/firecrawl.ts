@@ -176,6 +176,9 @@ export class FirecrawlProvider implements AcquisitionProvider {
       data: (data.data?.extract ?? {}) as T,
       provider: this.name,
       fetchedAt: new Date(),
+      ...(typeof data.data?.metadata?.statusCode === 'number'
+        ? { sourceStatusCode: data.data.metadata.statusCode }
+        : {}),
       ...(typeof data.data?.markdown === 'string' && data.data.markdown.trim()
         ? { pageContent: data.data.markdown }
         : {}),

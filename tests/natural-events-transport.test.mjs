@@ -6,6 +6,33 @@ import dns from 'node:dns';
 import { gzipSync } from 'node:zlib';
 import { fetchNaturalEvents, naturalEventsAfterPublish } from '../scripts/seed-natural-events.mjs';
 
+// Skip the real 500 ms sleep between retries (withRetry's test-only knob,
+// inert outside node:test); attempt counts and computed waits are unchanged.
+// Tests that time the backoff itself opt out with useRealRetryDelay().
+process.env.WM_SEED_RETRY_DELAY_MS = '0';
+function useRealRetryDelay(t) {
+  delete process.env.WM_SEED_RETRY_DELAY_MS;
+  t.after(() => { process.env.WM_SEED_RETRY_DELAY_MS = '0'; });
+}
+
+// Run the transport's real deadlines `factor` times faster: performance.now()
+// advances `factor` ms per real ms, and setTimeout, setInterval and
+// AbortSignal.timeout delays (production and fixture server alike) shrink by
+// `factor`. Constants and assertions stay in virtual ms, so the 15 s header,
+// 5 s idle and 30.5 s budget relationships are unchanged. Math.ceil keeps
+// delays integral: AbortSignal.timeout throws on fractional milliseconds.
+function compressTime(t, factor = 10) {
+  const realNow = performance.now.bind(performance);
+  const origin = realNow();
+  const { setTimeout: realSetTimeout, setInterval: realSetInterval } = globalThis;
+  const realAbortTimeout = AbortSignal.timeout.bind(AbortSignal);
+  const scale = ms => Math.ceil(ms / factor);
+  t.mock.method(performance, 'now', () => origin + (realNow() - origin) * factor);
+  t.mock.method(globalThis, 'setTimeout', (callback, ms = 0, ...args) => realSetTimeout(callback, scale(ms), ...args));
+  t.mock.method(globalThis, 'setInterval', (callback, ms = 0, ...args) => realSetInterval(callback, scale(ms), ...args));
+  t.mock.method(AbortSignal, 'timeout', ms => realAbortTimeout(scale(ms)));
+}
+
 const NOW = Date.parse('2026-09-18T06:00:00Z');
 const event = {
   id: 'eonet-recovered', title: 'Volcano', categories: [{ id: 'volcanoes' }],
@@ -42,7 +69,8 @@ const run = transport => fetchNaturalEvents({
   fetchHkoWarningsFn: async () => ({ warnings: [], dataAvailable: true, sourceDecision: { status: 'used' } }),
 });
 
-test('late EONET headers leave progressing body time within the shared budget', { timeout: 25_000 }, async t => {
+test('late EONET headers leave progressing body time within the shared budget', { timeout: 10_000 }, async t => {
+  compressTime(t);
   const body = JSON.stringify({ events: [event] });
   const timers = [];
   const server = createServer((_req, res) => {
@@ -65,7 +93,8 @@ test('late EONET headers leave progressing body time within the shared budget', 
   assert.equal(transport.calls.get('eonet'), 2);
 });
 
-test('EONET aborts a silent body and retries within the existing source budget', { timeout: 15_000 }, async t => {
+test('EONET aborts a silent body and retries within the existing source budget', { timeout: 10_000 }, async t => {
+  compressTime(t);
   let disconnected = 0;
   const server = createServer((req, res) => {
     req.on('close', () => disconnected++);
@@ -85,7 +114,8 @@ test('EONET aborts a silent body and retries within the existing source budget',
   assert.equal(disconnected, 2);
 });
 
-test('EONET progressing body cannot renew the total deadline', { timeout: 35_000 }, async t => {
+test('EONET progressing body cannot renew the total deadline', { timeout: 10_000 }, async t => {
+  compressTime(t);
   let interval;
   let disconnected = false;
   const server = createServer((req, res) => {
@@ -132,7 +162,8 @@ test('EONET streamed JSON preserves native BOM and invalid UTF-8 decoding', asyn
   assert.equal(result.events.find(item => item.id === event.id).title, expected.events[0].title);
 });
 
-test('EONET bounds decompressed bytes and rejects a truncated native response', async t => {
+test('EONET bounds decompressed bytes and rejects a truncated native response', { timeout: 10_000 }, async t => {
+  compressTime(t);
   const compressed = gzipSync(JSON.stringify({ events: [], padding: 'x'.repeat(2 * 1024 * 1024) }));
   let mode = 'oversize';
   const server = createServer((_req, res) => {
@@ -367,7 +398,8 @@ test('elapsed request time reduces the next timeout within the shared deadline',
   assert.ok(result.events.some(item => item.id === event.id));
 });
 
-test('native fetch covers header and body stalls and exhausts within the source deadline', { timeout: 40_000 }, async t => {
+test('native fetch covers header and body stalls and exhausts within the source deadline', { timeout: 10_000 }, async t => {
+  compressTime(t);
   let eonetRequests = 0;
   let tcRequests = 0;
   const server = createServer((req, res) => {
@@ -499,6 +531,7 @@ test('throwing diagnostic getters preserve bounded failures and the retry limit'
 });
 
 test('failure timing separates each request duration from total elapsed time', async t => {
+  useRealRetryDelay(t);
   let clock = 0;
   const logs = [];
   t.mock.method(performance, 'now', () => clock);
@@ -521,6 +554,7 @@ test('failure timing separates each request duration from total elapsed time', a
 });
 
 test('failure phase timings distinguish late headers from a stalled body and reset on retry', async t => {
+  useRealRetryDelay(t);
   let clock = 0;
   const logs = [];
   t.mock.method(performance, 'now', () => clock);

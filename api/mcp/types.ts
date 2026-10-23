@@ -50,6 +50,8 @@ export type ConflictSourceObservation = {
     candidateVersion?: string | null;
     candidateComplete?: boolean;
     annualFailedPages?: number;
+    newestItemAt?: number | null;
+    maxContentAgeMin?: number;
   };
 };
 
