@@ -136,15 +136,17 @@ function validJsonRpcId(id: unknown): id is string | number | undefined {
   return safeJsonRpcId(id) !== null;
 }
 
-// A well-formed `initialize` request: the only body an unsupported
-// MCP-Protocol-Version header does not refuse.
+// A well-formed `initialize` that names its own protocol version: the only body
+// an unsupported MCP-Protocol-Version header does not refuse, because that body
+// negotiates the version itself.
 function isInitializeRequest(parsed: unknown): boolean {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
   const { jsonrpc, id, method, params } = parsed as JsonRpcRequest;
   return jsonrpc === '2.0'
     && method === 'initialize'
     && id !== undefined && validJsonRpcId(id)
-    && !!params && typeof params === 'object' && !Array.isArray(params);
+    && !!params && typeof params === 'object' && !Array.isArray(params)
+    && typeof (params as { protocolVersion?: unknown }).protocolVersion === 'string';
 }
 
 function isAllowedMcpOrigin(origin: string | null): boolean {

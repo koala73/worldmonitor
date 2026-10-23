@@ -267,6 +267,9 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
       [init],
       { ...init, jsonrpc: '1.0' },
       { ...init, id: null },
+      // No body version to negotiate from, so the header is the only signal.
+      { ...init, params: {} },
+      { ...init, params: { ...init.params, protocolVersion: 20251125 } },
     ]) {
       const res = await fetch(server.url, {
         method: 'POST',
