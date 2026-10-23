@@ -114,6 +114,12 @@ Replay only on the committed multi-date fixtures in `tests/fixtures/cii/`. A sna
 
 The PR that ships `next` to main bumps `CII_FORMULA_VERSION`, clears `inProgress`, and moves the claim on (section 4). It also freezes the `next` hash as released, by updating `CII_RELEASED_PROTOCOL_HASHES_SHA256`.
 
+**The release gate for merging an integration branch into main.** Without it, the branch could reach main with `inProgress` still set and no version bump. Production would then serve the new scores under the old version's label, and every fixture check would stay green. The "CII release gate" tests in `tests/cii-invariants.test.mts` enforce it:
+
+- In CI on main, on a PR into main, or in a merge-queue run for main, `inProgress` must not be set. Those runs are detected from `GITHUB_BASE_REF` and `GITHUB_REF`. Elsewhere, including local runs, the test is skipped with a message.
+- Wherever `inProgress` is unset, the tree must name its own version. `CII_FORMULA_VERSION` must equal `next`, or the claim must have moved on to the version after it. `KNOWN_GAPS[CII_FORMULA_VERSION]` must exist.
+- The integration branch's release-blocker list must be empty. Its assertion joins this gate in the PR that adds the list.
+
 Capture a new fixture GET-only, with no Redis writes:
 
 ```
