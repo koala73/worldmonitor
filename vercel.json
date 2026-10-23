@@ -39,6 +39,7 @@
     { "source": "/index.html", "destination": "/", "permanent": true },
     { "source": "/welcome", "destination": "/", "permanent": true },
     { "source": "/CLERK-ROUTER/:path*", "destination": "/dashboard", "permanent": false },
+    { "source": "/settings", "destination": "/dashboard", "permanent": false },
     { "source": "/es", "destination": "/es/", "permanent": true },
     { "source": "/pt", "destination": "/pt/", "permanent": true },
     { "source": "/ru", "destination": "/ru/", "permanent": true },

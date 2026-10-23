@@ -2802,7 +2802,8 @@ export class App {
         }
 
         // Accept a Business Pro seat invite carried in the URL (mirror of the
-        // anon-claim hook). The invite link is /settings?accept-business-invite=<id>&token=<t>.
+        // anon-claim hook). The invite link is /dashboard?accept-business-invite=<id>&token=<t>;
+        // older emails used /settings, which vercel.json redirects here.
         // Runs after sign-in so the invitee's Clerk email is available server-side.
         const businessInviteGrantId = new URLSearchParams(window.location.search).get('accept-business-invite');
         const businessInviteToken = new URLSearchParams(window.location.search).get('token');

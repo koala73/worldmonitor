@@ -174,6 +174,7 @@ export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
   '/research',
   '/research-assets',
   '/sandbox',
+  '/settings',
   '/sources',
   '/stocks',
   '/story',

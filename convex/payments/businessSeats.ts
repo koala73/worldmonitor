@@ -330,7 +330,7 @@ export const sendBusinessInviteEmail = internalAction({
     token: v.string(),
   },
   handler: async (ctx, args) => {
-    const acceptUrl = `https://worldmonitor.app/settings?accept-business-invite=${encodeURIComponent(args.grantId)}&token=${encodeURIComponent(args.token)}`;
+    const acceptUrl = `https://www.worldmonitor.app/dashboard?accept-business-invite=${encodeURIComponent(args.grantId)}&token=${encodeURIComponent(args.token)}`;
     const html = `
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
   <div style="background: #4ade80; height: 4px;"></div>
