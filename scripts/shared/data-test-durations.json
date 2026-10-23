@@ -489,7 +489,7 @@
   "tests/country-stock-index-symbol-audit.test.mjs": 19,
   "tests/country-text-download.test.mts": 280,
   "tests/coverage-catalog.test.mjs": 3289,
-  "tests/crawlable-corpus.test.mjs": 229250,
+  "tests/crawlable-corpus.test.mjs": 38920,
   "tests/crawlable-country-risk.test.mjs": 54,
   "tests/crawlable-developments.test.mjs": 122,
   "tests/crawlable-live-tools.test.mjs": 312,
