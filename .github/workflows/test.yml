@@ -381,28 +381,28 @@ jobs:
             package-lock.json
             pro-test/package-lock.json
             blog-site/package-lock.json
-      # The dependency restore is a cache download and the Redis install is an
-      # apt pass. Neither reads the other's output, so they run side by side.
-      - parallel:
-          - uses: ./.github/actions/install-root-deps
-            with:
-              # setup-node restores the npm cache for this job's other install.
-              npm-cache: 'false'
-          # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
-          # archive's Lua runs against a real server: the relay harness stubs the
-          # EVAL and the proxy command-gate test only matches the script TEXT. That
-          # suite self-skips when the binaries are absent, so without this step the
-          # capacity refusal, newest-capture-wins compare, EXPIREAT and atomic
-          # seed-meta update were verified by nothing in CI. ubuntu-latest does not
-          # ship redis-server. Cheap (~2s) and shard-agnostic, so every shard gets it.
-          # The runner image package index goes stale when Ubuntu supersedes a
-          # redis build: the pinned .deb then 404s and every shard fails before
-          # tests run (2026-10-08, 7.0.15-1ubuntu0.24.04.4). Refresh the index
-          # and retry only when the fast install fails.
-          - name: Install Redis for the archive Lua suite
-            run: |
-              sudo apt-get install -y --no-install-recommends redis-server redis-tools \
-                || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends redis-server redis-tools; }
+      # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
+      # archive's Lua runs against a real server: the relay harness stubs the
+      # EVAL and the proxy command-gate test only matches the script TEXT. That
+      # suite self-skips when the binaries are absent, so without this step the
+      # capacity refusal, newest-capture-wins compare, EXPIREAT and atomic
+      # seed-meta update were verified by nothing in CI. ubuntu-latest does not
+      # ship redis-server, so every shard installs it. The action installs
+      # from a package cache with dpkg (a slow mirror used to put 24-58s on
+      # the slowest shard), refreshes the stale index only on a miss, and
+      # fails the shard if the binaries are missing.
+      #
+      # It runs before install-root-deps, not beside it: both composite actions
+      # use actions/cache, which this job does not reference at the top level,
+      # so in a parallel group the runner downloaded it twice at once and one
+      # copy failed ("Could not find file .../actions/cache/<sha>/examples.md",
+      # run 39936254975). Run in turn, the second reuses the first download.
+      - name: Install Redis for the archive Lua suite
+        uses: ./.github/actions/install-redis
+      - uses: ./.github/actions/install-root-deps
+        with:
+          # setup-node restores the npm cache for this job's other install.
+          npm-cache: 'false'
       - name: Install blog-site deps for SEO contract tests
         # Unit-only nested install; keeps postinstall free of blog-site.
         # Needed so blog-seo-contract can load astro.config.mjs.
