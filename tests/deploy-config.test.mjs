@@ -1736,6 +1736,15 @@ describe('welcome landing page routing', () => {
     }
   });
 
+  it('redirects bare /docs to the docs home permanently, with or without a trailing slash', () => {
+    for (const source of ['/docs', '/docs/']) {
+      const docsRedirect = vercelConfig.redirects.find((r) => r.source === source);
+      assert.ok(docsRedirect, `expected a redirect for ${source}`);
+      assert.equal(docsRedirect.destination, '/docs/documentation');
+      assert.equal(docsRedirect.permanent, true);
+    }
+  });
+
   it('starts installed PWAs on /dashboard, not the public welcome page', () => {
     assert.match(viteConfigSource, /start_url:\s*'\/dashboard'/);
   });

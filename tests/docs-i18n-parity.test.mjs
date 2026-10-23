@@ -26,6 +26,14 @@ function readZhDoc(page) {
   return readFileSync(join(DOCS_DIR, 'zh', `${page}.mdx`), 'utf8');
 }
 
+/** Leading YAML frontmatter `key: "value"` pairs; empty when the block is absent. */
+function frontmatterFields(content) {
+  const block = content.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
+  return Object.fromEntries(
+    [...block.matchAll(/^(\w+):\s*"?(.*?)"?\s*$/gm)].map(([, key, value]) => [key, value]),
+  );
+}
+
 function sectionBetween(content, startHeading, endHeading) {
   const start = content.indexOf(startHeading);
   assert.notEqual(start, -1, `Missing section heading: ${startHeading}`);
@@ -104,6 +112,26 @@ describe('docs i18n parity', () => {
       const content = readFileSync(zhPath, 'utf8');
       const hasCJK = /[\u4e00-\u9fff]/.test(content);
       assert.ok(hasCJK, `zh/${page}.mdx has no Chinese characters — not translated`);
+    });
+
+    // Mintlify renders the frontmatter title as <title> and the description as
+    // the meta description; a page without them ships an untranslated or
+    // empty search snippet.
+    it(`en and zh frontmatter carry a title and description for ${page}`, () => {
+      const zhPath = join(DOCS_DIR, 'zh', page + '.mdx');
+      for (const [label, path] of [[page, join(DOCS_DIR, page + '.mdx')], [`zh/${page}`, zhPath]]) {
+        if (!existsSync(path)) continue; // covered by existence test above
+        const fields = frontmatterFields(readFileSync(path, 'utf8'));
+        assert.ok(fields.title, `${label}.mdx has no frontmatter title`);
+        assert.ok(fields.description, `${label}.mdx has no frontmatter description`);
+      }
+    });
+
+    it(`zh/ title is translated (has Chinese) for ${page}`, () => {
+      const zhPath = join(DOCS_DIR, 'zh', page + '.mdx');
+      if (!existsSync(zhPath)) return; // covered by existence test above
+      const { title = '' } = frontmatterFields(readFileSync(zhPath, 'utf8'));
+      assert.match(title, /[一-鿿]/, `zh/${page}.mdx title "${title}" has no Chinese characters`);
     });
   }
 

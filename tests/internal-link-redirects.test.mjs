@@ -112,7 +112,7 @@ const vercelConfig = JSON.parse(readRepo('vercel.json'));
  * to ride a real legal revision rather than an SEO pass. Only the
  * redirect-source rule is waived: an index-noise key or a bare variant host in
  * these documents still fails. Residual as of #8603: docs/terms.mdx links
- * https://www.worldmonitor.app/docs, a 307 to /docs/documentation.
+ * https://www.worldmonitor.app/docs, a 308 to /docs/documentation.
  *
  * The four English paths only. shared/legal.ts records a digest for exactly
  * those, and tests/legal-version.test.mts iterates the same keys, so the
