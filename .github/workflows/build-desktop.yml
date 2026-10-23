@@ -607,3 +607,16 @@ jobs:
           set -euo pipefail
           gh workflow run docker-publish.yml --ref "$TAG"
           echo "Dispatched docker-publish.yml on $TAG"
+
+      - name: Publish the self-hosted Docker images
+        # Same GITHUB_TOKEN rule as above, for the images docker-compose.yml
+        # pulls (worldmonitor-selfhosted, -ais-relay, -redis-rest).
+        if: steps.publish.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.publish.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run docker-publish-self-hosted.yml --ref "$TAG"
+          echo "Dispatched docker-publish-self-hosted.yml on $TAG"
