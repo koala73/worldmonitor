@@ -1589,9 +1589,7 @@ export class App {
       clustersSettled: false,
       resolvedLocation: 'global',
       activeChokepoint: initialUrlState.chokepoint ?? null,
-      pendingCountryBrief: initialUrlState.country
-        ? { code: initialUrlState.country, expanded: initialUrlState.expanded === true }
-        : null,
+      pendingCountryBrief: null,
       initialUrlState,
       PANEL_ORDER_KEY,
       PANEL_SPANS_KEY,
@@ -3017,8 +3015,11 @@ export class App {
       document.documentElement.dataset.wmEventHandlersReady = 'true';
     }
 
-    this.countryIntel.onBriefStateChange(() => {
-      this.state.pendingCountryBrief = null;
+    this.countryIntel.onBriefStateChange(({ visible }) => {
+      // The loading panel opens with a placeholder code; the deep link stays
+      // pending until a real country shows or the panel closes.
+      const code = this.state.countryBriefPage?.getCode();
+      if (!visible || (code && !code.startsWith('__'))) this.state.pendingCountryBrief = null;
       this.eventHandlers.syncUrlState();
     });
 
@@ -3866,15 +3867,23 @@ export class App {
     if (deepLinkCountry) {
       trackDeeplinkOpened('country', deepLinkCountry);
       const cName = CountryIntelManager.resolveCountryName(deepLinkCountry);
+      // Set in the same task as setupUrlStateSync(), before its first debounced
+      // write, and only here: search and story links return above and open no
+      // ?country brief.
+      this.state.pendingCountryBrief = { code: deepLinkCountry, expanded: deepLinkExpanded };
       setTimeout(() => {
         void this.countryIntel.openCountryBriefByCode(deepLinkCountry, cName, {
           maximize: deepLinkExpanded,
         }).catch((err) => {
           console.error('[CountryBrief] Failed to open country brief:', err);
           this.state.map?.setRenderPaused(false);
+          showToast('Country brief failed to open. Please try again.');
+        }).finally(() => {
+          // The open also resolves without a brief (a failed chunk import is
+          // handled inside it, a stale request returns). Once it settles the
+          // panel itself decides the URL.
           this.state.pendingCountryBrief = null;
           this.eventHandlers.syncUrlState();
-          showToast('Country brief failed to open. Please try again.');
         });
         this.eventHandlers.syncUrlState();
       }, DEEP_LINK_INITIAL_DELAY_MS);

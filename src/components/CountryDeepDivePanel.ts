@@ -407,7 +407,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.renderSkeleton(country, code, score, signals);
     if (this.source?.mode === 'host') this.renderAtlasExposure(true);
     this.content.scrollTop = 0;
-    this.open();
+    // open() reports only a closed-to-open change. Opened by showLoading(),
+    // the panel now has its real country, so report that too.
+    if (!this.open()) this.onStateChangeCallback?.({ visible: true, maximized: this.isMaximizedState });
   }
 
   public hide(origin: OverlayCloseOrigin = 'control'): void {
@@ -4180,8 +4182,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.map.flashAssets(type, assets.map((asset) => asset.id));
   }
 
-  private open(): void {
-    if (this.panel.classList.contains('active')) return;
+  /** Returns true when the panel was closed and is now open. */
+  private open(): boolean {
+    if (this.panel.classList.contains('active')) return false;
     this.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.panel.classList.add('active');
     this.panel.setAttribute('aria-hidden', 'false');
@@ -4194,6 +4197,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       if (this.panel.classList.contains('active')) this.closeButton.focus();
     });
     this.onStateChangeCallback?.({ visible: true, maximized: this.isMaximizedState });
+    return true;
   }
 
   private close(): void {
