@@ -57,8 +57,10 @@ describe('Business seat invite link', () => {
           if (entry.name !== '__tests__' && entry.name !== '_generated') walk(path);
         } else if (entry.name.endsWith('.ts')) {
           const src = readFileSync(path, 'utf8');
-          for (const m of src.matchAll(/https:\/\/(?:www\.)?worldmonitor\.app(\/[A-Za-z0-9_\-./]*)?/g)) {
-            const page = (m[1] ?? '/').replace(/\/+$/, '') || '/';
+          // Take the whole URL up to a delimiter or a template hole, then let
+          // URL parsing decide the pathname.
+          for (const m of src.matchAll(/https:\/\/(?:www\.)?worldmonitor\.app(?:(?!\$\{)[^\s"'<>`)\\])*/g)) {
+            const page = new URL(m[0]).pathname.replace(/\/+$/, '') || '/';
             if (/\.[a-z0-9]{2,5}$/i.test(page) || page.startsWith('/api/')) continue;
             if (!isKnownPublicPagePath(page)) offenders.push(`${relative(root, path)}: ${page}`);
           }
