@@ -144,8 +144,10 @@ async function startMcpServer(mcpHandler, deps) {
       }
       Readable.fromWeb(response.body).pipe(outgoing);
     } catch (err) {
+      // The handler error goes to the test log, not the response body.
+      console.error(err);
       outgoing.writeHead(500, { 'Content-Type': 'text/plain' });
-      outgoing.end(err instanceof Error ? err.message : String(err));
+      outgoing.end('handler threw');
     }
   });
   await new Promise((resolve, reject) => {
