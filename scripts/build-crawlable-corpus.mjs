@@ -1755,7 +1755,20 @@ function gitEnvForRoot() {
   return env;
 }
 
+// One build asks for the same few dozen paths in every loadCorpusData call,
+// and each answer cost two git subprocesses. The corpus test file alone spawned
+// 2,657 of them (41 s of its 55 s locally). Answers are cached per process:
+// every caller is a one-shot build or a test, none commits to a root and then
+// re-asks about it.
+const completeHistoryByRoot = new Map();
 function hasCompleteGitHistory(rootDir) {
+  if (!completeHistoryByRoot.has(rootDir)) {
+    completeHistoryByRoot.set(rootDir, probeCompleteGitHistory(rootDir));
+  }
+  return completeHistoryByRoot.get(rootDir);
+}
+
+function probeCompleteGitHistory(rootDir) {
   try {
     return execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
       cwd: rootDir,
@@ -1768,7 +1781,16 @@ function hasCompleteGitHistory(rootDir) {
   }
 }
 
+const gitLastmodByPath = new Map();
 export function gitFileLastmod(rootDir, relativePath) {
+  const key = `${rootDir}\0${relativePath}`;
+  if (!gitLastmodByPath.has(key)) {
+    gitLastmodByPath.set(key, probeGitFileLastmod(rootDir, relativePath));
+  }
+  return gitLastmodByPath.get(key);
+}
+
+function probeGitFileLastmod(rootDir, relativePath) {
   if (!hasCompleteGitHistory(rootDir)) return null;
   try {
     // Committer date rendered in UTC, not the commit's recorded timezone —

@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 import { brotliCompressSync, constants as zlibConstants } from 'node:zlib';
 
 import { Window } from 'happy-dom';
@@ -121,6 +121,26 @@ async function corpusDataForRendering() {
   renderingFixture ??= loadCorpusData({ rootDir: repoRoot });
   return structuredClone(await renderingFixture);
 }
+
+// The default production build, shared by the tests that only read its output.
+// Tests that build a modified corpus or inject a snapshot still build their own.
+let defaultCorpusOutDir;
+let defaultCorpus;
+function defaultCorpusBuild() {
+  defaultCorpus ??= (async () => {
+    defaultCorpusOutDir = mkdtempSync(join(tmpdir(), 'wm-crawlable-corpus-'));
+    const manifest = await buildCorpus({
+      rootDir: repoRoot,
+      outDir: defaultCorpusOutDir,
+      baseUrl: 'https://www.worldmonitor.app',
+    });
+    return { outDir: defaultCorpusOutDir, manifest };
+  })();
+  return defaultCorpus;
+}
+after(() => {
+  if (defaultCorpusOutDir) rmSync(defaultCorpusOutDir, { recursive: true, force: true });
+});
 
 // data.sources keys whose files decide the related-country links on every
 // country page (scripts/country-related-links.mjs), so they move its lastmod.
@@ -2224,89 +2244,75 @@ describe('crawlable corpus generator', () => {
   // in each body, so a `footerBody` override cannot drop it — assert it on the
   // families that do override, plus the whole corpus.
   it('renders a maintainer byline on every generated page (#7980)', async () => {
-    const outDir = mkdtempSync(join(tmpdir(), 'wm-corpus-byline-'));
-    try {
-      await buildCorpus({ rootDir: repoRoot, outDir, baseUrl: 'https://www.worldmonitor.app' });
-      const pages = readdirSync(outDir, { recursive: true })
-        .map(String)
-        .filter((path) => path.endsWith('.html'));
-      assert.ok(pages.length > 200, `expected the full corpus, saw ${pages.length} pages`);
-      for (const page of pages) {
-        const html = read(outDir, page);
-        assert.match(html, /<p class="byline">/, `${page} must render a byline`);
-        assert.match(html, /World Monitor research team/, `${page} must name who maintains it`);
-        assert.match(html, /href="\/docs\/corrections"/, `${page} byline must link the corrections log`);
-        // #8603: /docs is a 307 to /docs/documentation, so the byline must name
-        // a 200 methodology page instead of the docs root.
-        assert.match(html, /href="\/docs\/algorithms"/, `${page} byline must link a 200 methodology page`);
-        assert.doesNotMatch(html, /href="\/docs"/, `${page} must not link the /docs redirect`);
-      }
-      // The families that pass their own footerBody still carry it.
-      for (const page of ['use-cases/index.html', 'compare/index.html', 'sources/index.html']) {
-        assert.match(read(outDir, page), /<p class="byline">/, page);
-      }
-      // The CII hub is the page the issue named: a published 0-100 score.
-      assert.match(read(outDir, 'country-instability-index/index.html'), /<p class="byline">/);
-    } finally {
-      rmSync(outDir, { recursive: true, force: true });
+    const { outDir } = await defaultCorpusBuild();
+    const pages = readdirSync(outDir, { recursive: true })
+      .map(String)
+      .filter((path) => path.endsWith('.html'));
+    assert.ok(pages.length > 200, `expected the full corpus, saw ${pages.length} pages`);
+    for (const page of pages) {
+      const html = read(outDir, page);
+      assert.match(html, /<p class="byline">/, `${page} must render a byline`);
+      assert.match(html, /World Monitor research team/, `${page} must name who maintains it`);
+      assert.match(html, /href="\/docs\/corrections"/, `${page} byline must link the corrections log`);
+      // #8603: /docs is a 307 to /docs/documentation, so the byline must name
+      // a 200 methodology page instead of the docs root.
+      assert.match(html, /href="\/docs\/algorithms"/, `${page} byline must link a 200 methodology page`);
+      assert.doesNotMatch(html, /href="\/docs"/, `${page} must not link the /docs redirect`);
     }
+    // The families that pass their own footerBody still carry it.
+    for (const page of ['use-cases/index.html', 'compare/index.html', 'sources/index.html']) {
+      assert.match(read(outDir, page), /<p class="byline">/, page);
+    }
+    // The CII hub is the page the issue named: a published 0-100 score.
+    assert.match(read(outDir, 'country-instability-index/index.html'), /<p class="byline">/);
   });
 
   it('names tracker and reference sources in reader terms, keeping repo paths as provenance attributes', async () => {
-    const outDir = mkdtempSync(join(tmpdir(), 'wm-source-lines-'));
-    try {
-      await buildCorpus({ rootDir: repoRoot, outDir, baseUrl: 'https://www.worldmonitor.app' });
-      const visibleText = (html) => html
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, ' ')
-        .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ');
-      for (const [page, expected] of [
-        ['chokepoints/index.html', /Sources: World Monitor weekly pulse snapshot and World Monitor chokepoint registry/],
-        ['chokepoints/index.html', /Baseline source: U\.S\. EIA World Oil Transit Chokepoints \(2023\)/],
-        ['crises/index.html', /Scope source:\s+World Monitor crisis registry/],
-        ['chokepoints/strait-of-hormuz/index.html', /World Monitor chokepoint registry and trade-route reference/],
-        ['crises/red-sea-security/index.html', /World Monitor weekly pulse snapshot/],
-        ['tools/signal-convergence/index.html', /World Monitor weekly pulse snapshot/],
-      ]) {
-        const html = read(outDir, page);
-        const text = visibleText(html);
-        assert.doesNotMatch(text, /docs\/snapshots\/|src\/config\/|crawlable-live-pulse|shared\/[\w-]+\.json|scripts\/[\w-]+\.mjs/, `${page} shows a repository path to readers`);
-        assert.match(text, expected, `${page} names its source in reader terms`);
-        assert.match(html, /data-snapshot-source="(?:docs\/snapshots\/|src\/config\/|shared\/|scripts\/)[^"]+"/, `${page} keeps the repo path as provenance`);
-      }
-      const repoPath = /docs\/[\w./-]+|CHANGELOG\.md/;
-      for (const [page, expected, provenance] of [
-        ['accuracy/index.html', /Source: World Monitor forecast scorecard snapshot/, /data-snapshot-source="docs\/snapshots\/[^"]+"/],
-        ['research/strait-of-hormuz-transit-report-2026-07/index.html', /Snapshot: World Monitor chokepoint transit snapshot, retrieved \d{4}-\d{2}-\d{2}\./, /data-snapshot-source="docs\/snapshots\/[^"]+"/],
-        ['tools/signal-convergence/index.html', /Cited from the\s+Geographic Convergence Detection methodology/, /data-snapshot-source="docs\/geographic-convergence\.mdx"/],
-        ['reference/changelog/index.html', /Source: World Monitor release notes/, /data-snapshot-source="CHANGELOG\.md"/],
-      ]) {
-        const html = read(outDir, page);
-        // Release notes legitimately name repository files, so judge only the
-        // page's own framing: the lede and every source line.
-        const framing = [...html.matchAll(/<p class="(?:lede|source)"[^>]*>[\s\S]*?<\/p>/g)]
-          .map((match) => visibleText(match[0])).join(' ');
-        assert.doesNotMatch(framing, repoPath, `${page} shows a repository path to readers`);
-        assert.match(framing, expected, `${page} names its source in reader terms`);
-        assert.match(html, provenance, `${page} keeps the repo path as provenance`);
-      }
-    } finally {
-      rmSync(outDir, { recursive: true, force: true });
+    const { outDir } = await defaultCorpusBuild();
+    const visibleText = (html) => html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ');
+    for (const [page, expected] of [
+      ['chokepoints/index.html', /Sources: World Monitor weekly pulse snapshot and World Monitor chokepoint registry/],
+      ['chokepoints/index.html', /Baseline source: U\.S\. EIA World Oil Transit Chokepoints \(2023\)/],
+      ['crises/index.html', /Scope source:\s+World Monitor crisis registry/],
+      ['chokepoints/strait-of-hormuz/index.html', /World Monitor chokepoint registry and trade-route reference/],
+      ['crises/red-sea-security/index.html', /World Monitor weekly pulse snapshot/],
+      ['tools/signal-convergence/index.html', /World Monitor weekly pulse snapshot/],
+    ]) {
+      const html = read(outDir, page);
+      const text = visibleText(html);
+      assert.doesNotMatch(text, /docs\/snapshots\/|src\/config\/|crawlable-live-pulse|shared\/[\w-]+\.json|scripts\/[\w-]+\.mjs/, `${page} shows a repository path to readers`);
+      assert.match(text, expected, `${page} names its source in reader terms`);
+      assert.match(html, /data-snapshot-source="(?:docs\/snapshots\/|src\/config\/|shared\/|scripts\/)[^"]+"/, `${page} keeps the repo path as provenance`);
+    }
+    const repoPath = /docs\/[\w./-]+|CHANGELOG\.md/;
+    for (const [page, expected, provenance] of [
+      ['accuracy/index.html', /Source: World Monitor forecast scorecard snapshot/, /data-snapshot-source="docs\/snapshots\/[^"]+"/],
+      ['research/strait-of-hormuz-transit-report-2026-07/index.html', /Snapshot: World Monitor chokepoint transit snapshot, retrieved \d{4}-\d{2}-\d{2}\./, /data-snapshot-source="docs\/snapshots\/[^"]+"/],
+      ['tools/signal-convergence/index.html', /Cited from the\s+Geographic Convergence Detection methodology/, /data-snapshot-source="docs\/geographic-convergence\.mdx"/],
+      ['reference/changelog/index.html', /Source: World Monitor release notes/, /data-snapshot-source="CHANGELOG\.md"/],
+    ]) {
+      const html = read(outDir, page);
+      // Release notes legitimately name repository files, so judge only the
+      // page's own framing: the lede and every source line.
+      const framing = [...html.matchAll(/<p class="(?:lede|source)"[^>]*>[\s\S]*?<\/p>/g)]
+        .map((match) => visibleText(match[0])).join(' ');
+      assert.doesNotMatch(framing, repoPath, `${page} shows a repository path to readers`);
+      assert.match(framing, expected, `${page} names its source in reader terms`);
+      assert.match(html, provenance, `${page} keeps the repo path as provenance`);
     }
   });
 
   it('builds a non-trivial static corpus with canonical raw HTML pages', async () => {
-    const outDir = mkdtempSync(join(tmpdir(), 'wm-crawlable-corpus-'));
-    try {
+    const { outDir, manifest } = await defaultCorpusBuild();
+    // A plain block keeps the body's indentation, and its blame, unchanged.
+    {
       const clock = await loadCorpusData({ rootDir: repoRoot });
       const countriesLastmod = clock.lastmod.countries;
       const ciiCountriesLastmod = clock.lastmod.ciiCountries;
       const ciiIndexLastmod = clock.lastmod.countryInstabilityIndex;
-      const manifest = await buildCorpus({
-        rootDir: repoRoot,
-        outDir,
-        baseUrl: 'https://www.worldmonitor.app',
-      });
 
       assert.equal(manifest.sections.countries.count, 196);
       assert.equal(manifest.sections.countryInstabilityIndex.count, 1);
@@ -5500,8 +5506,6 @@ describe('crawlable corpus generator', () => {
       );
       assert.match(changelogPage2, /<link rel="prev" href="https:\/\/www\.worldmonitor\.app\/reference\/changelog\/">/);
       assert.match(changelogPage2, /name="robots" content="noindex, follow"/);
-    } finally {
-      rmSync(outDir, { recursive: true, force: true });
     }
   });
 
@@ -6445,7 +6449,35 @@ describe('country recent developments', () => {
   });
 
   it('applies the publish rules to the committed snapshot at load time', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    // The freeze already applies these rules, so the committed rows pass them
+    // with or without the loader. Break two briefs in a copy of the committed
+    // snapshot, or this test stays green when the loader stops applying them.
+    const committedPath = resolveLatestLivePulseSnapshotPath(repoRoot);
+    const snapshot = JSON.parse(read(repoRoot, committedPath));
+    const [markdownCode, thinCode] = Object.entries(snapshot.countries)
+      .filter(([, row]) => row.developments?.brief?.sources?.length >= 2)
+      .map(([code]) => code);
+    assert.ok(markdownCode && thinCode, 'the committed snapshot carries two multi-source briefs');
+    const markdownBrief = snapshot.countries[markdownCode].developments.brief;
+    markdownBrief.text = markdownBrief.text.replace(/^(\S+)/, '**$1**');
+    const thinBrief = snapshot.countries[thinCode].developments.brief;
+    thinBrief.sources = thinBrief.sources.slice(0, 1);
+    thinBrief.text = thinBrief.text.replace(/\[\d+\]/g, '[1]');
+    const dir = mkdtempSync(join(tmpdir(), 'wm-pulse-publish-rules-'));
+    const snapshotPath = join(dir, committedPath.split('/').pop());
+    writeFileSync(snapshotPath, JSON.stringify(snapshot));
+    let data;
+    try {
+      data = await loadCorpusData({ rootDir: repoRoot, livePulseSnapshotPath: snapshotPath });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    const markdownRow = data.livePulse.countries[markdownCode].developments;
+    assert.ok(markdownRow.brief, `${markdownCode} keeps its brief once the markdown is stripped`);
+    assert.ok(!markdownRow.brief.text.includes('**'), `${markdownCode} brief still carries markdown`);
+    const thinRow = data.livePulse.countries[thinCode].developments;
+    assert.equal(thinRow.brief, null, `${thinCode} publishes a brief off one source`);
+    assert.equal(thinRow.briefSkipped, 'thin-grounding');
     const rows = Object.entries(data.livePulse.countries)
       .map(([code, row]) => [code, row.developments])
       .filter(([, developments]) => developments && typeof developments === 'object');
