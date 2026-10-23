@@ -8,7 +8,7 @@ import { THEME_IDS, getTheme, nextThemeId } from './ui/theme.mjs';
 import { bootScreen, overlay, pulse, wipe } from './ui/fx.mjs';
 import { hit, tabs, ticker } from './ui/widgets.mjs';
 import { tickerSegments } from './data/select.mjs';
-import { drawDetail } from './ui/detail.mjs';
+import { detailLinks, drawDetail } from './ui/detail.mjs';
 import { openExternal } from './video.mjs';
 
 const HELP_LINES = [
@@ -21,8 +21,10 @@ const HELP_LINES = [
   '?                 this help                   q         quit',
   '',
   'Mouse: click tabs, rows and buttons · wheel scrolls · click a selected row to expand it',
-  'Map: drag pan · wheel zoom · hover highlights a layer · click pins · Enter details',
+  'Map: drag pan · wheel zoom (Shift +/- fast, double-click) · hover highlights · click pins · Enter details',
   '     g globe/flat · s satellite · i imagery · d day/night · L layers · / search · z reset',
+  '     zoom in for streets: roads, buildings, shops, mosques & churches, names, house numbers;',
+  '     click an empty spot for its address & weather · details list links (o, 1-9 open them)',
   'Brief: ↑↓ story lines · → related sources & news · Enter expand · o open',
   'Live view: Enter plays in the terminal (mpv), w opens an mpv window, b the browser',
 ];
@@ -35,9 +37,10 @@ function hotkeyFor(i) {
 }
 
 export class App {
-  constructor({ store, catalog, prefs, savePrefs, env = {}, out, cols, rows, depth = 24, now = () => Date.now(), createViews, player, apiKeyPresent = false, fetchImpl = null }) {
+  constructor({ store, catalog, prefs, savePrefs, env = {}, out, cols, rows, depth = 24, now = () => Date.now(), createViews, player, apiKeyPresent = false, fetchImpl = null, userAgent = 'worldmonitor-tui' }) {
     this.store = store;
     this.fetchImpl = fetchImpl;
+    this.userAgent = userAgent;
     this.detail = null;
     this.catalog = catalog;
     this.prefs = prefs;
@@ -173,11 +176,7 @@ export class App {
         d.scroll = d.maxScroll ?? 0;
         return;
       case 'o':
-        if (d.spec.url) {
-          openExternal(d.spec.url);
-          this.toast(`opening ${truncate(d.spec.url, 60)}`);
-        } else this.toast('no link for this item', 1500, 'warn');
-        return;
+        return this.openDetailLink(0);
       case 'm':
         if (d.spec.onCenter) {
           this.closeDetail();
@@ -186,8 +185,19 @@ export class App {
         }
         return;
       default:
+        if (/^[1-9]$/.test(ev.name)) return this.openDetailLink(Number(ev.name) - 1);
         return;
     }
+  }
+
+  openDetailLink(index) {
+    const spec = this.detail && this.detail.spec;
+    if (!spec) return;
+    const links = detailLinks(spec);
+    const link = links[index];
+    if (!link) return this.toast(links.length ? `only ${links.length} link${links.length > 1 ? 's' : ''} here` : 'no link for this item', 1500, 'warn');
+    openExternal(link.url);
+    this.toast(`opening ${link.label}: ${truncate(link.url, 50)}`);
   }
 
   // Needs a frame soon: during boot, wipes, toasts, or when the view animates.
@@ -434,7 +444,8 @@ export class App {
   drawDetail(ctx, full) {
     const d = this.detail;
     const before = this.hits.length;
-    d.onOpen = () => this.handleDetailKey({ name: 'o' });
+    d.onOpen = () => this.openDetailLink(0);
+    d.onOpenLink = (i) => this.openDetailLink(i);
     d.onCenter = () => this.handleDetailKey({ name: 'm' });
     d.onClose = () => this.closeDetail();
     d.box = drawDetail(ctx, full, d.spec, d);

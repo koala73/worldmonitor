@@ -71,6 +71,17 @@ conflict zones, quakes, fires, storms, weather alerts, outbreaks, protests,
 outages, cyber infrastructure, ship-traffic density, exchanges, mines, tech
 HQs, choropleths and more. Hover anything to highlight its whole layer and read
 its card; click pins, `Enter` opens the full record, `/` searches.
+
+Keep zooming and the map becomes a street map: OpenStreetMap vector tiles
+bring roads (motorways first, lanes and paths when close), railways, water,
+parks, buildings, cities and villages, street names and house numbers, shops
+and amenities with their own icons, and places of worship (mosques `☪`,
+churches `✝`, synagogues `✡`, temples) highlighted by name. Satellite mode
+switches to Esri World Imagery at these zooms. Click any spot for its address,
+elevation and current weather; expand anything for its OpenStreetMap tags and
+numbered links (website, OpenStreetMap, Google Maps, Wikipedia). Search falls
+back to OpenStreetMap place search, and two more layers follow the view:
+Wikipedia articles nearby and every aircraft on ADS-B.
 The [dashboard guide](https://www.worldmonitor.app/docs/cli-dashboard) has
 screenshots of every view, all keys, options and troubleshooting.
 
