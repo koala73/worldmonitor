@@ -309,7 +309,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - uses: ./.github/actions/install-root-deps
       - name: Generate and validate build-owned inventory facts
         run: |
@@ -687,7 +686,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - uses: ./.github/actions/install-root-deps
       - run: npm run test:sidecar
 
@@ -808,7 +806,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - uses: ./.github/actions/install-root-deps
       - run: npm run test:convex
 
@@ -826,7 +823,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - uses: ./.github/actions/install-root-deps
       # `npm run typecheck` only covers src/, so these files would otherwise
       # never be type-checked — the first run of this config caught four real
@@ -858,7 +854,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - name: Use Ubuntu repositories for browser OS libraries
         # Playwright needs Ubuntu libraries. Unrelated Chrome repository index
         # failures must not prevent their installation on this disposable runner.
@@ -1022,7 +1017,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - uses: ./.github/actions/install-root-deps
       - name: Resolve Playwright version
         id: playwright-version
@@ -1245,7 +1239,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - uses: ./.github/actions/install-root-deps
       - run: npm run test:resilience-validation-smoke
 
