@@ -897,6 +897,7 @@ test('a throttle ceiling configured below the ordinary ceiling cannot shorten th
 async function startThrottleThenAcceptUpstream({ throttleUpgrades, onOpen }) {
   let upgradeAttempts = 0;
   let heldAccept = null;
+  let heldSocket = null;
   let acceptReleased = false;
   const accepted = [];
   const upstream = http.createServer();
@@ -913,18 +914,25 @@ async function startThrottleThenAcceptUpstream({ throttleUpgrades, onOpen }) {
       onOpen(ws);
     });
     if (acceptReleased) accept();
-    else heldAccept = accept;
+    else {
+      heldAccept = accept;
+      heldSocket = socket;
+    }
   });
   const releaseAccept = async () => {
     await waitFor(() => heldAccept !== null, 'the first accepted upstream upgrade to arrive');
     acceptReleased = true;
+    heldSocket = null;
     heldAccept();
   };
   const port = await listen(upstream);
   // http.Server#close waits for live connections to end, so an accepted socket
   // left open would stall teardown until the relay's position watchdog fires
   // (5 minutes by default). Terminate accepted sockets first.
+  // A test that fails before releaseAccept() leaves the held upgrade's raw socket
+  // outside `accepted`; destroy it too, or close() waits on it.
   const close = () => new Promise((resolve) => {
+    heldSocket?.destroy();
     for (const ws of accepted) ws.terminate();
     upstream.close(resolve);
   });
