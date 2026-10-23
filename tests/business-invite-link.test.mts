@@ -56,7 +56,14 @@ describe('Business seat invite link', () => {
         if (entry.isDirectory()) {
           if (entry.name !== '__tests__' && entry.name !== '_generated') walk(path);
         } else if (entry.name.endsWith('.ts')) {
-          const src = readFileSync(path, 'utf8');
+          let src = readFileSync(path, 'utf8');
+          // Inline same-file string constants so `${APP_ORIGIN}${SOME_PATH}`
+          // is checked as the URL it builds.
+          const constants = new Map<string, string>();
+          for (const m of src.matchAll(/const ([A-Z][A-Z0-9_]*) = ["'`]([^"'`$]*)["'`];/g)) {
+            constants.set(m[1]!, m[2]!);
+          }
+          src = src.replace(/\$\{([A-Z][A-Z0-9_]*)\}/g, (hole, name: string) => constants.get(name) ?? hole);
           // Take the whole URL up to a delimiter or a template hole, then let
           // URL parsing decide the pathname.
           for (const m of src.matchAll(/https:\/\/(?:www\.)?worldmonitor\.app(?:(?!\$\{)[^\s"'<>`)\\])*/g)) {
