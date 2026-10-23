@@ -4,7 +4,7 @@
 // and the default legacy `initialize` handshake. The SDK validates every
 // modern result (resultType, cache fields, serverInfo stamp, discover shape),
 // so a passing call here is conformance evidence from the reference
-// implementation, not from our own reading of the spec (U6).
+// implementation, not from our own reading of the spec.
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
@@ -167,7 +167,7 @@ describe('api/mcp.ts — official SDK v2 client in both protocol eras', () => {
       assert.ok(Array.isArray(resourceTemplates));
     });
 
-    it('a pinned modern client without credentials gets the SDK authorization failure (KTD4)', async () => {
+    it('a pinned modern client without credentials gets the SDK authorization failure', async () => {
       await assert.rejects(
         connect({ mode: { pin: MODERN } }, { anonymous: true }),
         (err) => {
@@ -179,7 +179,7 @@ describe('api/mcp.ts — official SDK v2 client in both protocol eras', () => {
       assert.deepEqual(server.seen, ['server/discover']);
     });
 
-    it('auto mode without credentials is an authorization failure, never a legacy fallback (KTD4)', async () => {
+    it('auto mode without credentials is an authorization failure, never a legacy fallback', async () => {
       await assert.rejects(
         connect({ mode: 'auto' }, { anonymous: true }),
         (err) => {
@@ -197,7 +197,7 @@ describe('api/mcp.ts — official SDK v2 client in both protocol eras', () => {
       assert.ok(c.getDiscoverResult()?.supportedVersions.includes(MODERN));
     });
 
-    it('an anonymous modern client that skips discover is challenged on tools/list but served get_sources (KTD4a)', async (t) => {
+    it('an anonymous modern client that skips discover is challenged on tools/list but served get_sources', async (t) => {
       // The free tier is rate limited; stub the limiter as the modern-era suite does.
       const limiterKeys = [];
       process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash.invalid';
@@ -230,7 +230,7 @@ describe('api/mcp.ts — official SDK v2 client in both protocol eras', () => {
       });
     });
 
-    it('the SDK caches the public tools/list hint and does not refetch it (KTD6)', async () => {
+    it('the SDK caches the public tools/list hint and does not refetch it', async () => {
       const c = await connect({ mode: { pin: MODERN } });
       await c.listTools();
       await c.listTools();

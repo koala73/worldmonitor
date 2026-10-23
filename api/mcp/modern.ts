@@ -188,9 +188,11 @@ export function validateModernRequest(
 /**
  * The 404 -32601 a modern request gets for a removed or unknown method, or null
  * for a method the modern era serves. Decided ahead of the auth gate, so an
- * anonymous caller learns "not found" rather than "sign in". A notification
- * gets the same body with a null id. The echoed name is capped like the
- * legacy default case's.
+ * anonymous caller learns "not found" rather than "sign in". Client
+ * notifications (`notifications/cancelled`, `notifications/progress`) fall
+ * through to the 202 like legacy ones; only the removed
+ * `notifications/initialized` gets this body, with a null id. The echoed name
+ * is capped like the legacy default case's.
  */
 export function modernMethodNotFound(
   method: string,
@@ -198,6 +200,7 @@ export function modernMethodNotFound(
   corsHeaders: Record<string, string>,
 ): Response | null {
   if (MODERN_METHODS.has(method)) return null;
+  if (id === undefined && method !== 'notifications/initialized') return null;
   return rpcError(id, -32601, `Method not found: ${method.slice(0, 100)}`, corsHeaders, undefined, 404);
 }
 

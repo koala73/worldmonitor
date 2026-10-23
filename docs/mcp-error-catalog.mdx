@@ -456,8 +456,9 @@ These rules apply only while `MCP_PROTOCOL_2026_07_28=on`, and only to requests 
 | `-32602` | 400 | `_meta` is malformed: `io.modelcontextprotocol/protocolVersion` is not a string, or `io.modelcontextprotocol/clientCapabilities` is not an object. |
 | `-32022` | 400 | `UnsupportedProtocolVersion`: the `_meta` version is not `2026-07-28`. `error.data` is `{ "supported": [...], "requested": "..." }`, with every served version newest first. Retry with a listed version. |
 | `-32020` | 400 | `HeaderMismatch`: `MCP-Protocol-Version` or `Mcp-Method` is missing or differs from the body, or `Mcp-Name` is missing or differs from `params.name` / `params.uri` on `tools/call`, `prompts/get` and `resources/read`. A `=?base64?…?=` value is decoded before the comparison. |
-| `-32601` | 404 | A method the `2026-07-28` revision removed (`initialize`, `notifications/initialized`, `ping`, `logging/setLevel`) or an unknown method. Decided before authentication. |
+| `-32601` | 404 | A method the `2026-07-28` revision removed (`initialize`, `notifications/initialized`, `ping`, `logging/setLevel`) or an unknown method. Decided before authentication. Other client notifications, such as `notifications/cancelled`, are accepted with HTTP 202. |
 | `-32600` | 406 | `subscriptions/listen` without `text/event-stream` in `Accept`. |
+| `-32602` | 400 | `subscriptions/listen` whose `params.notifications` is not an object. |
 
 The `2026-07-28` revision reserves the codes from `-32020` to `-32099` for the specification and retires `-32002`, so two WorldMonitor codes change on these requests only:
 
@@ -465,6 +466,8 @@ The `2026-07-28` revision reserves the codes from `-32020` to `-32099` for the s
 - `-32002` (every terminal entitlement denial) is sent as `-31002`.
 
 The HTTP status, headers, `error.message` and `error.data` are identical to the `2025` responses. The instructions `server/discover` returns name the new codes.
+
+`/mcp` sends no change notifications, so `subscriptions/listen` acknowledges an empty filter and closes the stream at once with a completed result. Do not reconnect when it closes. The `ttlMs` and `cacheScope` hints on results tell the client how long it may reuse a result; the HTTP response itself stays `Cache-Control: no-store`.
 
 ## HTTP statuses
 

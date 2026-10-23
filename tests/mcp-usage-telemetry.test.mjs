@@ -194,8 +194,10 @@ describe('api/mcp — usage telemetry (#4866)', () => {
       [body(5, 'tools/list', {}, { 'io.modelcontextprotocol/protocolVersion': '2027-01-01' }), modernHeaders('tools/list', { 'MCP-Protocol-Version': '2027-01-01' })],
       [body(6, 'tools/call', { name: 'get_sources', arguments: {} }), modernHeaders('tools/call', { 'Mcp-Name': 'secret-header-value' })],
       [{ jsonrpc: '2.0', id: 7, method: 'tools/list', params: {} }, { 'Content-Type': 'application/json', Authorization: `Bearer ${PRO_BEARER}` }],
+      [body(9, 'ping'), modernHeaders('ping')],
+      [body(10, 'subscriptions/listen', { notifications: {} }), modernHeaders('subscriptions/listen', { Accept: 'application/json' })],
     ]);
-    assert.deepEqual(on.map((e) => e.mcp_era), ['modern', 'modern', 'modern', 'modern', 'modern', 'modern', 'legacy']);
+    assert.deepEqual(on.map((e) => e.mcp_era), ['modern', 'modern', 'modern', 'modern', 'modern', 'modern', 'legacy', 'modern', 'modern']);
     assert.equal(on[0].reason, 'ok');
     assert.equal(on[1].rpc_method, 'server/discover');
     assert.equal(on[2].reason, 'header_mismatch');
@@ -203,6 +205,10 @@ describe('api/mcp — usage telemetry (#4866)', () => {
     assert.equal(on[4].reason, 'unsupported_protocol_version');
     assert.equal(on[5].reason, 'header_mismatch');
     assert.doesNotMatch(JSON.stringify(on), /secret-header-value/);
+    // A removed method is a 404, and a listen without SSE in Accept a 406:
+    // neither may land as a served 'ok' row.
+    assert.deepEqual([on[7].status, on[7].reason], [404, 'unknown_route']);
+    assert.deepEqual([on[8].status, on[8].reason], [406, 'malformed_request']);
 
     // Flag off: an enveloped request is served as legacy.
     const off = await run(null, [[body(8, 'tools/list'), { 'Content-Type': 'application/json', Authorization: `Bearer ${PRO_BEARER}` }]]);

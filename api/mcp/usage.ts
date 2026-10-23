@@ -48,6 +48,7 @@ export type McpPhase =
   | 'protocol_version' // MCP-Protocol-Version header names a version this server does not serve (400)
   | 'header_mismatch'  // 2026-07-28: a required request header is missing or disagrees with the body (-32020)
   | 'invalid_meta'     // 2026-07-28: a required per-request _meta field is missing or malformed (-32602)
+  | 'method_not_found' // 2026-07-28: a removed or unknown method, answered 404 -32601
   | 'migration'  // a product-host alias was refused before auth or dispatch
   | 'ok';        // served (JSON-RPC-level errors still ride HTTP 200 → ok)
 
@@ -268,6 +269,8 @@ export function mcpReasonFor(phase: McpPhase, status: number): RequestReason {
       return 'header_mismatch';
     case 'invalid_meta':
       return 'invalid_request_meta';
+    case 'method_not_found':
+      return 'unknown_route';
     case 'migration':
       return 'canonical_endpoint_required';
     default:

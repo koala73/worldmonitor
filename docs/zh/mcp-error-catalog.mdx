@@ -364,8 +364,9 @@ Content-Type: application/json
 | `-32602` | 400 | `_meta` 格式错误：`io.modelcontextprotocol/protocolVersion` 不是字符串，或 `io.modelcontextprotocol/clientCapabilities` 不是对象。 |
 | `-32022` | 400 | `UnsupportedProtocolVersion`：`_meta` 中的版本不是 `2026-07-28`。`error.data` 为 `{ "supported": [...], "requested": "..." }`，按从新到旧列出所有支持的版本。请改用列出的版本重试。 |
 | `-32020` | 400 | `HeaderMismatch`：`MCP-Protocol-Version` 或 `Mcp-Method` 缺失或与请求体不一致，或在 `tools/call`、`prompts/get`、`resources/read` 上 `Mcp-Name` 缺失或与 `params.name` / `params.uri` 不一致。`=?base64?…?=` 形式的值会先解码再比较。 |
-| `-32601` | 404 | `2026-07-28` 版本已移除的方法（`initialize`、`notifications/initialized`、`ping`、`logging/setLevel`）或未知方法。在认证之前判定。 |
+| `-32601` | 404 | `2026-07-28` 版本已移除的方法（`initialize`、`notifications/initialized`、`ping`、`logging/setLevel`）或未知方法。在认证之前判定。其他客户端通知（如 `notifications/cancelled`）以 HTTP 202 接受。 |
 | `-32600` | 406 | `Accept` 中不含 `text/event-stream` 的 `subscriptions/listen`。 |
+| `-32602` | 400 | `params.notifications` 不是对象的 `subscriptions/listen`。 |
 
 `2026-07-28` 版本将 `-32020` 到 `-32099` 保留给规范使用，并停用了 `-32002`，因此仅在这些请求上有两个 WorldMonitor 代码发生变化：
 
@@ -373,6 +374,8 @@ Content-Type: application/json
 - `-32002`（所有终止性权益拒绝）改为 `-31002`。
 
 HTTP 状态码、请求头、`error.message` 和 `error.data` 与 `2025` 版本的响应完全相同。`server/discover` 返回的说明使用新代码。
+
+`/mcp` 不发送变更通知，因此 `subscriptions/listen` 会确认一个空的过滤器，并立即以完成结果关闭流。流关闭后请勿重新连接。结果中的 `ttlMs` 和 `cacheScope` 提示告诉客户端可以复用结果多久；HTTP 响应本身仍为 `Cache-Control: no-store`。
 
 ## HTTP 状态码
 

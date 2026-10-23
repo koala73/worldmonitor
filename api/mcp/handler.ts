@@ -1129,7 +1129,10 @@ async function mcpHandlerInner(
   // -32601 here, ahead of the notification 202 and the auth gate below.
   if (modernEra) {
     const notFound = modernMethodNotFound(method, id, corsHeaders);
-    if (notFound) return notFound;
+    if (notFound) {
+      usage.phase = 'method_not_found';
+      return notFound;
+    }
   }
 
   if (id === undefined) {
@@ -1327,7 +1330,9 @@ async function mcpHandlerInner(
     }, corsHeaders));
   }
   if (modernEra && method === 'subscriptions/listen') {
-    return modernListenResponse(req, id, body.params, corsHeaders);
+    const listen = modernListenResponse(req, id, body.params, corsHeaders);
+    if (listen.status !== 200) usage.phase = 'transport';
+    return listen;
   }
 
   // Dispatch

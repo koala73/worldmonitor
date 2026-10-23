@@ -1,4 +1,4 @@
-// MCP 2026-07-28 ("modern", handshake-free) era detection and validation (U1).
+// MCP 2026-07-28 ("modern", handshake-free) era detection and validation.
 // A request is modern only when params._meta carries the protocolVersion
 // envelope claim (the TS SDK's isLegacyRequest rule). Behind the default-off
 // MCP_PROTOCOL_2026_07_28 flag a modern request is validated before dispatch:
@@ -90,7 +90,7 @@ function parseBody(text, contentType) {
 }
 
 // Every response the handler gives a modern request while the flag is on, for
-// the suite-wide sweep at the end of the file (R13).
+// the suite-wide sweep at the end of the file.
 const modernResponses = [];
 
 function recordingHandler(mcpHandler) {
@@ -388,7 +388,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       assert.equal(res.status, 200, res.brief);
     });
 
-    it('skips the header rules for an enveloped notification POST (U2 then refuses the removed method)', async () => {
+    it('skips the header rules for an enveloped notification POST (then refuses the removed method)', async () => {
       const res = await expectError(
         { jsonrpc: '2.0', method: 'notifications/initialized', params: { _meta: modernMeta() } },
         baseHeaders(),
@@ -407,7 +407,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       assert.equal(res.json.id, null);
     });
 
-    it('keeps the legacy -32600 for a modern header without an envelope (KTD1)', async () => {
+    it('keeps the legacy -32600 for a modern header without an envelope', async () => {
       for (const body of [
         { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} },
         { jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: {} } },
@@ -440,10 +440,10 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
     });
   });
 
-  // U3 guard (KTD3): the modern shaping step never touches a legacy response.
+  // The modern shaping step never touches a legacy response.
   // Each legacy request is answered byte-for-byte the same with the flag on and
   // off; only Date may differ.
-  describe('legacy responses are byte-identical with the flag on and off (U3 guard)', () => {
+  describe('legacy responses are byte-identical with the flag on and off', () => {
     const LEGACY_REQUESTS = [
       ['credentialed tools/list', { jsonrpc: '2.0', id: 40, method: 'tools/list', params: {} }, () => baseHeaders({ Accept: 'application/json' })],
       ['anonymous tools/list', { jsonrpc: '2.0', id: 41, method: 'tools/list', params: {} }, () => anonLegacyHeaders({ Accept: 'application/json' })],
@@ -464,12 +464,12 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
     }
   });
 
-  // U2 — the modern method surface: server/discover, the per-era instructions,
-  // the /mcp sign-in challenge for anonymous modern traffic (KTD4, KTD4a), the
-  // 404 -32601 for removed and unknown methods (R8), and no sessions (R10).
-  // R9: /mcp emits no change notifications, so a listen stream is acknowledged
-  // with an empty honored filter and closed gracefully at once (KTD3a encoder).
-  describe('flag on — subscriptions/listen (U4)', () => {
+  // The modern method surface: server/discover, the per-era instructions,
+  // the /mcp sign-in challenge for anonymous modern traffic, the
+  // 404 -32601 for removed and unknown methods, and no sessions.
+  // /mcp emits no change notifications, so a listen stream is acknowledged
+  // with an empty honored filter and closed gracefully at once (the session-free encoder).
+  describe('flag on — subscriptions/listen', () => {
     beforeEach(async () => { await boot('on'); });
 
     async function listenRaw(headers, id = 7, notifications = { toolsListChanged: true }) {
@@ -531,7 +531,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
     });
   });
 
-  describe('flag on — modern method surface (U2)', () => {
+  describe('flag on — modern method surface', () => {
     beforeEach(async () => { await boot('on'); });
 
     async function discover(headers = modernHeaders('server/discover'), path = '/mcp', id = 'd-1') {
@@ -586,7 +586,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       assert.deepEqual(res.json.result.supportedVersions, ALL_VERSIONS_NEWEST_FIRST);
     });
 
-    it('challenges every anonymous modern catalog request on /mcp (KTD4a), but not on /.well-known/mcp', async () => {
+    it('challenges every anonymous modern catalog request on /mcp, but not on /.well-known/mcp', async () => {
       for (const method of ['tools/list', 'resources/list', 'prompts/list', 'resources/templates/list', 'skills/list']) {
         const res = await post(modernBody(11, method), anonModernHeaders(method));
         assert.equal(res.status, 401, `${method}: ${res.brief}`);
@@ -597,6 +597,13 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
         assert.equal(alias.status, 200, `${method} on the alias: ${alias.brief}`);
         assert.ok(alias.json.result, `${method} on the alias: ${alias.brief}`);
       }
+    });
+
+    it('challenges an anonymous modern read of a keyless legacy resource on /mcp', async () => {
+      const uri = 'worldmonitor://seed-meta/freshness';
+      const res = await post(modernBody(10, 'resources/read', { uri }), anonModernHeaders('resources/read', { 'Mcp-Name': uri }));
+      assert.equal(res.status, 401, res.brief);
+      assert.match(res.headers.get('www-authenticate') ?? '', RESOURCE_METADATA_MCP);
     });
 
     it('serves an anonymous modern ui:// read on /mcp', async () => {
@@ -624,6 +631,21 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
           assert.equal(res.headers.get('www-authenticate'), null, `${label} ${method}`);
         }
       }
+    });
+
+    it('accepts modern client notifications with 202 and 404s only the removed notifications/initialized', async () => {
+      for (const method of ['notifications/cancelled', 'notifications/progress']) {
+        for (const [label, headers] of [['credentialed', modernHeaders(method)], ['anonymous', anonModernHeaders(method)]]) {
+          const res = await post({ jsonrpc: '2.0', method, params: { requestId: 1, _meta: modernMeta() } }, headers);
+          assert.equal(res.status, 202, `${label} ${method}: ${res.brief}`);
+        }
+      }
+      const removed = await post(
+        { jsonrpc: '2.0', method: 'notifications/initialized', params: { _meta: modernMeta() } },
+        modernHeaders('notifications/initialized'),
+      );
+      assert.equal(removed.status, 404, removed.brief);
+      assert.equal(removed.json.error.code, -32601);
     });
 
     it('keeps the legacy answers for the methods the modern era removed', async () => {
@@ -698,11 +720,11 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
     });
   });
 
-  // U3 — the modern result and error contract, applied once on the way out:
-  // resultType + serverInfo on every result (R11), cache hints by method and
-  // caller (R12, KTD6), -32029/-32002 remapped by code (R13, KTD5), and the
-  // session-free SSE encoder for tools/call (KTD3a).
-  describe('flag on — modern result shaping (U3)', () => {
+  // The modern result and error contract, applied once on the way out:
+  // resultType + serverInfo on every result, cache hints by method and
+  // caller, -32029/-32002 remapped by code, and the
+  // session-free SSE encoder for tools/call.
+  describe('flag on — modern result shaping', () => {
     const SERVER_INFO_KEY = 'io.modelcontextprotocol/serverInfo';
     const HOUR_MS = 3_600_000;
     const OPERATOR_KEY = 'wm_modern_operator_fixture';
@@ -841,6 +863,19 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       assert.equal(store.totalBytes(), 0, 'a modern stream is never stored for replay');
     });
 
+    it('streams a tools/call JSON-RPC error as SSE too, the final event carrying the error', async () => {
+      const res = await post(
+        modernBody(64, 'tools/call', { name: 'no_such_tool', arguments: {} }),
+        modernHeaders('tools/call', { 'Mcp-Name': 'no_such_tool' }),
+      );
+      assert.equal(res.status, 200, res.brief);
+      assert.match(res.headers.get('content-type') ?? '', /^text\/event-stream/);
+      const events = sseEvents(res.text);
+      assert.equal(events.at(-1).id, 64);
+      assert.ok(events.at(-1).error, res.text);
+      assert.equal(events.at(-1).result, undefined);
+    });
+
     it('keeps non-tools/call modern methods on plain JSON even when Accept allows SSE', async () => {
       const res = await post(modernBody(62, 'tools/list'), modernHeaders('tools/list'));
       assert.match(res.headers.get('content-type') ?? '', /application\/json/);
@@ -882,7 +917,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
     });
 
     // The three -32002 sources, each answered for a legacy request and the
-    // same modern request. Only the code may differ (KTD5).
+    // same modern request. Only the code may differ.
     async function compareDenial(label, method, params, extraHeaders, expectStatus) {
       // A null header value drops that header (the operator key replaces the bearer).
       const finish = (headers) => Object.fromEntries(Object.entries(headers).filter(([, value]) => value !== null));
@@ -938,6 +973,12 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       assert.equal(modern.json.error.message, legacy.json.error.message);
       assert.deepEqual(modern.json.error.data, legacy.json.error.data);
       assert.deepEqual(wire(modern).headers, wire(legacy).headers);
+
+      // A non-200 denial is never SSE-framed, even when Accept allows a stream.
+      const streamed = await invoke(modernBody(72, 'tools/call', params), modernHeaders('tools/call', { 'Mcp-Name': params.name }));
+      assert.equal(streamed.status, 429, streamed.brief);
+      assert.match(streamed.headers.get('content-type') ?? '', /application\/json/);
+      assert.equal(streamed.json.error.code, -31029, streamed.brief);
     });
 
     it('remaps a user-bound-credential -32002 to -31002 with the same status', async () => {
@@ -952,7 +993,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
   // Last in the file: the limiter singletons in api/mcp/auth.ts memoize the
   // first construction, so the stub is installed before any can be built and
   // reads its verdict at call time (see tests/mcp-rate-limit-request-id.test.mjs).
-  describe('flag on — modern method surface limits (U2)', () => {
+  describe('flag on — modern method surface limits', () => {
     let deniedKeyPrefixes = [];
     let limiterKeys = [];
 
@@ -991,7 +1032,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       assert.ok(limiterKeys.some((key) => key.startsWith('rl:mcp:anon:')), JSON.stringify(limiterKeys));
     });
 
-    // U3 (KTD5): the anonymous limiter answers -32029 at HTTP 200; the modern
+    // The anonymous limiter answers -32029 at HTTP 200; the modern
     // form keeps the status and headers and changes only the code.
     it('remaps the anonymous discovery limiter -32029 to -31029, legacy unchanged', async () => {
       deniedKeyPrefixes = ['rl:mcp:anon:'];
@@ -1016,7 +1057,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       assert.deepEqual(wire(modern).headers, wire(legacy).headers);
     });
 
-    it('answers a legacy rate-limited request byte-identically with the flag on and off (U3 guard)', async () => {
+    it('answers a legacy rate-limited request byte-identically with the flag on and off', async () => {
       deniedKeyPrefixes = ['rl:mcp:pro-min:', 'rl:mcp:anon:'];
       const requests = [
         [{ jsonrpc: '2.0', id: 35, method: 'tools/list', params: {} }, baseHeaders({ Accept: 'application/json' }), '/mcp'],
@@ -1108,11 +1149,11 @@ describe('api/mcp/modern.ts — era recorded on the usage object', () => {
   });
 });
 
-// R13 sweep: no modern response produced anywhere in this file carries -32002,
+// Suite-wide sweep: no modern response produced anywhere in this file carries -32002,
 // or a code from the spec's reserved -32020..-32099 range other than the two it
 // defines (-32020 HeaderMismatch, -32022 UnsupportedProtocolVersion). Runs last
 // so the recording handler has seen every modern request above.
-describe('api/mcp.ts — modern error codes across the whole suite (U3)', () => {
+describe('api/mcp.ts — modern error codes across the whole suite', () => {
   it('never answers a modern request with -32002 or an undefined reserved-range code', () => {
     assert.ok(modernResponses.length >= 50, `the sweep saw only ${modernResponses.length} modern responses`);
     const codes = new Set();
