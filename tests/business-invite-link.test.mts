@@ -32,6 +32,26 @@ function browserGet(pathAndQuery: string): Response | void {
   ) as Response | void;
 }
 
+// Page paths linked from `src` that the middleware would 404. Same-file
+// string constants are inlined first so `${APP_ORIGIN}${SOME_PATH}` is
+// checked as the URL it builds.
+function unservedPageLinks(src: string): string[] {
+  const constants = new Map<string, string>();
+  for (const m of src.matchAll(/const ([A-Z][A-Z0-9_]*)(?:: string)? = (["'`])([^"'`$]*)\2(?: as const)?;/g)) {
+    constants.set(m[1]!, m[3]!);
+  }
+  const expanded = src.replace(/\$\{([A-Z][A-Z0-9_]*)\}/g, (hole, name: string) => constants.get(name) ?? hole);
+  const pages: string[] = [];
+  // Take the whole URL up to a delimiter or a template hole, then let URL
+  // parsing decide the pathname.
+  for (const m of expanded.matchAll(/https:\/\/(?:www\.)?worldmonitor\.app(?:(?!\$\{)[^\s"'<>`)\\])*/g)) {
+    const page = new URL(m[0]).pathname.replace(/\/+$/, '') || '/';
+    if (/\.[a-z0-9]{2,5}$/i.test(page) || page.startsWith('/api/')) continue;
+    if (!isKnownPublicPagePath(page)) pages.push(page);
+  }
+  return pages;
+}
+
 function inviteUrlFromEmail(): URL {
   const match = seatsSource.match(/const acceptUrl = `([^`]+)`/);
   assert.ok(match, 'sendBusinessInviteEmail must build acceptUrl from a template literal');
@@ -56,26 +76,36 @@ describe('Business seat invite link', () => {
         if (entry.isDirectory()) {
           if (entry.name !== '__tests__' && entry.name !== '_generated') walk(path);
         } else if (entry.name.endsWith('.ts')) {
-          let src = readFileSync(path, 'utf8');
-          // Inline same-file string constants so `${APP_ORIGIN}${SOME_PATH}`
-          // is checked as the URL it builds.
-          const constants = new Map<string, string>();
-          for (const m of src.matchAll(/const ([A-Z][A-Z0-9_]*) = ["'`]([^"'`$]*)["'`];/g)) {
-            constants.set(m[1]!, m[2]!);
-          }
-          src = src.replace(/\$\{([A-Z][A-Z0-9_]*)\}/g, (hole, name: string) => constants.get(name) ?? hole);
-          // Take the whole URL up to a delimiter or a template hole, then let
-          // URL parsing decide the pathname.
-          for (const m of src.matchAll(/https:\/\/(?:www\.)?worldmonitor\.app(?:(?!\$\{)[^\s"'<>`)\\])*/g)) {
-            const page = new URL(m[0]).pathname.replace(/\/+$/, '') || '/';
-            if (/\.[a-z0-9]{2,5}$/i.test(page) || page.startsWith('/api/')) continue;
-            if (!isKnownPublicPagePath(page)) offenders.push(`${relative(root, path)}: ${page}`);
+          for (const page of unservedPageLinks(readFileSync(path, 'utf8'))) {
+            offenders.push(`${relative(root, path)}: ${page}`);
           }
         }
       }
     };
     walk(resolve(root, 'convex'));
     assert.deepEqual(offenders, [], 'these links open the not-found page');
+  });
+
+  it('flags bad links however the email source builds them', () => {
+    const source = [
+      'const APP_ORIGIN = "https://www.worldmonitor.app";',
+      'const BILLING_PATH = "/billing" as const;',
+      "const BRIEF_PATH = '/brief';",
+      'const literal = "https://worldmonitor.app/brief";',
+      'const tilde = "https://www.worldmonitor.app/dashboard~missing";',
+      'const built = `${APP_ORIGIN}/settingz?x=${id}`;',
+      'const joined = `${APP_ORIGIN}${BILLING_PATH}?t=${token}`;',
+      'const single = `${APP_ORIGIN}${BRIEF_PATH}`;',
+      'const fine = `${APP_ORIGIN}/dashboard`;',
+      'const api = `${APP_ORIGIN}/api/customer-portal`;',
+    ].join('\n');
+    assert.deepEqual(unservedPageLinks(source), [
+      '/brief',
+      '/dashboard~missing',
+      '/settingz',
+      '/billing',
+      '/brief',
+    ]);
   });
 
   it('keeps already-sent /settings invite links working', () => {
