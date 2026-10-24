@@ -68,17 +68,12 @@ Vercel's Edge middleware bundler treats a `.ts` specifier reached from a JavaScr
 
 ## Prevention
 
-- `tests/middleware-edge-js-imports.test.mjs` walks every `.mjs` and `.js` module reachable from `middleware.ts` and fails on any relative `.ts`, `.tsx`, `.mts` or `.cts` specifier. Before the fix it failed and named `scripts/situation-page/sections.mjs imports ../../src/config/chokepoint-registry.ts`. It also asserts that it walked more than five modules, so a broken scan cannot pass vacuously.
-- The first version of that regex missed side-effect imports (`import './x.mjs';`). The widened pattern is in PR #9625, open as of this writing:
-
-  ```js
-  /(?:^|[\s;])(?:import|export)\s(?:[^'"]*?from\s*)?['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/gm
-  ```
-
+- `tests/middleware-edge-js-imports.test.mjs` bundles `middleware.ts` with esbuild (`metafile: true`, `packages: 'external'`, no output written) and fails when any `.mjs` or `.js` input resolves an import to a `.ts`, `.tsx`, `.mts` or `.cts` file. With the original bug in place it fails and names `scripts/situation-page/sections.mjs imports ../../src/config/chokepoint-registry.ts`. It also asserts that more than five modules resolved, so a broken walk cannot pass vacuously.
+- Read the resolved graph instead of matching import text. The first version of this test used a regex. Three review rounds on PR #9625 found forms it missed (side-effect imports, `{x}from` with no space, compact `export{x}from'./x.ts'`) and a false positive (`// import './x.ts'` in a comment). It also could not see an extensionless `import './x'` that resolves to `x.ts`. A fixture test in the same file now pins all of these against the esbuild walk.
 - When a module under `scripts/` is shared by a generator and `middleware.ts`, pass TypeScript-owned data in as an argument. Do not import it.
 - The same PR hit a second CI-only gate. A new top-level crawlable-corpus prefix must be mapped in `SEGMENT_FAMILIES` in `scripts/lib/seo-url-taxonomy.mjs`, or `tests/seo-url-taxonomy.test.mjs` fails in the unit shard. #9623 hit this on its first CI run.
 
 ## Related Issues
 
 - [Vercel Node-runtime routes fail at module load on extensionless relative imports](../runtime-errors/vercel-node-runtime-extensionless-imports-fail-at-module-load.md). Same family: local tooling resolves an import graph that Vercel's runtime or bundler rejects. That case is the Node runtime and the opposite specifier problem.
-- PR #9623 (the page and the fix), PR #9625 (side-effect import coverage).
+- PR #9623 (the page and the fix), PR #9625 (the esbuild-graph version of the guard test).
