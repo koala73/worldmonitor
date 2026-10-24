@@ -529,8 +529,8 @@ const STANDALONE_KEYS = {
   // shape as militaryFlights above.
   militaryCii:           'intelligence:military-cii:v1',
   // Derived by seed-fire-detections from the canonical wildfires key (#9509):
-  // per-country intensity rows plus the FIRMS clock, read by the CII and
-  // temporal-anomaly rebuilds instead of the 2-5 MB canonical payload. Same
+  // per-country intensity rows plus the FIRMS clock, read by the
+  // temporal-anomaly rebuild instead of the 2-5 MB canonical payload. Same
   // single-payload shape as militaryCii; health checks existence + freshness.
   wildfiresSummary:      'wildfire:fires-summary:v1',
   globalTendersSam:             'economic:global-tenders:v1:source:sam',
@@ -801,9 +801,9 @@ const SEED_META = {
     ],
   }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
   wildfiresBootstrap: { key: 'seed-meta:wildfire:fires-bootstrap', maxStaleMin: 360 }, // Compact CDN payload is a distinct publish target; monitor it so canonical fallback cannot hide transform/write failures.
-  // Derived summary the CII and temporal-anomaly rebuilds read (#9509). Same
+  // Derived summary the temporal-anomaly rebuild reads (#9509). Same
   // seeder run and 2h TTL as the canonical key; monitored on its own so the
-  // readers' canonical fallback cannot hide a broken summary write. Softened
+  // reader's canonical fallback cannot hide a broken summary write. Softened
   // until seed-fire-detections writes the durable marker on its first publish.
   wildfiresSummary: {
     key: 'seed-meta:wildfire:fires-summary',

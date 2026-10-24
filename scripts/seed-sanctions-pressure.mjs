@@ -21,7 +21,8 @@ const CANONICAL_KEY = 'sanctions:pressure:v1';
 const STATE_KEY = 'sanctions:pressure:state:v1';
 const ENTITY_INDEX_KEY = 'sanctions:entities:v1';
 const ENTITY_INDEX_META_KEY = 'seed-meta:sanctions:entities';
-// Full ISO2 -> count map consumed by CII/country-risk scoring; do not replace
+// Full ISO2 -> count map consumed by country-risk scoring (CII stopped scoring it
+// in v15); do not replace
 // with the top-pressure display list written under CANONICAL_KEY.countries.
 const COUNTRY_COUNTS_KEY = 'sanctions:country-counts:v1';
 const COUNTRY_COUNTS_META_KEY = 'seed-meta:sanctions:country-counts';

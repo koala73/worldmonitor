@@ -2,6 +2,7 @@
 
 import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { decodeHtmlEntities } from './_html-entities.mjs';
+import { isLevelledAdvisoryItem } from './shared/advisory-registers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -24,7 +25,8 @@ export const MAX_ADVISORY_FEED_BYTES = 2 * 1024 * 1024;
 
 const ALLOWED_DOMAINS = new Set(loadSharedConfig('rss-allowed-domains.json'));
 
-const ADVISORY_FEEDS = [
+// Exported for the CII scorer's level-source pin (tests/cii-advisory-provenance.test.mts).
+export const ADVISORY_FEEDS = [
   { name: 'US State Dept', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://travel.state.gov/_res/rss/TAsTWs.xml', levelParser: 'us' },
   { name: 'Australia DFAT Smartraveller', sourceCountry: 'AU', sourceCategory: 'travel-advisory', url: 'https://www.smartraveller.gov.au/countries/documents/index.rss', levelParser: 'au' },
   { name: 'UK FCDO', sourceCountry: 'UK', sourceCategory: 'travel-advisory', url: 'https://www.gov.uk/foreign-travel-advice.atom' },
@@ -325,7 +327,7 @@ function summarizeSourceHealth(feeds, itemsByFeed) {
   feeds.forEach((feed, i) => {
     const items = itemsByFeed[i];
     if (items.length === 0) emptyFeeds.push(feed.name);
-    if (feed.levelParser && !items.some((a) => a.country && a.level && a.level !== 'info')) {
+    if (feed.levelParser && !items.some(isLevelledAdvisoryItem)) {
       missingRegisters.push(feed.sourceCountry);
     }
   });

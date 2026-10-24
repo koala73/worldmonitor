@@ -11,7 +11,7 @@ The Country Instability Index answers one operational question:
 **which country should I look at first today?**
 
 It is a 0-100 stress reading, recomputed continuously for a curated watchlist of
-countries. It rises when protests, fighting, military movement, and news
+countries. It rises when protests, fighting, strikes on the country, and news
 pressure pick up at the same time in the same place.
 
 A high CII does not mean "dangerous country." It means **a lot is happening
@@ -25,7 +25,7 @@ behavior — CII is a triage dial, not a verdict.
 |---|---|
 | **Unrest** | Protests, riots, and the outages that follow them — friction before violence. |
 | **Conflict** | Actual fighting: battles, explosions, violence against civilians. |
-| **Security** | Hard-security pressure on the country — foreign military flights and vessels over it, airspace disruption, GPS jamming. |
+| **Security** | Nothing since v15: its four inputs (foreign military flights and vessels, aviation delays, GPS jamming) did not measure instability inside the country, so the component reads 0 with weight 0 until it is rebuilt. |
 | **Information** | How hard the news environment is running on this country. |
 
 ### How the number is assembled
@@ -33,21 +33,21 @@ behavior — CII is a triage dial, not a verdict.
 Every country carries a **baseline** — how volatile it is in normal times — and
 an **event multiplier** that scales how much a given incident should move the
 needle there. The headline score is 40% baseline and 60% live events, then
-adjusted by situational boosts for things like earthquakes, strikes, and
-travel advisories.
+adjusted by situational boosts for things like strikes, displacement, and
+travel advisories. Since v15 the live events can reach 80 of their 100 points,
+because Security carries no weight.
 
 That 40/60 split is the whole design. It is why a fragile country never reads as
 calm, and why a genuine crisis in a stable one still moves the number fast.
 
 ```mermaid
 flowchart TD
-  U["Unrest<br/>protests, riots, outages"] --> E["Event score<br/>U 25% + C 30% + S 20% + I 25%"]
+  U["Unrest<br/>protests, riots, outages"] --> E["Event score<br/>U 25% + C 30% + I 25%"]
   C["Conflict<br/>battles, explosions,<br/>violence against civilians"] --> E
-  S["Security<br/>foreign military flights,<br/>vessels, GPS jamming"] --> E
   I["Information<br/>weighted critical news"] --> E
   B["Baseline risk<br/>how volatile this country<br/>is in normal times"] --> M["Composite<br/>baseline 40% + events 60%"]
   E --> M
-  M --> X["Situational boosts<br/>climate, fire, earthquake,<br/>advisory, sanctions, displacement,<br/>strike pressure"]
+  M --> X["Situational boosts<br/>advisory, displacement,<br/>strike pressure"]
   X --> R["combinedScore 0-100"]
 ```
 
@@ -105,26 +105,21 @@ exposed on the wire as `CiiComponents`:
 |---|---|
 | `cii_contribution` (**U**nrest) | Civil disorder pressure: ACLED protests + riots, fatalities from those events, confirmed internet/power outages, and a high-severity unrest boost. While ACLED returns no events, a GDELT protest term (escalation or sustained level, below) stands in for the ACLED event terms. Reflects pre-violent friction. |
 | `geo_convergence` (**C**onflict) | Kinetic activity: ACLED battles, explosions/remote violence, and violence-against-civilians events, plus Israel OREF alert pressure. Strikes on the country count through strike pressure (below), on the composite, not in this component. Event activity is log-scaled before the component cap so moderate and extreme event volumes remain ordered; square-root fatality scaling prevents single-event saturation. While ACLED returns no events, a GDELT conflict term (escalation or sustained level, below) stands in for the ACLED event terms. |
-| `military_activity` (**S**ecurity) | Hard-security pressure on the country: foreign military flights and vessels located in it (×2), aviation disruptions (closures/delays), and GPS-jamming hex density. The country's own air force and navy do not score (v14). |
+| `military_activity` (**S**ecurity) | Always 0 since v15, with weight 0. Its inputs left the score: foreign military flights (NATO transports at cruise altitude), foreign military vessels (88% were AIS types 35 and 50–59: pilot boats, SAR, tugs), aviation delays (a count of reporting airports) and GPS jamming (scored where the effect lands, not the jammer). The country's own air force and navy stopped scoring in v14. The field stays on the wire. |
 | `news_activity` (**I**nformation) | Information-environment pressure: weighted count of classified critical/high/medium news headlines geo-attributed to the country. |
 
 The four components are weighted into the headline `combinedScore`:
 
 ```
-eventScore = U * 0.25 + C * 0.30 + S * 0.20 + I * 0.25
+eventScore = U * 0.25 + C * 0.30 + S * 0 + I * 0.25   (S = 0; its 0.20 is not redistributed)
 
 composite = baseline * 0.4
           + eventScore * 0.6
-          + climateBoost      (≤ 15)
-          + fireBoost         (≤  8, high-fire weighted)
           + advisoryBoost     (≤ 15)
           + orefBlendBoost    (IL only, ≤ 25)
           + displacementBoost (≤ 20)
           + crossBorderArrivalSurgeBoost (0 or 5)
           + newsUrgencyBoost  (≤  5)
-          + earthquakeBoost   (≤ 25)
-          + sanctionsBoost    (≤ 14)
-          + aisBoost          (≤ 10, AIS disruptions)
           + strikeBoost       (≤ 10, strike pressure)
 ```
 
@@ -226,9 +221,8 @@ Component details that are easy to miss:
   scores from the first days after deploy while the baseline backfills. Once the
   ACLED path returns events, both terms are 0, so a credentialed deployment
   never counts the same activity twice.
-- **Coordinate attribution**: fires, GPS-jamming hexes, earthquakes, climate
-  anomalies, strike events, and military flights and vessels are placed in a
-  Tier-1 country by point-in-polygon against real borders
+- **Coordinate attribution**: strike events are placed in a Tier-1 country by
+  point-in-polygon against real borders
   (`scripts/shared/cii-country-borders.data.mjs`, generated from the Natural Earth
   1:50m map the dashboard ships). A point on any other country's land counts
   for no Tier-1 country; a point at sea counts for the nearest coast within 12
@@ -269,46 +263,46 @@ Component details that are easy to miss:
 
 Advisory levels can also add `advisoryBoost` before the floor is applied:
 `+15` for "do not travel", `+10` for "reconsider travel", and `+5` for
-"caution". The server first uses the live `intelligence:advisories:v1`
-`byCountry` level when available. If no live level is present for a tracked
-country, it may apply the embedded State Department fallback table in
-`server/worldmonitor/intelligence/v1/get-risk-scores.ts`. Each `CiiScore`
-therefore exposes:
+"caution". The level comes only from the seeded advisory feed,
+`intelligence:advisories:v1` `byCountry`. A Tier-1 country the feed does not
+list gets no advisory level. Each `CiiScore` therefore exposes:
 
 | Wire field | Values | Meaning |
 |---|---|---|
 | `advisory_level` / `advisoryLevel` | `do-not-travel`, `reconsider`, `caution`, or empty | Advisory level used for score boosts/floors, if any. |
-| `advisory_provenance` / `advisoryProvenance` | `live`, `fallback`, `absent` | Whether `advisory_level` came from the live seeded advisory feed, the embedded fallback table, or no advisory input. |
+| `advisory_provenance` / `advisoryProvenance` | `live`, `fallback`, `absent` | Whether `advisory_level` came from this build's advisory read, from the last good advisory snapshot, or from no advisory input. |
 
-### Advisory fallback table
+### Missing advisory data
 
-When the live security-advisory feed has no current level for a Tier-1 country,
-the scorer applies a curated fallback level before computing both
-`advisoryBoost` and the advisory score floor. Live feed data wins whenever it is
-present; the fallback is not an additional consensus bonus.
+A missing or stale advisory read means the level is unknown. Until v15 the
+scorer filled that gap from an embedded table of 15 levels. The table disagreed
+with the live feed (CU, LB, RU, IR and IQ) and had no entry for KP, QA, AE or
+SA. On 2026-10-21, while it stood in for the feed for about two hours, Qatar
+fell from 50 to 8 and Russia from 72 to 54. The table has been removed.
 
-| Code | Country | Fallback level | Score effect when live level is absent |
-|---|---|---|---|
-| `AF` | Afghanistan | Do not travel | `advisoryBoost +15`; floor `60` |
-| `MM` | Myanmar | Do not travel | `advisoryBoost +15`; floor `60` |
-| `SY` | Syria | Do not travel | `advisoryBoost +15`; floor `60` |
-| `UA` | Ukraine | Do not travel | `advisoryBoost +15`; floor `60` |
-| `YE` | Yemen | Do not travel | `advisoryBoost +15`; floor `60` |
-| `CU` | Cuba | Reconsider | `advisoryBoost +10`; floor `50` |
-| `IL` | Israel | Reconsider | `advisoryBoost +10`; floor `50` |
-| `IQ` | Iraq | Reconsider | `advisoryBoost +10`; floor `50` |
-| `IR` | Iran | Reconsider | `advisoryBoost +10`; floor `50` |
-| `LB` | Lebanon | Reconsider | `advisoryBoost +10`; floor `50` |
-| `MX` | Mexico | Reconsider | `advisoryBoost +10`; floor `50` |
-| `PK` | Pakistan | Reconsider | `advisoryBoost +10`; floor `50` |
-| `VE` | Venezuela | Reconsider | `advisoryBoost +10`; floor `50` |
-| `RU` | Russia | Caution | `advisoryBoost +5`; no advisory floor |
-| `TR` | Turkey | Caution | `advisoryBoost +5`; no advisory floor |
+Each fresh build keeps the Tier-1 advisory levels it read live, with the
+seeder's `fetchedAt`, in `intelligence:advisories:cii-last-good:v1`. The
+snapshot is replaced only by a live read that lost no Tier-1 country.
 
-Rationale: these defaults cover Tier-1 countries where a missing or delayed
-advisory seed would otherwise make known high-risk theatres look artificially
-calm. Because the table is score-shifting editorial policy, adding, removing,
-or re-leveling a country is a formula-versioned methodology change.
+- **A failed or stale read.** When a read is missing, or its `fetchedAt` is
+  more than 72 hours old (`CII_ADVISORY_MAX_AGE_MS`), the scorer uses the
+  snapshot instead and discloses `advisoryProvenance: fallback`.
+- **A partial loss.** `byCountry` is the higher of the US and Australian
+  levels, so a read that lost one of them can still pass the seeder's coverage
+  check. A Tier-1 country that the snapshot lists but the live read does not is
+  filled from the snapshot and disclosed as `fallback`.
+- **A lost source.** A live read whose stored item list has no levelled
+  item from one of the travel registers (`US`, `AU`) is reported with
+  `sourcesMissing`. This is the same test the seeder uses for `failedSources`
+  on its own seed-meta (`scripts/shared/advisory-registers.mjs`).
+- **Expiry.** A snapshot more than 72 hours old is not used. The advisory boost
+  and floor of the countries it would have covered are then absent.
+- **Health.** The risk-scores seed-meta reports the advisories input as
+  `fallback` (with `snapshotAt` and the `filled` countries), `missing`, or
+  `live` with `sourcesMissing`. Each of these marks `riskScores`
+  `COVERAGE_PARTIAL` in `/api/health` from the first affected build.
+- **An unreadable snapshot.** If the snapshot itself cannot be read, the build
+  goes ahead without it and the report carries `snapshotReadFailed`.
 
 ### Text attribution caveat
 
@@ -353,10 +347,9 @@ coefficient drift fails in tests instead of shipping silently. The browser
 consumes cached server-produced CII scores rather than calculating a local
 fallback.
 
-Climate anomaly attribution uses the canonical
+Climate anomalies do not score since v15. The zone map in
 [`shared/cii-climate-zones.ts`](https://github.com/koala73/worldmonitor/blob/main/shared/cii-climate-zones.ts)
-map. Changes to that map can shift server/API scores and follow the score
-contract-change protocol above.
+now serves only the country-detail view.
 
 The Tier-1 country set is a curated monitoring universe, not an automatic
 ranking of all sovereign states. Countries enter the set when they satisfy at
@@ -510,7 +503,7 @@ The scope and limits of this score are stated up front in
 here with the formulas:
 
 Any edit that changes server/API per-country baselines, event multipliers,
-climate-zone country attribution, strategic-risk roll-up coefficients, inline
+strategic-risk roll-up coefficients, inline
 server formula literals, guarded top-level formula constants, or CII movement
 semantics **must** ship with a bump of `CII_FORMULA_VERSION` in
 `server/worldmonitor/intelligence/v1/_risk-config.ts`, an update to this
@@ -520,6 +513,46 @@ refactors that preserve server/API scores do not bump the wire version. Tests in
 in `CURATED_COUNTRIES`.
 
 ## Version history
+
+> **v15 (in progress on the `cii-v15` integration branch; not yet released).**
+> Seven inputs leave the score, worldwide, because they do not measure an event
+> or condition inside the country that affects its order (rule I1 of
+> `docs/methodology/cii-change-brief.md`; verdicts in
+> `docs/methodology/cii-input-register.md`):
+>
+> - Sanctions entry counts (boost up to 14). They score the country where a
+>   designated entity is registered, so front-company addresses moved UA, DE
+>   and GB.
+> - Climate anomalies (boost up to 15). A natural-hazard construct; one zone
+>   fanned out to up to nine countries.
+> - FIRMS fires (boost up to 8). Gas flares in the Gulf, plus farm burning and
+>   wildfire elsewhere.
+> - Foreign military flights and foreign military vessels (Security). NATO
+>   transports at cruise altitude; 88% of the vessels were AIS types 35 and
+>   50–59 (pilot boats, SAR, tugs).
+> - GPS jamming (Security). It scores where the effect lands, not the jammer,
+>   so Kaliningrad scores Poland and US test ranges score the US. Its hex count
+>   scales with ADS-B receivers.
+> - Aviation delay alerts (Security). Their count scales with reporting
+>   airports: the US has 30, most countries 1.
+>
+> Two inputs the register shows as context only leave the score too:
+> earthquakes (a natural hazard; boost up to 25) and AIS disruptions (station
+> density; boost up to 10).
+>
+> Security has no inputs left. It reads 0 with weight 0 in the event score, and
+> its 0.20 is not redistributed; reweighting belongs to the later aggregation
+> change. The build stops reading `sanctions:pressure:v1`,
+> `sanctions:country-counts:v1`, `climate:anomalies:v2`,
+> `wildfire:fires-summary:v1` (and its `wildfire:fires:v1` fallback),
+> `intelligence:gpsjam:v2`, `aviation:delays-bootstrap:v2`,
+> `seismology:earthquakes:v1` and `intelligence:military-cii:v1`. All but the
+> last stay seeded for their other readers. `intelligence:military-cii:v1` now
+> has no reader. Their entries leave `riskScores` input health. On the
+> committed fixtures, most countries drop 4–29 points.
+> Countries whose blend falls below a floor now sit on it: floor-lifted
+> countries rise from 9–10 to 16–17. That is an interim artefact of the floors,
+> which the aggregation change removes.
 
 > **v14 (2026-10-21).** Two inputs that measured hosting and routine activity,
 > not instability, leave the score, worldwide. (1) The cyber boost (up to 12) is

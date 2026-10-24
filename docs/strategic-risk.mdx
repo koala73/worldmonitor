@@ -314,16 +314,17 @@ Each country's score combines a static baseline (40%) with a dynamic event score
 |------------|-----------|---------|
 | UCDP active war | >= 70 | 2-year Tier-1 UCDP total deaths > 1000 or event count > 100 |
 | UCDP minor conflict | >= 50 | 2-year Tier-1 UCDP event count > 10 below the war thresholds |
-| Advisory do-not-travel | >= 60 | Live advisory feed when present; otherwise embedded State Department fallback table |
-| Advisory reconsider | >= 50 | Live advisory feed when present; otherwise embedded State Department fallback table |
+| Advisory do-not-travel | >= 60 | Seeded advisory feed, or its last good snapshot up to 72 hours old |
+| Advisory reconsider | >= 50 | Seeded advisory feed, or its last good snapshot up to 72 hours old |
 | Strike pressure (v12) | 40-70 | Decayed strike pressure `P >= 5`: `min(70, 40 + 8 * log2(P / 5))` |
 
 **Supplemental Boosts**: Advisory boost (+15/+10/+5), OREF blend boost for IL (+15 active + history tiers), climate (+15 max), fires (+8 max), displacement (+20 max), news urgency (+5 max), earthquakes (+25 max), sanctions (+14 max), AIS disruptions (+10 max), and strike pressure (+10 max).
 
 Advisory outputs expose both `advisoryLevel` and `advisoryProvenance` on each
-`CiiScore`. `advisoryProvenance` is `live` when the score used the seeded
-advisory feed, `fallback` when it used the embedded State Department fallback
-table, and `absent` when no advisory level affected boosts or floors.
+`CiiScore`. `advisoryProvenance` is `live` when the score used this build's
+advisory read, `fallback` when that read was missing or stale and the score
+used the last good snapshot (at most 72 hours old), and `absent` when no
+advisory level affected boosts or floors.
 
 ### Event Significance Multipliers
 
@@ -369,7 +370,7 @@ The top countries contribute most heavily, with diminishing influence for lower-
 | Displacement | Humanitarian displacement aggregate | Displacement boost |
 | Earthquakes | Earthquake feed | Earthquake boost |
 | Sanctions | Sanctions country aggregate | Sanctions boost |
-| Security advisories | `intelligence:advisories:v1` plus embedded fallback table | Advisory boost/floor with `advisoryProvenance` |
+| Security advisories | `intelligence:advisories:v1`, or its last good snapshot (`intelligence:advisories:cii-last-good:v1`, at most 72 hours old) | Advisory boost/floor with `advisoryProvenance` |
 
 ### Fallback Behavior
 

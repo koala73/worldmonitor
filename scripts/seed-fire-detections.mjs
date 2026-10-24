@@ -187,8 +187,8 @@ async function main() {
       declareRecords,
       metaKey: 'seed-meta:wildfire:fires-bootstrap',
     }, {
-      // Per-country intensity rows plus the FIRMS clock for the CII and
-      // temporal-anomaly rebuilds (#9509). Built from the RAW detections, so it
+      // Per-country intensity rows plus the FIRMS clock for the
+      // temporal-anomaly rebuild (#9509). Built from the RAW detections, so it
       // counts the whole fetch even when the canonical key above was capped.
       key: WILDFIRE_FIRES_SUMMARY_KEY,
       transform: (data) => summarizeWildfireDetections(wildfirePublishData(data)),

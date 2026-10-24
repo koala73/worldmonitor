@@ -1870,7 +1870,7 @@ export const RPC_TOOLS: ToolDef[] = [
               properties: {
                 ciiContribution: { type: 'number', description: 'DOMESTIC UNREST contribution: protests, riots, fatalities, severity, and outages.' },
                 geoConvergence: { type: 'number', description: 'ARMED CONFLICT contribution: ACLED events, fatalities, violence against civilians, strikes, and OREF alerts.' },
-                militaryActivity: { type: 'number', description: 'SECURITY AND MOBILITY contribution: military flights, military vessels, aviation disruption, and GPS interference.' },
+                militaryActivity: { type: 'number', description: 'SECURITY contribution; always 0 because v15 scores no Security input.' },
                 newsActivity: { type: 'number', description: 'INFORMATION ENVIRONMENT contribution: news urgency and threat-summary signals.' },
               },
             },

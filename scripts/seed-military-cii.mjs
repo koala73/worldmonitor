@@ -2,8 +2,9 @@
 //
 // seed-military-cii.mjs — Phase 2 of the CII unification (docs/archive/plans/unify-cii-single-source.md).
 //
-// Aggregates military activity per country into a single Redis key the CII engine
-// (server/worldmonitor/intelligence/v1/get-risk-scores.ts) reads as one auxiliary source:
+// Aggregates military activity per country into a single Redis key. The CII engine
+// (server/worldmonitor/intelligence/v1/get-risk-scores.ts) read it as one auxiliary
+// source until v15, which stopped reading it (see below):
 //
 //   - military FLIGHTS  — read from `military:flights:v1` (already operator-classified
 //                         by seed-military-flights.mjs)
@@ -17,8 +18,11 @@
 // "Honest counts": own vs foreign presence are stored as SEPARATE integers — the consumer
 // applies any foreign-presence weighting at scoring time. This deliberately does NOT mirror
 // the frontend's synthetic-`{}`-push ×2 hack (see the plan's Phase 2 notes).
-// Since CII v14 the scorer reads only foreignFlights/foreignVessels: own counts follow the
-// operator anywhere in the world, so routine training measured air-force size, not risk.
+// Since CII v15 the scorer reads nothing from this key, so it has no consumer left.
+// v14 dropped own counts, which follow the operator anywhere in the world. v15
+// dropped foreign flights and vessels (NATO transports at cruise altitude; AIS types
+// 35 and 50-59, i.e. pilot boats, SAR and tugs) and AIS disruptions (station density)
+// (docs/methodology/cii-input-register.md).
 //
 // SCHEDULING: like every other scripts/seed-*.mjs, this is a self-contained job run on a
 // schedule by Railway (the cron/job config lives in the Railway dashboard, not the repo).
@@ -422,8 +426,8 @@ function aggregate(flights, candidateReports, disruptions) {
     if (loc && byCountry[loc]) {
       if (op && loc !== op) byCountry[loc].foreignVessels++;
       // Operator unknown (e.g. classified by AIS ship-type alone): count once as local
-      // presence, NOT as foreign — foreignVessels is ×2-weighted in the CII security
-      // formula, and we cannot assert a vessel is foreign without knowing its operator.
+      // presence, NOT as foreign: we cannot assert a vessel is foreign without knowing
+      // its operator.
       else if (!op) byCountry[loc].ownVessels++;
     }
   }
