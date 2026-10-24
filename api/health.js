@@ -878,13 +878,13 @@ const SEED_META = {
     key: 'seed-meta:aviation:notam-airspace',
     maxStaleMin: 20, // 4× the */5 Railway cron
     activationKey: 'seed-activated:aviation:notam-nms:v1',
-    cutover: { mode: 'activation-marker', fromKey: null, activationKey: 'seed-activated:aviation:notam-nms:v1' },
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9635, activationKey: 'seed-activated:aviation:notam-nms:v1' },
   },
   notamNmsClosures: {
     key: 'seed-meta:aviation:notam-nms-closures',
     maxStaleMin: 20, // same run as notamAirspace
     activationKey: 'seed-activated:aviation:notam-nms:v1',
-    cutover: { mode: 'activation-marker', fromKey: null, activationKey: 'seed-activated:aviation:notam-nms:v1' },
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9635, activationKey: 'seed-activated:aviation:notam-nms:v1' },
   },
   predictionMarkets: {
     key: 'seed-meta:prediction:markets',
