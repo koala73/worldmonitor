@@ -232,8 +232,9 @@ Component details that are easy to miss:
   (`scripts/shared/cii-country-borders.data.mjs`, generated from the Natural Earth
   1:50m map the dashboard ships). A point on any other country's land counts
   for no Tier-1 country; a point at sea counts for the nearest coast within 12
-  nautical miles, and for no country farther out. Crimea counts as Ukraine and
-  Gaza and the West Bank toward the Israel row; France is metropolitan France
+  nautical miles, and for no country farther out. Crimea counts as Ukraine;
+  Gaza and the West Bank are Palestine, which has no Tier-1 row, so an event
+  there counts for no Tier-1 country; France is metropolitan France
   and Corsica. Strike events that carry a `countryCode` score to that country
   (so a tanker hit in open water still counts), and an offshore earthquake
   beyond coastal waters takes the country USGS names after the last comma of
@@ -313,13 +314,15 @@ or re-leveling a country is a formula-versioned methodology change.
 ### Text attribution caveat
 
 Country text fallback uses curated aliases after structured country codes and
-coordinates fail. The current Israel alias set includes `gaza`, so an otherwise
-unattributed headline or strike-location text mentioning Gaza is routed to IL
-for CII scoring. This is an operational limitation of the 31-country Tier-1 CII
-surface: CII does not currently publish a separate Gaza/Palestinian-territories
-country score, and readers should treat those Israel-attributed text-fallback
-signals as Israel/Gaza-theatre pressure rather than a claim that the event
-occurred inside internationally recognized Israeli territory.
+coordinates fail. An event scores the place where it happens, so no
+Palestinian place (`gaza`, `west bank`, Rafah, Jenin, Nablus and the rest) is
+an Israel alias, and a `PS` country code or a point in Gaza or the West Bank
+reaches no Tier-1 row: the 31-country CII surface has no Palestine score, so
+those events count for no country (before v15 they counted toward IL). A strike
+event whose coordinates are on land is placed by them, never by its text. The
+aliases still include actor names (`israeli`, `idf`, `netanyahu`), and headline
+country codes credit every country a title names, so a headline naming Israel
+as the attacker in Gaza still reaches IL through the news terms.
 
 The `dynamicScore` exposed on the wire is the signed score movement versus a
 valid CII snapshot from approximately 24 hours earlier. Positive values mean

@@ -82,6 +82,7 @@ import {
   DEFAULT_CII_EVENT_MULTIPLIER,
 } from '../shared/cii-weights.ts';
 import { CLIMATE_ZONES } from '../scripts/_climate-zones.mjs';
+import { ciiScoredVersion, readCiiVersionClaim } from '../scripts/lib/cii-fixtures.mts';
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -122,7 +123,19 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // v14 drops the cyber boost (hosting-location IOC feeds) and scores only foreign
   // military flights and vessels in Security.
   v14: 'dbfde746fb27478461511b21a72c0d5922b40cae005c41b5ab2ed0f20e025675',
+  // v15 is in progress on the cii-v15 integration branch (docs/methodology/cii-next.json).
+  // Each Stage B PR regenerates this entry, and only this one, with the command in
+  // docs/methodology/cii-change-brief.md section 3, and says so in its PR body. It
+  // is frozen as released when v15 ships.
+  v15: '8abeaceaf7e3e76ae281d13b48ea73f989270da889c5d1d8c0e4748c13b2fd98',
 };
+
+// The released entries above are a record. This digest of every entry except
+// the in-progress `next` makes an edit to one of them fail CI. Update it only in
+// the PR that ships a version, when that version's hash becomes released.
+const CII_RELEASED_PROTOCOL_HASHES_SHA256 = '82d6b1e150e452adad1055cf56fa964e2041a1f114f339e71fee069524c3965f';
+const CII_VERSION_CLAIM = readCiiVersionClaim();
+const CII_SCORED_VERSION = ciiScoredVersion(CII_VERSION_CLAIM);
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
 const GUARDED_SCORE_FUNCTION_NAMES = [
@@ -746,7 +759,7 @@ describe('CII signal wiring', () => {
     assert.equal(geoToCountry(44.3500, 142.4600), 'JP', 'north Hokkaido must resolve to Japan, not Russia');
     assert.equal(geoToCountry(45.4150, 141.6730), 'JP', 'Wakkanai remains Japan');
     assert.equal(geoToCountry(43.0618, 141.3545), 'JP', 'Sapporo remains Japan');
-    assert.equal(geoToCountry(31.8560, 35.4590), 'IL', 'Jericho (West Bank) counts toward the Israel row');
+    assert.equal(geoToCountry(31.8560, 35.4590), null, 'Jericho (West Bank) is Palestine, which has no Tier-1 row');
     assert.equal(geoToCountry(32.6200, 36.1000), 'SY', 'Daraa remains Syria next to the Jordan border');
     assert.equal(geoToCountry(32.4500, 36.1000), null, 'northern Jordan is not a Tier-1 CII country');
     assert.equal(geoToCountry(31.9539, 35.9106), null, 'Amman must fail closed because Jordan is not a Tier-1 CII country');
@@ -1348,10 +1361,10 @@ describe('CII scoring', () => {
   it('a strike event\'s country wins over its coordinates, and a non-Tier-1 country scores nowhere', () => {
     const baseline = computeCIIScores([], emptyAux());
     const scoreOf = (scores: ReturnType<typeof computeCIIScores>, code: string) => scoreFor(scores, code)!.combinedScore;
-    // Gaza's coordinates and its PS code both count toward the Israel row.
+    // Gaza is Palestine, which has no Tier-1 row: neither its PS code nor its coordinates reach Israel.
     const gaza = emptyAux();
     gaza.iranEvents = strikesAt({ latitude: 31.5, longitude: 34.47, countryCode: 'PS', title: 'Strike in Gaza City' });
-    assert.ok(scoreOf(computeCIIScores([], gaza), 'IL') > scoreOf(baseline, 'IL'));
+    assert.equal(scoreOf(computeCIIScores([], gaza), 'IL'), scoreOf(baseline, 'IL'));
     // Kuwait is not Tier-1: neither Iraq nor Iran (the old bounding-box answers) may absorb it.
     const kuwait = emptyAux();
     kuwait.iranEvents = strikesAt({ latitude: 29.3759, longitude: 47.9774, countryCode: 'KW', title: 'Drone strike near Kuwait City, Iraq border' });
@@ -1840,11 +1853,19 @@ describe('CII scoring', () => {
     }
   });
 
-  it('CII protocol coefficients are snapshot-keyed to CII_FORMULA_VERSION', () => {
-    const expectedHash = CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION[CII_FORMULA_VERSION];
+  it('released CII protocol snapshot hashes never change', () => {
+    const released = Object.entries(CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION)
+      .filter(([version]) => !(CII_VERSION_CLAIM.inProgress === true && version === CII_VERSION_CLAIM.next));
+    assert.ok(released.some(([version]) => version === CII_FORMULA_VERSION), `${CII_FORMULA_VERSION} is released and must keep its hash`);
+    assert.equal(hashJson(released), CII_RELEASED_PROTOCOL_HASHES_SHA256,
+      'A released CII protocol snapshot hash was edited. Released entries are a record; only the in-progress next version is regenerated.');
+  });
+
+  it('CII protocol coefficients are snapshot-keyed to the scored version (CII_FORMULA_VERSION, or the in-progress next)', (t) => {
+    const expectedHash = CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION[CII_SCORED_VERSION];
     assert.ok(
       expectedHash,
-      `No CII protocol snapshot for ${CII_FORMULA_VERSION}. Add a new snapshot hash when bumping CII_FORMULA_VERSION.`,
+      `No CII protocol snapshot for ${CII_SCORED_VERSION}. Add a new snapshot hash when bumping CII_FORMULA_VERSION.`,
     );
 
     const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');
@@ -1918,10 +1939,15 @@ describe('CII scoring', () => {
       countryBordersSha256: createHash('sha256').update(readRepoFile('scripts/shared/cii-country-borders.data.mjs')).digest('hex'),
     };
 
+    const currentHash = hashJson(snapshot);
+    // The sanctioned way to read the current hash (docs/methodology/cii-change-brief.md section 3).
+    t.diagnostic(`CII protocol snapshot hash (${CII_SCORED_VERSION}): ${currentHash}`);
     assert.equal(
-      hashJson(snapshot),
+      currentHash,
       expectedHash,
-      'CII coefficient/formula/cutoff snapshot changed. Bump CII_FORMULA_VERSION, update methodology docs/changelogs, and add the new version-keyed snapshot hash.',
+      CII_SCORED_VERSION === CII_FORMULA_VERSION
+        ? 'CII coefficient/formula/cutoff snapshot changed. Bump CII_FORMULA_VERSION, update methodology docs/changelogs, and add the new version-keyed snapshot hash.'
+        : `CII coefficient/formula/cutoff snapshot changed on the ${CII_SCORED_VERSION} integration branch. Regenerate the ${CII_SCORED_VERSION} entry only, and state the change in the PR body.`,
     );
   });
 
@@ -2491,8 +2517,8 @@ describe('CII scoring', () => {
     );
     assert.match(
       methodologyDoc,
-      /`gaza`[\s\S]{0,120}IL/i,
-      'methodology doc must disclose that Gaza text fallback routes to IL.',
+      /no\s+Palestinian\s+place\s+\(`gaza`[\s\S]{0,240}reaches\s+no\s+Tier-1\s+row/i,
+      'methodology doc must state that Gaza and West Bank events score no Tier-1 row (location rule).',
     );
     // v12 strike pressure: decay, both mappings, the GDELT intensity and the
     // replaced 72h term must all be published with their constants.

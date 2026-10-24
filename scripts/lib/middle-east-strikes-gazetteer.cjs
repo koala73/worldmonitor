@@ -54,10 +54,11 @@ const FREE_TEXT_STOPWORDS = new Set(['hail', 'salt', 'as salt', 'duma', 'tyre'])
 
 // Palestinian places are outside this feed. Without this, a classifier that
 // files a Gaza strike under Israel would plot it at the Israel centroid.
+// "Judea and Samaria" is the West Bank; GeoNames lists it as an Israeli admin area.
 const PALESTINE_TERMS = [
   'gaza', 'gaza city', 'gaza strip', 'khan yunis', 'khan younis', 'rafah', 'jabalia', 'jabalya', 'deir al balah',
   'deir el balah', 'nuseirat', 'beit lahia', 'beit hanoun', 'west bank', 'jenin', 'nablus', 'tulkarm', 'ramallah',
-  'hebron', 'bethlehem', 'qalqilya', 'غزة', 'خان يونس', 'رفح', 'جباليا', 'دير البلح', 'النصيرات', 'الضفة الغربية', 'جنين', 'نابلس', 'طولكرم', 'رام الله',
+  'hebron', 'bethlehem', 'qalqilya', 'judea and samaria', 'غزة', 'خان يونس', 'رفح', 'جباليا', 'دير البلح', 'النصيرات', 'الضفة الغربية', 'جنين', 'نابلس', 'طولكرم', 'رام الله',
 ];
 
 // Anchor-only terms: they put a post in the theater but say nothing about where.
@@ -222,9 +223,12 @@ function buildIndex() {
       }
     }
   };
+  // A Palestinian place the base table files under a focus country stays out.
+  const palestinian = buildMatcher(PALESTINE_TERMS.map(normalizePlaceName));
   for (const iso2 of FOCUS_COUNTRIES) {
     for (const [name, lat, lon] of OUTBREAK_PLACES[iso2] || []) {
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      if (firstMatch(palestinian, normalizePlaceName(name))) continue;
       const pointKey = `${iso2}:${lat.toFixed(2)},${lon.toFixed(2)}`;
       let place = byPoint.get(pointKey);
       if (!place) {

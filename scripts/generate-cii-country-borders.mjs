@@ -8,15 +8,14 @@
 // so neighbouring countries keep exactly the same simplified border and no
 // gap or overlap opens between them. Land of every non-Tier-1 country is kept
 // as unnamed land: a point there is in no Tier-1 country, and it stops the
-// coastal-waters fallback from reaching across a land border.
+// coastal-waters fallback from reaching across a land border. Gaza and the
+// West Bank are such land: an event there happens in Palestine, which has no
+// CII row, so it scores no Tier-1 country (until v15 they counted as Israel).
 //
-// Three attribution rules differ from the source file:
+// Two attribution rules differ from the source file:
 // - Crimea counts as Ukraine. Natural Earth 1:50m draws it inside Russia; the
 //   internationally recognised border, the map's countries.geojson and every
 //   CII version before v11 place it in Ukraine.
-// - Gaza and the West Bank count toward the Israel row. The CII has no
-//   Palestine row, and v10 bounding boxes and the Israel news keywords
-//   ('gaza') already attributed them there.
 // - France is metropolitan France and Corsica. Natural Earth 1:50m includes
 //   French Guiana, Martinique, Guadeloupe, Reunion and Mayotte, which carry
 //   their own ISO 3166 codes (GF, MQ, GP, RE, YT) everywhere else in the CII.
@@ -53,9 +52,6 @@ export const TIER1_NUMERIC_IDS = {
   SY: '760', YE: '887', MM: '104', VE: '862', CU: '192', MX: '484', BR: '076', AE: '784',
   KR: '410', IQ: '368', AF: '004', LB: '422', EG: '818', JP: '392', QA: '634',
 };
-// Territories with no CII row, by ISO2 and source id, and the Tier-1 row they count toward.
-export const ATTRIBUTED_TERRITORIES = { PS: 'IL' };
-const TERRITORY_NUMERIC_IDS = { PS: '275' };
 const RUSSIA_NUMERIC_ID = '643';
 // Every Natural Earth polygon of Russia whose bounding box lies inside this box is Crimea.
 const CRIMEA_BOX = { minLon: 32.2, maxLon: 36.8, minLat: 44.2, maxLat: 46.3 };
@@ -152,7 +148,6 @@ export function buildCiiCountryBorders(topology) {
   for (const geometry of topology.objects.countries.geometries) {
     for (const polygon of geometryPolygons(geometry)) {
       let code = codeById[geometry.id] ?? null;
-      for (const [iso2, id] of Object.entries(TERRITORY_NUMERIC_IDS)) if (geometry.id === id) code = ATTRIBUTED_TERRITORIES[iso2];
       if (geometry.id === RUSSIA_NUMERIC_ID && insideBox(polygonBox(polygon, decoded), CRIMEA_BOX)) code = 'UA';
       if (geometry.id === FRANCE_NUMERIC_ID && !insideBox(polygonBox(polygon, decoded), METROPOLITAN_FRANCE_BOX)) code = null;
       (code ? polygonsByCode[code] : otherLand).push(polygon);
@@ -220,7 +215,6 @@ export function buildCiiCountryBorders(topology) {
   return {
     source: `${SOURCE_PATH} (Natural Earth 1:50m admin-0)`,
     generator: 'scripts/generate-cii-country-borders.mjs',
-    attributedTerritories: ATTRIBUTED_TERRITORIES,
     toleranceDeg: SIMPLIFY_TOLERANCE_DEG,
     otherLandToleranceDeg: OTHER_LAND_TOLERANCE_DEG,
     transform: topology.transform,

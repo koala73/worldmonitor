@@ -19,6 +19,7 @@ This register has one row per input the CII reads. Under `docs/methodology/cii-c
 - The violence family is UCDP (continuous and decayed), the GDELT strike counter and the strike feed, deduplicated and attributed to the target.
 - The output splits into a structural score and a live score, with no floors in either.
 - Strikes score the target in full. The attacker gets a smaller belligerency term, not per-strike counts.
+- An event scores the place where it happens. Gaza and the West Bank are Palestine (PS), which has no CII row, so their events score no country, whichever input carries them. **Done (v15, B7)** for the border polygons behind every coordinate input, ISO2-coded strike events, the strike tally, the strike feed's gazetteer and the scorer's country keywords; UCDP is B6. Headlines that name Israel as the attacker in Gaza still credit IL through the news terms (P11a).
 
 ## Register
 
