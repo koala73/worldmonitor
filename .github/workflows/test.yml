@@ -381,6 +381,7 @@ jobs:
             package-lock.json
             pro-test/package-lock.json
             blog-site/package-lock.json
+            scripts/package-lock.json
       # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
       # archive's Lua runs against a real server: the relay harness stubs the
       # EVAL and the proxy command-gate test only matches the script TEXT. That
@@ -407,12 +408,19 @@ jobs:
         # Unit-only nested install; keeps postinstall free of blog-site.
         # Needed so blog-seo-contract can load astro.config.mjs.
         run: npm run ci:blog-site
+      - name: Install scripts/ deps for the seeder link check
+        # Railway seeders install scripts/package-lock.json, not the root tree.
+        # tests/nixpacks-seeder-import-graph.test.mjs links their named package
+        # imports against this install (#9608 shipped an undici 8 import to an
+        # undici 7 container with every suite green).
+        run: npm ci --prefix scripts --ignore-scripts --no-audit --no-fund
       - name: Data tests without built output
         # No build here: the unit-built-output job builds dist/ and public/pro/
         # once and runs every suite that names them. The marker stays set, so a
         # guarded suite that lands in a shard fails instead of skipping.
         env:
           WM_EXPECT_BUILT_OUTPUT: '1'
+          WM_EXPECT_SCRIPTS_DEPS: '1'
         run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/4 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
       - name: Upload data test timings
         if: ${{ !cancelled() }}
