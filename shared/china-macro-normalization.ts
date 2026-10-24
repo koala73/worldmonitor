@@ -204,6 +204,7 @@ function validBoundProvenance(row: JsonRecord, expectedSeriesId?: string): boole
   const retrievalTime = asRecord(asRecord(claims.retrieval_time).value);
   const revision = asRecord(asRecord(claims.revision).value);
   const publisher = asRecord(asRecord(claims.publisher).value);
+  const registryReference = asRecord(publisher.registryReference);
   const transport = asRecord(asRecord(claims.transport_freshness).value);
   const content = asRecord(asRecord(claims.content_freshness).value);
   let parsedSource: URL;
@@ -220,6 +221,13 @@ function validBoundProvenance(row: JsonRecord, expectedSeriesId?: string): boole
     && row.periodKind === seriesContract.periodKind
     && (row.source === undefined || row.source === binding.source)
     && publisher.id === binding.publisherId
+    && (
+      binding.publisherId !== CHINA_MACRO_M2_REPUBLICATION.publisherId
+      || (
+        publisher.name === CHINA_MACRO_M2_REPUBLICATION.publisherName
+        && registryReference.sourceName === CHINA_MACRO_M2_REPUBLICATION.registrySourceName
+      )
+    )
     && parsedSource.protocol === 'https:'
     && parsedSource.hostname === binding.sourceHost
     && parsedSource.pathname.startsWith(binding.sourcePathPrefix)

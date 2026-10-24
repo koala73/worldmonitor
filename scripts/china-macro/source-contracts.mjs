@@ -70,8 +70,8 @@ export const SOURCE_POLICIES = Object.freeze({
 export const PUBLISHERS = Object.freeze({
   shanghai: {
     id: CHINA_MACRO_M2_REPUBLICATION.publisherId,
-    name: 'Shanghai Municipal Financial Commission Office',
-    sourceName: 'Shanghai Financial Portal (People’s Bank of China republication)',
+    name: CHINA_MACRO_M2_REPUBLICATION.publisherName,
+    sourceName: CHINA_MACRO_M2_REPUBLICATION.registrySourceName,
   },
   nbs: {
     id: CHINA_MACRO_PUBLISHER_IDS.nbs,

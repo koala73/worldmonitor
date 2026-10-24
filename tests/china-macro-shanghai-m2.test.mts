@@ -190,6 +190,19 @@ describe('Shanghai official M2 republication', () => {
     }
   });
 
+  it('rejects mismatched publisher names and registry sources on observations and vintages', () => {
+    const original = parseShanghaiM2Release(fixture('shanghai-m2-september.html'), { sourceUrl: septemberUrl, retrievalTime });
+    for (const target of ['observation', 'vintage']) {
+      for (const field of ['name', 'registrySource']) {
+        const forged = structuredClone(original);
+        const publisher = (target === 'observation' ? forged : forged.vintages[0]).provenance.claims.publisher.value;
+        if (field === 'name') publisher.name = 'Another government publisher';
+        else publisher.registryReference.sourceName = 'NBS (China)';
+        assert.equal(normalizeChinaMacroObservation(forged, now), null, `${target} must bind publisher ${field}`);
+      }
+    }
+  });
+
   it('rejects contradictory decline signs and preserves valid negative growth', () => {
     const html = fixture('shanghai-m2-september.html');
     const options = { sourceUrl: septemberUrl, retrievalTime };

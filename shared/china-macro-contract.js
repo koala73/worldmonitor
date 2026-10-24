@@ -115,6 +115,8 @@ export const CHINA_MACRO_SERIES_IDS = Object.freeze(Object.keys(CHINA_MACRO_SERI
 // readers can still validate stored v2 payloads from before this lane launched.
 export const CHINA_MACRO_M2_REPUBLICATION = Object.freeze({
   publisherId: 'publisher:shanghai-finance-cn',
+  publisherName: 'Shanghai Municipal Financial Commission Office',
+  registrySourceName: 'Shanghai Financial Portal (People’s Bank of China republication)',
   source: 'People’s Bank of China via Shanghai Financial Portal',
   sourceHost: 'jrj.sh.gov.cn',
   sourcePathPrefix: '/SCGK194/',

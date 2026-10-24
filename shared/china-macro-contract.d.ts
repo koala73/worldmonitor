@@ -18,6 +18,8 @@ export const CHINA_MACRO_SERIES_CONTRACT: Readonly<Record<string, Readonly<{
 export const CHINA_MACRO_SERIES_IDS: readonly string[];
 export const CHINA_MACRO_M2_REPUBLICATION: Readonly<{
   publisherId: string;
+  publisherName: string;
+  registrySourceName: string;
   source: string;
   sourceHost: string;
   sourcePathPrefix: string;
