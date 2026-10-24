@@ -102,7 +102,7 @@ test('notamAirspaceTooltip labels permanent and upcoming NOTAMs', () => {
 
 const DECK_SOURCE = new URL('../src/components/DeckGLMap.ts', import.meta.url);
 
-test('DeckGLMap draws the restriction areas under every aircraft and point layer', () => {
+test('DeckGLMap draws the restriction areas under every clickable layer', () => {
   // A pickable area drawn above a marker steals its hover and click.
   const source = readFileSync(DECK_SOURCE, 'utf8');
   const at = (call: string) => {
@@ -112,6 +112,13 @@ test('DeckGLMap draws the restriction areas under every aircraft and point layer
   };
   const notam = at('...this.createNotamAirspaceLayers(');
   for (const above of [
+    '...this.createChinaCorridorSelectionLayers(',
+    'this.createCablesLayer(',
+    'this.createEnergyPipelinesLayer(',
+    'storageLayer)',
+    'shortageLayer)',
+    'this.createLiveTankersLayer(',
+    'this.createConflictZonesLayer(',
     'this.createBasesLayer(',
     'this.createNuclearLayer(',
     '...this.createHotspotsLayers(',

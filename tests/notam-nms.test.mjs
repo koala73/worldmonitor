@@ -135,6 +135,20 @@ describe('compactFeature', () => {
     assert.deepEqual(qline.g.c, [-1.3167, 54.5667]);
   });
 
+  it('treats malformed geometry as empty instead of aborting the sync', () => {
+    // One bad feature must not throw out of applyFeatures and fail the run.
+    for (const geometry of [
+      { type: 'GeometryCollection', geometries: { type: 'Point' } },
+      { type: 'GeometryCollection', geometries: [{ type: 'MultiPolygon', coordinates: null }] },
+      { type: 'MultiPolygon', coordinates: 42 },
+      { type: 'Polygon', coordinates: 'x' },
+    ]) {
+      const rec = compactFeature(feature('danger_radius', {}, geometry), NOW);
+      assert.deepEqual(rec.g.c, [-1.3167, 54.5667], JSON.stringify(geometry));
+      assert.equal(rec.g.p, undefined);
+    }
+  });
+
   it('drops an airspace NOTAM with no position at all', () => {
     const f = feature('tfr_fdc', { coordinates: undefined }, { type: 'GeometryCollection', geometries: [] });
     assert.equal(compactFeature(f, NOW), null);

@@ -1333,7 +1333,10 @@ async function loadNmsClosures() {
 // An unreadable marker counts as activated: holding last-good is the safe miss.
 async function isNmsActivated() {
   try {
-    return (await upstashGet(NMS_ACTIVATION_KEY)) !== null;
+    // upstashGet swallows read errors as null; EXISTS through upstashCommand
+    // throws, so an unreadable marker reaches the catch.
+    const res = await upstashCommand(['EXISTS', NMS_ACTIVATION_KEY]);
+    return res?.result !== 0;
   } catch {
     return true;
   }

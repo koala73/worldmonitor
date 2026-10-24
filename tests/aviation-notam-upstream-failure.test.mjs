@@ -46,6 +46,7 @@ const pushes = [];
 let icaoCalls = 0;
 const command = ([verb, key, value, ...args]) => {
   if (verb === 'GET') return values.get(key) ?? null;
+  if (verb === 'EXISTS') return values.has(key) ? 1 : 0;
   if (verb === 'SET') {
     if (args.includes('NX') && values.has(key)) return null;
     writes.push(key);
@@ -68,6 +69,9 @@ globalThis.fetch = async (input, options = {}) => {
       return Response.json({ result: values.get(decodeURIComponent(url.pathname.slice(5))) ?? null });
     }
     const body = JSON.parse(options.body);
+    // TEST_REDIS_FAIL_KEYS: every command on these keys answers HTTP 500.
+    const failKeys = (process.env.TEST_REDIS_FAIL_KEYS || '').split(',').filter(Boolean);
+    if (!Array.isArray(body[0]) && failKeys.includes(body[1])) return new Response('upstream error', { status: 500 });
     if (url.pathname === '/pipeline') return Response.json(body.map(item => ({ result: command(item) })));
     return Response.json({ result: command(body) });
   }
@@ -244,6 +248,18 @@ for (const nmsMode of ['stale', '']) {
     assert.deepEqual(state.notam.closedIcaos, ['OEDF']);
   });
 }
+
+test('an unreadable activation marker counts as activated: an empty ICAO answer keeps last-good', () => {
+  const { state, stdout, stderr } = runAviation({
+    TEST_ICAO_MODE: 'okEmpty',
+    TEST_REDIS_FAIL_KEYS: 'seed-activated:aviation:notam-nms:v1,aviation:notam:nms:closures:v1',
+  });
+  assert.equal(state.icaoCalls, 1, stdout + stderr);
+  assert.match(stderr, /FAA NMS closures are not current.* kept last-good closures/);
+  assert.equal(state.writes.includes(NOTAM_KEY), false);
+  assert.equal(state.writes.includes('notam:prev-closed-state:v1'), false);
+  assert.deepEqual(state.notam.closedIcaos, ['OEDF']);
+});
 
 test('before NMS activation an empty ICAO answer is still a valid observation', () => {
   const { state, stdout, stderr } = runAviation({ TEST_ICAO_MODE: 'okEmpty', TEST_NMS_MODE: 'stale' });

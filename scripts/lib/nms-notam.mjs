@@ -90,12 +90,15 @@ function validPosition(c) {
  * coordinates). Returns null when the NOTAM carries no position at all.
  */
 export function compactGeometry(geometry, notam) {
-  const parts = geometry?.type === 'GeometryCollection' ? (geometry.geometries || []) : geometry ? [geometry] : [];
+  // Malformed members read as empty, so one bad feature cannot abort the sync.
+  const parts = geometry?.type === 'GeometryCollection'
+    ? (Array.isArray(geometry.geometries) ? geometry.geometries : [])
+    : geometry ? [geometry] : [];
   const polygons = [];
   let point = null;
   for (const g of parts) {
     if (g?.type === 'Polygon') polygons.push(g.coordinates);
-    else if (g?.type === 'MultiPolygon') polygons.push(...g.coordinates);
+    else if (g?.type === 'MultiPolygon' && Array.isArray(g.coordinates)) polygons.push(...g.coordinates);
     else if (g?.type === 'Point' && !point && validPosition(g.coordinates)) point = [round(g.coordinates[0]), round(g.coordinates[1])];
   }
   const rings = polygons

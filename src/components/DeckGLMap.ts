@@ -2003,6 +2003,14 @@ export class DeckGLMap {
       this.layerCache.delete('day-night-layer');
     }
 
+    // FAA NMS airspace restrictions are area overlays (circles up to 250 NM):
+    // they sit above only the day/night background, so cables, pipelines,
+    // conflict zones and every marker inside a restricted area stay hoverable
+    // and clickable.
+    if (mapLayers.notamAirspace && this.notamAirspace.length > 0) {
+      layers.push(...this.createNotamAirspaceLayers());
+    }
+
     if (this.selectedChinaCorridorOverlay) {
       layers.push(...this.createChinaCorridorSelectionLayers(this.selectedChinaCorridorOverlay));
     }
@@ -2079,13 +2087,6 @@ export class DeckGLMap {
       layers.push(this.createConflictZonesLayer(
         this.resolveHeavyData('conflict', () => this.buildConflictZoneGeoJson(), deferHeavy, this.emptyHeavyData),
       ));
-    }
-
-    // FAA NMS airspace restrictions are area overlays (circles up to 250 NM):
-    // they sit under every point layer so bases, hotspots, airports, aircraft
-    // and other markers inside a restricted area stay hoverable and clickable.
-    if (mapLayers.notamAirspace && this.notamAirspace.length > 0) {
-      layers.push(...this.createNotamAirspaceLayers());
     }
 
 
