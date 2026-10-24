@@ -78,7 +78,7 @@ test('the repair plan targets incomplete past days in the scoring window, newest
   const snapshot = { cursor: '20260928171500', days: {
     '2026-09-28': { cohorts: 70, pairs: {} },
     '2026-09-27': { cohorts: 15, pairs: {} },
-    [dayOf(3)]: { cohorts: 96, pairs: {} },
+    [dayOf(3)]: rebuildDyadDay(dayOf(3), cohortBatches(dayOf(3))),
     [dayOf(91)]: { cohorts: 3, pairs: {} },
   } };
   const plan = planDyadRepair(snapshot, repairNow, 200);
@@ -168,4 +168,30 @@ test('once repair completes the 90-day window, every pair with enough events is 
   assert.equal(planDyadRepair(snapshot, repairNow, 90).length, 0);
   const scored = scoreDyads(snapshot, repairNow);
   assert.ok(scored.tensionPairs.some(pair => pair.id === 'usa_russia'));
+});
+
+test('a pair added to the config mid-day does not crash the live merge and is rebuilt, not scored partial', () => {
+  // The day was created before usa_iran was configured, so it has no bucket.
+  const previous = { cursor: '20260927120000', days: { '2026-09-27': { cohorts: 48, pairs: {
+    usa_russia: { total: 0, conflict: 0, intensity: 0, toneSum: 0, toneCount: 0 },
+  } } } };
+  const batch = { timestamp: '20260927121500', dyads: parseDyadExport(row('USA', 'IRN', 4)) };
+  const merged = mergeDyadBuckets(previous, [batch], Date.parse('2026-09-27T12:20:00Z'));
+  assert.equal(merged.days['2026-09-27'].cohorts, 49);
+  assert.equal(merged.days['2026-09-27'].pairs.usa_iran, undefined, 'a bucket started mid-day would be partial');
+  const next = { ...merged, cursor: '20260928000000' };
+  assert.ok(planDyadRepair(next, Date.parse('2026-09-28T00:20:00Z'), 5).includes('2026-09-27'),
+    'a past day missing a configured pair is rebuilt');
+});
+
+test('Iran–GCC sums Iran against every GCC member, in both directions', () => {
+  const data = parseDyadExport(['SAU', 'ARE', 'QAT', 'KWT', 'BHR', 'OMN'].flatMap(member => [row('IRN', member, 4), row(member, 'IRN', 3)])
+    .concat(row('IRN', 'IRQ', 4), row('SAU', 'ARE', 4)).join('\n'));
+  assert.equal(data.iran_gcc.conflict, 12);
+  assert.equal(Object.values(data).reduce((sum, pair) => sum + pair.total, 0), 12, 'non-members and intra-GCC rows are not counted');
+});
+
+test('Saudi Arabia–Yemen is counted in both actor directions', () => {
+  const data = parseDyadExport([row('YEM', 'SAU', 4), row('SAU', 'YEM', 4)].join('\n'));
+  assert.equal(data.saudi_arabia_yemen.conflict, 2);
 });

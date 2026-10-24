@@ -1238,7 +1238,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Індекс: World Monitor · дані закладів:",
+      "indexSource": "Індекс: World Monitor",
+      "venueSource": "дані закладів:",
       "statusNormal": "НОРМА",
       "statusNoData": "НЕМАЄ ДАНИХ",
       "statusNoBaseline": "НЕМАЄ БАЗОВОГО РІВНЯ",

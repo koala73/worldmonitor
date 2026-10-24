@@ -160,6 +160,8 @@ The indicator also displays World Monitor tension scores computed independently 
 | Russia ↔ Ukraine | Active conflict zone |
 | USA ↔ China | Economic and military competition |
 | USA ↔ Iran | Middle East regional tensions |
+| Iran ↔ GCC | Iran against the Gulf states: Saudi Arabia, UAE, Qatar, Kuwait, Bahrain, Oman |
+| Saudi Arabia ↔ Yemen | Houthi missile and drone attacks on Saudi Arabia |
 
 Each pair shows:
 
@@ -183,9 +185,20 @@ This provides context for the activity levels. See the country-pair tension sect
 ### World Monitor country-pair tensions
 
 Tensions use GDELT event exports, not PizzINT's GPR scale. The materializer counts
-both actor directions for US–Russia, Russia–Ukraine, US–China, and US–Iran.
+both actor directions for the pairs in `shared/gdelt-tension-pairs.json`:
+US–Russia, Russia–Ukraine, US–China, US–Iran, Iran–GCC, and Saudi
+Arabia–Yemen. A side can be a group: Iran–GCC sums Iran's events with each Gulf
+Cooperation Council member (Saudi Arabia, the UAE, Qatar, Kuwait, Bahrain, Oman)
+into one daily bucket; events between members are not counted. GDELT codes Houthi actors as Yemen (`YEM`), not as a separate
+group, so Saudi Arabia–Yemen is the measurable proxy for Houthi–Saudi conflict;
+it also includes the smaller share of events involving Yemen's government.
 China–Taiwan and US–Venezuela did not meet the initial 20 conflict events/day
 measurement threshold and are excluded. No GDELT query API is used.
+
+A pair added to the list scores **Insufficient data** until its 90-day history
+is rebuilt (below), about 11 hours after the worker first runs with it. The
+day in progress gets no bucket for the new pair, since it would miss the
+earlier cohorts; that day is rebuilt once it is complete.
 
 For each UTC day, conflict intensity is the sum of
 `NumMentions × max(0, −GoldsteinScale)` for events in QuadClass 3 or 4.
@@ -221,7 +234,8 @@ sets its durable activation marker. It then enforces freshness permanently.
 Pizza outages do not hide available tensions.
 
 Each worker run also repairs history. It walks the past days in the window
-that are missing or lack any of their 96 cohorts, newest first, and rebuilds
+that are missing, lack any of their 96 cohorts, or lack a bucket for a pair
+added after the day began, newest first, and rebuilds
 up to two of them from that day's GDELT export files. A rebuilt day replaces
 the stored day. It is never added to it, so the partial first day of
 collection counts once. Only days before the replay cursor's day are repaired,

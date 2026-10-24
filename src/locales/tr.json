@@ -1088,7 +1088,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Endeks: World Monitor · mekân verileri:",
+      "indexSource": "Endeks: World Monitor",
+      "venueSource": "mekân verileri:",
       "statusNormal": "NORMAL",
       "statusNoData": "VERİ YOK",
       "statusNoBaseline": "REFERANS YOK",

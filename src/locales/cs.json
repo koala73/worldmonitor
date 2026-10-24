@@ -1082,7 +1082,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · data podniků:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "data podniků:",
       "statusNormal": "NORMÁLNÍ",
       "statusNoData": "BEZ DAT",
       "statusNoBaseline": "BEZ ZÁKLADU",

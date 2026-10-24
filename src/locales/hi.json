@@ -1230,7 +1230,8 @@
       "skipToEnd": "अंत पर जाएं"
     },
     "pizzint": {
-      "indexSource": "सूचकांक: World Monitor · स्थल डेटा:",
+      "indexSource": "सूचकांक: World Monitor",
+      "venueSource": "स्थल डेटा:",
       "statusNormal": "सामान्य",
       "statusNoData": "डेटा नहीं",
       "statusNoBaseline": "आधार नहीं",

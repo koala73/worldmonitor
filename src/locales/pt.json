@@ -785,7 +785,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Índice: World Monitor · dados dos locais:",
+      "indexSource": "Índice: World Monitor",
+      "venueSource": "dados dos locais:",
       "statusNormal": "NORMAL",
       "statusNoData": "SEM DADOS",
       "statusNoBaseline": "SEM REFERÊNCIA",

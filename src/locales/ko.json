@@ -1085,7 +1085,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "지수: World Monitor · 매장 데이터:",
+      "indexSource": "지수: World Monitor",
+      "venueSource": "매장 데이터:",
       "statusNormal": "정상",
       "statusNoData": "데이터 없음",
       "statusNoBaseline": "기준 없음",

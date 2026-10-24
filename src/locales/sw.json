@@ -1230,7 +1230,8 @@
       "skipToEnd": "Ruka hadi mwisho"
     },
     "pizzint": {
-      "indexSource": "Faharasa: World Monitor · data za maeneo:",
+      "indexSource": "Faharasa: World Monitor",
+      "venueSource": "data za maeneo:",
       "statusNormal": "KAWAIDA",
       "statusNoData": "HAKUNA DATA",
       "statusNoBaseline": "HAKUNA MSINGI",

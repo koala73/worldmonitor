@@ -2034,9 +2034,6 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs"
-        },
-        {
-          "path": "src/components/PizzIntIndicator.ts"
         }
       ]
     },
@@ -13811,9 +13808,6 @@
         },
         {
           "path": "scripts/seed-conflict-intel.mjs"
-        },
-        {
-          "path": "src/components/PizzIntIndicator.ts"
         }
       ]
     },

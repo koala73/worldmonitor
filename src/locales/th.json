@@ -1085,7 +1085,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "ดัชนี: World Monitor · ข้อมูลสถานที่:",
+      "indexSource": "ดัชนี: World Monitor",
+      "venueSource": "ข้อมูลสถานที่:",
       "statusNormal": "ปกติ",
       "statusNoData": "ไม่มีข้อมูล",
       "statusNoBaseline": "ไม่มีค่าฐาน",

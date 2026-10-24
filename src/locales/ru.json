@@ -1094,7 +1094,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Индекс: World Monitor · данные заведений:",
+      "indexSource": "Индекс: World Monitor",
+      "venueSource": "данные заведений:",
       "statusNormal": "НОРМА",
       "statusNoData": "НЕТ ДАННЫХ",
       "statusNoBaseline": "НЕТ БАЗОВОГО УРОВНЯ",

@@ -1088,7 +1088,8 @@
       "skipToEnd": "Към края"
     },
     "pizzint": {
-      "indexSource": "Индекс: World Monitor · данни за заведенията:",
+      "indexSource": "Индекс: World Monitor",
+      "venueSource": "данни за заведенията:",
       "statusNormal": "НОРМАЛНО",
       "statusNoData": "НЯМА ДАННИ",
       "statusNoBaseline": "НЯМА БАЗОВО НИВО",

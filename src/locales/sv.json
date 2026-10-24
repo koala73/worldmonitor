@@ -784,7 +784,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · platsdata:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "platsdata:",
       "statusNormal": "NORMALT",
       "statusNoData": "INGA DATA",
       "statusNoBaseline": "INGEN REFERENS",

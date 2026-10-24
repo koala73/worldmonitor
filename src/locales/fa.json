@@ -1230,7 +1230,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "شاخص: World Monitor · داده‌های مکان‌ها:",
+      "indexSource": "شاخص: World Monitor",
+      "venueSource": "داده‌های مکان‌ها:",
       "statusNormal": "عادی",
       "statusNoData": "بدون داده",
       "statusNoBaseline": "بدون مبنا",

@@ -2,7 +2,12 @@ import pairs from './shared/gdelt-tension-pairs.json' with { type: 'json' };
 import { GDELT_PUBLICATION_LEAD_MS, gdeltTimestampToMs } from './_conflict-gdelt-bulk.mjs';
 
 const DAY_MS = 86_400_000;
-const pairByActors = new Map(pairs.map(pair => [[...pair.actors].sort().join(':'), pair.id]));
+// A side is one CAMEO country code or a group of them (Iran–GCC sums Iran
+// against each member). Every country pair maps to at most one configured pair.
+const pairByActors = new Map(pairs.flatMap(pair => {
+  const [left, right] = pair.actors.map(side => [side].flat());
+  return left.flatMap(a => right.map(b => [[a, b].sort().join(':'), pair.id]));
+}));
 const emptyPair = () => ({ total: 0, conflict: 0, intensity: 0, toneSum: 0, toneCount: 0 });
 
 // Actor country codes are CAMEO, not the FIPS location codes used by the
@@ -46,7 +51,9 @@ export function mergeDyadBuckets(previous, batches, nowMs = Date.now()) {
       day.cohorts++;
       for (const pair of pairs) {
         const counts = batch.dyads[pair.id];
-        if (!counts) continue;
+        // A pair added to the config after the day began has no bucket: it
+        // would miss the earlier cohorts. The day is rebuilt once it is past.
+        if (!counts || !day.pairs[pair.id]) continue;
         for (const field of Object.keys(emptyPair())) day.pairs[pair.id][field] += counts[field];
       }
     }
@@ -73,7 +80,8 @@ export function dyadDayExportTimestamps(date) {
 // cleared by then, and a persistently bad day costs at most four downloads a day.
 export const DYAD_REPAIR_BACKOFF_MS = 6 * 60 * 60 * 1000;
 
-// Days that stop scoreDyads (missing, or not exactly 96 cohorts) and that the
+// Days that stop scoreDyads (missing, not exactly 96 cohorts, or without a
+// bucket for a pair added to the config after the day began) and that the
 // live merge can no longer touch: a day strictly before the cursor's day.
 // Without this, a partial first day or one missed cohort would block every
 // pair for 90 days.
@@ -81,7 +89,10 @@ function repairableDates(snapshot, nowMs) {
   const cursorDate = /^\d{14}$/.test(snapshot?.cursor ?? '')
     ? `${snapshot.cursor.slice(0, 4)}-${snapshot.cursor.slice(4, 6)}-${snapshot.cursor.slice(6, 8)}` : '';
   if (!cursorDate) return [];
-  return scoringWindow(nowMs).filter(date => date < cursorDate && snapshot.days?.[date]?.cohorts !== 96);
+  return scoringWindow(nowMs).filter((date) => {
+    const day = snapshot.days?.[date];
+    return date < cursorDate && (day?.cohorts !== 96 || pairs.some(pair => !day.pairs?.[pair.id]));
+  });
 }
 
 // Repair candidates, newest first, skipping days still inside their backoff.

@@ -1293,7 +1293,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Indeks: World Monitor · dane lokali:",
+      "indexSource": "Indeks: World Monitor",
+      "venueSource": "dane lokali:",
       "statusNormal": "NORMALNIE",
       "statusNoData": "BRAK DANYCH",
       "statusNoBaseline": "BRAK POZIOMU ODNIESIENIA",

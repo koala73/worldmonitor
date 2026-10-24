@@ -1230,7 +1230,8 @@
       "skipToEnd": "Ugrás a végére"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · helyadatok:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "helyadatok:",
       "statusNormal": "NORMÁL",
       "statusNoData": "NINCS ADAT",
       "statusNoBaseline": "NINCS VISZONYÍTÁSI ALAP",

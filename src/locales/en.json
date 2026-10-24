@@ -1252,7 +1252,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · venue data:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "venue data:",
       "statusNormal": "NORMAL",
       "statusNoData": "NO DATA",
       "statusNoBaseline": "NO BASELINE",

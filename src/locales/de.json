@@ -1324,7 +1324,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · Standortdaten:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "Standortdaten:",
       "statusNormal": "NORMAL",
       "statusNoData": "KEINE DATEN",
       "statusNoBaseline": "KEIN REFERENZWERT",

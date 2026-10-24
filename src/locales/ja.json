@@ -1085,7 +1085,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "指数: World Monitor · 店舗データ:",
+      "indexSource": "指数: World Monitor",
+      "venueSource": "店舗データ:",
       "statusNormal": "通常",
       "statusNoData": "データなし",
       "statusNoBaseline": "基準なし",

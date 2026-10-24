@@ -1085,7 +1085,8 @@
       "skipToEnd": "跳到结尾"
     },
     "pizzint": {
-      "indexSource": "指数：World Monitor · 场所数据：",
+      "indexSource": "指数：World Monitor",
+      "venueSource": "场所数据：",
       "statusNormal": "正常",
       "statusNoData": "无数据",
       "statusNoBaseline": "无基准",

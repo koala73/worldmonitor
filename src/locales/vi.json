@@ -1085,7 +1085,8 @@
       "skipToEnd": "Tới cuối"
     },
     "pizzint": {
-      "indexSource": "Chỉ số: World Monitor · dữ liệu địa điểm:",
+      "indexSource": "Chỉ số: World Monitor",
+      "venueSource": "dữ liệu địa điểm:",
       "statusNormal": "BÌNH THƯỜNG",
       "statusNoData": "KHÔNG CÓ DỮ LIỆU",
       "statusNoBaseline": "KHÔNG CÓ MỐC CHUẨN",

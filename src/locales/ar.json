@@ -1051,7 +1051,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "المؤشر: World Monitor · بيانات المطاعم:",
+      "indexSource": "المؤشر: World Monitor",
+      "venueSource": "بيانات المطاعم:",
       "statusNormal": "طبيعي",
       "statusNoData": "لا توجد بيانات",
       "statusNoBaseline": "لا يوجد خط أساس",

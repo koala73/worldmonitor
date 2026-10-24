@@ -1088,7 +1088,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Δείκτης: World Monitor · δεδομένα καταστημάτων:",
+      "indexSource": "Δείκτης: World Monitor",
+      "venueSource": "δεδομένα καταστημάτων:",
       "statusNormal": "ΚΑΝΟΝΙΚΟ",
       "statusNoData": "ΧΩΡΙΣ ΔΕΔΟΜΕΝΑ",
       "statusNoBaseline": "ΧΩΡΙΣ ΒΑΣΗ",

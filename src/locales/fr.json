@@ -1042,7 +1042,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Indice : World Monitor · données des lieux :",
+      "indexSource": "Indice : World Monitor",
+      "venueSource": "données des lieux :",
       "statusNormal": "NORMAL",
       "statusNoData": "AUCUNE DONNÉE",
       "statusNoBaseline": "SANS RÉFÉRENCE",

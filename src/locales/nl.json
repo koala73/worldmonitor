@@ -784,7 +784,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · locatiegegevens:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "locatiegegevens:",
       "statusNormal": "NORMAAL",
       "statusNoData": "GEEN GEGEVENS",
       "statusNoBaseline": "GEEN REFERENTIE",
