@@ -72,7 +72,9 @@ const THEATER_TERMS = Object.freeze([
 const SUPPLEMENT = [
   ['SA', 'Riyadh', null, null, 'ar riyad', 'الرياض'],
   ['SA', 'Jeddah', null, null, 'jiddah', 'jedda', 'جدة'],
-  ['SA', 'Dammam', null, null, 'الدمام'],
+  // King Fahd International Airport serves Dammam; filing it there keeps one
+  // attack on it one incident whichever name a report uses.
+  ['SA', 'Dammam', null, null, 'الدمام', 'دمام', 'king fahd international airport', 'king fahd airport', 'dammam airport'],
   ['SA', 'Dhahran', 26.29, 50.11, 'الظهران'],
   ['SA', 'Khobar', null, null, 'al khobar', 'الخبر'],
   ['SA', 'Ras Tanura', 26.64, 50.16, 'رأس تنورة', 'راس تنورة'],
@@ -94,6 +96,7 @@ const SUPPLEMENT = [
   ['SA', 'Dhahran al-Janub', 17.67, 43.51, 'ظهران الجنوب'],
   ['SA', 'Sharurah', 17.47, 47.11, 'sharourah', 'شرورة'],
   ['SA', 'Prince Sultan Air Base', 24.06, 47.58, 'prince sultan airbase'],
+  ['SA', 'Shaybah', 22.51, 53.98, 'shaybah oil field', 'shaybah oilfield', 'shaybah field', 'شيبة'],
   ['SA', 'King Khalid Military City', 27.9, 45.53],
   ['YE', 'Sanaa', null, null, 'صنعاء'],
   ['YE', 'Al Hudaydah', null, null, 'hodeidah', 'hudaydah', 'hodeida', 'الحديدة'],
@@ -102,7 +105,7 @@ const SUPPLEMENT = [
   ['YE', 'Sa\'dah', null, null, 'saada', 'saadah', 'صعدة'],
   ['YE', 'Ta\'izz', null, null, 'تعز'],
   ['YE', 'Hajjah', null, null, 'حجة'],
-  ['YE', 'Mukalla', null, null, 'المكلا'],
+  ['YE', 'Mukalla', null, null, 'المكلا', 'al rayyan airport', 'rayyan airport', 'rayyan international airport', 'riyan airport', 'riyan international airport', 'al riyan airport', 'مطار الريان'],
   ['YE', 'Dhamar', null, null, 'ذمار'],
   ['YE', 'Omran', null, null, 'amran', 'عمران'],
   ['YE', 'Ras Isa', 15.24, 42.61, 'ras issa', 'رأس عيسى'],
@@ -121,8 +124,8 @@ const SUPPLEMENT = [
   ['IR', 'Parchin', 35.52, 51.77, 'پارچین'],
   ['IR', 'Ahvaz', null, null, 'ahwaz', 'الأهواز', 'اهواز'],
   // Maritime and coastal points: tanker and mine incidents otherwise fall back
-  // to the inland country centroid. The strait is filed under Iran because
-  // that is where the CII bbox lookup attributes its coordinates.
+  // to the inland country centroid. The strait is filed under Iran only so it
+  // has a map point; it is a waterway (WATERWAYS), so it scores no country.
   ['IR', 'Strait of Hormuz', 26.57, 56.25, 'hormuz strait', 'مضيق هرمز', 'تنگه هرمز'],
   ['IR', 'Sirik', 26.52, 57.1, 'سیریک'],
   ['IR', 'Kuhestak', 26.8, 57.03],
@@ -177,6 +180,10 @@ const SUPPLEMENT = [
   ['JO', 'Aqaba', null, null, 'العقبة'],
   ['JO', 'Muwaffaq Salti Air Base', 31.83, 36.79],
 ];
+
+// Places that are water, not a country's land: an incident there hits a ship,
+// so the feed publishes it with no country (see middle-east-strikes.cjs).
+const WATERWAYS = new Set(['IR:Strait of Hormuz']);
 
 // Latin names shorter than this are kept for exact lookups (an LLM-named
 // "Ibb") but never used to anchor free text, where they collide with words.
@@ -247,6 +254,7 @@ function buildIndex() {
       register(existing, [name, ...aliases]);
     } else {
       const place = { iso2, name, lat, lon };
+      if (WATERWAYS.has(`${iso2}:${name}`)) place.sea = true;
       places.push(place);
       register(place, [name, ...aliases]);
     }

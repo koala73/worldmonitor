@@ -5617,7 +5617,7 @@ async function seedMiddleEastStrikes() {
       writeCache: (key, value, ttl) => upstashSet(key, value, ttl),
       classify: (texts) => classifyFetchLlm(texts, middleEastStrikes.CLASSIFY_MAX_TEXT_CHARS, {
         systemPrompt: middleEastStrikes.STRIKE_CLASSIFIER_PROMPT,
-        maxTokensPerItem: 60,
+        maxTokensPerItem: middleEastStrikes.CLASSIFY_MAX_TOKENS_PER_ITEM,
         label: 'MiddleEastStrikes',
       }),
       loadGdelt: loadMiddleEastStrikeGdelt,

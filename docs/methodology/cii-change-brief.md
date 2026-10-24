@@ -95,8 +95,30 @@ Replay only on the committed multi-date fixtures in `tests/fixtures/cii/`. A sna
 
 - Each fixture holds trimmed production inputs and the formula's expected table for each version.
 - Where it was captured, a fixture also holds the table production stored at the same moment.
-- `tests/cii-fixtures.test.mts` asserts that the seam reproduces the expected table for the current version, and production's table 31/31.
+- `tests/cii-fixtures.test.mts` asserts that the seam reproduces the expected table for the scored version, and production's table 31/31.
 - Scores that move without a version bump fail it.
+
+**Released tables are immutable.** A released version's expected table is a record: nothing writes or overwrites it, and the fixture test proves `--write-expected` cannot overwrite `v14`.
+
+**An integration branch scores an unreleased version.** While `docs/methodology/cii-next.json` sets `"inProgress": true` and names the `branch`, that branch scores `next` but keeps `CII_FORMULA_VERSION` at the released version, so the single bump happens when the branch merges to main. Meanwhile:
+
+- the scored version is `next`. The seam must reproduce `expected[next]`, and `KNOWN_GAPS[next]` in `tests/cii-invariants.test.mts` lists the gaps;
+- `--write-expected` writes, or overwrites, only `expected[next]`. Every PR on the branch regenerates it after each rebase, and only through `--write-expected`;
+- the production check stays as provenance. Each stored production table must equal `expected[methodologyVersion]`, the table recorded at that version. Only the seam-against-production assertion is skipped, with a message, because the tree no longer runs the released scorer. It runs again once `next` ships and is captured;
+- capture fixtures from a released checkout (main). `scripts/cii-capture-fixture.mts` refuses to run on the branch, then the branch records `next` with `--write-expected`;
+- the protocol snapshot in `tests/cii-scoring.test.mts` follows the same rule. It covers every literal in `computeCIIScores` and the guarded constants. The test checks the current snapshot against `CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION[next]`. A digest pins every released entry, so editing the `v14` hash fails CI. Regenerate the `next` entry only from the hash this command prints, and say in the PR body that the hash changed:
+
+  ```
+  node --import tsx --test --test-name-pattern="snapshot-keyed" tests/cii-scoring.test.mts | grep "CII protocol snapshot hash"
+  ```
+
+The PR that ships `next` to main bumps `CII_FORMULA_VERSION`, clears `inProgress`, and moves the claim on (section 4). It also freezes the `next` hash as released, by updating `CII_RELEASED_PROTOCOL_HASHES_SHA256`.
+
+**The release gate for merging an integration branch into main.** Without it, the branch could reach main with `inProgress` still set and no version bump. Production would then serve the new scores under the old version's label, and every fixture check would stay green. The "CII release gate" tests in `tests/cii-invariants.test.mts` enforce it:
+
+- In CI on main, on a PR into main, or in a merge-queue run for main, `inProgress` must not be set. Those runs are detected from `GITHUB_BASE_REF` and `GITHUB_REF`. Elsewhere, including local runs, the test is skipped with a message.
+- Wherever `inProgress` is unset, the tree must name its own version. `CII_FORMULA_VERSION` must equal `next`, or the claim must have moved on to the version after it. `KNOWN_GAPS[CII_FORMULA_VERSION]` must exist.
+- The integration branch's release-blocker list must be empty. Its assertion joins this gate in the PR that adds the list.
 
 Capture a new fixture GET-only, with no Redis writes:
 
@@ -106,7 +128,7 @@ WM_SEED_ENV_FILE=/path/to/.env.local node --import tsx scripts/cii-capture-fixtu
 
 `--wait-for-rebuild` polls the stored table and reads the inputs the moment production rebuilds it. A table minutes old no longer matches inputs that have since moved.
 
-The capture also trims. It keeps only the fields the scorer reads and only rows that can reach a Tier-1 country. Strike-feed events keep severity, time and resolved country, with no text, source or channel. Headlines are replaced by a country name or dropped. The script then proves the trim leaves every term and every input-health state unchanged.
+The capture also trims. It keeps only the fields the scorer reads and only rows that can reach a Tier-1 country. Strike-feed events keep severity, time and resolved country, with no text, source or channel; interceptions and ships at sea, which the scorer skips, are dropped. Headlines are replaced by a country name or dropped. The script then proves the trim leaves every term and every input-health state unchanged.
 
 ### Whole-table diff
 
@@ -120,7 +142,7 @@ Paste the output of `node --import tsx scripts/cii-table-diff.mts --base origin/
 
 Every country that moves by ≥3 needs an entry in `docs/methodology/cii-changes/<version>.json`, naming the property or input that caused the move.
 
-A new formula version records its expected tables with `--write-expected`. The script refuses to overwrite an existing version's table.
+A new formula version records its expected tables with `--write-expected`. The script refuses to overwrite a released version's table; only an in-progress `next` table is regenerated.
 
 ### Sensitivity
 

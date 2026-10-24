@@ -44,6 +44,7 @@ import {
   CII_STRIKE_GDELT_SUSTAINED_DAYS,
   CII_STRIKE_HALF_LIFE_DAYS,
   CII_STRIKE_SEVERITY_WEIGHTS,
+  CII_STRIKE_TALLY_VERSION,
   CII_STRIKE_WINDOW_DAYS,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
@@ -82,6 +83,7 @@ import {
   DEFAULT_CII_EVENT_MULTIPLIER,
 } from '../shared/cii-weights.ts';
 import { CLIMATE_ZONES } from '../scripts/_climate-zones.mjs';
+import { ciiScoredVersion, readCiiVersionClaim } from '../scripts/lib/cii-fixtures.mts';
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -122,13 +124,39 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // v14 drops the cyber boost (hosting-location IOC feeds) and scores only foreign
   // military flights and vessels in Security.
   v14: 'dbfde746fb27478461511b21a72c0d5922b40cae005c41b5ab2ed0f20e025675',
+  // v15 is in progress on the cii-v15 integration branch (docs/methodology/cii-next.json).
+  // Each Stage B PR regenerates this entry, and only this one, with the command in
+  // docs/methodology/cii-change-brief.md section 3, and says so in its PR body. It
+  // is frozen as released when v15 ships.
+  v15: '268f02f1ce0fbea260326b841edbf75652e58b75fab637bfe953e7362f781f6c',
 };
+
+// The released entries above are a record. This digest of every entry except
+// the in-progress `next` makes an edit to one of them fail CI. Update it only in
+// the PR that ships a version, when that version's hash becomes released.
+const CII_RELEASED_PROTOCOL_HASHES_SHA256 = '82d6b1e150e452adad1055cf56fa964e2041a1f114f339e71fee069524c3965f';
+const CII_VERSION_CLAIM = readCiiVersionClaim();
+const CII_SCORED_VERSION = ciiScoredVersion(CII_VERSION_CLAIM);
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
 const GUARDED_SCORE_FUNCTION_NAMES = [
   'climateSeverityScore', 'deriveUcdpIntensityByRegion', 'computeCIIScores',
   'gdeltStrikeDays', 'strikePressure', 'strikePressureFloor', 'strikePressureBoost',
+  'strikeEventCountry', 'isInterceptStrikeEvent', 'confirmedStrikeDaysFromEvents', 'confirmedStrikeDaysFromSeed',
 ];
+// Strike attribution and counting (CII v15 B3) turn on strings and record
+// shapes, not numeric literals: which events count, for which country, from
+// which tally version. Their whole bodies are hashed, comments removed.
+const GUARDED_STRIKE_READER_NAMES = [
+  'strikeEventCountry', 'isInterceptStrikeEvent', 'confirmedStrikeDaysFromEvents', 'confirmedStrikeDaysFromSeed', 'strikeTallyWeight',
+];
+
+function guardedFunctionSourceSha256(source: string, names: readonly string[]): string {
+  const sourceFile = ts.createSourceFile('get-risk-scores.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const printer = ts.createPrinter({ removeComments: true });
+  const bodies = names.map((name) => printer.printNode(ts.EmitHint.Unspecified, findFunctionDeclaration(sourceFile, name), sourceFile));
+  return createHash('sha256').update(JSON.stringify(bodies)).digest('hex');
+}
 
 function readRepoFile(path: string): string {
   return readFileSync(resolve(REPO_ROOT, path), 'utf8');
@@ -1317,7 +1345,7 @@ describe('CII scoring', () => {
     const strikes = require('../scripts/lib/middle-east-strikes.cjs');
     const now = Date.now();
     const post = { id: 'saudidcd:7001', channel: 'saudidcd', url: 'https://t.me/SaudiDCD/7001', ts: new Date(now - 600_000).toISOString(), text: 'Projectile debris fell in Riyadh' };
-    const candidate = strikes.buildTelegramCandidate(post, { isStrike: true, kind: 'strike', place: 'Riyadh', countryIso2: 'SA', severity: 'critical' }, now);
+    const candidate = strikes.buildTelegramCandidate(post, { isStrike: true, kind: 'strike', when: 'new', place: 'Riyadh', countryIso2: 'SA', severity: 'critical' }, now);
     const events = strikes.deriveStrikeEvents([candidate], now);
     assert.equal(events.length, 1);
     const withStrike = emptyAux();
@@ -1329,20 +1357,21 @@ describe('CII scoring', () => {
     assert.equal(scoreFor(scored, 'IR')!.combinedScore, scoreFor(baseline, 'IR')!.combinedScore, 'the strike must not land on Iran');
   });
 
-  it('a strike event scores to the country it carries, even at sea', () => {
+  it('a ship hit at sea scores no country, not the coastal state or the attacker', () => {
+    // CII v15 B3: strikes score the country hit. A tanker mined in the Strait
+    // of Hormuz was scored to Iran, the actor; it now scores nowhere.
     const require = createRequire(import.meta.url);
     const strikes = require('../scripts/lib/middle-east-strikes.cjs');
     const now = Date.now();
     const post = { id: 'saudidcd:7002', channel: 'saudidcd', url: 'https://t.me/SaudiDCD/7002', ts: new Date(now - 600_000).toISOString(), text: 'Tanker struck in the Strait of Hormuz' };
-    const candidate = strikes.buildTelegramCandidate(post, { isStrike: true, kind: 'strike', place: 'Strait of Hormuz', countryIso2: 'IR', severity: 'high' }, now);
+    const candidate = strikes.buildTelegramCandidate(post, { isStrike: true, kind: 'strike', when: 'new', place: 'Strait of Hormuz', countryIso2: 'IR', severity: 'high' }, now);
     const [event] = strikes.deriveStrikeEvents([candidate], now);
-    assert.equal(event.countryCode, 'IR');
+    assert.equal(event.countryCode, '');
     const withStrike = emptyAux();
     withStrike.iranEvents = strikesAt({ ...event, severity: 'critical' });
     const baseline = computeCIIScores([], emptyAux());
     const scored = computeCIIScores([], withStrike);
-    assert.ok(scoreFor(scored, 'IR')!.combinedScore > scoreFor(baseline, 'IR')!.combinedScore,
-      'open water in the strait is in no country polygon; the event\'s countryCode must carry it to Iran');
+    for (const row of baseline) assert.equal(scoreFor(scored, row.region)!.combinedScore, row.combinedScore, row.region);
   });
 
   it('a strike event\'s country wins over its coordinates, and a non-Tier-1 country scores nowhere', () => {
@@ -1840,11 +1869,19 @@ describe('CII scoring', () => {
     }
   });
 
-  it('CII protocol coefficients are snapshot-keyed to CII_FORMULA_VERSION', () => {
-    const expectedHash = CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION[CII_FORMULA_VERSION];
+  it('released CII protocol snapshot hashes never change', () => {
+    const released = Object.entries(CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION)
+      .filter(([version]) => !(CII_VERSION_CLAIM.inProgress === true && version === CII_VERSION_CLAIM.next));
+    assert.ok(released.some(([version]) => version === CII_FORMULA_VERSION), `${CII_FORMULA_VERSION} is released and must keep its hash`);
+    assert.equal(hashJson(released), CII_RELEASED_PROTOCOL_HASHES_SHA256,
+      'A released CII protocol snapshot hash was edited. Released entries are a record; only the in-progress next version is regenerated.');
+  });
+
+  it('CII protocol coefficients are snapshot-keyed to the scored version (CII_FORMULA_VERSION, or the in-progress next)', (t) => {
+    const expectedHash = CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION[CII_SCORED_VERSION];
     assert.ok(
       expectedHash,
-      `No CII protocol snapshot for ${CII_FORMULA_VERSION}. Add a new snapshot hash when bumping CII_FORMULA_VERSION.`,
+      `No CII protocol snapshot for ${CII_SCORED_VERSION}. Add a new snapshot hash when bumping CII_FORMULA_VERSION.`,
     );
 
     const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');
@@ -1905,6 +1942,7 @@ describe('CII scoring', () => {
         CII_STRIKE_GDELT_SUSTAINED_DAYS,
         CII_STRIKE_HALF_LIFE_DAYS,
         CII_STRIKE_SEVERITY_WEIGHTS,
+        CII_STRIKE_TALLY_VERSION,
         CII_STRIKE_WINDOW_DAYS,
         STRATEGIC_RISK_POSITIONAL_DECAY,
         STRATEGIC_RISK_SCALE_FACTOR,
@@ -1914,15 +1952,31 @@ describe('CII scoring', () => {
       scoreFormulaLiterals,
       scoreHelperInputs,
       scoreLevelCutoffs: extractScoreLevelCutoffs(cachedRiskSource, 'getScoreLevel'),
+      strikeReadersSha256: guardedFunctionSourceSha256(getRiskScoresSource, GUARDED_STRIKE_READER_NAMES),
       // Coordinate attribution: which Tier-1 country a fire, jamming hex, quake or strike scores to.
       countryBordersSha256: createHash('sha256').update(readRepoFile('scripts/shared/cii-country-borders.data.mjs')).digest('hex'),
     };
 
+    const currentHash = hashJson(snapshot);
+    // The sanctioned way to read the current hash (docs/methodology/cii-change-brief.md section 3).
+    t.diagnostic(`CII protocol snapshot hash (${CII_SCORED_VERSION}): ${currentHash}`);
     assert.equal(
-      hashJson(snapshot),
+      currentHash,
       expectedHash,
-      'CII coefficient/formula/cutoff snapshot changed. Bump CII_FORMULA_VERSION, update methodology docs/changelogs, and add the new version-keyed snapshot hash.',
+      CII_SCORED_VERSION === CII_FORMULA_VERSION
+        ? 'CII coefficient/formula/cutoff snapshot changed. Bump CII_FORMULA_VERSION, update methodology docs/changelogs, and add the new version-keyed snapshot hash.'
+        : `CII coefficient/formula/cutoff snapshot changed on the ${CII_SCORED_VERSION} integration branch. Regenerate the ${CII_SCORED_VERSION} entry only, and state the change in the PR body.`,
     );
+  });
+
+  it('CII protocol snapshot guards which strike events count, and for which country', () => {
+    const source = readRepoFile('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
+    const base = guardedFunctionSourceSha256(source, GUARDED_STRIKE_READER_NAMES);
+    assert.ok(source.includes("=== 'defense'"), 'the interception filter this guard pins');
+    assert.notEqual(guardedFunctionSourceSha256(source.replace("=== 'defense'", "=== 'intercept'"), GUARDED_STRIKE_READER_NAMES), base,
+      'changing the interception filter must change the protocol hash');
+    assert.equal(guardedFunctionSourceSha256(source.replace('An interception: the feed maps it', 'An interception, mapped'), GUARDED_STRIKE_READER_NAMES), base,
+      'a comment edit must not');
   });
 
   it('CII protocol snapshot includes guarded top-level score constants and helpers', () => {
@@ -1960,8 +2014,21 @@ describe('CII scoring', () => {
       export function strikePressureBoost(): number {
         return 0;
       }
+      export function strikeEventCountry(): null {
+        return null;
+      }
+      export function isInterceptStrikeEvent(): boolean {
+        return false;
+      }
+      export function confirmedStrikeDaysFromEvents(): number {
+        return 3;
+      }
+      export function confirmedStrikeDaysFromSeed(): number {
+        return 2;
+      }
     `);
     assertFormulaLiteralCovered(literals, 'gdeltStrikeDays', 7, 'return 7');
+    assertFormulaLiteralCovered(literals, 'confirmedStrikeDaysFromSeed', 2, 'return 2');
 
     assertFormulaLiteralCovered(literals, 'UCDP_CLASSIFICATION_WINDOW_MS', 2, '2 * 365');
     assertFormulaLiteralCovered(literals, 'NEWS_THREAT_WEIGHT', 4, 'critical: 4');

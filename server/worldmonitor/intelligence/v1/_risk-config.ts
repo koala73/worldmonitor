@@ -171,6 +171,14 @@ export const CII_STRIKE_SEVERITY_WEIGHTS = { critical: 4, high: 2, elevated: 1, 
  * minutes) the tally is ignored and GDELT alone carries every country.
  */
 export const CII_STRIKE_CONFIRMED_MAX_AGE_MS = 72 * 60 * 60 * 1000;
+/**
+ * The relay tally version the scorer reads (conflict:strike-pressure:v1
+ * `version`). v2 counts only deduplicated, current strikes that landed in the
+ * country (CII v15 B3); a v1 tally counted retrospective posts, duplicates and
+ * interceptions, so it is rejected as unusable, never read as calm. Pinned to
+ * the relay's PRESSURE_VERSION by tests/cii-strike-pressure.test.mts.
+ */
+export const CII_STRIKE_TALLY_VERSION = 2;
 export const CII_STRIKE_GDELT_SMOOTHING = 50;
 export const CII_STRIKE_GDELT_NOISE_FLOOR = 0.005;
 export const CII_STRIKE_GDELT_SCALE = 300;

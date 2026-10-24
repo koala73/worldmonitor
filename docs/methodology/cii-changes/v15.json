@@ -1,0 +1,22 @@
+{
+  "b3-strike-precision": {
+    "rule": "One physical incident counts once, on the country hit, at the time it happened: the strike feed drops retrospective posts, interceptions and ships at sea, merges every report of one incident, and the scorer reads only the v2 strike tally (CII_STRIKE_TALLY_VERSION) that the fixed relay writes.",
+    "fixtureMovers": [],
+    "note": "No fixture country moves by 3 or more. The fixtures hold the relay's output, so the relay change cannot show in them. Rejecting their v1 tally moves IR 66 to 65 on 2026-10-23T0946Z and lowers blends by under 1 point elsewhere (IR, LB, SA, SY). A counterfactual on 2026-10-23T0946Z that swaps the production 72h window for the fixed relay's replay of the same posts moves SA 70 to 66 and IR 66 to 62 (PR #9592).",
+    "knownGaps": [
+      {
+        "id": "strike-memory-dip",
+        "what": "After deploy the scorer rejects the v1 tally and the relay starts a new v2 tally, so confirmed strike memory is the 72h window, not 21 days, until the v2 tally refills. GDELT's strike counter, merged by per-day max, keeps its own 21 days.",
+        "measured": "On the committed fixtures (a v1 tally of 3 to 5 days, feed live since 2026-10-19): strike pressure P falls 19% for IR (18.6 to 15.2) and LB (24.3 to 19.6), 3% for SA (GDELT dominates), and SY 1.2 to 0; final scores move by at most 1.",
+        "modelled": "For a steady campaign the 72h window holds 50% of the decayed 21-day pressure. The share held rises to 76% three days after deploy, 91% after a week and 99% after two weeks, and the gap closes at 21 days; the 30-day tally keeps days the scorer no longer weighs.",
+        "duration": "up to 21 days after the relay deploy (the tally keeps 30 days, the scorer weighs 21)"
+      },
+      {
+        "id": "strike-feed-precision",
+        "what": "Strict precision of counted strike events is below the I8 target of 80%, so the feed must not set a floor (Stage C).",
+        "measured": "Production window 2026-10-20..23: 25% strict, 37% lenient (counting unexplained explosions). Same 311 posts through one model (gpt-oss-120b): base 31% / 43%, head 55-59% / 79-81%.",
+        "duration": "until residual duplicates (one village under two spellings), undated claim footage and unexplained explosions are handled"
+      }
+    ]
+  }
+}
