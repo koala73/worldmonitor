@@ -1,10 +1,10 @@
 [
   {
     "slug": "iran-israel-escalation",
-    "title": "Iran–Israel escalation tracker",
-    "shortTitle": "Iran–Israel escalation",
+    "title": "Iran–Israel war tracker",
+    "shortTitle": "Iran–Israel war",
     "region": "middle-east",
-    "description": "Monthly conflict pulse for Iran and Israel: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a fixed two-country scope.",
+    "description": "Iran–Israel war: background on the 2025 and 2026 wars, key actors, a sourced timeline, what to watch, and monthly conflict events and fatalities.",
     "overview": "This tracker keeps a deliberately narrow geographic boundary: it compares the latest available monthly conflict summaries for Iran and Israel. It does not claim to capture every regional spillover event, diplomatic development, or military movement.",
     "coverage": [
       {
@@ -20,10 +20,10 @@
   },
   {
     "slug": "ukraine-war",
-    "title": "Ukraine war tracker",
-    "shortTitle": "Ukraine war",
+    "title": "Russia–Ukraine war tracker",
+    "shortTitle": "Russia–Ukraine war",
     "region": "europe",
-    "description": "Monthly conflict pulse for Ukraine and Russia: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a fixed two-country scope.",
+    "description": "Russia–Ukraine war: background since 2014, key actors, a sourced timeline, what to watch, and monthly conflict events and fatalities for both countries.",
     "overview": "This tracker compares the latest available monthly conflict summaries for Ukraine and Russia. The totals reflect the maintained humanitarian dataset's country records and are not a battlefield map, casualty estimate, or prediction.",
     "coverage": [
       {
@@ -42,7 +42,7 @@
     "title": "Red Sea security tracker",
     "shortTitle": "Red Sea security",
     "region": "middle-east",
-    "description": "Monthly conflict pulse for Yemen, Saudi Arabia, Djibouti and Eritrea — the fixed four-country boundary around the Red Sea and the Bab el-Mandeb strait.",
+    "description": "Red Sea security and Houthi attacks: Yemen's war and the shipping crisis, key actors, a sourced timeline, what to watch, and monthly conflict data.",
     "overview": "This tracker uses a fixed four-country boundary around the Red Sea and Bab el-Mandeb. It provides country-level humanitarian conflict context; maritime warnings and vessel disruptions remain separate live signals on the chokepoint pages and dashboard.",
     "coverage": [
       {
@@ -66,10 +66,10 @@
   },
   {
     "slug": "sudan-conflict",
-    "title": "Sudan conflict tracker",
-    "shortTitle": "Sudan conflict",
+    "title": "Sudan war tracker",
+    "shortTitle": "Sudan war",
     "region": "africa",
-    "description": "Monthly conflict pulse for Sudan: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a bounded country-level view.",
+    "description": "Sudan war between the army (SAF) and the RSF: background, key actors, a sourced timeline, what to watch, and monthly conflict events and fatalities for Sudan.",
     "overview": "This tracker reports the latest available monthly humanitarian conflict summary for Sudan. It is a country-level pulse, not a comprehensive incident ledger, displacement estimate, or forecast.",
     "coverage": [
       {
@@ -81,10 +81,10 @@
   },
   {
     "slug": "lebanon-israel-escalation",
-    "title": "Lebanon–Israel escalation tracker",
-    "shortTitle": "Lebanon–Israel escalation",
+    "title": "Lebanon–Israel war tracker",
+    "shortTitle": "Lebanon–Israel war",
     "region": "middle-east",
-    "description": "Monthly conflict pulse for Lebanon and Israel: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a fixed two-country scope.",
+    "description": "Lebanon–Israel war: Hezbollah, the ceasefires and disarmament talks, key actors, a sourced timeline, what to watch, and monthly conflict data.",
     "overview": "This tracker compares the latest available monthly conflict summaries for Lebanon and Israel. Lebanon's figures are aggregated from subnational humanitarian records; the tracker does not attempt to attribute events to specific parties, and cross-border exchanges appear only as each country's own recorded totals.",
     "coverage": [
       {
@@ -103,7 +103,7 @@
     "title": "Strait of Hormuz security tracker",
     "shortTitle": "Hormuz and Gulf security",
     "region": "middle-east",
-    "description": "Monthly conflict pulse for Iran, Iraq and the six Gulf Cooperation Council littoral states around the Strait of Hormuz.",
+    "description": "Strait of Hormuz security: shipping and Gulf energy risk, key actors, a sourced timeline, what to watch, and monthly conflict data for Iran, Iraq and the Gulf.",
     "overview": "This tracker uses a fixed eight-country boundary around the Persian Gulf and the Strait of Hormuz. It provides country-level humanitarian conflict context; tanker traffic, maritime warnings and vessel disruptions remain separate live signals on the chokepoint pages and dashboard.",
     "coverage": [
       {
@@ -146,7 +146,7 @@
     "title": "Sahel insurgency tracker",
     "shortTitle": "Sahel insurgency",
     "region": "africa",
-    "description": "Monthly conflict pulse for Burkina Faso, Mali and Niger: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a fixed three-country scope.",
+    "description": "Sahel insurgency in Burkina Faso, Mali and Niger: JNIM and Islamic State, key actors, a sourced timeline, what to watch, and monthly conflict data.",
     "overview": "This tracker covers the central Sahel states of Burkina Faso, Mali and Niger, whose insurgencies cross shared borders. Totals are aggregated from subnational humanitarian records and are not a territorial control map, a displacement estimate, or a forecast.",
     "coverage": [
       {
@@ -169,7 +169,7 @@
     "title": "Horn of Africa conflict tracker",
     "shortTitle": "Horn of Africa",
     "region": "africa",
-    "description": "Monthly conflict pulse for Ethiopia, Somalia, South Sudan and Eritrea: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a fixed four-country scope.",
+    "description": "Horn of Africa conflicts in Ethiopia, Somalia, South Sudan and Eritrea: Tigray, al-Shabaab, key actors, a sourced timeline, what to watch and monthly data.",
     "overview": "This tracker keeps a fixed four-country boundary across the Horn of Africa. Ethiopia, Somalia and South Sudan report through subnational humanitarian records while Eritrea reports nationally, so a country showing zero recorded events reflects the maintained dataset rather than an absence of risk.",
     "coverage": [
       {
@@ -196,7 +196,7 @@
     "title": "Myanmar civil war tracker",
     "shortTitle": "Myanmar civil war",
     "region": "asia",
-    "description": "Monthly conflict pulse for Myanmar: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a bounded country-level view.",
+    "description": "Myanmar civil war: the military government, resistance forces and ethnic armies, a sourced timeline, what to watch, and monthly conflict events and fatalities.",
     "overview": "This tracker reports the latest available monthly humanitarian conflict summary for Myanmar, aggregated from subnational records. It is a country-level pulse, not a comprehensive incident ledger, a territorial control map, or a forecast.",
     "coverage": [
       {
@@ -211,7 +211,7 @@
     "title": "Haiti security crisis tracker",
     "shortTitle": "Haiti security crisis",
     "region": "americas",
-    "description": "Monthly conflict pulse for Haiti: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a bounded country-level view.",
+    "description": "Haiti gang violence: Viv Ansanm, the Gang Suppression Force and the police, a sourced timeline, what to watch, and monthly conflict events and fatalities.",
     "overview": "This tracker reports the latest available monthly humanitarian conflict summary for Haiti, aggregated from subnational records. Armed-group territorial control and displacement are tracked separately by humanitarian agencies and are not represented in these counts.",
     "coverage": [
       {
@@ -226,7 +226,7 @@
     "title": "DR Congo conflict tracker",
     "shortTitle": "DR Congo conflict",
     "region": "africa",
-    "description": "Monthly conflict pulse for the Democratic Republic of the Congo: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a bounded country-level view.",
+    "description": "Democratic Republic of the Congo conflict: M23 and fighting in the eastern Kivus, key actors, a sourced timeline, what to watch, and monthly conflict data.",
     "overview": "This tracker reports the latest available monthly humanitarian conflict summary for the Democratic Republic of the Congo, aggregated from subnational records across the whole country rather than the eastern provinces alone.",
     "coverage": [
       {
@@ -241,7 +241,7 @@
     "title": "Nigeria security crisis tracker",
     "shortTitle": "Nigeria security crisis",
     "region": "africa",
-    "description": "Monthly conflict pulse for Nigeria: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a bounded country-level view.",
+    "description": "Nigeria security crisis: Boko Haram, ISWAP, bandit kidnappings and Middle Belt violence, actors, a sourced timeline, what to watch, and monthly conflict data.",
     "overview": "This tracker reports the latest available monthly humanitarian conflict summary for Nigeria, aggregated from subnational records. It combines the north-eastern insurgency, banditry and communal violence into one national total and does not separate them.",
     "coverage": [
       {
@@ -256,7 +256,7 @@
     "title": "Afghanistan crisis tracker",
     "shortTitle": "Afghanistan crisis",
     "region": "asia",
-    "description": "Monthly conflict pulse for Afghanistan: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a bounded country-level view.",
+    "description": "Afghanistan under the Taliban: humanitarian crisis, women's rights, Pakistan border strikes, key actors, a sourced timeline, what to watch and monthly data.",
     "overview": "This tracker reports the latest available monthly humanitarian conflict summary for Afghanistan, aggregated from subnational records. Economic collapse, returnee flows and restrictions on women are central to the humanitarian picture and are not captured by conflict-event counts.",
     "coverage": [
       {
@@ -268,10 +268,10 @@
   },
   {
     "slug": "palestine-gaza-crisis",
-    "title": "Palestine crisis tracker",
-    "shortTitle": "Palestine crisis",
+    "title": "Gaza war and West Bank tracker",
+    "shortTitle": "Gaza war and West Bank",
     "region": "middle-east",
-    "description": "Monthly conflict pulse for the Occupied Palestinian Territory: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a bounded scope.",
+    "description": "Gaza war and the West Bank: the ceasefire, Board of Peace and settler violence, key actors, a sourced timeline, what to watch, and monthly conflict data.",
     "overview": "This tracker reports the latest available monthly humanitarian conflict summary for the Occupied Palestinian Territory, aggregated from subnational records covering Gaza and the West Bank together. Recorded event counts are not casualty estimates and are known to lag and undercount during periods of restricted access.",
     "coverage": [
       {
