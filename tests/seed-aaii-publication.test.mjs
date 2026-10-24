@@ -57,12 +57,13 @@ globalThis.fetch = async (input, init = {}) => {
   }
   if (url.hostname !== 'www.aaii.com') throw new Error('Unexpected network host ' + url.hostname);
   sources.push(url.pathname);
+  if (sources.length === 1 && config.elapsedMs) config.now += config.elapsedMs;
   if (config.source === 'http-error') return new Response('Unavailable', { status: 503 });
   if (config.source === 'forbidden') return new Response('Forbidden', { status: 403 });
   if (sources.length === 1) {
     if (config.source === 'flaky-http') return new Response('Unavailable', { status: 503 });
     if (config.source === 'flaky-network') throw new TypeError('temporary connection failure');
-    if (config.source === 'rate-limit') return new Response('Slow down', { status: 429, headers: { 'Retry-After': '20' } });
+    if (config.source === 'rate-limit') return new Response('Slow down', { status: 429, headers: { 'Retry-After': config.retryAfter ?? '20' } });
   }
   if (url.pathname.endsWith('.xls')) return new Response(new Uint8Array(0));
   if (['html', 'redis-error', 'stale-html', 'flaky-http', 'flaky-network', 'rate-limit'].includes(config.source)) return new Response('<span>Week ending October ' + (config.source === 'stale-html' ? '7' : '14') + ', 2026</span><td class="tableTxt">40.0%</td><td class="tableTxt">30.0%</td><td class="tableTxt">30.0%</td>');
@@ -71,14 +72,14 @@ globalThis.fetch = async (input, init = {}) => {
 process.on('exit', () => writeFileSync(process.env.AAII_FIXTURE_RESULT, JSON.stringify({ cache: Object.fromEntries(cache), commands, sources })));
 `;
 
-function run({ cache = {}, source = 'empty' } = {}) {
+function run({ cache = {}, source = 'empty', retryAfter, elapsedMs } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'aaii-publication-'));
   try {
     const importPath = join(dir, 'fetch.mjs');
     const configPath = join(dir, 'config.json');
     const resultPath = join(dir, 'result.json');
     writeFileSync(importPath, preload);
-    writeFileSync(configPath, JSON.stringify({ now, cache, source }));
+    writeFileSync(configPath, JSON.stringify({ now, cache, source, retryAfter, elapsedMs }));
     const child = spawnSync(process.execPath, ['--import', importPath, seeder], {
       env: {
         PATH: process.env.PATH,
@@ -165,6 +166,33 @@ test('permission denial fails immediately without replacing data or renewing exp
   assert.deepEqual(result.cache, cache);
   assert.doesNotMatch(result.log, /Retry|"event":"seed_complete"/);
 });
+
+for (const retryAfter of ['120', new Date(now + 120_000).toUTCString()]) {
+  test(`Retry-After ${retryAfter} keeps the full provider delay`, () => {
+    const result = run({ source: 'rate-limit', cache: fullHistory(), retryAfter });
+    const expected = retryAfter === '120' ? 120_000 : Date.parse(retryAfter) - now;
+    assert.equal(result.status, 0, result.log);
+    assert.equal(result.sources.length, 2);
+    assert.match(result.log, new RegExp('Retry 1/3 in ' + expected + 'ms'));
+    assert.equal(JSON.parse(result.cache[key].value)._seed.recordCount, 52);
+  });
+}
+
+for (const [name, retryAfter, elapsedMs] of [
+  ['delta-seconds at the fixed deadline', '240', 0],
+  ['HTTP-date past the fixed deadline', new Date(now + 300_000).toUTCString(), 0],
+  ['remaining budget after a slow response', '120', 130_000],
+  ['ten-second floor outside the remaining budget', '1', 231_000],
+]) {
+  test(`${name} stops without another request or publication`, () => {
+    const cache = fullHistory();
+    const result = run({ source: 'rate-limit', cache, retryAfter, elapsedMs });
+    assert.equal(result.status, 75, result.log);
+    assert.deepEqual(result.sources, ['/sentimentsurvey']);
+    assert.deepEqual(result.cache, cache);
+    assert.doesNotMatch(result.log, /Retry|"event":"seed_complete"/);
+  });
+}
 
 function fullHistory() {
   const cache = previous(false);
