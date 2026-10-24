@@ -264,6 +264,7 @@ function namedPackageImports(file) {
     if (!spec || !isBare(spec) || isBuiltin(spec)) continue;
     let elements = [];
     if (ts.isImportDeclaration(node) && !node.importClause?.isTypeOnly) {
+      if (node.importClause?.name) found.push({ spec, name: 'default' });
       const bindings = node.importClause?.namedBindings;
       if (bindings && ts.isNamedImports(bindings)) elements = bindings.elements;
     } else if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.exportClause && ts.isNamedExports(node.exportClause)) {
