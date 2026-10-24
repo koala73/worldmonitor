@@ -5,7 +5,7 @@ description: "World Monitor 如何处理个人数据的完整说明：我们收�
 
 {/* REVIEW — operator based in Dubai, UAE; effective date 10 July 2026. Still optional: (1) name the specific registered legal entity if one exists; (2) a dedicated privacy@ inbox vs support@; (3) confirm the subprocessor list matches production. NOT legal advice — a legal review is still recommended. */}
 
-_最后更新：2026 年 10 月 21 日_
+_最后更新：2026 年 10 月 24 日_
 
 **下载：**[PDF](https://www.worldmonitor.app/legal/privacy.pdf) · [Markdown](https://www.worldmonitor.app/docs/privacy.md)（英文原本，具有约束力的版本）
 
@@ -24,7 +24,7 @@ _最后更新：2026 年 10 月 21 日_
 
 **账户信息。** 如果您创建账户或升级到 Pro，我们的身份验证提供商（Clerk）会处理您的电子邮件地址、姓名和登录凭证。我们将账户标识符以及您的套餐/权益状态存储在我们的数据库（Convex）中。
 
-**支付信息。** 订阅由 Dodo Payments 处理，其作为登记商户（merchant of record）。您的完整卡片信息由支付处理方录入并保管——**World Monitor 绝不接收或存储您的完整卡号。** 我们仅接收管理您订阅所需的有限计费元数据（例如套餐、状态、国家/地区和卡号后四位）。
+**支付信息。** 订阅由 Dodo Payments 处理，其作为登记商户（merchant of record）。您的完整卡片信息由支付处理方录入并保管——**World Monitor 绝不接收或存储您的完整卡号。** 我们仅接收管理您订阅所需的有限计费元数据（例如套餐、状态、国家/地区和卡号后四位）。您订阅时，我们还会把您最初如何来到 World Monitor（见下文的 `wm-acq` Cookie）附加到该订阅上，以便了解哪些渠道带来了付费订阅。
 
 **使用与诊断信息。** 为保持服务可靠，我们收集：
 
@@ -42,6 +42,7 @@ _最后更新：2026 年 10 月 21 日_
 - **必要项**——身份验证会话（Clerk）和安全功能使用 Cookie 或等效存储，这些是已登录功能正常工作所必需的。
 - **偏好项**——仪表盘设置本地存储在您的浏览器中。
 - **分析项**——我们的分析功能设计上注重隐私，并在相应配置下不使用跟踪 Cookie。
+- **来源渠道**——一个第一方 Cookie `wm-acq`，在 `worldmonitor.app` 上保存 90 天，记录您最初如何到达：链接中的营销标签（`utm_source`、`utm_medium`、`utm_campaign`）、来源网站的域名（不含具体页面）、您到达的页面类型以及日期。结账时会随请求发送，使订阅记录对应的渠道。它不会与广告商共享，也不会在其他网站上使用。
 
 ## 数据处理附录
 
@@ -55,7 +56,7 @@ _最后更新：2026 年 10 月 21 日_
 |----------|---------|----------------------------|
 | Clerk | 身份验证和账户管理 | 姓名、电子邮件地址、登录凭证和会话令牌 |
 | Convex | 应用数据库（账户、计费记录、权益、API 密钥、警报、偏好） | 账户标识符、姓名和电子邮件地址、订阅与付款记录（包括支付服务商的客户信息）、套餐与权益状态、API 密钥（以哈希形式存储）、警报规则及你连接的投递目标、已保存的偏好，以及你通过联系表单发送的消息 |
-| Dodo Payments | 支付处理和订阅计费（登记商户） | 姓名、电子邮件地址、账单信息和银行卡信息（由 Dodo Payments 保管；我们仅收到套餐、状态、国家/地区和卡号后四位） |
+| Dodo Payments | 支付处理和订阅计费（登记商户） | 姓名、电子邮件地址、账单信息和银行卡信息（由 Dodo Payments 保管；我们仅收到套餐、状态、国家/地区和卡号后四位；我们还会发送您最初如何到达的信息：营销标签、来源域名和到达页面类型） |
 | Sentry | 错误和崩溃监控 | 错误消息、堆栈跟踪、浏览器和设备类型，以及任何网络请求固有的 IP 地址 |
 | DebugBear | 真实用户页面性能监测（10% 页面加载抽样） | 页面路径、视口、导航和 Web Vitals 时序、用户代理、IP 地址，以及抽样页面上的浏览器错误（错误消息、堆栈跟踪和源 URL） |
 | Umami（自托管，`abacus.worldmonitor.app`） | 产品分析，运行在我们自己的 Railway 项目中 —— 没有分析服务商接收这些数据 | 页面浏览和产品事件，以及网络请求携带的浏览器和设备信息；对已登录用户，还包括你的账户标识符、套餐和订阅状态 |

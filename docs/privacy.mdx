@@ -5,7 +5,7 @@ description: "How World Monitor handles personal data: what we collect, subproce
 
 {/* REVIEW — operator based in the UAE (party naming decided 20 August 2026: "World Monitor", country only); effective date 20 August 2026 (DebugBear RUM and the self-hosted Umami collector disclosed, #6978/#5388). Still optional: (1) a dedicated privacy@ inbox vs support@; (2) PIPEDA coverage and a DPA are still open (#6638). NOT legal advice — a legal review is still recommended. */}
 
-_Last updated: 21 October 2026_
+_Last updated: 24 October 2026_
 
 **Download:** [PDF](https://www.worldmonitor.app/legal/privacy.pdf) · [Markdown](https://www.worldmonitor.app/docs/privacy.md)
 
@@ -24,7 +24,7 @@ This page is written in plain language and is not legal advice.
 
 **Account information.** If you create an account or upgrade to Pro, our authentication provider (Clerk) processes your email address, name, and login credentials. We store account identifiers and your plan/entitlement state in our database (Convex).
 
-**Payment information.** Subscriptions are processed by Dodo Payments, which acts as the merchant of record. Your full card details are entered with and held by the payment processor — **World Monitor never receives or stores your full card number.** We receive limited billing metadata (such as plan, status, country, and the last four digits) needed to manage your subscription.
+**Payment information.** Subscriptions are processed by Dodo Payments, which acts as the merchant of record. Your full card details are entered with and held by the payment processor — **World Monitor never receives or stores your full card number.** We receive limited billing metadata (such as plan, status, country, and the last four digits) needed to manage your subscription. When you subscribe, we also attach how you first reached World Monitor (see the `wm-acq` cookie below) to the subscription, so we can see which channels lead to paid plans.
 
 **Usage and diagnostics.** To keep the Service reliable we collect:
 
@@ -42,6 +42,7 @@ This page is written in plain language and is not legal advice.
 - **Essential** — authentication sessions (Clerk) and security use cookies or equivalent storage that are required for signed-in features to work.
 - **Preferences** — dashboard settings are stored locally in your browser.
 - **Analytics** — our analytics are designed to be privacy-friendly and, where configured, do not use tracking cookies.
+- **Acquisition source** — one first-party cookie, `wm-acq`, kept for 90 days on `worldmonitor.app`, records how you first arrived: the campaign tags in the link (`utm_source`, `utm_medium`, `utm_campaign`), the domain of the referring site (not the page), the type of page you landed on, and the date. It is sent with a checkout so the subscription records the channel. It is not shared with advertisers or used on other sites.
 
 ## Data Processing Addendum
 
@@ -55,7 +56,7 @@ We share personal data only with the service providers below, which process it o
 |----------|---------|----------------------------|
 | Clerk | Authentication and account management | Name, email address, login credentials, and session tokens |
 | Convex | Application database (accounts, billing records, entitlements, API keys, alerts, preferences) | Account identifiers, name and email address, subscription and payment records (including payment-provider customer details), plan and entitlement state, API keys (stored as hashes), alert rules and the destinations you connect, saved preferences, and messages you send through our contact forms |
-| Dodo Payments | Payment processing and subscription billing (merchant of record) | Name, email address, billing details, and card details, which Dodo Payments holds; we receive the plan, status, country, and last four digits |
+| Dodo Payments | Payment processing and subscription billing (merchant of record) | Name, email address, billing details, and card details, which Dodo Payments holds; we receive the plan, status, country, and last four digits. We also send how you first arrived (campaign tags, referring domain, landing page type) |
 | Sentry | Error and crash monitoring | Error messages, stack traces, browser and device type, and the IP address inherent in any web request |
 | DebugBear | Real-user page-performance monitoring (10% sample of page loads) | Page path, viewport, navigation and web-vitals timings, user agent, IP address, and browser errors on a sampled page (error messages, stack traces, and source URLs) |
 | Umami (self-hosted, `abacus.worldmonitor.app`) | Product analytics, running in our own Railway project — no analytics vendor receives this data | Page views and product events, with the browser and device details a web request carries; for signed-in users, your account identifier, plan, and subscription status |

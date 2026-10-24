@@ -13,6 +13,7 @@ import { initVercelAnalytics, stripSensitiveParamsFromUrl } from '@/bootstrap/se
 import { loadVariantThemeStylesheet } from '@/bootstrap/variant-theme';
 import { installUtmInterceptor } from './utils/utm';
 import { captureContentAttributionFromUrl } from '../shared/content-attribution';
+import { captureFirstTouchAcquisitionFromPage } from '../shared/acquisition-source';
 import { captureAgentRefFromSearch } from '../shared/agent-client-source';
 import { agentRefStorage } from '@/services/agent-ref';
 
@@ -565,6 +566,9 @@ const chunkReloadStorageKey = installChunkReloadGuard(__BUILD_HASH__);
 // Convex user row (users.ensureRecord), which new API keys inherit.
 // Best-effort: blocked cookies mean "no attribution".
 captureAgentRefFromSearch(window.location.search, agentRefStorage());
+// First-touch channel (UTM, referrer host, landing page), stamped onto the
+// Dodo subscription at checkout. Before any URL cleanup strips UTM params.
+captureFirstTouchAcquisitionFromPage();
 
 // Product analytics are secondary startup work; RUM starts once the trusted
 // dashboard entry executes so it can observe page-load vitals.

@@ -46,6 +46,7 @@ import {
 // The Convex runtime imports from `shared/` elsewhere (convex/apiKeys.ts,
 // convex/companyMonitoring/*), so there is no module-boundary reason to fork it.
 import { normalizeCheckoutAttributionSource as normalizeAttributionSource } from "../../shared/mcp-attribution";
+import { acquisitionCheckoutMetadata } from "../../shared/acquisition-source";
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
@@ -141,6 +142,8 @@ interface CheckoutArgs {
   referralCode?: string;
   /** MCP paid-funnel attribution (#6716). Parallel to referralCode. */
   attributionSource?: string;
+  /** First-touch acquisition source from the browser; re-validated here. */
+  acquisition?: unknown;
 }
 
 interface UserInfo {
@@ -392,6 +395,9 @@ async function _createCheckoutSession(
     // subscriptionHelpers on first subscription.active.
     metadata.wm_attribution = attributionSource;
   }
+  // First-touch channel (UTM, referrer host, landing page) so subscriptions
+  // carry channel next to billing country. Only `wm_acq_*` keys, re-validated.
+  Object.assign(metadata, acquisitionCheckoutMetadata(args.acquisition));
 
   try {
     // A 429 here is Dodo rate-limiting our shared API key (account-level, not
@@ -463,6 +469,17 @@ async function _createCheckoutSession(
 // Internal action: called by /relay/create-checkout with trusted userId
 // ---------------------------------------------------------------------------
 
+// The edge handler forwards only normalized known keys; the values are
+// re-validated again when stamped into provider metadata.
+const acquisitionValidator = v.object({
+  source: v.optional(v.string()),
+  medium: v.optional(v.string()),
+  campaign: v.optional(v.string()),
+  referrer: v.optional(v.string()),
+  landing: v.optional(v.string()),
+  firstSeen: v.optional(v.string()),
+});
+
 export const internalCreateCheckout = internalAction({
   args: {
     userId: v.string(),
@@ -473,6 +490,7 @@ export const internalCreateCheckout = internalAction({
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
     attributionSource: v.optional(v.string()),
+    acquisition: v.optional(acquisitionValidator),
     // "Start a new checkout anyway" — skips ONLY the pending-payment guard
     // (#4438). The subscription guard still applies.
     bypassPendingGuard: v.optional(v.boolean()),
@@ -511,6 +529,7 @@ export const internalCreateCheckout = internalAction({
         discountCode: args.discountCode,
         referralCode: args.referralCode,
         attributionSource: args.attributionSource,
+        acquisition: args.acquisition,
       },
       {
         userId: args.userId,

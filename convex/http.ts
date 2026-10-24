@@ -15,6 +15,7 @@ import { resendWebhookHandler } from "./resendWebhookHandler";
 import { clerkWebhookHandler } from "./accountDeletion/clerkWebhook";
 import { channelTypeValidator, USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
+import { normalizeAcquisitionSource } from "../shared/acquisition-source";
 import { verifyDunningPortalToken } from "./lib/identitySigning";
 import { buildUnsubscribeUrl, EMAIL_UNSUBSCRIBE_PATH, verifyUnsubscribeToken } from "./lib/emailUnsubscribe";
 import {
@@ -1958,6 +1959,7 @@ http.route({
       discountCode?: string;
       referralCode?: string;
       attributionSource?: string;
+      acquisition?: unknown;
       bypassPendingGuard?: boolean;
     }>(request);
     if (!body) {
@@ -1986,6 +1988,7 @@ http.route({
           discountCode: body.discountCode,
           referralCode: body.referralCode,
           attributionSource: body.attributionSource,
+          acquisition: normalizeAcquisitionSource(body.acquisition) ?? undefined,
           bypassPendingGuard: body.bypassPendingGuard,
         },
       );

@@ -60,6 +60,7 @@ import {
   parseCheckoutContext,
   resolveCheckoutContext,
 } from '../../shared/checkout-attribution';
+import { getFirstTouchAcquisitionForCheckout } from '../../shared/acquisition-source';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
@@ -632,6 +633,7 @@ export async function startCheckout(
         discountCode: options?.discountCode,
         referralCode: effectiveReferral,
         attributionSource: options?.attributionSource,
+        acquisition: getFirstTouchAcquisitionForCheckout(),
         // #4438: only set when the user confirmed "start a new checkout anyway"
         // from the pending-payment dialog. Skips the backend pending guard.
         ...(options?.bypassPendingGuard ? { bypassPendingGuard: true } : {}),

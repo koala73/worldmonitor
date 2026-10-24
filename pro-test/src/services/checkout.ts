@@ -50,6 +50,7 @@ import {
   resolveCheckoutContext,
   type CheckoutAttribution,
 } from '../../../shared/checkout-attribution';
+import { getFirstTouchAcquisitionForCheckout } from '../../../shared/acquisition-source';
 
 let checkoutInFlight = false;
 
@@ -457,6 +458,7 @@ async function doCheckout(
         discountCode: options.discountCode,
         referralCode: options.referralCode,
         attributionSource: options.attributionSource,
+        acquisition: getFirstTouchAcquisitionForCheckout(),
         // #4438: only set when the user confirmed "start a new checkout anyway"
         // from the pending-payment dialog. Skips the backend pending guard.
         ...(options.bypassPendingGuard ? { bypassPendingGuard: true } : {}),
