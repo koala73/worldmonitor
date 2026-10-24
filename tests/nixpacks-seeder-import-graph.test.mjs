@@ -44,11 +44,13 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { isBuiltin } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { extractBundleMembers, readStrippedSource, walkContainerGraph } from './_lib/import-graph-walk.mjs';
+import { extractBundleMembers, isBare, readStrippedSource, walkContainerGraph } from './_lib/import-graph-walk.mjs';
 import { sourceBootstrapsTsx } from './helpers/tsx-bootstrap.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -243,6 +245,89 @@ describe('root and scripts/ lock the same major of every shared dependency', () 
         compatLine(rootVersion),
         `${name}: root locks ${rootVersion} but scripts/ locks ${scriptsVersion}. Tests run against the root ` +
           `copy while the Railway container installs scripts/package-lock.json — bump both together`,
+      );
+    });
+  }
+});
+
+// Major parity still lets a minor bump that ADDS an export through, and no other
+// suite loads a seeder against scripts/node_modules (CI installs only the root
+// tree). So link every named import the container graph makes from a package
+// against the module namespace that package exposes when loaded from scripts/,
+// exactly as Node does at startup. Loading the packages, never the seeders,
+// keeps it side-effect free.
+function namedPackageImports(file) {
+  const source = ts.createSourceFile(file, readFileSync(file, 'utf-8'), ts.ScriptTarget.Latest);
+  const found = [];
+  for (const node of source.statements) {
+    const spec = node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : null;
+    if (!spec || !isBare(spec) || isBuiltin(spec)) continue;
+    let elements = [];
+    if (ts.isImportDeclaration(node) && !node.importClause?.isTypeOnly) {
+      const bindings = node.importClause?.namedBindings;
+      if (bindings && ts.isNamedImports(bindings)) elements = bindings.elements;
+    } else if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.exportClause && ts.isNamedExports(node.exportClause)) {
+      elements = node.exportClause.elements;
+    }
+    for (const el of elements) {
+      if (!el.isTypeOnly) found.push({ spec, name: (el.propertyName ?? el.name).text });
+    }
+  }
+  return found;
+}
+
+function exportsFromScriptsDir(specs) {
+  // --input-type=module -e resolves bare specifiers from cwd, i.e. /app.
+  const probe =
+    `const out = {};` +
+    `for (const s of ${JSON.stringify(specs)}) {` +
+    `  try { out[s] = Object.keys(await import(s)); } catch (e) { out[s] = { error: String(e?.message ?? e) }; }` +
+    `}` +
+    `process.stdout.write(JSON.stringify(out));`;
+  const run = spawnSync(process.execPath, ['--input-type=module', '-e', probe], { cwd: scriptsDir, encoding: 'utf-8' });
+  assert.equal(run.status, 0, `export probe failed: ${run.stderr}`);
+  return JSON.parse(run.stdout);
+}
+
+describe('named package imports link against the scripts/ install', () => {
+  const installed = existsSync(join(scriptsDir, 'node_modules'));
+  const required = process.env.WM_EXPECT_SCRIPTS_DEPS === '1';
+
+  it('scripts/node_modules is present when CI expects it', (t) => {
+    if (!installed && !required) return t.skip('scripts/node_modules not installed; run `npm ci --prefix scripts`');
+    assert.ok(installed, 'WM_EXPECT_SCRIPTS_DEPS=1 but scripts/node_modules is missing — the link check would vacuously pass');
+  });
+
+  if (!installed) return;
+
+  const files = new Set();
+  for (const svc of services) {
+    for (const path of walkRoots(resolveRoots(svc.entry).roots).visited) files.add(path);
+  }
+  const imports = new Map();
+  for (const file of files) {
+    for (const { spec, name } of namedPackageImports(file)) {
+      const users = imports.get(spec) ?? new Map();
+      users.set(name, [...(users.get(name) ?? []), relative(root, file)]);
+      imports.set(spec, users);
+    }
+  }
+  const available = exportsFromScriptsDir([...imports.keys()]);
+
+  it('covers the import that crashed seed-natural-events (coverage canary)', () => {
+    assert.ok(imports.get('undici')?.has('Dispatcher1Wrapper'), 'undici { Dispatcher1Wrapper } no longer collected — the walk or parser dropped it');
+  });
+
+  for (const [spec, users] of imports) {
+    it(spec, () => {
+      const names = available[spec];
+      assert.ok(Array.isArray(names), `'${spec}' failed to load from scripts/: ${names?.error}`);
+      const missing = [...users].filter(([name]) => !names.includes(name));
+      assert.deepEqual(
+        missing.map(([name, from]) => `${name} (imported by ${from.join(', ')})`),
+        [],
+        `'${spec}' as installed in scripts/node_modules does not export these names, so the importing seeders ` +
+          `crash at startup with "Named export ... not found". Bump ${spec} in scripts/package.json`,
       );
     });
   }
