@@ -2838,6 +2838,14 @@ describe('security header guardrails', () => {
     assert.ok(mediaSrc.includes('https:'), 'Tauri CSP media-src must allow https: for direct HLS CDN streams');
   });
 
+  it('desktop (Tauri) CSP limits cleartext WebSockets to loopback dev servers', () => {
+    const tauriConfig = JSON.parse(readFileSync(resolve(__dirname, '../src-tauri/tauri.conf.json'), 'utf-8'));
+    const connectSrc = getCspDirectiveTokens(tauriConfig.app.security.csp, 'connect-src');
+    const cleartextWebSockets = connectSrc.filter((token) => token === 'ws:' || token.startsWith('ws://')).sort();
+    assert.deepEqual(cleartextWebSockets, ['ws://127.0.0.1:*', 'ws://localhost:*'], 'only Vite HMR on loopback may use a cleartext WebSocket under tauri dev');
+    assert.ok(connectSrc.includes('wss:'), 'Tauri CSP connect-src must keep wss: for the relay');
+  });
+
   it('desktop (Tauri) CSP admits the production Clerk Frontend API and Turnstile (#9134)', () => {
     // loadClerkUmd() derives the script host from the publishable key, so a
     // pk_live build loads clerk.browser.js and ui.browser.js from

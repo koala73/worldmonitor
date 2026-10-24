@@ -3074,3 +3074,25 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     }
   });
 });
+
+describe('Rust toolchain pin', () => {
+  it('every dtolnay/rust-toolchain step installs the same exact release', () => {
+    const workflowDir = resolve(root, '.github/workflows');
+    const pins: { file: string; toolchain: unknown }[] = [];
+    for (const file of readdirSync(workflowDir).filter((f) => /\.ya?ml$/.test(f))) {
+      const workflow = YAML.parse(read(resolve(workflowDir, file))) as { jobs?: Record<string, { steps?: { uses?: string; with?: Record<string, unknown> }[] }> };
+      for (const job of Object.values(workflow.jobs ?? {})) {
+        for (const step of job.steps ?? []) {
+          if (step.uses?.startsWith('dtolnay/rust-toolchain@')) pins.push({ file, toolchain: step.with?.toolchain });
+        }
+      }
+    }
+    for (const file of ['build-desktop.yml', 'test.yml', 'test-linux-app.yml']) {
+      assert.ok(pins.some((pin) => pin.file === file), `${file} must install Rust with dtolnay/rust-toolchain`);
+    }
+    for (const { file, toolchain } of pins) {
+      assert.match(String(toolchain), /^\d+\.\d+\.\d+$/, `${file} must pin an exact Rust release, not a channel like stable`);
+    }
+    assert.equal(new Set(pins.map((pin) => String(pin.toolchain))).size, 1, 'release and test builds must compile with one Rust release');
+  });
+});
