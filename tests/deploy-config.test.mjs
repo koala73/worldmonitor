@@ -2841,11 +2841,9 @@ describe('security header guardrails', () => {
   it('desktop (Tauri) CSP limits cleartext WebSockets to loopback dev servers', () => {
     const tauriConfig = JSON.parse(readFileSync(resolve(__dirname, '../src-tauri/tauri.conf.json'), 'utf-8'));
     const connectSrc = getCspDirectiveTokens(tauriConfig.app.security.csp, 'connect-src');
-    assert.ok(!connectSrc.includes('ws:'), 'Tauri CSP connect-src must not allow ws: to any host');
+    const cleartextWebSockets = connectSrc.filter((token) => token === 'ws:' || token.startsWith('ws://')).sort();
+    assert.deepEqual(cleartextWebSockets, ['ws://127.0.0.1:*', 'ws://localhost:*'], 'only Vite HMR on loopback may use a cleartext WebSocket under tauri dev');
     assert.ok(connectSrc.includes('wss:'), 'Tauri CSP connect-src must keep wss: for the relay');
-    for (const origin of ['ws://localhost:*', 'ws://127.0.0.1:*']) {
-      assert.ok(connectSrc.includes(origin), `Tauri CSP connect-src must allow ${origin} for Vite HMR under tauri dev`);
-    }
   });
 
   it('desktop (Tauri) CSP admits the production Clerk Frontend API and Turnstile (#9134)', () => {

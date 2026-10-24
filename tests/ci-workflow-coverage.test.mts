@@ -3087,7 +3087,9 @@ describe('Rust toolchain pin', () => {
         }
       }
     }
-    assert.ok(pins.length >= 3, `expected the desktop build, sidecar tests and Linux app tests to install Rust, found ${pins.length}`);
+    for (const file of ['build-desktop.yml', 'test.yml', 'test-linux-app.yml']) {
+      assert.ok(pins.some((pin) => pin.file === file), `${file} must install Rust with dtolnay/rust-toolchain`);
+    }
     for (const { file, toolchain } of pins) {
       assert.match(String(toolchain), /^\d+\.\d+\.\d+$/, `${file} must pin an exact Rust release, not a channel like stable`);
     }
