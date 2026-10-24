@@ -834,6 +834,45 @@ describe('crawlable content corpus deployment contracts', () => {
     }
   });
 
+  it('builds a same-commit preview redeploy when the shallow clone has no origin/main', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'wm-vercel-preview-redeploy-'));
+    try {
+      const fixtureEnv = { ...process.env };
+      for (const key of ['GIT_COMMON_DIR', 'GIT_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_WORK_TREE']) {
+        delete fixtureEnv[key];
+      }
+      const git = (...args) => execFileSync('git', args, { cwd: fixture, env: fixtureEnv, encoding: 'utf8' });
+      git('init', '-q');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      writeFileSync(join(fixture, 'README.md'), 'base\n');
+      git('add', 'README.md');
+      git('commit', '-qm', 'base');
+      const deployed = git('rev-parse', 'HEAD').trim();
+      const run = (previous) => spawnSync('/bin/bash', [resolve(__dirname, '../scripts/vercel-ignore.sh')], {
+        cwd: fixture,
+        env: { ...fixtureEnv, VERCEL_GIT_COMMIT_REF: 'feat/env-flag', VERCEL_GIT_PREVIOUS_SHA: previous },
+        encoding: 'utf8',
+      });
+
+      // Vercel's preview clone has no origin/main, so the script falls back to
+      // PREVIOUS_SHA. A redeploy to pick up a preview env var sets it to HEAD.
+      const redeploy = run(deployed);
+      assert.ifError(redeploy.error);
+      assert.equal(redeploy.status, 1, 'a same-commit preview redeploy must build');
+
+      mkdirSync(join(fixture, 'scripts'), { recursive: true });
+      writeFileSync(join(fixture, 'scripts/seed-unrelated.mjs'), 'seed\n');
+      git('add', '.');
+      git('commit', '-qm', 'seed only');
+      const push = run(deployed);
+      assert.ifError(push.error);
+      assert.equal(push.status, 0, 'a new preview commit with no web changes must still skip');
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
   it('keeps corpus inputs available in Docker build contexts', () => {
     const markdownIgnore = dockerignoreSource.indexOf('*.md');
     const changelogInclude = dockerignoreSource.indexOf('!CHANGELOG.md');
