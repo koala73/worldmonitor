@@ -151,13 +151,15 @@ describe('immutable native-autodeploy fleet', () => {
     source: { repo, image: null },
   });
 
-  it('ships the 88-service fleet including the provisioned country-history seeder', () => {
+  it('ships the 89-service fleet including the provisioned NOTAM NMS seeder', () => {
     // 84 -> 85: seed-live-video-resolved (service 11581ac4, cron 0 */6 * * *)
     // was provisioned after #8596 merged. 85 -> 86: verification-desk
     // (service 1f732679, always-on, desk.worldmonitor.app) enrolled by #9083.
     // 86 -> 87: shipping-webhook-worker (service a97fa619, always-on) was
     // provisioned after #9236 merged. 87 -> 88: seed-country-history (service
-    // d295b2c7, cron 30 0 * * *) was provisioned after #9435 merged. The roster is not a baseline to be
+    // d295b2c7, cron 30 0 * * *) was provisioned after #9435 merged. 88 -> 89:
+    // seed-notam-nms (service 4aa3db57, cron */5 * * * *) was provisioned
+    // after #9637 merged. The roster is not a baseline to be
     // quieted — every mismatch is red — but it must list every repo-backed
     // service, or a service whose GitHub source detaches vanishes before
     // repository filtering and both read-only monitors report healthy. An
@@ -166,9 +168,9 @@ describe('immutable native-autodeploy fleet', () => {
     // NOTE: acceptedHead/acceptedRunId still name the pre-provisioning run; a
     // fresh reconciliation should re-stamp them.
     const fleet = readExpectedRepositoryFleet();
-    assert.equal(fleet.length, 88);
-    assert.equal(new Set(fleet.map((service) => service.id)).size, 88);
-    assert.equal(new Set(fleet.map((service) => service.name)).size, 88);
+    assert.equal(fleet.length, 89);
+    assert.equal(new Set(fleet.map((service) => service.id)).size, 89);
+    assert.equal(new Set(fleet.map((service) => service.name)).size, 89);
     assert.deepEqual(
       fleet.map((service) => service.name),
       [...fleet.map((service) => service.name)].sort(),

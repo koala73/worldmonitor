@@ -293,6 +293,10 @@
       "name": "seed-natural-events"
     },
     {
+      "id": "4aa3db57-9388-4c69-a248-8a538e576454",
+      "name": "seed-notam-nms"
+    },
+    {
       "id": "96fabace-d56d-4854-8096-3f5bcfe0d88a",
       "name": "seed-prediction-markets"
     },
