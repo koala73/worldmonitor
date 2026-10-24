@@ -67,12 +67,13 @@ function stubNetwork({ turnstileSuccess, redis = null, convexStatus = 'registere
   const calls = { turnstile: [], convex: [], resend: [] };
   globalThis.fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input.url;
-    if (redis && url.startsWith('https://redis.example')) return redis.fetchImpl(input, init);
+    const { origin } = new URL(url);
+    if (redis && origin === 'https://redis.example') return redis.fetchImpl(input, init);
     if (url === TURNSTILE_VERIFY_URL) {
       calls.turnstile.push(Object.fromEntries(new URLSearchParams(init.body)));
       return Response.json({ success: turnstileSuccess });
     }
-    if (url.startsWith('https://cloudflare-dns.com')) {
+    if (origin === 'https://cloudflare-dns.com') {
       return Response.json({ Answer: [{ type: 15, data: '10 mx.example.com.' }] });
     }
     if (url === RESEND_URL) {
