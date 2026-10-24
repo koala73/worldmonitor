@@ -21,7 +21,7 @@ message InternetOutage {
   string description = 4;
   // Detection time, as Unix epoch milliseconds.
   int64 detected_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // Affected country (ISO 3166-1 alpha-2).
+  // Affected country name.
   string country = 6;
   // Affected region within the country.
   string region = 7;

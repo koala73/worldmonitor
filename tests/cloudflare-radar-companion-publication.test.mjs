@@ -626,3 +626,17 @@ test('healthy to empty to source error to recovery never resurrects an old event
   const served = await readThroughRpcs(recovered.store);
   assert.deepEqual(served.traffic.anomalies, []);
 });
+
+test('a published outage carries Radar\'s ISO2 location code beside the display name', () => {
+  // The CII scorer and the resilience scorer place an outage by countryCode.
+  // Before this field existed the record held only the name, so the CII
+  // reader mapped none of them (0 of 15 in production on 2026-10-23).
+  const run = runSeeder({ entries: lastGoodEntries(), plan: { payload: 'full' } });
+
+  assert.equal(run.exitCode, 0, run.output);
+  const [outage] = JSON.parse(run.store.get(OUTAGES_KEY)).data.outages;
+  assert.equal(outage.countryCode, 'US');
+  assert.equal(outage.country, 'United States');
+  assert.equal(outage.cause, 'POWER_OUTAGE');
+  assert.equal(outage.detectedAt, Date.parse('2026-09-01T00:00:00Z'));
+});

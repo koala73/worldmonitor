@@ -9,7 +9,8 @@
 //   quiet           present and accepted, but moved no Tier-1 score
 //                   (`quietSince` is when that started)
 //   missing         the Redis key was absent
-//   unusable        present, but the scorer rejected it (too old or malformed)
+//   unusable        present, but the scorer rejected it (too old or malformed,
+//                   or none of its records map to a country)
 //   not_configured  disabled by deployment design (no ACLED credentials,
 //                   IRAN_EVENTS_ENABLED off)
 // An unreadable key rejects the whole build, so it surfaces as a stale

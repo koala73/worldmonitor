@@ -37,6 +37,13 @@ import {
   CII_GDELT_LEVEL_MIN_ARTICLES,
   CII_GDELT_LEVEL_PROTEST_FLOOR,
   CII_GDELT_LEVEL_PROTEST_SATURATION,
+  CII_OUTAGE_EXAM_TERMS,
+  CII_OUTAGE_FUTURE_SKEW_MS,
+  CII_OUTAGE_NEGATION_TERMS,
+  CII_OUTAGE_NEGATION_WINDOW_WORDS,
+  CII_OUTAGE_SCORED_CAUSES,
+  CII_OUTAGE_UNREST_TERMS,
+  CII_OUTAGE_WINDOW_MS,
   CII_STRIKE_BOOST_CAP,
   CII_STRIKE_BOOST_PER_DOUBLING,
   CII_STRIKE_BOOST_PIVOT,
@@ -66,6 +73,7 @@ import {
   DEFAULT_CII_EVENT_MULTIPLIER,
 } from '../../../../shared/cii-weights';
 import { CII_CLIMATE_ZONE_COUNTRIES } from '../../../../shared/cii-climate-zones';
+import { isAssignedCountryCode, resolveCountryCode } from '../../../../shared/country-code-resolve';
 
 // ========================================================================
 // Country risk baselines and multipliers
@@ -184,6 +192,109 @@ export function normalizeCountryName(text: string): string | null {
     if (keywords.some((kw) => hasCountryPhraseMatch(normalized, kw))) return code;
   }
   return null;
+}
+
+/**
+ * The ISO2 country of one internet-outage record, or null. The seeder writes
+ * Cloudflare Radar's location code as `countryCode`; records published before
+ * it did carry only the display name in `country` (the scorer read
+ * `countryCode` alone, so no record mapped). Every form goes through the
+ * shared resolver, and the code wins because the name is display text.
+ */
+export function outageCountryCode(outage: any): string | null {
+  for (const value of [outage?.countryCode, outage?.country_code, outage?.country]) {
+    const code = resolveCountryCode(value);
+    if (code && isAssignedCountryCode(code)) return code;
+  }
+  return null;
+}
+
+const foldOutageText = (text: unknown) => String(text ?? '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
+const wordRun = (text: string) => ` ${text.split(/[^\p{L}\p{N}]+/u).filter(Boolean).join(' ')} `;
+const LATIN_TERM = /^[a-z0-9 ]+$/;
+
+/**
+ * Lexical term matching for outage text (see CII_OUTAGE_EXAM_TERMS): a
+ * Latin-script term must equal a whole word or run of words; an
+ * Arabic-script term may sit inside a word.
+ */
+function outageTermMatcher(terms: readonly string[]): (text: string) => boolean {
+  const folded = terms.map(foldOutageText);
+  const latin = folded.filter((t) => LATIN_TERM.test(t)).map(wordRun);
+  const other = folded.filter((t) => !LATIN_TERM.test(t));
+  return (text) => {
+    const run = wordRun(text);
+    return latin.some((t) => run.includes(t)) || other.some((t) => text.includes(t));
+  };
+}
+const namesExam = outageTermMatcher(CII_OUTAGE_EXAM_TERMS);
+
+const outageWords = (text: string) => text.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+const UNREST_TERMS = CII_OUTAGE_UNREST_TERMS.map((term) => outageWords(foldOutageText(term)));
+const NEGATIONS = CII_OUTAGE_NEGATION_TERMS.map((term) => outageWords(foldOutageText(term)));
+
+/** Whether `term` (as words) sits at word `i`: Latin words exactly, Arabic-script words inside the word. */
+function termAt(words: string[], i: number, term: string[]): boolean {
+  return term.every((part, k) => {
+    const word = words[i + k];
+    if (word == null) return false;
+    return LATIN_TERM.test(part) ? word === part : word.includes(part);
+  });
+}
+
+/** Whether a negation ends within CII_OUTAGE_NEGATION_WINDOW_WORDS words before word `i`. */
+function negatedAt(words: string[], i: number): boolean {
+  for (let start = Math.max(0, i - CII_OUTAGE_NEGATION_WINDOW_WORDS); start < i; start++) {
+    for (const negation of NEGATIONS) {
+      if (start + negation.length > i) continue;
+      const hit = negation.every((part, k) => {
+        const word = words[start + k]!;
+        return word === part || (!LATIN_TERM.test(part) && word === `و${part}`);
+      });
+      if (hit) return true;
+    }
+  }
+  return false;
+}
+
+/** Whether the text carries an unrest term that no negation cancels (see CII_OUTAGE_NEGATION_TERMS). */
+function namesUnrest(text: string): boolean {
+  const words = outageWords(text);
+  for (let i = 0; i < words.length; i++) {
+    if (UNREST_TERMS.some((term) => termAt(words, i, term)) && !negatedAt(words, i)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether the record is a routine exam shutdown: its description or title
+ * names an exam and carries no unrest, election, conflict or military wording
+ * (lexical; see CII_OUTAGE_EXAM_TERMS and CII_OUTAGE_UNREST_TERMS).
+ */
+export function isExamShutdown(outage: any): boolean {
+  const text = foldOutageText(`${outage?.description ?? ''} ${outage?.title ?? ''}`);
+  return namesExam(text) && !namesUnrest(text);
+}
+
+/**
+ * Why an outage does or does not score now. It scores when its cause is in
+ * construct (CII_OUTAGE_SCORED_CAUSES), it was active at some point in the
+ * last CII_OUTAGE_WINDOW_MS, and it is not an exam shutdown. `endedAt` 0
+ * means ongoing. A record with no start time cannot be placed in the window,
+ * and one starting more than CII_OUTAGE_FUTURE_SKEW_MS ahead has not begun.
+ */
+export function outageVerdict(outage: any, nowMs: number): 'scored' | 'cause' | 'window' | 'exam' {
+  if (!CII_OUTAGE_SCORED_CAUSES.has(String(outage?.cause || '').toUpperCase())) return 'cause';
+  const start = Number(outage?.detectedAt);
+  if (!Number.isFinite(start) || start <= 0 || start > nowMs + CII_OUTAGE_FUTURE_SKEW_MS) return 'window';
+  const end = Number(outage?.endedAt);
+  const lastActive = Number.isFinite(end) && end > 0 ? Math.min(end, nowMs) : nowMs;
+  if (lastActive < nowMs - CII_OUTAGE_WINDOW_MS) return 'window';
+  return isExamShutdown(outage) ? 'exam' : 'scored';
+}
+
+export function isScoredOutage(outage: any, nowMs: number): boolean {
+  return outageVerdict(outage, nowMs) === 'scored';
 }
 
 function climateSeverityScore(value: unknown): number {
@@ -1146,6 +1257,16 @@ export function buildCiiAuxiliarySources(
     return a.length > maxLen ? a.slice(0, maxLen) : a;
   };
 
+  // Each outage record carries its resolved ISO2 code; one that resolves to no
+  // country is dropped. A payload whose records all fail to map is unusable,
+  // not quiet: that is how the countryCode/name mismatch hid for months (P7b).
+  const outageRecords = arr(outagesRaw, 'outages');
+  const outages = outageRecords.flatMap((o) => {
+    const countryCode = outageCountryCode(o);
+    return countryCode ? [{ ...o, countryCode }] : [];
+  });
+  if (outagesRaw != null && outageRecords.length > 0 && outages.length === 0) inputReads.outages = 'unusable';
+
   let orefData: AuxiliarySources['orefData'] = null;
   if (orefRaw && typeof orefRaw === 'object') {
     const alertCount = safeNonNegativeNum((orefRaw as any).activeAlertCount);
@@ -1195,7 +1316,7 @@ export function buildCiiAuxiliarySources(
 
   return {
     ucdpEvents: arr(ucdpRaw, 'events'),
-    outages: arr(outagesRaw, 'outages'),
+    outages,
     climate: arr(climateRaw, 'anomalies'),
     fires: parseWildfireFiresSummary(firesRaw)?.byCountry ?? null,
     gpsHexes: arr(gpsRaw, 'hexes'),
@@ -1242,9 +1363,16 @@ export const CII_HEALTH_INPUT_IDS = [
   'sanctionsPressure', 'sanctionsCounts', 'militaryCii',
 ] as const;
 export type CiiInputId = typeof CII_HEALTH_INPUT_IDS[number];
-type CiiInputRead = 'present' | 'missing' | 'not_configured';
+/** `unusable`: present, but none of its records map to a country. */
+type CiiInputRead = 'present' | 'missing' | 'unusable' | 'not_configured';
 export type CiiInputState = 'live' | 'quiet' | 'missing' | 'unusable' | 'not_configured';
-export interface CiiInputReport { state: CiiInputState; quietSince?: number }
+/** Records one construct rule removed from scoring: how many, and up to 5 to audit. */
+export interface CiiInputExclusion { count: number; samples: Array<{ id: string; title: string; description: string }> }
+/** `excluded`: records a construct rule removed from scoring, by rule (see ciiInputExclusions). */
+export interface CiiInputReport { state: CiiInputState; quietSince?: number; excluded?: Record<string, CiiInputExclusion> }
+export type CiiInputExclusions = Partial<Record<CiiInputId, Record<string, CiiInputExclusion>>>;
+const CII_EXCLUSION_SAMPLES = 5;
+const CII_EXCLUSION_TEXT_MAX = 200;
 
 const CII_INPUT_AUX_FIELD: Record<Exclude<CiiInputId, 'acled'>, keyof AuxiliarySources> = {
   ucdp: 'ucdpEvents',
@@ -1309,11 +1437,28 @@ export function assessCiiInputAvailability(
   return states;
 }
 
-/** Attaches `quietSince`, carried from the previous report while the input stays quiet. */
+/**
+ * Records a construct rule removed from scoring, reported on input health so
+ * an exclusion is never silent. `examShutdown` counts outages that pass the
+ * cause and window rules but are exam shutdowns (CII_OUTAGE_EXAM_TERMS).
+ */
+export function ciiInputExclusions(aux: AuxiliarySources, nowMs: number): CiiInputExclusions {
+  const exams = aux.outages.filter((o) => outageVerdict(o, nowMs) === 'exam');
+  if (exams.length === 0) return {};
+  const text = (v: unknown) => String(v ?? '').slice(0, CII_EXCLUSION_TEXT_MAX);
+  const samples = exams.slice(0, CII_EXCLUSION_SAMPLES).map((o) => ({ id: text(o.id), title: text(o.title), description: text(o.description) }));
+  return { outages: { examShutdown: { count: exams.length, samples } } };
+}
+
+/**
+ * Attaches `quietSince`, carried from the previous report while the input
+ * stays quiet, and each input's `excluded` counts.
+ */
 export function withCiiInputQuietClocks(
   states: Record<CiiInputId, CiiInputState>,
   previousInputs: unknown,
   nowMs: number,
+  { exclusions = {} }: { exclusions?: CiiInputExclusions } = {},
 ): Record<CiiInputId, CiiInputReport> {
   const previous = previousInputs && typeof previousInputs === 'object'
     ? previousInputs as Record<string, Partial<CiiInputReport> | undefined>
@@ -1321,12 +1466,13 @@ export function withCiiInputQuietClocks(
   const reports = {} as Record<CiiInputId, CiiInputReport>;
   for (const id of CII_HEALTH_INPUT_IDS) {
     const state = states[id];
+    const excluded = exclusions[id] ? { excluded: exclusions[id] } : {};
     if (state !== 'quiet') {
-      reports[id] = { state };
+      reports[id] = { state, ...excluded };
       continue;
     }
     const since = previous[id]?.state === 'quiet' ? Number(previous[id]?.quietSince) : NaN;
-    reports[id] = { state, quietSince: Number.isFinite(since) && since > 0 && since <= nowMs ? since : nowMs };
+    reports[id] = { state, quietSince: Number.isFinite(since) && since > 0 && since <= nowMs ? since : nowMs, ...excluded };
   }
   return reports;
 }
@@ -1445,9 +1591,10 @@ export function computeCIIScores(
   }
 
   // --- Outages (string enum severity) ---
+  // Only government-directed and military-action outages active inside the window.
   for (const o of aux.outages) {
-    const code = (o.countryCode || o.country_code || '').toUpperCase();
-    if (!data[code]) continue;
+    const code = outageCountryCode(o) ?? '';
+    if (!data[code] || !isScoredOutage(o, computedAt)) continue;
     const sev = String(o.severity || '').toUpperCase();
     if (sev.includes('TOTAL') || sev === 'NATIONWIDE') data[code].outageTotalCount++;
     else if (sev.includes('MAJOR') || sev === 'REGIONAL') data[code].outageMajorCount++;
@@ -2216,6 +2363,7 @@ async function buildRiskScoresPayload(): Promise<{
   response: GetRiskScoresResponse;
   realtimeSignalDensityCoverageCount: number;
   ciiInputs: Record<CiiInputId, CiiInputState>;
+  ciiInputExclusions: CiiInputExclusions;
 }> {
   const nowMs = Date.now();
   const [acled, aux, priorCiiScores] = await Promise.all([
@@ -2234,6 +2382,7 @@ async function buildRiskScoresPayload(): Promise<{
     response: { ciiScores, strategicRisks, degraded: false, stale: false },
     realtimeSignalDensityCoverageCount,
     ciiInputs: assessCiiInputAvailability(acled, aux, nowMs),
+    ciiInputExclusions: ciiInputExclusions(aux, nowMs),
   };
 }
 
@@ -2243,14 +2392,14 @@ async function persistFreshRiskScorePayload(
   freshResult: GetRiskScoresResponse,
   realtimeSignalDensityCoverageCount: number,
   ciiInputs: Record<CiiInputId, CiiInputState> | null,
-  options: { liveCache?: boolean } = {},
+  options: { liveCache?: boolean; exclusions?: CiiInputExclusions } = {},
 ): Promise<void> {
   const fetchedAt = Date.now();
   // The previous report carries each quiet input's clock. An unreadable one
   // restarts the clocks, which can only delay a quiet-too-long verdict.
   const previousMeta = ciiInputs ? await getCachedJson(RISK_SEED_META_KEY).catch(() => null) : null;
   const inputs = ciiInputs
-    ? withCiiInputQuietClocks(ciiInputs, (previousMeta as { inputs?: unknown } | null)?.inputs, fetchedAt)
+    ? withCiiInputQuietClocks(ciiInputs, (previousMeta as { inputs?: unknown } | null)?.inputs, fetchedAt, { exclusions: options.exclusions })
     : undefined;
   const writes: Array<Promise<unknown>> = [
     setCachedJson(RISK_STALE_CACHE_KEY, freshResult, RISK_STALE_TTL),
@@ -2278,6 +2427,7 @@ export async function getRiskScores(
   try {
     let realtimeSignalDensityCoverageCount = 0;
     let ciiInputs: Record<CiiInputId, CiiInputState> | null = null;
+    let exclusions: CiiInputExclusions = {};
     const { data: result, source, leader } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
       RISK_CACHE_KEY,
       RISK_CACHE_TTL,
@@ -2285,6 +2435,7 @@ export async function getRiskScores(
         const built = await buildRiskScoresPayload();
         realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
         ciiInputs = built.ciiInputs;
+        exclusions = built.ciiInputExclusions;
         return built.response;
       },
       undefined,
@@ -2300,6 +2451,7 @@ export async function getRiskScores(
           const built = await buildRiskScoresPayload();
           realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
           ciiInputs = built.ciiInputs;
+          exclusions = built.ciiInputExclusions;
           freshResult = withRiskScoreRuntimeState(built.response, { degraded: false, stale: false });
           liveCacheBackfill = true;
         } catch {
@@ -2336,6 +2488,7 @@ export async function getRiskScores(
       if ((source === 'fresh' && leader) || liveCacheBackfill) {
         await persistFreshRiskScorePayload(freshResult, realtimeSignalDensityCoverageCount, ciiInputs, {
           liveCache: liveCacheBackfill,
+          exclusions,
         });
       }
       return filterRiskScoresResponse(freshResult, req.region);

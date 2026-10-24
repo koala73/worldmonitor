@@ -1,0 +1,7 @@
+{
+  "b1-outages": {
+    "rule": "Every internet-outage record maps to an ISO2 code through shared/country-code-resolve.ts; only GOVERNMENT_DIRECTED and MILITARY_ACTION outages active in the last 7 days score, and exam shutdowns (matched lexically on description and title, CII_OUTAGE_EXAM_TERMS) never do; a reader that maps 0 of N records reports unusable (P7b).",
+    "fixtureMovers": [],
+    "note": "No fixture country moves: the committed fixtures were trimmed before cause and times were kept, so none of their outage records can score under the new rule, as none could before (0 of 15 mapped). Replaying the 2026-10-23T0946Z fixture with the untrimmed production outage records moves only RU, 62 to 63 (an ongoing MILITARY_ACTION partial outage since 2026-10-07)."
+  }
+}
