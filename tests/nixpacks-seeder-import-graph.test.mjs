@@ -45,8 +45,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { isBuiltin } from 'node:module';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -262,6 +263,7 @@ function namedPackageImports(file) {
   for (const node of source.statements) {
     const spec = node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : null;
     if (!spec || !isBare(spec) || isBuiltin(spec)) continue;
+    if (!node.importClause?.isTypeOnly && !node.isTypeOnly) found.push({ spec, name: null });
     let elements = [];
     if (ts.isImportDeclaration(node) && !node.importClause?.isTypeOnly) {
       if (node.importClause?.name) found.push({ spec, name: 'default' });
@@ -296,14 +298,25 @@ function namedPackageImports(file) {
 }
 
 function exportsFromScriptsDir(specs) {
-  // --input-type=module -e resolves bare specifiers from cwd, i.e. /app.
+  // --input-type=module -e resolves bare specifiers from cwd. Running from
+  // scripts/ would let resolution walk up into the ROOT node_modules, which the
+  // container does not have, so a package missing from scripts/ would still
+  // pass. Probe from a temp dir whose only node_modules is a symlink to
+  // scripts/node_modules; --preserve-symlinks keeps packages' own dependency
+  // lookups inside it too.
+  const sandbox = mkdtempSync(join(tmpdir(), 'wm-scripts-link-'));
+  symlinkSync(join(scriptsDir, 'node_modules'), join(sandbox, 'node_modules'), 'dir');
   const probe =
     `const out = {};` +
     `for (const s of ${JSON.stringify(specs)}) {` +
     `  try { out[s] = Object.keys(await import(s)); } catch (e) { out[s] = { error: String(e?.message ?? e) }; }` +
     `}` +
     `process.stdout.write(JSON.stringify(out));`;
-  const run = spawnSync(process.execPath, ['--input-type=module', '-e', probe], { cwd: scriptsDir, encoding: 'utf-8' });
+  const run = spawnSync(process.execPath, ['--preserve-symlinks', '--input-type=module', '-e', probe], {
+    cwd: sandbox,
+    encoding: 'utf-8',
+  });
+  rmSync(sandbox, { recursive: true, force: true });
   assert.equal(run.status, 0, `export probe failed: ${run.stderr}`);
   return JSON.parse(run.stdout);
 }
