@@ -406,7 +406,9 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // edge cache would pin a transient upstream failure long after it healed.
   '/api/intelligence/v1/get-country-coverage': 'medium',
   '/api/intelligence/v1/get-risk-scores': 'slow',
-  '/api/intelligence/v1/get-pizzint-status': 'slow',
+  // Live, not slow: the relay publishes a BestTime reading every 15 min, and
+  // an hour of CDN cache kept venues CLOSED long after they opened.
+  '/api/intelligence/v1/get-pizzint-status': 'live',
   '/api/intelligence/v1/classify-event': 'static',
   '/api/intelligence/v1/search-gdelt-documents': 'slow',
   '/api/infrastructure/v1/get-cable-health': 'slow',
