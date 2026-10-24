@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 import { Window } from 'happy-dom';
 import { isMainModule } from './lib/main-module.mjs';
@@ -29,10 +29,14 @@ export function extractMainText(html) {
   }
 }
 
-export function wordShingles(value, width = 5) {
-  const tokens = String(value || '')
+export function wordTokens(value) {
+  return String(value || '')
     .toLocaleLowerCase('en-US')
     .match(/[\p{L}\p{N}]+(?:[’'][\p{L}\p{N}]+)*/gu) || [];
+}
+
+export function wordShingles(value, width = 5) {
+  const tokens = wordTokens(value);
   const shingles = new Set();
   for (let index = 0; index <= tokens.length - width; index += 1) {
     shingles.add(tokens.slice(index, index + width).join(' '));
@@ -148,11 +152,58 @@ export function auditMicrostateCorpusSimilarity({
   };
 }
 
+function median(values) {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+// Per-page main-text word counts and pairwise 5-shingle Jaccard for every
+// detail page of one generated family (`<family>/<slug>/index.html`). The hub
+// page at `<family>/index.html` is excluded: it is a list, not a peer.
+export function auditCorpusFamily({ corpusDir, family }) {
+  if (!corpusDir) throw new Error('corpusDir is required');
+  if (!/^[a-z0-9-]+$/.test(String(family || ''))) throw new Error('family must be a corpus directory name');
+  const familyDir = resolve(corpusDir, family);
+  const pages = readdirSync(familyDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(join(familyDir, entry.name, 'index.html')))
+    .map((entry) => entry.name)
+    .sort()
+    .map((slug) => {
+      const route = `/${family}/${slug}/`;
+      const mainText = extractMainText(readFileSync(join(familyDir, slug, 'index.html'), 'utf8')).trim();
+      if (!mainText) throw new Error(`${route} must contain non-empty <main> content`);
+      return { slug, route, mainText, words: wordTokens(mainText).length };
+    });
+  if (pages.length < 2) throw new Error(`${family} needs at least two detail pages to compare`);
+  const pairs = [];
+  for (let left = 0; left < pages.length; left += 1) {
+    for (let right = left + 1; right < pages.length; right += 1) {
+      pairs.push({
+        routes: [pages[left].route, pages[right].route],
+        jaccard: shingleJaccard(pages[left].mainText, pages[right].mainText),
+      });
+    }
+  }
+  const maxPair = pairs.reduce((worst, pair) => (pair.jaccard > worst.jaccard ? pair : worst), pairs[0]);
+  return {
+    family,
+    pageCount: pages.length,
+    pages: pages.map(({ route, words }) => ({ route, words })),
+    minWords: Math.min(...pages.map((page) => page.words)),
+    medianWords: median(pages.map((page) => page.words)),
+    meanPairwiseJaccard: pairs.reduce((sum, pair) => sum + pair.jaccard, 0) / pairs.length,
+    maxPair,
+  };
+}
+
 function parseArgs(argv) {
-  const options = { corpusDir: resolve('public'), check: false };
+  const options = { corpusDir: resolve('public'), check: false, family: null };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--check') options.check = true;
+    else if (arg === '--family') options.family = argv[++index];
+    else if (arg.startsWith('--family=')) options.family = arg.slice('--family='.length);
     else if (arg === '--corpus-dir') options.corpusDir = resolve(argv[++index]);
     else if (arg.startsWith('--corpus-dir=')) options.corpusDir = resolve(arg.slice('--corpus-dir='.length));
     else throw new Error(`Unknown argument: ${arg}`);
@@ -162,6 +213,10 @@ function parseArgs(argv) {
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
+  if (options.family) {
+    process.stdout.write(`${JSON.stringify(auditCorpusFamily(options), null, 2)}\n`);
+    return;
+  }
   const result = auditMicrostateCorpusSimilarity(options);
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   if (!options.check) return;

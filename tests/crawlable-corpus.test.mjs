@@ -40,6 +40,7 @@ import {
   countryMetaDescription,
   COUNTRY_PAGE_CONTENT_VERSION,
   CRISIS_PAGE_CONTENT_VERSION,
+  CRISIS_TRACKED_BY,
   DATASET_SCHEMA_CONTENT_VERSION,
   datasetObservationCoverage,
   datasetTemporalCoverage,
@@ -54,6 +55,7 @@ import {
   hasObservedValue,
   laterDate,
   loadCorpusData,
+  normalizeCrisisEditorial,
   MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS,
   MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS,
   assertLivePulseMovementClaim,
@@ -93,6 +95,7 @@ import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 import { buildLlmsFullText } from '../scripts/build-llms-full.mjs';
 import { htmlToMarkdown } from '../api/_md-url-twin.ts';
 import {
+  auditCorpusFamily,
   auditMicrostateCorpusSimilarity,
   maskedSentences,
   wordShingles,
@@ -8029,4 +8032,112 @@ it('retains API country-name aliases through the final country page renderer', a
     assert.ok(html.includes(`${name} announces new trade rules while its travel advisory is Exercise Increased Caution. [1][E1]`));
     assert.ok(!html.includes('<h3>Situation now</h3>'), 'Recent developments already lists the situation');
   }
+});
+
+describe('crisis tracker editorial (#8605)', () => {
+  const registry = JSON.parse(readFileSync(join(repoRoot, 'shared/crawlable-crises.json'), 'utf8'));
+  const editorial = JSON.parse(readFileSync(join(repoRoot, 'scripts/data/crisis-editorial.json'), 'utf8'));
+  const crises = registry.map((crisis) => ({ slug: crisis.slug }));
+  const withEntry = (slug, patch) => editorial.map((entry) => (entry.slug === slug ? patch(structuredClone(entry)) : entry));
+  const first = editorial[0].slug;
+
+  it('accepts the committed editorial for every registry crisis', () => {
+    const bySlug = normalizeCrisisEditorial(editorial, crises);
+    assert.deepEqual([...bySlug.keys()].sort(), registry.map((crisis) => crisis.slug).sort());
+  });
+
+  it('fails the build when a crisis loses its editorial entry', () => {
+    assert.throws(
+      () => normalizeCrisisEditorial(editorial.filter((entry) => entry.slug !== first), crises),
+      new RegExp(`Crisis editorial missing for ${first}`),
+    );
+  });
+
+  it('requires a source URL on every timeline milestone', () => {
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        delete entry.timeline[0].sourceUrl;
+        return entry;
+      }), crises),
+      /timeline 1 needs a valid source URL/,
+    );
+  });
+
+  it('rejects Wikipedia, plain-http and unsourced background citations', () => {
+    for (const [sourceUrls, message] of [
+      [['https://en.wikipedia.org/wiki/Example'], /cites Wikipedia/],
+      [['http://reliefweb.int/report'], /source must use https/],
+      [[], /background paragraph without a source/],
+    ]) {
+      assert.throws(
+        () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+          entry.background[0].sourceUrls = sourceUrls;
+          return entry;
+        }), crises),
+        message,
+      );
+    }
+  });
+
+  it('rejects an out-of-order timeline and a watch item naming no real dashboard view', () => {
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        entry.timeline.reverse();
+        return entry;
+      }), crises),
+      /timeline must be in chronological order/,
+    );
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        entry.whatToWatch[0].trackedBy = 'Crystal Ball';
+        return entry;
+      }), crises),
+      /names an unknown dashboard surface: Crystal Ball/,
+    );
+  });
+
+  it('names only panels and layers that exist in the dashboard config', () => {
+    const panels = readFileSync(join(repoRoot, 'src/config/panels.ts'), 'utf8');
+    const layers = readFileSync(join(repoRoot, 'src/config/map-layer-definitions.ts'), 'utf8');
+    for (const [name, kind] of CRISIS_TRACKED_BY) {
+      const quoted = `'${name}'`;
+      assert.ok((kind === 'panel' ? panels : layers).includes(quoted), `${kind} ${name} must exist in the dashboard config`);
+    }
+  });
+
+  it('renders every crisis page past 700 main-text words with family overlap under 0.30', async () => {
+    const { outDir } = await defaultCorpusBuild();
+    const audit = auditCorpusFamily({ corpusDir: outDir, family: 'crises' });
+    assert.equal(audit.pageCount, registry.length);
+    for (const page of audit.pages) {
+      assert.ok(page.words >= 700, `${page.route} has ${page.words} main-text words; the floor is 700`);
+    }
+    assert.ok(
+      audit.meanPairwiseJaccard < 0.3,
+      `crisis family mean pairwise 5-shingle overlap is ${audit.meanPairwiseJaccard.toFixed(3)}; the ceiling is 0.30`,
+    );
+  });
+
+  it('cites each milestone and the review date on the rendered page', async () => {
+    const { outDir } = await defaultCorpusBuild();
+    for (const entry of editorial) {
+      const window = new Window();
+      try {
+        window.document.write(read(outDir, `crises/${entry.slug}/index.html`));
+        const items = [...window.document.querySelectorAll('main [data-crisis-timeline] li')];
+        assert.equal(items.length, entry.timeline.length, `${entry.slug} renders every milestone`);
+        items.forEach((item, index) => {
+          assert.equal(item.querySelector('a')?.getAttribute('href'), new URL(entry.timeline[index].sourceUrl).href);
+        });
+        assert.equal(
+          window.document.querySelector('main [data-crisis-reviewed] time')?.getAttribute('datetime'),
+          entry.lastReviewed,
+        );
+        const readings = window.document.querySelectorAll('main [data-crisis-readings] tbody tr');
+        assert.equal(readings.length, registry.find((crisis) => crisis.slug === entry.slug).coverage.length);
+      } finally {
+        window.close();
+      }
+    }
+  });
 });

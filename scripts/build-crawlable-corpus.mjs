@@ -176,6 +176,7 @@ const CRISIS_REGISTRY_PATH = 'shared/crawlable-crises.json';
 // Resolvable provenance for crisis scope citations: the registry is a repo
 // file, so pages link the versioned blob URL instead of the bare repo path.
 const CRISIS_REGISTRY_URL = 'https://github.com/koala73/worldmonitor/blob/main/shared/crawlable-crises.json';
+const CRISIS_EDITORIAL_PATH = 'scripts/data/crisis-editorial.json';
 const RESEARCH_REPORTS_INDEX_PATH = 'shared/research-reports/index.mjs';
 const SOURCE_ATTRIBUTION_MANIFEST_PATH = 'shared/source-attribution-manifest.json';
 const SOURCE_PAGE_RENDERER_PATH = 'scripts/crawlable-sources-page.mjs';
@@ -252,7 +253,7 @@ export const DATASET_SCHEMA_CONTENT_VERSION = {
   crisis: '2026-09-03',
   tools: '2026-09-03',
 };
-export const CRISIS_PAGE_CONTENT_VERSION = '2026-10-18';
+export const CRISIS_PAGE_CONTENT_VERSION = '2026-10-24';
 // TOOLS_PAGE_CONTENT_VERSION and RESEARCH_PAGE_CONTENT_VERSION are exported
 // for the same reason as the constants above: the #7533 guard recomputes
 // their families' clocks from the real values.
@@ -1602,6 +1603,111 @@ function normalizeCrises(entries) {
   });
 }
 
+// Dashboard surfaces a crisis "what to watch" indicator may name. Each value is
+// a panel title from src/config/panels.ts or a layer label from
+// src/config/map-layer-definitions.ts, so the page never points a reader at a
+// view that does not exist.
+export const CRISIS_TRACKED_BY = Object.freeze(new Map([
+  ...[
+    'Country Instability', 'UCDP Conflict Events', 'UNHCR Displacement', 'Strategic Risk Overview',
+    'Escalation Monitor', 'Force Posture', 'Security Advisories', 'Sanctions Pressure', 'Chokepoint Status',
+    'Strait of Hormuz Tracker', 'Hormuz Trade Tracker', 'Internet Disruptions', 'Israel Sirens', 'Telegram Intel',
+    'Intel Feed', 'Live Intelligence', 'Regional Intelligence', 'Threat Timeline', 'Thermal Escalation',
+    'Disease Outbreaks', 'Energy Disruptions Log', 'FAO Food Price Index', 'Global Fuel Shortage Registry',
+    'Predictions',
+  ].map((name) => [name, 'panel']),
+  ...[
+    'Conflict Zones', 'Armed Conflict Events', 'Displacement Flows', 'Protests', 'Military Activity', 'Ship Traffic',
+    'Live Tanker Positions', 'Middle East Strikes', 'Intel Hotspots', 'GPS Jamming', 'Fires', 'Sanctions',
+    'Chokepoints', 'Aviation', 'Nuclear Sites', 'Military Bases',
+  ].map((name) => [name, 'map layer']),
+]));
+
+const EDITORIAL_DATE_RE = /^\d{4}-(?:0[1-9]|1[0-2])(?:-(?:0[1-9]|[12]\d|3[01]))?$/;
+
+function editorialSourceUrl(value, where) {
+  let url;
+  try {
+    url = new URL(String(value || ''));
+  } catch {
+    throw new Error(`${where} needs a valid source URL`);
+  }
+  if (url.protocol !== 'https:') throw new Error(`${where} source must use https`);
+  if (/(^|\.)wikipedia\.org$/.test(url.hostname)) throw new Error(`${where} cites Wikipedia, which is not an accepted source`);
+  return url.href;
+}
+
+function editorialText(value, where) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) throw new Error(`${where} is empty`);
+  return text;
+}
+
+// Sourced, dated editorial copy for each crisis tracker (#8605). Build-only, so
+// it lives in scripts/data rather than the shared registry the seeders read.
+// Every factual item carries the URL it was checked against; a missing,
+// unsourced or misnamed entry fails the build instead of shipping a thin page.
+export function normalizeCrisisEditorial(entries, crises) {
+  const bySlug = new Map();
+  for (const entry of entries || []) {
+    const slug = String(entry?.slug || '');
+    const where = `Crisis editorial ${slug || '(missing slug)'}`;
+    if (bySlug.has(slug)) throw new Error(`${where} is duplicated`);
+    if (!crises.some((crisis) => crisis.slug === slug)) throw new Error(`${where} has no registry entry`);
+    const lastReviewed = String(entry.lastReviewed || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(lastReviewed) || Number.isNaN(Date.parse(`${lastReviewed}T00:00:00Z`))) {
+      throw new Error(`${where} needs an ISO lastReviewed date`);
+    }
+    const background = (entry.background || []).map((paragraph, index) => ({
+      text: editorialText(paragraph?.text, `${where} background ${index + 1}`),
+      sourceUrls: (paragraph?.sourceUrls || []).map((url) => editorialSourceUrl(url, `${where} background ${index + 1}`)),
+    }));
+    if (background.length < 2 || background.length > 4) throw new Error(`${where} needs 2-4 background paragraphs`);
+    if (background.some((paragraph) => paragraph.sourceUrls.length === 0)) {
+      throw new Error(`${where} has a background paragraph without a source`);
+    }
+    const keyActors = (entry.keyActors || []).map((actor, index) => ({
+      name: editorialText(actor?.name, `${where} actor ${index + 1} name`),
+      role: editorialText(actor?.role, `${where} actor ${index + 1} role`),
+      sourceUrl: editorialSourceUrl(actor?.sourceUrl, `${where} actor ${index + 1}`),
+    }));
+    if (keyActors.length < 3) throw new Error(`${where} needs at least 3 key actors`);
+    const timeline = (entry.timeline || []).map((item, index) => {
+      const date = String(item?.date || '');
+      if (!EDITORIAL_DATE_RE.test(date)) throw new Error(`${where} timeline ${index + 1} needs a YYYY-MM or YYYY-MM-DD date`);
+      return {
+        date,
+        event: editorialText(item?.event, `${where} timeline ${index + 1}`),
+        sourceUrl: editorialSourceUrl(item?.sourceUrl, `${where} timeline ${index + 1}`),
+      };
+    });
+    if (timeline.length < 4) throw new Error(`${where} needs at least 4 timeline milestones`);
+    if (timeline.some((item, index) => index > 0 && item.date < timeline[index - 1].date)) {
+      throw new Error(`${where} timeline must be in chronological order`);
+    }
+    if (timeline.at(-1).date.slice(0, 10) > lastReviewed) {
+      throw new Error(`${where} timeline runs past its lastReviewed date`);
+    }
+    const whatToWatch = (entry.whatToWatch || []).map((item, index) => {
+      const trackedBy = String(item?.trackedBy || '');
+      if (!CRISIS_TRACKED_BY.has(trackedBy)) {
+        throw new Error(`${where} watch item ${index + 1} names an unknown dashboard surface: ${trackedBy || '(none)'}`);
+      }
+      return {
+        indicator: editorialText(item?.indicator, `${where} watch item ${index + 1}`),
+        why: editorialText(item?.why, `${where} watch item ${index + 1} reason`),
+        trackedBy,
+        trackedByKind: CRISIS_TRACKED_BY.get(trackedBy),
+      };
+    });
+    if (whatToWatch.length < 3 || whatToWatch.length > 5) throw new Error(`${where} needs 3-5 watch items`);
+    bySlug.set(slug, { lastReviewed, background, keyActors, timeline, whatToWatch });
+  }
+  const missing = crises.filter((crisis) => !bySlug.has(crisis.slug)).map((crisis) => crisis.slug);
+  if (missing.length) throw new Error(`Crisis editorial missing for ${missing.join(', ')}`);
+  return bySlug;
+}
+
 const REGION_LABELS = {
   'north-america': 'North America',
   latam: 'Latin America and the Caribbean',
@@ -1875,7 +1981,9 @@ export async function loadCorpusData({
       })
       .filter(Boolean),
   );
-  const crises = normalizeCrises(readJson(rootDir, CRISIS_REGISTRY_PATH));
+  const registryCrises = normalizeCrises(readJson(rootDir, CRISIS_REGISTRY_PATH));
+  const crisisEditorial = normalizeCrisisEditorial(readJson(rootDir, CRISIS_EDITORIAL_PATH), registryCrises);
+  const crises = registryCrises.map((crisis) => ({ ...crisis, editorial: crisisEditorial.get(crisis.slug) }));
   const countries = addCountryContext(
     normalizeCountries(resilience, reverseNames),
     regionsByCode,
@@ -1999,6 +2107,7 @@ export async function loadCorpusData({
   );
   const crisesLastmod = laterDate(
     gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
+    gitFileLastmod(rootDir, CRISIS_EDITORIAL_PATH),
     gitFileLastmod(rootDir, RELATED_READING_PATH),
     gitFileLastmod(rootDir, LIVE_PAGE_LINKS_PATH),
     livePulse.capturedAt,
@@ -4738,9 +4847,126 @@ function crisisDatasetMetadata(crisis, baseUrl, pulse) {
   };
 }
 
+// Reader-facing names for cited hosts, keyed without a leading "www.". An
+// unlisted host falls back to its bare hostname.
+const EDITORIAL_SOURCE_LABELS = new Map([
+  ['news.un.org', 'UN News'], ['press.un.org', 'UN press'], ['unocha.org', 'OCHA'], ['ochaopt.org', 'OCHA oPt'],
+  ['reliefweb.int', 'ReliefWeb'], ['unhcr.org', 'UNHCR'], ['data.unhcr.org', 'UNHCR'], ['ohchr.org', 'OHCHR'],
+  ['unicef.org', 'UNICEF'], ['unric.org', 'UNRIC'], ['dtm.iom.int', 'IOM DTM'], ['crisisresponse.iom.int', 'IOM'],
+  ['osesgy.unmissions.org', 'UN Special Envoy for Yemen'], ['unmiss.unmissions.org', 'UNMISS'],
+  ['unama.unmissions.org', 'UNAMA'], ['ukraine.un.org', 'UN Ukraine'], ['yemen.un.org', 'UN Yemen'],
+  ['afghanistan.un.org', 'UN Afghanistan'], ['au.int', 'African Union'], ['imo.org', 'IMO'], ['eia.gov', 'EIA'],
+  ['state.gov', 'US State Department'], ['aljazeera.com', 'Al Jazeera'], ['france24.com', 'France 24'],
+  ['africanews.com', 'Africanews'], ['voanews.com', 'VOA'], ['pbs.org', 'PBS NewsHour'], ['nbcnews.com', 'NBC News'],
+  ['arabnews.com', 'Arab News'], ['yahoo.com', 'Yahoo News'], ['ny1.com', 'NY1'], ['wtop.com', 'WTOP'],
+  ['gcaptain.com', 'gCaptain'], ['newcastleherald.com.au', 'Newcastle Herald'], ['lanacion.com.ar', 'La Nación'],
+  ['internazionale.it', 'Internazionale'], ['timesofisrael.com', 'The Times of Israel'],
+]);
+
+function editorialSourceLabel(url) {
+  const host = new URL(url).hostname.replace(/^www\./, '');
+  return EDITORIAL_SOURCE_LABELS.get(host) || host;
+}
+
+function editorialDateLabel(date) {
+  if (date.length === 10) return prettyDate(date);
+  const [year, month] = date.split('-');
+  return `${MONTHS[Number(month) - 1]} ${year}`;
+}
+
+function editorialSourceLink(url) {
+  return `<a href="${escapeHtml(url)}">${escapeHtml(editorialSourceLabel(url))}</a>`;
+}
+
+// One label per outlet: several articles from the same outlet read as
+// "UN News (1, 2, 3)" rather than repeating the name.
+function editorialSourceLinks(urls) {
+  const groups = new Map();
+  for (const url of urls) {
+    const label = editorialSourceLabel(url);
+    groups.set(label, [...(groups.get(label) || []), url]);
+  }
+  return [...groups].map(([label, group]) => (group.length === 1
+    ? editorialSourceLink(group[0])
+    : `${escapeHtml(label)} (${group.map((url, index) => `<a href="${escapeHtml(url)}">${index + 1}</a>`).join(', ')})`)).join(', ');
+}
+
+export function crisisEditorialSourceUrls(editorial) {
+  return [...new Set([
+    ...editorial.background.flatMap((paragraph) => paragraph.sourceUrls),
+    ...editorial.keyActors.map((actor) => actor.sourceUrl),
+    ...editorial.timeline.map((item) => item.sourceUrl),
+  ])];
+}
+
+function renderCrisisEditorial(crisis) {
+  const { editorial } = crisis;
+  const background = editorial.background.map((paragraph) => `      <p>${escapeHtml(paragraph.text)} <span class="source">Sources: ${editorialSourceLinks(paragraph.sourceUrls)}.</span></p>`).join('\n');
+  const actors = editorial.keyActors.map((actor) => `        <li><strong>${escapeHtml(actor.name)}</strong> — ${escapeHtml(actor.role)} <span class="source">(${editorialSourceLink(actor.sourceUrl)})</span></li>`).join('\n');
+  const timeline = editorial.timeline.map((item) => `        <li><time datetime="${escapeHtml(item.date)}">${escapeHtml(editorialDateLabel(item.date))}</time> — ${escapeHtml(item.event)} <span class="source">(${editorialSourceLink(item.sourceUrl)})</span></li>`).join('\n');
+  const watch = editorial.whatToWatch.map((item) => `        <li><strong>${escapeHtml(item.indicator)}.</strong> ${escapeHtml(item.why)} Tracked in the ${escapeHtml(item.trackedBy)} ${escapeHtml(item.trackedByKind)} on the <a href="/dashboard">live dashboard</a>.</li>`).join('\n');
+  return `      <h2>Background</h2>
+${background}
+      <h2>Key actors</h2>
+      <ul class="related-countries" data-crisis-actors>
+${actors}
+      </ul>
+      <h2>Timeline</h2>
+      <ol class="related-countries" data-crisis-timeline>
+${timeline}
+      </ol>
+      <h2>What to watch</h2>
+      <ul class="related-countries" data-crisis-watch>
+${watch}
+      </ul>
+      <p class="source" data-crisis-reviewed>Background, actors, timeline and watch list last reviewed <time datetime="${escapeHtml(editorial.lastReviewed)}">${escapeHtml(prettyDate(editorial.lastReviewed))}</time> against the linked sources. They are context for the monthly figures above, not part of the HAPI/HDX dataset.</p>`;
+}
+
+function renderCrisisCountryReadings({ crisis, countryByCode, ciiByCode, rankedCount }) {
+  const rows = crisis.coverage.map((covered) => {
+    const country = countryByCode.get(covered.code);
+    const cii = ciiByCode.get(covered.code);
+    const name = country
+      ? `<a href="/countries/${escapeHtml(country.slug)}/">${escapeHtml(covered.name)}</a>`
+      : escapeHtml(covered.name);
+    const ciiCells = cii
+      ? `<td><data value="${escapeHtml(cii.score)}">${escapeHtml(formatScore(cii.score, OBSERVED_EVIDENCE))}</data> (${escapeHtml(cii.band)})</td><td>${escapeHtml(ciiMovementDisplayLabel(cii.trend))}</td>`
+      : '<td>Not monitored</td><td>—</td>';
+    const ranked = country && country.headlineEligible !== false && country.rank != null;
+    const resilienceCells = ranked
+      ? `<td>${escapeHtml(formatScore(country.overallScore, { coverage: true }))} / 100</td><td>#${escapeHtml(country.rank)} of ${escapeHtml(rankedCount)}</td>`
+      : '<td>Not ranked</td><td>—</td>';
+    return `          <tr data-crisis-reading="${escapeHtml(covered.code)}"><td>${name}</td>${ciiCells}${resilienceCells}</tr>`;
+  }).join('\n');
+  const monitored = crisis.coverage
+    .map((covered) => ({ covered, cii: ciiByCode.get(covered.code) }))
+    .filter((entry) => entry.cii)
+    .sort((left, right) => right.cii.score - left.cii.score);
+  const scopeNoun = crisis.coverage.length === 1 ? 'covered country' : 'covered countries';
+  const summary = monitored.length === 0
+    ? (crisis.coverage.length === 1
+      ? `${crisis.coverage[0].name} is not in the Country Instability Index's monitored set, so only its structural resilience reading is shown.`
+      : `None of the ${crisis.coverage.length} ${scopeNoun} in this tracker is in the Country Instability Index's monitored set, so only structural resilience readings are shown.`)
+    : monitored.length === 1 && crisis.coverage.length === 1
+      ? `${monitored[0].covered.name} has a Country Instability Index reading of ${formatScore(monitored[0].cii.score, OBSERVED_EVIDENCE)} (${monitored[0].cii.band}).`
+      : `${monitored.length} of the ${crisis.coverage.length} ${scopeNoun} have a Country Instability Index reading. The highest is ${monitored[0].covered.name} at ${formatScore(monitored[0].cii.score, OBSERVED_EVIDENCE)} (${monitored[0].cii.band})${monitored.length > 1 ? `, and the lowest is ${monitored.at(-1).covered.name} at ${formatScore(monitored.at(-1).cii.score, OBSERVED_EVIDENCE)} (${monitored.at(-1).cii.band})` : ''}.`;
+  return `      <h2>Country readings</h2>
+      <p>${escapeHtml(summary)} Instability is a live 0-100 stress score; resilience is a structural 0-100 index ranked across countries. Both describe each country as a whole, not this crisis alone, and a country without a reading reflects index coverage, not a statement about risk.</p>
+      <div class="table-scroll"><table data-crisis-readings>
+        <thead><tr><th scope="col">Country</th><th scope="col">Instability (CII)</th><th scope="col">CII movement</th><th scope="col">Resilience score</th><th scope="col">Resilience rank</th></tr></thead>
+        <tbody>
+${rows}
+        </tbody>
+      </table></div>
+      <p class="source">Sources: <a href="/country-instability-index/">Country Instability Index</a> published pulse and the <a href="/docs/methodology/country-resilience-index">country resilience index</a> snapshot used on each country page.</p>`;
+}
+
 function renderCrisisPage({
   crisis,
   countrySlugByCode,
+  countryByCode = new Map(),
+  ciiByCode = new Map(),
+  rankedCount = 0,
   relatedChokepoints = [],
   relatedReading = [],
   baseUrl,
@@ -4836,6 +5062,8 @@ ${countryRows}
       </section>
       <a class="cta" href="${escapeHtml(dashboardUrl)}">Investigate this crisis in World Monitor →</a>
 ${snapshotSection}
+${renderCrisisEditorial(crisis)}
+${renderCrisisCountryReadings({ crisis, countryByCode, ciiByCode, rankedCount })}
       <h2>Coverage boundary</h2>
       <p>${escapeHtml(crisis.coverage.map((country) => `${country.name} (${country.code})`).join(', '))}. Events outside this list are not included in the live totals on this page.</p>
 ${renderRelatedChokepoints(relatedChokepoints)}
@@ -4903,6 +5131,8 @@ ${renderRelatedReading(relatedReading, escapeHtml)}
         description: crisis.description,
         url: absoluteUrl(baseUrl, path),
         inLanguage: 'en-US',
+        lastReviewed: crisis.editorial.lastReviewed,
+        citation: crisisEditorialSourceUrls(crisis.editorial),
         about: coveragePlaces,
         mainEntity: {
           ...crisisDatasetMetadata(crisis, baseUrl, pulse),
@@ -5783,6 +6013,7 @@ export async function buildCorpus({
       lastmod: data.lastmod.crises,
     }),
   );
+  const crisisCountryByCode = new Map(data.countries.map((country) => [country.code, country]));
   for (const crisis of data.crises) {
     const pagePath = `/crises/${crisis.slug}/`;
     const crisisPulse = data.livePulse.crises?.[crisis.slug] || null;
@@ -5793,6 +6024,9 @@ export async function buildCorpus({
       renderCrisisPage({
         crisis,
         countrySlugByCode,
+        countryByCode: crisisCountryByCode,
+        ciiByCode: data.ciiRanking.byCode,
+        rankedCount: data.resilienceCoverage.ranked,
         relatedChokepoints: chokepointPageLinks.byCrisisSlug.get(crisis.slug),
         relatedReading: relatedReading.get(pagePath),
         baseUrl,
