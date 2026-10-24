@@ -26,13 +26,13 @@ import {
   getChunkSizeWarning,
   isExpectedEmptyRpcClientWarning,
 } from './scripts/vite-build-warning-policy.mts';
+import { CSP_NONCE_PLACEHOLDER as STATIC_SCRIPT_NONCE } from './shared/csp-nonce.mjs';
 
 // Env-dependent constants moved inside defineConfig function
 
 
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
-const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
 
 // @clerk/clerk-js is loaded as a UMD bundle from the Clerk Frontend API at
 // runtime (src/services/clerk.ts), not bundled. Resolve the version from

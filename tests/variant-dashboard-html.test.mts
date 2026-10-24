@@ -38,7 +38,7 @@ const fixture = `<!doctype html>
     <meta name="twitter:title" content="${FULL.title}" />
     <meta name="twitter:description" content="${FULL.description}" />
     <meta name="twitter:image" content="https://www.worldmonitor.app/favico/og-image.png" />
-    <script type="application/ld+json" nonce="wm-static-bootstrap">
+    <script type="application/ld+json" nonce="__WM_CSP_NONCE__">
     {
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
@@ -55,7 +55,7 @@ const fixture = `<!doctype html>
       "isPartOf": { "@id": "https://www.worldmonitor.app/#website" }
     }
     </script>
-    <script type="application/ld+json" nonce="wm-static-bootstrap">
+    <script type="application/ld+json" nonce="__WM_CSP_NONCE__">
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
@@ -65,7 +65,7 @@ const fixture = `<!doctype html>
       "publisher": { "@id": "https://www.worldmonitor.app/#organization" }
     }
     </script>
-    <script type="application/ld+json" nonce="wm-static-bootstrap">
+    <script type="application/ld+json" nonce="__WM_CSP_NONCE__">
     {
       "@context": "https://schema.org",
       "@type": "WebPage",
@@ -83,7 +83,7 @@ const fixture = `<!doctype html>
       }
     }
     </script>
-    <script type="application/ld+json" nonce="wm-static-bootstrap">
+    <script type="application/ld+json" nonce="__WM_CSP_NONCE__">
     {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
@@ -216,7 +216,7 @@ describe('renderVariantDashboardHtml (#4996)', () => {
       .map((match) => match[1]);
     assert.equal(injected.length, 3);
     for (const attrs of injected) {
-      assert.match(attrs, /nonce="wm-static-bootstrap"/, 'variant JSON-LD must keep the header CSP nonce');
+      assert.match(attrs, /nonce="__WM_CSP_NONCE__"/, 'variant JSON-LD must keep the header CSP nonce');
     }
   });
 

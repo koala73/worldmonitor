@@ -9,7 +9,7 @@
  *
  * Do not wire the agent body through a vercel.json rewrite: Vercel rewrites
  * preserve the destination body but surface HTTP 200 for a successful proxy,
- * which is the exact soft-404 the scanner penalizes. Files with extensions
+ * which is the exact soft-404 the scanner penalizes. Non-html extensions
  * skip the middleware matcher and fall through to public/404.html.
  */
 

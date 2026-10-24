@@ -133,24 +133,39 @@ describe('SEO crawl-directive hygiene (#7380)', () => {
     assert.equal(res.headers.get('cache-control'), 'private, no-store');
   });
 
-  it('leaves human traffic with referral params untouched for client capture', () => {
-    const res = middleware(
-      new Request('https://finance.worldmonitor.app/dashboard?ref=partner123', {
-        headers: {
-          'user-agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        },
-      }),
-    );
-    assert.equal(res, undefined);
+  it('leaves human traffic with referral params untouched for client capture', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response('not html', {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    });
+    try {
+      const res = await middleware(
+        new Request('https://finance.worldmonitor.app/dashboard?ref=partner123', {
+          headers: {
+            'user-agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          },
+        }),
+      );
+      assert.equal(res, undefined);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
-  it('passes AI crawlers through to the canonical variant dashboard', () => {
-    const res = middleware(
-      new Request('https://tech.worldmonitor.app/', {
-        headers: { 'user-agent': 'Mozilla/5.0 GPTBot/1.1' },
-      }),
-    );
-    assert.equal(res, undefined);
+  it('passes AI crawlers through to the canonical variant dashboard', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(null, { status: 308, headers: { location: '/dashboard' } });
+    try {
+      const res = await middleware(
+        new Request('https://tech.worldmonitor.app/', {
+          headers: { 'user-agent': 'Mozilla/5.0 GPTBot/1.1' },
+        }),
+      );
+      assert.equal(res, undefined);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

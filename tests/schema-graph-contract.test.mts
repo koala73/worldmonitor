@@ -536,7 +536,7 @@ describe('canonical schema graph', () => {
     assert.equal(checked, documents.size, 'every synthesized docs document must contribute an Article author');
   });
 
-  it('serves every variant dashboard identically to browsers and AI crawlers', () => {
+  it('serves every variant dashboard identically to browsers and AI crawlers', async () => {
     const dashboardHtml = read('index.html');
 
     for (const variant of WEB_DASHBOARD_VARIANTS) {
@@ -567,14 +567,20 @@ describe('canonical schema graph', () => {
       assert.equal(crumbs.itemListElement?.[0]?.item, CANONICAL_ORIGIN);
 
       const host = new URL(VARIANT_META[variant].url).hostname;
-      const browser = middleware(new Request(`https://${host}/`, {
-        headers: { 'user-agent': 'Mozilla/5.0' },
-      }));
-      const crawler = middleware(new Request(`https://${host}/`, {
-        headers: { 'user-agent': 'Mozilla/5.0 GPTBot/1.1' },
-      }));
-      assert.equal(browser, undefined, `${variant} browser must continue to the production redirect`);
-      assert.equal(crawler, undefined, `${variant} crawler must continue to the same production redirect`);
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => new Response(null, { status: 308, headers: { location: '/dashboard' } });
+      try {
+        const browser = await middleware(new Request(`https://${host}/`, {
+          headers: { 'user-agent': 'Mozilla/5.0' },
+        }));
+        const crawler = await middleware(new Request(`https://${host}/`, {
+          headers: { 'user-agent': 'Mozilla/5.0 GPTBot/1.1' },
+        }));
+        assert.equal(browser, undefined, `${variant} browser must continue to the production redirect`);
+        assert.equal(crawler, undefined, `${variant} crawler must continue to the same production redirect`);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
     }
   });
 

@@ -18,9 +18,10 @@ import { describe, it } from 'node:test';
 import authorizeHandler, { consentPage } from '../api/oauth/authorize.js';
 import { authorizeProHandler } from '../api/oauth/authorize-pro.ts';
 import youtubeEmbedHandler from '../api/youtube/embed.js';
+import { CSP_NONCE_PLACEHOLDER } from '../shared/csp-nonce.mjs';
 
 const ROOT = new URL('..', import.meta.url);
-const STATIC_NONCE = "'nonce-wm-static-bootstrap'";
+const STATIC_NONCE = `'nonce-${CSP_NONCE_PLACEHOLDER}'`;
 
 // Served under a different CSP, or not served as a page under ours.
 const EXEMPT = {
@@ -117,6 +118,7 @@ describe('served HTML runs under the site-wide CSP', () => {
   it('reads the site-wide script-src', () => {
     assert.ok(scriptSrc.includes("'strict-dynamic'"), 'the sweep assumes the strict-dynamic catch-all CSP');
     assert.ok(!scriptSrc.includes("'unsafe-inline'"));
+    assert.ok(!scriptSrc.some((token) => token.startsWith("'nonce-")), 'the static header must not carry a script nonce');
   });
 
   it('every exemption still exists and, when it claims its own CSP, has one', () => {
@@ -142,6 +144,7 @@ describe('served HTML runs under the site-wide CSP', () => {
           const [, attrs, body] = m;
           if (/\btype=["']?application\/(ld\+)?json/i.test(attrs)) continue; // data, never executed
           const nonce = /\bnonce=["']([^"']+)["']/.exec(attrs)?.[1];
+          if (nonce === CSP_NONCE_PLACEHOLDER) continue;
           if (nonce && scriptSrc.includes(`'nonce-${nonce}'`)) continue;
           // A template's script body is filled per request, so only a nonce can match it.
           if (!isTemplate && scriptSrc.includes(sha256Token(body))) continue;

@@ -314,7 +314,7 @@ describe('research report corpus (#5668)', () => {
       );
     }
     assert.match(html, /abacus\.worldmonitor\.app\/script\.js/, 'research pages must load analytics');
-    assert.match(html, /nonce="wm-static-bootstrap"/);
+    assert.match(html, /nonce="__WM_CSP_NONCE__"/);
   });
 
   it('regenerates byte-identically from the committed snapshot', async () => {

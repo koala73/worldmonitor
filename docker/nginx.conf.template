@@ -67,6 +67,9 @@ http {
       # without an explicit index lookup the $uri/ match would 403.
       try_files $uri $uri/ $uri/index.html /dashboard.html;
       add_header Cache-Control "no-cache, no-store, must-revalidate";
+      sub_filter_once off;
+      sub_filter_types text/html;
+      sub_filter '__WM_CSP_NONCE__' '$request_id';
     }
 
     location ~* ^/(assets|pro/assets|map-styles|data|textures|favico)/ {
@@ -100,6 +103,9 @@ http {
       include /etc/nginx/security_headers.conf;
       try_files $uri /pro/index.html;
       add_header Cache-Control "no-cache, no-store, must-revalidate";
+      sub_filter_once off;
+      sub_filter_types text/html;
+      sub_filter '__WM_CSP_NONCE__' '$request_id';
     }
 
     location /api/ {

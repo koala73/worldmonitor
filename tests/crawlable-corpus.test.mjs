@@ -7,6 +7,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { after, describe, it } from 'node:test';
 import { brotliCompressSync, constants as zlibConstants } from 'node:zlib';
 
+import { CSP_NONCE_PLACEHOLDER } from '../shared/csp-nonce.mjs';
+
 import { Window } from 'happy-dom';
 import ts from 'typescript';
 
@@ -1106,14 +1108,14 @@ function assertSourceDerivedTemporalCoverage(dataset, {
   }
 }
 
-function productionScriptNonce() {
+function crawlableScriptNonce() {
   const config = JSON.parse(readFileSync(join(repoRoot, 'vercel.json'), 'utf8'));
   const csp = config.headers
     .flatMap((rule) => rule.headers || [])
     .find((header) => header.key === 'Content-Security-Policy' && header.value.includes("'strict-dynamic'"));
-  const nonce = csp?.value.match(/'nonce-([^']+)'/)?.[1];
-  assert.ok(nonce, 'production CSP must declare a strict-dynamic script nonce');
-  return nonce;
+  assert.ok(csp, 'production CSP must declare strict-dynamic');
+  assert.equal(/'nonce-/.test(csp.value), false, 'production CSP must not authorize a static script nonce');
+  return CSP_NONCE_PLACEHOLDER;
 }
 
 // The corpus-wide @context sweep is an absence assertion — it stays green if
@@ -1145,7 +1147,7 @@ describe('JSON-LD @context guard', () => {
   it('sees a block whose open tag carries attributes', () => {
     // A bare-literal tag match would return zero blocks here and pass by
     // vacuity if the "at least one block" floor were ever relaxed.
-    const html = '<script type="application/ld+json" nonce="wm-static-bootstrap">'
+    const html = '<script type="application/ld+json" nonce="__WM_CSP_NONCE__">'
       + JSON.stringify({ '@type': 'Dataset' })
       + '</script>';
     assert.throws(() => assertJsonLdContexts(html, route), /must declare a schema\.org @context/);
@@ -2387,7 +2389,7 @@ describe('crawlable corpus generator', () => {
           assert.ok(!['c', 'country', 'chokepoint'].some(key => url.searchParams.has(key)), `${route} publishes a legacy dashboard link: ${url}`);
         }
       }
-      const liveScriptTag = `<script type="module" nonce="${productionScriptNonce()}" src="/tools/live-tools.js"></script>`;
+      const liveScriptTag = `<script type="module" nonce="${crawlableScriptNonce()}" src="/tools/live-tools.js"></script>`;
       assert.ok(manifest.sections.changelog.count >= 2, `expected paginated changelog pages, got ${manifest.sections.changelog.count}`);
       assert.equal(
         manifest.sections.changelog.routes.length,
@@ -3028,7 +3030,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(ukraineCiiDataset?.measurementTechnique, 'World Monitor CII v8');
       assert.equal(ukraineCiiDataset?.spatialCoverage?.['@type'], 'Place');
       assert.ok(ukraineResilienceDataset, 'CII country pages must retain the CRI Dataset');
-      assert.ok(norway.includes(liveScriptTag), 'country live script must match the production CSP nonce');
+      assert.ok(norway.includes(liveScriptTag), 'country live script must carry the shared CSP nonce placeholder');
       // Deep-link CTA into the live map (opens the maximized country brief). `&` is HTML-escaped.
       // Untagged: `ref=` would be captured as an affiliate referral code, and a
       // utm_* tag is a 308 hop through the middleware index-noise strip (#8603).
@@ -4442,7 +4444,7 @@ describe('crawlable corpus generator', () => {
         const html = read(outDir, `${url.pathname.slice(1)}index.html`);
         assert.ok(html.includes(`id="${url.hash.slice(1)}"`), `${entry.url} must resolve`);
       }
-      const filterScript = [...sourcesPage.matchAll(/<script nonce="wm-static-bootstrap">([\s\S]*?)<\/script>/g)].at(-1)?.[1];
+      const filterScript = [...sourcesPage.matchAll(/<script nonce="__WM_CSP_NONCE__">([\s\S]*?)<\/script>/g)].at(-1)?.[1];
       assert.ok(filterScript);
       const window = new Window({ url: 'https://www.worldmonitor.app/sources/' });
       window.document.write(sourcesPage);
@@ -4576,7 +4578,7 @@ describe('crawlable corpus generator', () => {
         /Observed score inputs: .+\. Context only \(not score inputs\): AIS event count (?:\(.+\)|unavailable); IMF PortWatch latest daily count (?:\(.+\)|unavailable)\.$/,
       );
       assert.doesNotMatch(hormuz, /data-chokepoint-status-mapping/);
-      assert.ok(hormuz.includes(liveScriptTag), 'chokepoint live script must match the production CSP nonce');
+      assert.ok(hormuz.includes(liveScriptTag), 'chokepoint live script must carry the shared CSP nonce placeholder');
       assert.doesNotMatch(hormuz, /id="app"/, 'chokepoint page must be raw static HTML, not the SPA shell');
       assert.doesNotMatch(hormuz, /Connecting…/);
       assert.doesNotMatch(hormuz, /data-chokepoint-score>—/);
@@ -5005,7 +5007,7 @@ describe('crawlable corpus generator', () => {
       assert.match(redSea, /data-country-code="YE" data-country-name="Yemen"/);
       assert.match(redSea, /Missing countries are unavailable, not zero/);
       assert.match(redSea, /HAPI\/HDX humanitarian conflict summaries/);
-      assert.ok(redSea.includes(liveScriptTag), 'crisis live script must match the production CSP nonce');
+      assert.ok(redSea.includes(liveScriptTag), 'crisis live script must carry the shared CSP nonce placeholder');
       assert.doesNotMatch(redSea, /id="app"/);
       assert.doesNotMatch(redSea, /Connecting…/);
       assert.doesNotMatch(redSea, /data-crisis-events>—/);

@@ -12,10 +12,10 @@ import {
   injectStarsInteractionCounter,
   latestValidGithubStarsSnapshot,
 } from '../scripts/github-stars-snapshot.mjs';
+import { CSP_NONCE_PLACEHOLDER as STATIC_SCRIPT_NONCE } from '../shared/csp-nonce.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
 const DASHBOARD_SCREENSHOT_BASENAME = 'worldmonitor-7-mar-2026';
 const DASHBOARD_SCREENSHOT_ASSETS = [
   { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME, extension: '.jpg' },

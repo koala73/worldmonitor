@@ -116,7 +116,7 @@ test('/pro and welcome pages load the Umami tracker (www + nonce)', () => {
       `${page}: tracker website id missing/changed`);
     assert.ok(/data-domains="[^"]*www\.worldmonitor\.app/.test(tag[0]),
       `${page}: www.worldmonitor.app missing from tracker data-domains`);
-    assert.ok(tag[0].includes('nonce="wm-static-bootstrap"'),
+    assert.ok(tag[0].includes('nonce="__WM_CSP_NONCE__"'),
       `${page}: static CSP nonce missing — strict-dynamic CSP will block the tracker`);
   }
 });

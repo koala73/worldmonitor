@@ -142,11 +142,20 @@ describe('agent-friendly 404s (orank agent-friendly-404)', () => {
     assert.doesNotMatch(body, /<script>alert\(1\)<\/script>/);
   });
 
-  it('does not intercept known product routes or mutating methods', () => {
-    for (const path of ['/', '/dashboard', '/stocks/AAPL', '/story', '/pro', '/docs/mcp', '/countries/united-states', ...indexableLandingPassthroughPrefixes()]) {
-      assert.equal(call(path, { accept: '*/*' }), undefined, `${path} must keep its vercel.json route`);
+  it('does not intercept known product routes or mutating methods', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response('not html', {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    });
+    try {
+      for (const path of ['/', '/dashboard', '/stocks/AAPL', '/story', '/pro', '/docs/mcp', '/countries/united-states', ...indexableLandingPassthroughPrefixes()]) {
+        assert.equal(await call(path, { accept: '*/*' }), undefined, `${path} must keep its vercel.json route`);
+      }
+      assert.equal(call('/some-path-that-does-not-exist', { method: 'POST', accept: '*/*' }), undefined);
+    } finally {
+      globalThis.fetch = originalFetch;
     }
-    assert.equal(call('/some-path-that-does-not-exist', { method: 'POST', accept: '*/*' }), undefined);
   });
 
   it('404s leaked SPA guesses that used to soft-404 the dashboard (#6575, #6836)', async () => {
@@ -158,8 +167,17 @@ describe('agent-friendly 404s (orank agent-friendly-404)', () => {
   });
 
   it('serves the /trust page (#9093), which used to be a leaked SPA guess', async () => {
-    for (const path of ['/trust', '/trust/', '/trust/review/']) {
-      assert.equal(call(path, { accept: '*/*' }), undefined, `${path} must reach its static page`);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response('not html', {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    });
+    try {
+      for (const path of ['/trust', '/trust/', '/trust/review/']) {
+        assert.equal(await call(path, { accept: '*/*' }), undefined, `${path} must reach its static page`);
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 

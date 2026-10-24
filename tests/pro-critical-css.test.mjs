@@ -177,7 +177,7 @@ describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutpu
       const html = builtSrc(relPath);
       const preloads = deferredStylePreloadTags(html);
       assert.equal(preloads.length, 1, `${relPath} should include exactly one deferred stylesheet preload`);
-      assert.equal(tagAttributes(preloads[0]).get('nonce'), 'wm-static-bootstrap');
+      assert.equal(tagAttributes(preloads[0]).get('nonce'), '__WM_CSP_NONCE__');
 
       const firstPreloadIndex = html.indexOf(preloads[0]);
       const previousStyles = inlineStyleTags(html).filter((tag) => html.indexOf(tag) < firstPreloadIndex);

@@ -15,11 +15,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { CSP_NONCE_PLACEHOLDER } from '../shared/csp-nonce.mjs';
+
 export const UMAMI_SCRIPT_TAG =
   '<script async defer src="https://abacus.worldmonitor.app/script.js" '
   + 'data-website-id="e8800335-16bc-4241-a133-0eb28c07c832" '
   + 'data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" '
-  + 'nonce="wm-static-bootstrap"></script>';
+  + `nonce="${CSP_NONCE_PLACEHOLDER}"></script>`;
 
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',

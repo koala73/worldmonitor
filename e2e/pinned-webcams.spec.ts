@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { stampCspDocument } from '../shared/csp-nonce.mjs';
 
 const base = 'https://webcams.windy.com/webcams/public/embed/player';
 const fixture = { webcamId: '123', title: 'Saved camera', lat: 25, lng: 55, category: 'city', country: 'AE', playerUrl: `${base}?webcamId=123&playerType=month&interactive=true`, active: true, pinnedAt: 1 };
@@ -11,7 +12,11 @@ test('filters restored and imported records before frame navigation under shippe
   const navigations: string[] = [];
   await page.route('**/tests/pinned-webcams-harness.html', async route => {
     const response = await route.fetch();
-    await route.fulfill({ response, headers: { ...response.headers(), 'content-security-policy': csp } });
+    // Production stamps the build placeholder with a per-response nonce.
+    const stamped = stampCspDocument(await response.text(), csp);
+    if (!stamped) throw new Error('harness is missing the CSP nonce placeholder');
+    const { 'content-length': _length, ...headers } = response.headers();
+    await route.fulfill({ response, body: stamped.html, headers: { ...headers, 'content-security-policy': stamped.policy } });
   });
   await page.route('https://webcams.windy.com/**', route => {
     navigations.push(route.request().url());

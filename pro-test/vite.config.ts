@@ -5,14 +5,13 @@ import path from 'path';
 import { defineConfig } from 'vite';
 import pkg from '../package.json';
 import { getSentryBuildMetadata } from '../shared/sentry-build-metadata';
+import { CSP_NONCE_PLACEHOLDER as STATIC_SCRIPT_NONCE } from '../shared/csp-nonce.mjs';
 
 // Mirrors the root config's gate. WORLDMONITOR-11Y and -107 are marketing-bundle
 // events that arrived with zero usable frames, so covering only the dashboard
 // would leave this half of the surface unreadable.
 const uploadSourceMapsToSentry = Boolean(process.env.SENTRY_AUTH_TOKEN);
 const sentryBuild = getSentryBuildMetadata(pkg.version, process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev');
-
-const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
 
 function isWelcomeHtml(hostId: string) {
   return hostId === 'welcome.html' || hostId.endsWith('/welcome.html');

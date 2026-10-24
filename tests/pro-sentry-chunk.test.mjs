@@ -13,7 +13,7 @@ const REBUILD_HINT = 'Run `npm run build:pro` first';
 // The pro-test build injects this nonce onto its static <link>/<script> tags
 // (STATIC_SCRIPT_NONCE in pro-test/vite.config.ts) so the strict CSP admits the
 // modulepreload hints.
-const STATIC_NONCE = 'wm-static-bootstrap';
+const STATIC_NONCE = '__WM_CSP_NONCE__';
 
 // A @sentry/core internal used only inside the SDK. It must live in the split
 // sentry chunk and never be copied back into an entry chunk — that's the proof

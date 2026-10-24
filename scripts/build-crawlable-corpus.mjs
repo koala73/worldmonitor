@@ -15,6 +15,8 @@ import {
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { CSP_NONCE_PLACEHOLDER } from '../shared/csp-nonce.mjs';
+
 import { UMAMI_SCRIPT_TAG, writeResearchSection } from './build-research-reports.mjs';
 import {
   COUNTRY_CENTROIDS_PATH,
@@ -2419,8 +2421,8 @@ ${body}
 ${renderContextualComparisons(path, escapeHtml)}
     </main>
     <footer>${renderedByline}${renderedFooter}</footer>
-    ${scriptSrcs.map((src) => `<script type="module" nonce="wm-static-bootstrap" src="${escapeHtml(src)}"></script>`).join('\n    ')}
-    ${inlineScript ? `<script nonce="wm-static-bootstrap">${inlineScript}</script>` : ''}
+    ${scriptSrcs.map((src) => `<script type="module" nonce="${CSP_NONCE_PLACEHOLDER}" src="${escapeHtml(src)}"></script>`).join('\n    ')}
+    ${inlineScript ? `<script nonce="${CSP_NONCE_PLACEHOLDER}">${inlineScript}</script>` : ''}
   </body>
 </html>
 `;

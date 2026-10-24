@@ -109,6 +109,12 @@ describe('agent homepage routing', () => {
   });
 
   it('honors explicit markdown media types and preserves HTML preferences', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response('not html', {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    });
+    try {
     for (const accept of [
       'text/markdown', 'TEXT/MARKDOWN; charset=utf-8', 'text/html;q=0.5, text/markdown',
       'text/markdown;q=0.2, text/html;q=0, */*;q=0.9',
@@ -135,9 +141,15 @@ describe('agent homepage routing', () => {
         headers: { 'User-Agent': 'Mozilla/5.0', Accept: accept },
       })), undefined);
     }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('preserves JSON agent mode, browsers, search crawlers, variants, and other paths', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(null, { status: 308, headers: { location: '/dashboard' } });
+    try {
     for (const [url, ua] of [
       ['https://www.worldmonitor.app/?mode=agent', 'ClaudeBot/1.0'],
       ['https://www.worldmonitor.app/', 'Mozilla/5.0'],
@@ -150,6 +162,9 @@ describe('agent homepage routing', () => {
       ['https://tech.worldmonitor.app/', 'ClaudeBot/1.0'],
     ]) {
       assert.equal(await middleware(new Request(url, { headers: { 'User-Agent': ua } })), undefined);
+    }
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 

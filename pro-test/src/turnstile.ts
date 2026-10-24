@@ -1,6 +1,13 @@
 const TURNSTILE_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
 const MAX_LOAD_ATTEMPTS = 3;
 
+function pageCspNonce(): string {
+  for (const element of document.scripts) {
+    if (element.nonce) return element.nonce;
+  }
+  return '';
+}
+
 let loadAttempts = 0;
 let pending: Promise<boolean> | null = null;
 
@@ -21,7 +28,7 @@ export function ensureTurnstileScript(): Promise<boolean> {
     const script = document.createElement('script');
     script.src = TURNSTILE_SRC;
     script.async = true;
-    script.nonce = 'wm-static-bootstrap';
+    script.nonce = pageCspNonce();
     script.addEventListener('load', () => {
       pending = null;
       settle(true);

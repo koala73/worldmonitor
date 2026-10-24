@@ -20,7 +20,7 @@ const root = resolve(here, '..');
 function executeInlineUtmPropagation(incomingSearch: string, hrefs: Array<string | null>): Array<string | null> {
   const base = readFileSync(resolve(root, 'blog-site/src/layouts/Base.astro'), 'utf8');
   const script = base.match(
-    /<script is:inline nonce="wm-static-bootstrap">([\s\S]*?)<\/script>/,
+    /<script is:inline nonce="__WM_CSP_NONCE__">([\s\S]*?)<\/script>/,
   )?.[1];
   assert.ok(script, 'the inline UTM propagation script must remain present and CSP-authorized');
 

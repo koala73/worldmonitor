@@ -105,15 +105,30 @@ describe('rootless Mintlify route canonicalization', () => {
     }
   });
 
-  it('does not intercept product routes or non-read methods', () => {
-    for (const path of ['/pricing', '/changelog', '/sandbox', '/sandbox/', '/sandbox/index.json']) {
-      assert.equal(
-        middleware(new Request(`https://www.worldmonitor.app${path}`, {
-          headers: { host: 'www.worldmonitor.app', 'user-agent': 'Googlebot' },
-        })),
-        undefined,
-        `${path} must keep the product sandbox/Vercel contract`
-      );
+  it('does not intercept product routes or non-read methods', async () => {
+    const originalFetch = globalThis.fetch;
+    // The only fetch allowed is the CSP stamp's read of the built document,
+    // which passes a non-HTML answer through untouched.
+    let fetched = 0;
+    globalThis.fetch = async (input) => {
+      const inner = new URL(String(input));
+      if (inner.searchParams.get('wm-built') !== '1') fetched += 1;
+      return new Response('not html', { status: 200, headers: { 'content-type': 'text/plain' } });
+    };
+    try {
+      for (const path of ['/pricing', '/changelog', '/sandbox', '/sandbox/', '/sandbox/index.json']) {
+        fetched = 0;
+        assert.equal(
+          await middleware(new Request(`https://www.worldmonitor.app${path}`, {
+            headers: { host: 'www.worldmonitor.app', 'user-agent': 'Googlebot' },
+          })),
+          undefined,
+          `${path} must keep the product sandbox/Vercel contract`
+        );
+        assert.equal(fetched, 0, path);
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
     }
     assert.equal(
       middleware(new Request('https://www.worldmonitor.app/api-brief', {

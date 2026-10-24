@@ -98,7 +98,7 @@ test('cdata() splits the terminator and strips illegal control characters', asyn
   assert.equal(cdata('x\x00y\x08z'), '<![CDATA[xyz]]>');
 });
 
-const INJECTED_HREF = "/p/</link><script xmlns='http://www.w3.org/1999/xhtml' nonce='wm-static-bootstrap'>alert(1)</script><link>";
+const INJECTED_HREF = "/p/</link><script xmlns='http://www.w3.org/1999/xhtml' nonce='__WM_CSP_NONCE__'>alert(1)</script><link>";
 const INVALID_PATHS = [
   INJECTED_HREF,
   '/p/</link></item><item><title>Forged item</title></item><item><link>',

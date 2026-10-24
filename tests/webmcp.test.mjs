@@ -2796,7 +2796,7 @@ describe('homepage WebMCP built CSP copy', { skip: shouldSkipProBuiltOutput() },
     const welcomeBuilt = readFileSync(resolve(ROOT, 'public/pro/welcome.html'), 'utf-8');
     const builtScript = findHomepageWebMcpScript(welcomeBuilt);
     assert.ok(builtScript);
-    assert.match(builtScript.attrs, /\bnonce="wm-static-bootstrap"/);
+    assert.match(builtScript.attrs, /\bnonce="__WM_CSP_NONCE__"/);
     assert.match(builtScript.body, /navigator\.modelContext/);
   });
 });

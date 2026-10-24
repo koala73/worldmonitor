@@ -19,8 +19,166 @@ import {
 } from './scripts/crawlable-chokepoint-live.mjs';
 import { liveTopicPageForPath, liveTopicReading } from './scripts/live-pages/index.mjs';
 import { replaceLiveSection } from './scripts/live-pages/common.mjs';
+import {
+  CSP_NONCE_PLACEHOLDER,
+  STAMPED_DOCUMENT_CACHE_CONTROL,
+  STAMPED_DOCUMENT_CDN_CACHE_CONTROL,
+  stampCspDocument,
+} from './shared/csp-nonce.mjs';
+import vercelConfig from './vercel.json';
 
 type LiveTopicPage = NonNullable<ReturnType<typeof liveTopicPageForPath>>;
+
+const DASHBOARD_CSP_SOURCE = '/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)';
+const DOCUMENT_STAMP_TIMEOUT_MS = 4_000;
+// Inner fetches of a document (the nonce stamp and the live pages) carry this
+// query marker so they skip both the live branch and stamping. A URL rather than
+// a header keeps the raw document under its own cache key: Cloudflare caches
+// query-free www documents by URL and never sees a request header in the key,
+// and its corpus rule excludes query-bearing URLs. A client that sends it
+// receives the built page with the placeholder still in place, which the static
+// CSP does not allow.
+const BUILT_PAGE_PARAM = 'wm-built';
+// Fixed request headers for the stamp's inner fetch. Forwarding the client's
+// would carry If-None-Match / Range, and a 304 or 206 is not a document to stamp.
+const DOCUMENT_STAMP_USER_AGENT = 'Mozilla/5.0 (compatible; WorldMonitorDocumentStamp/1.0)';
+
+type VercelRewrite = { source: string; destination: string };
+
+// Page-shaped paths that vercel.json rewrites to a function or another origin.
+// Stamping re-fetches the document, which would run that handler twice: a
+// one-shot GET such as /oauth/authorize-pro would spend its grant on the inner
+// fetch and answer the real request "Authorization Expired".
+const NON_DOCUMENT_REWRITES = (vercelConfig.rewrites as VercelRewrite[])
+  .filter(({ destination }) => destination.startsWith('/api/') || /^https?:\/\//.test(destination))
+  .map(({ source }) => {
+    const cut = source.search(/[:(]/);
+    return cut === -1 ? { exact: source } : { prefix: source.slice(0, cut) };
+  })
+  // `/:mdPath(...).md` has no literal prefix. Its paths end in `.md`, which
+  // shouldStampDocument already refuses.
+  .filter((rule) => rule.exact !== undefined || rule.prefix !== '/');
+
+// SPA routes whose last segment may contain a dot (`/stocks/GLEN.L`). The
+// generic matcher skips dotted segments as static files, so each prefix is also
+// listed in config.matcher.
+const DOTTED_DOCUMENT_PREFIXES = (vercelConfig.rewrites as VercelRewrite[])
+  .filter(({ source, destination }) => source.includes(':') && destination.endsWith('.html'))
+  .map(({ source }) => source.slice(0, source.indexOf(':')));
+
+function isNonDocumentRewrite(path: string): boolean {
+  return NON_DOCUMENT_REWRITES.some((rule) =>
+    rule.exact !== undefined ? path === rule.exact : path.startsWith(rule.prefix));
+}
+
+function usesDashboardContentSecurityPolicy(pathname: string): boolean {
+  const rest = pathname.replace(/^\/+/, '');
+  return !/^(?:docs|embed|embed\.html|wm-widget-sandbox\.html)/.test(rest);
+}
+
+function dashboardContentSecurityPolicy(): string {
+  const headers = vercelConfig.headers as Array<{
+    source: string;
+    headers?: Array<{ key: string; value: string }>;
+  }>;
+  const policy = headers
+    .find((entry) => entry.source === DASHBOARD_CSP_SOURCE)
+    ?.headers?.find((header) => header.key === 'Content-Security-Policy')?.value;
+  if (!policy) throw new Error('dashboard Content-Security-Policy missing from vercel.json');
+  return policy;
+}
+
+// Requests Cloudflare's document cache rule never stores or answers from cache
+// (NEGOTIATED_MEDIA_TYPES and RSC_REQUEST_HEADERS in
+// scripts/cloudflare-cache-rule.mjs; tests/csp-nonce.test.mts keeps the two in
+// step). They ask for a non-HTML representation, so passing one through cannot
+// seed the shared cache with an unstamped document.
+const UNCACHED_NEGOTIATED_MEDIA_TYPES = ['text/markdown', 'text/plain', 'text/x-component'];
+const UNCACHED_NEGOTIATION_HEADERS = ['rsc', 'next-router-state-tree', 'next-router-prefetch', 'next-router-segment-prefetch'];
+
+function negotiatesUncachedRepresentation(request: Request): boolean {
+  if (UNCACHED_NEGOTIATION_HEADERS.some((name) => request.headers.has(name))) return true;
+  const accept = (request.headers.get('accept') ?? '').toLowerCase();
+  return UNCACHED_NEGOTIATED_MEDIA_TYPES.some((type) => accept.includes(type));
+}
+
+// Any other GET is stamped, with or without Accept: text/html. A placeholder
+// document passed through carries vercel.json's shared-cache headers, and
+// Cloudflare would store it for every visitor (a missing Accept, */* or
+// application/json all pass its guard). The inner fetch forwards Accept, so a
+// negotiated non-HTML answer is still passed through.
+function shouldStampDocument(request: Request, url: URL): boolean {
+  if (request.method !== 'GET') return false;
+  if (negotiatesUncachedRepresentation(request)) return false;
+  if (url.searchParams.has(BUILT_PAGE_PARAM)) return false;
+  const path = url.pathname;
+  if (path === '/api' || path.startsWith('/api/')) return false;
+  if (!usesDashboardContentSecurityPolicy(path)) return false;
+  if (path === '/mcp' || path.startsWith('/mcp/')) return false;
+  if (isNonDocumentRewrite(path)) return false;
+  const last = path.split('/').pop() ?? '';
+  if (last.includes('.') && !last.endsWith('.html')
+    && !DOTTED_DOCUMENT_PREFIXES.some((prefix) => path.startsWith(prefix))) return false;
+  return true;
+}
+
+function builtDocumentUrl(url: URL): URL {
+  const built = new URL(url);
+  built.searchParams.set(BUILT_PAGE_PARAM, '1');
+  return built;
+}
+
+// The document could not be fetched. Passing through would serve the
+// placeholder page, which runs no script and which the CDN may store under the
+// public URL; a 503 is never stored and the refresh retries it.
+function documentUnavailableResponse(): Response {
+  return new Response(
+    '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="5"><title>World Monitor</title><p>World Monitor is reloading. This page retries in a few seconds.</p>',
+    {
+      status: 503,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Retry-After': '5',
+        'Cache-Control': STAMPED_DOCUMENT_CACHE_CONTROL,
+        'CDN-Cache-Control': STAMPED_DOCUMENT_CDN_CACHE_CONTROL,
+        'Vercel-CDN-Cache-Control': STAMPED_DOCUMENT_CDN_CACHE_CONTROL,
+      },
+    },
+  );
+}
+
+function deliverHtmlDocument(body: string, headers: Headers, status = 200): Response {
+  const stamped = stampCspDocument(body, dashboardContentSecurityPolicy());
+  if (!stamped) return new Response(body, { status, headers });
+  const next = new Headers(headers);
+  for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection', 'etag', 'last-modified']) {
+    next.delete(name);
+  }
+  next.set('content-security-policy', stamped.policy);
+  next.set('cache-control', STAMPED_DOCUMENT_CACHE_CONTROL);
+  next.set('cdn-cache-control', STAMPED_DOCUMENT_CDN_CACHE_CONTROL);
+  next.set('vercel-cdn-cache-control', STAMPED_DOCUMENT_CDN_CACHE_CONTROL);
+  return new Response(stamped.html, { status, headers: next });
+}
+
+function stampOriginDocument(request: Request, url: URL): Promise<Response | undefined> {
+  return fetch(builtDocumentUrl(url), {
+    method: 'GET',
+    headers: {
+      accept: request.headers.get('accept') || 'text/html',
+      'user-agent': DOCUMENT_STAMP_USER_AGENT,
+    },
+    redirect: 'manual',
+    signal: AbortSignal.timeout(DOCUMENT_STAMP_TIMEOUT_MS),
+  }).then(async (upstream) => {
+    if (upstream.status !== 200) return undefined;
+    const contentType = upstream.headers.get('content-type') ?? '';
+    if (!contentType.includes('text/html')) return undefined;
+    const html = await upstream.text();
+    if (!html.includes(CSP_NONCE_PLACEHOLDER)) return undefined;
+    return deliverHtmlDocument(html, upstream.headers);
+  }).catch(() => documentUnavailableResponse());
+}
 
 const AGENT_UA = new RegExp(`(?:^|[^a-z0-9-])(?:${agentRequestPolicy.userAgents.join('|')})(?:$|[^a-z0-9-])`, 'i');
 
@@ -291,8 +449,14 @@ export default function middleware(request: Request) {
 
     // Real HTTP 404 for unknown pages. Agents get markdown (orank
     // `agent-friendly-404`); browsers that send Accept: text/html get HTML.
-    // A rewrite to a static file would 200. Files with extensions skip this
-    // matcher and fall through to public/404.html.
+    // A rewrite to a static file would 200. Non-html extensions skip this
+    // matcher and fall through to public/404.html. .html stays here so the
+    // nonce stamp runs, and an unknown .html file still uses the platform 404.
+    if (path.endsWith('.html') && path !== '/api' && !path.startsWith('/api/')) {
+      if (shouldStampDocument(request, url)) return stampOriginDocument(request, url);
+      return;
+    }
+
     if (!isKnownPublicPagePath(path)) {
       return originNotFoundResponse(path, request);
     }
@@ -315,6 +479,7 @@ export default function middleware(request: Request) {
   // /api/* only). /favico/* is also removed from the matcher below so the
   // middleware never runs on it.
   if (!path.startsWith('/api/')) {
+    if (shouldStampDocument(request, url)) return stampOriginDocument(request, url);
     return;
   }
 
@@ -402,14 +567,10 @@ function docsResponseHeaders(upstream: Response, host: string): Headers {
 // section re-rendered from the current public reading; any failure serves the
 // built page unchanged.
 const CHOKEPOINT_PAGE_PATH = /^\/chokepoints\/[a-z0-9-]+\/$/;
-// The inner fetch of the built page uses this query marker so it skips this
-// branch. A URL rather than a header keeps the built and live variants under
-// different cache keys; a shared cache never answers a page request with the
-// built copy. A client that sends it only receives the built page.
-const BUILT_PAGE_PARAM = 'wm-built';
 const LIVE_PAGE_FETCH_TIMEOUT_MS = 4_000;
 // The reading refreshes every few minutes; the built page's hour-long browser
-// cache would hold it for an hour.
+// cache would hold it for an hour. A built page that carries the CSP nonce
+// placeholder is stamped, and the stamp's no-store replaces these.
 const LIVE_PAGE_CACHE_CONTROL = 'public, max-age=300, must-revalidate';
 const LIVE_PAGE_CDN_CACHE_CONTROL = 'public, s-maxage=300, stale-while-revalidate=60';
 // Must pass the /api/* bot gate below: no BOT_UA token, at least 10 chars.
@@ -449,8 +610,9 @@ async function fetchPublicReading(url: URL, statusPath: string): Promise<unknown
 
 /**
  * Serves the built page with its live section re-rendered by `render`, which
- * returns the new HTML or null to keep the built reading. Any failure serves
- * the built page; a missing built page falls through to the origin.
+ * returns the new HTML or null to keep the built reading. A render failure
+ * serves the built page, a missing built page falls through to the origin, and
+ * a failed fetch answers 503 rather than an unstamped page.
  */
 async function liveHtmlPage(url: URL, kind: string, render: (html: string) => Promise<string | null>): Promise<Response> {
   let page: Response;
@@ -459,14 +621,17 @@ async function liveHtmlPage(url: URL, kind: string, render: (html: string) => Pr
   builtUrl.searchParams.set(BUILT_PAGE_PARAM, '1');
   try {
     page = await fetch(builtUrl, {
-      headers: { accept: 'text/html', 'user-agent': LIVE_PAGE_USER_AGENT },
+      headers: {
+        accept: 'text/html',
+        'user-agent': LIVE_PAGE_USER_AGENT,
+      },
       redirect: 'manual',
       signal: AbortSignal.timeout(LIVE_PAGE_FETCH_TIMEOUT_MS),
     });
     if (page.status !== 200) return passThroughToOrigin();
     html = await page.text();
   } catch {
-    return passThroughToOrigin();
+    return documentUnavailableResponse();
   }
 
   const headers = new Headers(page.headers);
@@ -478,7 +643,7 @@ async function liveHtmlPage(url: URL, kind: string, render: (html: string) => Pr
   headers.set('cache-control', LIVE_PAGE_CACHE_CONTROL);
   headers.set('cdn-cache-control', LIVE_PAGE_CDN_CACHE_CONTROL);
   headers.set('vercel-cdn-cache-control', LIVE_PAGE_CDN_CACHE_CONTROL);
-  const builtPage = () => new Response(html, { status: 200, headers });
+  const builtPage = () => deliverHtmlDocument(html, headers);
 
   try {
     const live = await render(html);
@@ -487,7 +652,7 @@ async function liveHtmlPage(url: URL, kind: string, render: (html: string) => Pr
     // The built file's validators describe a different body.
     headers.delete('etag');
     headers.delete('last-modified');
-    return new Response(live, { status: 200, headers });
+    return deliverHtmlDocument(live, headers);
   } catch {
     return builtPage();
   }
@@ -578,6 +743,8 @@ export const config = {
   matcher: [
     '/mcp',
     '/api/:path*',
-    '/((?!api(?:/|$)|mcp(?:/|$)|.*\\.[^/]+$).*)',
+    '/((?!api(?:/|$)|mcp(?:/|$)|.*\\.(?!html$)[^/]+$).*)',
+    // DOTTED_DOCUMENT_PREFIXES: SPA routes whose symbol may contain a dot.
+    '/stocks/:path*',
   ],
 };

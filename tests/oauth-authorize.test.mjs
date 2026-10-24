@@ -237,7 +237,7 @@ describe('consentPage — scripts allowed by the deployed CSP', () => {
     const html = await renderHtml(BASE_PARAMS, NONCE);
     const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script[^>]*>/gi)];
     assert.ok(scripts.length > 0, 'consent page must render its disclosure script');
-    assert.ok(!scriptSrc.includes("'nonce-wm-static-bootstrap'"), 'the route CSP must not trust the static nonce');
+    assert.ok(!scriptSrc.includes("'nonce-__WM_CSP_NONCE__'"), 'the route CSP must not trust the static nonce');
     for (const [, attrs, body] of scripts) {
       assert.doesNotMatch(attrs, /\bnonce=/);
       const hash = `'sha256-${createHash('sha256').update(body).digest('base64')}'`;

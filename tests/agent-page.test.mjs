@@ -69,7 +69,7 @@ describe('/agent page content', () => {
     assert.ok(PAGE.includes(UMAMI_SCRIPT_TAG), 'the shared first-party Umami tag');
     const scripts = [...PAGE.matchAll(/<script\b[^>]*>/gi)].map((match) => match[0]);
     assert.equal(scripts.length, 2, 'only the page script and Umami');
-    for (const tag of scripts) assert.match(tag, /nonce="wm-static-bootstrap"/);
+    for (const tag of scripts) assert.match(tag, /nonce="__WM_CSP_NONCE__"/);
     assert.ok((PAGE.match(/data-umami-event="agent-copy-command"/g) ?? []).length >= 8);
   });
 });
@@ -117,7 +117,7 @@ describe('/agent ref capture is the shared module', () => {
   });
 
   it('loads the page script as a module that imports the copy', () => {
-    assert.match(PAGE, /<script type="module" nonce="wm-static-bootstrap" src="\/agent\/agent\.js"><\/script>/);
+    assert.match(PAGE, /<script type="module" nonce="__WM_CSP_NONCE__" src="\/agent\/agent\.js"><\/script>/);
     assert.match(SCRIPT, /from '\.\/agent-client-source\.js';/);
     assert.match(SCRIPT, /captureAgentRefFromSearch\(window\.location\.search, agentRefCookieStorage\(document, window\.location\)\)/);
   });

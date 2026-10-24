@@ -8,6 +8,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { CSP_NONCE_PLACEHOLDER } from '../shared/csp-nonce.mjs';
+
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
 export const USE_CASES_CONTENT_VERSION = '2026-09-10';
 
@@ -38,7 +40,7 @@ const UMAMI_SCRIPT_TAG =
   '<script async defer src="https://abacus.worldmonitor.app/script.js" '
   + 'data-website-id="e8800335-16bc-4241-a133-0eb28c07c832" '
   + 'data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" '
-  + 'nonce="wm-static-bootstrap"></script>';
+  + `nonce="${CSP_NONCE_PLACEHOLDER}"></script>`;
 
 export const HANDOFF_PRESERVE_SCRIPT = `(() => {
   const PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];

@@ -5,6 +5,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { MACHINE_READABLE_URLS } from '../scripts/build-sitemap.mjs';
+import { CSP_NONCE_PLACEHOLDER as STATIC_SCRIPT_NONCE } from '../shared/csp-nonce.mjs';
 import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 function readFileSync(path, options) {
@@ -126,7 +127,6 @@ const GLOBAL_CSP_EXTERNAL_SCRIPT_HTML_FILES = [
   'public/pro/index.html',
   'public/pro/welcome.html',
 ];
-const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
 const WEBMCP_PLAYWRIGHT_ENV_KEYS = [
   'WM_REQUIRE_WEBMCP',
   'WM_WEBMCP_PRODUCTION',
@@ -3012,8 +3012,8 @@ describe('security header guardrails', () => {
       'CSP script-src must include strict-dynamic so trusted bootstrap scripts can load secondary scripts'
     );
     assert.ok(
-      tokens.includes(`'nonce-${STATIC_SCRIPT_NONCE}'`),
-      'CSP script-src must include the static entry-script nonce used by parser-inserted HTML entries'
+      !tokens.some((token) => token.startsWith("'nonce-")),
+      'static CSP must not trust a script nonce; the edge binds one per response'
     );
     assert.ok(
       tokens.some((token) => token.startsWith("'sha256-")),
@@ -3108,18 +3108,18 @@ describe('security header guardrails', () => {
     const headerCsp = getHeaderValue('Content-Security-Policy');
     assert.equal(hasCspMeta(indexHtml), false, 'index.html must not ship a CSP meta tag');
     assert.ok(
-      getCspDirectiveTokens(headerCsp, 'script-src').includes(`'nonce-${STATIC_SCRIPT_NONCE}'`),
-      'header script-src must trust the static entry-script nonce'
+      !getCspDirectiveTokens(headerCsp, 'script-src').some((token) => token.startsWith("'nonce-")),
+      'header script-src must not trust the build placeholder or a static nonce'
     );
     assert.match(
       viteConfigSource,
       /cspNonce:\s*STATIC_SCRIPT_NONCE/,
-      'Vite must stamp emitted HTML entry scripts with the nonce trusted by the header CSP'
+      'Vite must stamp emitted HTML entry scripts with the shared nonce placeholder'
     );
     assert.match(
       proViteConfigSource,
       /cspNonce:\s*STATIC_SCRIPT_NONCE/,
-      'Pro Vite builds must stamp emitted HTML entry scripts with the nonce trusted by the header CSP'
+      'Pro Vite builds must stamp emitted HTML entry scripts with the shared nonce placeholder'
     );
 
     const externalScriptFiles = withoutUnbuiltProPaths(GLOBAL_CSP_EXTERNAL_SCRIPT_HTML_FILES);
@@ -3148,9 +3148,13 @@ describe('security header guardrails', () => {
 
     const headerTokens = getCspDirectiveTokens(headerCsp, 'script-src');
     const nginxTokens = getCspDirectiveTokens(nginxCsp, 'script-src');
+    const nginxRequestNonce = "'nonce-$request_id'";
+    assert.ok(nginxTokens.includes(nginxRequestNonce), 'nginx script-src must bind $request_id as the per-response nonce');
+    assert.ok(!headerTokens.some((token) => token.startsWith("'nonce-")), 'vercel.json script-src must not ship a nonce');
+    const nginxComparable = nginxTokens.filter((token) => token !== nginxRequestNonce);
 
-    const onlyHeader = headerTokens.filter((token) => !nginxTokens.includes(token));
-    const onlyNginx = nginxTokens.filter((token) => !headerTokens.includes(token));
+    const onlyHeader = headerTokens.filter((token) => !nginxComparable.includes(token));
+    const onlyNginx = nginxComparable.filter((token) => !headerTokens.includes(token));
 
     assert.deepEqual(onlyHeader, [],
       `script-src tokens in vercel.json but missing from nginx-security-headers.conf: ${onlyHeader.join(', ')}. ` +

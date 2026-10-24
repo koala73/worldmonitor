@@ -8,6 +8,7 @@ import {
   VARIANT_SEO_PARAGRAPHS,
   type VariantSeoKey,
 } from './variant-seo-summaries';
+import { CSP_NONCE_PLACEHOLDER } from '../../shared/csp-nonce.mjs';
 
 // Variants that are served from their own worldmonitor.app subdomain by the
 // single web deployment (vercel.json host-based rewrites map
@@ -109,7 +110,7 @@ function jsonLdScript(payload: Record<string, unknown>): string {
     .replace(/\n/g, '\n    ')
     // Escape `<` so a `</script>` in any value cannot close the element early.
     .replace(/</g, '\\u003c');
-  return `<script type="application/ld+json" nonce="wm-static-bootstrap">\n    ${serialized}\n    </script>`;
+  return `<script type="application/ld+json" nonce="${CSP_NONCE_PLACEHOLDER}">\n    ${serialized}\n    </script>`;
 }
 
 function variantWebPageJsonLd(meta: VariantMeta): string {

@@ -179,7 +179,7 @@ describe('glossary data integrity', () => {
     }
     // The site CSP is strict-dynamic with the static-bootstrap nonce; a script
     // without it is blocked and the reading never loads.
-    assert.match(page, /<script type="module" is:inline nonce="wm-static-bootstrap" src="\/tools\/live-tools\.js"><\/script>/);
+    assert.match(page, /<script type="module" is:inline nonce="__WM_CSP_NONCE__" src="\/tools\/live-tools\.js"><\/script>/);
   });
 
   it('keeps glossary questions answerable and free of forecast claims', () => {

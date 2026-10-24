@@ -60,20 +60,36 @@ function call(pathOrUrl: string, ua: string, headers: Record<string, string> = {
   return middleware(req) as Response | void;
 }
 
+// A page request is CSP-stamped whatever its Accept header, and the stamp reads
+// the built document first. A non-HTML stub keeps that read a pass-through, so
+// these cases still see the routing decision alone.
+async function callPage(pathOrUrl: string, ua: string): Promise<Response | void> {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('', { status: 200, headers: { 'content-type': 'text/plain' } });
+  try {
+    return await (middleware(new Request(
+      pathOrUrl.startsWith('http') ? pathOrUrl : `https://www.worldmonitor.app${pathOrUrl}`,
+      { headers: ua ? { 'user-agent': ua } : {} },
+    )) as Promise<Response | void> | Response | void);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 describe('middleware variant root user agents', () => {
-  it('passes browsers and AI crawlers to the same production redirect', () => {
+  it('passes browsers and AI crawlers to the same production redirect', async () => {
     for (const variant of WEB_DASHBOARD_VARIANTS) {
       const root = new URL(VARIANT_META[variant].url).origin;
-      assert.equal(call(root, CHROME_UA), undefined);
-      assert.equal(call(root, 'Mozilla/5.0 GPTBot/1.1'), undefined);
+      assert.equal(await callPage(root, CHROME_UA), undefined);
+      assert.equal(await callPage(root, 'Mozilla/5.0 GPTBot/1.1'), undefined);
     }
   });
 
-  it('lets social crawlers use the production redirect and dashboard metadata (#7749)', () => {
+  it('lets social crawlers use the production redirect and dashboard metadata (#7749)', async () => {
     for (const variant of WEB_DASHBOARD_VARIANTS) {
       const root = new URL(VARIANT_META[variant].url).origin;
       for (const ua of [SLACKBOT_UA, 'Twitterbot/1.0', 'facebookexternalhit/1.1']) {
-        assert.equal(call(root, ua), undefined, `${root} must use the shared /dashboard redirect`);
+        assert.equal(await callPage(root, ua), undefined, `${root} must use the shared /dashboard redirect`);
       }
     }
   });
@@ -526,7 +542,7 @@ describe('legacy root map-state links (#7660)', () => {
   const GOOGLEBOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
 
   for (const state of ['c=IR&t=ciianalysis&ts=123', 'country=BF&expanded=1', 'chokepoint=suez']) {
-    it(`forwards bounded entity state ${state} for people and crawlers in one hop`, () => {
+    it(`forwards bounded entity state ${state} for people and crawlers in one hop`, async () => {
       for (const ua of [CHROME_UA, GOOGLEBOT_UA, 'ChatGPT-User/1.0']) {
         const res = call(`/?${state}&utm_source=shared#map`, ua);
         assert.ok(res instanceof Response);
@@ -537,7 +553,7 @@ describe('legacy root map-state links (#7660)', () => {
         for (const header of ['cache-control', 'cdn-cache-control', 'vercel-cdn-cache-control']) {
           assert.match(res.headers.get(header) ?? '', /no-store/);
         }
-        assert.equal(call(`/dashboard?${state}`, ua), undefined);
+        assert.equal(await callPage(`/dashboard?${state}`, ua), undefined);
       }
     });
   }
@@ -548,9 +564,9 @@ describe('legacy root map-state links (#7660)', () => {
     assert.equal(call(`/?${state}`, CHROME_UA)?.headers.get('location'), `https://www.worldmonitor.app/dashboard?${state}`);
   });
 
-  it('does not reinterpret homepage preferences or standalone modifiers as dashboard state', () => {
+  it('does not reinterpret homepage preferences or standalone modifiers as dashboard state', async () => {
     for (const query of ['lang=ar', '_f=uuaa', 'expanded=1', 't=brief&ts=123']) {
-      for (const ua of [CHROME_UA, GOOGLEBOT_UA]) assert.equal(call(`/?${query}`, ua), undefined);
+      for (const ua of [CHROME_UA, GOOGLEBOT_UA]) assert.equal(await callPage(`/?${query}`, ua), undefined);
     }
   });
 
@@ -645,12 +661,12 @@ describe('legacy root map-state links (#7660)', () => {
     );
   });
 
-  it('leaves /dashboard?<map state> alone for everyone', () => {
+  it('leaves /dashboard?<map state> alone for everyone', async () => {
     // The canonical tag already consolidates these and robots.txt keeps
     // crawlers off them. Redirecting would manufacture the very redirects
     // this change removes.
-    assert.equal(call(`/dashboard?${MAP_STATE}`, GOOGLEBOT_UA), undefined);
-    assert.equal(call(`/dashboard?${MAP_STATE}`, CHROME_UA), undefined);
+    assert.equal(await callPage(`/dashboard?${MAP_STATE}`, GOOGLEBOT_UA), undefined);
+    assert.equal(await callPage(`/dashboard?${MAP_STATE}`, CHROME_UA), undefined);
   });
 
   it('keeps the map state for user-triggered assistant fetches', () => {
@@ -679,9 +695,9 @@ describe('legacy root map-state links (#7660)', () => {
     }
   });
 
-  it('does not touch a param-free root request', () => {
-    assert.equal(call('/', GOOGLEBOT_UA), undefined);
-    assert.equal(call('/', CHROME_UA), undefined);
+  it('does not touch a param-free root request', async () => {
+    assert.equal(await callPage('/', GOOGLEBOT_UA), undefined);
+    assert.equal(await callPage('/', CHROME_UA), undefined);
   });
 
   // #7660 raised this as a "serious problem if it ever fires": agents.md warns
@@ -690,7 +706,7 @@ describe('legacy root map-state links (#7660)', () => {
   // scoped to /api/* by an early return, so no content path can 403 a search
   // crawler — but nothing asserted it, and the early return is one edit away
   // from being reordered.
-  it('never 403s a search crawler on a content path', () => {
+  it('never 403s a search crawler on a content path', async () => {
     const CRAWLERS = [
       GOOGLEBOT_UA,
       'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)',
@@ -710,7 +726,7 @@ describe('legacy root map-state links (#7660)', () => {
     ];
     for (const ua of CRAWLERS) {
       for (const path of CONTENT_PATHS) {
-        const res = call(path, ua);
+        const res = await callPage(path, ua);
         if (res instanceof Response) {
           assert.notEqual(res.status, 403, `${path} must not 403 a crawler (${ua.slice(0, 40)}…)`);
         }

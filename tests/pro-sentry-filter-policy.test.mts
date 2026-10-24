@@ -761,7 +761,7 @@ describe('marketingBeforeSend — injected eval blocked by CSP (WORLDMONITOR-129
   // Verbatim production event: Edge 150 / Windows on `/pro`, an `onerror`
   // capture whose only frames are two `<anonymous>:1` entries — a script
   // evaluated by an extension, which our `script-src` (no 'unsafe-eval') refused.
-  const CSP_EVAL_MESSAGE = "Evaluating a string as JavaScript violates the following Content Security Policy directive because 'unsafe-eval' is not an allowed source of script: script-src 'self' 'strict-dynamic' 'nonce-wm-static-bootstrap'";
+  const CSP_EVAL_MESSAGE = "Evaluating a string as JavaScript violates the following Content Security Policy directive because 'unsafe-eval' is not an allowed source of script: script-src 'self' 'strict-dynamic' 'nonce-__WM_CSP_NONCE__'";
   const evalEvent = (value: string, filenames: string[]): PolicyEvent => ({
     exception: {
       values: [{

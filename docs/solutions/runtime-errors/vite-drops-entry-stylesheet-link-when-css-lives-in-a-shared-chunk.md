@@ -72,7 +72,7 @@ manualChunks(id) {
 The existing `deferDashboardStylesheetLinks` step from PR #4393 (`vite.config.ts:402-409`) then rewrites the restored link into its deferred form plus a `<noscript>` copy, and `activateDeferredDashboardStyles` (`src/main.ts:37-45`) flips `media` to `all` at startup. The built `dashboard.html` now carries:
 
 ```html
-<link rel="stylesheet" crossorigin href="/assets/dashboard-styles-9hl8Iil4.css" nonce="wm-static-bootstrap" media="print" data-wm-deferred-style="dashboard">
+<link rel="stylesheet" crossorigin href="/assets/dashboard-styles-9hl8Iil4.css" nonce="__WM_CSP_NONCE__" media="print" data-wm-deferred-style="dashboard">
 ```
 
 The content hash matches the old `debugbear-rum-9hl8Iil4.css`, so the CSS bytes are identical. Only the chunk and the link changed.
