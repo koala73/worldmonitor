@@ -49,7 +49,7 @@ test('requests a bounded full-text media timeline with budget admission and refr
   const outcome = await fetchOutcome({ previousSource: { candidates: [old] }, fetchFn: async (input, init) => {
     const url = new URL(input);
     assert.equal(url.pathname, `/2/users/${JAPAN_X_ACCOUNT_ID}/tweets`);
-    assert.equal(url.searchParams.get('max_results'), '50');
+    assert.equal(url.searchParams.get('max_results'), '25');
     assert.equal(url.searchParams.get('start_time'), '2026-10-21T12:00:00.000Z');
     assert.match(url.searchParams.get('tweet.fields'), /note_tweet/);
     assert.equal(url.searchParams.get('expansions'), 'attachments.media_keys');

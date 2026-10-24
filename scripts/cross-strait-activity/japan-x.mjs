@@ -5,7 +5,7 @@ export const JAPAN_X_MAX_TEXT_LENGTH = 16_000;
 export const JAPAN_X_ACCOUNT_ID = '864751444586397696';
 export const JAPAN_X_POLL_MS = 6 * 60 * 60 * 1000;
 const WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
-const MAX_POSTS = 50;
+const MAX_POSTS = 25;
 const MAX_BYTES = 1024 * 1024;
 const MODE = 'official_joint_staff_x_review_candidates';
 
