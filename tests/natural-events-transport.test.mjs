@@ -199,14 +199,19 @@ test('EONET success and malformed JSON release header and idle timers', async t 
   }
 });
 
-function dualFamilyFailure() {
-  return new TypeError('fetch failed', { cause: Object.assign(new AggregateError([
+function dualFamilyFailure(wrapped = false) {
+  const aggregate = Object.assign(new AggregateError([
     Object.assign(new Error(), { code: 'ETIMEDOUT', syscall: 'connect', address: '127.0.0.1' }),
     Object.assign(new Error(), { code: 'ENETUNREACH', syscall: 'connect', address: '::1' }),
-  ]), { code: 'ETIMEDOUT' }) });
+  ]), { code: 'ETIMEDOUT' });
+  const cause = wrapped
+    ? Object.assign(new Error('connect timeout', { cause: aggregate }), { code: 'UND_ERR_CONNECT_TIMEOUT' })
+    : aggregate;
+  return new TypeError('fetch failed', { cause });
 }
 
-test('EONET retries the dual-family connect failure over IPv4 and destroys its dispatcher', async t => {
+for (const wrapped of [false, true]) {
+test(`EONET retries ${wrapped ? 'wrapped' : 'direct'} dual-family connect failure over IPv4 and destroys its dispatcher`, async t => {
   const server = createServer((_req, res) => { res.end(JSON.stringify({ events: [event] })); });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -221,7 +226,7 @@ test('EONET retries the dual-family connect failure over IPv4 and destroys its d
   let dispatcher;
   const transport = fixture(async (source, attempt, options) => {
     if (source !== 'eonet') { assert.equal(options.dispatcher, undefined); return; }
-    if (attempt === 1) { assert.equal(options.dispatcher, undefined); throw dualFamilyFailure(); }
+    if (attempt === 1) { assert.equal(options.dispatcher, undefined); throw dualFamilyFailure(wrapped); }
     dispatcher = options.dispatcher;
     return fetch(`http://eonet.fixture.invalid:${server.address().port}`, options);
   });
@@ -236,6 +241,7 @@ test('EONET retries the dual-family connect failure over IPv4 and destroys its d
   assert.ok(result.events.some(item => item.id === event.id));
   assert.equal(result._sourceSnapshots.eonet.fetchedAt, NOW);
 });
+}
 
 test('IPv4 fallback is limited to EONET and the exact connect failure signature', async () => {
   const wrongFamily = dualFamilyFailure();
