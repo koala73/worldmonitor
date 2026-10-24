@@ -374,6 +374,7 @@ export function parseHtmlSentiment(html) {
 }
 
 async function fetchAaiiSentiment() {
+  const retained = await readCanonicalValue(AAII_KEY, { strict: true });
   let data = [];
   // AAII robots.txt disallows /files/*, including sentiment.xls.
   try {
@@ -398,7 +399,6 @@ async function fetchAaiiSentiment() {
     throw Object.assign(new Error('AAII HTML has no valid current source-dated reading'), { nonRetryable: true });
   }
 
-  const retained = await readCanonicalValue(AAII_KEY, { strict: true });
   const priorWeeks = retained?.fallback === false && ['html', 'xls'].includes(retained.source) ? retained.weeks : [];
   if (!Array.isArray(priorWeeks) || priorWeeks.some(w => !isValidWeek(w) || w.date > data[0].date)) {
     throw Object.assign(new Error('AAII retained history is invalid or newer than the live source'), { nonRetryable: true });
