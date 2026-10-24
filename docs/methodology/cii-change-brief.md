@@ -68,7 +68,7 @@ The suite injects evidence into parsed sources (`buildCiiAuxiliarySources` outpu
 - **P5c.** "Against the evidence" means against the blend: A blends above B but scores below it.
 - **P7a** nulls each input in turn. Every country whose terms change must report a coverage below 1 and below its coverage with the input present. **P7b** asks input health to call a reader that maps none of its records unusable; outages, which read `countryCode` from rows that carry only a name, are the live case.
 - **P8.** Each parsed input is replaced by its empty value. For advisories that is null, which brings in the fallback table, as a failed read does. No country may move by more than **K = 10**.
-- **P9** compares the span of the cached UCDP rows with the 2-year window the UCDP classes assume. It needs at least 90% of that window.
+- **P9** runs the scorer's read-time window check (`assessUcdpWindow`) on each fixture's UCDP rows, against the 365-day window the UCDP term assumes (`CII_UCDP_WINDOW_DAYS`, equal to the writers' trailing window). The rows must reach back to within 31 days of the window start, no calendar month between the oldest and newest rows may hold under a quarter of the median non-empty month's daily events, and the newest row may be at most 90 days old. The same check is reported as `inputs.ucdp.window` in input health, where a failure reads `short_window`. (Until v15, P9 measured the span against the 2 years the removed UCDP classes assumed.)
 - **P10.** Ten more delayed airports per country must not raise S.
 - **P11a.** A critical headline naming country A and a non-Tier-1 target (an attack abroad) must not raise A. **P11b.** +50 own military flights and +20 own vessels must not raise A.
 - **P12a.** Every magnitude is scaled by a uniform factor in 0.9–1.1. That includes the scored numbers inside list records: UCDP deaths, quake magnitude, fire brightness and radiative power. Dates and locations stay fixed. Every list record is dropped or duplicated with probability 0.05 each. The run uses 40 seeded draws per fixture. **P12b.** GDELT counts and classified headline counts are scaled ×0.5, ×2 and ×4 with every share unchanged.
@@ -87,6 +87,13 @@ The suite injects evidence into parsed sources (`buildCiiAuxiliarySources` outpu
 - A new `CII_FORMULA_VERSION` starts with no entry: its PR lists the gaps it still has, with measured values.
 - Never loosen a threshold or grow the list to pass CI.
 
+**Release blockers.** `V15_RELEASE_BLOCKERS` in the same test lists the properties that passed as real assertions in v14 and fail after a Stage B change because of the floors that remain. Each entry records the measured value, the reason, and the owner, `stage-c`.
+
+- While a property is listed it runs as a `todo` with its measured value; it is not a known gap.
+- A ratchet test fails when a blocker passes, names an unmeasured property, or also appears in `KNOWN_GAPS`.
+- The release gate (section 3) fails while the list is non-empty and `inProgress` is unset, so the integration branch cannot ship v15 with a blocker.
+- P15d (chronic civil war ≥ 70) is the first entry. It passed only through the UCDP war floor, which B6 removed. In the v14 linear blend, Conflict carries at most 0.30 × 0.6 = 18 points: with Conflict forced to 100 the scenario blends to 54 (US, DE, GB, JP) to 72 (SY, UA, YE). Stage C must meet it without a floor.
+
 ## 3. Evidence standard
 
 ### Fixtures
@@ -95,8 +102,30 @@ Replay only on the committed multi-date fixtures in `tests/fixtures/cii/`. A sna
 
 - Each fixture holds trimmed production inputs and the formula's expected table for each version.
 - Where it was captured, a fixture also holds the table production stored at the same moment.
-- `tests/cii-fixtures.test.mts` asserts that the seam reproduces the expected table for the current version, and production's table 31/31.
+- `tests/cii-fixtures.test.mts` asserts that the seam reproduces the expected table for the scored version, and production's table 31/31.
 - Scores that move without a version bump fail it.
+
+**Released tables are immutable.** A released version's expected table is a record: nothing writes or overwrites it, and the fixture test proves `--write-expected` cannot overwrite `v14`.
+
+**An integration branch scores an unreleased version.** While `docs/methodology/cii-next.json` sets `"inProgress": true` and names the `branch`, that branch scores `next` but keeps `CII_FORMULA_VERSION` at the released version, so the single bump happens when the branch merges to main. Meanwhile:
+
+- the scored version is `next`. The seam must reproduce `expected[next]`, and `KNOWN_GAPS[next]` in `tests/cii-invariants.test.mts` lists the gaps;
+- `--write-expected` writes, or overwrites, only `expected[next]`. Every PR on the branch regenerates it after each rebase, and only through `--write-expected`;
+- the production check stays as provenance. Each stored production table must equal `expected[methodologyVersion]`, the table recorded at that version. Only the seam-against-production assertion is skipped, with a message, because the tree no longer runs the released scorer. It runs again once `next` ships and is captured;
+- capture fixtures from a released checkout (main). `scripts/cii-capture-fixture.mts` refuses to run on the branch, then the branch records `next` with `--write-expected`;
+- the protocol snapshot in `tests/cii-scoring.test.mts` follows the same rule. It covers every literal in `computeCIIScores` and the guarded constants. The test checks the current snapshot against `CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION[next]`. A digest pins every released entry, so editing the `v14` hash fails CI. Regenerate the `next` entry only from the hash this command prints, and say in the PR body that the hash changed:
+
+  ```
+  node --import tsx --test --test-name-pattern="snapshot-keyed" tests/cii-scoring.test.mts | grep "CII protocol snapshot hash"
+  ```
+
+The PR that ships `next` to main bumps `CII_FORMULA_VERSION`, clears `inProgress`, and moves the claim on (section 4). It also freezes the `next` hash as released, by updating `CII_RELEASED_PROTOCOL_HASHES_SHA256`.
+
+**The release gate for merging an integration branch into main.** Without it, the branch could reach main with `inProgress` still set and no version bump. Production would then serve the new scores under the old version's label, and every fixture check would stay green. The "CII release gate" tests in `tests/cii-invariants.test.mts` enforce it:
+
+- In CI on main, on a PR into main, or in a merge-queue run for main, `inProgress` must not be set. Those runs are detected from `GITHUB_BASE_REF` and `GITHUB_REF`. Elsewhere, including local runs, the test is skipped with a message.
+- Wherever `inProgress` is unset, the tree must name its own version. `CII_FORMULA_VERSION` must equal `next`, or the claim must have moved on to the version after it. `KNOWN_GAPS[CII_FORMULA_VERSION]` must exist.
+- The integration branch's release-blocker list (`V15_RELEASE_BLOCKERS`) must be empty: the test "no v15 release blocker remains once v15 is no longer in progress" runs wherever `inProgress` is unset and fails while any entry remains (shown red in the B6 PR by clearing `inProgress` locally, with P15d listed).
 
 Capture a new fixture GET-only, with no Redis writes:
 
@@ -120,7 +149,7 @@ Paste the output of `node --import tsx scripts/cii-table-diff.mts --base origin/
 
 Every country that moves by ≥3 needs an entry in `docs/methodology/cii-changes/<version>.json`, naming the property or input that caused the move.
 
-A new formula version records its expected tables with `--write-expected`. The script refuses to overwrite an existing version's table.
+A new formula version records its expected tables with `--write-expected`. The script refuses to overwrite a released version's table; only an in-progress `next` table is regenerated.
 
 ### Sensitivity
 
@@ -129,6 +158,12 @@ For each new constant, report the range over which every property still holds. A
 ### Replay is a prediction
 
 Nothing counts as live until production matches. Capture a fixture with `--wait-for-rebuild` 4 hours and 24 hours after the deploy, and confirm that `tests/cii-fixtures.test.mts` reproduces the stored table 31/31. Watch provenance and per-input health on `seed-meta:intelligence:risk-scores`, not only the scores.
+
+**Located UCDP fixture before v15 ships (B6).** The committed fixtures hold the pre-v15 UCDP payload: about five weeks of event rows with no location. Replay therefore still counts Gaza and West Bank events toward Israel, and it cannot test the read-time window check (P9). After the UCDP writers (relay and the `seed-ucdp-events` cron) deploy and production's `conflict:ucdp-events:v1` carries `countryDays`, capture a fixture with the located payload, before `inProgress` is cleared. In that fixture:
+
+- `inputs.ucdp.window.honest` must be true;
+- P9 must pass;
+- Israel must match the located preview recorded in `docs/methodology/cii-changes/v15.json` (`b6-ucdp.knownDivergence`) instead of the fixture replay.
 
 ## 4. Process
 

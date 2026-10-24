@@ -12,12 +12,18 @@ import { compactUcdpDashboardPayload } from './_ucdp-dashboard.mjs';
 import ucdpCandidate from './shared/ucdp-candidate.cjs';
 
 const {
-  CANDIDATE_MAX_PAGES,
+  ANNUAL_LOOKBACK_MS,
+  ANNUAL_WINDOW_MAX_PAGES,
   buildCandidateVersions,
   discoverCandidateVersion: discoverCandidateRelease,
-  fetchCandidatePages,
   capWithAnnualFloor,
   candidateContentMeta,
+  annualReleaseEndMs,
+  currentCandidateVersion,
+  fetchAnnualWindow,
+  fetchCandidateWindow,
+  summarizeUcdpWindow,
+  ucdpLocatedCountry,
 } = ucdpCandidate;
 
 const REDIS_KEY = 'conflict:ucdp-events:v1';
@@ -28,10 +34,11 @@ const REDIS_KEY = 'conflict:ucdp-events:v1';
 const BOOTSTRAP_KEY = 'conflict:ucdp-events-bootstrap:v1';
 const BOOTSTRAP_META_KEY = 'seed-meta:conflict:ucdp-events-bootstrap';
 const UCDP_PAGE_SIZE = 1000;
-const MAX_PAGES = 6;
-const MAX_EVENTS = 2000; // Default capacity. Complete candidate rows plus the annual floor take precedence.
-// CII accepts two years, but these newest annual pages and the candidate release
-// only cover a 365-day trailing slice. Candidate rows can exceed the default cap.
+// The capped `events` slice for the map, the RPC and MCP. The CII reads the
+// whole window from `countryDays` instead.
+const MAX_EVENTS = 2000; // Default capacity. The newest candidate release plus the annual floor take precedence.
+// The trailing window both writers fetch and aggregate. The CII's UCDP term
+// assumes exactly this window (CII_UCDP_WINDOW_DAYS; tests pin them together).
 const TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 
 const VIOLENCE_TYPE_MAP = {
@@ -63,14 +70,17 @@ function buildVersionCandidates() {
 // release is slow); candidate DISCOVERY passes a much shorter timeout, because
 // it fires six speculative probes and this script runs inside the relay-backup
 // bundle, which SIGKILLs the UCDP section at 300s.
-async function fetchGedPage(version, page, token, timeoutMs = 90_000) {
+async function fetchGedPage(version, page, token, timeoutMs = 90_000, query = {}) {
   const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA };
   if (token) headers['x-ucdp-access-token'] = token;
+  const params = new URLSearchParams({ pagesize: String(UCDP_PAGE_SIZE), page: String(page), ...query });
   const resp = await fetch(
-    `https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`,
+    `https://ucdpapi.pcr.uu.se/api/gedevents/${version}?${params}`,
     { headers, signal: AbortSignal.timeout(timeoutMs) },
   );
-  if (!resp.ok) throw new Error(`UCDP GED API error (${version}, page ${page}): ${resp.status}`);
+  // The status rides on the error: the window fetch tells an unpublished
+  // release (400/404) from a failed one.
+  if (!resp.ok) throw Object.assign(new Error(`UCDP GED API error (${version}, page ${page}): ${resp.status}`), { status: resp.status });
   return resp.json();
 }
 
@@ -90,11 +100,12 @@ async function discoverVersion(token, fetchPage = fetchGedPage, candidates = bui
   throw new Error('No valid UCDP GED version found');
 }
 
-// Binds the token into the (version, page, timeoutMs) shape the shared candidate
+// Binds the token into the (version, page, timeoutMs, query) shape the shared
 // helpers call, so transport stays here and merge semantics stay shared.
 function candidateFetcher(token) {
-  return (version, page, timeoutMs) => fetchGedPage(version, page, token, timeoutMs);
+  return (version, page, timeoutMs, query) => fetchGedPage(version, page, token, timeoutMs, query);
 }
+const windowFetcher = candidateFetcher;
 
 // Probes all candidates CONCURRENTLY under a short discovery timeout and returns
 // null (never throws) when none is published yet — the candidate is an addition
@@ -163,39 +174,19 @@ async function main() {
   console.log(`  UCDP Token: ${ucdpToken ? maskToken(ucdpToken) : '(none — unauthenticated)'}`);
   console.log();
 
-  const { version, page0 } = await discoverVersion(ucdpToken);
-  const totalPages = Math.max(1, Number(page0?.TotalPages) || 1);
-  const newestPage = totalPages - 1;
-  console.log(`  Version: ${version} | Total pages: ${totalPages}`);
+  const { version } = await discoverVersion(ucdpToken);
+  const nowMs = Date.now();
+  console.log(`  Version: ${version}`);
 
-  const FAILED = Symbol('failed');
-  const pagesToFetch = [];
-  for (let offset = 0; offset < MAX_PAGES && (newestPage - offset) >= 0; offset++) {
-    const page = newestPage - offset;
-    if (page === 0) {
-      pagesToFetch.push(Promise.resolve(page0));
-    } else {
-      pagesToFetch.push(fetchGedPage(version, page, ucdpToken).catch(() => FAILED));
-    }
-  }
+  // The annual release's part of the trailing window, by date: its pages are
+  // not in date order, so "the newest pages" never meant the newest events.
+  const annual = await fetchAnnualWindow(windowFetcher(ucdpToken), version, { nowMs });
+  const allEvents = [...annual.events];
+  const failedPages = annual.failedPages;
+  let latestDatasetMs = getMaxDateMs(annual.events);
+  if (annual.truncated) console.warn(`  annual v${version}: ${annual.totalPages} window pages exceed cap ${ANNUAL_WINDOW_MAX_PAGES}`);
 
-  const pageResults = await Promise.all(pagesToFetch);
-
-  const allEvents = [];
-  let latestDatasetMs = NaN;
-  let failedPages = 0;
-
-  for (const rawData of pageResults) {
-    if (rawData === FAILED) { failedPages++; continue; }
-    const events = Array.isArray(rawData?.Result) ? rawData.Result : [];
-    allEvents.push(...events);
-    const pageMaxMs = getMaxDateMs(events);
-    if (!Number.isFinite(latestDatasetMs) && Number.isFinite(pageMaxMs)) {
-      latestDatasetMs = pageMaxMs;
-    }
-  }
-
-  console.log(`  Raw events: ${allEvents.length} | Failed pages: ${failedPages}`);
+  console.log(`  Raw events: ${allEvents.length} (${annual.startDate}..${annual.endDate}) | Failed pages: ${failedPages}`);
 
   // Preserve last-good data when the annual base could not be fetched AT ALL.
   //
@@ -211,40 +202,49 @@ async function main() {
     process.exit(0);
   }
 
-  // Merge the newest GED Candidate release on top of the annual base (ADD,
-  // never replace — annual is the finalized, authoritative history; replacing
-  // it with a candidate, which is ~1.8k events vs ~418k, would drop nearly
-  // everything outside the CII 2-year conflict recency window and flip
-  // /api/health.riskScores to COVERAGE_PARTIAL — the same class of regression
-  // ucdpDiscoverVersion's Promise.any history in scripts/ais-relay.cjs was
-  // fixed to avoid).
+  // Merge every GED Candidate release after the annual year on top of the
+  // annual base (ADD, never replace — annual is the finalized, authoritative
+  // history). Each candidate release holds one month, so the newest alone
+  // covers one month of the window; every month since the annual year is
+  // fetched (scripts/shared/ucdp-candidate.cjs).
   let candidateVersion = null;
   let candidateComplete = false;
+  let windowReleases = [version];
+  let missingReleases = [];
+  let unpublishedReleases = [];
+  let unpublishedMonths = [];
   const candidateIds = new Set();
   try {
     const candidate = await discoverCandidateVersion(ucdpToken);
     if (candidate) {
-      const merged = await fetchCandidatePages(candidateFetcher(ucdpToken), candidate);
-      // Only claim the bare candidate version once the release was fetched
-      // whole — a partial fetch labelled `26.0.6` is indistinguishable from a
-      // complete one downstream.
-      candidateComplete = merged.complete && !merged.truncated;
+      const fromMs = Math.max(annualReleaseEndMs(version) + 1, nowMs - ANNUAL_LOOKBACK_MS);
+      const merged = await fetchCandidateWindow(windowFetcher(ucdpToken), candidate, { fromMs, throughVersion: currentCandidateVersion(nowMs) });
+      // Only claim the bare candidate version once every release of the
+      // window was fetched whole — a partial window labelled `26.0.6` is
+      // indistinguishable from a complete one downstream.
+      candidateComplete = merged.complete;
       candidateVersion = candidateComplete ? candidate.version : `${candidate.version}+partial`;
-      if (merged.failedPages > 0) {
-        console.warn(`  candidate v${candidate.version}: ${merged.failedPages} page(s) failed — publishing as partial`);
+      missingReleases = merged.missingReleases;
+      unpublishedReleases = merged.unpublishedReleases;
+      unpublishedMonths = merged.unpublishedMonths;
+      if (unpublishedReleases.length) console.log(`  Not published yet: ${unpublishedReleases.join(', ')}`);
+      windowReleases = [version, ...merged.releases.map((r) => r.version)];
+      if (!candidateComplete) {
+        console.warn(`  candidate window ${merged.releases[0].version}..${candidate.version}: incomplete (missing: ${missingReleases.join(', ') || 'none'}; failed or truncated pages) — publishing as partial`);
       }
-      if (merged.truncated) {
-        console.warn(`  candidate v${candidate.version}: ${merged.totalPages} pages exceeds cap ${CANDIDATE_MAX_PAGES} — ${merged.totalPages - CANDIDATE_MAX_PAGES} page(s) dropped`);
+      // Oldest release first, so a later release's revision of an event wins the dedupe below.
+      for (const release of merged.releases) {
+        allEvents.push(...release.events);
+        const releaseMaxMs = getMaxDateMs(release.events);
+        if (Number.isFinite(releaseMaxMs) && (!Number.isFinite(latestDatasetMs) || releaseMaxMs > latestDatasetMs)) {
+          latestDatasetMs = releaseMaxMs;
+        }
       }
-      for (const event of merged.events) {
+      // The capped `events` slice keeps the newest release whole, as before.
+      for (const event of merged.releases.at(-1).events) {
         if (event?.id != null) candidateIds.add(String(event.id));
       }
-      allEvents.push(...merged.events);
-      const candidateMaxMs = getMaxDateMs(merged.events);
-      if (Number.isFinite(candidateMaxMs) && (!Number.isFinite(latestDatasetMs) || candidateMaxMs > latestDatasetMs)) {
-        latestDatasetMs = candidateMaxMs;
-      }
-      console.log(`  Merged candidate v${candidateVersion}: +${merged.events.length} events`);
+      console.log(`  Merged candidates ${merged.releases.map((r) => r.version).join(', ')}: +${merged.releases.reduce((n, r) => n + r.events.length, 0)} events`);
     }
   } catch (err) {
     console.warn(`  Candidate merge skipped: ${err.message}`);
@@ -288,7 +288,7 @@ async function main() {
   }));
 
   mapped.sort((a, b) => b.dateStart - a.dateStart);
-  // Keep monthly candidate aggregates and the annual conflict-floor history.
+  // Keep the newest candidate release and the annual conflict history.
   const capped = capWithAnnualFloor(mapped, (event) => candidateIds.has(event.id), MAX_EVENTS);
   if (mapped.length > MAX_EVENTS) console.log(`  Capped: ${mapped.length} → ${capped.length}`);
 
@@ -300,6 +300,14 @@ async function main() {
     process.exit(0);
   }
 
+  // The whole window, aggregated per country and day, for the CII (the capped
+  // `events` slice is the map's and the RPC's).
+  const windowStartMs = latestDatasetMs - TRAILING_WINDOW_MS;
+  // Aggregated by where each event happened (ucdpLocatedCountry), not UCDP's country code.
+  const located = filtered.map((e) => ({ country: ucdpLocatedCountry(e), dateStart: Date.parse(e.date_start) || 0, deathsBest: Number(e.best) || 0 }));
+  const summary = summarizeUcdpWindow(located, { startMs: windowStartMs, endMs: latestDatasetMs });
+  if (summary.gapMonths.length) console.warn(`  Window has empty months before later data: ${summary.gapMonths.join(', ')}`);
+
   const payload = {
     events: capped,
     fetchedAt: Date.now(),
@@ -307,6 +315,20 @@ async function main() {
     candidateVersion,
     totalRaw: allEvents.length,
     filteredCount: mapped.length,
+    countryDays: summary.countryDays,
+    dailyTotals: summary.dailyTotals,
+    window: {
+      startMs: windowStartMs,
+      endMs: latestDatasetMs,
+      months: summary.months,
+      gapMonths: summary.gapMonths,
+      // Months after the newest data that UCDP has not published yet: the frontier, never a gap.
+      upstreamGapMonths: unpublishedMonths,
+      complete: candidateComplete && failedPages === 0 && !annual.truncated && summary.gapMonths.length === 0,
+      releases: windowReleases,
+      missingReleases,
+      unpublishedReleases,
+    },
   };
 
   console.log(`  Mapped: ${mapped.length} events`);
@@ -376,6 +398,8 @@ async function main() {
     candidateVersion,
     candidateComplete,
     annualFailedPages: failedPages,
+    windowComplete: payload.window.complete,
+    windowGapMonths: payload.window.gapMonths,
     ...candidateContentMeta(capped),
   };
   const metaBody = JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', 604800]);

@@ -57,7 +57,7 @@ bounded to 0-100.
 | Component | What It Measures | Main Inputs |
 |-----------|------------------|-------------|
 | **Unrest** | Civil disorder pressure before or below open conflict | ACLED protests and riots, protest fatalities, high-severity unrest, internet/power outages |
-| **Conflict** | Kinetic violence | ACLED battles, explosions, violence against civilians, fatalities, OREF alerts for Israel; GDELT conflict coverage while ACLED returns no events |
+| **Conflict** | Kinetic violence | ACLED battles, explosions, violence against civilians, fatalities, OREF alerts for Israel; GDELT conflict coverage while ACLED returns no events; UCDP organised-violence deaths per capita over the trailing year |
 | **Security** | Hard-security pressure on the country | Foreign military flights and vessels located in it, aviation closures/delays, GPS/GNSS jamming |
 | **Information** | Information-environment pressure | Classified news headlines and country-attributed threat summaries |
 
@@ -79,34 +79,36 @@ arrive outside the base event components:
 | AIS disruptions | 10 | Maritime disruption buckets |
 | Strike pressure | 10 | Strikes on the country (Middle East strike feed, GDELT worldwide), decayed with a three-day half-life |
 
-The score floor is the larger of UCDP conflict floors, State Department
-advisory floors and the strike floor. When live advisory data is absent, the scorer applies the
+The score floor is the larger of State Department advisory floors and the
+strike floor (v15 removed the UCDP conflict floors). When live advisory data is absent, the scorer applies the
 curated fallback levels published in the
 [methodology](/methodology/cii-risk-scores#advisory-fallback-table) before
 calculating the advisory boost and floor.
 
 | Floor | Threshold |
 |-------|----------:|
-| UCDP active war | 70 |
-| UCDP minor conflict | 50 |
 | Do-not-travel advisory | 60 |
 | Reconsider-travel advisory | 50 |
 | Strike pressure (from pressure 5, rising 8 per doubling) | 40-70 |
 
-UCDP conflict floors are derived from the **latest available** UCDP GED release
-(the seeder selects the newest version that returns events, not merely the first
-to respond) and only count events inside a **2-year recency window** — older
-events no longer pin the floor. Within that window, CII classifies a Tier-1
-country as UCDP **active war** when total deaths are greater than 1000 or event
-count is greater than 100, and as UCDP **minor conflict** when event count is
-greater than 10 but the war thresholds are not met. Because UCDP GED ships as
-annual releases that lag real time, recent kinetic conflict is carried by
-**ACLED** (real-time) and the cross-source signal feed; UCDP supplies the
-historical baseline floor. In the `riskScores` health/cache signal, the conflict realtime
+UCDP enters **Conflict** as a continuous term, not a floor (v15). The UCDP
+writers fetch a **365-day window**: the latest annual GED release by date and
+every monthly GED Candidate release after it. Each event counts its best death
+estimate (at least one), decayed with a half-life of about 91 days, divided by
+the country's population: the result reads as deaths per million people per
+year. The term reaches half its cap of 70 at the World Bank's medium-intensity
+threshold (10 per million a year) and the cap at high intensity (100 per
+million). Until v14, UCDP set a floor of 70 (more than 100 events or 1,000
+deaths in two years) or 50 (more than 10 events), so one more event could move
+a score by 20 points. The scorer checks at read time that the cached rows cover
+the window; health reports a short cache as `short_window`. Because UCDP lags
+real time by a month or more, recent kinetic conflict is carried by **ACLED**
+(real-time) and the cross-source signal feed. In the `riskScores` health/cache
+signal, the conflict realtime
 family is covered when either ACLED or an in-window UCDP feed is present. ACLED
 auth being unconfigured degrades the conflict signal to UCDP-only; it becomes
 `COVERAGE_PARTIAL` only when ACLED is dark and UCDP is also absent, stale, or
-outside the 2-year scoring window (see [Data Sources](/data-sources#dual-source-protest-tracking)).
+outside the 365-day scoring window (see [Data Sources](/data-sources#dual-source-protest-tracking)).
 
 ## Instability Levels
 

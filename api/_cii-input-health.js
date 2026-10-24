@@ -15,9 +15,12 @@
 // An unreadable key rejects the whole build, so it surfaces as a stale
 // riskScores seed-meta rather than as a per-input state.
 //
-// The reader adds two states of its own: `stale` when the input's own health
-// check is past its staleness budget, and `unreported` when the producer did
-// not report the input at all (fail closed).
+// The reader adds three states of its own: `stale` when the input's own health
+// check is past its staleness budget, `short_window` when the producer's
+// read-time window check says the cache covers less than the window the
+// input's term assumes (UCDP; the report carries the `window` it measured),
+// and `unreported` when the producer did not report the input at all (fail
+// closed).
 
 // maxQuietMin: how long the input may move no Tier-1 score before that is
 // implausible. null means quiet can be legitimate indefinitely (no Tier-1
@@ -50,7 +53,7 @@ const INPUTS = {
 
 // A family is unfed when none of its inputs is live or plausibly quiet. The
 // conflict family is the realtime event feeds behind Unrest and Conflict:
-// UCDP is an annual floor and the strike feed is regional, so neither can
+// UCDP lags a month or more and the strike feed is regional, so neither can
 // stand in for them (UCDP is what hid the ACLED loss for months).
 const FAMILIES = {
   conflict: ['acled', 'gdeltCountryEvents'],
@@ -100,6 +103,11 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
     } else if (sourceCheck) {
       states[id] = 'stale';
       dead.push({ id, state: 'stale', sourceCheck });
+    } else if (report.window && report.window.honest === false) {
+      // The cache covers less than the window the input's term assumes (P9):
+      // it still scores, but as a lower bound, so it is not healthy.
+      states[id] = 'short_window';
+      dead.push({ id, state: 'short_window', window: report.window });
     } else if (state === 'quiet') {
       const quietSince = Number(report.quietSince);
       // The producer stamps the clock on another instance, so allow small skew.

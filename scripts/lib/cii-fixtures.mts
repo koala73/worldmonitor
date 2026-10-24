@@ -60,6 +60,62 @@ export function loadCiiFixtures(dir = CII_FIXTURE_DIR): CiiFixture[] {
     .filter((fixture) => fixture.schema === CII_FIXTURE_SCHEMA);
 }
 
+// ------------------------------------------------------------------------
+// Which expected table the working tree must reproduce. A released formula
+// version's table is immutable. While docs/methodology/cii-next.json marks
+// the next version in progress on an integration branch, the working tree
+// already scores that unreleased version under the released
+// CII_FORMULA_VERSION, so its table is recorded and checked under `next`,
+// which each rebase may regenerate.
+// ------------------------------------------------------------------------
+
+export const CII_VERSION_CLAIM_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../../docs/methodology/cii-next.json');
+
+export interface CiiVersionClaim {
+  next: string;
+  claimedBy: string | null;
+  claimedAt: string | null;
+  /** Set while `branch` integrates `next` before it ships; CII_FORMULA_VERSION stays at the released version meanwhile. */
+  inProgress?: boolean;
+  branch?: string;
+}
+
+export function readCiiVersionClaim(path = CII_VERSION_CLAIM_PATH): CiiVersionClaim {
+  return JSON.parse(readFileSync(path, 'utf8')) as CiiVersionClaim;
+}
+
+/** The fixture table key the working tree's scorer reproduces: the in-progress `next`, else the released version. */
+export function ciiScoredVersion(claim: CiiVersionClaim = readCiiVersionClaim(), released = CII_FORMULA_VERSION): string {
+  if (claim.inProgress !== true) return released;
+  // Otherwise `next: "v14"` would make the released v14 table writable.
+  if (claim.next === released) {
+    throw new Error(`cii-next.json marks ${claim.next} in progress but names the released ${released}; an in-progress version must be unreleased`);
+  }
+  return claim.next;
+}
+
+/**
+ * Records `table` as the fixture's expected table for the scored version and
+ * returns whether the fixture changed. The in-progress `next` key may be
+ * written or overwritten. A released version's key may be written once, when
+ * absent, and is never overwritten; this throws instead.
+ */
+export function recordExpectedTable(
+  fixture: CiiFixture,
+  table: Record<string, CiiFixtureExpectedRow>,
+  claim: CiiVersionClaim = readCiiVersionClaim(),
+  released = CII_FORMULA_VERSION,
+): boolean {
+  const version = ciiScoredVersion(claim, released);
+  const existing = fixture.expected[version];
+  if (existing && JSON.stringify(existing) === JSON.stringify(table)) return false;
+  if (existing && claim.inProgress !== true) {
+    throw new Error(`${fixture.label}: ${version} is released and already has a different expected table. A score change needs a new CII_FORMULA_VERSION.`);
+  }
+  fixture.expected[version] = table;
+  return true;
+}
+
 export function expectedFromTable(table: CiiScoreTable): Record<string, CiiFixtureExpectedRow> {
   const out: Record<string, CiiFixtureExpectedRow> = {};
   for (const row of [...table.rows].sort((a, b) => a.region.localeCompare(b.region))) {
@@ -178,11 +234,23 @@ function trimStrikeTally(raw: unknown): unknown {
 export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
   const nullable = <T,>(v: unknown, fn: (v: any) => T): T | null => (v == null ? null : fn(v));
   return {
-    ucdp: nullable(raw.ucdp, (v) => ({
-      events: rows(v, 'events')
-        .filter((e) => nameCode(e?.country || e?.location))
-        .map((e) => pick(e, e?.country ? ['country', 'dateStart', 'deathsBest'] : ['location', 'dateStart', 'deathsBest'])),
-    })),
+    // A payload with the writers' window aggregates is scored from them, not from
+    // `events`: keep the Tier-1 countries' day rows and the global day totals the
+    // read-time window check counts (all countries, so the trim cannot change it).
+    ucdp: nullable(raw.ucdp, (v) => (isObj(v) && isObj(v.countryDays)
+      ? {
+        countryDays: Object.fromEntries(Object.entries(v.countryDays).filter(([name]) => nameCode(name))),
+        dailyTotals: Array.isArray(v.dailyTotals) ? v.dailyTotals : [],
+        ...(isObj(v.window) ? { window: {
+          ...(typeof v.window.complete === 'boolean' ? { complete: v.window.complete } : {}),
+          ...(Array.isArray(v.window.upstreamGapMonths) ? { upstreamGapMonths: v.window.upstreamGapMonths } : {}),
+        } } : {}),
+      }
+      : {
+        events: rows(v, 'events')
+          .filter((e) => nameCode(e?.country || e?.location))
+          .map((e) => pick(e, e?.country ? ['country', 'dateStart', 'deathsBest'] : ['location', 'dateStart', 'deathsBest'])),
+      })),
     // `country` is not scored; it shows which records the countryCode reader fails to map.
     outages: nullable(raw.outages, (v) => ({
       outages: rows(v, 'outages').map((o) => pick(o, ['countryCode', 'country_code', 'severity', 'country'])),
@@ -323,6 +391,12 @@ export function buildCiiFixture(raw: CiiRawInputs, meta: {
   notes: string[];
   production: CiiFixture['production'];
 }): CiiFixture {
+  const claim = readCiiVersionClaim();
+  if (claim.inProgress === true) {
+    // This tree scores the unreleased next version, so its table is not the
+    // released version production stored. Capture from a released checkout.
+    throw new Error(`cii-next.json marks ${claim.next} in progress on ${claim.branch ?? 'an integration branch'}: capture fixtures from a released checkout (main), then record ${claim.next} with scripts/cii-table-diff.mts --write-expected`);
+  }
   const inputs = trimCiiRawInputs(raw);
   const options = { nowMs: meta.nowMs, iranEventsEnabled: meta.iranEventsEnabled };
   const full = computeCiiScoreTable(raw, options);

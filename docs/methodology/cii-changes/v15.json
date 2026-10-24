@@ -1,0 +1,240 @@
+{
+  "b6-ucdp": {
+    "rule": "UCDP organised violence enters Conflict as a continuous, decayed, per-capita term (CII_UCDP_* in _risk-config.ts) instead of the v8-v14 war (70) and minor (50) class floors, which were step functions on event counts (P3, forbidden move \"no step functions on event counts\"). The read-time window check (P9) reports the cache window in input health.",
+    "fixtureCaveat": "The fixtures hold the truncated 2026-10 cache (about five weeks: December 2025 tail, September 2026, January-August missing). Their UCDP terms are lower bounds. With the full 365-day window the fixed writers fetch (dry run against the live UCDP API, 2026-10-23, events attributed where they happened), the 2026-10-23T0946Z fixture would read (family max): UA 94, SY 80, YE 79, IR 78, MM 69, LB 64, AF 63, IL 50 (advisory floor; UCDP term 19), PK 50 (advisory floor), MX 47, IN 38, BR 23.",
+    "attribution": {
+      "rule": "An event scores the place it happens (owner ruling, 2026-10-23). UCDP GED codes Gaza and West Bank events with country Israel (country_id 666) and names the territory in adm_1; the writers attribute rows whose adm_1 is Gaza Strip or West Bank to Palestine (ucdpLocatedCountry in scripts/shared/ucdp-candidate.cjs). Palestine (PS) is not one of the 31 scored countries, so these events feed no scored row. Israel uses Israel's own population (UN WPP 2024, 9.65M).",
+      "israelBeforeAfter": {
+        "fixtures (legacy rows, no location), sum form": {
+          "2026-10-21T0628Z": [
+            53,
+            55
+          ],
+          "2026-10-23T0756Z": [
+            52,
+            53
+          ],
+          "2026-10-23T0946Z": [
+            55,
+            56
+          ],
+          "note": "before = Gaza counted to Israel over Israel plus Palestine population (15.34M); after = same rows over Israel's 9.65M. The fixtures cannot be re-attributed: their trimmed rows hold no adm_1 or coordinates."
+        },
+        "full-window preview (2026-10-23T0946Z inputs), sum form": {
+          "before": 59,
+          "after": 50,
+          "ucdpRatePerMillionYear": [
+            90.3,
+            2.9
+          ],
+          "ucdpConflictTerm": [
+            68.4,
+            19.0
+          ]
+        }
+      },
+      "residual": "In the live window 3 Israel-coded events (4 deaths) have no adm_1 and stay with Israel; their coordinates span 34.25-35.5 E, so some may be in Gaza.",
+      "otherInputsStillMapToIsrael": [
+        "scripts/generate-cii-country-borders.mjs:57 ATTRIBUTED_TERRITORIES = { PS: IL }: the border file merges Gaza and the West Bank into the Israel polygon, so every coordinate input does (ciiCountryAt at server/worldmonitor/intelligence/v1/get-risk-scores.ts:226: fires via scripts/shared/wildfire-fires-summary.mjs:94, GPS jamming, earthquakes, climate, strike events without a countryCode; military flights and vessels via scripts/seed-military-cii.mjs:42)",
+        "server/worldmonitor/intelligence/v1/get-risk-scores.ts:266 strikeEventCountry: a strike event tagged countryCode PS scores IL through ciiCountryForIso2",
+        "server/worldmonitor/intelligence/v1/get-risk-scores.ts:852 confirmedStrikeDaysFromSeed: the strike tally's PS days score IL (the doc comment at :840 says so)",
+        "server/worldmonitor/intelligence/v1/get-risk-scores.ts:109 COUNTRY_KEYWORDS.IL includes gaza: news headlines and strike text fall back to IL"
+      ],
+      "alreadyByLocation": "GDELT country events: scripts/_gdelt-country-codes.mjs:27,46 map FIPS GZ and WE to PS, and strikes need Actor2 ISO3 PSE to equal the location (scripts/_gdelt-country-events.mjs:97), so Gaza scores PS (not a scored row), never IL.",
+      "displayOnly": "src/services/conflict/ucdp-classify.ts and the bootstrap projection's classifications (scripts/_ucdp-dashboard.mjs) still group by UCDP country, so Gaza shows under Israel on the dashboard UCDP panel; not CII-scored.",
+      "owner": "stage-c (all except the UCDP writers, fixed here)"
+    },
+    "knownDivergence": {
+      "country": "IL",
+      "why": "The committed fixtures hold the pre-v15 UCDP events payload, trimmed to country, date and deaths: no adm_1, no coordinates. Replay cannot attribute by location, so Gaza and West Bank events still count toward Israel.",
+      "fixtureReplay": {
+        "2026-10-21T0628Z": 51,
+        "2026-10-23T0756Z": 50,
+        "2026-10-23T0946Z": 53,
+        "ucdpRatePerMillionYear": 31,
+        "ucdpConflictTerm": 52
+      },
+      "locatedProduction": {
+        "2026-10-23T0946Z inputs with the live located window": 50,
+        "binding": "reconsider advisory floor",
+        "ucdpRatePerMillionYear": 2.9,
+        "ucdpConflictTerm": 19
+      },
+      "resolution": "Capture a located fixture after the UCDP writers deploy and before inProgress is cleared (brief section 3, \"Located UCDP fixture before v15 ships\"). Comment in tests/cii-ucdp-term.test.mts."
+    },
+    "conflictFamily": "Conflict = min(100, max(acled + fatality + civilian, gdeltConflict, ucdp) + oref): UCDP deaths and GDELT CAMEO 18-20 coverage report the same war, so they merge by max, never by sum (P6). Independent review of 025dc0458. After B5 lands the form is min(100, max(acled + fatality + civilian, gdelt, ucdp) + oref). Moving from sum to max dropped YE (86 -> 80/79), SY (77/78 -> 74/75), AF (63/65 -> 61), IR (67/68 -> 65/67) and IL (55/53/56 -> 51/50/53) below the 3-point bar against v14; Conflict falls wherever UCDP and GDELT both fired.",
+    "floorBinding": {
+      "2026-10-21T0628Z": {
+        "v14": "13 countries (ucdp 5: BR IL IN MX PK)",
+        "v15": "8 (advisory 7, strike 1)"
+      },
+      "2026-10-23T0756Z": {
+        "v14": "12 countries (ucdp 5)",
+        "v15": "7 (advisory 6, strike 1)"
+      },
+      "2026-10-23T0946Z": {
+        "v14": "11 countries (ucdp 5)",
+        "v15": "7 (advisory 6, strike 1)"
+      }
+    },
+    "invariants": {
+      "promoted": [
+        "P12a (±10% noise: p99 6 against a limit of 6, exactly at the limit; was a v14 gap with p99 20). The threshold is not loosened."
+      ],
+      "releaseBlockers": [
+        "P15d (chronic civil war >= 70): 60-64, 31/31 outside the band (60-71, 26/31 before the family max); passed in v14 only through the UCDP war floor. In the v14 linear blend Conflict carries at most 18 points, so no Conflict term can meet it; Stage C owns it."
+      ],
+      "stillGaps": [
+        "P9: the fixtures' cache reaches 302 of 365 days with January-August 2026 near-empty; passes on a fixture captured after the writers deploy"
+      ]
+    },
+    "sensitivity": {
+      "method": "Each constant moved alone; tests/cii-invariants.test.mts rerun on the three fixtures; the passing-property set compared with the default (P5b, P11b, P12a, P15a, P15c).",
+      "CII_UCDP_HALF_LIFE_DAYS": {
+        "value": 91.25,
+        "samePassingSet": "60-180",
+        "breaksAt": "45 and 30 (P12a p99 7)",
+        "upperBoundFromWindow": "a quarter of the 365-day window keeps the truncated tail at 1/16 (6.3%; 12.1% at 120 days, 24.5% at 180)"
+      },
+      "CII_UCDP_RATE_KNEE": {
+        "value": 1.25,
+        "samePassingSet": "1.25-5",
+        "breaksAt": "0.5 (P12a)",
+        "source": "World Bank FCS UCDP thresholds: 10 per million a year at half the cap"
+      },
+      "CII_UCDP_RATE_SATURATION": {
+        "value": 100,
+        "samePassingSet": "100-1000",
+        "breaksAt": "50 (P12a)",
+        "source": "World Bank FCS high-intensity threshold, 10 per 100,000 a year"
+      },
+      "CII_UCDP_CONFLICT_CAP": {
+        "value": 70,
+        "samePassingSet": "50-70",
+        "breaksAt": "100 (P12a)",
+        "source": "the cap of the other Conflict sources"
+      },
+      "termProperties": "Default constants on the live window: one more death in Qatar (smallest population) moves a score by at most 1.6 points; a monthly UCDP release moves a steady 10-per-million country by 0.6."
+    },
+    "fixtureMovers": [
+      {
+        "country": "BR",
+        "reason": "v14 UCDP \"minor\" floor (50, from 35 gang events) removed; 0.47 UCDP deaths per million a year give a Conflict term of 5, about 1 point of score.",
+        "moves": {
+          "2026-10-21T0628Z": [
+            50,
+            23
+          ],
+          "2026-10-23T0756Z": [
+            50,
+            26
+          ],
+          "2026-10-23T0946Z": [
+            50,
+            22
+          ]
+        }
+      },
+      {
+        "country": "IL",
+        "reason": "v14 UCDP \"minor\" and reconsider advisory floors (both 50) stop binding. Fixture replay only: the legacy rows carry no location, so Gaza still counts as Israel (31 deaths per million a year, term 52 as the family maximum): 50-53. Located production gives 50 on the advisory floor; see knownDivergence.",
+        "moves": {
+          "2026-10-23T0946Z": [
+            50,
+            53
+          ]
+        }
+      },
+      {
+        "country": "IN",
+        "reason": "v14 UCDP \"minor\" floor (50, from 19 events) removed; 0.04 UCDP deaths per million a year (1.48 billion people) give a Conflict term of 0.6.",
+        "moves": {
+          "2026-10-21T0628Z": [
+            50,
+            38
+          ],
+          "2026-10-23T0756Z": [
+            50,
+            37
+          ],
+          "2026-10-23T0946Z": [
+            50,
+            37
+          ]
+        }
+      },
+      {
+        "country": "MM",
+        "reason": "Sat on its advisory floor (60) with a blend of 60.2 in v14. 7.6 UCDP deaths per million a year give a Conflict term of 31 with no GDELT conflict term, about 5.6 points.",
+        "moves": {
+          "2026-10-21T0628Z": [
+            60,
+            66
+          ],
+          "2026-10-23T0756Z": [
+            60,
+            66
+          ],
+          "2026-10-23T0946Z": [
+            60,
+            66
+          ]
+        }
+      },
+      {
+        "country": "MX",
+        "reason": "v14 UCDP \"war\" floor (70, from 280 cartel events in about five weeks of cache) removed; 5.5 UCDP deaths per million a year give a Conflict term of 27, the family maximum, so the score is its evidence-backed blend.",
+        "moves": {
+          "2026-10-21T0628Z": [
+            70,
+            44
+          ],
+          "2026-10-23T0756Z": [
+            70,
+            43
+          ],
+          "2026-10-23T0946Z": [
+            70,
+            44
+          ]
+        }
+      },
+      {
+        "country": "PK",
+        "reason": "v14 UCDP \"war\" floor (70) removed; the UCDP term (6.1-6.2 deaths per million a year, 28) is the family maximum in Conflict and lifts the blend about 5 points; the reconsider advisory floor (50) now binds. Stage C removes that floor.",
+        "moves": {
+          "2026-10-21T0628Z": [
+            70,
+            50
+          ],
+          "2026-10-23T0756Z": [
+            70,
+            50
+          ],
+          "2026-10-23T0946Z": [
+            70,
+            50
+          ]
+        }
+      },
+      {
+        "country": "UA",
+        "reason": "Above every floor in v14. The UCDP term saturates (319-324 deaths per million a year, above the World Bank high-intensity threshold of 100) at 70 and becomes the family maximum over GDELT conflict coverage, which read 0-8 for Ukraine (own-norm escalation and the 0.14 level floor): Conflict 70 instead of 0-8, about +11 to +12 points.",
+        "moves": {
+          "2026-10-21T0628Z": [
+            73,
+            84
+          ],
+          "2026-10-23T0756Z": [
+            81,
+            93
+          ],
+          "2026-10-23T0946Z": [
+            82,
+            94
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -185,6 +185,84 @@ export const CII_STRIKE_BOOST_PER_DOUBLING = 2.5;
 export const CII_STRIKE_BOOST_CAP = 10;
 
 /**
+ * UCDP organised violence (v15, Stage B6). A continuous term inside Conflict
+ * replaces the v8-v14 class floors (war: score >= 70 at > 100 events or > 1000
+ * deaths in two years; minor: >= 50 at > 10 events), which turned one more event
+ * into a 20-point step and ignored population. For each country:
+ *
+ *   D = sum over UCDP GED rows of the last WINDOW_DAYS of
+ *       max(deathsBest, events) * 0.5^(age / HALF_LIFE_DAYS)
+ *   R = D / (KERNEL_YEARS * population in millions)
+ *   term = CONFLICT_CAP * min(1, ln(1 + R / RATE_KNEE) / ln(1 + RATE_SATURATION / RATE_KNEE))
+ *
+ * KERNEL_YEARS = HALF_LIFE_DAYS / ln 2 * (1 - 0.5^(WINDOW_DAYS / HALF_LIFE_DAYS)) / 365,
+ * so R reads as deaths per million people per year for a steady rate, whatever
+ * the half-life. Each row counts at least one death: UCDP GED records an event
+ * only when it killed someone, and a row with no best estimate still happened.
+ * Age runs from the build time, so UCDP's publication lag (a month or more)
+ * discounts every country alike.
+ *
+ * Every constant comes from a property, not from a country's resulting score:
+ *  - WINDOW_DAYS equals the window the UCDP writers keep (TRAILING_WINDOW_MS in
+ *    scripts/seed-ucdp-events.mjs and scripts/ais-relay.cjs); a test pins them
+ *    together, and the read-time window check (P9) reports a shorter cache.
+ *  - HALF_LIFE_DAYS is a quarter of the window, so a steady signal loses 1/16
+ *    of its weight to the cutoff; a longer half-life would score evidence the
+ *    cache does not hold. A UCDP candidate release lands once a month and
+ *    moves a steady country's term by 1 - 0.5^(30/91) = 20%. Shorter
+ *    half-lives make single events and releases steppier: at 45 days or less
+ *    the noise property P12a fails.
+ *  - RATE_KNEE and RATE_SATURATION place the World Bank's published conflict
+ *    intensity thresholds for UCDP data (FCS list from FY20: medium intensity
+ *    from 1 and high intensity above 10 conflict deaths per 100,000 people a
+ *    year, i.e. 10 and 100 per million) at half the cap and at the cap:
+ *    solving ln(1 + 10/k) = ln(1 + 100/k) / 2 gives k = 1.25.
+ *  - Rows are counted where the event happened: the UCDP writers attribute
+ *    Gaza and West Bank events, which UCDP codes as Israel, to Palestine
+ *    (no scored row), so Israel's term uses events in Israel only.
+ *  - CONFLICT_CAP equals the other sources' caps inside Conflict
+ *    (CII_CONFLICT_ACTIVITY_CAP, CII_GDELT_ESCALATION_CAP).
+ * docs/methodology/cii-risk-scores.mdx reports the range of each constant over
+ * which the invariant suite gives the same results: half-life 60-180 days,
+ * knee 1.25-5, saturation 100-1,000, cap 50-70.
+ */
+export const CII_UCDP_WINDOW_DAYS = 365;
+export const CII_UCDP_HALF_LIFE_DAYS = CII_UCDP_WINDOW_DAYS / 4;
+export const CII_UCDP_RATE_KNEE = 1.25;
+export const CII_UCDP_RATE_SATURATION = 100;
+export const CII_UCDP_CONFLICT_CAP = 70;
+/**
+ * Read-time window check (P9). The cache is honest when it reaches back to
+ * within a month of the window start, its newest row is no older than the
+ * writers' content-age budget (UCDP_MAX_CONTENT_AGE_MIN, 90 days), and no
+ * calendar month between its oldest and newest rows holds fewer than a quarter
+ * of the median month's events (UCDP GED records about 1,800 events a month
+ * worldwide, so a near-empty month is a missing release, not a quiet one).
+ */
+export const CII_UCDP_MAX_LAG_DAYS = 90;
+export const CII_UCDP_MIN_MONTH_SHARE = 0.25;
+
+/**
+ * Population in millions for every Tier-1 country, the per-capita normaliser
+ * of the UCDP term (P10). Source: UN World Population Prospects 2024, 2026
+ * medium-variant total population (indicator 49), the source the demographics
+ * seeder (scripts/_demographics-capability-source.mjs) already reads, fetched
+ * 2026-10-23. Frozen: population moves about 1% a year, and a frozen table
+ * keeps the score reproducible from its fixtures. One source for all 31
+ * countries: IMF WEO (economic:imf:labor:v1) has no row for KP, SY, CU or IQ.
+ * Israel is Israel's own population: UCDP events in Gaza and the West Bank
+ * score Palestine, where they happened (the UCDP writers attribute them by
+ * UCDP's admin-1 field), and Palestine is not a scored country.
+ */
+export const CII_POPULATION_MILLIONS: Readonly<Record<string, number>> = {
+  AE: 11.57, AF: 45.05, BR: 213.56, CN: 1412.91, CU: 10.89, DE: 83.64, EG: 120.10,
+  FR: 66.75, GB: 69.93, IL: 9.65, IN: 1476.63, IQ: 48.01, IR: 93.17, JP: 122.43,
+  KP: 26.63, KR: 51.60, LB: 5.90, MM: 55.18, MX: 133.00, PK: 259.30, PL: 37.84,
+  QA: 3.17, RU: 143.39, SA: 35.17, SY: 26.47, TR: 87.93, TW: 23.01, UA: 39.54,
+  US: 349.04, VE: 28.63, YE: 42.96,
+};
+
+/**
  * Strategic-risk top-N positional decay step. Weight for position `i` (0-based)
  * is `1 - i * STRATEGIC_RISK_POSITIONAL_DECAY`. With the current value of 0.15
  * and a top-5 window, weights are [1.00, 0.85, 0.70, 0.55, 0.40].

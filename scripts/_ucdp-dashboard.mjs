@@ -140,8 +140,10 @@ export function compactUcdpDashboardPayload(payload, nowMs = Date.now(), rowsPer
   if (!payload || typeof payload !== 'object' || !Array.isArray(payload.events)) return payload;
 
   const events = payload.events;
+  // countryDays and dailyTotals (about 85 KB) feed the CII, not the panel.
+  const { countryDays: _countryDays, dailyTotals: _dailyTotals, ...panelPayload } = payload;
   return {
-    ...payload,
+    ...panelPayload,
     events: selectUcdpPanelRows(events, rowsPerTab),
     // Everything the UI derives from the full set, precomputed so the capped
     // array cannot change what the user sees.

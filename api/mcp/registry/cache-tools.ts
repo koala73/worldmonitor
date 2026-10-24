@@ -321,7 +321,15 @@ export function projectConflictSourceObservation(value: unknown): ConflictSource
   return { ucdp };
 }
 
+// Per-country day aggregates the UCDP writers add for the CII's one-year term
+// (about 85 KB); they would crowd the events out of the output budget.
+const UCDP_CII_AGGREGATE_FIELDS = ['countryDays', 'dailyTotals'] as const;
+
 function filterConflictEvents(data: Record<string, unknown>, params: Record<string, unknown>): Record<string, unknown> {
+  const ucdp = data['ucdp-events'];
+  if (ucdp && typeof ucdp === 'object' && !Array.isArray(ucdp)) {
+    for (const field of UCDP_CII_AGGREGATE_FIELDS) delete (ucdp as Record<string, unknown>)[field];
+  }
   const country = argStr(params.country);
   const minFatal = argNum(params.min_fatalities);
   const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;

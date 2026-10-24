@@ -242,6 +242,62 @@ Component details that are easy to miss:
   Tier-1 country, whatever town USGS names. Accuracy is
   the 1:50m map's: within about 2 km of a land border, twin cities such as El
   Paso and Ciudad Juárez can land on the wrong side.
+- **UCDP organised violence** (v15): UCDP GED deaths over the trailing 365
+  days enter Conflict as a continuous term. Each row counts its best death
+  estimate, at least one per event, decayed with a half-life of a quarter of the
+  window (91.25 days), and the sum is divided by the country's population (UN
+  World Population Prospects 2024, 2026 medium variant, frozen in
+  `CII_POPULATION_MILLIONS`) and by the decay kernel, so it reads as deaths per
+  million people per year: `R = Σ max(deathsBest, events) · 0.5^(age / 91.25) / (kernelYears · populationMillions)`.
+  The term is `70 · min(1, ln(1 + R / 1.25) / ln(1 + 100 / 1.25))`: the World
+  Bank's FCS thresholds for UCDP data (medium-intensity conflict from 1, high
+  intensity above 10 conflict deaths per 100,000 people a year) sit at half the
+  cap and at the cap of 70, the cap the other Conflict sources use. UCDP deaths
+  and GDELT conflict coverage report the same war, so inside Conflict they merge
+  with the ACLED terms by max, never by sum (one violence family, property P6):
+  `Conflict = min(100, max(acled + fatality + civilian, gdeltConflict, ucdp) + oref)`. It replaces
+  the v8-v14 class floors (war 70 at more than 100 events or 1,000 deaths in two
+  years, minor 50 at more than 10 events), under which one more event moved a
+  score by 20 points and population did not count. Age runs from build time, so
+  UCDP's publication lag (a month or more) discounts every country alike; a
+  monthly candidate release moves a steady country's term by about 20%.
+  An event scores the place it happens. UCDP GED codes Gaza and West Bank
+  events with country "Israel" and names the territory in its admin-1 field;
+  the writers attribute those rows to Palestine, which is not one of the 31
+  scored countries, so they feed no row and Israel's term counts events inside
+  Israel over Israel's own population. Other CII inputs still place Gaza and
+  the West Bank in the Israel row (coordinate attribution, the strike feed's
+  `PS` code, the news keyword `gaza`); aligning them is Stage C work.
+  The UCDP writers fetch the whole window: the annual GED release by date (the
+  API's `StartDate`/`EndDate` filters) and every monthly GED Candidate release
+  after the annual year, each of which holds one month. They publish
+  per-country day aggregates (`countryDays`, `dailyTotals`) beside the 2,000
+  mapped events the map and the RPC read. Until 2026-10 they merged only the
+  newest candidate release on six annual pages that are not in date order, so
+  the cache held about five weeks (79% of rows from the newest month,
+  January-August 2026 missing). The scorer checks the window at read time
+  (property P9): the rows must reach back to within a month of the window
+  start, no month between the oldest and newest rows may hold under a quarter
+  of the median month's daily events, the newest row may be at most 90 days
+  old, and the writers must not have flagged their own fetch incomplete
+  (`window.complete`, false after a failed page or a missing release). A
+  monthly release that answers HTTP 400, 404 or no rows counts as not yet
+  published only when it is newer than the newest release that returned data
+  (reported as `window.upstreamGapMonths`); anywhere else it is a failed fetch,
+  because a quota or an outage can answer 400 too, and the check fails. The result is reported as `inputs.ucdp.window` on
+  `seed-meta:intelligence:risk-scores`, and `/api/health` reads a failed check
+  as `short_window`. A short cache still scores, as a lower bound.
+
+  Sensitivity: each constant was moved alone and the invariant suite rerun on
+  the fixtures (`docs/methodology/cii-changes/v15.json`, `B6-ucdp`). The same
+  properties pass for a half-life of 60 to 180 days (at 45 or less the ±10%
+  noise property P12a fails: p99 7 against a limit of 6), a knee of 1.25 to 5
+  (fails at 0.5), a saturation of 100 to 1,000 (fails at 50) and a cap of 50
+  to 70 (fails at 100). The half-life is the top of a range whose upper end is
+  set by the window: past a quarter of it, more than 1/16 of a steady signal
+  falls outside the cache. On the live window of 2026-10-23 one more death in
+  Qatar, the smallest population, moves a score by at most 1.6 points, and a
+  monthly release moves a steady medium-intensity country by 0.6.
 - **Conflict OREF boost**: for Israel only, active OREF rocket-alert pressure
   adds `25 + min(25, activeAlertCount * 5)` inside the Conflict component, so
   the component-level OREF contribution is capped at `+50`. This is separate
@@ -256,8 +312,6 @@ Component details that are easy to miss:
 
 `composite` is then clamped to `[floor, 100]` where `floor` is the larger of:
 
-- **UCDP floor**: 70 if a UCDP war-level event is active, 50 if a minor
-  conflict-level event is active, else 0.
 - **State Department advisory floor**: 60 for "do not travel", 50 for
   "reconsider travel", else 0.
 - **Strike floor** (v12): `min(70, 40 + 8 * log2(P / 5))` once strike pressure

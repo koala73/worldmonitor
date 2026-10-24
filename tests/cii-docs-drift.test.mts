@@ -325,7 +325,7 @@ describe('CII docs drift guards', () => {
     assert.doesNotMatch(section, /Outside target\./);
   });
 
-  it('CII public docs publish UCDP newest-release behavior and classifier thresholds', () => {
+  it('CII public docs publish UCDP newest-release behavior and the continuous UCDP term', () => {
     const methodologyDoc = readFileSync(resolve(root, 'docs/methodology/cii-risk-scores.mdx'), 'utf8');
     const countryDoc = readFileSync(resolve(root, 'docs/country-instability-index.mdx'), 'utf8');
     const algorithmsDoc = readFileSync(resolve(root, 'docs', 'algorithms.mdx'), 'utf8');
@@ -353,7 +353,7 @@ describe('CII docs drift guards', () => {
     );
     assert.match(
       countryDoc,
-      /`COVERAGE_PARTIAL` only when ACLED is dark and UCDP is also absent, stale, or\s+outside the 2-year scoring window/i,
+      /`COVERAGE_PARTIAL` only when ACLED is dark and UCDP is also absent, stale, or\s+outside the 365-day scoring window/i,
       'country-instability-index doc must not imply ACLED auth missing alone causes COVERAGE_PARTIAL',
     );
     assert.match(
@@ -365,16 +365,10 @@ describe('CII docs drift guards', () => {
       { label: 'country-instability-index doc', text: countryFloors },
       { label: 'algorithms doc', text: algorithmsDoc },
     ]) {
-      assert.match(
-        surface.text,
-        /2-year[\s\S]{0,240}(?:total\s+deaths (?:are\s+)?greater than 1000|total\s+deaths > 1000)[\s\S]{0,120}(?:event\s+count (?:is\s+)?greater than 100|event\s+count > 100)/i,
-        `${surface.label} must publish the UCDP war thresholds`,
-      );
-      assert.match(
-        surface.text,
-        /(?:minor conflict|UCDP \*\*minor conflict\*\*)[\s\S]{0,160}(?:event\s+count (?:is\s+)?greater than 10|event\s+count > 10)/i,
-        `${surface.label} must publish the UCDP minor-conflict threshold`,
-      );
+      // v15: UCDP is a continuous per-capita term inside Conflict, not a class floor.
+      assert.match(surface.text, /365[\s\S]{0,400}half-life[\s\S]{0,400}per million/i, `${surface.label} must publish the UCDP term's window, half-life and per-capita scale`);
+      assert.match(surface.text, /World Bank/, `${surface.label} must name the World Bank intensity thresholds the term is anchored on`);
+      assert.doesNotMatch(surface.text, /UCDP active war pins|\| UCDP active war \| 70 \||\| UCDP minor conflict \| 50 \|/, `${surface.label} must not publish the removed UCDP floors`);
     }
   });
 
@@ -504,7 +498,7 @@ describe('CII docs drift guards', () => {
 
   it('the CII version claim names a version after the current formula, and the change protocols point at the brief', () => {
     const claim = JSON.parse(readFileSync(resolve(root, 'docs/methodology/cii-next.json'), 'utf8')) as {
-      next?: unknown; claimedBy?: unknown; claimedAt?: unknown;
+      next?: unknown; claimedBy?: unknown; claimedAt?: unknown; inProgress?: unknown; branch?: unknown;
     };
     assert.match(String(claim.next), /^v\d+$/, 'cii-next.json `next` must be a version such as v15');
     const versionNumber = (v: string) => Number(v.slice(1));
@@ -514,6 +508,11 @@ describe('CII docs drift guards', () => {
     );
     assert.ok(claim.claimedBy === null || (typeof claim.claimedBy === 'string' && claim.claimedBy.length > 0));
     if (claim.claimedBy !== null) assert.ok(Number.isFinite(Date.parse(String(claim.claimedAt))), 'a claim needs an ISO claimedAt');
+    assert.ok(claim.inProgress === undefined || typeof claim.inProgress === 'boolean', 'cii-next.json `inProgress` must be a boolean');
+    if (claim.inProgress === true) {
+      assert.ok(claim.claimedBy !== null, 'an in-progress version must be claimed');
+      assert.ok(typeof claim.branch === 'string' && claim.branch.length > 0, 'an in-progress version names its integration branch');
+    }
 
     const brief = readFileSync(resolve(root, 'docs/methodology/cii-change-brief.md'), 'utf8');
     for (const path of [
