@@ -248,13 +248,21 @@ test('IPv4 fallback is limited to EONET and the exact connect failure signature'
   wrongFamily.cause.errors[1].address = '127.0.0.2';
   const wrongCode = dualFamilyFailure();
   wrongCode.cause.errors[1].code = 'ECONNREFUSED';
+  const wrongWrapper = dualFamilyFailure(true);
+  wrongWrapper.cause.code = 'UND_ERR_SOCKET';
+  const wrappedWrongFamily = dualFamilyFailure(true);
+  wrappedWrongFamily.cause.cause.errors[1].address = '127.0.0.2';
   for (const [source, failure] of [
     ['gdacs:TC', dualFamilyFailure()],
+    ['gdacs:TC', dualFamilyFailure(true)],
     ['eonet', new DOMException('timeout', 'TimeoutError')],
     ['eonet', new TypeError('fetch failed', { cause: { code: 'ETIMEDOUT' } })],
     ['eonet', new TypeError('fetch failed', { cause: new AggregateError([]) })],
     ['eonet', wrongFamily],
     ['eonet', wrongCode],
+    ['eonet', wrongWrapper],
+    ['eonet', wrappedWrongFamily],
+    ['eonet', new TypeError('fetch failed', { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } })],
   ]) {
     const transport = fixture((current, _attempt, options) => {
       assert.equal(options.dispatcher, undefined);
@@ -265,12 +273,13 @@ test('IPv4 fallback is limited to EONET and the exact connect failure signature'
   }
 });
 
-test('failed IPv4 retry destroys its dispatcher and preserves the previous success and expiry', async () => {
+for (const wrapped of [false, true]) {
+test(`failed IPv4 retry for ${wrapped ? 'wrapped' : 'direct'} error destroys its dispatcher and preserves the previous success and expiry`, async () => {
   const initial = await run(fixture());
   let dispatcher;
   const transport = fixture((source, attempt, options) => {
     if (source !== 'eonet') return;
-    if (attempt === 1) throw dualFamilyFailure();
+    if (attempt === 1) throw dualFamilyFailure(wrapped);
     dispatcher = options.dispatcher;
     throw new DOMException('timeout', 'TimeoutError');
   });
@@ -291,6 +300,7 @@ test('failed IPv4 retry destroys its dispatcher and preserves the previous succe
   assert.equal(health.lastAttemptAt, now);
   assert.equal(health.retainedUntil, NOW + 18 * 3_600_000);
 });
+}
 
 test('a body-stage failure does not select the EONET connect fallback', async () => {
   const transport = fixture((source, _attempt, options) => {
