@@ -2697,8 +2697,10 @@ fn main() {
         }
 
         // WebKit2GTK's bubblewrap sandbox can fail inside an AppImage FUSE
-        // mount, causing blank white screens. Disable it when running as
-        // AppImage — the AppImage itself already provides isolation.
+        // mount, causing blank white screens (#411). Disabling it removes the
+        // renderer sandbox for AppImage users. The AppImage format is only a
+        // packaging container and isolates nothing, so this trades defence
+        // in depth for a window that opens.
         if env::var_os("APPIMAGE").is_some() {
             // WebKitGTK 2.39.3+ deprecated WEBKIT_FORCE_SANDBOX and now expects
             // WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 instead.  Setting the
