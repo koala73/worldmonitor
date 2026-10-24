@@ -79,7 +79,7 @@ The two checks need opposite aggregators:
 - **The guard must not fail on noise.** The minimum of each series removes stalls, so ratio-of-mins is right for it.
 - **The control must fail on a real quadratic.** The minimum of the quadrupled series is the fastest quadrupled sample observed. One unusually fast quadrupled sample against a typical base drops min/min below 12x even though every other attempt scaled ~14x. The median attempt ignores that one sample.
 
-The synthetic-sample test fails on any rewrite that changes the aggregation, without depending on the runner, so the choice can no longer be traded away without a red test.
+The synthetic-sample test fails if the control goes back to ratio-of-mins, without depending on the runner, so that particular trade can no longer happen without a red test. It does not reject every aggregation: a mean-ratio control also passes these samples (~13.5x lucky, ~6.5x linear).
 
 ### Limits of this fix
 
