@@ -49,6 +49,7 @@ RUN npm ci --prefix scripts --omit=dev
 # Digest cron + shared script helpers it imports via createRequire.
 COPY scripts/seed-digest-notifications.mjs ./scripts/
 COPY scripts/_digest-markdown.mjs ./scripts/
+COPY scripts/_env-file.mjs ./scripts/
 COPY scripts/lib/ ./scripts/lib/
 # Sprint 1 / U4 operator one-shot — `clearDeliveredEntry` primitive
 # pairs with the delivered-log writer in scripts/lib/digest-delivered-
