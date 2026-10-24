@@ -1657,7 +1657,7 @@ export function normalizeCrisisEditorial(entries, crises) {
     if (bySlug.has(slug)) throw new Error(`${where} is duplicated`);
     if (!crises.some((crisis) => crisis.slug === slug)) throw new Error(`${where} has no registry entry`);
     const lastReviewed = String(entry.lastReviewed || '');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(lastReviewed) || Number.isNaN(Date.parse(`${lastReviewed}T00:00:00Z`))) {
+    if (!isCanonicalCalendarDate(lastReviewed)) {
       throw new Error(`${where} needs an ISO lastReviewed date`);
     }
     const background = (entry.background || []).map((paragraph, index) => ({
@@ -1676,7 +1676,7 @@ export function normalizeCrisisEditorial(entries, crises) {
     if (keyActors.length < 3) throw new Error(`${where} needs at least 3 key actors`);
     const timeline = (entry.timeline || []).map((item, index) => {
       const date = String(item?.date || '');
-      if (!EDITORIAL_DATE_RE.test(date)) throw new Error(`${where} timeline ${index + 1} needs a YYYY-MM or YYYY-MM-DD date`);
+      if (!EDITORIAL_DATE_RE.test(date) || (date.length === 10 && !isCanonicalCalendarDate(date))) throw new Error(`${where} timeline ${index + 1} needs a YYYY-MM or YYYY-MM-DD date`);
       return {
         date,
         event: editorialText(item?.event, `${where} timeline ${index + 1}`),

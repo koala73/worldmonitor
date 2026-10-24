@@ -6189,7 +6189,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
   // #7533-allowlist: 2026-01-02 x12 2026-01-05 x1 2026-01-09 x1 2026-01-15 x10 — laterDate unit pins, synthetic resolver-test snapshots, committed pulse fixture date (test-owned)
   // #7533-allowlist: 2026-01-01 x2 2026-01-31 x2 — datasetTemporalCoverage observation-interval range fixture
   // #7533-allowlist: 2025-05-28 x2 2026-02-14 x4 — shiftLivePulseDates unit-test fixtures (derived from 2026-01-15 +-30/232d)
-  // #7533-allowlist: 2026-02-03 x2 2026-02-30 x1 2026-02-31 x1 — laterDate unit pin; invalid-calendar CII/chokepoint timestamp fixtures
+  // #7533-allowlist: 2026-02-03 x2 2026-02-30 x2 2026-02-31 x1 2001-02-29 x1 — laterDate unit pin; invalid-calendar CII/chokepoint timestamp and crisis-editorial date fixtures
   // #7533-allowlist: 2026-03-04 x6 2026-03-14 x2 2026-04-09 x1 2026-05-01 x2 — laterDate unit pin; resolveChokepointObservation fallback constants
   // #7533-allowlist: 2026-05-28 x2 — datasetTemporalCoverage pure-function fixture
   // #7533-allowlist: 2026-06-01 x2 2026-07-28 x3 — synthetic git-commit and sitemap stub dates
@@ -8083,6 +8083,28 @@ describe('crisis tracker editorial (#8605)', () => {
         message,
       );
     }
+  });
+
+  it('rejects impossible calendar days in review and timeline dates', () => {
+    // Date.parse rolls 2026-02-30 over to March 2 instead of failing.
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        entry.lastReviewed = '2026-02-30';
+        return entry;
+      }), crises),
+      /needs an ISO lastReviewed date/,
+    );
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        entry.timeline[0].date = '2001-02-29';
+        return entry;
+      }), crises),
+      /timeline 1 needs a YYYY-MM or YYYY-MM-DD date/,
+    );
+    assert.doesNotThrow(() => normalizeCrisisEditorial(withEntry(first, (entry) => {
+      entry.timeline[0].date = entry.timeline[0].date.slice(0, 7);
+      return entry;
+    }), crises));
   });
 
   it('rejects an out-of-order timeline and a watch item naming no real dashboard view', () => {
