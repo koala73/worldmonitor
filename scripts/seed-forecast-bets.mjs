@@ -28,6 +28,7 @@ import { baseRateProbability } from './_bet-baserate.mjs';
 import { parseMetricKey } from './_forecast-resolution-eval.mjs';
 import { BETS_HISTORY_KEY, buildBetsInputSnapshotKey, buildBetsRunId } from './_forecast-bets-keys.mjs';
 import { putR2JsonBody, resolveR2StorageConfig, serializeR2JsonBody, withSettleTimeout } from './_r2-storage.mjs';
+import { parseStoredSeedJson } from './_seed-payload-codec.mjs';
 
 const DIRECT_RUN = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (DIRECT_RUN) loadEnvFile(import.meta.url);
@@ -320,7 +321,7 @@ async function redisPipeline(command) {
 async function readRedisJson(key) {
   const result = await redisPipeline(['GET', key]);
   if (result == null) return null;
-  try { return JSON.parse(result); } catch { return null; }
+  try { return parseStoredSeedJson(result); } catch { return null; }
 }
 
 async function main() {

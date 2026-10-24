@@ -81,6 +81,57 @@ test('first transient miss retains provider events and clock; second run warns; 
   assert.equal(verdict(recovered, NOW + 15 * MIN).status, 'OK');
 });
 
+test('failure onset survives expired coverage and repeated failures until recovery', async () => {
+  let previous = (await firstRun())._providerSnapshots;
+  const onset = NOW + 5 * MIN;
+  for (const [index, minutes] of [5, 30, 35, 40].entries()) {
+    const nowMs = NOW + minutes * MIN;
+    const data = await fetchMergedEarthquakes({
+      fetchUsgs: async () => feed('usgs', nowMs), fetchNrcan: fail,
+      previousSources: previous, nowMs,
+    });
+    const snapshot = data._providerSnapshots.nrcan;
+    assert.equal(snapshot.firstFailureAt, onset);
+    assert.equal(snapshot.consecutiveFailures, index + 1);
+    assert.equal(earthquakesAfterPublish(data).freshnessMetaPatch.firstSourceFailureAt, onset);
+    if (minutes >= 30) {
+      assert.equal(snapshot.earthquakes, undefined);
+      assert.equal(snapshot.fetchedAt, undefined);
+      assert.deepEqual(data.earthquakes.map(e => e.source), ['usgs']);
+      const failed = verdict(data, nowMs);
+      assert.equal(health.healthStatusBucket(failed, nowMs), 'warn');
+      assert.equal(failed.sourceFailurePendingUntil, undefined);
+    }
+    previous = data._providerSnapshots;
+  }
+  const nowMs = NOW + 45 * MIN;
+  const recovered = await fetchMergedEarthquakes({
+    fetchUsgs: fail, fetchNrcan: async () => feed('nrcan', nowMs),
+    previousSources: previous, nowMs,
+  });
+  assert.equal(recovered._providerSnapshots.nrcan.firstFailureAt, null);
+  assert.equal(recovered._providerSnapshots.nrcan.consecutiveFailures, 0);
+  assert.equal(recovered._providerSnapshots.nrcan.fetchedAt, nowMs);
+  assert.equal(recovered._providerSnapshots.usgs.firstFailureAt, nowMs);
+  assert.equal(recovered._providerSnapshots.usgs.consecutiveFailures, 1);
+});
+
+test('invalid failure onsets are replaced without granting expired coverage grace', async () => {
+  const nowMs = NOW + 40 * MIN;
+  for (const firstFailureAt of [undefined, null, 0, -1, 'invalid', nowMs + MIN]) {
+    const data = await fetchMergedEarthquakes({
+      fetchUsgs: async () => feed('usgs', nowMs), fetchNrcan: fail,
+      previousSources: { nrcan: { consecutiveFailures: 3, firstFailureAt } }, nowMs,
+    });
+    assert.equal(data._providerSnapshots.nrcan.firstFailureAt, nowMs);
+    assert.equal(data._providerSnapshots.nrcan.consecutiveFailures, 4);
+    assert.deepEqual(data.earthquakes.map(e => e.source), ['usgs']);
+    const failed = verdict(data, nowMs);
+    assert.equal(health.healthStatusBucket(failed, nowMs), 'warn');
+    assert.equal(failed.sourceFailurePendingUntil, undefined);
+  }
+});
+
 test('missing, malformed, future, or expired provider coverage never gets pending', async () => {
   const good = await firstRun();
   for (const previousSources of [

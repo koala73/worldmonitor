@@ -25,7 +25,7 @@ behavior — CII is a triage dial, not a verdict.
 |---|---|
 | **Unrest** | Protests, riots, and the outages that follow them — friction before violence. |
 | **Conflict** | Actual fighting: battles, explosions, violence against civilians. |
-| **Security** | Military tempo nearby — military flights and vessels, airspace disruption, GPS jamming. |
+| **Security** | Hard-security pressure on the country — foreign military flights and vessels over it, airspace disruption, GPS jamming. |
 | **Information** | How hard the news environment is running on this country. |
 
 ### How the number is assembled
@@ -33,7 +33,7 @@ behavior — CII is a triage dial, not a verdict.
 Every country carries a **baseline** — how volatile it is in normal times — and
 an **event multiplier** that scales how much a given incident should move the
 needle there. The headline score is 40% baseline and 60% live events, then
-adjusted by situational boosts for things like earthquakes, cyber incidents, and
+adjusted by situational boosts for things like earthquakes, strikes, and
 travel advisories.
 
 That 40/60 split is the whole design. It is why a fragile country never reads as
@@ -43,11 +43,11 @@ calm, and why a genuine crisis in a stable one still moves the number fast.
 flowchart TD
   U["Unrest<br/>protests, riots, outages"] --> E["Event score<br/>U 25% + C 30% + S 20% + I 25%"]
   C["Conflict<br/>battles, explosions,<br/>violence against civilians"] --> E
-  S["Security<br/>military flights, vessels,<br/>GPS jamming"] --> E
+  S["Security<br/>foreign military flights,<br/>vessels, GPS jamming"] --> E
   I["Information<br/>weighted critical news"] --> E
   B["Baseline risk<br/>how volatile this country<br/>is in normal times"] --> M["Composite<br/>baseline 40% + events 60%"]
   E --> M
-  M --> X["Situational boosts<br/>climate, cyber, fire, earthquake,<br/>advisory, sanctions, displacement,<br/>strike pressure"]
+  M --> X["Situational boosts<br/>climate, fire, earthquake,<br/>advisory, sanctions, displacement,<br/>strike pressure"]
   X --> R["combinedScore 0-100"]
 ```
 
@@ -90,7 +90,7 @@ CRI covers the broader 196-country universe.
 `GET /api/intelligence/v1/get-risk-scores` (proto
 `worldmonitor.intelligence.v1.GetRiskScoresResponse`). The on-the-wire
 `methodology_version` field on every `CiiScore` records which revision of this
-document was active when the score was computed. The current version is **v13** —
+document was active when the score was computed. The current version is **v14** —
 see [Version history](#version-history).
 </Note>
 
@@ -105,7 +105,7 @@ exposed on the wire as `CiiComponents`:
 |---|---|
 | `cii_contribution` (**U**nrest) | Civil disorder pressure: ACLED protests + riots, fatalities from those events, confirmed internet/power outages, and a high-severity unrest boost. While ACLED returns no events, a GDELT protest term (escalation or sustained level, below) stands in for the ACLED event terms. Reflects pre-violent friction. |
 | `geo_convergence` (**C**onflict) | Kinetic activity: ACLED battles, explosions/remote violence, and violence-against-civilians events, plus Israel OREF alert pressure. Strikes on the country count through strike pressure (below), on the composite, not in this component. Event activity is log-scaled before the component cap so moderate and extreme event volumes remain ordered; square-root fatality scaling prevents single-event saturation. While ACLED returns no events, a GDELT conflict term (escalation or sustained level, below) stands in for the ACLED event terms. |
-| `military_activity` (**S**ecurity) | Hard-security tempo near the country: military flight activity, military vessel activity, aviation disruptions (closures/delays), and GPS-jamming hex density. Foreign military presence is weighted ×2. |
+| `military_activity` (**S**ecurity) | Hard-security pressure on the country: foreign military flights and vessels located in it (×2), aviation disruptions (closures/delays), and GPS-jamming hex density. The country's own air force and navy do not score (v14). |
 | `news_activity` (**I**nformation) | Information-environment pressure: weighted count of classified critical/high/medium news headlines geo-attributed to the country. |
 
 The four components are weighted into the headline `combinedScore`:
@@ -116,7 +116,6 @@ eventScore = U * 0.25 + C * 0.30 + S * 0.20 + I * 0.25
 composite = baseline * 0.4
           + eventScore * 0.6
           + climateBoost      (≤ 15)
-          + cyberBoost        (≤ 12, severity-weighted)
           + fireBoost         (≤  8, high-fire weighted)
           + advisoryBoost     (≤ 15)
           + orefBlendBoost    (IL only, ≤ 25)
@@ -522,6 +521,31 @@ in `CURATED_COUNTRIES`.
 
 ## Version history
 
+> **v14 (2026-10-21).** Two inputs that measured hosting and routine activity,
+> not instability, leave the score, worldwide. (1) The cyber boost (up to 12) is
+> removed. Every cyber feed it read (AbuseIPDB, Feodo Tracker, URLhaus, C2Intel,
+> OTX) places attacker infrastructure: the country is where the abusive IP, C2
+> server or malware URL is hosted, never the victim. On Oct 20, 2026 the feed's
+> 1,310 rows put 129 in the US, 172 in China, 40 in the UK and 29 in Germany,
+> against 2 in Ukraine and none in Israel, Saudi Arabia or Yemen, and AbuseIPDB's
+> 500 CRITICAL rows vanished whenever its blacklist call failed (0 rows on Oct 19
+> at 18:10 UTC; the failure was not logged, and the daily request cap is one
+> possible cause), moving the UK, France, Germany and the US by up to 12 points overnight.
+> Cyber rows also stop counting as a realtime family in `riskScores` health
+> coverage, which now needs conflict and news (`minRecordCount` 2). (2) Security
+> scores only foreign military flights and vessels located in the country, at
+> the v13 weight (×2). A country's own flights followed the operator anywhere in
+> the world, so routine RAF and French training sorties took the UK from 9 to 31
+> flights and France from 9 to 25 in one morning and kept the UK, France, Germany
+> and the US at Security 95–100; own vessels (the classifier also counts AIS
+> special craft such as pilot boats and tugs) did the same. Foreign aircraft over Poland, Israel, Saudi Arabia
+> or Ukraine still raise Security as before. On live inputs (Oct 21, 06:28 UTC)
+> the UK moves 33 → 20, France 43 → 28, Germany 34 → 20 and the US 33 → 21;
+> Saudi Arabia (65), Yemen (80), Israel (50) and Syria (73) do not move, and
+> Ukraine (82 → 73), Russia (82 → 68) and Iran (70 → 65) lose their
+> hosting-location cyber points and at most two points of own-military Security,
+> while their strike pressure, floors and other boosts are unchanged. The cache family and emitted `methodology_version` move to `v14`.
+>
 > **v13 (2026-10-20).** A fresh source-confirmed cross-border arrival surge adds
 > five points once to each explicitly named receiving or origin country. The
 > reader checks both the original fetch clock (48 hours) and each report clock

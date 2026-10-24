@@ -1,4 +1,7 @@
-# Financial System Exposure — construct definition
+---
+title: "Financial System Exposure"
+description: "Construct definition for the financialSystemExposure resilience dimension: indicators, scoring, sanctions-isolation anchor, and calibration."
+---
 
 **Status**: Active in production (activated 2026-08-12; added in plan 2026-04-25-004 Phase 2 — Ship 2; recalibrated in #6459 and #6461; activation protocol tracked in #6511)
 **Dimension ID**: `financialSystemExposure`

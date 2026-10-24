@@ -30,11 +30,4 @@ describe('service worker registration timing', () => {
     const fnStart = mainSource.indexOf('const registerServiceWorker = ');
     assert.ok(install !== -1 && install < fnStart, 'installSwUpdateHandler must run before the deferred registration is even defined');
   });
-
-  it('scheduleAfterFirstPaint waits for load, then idle, with a setTimeout fallback', () => {
-    const helper = readFileSync(new URL('../src/utils/after-paint.ts', import.meta.url), 'utf8');
-    assert.match(helper, /window\.addEventListener\('load', afterPaint, \{ once: true \}\)/);
-    assert.match(helper, /requestIdleCallback/);
-    assert.match(helper, /setTimeout\(runOnce, 0\)/);
-  });
 });

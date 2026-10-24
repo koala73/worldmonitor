@@ -339,6 +339,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/modern.ts",
+      "category": "external-protocol",
+      "reason": "MCP 2026-07-28 (modern era) envelope detection and per-request _meta/header validation for the /mcp handler. Part of the same external-protocol transport, not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/structured-content.ts",
       "category": "external-protocol",
       "reason": "MCP tools/call structuredContent builder + the anyOf outputSchema it is advertised under (#8328). Pure helper imported by the MCP dispatcher and registry, not a route; same external-protocol constraint as the parent shim.",

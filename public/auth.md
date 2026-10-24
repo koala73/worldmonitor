@@ -113,8 +113,8 @@ The same credentials authorize the REST API. Catalog:
 
 ## Revocation
 
-- **Expiry** — access tokens last 1 hour, refresh tokens 7 days; let them lapse
-  to de-authorize an agent.
+- **Expiry** — access tokens last 1 hour, refresh tokens 30 days after their
+  last refresh; let them lapse to de-authorize an agent.
 - **User revoke** — a signed-in user revokes an agent from the dashboard's API
   Keys or Connected MCP Clients settings; start at <https://www.worldmonitor.app/pro>.
   The token is then rejected with `401`

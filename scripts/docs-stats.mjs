@@ -639,7 +639,7 @@ const HEALTH_REGISTRY_ACCOUNTED_MUTATIONS = [
   // -1: the iran-events sunset drops the key unless IRAN_EVENTS_ENABLED=true,
   // which defaults to false — so the documented (production) registry omits it.
   'delete BOOTSTRAP_KEYS.iranEvents;',
-  // -1: the strike-pressure tally (CII v13) is produced by the same relay loop,
+  // -1: the strike-pressure tally (since CII v12) is produced by the same relay loop,
   // so the same switch drops it from STANDALONE_KEYS.
   'delete STANDALONE_KEYS.strikePressure;',
 ];

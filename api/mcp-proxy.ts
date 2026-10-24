@@ -1,7 +1,7 @@
 // @ts-nocheck — Migrated from .js to .ts to import server-side auth helpers
 // (PR #3768 review). Most of the body remains JS-shaped; types can be added
 // incrementally.
-import { Agent } from 'undici';
+import { Agent, Dispatcher1Wrapper } from 'undici';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check.js';
@@ -318,7 +318,7 @@ async function fetchMcpUpstream(input, init) {
   const { resolvedAddresses } = await assertServerUrlSafe(url, init?.signal);
   const dispatcher = pinnedDispatcher(resolvedAddresses);
   try {
-    return await fetch(url.toString(), { ...init, dispatcher });
+    return await fetch(url.toString(), { ...init, dispatcher: new Dispatcher1Wrapper(dispatcher) });
   } catch (error) {
     if (proxyFailureFor(error).isTimeout) throw error;
     throw new McpProxyUpstreamError('MCP server request failed', { cause: error });

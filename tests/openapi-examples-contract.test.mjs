@@ -54,8 +54,12 @@ const CURATED = (() => {
   const llmSrc = readFileSync(resolve(root, 'server/_shared/llm.ts'), 'utf8');
   const llmProviderChain = llmSrc.match(/const PROVIDER_CHAIN = \[([\s\S]*?)\] as const;/);
   assert.ok(llmProviderChain, 'expected PROVIDER_CHAIN in server/_shared/llm.ts');
-  assert.match(llmSrc, /export type LlmProviderName = typeof PROVIDER_CHAIN\[number\];/);
-  const llmProviders = new Set([...llmProviderChain[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+  // Opt-in providers (reachable only by name, e.g. through a customer AI
+  // routing policy) are still valid LlmProviderName values.
+  const llmOptInProviders = llmSrc.match(/const OPT_IN_PROVIDERS = \[([\s\S]*?)\] as const;/);
+  assert.ok(llmOptInProviders, 'expected OPT_IN_PROVIDERS in server/_shared/llm.ts');
+  assert.match(llmSrc, /export type LlmProviderName = typeof PROVIDER_CHAIN\[number\] \| typeof OPT_IN_PROVIDERS\[number\];/);
+  const llmProviders = new Set([...`${llmProviderChain[1]}${llmOptInProviders[1]}`.matchAll(/'([^']+)'/g)].map((m) => m[1]));
   assert.ok(llmProviders.size > 0, 'expected at least one provider in PROVIDER_CHAIN');
   const gdeltSrc = readFileSync(resolve(root, 'scripts/seed-gdelt-intel.mjs'), 'utf8');
   const gdeltTopics = new Set([...gdeltSrc.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]));
@@ -775,6 +779,26 @@ describe('OpenAPI examples contract', () => {
 });
 
 describe('OpenAPI curated example values', () => {
+  it('shows USD gold reserve quantities as unmeasured in all published examples', () => {
+    const specs = [
+      ['MarketService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'MarketService.openapi.json'), 'utf8'))],
+      ['MarketService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'MarketService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const example = spec.paths['/api/market/v1/get-gold-intelligence'].get.responses['200'].content[JSON_MEDIA].example;
+      assert.equal(example.cbReserves.indicator, 'IRFCLDT1_IRFCL56_USD', label);
+      assert.equal(example.cbReserves.valueIsOunces, false, label);
+      assert.equal(example.cbReserves.totalTonnes, 0, label);
+      assert.equal(example.cbReserves.topHolders[0].tonnes, 0, label);
+      assert.ok(example.cbReserves.topHolders[0].pctOfReserves > 0, label);
+      assert.deepEqual(example.cbReserves.topBuyers12m, [], label);
+      assert.deepEqual(example.cbReserves.topSellers12m, [], label);
+      assert.ok(example.goldPrice > 0, label);
+      assert.equal(example.unavailable, false, label);
+    }
+  });
+
   // These parameters have accepted-value sets the field-name heuristic can't
   // infer; the injector's override map pins each to a real value the handlers
   // accept. Guards against a regression to a rejected placeholder.

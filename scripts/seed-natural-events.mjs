@@ -3,7 +3,7 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { getDefaultAutoSelectFamily, getDefaultAutoSelectFamilyAttemptTimeout, isIP } from 'node:net';
-import { Agent } from 'undici';
+import { Agent, Dispatcher1Wrapper } from 'undici';
 import { withSourceRequestDiagnostics } from './natural/source-request-diagnostics.mjs';
 
 import {
@@ -241,7 +241,7 @@ async function fetchEventSourceJson(source, url, fetchFn, noContentValue) {
       const res = await fetchFn(url, {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
         signal,
-        ...(dispatcher ? { dispatcher } : {}),
+        ...(dispatcher ? { dispatcher: new Dispatcher1Wrapper(dispatcher) } : {}),
       });
       headersReceivedAt = performance.now();
       if (headerTimer) clearTimeout(headerTimer);

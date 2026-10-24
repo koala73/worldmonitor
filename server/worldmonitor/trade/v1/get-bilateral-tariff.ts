@@ -40,6 +40,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/trade/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
+import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import { isCallerPremium } from '../../../_shared/premium-check';
 
 export const WITS_SDMX_BASE = 'https://wits.worldbank.org/API/V1/SDMX/V21/datasource/TRN';
@@ -237,9 +238,15 @@ export function trainsRowsUrl(reporter: string, hsCode: string, year: number, da
 }
 
 async function witsGet(url: string, timeoutMs: number): Promise<Response> {
-  return fetch(url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/xml,text/xml;q=0.9,*/*;q=0.1' },
+  const relayBase = getRelayBaseUrl();
+  const headers = { 'User-Agent': CHROME_UA, Accept: 'application/xml,text/xml;q=0.9,*/*;q=0.1' };
+  const target = relayBase
+    ? `${relayBase}/wits?path=${encodeURIComponent(new URL(url).pathname)}`
+    : url;
+  return fetch(target, {
+    headers: relayBase ? getRelayHeaders(headers) : headers,
     signal: AbortSignal.timeout(timeoutMs),
+    redirect: 'manual',
   });
 }
 

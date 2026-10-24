@@ -77,9 +77,10 @@ function scriptJson(value) {
  * The marked live section. `answer` is a plain-text sentence that states the
  * reading with its date, so a quoted excerpt carries its own time context. The
  * FAQ markup lives inside the section so the middleware's swap updates the
- * structured answer together with the visible one.
+ * structured answer together with the visible one. A page that carries several
+ * live sections declares one FAQPage of its own and passes `faq: false`.
  */
-export function renderLiveSection({ slug, question, record, live, answer, bodyHtml, asOf, dateOnly = false, sourceHtml }) {
+export function renderLiveSection({ slug, question, record, live, answer, bodyHtml, asOf, dateOnly = false, sourceHtml, faq = true }) {
   const { start, end } = liveSectionMarkers(slug);
   const status = record
     ? (live ? 'Live reading' : 'Published reading')
@@ -101,13 +102,13 @@ ${bodyHtml}
           ${time}
           <span>${sourceHtml}</span>
         </div>
-        <script type="application/ld+json">${scriptJson({
+${faq ? `        <script type="application/ld+json">${scriptJson({
           '@context': 'https://schema.org',
           '@type': 'FAQPage',
           author: AUTHOR,
           mainEntity: [{ '@type': 'Question', name: question, acceptedAnswer: { '@type': 'Answer', text: answer } }],
         })}</script>
-      </section>
+` : ''}      </section>
 ${end}`;
 }
 

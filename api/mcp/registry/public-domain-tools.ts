@@ -14,7 +14,7 @@ const cotCategory = { type: 'object', properties: {
 export const PUBLIC_DOMAIN_TOOLS: ToolDef[] = [{
   name: 'get_gold_intelligence',
   title: 'Gold market intelligence',
-  description: 'Return the seeded gold-market snapshot: precious-metal futures quotes, cross-currency gold prices, CFTC COT positioning, session returns and ranges, price drivers, ETF holdings and central-bank reserves when available. Prices are USD per troy ounce unless a cross-currency row states its currency; returns and changes are percentages; COT counts are decimal strings; ETF holdings are tonnes and AUM USD; reserves are tonnes. unavailable:true and missing enrichment blocks mark absent data, placeholder zero prices are not confirmed observations, and each enrichment carries its own observation date (updatedAt is not a freshness guarantee for every source). Takes no arguments. Requires a paid plan; one downstream fetch of seeded data, weight 2 on API plans. Read-only; no trade or research snapshot is created.',
+  description: 'Return seeded gold intelligence: metal futures quotes, cross-currency gold prices, CFTC positioning, session returns/ranges, drivers, ETF holdings and central-bank reserves. Prices are USD/troy ounce unless a currency row states otherwise; changes/returns are percentages; COT counts are decimal strings; ETF holdings are tonnes, AUM is USD. Reserves include IMF indicator and valueIsOunces: only true means tonnes/totalTonnes are measured, including genuine zero. False or missing means legacy zero placeholders, not measured quantities; physical movers are unavailable. Reserve percentages can remain available on the USD fallback. unavailable:true or missing blocks mark absent data; zero prices are placeholders. Each block has its own observation date; updatedAt does not guarantee source freshness. No arguments. Paid plan; one downstream seeded fetch, weight 2 on API plans. Read-only; no trade or research snapshot is created.',
   _outputBudgetBytes: 131072,
   inputSchema: { type: 'object', properties: {}, required: [] },
   outputSchema: { type: 'object', required: ['unavailable'], properties: {
@@ -37,6 +37,7 @@ export const PUBLIC_DOMAIN_TOOLS: ToolDef[] = [{
       changeY1Pct: number, sparkline90d: { type: 'array', items: number },
     } },
     cbReserves: { type: 'object', properties: { asOfMonth: string, totalTonnes: number,
+      indicator: string, valueIsOunces: { type: 'boolean' },
       topHolders: { type: 'array', items: { type: 'object', properties: { iso3: string, name: string, tonnes: number, pctOfReserves: number } } },
       topBuyers12m: { type: 'array', items: { type: 'object', properties: { iso3: string, name: string, deltaTonnes12m: number } } },
       topSellers12m: { type: 'array', items: { type: 'object', properties: { iso3: string, name: string, deltaTonnes12m: number } } },

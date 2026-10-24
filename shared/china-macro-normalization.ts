@@ -1,10 +1,12 @@
 import {
   CHINA_MACRO_MAX_TRANSPORT_AGE_MIN,
+  CHINA_MACRO_M2_REPUBLICATION,
   CHINA_MACRO_PUBLISHER_IDS,
   CHINA_MACRO_PROVENANCE_FAMILY,
   CHINA_MACRO_SERIES_CONTRACT,
   CHINA_MACRO_SERIES_IDS,
   chinaMacroObservationDateMs,
+  chinaMacroSourceBinding,
   isChinaMacroObservationStale,
 } from './china-macro-contract.js';
 import { validateDecisionSignalProvenance } from './decision-signal-provenance';
@@ -139,6 +141,15 @@ const CHINA_MACRO_PREFLIGHTS = [
   },
 ] as const;
 
+const SHANGHAI_M2_PREFLIGHT = {
+  publisherId: CHINA_MACRO_M2_REPUBLICATION.publisherId,
+  source: 'Shanghai Municipal Financial Commission Office',
+  host: CHINA_MACRO_M2_REPUBLICATION.sourceHost,
+  requestBudget: 6,
+  mayAccept: true,
+  path: (pathname: string) => pathname === '/SCGK194/index.html',
+};
+
 function asRecord(value: unknown): JsonRecord {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as JsonRecord
@@ -181,6 +192,8 @@ function validBoundProvenance(row: JsonRecord, expectedSeriesId?: string): boole
   if (expectedSeriesId !== undefined && seriesId !== expectedSeriesId) return false;
   const seriesContract = CHINA_MACRO_SERIES_CONTRACT[seriesId];
   if (!seriesContract) return false;
+  const binding = chinaMacroSourceBinding(seriesId, asString(row.sourceUrl), row.value);
+  if (!binding) return false;
   if (!validProvenance(row.provenance)) return false;
   const provenance = asRecord(row.provenance);
   const claims = asRecord(provenance.claims);
@@ -191,6 +204,7 @@ function validBoundProvenance(row: JsonRecord, expectedSeriesId?: string): boole
   const retrievalTime = asRecord(asRecord(claims.retrieval_time).value);
   const revision = asRecord(asRecord(claims.revision).value);
   const publisher = asRecord(asRecord(claims.publisher).value);
+  const registryReference = asRecord(publisher.registryReference);
   const transport = asRecord(asRecord(claims.transport_freshness).value);
   const content = asRecord(asRecord(claims.content_freshness).value);
   let parsedSource: URL;
@@ -205,11 +219,18 @@ function validBoundProvenance(row: JsonRecord, expectedSeriesId?: string): boole
     && (row.pillar === undefined || row.pillar === seriesContract.pillar)
     && (row.unit === undefined || row.unit === seriesContract.unit)
     && row.periodKind === seriesContract.periodKind
-    && (row.source === undefined || row.source === seriesContract.source)
-    && publisher.id === seriesContract.publisherId
+    && (row.source === undefined || row.source === binding.source)
+    && publisher.id === binding.publisherId
+    && (
+      binding.publisherId !== CHINA_MACRO_M2_REPUBLICATION.publisherId
+      || (
+        publisher.name === CHINA_MACRO_M2_REPUBLICATION.publisherName
+        && registryReference.sourceName === CHINA_MACRO_M2_REPUBLICATION.registrySourceName
+      )
+    )
     && parsedSource.protocol === 'https:'
-    && parsedSource.hostname === seriesContract.sourceHost
-    && parsedSource.pathname.startsWith(seriesContract.sourcePathPrefix)
+    && parsedSource.hostname === binding.sourceHost
+    && parsedSource.pathname.startsWith(binding.sourcePathPrefix)
     && parsedSource.username === ''
     && parsedSource.password === ''
     && sourceUrl === row.sourceUrl
@@ -504,20 +525,22 @@ export function normalizeChinaMacroObservations(
       const row = asRecord(value);
       const seriesId = asString(row.seriesId);
       const contract = CHINA_MACRO_SERIES_CONTRACT[seriesId];
+      const binding = chinaMacroSourceBinding(seriesId, asString(row.sourceUrl), row.value);
       if (
         seriesId !== CHINA_MACRO_SERIES_IDS[index]
         || !contract
+        || !binding
         || row.pillar !== contract.pillar
         || row.geography !== 'CN'
         || row.unit !== contract.unit
         || row.periodKind !== contract.periodKind
-        || row.source !== contract.source
+        || row.source !== binding.source
       ) return true;
       try {
         const sourceUrl = new URL(asString(row.sourceUrl));
         return sourceUrl.protocol !== 'https:'
-          || sourceUrl.hostname !== contract.sourceHost
-          || !sourceUrl.pathname.startsWith(contract.sourcePathPrefix)
+          || sourceUrl.hostname !== binding.sourceHost
+          || !sourceUrl.pathname.startsWith(binding.sourcePathPrefix)
           || sourceUrl.username !== ''
           || sourceUrl.password !== '';
       } catch {
@@ -577,13 +600,16 @@ export function normalizeChinaMacroPreflight(
   now = Date.now(),
 ): NormalizedChinaMacroSourceDecision[] | null {
   const generatedAtMs = Date.parse(generatedAt);
+  const expectedPreflights = values.some((value) => asRecord(value).publisherId === SHANGHAI_M2_PREFLIGHT.publisherId)
+    ? [...CHINA_MACRO_PREFLIGHTS, SHANGHAI_M2_PREFLIGHT]
+    : CHINA_MACRO_PREFLIGHTS;
   if (
     !isIsoInstant(generatedAt)
     || generatedAtMs > now + MAX_CLOCK_SKEW_MS
-    || values.length !== CHINA_MACRO_PREFLIGHTS.length
+    || values.length !== expectedPreflights.length
   ) return null;
   const normalized = values.map(normalizeChinaMacroSourceDecision);
-  const valid = CHINA_MACRO_PREFLIGHTS.every((expected) => {
+  const valid = expectedPreflights.every((expected) => {
     const matches = normalized.filter((decision) => decision.publisherId === expected.publisherId);
     if (matches.length !== 1) return false;
     const decision = matches[0];
@@ -596,7 +622,7 @@ export function normalizeChinaMacroPreflight(
     }
     const checkedAt = Date.parse(decision.checkedAt);
     const minimumRequests = decision.status === 'accepted'
-      ? (expected.publisherId === CHINA_MACRO_PUBLISHER_IDS.nbs ? 5 : 4)
+      ? (expected.publisherId === CHINA_MACRO_PUBLISHER_IDS.nbs ? 5 : expected.publisherId === SHANGHAI_M2_PREFLIGHT.publisherId ? 3 : 4)
       : 1;
     const validPolicyReview = expected.publisherId === CHINA_MACRO_PUBLISHER_IDS.nbs
       ? decision.termsStatus === 'reviewed_2026-07-25_attribution_required'
@@ -610,7 +636,11 @@ export function normalizeChinaMacroPreflight(
               ? 'not_evaluated_robots_blocked'
               : 'review_required'
           )
-          : decision.termsStatus === 'reviewed_all_rights_reserved_chinese_authoritative';
+          : expected.publisherId === SHANGHAI_M2_PREFLIGHT.publisherId
+            ? decision.termsStatus === 'reviewed_2026-10-24_facts_only_source_credit_required'
+              && (decision.status === 'blocked'
+                || ['allows_candidate_paths', 'no_rules_published'].includes(decision.robotsStatus))
+            : decision.termsStatus === 'reviewed_all_rights_reserved_chinese_authoritative';
     return decision.source === expected.source
       && decision.host === expected.host
       && decision.status !== ''
@@ -644,7 +674,7 @@ export function validateChinaMacroAvailabilityBindings(
 ): boolean {
   return values.every((value) => {
     const row = asRecord(value);
-    const contract = CHINA_MACRO_SERIES_CONTRACT[asString(row.seriesId)];
+    const contract = chinaMacroSourceBinding(asString(row.seriesId), asString(row.sourceUrl), row.value);
     const decision = decisions.find((entry) => entry.publisherId === contract?.publisherId);
     if (asNumber(row.value) !== null) {
       return decision?.status === 'accepted'

@@ -6,11 +6,11 @@
  * entry chunk. Keep pre-init queuing in `sentry-defer.ts`; keep SDK setup here.
  */
 
-import { sanitizeSentryTelemetry, sentryPrivacyOptions } from '../../shared/sentry-privacy';
 import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { isIosLikeUserAgent } from './platform-ua';
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import { getSentryBuildMetadata, isolateNonProductionSentryEvent } from '../../shared/sentry-build-metadata';
+import { scrubSentryCredentials } from '../../shared/sensitive-url-params';
 
 declare global {
   /**
@@ -86,7 +86,10 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
     enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !isDesktopRuntime(),
     allowUrls: SENTRY_ALLOW_URLS,
     maxValueLength: 2048,
-    ...sentryPrivacyOptions,
+    sendDefaultPii: environment === 'production',
+    beforeBreadcrumb: scrubSentryCredentials,
+    beforeSendTransaction: scrubSentryCredentials,
+    beforeSendSpan: scrubSentryCredentials,
     tracesSampleRate: 0.1,
     ignoreErrors: [
       'Invalid WebGL2RenderingContext',
@@ -1308,7 +1311,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           && /^(?:SyntaxError: )?(?:Invalid or unexpected token|Unexpected (?:token|keyword|identifier|EOF|end of script))/.test(msg)
           && frames.some(f => /\/(?:maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
       isolateNonProductionSentryEvent(event, environment);
-      return sanitizeSentryTelemetry(event);
+      return scrubSentryCredentials(event);
     },
   };
 }

@@ -50,6 +50,7 @@ function command(cmd) {
 globalThis.fetch = async (input, init = {}) => {
   const url = new URL(String(input));
   if (url.hostname === 'aaii-redis.invalid') {
+    if (config.source === 'redis-error' && url.pathname.startsWith('/get/')) return new Response('Forbidden', { status: 403 });
     if (url.pathname.startsWith('/get/')) return Response.json(command(['GET', decodeURIComponent(url.pathname.slice(5))]));
     const body = JSON.parse(init.body);
     return Response.json(Array.isArray(body[0]) ? body.map(command) : command(body));
@@ -57,8 +58,14 @@ globalThis.fetch = async (input, init = {}) => {
   if (url.hostname !== 'www.aaii.com') throw new Error('Unexpected network host ' + url.hostname);
   sources.push(url.pathname);
   if (config.source === 'http-error') return new Response('Unavailable', { status: 503 });
+  if (config.source === 'forbidden') return new Response('Forbidden', { status: 403 });
+  if (sources.length === 1) {
+    if (config.source === 'flaky-http') return new Response('Unavailable', { status: 503 });
+    if (config.source === 'flaky-network') throw new TypeError('temporary connection failure');
+    if (config.source === 'rate-limit') return new Response('Slow down', { status: 429, headers: { 'Retry-After': '20' } });
+  }
   if (url.pathname.endsWith('.xls')) return new Response(new Uint8Array(0));
-  if (config.source === 'html') return new Response('<td class="tableTxt">40.0%</td><td class="tableTxt">30.0%</td><td class="tableTxt">30.0%</td>');
+  if (['html', 'redis-error', 'stale-html', 'flaky-http', 'flaky-network', 'rate-limit'].includes(config.source)) return new Response('<span>Week ending October ' + (config.source === 'stale-html' ? '7' : '14') + ', 2026</span><td class="tableTxt">40.0%</td><td class="tableTxt">30.0%</td><td class="tableTxt">30.0%</td>');
   return new Response('<html>No survey rows</html>');
 };
 process.on('exit', () => writeFileSync(process.env.AAII_FIXTURE_RESULT, JSON.stringify({ cache: Object.fromEntries(cache), commands, sources })));
@@ -76,6 +83,8 @@ function run({ cache = {}, source = 'empty' } = {}) {
       env: {
         PATH: process.env.PATH,
         NODE_ENV: 'test',
+        NODE_TEST_CONTEXT: 'child-v8',
+        WM_SEED_RETRY_DELAY_MS: '0',
         UPSTASH_REDIS_REST_URL: 'https://aaii-redis.invalid',
         UPSTASH_REDIS_REST_TOKEN: 'synthetic',
         AAII_FIXTURE_CONFIG: configPath,
@@ -117,7 +126,7 @@ for (const [name, cache] of [
   test(`zero usable live rows fails without changing ${name} or its expiry`, () => {
     const result = run({ cache });
     assert.equal(result.status, 75, result.log);
-    assert.deepEqual(result.sources, ['/files/surveys/sentiment.xls', '/sentimentsurvey']);
+    assert.deepEqual(result.sources, ['/sentimentsurvey']);
     assert.deepEqual(result.cache, cache);
     assert.match(result.log, /AAII sources returned no usable sentiment rows/);
     assert.doesNotMatch(result.log, /"event":"seed_complete"|Using fallback data/);
@@ -127,10 +136,102 @@ for (const [name, cache] of [
 }
 
 test('failed HTTP responses do not become a valid empty publication', () => {
-  const result = run({ source: 'http-error' });
+  const cache = previous(false);
+  const result = run({ source: 'http-error', cache });
   assert.equal(result.status, 75, result.log);
-  assert.deepEqual(result.cache, {});
+  assert.deepEqual(result.cache, cache);
+  assert.equal(result.sources.length, 4);
   assert.doesNotMatch(result.log, /"state":"OK_ZERO"|"event":"seed_complete"/);
+});
+
+for (const source of ['flaky-http', 'flaky-network', 'rate-limit']) {
+  test(`${source} retries before publishing while preserving the provider delay`, () => {
+    const result = run({ source, cache: fullHistory() });
+    assert.equal(result.status, 0, result.log);
+    assert.deepEqual(result.sources, ['/sentimentsurvey', '/sentimentsurvey']);
+    assert.match(result.log, new RegExp('Retry 1/3 in ' + (source === 'rate-limit' ? '20000' : '10000') + 'ms'));
+    const canonical = JSON.parse(result.cache[key].value);
+    assert.equal(canonical._seed.recordCount, 52);
+    assert.equal(canonical.data.latest.date, '2026-10-15');
+    assert.match(result.log, /"event":"seed_complete"/);
+  });
+}
+
+test('permission denial fails immediately without replacing data or renewing expiry', () => {
+  const cache = fullHistory();
+  const result = run({ source: 'forbidden', cache });
+  assert.equal(result.status, 75, result.log);
+  assert.deepEqual(result.sources, ['/sentimentsurvey']);
+  assert.deepEqual(result.cache, cache);
+  assert.doesNotMatch(result.log, /Retry|"event":"seed_complete"/);
+});
+
+function fullHistory() {
+  const cache = previous(false);
+  const value = JSON.parse(cache[key].value);
+  value.data.weeks = Array.from({ length: 52 }, (_, index) => ({
+    ...value.data.latest,
+    date: new Date(fetchedAt - index * 7 * 86400000).toISOString().slice(0, 10),
+  }));
+  value._seed.recordCount = 52;
+  cache[key].value = JSON.stringify(value);
+  return cache;
+}
+
+test('a new live HTML week retains the latest 52 genuine weeks and their source dates', () => {
+  const cache = fullHistory();
+  const oldWeeks = JSON.parse(cache[key].value).data.weeks;
+  const result = run({ source: 'html', cache });
+  assert.equal(result.status, 0, result.log);
+  assert.deepEqual(result.sources, ['/sentimentsurvey']);
+  const canonical = JSON.parse(result.cache[key].value);
+  assert.equal(canonical._seed.recordCount, 52);
+  assert.equal(canonical.data.weeks.length, 52);
+  assert.equal(canonical.data.latest.date, '2026-10-15');
+  assert.deepEqual(canonical.data.weeks.slice(1), oldWeeks.slice(0, 51));
+  assert.deepEqual(canonical.data.previous, oldWeeks[0]);
+  assert.deepEqual(canonical.data.avg8w, { bullish: 36.2, bearish: 41.4, neutral: 22.4, spread: -5.1 });
+  assert.equal(result.cache[key].expiresAt, now + 604800_000);
+  assert.equal(JSON.parse(result.cache[metaKey].value).recordCount, 52);
+});
+
+test('a repeated live week replaces that date without duplicating or shrinking history', () => {
+  const cache = fullHistory();
+  const value = JSON.parse(cache[key].value);
+  value.data.weeks[0].date = '2026-10-15';
+  cache[key].value = JSON.stringify(value);
+  const result = run({ source: 'html', cache });
+  assert.equal(result.status, 0, result.log);
+  const weeks = JSON.parse(result.cache[key].value).data.weeks;
+  assert.equal(weeks.length, 52);
+  assert.equal(new Set(weeks.map(w => w.date)).size, 52);
+  assert.equal(weeks[0].bullish, 40);
+});
+
+test('a failed history read cannot replace the full history with one week', () => {
+  const cache = fullHistory();
+  const result = run({ source: 'redis-error', cache });
+  assert.notEqual(result.status, 0, result.log);
+  assert.deepEqual(result.cache, cache);
+  assert.doesNotMatch(result.log, /"event":"seed_complete"/);
+});
+
+test('an old live page cannot renew the history or metadata expiry', () => {
+  const cache = fullHistory();
+  const result = run({ source: 'stale-html', cache });
+  assert.notEqual(result.status, 0, result.log);
+  assert.deepEqual(result.cache, cache);
+  assert.doesNotMatch(result.log, /"event":"seed_complete"/);
+});
+
+test('invalid retained history fails without dropping its rows or renewing expiry', () => {
+  const cache = fullHistory();
+  const value = JSON.parse(cache[key].value);
+  value.data.weeks[10].bullish = -1;
+  cache[key].value = JSON.stringify(value);
+  const result = run({ source: 'html', cache });
+  assert.notEqual(result.status, 0, result.log);
+  assert.deepEqual(result.cache, cache);
 });
 
 test('usable live HTML publishes the existing AAII consumer shape', () => {

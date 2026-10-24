@@ -14,7 +14,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
-import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
+
+delete process.env.WS_RELAY_URL;
+const { createLocalApiServer, __testing__ } = await import('./local-api-server.mjs');
 
 test('bundles the shared LLM health provider registry with the sidecar (#7126)', () => {
   const config = JSON.parse(readFileSync(new URL('../tauri.conf.json', import.meta.url), 'utf8'));
@@ -325,6 +327,159 @@ test('routes seed-only displacement requests to cloud before a local empty 200',
     await app.close();
     await localApi.cleanup();
     await new Promise((resolve, reject) => remote.close(error => error ? reject(error) : resolve()));
+  }
+});
+
+test('keeps desktop Ollama headline translation on the local handler (#9476)', async () => {
+  assert.equal(__testing__.isCloudPreferred('/api/news/v1/summarize-article'), true);
+  const savedEnv = {
+    WS_RELAY_URL: process.env.WS_RELAY_URL,
+    LOCAL_API_MODE: process.env.LOCAL_API_MODE,
+    LOCAL_API_CLOUD_FALLBACK: process.env.LOCAL_API_CLOUD_FALLBACK,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+    OLLAMA_MODEL: process.env.OLLAMA_MODEL,
+  };
+  delete process.env.WS_RELAY_URL;
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  process.env.LOCAL_API_CLOUD_FALLBACK = 'true';
+  process.env.OLLAMA_MODEL = 'qwen3:8b';
+
+  const ollamaHits = [];
+  const ollama = createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      ollamaHits.push(req.url);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ summary: 'Traduction locale' }));
+    });
+  });
+  const ollamaPort = await listen(ollama);
+  process.env.OLLAMA_API_URL = `http://127.0.0.1:${ollamaPort}`;
+
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({
+    'news/v1/summarize-article.js': `
+      export default async function handler(request) {
+        const body = await request.json();
+        if (body.provider === 'ollama' && body.mode === 'translate') {
+          if (body.fail === 'status') {
+            return Response.json({ error: 'Ollama translation failed', provider: 'ollama' }, { status: 502 });
+          }
+          if (body.fail === 'throw') throw new Error('ollama down');
+          const endpoint = new URL('/v1/chat/completions', process.env.OLLAMA_API_URL);
+          const upstream = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ model: process.env.OLLAMA_MODEL }),
+          });
+          const data = await upstream.json();
+          return Response.json({ source: 'local-ollama', provider: 'ollama', summary: data.summary });
+        }
+        return Response.json({ source: 'local-summarize', provider: body.provider, mode: body.mode });
+      }
+    `,
+    'news/v1/list-feed-digest.js': `
+      export default function handler() {
+        return Response.json({ source: 'local-news' });
+      }
+    `,
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    allowPrivateRemoteBase: true,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const base = `http://127.0.0.1:${port}`;
+  const postSummarize = (payload, headers) => authFetch(`${base}/api/news/v1/summarize-article`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  });
+  const summarizeHits = () => remote.hits.filter((hit) => hit === '/api/news/v1/summarize-article');
+
+  try {
+    const translated = await postSummarize({
+      provider: 'ollama',
+      mode: 'translate',
+      headlines: ['Hello world'],
+      variant: 'fr',
+    });
+    assert.equal(translated.status, 200);
+    assert.deepEqual(await translated.json(), {
+      source: 'local-ollama',
+      provider: 'ollama',
+      summary: 'Traduction locale',
+    });
+    assert.deepEqual(ollamaHits, ['/v1/chat/completions']);
+    assert.deepEqual(summarizeHits(), []);
+
+    const paid = await postSummarize({ provider: 'groq', mode: 'brief', headlines: ['Markets'] });
+    assert.equal(paid.status, 200);
+    assert.equal((await paid.json()).source, 'remote');
+    assert.deepEqual(ollamaHits, ['/v1/chat/completions']);
+    assert.deepEqual(summarizeHits(), ['/api/news/v1/summarize-article']);
+
+    const otherTranslate = await postSummarize({ provider: 'groq', mode: 'translate', headlines: ['Hello'] });
+    assert.equal((await otherTranslate.json()).source, 'remote');
+    assert.deepEqual(ollamaHits, ['/v1/chat/completions']);
+
+    const ollamaBrief = await postSummarize({ provider: 'ollama', mode: 'brief', headlines: ['Local summary'] });
+    assert.equal((await ollamaBrief.json()).source, 'remote');
+    assert.deepEqual(ollamaHits, ['/v1/chat/completions']);
+
+    const digest = await authFetch(`${base}/api/news/v1/list-feed-digest`);
+    assert.equal(digest.status, 200);
+    assert.equal((await digest.json()).source, 'remote');
+
+    const malformed = await authFetch(`${base}/api/news/v1/summarize-article`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{',
+    });
+    assert.equal((await malformed.json()).source, 'remote');
+
+    const failed = await postSummarize({
+      provider: 'ollama',
+      mode: 'translate',
+      headlines: ['Hello'],
+      fail: 'status',
+    });
+    assert.equal(failed.status, 502);
+    assert.deepEqual(await failed.json(), { error: 'Ollama translation failed', provider: 'ollama' });
+
+    const thrown = await postSummarize({
+      provider: 'ollama',
+      mode: 'translate',
+      headlines: ['Hello'],
+      fail: 'throw',
+    });
+    assert.equal(thrown.status, 502);
+    const thrownBody = await thrown.json();
+    assert.equal(thrownBody.error, 'Local handler error');
+    assert.equal(thrownBody.endpoint, '/api/news/v1/summarize-article');
+    assert.equal(ollamaHits.length, 1);
+
+    const anonymous = await fetch(`${base}/api/news/v1/summarize-article`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'ollama', mode: 'translate', headlines: ['Hello'] }),
+    });
+    assert.equal(anonymous.status, 401);
+    assert.equal(ollamaHits.length, 1);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+    ollama.closeAllConnections();
+    await new Promise((resolve) => ollama.close(resolve));
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value == null) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 });
 

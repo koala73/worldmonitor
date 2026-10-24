@@ -2259,12 +2259,13 @@ describe('api/mcp-proxy — pinned upstream dispatch (GHSA-887j)', () => {
   let pinHandler;
   let pinning;
   let Agent;
+  let Dispatcher1Wrapper;
 
   beforeEach(async () => {
     const mod = await import(`../api/mcp-proxy.ts?pin=${Date.now()}`);
     pinHandler = mod.handler;
     pinning = mod.__testing__;
-    ({ Agent } = await import('undici'));
+    ({ Agent, Dispatcher1Wrapper } = await import('undici'));
   });
 
   afterEach(() => {
@@ -2284,7 +2285,7 @@ describe('api/mcp-proxy — pinned upstream dispatch (GHSA-887j)', () => {
     globalThis.fetch = async (url, init) => {
       const { hostname } = new URL(String(url));
       if (UPSTREAM_HOSTS.has(hostname)) {
-        dispatches.push({ hostname, method: init?.method ?? 'GET', pinned: init?.dispatcher instanceof Agent });
+        dispatches.push({ hostname, method: init?.method ?? 'GET', pinned: init?.dispatcher instanceof Dispatcher1Wrapper });
       }
       return upstream(url, init);
     };
@@ -2439,7 +2440,7 @@ describe('api/mcp-proxy — pinned socket on a real TLS connection (GHSA-887j)',
     undici.setGlobalDispatcher(loopbackPlatformResolver(platformLookups));
     const pinned = new undici.Agent({ connect: { ca: tls.cert, lookup: pinning.pinnedLookup('::1', 6) } });
     try {
-      const res = await fetch(`https://rebind.example:${port}/mcp`, { dispatcher: pinned });
+      const res = await fetch(`https://rebind.example:${port}/mcp`, { dispatcher: new undici.Dispatcher1Wrapper(pinned) });
       assert.equal(await res.text(), 'vetted');
       assert.deepEqual(platformLookups, [], 'a pinned request must never consult the platform resolver');
       assert.equal(hits.rebind, 0, 'the rebind target must receive nothing');
@@ -2466,7 +2467,7 @@ describe('api/mcp-proxy — pinned socket on a real TLS connection (GHSA-887j)',
     }, '127.0.0.1');
     const agent = new undici.Agent({ connect: { ca: tls.cert, lookup: pinning.pinnedLookup('127.0.0.1', 4) } });
     try {
-      const res = await fetch(`https://rebind.example:${server.address().port}/sse`, { dispatcher: agent });
+      const res = await fetch(`https://rebind.example:${server.address().port}/sse`, { dispatcher: new undici.Dispatcher1Wrapper(agent) });
       // fetchMcpUpstream closes the dispatcher as soon as fetch() resolves.
       const closed = agent.close();
       const body = await res.text();

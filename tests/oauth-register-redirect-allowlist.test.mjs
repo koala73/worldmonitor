@@ -54,6 +54,7 @@ const HOSTED_CLIENT_CALLBACKS = {
   'MCPJam score': 'https://score.mcpjam.com/oauth/callback',
   'Glama connectors': 'https://glama.ai/api/app/mcp/oauth/callback',
   'Glama Inspector': 'https://glama.ai/mcp/inspector/oauth/callback',
+  'Meta Muse': 'https://agent.meta.ai/api/hatch/oauth/callback',
 };
 
 const LOOPBACK = [
@@ -77,6 +78,7 @@ const REJECTED = {
   'the unverified grok.com/connectors/oauth/callback': 'https://grok.com/connectors/oauth/callback',
   'Gemini per-user callback (dynamic, not exact-matchable)':
     'https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-123-api_worldmonitor_app',
+  'muse.ai (Muse never sends the redirect target)': 'https://muse.ai/api/hatch/oauth/callback',
   'extra query': 'https://claude.ai/api/mcp/auth_callback?next=https://evil.example',
   'fragment': 'https://claude.ai/api/mcp/auth_callback#x',
   'sibling path under an allowed callback': 'https://claude.ai/api/mcp/auth_callback/../evil',

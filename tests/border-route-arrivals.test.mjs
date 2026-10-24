@@ -71,7 +71,7 @@ test('each source declares independent fetch/content budgets and rejects unusabl
   const uk = routeSeedOptions('uk');
   const cbp = routeSeedOptions('cbp');
   assert.equal(uk.maxStaleMin, 2880);
-  assert.equal(uk.maxContentAgeMin, 4320);
+  assert.equal(uk.maxContentAgeMin, 10800);
   assert.equal(cbp.maxContentAgeMin, 108000);
   assert.equal(uk.emptyDataIsFailure, true);
   const route = { id: 'channel', countryCode: 'GB', asOf: '2026-10-18', latestCount: 0 };
@@ -81,4 +81,23 @@ test('each source declares independent fetch/content budgets and rejects unusabl
   }
   assert.equal(uk.validateFn({ routes: [] }), false);
   assert.equal(uk.contentMeta({ routes: [route] }).newestItemAt, Date.parse(route.asOf));
+});
+
+test('UK content budget absorbs a weekend gap plus a bank holiday and bundle pickup without prewarning', async () => {
+  const { BORDER_SOURCES } = await import('../scripts/lib/border-route-sources.mjs');
+  const { CONTENT_AGE_PREWARNING_RATIO } = await import('../api/_content-age.js');
+  const { readFileSync } = await import('node:fs');
+  const DAY_MIN = 1440;
+  const bundle = readFileSync(new URL('../scripts/seed-bundle-health.mjs', import.meta.url), 'utf8');
+  const ukSection = bundle.split('\n').find(line => line.includes("label: 'Border-UK'"));
+  assert.match(ukSection, /intervalMs: 6 \* HOUR,/);
+  // gov.uk posts day D's figures around 12:00Z on D+1 and skips weekends:
+  // Thursday's figures (posted Friday) stay newest until Monday, 4.5 days after Thursday 00:00Z.
+  const weekendAge = 4.5 * DAY_MIN;
+  const bankHoliday = DAY_MIN;
+  const pickup = 6 * 60;
+  assert.ok(BORDER_SOURCES.uk.maxContentAgeMin * CONTENT_AGE_PREWARNING_RATIO > weekendAge + bankHoliday + pickup);
+  const server = readFileSync(new URL('../server/worldmonitor/displacement/v1/cross-border-data.ts', import.meta.url), 'utf8');
+  const serverUk = server.split('\n').find(line => line.includes("id: 'uk'"));
+  assert.match(serverUk, new RegExp(`maxContentAgeMin: ${String(BORDER_SOURCES.uk.maxContentAgeMin / DAY_MIN).replace('.', '\\.')} \\* 1440 }`));
 });

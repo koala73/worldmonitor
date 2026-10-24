@@ -484,7 +484,7 @@ Every first-party host describes itself as its own issuer, but a sign-in can fin
 
 The refusal the MCP transport gives an opening handshake that carries no credentials: an authentication error that names where to sign in and echoes the request's identifier, sent before anything else is served.
 
-Hosted connectors classify a server by how this first request is answered. One that succeeds is recorded as needing no sign-in, and a refusal that arrives later, mid-session, leaves the connector with no authorization server to send the user to, so its sign-in control never works. Only the handshake is challenged. Stateless callers that never send one keep their credential-free catalog reads and the free tool, and the machine-discovery aliases still accept an anonymous handshake for scanners. A refusal without the request's identifier is as harmful as none, because a strict client cannot match it to the pending request and waits out its timeout. See also: Credential Class, Streamable HTTP Transport, MCP Server Card.
+Hosted connectors classify a server by how this first request is answered. One that succeeds is recorded as needing no sign-in, and a refusal that arrives later, mid-session, leaves the connector with no authorization server to send the user to, so its sign-in control never works. On the older protocol versions only the handshake is challenged, plus the plain discovery request an MCP client sends to find out whether sign-in is needed. The newest version has no handshake, so there every anonymous request is challenged except the free tool and static app-shell reads. Stateless callers that never send a handshake keep their credential-free catalog reads and the free tool, and the machine-discovery aliases still accept an anonymous handshake for scanners. Scripts that identify only as a generic HTTP library are exempt on the older protocol versions: they rarely sign in and retried the handshake instead, so they meet the challenge at their first gated call. A refusal without the request's identifier is as harmful as none, because a strict client cannot match it to the pending request and waits out its timeout. See also: Credential Class, Streamable HTTP Transport, MCP Server Card.
 
 ### MCP Proxy
 
@@ -1157,6 +1157,16 @@ Vessel snapshots outlive a deploy, so correcting a classifier reaches new reader
 The independent second model call that compares a web-sourced widget draft with everything the agent read before the widget reaches the user. It judges whether the data is the right dataset for the current or requested period, and lists displayed values the sources do not support. A widget becomes web-sourced the moment a web search returns results; one built only from our own data never gets the check.
 
 A first draft fails open: if the check cannot run or errors, the draft is served unverified. Once a draft has been rejected, the check fails closed: the model gets one repair, and only a repair that passes a second check is served. A rejected repair, or a recheck that fails or runs out of time, ends the request with an error. A throwaway web search therefore changes what the user gets, not only what the request costs. See also: Anonymous Session.
+
+## National Debt Clock
+
+### Period-End Anchor
+
+The moment at which the debt clock shows exactly the IMF figure for a country: the instant just after the end of the reporting period that figure measures. IMF WEO gross debt is a stock at the end of a period, so the figure already includes that period's deficit. The clock reaches the figure at the anchor instead of starting from it, which keeps the period's deficit from being counted twice.
+
+The period is a calendar year by default. For economies that report government finance on a fiscal year, it is the verified fiscal year, and WEO labels it either by the calendar year it ends in or by the one it starts in. Month ranges alone do not decide which label applies, so the label has to come from the IMF's own stated mapping. A blended calendar year, such as Singapore's mix of two fiscal years, has no fiscal anchor and stays on the calendar default.
+
+Before the anchor the clock counts up to the figure. A country in surplus is the exception: its clock stays flat rather than ticking. After the anchor, the clock runs on the next period's projected deficit, because the closed period's deficit no longer describes current borrowing. That switch needs both the next period's deficit and its GDP; if either is missing, the clock keeps the closed period's rate. A direct official reading with its own record date, such as US Treasury debt to the penny, replaces both the figure and the anchor. See also: Reference Period, Content-Age Contract.
 
 ## Flagged ambiguities
 

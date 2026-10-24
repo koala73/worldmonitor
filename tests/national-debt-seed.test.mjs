@@ -6,6 +6,7 @@ import { imfSdmxFetchIndicator } from '../scripts/_seed-utils.mjs';
 // Import only the pure compute function (no Redis, no fetch side-effects)
 import { computeEntries, fetchTreasury, weoYearWindow } from '../scripts/seed-national-debt.mjs';
 import { debtAt } from '../scripts/live-pages/national-debt.mjs';
+import weoFiscalPeriods from '../scripts/shared/weo-fiscal-periods.mjs';
 
 // WEO gross debt is an end-of-year stock, so 2024 data is anchored at the end of 2024.
 const BASELINE_TS = Date.UTC(2025, 0, 1);
@@ -384,6 +385,122 @@ describe('WEO fiscal-period anchors', () => {
     const entry = entryFor('USA', 2026, { debtUsd: 900e9, date: '2026-10-16' });
     assert.equal(entry.baselineTs, Date.UTC(2026, 9, 16));
     assert.equal(debtAt(entry, entry.baselineTs), 900e9);
+  });
+
+  it('anchors every WEO Online Table F government-finance economy at its period end', () => {
+    // [iso3, WEO 2026 period end (exclusive, midnight UTC after the last day)]
+    const cases = [
+      ['PAK', Date.UTC(2026, 6, 1)], // FY(t-1/t) = CY(t), July/June
+      ['THA', Date.UTC(2026, 9, 1)], // Thai FY Y ends September of Y
+      ['NPL', Date.UTC(2026, 6, 16)], // ends July 15
+      ['BWA', Date.UTC(2027, 3, 1)], // FY(t/t+1) = CY(t), April/March
+      ['HKG', Date.UTC(2027, 3, 1)],
+      ['IRN', Date.UTC(2027, 2, 21)], // Iranian year ends March 20
+      ['DMA', Date.UTC(2027, 6, 1)], // FY(t/t+1) = CY(t), July/June
+      ['FJI', Date.UTC(2027, 7, 1)], // August/July
+    ];
+    for (const [iso3, periodEnd] of cases) {
+      const entry = entryFor(iso3);
+      assert.equal(entry.baselineTs, periodEnd, iso3);
+      assert.equal(debtAt(entry, periodEnd), entry.debtUsd, iso3);
+    }
+  });
+
+  describe('after a fiscal period closes', () => {
+    // NOW is 2026-10-19: Bangladesh's FY2025/26 (WEO 2026) closed on June 30,
+    // so the clock is running through FY2026/27 (WEO 2027).
+    function bangladesh(deficit2027) {
+      return computeEntries(
+        { BGD: { 2025: 38, 2026: 40, 2027: 42 } },
+        { BGD: { 2026: 500e9, 2027: 550e9 } },
+        { BGD: { 2026: -5, 2027: deficit2027 } },
+        null, NOW,
+      )[0];
+    }
+
+    it('accrues at the next period\'s projected deficit and GDP', () => {
+      const entry = bangladesh(-8);
+      assert.equal(entry.baselineTs, Date.UTC(2026, 6, 1));
+      assert.equal(entry.debtToGdp, 40, 'the closed period\'s stock still anchors the clock');
+      assert.ok(Math.abs(entry.perDayRate - 0.08 * 550e9 / 365.25) < 1e-6);
+    });
+
+    it('stops ticking when the next period is projected in surplus', () => {
+      const entry = bangladesh(1);
+      assert.equal(entry.perSecondRate, 0);
+      assert.equal(entry.perDayRate, 0);
+    });
+
+    it('keeps the closed period\'s rate when the next period has no deficit or GDP', () => {
+      const entry = computeEntries(
+        { BGD: { 2026: 40 } }, { BGD: { 2026: 500e9 } }, { BGD: { 2026: -5 } }, null, NOW,
+      )[0];
+      assert.ok(Math.abs(entry.perDayRate - 0.05 * 500e9 / 365.25) < 1e-6);
+    });
+
+    it('leaves periods still in progress on their own year\'s deficit', () => {
+      for (const iso3 of ['IND', 'DEU']) { // India ends March 2027; calendar 2026 ends January 2027
+        const entry = computeEntries(
+          { [iso3]: { 2026: 80, 2027: 82 } },
+          { [iso3]: { 2026: 1e12, 2027: 1.1e12 } },
+          { [iso3]: { 2026: -5, 2027: -9 } },
+          null, NOW,
+        )[0];
+        assert.ok(Math.abs(entry.perDayRate - 0.05 * 1e12 / 365.25) < 1e-6, iso3);
+      }
+    });
+  });
+
+  it('keeps Singapore on the calendar fallback: WEO blends its fiscal years into calendar years', () => {
+    assert.equal(entryFor('SGP').baselineTs, Date.UTC(2027, 0, 1));
+  });
+});
+
+describe('WEO fiscal-period table', () => {
+  const table = weoFiscalPeriods;
+  // WEO Oct 2026 Online Table F, government finance column. Puerto Rico is a
+  // territory the seeder excludes; Singapore's WEO calendar years blend two
+  // fiscal years (CY(t) = 0.25*FY(t-1/t) + 0.75*FY(t/t+1)), so no label fits.
+  const TABLE_F = ['AFG', 'BHS', 'BGD', 'BRB', 'BTN', 'BWA', 'DMA', 'EGY', 'SWZ', 'ETH', 'FJI', 'HTI', 'HKG', 'IND',
+    'IRN', 'JAM', 'LSO', 'MHL', 'MUS', 'FSM', 'MMR', 'NRU', 'NPL', 'PAK', 'PLW', 'PRI', 'WSM', 'SGP', 'LCA', 'THA', 'TON', 'TTO'];
+  const EXCLUDED = new Set(['PRI', 'SGP']);
+
+  it('covers every Table F economy except the documented exclusions', () => {
+    assert.deepEqual(Object.keys(table.countries).sort(), TABLE_F.filter((c) => !EXCLUDED.has(c)).sort());
+  });
+
+  it('gives every row a real period end, a label convention, a name and an IMF citation', () => {
+    for (const [iso3, row] of Object.entries(table.countries)) {
+      assert.ok(Number.isInteger(row.endMonth) && row.endMonth >= 1 && row.endMonth <= 12, iso3);
+      const daysInMonth = new Date(Date.UTC(2027, row.endMonth, 0)).getUTCDate();
+      assert.ok(Number.isInteger(row.endDay) && row.endDay >= 1 && row.endDay <= daysInMonth, iso3);
+      assert.ok(row.endMonth !== 12 || row.endDay !== 31, `${iso3} is calendar-year and belongs on the fallback`);
+      assert.ok(['end', 'start'].includes(row.yearLabel), iso3);
+      assert.ok(typeof row.name === 'string' && row.name.length > 1, iso3);
+      assert.match(row.labelSourceUrl, /^https:\/\/(api|www)\.imf\.org\//, iso3);
+      assert.ok(row.labelEvidence.length > 20, iso3);
+    }
+  });
+
+  it('labels each row the way its quoted WEO mapping says', () => {
+    for (const [iso3, row] of Object.entries(table.countries)) {
+      const evidence = row.labelEvidence.replace(/\s+/g, '');
+      if (/[FS]Y\(t-1\/t\)=CY\(t\)/.test(evidence)) assert.equal(row.yearLabel, 'end', iso3);
+      else if (/[FS]Y\(t\/t\+1\)=CY\(t\)/.test(evidence)) assert.equal(row.yearLabel, 'start', iso3);
+      else assert.ok(['HKG', 'THA'].includes(iso3), `${iso3} cites no WEO mapping and has no staff-report check`);
+    }
+  });
+
+  it('ends each row in the month its quoted WEO reporting year ends', () => {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    let checked = 0;
+    for (const [iso3, row] of Object.entries(table.countries)) {
+      const quoted = row.labelEvidence.match(/(?:reporting year|reports) ([A-Z][a-z]+)(?:\/| to )([A-Z][a-z]+)/);
+      if (!quoted) continue;
+      assert.equal(months[row.endMonth - 1], quoted[2], iso3);
+      checked += 1;
+    }
+    assert.ok(checked >= 20, `only ${checked} rows quote their reporting months`);
   });
 });
 

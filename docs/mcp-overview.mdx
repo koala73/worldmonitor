@@ -29,7 +29,7 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 
 | Endpoint | Purpose |
 |----------|---------|
-| `https://worldmonitor.app/mcp` | JSON-RPC server (Streamable HTTP transport; JSON responses by default, SSE responses when clients advertise `text/event-stream`; `initialize` negotiates protocol `2025-06-18` by default, `2025-03-26` for older clients) |
+| `https://worldmonitor.app/mcp` | JSON-RPC server (Streamable HTTP transport; JSON responses by default, SSE responses when clients advertise `text/event-stream`; `initialize` negotiates protocol `2025-11-25` by default, `2025-06-18` or `2025-03-26` for older clients) |
 | `https://worldmonitor.app/oauth/register` | Dynamic Client Registration (RFC 7591). Clients on the [trusted list](#client-id-metadata-documents) can skip it and use their Client ID Metadata Document URL as `client_id` |
 | `https://worldmonitor.app/oauth/authorize` | OAuth 2.1 authorization endpoint (PKCE required) |
 | `https://worldmonitor.app/oauth/token` | Token endpoint (authorization_code + refresh_token) |
@@ -44,11 +44,14 @@ Registry listings: the server is published in the [official MCP registry](https:
 
 ### Protocol negotiation
 
-WorldMonitor's static server card at `/.well-known/mcp/server-card.json` advertises protocol version `2025-06-18`, and the live `initialize` handshake negotiates it by default — so the advertised floor and the negotiated version stay in lock-step:
+WorldMonitor's static server card at `/.well-known/mcp/server-card.json` advertises protocol version `2025-11-25`, and the live `initialize` handshake negotiates it by default — so the advertised floor and the negotiated version stay in lock-step:
 
-- By default, `initialize` supports both `2025-03-26` and `2025-06-18`.
-- Clients requesting `2025-06-18` receive `2025-06-18`; clients pinned to `2025-03-26` continue receiving `2025-03-26`.
-- Setting `MCP_PROTOCOL_FLOOR_2025_06_18=off` pins the server back to the legacy `2025-03-26`-only floor; a client that then requests `2025-06-18` receives the safe default `2025-03-26`.
+- By default, `initialize` supports `2025-03-26`, `2025-06-18`, and `2025-11-25`.
+- Clients requesting one of those receive it unchanged; a client requesting any other version receives `2025-11-25`.
+- On `2025-11-25`, a `tools/call` whose arguments fail validation returns an `isError` tool result the model can read and correct, instead of the `-32602` error earlier versions receive (see the [error catalog](/mcp-error-catalog)).
+- Setting `MCP_PROTOCOL_2025_11_25=off` drops `2025-11-25` again, and `MCP_PROTOCOL_FLOOR_2025_06_18=off` pins the server back to the legacy `2025-03-26`-only floor.
+- The handshake-free `2026-07-28` revision is off by default. While it is off, its clients fall back to `initialize` as above.
+- With `MCP_PROTOCOL_2026_07_28=on`, a request whose `params._meta` carries `io.modelcontextprotocol/protocolVersion` is served per request on the `2026-07-28` rules: `server/discover`, the required `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers, `resultType` and cache hints on results, and a minimal `subscriptions/listen`. On `/mcp`, an anonymous `2026-07-28` request gets the sign-in challenge except the free `get_sources` call and `ui://` app reads; the machine-discovery aliases stay anonymous. Requests without that envelope keep the behavior above. The [error catalog](/mcp-error-catalog#mcp-2026-07-28-requests) lists the error codes these requests can receive.
 
 Tool `outputSchema` metadata is emitted on `tools/list` regardless of the negotiated protocol version. Older `2025-03-26` clients should ignore unknown fields, while newer clients can use the schema immediately. Every successful `tools/call` also returns the payload as `structuredContent`, which strict clients require once a schema is advertised; the [tools reference](/mcp-tools-reference) describes how projections and soft envelopes are represented.
 
@@ -98,6 +101,7 @@ Dynamic Client Registration is **not** open to arbitrary redirects. A `redirect_
 | Glama | `https://glama.ai/api/app/mcp/oauth/callback` (connectors and test profiles), `https://glama.ai/mcp/inspector/oauth/callback` ([Glama MCP Inspector](https://glama.ai/mcp/inspector)) |
 | Make.com | `https://www.make.com/oauth/cb/mcp` ([Make MCP client](https://apps.make.com/mcp-client)) |
 | Microsoft 365 Copilot | `https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect` ([Build MCP plugins](https://learn.microsoft.com/microsoft-365/copilot/extensibility/build-mcp-plugins)) |
+| Meta Muse | `https://agent.meta.ai/api/hatch/oauth/callback` |
 | Notion | `https://www.notion.so/workflows/mcp/oauth/callback`, `https://app.notion.com/workflows/mcp/oauth/callback` ([client metadata](https://www.notion.so/oauth/mcp-client-metadata.json)) |
 | Linear | `https://linear.app/connect/mcp/callback` ([client metadata](https://linear.app/.well-known/oauth-client-metadata/mcp.json)) |
 | Lovable | `https://api.lovable.dev/workspaces/connectors/mcp/oauth/callback` ([client metadata](https://api.lovable.dev/.well-known/oauth-client)) |
@@ -150,7 +154,7 @@ The authorization response carries `iss` ([RFC 9207](https://datatracker.ietf.or
 |----------|-----|
 | Authorization code | 10 min |
 | Access token | 1 hour |
-| Refresh token | 7 days |
+| Refresh token | 30 days (sliding: each refresh issues a new token with the full window) |
 | Registered client record | 90 days (sliding) |
 | Cached client metadata document | Its `Cache-Control` lifetime, at most 1 hour |
 
@@ -168,7 +172,7 @@ Pro subscribers (and API Starter+ users who'd rather not paste a key) can author
 
 2. **Click "Sign in with WorldMonitor Pro"** on the consent page. This is the default CTA. You'll bounce through `worldmonitor.app/mcp-grant` (Clerk-protected — sign in if needed), then back to `api.worldmonitor.app/oauth/authorize-pro`, then to your client's redirect.
 
-3. **Done.** No `wm_…` key is created or stored on your machine. The client receives a standard OAuth 2.1 access token (1 h TTL, 7 d refresh).
+3. **Done.** No `wm_…` key is created or stored on your machine. The client receives a standard OAuth 2.1 access token (1 h TTL, refresh token valid for 30 days after the last refresh).
 
 <Note>
 If the sign-in step reports that your subscription could not be verified — a `503` page, or `503 TIER_VERIFICATION_UNAVAILABLE` from the grant endpoints — that is transient and says nothing about your subscription. Wait the advertised `Retry-After` and start the connection again from your client; the authorization session is single-use, so restart it rather than reloading the page. A confirmed account with an expired or disabled paid entitlement **without** a provider-confirmed lapse gets `403 INSUFFICIENT_TIER` instead. A confirmed free account, including a provider-confirmed lapse reclassified by the shared gate, completes the flow with a restricted, allowance-metered token. See [Error handling](/usage-errors).
@@ -418,7 +422,7 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 
 | Tool | Description |
 |------|-------------|
-| `get_displacement_data` | Refugee, asylum-seeker, IDP and stateless counts by country and top flows (UNHCR annual data); `view: "events"` returns IDMC internal displacement from the last 180 days with surge flags. |
+| `get_displacement_data` | Refugee, asylum-seeker, IDP and stateless counts by country and top flows (UNHCR annual data); `view: "events"` returns IDMC internal displacement from the last 180 days with surge flags; `view: "regions"` returns IOM DTM internal displacement by region. |
 
 ### AI intelligence
 

@@ -1126,7 +1126,7 @@ export class MapPopup {
     ` : '';
 
     return `
-      <div class="popup-header hotspot">
+      <div class="popup-header hotspot-popup">
         <span class="popup-title">${escapeHtml(hotspot.name.toUpperCase())}</span>
         <span class="popup-badge ${severityClass}">${severityLabel}</span>
         <button class="popup-close" aria-label="Close">×</button>

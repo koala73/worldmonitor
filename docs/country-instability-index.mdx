@@ -1,6 +1,6 @@
 ---
 title: "Country Instability Index"
-description: "Real-time CII v13 stability scoring for 31 Tier-1 countries — combines baseline risk with unrest, conflict, security, and information signals."
+description: "Real-time CII v14 stability scoring for 31 Tier-1 countries — combines baseline risk with unrest, conflict, security, and information signals."
 ---
 The Country Instability Index (CII) maintains a high-frequency instability
 score for the 31 Tier-1 countries tracked by the Strategic Risk API. Rather
@@ -12,7 +12,7 @@ event pressure and publishes the result through the server-side
   Compare current scores, bands, and approximate 24-hour movement for all 31 Tier-1 countries.
 </Card>
 
-For the full v13 formula, coefficient table, and change history, see
+For the full v14 formula, coefficient table, and change history, see
 [CII Risk Scoring Methodology](/methodology/cii-risk-scores). This page is
 the operator-facing overview.
 
@@ -58,7 +58,7 @@ bounded to 0-100.
 |-----------|------------------|-------------|
 | **Unrest** | Civil disorder pressure before or below open conflict | ACLED protests and riots, protest fatalities, high-severity unrest, internet/power outages |
 | **Conflict** | Kinetic violence | ACLED battles, explosions, violence against civilians, fatalities, OREF alerts for Israel; GDELT conflict coverage while ACLED returns no events |
-| **Security** | Hard-security tempo near the country | Military flights, military vessels, aviation closures/delays, GPS/GNSS jamming |
+| **Security** | Hard-security pressure on the country | Foreign military flights and vessels located in it, aviation closures/delays, GPS/GNSS jamming |
 | **Information** | Information-environment pressure | Classified news headlines and country-attributed threat summaries |
 
 ## Boosts And Floors
@@ -69,7 +69,6 @@ arrive outside the base event components:
 | Boost | Max | Trigger |
 |-------|----:|---------|
 | Climate anomalies | 15 | Country-attributed climate severity |
-| Cyber threats | 12 | Severity-weighted cyber threat counts |
 | Wildfires | 8 | High-brightness and total fire counts |
 | Travel advisories | 15 | Do-not-travel, reconsider, or caution advisories |
 | OREF blend | 25 | Active and 24-hour Israel alert pressure |
@@ -135,7 +134,7 @@ Gaza text-attribution caveat, and per-country `baselineRisk` /
 
 CII scores are computed server-side by `GET /api/intelligence/v1/get-risk-scores`
 and cached in Redis. The live cache is versioned by the current
-`methodology_version` (`v13`), with a stale-cache key used as a fallback during
+`methodology_version` (`v14`), with a stale-cache key used as a fallback during
 upstream outages.
 
 The Railway relay process also runs an active CII warm-ping loop every 8

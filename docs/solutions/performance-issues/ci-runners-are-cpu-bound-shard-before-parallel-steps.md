@@ -53,11 +53,16 @@ PR #8966:
   by recorded file durations, so only the matrix and the `/N` denominator
   changed. The slowest single files (111s, 92s, 81s) set a floor that more
   shards cannot go below.
-- **Parallel setup.** `install-root-deps` runs beside the apt install (Redis in
-  unit shards, Playwright OS libraries in smoke shards). The pro-webmcp OS
-  library install runs beside the `/pro` build. `node_modules` does not exist
-  yet in the smoke shards, so the apt step reads the Playwright version from
+- **Parallel setup.** In the smoke shards, `install-root-deps` runs beside the
+  apt install of Playwright's OS libraries. The pro-webmcp OS library install
+  runs beside the `/pro` build. `node_modules` does not exist yet in the smoke
+  shards, so the apt step reads the Playwright version from
   `package-lock.json` and runs `npx -y "playwright@$v" install-deps chromium`.
+  The unit shards ran the Redis apt install beside `install-root-deps` too,
+  until #9583. They now install Redis from a package cache with `dpkg`, before
+  `install-root-deps`: both composite actions use `actions/cache`, and two
+  parallel steps that each pull an action not referenced by the job's
+  top-level steps download it at once, so one copy fails (run 39936254975).
 
 Three alternating runs of the old and new workflow on one commit took the wall
 from 273-280s to 216-223s, for about 14% more runner-seconds. The PR's own run
@@ -82,8 +87,11 @@ The browser jobs now:
 - Install only the fonts the shipped locales need beyond the image's DejaVu,
   Liberation and Noto Color Emoji: `fonts-wqy-zenhei` (zh, ja and ko),
   `fonts-tlwg-loma-otf` (th) and `fonts-lohit-deva` (hi). The
-  `install-browser-fonts` action caches the `.deb` files, so most runs download
-  nothing. The step takes 9-11s and runs beside the dependency restore. A
+  `install-browser-fonts` action caches the `.deb` files and installs them with
+  `dpkg -i`. Until #9554 it passed them to `apt-get install`, which downloaded
+  them again from the mirror on every run (see
+  [apt-get-install-local-deb-redownloads-from-mirror.md](apt-get-install-local-deb-redownloads-from-mirror.md)).
+  The step takes 3-14s and runs beside the dependency restore. A
   failed font install only warns, because fonts affect only the evidence
   screenshots.
 
@@ -103,6 +111,39 @@ screenshots depend on rendering.
   (8-minute cap and repair step) therefore still works when the install runs
   in a group.
 - A `uses:` composite action can be one item of a group.
+
+## The WebMCP smoke: split the job, not the workers
+
+After the unit shards and smoke shards got faster, `variant-smoke-pro-webmcp`
+took ~200s. The strict WebMCP smoke (`npm run test:e2e:webmcp`, 61-81s) ran
+last, after the `/pro` build and five separate `/pro` gate runs. Bench run
+40097331565 ran the smoke alone at 2, 3 and 4 workers:
+
+- Per-worker test time stayed at 55-76s at every worker count: each test got
+  slower in proportion to the worker count. The Vite dev server and Chrome
+  share the runner's CPU.
+- At 4 workers, `validates monitor switches and opens settings and alerts
+  through existing UI` failed on both attempts. That is the contention-
+  sensitive race described in
+  [idle-auto-open-popover-swallows-an-open-modals-escape](../ui-bugs/idle-auto-open-popover-swallows-an-open-modals-escape.md).
+- 100ms `expect.poll` intervals (the default backs off to 1s) were within the
+  57-76s run-to-run noise.
+- The two legacy-API tests need `npm run build:pro`: they load
+  `/pro/welcome.html`. A retry records video, which needs the ffmpeg build in
+  `~/.cache/ms-playwright`, so both halves keep the Playwright cache steps.
+
+The job is now a two-entry matrix (`part: [webmcp, pro-gates]`): the WebMCP
+smoke and the `/pro` gates run on separate runners, and each part builds
+`/pro`. The four `/pro` gates share one Playwright run
+(`npm run test:e2e:pro-gates`), because each run spends ~2.5s starting the
+dev server and Chrome and ~1s shutting down.
+
+The split exposed one more cost. `setup-node`'s npm cache in this job was keyed
+on the root lockfile, so it restored the 583 MB root download cache, which only
+serves the pro-test install inside `build:pro` (root `node_modules` comes from
+`install-root-deps`). One job pulled it at ~95 MB/s in ~6s. Two jobs pulling the
+same blob at the same moment took 12-62s on PR #9626. The job now sets
+`cache-dependency-path: pro-test/package-lock.json`.
 
 ## Prevention
 

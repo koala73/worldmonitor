@@ -10,7 +10,8 @@
  */
 
 import type { QueryCtx } from "./_generated/server";
-import { query, internalQuery } from "./_generated/server";
+import { query, internalQuery, internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { getFeaturesForPlan, mergeEntitlementFeatures } from "./lib/entitlements";
 import { resolveUserId } from "./lib/auth";
@@ -86,5 +87,89 @@ export const getEntitlementsByUserId = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
     return getEntitlementsHandler(ctx, args.userId);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Customer AI routing policies
+// ---------------------------------------------------------------------------
+
+// Provider names the edge understands (server/_shared/llm.ts). Kept here so a
+// typo is rejected at write time instead of silently resolving to "no
+// provider" at request time.
+export const AI_ROUTING_PROVIDER_NAMES = [
+  "anthropic",
+  "openrouter",
+  "openrouter-free",
+  "openrouter-free-backup",
+  "ollama",
+  "generic",
+] as const;
+
+export function validateAllowedProviders(providers: string[]): string[] {
+  const known = new Set<string>(AI_ROUTING_PROVIDER_NAMES);
+  const out: string[] = [];
+  for (const provider of providers) {
+    if (!known.has(provider)) {
+      throw new Error(`Unknown AI provider "${provider}". Allowed: ${AI_ROUTING_PROVIDER_NAMES.join(", ")}`);
+    }
+    if (!out.includes(provider)) out.push(provider);
+  }
+  if (out.length === 0) throw new Error("allowedProviders must name at least one provider");
+  return out;
+}
+
+/** Edge lookup. `null` means the user has no restriction. */
+export const getAiRoutingPolicyByUserId = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("aiRoutingPolicies")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    return row ? { allowedProviders: row.allowedProviders } : null;
+  },
+});
+
+/**
+ * Operator-only (`npx convex run entitlements:setAiRoutingPolicy`). The edge
+ * caches the lookup for 60 s; the cache delete below makes a change visible
+ * immediately when Upstash is reachable.
+ */
+export const setAiRoutingPolicy = internalMutation({
+  args: {
+    userId: v.string(),
+    allowedProviders: v.array(v.string()),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!args.userId.trim()) throw new Error("userId is required");
+    if (!args.reason.trim()) throw new Error("reason is required (e.g. the contract clause)");
+    const allowedProviders = validateAllowedProviders(args.allowedProviders);
+    const existing = await ctx.db
+      .query("aiRoutingPolicies")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    const row = { userId: args.userId, allowedProviders, reason: args.reason.trim(), updatedAt: Date.now() };
+    if (existing) {
+      await ctx.db.replace(existing._id, row);
+    } else {
+      await ctx.db.insert("aiRoutingPolicies", row);
+    }
+    await ctx.scheduler.runAfter(0, internal.payments.cacheActions.deleteAiRoutingPolicyCache, { userId: args.userId });
+    return { userId: args.userId, allowedProviders };
+  },
+});
+
+export const clearAiRoutingPolicy = internalMutation({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("aiRoutingPolicies")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+    for (const row of rows) await ctx.db.delete(row._id);
+    await ctx.scheduler.runAfter(0, internal.payments.cacheActions.deleteAiRoutingPolicyCache, { userId: args.userId });
+    return { userId: args.userId, removed: rows.length };
   },
 });

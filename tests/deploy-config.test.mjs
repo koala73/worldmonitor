@@ -83,7 +83,7 @@ const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dock
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|accuracy|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|desktop-sign-in\\.html|desktop-sign-in|.*\\.md$).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|accuracy|monitor-the-situation|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|desktop-sign-in\\.html|desktop-sign-in|.*\\.md$).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
@@ -673,6 +673,9 @@ describe('crawlable content corpus deployment contracts', () => {
       'scripts/unranked-country-inventory.mjs',
       'scripts/build-use-cases.mjs',
       'scripts/build-accuracy-page.mjs',
+      'scripts/build-situation-page.mjs',
+      'scripts/situation-page/',
+      'scripts/slugify.mjs',
       'scripts/crawlable-sources-page.mjs',
       'scripts/source-origin.mjs',
       'scripts/source-origin.d.mts',
@@ -711,6 +714,9 @@ describe('crawlable content corpus deployment contracts', () => {
         'scripts/unranked-country-inventory.mjs',
         'scripts/build-use-cases.mjs',
         'scripts/build-accuracy-page.mjs',
+        'scripts/build-situation-page.mjs',
+        'scripts/situation-page/sections.mjs',
+        'scripts/slugify.mjs',
         'scripts/crawlable-sources-page.mjs',
         'scripts/source-origin.mjs',
         'scripts/source-origin.d.mts',
@@ -790,6 +796,84 @@ describe('crawlable content corpus deployment contracts', () => {
         }
       }
       assert.deepEqual(actual, expected);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it('builds a deliberate same-commit redeploy on main so rotated env vars reach production (#8216)', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'wm-vercel-redeploy-'));
+    try {
+      const fixtureEnv = { ...process.env };
+      for (const key of ['GIT_COMMON_DIR', 'GIT_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_WORK_TREE']) {
+        delete fixtureEnv[key];
+      }
+      const git = (...args) => execFileSync('git', args, { cwd: fixture, env: fixtureEnv, encoding: 'utf8' });
+      git('init', '-q');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      writeFileSync(join(fixture, 'README.md'), 'base\n');
+      git('add', 'README.md');
+      git('commit', '-qm', 'base');
+      const deployed = git('rev-parse', 'HEAD').trim();
+      const run = (previous) => spawnSync('/bin/bash', [resolve(__dirname, '../scripts/vercel-ignore.sh')], {
+        cwd: fixture,
+        env: { ...fixtureEnv, VERCEL_GIT_COMMIT_REF: 'main', VERCEL_GIT_PREVIOUS_SHA: previous },
+        encoding: 'utf8',
+      });
+
+      // Vercel sets VERCEL_GIT_PREVIOUS_SHA to the last successful deployment, so it
+      // equals HEAD only when that same commit is redeployed after an env change.
+      const redeploy = run(deployed);
+      assert.ifError(redeploy.error);
+      assert.equal(redeploy.status, 1, 'a same-commit redeploy must build');
+
+      mkdirSync(join(fixture, 'scripts'), { recursive: true });
+      writeFileSync(join(fixture, 'scripts/seed-unrelated.mjs'), 'seed\n');
+      git('add', '.');
+      git('commit', '-qm', 'seed only');
+      const push = run(deployed);
+      assert.ifError(push.error);
+      assert.equal(push.status, 0, 'a new commit with no web changes must still skip');
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it('builds a same-commit preview redeploy when the shallow clone has no origin/main', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'wm-vercel-preview-redeploy-'));
+    try {
+      const fixtureEnv = { ...process.env };
+      for (const key of ['GIT_COMMON_DIR', 'GIT_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_WORK_TREE']) {
+        delete fixtureEnv[key];
+      }
+      const git = (...args) => execFileSync('git', args, { cwd: fixture, env: fixtureEnv, encoding: 'utf8' });
+      git('init', '-q');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      writeFileSync(join(fixture, 'README.md'), 'base\n');
+      git('add', 'README.md');
+      git('commit', '-qm', 'base');
+      const deployed = git('rev-parse', 'HEAD').trim();
+      const run = (previous) => spawnSync('/bin/bash', [resolve(__dirname, '../scripts/vercel-ignore.sh')], {
+        cwd: fixture,
+        env: { ...fixtureEnv, VERCEL_GIT_COMMIT_REF: 'feat/env-flag', VERCEL_GIT_PREVIOUS_SHA: previous },
+        encoding: 'utf8',
+      });
+
+      // Vercel's preview clone has no origin/main, so the script falls back to
+      // PREVIOUS_SHA. A redeploy to pick up a preview env var sets it to HEAD.
+      const redeploy = run(deployed);
+      assert.ifError(redeploy.error);
+      assert.equal(redeploy.status, 1, 'a same-commit preview redeploy must build');
+
+      mkdirSync(join(fixture, 'scripts'), { recursive: true });
+      writeFileSync(join(fixture, 'scripts/seed-unrelated.mjs'), 'seed\n');
+      git('add', '.');
+      git('commit', '-qm', 'seed only');
+      const push = run(deployed);
+      assert.ifError(push.error);
+      assert.equal(push.status, 0, 'a new preview commit with no web changes must still skip');
     } finally {
       rmSync(fixture, { recursive: true, force: true });
     }
@@ -1694,6 +1778,15 @@ describe('welcome landing page routing', () => {
       assert.ok(apiRedirect, `expected a redirect for ${source}`);
       assert.equal(apiRedirect.destination, '/docs/api-reference');
       assert.equal(apiRedirect.permanent, false);
+    }
+  });
+
+  it('redirects bare /docs to the docs home permanently, with or without a trailing slash', () => {
+    for (const source of ['/docs', '/docs/']) {
+      const docsRedirect = vercelConfig.redirects.find((r) => r.source === source);
+      assert.ok(docsRedirect, `expected a redirect for ${source}`);
+      assert.equal(docsRedirect.destination, '/docs/documentation');
+      assert.equal(docsRedirect.permanent, true);
     }
   });
 

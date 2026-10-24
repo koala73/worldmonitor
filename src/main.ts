@@ -548,6 +548,7 @@ import { primeBootstrapFastTier } from '@/services/bootstrap-prefetch';
 import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { loadDesktopSecrets } from '@/services/runtime-config';
 import { applyStoredTheme } from '@/utils/theme-manager';
+import { applyDeviceTierClass } from '@/utils/device-tier';
 import { applyFont } from '@/services/font-settings';
 import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
 import { initAnalytics, trackContentHandoff } from '@/services/analytics';
@@ -566,6 +567,18 @@ const chunkReloadStorageKey = installChunkReloadGuard(__BUILD_HASH__);
 // Convex user row (users.ensureRecord), which new API keys inherit.
 // Best-effort: blocked cookies mean "no attribution".
 captureAgentRefFromSearch(window.location.search, agentRefStorage());
+// First-touch channel (UTM, referrer host, landing page), stamped onto the
+// Dodo subscription at checkout. The visit is read now, before any URL
+// rewrite; the module itself loads off the main chunk (bundle budget).
+const acquisitionVisit = {
+  search: window.location.search,
+  pathname: window.location.pathname,
+  referrer: document.referrer,
+  now: Date.now(),
+};
+void import('../shared/acquisition-source')
+  .then((m) => { m.captureFirstTouchAcquisition(m.browserAcquisitionStorage(), acquisitionVisit); })
+  .catch(() => { /* no attribution */ });
 
 // Product analytics are secondary startup work; RUM starts once the trusted
 // dashboard entry executes so it can observe page-load vitals.
@@ -606,6 +619,7 @@ loadDesktopSecrets().catch(() => {});
 
 // Apply stored theme preference before app initialization (safety net for inline script)
 applyStoredTheme();
+applyDeviceTierClass(document.documentElement);
 applyFont();
 applyFontScale();
 window.addEventListener('storage', (event) => {

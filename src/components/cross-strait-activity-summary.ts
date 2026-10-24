@@ -226,7 +226,7 @@ function isObservation(value: unknown): boolean {
     || !Number.isInteger(value.revision.sequence)
     || typeof value.revision.state !== 'string'
     || typeof value.revision.vintageId !== 'string'
-    || !Array.isArray(value.history)
+    || (value.history !== undefined && !Array.isArray(value.history))
     || !('provenance' in value)
     || (value.summary !== undefined && typeof value.summary !== 'string')
     || !isRecord(value.categories)
@@ -266,6 +266,7 @@ function isSourceHealth(value: unknown): boolean {
       value.transportPath === undefined
       || value.transportPath === 'direct'
       || value.transportPath === 'proxy'
+      || value.transportPath === 'x_api'
     )
     && (
       value.blockedReason === undefined

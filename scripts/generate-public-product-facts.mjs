@@ -158,6 +158,8 @@ const plans = publicCatalogEntries.map(([planKey, entry]) => ({
   ].join(', '),
 }));
 
+// One attribution scan feeds the hero rail and the restated inventory phrases below.
+const sourceAttribution = sourceAttributionStats(scanUpstreamHosts(ROOT), loadManifest(ROOT));
 const heroProofStats = buildHeroProofStats();
 
 const facts = {
@@ -187,7 +189,7 @@ const facts = {
  * and pinned by tests/public-product-facts.test.mjs).
  */
 function buildHeroProofStats() {
-  const stats = sourceAttributionStats(scanUpstreamHosts(ROOT), loadManifest(ROOT));
+  const stats = sourceAttribution;
   return {
     mapLayers: getCompleteLayerCatalogKeys('full').length,
     feeds: stats.feedHosts,
@@ -318,6 +320,54 @@ function rewriteApplicationJsonLd(source, includedGroups) {
   );
 }
 
+/**
+ * Hand-written copy that states the source inventory restates the measured
+ * figures. docs/about.mdx is the canonical product description directories
+ * lift (#9405); the other files are the homepage JSON-LD, the architecture
+ * diagram, the llms-full brief, the evergreen "what is" post and the OAuth
+ * consent screens, which had each drifted to a different total. Each phrase
+ * must occur exactly `occurrences` times: copy that drifts from the wording
+ * fails here instead of going stale. `keys` fill the phrase's leading numerals
+ * in order; later digits (the "1" in "Tier-1") are left alone.
+ */
+const PROVIDERS_ACROSS_HOSTS = { pattern: /\b\d+ attributed providers across \d+ observed source hosts\b/g, occurrences: 1, keys: ['providers', 'sourceHosts'] };
+const CONSENT_PROVIDERS = { pattern: /\bevents from \d+ attributed providers\b/g, occurrences: 1, keys: ['providers'] };
+const RESTATED_FACT_PHRASES = new Map([
+  ['docs/about.mdx', [
+    { pattern: /\b\d+ news and OSINT feeds from \d+ attributed providers\b/g, occurrences: 1, keys: ['feeds', 'providers'] },
+    { pattern: /\ball \d+ attributed providers\b/g, occurrences: 1, keys: ['providers'] },
+    { pattern: /\b\d+ (?:toggleable )?layer types\b/g, occurrences: 2, keys: ['mapLayers'] },
+    { pattern: /\b\d+ Tier-1 countries\b/g, occurrences: 1, keys: ['instabilityCountries'] },
+    { pattern: /\b\d+ scored hotspots\b/g, occurrences: 1, keys: ['hotspots'] },
+    { pattern: /\b\d+ live-AIS maritime chokepoints\b/g, occurrences: 1, keys: ['chokepoints'] },
+    { pattern: /\b\d+ subsea cables\b/g, occurrences: 1, keys: ['submarineCables'] },
+  ]],
+  ['index.html', [
+    { pattern: /\b\d+ news and OSINT feeds from \d+ attributed providers across \d+ observed source hosts\b/g, occurrences: 1, keys: ['feeds', 'providers', 'sourceHosts'] },
+  ]],
+  ['ARCHITECTURE.md', [{ pattern: /\b\d+ observed source hosts\b/g, occurrences: 1, keys: ['sourceHosts'] }]],
+  ['public/llms-full.txt', [PROVIDERS_ACROSS_HOSTS]],
+  ['blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', [PROVIDERS_ACROSS_HOSTS]],
+  ['api/oauth/authorize.js', [CONSENT_PROVIDERS]],
+  ['mcp-grant.html', [CONSENT_PROVIDERS]],
+]);
+const RESTATED_FACT_VALUES = { ...facts.depthProofStats, sourceHosts: sourceAttribution.activeHosts };
+
+function restateFacts(path, source) {
+  let result = source;
+  for (const { pattern, occurrences, keys } of RESTATED_FACT_PHRASES.get(path) ?? []) {
+    const found = result.match(pattern)?.length ?? 0;
+    if (found !== occurrences) {
+      throw new Error(`${path}: expected ${occurrences} match(es) of ${pattern}, found ${found}`);
+    }
+    result = result.replace(pattern, (phrase) => {
+      let slot = 0;
+      return phrase.replace(/\d+/g, (digits) => (slot < keys.length ? String(RESTATED_FACT_VALUES[keys[slot++]]) : digits));
+    });
+  }
+  return result;
+}
+
 const applicationJsonLdGroups = new Map([
   ['index.html', ['free', 'pro']],
   ['pro-test/welcome.html', ['free', 'pro']],
@@ -332,7 +382,7 @@ const proLocalePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
   .sort();
 
 for (const [path, groups] of applicationJsonLdGroups) {
-  transform(path, (source) => rewriteApplicationJsonLd(source, groups));
+  transform(path, (source) => restateFacts(path, rewriteApplicationJsonLd(source, groups)));
 }
 
 // Keep the hand-authored A2A routing copy's catalog total derived from the
@@ -492,41 +542,12 @@ for (const path of new Set([
   transform(path, replacePreviousPrices);
 }
 
-/**
- * docs/about.mdx is the canonical product description directories lift (#9405),
- * so its inventory figures restate the measured depth-band stats. Each phrase
- * must occur exactly `occurrences` times: copy that drifts from the wording
- * fails here instead of going stale. `keys` fill the phrase's leading numerals
- * in order; later digits (the "1" in "Tier-1") are left alone.
- */
-const ABOUT_FACT_PHRASES = [
-  { pattern: /\b\d+ news and OSINT feeds from \d+ attributed providers\b/g, occurrences: 1, keys: ['feeds', 'providers'] },
-  { pattern: /\ball \d+ attributed providers\b/g, occurrences: 1, keys: ['providers'] },
-  { pattern: /\b\d+ (?:toggleable )?layer types\b/g, occurrences: 2, keys: ['mapLayers'] },
-  { pattern: /\b\d+ Tier-1 countries\b/g, occurrences: 1, keys: ['instabilityCountries'] },
-  { pattern: /\b\d+ scored hotspots\b/g, occurrences: 1, keys: ['hotspots'] },
-  { pattern: /\b\d+ live-AIS maritime chokepoints\b/g, occurrences: 1, keys: ['chokepoints'] },
-  { pattern: /\b\d+ subsea cables\b/g, occurrences: 1, keys: ['submarineCables'] },
-];
-
-function restateAboutFacts(source, stats) {
-  let result = source;
-  for (const { pattern, occurrences, keys } of ABOUT_FACT_PHRASES) {
-    const found = result.match(pattern)?.length ?? 0;
-    if (found !== occurrences) {
-      throw new Error(`docs/about.mdx: expected ${occurrences} match(es) of ${pattern}, found ${found}`);
-    }
-    result = result.replace(pattern, (phrase) => {
-      let slot = 0;
-      return phrase.replace(/\d+/g, (digits) => (slot < keys.length ? String(stats[keys[slot++]]) : digits));
-    });
-  }
-  return result;
-}
-
 // One transform per file: a second one would read the unwritten original in
 // --check mode, so the Pro price rewrite rides along here.
-transform('docs/about.mdx', (source) => restateAboutFacts(replacePreviousPrices(source), facts.depthProofStats));
+transform('docs/about.mdx', (source) => restateFacts('docs/about.mdx', replacePreviousPrices(source)));
+for (const path of RESTATED_FACT_PHRASES.keys()) {
+  if (path !== 'docs/about.mdx' && !applicationJsonLdGroups.has(path)) transform(path, (source) => restateFacts(path, source));
+}
 
 /** The free-account MCP allowance, worded once for every pricing surface (#9144). */
 const FREE_ACCOUNT_MCP_LINE = `${FREE_ACCOUNT_CALLS_PER_DAY} cached-data MCP calls/day with a free account`;

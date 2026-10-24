@@ -267,7 +267,7 @@ The `SmartPollLoop` is the core refresh orchestration primitive used by all data
 
 ### Railway Seed Data Pipeline
 
-21 Railway cron jobs continuously refresh the Redis cache with pre-computed data from external APIs. Seeds run on configurable schedules from minutes to daily cadence and write both a canonical domain key (for RPC handler lookups) and a bootstrap key (for page-load hydration). This dual-key strategy ensures that bootstrap hydration and RPC handlers always agree on data format and freshness.
+Railway cron services continuously refresh the Redis cache with pre-computed data from external APIs. A row below is a seed script, not a separate cron job: bundled services run several seeds on one schedule (for example, the displacement and border seeders all run inside `seed-bundle-health`). Seeds run on configurable schedules from minutes to daily cadence and write both a canonical domain key (for RPC handler lookups) and a bootstrap key (for page-load hydration). This dual-key strategy ensures that bootstrap hydration and RPC handlers always agree on data format and freshness.
 
 | Seed Script | Data Source | Update Frequency | Bootstrap Key |
 | --- | --- | --- | --- |
@@ -289,7 +289,11 @@ The `SmartPollLoop` is the core refresh orchestration primitive used by all data
 | `seed-unrest-events` | ACLED protests + GDELT | 45 min | `unrest:events:v1` |
 | `seed-ucdp-events` | UCDP GED API | 6 hours | `conflict:ucdp-events:v1` |
 | `ais-relay` (Middle East strike loop) | Telegram channels + GDELT event export | 10 min | `conflict:iran-events:v1`, `conflict:strike-pressure:v1` (30-day per-country tally for the CII) |
-| `seed-displacement-summary` | UNHCR / IOM | 30 min | N/A |
+| `seed-displacement-summary` | UNHCR Population API | Daily | N/A |
+| `seed-idmc-idu-displacement` | IDMC Internal Displacement Updates (HDX) | Daily | `displacement:idmc-idu:v1` |
+| `seed-dtm-displacement` | IOM Displacement Tracking Matrix API | Daily | N/A |
+| `seed-cross-border-arrivals` | UNHCR Operational Data Portal | Daily | `displacement:cross-border:v1` |
+| `seed-border-{uk,cbp,frontex,panama}` | UK Home Office, US CBP, Frontex, Panama migration statistics | Daily | N/A |
 | `seed-military-bases` | Curated military-base registry | Daily | N/A |
 | `seed-wb-indicators` | World Bank tech readiness | Daily | `economic:worldbank-techreadiness:v1` |
 | `seed-forecasts` | OpenRouter LLM + multi-domain signals | 15 min | `forecast:predictions:v2` |

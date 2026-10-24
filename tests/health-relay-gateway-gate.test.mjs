@@ -239,7 +239,7 @@ test('missing gateway env on a production build is RELAY_GATE_MISCONFIGURED with
   assert.equal(STATUS_COUNTS.RELAY_GATE_MISCONFIGURED, 'crit');
   assert.equal(relayCalls.length, 0);
   assert.equal(compact.problems[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'RELAY_GATE_MISCONFIGURED');
-  assert.match(compact.problems[RELAY_GATEWAY_GATE_CHECK_NAME].hint, /new commit/i, 'the hint carries the #8216 redeploy trap');
+  assert.match(compact.problems[RELAY_GATEWAY_GATE_CHECK_NAME].hint, /redeploy production/i, 'the hint names the #8216 recovery: a same-commit redeploy now builds');
 });
 
 test('VERCEL_ENV=production on a build Vercel is not running (no VERCEL=1) omits the check', async () => {

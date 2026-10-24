@@ -213,7 +213,7 @@ ${clientHostLine}${localhostWarn}
 <hr>
 <p class="scope-label">Read-only access to</p>
 <ul class="scope-list">
-<li>Real-time news &amp; events from 100+ global sources</li>
+<li>Real-time news &amp; events from 774 attributed providers</li>
 <li>Live flight tracking &amp; AIS vessel positions</li>
 <li>Weather alerts, earthquakes &amp; natural disasters</li>
 <li>Geopolitical risk indicators &amp; conflict data</li>

@@ -2684,7 +2684,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_climate_data`
 
-Return the seeded climate bundle: temperature and precipitation anomalies against 30-year WMO normals, climate-relevant disaster alerts (ReliefWeb, GDACS, FIRMS), the NOAA Mauna Loa CO2 trend, OpenAQ/WAQI PM2.5 station readings, NSIDC/NOAA Arctic sea-ice extent and ocean-heat indicators, active weather alerts and climate news. Each sub-dataset carries its own seed time and staleness budget (anomalies are flagged stale after 2 h, CO2 and sea ice after 2 days). Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the disaster and air-quality lists, limit caps each list (default 30, 0 for no cap).
+Return the seeded climate bundle: temperature and precipitation anomalies against 30-year WMO normals, climate-relevant disaster alerts (ReliefWeb, GDACS, FIRMS), the NOAA Mauna Loa CO2 trend, OpenAQ/WAQI PM2.5 station readings, NSIDC/NOAA Arctic sea-ice extent and ocean-heat indicators, active weather alerts and climate news. Freshness follows each source seed time and budget (anomalies 9 h, CO2 3 days, sea ice 2 days), plus producer content-age limits for anomalies and news. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the disaster and air-quality lists, limit caps each list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2697,7 +2697,7 @@ Return the seeded climate bundle: temperature and precipitation anomalies agains
 - **API endpoints:** `GET /api/climate/v1/get-co2-monitoring`, `GET /api/climate/v1/get-ocean-ice-data`, `GET /api/climate/v1/list-air-quality-data`, `GET /api/climate/v1/list-climate-anomalies`, `GET /api/climate/v1/list-climate-disasters`, `GET /api/climate/v1/list-climate-news`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** per slice — weather alerts **45 min**, climate news intelligence **90 min**, anomalies **2 h**, air quality **3 h**, ocean/ice **48 h**, CO2 monitoring **48 h**. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget.
+- **Freshness budget:** per slice — weather alerts **45 min**, climate news intelligence **90 min**, anomalies **9 h**, disasters **12 h**, air quality **3 h**, ocean/ice **48 h**, CO2 monitoring **72 h**. These seed budgets match `/api/health`. Anomalies and climate news also honor their producer content-age limits, currently **14 days** and **7 days**. The single `stale` flag ORs every check, so an expired seed, failed refresh, missing metadata, or expired content clock marks the bundle stale. `cached_at` is the oldest contributing seed time, not a shared expiry deadline. `dataset` narrows the returned data after the bundle freshness check.
 
 <CodeGroup>
 
@@ -2917,19 +2917,21 @@ Use `view: "movements"` for source-dated UNHCR operational reports, UK daily arr
 
 Use `view: "events"` for IDMC Internal Displacement Updates in `iduEvents`: per-country people displaced inside their country in the last 30 days (split into conflict and disaster), `newlyReported7d` (figures IDMC published in the last 7 days, whatever the displacement date), a `surge` flag (at least 5,000 people and three times the monthly mean of the 150 days before), and the located IDMC figures from the last 180 days, newest first, at most 100 per call. IDMC publishes a figure a median of three weeks after the displacement, so the latest weeks are incomplete.
 
+Use `view: "regions"` for IOM Displacement Tracking Matrix (DTM) data in `dtmRegions`: the latest survey round of each DTM operation from the last 18 months, largest first, with its total internally displaced people, the split by cause, the count per first-level region (with an OCHA P-code and a point where one is known) and up to 30 region-to-region routes. Operations in one country can overlap (a countrywide operation and a provincial one), so do not add their totals. Rounds are monthly at best.
+
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `view` | string: annual / movements / events | Default annual. movements returns source-dated operational movement reports. events returns IDMC internal displacement in iduEvents. |
+| `view` | string: annual / movements / events / regions | Default annual. movements returns source-dated operational movement reports. events returns IDMC internal displacement in iduEvents. regions returns IOM DTM operations in dtmRegions. |
 | `route` | string | Exact route or situation ID in the movements view. |
-| `countries` | `array<string>` | Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all. Unresolved inputs return Invalid params. |
-| `limit` | number | Cap the per-country and top-flow lists to at most this many items (default 30, pass 0 for no cap). |
+| `countries` | `array<string>` | Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches per-country totals, origin/asylum flows, IDMC rows and DTM operations. Omit for all. Unresolved names and alpha-3 codes return Invalid params; an unknown two-letter code matches nothing. |
+| `limit` | number | Cap the per-country, top-flow, IDMC and DTM operation lists to at most this many items (default 30, pass 0 for no cap; IDMC events stay capped at 100). |
 
-- **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`, `GET /api/displacement/v1/get-cross-border-movements`
+- **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`, `GET /api/displacement/v1/get-cross-border-movements`, `GET /api/displacement/v1/get-internal-displacement`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** annual data is stale after **2.5 d**. Movement feeds have a 48-hour fetch budget, plus independent report-age budgets: 45 days for ODP, 3 days for UK arrivals and 75 days for CBP, Frontex and Panama monthly reports. Sources proven never activated do not stale the aggregate; unreadable activation markers fail closed. Check each row and source status. IDMC events are stale after **2 d**.
+- **Freshness budget:** annual data is stale after **2.5 d**. Movement feeds have a 48-hour fetch budget, plus independent report-age budgets: 45 days for ODP, 3 days for UK arrivals and 75 days for CBP, Frontex and Panama monthly reports. Sources proven never activated do not stale the aggregate; unreadable activation markers fail closed. Check each row and source status. IDMC events and DTM regions are stale after **2 d**; DTM regions are also stale when the newest round is over 90 days old.
 
 <CodeGroup>
 

@@ -38,6 +38,9 @@ const ALLOWED_HEADERS = [
   'Idempotency-Key',
   'Mcp-Session-Id',
   'MCP-Protocol-Version',
+  // MCP 2026-07-28 request metadata headers (mirrored method / tool, prompt or resource name).
+  'Mcp-Method',
+  'Mcp-Name',
   'Last-Event-ID',
 ].join(', ');
 

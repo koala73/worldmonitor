@@ -16,8 +16,9 @@
 
 import { createHash } from 'node:crypto';
 
-import { CHROME_UA, getRedisCredentials, loadEnvFile, redisCommand, runSeed } from './_seed-utils.mjs';
+import { CHROME_UA, MAX_SEEDED_VALUE_BYTES, getRedisCredentials, loadEnvFile, redisCommand, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { parseStoredSeedJson } from './_seed-payload-codec.mjs';
 import { PROBABILITY_TRAIL_KEY, stampResolutionTrajectories } from './_forecast-probability-trail.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, serializeR2JsonBody, sha256Hex } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
@@ -2720,7 +2721,7 @@ function pruneUndefined(value) {
   return Object.fromEntries(Object.entries(value).filter(([, child]) => child !== undefined));
 }
 
-async function readRedisJson(key) {
+export async function readRedisJson(key) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN');
@@ -2734,7 +2735,7 @@ async function readRedisJson(key) {
   // as an absent key would refit the frozen calibration map or start a new ledger.
   if (payload?.error) throw new Error(`Redis GET ${key} returned an error`);
   if (payload.result == null) return null;
-  return JSON.parse(payload.result);
+  return parseStoredSeedJson(payload.result);
 }
 
 async function readForecastHistory(limit = 200) {
@@ -3422,6 +3423,11 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
   const runState = { nowMs: Date.now(), map: null };
   await runSeed('forecast', 'resolutions', RESOLUTIONS_KEY, () => buildLedgerForRun(runState), {
     // Persistent working ledger: no ttlSeconds by design (#5007 R11).
+    // 180 days of resolved entries keep their full evidence, because a
+    // corrected receipt is rebuilt from the hot entry. The JSON passed 5MB on
+    // 2026-10-21 and grows ~330KB a week, so the 8MiB budget below runs out
+    // within months on its own; gzip stores it at about a quarter of that.
+    compressPayload: true,
     validateFn: (ledger) => ledger && typeof ledger === 'object' && !Array.isArray(ledger),
     declareRecords,
     sourceVersion: RESOLUTION_SOURCE_VERSION,
@@ -3430,6 +3436,7 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     maxStaleMin: 2160,
     lockTtlMs: 180_000,
     fetchPhaseTimeoutMs: 150_000,
+    maxPayloadBytes: MAX_SEEDED_VALUE_BYTES,
     extraKeys: [{
       key: FORECAST_ARCHIVE_KEY,
       ttl: SCORECARD_TTL_SECONDS,

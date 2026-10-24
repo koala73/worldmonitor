@@ -93,6 +93,15 @@ describe('tools/call returns structuredContent a strict client accepts (#8328)',
   }
 
   const SOURCES = { view: 'summary', summary: { providerCount: 3 }, providers: [{ id: 'a' }, { id: 'b' }] };
+  const projections = [
+    ['a scalar', 'summary.providerCount', 3],
+    ['zero', '`0`', 0],
+    ['false', '`false`', false],
+    ['a string', "'provider'", 'provider'],
+    ['an array', 'providers[].id', ['a', 'b']],
+    ['an object', 'summary', { providerCount: 3 }],
+    ['null (no match)', 'nope.nothing', null],
+  ];
 
   it('every advertised outputSchema is an object whose first anyOf branch is the documented shape', () => {
     assert.ok(publicTools.size > 0);
@@ -120,12 +129,17 @@ describe('tools/call returns structuredContent a strict client accepts (#8328)',
     assert.equal(strictClientVerdict(publicTools.get('get_sources'), result), null);
   });
 
-  for (const [label, expr, expected] of [
-    ['a scalar', 'summary.providerCount', 3],
-    ['an array', 'providers[].id', ['a', 'b']],
-    ['an object', 'summary', { providerCount: 3 }],
-    ['null (no match)', 'nope.nothing', null],
-  ]) {
+  it('the real get_sources summary projection retains the raw count and the structured wrapper', async () => {
+    const plain = await call('get_sources', { view: 'summary' });
+    const count = plain.structuredContent.summary.providerCount;
+    assert.equal(typeof count, 'number');
+    const projected = await call('get_sources', { view: 'summary', jmespath: 'summary.providerCount' });
+    assert.equal(projected.content[0].text, JSON.stringify(count));
+    assert.deepEqual(projected.structuredContent, { projection: count });
+    assert.equal(strictClientVerdict(publicTools.get('get_sources'), projected), null);
+  });
+
+  for (const [label, expr, expected] of projections) {
     it(`a projection to ${label} keeps its text bytes and is wrapped as {projection} in structuredContent`, async () => {
       stub('get_sources', async () => SOURCES);
       const result = await call('get_sources', { jmespath: expr });
@@ -151,17 +165,52 @@ describe('tools/call returns structuredContent a strict client accepts (#8328)',
     assert.equal(strictClientVerdict(publicTools.get('get_sources'), result), null);
   });
 
-  it('a projection on a licence-bearing tool carries the attribution rider in both places', async () => {
-    stub(
-      'get_sources',
-      async () => ({ ...SOURCES, licence: { attribution: 'CC BY 4.0', source: 'Example Bureau' } }),
-      { _attribution: 'licence.{attribution: attribution, source: source}' },
-    );
+  for (const [label, expr, expected] of [...projections, ['an invalid expression', '[[[', undefined]]) {
+    it(`a projection to ${label} carries attribution in both channels when source attribution is present`, async () => {
+      stub(
+        'get_sources',
+        async () => ({ ...SOURCES, licence: { attribution: 'CC BY 4.0', source: 'Example Bureau' } }),
+        { _attribution: 'licence.{attribution: attribution, source: source}' },
+      );
+      const result = await call('get_sources', { jmespath: expr });
+      const parsed = JSON.parse(result.content[0].text);
+      if (expected === undefined) assert.match(parsed.data._jmespath_error, /^invalid_expression/);
+      else assert.deepEqual(parsed.data, expected);
+      assert.equal(parsed._attribution.sources[0].source, 'Example Bureau');
+      assert.deepEqual(result.structuredContent, parsed);
+      assert.equal(strictClientVerdict(publicTools.get('get_sources'), result), null);
+    });
+  }
+
+  it('an attribution declaration with no source values keeps the raw projection text', async () => {
+    stub('get_sources', async () => SOURCES, { _attribution: 'licence.{attribution: attribution}' });
     const result = await call('get_sources', { jmespath: 'summary.providerCount' });
-    const parsed = JSON.parse(result.content[0].text);
-    assert.equal(parsed.data, 3, 'the rider wraps the projection as {data, _attribution} in the text');
-    assert.equal(parsed._attribution.sources[0].source, 'Example Bureau');
-    assert.deepEqual(result.structuredContent, parsed, 'an already-wrapped response is not wrapped a second time');
+    assert.equal(result.content[0].text, '3');
+    assert.deepEqual(result.structuredContent, { projection: 3 });
+    assert.equal(strictClientVerdict(publicTools.get('get_sources'), result), null);
+  });
+
+  it('an attribution rider that exceeds the budget replaces both channels with the budget envelope', async () => {
+    stub('get_sources', async () => ({ ...SOURCES, licence: { attribution: 'CC BY 4.0' } }), {
+      _attribution: 'licence.{attribution: attribution}',
+      _outputBudgetBytes: 8,
+    });
+    const result = await call('get_sources', { jmespath: 'summary.providerCount' });
+    assert.equal(result.structuredContent._budget_exceeded, true);
+    assert.ok(result.structuredContent.actual_bytes > result.structuredContent.budget_bytes);
+    assert.deepEqual(result.structuredContent, JSON.parse(result.content[0].text));
+    assert.equal(strictClientVerdict(publicTools.get('get_sources'), result), null);
+  });
+
+  it('a projection of fitted output keeps coverage outside the projection in both channels', async () => {
+    const transportCoverage = { omitted_count: 1, omission_reason: 'output_budget' };
+    stub('get_sources', async () => ({ pad: 'x'.repeat(4096) }), {
+      _outputBudgetBytes: 256,
+      _fitToBudget: () => ({ pad: 'fitted', transportCoverage }),
+    });
+    const result = await call('get_sources', { jmespath: 'pad' });
+    assert.deepEqual(result.structuredContent, { projection: 'fitted', transportCoverage });
+    assert.deepEqual(result.structuredContent, JSON.parse(result.content[0].text));
     assert.equal(strictClientVerdict(publicTools.get('get_sources'), result), null);
   });
 
@@ -169,11 +218,20 @@ describe('tools/call returns structuredContent a strict client accepts (#8328)',
     // `summary` turns every list into {count, sample}, which the documented
     // shape (lists typed as arrays) rejects. Found by validating live payloads.
     const name = 'get_conflict_events';
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      result: JSON.stringify({ events: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }] }),
+    }), { headers: { 'Content-Type': 'application/json' } });
     const plain = await call(name, {});
     assert.deepEqual(plain.structuredContent, JSON.parse(plain.content[0].text), 'unsummarized: sent as is');
     const summarized = await call(name, { summary: true });
     assert.deepEqual(summarized.structuredContent, { projection: JSON.parse(summarized.content[0].text) });
+    const events = summarized.structuredContent.projection.data['ucdp-events'].events;
+    assert.deepEqual(events, { count: 4, sample: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] });
     assert.equal(strictClientVerdict(publicTools.get(name), summarized), null);
+    const projected = await call(name, { summary: true, jmespath: 'data."ucdp-events".events.count' });
+    assert.equal(projected.content[0].text, '4');
+    assert.deepEqual(projected.structuredContent, { projection: 4 });
+    assert.equal(strictClientVerdict(publicTools.get(name), projected), null);
   });
 
   it('a non-object payload is still wrapped, so structuredContent is always a JSON object', async () => {

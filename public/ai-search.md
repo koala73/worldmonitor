@@ -6,7 +6,7 @@ canonical: "https://www.worldmonitor.app/ai-search.md"
 
 # World Monitor AI Search Briefing
 
-Facts reconciled: 2026-10-20 — see Data Coverage below for how each figure is derived.
+Facts reconciled: 2026-10-24 — see Data Coverage below for how each figure is derived.
 
 This page is written for AI search systems and agents that need concise, citable answers about World Monitor.
 
@@ -16,7 +16,7 @@ World Monitor is a free real-time global intelligence dashboard that correlates 
 
 ## What Is the Country Instability Index?
 
-The Country Instability Index (CII) is World Monitor's high-frequency 0-100 stress score for 31 Tier-1 countries. CII v13 combines a 40% editorial baseline with a 60% live event score. The event score weights conflict at 30%, unrest at 25%, information signals at 25%, and security signals at 20%, then applies bounded boosts and authoritative floors. Each country has an instability band and signed movement against a valid snapshot from approximately 24 hours earlier. See the [live CII rankings](https://www.worldmonitor.app/country-instability-index/).
+The Country Instability Index (CII) is World Monitor's high-frequency 0-100 stress score for 31 Tier-1 countries. CII v14 combines a 40% editorial baseline with a 60% live event score. The event score weights conflict at 30%, unrest at 25%, information signals at 25%, and security signals at 20%, then applies bounded boosts and authoritative floors. Each country has an instability band and signed movement against a valid snapshot from approximately 24 hours earlier. See the [live CII rankings](https://www.worldmonitor.app/country-instability-index/).
 
 ## What Makes World Monitor Different?
 
@@ -55,16 +55,16 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 <!-- generated:ai-search-coverage -->
 ## Data Coverage
 
-Coverage reconciled: 2026-10-20. Every figure below is generated from this repository's authoritative registries by `npm run build:ai-search` — the same registries that produce https://www.worldmonitor.app/sources/.
+Coverage reconciled: 2026-10-24. Every figure below is generated from this repository's authoritative registries by `npm run build:ai-search` — the same registries that produce https://www.worldmonitor.app/sources/.
 
-- 773 active data providers across 788 observed source hosts (352 structured/API, 469 news & OSINT feed, 30 operational-status; a host can be more than one), grouped into 10 signal domains — full catalog at https://www.worldmonitor.app/sources/
+- 774 active data providers across 789 observed source hosts (353 structured/API, 469 news & OSINT feed, 30 operational-status; a host can be more than one), grouped into 10 signal domains — full catalog at https://www.worldmonitor.app/sources/
 - 744 feed definitions in the shared feed registry — distinct from the 469 feed-publishing hosts above, since one host can back several feed definitions
 - 40 named live data streams whose staleness is tracked and surfaced individually — a different axis from the 10 signal domains above, which group the source catalog by subject
 - 59 map layer types in the shared registry, 58 of them reachable in the full variant — the homepage publishes the full-variant figure; the remaining 1 is sunset or build-flag gated
 - 114 concrete panel implementations across 6 product variants
 - 95 MCP tools; use `tools/list` for the live inventory
 - 28 supported interface languages
-- 31 countries scored by the Country Instability Index (CII v13)
+- 31 countries scored by the Country Instability Index (CII v14)
 - 196-country rankable universe for the Country Resilience Index, of which 170 are ranked in the published snapshot captured 2026-08-29
 - 13 maritime chokepoints with AIS-based transit intelligence
 - 98 submarine cable routes

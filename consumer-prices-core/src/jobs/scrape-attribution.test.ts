@@ -226,6 +226,23 @@ describe('scrapeRetailer failure attribution', () => {
   });
 });
 
+// The next same-day tick skips a retailer once its run row is terminal
+// (scrape-resume.ts). Freshness must already be saved by then, or a kill
+// between the two writes leaves the retailer skipped with yesterday's health.
+describe('scrapeRetailer finalize order', () => {
+  it('writes data_source_health before the terminal scrape_runs status', async () => {
+    mocks.fetchTarget.mockRejectedValueOnce(new Error('adapter exploded'));
+
+    await scrapeRetailer('retailer-a');
+
+    const sqls = mocks.query.mock.calls.map(([sql]) => String(sql));
+    const health = sqls.findIndex((sql) => sql.includes('INSERT INTO data_source_health'));
+    const terminal = sqls.findIndex((sql) => sql.includes('UPDATE scrape_runs SET status=$2'));
+    expect(health).toBeGreaterThanOrEqual(0);
+    expect(terminal).toBeGreaterThan(health);
+  });
+});
+
 describe('scrapeRetailer direct-pin admission', () => {
   it('demotes a low-score direct auto pin before recording its observation', async () => {
     mockLowScoreDirectPinHit();
