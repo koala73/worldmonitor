@@ -49,11 +49,12 @@ const DASHBOARD_MATERIAL_SOURCES = [
   'src/styles',
 ];
 
-const route = (loc, family, materialSources) => ({
+const route = (loc, family, materialSources, declaredLastmodSource = null) => ({
   loc,
   family,
   owner: 'root',
   materialSources,
+  ...(declaredLastmodSource ? { declaredLastmodSource } : {}),
 });
 
 /**
@@ -67,7 +68,15 @@ const route = (loc, family, materialSources) => ({
  * latest Git commit date is the route's lastmod; build/deploy time is never an
  * input. In build contexts without complete Git history, the committed
  * generated sitemap is the deterministic fallback.
+ *
+ * The landing routes are the exception: their page already declares its date
+ * (`<meta name="lastmod">` and the #software dateModified, both written from
+ * the published pulse capture by `npm run teasers:welcome`, #7654). A Git date
+ * over the same sources moved on every generated-stat commit between pulse
+ * freezes, so the sitemap and the page's own structured data disagreed. The
+ * sitemap reads the declared date instead, the way corpus pages already do.
  */
+const LANDING_DECLARED_LASTMOD_SOURCE = 'pro-test/welcome.html';
 const LANDING_MATERIAL_SOURCES = [
   'pro-test/welcome.html',
   'pro-test/src/WelcomeApp.tsx',
@@ -87,6 +96,7 @@ export const STATIC_ROUTE_MANIFEST = Object.freeze([
     `${SITE_ORIGIN}${locale.canonicalPath}`,
     'landing',
     LANDING_MATERIAL_SOURCES,
+    LANDING_DECLARED_LASTMOD_SOURCE,
   )),
   route(`${SITE_ORIGIN}/dashboard`, 'dashboard', [
     ...DASHBOARD_MATERIAL_SOURCES,
@@ -262,6 +272,15 @@ function hasCompleteGitHistory(repoRoot) {
   }
 }
 
+export function readDeclaredLastmod(repoRoot, sourcePath) {
+  const html = readFileSync(join(repoRoot, sourcePath), 'utf8');
+  const dates = [...html.matchAll(/<meta name="lastmod" content="([^"]*)"/g)].map((match) => match[1]);
+  if (dates.length !== 1 || !isIsoDate(dates[0])) {
+    throw new Error(`${sourcePath} must declare exactly one YYYY-MM-DD lastmod meta; found ${JSON.stringify(dates)}`);
+  }
+  return dates[0];
+}
+
 function assertMaterialSourcesExist(repoRoot, manifestEntry) {
   for (const sourcePath of manifestEntry.materialSources) {
     if (!existsSync(join(repoRoot, sourcePath))) {
@@ -355,6 +374,7 @@ export function buildSitemapEntries({
     repoRoot,
     existingSitemapSource,
   }),
+  resolveDeclaredLastmod = (manifestEntry) => readDeclaredLastmod(repoRoot, manifestEntry.declaredLastmodSource),
   requireCompleteCorpus = true,
   today = TODAY,
 } = {}) {
@@ -363,7 +383,9 @@ export function buildSitemapEntries({
     assertMaterialSourcesExist(repoRoot, manifestEntry);
     return {
       loc: manifestEntry.loc,
-      lastmod: resolveMaterialLastmod(manifestEntry),
+      lastmod: manifestEntry.declaredLastmodSource
+        ? resolveDeclaredLastmod(manifestEntry)
+        : resolveMaterialLastmod(manifestEntry),
       family: manifestEntry.family,
       owner: manifestEntry.owner,
       ...(manifestEntry.family === 'landing' ? { alternates: landingAlternates } : {}),
