@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import jmespath from 'jmespath';
+import { searchBoundedJmespath } from '../server/_shared/bounded-jmespath.ts';
 
 const root = resolve(import.meta.dirname, '..');
 
@@ -68,7 +69,7 @@ describe('docs/mcp-jmespath.mdx fixture-backed examples', () => {
     assert.ok(fixture, `example ${number} uses unknown fixture tool ${toolCall.name}`);
     const expression = toolCall.arguments?.jmespath;
     assert.equal(typeof expression, 'string', `example ${number} must define arguments.jmespath`);
-    const actual = jmespath.search(fixture, expression);
+    const actual = searchBoundedJmespath(fixture, expression);
     const expected = projectedJsonBlock(example);
     assert.deepEqual(actual, expected, `example ${number} projected response must match fixture`);
   }

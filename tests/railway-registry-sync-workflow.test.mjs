@@ -2,8 +2,9 @@
  * Contract for the main-only Railway registry reconciler.
  *
  * A registry change is incomplete until the live production configuration
- * matches it. This workflow owns that transition. It applies from the exact
- * merged checkout, then proves the result through the separate Viewer identity.
+ * matches it. This workflow owns that transition. It applies the current main
+ * revision, whichever push triggered it, then proves the result through the
+ * separate Viewer identity.
  */
 
 import assert from 'node:assert/strict';
@@ -62,7 +63,12 @@ function createStepFixture() {
     '',
   ].join('\n'));
   chmodSync(fakeGit, 0o755);
-  return { directory, startedAtMs, githubEnv: join(directory, 'github-env') };
+  return {
+    directory,
+    startedAtMs,
+    githubEnv: join(directory, 'github-env'),
+    githubOutput: join(directory, 'github-output'),
+  };
 }
 
 function executeStepShell(run, fixture, env = {}) {
@@ -155,7 +161,7 @@ describe('Railway Registry Sync workflow', () => {
     const verify = stepNamed(job, 'Verify live configuration with the Viewer identity');
     assert.match(verify.if, /^always\(\)/);
     assert.match(verify.if, /steps\.checkout\.outcome == 'success'/);
-    assert.match(verify.if, /steps\.admit-current-main\.outcome == 'success'/);
+    assert.match(verify.if, /steps\.resolve-current-main\.outcome == 'success'/);
     assert.match(verify.if, /steps\.setup-node\.outcome == 'success'/);
     assert.match(verify.if, /steps\.install-railway\.outcome == 'success'/);
     assert.match(verify.if, /steps\.start-viewer-budget\.outcome == 'success'/);
@@ -183,47 +189,64 @@ describe('Railway Registry Sync workflow', () => {
     }
   });
 
-  it('rejects a stale checkout before setup or production credentials', () => {
+  it('checks out the resolved current main before setup or production credentials', () => {
     const jobSteps = steps(workflow.jobs.reconcile);
-    const checkoutIndex = jobSteps.findIndex((step) => step.id === 'checkout');
-    const admission = jobSteps.find((step) => step.id === 'admit-current-main');
-    const admissionIndex = jobSteps.indexOf(admission);
+    const resolution = jobSteps.find((step) => step.id === 'resolve-current-main');
+    const resolutionIndex = jobSteps.indexOf(resolution);
+    const checkout = jobSteps.find((step) => step.id === 'checkout');
+    const checkoutIndex = jobSteps.indexOf(checkout);
     const setupIndex = jobSteps.findIndex((step) => step.id === 'setup-node');
     const apply = stepNamed(workflow.jobs.reconcile, 'Reconcile registry-managed Railway configuration');
 
-    assert.ok(checkoutIndex < admissionIndex);
-    assert.ok(admissionIndex < setupIndex);
-    assert.ok(admissionIndex < jobSteps.indexOf(apply));
-    assert.match(admission.run, /git ls-remote --exit-code origin refs\/heads\/main/);
-    assert.equal(admission.env, undefined);
+    assert.equal(resolutionIndex, 0, 'main must be resolved before anything is checked out');
+    assert.ok(resolutionIndex < checkoutIndex);
+    assert.ok(checkoutIndex < setupIndex);
+    assert.ok(checkoutIndex < jobSteps.indexOf(apply));
+    assert.match(
+      resolution.run,
+      /git ls-remote --exit-code "\$GITHUB_SERVER_URL\/\$GITHUB_REPOSITORY" refs\/heads\/main/,
+    );
+    assert.equal(resolution.env, undefined);
+    // The pushed SHA is only the trigger. A stale run that applied its own
+    // checkout would restore an older registry; one that refused would drop
+    // the change when the next main commit does not touch registry paths.
+    assert.equal(checkout.with?.ref, '${{ steps.resolve-current-main.outputs.sha }}');
   });
 
-  it('admits the current main revision and refuses any other checkout', () => {
+  it('resolves the current main revision whether or not the trigger is stale', () => {
     const fixture = createStepFixture();
     try {
-      const admission = stepNamed(workflow.jobs.reconcile, 'Admit only the current main revision');
+      const resolution = stepNamed(workflow.jobs.reconcile, 'Resolve the current main revision');
       const mainSha = 'a'.repeat(40);
+      const staleSha = 'b'.repeat(40);
+      const run = (env) => {
+        rmSync(fixture.githubOutput, { force: true });
+        return executeStepShell(resolution.run, fixture, {
+          GITHUB_SERVER_URL: 'https://github.com',
+          GITHUB_REPOSITORY: 'owner/repo',
+          GITHUB_OUTPUT: fixture.githubOutput,
+          ...env,
+        });
+      };
 
-      const current = executeStepShell(admission.run, fixture, {
-        GITHUB_SHA: mainSha,
-        FAKE_MAIN_SHA: mainSha,
-      });
+      const current = run({ GITHUB_SHA: mainSha, FAKE_MAIN_SHA: mainSha });
       assert.equal(current.status, 0, `${current.stdout}\n${current.stderr}`);
+      assert.equal(readFileSync(fixture.githubOutput, 'utf8'), `sha=${mainSha}\n`);
+      assert.doesNotMatch(current.stdout, /::notice::/);
 
-      const stale = executeStepShell(admission.run, fixture, {
-        GITHUB_SHA: 'b'.repeat(40),
-        FAKE_MAIN_SHA: mainSha,
-      });
-      assert.notEqual(stale.status, 0, 'an older checkout must be refused');
-      assert.match(stale.stdout, /::error::Refusing stale registry sync/);
+      const stale = run({ GITHUB_SHA: staleSha, FAKE_MAIN_SHA: mainSha });
+      assert.equal(stale.status, 0, `a stale trigger must sync current main\n${stale.stdout}\n${stale.stderr}`);
+      assert.equal(readFileSync(fixture.githubOutput, 'utf8'), `sha=${mainSha}\n`);
+      assert.match(stale.stdout, new RegExp(`::notice::.*${mainSha}.*${staleSha}`));
 
-      const unresolved = executeStepShell(admission.run, fixture, {
-        GITHUB_SHA: mainSha,
-        FAKE_MAIN_SHA: mainSha,
-        FAKE_GIT_FAIL: '1',
-      });
+      const unresolved = run({ GITHUB_SHA: mainSha, FAKE_MAIN_SHA: mainSha, FAKE_GIT_FAIL: '1' });
       assert.notEqual(unresolved.status, 0, 'an unreadable main must be refused');
       assert.match(unresolved.stdout, /::error::Could not resolve the current main revision/);
+      assert.throws(() => readFileSync(fixture.githubOutput, 'utf8'), { code: 'ENOENT' });
+
+      const malformed = run({ GITHUB_SHA: mainSha, FAKE_MAIN_SHA: 'not-a-sha' });
+      assert.notEqual(malformed.status, 0, 'a malformed main revision must be refused');
+      assert.throws(() => readFileSync(fixture.githubOutput, 'utf8'), { code: 'ENOENT' });
     } finally {
       rmSync(fixture.directory, { recursive: true, force: true });
     }
@@ -237,7 +260,7 @@ describe('Railway Registry Sync workflow', () => {
     assert.ok(jobSteps.indexOf(apply) < jobSteps.indexOf(budget));
     assert.ok(jobSteps.indexOf(budget) < jobSteps.indexOf(verify));
     assert.match(budget.if, /^always\(\)/);
-    assert.match(budget.if, /steps\.admit-current-main\.outcome == 'success'/);
+    assert.match(budget.if, /steps\.resolve-current-main\.outcome == 'success'/);
 
     const fixture = createStepFixture();
     try {
@@ -276,7 +299,7 @@ describe('Railway Registry Sync workflow', () => {
   it('gives repair guidance after any failed reconciliation', () => {
     const summary = stepNamed(workflow.jobs.reconcile, 'Explain a failed reconciliation');
     assert.equal(summary.if, 'failure()');
-    assert.match(summary.run, /Stale revision/);
+    assert.doesNotMatch(summary.run, /Stale revision|never re-run an older workflow attempt/);
     assert.match(summary.run, /Source branch or check-suite drift/);
     assert.match(summary.run, /missing source credentials are listed separately and do not fail registry sync/);
     assert.match(summary.run, /GITHUB_STEP_SUMMARY/);

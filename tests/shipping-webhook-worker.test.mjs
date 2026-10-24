@@ -2,22 +2,28 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-import { aisComponent, warningComponent } from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
+import { THREAT_LEVEL, aisComponent, warningComponent } from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
 
+import { fakeRedis } from './_lib/fake-webhook-redis.mjs';
 import {
   BACKFILL_CURSOR_KEY,
   CHOKEPOINT_STATUS_KEY,
   CHOKEPOINT_STATUS_RPC_URL,
   LOCK_KEY,
   LOCK_RENEW_SCRIPT,
-  PRUNE_SCRIPT,
   RECORD_CAS_SCRIPT,
+  RISK_SCORES_KEY,
+  RISK_SCORES_STALE_KEY,
+  RISK_SURGE_RULE,
   SCORE_SOURCE_MAX_POINTS,
-  STATE_WRITE_SCRIPT,
-  STATUS_WRITE_SCRIPT,
+  THREAT_POINTS_BY_TIER,
   WORKER_ACTIVATION_KEY,
   WORKER_META_KEY,
   WORKER_STATUS_KEY,
+  countryStateField,
+  liveSignal,
+  nextChokepointState,
+  nextCountryState,
   planTick,
   reasonFor,
   runTick,
@@ -197,6 +203,260 @@ describe('planTick state machine', () => {
   });
 });
 
+describe('live-signal floor (minLiveSignal)', () => {
+  it('pins the standing threat points to _scoring.mjs THREAT_LEVEL', () => {
+    assert.deepEqual(THREAT_POINTS_BY_TIER, {
+      WAR_RISK_TIER_WAR_ZONE: THREAT_LEVEL.war_zone,
+      WAR_RISK_TIER_CRITICAL: THREAT_LEVEL.critical,
+      WAR_RISK_TIER_HIGH: THREAT_LEVEL.high,
+      WAR_RISK_TIER_ELEVATED: THREAT_LEVEL.elevated,
+      WAR_RISK_TIER_NORMAL: THREAT_LEVEL.normal,
+    });
+    assert.equal(liveSignal(chokepoint('hormuz_strait', 85, { warRiskTier: 'WAR_RISK_TIER_WAR_ZONE' })), 15);
+    assert.equal(liveSignal(chokepoint('hormuz_strait', 70, { warRiskTier: 'WAR_RISK_TIER_WAR_ZONE' })), 0);
+    assert.equal(liveSignal(chokepoint('x', 12, { warRiskTier: 'WAR_RISK_TIER_UNKNOWN' })), 12);
+  });
+
+  const hormuz = (score) => chokepoint('hormuz_strait', score, { warRiskTier: 'WAR_RISK_TIER_WAR_ZONE', status: 'red' });
+  const planHormuz = (score, state, minLiveSignal) => planTick({
+    chokepoints: [hormuz(score)],
+    records: [record({ chokepointIds: ['hormuz_strait'], alertThreshold: 50, minLiveSignal })],
+    states: new Map(state ? [[SUB_ID, { hormuz_strait: state }]] : []),
+    now: NOW,
+    scoresFetchedAt: 'x',
+    makeId: () => 'whd_fixed',
+  });
+
+  it('a war zone standing at 70 does not fire a threshold-50 subscription with a 15-point live floor', () => {
+    const { deliveries, nextStates } = planHormuz(70, undefined, 15);
+    assert.equal(deliveries.length, 0);
+    assert.deepEqual(nextStates.get(SUB_ID).hormuz_strait, { armed: true, lastScore: 70, lastLive: 0 });
+  });
+
+  it('fires once live signals reach the floor and re-arms only when they have clearly subsided', () => {
+    const fired = planHormuz(85, undefined, 15);
+    assert.equal(fired.deliveries.length, 1);
+    assert.equal(fired.deliveries[0].event, 'chokepoint.disruption');
+    assert.equal(fired.deliveries[0].stateField, 'hormuz_strait');
+    const delivered = { armed: false, lastScore: 85, lastLive: 15, lastDeliveredAt: new Date(NOW - 13 * 3_600_000).toISOString(), sources: { navigationalWarnings: true, ais: true, transit: true } };
+    assert.equal(planHormuz(80, delivered, 15).nextStates.get(SUB_ID).hormuz_strait.armed, false, 'live 10 is a wobble, not a subsidence');
+    assert.equal(planHormuz(74, delivered, 15).nextStates.get(SUB_ID).hormuz_strait.armed, true, 'live 4 < 5 re-arms');
+    assert.equal(planHormuz(85, { ...delivered, armed: true }, 15).deliveries.length, 1, 'armed again, live 15, past the cooldown: fires');
+  });
+
+  it('a live signal wobbling around the floor fires once', () => {
+    let state;
+    let fired = 0;
+    for (const [i, score] of [85, 80, 85, 80, 85, 80, 85].entries()) {
+      const { deliveries, nextStates } = planHormuz(score, state, 15);
+      state = nextStates.get(SUB_ID).hormuz_strait;
+      if (deliveries.length) {
+        fired += 1;
+        state = { ...state, armed: false, lastDeliveredAt: new Date(NOW - (6 - i) * 60_000).toISOString(), sources: { navigationalWarnings: true, ais: true, transit: true } };
+      }
+    }
+    assert.equal(fired, 1);
+  });
+
+  it('a re-armed live floor waits out the refire cooldown', () => {
+    const rearmed = { armed: true, lastScore: 70, lastLive: 0, lastDeliveredAt: new Date(NOW - 6 * 3_600_000).toISOString() };
+    assert.equal(planHormuz(85, rearmed, 15).deliveries.length, 0, '6 h after the last delivery: quiet');
+    assert.equal(planHormuz(85, rearmed, 15).nextStates.get(SUB_ID).hormuz_strait.armed, true, 'stays armed through the cooldown');
+    const later = { ...rearmed, lastDeliveredAt: new Date(NOW - 12 * 3_600_000).toISOString() };
+    assert.equal(planHormuz(85, later, 15).deliveries.length, 1, '12 h after: fires');
+  });
+
+  it('with a live floor the score re-arms 10 points under the threshold', () => {
+    const delivered = { armed: false, lastScore: 52, lastLive: 22, sources: { navigationalWarnings: true, ais: true, transit: true } };
+    const all = { navigationalWarnings: true, ais: true, transit: true };
+    assert.equal(nextChokepointState(delivered, 45, 50, all, { live: 15, minLive: 15, nowMs: NOW }).state.armed, false, 'score 45 is within the gap');
+    assert.equal(nextChokepointState(delivered, 39, 50, all, { live: 15, minLive: 15, nowMs: NOW }).state.armed, true, 'score 39 < 40 re-arms');
+  });
+
+  it('a missing source that could carry the live points keeps the pair disarmed', () => {
+    const delivered = { armed: false, lastScore: 85, lastLive: 15, sources: { navigationalWarnings: true, ais: true, transit: true } };
+    const { state } = nextChokepointState(delivered, 70, 50, { navigationalWarnings: false, ais: true, transit: true }, { live: 0, minLive: 15, nowMs: NOW });
+    assert.equal(state.armed, false, 'warnings feed missing: 15 points could return, do not re-arm');
+    const { state: rearmed } = nextChokepointState(delivered, 70, 50, { navigationalWarnings: true, ais: true, transit: true }, { live: 0, minLive: 15, nowMs: NOW });
+    assert.equal(rearmed.armed, true);
+  });
+
+  it('minLiveSignal 0 keeps the legacy score-only behaviour', () => {
+    const { deliveries, nextStates } = planHormuz(70, undefined, 0);
+    assert.equal(deliveries.length, 1);
+    assert.equal('lastLive' in nextStates.get(SUB_ID).hormuz_strait, false);
+    assert.equal(planHormuz(70, undefined, undefined).deliveries.length, 1, 'records without the field behave as before');
+  });
+});
+
+describe('country.risk_surge state machine', () => {
+  const cii = (region, combinedScore, dynamicScore, extra = {}) => ({
+    region, combinedScore, dynamicScore, staticBaseline: 50, trend: 'TREND_DIRECTION_RISING',
+    components: { newsActivity: 20, ciiContribution: 0, geoConvergence: 0, militaryActivity: 40 },
+    computedAt: NOW - 60_000, methodologyVersion: 'v8', advisoryLevel: 'do-not-travel', ...extra,
+  });
+
+  it('reads its thresholds from the event registry', () => {
+    assert.deepEqual(RISK_SURGE_RULE, { rise: 15, floor: 70, rearmBelow: 5, cooldownMs: 86_400_000 });
+  });
+
+  it('fires on a 24h rise at or above the threshold while in the high band', () => {
+    assert.equal(nextCountryState(undefined, cii('IR', 84, 24), NOW).fire, true);
+    assert.equal(nextCountryState(undefined, cii('IR', 70, 15), NOW).fire, true, 'equal to both bounds fires');
+    assert.equal(nextCountryState(undefined, cii('IQ', 65, 15), NOW).fire, false, 'a rise that stays under the high band is not a surge');
+    assert.equal(nextCountryState(undefined, cii('DE', 36, 17), NOW).fire, false, 'below the floor is a news blip');
+    assert.equal(nextCountryState(undefined, cii('RU', 90, 10), NOW).fire, false, 'below the rise threshold');
+    assert.equal(nextCountryState(undefined, cii('RU', 90, 1), NOW).fire, false, 'a flat 90 is standing risk, not a surge');
+  });
+
+  it('treats a changed static baseline as an edit, not a surge, and remembers the baseline', () => {
+    const first = nextCountryState(undefined, cii('BR', 50, 0), NOW);
+    assert.equal(first.state.lastBaseline, 50);
+    // Brazil re-levelled 50 -> 70 in one tick in the backtest: the combined
+    // score and its 24 h movement both jump, the static baseline moves with it.
+    const edited = nextCountryState(first.state, cii('BR', 70, 20, { staticBaseline: 70 }), NOW);
+    assert.equal(edited.fire, false);
+    assert.equal(edited.state.armed, false, 'disarmed until the movement settles');
+    assert.equal(edited.state.lastBaseline, 70);
+    const settled = nextCountryState(edited.state, cii('BR', 70, 2, { staticBaseline: 70 }), NOW);
+    assert.equal(settled.state.armed, true);
+    const realSurge = nextCountryState(settled.state, cii('BR', 88, 18, { staticBaseline: 70 }), NOW);
+    assert.equal(realSurge.fire, true, 'a later rise on the new baseline fires');
+    assert.equal(nextCountryState(undefined, cii('IR', 84, 24, { staticBaseline: undefined }), NOW).fire, true, 'a feed without a baseline cannot be guarded and keeps firing');
+  });
+
+  it('once disarmed it stays quiet until the 24h movement falls under the re-arm level', () => {
+    const disarmed = { armed: false, lastScore: 84, lastDelta: 24, lastDeliveredAt: new Date(NOW - 3_600_000).toISOString() };
+    const stillUp = nextCountryState(disarmed, cii('IR', 86, 20), NOW);
+    assert.equal(stillUp.fire, false);
+    assert.equal(stillUp.state.armed, false);
+    const settled = nextCountryState(disarmed, cii('IR', 80, 4), NOW);
+    assert.equal(settled.state.armed, true);
+    assert.equal(settled.fire, false);
+    assert.equal(settled.state.lastDeliveredAt, disarmed.lastDeliveredAt);
+  });
+
+  it('enforces the 24h cooldown from the last delivery even when armed', () => {
+    const recent = { armed: true, lastDeliveredAt: new Date(NOW - 23 * 3_600_000).toISOString() };
+    assert.equal(nextCountryState(recent, cii('IR', 84, 24), NOW).fire, false);
+    const old = { armed: true, lastDeliveredAt: new Date(NOW - 25 * 3_600_000).toISOString() };
+    assert.equal(nextCountryState(old, cii('IR', 84, 24), NOW).fire, true);
+  });
+
+  it('keeps a pending delivery id across retries and ignores unreadable scores', () => {
+    const pending = { armed: true, pending: { deliveryId: 'whd_keep', triggeredAt: 't' } };
+    assert.equal(nextCountryState(pending, cii('IR', 84, 24), NOW).state.pending.deliveryId, 'whd_keep');
+    const { fire, state } = nextCountryState({ armed: false }, { region: 'IR' }, NOW);
+    assert.equal(fire, false);
+    assert.deepEqual(state, { armed: false });
+  });
+
+  const riskScores = { ciiScores: [cii('IR', 84, 24), cii('UA', 99, 27), cii('DE', 36, 17), cii('RU', 90, 1)] };
+  const planRisk = ({ overrides = {}, state, scores = riskScores } = {}) => {
+    const rec = record({ eventType: 'country.risk_surge', countries: [], ...overrides });
+    return planTick({
+      chokepoints: [chokepoint('suez', 75)],
+      riskScores: scores,
+      records: [rec],
+      states: new Map(state ? [[rec.subscriberId, state]] : []),
+      now: NOW,
+      scoresFetchedAt: 'cp-time',
+      riskFetchedAt: '2026-10-17T11:59:00.000Z',
+      makeId: () => 'whd_fixed',
+    });
+  };
+
+  it('plans one delivery per surging country in scope with the documented payload', () => {
+    const { deliveries, nextStates } = planRisk();
+    assert.deepEqual(deliveries.map((d) => d.payload.countryCode).sort(), ['IR', 'UA']);
+    const ir = deliveries.find((d) => d.payload.countryCode === 'IR');
+    assert.equal(ir.event, 'country.risk_surge');
+    assert.equal(ir.stateField, countryStateField('IR'));
+    assert.deepEqual(ir.payload, {
+      subscriberId: SUB_ID,
+      countryCode: 'IR',
+      countryName: 'Iran',
+      score: 84,
+      previousScore: 60,
+      delta24h: 24,
+      trend: 'TREND_DIRECTION_RISING',
+      advisoryLevel: 'do-not-travel',
+      triggeredAt: '2026-10-17T12:00:00.000Z',
+      reason: 'risk_surge',
+      details: {
+        riseThreshold: 15,
+        floor: 70,
+        staticBaseline: 50,
+        components: { newsActivity: 20, ciiContribution: 0, geoConvergence: 0, militaryActivity: 40 },
+        methodologyVersion: 'v8',
+        computedAt: NOW - 60_000,
+        scoresFetchedAt: '2026-10-17T11:59:00.000Z',
+      },
+    });
+    const states = nextStates.get(SUB_ID);
+    assert.deepEqual(Object.keys(states).sort(), ['cii:DE', 'cii:IR', 'cii:RU', 'cii:UA'], 'every country in scope records state, not only the firing ones');
+    assert.equal(states['cii:DE'].armed, true);
+    assert.equal('suez' in states, false, 'a risk-surge record never evaluates chokepoints');
+  });
+
+  it('narrows to the subscribed countries and reports the index 24h earlier, not the previous tick', () => {
+    const { deliveries } = planRisk({ overrides: { countries: ['UA'] }, state: { 'cii:UA': { armed: true, lastScore: 98 } } });
+    assert.deepEqual(deliveries.map((d) => d.payload.countryCode), ['UA']);
+    assert.equal(deliveries[0].payload.previousScore, 99 - 27, 'score minus delta24h; the 5-minute-old lastScore would read as a 1-point move');
+  });
+
+  it('leaves the state untouched when the feed has no usable 24h movement', () => {
+    // deriveCiiTrendDelta reports 0 / UNSPECIFIED with no prior snapshot.
+    const delivered = { armed: false, lastScore: 84, lastDelta: 24, lastDeliveredAt: new Date(NOW - 3_600_000).toISOString() };
+    const unknown = nextCountryState(delivered, cii('IR', 85, 0, { trend: 'TREND_DIRECTION_UNSPECIFIED' }), NOW);
+    assert.equal(unknown.fire, false);
+    assert.deepEqual(unknown.state, delivered, 'a placeholder zero must not re-arm a delivered surge');
+    assert.equal(nextCountryState(undefined, cii('IR', 85, 0, { trend: 'TREND_DIRECTION_UNSPECIFIED' }), NOW).state.armed, true);
+    // A genuine zero movement with a known trend does settle the surge.
+    assert.equal(nextCountryState(delivered, cii('IR', 85, 0, { trend: 'TREND_DIRECTION_STABLE' }), NOW).state.armed, true);
+  });
+
+  it('leaves chokepoint records untouched when the chokepoint feed is unreadable, while risk-surge records proceed', () => {
+    const risk = record({ eventType: 'country.risk_surge', countries: [] });
+    const cp = record({ subscriberId: 'wh_bbbbbbbbbbbbbbbbbbbbbbbb' });
+    const { deliveries, nextStates } = planTick({
+      chokepoints: null,
+      riskScores,
+      records: [risk, cp],
+      states: new Map(),
+      now: NOW,
+      scoresFetchedAt: null,
+      riskFetchedAt: 'r',
+      makeId: () => 'whd_fixed',
+    });
+    assert.deepEqual(deliveries.map((d) => d.event), ['country.risk_surge', 'country.risk_surge']);
+    assert.equal(nextStates.has(cp.subscriberId), false);
+  });
+
+  it('leaves risk-surge records untouched when the risk feed is unreadable, while chokepoint records proceed', () => {
+    const risk = record({ eventType: 'country.risk_surge', countries: [] });
+    const cp = record({ subscriberId: 'wh_bbbbbbbbbbbbbbbbbbbbbbbb' });
+    const { deliveries, nextStates } = planTick({
+      chokepoints: [chokepoint('suez', 75)],
+      riskScores: null,
+      records: [risk, cp],
+      states: new Map(),
+      now: NOW,
+      scoresFetchedAt: 'x',
+      makeId: () => 'whd_fixed',
+    });
+    assert.equal(deliveries.length, 1);
+    assert.equal(deliveries[0].record.subscriberId, cp.subscriberId);
+    assert.equal(nextStates.has(risk.subscriberId), false, 'no state write for a feed we did not read');
+  });
+
+  it('ignores a record with an event type the registry does not know', () => {
+    const { deliveries, nextStates } = planRisk({ overrides: { eventType: 'country.coup' } });
+    assert.equal(deliveries.length, 0);
+    assert.equal(nextStates.size, 0);
+  });
+});
+
 describe('reason precedence', () => {
   const cases = [
     [{ aisDisruptions: 2, activeWarnings: 3, transitSummary: { todayCountsAvailable: true, wowChangePct: -40 } }, 'ais_congestion_spike'],
@@ -212,90 +472,9 @@ describe('reason precedence', () => {
   }
 });
 
-function fakeRedis(initial = {}) {
-  const store = new Map(Object.entries(initial));
-  const ttl = new Map();
-  const log = [];
-  const run = (command) => {
-    const [verb, key, ...args] = command;
-    switch (verb) {
-      case 'GET': return store.get(key) ?? null;
-      case 'SET': {
-        if (args.includes('NX') && store.has(key)) return null;
-        store.set(key, args[0]);
-        if (args[1] === 'EX') ttl.set(key, Number(args[2]));
-        else if (!args.includes('KEEPTTL')) ttl.delete(key);
-        return 'OK';
-      }
-      case 'SMEMBERS': return [...(store.get(key) ?? new Set())];
-      case 'SADD': {
-        const set = store.get(key) ?? new Set();
-        let added = 0;
-        for (const member of args) if (!set.has(member)) { set.add(member); added += 1; }
-        store.set(key, set);
-        return added;
-      }
-      case 'SREM': {
-        const set = store.get(key);
-        if (!set?.delete(args[0])) return 0;
-        if (set.size === 0) store.delete(key);
-        return 1;
-      }
-      case 'DEL': return store.delete(key) ? 1 : 0;
-      case 'HGETALL': return Object.entries(store.get(key) ?? {}).flat();
-      case 'HSET': {
-        const hash = store.get(key) ?? {};
-        for (let i = 0; i < args.length; i += 2) hash[args[i]] = args[i + 1];
-        store.set(key, hash);
-        return args.length / 2;
-      }
-      case 'EXPIRE': ttl.set(key, Number(args[0])); return store.has(key) ? 1 : 0;
-      case 'SCAN': {
-        const keys = [...store.keys()].filter((name) => /^webhook:sub:.+:v1$/.test(name));
-        return ['0', keys];
-      }
-      case 'EVAL': {
-        const script = key;
-        const keys = args.slice(1, 1 + Number(args[0]));
-        const argv = args.slice(1 + Number(args[0]));
-        if (script === LOCK_RENEW_SCRIPT) return store.get(keys[0]) === argv[0] ? 1 : 0;
-        if (store.get(keys[0]) !== argv[0]) return -1;
-        if (script === PRUNE_SCRIPT) {
-          if (store.has(keys[1])) return 0;
-          store.get(keys[2])?.delete(argv[1]);
-          store.delete(keys[3]);
-          return 1;
-        }
-        if (script === STATE_WRITE_SCRIPT) {
-          if (!store.has(keys[1])) return 0;
-          const hash = store.get(keys[2]) ?? {};
-          for (let i = 2; i < argv.length; i += 2) hash[argv[i]] = argv[i + 1];
-          store.set(keys[2], hash);
-          ttl.set(keys[2], Number(argv[1]));
-          return 1;
-        }
-        if (script === STATUS_WRITE_SCRIPT) {
-          store.set(keys[1], argv[1]);
-          ttl.set(keys[1], Number(argv[2]));
-          store.set(keys[2], argv[3]);
-          ttl.set(keys[2], Number(argv[4]));
-          if (argv[5] === '1' && !store.has(keys[3])) store.set(keys[3], '1');
-          return 1;
-        }
-        assert.equal(script, RECORD_CAS_SCRIPT);
-        if (store.get(keys[1]) !== argv[1]) return 0;
-        store.set(keys[1], argv[2]);
-        return 1;
-      }
-      default: throw new Error(`unexpected command ${verb}`);
-    }
-  };
-  const redis = async (commands) => {
-    log.push(...commands);
-    return commands.map((command) => ({ result: run(command) }));
-  };
-  return { redis, store, ttl, log };
-}
+// The in-memory pipeline lives in tests/_lib/fake-webhook-redis.mjs so the
+// occurrence-event suite (tests/shipping-webhook-worker-occurrences.test.mjs)
+// drives the same fenced scripts.
 
 const TOKEN = 'run-1';
 
@@ -621,17 +800,92 @@ describe('runTick', () => {
       fetchedAt: NOW,
       recordCount: 1,
       sourceState: 'ok',
+      riskSourceState: 'error',
+      fanoutState: 'ok',
+      hazardSourceState: 'error',
       deliveries: 1,
       failures: 0,
       deactivated: 0,
       pruned: 0,
+      occurrences: { drained: 0, unreadable: 0, duplicates: 0, matched: 0, suppressed: 0, deferred: 0, expired: 0, pruned: 0 },
+      hazards: { feedIds: 0, new: 0, bootstrapped: 0, stale: 0, closed: 0, crossSource: 0 },
       scoresFetchedAt: '2026-10-17T11:58:00.000Z',
+      riskFetchedAt: null,
     });
     assert.equal(fake.ttl.get(WORKER_META_KEY), 7 * 86400);
     assert.equal(JSON.parse(fake.store.get(WORKER_STATUS_KEY)).subscribers, 1);
     assert.equal(fake.ttl.get(WORKER_STATUS_KEY), 3600);
     assert.equal(fake.store.get(WORKER_ACTIVATION_KEY), '1');
     assert.equal(fake.ttl.has(WORKER_ACTIVATION_KEY), false);
+  });
+
+  it('delivers a country.risk_surge subscription with its own event header and state field', async () => {
+    const rec = record({ eventType: 'country.risk_surge', countries: ['IR'] });
+    const fake = seeded({ rec });
+    const riskFeed = {
+      ciiScores: [
+        { region: 'IR', combinedScore: 84, dynamicScore: 24, staticBaseline: 50, trend: 'TREND_DIRECTION_RISING', components: {}, computedAt: NOW - 60_000, methodologyVersion: 'v8', advisoryLevel: 'do-not-travel' },
+        { region: 'UA', combinedScore: 99, dynamicScore: 27, computedAt: NOW - 60_000 },
+      ],
+    };
+    fake.store.set(RISK_SCORES_STALE_KEY, JSON.stringify(riskFeed));
+    const sent = [];
+    const deliver = async (_r, payload, deliveryId, event) => {
+      sent.push({ payload, deliveryId, event });
+      return { ok: true, status: 200 };
+    };
+    const summary = await tick(fake, deliver);
+    assert.equal(summary.riskSourceState, 'ok');
+    assert.equal(summary.riskSource, 'redis-stale', 'the live key was absent, the stale copy served');
+    assert.equal(summary.riskFetchedAt, new Date(NOW - 60_000).toISOString());
+    assert.equal(sent.length, 1, 'UA is out of scope, the chokepoint feed is not evaluated for this record');
+    assert.equal(sent[0].event, 'country.risk_surge');
+    assert.equal(sent[0].payload.countryCode, 'IR');
+    assert.match(sent[0].deliveryId, /^whd_[0-9a-f]{32}$/);
+    const state = fake.store.get(stateKey(SUB));
+    assert.deepEqual(Object.keys(state), ['cii:IR']);
+    const ir = JSON.parse(state['cii:IR']);
+    assert.equal(ir.armed, false);
+    assert.equal(ir.lastDeliveredAt, new Date(NOW).toISOString());
+    assert.equal('pending' in ir, false);
+    // The surge persists: no second delivery, the pair stays disarmed.
+    await tick(fake, deliver);
+    assert.equal(sent.length, 1);
+    assert.equal(JSON.parse(fake.store.get(stateKey(SUB))['cii:IR']).armed, false);
+  });
+
+  it('still delivers country.risk_surge when the chokepoint feed is down for the tick', async () => {
+    const rec = record({ eventType: 'country.risk_surge', countries: ['IR'] });
+    const fake = seeded({ rec });
+    fake.store.delete(CHOKEPOINT_STATUS_KEY);
+    fake.store.set(RISK_SCORES_KEY, JSON.stringify({ ciiScores: [{ region: 'IR', combinedScore: 84, dynamicScore: 24, computedAt: NOW }] }));
+    const { sent, deliver } = deliverStub([]);
+    const summary = await tick(fake, deliver);
+    assert.equal(summary.sourceState, 'error');
+    assert.equal(summary.riskSourceState, 'ok');
+    assert.equal(sent.length, 1, 'a chokepoint outage must not hold a surge that may settle before the feed returns');
+    assert.equal(summary.subscribers, 1);
+  });
+
+  it('prefers the live risk key and falls back to the RPC when both Redis copies are gone', async () => {
+    const rec = record({ eventType: 'country.risk_surge', countries: [] });
+    const fake = seeded({ rec });
+    fake.store.set(RISK_SCORES_KEY, JSON.stringify({ ciiScores: [{ region: 'IR', combinedScore: 84, dynamicScore: 24, computedAt: NOW }] }));
+    fake.store.set(RISK_SCORES_STALE_KEY, JSON.stringify({ ciiScores: [{ region: 'IR', combinedScore: 10, dynamicScore: 0, computedAt: 1 }] }));
+    const { sent, deliver } = deliverStub([]);
+    assert.equal((await tick(fake, deliver)).riskSource, 'redis');
+    assert.equal(sent.length, 1);
+
+    const fresh = seeded({ rec });
+    const requests = [];
+    const fetchImpl = async (url, init) => {
+      requests.push(url);
+      assert.equal(init.headers['X-WorldMonitor-Key'], 'relay-key');
+      return new Response(JSON.stringify({ ciiScores: [{ region: 'IR', combinedScore: 84, dynamicScore: 24, computedAt: NOW }] }));
+    };
+    const summary = await tick(fresh, deliverStub([]).deliver, { env: { WORLDMONITOR_RELAY_KEY: 'relay-key' }, fetchImpl });
+    assert.equal(summary.riskSource, 'rpc');
+    assert.deepEqual(requests, ['https://api.worldmonitor.app/api/intelligence/v1/get-risk-scores']);
   });
 
   it('reports an unreadable score feed and delivers nothing', async () => {

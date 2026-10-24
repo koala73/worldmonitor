@@ -25,6 +25,19 @@ const rows = [
 ] as const;
 
 const originalParent = window.parent;
+// Section reads the host never answers, so the close-view case below always
+// finds them in flight instead of depending on how far the first case got.
+// Keyed by request id; an entry leaves when the view cancels the read, so the
+// map holds exactly the held reads still open.
+const heldSections = new Set(['demographics', 'factors']);
+const heldInFlight = new Map<number, string>();
+// The host asks for a same-country refresh: `refresh` rides on the tool input,
+// and the tool result that follows opens the view.
+function refreshView(): void {
+  const send = (data: object) => window.dispatchEvent(new MessageEvent('message', { source: window.parent, data: { jsonrpc: '2.0', ...data } }));
+  send({ method: 'ui/notifications/tool-input', params: { arguments: { country_code: 'NO', topic: 'overview', refresh: true } } });
+  send({ method: 'ui/notifications/tool-result', params: { result: { structuredContent: { countryCode: 'NO', topic: 'overview' } } } });
+}
 afterAll(async () => {
   window.dispatchEvent(new Event('pagehide'));
   await new Promise(resolve => setTimeout(resolve, 0));
@@ -41,9 +54,12 @@ it('carries coverage through managed boot and the actual parent bridge to real p
   localStorage.setItem('worldmonitor-language', 'en');
   vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('No network in controlled host regression'); }));
   const calls: string[] = [];
-  const host = { postMessage: vi.fn((message: { id?: number; method?: string; params?: { name?: string } }) => {
+  const host = { postMessage: vi.fn((message: { id?: number; method?: string; params?: { name?: string; requestId?: number; arguments?: { section?: string } } }) => {
+    if (message.method === 'notifications/cancelled') heldInFlight.delete(message.params!.requestId!);
     if (message.id === undefined) return;
     calls.push(message.method === 'tools/call' ? message.params!.name! : message.method!);
+    const section = message.params?.arguments?.section;
+    if (message.params?.name === 'get_country_brief_section' && section && heldSections.has(section)) { heldInFlight.set(message.id, section); return; }
     const result = message.method === 'ui/initialize'
       ? { hostCapabilities: { serverTools: {} }, hostContext: { theme: 'dark' } }
       : message.params?.name === 'get_country_coverage'
@@ -86,4 +102,25 @@ it('carries coverage through managed boot and the actual parent bridge to real p
   expect(document.body.textContent).toContain('coverage:headlines: ok');
   expect(document.body.textContent).toContain('coverage:events: empty');
   expect(article('Copper inventories').querySelector('.cdp-news-meta')?.textContent).toContain('2h');
+});
+
+// Closing the view aborts in-flight section reads. A cancelled read is not a
+// failure: logging it put a console call on a timer after the test body, and
+// under load it landed after vitest closed the worker RPC
+// (EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending).
+it('closing the view cancels in-flight section reads without logging them as failures', async () => {
+  // Start this case's own reads: a refresh re-requests both held sections.
+  refreshView();
+  await vi.waitFor(() => expect([...new Set(heldInFlight.values())].sort()).toEqual(['demographics', 'factors']));
+  const warn = vi.spyOn(console, 'warn');
+  try {
+    // pagehide rejects every pending host call synchronously; give the
+    // rejected reads time to reach their catch blocks.
+    window.dispatchEvent(new Event('pagehide'));
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const failures = warn.mock.calls.filter(([label]) => /^\[CountryDeepDivePanel\] .* load failed$/.test(String(label)));
+    expect(failures.map(([label]) => label)).toEqual([]);
+  } finally {
+    warn.mockRestore();
+  }
 });

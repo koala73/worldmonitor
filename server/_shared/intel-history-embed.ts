@@ -25,6 +25,7 @@ import {
 } from '../../scripts/lib/brief-dedup-consts.mjs';
 import { stripSourceSuffix } from '../../scripts/lib/brief-dedup-jaccard.mjs';
 import { getCachedJson, setCachedJson } from './redis';
+import { allowsProvider, type AiRoutingDecision } from './ai-routing-policy';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
 
@@ -96,6 +97,23 @@ function isUsableVector(value: unknown): value is number[] {
     value.length === EMBED_DIMS &&
     value.every((n) => typeof n === 'number' && Number.isFinite(n))
   );
+}
+
+/**
+ * Query embeddings go to OpenRouter only (there is no other embeddings
+ * provider here). A caller whose AI routing policy excludes OpenRouter cannot
+ * use semantic search; there is no keyword index to fall back to, so the
+ * handler refuses with a policy error instead of sending the query text.
+ * Returns null when allowed, else the status and message to raise.
+ */
+export function queryEmbeddingDenial(decision: AiRoutingDecision): { status: number; message: string } | null {
+  if (decision.kind === 'unavailable') {
+    return { status: 503, message: 'AI routing policy could not be verified; retry shortly' };
+  }
+  if (!allowsProvider(decision, 'openrouter')) {
+    return { status: 403, message: "Semantic history search is not available under this account's AI routing policy" };
+  }
+  return null;
 }
 
 /**

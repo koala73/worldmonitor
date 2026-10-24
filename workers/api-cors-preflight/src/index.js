@@ -21,6 +21,7 @@ import {
   classifyPublicBootstrapRequest,
   classifyPublicBootstrapUrl,
 } from '../../../api/_bootstrap-public-tier.js';
+import { stripTrailingSlashes } from '../../../shared/strip-trailing-slashes.js';
 import { maybeShadowKvRead } from './kv-shadow.js';
 import { maybeServeBootstrapFromKv } from './kv-serve.js';
 
@@ -32,6 +33,8 @@ import { maybeServeBootstrapFromKv } from './kv-serve.js';
 // App-serving hosts only; sibling vendor hosts do not inherit browser trust.
 // Keep aligned with convex/payments/returnUrlOrigin.ts and CORS parity tests.
 const APP_ORIGIN_PATTERN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
+const MAX_ORIGIN_BYTES = 300;
+const ORIGIN_ENCODER = new TextEncoder();
 
 const ALLOWED_ORIGIN_PATTERNS = [
   APP_ORIGIN_PATTERN,
@@ -49,7 +52,10 @@ const ALLOWED_ORIGIN_PATTERNS = [
 const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID';
 
 // Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Expose-Headers.
-const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
+// This list REPLACES the function's own on every api.worldmonitor.app
+// response, so a header missing here is unreadable cross-origin no matter what
+// api/_cors.js says. tests/cors-fail-closed.test.mts pins set equality.
+const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, Location, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-Wm-Upstream-Timeout, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
 
 // Superset of every method any api/* route advertises. The Worker stamps ONE
 // fixed Allow-Methods on every preflight, so if a route handles DELETE but
@@ -128,6 +134,12 @@ function hasPublicCorsPolicy(pathname) {
   return PUBLIC_CORS_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
+function stripTrailingDnsDots(hostname) {
+  let end = hostname.length;
+  while (end > 0 && hostname[end - 1] === '.') end--;
+  return hostname.slice(0, end);
+}
+
 /**
  * Strip trailing DNS dots before allowlist match (#6411). Keep in sync with
  * api/_cors.js / server/cors.ts. ACAO still echoes the raw Origin.
@@ -136,7 +148,7 @@ function originForAllowlistMatch(origin) {
   if (!origin) return '';
   try {
     const url = new URL(origin);
-    const host = url.hostname.replace(/\.+$/, '');
+    const host = stripTrailingDnsDots(url.hostname);
     if (!host || host === url.hostname) return origin;
     url.hostname = host;
     return url.origin;
@@ -153,7 +165,7 @@ function isWorldMonitorGoogleTranslateOrigin(origin) {
   try {
     const url = new URL(origin);
     if (url.protocol !== 'https:' || url.port !== '') return false;
-    const host = url.hostname.replace(/\.+$/, '');
+    const host = stripTrailingDnsDots(url.hostname);
     const suffix = '.translate.goog';
     if (!host.endsWith(suffix)) return false;
     const encoded = host.slice(0, -suffix.length);
@@ -166,7 +178,8 @@ function isWorldMonitorGoogleTranslateOrigin(origin) {
 }
 
 export function isAllowedOrigin(origin) {
-  if (!origin) return false;
+  if (!origin || origin.length > MAX_ORIGIN_BYTES
+    || ORIGIN_ENCODER.encode(origin).byteLength > MAX_ORIGIN_BYTES) return false;
   if (isWorldMonitorGoogleTranslateOrigin(origin)) return true;
   const candidate = originForAllowlistMatch(origin);
   return ALLOWED_ORIGIN_PATTERNS.some((p) => p.test(candidate));
@@ -378,7 +391,7 @@ export default {
     const url = new URL(request.url);
 
     // Reject the retired premium URL before fetch can replay an older CDN response.
-    if (request.method !== 'OPTIONS' && url.pathname.replace(/\/+$/, '') === '/api/bootstrap'
+    if (request.method !== 'OPTIONS' && stripTrailingSlashes(url.pathname) === '/api/bootstrap'
       && url.searchParams.getAll('keys').some(value => value.split(',').some(key => key.trim() === 'wsbTickers'))) {
       return new Response(JSON.stringify({ error: 'Use the premium WSB RPC' }), {
         status: 401,

@@ -501,7 +501,7 @@ export function sanctionsListContentMeta(data, nowMs = 0) {
   return { newestItemAt: ts, oldestItemAt: ts };
 }
 
-async function readResponseLimited(response, maxBytes) {
+export async function readResponseLimited(response, maxBytes) {
   const advertisedLength = Number(response.headers?.get?.('content-length'));
   if (Number.isFinite(advertisedLength) && advertisedLength > maxBytes) {
     try { await response.body?.cancel?.(); } catch { /* still reject */ }

@@ -149,6 +149,23 @@ afterEach(() => {
 });
 
 describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
+  it('requests the shared default without local context and preserves the accepted artifact', async () => {
+    const calls = stubDownstream({ digestItems: [digestItem()], briefExtras: { cached: true } });
+    const payload = await callCountryBrief();
+    const briefCall = calls.find(call => call.pathname === '/api/intelligence/v1/get-country-intel-brief');
+    assert.equal(JSON.parse(briefCall.init.body).context, undefined);
+    assert.equal(payload.brief, 'Synthesized country brief.');
+    assert.equal(payload.generatedAt, '2026-08-10T02:00:00.000Z');
+    assert.equal(payload.cached, true);
+    assert.deepEqual(payload.sources.map(source => source.url), ['https://example.com/upstream']);
+  });
+
+  it('does not attach local citations to an accepted default with no server citations', async () => {
+    stubDownstream({ digestItems: [digestItem()], briefSources: [] });
+    const payload = await callCountryBrief();
+    assert.deepEqual(payload.sources, []);
+  });
+
   it('attaches registry provenance to gateway citations and digest grounding', async () => {
     stubDownstream({
       digestItems: [digestItem({ source: 'RT' }), digestItem({ title: 'France other story', source: 'Unknown outlet' })],
@@ -165,7 +182,7 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
 
   it('attaches provenance to fallback citations and declares both response contracts', async () => {
     stubDownstream({ digestItems: [digestItem({ source: 'RT' })], briefSources: [] });
-    const payload = await callCountryBrief();
+    const payload = await callCountryBrief({ country_code: 'FR', framework: 'Focus on energy policy.' });
     assert.deepEqual(payload.sources[0].sourceProvenance, compactProvenance('RT'));
     const tool = __testing__.TOOL_REGISTRY.find(candidate => candidate.name === 'get_country_brief');
     for (const field of ['sources', 'groundingStories']) {
@@ -355,7 +372,7 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
       ],
     });
 
-    const payload = await callCountryBrief();
+    const payload = await callCountryBrief({ country_code: 'FR', framework: 'Focus on energy policy.' });
 
     assert.deepEqual(payload.groundingStories.map((story) => story.url), ['https://example.com/fr-energy']);
     const briefCall = calls.find(call => call.pathname === '/api/intelligence/v1/get-country-intel-brief');

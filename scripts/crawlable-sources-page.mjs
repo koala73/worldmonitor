@@ -871,6 +871,7 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets
         </a>
         <span class="source-nav-links">
           <a href="/sources/" aria-current="page">Sources</a>
+          <a href="/reference/coverage/">Coverage</a>
           <a href="/blog/">Blog</a>
           <a href="/docs/documentation">Docs</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer">GitHub</a>

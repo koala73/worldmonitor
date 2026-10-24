@@ -34,12 +34,12 @@ World Monitor 将上游主机——结构化 API、新闻与 OSINT 订阅源、�
 - 情报热点并关联新闻
 - 社会动荡事件（双源：ACLED 抗议 + GDELT 地理事件，经 Haversine 半正矢公式去重）
 - 制裁机制
-- 难民与流离失所流向（联合国 OCHA HAPI）
+- 难民与流离失所流向（UNHCR、IDMC、IOM DTM）以及跨境流动（UNHCR 门户、英国内政部、美国 CBP、Frontex、巴拿马）
 - 来自三个国家机构以及大使馆与卫生机构源的政府旅行公告
 - 以色列后方司令部（OREF）火箭弹与无人机警报实时监测
 - 预测市场概率作为先行指标（Polymarket）
 - 地缘政治边界叠加层 — 朝鲜 DMZ（基于《朝鲜停战协定》的 43 点闭合环多边形），并带有类型的边界类别（非军事区、停火、争议、停战）和信息弹窗
-- 伊朗冲突事件 — 来自 LiveUAMap 的地理编码袭击、打击和军事事件，并带严重性分级
+- 中东打击 — 沙特阿拉伯、也门、伊朗、伊拉克、海湾国家和黎凡特地区的导弹、无人机和空袭及拦截事件，从精选 Telegram 频道中提取（先关键词预筛，再由 AI 分类），并以 GDELT 事件导出作为补充；交战方官方媒体的报道只有在独立来源印证后才会发布
 
 **主要提供商**
 
@@ -77,14 +77,18 @@ World Monitor 将上游主机——结构化 API、新闻与 OSINT 订阅源、�
 
 抗议评分是体制感知的：民主国家使用对数缩放（常规抗议不会触发动荡），而威权国家使用线性评分（每次抗议都很重要）。死亡人数和并发互联网中断应用严重性加成。
 
-ACLED 需要鉴权：在 API 项目上设置 `ACLED_EMAIL` + `ACLED_PASSWORD`（OAuth，自动刷新）或一个静态 `ACLED_ACCESS_TOKEN`。当 ACLED 鉴权缺失时，获取会优雅降级为空结果 — 但 ACLED 也是国家不稳定指数的**实时冲突来源**，因此没有它，CII 冲突评分会回退到仅 UCDP。由于 UCDP GED 的年度版本滞后约 7 个月，UCDP 种子任务还会发现最新的月度 **GED Candidate** 版本（`YY.0.M`，约一个月滞后发布）并将其合并到年度基线之上 — candidate 提供近期性，年度基线提供 2 年窗口所需的深度，发布负载为两者都保留槽位。这使近期冲突事件保持在 CII 2 年时效窗口内，但当 UCDP 本身静默或 candidate 合并降级时，`riskScores` 健康/缓存信号仍可能读到 `COVERAGE_PARTIAL`（网络与新闻族仍覆盖，因此该指标读数为 3 之 2）。发生这种情况时，`get-risk-scores` RPC 会记录一条 `[CII] ACLED returned 0 events` 警告。当 candidate 合并停止工作时，`seed-meta:conflict:ucdp-events` 携带 `candidateVersion: null`，内容年龄三元组会将 `ucdpEvents` 健康条目驱动为 `STALE_CONTENT`。
+ACLED 需要鉴权：在 API 项目上设置 `ACLED_EMAIL` + `ACLED_PASSWORD`（OAuth，自动刷新）或一个静态 `ACLED_ACCESS_TOKEN`。当 ACLED 鉴权缺失时，获取会优雅降级为空结果 — 但 ACLED 也是国家不稳定指数的**实时冲突来源**，因此没有它，CII 冲突评分会回退到仅 UCDP。由于 UCDP GED 的年度版本滞后约 7 个月，UCDP 种子任务还会发现最新的月度 **GED Candidate** 版本（`YY.0.M`，约一个月滞后发布）并将其合并到年度基线之上 — candidate 提供近期性，年度基线提供 2 年窗口所需的深度，发布负载为两者都保留槽位。这使近期冲突事件保持在 CII 2 年时效窗口内，但当 UCDP 本身静默或 candidate 合并降级时，`riskScores` 健康/缓存信号仍可能读到 `COVERAGE_PARTIAL`（只有新闻族仍覆盖，因此该指标读数为 2 之 1；网络族自 CII v14 起不再计入）。发生这种情况时，`get-risk-scores` RPC 会记录一条 `[CII] ACLED returned 0 events` 警告。当 candidate 合并停止工作时，`seed-meta:conflict:ucdp-events` 携带 `candidateVersion: null`，内容年龄三元组会将 `ucdpEvents` 健康条目驱动为 `STALE_CONTENT`。
 
 ### 流离失所跟踪
 
-难民和流离失所数据来自联合国 OCHA 人道主义 API（HAPI），提供难民、寻求庇护者和境内流离失所者（IDP）的人口级计数。流离失所面板提供两个视角：
+流离失所面板为每个来源提供单独的标签页。每个来源独立加载和刷新，因此某个标签页的数据一到即可显示：
 
-- **来源地** — 人们逃离的国家，按流出量排名
-- **接收地** — 吸收流离失所人口的国家，按接收量排名
+- **来源地**和**接收地** — UNHCR Population API 的年度难民、寻求庇护者和境内流离失所者（IDP）计数，分别按流出量（人们逃离的国家）和接收量（收容他们的国家）排名
+- **近期** — IDMC 境内流离失所更新（IDU）中的新增境内流离失所事件，读取自 IDMC 在 HDX 上发布的各国文件。IDMC 录入数据的中位延迟约为三周，因此最近一周的数据总是不完整
+- **境内** — IOM 流离失所追踪矩阵（DTM）按一级行政区的境内流离失所数据。每个行动只保留最新一轮调查，同一国家内重叠的行动从不相加
+- **跨境** — 带来源日期的流动数据，来自 UNHCR 业务数据门户、英国内政部每日小船抵达数据、美国 CBP 西南边境遭遇数据、Frontex 每月检测数据和巴拿马达连抵达数据。每个数字保留其来源的报告日期。遭遇和检测统计的是事件，而非独立人数。路线方法和许可见[跨境流动](https://github.com/koala73/worldmonitor/blob/main/docs/cross-border-movements.md)
+
+某国 IDMC 境内流离失所激增会作为跨源信号发出。新鲜且经来源确认的跨境抵达激增会为该国 CII 一次性加 5 分（自公式 v13 起）。
 
 危机徽章标记极端流离失所国家：> 100 万流离失所（红色）、> 50 万（橙色）。流离失所流出量作为组成信号进入 CII — 高流离失所是动荡的滞后指标，即使头条新闻已转移，它仍会持续。
 
@@ -157,7 +161,6 @@ Polymarket 地缘政治市场使用基于标签的过滤器（乌克兰、伊朗
 |----------|------|------|
 | CelesTrak | 用于轨道跟踪的卫星 TLE 数据 | [celestrak.org](https://celestrak.org) |
 | gpsjam.org | 基于 ADS-B 的 GPS 干扰网格 | [gpsjam.org](https://gpsjam.org) |
-| LiveUAMap | 地理编码冲突事件（伊朗战区） | [liveuamap.com](https://liveuamap.com) |
 
 深入阅读：[军事跟踪](/zh/military-tracking) · [海事情报](/zh/maritime-intelligence) · [轨道监视](/zh/orbital-surveillance)
 

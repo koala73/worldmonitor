@@ -53,6 +53,7 @@ async function loadChatAnalystPanel() {
     `],
     ['tauri-bridge-stub', `
       export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }
+      export function hasTauriInvokeBridge() { return false; }
     `],
     ['analytics-stub', `
       export function trackLayoutCustomized() {}

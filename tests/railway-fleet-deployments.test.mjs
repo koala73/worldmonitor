@@ -14,6 +14,8 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import {
+  RAILWAY_CALL_TIMEOUT_MS,
+  RAILWAY_INVENTORY_TIMEOUT_MS,
   createRailwayCliEnv,
   DEPLOYMENT_READ_DEADLINE_ERROR,
   readAllDeployments,
@@ -21,6 +23,7 @@ import {
   readDeploymentsForFleet,
   readExpectedRepositoryFleet,
   readFleetDeployments,
+  readServices,
   runRailway,
   runRailwayApiAsync,
   selectExpectedRepositoryServices,
@@ -54,6 +57,21 @@ describe('Railway CLI child capability boundary', () => {
       RAILWAY_PROJECT_ID: 'project-1',
       RAILWAY_TOKEN: 'railway-token',
     });
+  });
+
+  it('gives the whole-project service list longer than one per-call read', () => {
+    // Observed 2026-10-22: the same `service list` took 2 s to 72 s, and three
+    // Deploy Drift runs died at the 60 s per-call ceiling with valid tokens.
+    const timeouts = [];
+    const spawnImpl = (_command, _args, options) => {
+      timeouts.push(options.timeout);
+      return { status: 0, signal: null, error: null, stdout: '[]' };
+    };
+    readServices('production', { projectId: 'project-1', spawnImpl });
+    readServices('production', { projectId: 'project-1', timeoutMs: 5_000, spawnImpl });
+    assert.equal(RAILWAY_INVENTORY_TIMEOUT_MS, 3 * 60_000);
+    assert.ok(RAILWAY_INVENTORY_TIMEOUT_MS > RAILWAY_CALL_TIMEOUT_MS);
+    assert.deepEqual(timeouts, [RAILWAY_INVENTORY_TIMEOUT_MS, 5_000]);
   });
 
   it('applies the allowlist to sync and async Railway children', async () => {
@@ -133,12 +151,13 @@ describe('immutable native-autodeploy fleet', () => {
     source: { repo, image: null },
   });
 
-  it('ships the 87-service fleet including the shipping webhook worker', () => {
+  it('ships the 88-service fleet including the provisioned country-history seeder', () => {
     // 84 -> 85: seed-live-video-resolved (service 11581ac4, cron 0 */6 * * *)
     // was provisioned after #8596 merged. 85 -> 86: verification-desk
     // (service 1f732679, always-on, desk.worldmonitor.app) enrolled by #9083.
     // 86 -> 87: shipping-webhook-worker (service a97fa619, always-on) was
-    // provisioned after #9236 merged. The roster is not a baseline to be
+    // provisioned after #9236 merged. 87 -> 88: seed-country-history (service
+    // d295b2c7, cron 30 0 * * *) was provisioned after #9435 merged. The roster is not a baseline to be
     // quieted — every mismatch is red — but it must list every repo-backed
     // service, or a service whose GitHub source detaches vanishes before
     // repository filtering and both read-only monitors report healthy. An
@@ -147,9 +166,9 @@ describe('immutable native-autodeploy fleet', () => {
     // NOTE: acceptedHead/acceptedRunId still name the pre-provisioning run; a
     // fresh reconciliation should re-stamp them.
     const fleet = readExpectedRepositoryFleet();
-    assert.equal(fleet.length, 87);
-    assert.equal(new Set(fleet.map((service) => service.id)).size, 87);
-    assert.equal(new Set(fleet.map((service) => service.name)).size, 87);
+    assert.equal(fleet.length, 88);
+    assert.equal(new Set(fleet.map((service) => service.id)).size, 88);
+    assert.equal(new Set(fleet.map((service) => service.name)).size, 88);
     assert.deepEqual(
       fleet.map((service) => service.name),
       [...fleet.map((service) => service.name)].sort(),

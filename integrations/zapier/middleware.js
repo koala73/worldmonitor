@@ -24,6 +24,9 @@ const describeError = (response) => {
 };
 
 const handleHttpError = (response, z) => {
+  // A caller that opted out of throwing (unsubscribe treats 404 as already
+  // gone) inspects the status itself.
+  if (response.request && response.request.skipThrowForStatus) return response;
   if (response.status === 401) {
     throw new z.errors.ExpiredAuthError(
       `WorldMonitor rejected the API key (${describeError(response)}). Reconnect with an active wm_ key from Settings, API Keys.`,

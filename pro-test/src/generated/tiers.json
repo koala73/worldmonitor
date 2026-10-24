@@ -163,10 +163,10 @@
       "Fully white-labeled — with or without revenue sharing"
     ],
     "planLimits": {
-      "apiRequestsPerDay": null,
+      "apiRequestsPerDay": 100000,
       "apiBurstRequestsPerMinute": 1000,
-      "mcpCallsPerDay": null,
-      "dashboardAiCallsPerDay": null,
+      "mcpCallsPerDay": 25000,
+      "dashboardAiCallsPerDay": 25000,
       "mcpBurstRequestsPerMinute": 1000,
       "mcpDailyBudgetSharedWithRest": false
     },

@@ -180,7 +180,7 @@ export function buildExposureIndex(countries) {
       .filter((c) => c[key] != null)
       .sort((a, b) => b[key] - a[key])
       .slice(0, 20)
-      .map((c) => ({ iso2: c.iso2, name: c.country, share: c[key] }));
+      .map((c) => ({ iso2: c.iso2, name: c.country, share: c[key], year: c.year }));
 
   const years = all.map((c) => c.year).filter(Boolean);
 

@@ -157,6 +157,16 @@ async function restoreFromRedis(): Promise<TokenState | null> {
 }
 
 /**
+ * True when this deployment supplies either credential path that
+ * getAcledAccessToken can use. False means ACLED is off by deployment design,
+ * which health reports as `not_configured` rather than as a failing feed.
+ */
+export function isAcledConfigured(): boolean {
+  const oauth = Boolean(process.env.ACLED_EMAIL?.trim() && process.env.ACLED_PASSWORD?.trim());
+  return oauth || Boolean(process.env.ACLED_ACCESS_TOKEN?.trim());
+}
+
+/**
  * Returns a valid ACLED access token, refreshing if necessary.
  *
  * Priority:

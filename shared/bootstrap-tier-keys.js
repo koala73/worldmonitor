@@ -52,7 +52,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   renewableEnergy: 'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
   theaterPosture: 'theater_posture:sebuf:stale:v1',
-  riskScores: 'risk:scores:sebuf:stale:v8',
+  riskScores: 'risk:scores:sebuf:stale:v14',
   naturalEvents: 'natural:events:v1',
   flightDelays: 'aviation:delays-bootstrap:v2',
   insights: 'news:insights:v1',
@@ -72,6 +72,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   imdCycloneMarine: 'weather:imd-cyclone-marine:v1',
   liveVideoResolved: 'live-video:resolved:v1',
   crossBorderArrivals: 'displacement:cross-border:v1',
+  idmcIduDisplacement: 'displacement:idmc-idu:v1',
   canadaRoads: 'infra:ontario-511:v1',
   albertaRoads: 'infra:alberta-511:v1',
   manitobaRoads: 'infra:manitoba-511:v1',
@@ -244,9 +245,12 @@ const ON_DEMAND_KEY_NAMES = new Set([
   // payload stays minimal: channel id to video id and timestamps, no titles,
   // enforced by validateResolvedPayload in scripts/seed-live-video-resolved.mjs.
   'liveVideoResolved',
-  // UNHCR Operational Data Portal cross-border movements (#9023), read by the
-  // displacement panel and map layer only when they are open.
+  // Legacy ODP bootstrap/widget contract. The dashboard uses the source-dated
+  // movement RPC; retain this on-demand key until legacy clients migrate.
   'crossBorderArrivals',
+  // IDMC internal displacement events (#9014), about 2.5 MB, read by the
+  // displacement panel and map layer only when they are open.
+  'idmcIduDisplacement',
 ]);
 
 /**

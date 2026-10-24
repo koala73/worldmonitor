@@ -25,6 +25,8 @@ import type { Clerk } from '@clerk/clerk-js';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { EULA_PATH, PRIVACY_PATH, absoluteLegalUrl } from '../../shared/legal';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { isDesktopRuntime } from '@/config/desktop-runtime';
+import { showToast } from '@/utils/toast';
 
 type ClerkInstance = Clerk;
 type ClerkSession = NonNullable<ClerkInstance['session']>;
@@ -50,6 +52,18 @@ export function isClerkAuthEnabled(): boolean {
 }
 
 let clerkInstance: ClerkInstance | null = null;
+/** True once Frontend API calls go through the desktop Rust relay (#9396). */
+let desktopRelayActive = false;
+const PRODUCTION_CLERK_FAPI_HOST = 'clerk.worldmonitor.app';
+
+/**
+ * Only production desktop builds sign in through the browser: the page and
+ * the sign-in ticket belong to the production Clerk instance. A development
+ * build (pk_test key) keeps the in-app card. Exported for testing.
+ */
+export function usesDesktopBrowserSignIn(desktopRelay: boolean, fapiHost: string): boolean {
+  return desktopRelay && fapiHost === PRODUCTION_CLERK_FAPI_HOST;
+}
 let loadPromise: Promise<void> | null = null;
 let loadScheduled = false;
 const pendingSubscribers: Array<() => void> = [];
@@ -199,6 +213,16 @@ function clerkFapiHost(publishableKey: string): string {
   }
 }
 
+/**
+ * Load options that differ on desktop. Clerk's production Frontend API rejects
+ * the desktop WebView origins (`400 origin_invalid`, #9396), so desktop runs
+ * clerk-js in native mode: no cookies, Frontend API calls through the Rust
+ * relay (see clerk-desktop-relay.ts). Exported for testing.
+ */
+export function clerkRuntimeLoadOptions(desktop: boolean): { standardBrowser?: false } {
+  return desktop ? { standardBrowser: false } : {};
+}
+
 let umdLoadPromise: Promise<void> | null = null;
 
 /** Inject a <script> from the Frontend API and resolve on load. */
@@ -263,6 +287,25 @@ function loadClerkUmd(publishableKey: string): Promise<void> {
  * (mcp-grant page bootstrap, getClerkToken on first authenticated request).
  * Idempotent — repeated calls return the same in-flight promise.
  */
+/**
+ * Clerk's modal renders internal steps ("Use another method") as anchors whose
+ * href is a virtual-router path such as `/CLERK-ROUTER/VIRTUAL/sign-in/factor-one`.
+ * Clerk's React handler cancels the click and routes inside the modal, but a
+ * click stopped before it reaches React (1Password's passkey prompt does this)
+ * lets the browser follow the href to a 404. Cancel only the default action on
+ * the window capture phase; propagation is untouched, so Clerk still routes.
+ */
+export function installClerkVirtualLinkGuard(target: Window): () => void {
+  const guard = (event: MouseEvent) => {
+    const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+    if (anchor instanceof HTMLAnchorElement && anchor.pathname.startsWith('/CLERK-ROUTER/')) {
+      event.preventDefault();
+    }
+  };
+  target.addEventListener('click', guard, true);
+  return () => target.removeEventListener('click', guard, true);
+}
+
 export async function initClerk(): Promise<void> {
   if (clerkInstance) return;
   if (loadPromise) return loadPromise;
@@ -272,6 +315,12 @@ export async function initClerk(): Promise<void> {
   }
   loadPromise = (async () => {
     try {
+      let desktopRelay = false;
+      if (isDesktopRuntime()) {
+        const { installClerkDesktopRelay } = await import('@/services/clerk-desktop-relay');
+        desktopRelay = installClerkDesktopRelay(clerkFapiHost(PUBLISHABLE_KEY));
+      }
+      desktopRelayActive = desktopRelay;
       await loadClerkUmd(PUBLISHABLE_KEY);
       const clerk = getClerkInstance();
       if (!clerk) throw new Error('[clerk] window.Clerk unavailable after load');
@@ -286,8 +335,10 @@ export async function initClerk(): Promise<void> {
           },
         },
         afterSignOutUrl: getAfterSignOutUrl(),
+        ...clerkRuntimeLoadOptions(desktopRelay),
       } as Parameters<typeof clerk.load>[0]);
       clerkInstance = clerk;
+      installClerkVirtualLinkGuard(window);
       attachPendingSubscribers();
     } catch (e) {
       loadPromise = null; // allow retry on next call
@@ -402,6 +453,37 @@ function captureClerkSurfaceFailure(action: string, err: unknown, reason: string
   });
 }
 
+export interface ClerkSurfaceFailureEffects {
+  notify: (message: string) => void;
+  capture: (action: string, err: unknown, reason: string) => void;
+  log: (message: string, err: unknown) => void;
+}
+
+const defaultSurfaceFailureEffects: ClerkSurfaceFailureEffects = {
+  notify: (message) => {
+    if (typeof document !== 'undefined') showToast(message, 6000);
+  },
+  capture: captureClerkSurfaceFailure,
+  log: (message, err) => console.error(message, err),
+};
+
+/**
+ * A Sign in / Create account click that cannot open Clerk must say so. Before
+ * #9396 the failure only reached the console and Sentry, so the button looked
+ * dead. Exported for testing.
+ */
+export function reportClerkSurfaceFailure(
+  action: 'open-sign-in' | 'open-sign-up',
+  reason: string,
+  err: unknown,
+  effects: ClerkSurfaceFailureEffects = defaultSurfaceFailureEffects,
+): void {
+  effects.log(`[clerk] ${action} failed (${reason}):`, err);
+  effects.capture(action, err, reason);
+  const what = action === 'open-sign-in' ? 'Sign in' : 'Create account';
+  effects.notify(`${what} could not open. Check your connection and try again.`);
+}
+
 function scheduleNextFrame(cb: () => void): void {
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => cb());
   else setTimeout(cb, 50);
@@ -458,8 +540,7 @@ function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
   // (initClerk rejected: dynamic-import 4xx/5xx, transient network) — querying
   // by `reason` must not mix the two or it dilutes the race alert signal.
   const onFail = (reason: string) => (err: unknown): void => {
-    console.error(`[clerk] ${action} failed (${reason}):`, err);
-    captureClerkSurfaceFailure(action, err, reason);
+    reportClerkSurfaceFailure(action, reason, err);
   };
   const openClerk = (): void => runClerkSurfaceOpen(open, onFail('ui-components-not-ready'));
   // The resume hook needs the loaded client, so it runs after the force-load too.
@@ -467,16 +548,58 @@ function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
     if (action === 'open-sign-up' && signUpResumeHook?.(openClerk)) return;
     openClerk();
   };
-  if (clerkInstance) {
+  // Desktop: passkeys and Google cannot run in the WebView, so sign-in and
+  // sign-up happen on www.worldmonitor.app in the default browser, with the
+  // in-app card as the fallback.
+  const openForRuntime = (): void => {
+    if (PUBLISHABLE_KEY && usesDesktopBrowserSignIn(desktopRelayActive, clerkFapiHost(PUBLISHABLE_KEY))) {
+      void startDesktopBrowserSignIn(openSurface).catch(onFail('desktop-browser-sign-in'));
+      return;
+    }
     openSurface();
+  };
+  if (clerkInstance) {
+    openForRuntime();
     return;
   }
   // Deferred-load fast path: user clicked before the idle callback fired.
   // Force the load, then open once the SDK is live so the click never
   // silently no-ops.
   void initClerk()
-    .then(openSurface)
+    .then(openForRuntime)
     .catch(onFail('clerk-load-failed'));
+}
+
+let desktopBrowserSignIn: ((deps: import('@/services/desktop-browser-sign-in').BrowserSignInDeps) => Promise<unknown>) | null = null;
+
+async function startDesktopBrowserSignIn(openInApp: () => void): Promise<void> {
+  const clerk = clerkInstance;
+  if (!clerk || !PUBLISHABLE_KEY) return;
+  const [{ createSingleFlightSignIn }, { invokeTauri }, { showDesktopSignInWaiting }] = await Promise.all([
+    import('@/services/desktop-browser-sign-in'),
+    import('@/services/tauri-bridge'),
+    import('@/utils/desktop-sign-in-waiting'),
+  ]);
+  desktopBrowserSignIn ??= createSingleFlightSignIn(() => showToast('Finish signing in in your browser.', 6000));
+  await desktopBrowserSignIn({
+    fapiHost: clerkFapiHost(PUBLISHABLE_KEY),
+    start: (fapiHost) => invokeTauri('start_desktop_browser_sign_in', { fapiHost }),
+    finish: () => invokeTauri('finish_desktop_browser_sign_in'),
+    cancel: () => invokeTauri('cancel_desktop_browser_sign_in'),
+    reloadClient: async () => {
+      // Rust swapped in a new client; drop tokens minted for the old one.
+      clearClerkTokenCache();
+      await clerk.client?.reload();
+    },
+    setActive: async (sessionId) => {
+      await clerk.setActive({ session: sessionId });
+    },
+    notify: (message) => {
+      if (typeof document !== 'undefined') showToast(message, 6000);
+    },
+    openInApp,
+    showWaiting: showDesktopSignInWaiting,
+  });
 }
 
 /** Open the Clerk sign-in modal. */

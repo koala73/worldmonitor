@@ -81,6 +81,7 @@ export const ATTRIBUTION_RIDER_NOTICE =
  * (`_apiPaths: []`).
  */
 export const REST_ATTRIBUTION_EXPRESSIONS: Readonly<Record<string, string>> = {
+  '/api/displacement/v1/get-cross-border-movements': 'movements[].{source: source, sourceUrl: sourceUrl, license: license, licenseUrl: licenseUrl, notice: notice}',
   // Same payload as the get_resilience_indicators tool: its `_execute` returns
   // this endpoint's JSON verbatim, so the expression is identical.
   '/api/resilience/v1/get-resilience-indicators':

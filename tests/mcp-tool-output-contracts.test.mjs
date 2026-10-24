@@ -44,7 +44,22 @@ const originalEnv = { ...process.env };
 // before reaching dispatch. Values are deliberately benign and aligned with
 // each tool's documented format (e.g. ISO 3166-1 alpha-2 for country_code).
 const REQUIRED_ARGS = {
+  get_country_history: { country_code: 'US' },
+  get_defense_industrial_base: { country_code: 'US' },
+  get_country_coverage: { country_code: 'US' },
+  get_food_stocks: { country_code: 'US' },
+  get_demographics_capability: { country_code: 'US' },
+  get_resilience_indicators: { country_code: 'US' },
+  get_five_factor_scorecard: { country_code: 'US' },
+  get_supply_vulnerabilities: { country_code: 'US' },
+  get_chokepoint_dependencies: { chokepoint_id: 'suez' },
+  verify_claim: { claim: 'A controlled claim for verification.' },
+  analyze_news_headlines: { headlines: ['Controlled headline'] },
+  get_country_brief_section: { section: 'risk', arguments: { country_code: 'US' } },
+  get_bilateral_tariff: { reporter: 'US', partner: 'CN', hs_code: '010121' },
+  get_us_import_duty: { partner: 'CN', hs_code: '010121' },
   classify_event: { text: 'Iran closes Strait of Hormuz to tanker traffic' },
+  start_upgrade: { plan: 'pro_monthly' },
   get_country_brief: { country_code: 'US' },
   open_country_brief: { country_code: 'US' },
   get_country_risk: { country_code: 'US' },
@@ -53,6 +68,7 @@ const REQUIRED_ARGS = {
   get_maritime_activity: { country_code: 'US' },
   analyze_situation: { query: 'test query' },
   search_intel_history: { query: 'test query' },
+  get_intel_timeline: { domain: 'conflict' },
   // `situation` carries a 10-char proto minimum, so the placeholder clears it.
   get_similar_events: { situation: 'a test situation description' },
   search_flights: { origin: 'JFK', destination: 'LHR', departure_date: '2026-06-01' },
@@ -192,6 +208,9 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
 
       let args = REQUIRED_ARGS[name] ?? {};
       const { deps, pipe } = makeProDeps();
+      // start_upgrade creates its checkout session in dispatch, before the
+      // stubbed _execute; answer the relay so the call reaches the result path.
+      if (name === 'start_upgrade') deps.createCheckout = async () => ({ kind: 'created', checkoutUrl: 'https://checkout.example/session' });
       let originalForecast;
       if (name === 'get_forecast_case' || name === 'get_forecast_theaters') {
         const generatedAt = Date.now();
@@ -264,4 +283,57 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
       );
     });
   }
+});
+
+describe('get_maritime_activity ports view through the real producer and REST reader', () => {
+  it('serves the top 25 ports, preserves unknown trends, and handles uncovered countries', async () => {
+    const { finalisePortsForCountry } = await import('../scripts/seed-portwatch-port-activity.mjs');
+    const { getCountryPortActivity } = await import('../server/worldmonitor/intelligence/v1/get-country-port-activity.ts');
+    const { installRedis } = await import('./helpers/fake-upstash-redis.mts');
+    const tool = TOOL_REGISTRY.find(t => t.name === 'get_maritime_activity');
+    const accum = new Map(Array.from({ length: 30 }, (_, i) => [String(i), {
+      portname: `Port ${i}`, last30_calls: 100 - i, prev30_calls: i === 0 ? 0 : 50,
+      last30_import: 1000, last30_export: 500,
+    }]));
+    const ports = finalisePortsForCountry(accum, new Map());
+    ports[1].prevTankerCalls30d = undefined;
+    const savedEnv = { ...process.env };
+    const savedFetch = globalThis.fetch;
+    delete process.env.LOCAL_API_MODE;
+    const redis = installRedis({
+      'supply_chain:portwatch-ports:v1:_countries': ['NL'],
+      'supply_chain:portwatch-ports:v1:NL': { ports, cacheWrittenAt: Date.now(), fetchedAt: '2026-10-17T00:00:00Z' },
+    });
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      if (new URL(url).hostname !== 'example.test') return redis.fetchImpl(url, init);
+      calls.push(String(url));
+      assert.equal(new URL(url).pathname, '/api/intelligence/v1/get-country-port-activity');
+      return Response.json(await getCountryPortActivity({}, { countryCode: new URL(url).searchParams.get('country_code') }));
+    };
+    try {
+      const result = await tool._execute({ country_code: 'Netherlands', view: 'ports' }, 'https://example.test', { kind: 'env_key', apiKey: 'test' });
+      assert.equal(calls.length, 1);
+      assert.equal(result.country_code, 'NL');
+      assert.equal(result.available, true);
+      assert.equal(result.fetched_at, '2026-10-17T00:00:00Z');
+      assert.equal(result.ports.length, 25);
+      assert.equal(result.ports[0].trend_delta_pct, null);
+      assert.equal(result.ports[1].trend_delta_pct, null);
+      assert.equal(result.ports[2].trend_delta_pct, 96);
+      assert.equal(result.ports[2].import_tanker_dwt_30d, 1000);
+      assert.equal(result.ports[2].export_tanker_dwt_30d, 500);
+      assert.equal(Object.hasOwn(result.ports[0], 'anomaly_signal'), false);
+      assert.deepEqual(validate(tool.outputSchema, result), []);
+      const validateOutput = ajv.compile(tool.outputSchema);
+      assert.equal(validateOutput(result), true, JSON.stringify(validateOutput.errors));
+      const empty = await tool._execute({ country_code: 'CH', view: 'ports' }, 'https://example.test', { kind: 'env_key', apiKey: 'test' });
+      assert.equal(empty.available, false);
+      assert.deepEqual(empty.ports, []);
+    } finally {
+      globalThis.fetch = savedFetch;
+      for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
+      Object.assign(process.env, savedEnv);
+    }
+  });
 });

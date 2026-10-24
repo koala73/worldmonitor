@@ -70,11 +70,17 @@ function renderGroup<Group extends DemographicsGroup>(
   const unavailable = translate('countryBrief.demographicsCapability.notAvailable');
   const grid = h('div', { className: 'cdp-military-grid' });
   for (const { field, labelKey } of metrics) {
-    grid.append(makeMetric(
+    const observation = groupObservation(group, field);
+    const metric = h('div', null, makeMetric(
       translate(labelKey),
-      formatDemographicsObservation(groupObservation(group, field), unavailable),
+      formatDemographicsObservation(observation, unavailable),
       'cdp-chip-neutral',
     ));
+    if (observation?.available) {
+      metric.append(h('div', { className: 'cdp-economic-source' },
+        observation.sourceStatus || translate('countryBrief.demographicsCapability.statusNotSupplied')));
+    }
+    grid.append(metric);
   }
   section.append(grid);
 

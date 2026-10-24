@@ -101,6 +101,52 @@ export interface InternalDisplacementFlow {
   destinationLocation?: GeoCoordinates;
 }
 
+export interface GetCrossBorderMovementsRequest {
+  countryCode: string;
+  route: string;
+}
+
+export interface GetCrossBorderMovementsResponse {
+  movements: CrossBorderMovement[];
+  sources: CrossBorderSourceStatus[];
+  dataAvailable: boolean;
+}
+
+export interface CrossBorderMovement {
+  id: string;
+  route: string;
+  name: string;
+  kind: string;
+  measure: string;
+  countryCode: string;
+  originCode: string;
+  asOf: string;
+  period: string;
+  count: number;
+  last7Days?: number;
+  last30Days?: number;
+  changePct?: number;
+  surge: boolean;
+  stale: boolean;
+  source: string;
+  sourceUrl: string;
+  license: string;
+  licenseUrl: string;
+  location?: GeoCoordinates;
+  notice: string;
+  stockChange?: number;
+  stockChangeSince: string;
+}
+
+export interface CrossBorderSourceStatus {
+  id: string;
+  name: string;
+  status: string;
+  fetchedAt: number;
+  contentAt: number;
+  maxContentAgeMin: number;
+}
+
 export interface GetPopulationExposureRequest {
   mode: string;
   lat: number;
@@ -175,6 +221,7 @@ export interface RouteDescriptor {
 export interface DisplacementServiceHandler {
   getDisplacementSummary(ctx: ServerContext, req: GetDisplacementSummaryRequest): Promise<GetDisplacementSummaryResponse>;
   getInternalDisplacement(ctx: ServerContext, req: GetInternalDisplacementRequest): Promise<GetInternalDisplacementResponse>;
+  getCrossBorderMovements(ctx: ServerContext, req: GetCrossBorderMovementsRequest): Promise<GetCrossBorderMovementsResponse>;
   getPopulationExposure(ctx: ServerContext, req: GetPopulationExposureRequest): Promise<GetPopulationExposureResponse>;
 }
 
@@ -224,7 +271,7 @@ export function createDisplacementServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -271,7 +318,55 @@ export function createDisplacementServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/displacement/v1/get-cross-border-movements",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetCrossBorderMovementsRequest = {
+            countryCode: params.get("country_code") ?? "",
+            route: params.get("route") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCrossBorderMovements", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCrossBorderMovements(ctx, body);
+          return new Response(JSON.stringify(result as GetCrossBorderMovementsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -321,7 +416,7 @@ export function createDisplacementServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },

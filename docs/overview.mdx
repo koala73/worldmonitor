@@ -29,7 +29,7 @@ World Monitor combines an interactive 3D globe and flat map, configurable intell
 
 | Capability | Current scope |
 | --- | --- |
-| Country risk and resilience | Country Instability Index (CII v8) scores with signed 24-hour movement for 31 Tier-1 countries. The Country Resilience Index scores a 196-country public universe and ranks 170 of 196 countries using 72 indicators across 21 active dimensions and 6 domains on a 6-hour schedule. |
+| Country risk and resilience | Country Instability Index (CII v14) scores with signed 24-hour movement for 31 Tier-1 countries. The Country Resilience Index scores a 196-country public universe and ranks 170 of 196 countries using 72 indicators across 21 active dimensions and 6 domains on a 6-hour schedule. |
 | Signal and infrastructure analysis | Geographic convergence, temporal anomalies, and cross-source correlation combine related events. Infrastructure Cascade models dependencies across a 350-node infrastructure graph. |
 | Decision support | Source-linked AI briefs, probabilistic forecasts with machine-checkable resolution criteria and scorecard context, [Route Explorer](/route-explorer), and the [Scenario Engine](/scenario-engine). |
 | Company and procurement workflows | The MCP company-intelligence tool combines market context, SEC filing search, and material 8-K events. [Global Procurement Intelligence](/global-procurement-intelligence) uses seeded public opportunities from supported government and multilateral portals. Availability still depends on deployment credentials and source health. |
@@ -101,10 +101,13 @@ The primary variant focuses on geopolitical intelligence, military tracking, and
 |-------|---------|
 | **AI Insights** | LLM-synthesized world brief with focal point detection |
 | **AI Strategic Posture** | Theater-level military force aggregation with strike capability assessment |
-| **Country Instability Index** | Real-time CII v8 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
+| **Country Instability Index** | Real-time CII v14 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
+| **Metals & Materials** | Metals and materials quotes from Yahoo Finance, with tabs for physical premiums and EUR FX when that data is available. The gold-in-other-currencies tab appears only in the commodity variant. Energy prices appear in the Energy Complex panel instead |
+| **Toronto Safety** | Toronto Police Service open data: reported major-crime occurrences (approximate, offset locations) and annual calls attended by division and neighbourhood. Not live dispatch. Off by default |
+| **Global Giving** | Published giving benchmarks from platforms and institutions (GoFundMe, GlobalGiving, JustGiving, Candid, OECD), with source periods and verification status. Annualized figures are estimates, not live activity. Off by default here; on in the happy variant |
 
 ### News Coverage
 
@@ -133,6 +136,19 @@ The tech variant ([tech.worldmonitor.app](https://tech.worldmonitor.app/dashboar
 | **AI Datacenters** | 313 AI compute clusters tracked from Epoch AI dataset |
 | **Undersea Cables** | Submarine fiber routes critical for cloud connectivity |
 | **Internet Outages** | Network disruptions affecting tech operations |
+
+### Tech Panels
+
+These panels are news feed groups. Each one collects a fixed set of RSS and news-search feeds and refreshes every 10 minutes.
+
+| Panel | Description |
+|-------|-------------|
+| **Unicorn Tracker** | New unicorns and decacorns, from unicorn-focused news feeds including CB Insights |
+| **Funding & VC** | Funding rounds, seed and pre-seed deals, VC news, and SEC filings |
+| **IPO & SPAC** | Tech IPO and SPAC news, including Renaissance Capital IPO coverage |
+| **AI Policy & Regulation** | AI regulation, tech antitrust, and digital policy from the US, EU, UK, China, and India |
+| **Semiconductors & Hardware** | Chip and hardware news from Tom's Hardware, SemiAnalysis, and semiconductor feeds |
+| **Developer Community** | Developer news from Dev.to, Lobsters, Changelog, and Show HN |
 
 ### Tech News Categories
 
@@ -185,6 +201,13 @@ The finance variant ([finance.worldmonitor.app](https://finance.worldmonitor.app
 | **Supply Chain** | Maritime chokepoint disruption scores and shipping indices |
 | **WTO Trade Policy** | Active trade restrictions, tariff trends, bilateral trade flows |
 | **Premium Stock Analysis** | AI-powered stock analysis with backtesting |
+| **IPOs, Earnings & M&A** | News feed group for IPOs, earnings reports, and mergers and acquisitions |
+| **Hedge Funds & PE** | News feed group for hedge funds, private equity, and sovereign wealth funds |
+| **GCC Investments** | Curated register of Saudi and UAE investments in ports, pipelines, energy, datacenters, and other assets abroad. Filter by investing country, sector, entity, and status; select a row to fly the map to the asset |
+| **SEC Material Events** | Material 8-K filings from the SEC EDGAR latest-filings feed, with routine items such as earnings exhibits and Reg FD notices removed. Each row shows the company, item codes, and filing time, and links to the filing on sec.gov. Off by default |
+| **NQ Pulse** | Nasdaq-100 context quotes: NQ futures, QQQ, the VXN volatility index, and the 10-year Treasury yield, refreshed every 5 minutes with a Current / Delayed / Stale label. Context data, not execution-grade. Off by default |
+| **NQ Catalysts** | High-impact US macro releases for the next 7 days and earnings for the next 14 days from the companies that move the Nasdaq-100 most. Off by default |
+| **NQ News** | News feed group for Nasdaq futures, the Nasdaq-100 and QQQ, Federal Reserve releases, and semiconductors. Off by default |
 
 ### Finance News Categories
 
@@ -205,7 +228,7 @@ The commodity variant ([commodity.worldmonitor.app](https://commodity.worldmonit
 
 | Layer | Description |
 |-------|-------------|
-| **Mining Sites** | Major mine sites worldwide (operational, planned, suspended) |
+| **Mining Sites** | Major mine sites worldwide, with mineral, country, status (producing, in development, or exploration), and annual output where available |
 | **Processing Plants** | Smelters, refineries, and separation plants |
 | **Commodity Ports** | Mineral export/import ports and terminals |
 | **Commodity Hubs** | Global commodity exchanges |
@@ -254,3 +277,34 @@ The happy variant ([happy.worldmonitor.app](https://happy.worldmonitor.app/dashb
 | **5 Good Things** | Daily digest of five positive stories |
 | **Conservation Wins** | Wildlife and ecosystem recovery stories |
 | **Renewable Energy** | Clean energy milestones and deployment data |
+
+---
+
+## Energy Monitor
+
+The energy variant ([energy.worldmonitor.app](https://energy.worldmonitor.app/dashboard)) focuses on oil and gas infrastructure, supply disruptions, and energy shocks.
+
+### Energy Layers
+
+| Layer | Description |
+|-------|-------------|
+| **Live Tanker Positions** | Live AIS positions of tankers within about 2° of Hormuz, Suez, Bab el-Mandeb, Malacca, Panama, and the Bosphorus. Amber markers are anchored, cyan are underway, grey have no reported speed. Polled every 60 seconds while the layer is on |
+| **Pipelines** | Oil and gas pipelines from the evidence-backed registry, coloured by status (flowing, reduced, offline, disputed). On the flat map, selecting one opens the Pipeline Status drawer |
+| **Storage Facilities** | Underground gas storage, strategic reserves, LNG terminals, and crude hubs from the Storage Atlas registry |
+| **Fuel Shortages** | Countries with confirmed or watch-level fuel shortages from the Fuel Shortage Registry |
+| **Commodity Ports** | Mineral export and import ports and terminals |
+
+### Energy Panels
+
+The asset registries behind these panels are curated from operator disclosures, regulator filings, and public datasets. Each status badge is derived from an evidence bundle, and selecting a row, or a marker on the flat map, opens a drawer with that evidence. Methodology: [pipelines](/methodology/pipelines), [storage](/methodology/storage), [fuel shortages](/methodology/shortages), [disruptions](/methodology/disruptions).
+
+| Panel | Description |
+|-------|-------------|
+| **Global Energy Risk Overview** | One row of tiles: Hormuz transit status, EU gas storage fill, Brent price with its daily change, the count of active disruptions, data freshness, and a day-of-crisis counter. Each tile loads on its own and shows "—" when its source fails |
+| **Oil & Gas Pipeline Status** | Asset, route, capacity, and a status badge (flowing, reduced, offline, or disputed). The drawer shows the evidence, sanctions references, and the asset's disruption timeline |
+| **Strategic Storage Atlas** | Underground gas storage, strategic petroleum reserve caverns, LNG terminals, and tank farms, with country, type, capacity, and status |
+| **Global Fuel Shortage Registry** | Country and product, start date, evidence, and a severity badge: confirmed (red) or watch (amber). Confirmed shortages sort first |
+| **Energy Disruptions Log** | Pipeline and storage outages, filterable by cause (sabotage, sanction, mechanical, maintenance, war, weather, commercial) with an ongoing-only toggle. Selecting an event opens the affected asset's drawer |
+| **GCC Energy Investments** | The GCC investment register described under [Finance Panels](#finance-panels) |
+
+Global Energy Risk Overview is on by default only in the energy variant. The other four energy panels are also on by default in the geopolitical variant.

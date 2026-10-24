@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
+import { TOOL_DESCRIPTION_MAX_BYTES } from '../api/mcp/constants.ts';
 import {
   TOOL_LIST_RESPONSE,
   TOOL_REGISTRY,
@@ -86,11 +87,7 @@ describe('get_prediction_markets agent-facing category contract', () => {
     assert.match(tool.description, /Kalshi currently supplies no classifier tags/i);
     assert.match(tool.description, /source=kalshi[^.]*category=tech[^.]*returns no records/i);
     assert.match(tool.description, /fall back to finance/i);
-    assert.doesNotMatch(
-      tool.description,
-      /Polymarket/i,
-      'the registry description must not imply the multi-venue payload is Polymarket-only',
-    );
+    assert.match(tool.description, /7d: Polymarket only/);
     assert.match(
       tool.inputSchema.properties.category.description,
       /Omit for all three/i,
@@ -125,13 +122,14 @@ describe('get_prediction_markets agent-facing category contract', () => {
     }
   });
 
-  it('keeps every category discoverable in the actual compressed tools/list description', () => {
+  it('keeps every category discoverable in the actual tools/list description', () => {
     const publicTool = TOOL_LIST_RESPONSE.find((entry) => entry.name === TOOL_NAME);
     assert.ok(publicTool, `${TOOL_NAME} must be published by tools/list`);
     assert.ok(
-      Buffer.byteLength(publicTool.description, 'utf8') <= 120,
-      'tools/list description must stay within the registry compression budget',
+      Buffer.byteLength(publicTool.description, 'utf8') <= TOOL_DESCRIPTION_MAX_BYTES,
+      'tools/list description must stay within the per-tool description budget',
     );
+    assert.equal(publicTool.description, tool.description, 'tools/list ships the registry description whole');
     assertEnglishCategoryMeaning(publicTool.description, 'tools/list description');
     assert.match(publicTool.description, /untagged fallback/i);
     assertNoGeopoliticalDefault(publicTool.description, 'tools/list description');
@@ -146,6 +144,38 @@ describe('get_prediction_markets agent-facing category contract', () => {
     const cardTool = serverCard.tools.find((entry) => entry.name === TOOL_NAME);
     assert.ok(cardTool, `${TOOL_NAME} must be published in the server card`);
     assert.equal(cardTool.description, tool.description);
+    assert.match(cardTool.description, /sort=move_24h\|move_7d/);
+  });
+
+  it('exposes optional moves and sorts each bucket before limiting, with unknowns last', () => {
+    assert.deepEqual(tool.inputSchema.properties.sort.enum, ['rank', 'move_24h', 'move_7d']);
+    assert.equal(tool.inputSchema.properties.sort.default, 'rank');
+    const rows = [
+      { title: 'unknown', source: 'kalshi' },
+      { title: 'small', source: 'polymarket', change24h: 1, change7d: -20 },
+      { title: 'down', source: 'polymarket', change24h: -10, change7d: 0 },
+      { title: 'up', source: 'kalshi', change24h: 10 },
+      { title: 'zero', source: 'kalshi', change24h: 0 },
+    ];
+    const payload = { 'markets-bootstrap': Object.fromEntries(EXPECTED_CATEGORIES.map(b => [b, structuredClone(rows)])) };
+    for (const category of EXPECTED_CATEGORIES) {
+      const properties = tool.outputSchema.properties.data.properties['markets-bootstrap'].properties[category].items.properties;
+      for (const field of ['change24h', 'change7d']) assert.deepEqual(properties[field], { type: 'number', minimum: -100, maximum: 100 });
+      const sorted = tool._postFilter(structuredClone(payload), { sort: 'move_24h', limit: 0 });
+      assert.deepEqual(sorted['markets-bootstrap'][category].map(m => m.title), ['down', 'up', 'small', 'zero', 'unknown']);
+      const weekly = tool._postFilter(structuredClone(payload), { sort: 'move_7d', limit: 2 });
+      assert.deepEqual(weekly['markets-bootstrap'][category].map(m => m.title), ['small', 'down']);
+      for (const sort of [undefined, 'rank']) assert.deepEqual(tool._postFilter(structuredClone(payload), { sort, limit: 0 })['markets-bootstrap'][category], rows);
+    }
+    assert.deepEqual(tool._postFilter(structuredClone(payload), { sort: 'move_24h', source: 'kalshi', category: 'finance', limit: 1 })['markets-bootstrap'], { geopolitical: [], tech: [], finance: [rows[3]] });
+    assert.deepEqual(payload['markets-bootstrap'].tech, rows);
+  });
+
+  it('documents sort and percentage-point units in both references', () => {
+    for (const reference of [englishReference, chineseReference]) {
+      const section = sectionForTool(reference, TOOL_NAME);
+      for (const name of ['sort', 'rank', 'move_24h', 'move_7d', 'change24h', 'change7d']) assert.ok(section.includes(name), name);
+    }
   });
 
   it('keeps the detailed English reference equal to the canonical description', () => {

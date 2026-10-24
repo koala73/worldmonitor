@@ -11,13 +11,13 @@
 # Derive inventory metrics from the immutable build context. This stage uses
 # only Node builtins; the relay's production dependency install stays intact.
 # .dockerignore excludes local environment and credential files.
-FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS inventory-builder
+FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3 AS inventory-builder
 
 WORKDIR /workspace
 COPY . .
 RUN node scripts/generate-inventory-facts.mjs
 
-FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3
 
 # curl required by OREF polling (Node.js JA3 fingerprint blocked by Akamai; curl passes)
 RUN apk add --no-cache curl
@@ -55,6 +55,9 @@ COPY scripts/lib/llm-telemetry.cjs ./scripts/lib/llm-telemetry.cjs
 COPY scripts/lib/llm-model-policy.cjs ./scripts/lib/llm-model-policy.cjs
 # DNS-vetted, address-pinned lookup for the public /rss proxy.
 COPY scripts/lib/notification-webhook-ssrf.cjs ./scripts/lib/notification-webhook-ssrf.cjs
+# Stable event ids + API fan-out list contract for rss_alert / market_alert
+# (shared with scripts/shipping-webhook-worker.mjs); required by ais-relay.cjs.
+COPY scripts/lib/occurrence-events.cjs ./scripts/lib/occurrence-events.cjs
 # Curated X news-account helpers required by ais-relay.cjs (#6654).
 COPY scripts/lib/x-news-accounts.cjs ./scripts/lib/x-news-accounts.cjs
 COPY scripts/lib/poll-generation-guard.cjs ./scripts/lib/poll-generation-guard.cjs
@@ -69,6 +72,15 @@ COPY scripts/lib/publisher-link-relay-gate.cjs ./scripts/lib/publisher-link-rela
 COPY scripts/lib/classify-digest-request.cjs ./scripts/lib/classify-digest-request.cjs
 COPY scripts/lib/saudi-civil-defense-alerts.cjs ./scripts/lib/saudi-civil-defense-alerts.cjs
 COPY scripts/lib/chokepoint-disruption-alerts.cjs ./scripts/lib/chokepoint-disruption-alerts.cjs
+# Middle East strike feed (conflict:iran-events:v1), required at relay startup;
+# the gazetteer reads outbreak-places.json at require time. The GDELT backstop
+# lazily imports _conflict-gdelt-bulk.mjs and its two helpers below.
+COPY scripts/lib/middle-east-strikes.cjs ./scripts/lib/middle-east-strikes.cjs
+COPY scripts/lib/middle-east-strikes-gazetteer.cjs ./scripts/lib/middle-east-strikes-gazetteer.cjs
+COPY scripts/data/outbreak-places.json ./scripts/data/outbreak-places.json
+COPY scripts/_conflict-gdelt-bulk.mjs ./scripts/_conflict-gdelt-bulk.mjs
+COPY scripts/_conflict-gdelt.mjs ./scripts/_conflict-gdelt.mjs
+COPY scripts/_gdelt-country-codes.mjs ./scripts/_gdelt-country-codes.mjs
 # Jev shadow observer required by ais-relay.cjs; its shared/jev-classify.js
 # half ships with the `COPY shared/` below.
 COPY scripts/lib/jev-classify-relay.cjs ./scripts/lib/jev-classify-relay.cjs
@@ -76,6 +88,9 @@ COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-is
 # country-names.json backs the full name→ISO2 map (#5359 uniform country
 # scoping); required by country-name-to-iso2.cjs at startup.
 COPY scripts/shared/country-names.json ./scripts/shared/country-names.json
+# news-places.json maps city/region names to ISO2 for the classify threat
+# summary (threatSummaryCountries); required by ais-relay.cjs at startup.
+COPY scripts/shared/news-places.json ./scripts/shared/news-places.json
 # iso3-to-iso2.json maps WMO SWIC member `code` (ISO 3166-1 alpha-3) onto the
 # weather_alert countryCode. scripts/_weather-alert-select.mjs reads it at
 # import time; missing it is ERR_MODULE_NOT_FOUND / ENOENT at relay start.
@@ -139,6 +154,8 @@ COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
 # guards this COPY list against future regressions.
 COPY scripts/_seed-envelope-source.mjs ./scripts/_seed-envelope-source.mjs
 COPY scripts/_seed-contract.mjs ./scripts/_seed-contract.mjs
+# _seed-payload-codec.mjs is imported by _seed-utils.mjs (gzip-encoded seed values).
+COPY scripts/_seed-payload-codec.mjs ./scripts/_seed-payload-codec.mjs
 # ais-relay dynamically imports this helper to write the China country index
 # companion cache from a one-month Yahoo chart.
 COPY scripts/_country-stock-index.mjs ./scripts/_country-stock-index.mjs

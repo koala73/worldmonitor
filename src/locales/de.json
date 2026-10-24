@@ -234,7 +234,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Status zu Schätzung und Imputation nicht angegeben"
     },
     "fiveFactorScorecard": {
       "title": "Fünf-Faktor-Resilienz-Scorecard",
@@ -711,9 +712,9 @@
       "alertTitle": {
         "configured": "Desktop-Einstellungen konfiguriert",
         "needsKeys": "Konfigurieren Sie API-Schlüssel, um Funktionen freizuschalten",
-        "some": "Für einige Funktionen sind API-Schlüssel erforderlich"
+        "some": "Für einige Funktionen sind API-Schlüssel erforderlich",
+        "pro": "World Monitor Pro ist aktiv"
       },
-      "skipSetup": "Überspringen Sie das Setup — eine einzige World Monitor-Lizenz schaltet alles frei. Tragen Sie sich in die Warteliste ein, um frühzeitigen Zugang zu erhalten.",
       "summary": {
         "desktop": "Desktop-Modus",
         "web": "Webmodus (schreibgeschützt, serververwaltete Anmeldeinformationen)",
@@ -742,7 +743,9 @@
         "OLLAMA_API_URL": "z. B. http://127.0.0.1:11434 (Ollama) oder http://127.0.0.1:1234/v1 (LM Studio) – OpenAI-kompatibler Endpunkt.",
         "OLLAMA_MODEL": "z. B. llama3.1:8b – Modell-Tag, das für die Zusammenfassung verwendet wird."
       },
-      "reserveEarlyAccess": "Frühen Zugriff reservieren"
+      "proCloud": "Funktionen ohne lokalen API-Schlüssel nutzen World Monitor Cloud-Daten.",
+      "skipSetupPro": "Setup überspringen: Melden Sie sich mit World Monitor Pro an, um Cloud-Daten statt Ihrer eigenen API-Schlüssel zu nutzen.",
+      "getPro": "World Monitor Pro erwerben"
     },
     "countryIntel": {
       "identifying": "Land wird identifiziert...",
@@ -1128,7 +1131,7 @@
         "commodityHubs": "Rohstoffzentren",
         "gulfInvestments": "Investitionen des Golfkooperationsrats",
         "tradeRoutes": "Handelsrouten",
-        "iranAttacks": "Iran-Angriffe",
+        "iranAttacks": "Angriffe im Nahen Osten",
         "gpsJamming": "Navigationsstörung",
         "dayNight": "Tag/Nacht",
         "ciiChoropleth": "Landinstabilität",
@@ -1179,7 +1182,9 @@
         "sourceIomDtm": "Quelle: IOM DTM",
         "sinceDate": "seit {{date}}",
         "lastMonth": "letzten Monat",
-        "sourceUnhcrOdp": "Quelle: UNHCR Operational Data Portal"
+        "sourceUnhcrOdp": "Quelle: UNHCR Operational Data Portal",
+        "displaced": "Vertriebene",
+        "sourceIdmc": "Quelle: IDMC"
       },
       "layerHelp": {
         "title": "Leitfaden zu Kartenebenen",
@@ -1281,6 +1286,7 @@
       "infoTooltip": "<strong>Klimanomalie-Monitor</strong> Temperatur- und Niederschlagsabweichungen von der 30-Tage-Basislinie. Daten von Open-Meteo (ERA5-Reanalyse).<ul><li><strong>Extrem</strong>: >5°C oder >80mm/Tag Abweichung</li><li><strong>Moderat</strong>: >3°C oder >40mm/Tag Abweichung</li></ul>Überwacht 15 konflikt-/katastrophengefährdete Zonen."
     },
     "newsPanel": {
+      "translationUnavailable": "Übersetzung nicht verfügbar. Prüfen Sie Ihre KI-Anbietereinstellungen und versuchen Sie es erneut.",
       "close": "Schließen",
       "summarize": "Dieses Panel zusammenfassen",
       "generatingSummary": "Zusammenfassung wird erstellt...",
@@ -1489,6 +1495,8 @@
       "capacityPercent": "{{percent}}% Kapazität",
       "noCountryImpacts": "Es wurden keine Länderauswirkungen festgestellt",
       "alternativeRoutes": "Alternative Routen",
+      "sharesCutZone": "gleiche Meerenge",
+      "estimateNote": "Schätzung: Kabelkapazität und Redundanz sind angenähert, nicht gemessen.",
       "countriesAffected": "Betroffene Länder ({{count}})",
       "links": "Verbindungen",
       "selectInfrastructureHint": "Wählen Sie die Infrastruktur aus, um die Kaskadenwirkung zu analysieren",
@@ -1624,7 +1632,21 @@
       "latestChange": "Letzte Veränderung",
       "accelerating": "Beschleunigt",
       "inDays": "in {{days}} Tagen",
-      "crossBorderNote": "Operatives Datenportal des Flüchtlingshilfswerks der Vereinten Nationen: Menschen, die in jeder Krise Grenzen überquert haben, aus den neuesten Länderberichten. Situationen überschneiden sich, daher werden sie nicht addiert."
+      "crossBorderNote": "Operatives Datenportal des Flüchtlingshilfswerks der Vereinten Nationen: Menschen, die in jeder Krise Grenzen überquert haben, aus den neuesten Länderberichten. Situationen überschneiden sich, daher werden sie nicht addiert.",
+      "last7And30": "Letzte 7 / 30 Tage",
+      "staleReport": "Veralteter Bericht",
+      "reported": "Anzahl",
+      "period": "Zeitraum",
+      "movementNote": "Jede Zeile behält ihre Quelle, ihr Berichtsdatum und ihre Messgröße. Bestände, Ankünfte und Grenzkontrollereignisse sind verschiedene Messgrößen. Quellen können sich überschneiden; addieren Sie ihre Zahlen nicht. WorldMonitor leitet diese Ansicht aus den verlinkten Quellen ab; dies bedeutet keine Billigung durch die Anbieter.",
+      "recent": "Kürzlich",
+      "last30Days": "Letzte 30 Tage",
+      "newThisWeek": "Neu diese Woche",
+      "conflict": "Konflikt",
+      "disaster": "Katastrophe",
+      "surge": "Anstieg",
+      "recentNote": "IDMC: Personen, die in den letzten 30 Tagen innerhalb ihres Landes vertrieben wurden. IDMC veröffentlicht Zahlen im Median drei Wochen nach der Vertreibung, daher werden aktuelle Wochen später erfasst. „Neu diese Woche\" zählt Zahlen, die in den letzten 7 Tagen veröffentlicht wurden. Anstieg: mindestens 5.000 Personen und das Dreifache des monatlichen Durchschnitts der vorherigen fünf Monate.",
+      "recentAsOf": "Daten vom {{date}}.",
+      "recentMissing": "Diesmal keine Daten für {{countries}}: Ihre Dateien konnten nicht geladen werden. Das heißt nicht, dass niemand vertrieben wurde."
     },
     "populationExposure": {
       "totalAffected": "Insgesamt betroffen",
@@ -3810,5 +3832,27 @@
       "description": "Quellen zu Iran, Israel, dem Golf und kurdischen Regionen aktivieren"
     },
     "unavailable": "Das {{preset}}-Paket ist mit den aktuellen Panels nicht verfügbar"
+  },
+  "countryHistory": {
+    "title": "Täglicher Länderverlauf",
+    "loading": "Täglichen Verlauf laden…",
+    "window": "Zeitraum",
+    "days": "{{days}} Tage",
+    "observed": "{{count}} Momentaufnahmen in {{days}} Tagen",
+    "legend": "CII (bernsteinfarben): Höhere Werte bedeuten mehr Instabilität. Resilienz (grün): Höhere Werte bedeuten mehr Kapazität. Punkte markieren Tage mit ausgewählten Schlagzeilen.",
+    "chart": "Tägliche CII- und Resilienzwerte. Datenlücken und Formeländerungen unterbrechen die Linien.",
+    "selectDate": "{{date}}, {{count}} ausgewählte Schlagzeilen",
+    "empty": "Keine täglichen Momentaufnahmen in diesem Zeitraum. Der Verlauf wächst nach der Aktivierung.",
+    "unavailable": "Der Verlauf ist vorübergehend nicht verfügbar. Bitte erneut versuchen.",
+    "retry": "Erneut versuchen",
+    "stale": "Die letzte erfolgreiche tägliche Erfassung liegt über 36 Stunden zurück.",
+    "break": "Formeländerung oder Beobachtungslücke. Nur Werte mit derselben Formel vergleichen.",
+    "partial": "Die Nachrichtenabdeckung war zum Erfassungszeitpunkt unvollständig.",
+    "resilience": "Resilienz",
+    "ciiMissing": "CII nicht verfügbar",
+    "resilienceMissing": "Resilienz nicht verfügbar",
+    "noEvents": "Für dieses Datum wurden keine ausgewählten Schlagzeilen erfasst. Das beweist nicht, dass keine Ereignisse stattfanden.",
+    "unlock90": "90 Tage mit Pro freischalten",
+    "unlock365": "365 Tage mit einem API-Tarif freischalten"
   }
 }

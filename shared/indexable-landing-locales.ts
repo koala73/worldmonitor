@@ -174,11 +174,17 @@ export function landingById(id: string): IndexableLandingLocale | undefined {
   return BY_ID.get(id);
 }
 
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 /** Exact landing paths only (`/`, `/es`, `/es/`). Nested paths do not match. */
 export function landingByPath(pathname: string): IndexableLandingLocale | undefined {
   const raw = typeof pathname === 'string' ? pathname : '';
   if (raw === '' || raw === '/') return defaultLandingLocale();
-  const stripped = raw.replace(/\/+$/, '') || '/';
+  const stripped = stripTrailingSlashes(raw) || '/';
   if (stripped === '/') return defaultLandingLocale();
   if (stripped.includes('/', 1)) return undefined;
   const segment = stripped.slice(1);

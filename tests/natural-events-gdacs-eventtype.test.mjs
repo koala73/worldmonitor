@@ -124,6 +124,19 @@ test('dedupes an event that GDACS lists under two types by eventtype+eventid, no
   assert.deepEqual(events.map((e) => e.id).sort(), ['gdacs-EQ-7', 'gdacs-FL-7']);
 });
 
+test('GDACS records keep the alert level, which natural.hazard webhook scopes filter on', async () => {
+  const { fetchFn } = gdacsStub({
+    FL: [feature('FL', 2, 'Orange')],
+    TC: [feature('TC', 4, 'Red')],
+  });
+
+  const { events } = await fetchGdacs(fetchFn);
+
+  assert.equal(events.find((e) => e.id === 'gdacs-FL-2').alertLevel, 'Orange');
+  assert.equal(events.find((e) => e.id === 'gdacs-TC-4').alertLevel, 'Red');
+  assert.ok(events.find((e) => e.id === 'gdacs-TC-4').title.startsWith('\u{1F534} '), 'the title prefix the dashboard renders is unchanged');
+});
+
 // ── the reader: fetchNaturalEvents + publish/after-publish ─────────────────
 
 function hkoCoverage(dataAvailable = true) {

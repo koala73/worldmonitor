@@ -43,6 +43,8 @@ import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
+import type { CrossBorderData, CrossBorderPoint } from '@/services/displacement';
+import { createCrossBorderMarker, crossBorderMarkerOffsets } from './cross-border-marker';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { AcledConflictEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import {
@@ -212,6 +214,7 @@ export class MapComponent {
   private militaryVessels: MilitaryVessel[] = [];
   private militaryVesselClusters: MilitaryVesselCluster[] = [];
   private naturalEvents: NaturalEvent[] = [];
+  private crossBorderPoints: CrossBorderPoint[] = [];
   private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
   private techEvents: TechEventMarker[] = [];
   private techActivities: TechHubActivity[] = [];
@@ -584,7 +587,7 @@ export class MapComponent {
       'ais', 'flights', 'aircraftEmergencies', 'gpsJamming',
       'natural', 'weather',                               // natural
       'economic',                                         // economic
-      'waterways',                                        // labels
+      'waterways', 'displacement',
       'ciiChoropleth',                                    // Candidate only; SVG capability filter below omits it.
     ];
     const techLayers: (keyof MapLayers)[] = [
@@ -997,7 +1000,7 @@ export class MapComponent {
       if (!(target instanceof Element)) return false;
       return Boolean(
         target.closest(
-          '.map-controls, .time-slider, .layer-toggles, .map-legend, .layer-help-popup, .map-popup, button, select, input, textarea, a'
+          '.map-controls, .time-slider, .layer-toggles, .map-legend, .layer-help-popup, .layer-explanation-popup, .map-popup, button, select, input, textarea, a'
         )
       );
     };
@@ -1184,6 +1187,7 @@ export class MapComponent {
     }, { signal });
 
     this.container.addEventListener('click', (e) => {
+      if (shouldIgnoreInteractionStart(e.target)) return;
       if (!this.onCountryClick) return;
       if (performance.now() - lastDragEndTime < 300) return;
       if (shouldSuppressCountryClick(countryClickGesture)) return;
@@ -1962,6 +1966,7 @@ export class MapComponent {
     if (layers.techHQs) add('techHQs', TECH_HQS);
     if (layers.accelerators) add('accelerators', ACCELERATORS);
     if (layers.techEvents) add('techEvents', this.techEvents);
+    if (layers.displacement) add('displacement', this.crossBorderPoints);
     if (layers.stockExchanges) add('stockExchanges', STOCK_EXCHANGES);
     if (layers.financialCenters) add('financialCenters', FINANCIAL_CENTERS);
     if (layers.centralBanks) add('centralBanks', CENTRAL_BANKS);
@@ -2191,6 +2196,28 @@ export class MapComponent {
     this.overlayAppendTarget = fragment;
 
     try {
+    if (this.state.layers.displacement) {
+      const offsets = crossBorderMarkerOffsets(this.crossBorderPoints);
+      for (const point of this.crossBorderPoints) {
+        if (this.isOverlayMarkerCut(point)) continue;
+        const pos = projection([point.lon, point.lat]);
+        if (!pos) continue;
+        const marker = createCrossBorderMarker(point);
+        const [offsetX, offsetY] = offsets.get(point)!;
+        marker.style.position = 'absolute';
+        marker.style.left = `${pos[0] + offsetX}px`;
+        marker.style.top = `${pos[1] + offsetY}px`;
+        marker.style.transform = 'translate(-50%, -50%) scale(var(--marker-scale, 1))';
+        marker.addEventListener('click', (event) => {
+          event.stopPropagation();
+          const rect = marker.getBoundingClientRect();
+          const containerRect = this.container.getBoundingClientRect();
+          this.popup.show({ type: 'crossBorder', data: point,
+            x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
+        });
+        this.appendOverlay(marker);
+      }
+    }
     for (const item of slices.news) {
       if (this.isOverlayMarkerCut(item)) continue;
       const pos = projection([item.lon, item.lat]);
@@ -5081,6 +5108,11 @@ export class MapComponent {
 
   public setNaturalEvents(events: NaturalEvent[]): void {
     this.naturalEvents = events;
+    this.render();
+  }
+
+  public setCrossBorderArrivals(data: CrossBorderData): void {
+    this.crossBorderPoints = [...data.points, ...(data.deaths ?? [])];
     this.render();
   }
 

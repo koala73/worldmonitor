@@ -966,6 +966,168 @@ export interface UsInterestRateObservation {
   percent: number;
 }
 
+export interface GetCapitalFlowsRequest {
+  country: string;
+  includeSeries: boolean;
+  counterpart: string;
+}
+
+export interface GetCapitalFlowsResponse {
+  countries: CapitalFlowCountry[];
+  latest?: CapitalFlowLatest;
+  seededAt: number;
+  unavailable: boolean;
+  sources: string[];
+  method: Record<string, string>;
+  pair?: CapitalFlowPair;
+}
+
+export interface CapitalFlowCountry {
+  country: string;
+  iso3: string;
+  gdpUsdBn?: number;
+  gdpYear: number;
+  bop?: CapitalFlowBop;
+  bank?: CapitalFlowBank;
+  portfolio?: CapitalFlowPortfolio;
+  fdi?: CapitalFlowFdi;
+}
+
+export interface CapitalFlowBop {
+  frequency: string;
+  latestPeriod: string;
+  state?: CapitalFlowState;
+  episodes?: CapitalFlowEpisodes;
+  totals?: CapitalFlowTotals;
+  series: CapitalFlowPeriod[];
+}
+
+export interface CapitalFlowState {
+  inflow: string;
+  outflow: string;
+  inflowZ?: number;
+  outflowZ?: number;
+}
+
+export interface CapitalFlowEpisodes {
+  surge: CapitalFlowEpisode[];
+  stop: CapitalFlowEpisode[];
+  flight: CapitalFlowEpisode[];
+  retrenchment: CapitalFlowEpisode[];
+}
+
+export interface CapitalFlowEpisode {
+  start: string;
+  end: string;
+  quarters: number;
+  peakZ: number;
+  peakPeriod: string;
+}
+
+export interface CapitalFlowTotals {
+  inflowsUsdBn?: number;
+  outflowsUsdBn?: number;
+  netUsdBn?: number;
+  inflowsPctGdp?: number;
+  outflowsPctGdp?: number;
+  inflowsYoyPct?: number;
+  outflowsYoyPct?: number;
+}
+
+export interface CapitalFlowPeriod {
+  period: string;
+  inflows?: CapitalFlowComponents;
+  outflows?: CapitalFlowComponents;
+  errorsOmissions?: number;
+}
+
+export interface CapitalFlowComponents {
+  fdi?: number;
+  portfolio?: number;
+  other?: number;
+  total?: number;
+}
+
+export interface CapitalFlowBank {
+  latestPeriod: string;
+  nonBankDepositsAbroad?: CapitalFlowPosition;
+  householdDepositsAbroad?: CapitalFlowPosition;
+  nonBankBorrowingFromAbroad?: CapitalFlowPosition;
+  topBankLocations: CapitalFlowCounterparty[];
+  publishesBilateral: boolean;
+  topDepositorOrigins: CapitalFlowCounterparty[];
+}
+
+export interface CapitalFlowPosition {
+  stockUsdBn?: number;
+  flow4qUsdBn?: number;
+}
+
+export interface CapitalFlowCounterparty {
+  country: string;
+  stockUsdBn?: number;
+  flow4qUsdBn?: number;
+}
+
+export interface CapitalFlowPortfolio {
+  year: number;
+  foreignHoldingsUsdBn?: number;
+  foreignHoldingsPrevYearUsdBn?: number;
+  changePct?: number;
+  reporterCount: number;
+  topHolders: CapitalFlowCounterparty[];
+  holdingsAbroadUsdBn?: number;
+  topDestinations: CapitalFlowCounterparty[];
+}
+
+export interface CapitalFlowFdi {
+  year: number;
+  inwardUsdBn?: number;
+  topInvestors: CapitalFlowCounterparty[];
+  outwardUsdBn?: number;
+  topDestinations: CapitalFlowCounterparty[];
+}
+
+export interface CapitalFlowLatest {
+  bopQuarter: string;
+  bopYear: string;
+  bisQuarter: string;
+  pipYear: number;
+  fdiYear: number;
+}
+
+export interface CapitalFlowPair {
+  country: string;
+  counterpart: string;
+  bankPeriod: string;
+  portfolioYear: number;
+  aDepositsInB?: CapitalFlowPairLeg;
+  bDepositsInA?: CapitalFlowPairLeg;
+  aBorrowingFromB?: CapitalFlowPairLeg;
+  bBorrowingFromA?: CapitalFlowPairLeg;
+  aHoldingsOfB?: CapitalFlowPairLeg;
+  bHoldingsOfA?: CapitalFlowPairLeg;
+  aFdiInB?: CapitalFlowPairLeg;
+  bFdiInA?: CapitalFlowPairLeg;
+  fdiYear: number;
+}
+
+export interface CapitalFlowPairLeg {
+  status: string;
+  stockUsdBn?: number;
+  flow4qUsdBn?: number;
+  prevYearUsdBn?: number;
+  basis: string;
+  counterpartReportUsdBn?: number;
+  history: CapitalFlowPairPoint[];
+  instrument: string;
+}
+
+export interface CapitalFlowPairPoint {
+  period: string;
+  usdBn: number;
+}
+
 export interface GetWorldCpiMonthlyRequest {
   history: boolean;
   country: string;
@@ -1097,6 +1259,7 @@ export interface EconomicServiceHandler {
   getUsCpiMonthly(ctx: ServerContext, req: GetUsCpiMonthlyRequest): Promise<GetUsCpiMonthlyResponse>;
   getUsTreasuryParYieldCurve(ctx: ServerContext, req: GetUsTreasuryParYieldCurveRequest): Promise<GetUsTreasuryParYieldCurveResponse>;
   getUsInterestRates(ctx: ServerContext, req: GetUsInterestRatesRequest): Promise<GetUsInterestRatesResponse>;
+  getCapitalFlows(ctx: ServerContext, req: GetCapitalFlowsRequest): Promise<GetCapitalFlowsResponse>;
   getWorldCpiMonthly(ctx: ServerContext, req: GetWorldCpiMonthlyRequest): Promise<GetWorldCpiMonthlyResponse>;
   getGovernmentYieldCurve(ctx: ServerContext, req: GetGovernmentYieldCurveRequest): Promise<GetGovernmentYieldCurveResponse>;
 }
@@ -1146,7 +1309,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1197,7 +1360,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1244,7 +1407,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1281,7 +1444,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1318,7 +1481,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1355,7 +1518,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1403,7 +1566,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1440,7 +1603,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1477,7 +1640,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1514,7 +1677,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1557,7 +1720,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1594,7 +1757,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1631,7 +1794,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1668,7 +1831,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1705,7 +1868,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1753,7 +1916,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1801,7 +1964,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1838,7 +2001,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1875,7 +2038,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1912,7 +2075,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1949,7 +2112,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1986,7 +2149,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2023,7 +2186,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2060,7 +2223,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2097,7 +2260,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2134,7 +2297,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2171,7 +2334,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2208,7 +2371,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2256,7 +2419,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2321,7 +2484,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2369,7 +2532,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2417,7 +2580,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2465,7 +2628,56 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-capital-flows",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetCapitalFlowsRequest = {
+            country: params.get("country") ?? "",
+            includeSeries: params.get("include_series") === "true",
+            counterpart: params.get("counterpart") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCapitalFlows", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCapitalFlows(ctx, body);
+          return new Response(JSON.stringify(result as GetCapitalFlowsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2514,7 +2726,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2563,7 +2775,7 @@ export function createEconomicServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },

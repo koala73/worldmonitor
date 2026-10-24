@@ -27,7 +27,7 @@ import {
   companyMonitoringXDemotionReasonValidator,
   companyMonitoringXStorageStateValidator,
 } from "./companyMonitoring/validators";
-import { SHARED_API_BUDGET } from "./config/productCatalog";
+import { entitlementFeaturesValidator } from "./lib/entitlementFeaturesValidator";
 
 // Subscription status enum — maps Dodo statuses to our internal set
 const subscriptionStatus = v.union(
@@ -641,6 +641,11 @@ export default defineSchema({
     currentPeriodStart: v.number(),
     currentPeriodEnd: v.number(),
     cancelledAt: v.optional(v.number()),
+    // Epoch ms when a portal cancel was first seen on an active row
+    // (`cancel_at_next_billing_date`). Only the confirmation email's episode
+    // key; whether a cancel is scheduled is read from rawPayload by
+    // `isCancellationScheduled`.
+    cancelScheduledAt: v.optional(v.number()),
     // Stable first-class projection of `rawPayload.customer.customer_id`
     // (the Dodo customer this sub was paid as). Optional because
     // `DodoSubscriptionData.customer` is itself optional and lifecycle
@@ -729,7 +734,10 @@ export default defineSchema({
     // the three-day retry cohort instead of every paid-through cancellation.
     // Rows without cancelledAt are omitted (optional field) — the scan
     // already skips those as having no stable episode key.
-    .index("by_status_cancelledAt", ["status", "cancelledAt"]),
+    .index("by_status_cancelledAt", ["status", "cancelledAt"])
+    // Same three-day confirmation retry cohort for portal-scheduled cancels,
+    // which stay `active` until period end.
+    .index("by_status_cancelScheduledAt", ["status", "cancelScheduledAt"]),
 
   // What happened in a Pro-activation session, one row per subscription per
   // cohort (see `cohort` below).
@@ -820,50 +828,7 @@ export default defineSchema({
   entitlements: defineTable({
     userId: v.string(),
     planKey: v.string(),
-    features: v.object({
-      tier: v.number(),
-      maxDashboards: v.number(),
-      apiAccess: v.boolean(),
-      apiRateLimit: v.number(),
-      planLimits: v.optional(v.object({
-        apiRequestsPerDay: v.union(v.number(), v.null()),
-        apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
-        // `SHARED_API_BUDGET` = the plan has no MCP allowance of its own; its
-        // MCP calls charge `apiRequestsPerDay`. Imported rather than retyped:
-        // this validator is what ACCEPTS the marker on every entitlement write,
-        // so a renamed constant that left a stale string literal here would
-        // typecheck and then reject the webhook's write at runtime.
-        mcpCallsPerDay: v.union(v.number(), v.null(), v.literal(SHARED_API_BUDGET)),
-        // Optional for entitlement rows written before the dashboard-AI
-        // dimension existed; the read-time catalog merge supplies it.
-        dashboardAiCallsPerDay: v.optional(v.union(v.number(), v.null())),
-        mcpBurstRequestsPerMinute: v.union(v.number(), v.null()),
-      })),
-      prioritySupport: v.boolean(),
-      exportFormats: v.array(v.string()),
-      // Optional for backward-compat with existing rows written before
-      // plan 2026-05-10-001 (Pro MCP). Dodo webhooks repopulate this on
-      // the next subscription event; legacy rows return undefined and
-      // every consumer treats undefined as "no MCP access" (fail-closed).
-      mcpAccess: v.optional(v.boolean()),
-      // Optional — per-account daily REST allowance (#3199). Legacy rows
-      // predate it; the rate-limit consumer treats undefined as "no daily
-      // limit" (fail-OPEN). Catalog-sourced writes always set it, so this
-      // validator MUST accept it or the webhook's entitlement write is
-      // rejected (v.object is strict on extra keys).
-      apiDailyAllowance: v.optional(v.number()),
-      // Optional — partner-embed key issuance. Legacy rows predate it; the
-      // read-time catalog merge supplies it and consumers treat undefined as
-      // false (fail-closed). Catalog-sourced writes always set it, so this
-      // validator MUST accept it or the Dodo webhook's entitlement write is
-      // rejected at runtime (v.object is strict on extra keys).
-      embedAccess: v.optional(v.boolean()),
-      // Optional — data-export entitlement (plan 2026-07-25-001). Legacy rows
-      // predate it; consumers treat undefined on a tier >= 2 row as entitled
-      // (fail-OPEN, permanently — see the PlanFeatures JSDoc). Catalog-sourced
-      // writes always set it, so this validator MUST accept it.
-      dataExport: v.optional(v.boolean()),
-    }),
+    features: entitlementFeaturesValidator,
     validUntil: v.number(),
     // Optional complimentary-entitlement floor. When set and in the future,
     // subscription.expired events skip the normal downgrade-to-free so
@@ -876,6 +841,18 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_validUntil", ["validUntil"]),
+
+  // Customer AI routing restriction (contractual, e.g. "Anthropic only").
+  // Kept out of `entitlements.features` on purpose: billing webhooks rewrite
+  // that object, and a compliance control must not ride on it. When a row
+  // exists, the edge uses `allowedProviders` as the whole LLM provider chain
+  // for this user's own input (server/_shared/ai-routing-policy.ts).
+  aiRoutingPolicies: defineTable({
+    userId: v.string(),
+    allowedProviders: v.array(v.string()),
+    reason: v.string(),
+    updatedAt: v.number(),
+  }).index("by_userId", ["userId"]),
 
   apiUsageRollups: defineTable({
     userId: v.string(),
@@ -1123,6 +1100,7 @@ export default defineSchema({
   paymentWebhookFailureSummary: defineTable({
     key: v.literal("global"),
     unresolvedCount: v.number(),
+    lastSignatureFailureReportedAt: v.optional(v.number()),
     eventTypes: v.array(
       v.object({
         eventType: v.string(),

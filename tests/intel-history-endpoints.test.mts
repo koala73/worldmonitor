@@ -152,7 +152,7 @@ describe('scope normalization', () => {
   // to the caller, from "we have no history for that country".
   it('upper-cases and trims country before querying', async () => {
     stubFetch({
-      [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [convexRecord] }),
+      [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [convexRecord], nextCursor: '' }),
     });
 
     await getIntelTimeline(ctx, { domain: '', country: ' ua ', from: 0, to: 0, limit: 0 });
@@ -163,7 +163,7 @@ describe('scope normalization', () => {
 
   it('lower-cases and trims domain before querying', async () => {
     stubFetch({
-      [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [] }),
+      [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [], nextCursor: '' }),
     });
 
     await getIntelTimeline(ctx, { domain: ' Conflict ', country: '', from: 0, to: 0, limit: 0 });
@@ -173,7 +173,7 @@ describe('scope normalization', () => {
   });
 
   it('rejects negative bounds before contacting Convex', async () => {
-    stubFetch({ [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [] }) });
+    stubFetch({ [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [], nextCursor: '' }) });
     await assert.rejects(getIntelTimeline(ctx, {
       domain: 'conflict',
       country: '',
@@ -539,10 +539,96 @@ describe('searchIntelHistory handler', () => {
 // ── GetIntelTimeline ────────────────────────────────────────────────────────
 
 describe('getIntelTimeline handler', () => {
+  it('forwards continuation cursors and returns the next page cursor', async () => {
+    stubFetch({
+      [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [convexRecord], partial: true, nextCursor: 'next-page' }),
+    });
+    const res = await getIntelTimeline(ctx, {
+      domain: 'conflict', country: '', from: 0, to: 0, limit: 2, cursor: 'previous-page',
+    });
+    assert.equal(calls.find((call) => call.url === CONVEX_TIMELINE_URL)?.body?.cursor, 'previous-page');
+    assert.equal(res.nextCursor, 'next-page');
+    assert.equal(res.partial, true);
+  });
+
+  it('rejects oversized cursors before any upstream call', async () => {
+    stubFetch({});
+    await assert.rejects(getIntelTimeline(ctx, {
+      domain: 'conflict', country: '', from: 0, to: 0, limit: 0, cursor: 'x'.repeat(4097),
+    }), validationFailure('cursor', /4096/));
+    assert.equal(calls.length, 0);
+  });
+
+  it('reports an invalid store cursor as a request error', async () => {
+    stubFetch({ [CONVEX_TIMELINE_URL]: () => jsonResponse({ error: 'INVALID_CURSOR' }, 400) });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await assert.rejects(getIntelTimeline(ctx, {
+        domain: 'conflict', country: '', from: 0, to: 0, limit: 0, cursor: 'invalid',
+      }), validationFailure('cursor', /invalid/i));
+    }
+  });
+
+  it('rejects a malformed cursor and still paginates a valid one', async () => {
+    stubFetch({
+      [CONVEX_TIMELINE_URL]: (call) => {
+        if (call.body?.cursor === 'not-a-cursor') return jsonResponse({ error: 'INVALID_CURSOR' }, 400);
+        if (call.body?.cursor === 'page-2') {
+          return jsonResponse({ records: [{ ...convexRecord, title: 'older' }], partial: false, nextCursor: '' });
+        }
+        return jsonResponse({ records: [convexRecord], partial: true, nextCursor: 'page-2' });
+      },
+    });
+
+    await assert.rejects(getIntelTimeline(ctx, {
+      domain: 'conflict', country: 'UA', from: 0, to: 0, limit: 1, cursor: 'not-a-cursor',
+    }), validationFailure('cursor', /invalid/i));
+
+    const first = await getIntelTimeline(ctx, {
+      domain: 'conflict', country: 'UA', from: 0, to: 0, limit: 1, cursor: '',
+    });
+    assert.equal(first.upstreamUnavailable, false);
+    assert.equal(first.partial, true);
+    assert.equal(first.nextCursor, 'page-2');
+    assert.deepEqual(first.records.map((record) => record.title), ['Shelling near Kharkiv']);
+
+    const second = await getIntelTimeline(ctx, {
+      domain: 'conflict', country: 'UA', from: 0, to: 0, limit: 1, cursor: first.nextCursor,
+    });
+    assert.equal(second.upstreamUnavailable, false);
+    assert.equal(second.partial, false);
+    assert.equal(second.nextCursor, '');
+    assert.deepEqual(second.records.map((record) => record.title), ['older']);
+  });
+
+  it('keeps continuation pages in separate opaque cache keys', async () => {
+    stubFetch({ [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [], partial: false, nextCursor: '' }) });
+    const scope = { domain: 'conflict', country: 'UA', from: 0, to: 0, limit: 2 };
+    await getIntelTimeline(ctx, scope);
+    await getIntelTimeline(ctx, { ...scope, cursor: 'opaque-next' });
+    const cacheKeys = calls.filter((call) => call.url.startsWith('https://fake-upstash.upstash.io/get/')).map((call) => call.url);
+    assert.equal(cacheKeys.length, 2);
+    assert.notEqual(cacheKeys[0], cacheKeys[1]);
+    assert.ok(cacheKeys.every((key) => !key.includes('opaque-next')));
+  });
+
+  it('preserves continuation after an empty bounded page', async () => {
+    stubFetch({ [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [], partial: true, nextCursor: 'older-events' }) });
+    const res = await getIntelTimeline(ctx, { domain: 'conflict', country: 'UA', from: 0, to: 0, limit: 1 });
+    assert.equal(res.upstreamUnavailable, false);
+    assert.deepEqual(res.records, []);
+    assert.equal(res.nextCursor, 'older-events');
+  });
+
+  it('fails closed when an older store omits continuation metadata', async () => {
+    stubFetch({ [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [convexRecord], partial: false }) });
+    const res = await getIntelTimeline(ctx, { domain: 'conflict', country: '', from: 0, to: 0, limit: 2 });
+    assert.deepEqual(res, { records: [], partial: false, upstreamUnavailable: true, nextCursor: '' });
+  });
+
   it('reads Convex chronologically without paying for an embedding', async () => {
     const { _score, ...timelineRecord } = convexRecord;
     stubFetch({
-      [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [timelineRecord] }),
+      [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [timelineRecord], nextCursor: '' }),
     });
 
     const res = await getIntelTimeline(ctx, {
@@ -573,14 +659,14 @@ describe('getIntelTimeline handler', () => {
   });
 
   it('accepts a country-only scope', async () => {
-    stubFetch({ [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [] }) });
+    stubFetch({ [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [], nextCursor: '' }) });
 
     await getIntelTimeline(ctx, { domain: '', country: 'UA', from: 0, to: 0, limit: 0 });
     assert.deepEqual(calls.find((call) => call.url === CONVEX_TIMELINE_URL)?.body, { country: 'UA', limit: 50 });
   });
 
   it('defaults limit to 50 and rejects values above 200', async () => {
-    stubFetch({ [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [] }) });
+    stubFetch({ [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [], nextCursor: '' }) });
 
     await getIntelTimeline(ctx, { domain: 'energy', country: '', from: 0, to: 0, limit: 0 });
     assert.equal(calls.find((call) => call.url === CONVEX_TIMELINE_URL)?.body?.limit, 50);

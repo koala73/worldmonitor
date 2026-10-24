@@ -168,10 +168,21 @@ describe('extractCountryData schema', () => {
     assert.equal(result, null);
   });
 
-  it('returns null when all rows have assessment_code=3', () => {
+  // JODI code 3 is "data has not been assessed", not "missing": Saudi Arabia,
+  // Kazakhstan, Nigeria, Venezuela and others publish their crude exports
+  // under it. Unassessed values are kept; only non-numeric cells are absent.
+  it('keeps a country whose rows are all assessment_code=3 (not assessed, still reported)', () => {
     const rows = makeFullRows('DE', '2025-11', '3');
     const result = extractCountryData(rows, 'DE');
-    assert.equal(result, null);
+    assert.ok(result !== null);
+    assert.equal(result.dataMonth, '2025-11');
+    assert.equal(result.crude.exportsKbd, 200);
+    assert.equal(result.diesel.demandKbd, 100);
+  });
+
+  it('returns null when every cell is a non-numeric placeholder (the UAE since 2019)', () => {
+    const rows = makeFullRows('AE', '2026-07', '3').map((r) => ({ ...r, OBS_VALUE: '-' }));
+    assert.equal(extractCountryData(rows, 'AE'), null);
   });
 
   it('includes all 6 product keys in output', () => {
@@ -212,15 +223,25 @@ describe('extractCountryData schema', () => {
     assert.ok(typeof result.seededAt === 'string');
   });
 
-  it('assessment_code=3 fields become null', () => {
+  it('assessment_code=3 fields keep their reported value', () => {
     const rows = [
       makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-11', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '894', ASSESSMENT_CODE: '3' }),
       makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-11', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'REFGROUT', OBS_VALUE: '500', ASSESSMENT_CODE: '1' }),
     ];
     const result = extractCountryData(rows, 'DE');
     assert.ok(result !== null);
-    assert.equal(result.diesel.demandKbd, null, 'code=3 TOTDEMO should be null');
+    assert.equal(result.diesel.demandKbd, 894, 'code=3 TOTDEMO is unassessed, not missing');
     assert.equal(result.diesel.refOutputKbd, 500, 'code=1 REFGROUT should have value');
+  });
+
+  it('Saudi crude exports published under code 3 survive (raw JODI 2026-05 row)', () => {
+    const rows = [
+      makeRow({ REF_AREA: 'SA', TIME_PERIOD: '2026-05', ENERGY_PRODUCT: 'CRUDEOIL', FLOW_BREAKDOWN: 'TOTEXPSB', OBS_VALUE: '3434.9032', ASSESSMENT_CODE: '3' }),
+      makeRow({ REF_AREA: 'SA', TIME_PERIOD: '2026-05', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTEXPSB', OBS_VALUE: '650', ASSESSMENT_CODE: '3' }),
+    ];
+    const result = extractCountryData(rows, 'SA');
+    assert.ok(result !== null);
+    assert.equal(result.crude.exportsKbd, 3434.9032);
   });
 
   it('anomaly cap: TOTDEMO > 10000 for non-US becomes null', () => {
@@ -251,9 +272,20 @@ describe('extractCountryData schema', () => {
     assert.equal(result.diesel.demandKbd, 900);
   });
 
-  it('skips month with only code=3 rows and uses earlier month', () => {
+  it('uses the newest month even when its values are unassessed (code=3)', () => {
     const rows = [
       makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-11', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '900', ASSESSMENT_CODE: '3' }),
+      makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-10', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '800', ASSESSMENT_CODE: '1' }),
+    ];
+    const result = extractCountryData(rows, 'DE');
+    assert.ok(result !== null);
+    assert.equal(result.dataMonth, '2025-11');
+    assert.equal(result.diesel.demandKbd, 900);
+  });
+
+  it('skips a month of placeholder cells and uses the earlier reported month', () => {
+    const rows = [
+      makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-11', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '-', ASSESSMENT_CODE: '3' }),
       makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-10', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '800', ASSESSMENT_CODE: '1' }),
     ];
     const result = extractCountryData(rows, 'DE');
@@ -427,10 +459,17 @@ describe('computeOilDemandChange', () => {
     assert.equal(
       computeOilDemandChange([
         ...demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }),
-        ...demandRows('CN', '2025-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }, '3'),
+        ...demandRows('CN', '2025-04', { GASDIES: '-', GASOLINE: '-', JETKERO: '-' }, '3'),
       ], 'CN', '2026-04'),
       null,
-      'assessment code 3 is not an observation',
+      'a placeholder cell is not an observation',
+    );
+    assert.ok(
+      computeOilDemandChange([
+        ...demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }),
+        ...demandRows('CN', '2025-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }, '3'),
+      ], 'CN', '2026-04') !== null,
+      'an unassessed (code 3) number is still an observation',
     );
     assert.equal(
       computeOilDemandChange([

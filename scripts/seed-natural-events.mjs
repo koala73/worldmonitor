@@ -494,6 +494,10 @@ export async function fetchGdacs(fetchFn = globalThis.fetch, { previousSources =
       magnitudeUnit: '',
       sourceUrl: props.url?.report || '',
       sourceName: 'GDACS',
+      // Orange or Red (Green is dropped above); natural.hazard webhook scopes
+      // filter on it (shipping-webhook-worker.mjs). Redis-only: the RPC proto
+      // does not carry it.
+      alertLevel: props.alertlevel,
       closed: props.eventtype === 'VO' && (props.iscurrent === false || props.iscurrent === 'false'),
       ...tcFields,
       forecastTrack: [],

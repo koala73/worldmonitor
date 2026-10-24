@@ -5,13 +5,13 @@ metaTitle: "World Monitor vs Dataminr for event alerts | World Monitor"
 keywords: "Dataminr evaluators, world monitor vs dataminr, global intelligence tools"
 audience: "Dataminr evaluators"
 pubDate: "2026-10-02"
-modifiedDate: "2026-10-17"
+modifiedDate: "2026-10-18"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
 ---
 
-This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 16, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
+This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 18, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
 
 ## TL;DR
 
@@ -40,7 +40,7 @@ Dataminr sells proprietary real-time event detection built on public and social 
 
 ## Where World Monitor is better
 
-World Monitor is the better fit when you want to run alerting yourself without a sales cycle. You write alert rules that filter by event type, severity (all, high or critical) and country. Each rule delivers to Slack, Microsoft Teams, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256, so your own system can check that a message came from World Monitor. Delivery is real time, or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item. The [notifications reference](https://www.worldmonitor.app/docs/api-notifications) documents the channels and the signature header. Alerts and digests need the Pro plan.
+World Monitor is the better fit when you want to run alerting yourself without a sales cycle. You write alert rules that filter by event type, severity (all, high or critical) and country. Each rule delivers to Slack, Microsoft Teams, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256, so your own system can check that a message came from World Monitor. Delivery is real time, or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item. News alerts and digest items also say how many independent publishers carry each story when that count is known, for example single publisher or 3 independent publishers, which shows how widely a story is covered, not whether it is true. The [notifications reference](https://www.worldmonitor.app/docs/api-notifications) documents the channels and the signature header. Alerts and digests need the Pro plan.
 
 For developers, World Monitor offers a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server for AI clients, which comes with Pro. The [incident feed page](https://www.worldmonitor.app/docs/incident-feed) lists the incident endpoints, their fields and how far back each goes. The same map shows conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, and it is free with no account. Each outlet has an editorial tier from 1 (wire or official) to 4 (aggregator or blog), a propaganda-risk band and, where it applies, a state-affiliation label: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme. Prices are published on the [plans page](https://www.worldmonitor.app/pro#pricing), and the code is open source under [AGPL-3.0](https://github.com/koala73/worldmonitor).
 
@@ -53,7 +53,7 @@ We have not compared alert latency, missed events, or false-positive rates. Data
 ## Pick World Monitor when
 
 - **You cannot justify an enterprise contract.** Prices are published and you can sign up without a sales call.
-- **Alerts must land where the team already works.** Rules deliver to Slack, Discord, Telegram, email or browser push, as they happen or as a digest.
+- **Alerts must land where the team already works.** Rules deliver to Slack, Microsoft Teams, Discord, Telegram, email or browser push, as they happen or as a digest.
 - **Your own system consumes the alerts.** A webhook signed with HMAC-SHA256 lets the receiver verify each message.
 - **You build on the data.** The REST API, SDKs, npm CLI and MCP server give developers and AI clients the same feeds.
 - **Your scope is countries, not addresses.** Country, event type and severity filters cover regional monitoring without facility geofences.

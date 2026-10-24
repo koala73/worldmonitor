@@ -3,6 +3,7 @@ import type { Infer } from "convex/values";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
+import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import {
   CHECKOUT_RATE_LIMITED,
@@ -21,6 +22,10 @@ import {
   INTEL_HISTORY_MAX_APPEND_RECORDS,
   INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS,
 } from "./intelHistory";
+import {
+  isInvalidCursorPage,
+  isInvalidPaginationCursorError,
+} from "./paginationCursor";
 
 // App-serving hosts only, aligned with api/_cors.js and server/cors.ts.
 const APP_ORIGIN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
@@ -80,23 +85,6 @@ export async function userPrefsOptionsHttpHandler(
   return new Response(null, { status: 204, headers });
 }
 
-async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.generateKey(
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const [sigA, sigB] = await Promise.all([
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(a)),
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(b)),
-  ]);
-  const aArr = new Uint8Array(sigA);
-  const bArr = new Uint8Array(sigB);
-  let diff = 0;
-  for (let i = 0; i < aArr.length; i++) diff |= aArr[i]! ^ bArr[i]!;
-  return diff === 0;
-}
 
 const tenantRelaySecrets = {
   gateway: "CONVEX_TENANT_RELAY_SECRET",
@@ -402,6 +390,44 @@ export async function internalEntitlementsHttpHandler(
     });
 }
 
+export async function internalAiRoutingPolicyHttpHandler(
+  ctx: ActionCtx,
+  request: Request,
+): Promise<Response> {
+  const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+  const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+  if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+    return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  const body = await parseJsonObjectBody<{ userId?: unknown }>(request);
+  if (!body) return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+  if (typeof body.userId !== "string" || body.userId.length === 0 || body.userId.length > 256) {
+    return Response.json({ error: "MISSING_USER_ID" }, { status: 400 });
+  }
+  const policy = await ctx.runQuery(internal.entitlements.getAiRoutingPolicyByUserId, { userId: body.userId });
+  return Response.json({ policy }, { status: 200 });
+}
+
+/**
+ * Railway delivery jobs (notification relay, digest seeder) read a user's AI
+ * routing policy before an LLM call that carries that user's data
+ * (scripts/lib/ai-routing-policy.cjs). Delivery-scoped relay secret only.
+ */
+export async function relayAiRoutingPolicyHttpHandler(
+  ctx: ActionCtx,
+  request: Request,
+): Promise<Response> {
+  const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+  if (unauthorized) return unauthorized;
+  const body = await parseJsonObjectBody<{ userId?: unknown }>(request);
+  if (!body) return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+  if (typeof body.userId !== "string" || body.userId.length === 0 || body.userId.length > 256) {
+    return Response.json({ error: "MISSING_USER_ID" }, { status: 400 });
+  }
+  const policy = await ctx.runQuery(internal.entitlements.getAiRoutingPolicyByUserId, { userId: body.userId });
+  return Response.json({ policy }, { status: 200 });
+}
+
 const http = httpRouter();
 
 // Only the edge contact handler may write leads after its public abuse checks.
@@ -455,6 +481,12 @@ http.route({
   path: "/api/internal-entitlements",
   method: "POST",
   handler: httpAction(internalEntitlementsHttpHandler),
+});
+
+http.route({
+  path: "/api/internal-ai-routing-policy",
+  method: "POST",
+  handler: httpAction(internalAiRoutingPolicyHttpHandler),
 });
 
 http.route({
@@ -1149,13 +1181,23 @@ http.route({
         } catch (err: unknown) {
           // normalizeTickers/normalizeCountries throw ConvexError with a
           // structured code (TICKERS_LIMIT_EXCEEDED / COUNTRIES_LIMIT_EXCEEDED)
-          // when a caller exceeds the 50-entry cap. Surface those as a 400 with
+          // when a caller exceeds the 50-entry cap. assertCompatibleDeliveryMode
+          // throws INCOMPATIBLE_DELIVERY when the legacy set-alert-rules path
+          // tries to keep (realtime, high|all). Surface those as a 400 with
           // the machine-readable code — matching the set-notification-config
           // path below — instead of letting them fall to the outer catch as a
           // generic 500, which the client can't route on.
+          // See Sentry WORLDMONITOR-143 (prod setAlertRulesForUser via this action).
           const code = extractConvexErrorCode(err);
           if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
             return new Response(JSON.stringify({ error: code }), { status: 400, headers: { "Content-Type": "application/json" } });
+          }
+          if (code === "INCOMPATIBLE_DELIVERY") {
+            const parsed = parseConvexErrorData(err);
+            const message = (parsed && typeof parsed === "object")
+              ? (parsed as { message?: string }).message ?? ""
+              : "";
+            return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
           throw err;
         }
@@ -1306,6 +1348,12 @@ http.route({
 // `alertRules.getByEnabled` (GHSA-r649-4cqj-w93h) behind the shared secret so
 // the cross-tenant scan is never reachable anonymously. `?enabled=false`
 // selects the disabled set; defaults to enabled=true (all the relay ever asks).
+http.route({
+  path: "/relay/ai-routing-policy",
+  method: "POST",
+  handler: httpAction(relayAiRoutingPolicyHttpHandler),
+});
+
 http.route({
   path: "/relay/enabled-rules",
   method: "GET",
@@ -1749,7 +1797,7 @@ http.route({
       });
     }
 
-    const body = await parseJsonObjectBody<{ tokenId?: unknown }>(request);
+    const body = await parseJsonObjectBody<{ tokenId?: unknown; recordUsage?: unknown }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -1770,7 +1818,7 @@ http.route({
         { tokenId: body.tokenId },
       );
 
-      if (result && touchIsDue(result.lastUsedAt)) {
+      if (result && body.recordUsage !== false && touchIsDue(result.lastUsedAt)) {
         try {
           await ctx.scheduler.runAfter(
             touchDelayMs(),
@@ -2644,11 +2692,23 @@ http.route({
         400,
       );
     }
+    const cursor = body.cursor;
+    if (cursor !== undefined && (typeof cursor !== "string" || cursor.length > 4096)) {
+      return intelJson({ error: "INVALID_CURSOR" }, 400);
+    }
 
     try {
-      const result = await ctx.runQuery(internal.intelHistory.timeline, parsed.scope);
+      const result = await ctx.runQuery(internal.intelHistory.timeline, {
+        ...parsed.scope, ...(typeof cursor === "string" && cursor ? { cursor } : {}),
+      });
+      if (isInvalidCursorPage(result)) {
+        return intelJson({ error: "INVALID_CURSOR" }, 400);
+      }
       return intelJson(result, 200);
     } catch (err) {
+      if (isInvalidPaginationCursorError(err)) {
+        return intelJson({ error: "INVALID_CURSOR" }, 400);
+      }
       const msg = err instanceof Error ? err.message : "intel history timeline failed";
       return intelJson({ error: msg }, 500);
     }

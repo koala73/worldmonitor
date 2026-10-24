@@ -127,6 +127,7 @@ const BOOTSTRAP = [
   { key: "techEvents", group: "Science, Health & Society", holds: "125 upcoming tech conferences and events: title, location, start/end date, url" },
   { key: "positiveGeoEvents", group: "Science, Health & Society", holds: "~230 positive-news counts by country and category (e.g. humanity-kindness) with lat/lon" },
   { key: "crossBorderArrivals", group: "Science, Health & Society", holds: "16 UNHCR refugee situations: refugees by host country, returns, Mediterranean monthly arrivals, latest change" },
+  { key: "idmcIduDisplacement", group: "Science, Health & Society", holds: "IDMC internal displacement: ~3,800 located figures from 180 days, per-country 30-day totals and surge flags (~2.5 MB)" },
   { key: "giving", group: "Science, Health & Society", holds: "Global giving summary: estimated daily flow USD, platforms, categories, OECD aid" },
 ];
 
@@ -149,6 +150,7 @@ const RPCS = [
   { path: "/api/economic/v1/get-us-interest-rates", group: "Economy", params: "history (true = full dated history; default latest point)", holds: "US rates in %: fed funds effective and target range, Treasury 1m-30y (H.15), SOFR" },
   { path: "/api/economic/v1/get-us-treasury-par-yield-curve", group: "Economy", params: "history (true = every business day since 1990; default latest day)", holds: "US Treasury par yield curve, 1-month to 30-year tenors in %, per business day" },
   { path: "/api/economic/v1/get-world-cpi-monthly", group: "Economy", params: "country (ISO2, optional), history (true = stored periods, some since 2012)", holds: "CPI index with period-over-period and y/y % for 196 countries; monthly (Australia quarterly)" },
+  { path: "/api/economic/v1/get-capital-flows", group: "Economy", params: "country (ISO2, optional), counterpart (ISO2, with country: both directions of the pair), include_series (true)", holds: "Capital inflows/outflows with surge/stop/flight states; bank, portfolio and FDI positions per country and pair; USD bn" },
   { path: "/api/economic/v1/get-government-yield-curve", group: "Economy", params: "country (ISO2, required; daily curves for JP, CA, DE, GB, AU, CH, NO, SE; others monthly 10Y), history (true)", holds: "Sovereign yield per tenor (3m…40y) in %: latest day, or dated history with history=true" },
   { path: "/api/economic/v1/get-eu-yield-curve", group: "Economy", params: "", holds: "Euro area AAA government yield curve (ECB): 1Y, 2Y, 5Y, 10Y, 20Y, 30Y in %, latest date" },
   { path: "/api/economic/v1/get-economic-calendar", group: "Economy", params: "fromDate, toDate (YYYY-MM-DD)", holds: "Macro event calendar (rate decisions, data releases): country, date, impact, actual/estimate/previous" },
@@ -216,6 +218,9 @@ const EXCLUDED_BOOTSTRAP_KEYS = {
 };
 
 const EXCLUDED_RPC_ROUTES = {
+  "/api/displacement/v1/get-cross-border-movements": "Requires source attribution and per-source freshness; use the cross-border displacement panel",
+  "/api/intelligence/v1/get-country-history": "Daily archive is planned and activation-gated; use the country history panel after activation",
+  "/api/intelligence/v1/get-country-signal-observations": "Requires an authenticated country panel; unavailable to the anonymous widget session",
   "/api/aviation/v1/get-carrier-ops": "Pro-only (401 for the anonymous widget session)",
   "/api/aviation/v1/get-flight-status": "Pro-only (401 for the anonymous widget session)",
   "/api/aviation/v1/get-youtube-live-stream-info": "Blocked by relay widget endpoint policy",

@@ -1,7 +1,8 @@
 # WorldMonitor — Agent Authentication (auth.md)
 
 Use API keys or OAuth 2.1 to authenticate with the WorldMonitor API and MCP server.
-This walkthrough follows the WorkOS **auth.md** spec: <https://workos.com/auth-md>.
+This walkthrough follows the WorkOS **auth.md** spec: <https://workos.com/auth-md>,
+in its pre-v0.2 `register_uri`/`claim_uri` form.
 
 Catalog reads are open; unauthenticated `initialize` on `/mcp` gets `401`.
 `get_sources` alone is credential- and daily-quota-free
@@ -30,7 +31,7 @@ Discover the authentication requirements:
    ```json
    { "issuer": "https://worldmonitor.app",
      "agent_auth": {
-       "skill": "https://www.worldmonitor.app/auth.md",
+       "skill": "https://worldmonitor.app/auth.md",
        "register_uri": "https://worldmonitor.app/oauth/register",
        "claim_uri": "https://worldmonitor.app/oauth/authorize",
        "identity_types_supported": ["anonymous"],
@@ -55,8 +56,7 @@ asserting a user identity; a human consents interactively at authorization (see
 
 **`identity_assertion` is not supported.** No pre-issued identity assertion (e.g.
 an `urn:ietf:params:oauth:token-type:id-jag` id-jag token) is exchanged for
-credentials — there is no identity or token-exchange endpoint. Identity is always
-established interactively.
+credentials — there is no identity or token-exchange endpoint.
 
 ## Register
 
@@ -67,11 +67,11 @@ POST /oauth/register  {"client_name":"My Agent","redirect_uris":["https://claude
 → 201 {"client_id":"…","token_endpoint_auth_method":"none","grant_types":["authorization_code","refresh_token"]}
 ```
 
-`redirect_uris` are allowlisted (hosted client callbacks + `http://localhost` /
-`http://127.0.0.1` on any port). Clients are public — no secret; use PKCE
-(`S256`). **API-key path:** start at <https://www.worldmonitor.app/pro>, then use
-the signed-in dashboard's API Keys settings to self-issue or revoke keys — no
-registration call.
+`redirect_uris` are allowlisted (hosted callbacks, loopback on any port). Or use
+a [listed](https://www.worldmonitor.app/docs/mcp-overview#client-id-metadata-documents)
+metadata document URL as `client_id`. No secret; PKCE `S256`.
+**API keys:** self-issue or revoke them in the dashboard's API Keys settings at
+<https://www.worldmonitor.app/pro>.
 
 ## Claim
 
@@ -113,8 +113,8 @@ The same credentials authorize the REST API. Catalog:
 
 ## Revocation
 
-- **Expiry** — access tokens last 1 hour, refresh tokens 7 days; let them lapse
-  to de-authorize an agent.
+- **Expiry** — access tokens last 1 hour, refresh tokens 30 days after their
+  last refresh; let them lapse to de-authorize an agent.
 - **User revoke** — a signed-in user revokes an agent from the dashboard's API
   Keys or Connected MCP Clients settings; start at <https://www.worldmonitor.app/pro>.
   The token is then rejected with `401`

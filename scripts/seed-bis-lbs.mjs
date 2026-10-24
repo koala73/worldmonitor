@@ -4,12 +4,14 @@
 // Canonical key: economic:bis-lbs:v1
 //
 // CORRECTION (PR follow-up to #3407, 2026-04-25): the original draft used
-// `WS_LBS_D_PUB` (Locational Banking Statistics) on the assumption it
-// publishes a per-counterparty breakdown. It does not — `WS_LBS_D_PUB`
-// only exposes counterparty as the aggregate `5J`. The plan misread the
-// public BIS API. Migrated to `WS_CBS_PUB` (Consolidated Banking
-// Statistics), which IS the dataflow that publishes by-parent foreign
-// claims with a counterparty-country breakdown.
+// `WS_LBS_D_PUB` (Locational Banking Statistics) and concluded it exposes
+// counterparty only as the aggregate `5J`. That does not hold: on 2026-10-18
+// `Q.S.C.A.TO1.A.5J.A.GB.A..N` (empty counterparty) returned 228 counterparty
+// countries, and seed-capital-flows.mjs reads the bilateral series (see
+// docs/solutions/integration-issues/bis-lbs-publishes-bilateral-counterparty-series.md).
+// This seeder still uses `WS_CBS_PUB` (Consolidated Banking Statistics)
+// because it needs by-PARENT foreign claims on an ultimate-risk basis,
+// which only CBS publishes.
 //
 // SDMX dataflow: WS_CBS_PUB
 // Endpoint:      https://stats.bis.org/api/v1/data/WS_CBS_PUB/<KEY>

@@ -34,7 +34,9 @@ export function widgetAgentHealthUrl(): string {
 }
 
 export function rssProxyUrl(feedUrl: string): string {
-  if (isDesktopRuntime()) return proxyUrl(feedUrl);
+  // Desktop fetches through the sidecar's rss-proxy. The WebView cannot read
+  // publisher feeds directly (CORS), and the relay's CORS excludes tauri://.
+  if (isDesktopRuntime()) return `/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`;
   if (RSS_PROXY_BASE) {
     return `${RSS_PROXY_BASE}/rss?url=${encodeURIComponent(feedUrl)}`;
   }

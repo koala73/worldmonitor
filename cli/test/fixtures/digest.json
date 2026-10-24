@@ -1,0 +1,400 @@
+{
+ "generatedAt": "2026-10-17T19:05:29.460Z",
+ "categories": {
+  "asia": {
+   "items": [
+    {
+     "source": "CNA",
+     "title": "Police and protesters clash in some of France's worst unrest in years",
+     "link": "https://www.channelnewsasia.com/world/police-and-protesters-clash-in-some-frances-worst-unrest-in-years-6468581",
+     "publishedAt": 1792260180000,
+     "isAlert": true,
+     "importanceScore": 69,
+     "credibilityScore": 77,
+     "corroborationCount": 1,
+     "storyMeta": {
+      "firstSeen": 1792262356562,
+      "mentionCount": 14,
+      "sourceCount": 1,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_HIGH",
+      "category": "protest",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "The protests in France began last \u200cmonth at high schools in Paris' poor northern suburbs, where anger over teacher shortages and shabby facilities evolved into a broader movement focused on inequality, public spending and living standards.",
+     "tickers": []
+    },
+    {
+     "source": "Dawn",
+     "title": "Looting, blazes and clashes in France amid nationwide protests",
+     "link": "https://www.dawn.com/news/2037825/looting-blazes-and-clashes-in-france-amid-nationwide-protests",
+     "publishedAt": 1792259489000,
+     "isAlert": true,
+     "importanceScore": 69,
+     "credibilityScore": 44,
+     "corroborationCount": 1,
+     "storyMeta": {
+      "firstSeen": 1792261185789,
+      "mentionCount": 27,
+      "sourceCount": 1,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_HIGH",
+      "category": "protest",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "Police and protesters clashed violently in Paris and other French cities on Saturday on the sidelines of nationwide marches against soaring inflation, with one demonstrator\u2019s hand blown off, multiple blazes set, and looters breaking into dozens of stores to strip them bare. With just months to go before the two-round elections in April and May to choose Macron\u2019s successor, the demonstrations follo",
+     "tickers": []
+    },
+    {
+     "source": "Focus Taiwan",
+     "title": "Champi expected to become typhoon within 24 hours; path remains uncertain - Focus Taiwan",
+     "link": "https://news.google.com/rss/articles/CBMiVkFVX3lxTE1yZVNIdzlkaFRFcW5JbTRrWVBNbzBLM2lsU2NTMW05ZlRLcE9ueW1RT0N2NUtkajdLRmFPSW5OeGlYUnVrSkh5dTB6bmhtOEZMaFVWd1RB?oc=5",
+     "publishedAt": 1792150800000,
+     "isAlert": true,
+     "importanceScore": 64,
+     "credibilityScore": 52,
+     "corroborationCount": 1,
+     "storyMeta": {
+      "firstSeen": 1792219305515,
+      "mentionCount": 515,
+      "sourceCount": 1,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_HIGH",
+      "category": "disaster",
+      "confidence": 0.8,
+      "source": "keyword"
+     },
+     "locationName": "",
+     "snippet": "Champi expected to become typhoon within 24 hours; path remains uncertain &nbsp;&nbsp; Focus Taiwan",
+     "tickers": []
+    }
+   ]
+  },
+  "politics": {
+   "items": [
+    {
+     "source": "AP News",
+     "title": "Trump puts new Russia sanctions that he recently signed into law on hold, citing national interest - AP News",
+     "link": "https://news.google.com/rss/articles/CBMilAFBVV95cUxPZnJQRmxjVThxTzVHd0pFZ1kwcWtlM0Z1SWUxNVBnRDFFNzBsZmp0TmNFYkEwai0xSW8xcDNvbXpMRU5rU2hoZk1DZ2FuemtfdGVYTlpXN3QwZjV5emVoQlhZa0tDQ0tXM2d1emJRNjJvSHFJYTkwc0pBc1NYc2VyaVVrb2tEb0VEUW9Ka0dhRjM1WER1?oc=5",
+     "publishedAt": 1792207080000,
+     "isAlert": true,
+     "importanceScore": 68,
+     "credibilityScore": 84,
+     "corroborationCount": 1,
+     "storyMeta": {
+      "firstSeen": 1792206182694,
+      "mentionCount": 665,
+      "sourceCount": 1,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_HIGH",
+      "category": "diplomatic",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "Trump puts new Russia sanctions that he recently signed into law on hold, citing national interest &nbsp;&nbsp; AP News",
+     "tickers": []
+    },
+    {
+     "source": "CNN World",
+     "title": "Israeli settlers attack diplomats in West Bank one day after assault on Washington Post journalist - CNN",
+     "link": "https://news.google.com/rss/articles/CBMigAFBVV95cUxNSHA3VzJUTHlBV19vT0dtbmwyLUlEMHlRamJ6RkM5d3pubDRablB6Q1RtVDhnOC1aLTMtRC1lVDVXRjZDYTd0TXQwV3o2VzFYM2VQeURfZlRjUll6U2RId2ZrZ3VScmtlRDhyNjJ4Njd5NjhXbXl3VndsRURBa3p4cA?oc=5",
+     "publishedAt": 1792254376000,
+     "isAlert": false,
+     "importanceScore": 66,
+     "credibilityScore": 45,
+     "corroborationCount": 10,
+     "storyMeta": {
+      "firstSeen": 1792163809498,
+      "mentionCount": 1077,
+      "sourceCount": 10,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_MEDIUM",
+      "category": "conflict",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "Israeli settlers attack diplomats in West Bank one day after assault on Washington Post journalist &nbsp;&nbsp; CNN",
+     "tickers": []
+    },
+    {
+     "source": "BBC World",
+     "title": "Trump waives several Russia sanctions as row with Zelensky intensifies",
+     "link": "https://www.bbc.co.uk/news/articles/cxr5yvzv7rp0o?at_medium=RSS&at_campaign=rss",
+     "publishedAt": 1792238166000,
+     "isAlert": true,
+     "importanceScore": 66,
+     "credibilityScore": 77,
+     "corroborationCount": 1,
+     "storyMeta": {
+      "firstSeen": 1792217267969,
+      "mentionCount": 546,
+      "sourceCount": 1,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_HIGH",
+      "category": "diplomatic",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "The US president temporarily ends many restrictions on Moscow recently passed by Congress over \"national security\" concerns.",
+     "tickers": []
+    }
+   ]
+  },
+  "us": {
+   "items": [
+    {
+     "source": "CBC News",
+     "title": "Zelenskyy urges support for new U.S. sanctions on Russia hours after Trump paused them",
+     "link": "https://www.cbc.ca/news/world/zelenskyy-trump-russia-sanctions-9.7385125?cmp=rss",
+     "publishedAt": 1792240061000,
+     "isAlert": true,
+     "importanceScore": 74,
+     "credibilityScore": 63,
+     "corroborationCount": 2,
+     "storyMeta": {
+      "firstSeen": 1792241082909,
+      "mentionCount": 260,
+      "sourceCount": 2,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_HIGH",
+      "category": "diplomatic",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "Ukrainian President Volodymyr Zelenskyy urged supporters on Saturday to speak out in defence of new U.S. sanctions against Russia, hours after President Donald Trump signed an executive order pausing a sweeping package of restrictions targeting the Russian economy.",
+     "tickers": []
+    },
+    {
+     "source": "NPR News",
+     "title": "Zelenskyy urges support for new US sanctions on Russia after Trump puts them on hold",
+     "link": "",
+     "publishedAt": 1792247110000,
+     "isAlert": true,
+     "importanceScore": 70,
+     "credibilityScore": 48,
+     "corroborationCount": 2,
+     "storyMeta": {
+      "firstSeen": 1792241082909,
+      "mentionCount": 260,
+      "sourceCount": 2,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_HIGH",
+      "category": "diplomatic",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "Zelenskyy described the move as unfortunate, adding it would encourage Russia to continue its assault. Trump told Congress that the pause was in the national interest but gave no further details. (Image credit: Kateryna Klochko)",
+     "tickers": []
+    },
+    {
+     "source": "ABC News",
+     "title": "Trump waives Graham Act sanctions on Russia, drawing backlash from some lawmakers",
+     "link": "",
+     "publishedAt": 1792260261000,
+     "isAlert": true,
+     "importanceScore": 69,
+     "credibilityScore": 44,
+     "corroborationCount": 1,
+     "storyMeta": {
+      "firstSeen": 1792261185789,
+      "mentionCount": 29,
+      "sourceCount": 1,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_HIGH",
+      "category": "diplomatic",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "The new sanctions and tariffs were set to take effect in two days.",
+     "tickers": []
+    }
+   ]
+  },
+  "europe": {
+   "items": [
+    {
+     "source": "Le Monde",
+     "title": "Israeli settlers attack European diplomatic cars in West Bank and beat French mayor, say witnesses",
+     "link": "https://www.lemonde.fr/en/international/article/2026/10/17/israeli-settlers-attack-european-diplomatic-cars-in-west-bank-beat-french-mayor-say-witnesses_6758711_4.html",
+     "publishedAt": 1792252606000,
+     "isAlert": false,
+     "importanceScore": 84,
+     "credibilityScore": 93,
+     "corroborationCount": 10,
+     "storyMeta": {
+      "firstSeen": 1792163809498,
+      "mentionCount": 1077,
+      "sourceCount": 10,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_MEDIUM",
+      "category": "conflict",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "Cars from the French, Belgian and Polish missions had brought diplomats to visit Taybeh, a largely Christian village in the occupied West Bank, when settlers descended to stop Palestinians from gathering olives, witnesses said.",
+     "tickers": []
+    },
+    {
+     "source": "NRK",
+     "title": "400 arrestert i voldsomme protester i Frankrike",
+     "link": "https://www.nrk.no/nyheter/400-arrestert-i-voldsomme-protester-i-frankrike-1.18057667",
+     "publishedAt": 1792260901000,
+     "isAlert": true,
+     "importanceScore": 74,
+     "credibilityScore": 59,
+     "corroborationCount": 1,
+     "storyMeta": {
+      "firstSeen": 1792263015204,
+      "mentionCount": 10,
+      "sourceCount": 1,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_HIGH",
+      "category": "protest",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "Rundt 550.000 mennesker deltar i de voldsomme protestene som p\u00e5g\u00e5r i Frankrike, sier innenriksminister Laurent Nu\u00f1ez. L\u00f8rdag melder franske myndigheter at 400 er arrestert under demonstrasjonene, som flere steder har eskalert til voldelige oppt\u00f8yer. R\u00e5dhuset i byen Limoges ble satt i brann etter at en gruppe angrep bygningen. President Emmanuel Macron ford\u00f8mmer oppt\u00f8yene og sier at h\u00e6rverk og plyn",
+     "tickers": []
+    },
+    {
+     "source": "OC Media",
+     "title": "Azerbaijan opens criminal case over calls for coup, declares Turkish columnist wanted",
+     "link": "https://oc-media.org/azerbaijan-opens-criminal-case-over-calls-for-coup-declares-turkish-columnist-wanted/",
+     "publishedAt": 1792159722000,
+     "isAlert": true,
+     "importanceScore": 73,
+     "credibilityScore": 77,
+     "corroborationCount": 1,
+     "storyMeta": {
+      "firstSeen": 1792161051252,
+      "mentionCount": 1106,
+      "sourceCount": 1,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_CRITICAL",
+      "category": "military",
+      "confidence": 0.9,
+      "source": "keyword"
+     },
+     "locationName": "",
+     "snippet": "Editor\u2019s note: This article has been updated to include a public apology from Turkish columnist Celal \u00c7ift\u00e7i. Azerbaijan has launched a criminal case over alleged calls to seize power by force and incite religious hatred, declaring Turkish columnist Celal \u00c7ift\u00e7i internationally wanted. The video comes amid rising tensions between Azerbaijan and Turkey, following a public exchange of criticism betw",
+     "tickers": []
+    }
+   ]
+  },
+  "middleeast": {
+   "items": [
+    {
+     "source": "Egypt Independent",
+     "title": "Trump waives Russia-related sanctions before they even kick in as Ukraine ties worsen",
+     "link": "https://www.egyptindependent.com/trump-waives-russia-related-sanctions-before-they-even-kick-in-as-ukraine-ties-worsen/",
+     "publishedAt": 1792239548000,
+     "isAlert": true,
+     "importanceScore": 66,
+     "credibilityScore": 52,
+     "corroborationCount": 1,
+     "storyMeta": {
+      "firstSeen": 1792209889228,
+      "mentionCount": 446,
+      "sourceCount": 1,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_HIGH",
+      "category": "diplomatic",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "US President Donald Trump has waived a further slate of sanctions related to Russian fossil fuel sales, days before they were to take effect under a bill he signed into law last month. The waiver announced in an executive order Friday comes as Trump increasingly feuds with Ukrainian President Volodymyr Zelensky, and cracks appear in Washington\u2019s support for Kyiv in its four-year-old war against it",
+     "tickers": []
+    },
+    {
+     "source": "Naharnet Lebanon",
+     "title": "Army deploys after Hezbollah tensions involving a depot standoff, overnight protests and an unconfirmed report",
+     "link": "https://www.naharnet.com/stories/en/323166-army-deploys-after-hezbollah-tensions-involving-a-depot-standoff-overnight-protests-and-an-unconfirmed-report",
+     "publishedAt": 1792234905000,
+     "isAlert": true,
+     "importanceScore": 66,
+     "credibilityScore": 77,
+     "corroborationCount": 1,
+     "storyMeta": {
+      "firstSeen": 1792238605206,
+      "mentionCount": 293,
+      "sourceCount": 1,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_HIGH",
+      "category": "conflict",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "The Lebanese Army deployed in and around Dahieh on Saturday following tensions involving Hezbollah supporters.",
+     "tickers": []
+    },
+    {
+     "source": "Guardian ME",
+     "title": "Masked settlers attack European diplomats in occupied West Bank",
+     "link": "https://www.theguardian.com/world/2026/oct/17/masked-settlers-attack-european-diplomats-occupied-west-bank",
+     "publishedAt": 1792256534000,
+     "isAlert": false,
+     "importanceScore": 64,
+     "credibilityScore": 89,
+     "corroborationCount": 4,
+     "storyMeta": {
+      "firstSeen": 1792163809498,
+      "mentionCount": 1077,
+      "sourceCount": 4,
+      "phase": "STORY_PHASE_SUSTAINED"
+     },
+     "threat": {
+      "level": "THREAT_LEVEL_MEDIUM",
+      "category": "conflict",
+      "confidence": 0.9,
+      "source": "llm"
+     },
+     "locationName": "",
+     "snippet": "Belgian foreign minister urges further EU sanctions and links attack to Israel\u2019s \u2018illegal settlement policy\u2019 Masked settlers attacked a group of European diplomats during a visit to the occupied West Bank on Saturday, Belgium\u2019s foreign minister said, on a second day of high-profile assaults on Palestinians and others during the sensitive olive harvest. At least four people have been killed and mor",
+     "tickers": []
+    }
+   ]
+  }
+ }
+}

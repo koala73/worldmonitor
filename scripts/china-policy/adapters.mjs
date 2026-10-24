@@ -286,7 +286,7 @@ function parseHtmlListing(agency, html, sourceConfig) {
       const publicationDate = dateNearAnchor(html, tag.end);
       if (
         canonicalUrl
-        && publicationDate
+        && (publicationDate || agency === 'NDRC')
         && titleOriginal.length >= 5
         && !NON_DOCUMENT_TITLE.test(titleOriginal)
         && POLICY_TITLE_HINT.test(titleOriginal)

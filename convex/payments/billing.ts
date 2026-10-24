@@ -25,6 +25,7 @@ import { PLAN_PRECEDENCE, PRODUCT_CATALOG, resolveProductToPlan } from "../confi
 import { proActivationStepIdValidator } from "../constants";
 import {
   billingDeletionForUser,
+  isCancellationScheduled,
   isCoveringAt,
   isNewerEvent,
   recomputeEntitlementFromAllSubs,
@@ -337,6 +338,11 @@ function normalizeDodoStatus(status: string): SubscriptionStatus | null {
       // (a local-active row would otherwise keep full entitlement forever via
       // `isCoveringAt`).
       return "expired";
+    case "paused":
+      // Dodo revokes access on pause and sends no webhook, so reconciliation
+      // is the only place a paused row stops covering. Not yet in the SDK's
+      // `SubscriptionStatus` union.
+      return "expired";
     default:
       // `pending` and any unknown status → caller skips + escalates. `pending`
       // is a real SDK status (initial payment in flight) but not a state we act
@@ -581,7 +587,9 @@ async function hasActivatedServerProFunctionality(
       rule.channels.some((channelType) => verifiedChannels.has(channelType)),
   );
   const hasApiSetup = apiKeys.some((key) => key.revokedAt === undefined);
-  const hasMcpSetup = mcpTokens.some((token) => token.revokedAt === undefined);
+  const hasMcpSetup = mcpTokens.some(
+    (token) => token.revokedAt === undefined && token.lastUsedAt !== undefined,
+  );
   return hasConfiguredDelivery || hasApiSetup || hasMcpSetup;
 }
 
@@ -684,6 +692,9 @@ export const getSubscriptionForUser = query({
       displayName: productPlan?.displayName ?? subscription.planKey,
       status: subscription.status,
       currentPeriodEnd: subscription.currentPeriodEnd,
+      // A portal cancel stays `active` until period end; without this the
+      // settings panel shows "Renews" to a user who just cancelled.
+      cancelAtPeriodEnd: isCancellationScheduled(subscription),
       // #4771: request-path renewal verification verdict (#4770), so the
       // frontend can show "verifying your renewal" instead of a generic
       // Upgrade CTA when local paid evidence goes stale. Normalized to null

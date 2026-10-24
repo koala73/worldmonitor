@@ -72,6 +72,25 @@ describe('bounded panel reads with an enabled minute limiter', () => {
     assert.equal(counts.get(userBucket), 60);
   });
 
+  it('refuses start_upgrade at the minute limit before any checkout is created (#9144)', async () => {
+    const { deps, pipe } = makeProDeps({ getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }) });
+    const checkouts = [];
+    deps.createCheckout = async (input) => {
+      checkouts.push(input);
+      return { kind: 'created', checkoutUrl: 'https://checkout.dodopayments.com/session/cks_test' };
+    };
+    let denied;
+    for (let i = 0; i < 400 && !denied; i++) {
+      const result = await invoke(deps, 'start_upgrade', { plan: 'pro_monthly' });
+      if (result.body.error) denied = result;
+      else assert.equal(checkouts.length, i + 1);
+    }
+    assert.ok(denied, 'the minute limiter must refuse within 400 calls');
+    assert.equal(denied.body.error.code, -32029);
+    assert.equal(checkouts.length, calls.length - 1, 'the refused call reached the limiter but not the checkout relay');
+    assert.deepEqual(pipe.ops, []);
+  });
+
   it('shares callable status limits across OAuth and user-key doors', async () => {
     const keyed = makeProDeps({ resolveBearerToContext: async () => ({ kind: 'user_key', userId: PRO_USER_ID }) }).deps;
     const oauth = makeProDeps().deps;
@@ -140,13 +159,16 @@ describe('bounded panel reads with an enabled minute limiter', () => {
     assert.equal(counts.get(userBucket), undefined);
     assert.equal(pipe.count, 1);
   });
-  it('completes a full panel when the host reconnects before each internal read', async () => {
+  it('completes a full panel when reconnect notifications reach the IP limit', async () => {
     const { deps, pipe } = makeProDeps();
     const receipt = await open(deps);
     for (let i = 0; i < 64; i++) {
       for (const method of ['initialize', 'notifications/initialized', 'ping']) {
         const response = await handler(proReq('POST', { jsonrpc: '2.0', ...(method === 'notifications/initialized' ? {} : { id: i }), method }), deps);
-        if (method === 'notifications/initialized') assert.equal(response.status, 202, `acknowledgment ${i + 1}`);
+        if (method === 'notifications/initialized') {
+          assert.equal(response.status, i < 60 ? 202 : 429, `notification ${i + 1}`);
+          assert.equal(await response.text(), '');
+        }
         else assert.equal((await response.json()).error, undefined, `${method} ${i + 1}`);
       }
       assert.equal((await invoke(deps, 'get_country_brief_section', energy(receipt.token))).body.error, undefined, `read ${i + 1}`);
@@ -154,6 +176,11 @@ describe('bounded panel reads with an enabled minute limiter', () => {
     assert.equal(pipe.count, 1);
     assert.equal(fetched.length, 1);
     assert.equal(counts.get(userBucket), 1);
+    assert.equal(counts.get(`rl:mcp:pro-min:pro-protocol:${PRO_USER_ID}`), 128);
+    for (let i = 0; i < 64; i++) {
+      const setup = await handler(proReq('POST', { jsonrpc: '2.0', id: `setup-fill-${i}`, method: 'ping' }), deps);
+      assert.equal((await setup.json()).error, undefined);
+    }
     const response = await handler(proReq('POST', { jsonrpc: '2.0', id: 'setup-193', method: 'initialize' }), deps);
     const denied = await response.json();
     assert.equal(denied.id, 'setup-193');
@@ -428,6 +455,29 @@ describe('bounded panel reads with an enabled minute limiter', () => {
     assert.equal(denied.body.error?.code, -32029);
     assert.equal(fetched.length, 0);
   });
+  for (const kind of ['pro', 'user_key']) {
+    for (const withPanel of [false, true]) {
+      it(`limits schema-invalid ${kind} calls ${withPanel ? 'with' : 'without'} panel_request before quota or panel reservation`, async () => {
+        const { deps, pipe } = makeProDeps({
+          resolveBearerToContext: async () => ({ kind, userId: PRO_USER_ID, ...(kind === 'pro' ? { mcpTokenId: 'k57mcptokenid' } : {}) }),
+          pipelineOpts: { initialCount: 2 },
+        });
+        const args = { asset_class: ['invalid'], ...(withPanel ? { panel_request: 'forged' } : {}) };
+        counts.set(userBucket, 59);
+        const invalid = await invoke(deps, 'get_market_data', args);
+        assert.equal(invalid.body.error?.code, -32602);
+        const denied = await invoke(deps, 'get_market_data', args);
+        assert.equal(denied.body.error?.code, -32029);
+        assert.equal(denied.response.headers.get('X-RateLimit-Limit'), '60');
+        assert.equal(counts.get(userBucket), 61);
+        assert.equal(calls.length, 2);
+        assert.ok(calls.every(call => call.key === userBucket && call.tokens === 60));
+        assert.equal(pipe.count, 2);
+        assert.deepEqual(pipe.ops, []);
+        assert.equal(fetched.length, 0);
+      });
+    }
+  }
   it('retains revocation checks before replaying paid data', async () => {
     let revoked = false;
     const { deps } = makeProDeps({ getEntitlements: async () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: !revoked }, validUntil: Date.now() + 86400000 }) });

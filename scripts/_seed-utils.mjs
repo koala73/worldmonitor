@@ -9,6 +9,7 @@ import { createRequire } from 'node:module';
 import { flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 
 import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { MAX_DECODED_PAYLOAD_BYTES, encodeGzipPayload, parseStoredSeedJson } from './_seed-payload-codec.mjs';
 import { resolveRecordCount } from './_seed-contract.mjs';
 // scripts/shared mirror, not ../shared: seeders deploy with rootDirectory=scripts.
 import { COMPARE_AND_DELETE_SCRIPT } from './shared/compare-and-delete-script.cjs';
@@ -24,6 +25,7 @@ async function exitAfterTelemetryFlush(code) {
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
+const MAX_REDIS_REQUEST_BYTES = 10_000_000;
 export const SEED_REDIS_COMMAND_TIMEOUT_MS = 15_000;
 export const SEED_REDIS_RETRY_ATTEMPTS = 3;
 export const SEED_REDIS_RETRY_BASE_MS = 1_000;
@@ -505,7 +507,7 @@ async function redisGet(url, token, key, options = {}) {
   // mode, passes through legacy (bare-shape) values unchanged. Fixes WoW/cross-
   // seed reads that were silently getting `{_seed, data}` after PR 2a enveloped
   // the writer side of 91 canonical keys.
-  return unwrapEnvelope(JSON.parse(data.result)).data;
+  return unwrapEnvelope(parseStoredSeedJson(data.result)).data;
 }
 
 async function redisSet(url, token, key, value, ttlSeconds) {
@@ -595,10 +597,19 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   const payloadValue = options.envelopeMeta && shouldEnvelopeKey(canonicalKey)
     ? buildEnvelope({ ...options.envelopeMeta, data })
     : data;
-  const payload = JSON.stringify(payloadValue);
+  const json = JSON.stringify(payloadValue);
+  // Readers stop inflating at MAX_DECODED_PAYLOAD_BYTES; never publish what they cannot read.
+  if (options.compressPayload && Buffer.byteLength(json, 'utf8') > MAX_DECODED_PAYLOAD_BYTES) {
+    throw new Error(`Payload too large: ${(Buffer.byteLength(json, 'utf8') / 1024 / 1024).toFixed(1)}MB decoded > ${MAX_DECODED_PAYLOAD_BYTES / 1024 / 1024}MB decode limit`);
+  }
+  const payload = options.compressPayload ? encodeGzipPayload(json) : json;
   const payloadBytes = Buffer.byteLength(payload, 'utf8');
-  if (payloadBytes > MAX_PAYLOAD_BYTES) {
-    throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > 5MB limit`);
+  const maxPayloadBytes = options.maxPayloadBytes ?? MAX_PAYLOAD_BYTES;
+  if (!Number.isSafeInteger(maxPayloadBytes) || maxPayloadBytes < 1 || maxPayloadBytes > MAX_SEEDED_VALUE_BYTES) {
+    throw new Error(`Invalid maxPayloadBytes: expected an integer from 1 to ${MAX_SEEDED_VALUE_BYTES}`);
+  }
+  if (payloadBytes > maxPayloadBytes) {
+    throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > ${maxPayloadBytes / 1024 / 1024}MB limit`);
   }
 
   // Retry the entire 3-call publish unit on transient Upstash failures.
@@ -628,16 +639,26 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
 
       const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const stagingKey = `${canonicalKey}:staging:${runId}`;
+      const canonicalCommand = ttlSeconds
+        ? ['SET', canonicalKey, payload, 'EX', ttlSeconds]
+        : ['SET', canonicalKey, payload];
+      if (maxPayloadBytes > MAX_PAYLOAD_BYTES) {
+        const requestBytes = Math.max(
+          Buffer.byteLength(JSON.stringify(canonicalCommand), 'utf8'),
+          Buffer.byteLength(JSON.stringify(['SET', stagingKey, payload, 'EX', 300]), 'utf8'),
+        );
+        if (requestBytes > MAX_REDIS_REQUEST_BYTES) {
+          const error = new Error(`Redis publish request too large: ${requestBytes} bytes > ${MAX_REDIS_REQUEST_BYTES}-byte limit`);
+          error.nonRetryable = true;
+          throw error;
+        }
+      }
 
       // Write to staging key
-      await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
+      await redisCommand(url, token, ['SET', stagingKey, payload, 'EX', 300]); // 5 min staging TTL
 
       // Overwrite canonical key
-      if (ttlSeconds) {
-        await redisCommand(url, token, ['SET', canonicalKey, payload, 'EX', ttlSeconds]);
-      } else {
-        await redisCommand(url, token, ['SET', canonicalKey, payload]);
-      }
+      await redisCommand(url, token, canonicalCommand);
 
       // Cleanup staging
       await redisDel(url, token, stagingKey).catch(() => {});
@@ -819,7 +840,7 @@ export async function readCanonicalEnvelopeMeta(canonicalKey) {
     }, 2, 1000);
     if (!data || !data.result) return null;
     let parsed;
-    try { parsed = JSON.parse(data.result); } catch { return null; }
+    try { parsed = parseStoredSeedJson(data.result); } catch { return null; }
     if (!parsed || typeof parsed !== 'object') return null;
     const seed = parsed._seed;
     if (!seed || typeof seed !== 'object') return null;
@@ -1487,7 +1508,10 @@ export function curlFetch(
   const curlTimeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
   const args = ['-sS', '--compressed', '--max-time', String(curlTimeoutSeconds), '-L'];
   if (proxyAuth) {
-    const proxyUrl = /^https?:\/\//i.test(proxyAuth) ? proxyAuth : `http://${proxyAuth}`;
+    const proxyUrl = /^https?:\/\//i.test(proxyAuth) ? proxyAuth : `https://${proxyAuth}`;
+    if (/^http:\/\//i.test(proxyUrl) && process.env.PROXY_ALLOW_INSECURE_HTTP !== '1') {
+      throw new Error('Plain HTTP curl proxies require PROXY_ALLOW_INSECURE_HTTP=1');
+    }
     args.push('-x', proxyUrl);
   }
   for (const [k, v] of Object.entries(headers)) args.push('-H', `${k}: ${v}`);
@@ -1536,12 +1560,19 @@ async function httpsProxyFetchJson(url, proxyAuth, proxyAttempt = 0) {
   return JSON.parse(buffer.toString('utf8'));
 }
 
-export async function httpsProxyFetchRaw(url, proxyAuth, { accept = '*/*', timeoutMs = 20_000, signal, proxyAttempt = 0 } = {}) {
+// `headers` are forwarded to the origin (e.g. an API subscription key); the
+// shared User-Agent is applied unless a caller sets its own.
+export async function httpsProxyFetchRaw(url, proxyAuth, {
+  accept = '*/*', timeoutMs = 20_000, signal, proxyAttempt = 0, headers = {}, onErrorResponse,
+} = {}) {
   const { proxyFetch, parseProxyConfigForAttempt } = createRequire(import.meta.url)('./_proxy-utils.cjs');
   const proxyConfig = parseProxyConfigForAttempt(proxyAuth, proxyAttempt);
   if (!proxyConfig) throw new Error('Invalid proxy auth string');
-  const result = await proxyFetch(url, proxyConfig, { accept, timeoutMs, signal, headers: { 'User-Agent': CHROME_UA } });
-  if (!result.ok) throw Object.assign(new Error(`HTTP ${result.status}`), { status: result.status });
+  const result = await proxyFetch(url, proxyConfig, { accept, timeoutMs, signal, headers: { 'User-Agent': CHROME_UA, ...headers } });
+  if (!result.ok) {
+    onErrorResponse?.(result);
+    throw Object.assign(new Error(`HTTP ${result.status}`), { status: result.status });
+  }
   return { buffer: result.buffer, contentType: result.contentType };
 }
 
@@ -1602,6 +1633,18 @@ export function isExitRefusalError(error) {
 
 const FRED_JSON_HEADERS = { Accept: 'application/json', 'User-Agent': CHROME_UA };
 
+function throwIfFredMaintenance(body, contentType) {
+  if (/\btext\/html\b/i.test(contentType || '')
+    && /<h1[^>]*>\s*We(?:['\u2019]ll| will) be back soon!?\s*<\/h1>/i.test(body)) {
+    throw markPreservableFetchFailure(new Error('FRED API is under maintenance'));
+  }
+}
+
+function parseFredJson(body, contentType) {
+  throwIfFredMaintenance(body, contentType);
+  return JSON.parse(body);
+}
+
 // FRED's own edge returns sporadic 5xx on individual series. Observed
 // 2026-08-26: four consecutive 24/24 runs, then `FRED T10Y2Y: fetch failed —
 // direct: HTTP 502` and the same for UNRATE, publishing 22/24 — enough to trip
@@ -1628,7 +1671,12 @@ async function fredDirectFetchJson(url) {
   for (let attempt = 1; attempt <= FRED_DIRECT_ATTEMPTS; attempt += 1) {
     try {
       const r = await fetch(url, { headers: FRED_JSON_HEADERS, signal: AbortSignal.timeout(20_000) });
-      if (r.ok) return await r.json();
+      if (r.ok) {
+        if (/\btext\/html\b/i.test(r.headers?.get?.('content-type') || '')) {
+          return parseFredJson(await r.text(), r.headers.get('content-type'));
+        }
+        return await r.json();
+      }
       throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
     } catch (error) {
       lastError = error;
@@ -1636,6 +1684,7 @@ async function fredDirectFetchJson(url) {
         await new Promise((resolve) => setTimeout(resolve, 350 * attempt + Math.random() * 250));
         continue;
       }
+      if (isRetriableFredStatus(error?.status) || error?.status === 429) markPreservableFetchFailure(error);
       throw error;
     }
   }
@@ -1664,7 +1713,13 @@ export async function fredFetchJson(url, proxyAuth) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       triedExits.push(parseProxyConfigForAttempt(proxyAuth, attempt - 1)?.port ?? '?');
       try {
-        return await httpsProxyFetchJson(url, proxyAuth, attempt - 1);
+        const { buffer, contentType } = await httpsProxyFetchRaw(url, proxyAuth, {
+          accept: 'application/json', proxyAttempt: attempt - 1,
+          onErrorResponse: ({ buffer: errorBody, contentType: errorContentType }) => {
+            throwIfFredMaintenance(errorBody.toString('utf8'), errorContentType);
+          },
+        });
+        return parseFredJson(buffer.toString('utf8'), contentType);
       } catch (proxyErr) {
         lastProxyErr = proxyErr;
         // Two different reasons to try the next exit: the hop broke (transient),
@@ -1683,7 +1738,15 @@ export async function fredFetchJson(url, proxyAuth) {
     try {
       return await fredDirectFetchJson(url);
     } catch (directErr) {
-      throw Object.assign(new Error(`direct: ${directErr.message}`), { cause: directErr });
+      const proxyMaintenance = lastProxyErr?.preservableFetchFailure === true;
+      const connectTimeout = directErr.cause?.code === 'UND_ERR_CONNECT_TIMEOUT';
+      const directMessage = `${directErr.message}${connectTimeout ? ' (UND_ERR_CONNECT_TIMEOUT)' : ''}`;
+      const message = `${proxyMaintenance ? `proxy: ${lastProxyErr.message}; ` : ''}direct: ${directMessage}`;
+      throw Object.assign(new Error(message), {
+        cause: directErr,
+        preservableFetchFailure: directErr.preservableFetchFailure === true
+          || (proxyMaintenance && (directErr.status === 403 || directErr.name === 'TimeoutError' || connectTimeout)),
+      });
     }
   }
   return fredDirectFetchJson(url);
@@ -1771,11 +1834,19 @@ export function normalizeSdmxPeriod(period) {
  * `normalizeSdmxPeriod()` on every period before storing it as a key.
  * See `scripts/seed-gold-cb-reserves.mjs::fetchIrfclMonthlySeries` for the
  * canonical monthly pattern.
+ *
+ * `release` holds the dataset-level PUBLICATION_DATE and UPDATE_DATE of this
+ * one response, as IMF supplied them, or null when absent, malformed or
+ * ambiguous. They are reference metadata, so the request uses
+ * `attributes=all`: `dsd` omits them and `msd` drops the series attributes.
+ * Neither date names a WEO edition.
+ *
+ * @returns {Promise<{ values: Record<string, Record<string, number>>, release: { publishedAt: string|null, updatedAt: string|null } }>}
  */
-export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years } = {}) {
+export async function imfSdmxFetchIndicatorWithRelease(indicator, { database = 'WEO', years } = {}) {
   const agencyMap = { WEO: 'IMF.RES', FM: 'IMF.FAD' };
   const agency = agencyMap[database] || 'IMF.RES';
-  const url = `${IMF_SDMX_BASE}/data/dataflow/${agency}/${database}/+/*.${indicator}.A?dimensionAtObservation=TIME_PERIOD&attributes=dsd&measures=all`;
+  const url = `${IMF_SDMX_BASE}/data/dataflow/${agency}/${database}/+/*.${indicator}.A?dimensionAtObservation=TIME_PERIOD&attributes=all&measures=all`;
 
   const json = await withRetry(async () => {
     const r = await fetch(url, {
@@ -1795,14 +1866,18 @@ export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years
     return r.json();
   }, 2, 2000);
 
-  const struct = json?.data?.structures?.[0];
   const ds = json?.data?.dataSets?.[0];
-  if (!struct || !ds?.series) return {};
+  const struct = json?.data?.structures?.[Number.isInteger(ds?.structure) ? ds.structure : 0];
+  const release = {
+    publishedAt: imfDatasetDate(struct, ds, 'PUBLICATION_DATE'),
+    updatedAt: imfDatasetDate(struct, ds, 'UPDATE_DATE'),
+  };
+  if (!struct || !ds?.series) return { values: {}, release };
 
   const countryDim = struct.dimensions.series.find(d => d.id === 'COUNTRY');
   const countryDimPos = struct.dimensions.series.findIndex(d => d.id === 'COUNTRY');
   const timeDim = struct.dimensions.observation.find(d => d.id === 'TIME_PERIOD');
-  if (!countryDim || countryDimPos === -1 || !timeDim) return {};
+  if (!countryDim || countryDimPos === -1 || !timeDim) return { values: {}, release };
 
   const countryValues = countryDim.values.map(v => v.id);
   const timeValues = timeDim.values.map(v => v.value || v.id);
@@ -1824,7 +1899,35 @@ export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years
     }
     if (Object.keys(byYear).length > 0) result[iso3] = byYear;
   }
-  return result;
+  return { values: result, release };
+}
+
+export async function imfSdmxFetchIndicator(indicator, options) {
+  return (await imfSdmxFetchIndicatorWithRelease(indicator, options)).values;
+}
+
+const IMF_RELEASE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?)?$/;
+
+function imfDatasetDate(struct, ds, id) {
+  const descriptors = struct?.attributes?.dataSet;
+  if (!Array.isArray(descriptors)) return null;
+  const positions = descriptors.flatMap((d, i) => (d?.id === id ? [i] : []));
+  if (positions.length !== 1) return null;
+  let value = ds?.attributes?.[positions[0]];
+  if (Array.isArray(value)) {
+    if (value.length !== 1) return null;
+    [value] = value;
+  }
+  if (Number.isInteger(value)) {
+    const coded = descriptors[positions[0]].values?.[value];
+    value = coded?.value ?? coded?.id;
+  }
+  if (typeof value !== 'string') return null;
+  const match = IMF_RELEASE_DATE_RE.exec(value);
+  if (!match) return null;
+  const [y, m, d] = match.slice(1, 4).map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d));
+  return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d ? value : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -2142,7 +2245,7 @@ export async function readSeedSnapshot(
     if (!strict && !result) return null;
     let parsed;
     try {
-      parsed = JSON.parse(result);
+      parsed = parseStoredSeedJson(result);
     } catch (cause) {
       if (strict) {
         throw Object.assign(new Error('Redis snapshot read returned malformed stored JSON'), { cause });
@@ -2472,6 +2575,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   const {
     validateFn,
     ttlSeconds,
+    maxPayloadBytes,
     lockTtlMs = 120_000,
     lockAcquireRetries = 2,
     extraKeys,
@@ -2499,6 +2603,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     allowPreservedFetchFailure = false,
     beforePublish,
     publishAtomically,
+    compressPayload = false, // store gzip+base64 (see _seed-payload-codec.mjs) when JSON outgrows MAX_PAYLOAD_BYTES
     afterPublish,
     afterValidationSkip,
     afterPreservedValidationSkip,
@@ -2755,9 +2860,12 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     );
   }
   let data;
+  // Absolute wall-clock deadline of the fetch race, for fetchers with optional
+  // work that must stop in time to publish what they already have.
+  const fetchDeadlineAtMs = Date.now() + fetchDeadlineMs;
   try {
     data = await raceFetchDeadline(
-      withRetry(() => fetchFn({ runStartedAtMs: startMs })),
+      withRetry(() => fetchFn({ runStartedAtMs: startMs, fetchDeadlineAtMs })),
       fetchDeadlineMs,
       `${domain}:${resource}`,
     );
@@ -2940,12 +3048,14 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     try {
       publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, {
         envelopeMeta,
+        maxPayloadBytes,
         beforePublish: beforePublish
           ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId })
           : undefined,
         publishAtomically: publishAtomically
           ? (publishContext) => publishAtomically(data, { ...publishContext, runId })
           : undefined,
+        compressPayload,
       });
     } catch (error) {
       // An atomic publisher either switches its complete key cohort or leaves
@@ -3186,16 +3296,22 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           const metaExtra = typeof ek.metaExtra === 'function'
             ? ek.metaExtra(ekData, data)
             : ek.metaExtra;
-          const wroteMeta = await writeSeedMeta(
-            ek.key,
-            ekEnvelope?.recordCount ?? 0,
-            ek.metaKey,
-            // Same data TTL the writeExtraKey above just used, so a long-lived
-            // extra key can't outlive the meta that reports on it.
-            resolveSeedMetaTtl(ek.metaTtlSeconds, ek.ttl || ttlSeconds),
-            ek.coverage,
-            metaExtra,
-          );
+          let wroteMeta = false;
+          try {
+            wroteMeta = await writeSeedMeta(
+              ek.key,
+              ekEnvelope?.recordCount ?? 0,
+              ek.metaKey,
+              // Same data TTL the writeExtraKey above just used, so a long-lived
+              // extra key can't outlive the meta that reports on it.
+              resolveSeedMetaTtl(ek.metaTtlSeconds, ek.ttl || ttlSeconds),
+              ek.coverage,
+              metaExtra,
+            );
+          } catch (err) {
+            if (ek.metaCritical) throw err;
+            console.warn(`  Extra key ${ek.key}: seed-meta ${ek.metaKey} write failed; freshness will age: ${err.message}`);
+          }
           if (!wroteMeta && ek.metaCritical) throw new Error(`Extra key ${ek.key}: seed-meta ${ek.metaKey} write failed`);
         }
       }

@@ -14,6 +14,7 @@ import {
 } from './_rankable-coverage.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
 import { projectChinaDecisionGroupDiagnostics } from './_china-decision-health.js';
+import { assessCiiInputs } from './_cii-input-health.js';
 import {
   buildContentFreshnessAssessment,
   getActiveContentFreshnessActivationWindow,
@@ -95,6 +96,10 @@ const SEED_DOMAINS = {
   'natural:events':           { key: 'seed-meta:natural:events',           intervalMin: 270 },
   'weather:hko-warnings':     { key: 'seed-meta:weather:hko-warnings',     intervalMin: 270 },
   'displacement:summary':     { key: 'seed-meta:displacement:summary',     intervalMin: 360 },
+  'displacement:border-uk': { key: 'seed-meta:displacement:border-uk', intervalMin: 1440, activationKey: 'seed-activated:displacement:border-uk' },
+  'displacement:border-cbp': { key: 'seed-meta:displacement:border-cbp', intervalMin: 1440, activationKey: 'seed-activated:displacement:border-cbp' },
+  'displacement:border-frontex': { key: 'seed-meta:displacement:border-frontex', intervalMin: 1440, activationKey: 'seed-activated:displacement:border-frontex' },
+  'displacement:border-panama': { key: 'seed-meta:displacement:border-panama', intervalMin: 1440, activationKey: 'seed-activated:displacement:border-panama' },
   'economic:energy-prices':   { key: 'seed-meta:economic:energy-prices',   intervalMin: 75 },
   // Independent hourly producer from scripts/seed-fred-rates.mjs. This
   // operator-only endpoint stays strict; api/health.js owns the bounded
@@ -137,8 +142,9 @@ const SEED_DOMAINS = {
   // on exactly the budget above.
   'intelligence:market-implications': { key: 'seed-meta:intelligence:market-implications', intervalMin: 60 },
   'positive-events:geo':      { key: 'seed-meta:positive-events:geo',      intervalMin: 30 },
-  'intelligence:risk-scores': { key: 'seed-meta:intelligence:risk-scores', intervalMin: 15 }, // CII warm-ping every 8min; intervalMin*2 = 30min, aligned with api/health.js riskScores.
-  'conflict:iran-events':     { key: 'seed-meta:conflict:iran-events',     intervalMin: 5040 },
+  'intelligence:risk-scores': { key: 'seed-meta:intelligence:risk-scores', intervalMin: 15, ciiInputs: true }, // CII warm-ping every 8min; intervalMin*2 = 30min, aligned with api/health.js riskScores. ciiInputs grades the per-input report with the same policy (api/_cii-input-health.js).
+  'conflict:iran-events':     { key: 'seed-meta:conflict:iran-events',     intervalMin: 22 }, // ais-relay Middle East strike loop every 10min; intervalMin*2 = 44min, aligned with api/health.js iranEvents (45).
+  'conflict:strike-pressure': { key: 'seed-meta:conflict:strike-pressure', intervalMin: 22, activationKey: 'seed-activated:conflict:strike-pressure' }, // same relay loop adds each healthy window to the 30-day CII strike tally; aligned with api/health.js strikePressure (45).
   'conflict:ucdp-events':     { key: 'seed-meta:conflict:ucdp-events',     intervalMin: 210 },
   'conflict:acled-intel':     { key: 'seed-meta:conflict:acled-intel',     intervalMin: 19 },
   'weather:alerts':           { key: 'seed-meta:weather:alerts',           intervalMin: 15 },
@@ -286,6 +292,7 @@ const SEED_DOMAINS = {
   // plan 2026-04-25-004 Phase 2: financialSystemExposure component seeders.
   // intervalMin = health.js maxStaleMin / 2 (mirrors the IMF-pattern). Bundle: scripts/seed-bundle-macro.mjs.
   'economic:wb-external-debt': { key: 'seed-meta:economic:wb-external-debt', intervalMin: 50400 }, // annual WB IDS publication; intervalMin = health.js maxStaleMin / 2 (100800 / 2)
+  'economic:capital-flows':    { key: 'seed-meta:economic:capital-flows',    intervalMin: 7200 },  // weekly; intervalMin = health.js maxStaleMin / 2 (14400 / 2)
   'economic:bis-lbs':          { key: 'seed-meta:economic:bis-lbs',          intervalMin: 7200 },  // BIS LBS quarterly; intervalMin = health.js maxStaleMin / 2 (14400 / 2)
   'economic:fatf-listing':     { key: 'seed-meta:economic:fatf-listing',     intervalMin: 30240 }, // FATF plenary 3×/year; intervalMin = health.js maxStaleMin / 2 (60480 / 2)
   'product-catalog':          { key: 'seed-meta:product-catalog',          intervalMin: 360 }, // relay loop every 6h; intervalMin = health.js maxStaleMin / 3 (1080 / 3)
@@ -346,11 +353,12 @@ const SEED_DOMAINS = {
   'transit:viarail-live': { key: 'seed-meta:transit:viarail-live', intervalMin: 15 }, // 15min cron; intervalMin*3 = health.js maxStaleMin 45
 };
 
-// Iran-events sunset (war ended 2026-07); mirrors api/health.js. Default OFF:
-// drop the deliberately-dormant seed from staleness classification. Set
-// IRAN_EVENTS_ENABLED=true to restore.
+// Middle East strike feed (conflict:iran-events:v1); mirrors api/health.js.
+// Default OFF: the relay loop does not run, so drop the key from staleness
+// classification. IRAN_EVENTS_ENABLED=true turns on producer and probe together.
 if ((process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() !== 'true') {
   delete SEED_DOMAINS['conflict:iran-events'];
+  delete SEED_DOMAINS['conflict:strike-pressure'];
 }
 
 function parseJsonValue(raw) {
@@ -716,7 +724,14 @@ export async function handleSeedHealth(req, options = {}) {
     const bilateralPartial = bilateralGaps && (bilateralGaps.preservedCountries.length > 0
       || Object.values(bilateralGaps.countryCoverage).some(c => BILATERAL_FAILURE_STATES.has(c?.state))
       || (bilateralGaps.worldExports != null && bilateralGaps.worldExports.state !== 'observed'));
+    // Same policy as api/health.js riskScores, without the sibling staleness
+    // checks this endpoint does not compute.
+    const ciiInputs = cfg.ciiInputs ? assessCiiInputs(meta, evaluationNow) : null;
+    const ciiInputsPartial = Boolean(ciiInputs && (
+      !ciiInputs.valid || ciiInputs.dead.length > 0 || ciiInputs.unfedFamilies.length > 0
+    ));
     const coveragePartial = Boolean(bilateralPartial) || recordCoveragePartial
+      || ciiInputsPartial
       || rankableCoveragePartial
       || poolCoveragePartial
       || chinaDecisionDiagnosticsInvalid
@@ -835,6 +850,7 @@ export async function handleSeedHealth(req, options = {}) {
       stale,
     };
     if (bilateralGaps) seeds[domain].bilateralCoverage = bilateralGaps;
+    if (ciiInputs) seeds[domain].ciiInputs = ciiInputs;
     if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
     if (cfg.minRankableRecordCount != null) {
       seeds[domain].rankableRecordCount = rankableRecordCount;

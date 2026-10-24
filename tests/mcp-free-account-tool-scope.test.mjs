@@ -50,6 +50,72 @@ const call = (name, args = {}) => ({
 });
 
 describe('free-account allowance — tool scope', () => {
+  for (const credential of ['oauth', 'user-key']) {
+    const userKey = `wm_${'ab12'.repeat(10)}`;
+    const request = (args) => credential === 'oauth'
+      ? proReq(call('get_supply_chain_data', args))
+      : new Request('https://worldmonitor.app/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': userKey },
+        body: JSON.stringify(call('get_supply_chain_data', args)),
+      });
+
+    for (const args of [{}, { dataset: ['flows'], limit: 0, reporter: '156' }, { summary: true }, { jmespath: 'data.flows' }]) {
+      it(`requires a subscription for supply-chain data through ${credential} with ${JSON.stringify(args)}`, async () => {
+        const { deps, pipe } = makeProDeps({
+          getEntitlements: async () => FREE_ENT_ACTIVE,
+          validateUserApiKey: async (key) => key === userKey ? { userId: 'user_free' } : null,
+        });
+        process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+        process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+        let cacheReads = 0;
+        globalThis.fetch = async (url) => {
+          if (String(url).includes('/get/')) cacheReads += 1;
+          return new Response(JSON.stringify({ result: JSON.stringify({ flows: [{ cmdCode: '8542' }] }) }));
+        };
+
+        const res = await mcpHandler(request(args), deps);
+        assert.equal(res.status, 403);
+        const body = await res.json();
+        assert.equal(body.error?.code, -32002);
+        assert.equal(body.error?.data?.reason, 'upgrade-required');
+        assert.equal(body.result, undefined);
+        assert.equal(res.headers.get('WWW-Authenticate'), null);
+        assert.equal(pipe.count, 0);
+        assert.equal(cacheReads, 0);
+      });
+    }
+
+    it(`preserves Pro supply-chain flows through ${credential}`, async () => {
+      const { deps, pipe } = makeProDeps({
+        getEntitlements: async () => ({
+          planKey: 'pro', validUntil: Date.now() + 86_400_000,
+          features: { tier: 1, mcpAccess: true, planLimits: { mcpCallsPerDay: 50 } },
+        }),
+        validateUserApiKey: async (key) => key === userKey ? { userId: 'user_pro' } : null,
+      });
+      process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+      const flows = [{ reporterCode: '156', cmdCode: '8542', isAnomaly: true }];
+      const cacheReads = [];
+      globalThis.fetch = async (url) => {
+        cacheReads.push(String(url));
+        const payload = String(url).includes(encodeURIComponent('comtrade:flows:v1')) ? { flows } : {};
+        return new Response(JSON.stringify({ result: JSON.stringify(payload) }));
+      };
+
+      const res = await mcpHandler(request({ dataset: ['flows'], limit: 0, reporter: '156' }), deps);
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.result?.isError, undefined);
+      const payload = JSON.parse(body.result.content[0].text);
+      assert.deepEqual(payload.data.flows.flows, flows);
+      assert.deepEqual(Object.keys(payload.data), ['flows']);
+      assert.ok(cacheReads.some((url) => url.includes(encodeURIComponent('comtrade:flows:v1'))));
+      assert.equal(pipe.count, 1);
+    });
+  }
+
   it('requires a subscription for sanctions before spending a free slot', async () => {
     const { deps, pipe } = makeProDeps({ getEntitlements: async () => FREE_ENT_ACTIVE });
     const res = await mcpHandler(proReq(call('get_sanctions_data')), deps);

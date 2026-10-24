@@ -46,6 +46,8 @@ const MIRRORED_FILES = [
   'news-clustering-core.js',
   // #9095: news-clustering-core.js imports it for same-copy detection.
   'syndication.js',
+  // Push event registry read by scripts/shipping-webhook-worker.mjs on Railway.
+  'event-triggers.json',
 ];
 
 describe('scripts/shared/ mirrors shared/', () => {

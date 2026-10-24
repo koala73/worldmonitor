@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, httpsProxyFetchRaw, resolveProxyForConnect, describeErr, readSeedSnapshot, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
-import { getAcledToken } from './shared/acled-oauth.mjs';
+import { getAcledToken, hasAcledCredentials } from './shared/acled-oauth.mjs';
 import { GDELT_BULK_UNREST_KEY } from './_gdelt-bulk-contract.mjs';
 
 loadEnvFile(import.meta.url);
@@ -515,6 +515,12 @@ export function declareRecords(data) {
   return Array.isArray(data?.events) ? data.events.length : 0;
 }
 
+// Without ACLED credentials the ACLED fetch is skipped and every row is GDELT,
+// so the seed metadata must not claim ACLED (#9266).
+export function unrestSourceVersion(env = process.env) {
+  return hasAcledCredentials(env) ? 'acled+gdelt' : 'gdelt';
+}
+
 // Gate the runSeed entry-point so this module is importable from tests
 // without triggering a real seed run. process.argv[1] is set when this file
 // is invoked as a script (`node scripts/seed-unrest-events.mjs`); under
@@ -524,7 +530,7 @@ if (isMain) {
   runSeed('unrest', 'events', CANONICAL_KEY, fetchUnrestEvents, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
-    sourceVersion: 'acled+gdelt',
+    sourceVersion: unrestSourceVersion(),
 
     declareRecords,
     schemaVersion: 1,

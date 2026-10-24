@@ -6,6 +6,7 @@
  * panels, and drives map overlays via `MapContainer` primitives.
  */
 
+import { DODO_PRODUCTS } from '@/config/products';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { checkoutConsentHtml } from '@/utils/legal-links';
 import { openExternalUrl } from '@/services/external-navigation';
@@ -362,7 +363,7 @@ export class RouteExplorer {
           hs2: this.state.hs2 ?? '',
         });
         void import('@/services/checkout')
-          .then((m) => m.startCheckout('pro_monthly'))
+          .then((m) => m.startCheckout(DODO_PRODUCTS.PRO_MONTHLY))
           .catch(() => openExternalUrl(`${WEB_APP_ORIGIN}/pro`));
       }, { once: true });
     }

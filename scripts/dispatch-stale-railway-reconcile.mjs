@@ -249,6 +249,8 @@ export class GitHubWatchdogClient {
         (/^>=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(created ?? '')
           && exactQuery(url, {
             created,
+            event: 'workflow_dispatch',
+            branch: 'main',
             filter: 'all',
             per_page: String(GITHUB_PAGE_SIZE),
             page,
@@ -256,6 +258,8 @@ export class GitHubWatchdogClient {
         || (ACTIVE_RUN_STATES.includes(status)
           && exactQuery(url, {
             status,
+            event: 'workflow_dispatch',
+            branch: 'main',
             filter: 'all',
             per_page: String(GITHUB_PAGE_SIZE),
             page,
@@ -602,6 +606,8 @@ export class GitHubWatchdogClient {
     const created = `>=${new Date(now - WATCHDOG_HISTORY_WINDOW_MS).toISOString()}`;
     const query = new URLSearchParams({
       created,
+      event: 'workflow_dispatch',
+      branch: 'main',
       filter: 'all',
       per_page: String(GITHUB_PAGE_SIZE),
       page: '1',
@@ -622,6 +628,8 @@ export class GitHubWatchdogClient {
     for (const status of ACTIVE_RUN_STATES) {
       const query = new URLSearchParams({
         status,
+        event: 'workflow_dispatch',
+        branch: 'main',
         filter: 'all',
         per_page: String(GITHUB_PAGE_SIZE),
         page: '1',
@@ -791,7 +799,9 @@ export class GitHubWatchdogClient {
 
   async readDispatchedRunIdentity({ runId, runAttempt = 1, expectedHeadSha }) {
     if (!validGitHubRunId(runId)) throw new TypeError('dispatched workflow run id is invalid');
-    if (runAttempt !== 1) throw new TypeError('dispatched workflow run attempt must be 1');
+    if (!Number.isSafeInteger(runAttempt) || runAttempt < 1) {
+      throw new TypeError('dispatched workflow run attempt is invalid');
+    }
     if (!/^[0-9a-f]{40}$/i.test(expectedHeadSha ?? '')) {
       throw new TypeError('expected dispatched workflow head is invalid');
     }
@@ -800,13 +810,16 @@ export class GitHubWatchdogClient {
       'GET',
       `${this.repoPath}/actions/runs/${normalizedRunId}/attempts/${runAttempt}`,
     );
-    const workflowPath = typeof run?.path === 'string' ? run.path.split('@', 1)[0] : '';
+    const workflowPath = `.github/workflows/${TARGET_WORKFLOW_FILE}`;
     if (String(run?.id) !== normalizedRunId
       || run?.run_attempt !== runAttempt
       || run?.event !== 'workflow_dispatch'
       || run?.head_branch !== 'main'
       || run?.head_sha !== expectedHeadSha
-      || workflowPath !== `.github/workflows/${TARGET_WORKFLOW_FILE}`) {
+      || (run?.path !== workflowPath && run?.path !== `${workflowPath}@refs/heads/main`)
+      || run?.repository?.full_name !== this.repository
+      || run?.head_repository?.full_name !== this.repository
+      || run?.head_repository?.fork !== false) {
       throw new GitHubWatchdogError(
         'GITHUB_READ_FAILED',
         'dispatched workflow run identity was not exact',
@@ -1442,11 +1455,16 @@ export async function readWatchdogSnapshot({ github, control, clock = Date.now }
     if (hold?.state !== 'DISPATCH_HELD' || !hold.recoveryAttemptId) continue;
     const correlated = await github.findRunByRecoveryAttemptId(hold.recoveryAttemptId, runInventory);
     if (correlated) {
+      const identity = await github.readDispatchedRunIdentity({
+        runId: correlated.id,
+        runAttempt: correlated.runAttempt,
+        expectedHeadSha: hold.headSha,
+      });
       await control.bindRun({
         recoveryAttemptId: hold.recoveryAttemptId,
         headSha: hold.headSha,
-        runId: String(correlated.id),
-        runAttempt: correlated.runAttempt,
+        runId: identity.id,
+        runAttempt: identity.runAttempt,
       });
       controlState = unwrapControl(await control.status());
       continue;
@@ -1703,6 +1721,7 @@ export async function dispatchGitHubRecovery({
     };
   }
   try {
+    if (correlatedRun.runAttempt !== 1) throw new TypeError('dispatched workflow run attempt must be 1');
     correlatedRun = await github.readDispatchedRunIdentity({
       runId: correlatedRun.id,
       runAttempt: correlatedRun.runAttempt,

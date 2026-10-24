@@ -314,7 +314,8 @@
       "alertTitle": {
         "configured": "Skrivbordsinställningar konfigurerade",
         "needsKeys": "Konfigurera API-nycklar för att låsa upp funktioner",
-        "some": "Vissa funktioner behöver API-nycklar"
+        "some": "Vissa funktioner behöver API-nycklar",
+        "pro": "World Monitor Pro är aktivt"
       },
       "summary": {
         "desktop": "Skrivbordsläge",
@@ -344,8 +345,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "skipSetup": "Hoppa över installationen — en enda World Monitor-licens låser upp allt. Gå med i väntelistan för tidig tillgång.",
-      "reserveEarlyAccess": "Reservera din tidig åtkomst"
+      "proCloud": "Funktioner utan lokal API-nyckel använder World Monitor cloud-data.",
+      "skipSetupPro": "Hoppa över installationen: logga in med World Monitor Pro för att använda cloud-data istället för dina egna API-nycklar.",
+      "getPro": "Skaffa World Monitor Pro"
     },
     "countryIntel": {
       "identifying": "Identifierar land...",
@@ -591,7 +593,7 @@
         "tradeRoutes": "Handelsrutter",
         "gpsJamming": "Navigeringsstörning",
         "dayNight": "Dag/Natt",
-        "iranAttacks": "Iran-attacker",
+        "iranAttacks": "Attacker i Mellanöstern",
         "ciiChoropleth": "Landinstabilitet",
         "positiveEvents": "Positiva händelser",
         "kindness": "Godhjärtade handlingar",
@@ -640,7 +642,9 @@
         "sourceIomDtm": "Källa: IOM DTM",
         "sinceDate": "sedan {{date}}",
         "lastMonth": "förra månaden",
-        "sourceUnhcrOdp": "Källa: UNHCR:s portal för operativa data"
+        "sourceUnhcrOdp": "Källa: UNHCR:s portal för operativa data",
+        "displaced": "fördrivna",
+        "sourceIdmc": "Källa: IDMC"
       },
       "layerHelp": {
         "title": "Kartlagerguide",
@@ -753,7 +757,8 @@
       "sourceCoverageHint": "Visar {{covered}} av {{total}} aktiverade källor — den här panelen växlar mellan sina källor vid varje uppdatering",
       "sortBy": "Sortera efter",
       "sortNewest": "Senaste",
-      "sortRelevance": "Relevans"
+      "sortRelevance": "Relevans",
+      "translationUnavailable": "Översättning är inte tillgänglig. Kontrollera inställningarna för din AI-leverantör och försök igen."
     },
     "countryBrief": {
       "shareStory": "Dela berättelse",
@@ -940,6 +945,8 @@
       "capacityPercent": "{{percent}}% kapacitet",
       "noCountryImpacts": "Inga landspåverkan har upptäckts",
       "alternativeRoutes": "Alternativa rutter",
+      "sharesCutZone": "samma sund",
+      "estimateNote": "Uppskattning: kabelkapacitet och redundans är approximerade, inte uppmätta.",
       "countriesAffected": "Berörda länder ({{count}})",
       "links": "länkar",
       "selectInfrastructureHint": "Välj infrastruktur för att analysera kaskadeffekter",
@@ -1099,7 +1106,21 @@
       "latestChange": "Senaste förändring",
       "accelerating": "Accelererar",
       "inDays": "på {{days}} dagar",
-      "crossBorderNote": "UNHCR:s driftdataportal: människor som korsade gränser i varje kris, från de senaste landsrapporterna. Situationer överlappar varandra, så de läggs inte till tillsammans."
+      "crossBorderNote": "UNHCR:s driftdataportal: människor som korsade gränser i varje kris, från de senaste landsrapporterna. Situationer överlappar varandra, så de läggs inte till tillsammans.",
+      "last7And30": "Senaste 7 / 30 dagarna",
+      "staleReport": "Inaktuell rapport",
+      "reported": "Antal",
+      "period": "Period",
+      "movementNote": "Varje rad behåller sin källa, sitt rapportdatum och sitt mått. Bestånd, ankomster och gränskontrollhändelser är olika mått. Källor kan överlappa; summera inte deras antal. WorldMonitor tar fram denna vy från de länkade källorna; det innebär inget stöd från leverantörerna.",
+      "recent": "Nyligen",
+      "last30Days": "Senaste 30 dagarna",
+      "newThisWeek": "Nytt denna vecka",
+      "conflict": "Konflikt",
+      "disaster": "Katastrof",
+      "surge": "Topp",
+      "recentNote": "IDMC: personer som förflyttats inom sitt land under de senaste 30 dagarna. IDMC publicerar en siffra i median tre veckor efter förflyttningen, så nyliga veckor fylls i sent. Nytt denna vecka räknar siffror som publicerats under de senaste 7 dagarna. Topp: minst 5 000 personer och tre gånger det månatliga genomsnittet från de föregående fem månaderna.",
+      "recentAsOf": "Data per {{date}}.",
+      "recentMissing": "Ingen data denna gång från {{countries}}; deras filer misslyckades att läsas in, vilket inte betyder noll förskjutning."
     },
     "populationExposure": {
       "totalAffected": "Totalt påverkad",
@@ -3550,7 +3571,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Status för skattning och imputering har inte angetts"
     },
     "fiveFactorScorecard": {
       "title": "Femfaktorsresilienspoängbord",
@@ -3810,5 +3832,27 @@
       "description": "Aktivera källor om Iran, Israel, Gulfen och kurdiska regioner"
     },
     "unavailable": "Paketet {{preset}} är inte tillgängligt med dina nuvarande paneler"
+  },
+  "countryHistory": {
+    "title": "Daglig landshistorik",
+    "loading": "Läser in daglig historik…",
+    "window": "Period",
+    "days": "{{days}} dagar",
+    "observed": "{{count}} ögonblicksbilder under {{days}} dagar",
+    "legend": "CII (bärnsten): högre värden betyder större instabilitet. Motståndskraft (grönt): högre värden betyder större kapacitet. Punkter markerar dagar med utvalda rubriker.",
+    "chart": "Dagliga CII- och motståndskraftsvärden. Luckor och formeländringar bryter linjerna.",
+    "selectDate": "{{date}}, {{count}} utvalda rubriker",
+    "empty": "Inga dagliga ögonblicksbilder under denna period. Historiken byggs upp efter aktivering.",
+    "unavailable": "Historiken är tillfälligt otillgänglig. Försök igen.",
+    "retry": "Försök igen",
+    "stale": "Den senaste lyckade dagliga registreringen är över 36 timmar gammal.",
+    "break": "Formeländring eller observationslucka. Jämför bara värden med samma formel.",
+    "partial": "Nyhetsbevakningen var ofullständig vid registreringen.",
+    "resilience": "Motståndskraft",
+    "ciiMissing": "CII otillgängligt",
+    "resilienceMissing": "Motståndskraft otillgänglig",
+    "noEvents": "Inga utvalda rubriker registrerades för detta datum. Det bevisar inte att inga händelser inträffade.",
+    "unlock90": "Lås upp 90 dagar med Pro",
+    "unlock365": "Lås upp 365 dagar med ett API-abonnemang"
   }
 }

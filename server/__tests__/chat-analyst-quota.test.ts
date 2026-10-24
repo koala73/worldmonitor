@@ -145,6 +145,26 @@ describe("api/chat-analyst direct LLM quota lifecycle", () => {
     expect(quotaCounter).toBe(1);
   });
 
+  test("an operator key reserves on its per-key bucket, never under a null userId", async () => {
+    resolvePremiumCallerIdentity.mockResolvedValue({
+      isPremium: true,
+      userId: null,
+      kind: "enterprise",
+      quotaExempt: false,
+      quotaUserId: "wm:0123456789abcdef0123456789abcdef",
+      alarmPrincipal: "hashed-operator",
+      directLlmDailyLimit: 5_000,
+    });
+
+    const response = await handler(analystRequest(JSON.stringify({ query: "What changed?" })));
+
+    expect(response.status).toBe(200);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(expect.objectContaining({
+      userId: "wm:0123456789abcdef0123456789abcdef",
+      limit: 5_000,
+    }));
+  });
+
   test("an upstream failure after reservation rolls quota back", async () => {
     callLlmReasoningStream.mockReturnValue(llmEvents([{ error: "llm_unavailable" }]));
 

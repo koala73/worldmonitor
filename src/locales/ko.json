@@ -232,7 +232,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "추정 및 결측값 대체 상태가 제공되지 않음"
     },
     "fiveFactorScorecard": {
       "title": "5요인 회복력 스코어카드",
@@ -708,9 +709,9 @@
       "alertTitle": {
         "configured": "데스크톱 설정이 구성되었습니다",
         "needsKeys": "기능을 활성화하려면 API 키를 구성하세요",
-        "some": "일부 기능에 API 키가 필요합니다"
+        "some": "일부 기능에 API 키가 필요합니다",
+        "pro": "World Monitor Pro가 활성화되었습니다"
       },
-      "skipSetup": "설정을 건너뛰세요 — 하나의 World Monitor 라이선스로 모든 것을 이용할 수 있습니다. 대기 목록에 등록하여 조기 액세스를 받으세요.",
       "summary": {
         "desktop": "데스크톱 모드",
         "web": "웹 모드 (읽기 전용, 서버 관리 자격 증명)",
@@ -739,7 +740,9 @@
         "OLLAMA_API_URL": "예: http://127.0.0.1:11434 (Ollama) 또는 http://127.0.0.1:1234/v1 (LM Studio) — OpenAI 호환 엔드포인트.",
         "OLLAMA_MODEL": "예: llama3.1:8b — 요약에 사용할 모델 태그."
       },
-      "reserveEarlyAccess": "조기 접근 예약"
+      "proCloud": "로컬 API 키가 없는 기능은 World Monitor 클라우드 데이터를 사용합니다.",
+      "skipSetupPro": "설정을 건너뛰기: World Monitor Pro로 로그인하여 자신의 API 키 대신 클라우드 데이터를 사용하세요.",
+      "getPro": "World Monitor Pro 구매"
     },
     "settingsWindow": {
       "validating": "API 키 검증 중...",
@@ -1283,7 +1286,7 @@
         "commodityHubs": "원자재 허브",
         "gulfInvestments": "걸프협력회의 투자",
         "tradeRoutes": "무역 항로",
-        "iranAttacks": "이란 공격",
+        "iranAttacks": "중동 공격",
         "gpsJamming": "항법 간섭",
         "ciiChoropleth": "국가 불안정성",
         "dayNight": "주/야간",
@@ -1327,7 +1330,9 @@
         "sourceIomDtm": "출처: IOM DTM",
         "sinceDate": "{{date}} 이후",
         "lastMonth": "지난달",
-        "sourceUnhcrOdp": "출처: UNHCR 운영 데이터 포털"
+        "sourceUnhcrOdp": "출처: UNHCR 운영 데이터 포털",
+        "displaced": "실향민",
+        "sourceIdmc": "출처: IDMC"
       },
       "layerHelp": {
         "title": "지도 레이어 가이드",
@@ -1542,6 +1547,8 @@
       "capacityPercent": "{{percent}}% 용량",
       "noCountryImpacts": "국가 영향 감지되지 않음",
       "alternativeRoutes": "대체 경로",
+      "sharesCutZone": "동일한 해협",
+      "estimateNote": "추정치: 케이블 용량과 이중화는 근사값이며 측정값이 아닙니다.",
       "countriesAffected": "영향받는 국가 ({{count}})",
       "links": "링크",
       "selectInfrastructureHint": "연쇄 영향 분석을 위한 인프라를 선택하세요",
@@ -1759,7 +1766,21 @@
       "latestChange": "최근 변화",
       "accelerating": "가속 중",
       "inDays": "{{days}}일 동안",
-      "crossBorderNote": "유엔난민기구 운영 데이터 포털: 각 위기별 국경을 넘은 사람들, 최신 국가 보고서에서 제공. 상황이 겹치므로 함께 추가되지 않습니다."
+      "crossBorderNote": "유엔난민기구 운영 데이터 포털: 각 위기별 국경을 넘은 사람들, 최신 국가 보고서에서 제공. 상황이 겹치므로 함께 추가되지 않습니다.",
+      "last7And30": "최근 7일 / 30일",
+      "staleReport": "오래된 보고서",
+      "reported": "수치",
+      "period": "기간",
+      "movementNote": "각 행은 출처, 보고 날짜와 측정 기준을 유지합니다. 특정 시점의 인구, 도착자 수와 국경 단속 사건 수는 서로 다른 지표입니다. 출처 간에 중복이 있을 수 있으므로 수치를 합산하지 마세요. WorldMonitor는 연결된 출처에서 이 보기를 생성하며, 이는 제공 기관의 지지를 뜻하지 않습니다.",
+      "recent": "최근",
+      "last30Days": "지난 30일",
+      "newThisWeek": "이번 주 신규",
+      "conflict": "분쟁",
+      "disaster": "재해",
+      "surge": "급증",
+      "recentNote": "IDMC: 지난 30일간 국내 실향민. IDMC는 실향 발생 후 중앙값 3주 뒤에 통계를 발표하므로 최근 주간 데이터는 늦게 입력됩니다. 이번 주 신규는 지난 7일간 발표된 통계를 집계합니다. 급증: 최소 5,000명 이상이며 지난 5개월 월평균의 3배 이상.",
+      "recentAsOf": "{{date}} 기준 데이터입니다.",
+      "recentMissing": "{{countries}}에서 이번에 데이터를 받지 못했습니다. 파일 로드에 실패했으므로 국내이동이 없다는 뜻은 아닙니다."
     },
     "climate": {
       "noAnomalies": "중대한 이상 감지되지 않음",
@@ -1786,7 +1807,8 @@
       "sourceCoverageHint": "활성화된 {{total}}개 소스 중 {{covered}}개 표시 중 — 이 패널은 새로 고칠 때마다 소스를 번갈아 가져옵니다",
       "sortBy": "정렬 기준",
       "sortNewest": "최신순",
-      "sortRelevance": "관련성"
+      "sortRelevance": "관련성",
+      "translationUnavailable": "번역을 사용할 수 없습니다. AI 제공업체 설정을 확인하고 다시 시도하세요."
     },
     "breakingNews": {
       "critical": "심각",
@@ -3790,5 +3812,27 @@
       "description": "이란, 이스라엘, 걸프 및 쿠르드 지역 소스를 활성화합니다"
     },
     "unavailable": "현재 패널에서는 {{preset}} 프리셋을 사용할 수 없습니다"
+  },
+  "countryHistory": {
+    "title": "국가별 일일 기록",
+    "loading": "일일 기록 불러오는 중…",
+    "window": "기간",
+    "days": "{{days}}일",
+    "observed": "{{days}}일간 {{count}}개 기록",
+    "legend": "CII(호박색): 높을수록 불안정합니다. 회복력(녹색): 높을수록 대응 역량이 큽니다. 점은 선택된 헤드라인이 있는 날을 표시합니다.",
+    "chart": "일일 CII 및 회복력 점수입니다. 관측 공백과 계산식 변경은 선을 끊습니다.",
+    "selectDate": "{{date}}, 선택된 헤드라인 {{count}}개",
+    "empty": "이 기간에는 일일 기록이 없습니다. 활성화 후 기록이 쌓입니다.",
+    "unavailable": "일시적으로 기록을 이용할 수 없습니다. 다시 시도하세요.",
+    "retry": "다시 시도",
+    "stale": "마지막으로 성공한 일일 기록이 36시간 이상 지났습니다.",
+    "break": "계산식 변경 또는 관측 공백이 있습니다. 같은 계산식의 점수만 비교하세요.",
+    "partial": "기록 당시 뉴스 수집 범위가 불완전했습니다.",
+    "resilience": "회복력",
+    "ciiMissing": "CII 이용 불가",
+    "resilienceMissing": "회복력 이용 불가",
+    "noEvents": "이 날짜에 선택된 헤드라인이 기록되지 않았습니다. 사건이 없었다는 뜻은 아닙니다.",
+    "unlock90": "Pro로 90일 기록 이용",
+    "unlock365": "API 요금제로 365일 기록 이용"
   }
 }

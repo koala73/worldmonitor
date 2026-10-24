@@ -22,7 +22,7 @@ const MAX_SCAN_ITERATIONS = 5;
 // durable tenant data, not a cache.
 const BLOCKLIST_PREFIXES = [
   'rl:', '__', 'oauth:', 'mcp-grant:', 'wm:slack:oauth:', 'wm:discord:oauth:',
-  'internal-mcp-replay:', 'webhook:',
+  'internal-mcp-replay:', 'webhook:', 'desktop-auth:',
 ];
 const DURABLE_DATA_PREFIXES = ['military:bases:', 'conflict:iran-events:', 'conflict:ucdp-events:'];
 

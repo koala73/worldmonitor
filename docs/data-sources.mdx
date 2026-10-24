@@ -37,12 +37,12 @@ The core of the geopolitical variant: who is fighting, protesting, fleeing, and 
 - Intelligence hotspots with news correlation
 - Social unrest events (dual-source: ACLED protests + GDELT geo-events, Haversine-deduplicated)
 - Sanctions regimes
-- Refugee and displacement flows (UN OCHA HAPI)
+- Refugee and displacement flows (UNHCR, IDMC, IOM DTM) and cross-border movements (UNHCR portal, UK Home Office, US CBP, Frontex, Panama)
 - Government travel advisories from three national agencies plus embassy and health feeds
 - Israel Home Front Command (OREF) rocket and drone sirens in real time
 - Prediction-market probabilities as leading indicators (Polymarket)
 - Geopolitical boundary overlays — Korean DMZ (43-point closed-ring polygon based on the Korean Armistice Agreement), with typed boundary categories (demilitarized, ceasefire, disputed, armistice) and info popups
-- Iran conflict events — geocoded attacks, strikes, and military incidents sourced from LiveUAMap with severity classification
+- Middle East strikes — missile, drone and air strikes and interceptions in Saudi Arabia, Yemen, Iran, Iraq, the Gulf states and the Levant, extracted from curated Telegram channels (keyword pre-filter, then an AI classifier) and backstopped by the GDELT event export; reports from belligerent state media publish only when an independent source agrees
 
 **Key providers**
 
@@ -80,14 +80,18 @@ Events from both sources are **Haversine-deduplicated** on a 0.1° grid (~10km) 
 
 Protest scoring is regime-aware: democratic countries use logarithmic scaling (routine protests don't trigger instability), while authoritarian states use linear scoring (every protest is significant). Fatalities and concurrent internet outages apply severity boosts.
 
-ACLED is authenticated: set either `ACLED_EMAIL` + `ACLED_PASSWORD` (OAuth, auto-refreshed) or a static `ACLED_ACCESS_TOKEN` on the API project. When ACLED auth is absent the fetch degrades gracefully to an empty result — but ACLED is also the **real-time conflict source** for the Country Instability Index, so without it CII conflict scoring falls back to UCDP alone. UCDP GED's ANNUAL release lags ~7 months, so the UCDP seeders additionally discover the newest monthly **GED Candidate** release (`YY.0.M`, published with about a month's lag) and merge it on top of the annual base — the candidate adds recency, the annual base supplies the depth the 2-year window needs, and the published payload reserves slots for both. That keeps recent conflict events inside the CII 2-year recency window, but the fallback can still read `COVERAGE_PARTIAL` on the `riskScores` health/cache signal when UCDP itself is quiet or the candidate merge is degraded (cyber and news families still cover, so the metric reads 2 of 3). The `get-risk-scores` RPC logs a `[CII] ACLED returned 0 events` warning when this happens. When the candidate merge stops working, `seed-meta:conflict:ucdp-events` carries `candidateVersion: null` and the content-age trio drives the `ucdpEvents` health entry to `STALE_CONTENT`.
+ACLED is authenticated: set either `ACLED_EMAIL` + `ACLED_PASSWORD` (OAuth, auto-refreshed) or a static `ACLED_ACCESS_TOKEN` on the API project. When ACLED auth is absent the fetch degrades gracefully to an empty result — but ACLED is also the **real-time conflict source** for the Country Instability Index, so without it CII conflict scoring falls back to UCDP alone. UCDP GED's ANNUAL release lags ~7 months, so the UCDP seeders additionally discover the newest monthly **GED Candidate** release (`YY.0.M`, published with about a month's lag) and merge it on top of the annual base — the candidate adds recency, the annual base supplies the depth the 2-year window needs, and the published payload reserves slots for both. That keeps recent conflict events inside the CII 2-year recency window, but the fallback can still read `COVERAGE_PARTIAL` on the `riskScores` health/cache signal when UCDP itself is quiet or the candidate merge is degraded (only the news family still covers, so the metric reads 1 of 2; cyber stopped counting in CII v14). The `get-risk-scores` RPC logs a `[CII] ACLED returned 0 events` warning when this happens. When the candidate merge stops working, `seed-meta:conflict:ucdp-events` carries `candidateVersion: null` and the content-age trio drives the `ucdpEvents` health entry to `STALE_CONTENT`.
 
 ### Displacement Tracking
 
-Refugee and displacement data is sourced from the UN OCHA Humanitarian API (HAPI), providing population-level counts for refugees, asylum seekers, and internally displaced persons (IDPs). The Displacement panel offers two perspectives:
+The Displacement panel gives each source its own tab. Each source loads and refreshes on its own, so a tab appears as soon as its source has data:
 
-- **Origins** — countries people are fleeing from, ranked by outflow volume
-- **Hosts** — countries absorbing displaced populations, ranked by intake
+- **Origins** and **Hosts** — yearly UNHCR Population API counts of refugees, asylum seekers, and internally displaced persons (IDPs), ranked by outflow (countries people are fleeing) and by intake (countries hosting them)
+- **Recent** — new internal displacement events from IDMC's Internal Displacement Updates, read from the per-country files IDMC publishes on HDX. IDMC enters a figure a median of about three weeks after the displacement, so the newest week is always incomplete
+- **Internal** — internal displacement by first-level region from IOM's Displacement Tracking Matrix (DTM). Each operation keeps only its latest survey round, and operations that overlap in one country are never summed
+- **Cross-border** — source-dated movements from the UNHCR Operational Data Portal, UK Home Office daily small-boat arrivals, US CBP southwest-border encounters, Frontex monthly detections, and Panama's Darién arrivals. Each figure keeps its source's report date. Encounters and detections count events, not unique people. Route methodology and licences are listed in [Cross-border movements](https://github.com/koala73/worldmonitor/blob/main/docs/cross-border-movements.md)
+
+A surge in IDMC internal displacement for a country is emitted as a cross-source signal. A fresh, source-confirmed cross-border arrival surge adds five points to that country's CII once (since formula v13).
 
 Crisis badges flag countries with extreme displacement: > 1 million displaced (red), > 500,000 (orange). Displacement outflow feeds into the CII as a component signal — high displacement is a lagging indicator of instability that persists even when headlines move on.
 
@@ -198,7 +202,6 @@ Force posture and strategic infrastructure, tracked from open sources in real ti
 |----------|------|------|
 | CelesTrak | Satellite TLE data for orbital tracking | [celestrak.org](https://celestrak.org) |
 | gpsjam.org | ADS-B-derived GPS interference grid | [gpsjam.org](https://gpsjam.org) |
-| LiveUAMap | Geocoded conflict events (Iran theater) | [liveuamap.com](https://liveuamap.com) |
 | World Bank Open Data | Military expenditure, personnel, and national arms-transfer totals (`MS.MIL.*`) | [api.worldbank.org](https://api.worldbank.org/) |
 | SIPRI Arms Transfers Database | Derived supplier shares and HHI for delivered major conventional weapons; no full-database mirror | [armstransfers.sipri.org](https://armstransfers.sipri.org/) |
 
@@ -653,7 +656,9 @@ Airports across the Americas, Europe, Asia-Pacific, MENA, and Africa are continu
 
 **NOTAM closure detection** targets MENA airports where airspace closures due to military activity or security events carry strategic significance. Detection uses two methods: ICAO Q-code matching (aerodrome/airspace closure codes `FA`, `AH`, `AL`, `AW`, `AC`, `AM` combined with closure qualifiers `LC`, `AS`, `AU`, `XX`, `AW`) and free-text regex scanning for closure keywords (`AD CLSD`, `AIRPORT CLOSED`, `AIRSPACE CLOSED`). When a NOTAM closure is detected, it overrides any existing delay alert for that airport with a `severe/closure` classification.
 
-**Severity thresholds**: Average delay ≥15min or ≥15% delayed flights = minor; ≥30min/30% = moderate; ≥45min/45% = major; ≥60min/60% = severe. Cancellation rate ≥80% with ≥10 flights = closure. All results are cached for 30 minutes in Redis. When no AviationStack API key is configured, the system generates probabilistic simulated delays for demonstration — rush-hour windows and high-traffic airports receive higher delay probability.
+Only a JSON array from ICAO counts as a NOTAM observation, and an empty array is a valid "no closures" result. An HTTP error, an HTML page, malformed or non-array JSON, a timeout, or ICAO's `Reach call limit` quota response leaves `seed-meta:aviation:notam` untouched. The seeder keeps renewing the last closure list while it is within the 240-minute `notamClosures` health budget. After that, `/api/health` reports the feed stale, the seeder stops renewing the list, and it expires at its 2-hour TTL instead of being shown as current.
+
+**Severity thresholds**: Average delay ≥15min or ≥15% delayed flights = minor; ≥30min/30% = moderate; ≥45min/45% = major; ≥60min/60% = severe. Cancellation rate ≥80% with ≥10 flights = closure. AviationStack rates are measured over flights already due (scheduled departure passed, or departed) when at least 10 are in the sample, and over every returned flight otherwise, so advance cancellations of later flights cannot read as a closure on their own. All results are cached for 30 minutes in Redis. When no AviationStack API key is configured, the system generates probabilistic simulated delays for demonstration — rush-hour windows and high-traffic airports receive higher delay probability.
 
 ### Aviation Intelligence Panel
 

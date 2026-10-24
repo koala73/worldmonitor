@@ -50,17 +50,22 @@ export type ConflictSourceObservation = {
     candidateVersion?: string | null;
     candidateComplete?: boolean;
     annualFailedPages?: number;
+    newestItemAt?: number | null;
+    maxContentAgeMin?: number;
   };
 };
 
 export interface McpToolExecutionContext {
   readAccountAllowance?: () => Promise<import('./_account-allowance').McpAllowanceStatus>;
+  // The checkout session dispatch already created for `start_upgrade` (#9144).
+  startUpgradeResult?: import('./checkout').StartUpgradeResult;
   panelRequest?: import('./panel-requests').PaidPanelAdmission;
   panelScope?: 'forecasts';
   // Set only by dispatch for an original forecast read billed per tool call.
   perToolForecastRead?: true;
   // Set only by dispatch after a dedicated paid country-panel read is authorized.
   countryPanelCode?: string;
+  countryRiskHistoryReuseUntil?: number | null;
   inboundHostClass: McpInboundHostClass;
   downstreamOrigin: string;
   downstreamOriginTag: string;
@@ -70,6 +75,8 @@ export interface McpToolExecutionContext {
 // Tool registry types
 // ---------------------------------------------------------------------------
 export interface BaseToolDef {
+  // Pure caller-input checks that must run before any allowance reservation.
+  _validateArgs?: (params: Record<string, unknown>) => void;
   name: string;
   title: string;
   description: string;
@@ -161,7 +168,7 @@ export interface BaseToolDef {
   //     downstream MCP clients use this hint to decide whether to dedup,
   //     cache, or auto-retry tool calls. Two classes of tool earn `false`:
   //       1. LLM-synthesized tools (get_world_brief, get_country_brief,
-  //          analyze_situation, generate_forecasts) — the model output is
+  //          analyze_situation) — the model output is
   //          non-deterministic across calls.
   //       2. Live external-API reads with rapidly-changing content
   //          (get_airspace, get_maritime_activity, search_flights,
@@ -304,9 +311,9 @@ export interface RpcToolDef extends BaseToolDef {
   //       static JSON registry — see get_commodity_geo), OR
   //   (b) The tool's _execute fetches an endpoint whose runtime method
   //       drifts from the OpenAPI spec AND no covering op exists in the
-  //       spec (e.g. generate_forecasts POSTs /api/forecast/v1/get-forecasts
-  //       but the spec declares only GET — that GET is owned by
-  //       get_forecast_predictions). Document the drift inline; an EXCLUDED
+  //       spec (e.g. the retired generate_forecasts POSTed
+  //       /api/forecast/v1/get-forecasts but the spec declares only GET —
+  //       that GET is owned by get_forecast_predictions). Document the drift inline; an EXCLUDED
   //       entry is the wrong fix (the op IS covered, just via a sibling
   //       tool with matching method).
   //
@@ -476,6 +483,9 @@ export interface McpHandlerDeps {
   // contacting Redis.
   guardUserApiKeyValidation: (request: Request, corsHeaders: Record<string, string>) => Promise<Response | null>;
   redisPipeline: PipelineFn;
+  // `start_upgrade` checkout relay (#9144). Optional so existing fixtures keep
+  // compiling; dispatch falls back to the production Convex relay.
+  createCheckout?: import('./checkout').McpCreateCheckout;
 }
 
 export interface AuthResolution {
@@ -521,6 +531,11 @@ export interface McpPreCheckPassed {
    * site only (#6716). Must never be set by relaxing `checkProMcpAccess`.
    */
   freeAccountAllowance?: true;
+  /**
+   * The entitlement's plan key, from the same read. Lets a denial recommend
+   * the plan one step up (#9144). Omitted when the row carries none.
+   */
+  planKey?: string;
 }
 export interface McpPreCheckRejected {
   ok: false;

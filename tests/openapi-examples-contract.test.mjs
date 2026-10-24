@@ -54,8 +54,12 @@ const CURATED = (() => {
   const llmSrc = readFileSync(resolve(root, 'server/_shared/llm.ts'), 'utf8');
   const llmProviderChain = llmSrc.match(/const PROVIDER_CHAIN = \[([\s\S]*?)\] as const;/);
   assert.ok(llmProviderChain, 'expected PROVIDER_CHAIN in server/_shared/llm.ts');
-  assert.match(llmSrc, /export type LlmProviderName = typeof PROVIDER_CHAIN\[number\];/);
-  const llmProviders = new Set([...llmProviderChain[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+  // Opt-in providers (reachable only by name, e.g. through a customer AI
+  // routing policy) are still valid LlmProviderName values.
+  const llmOptInProviders = llmSrc.match(/const OPT_IN_PROVIDERS = \[([\s\S]*?)\] as const;/);
+  assert.ok(llmOptInProviders, 'expected OPT_IN_PROVIDERS in server/_shared/llm.ts');
+  assert.match(llmSrc, /export type LlmProviderName = typeof PROVIDER_CHAIN\[number\] \| typeof OPT_IN_PROVIDERS\[number\];/);
+  const llmProviders = new Set([...`${llmProviderChain[1]}${llmOptInProviders[1]}`.matchAll(/'([^']+)'/g)].map((m) => m[1]));
   assert.ok(llmProviders.size > 0, 'expected at least one provider in PROVIDER_CHAIN');
   const gdeltSrc = readFileSync(resolve(root, 'scripts/seed-gdelt-intel.mjs'), 'utf8');
   const gdeltTopics = new Set([...gdeltSrc.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]));
@@ -652,7 +656,7 @@ describe('OpenAPI examples contract', () => {
       const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
       return sum + operationEntries(spec).length;
     }, 0);
-    assert.equal(total, 248, `expected 248 OpenAPI operations, found ${total}`);
+    assert.equal(total, 252, `expected 252 OpenAPI operations, found ${total}`);
   });
 
   it('adds schema-valid request and response examples to every service JSON spec', () => {
@@ -664,9 +668,9 @@ describe('OpenAPI examples contract', () => {
       totals.requestExpected += result.requestExpected;
       totals.responseExpected += result.responseExpected;
     }
-    assert.equal(totals.operations, 248);
+    assert.equal(totals.operations, 252);
     assert.ok(totals.requestExpected >= 137, `expected at least 137 request example targets, found ${totals.requestExpected}`);
-    assert.equal(totals.responseExpected, 248);
+    assert.equal(totals.responseExpected, 252);
   });
 
   // record-baseline-snapshot's nested updates[].type is a bare string (no schema
@@ -705,14 +709,14 @@ describe('OpenAPI examples contract', () => {
       const spec = loadYaml(readFileSync(resolve(apiDir, yamlFile), 'utf8'));
       operations += assertOperationExamples(spec, yamlFile).operations;
     }
-    assert.equal(operations, 248);
+    assert.equal(operations, 252);
   });
 
   it('adds request and response examples to the unified OpenAPI bundle', () => {
     const bundle = loadUnifiedOpenApiSpec();
     const result = assertOperationExamples(bundle, 'worldmonitor.openapi.yaml');
-    assert.equal(result.operations, 248);
-    assert.equal(result.responseExpected, 248);
+    assert.equal(result.operations, 252);
+    assert.equal(result.responseExpected, 252);
   });
 
   it('labels aircraft emergency examples synthetic and documents projected response shapes', () => {
@@ -775,6 +779,26 @@ describe('OpenAPI examples contract', () => {
 });
 
 describe('OpenAPI curated example values', () => {
+  it('shows USD gold reserve quantities as unmeasured in all published examples', () => {
+    const specs = [
+      ['MarketService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'MarketService.openapi.json'), 'utf8'))],
+      ['MarketService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'MarketService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const example = spec.paths['/api/market/v1/get-gold-intelligence'].get.responses['200'].content[JSON_MEDIA].example;
+      assert.equal(example.cbReserves.indicator, 'IRFCLDT1_IRFCL56_USD', label);
+      assert.equal(example.cbReserves.valueIsOunces, false, label);
+      assert.equal(example.cbReserves.totalTonnes, 0, label);
+      assert.equal(example.cbReserves.topHolders[0].tonnes, 0, label);
+      assert.ok(example.cbReserves.topHolders[0].pctOfReserves > 0, label);
+      assert.deepEqual(example.cbReserves.topBuyers12m, [], label);
+      assert.deepEqual(example.cbReserves.topSellers12m, [], label);
+      assert.ok(example.goldPrice > 0, label);
+      assert.equal(example.unavailable, false, label);
+    }
+  });
+
   // These parameters have accepted-value sets the field-name heuristic can't
   // infer; the injector's override map pins each to a real value the handlers
   // accept. Guards against a regression to a rejected placeholder.
@@ -995,6 +1019,33 @@ describe('OpenAPI curated example values', () => {
 
     for (const [label, spec] of specs) {
       assertScenarioStatusPollExample(spec, label);
+    }
+  });
+
+  it('uses valid available demographics observations in each published example', () => {
+    const specs = [
+      ['ResilienceService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'ResilienceService.openapi.json'), 'utf8'))],
+      ['ResilienceService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'ResilienceService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const example = spec.paths['/api/resilience/v1/get-demographics-capability'].get.responses['200'].content[JSON_MEDIA].example;
+      let checked = 0;
+      for (const group of Object.values(example)) {
+        if (!group || typeof group !== 'object' || Array.isArray(group)) continue;
+        for (const [field, observation] of Object.entries(group)) {
+          if (!observation || typeof observation !== 'object' || observation.available !== true) continue;
+          checked += 1;
+          assert.ok(Number.isInteger(observation.year) && observation.year >= 1900
+            && observation.year <= new Date().getUTCFullYear() + 50, `${label}: ${field} needs a valid source year`);
+          assert.ok(Number.isFinite(observation.value) && observation.value >= 0, `${label}: ${field} needs a valid value`);
+          assert.ok(observation.source?.trim(), `${label}: ${field} needs source attribution`);
+          const unit = field.endsWith('Years') ? 'years' : field.endsWith('People') ? 'people'
+            : field === 'researchersPerMillion' ? 'people per million' : 'percent';
+          assert.equal(observation.unit, unit, `${label}: ${field} unit must match the reader contract`);
+        }
+      }
+      assert.ok(checked > 0, `${label}: expected available observations`);
     }
   });
 

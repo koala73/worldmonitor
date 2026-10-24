@@ -597,6 +597,11 @@ export async function recordChinaMacroTransportFreshness(
     'china-macro-required-official-sources-v2',
     CHINA_MACRO_TTL_SECONDS,
     transportAt,
+    {
+      newestItemAt: null,
+      oldestItemAt: null,
+      maxContentAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN,
+    },
   );
 }
 
@@ -605,10 +610,20 @@ export async function recordChinaMacroCompletedRun(
   writeMetadataFn = writeFreshnessMetadataSafely,
   now = Date.now(),
 ) {
-  if (!validateChinaMacroTransportSnapshot(snapshot, now)) {
+  if (!validateChinaMacroSnapshot(snapshot, now)) {
     throw new Error('China macro snapshot is not a structurally valid completed run');
   }
-  await writeMetadataFn(
+  const transportMeta = await writeMetadataFn(
+    'economic',
+    'china-macro-transport',
+    CHINA_MACRO_REQUIRED_SERIES.length,
+    'china-macro-required-official-sources-v2',
+    CHINA_MACRO_TTL_SECONDS,
+    chinaMacroTransportMeta(snapshot, now),
+    { ...chinaMacroContentMeta(snapshot), maxContentAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN },
+  );
+  if (transportMeta === null) throw new Error('China macro published content metadata write failed');
+  const completionMeta = await writeMetadataFn(
     'economic',
     'china-macro-complete',
     CHINA_MACRO_REQUIRED_SERIES.length,
@@ -616,7 +631,22 @@ export async function recordChinaMacroCompletedRun(
     CHINA_MACRO_TTL_SECONDS,
     now,
   );
+  if (completionMeta === null) throw new Error('China macro completion metadata write failed');
 }
+
+export const CHINA_MACRO_SEED_OPTIONS = Object.freeze({
+  ttlSeconds: CHINA_MACRO_TTL_SECONDS,
+  lockTtlMs: 210_000,
+  fetchPhaseTimeoutMs: 150_000,
+  validateFn: validateChinaMacroSnapshot,
+  declareRecords: (data) => data.observations.filter((item) => Number.isFinite(item?.value)).length,
+  sourceVersion: 'china-macro-official-nbs-safe-pboc-gacc-v2',
+  schemaVersion: CHINA_MACRO_SCHEMA_VERSION,
+  maxStaleMin: CHINA_MACRO_MAX_TRANSPORT_AGE_MIN,
+  contentMeta: chinaMacroContentMeta,
+  maxContentAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN,
+  afterPublish: async (data) => recordChinaMacroCompletedRun(data),
+});
 
 if (process.argv[1]?.endsWith('seed-china-macro.mjs')) {
   const fetchAndRecordTransport = async () => {
@@ -624,18 +654,5 @@ if (process.argv[1]?.endsWith('seed-china-macro.mjs')) {
     await recordChinaMacroTransportFreshness(snapshot);
     return snapshot;
   };
-  runSeed('economic', 'china-macro', CHINA_MACRO_KEY, fetchAndRecordTransport, {
-    ttlSeconds: CHINA_MACRO_TTL_SECONDS,
-    lockTtlMs: 210_000,
-    fetchPhaseTimeoutMs: 150_000,
-    validateFn: validateChinaMacroSnapshot,
-    declareRecords: (data) => data.observations.filter((item) => Number.isFinite(item?.value)).length,
-    sourceVersion: 'china-macro-official-nbs-safe-pboc-gacc-v2',
-    schemaVersion: CHINA_MACRO_SCHEMA_VERSION,
-    maxStaleMin: CHINA_MACRO_MAX_TRANSPORT_AGE_MIN,
-    contentMeta: chinaMacroContentMeta,
-    maxContentAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN,
-    afterPublish: async (data) => recordChinaMacroCompletedRun(data),
-    afterPreservedValidationSkip: async (data) => recordChinaMacroCompletedRun(data),
-  });
+  runSeed('economic', 'china-macro', CHINA_MACRO_KEY, fetchAndRecordTransport, CHINA_MACRO_SEED_OPTIONS);
 }

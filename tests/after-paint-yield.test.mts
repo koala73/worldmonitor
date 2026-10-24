@@ -4,7 +4,7 @@ import { yieldToMain, scheduleYield } from '@/utils/after-paint';
 
 type SchedulerHost = { scheduler?: { yield?: () => Promise<void> } };
 
-function withScheduler<T>(value: SchedulerHost['scheduler'] | undefined, run: () => T): T {
+async function withScheduler<T>(value: SchedulerHost['scheduler'] | undefined, run: () => T): Promise<Awaited<T>> {
   const host = globalThis as unknown as SchedulerHost;
   const had = 'scheduler' in host;
   const prev = host.scheduler;
@@ -14,7 +14,7 @@ function withScheduler<T>(value: SchedulerHost['scheduler'] | undefined, run: ()
     host.scheduler = value;
   }
   try {
-    return run();
+    return await run();
   } finally {
     if (had) host.scheduler = prev;
     else delete host.scheduler;
@@ -44,33 +44,43 @@ test('yieldToMain falls back when scheduler exists but lacks yield (R7)', async 
   assert.ok(true, 'partial-scheduler fallback resolved');
 });
 
-test('yieldToMain returns a Promise in both paths (signature preserved)', () => {
-  const withYield = withScheduler({ yield: () => Promise.resolve() }, () => yieldToMain());
-  const withoutYield = withScheduler(undefined, () => yieldToMain());
-  assert.ok(withYield instanceof Promise);
-  assert.ok(withoutYield instanceof Promise);
-  return Promise.all([withYield, withoutYield]);
+test('yieldToMain returns a Promise in both paths (signature preserved)', async () => {
+  for (const scheduler of [{ yield: () => Promise.resolve() }, undefined]) {
+    await withScheduler(scheduler, () => {
+      const result = yieldToMain();
+      assert.ok(result instanceof Promise);
+      return result;
+    });
+  }
 });
 
 test('scheduleYield runs the callback after the yield resolves (#5042 U4)', async () => {
   let ran = 0;
-  await withScheduler({ yield: () => Promise.resolve() }, async () => {
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await withScheduler({ yield: () => pending }, async () => {
     scheduleYield(() => { ran += 1; });
     await Promise.resolve();
     await Promise.resolve();
-    await Promise.resolve();
+    assert.equal(ran, 0, 'callback must wait while the browser yield is pending');
+    release();
+    await pending;
   });
   assert.equal(ran, 1, 'callback fires once after the yield');
 });
 
 test('scheduleYield cancel before resolution prevents the callback (coalesce/teardown, U4)', async () => {
   let ran = 0;
-  await withScheduler({ yield: () => Promise.resolve() }, async () => {
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await withScheduler({ yield: () => pending }, async () => {
     const cancel = scheduleYield(() => { ran += 1; });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(ran, 0, 'callback must remain pending until cancellation');
     cancel();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    release();
+    await pending;
   });
   assert.equal(ran, 0, 'a pre-resolution cancel drops the flush');
 });

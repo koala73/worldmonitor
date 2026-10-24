@@ -966,6 +966,168 @@ export interface UsInterestRateObservation {
   percent: number;
 }
 
+export interface GetCapitalFlowsRequest {
+  country: string;
+  includeSeries: boolean;
+  counterpart: string;
+}
+
+export interface GetCapitalFlowsResponse {
+  countries: CapitalFlowCountry[];
+  latest?: CapitalFlowLatest;
+  seededAt: number;
+  unavailable: boolean;
+  sources: string[];
+  method: Record<string, string>;
+  pair?: CapitalFlowPair;
+}
+
+export interface CapitalFlowCountry {
+  country: string;
+  iso3: string;
+  gdpUsdBn?: number;
+  gdpYear: number;
+  bop?: CapitalFlowBop;
+  bank?: CapitalFlowBank;
+  portfolio?: CapitalFlowPortfolio;
+  fdi?: CapitalFlowFdi;
+}
+
+export interface CapitalFlowBop {
+  frequency: string;
+  latestPeriod: string;
+  state?: CapitalFlowState;
+  episodes?: CapitalFlowEpisodes;
+  totals?: CapitalFlowTotals;
+  series: CapitalFlowPeriod[];
+}
+
+export interface CapitalFlowState {
+  inflow: string;
+  outflow: string;
+  inflowZ?: number;
+  outflowZ?: number;
+}
+
+export interface CapitalFlowEpisodes {
+  surge: CapitalFlowEpisode[];
+  stop: CapitalFlowEpisode[];
+  flight: CapitalFlowEpisode[];
+  retrenchment: CapitalFlowEpisode[];
+}
+
+export interface CapitalFlowEpisode {
+  start: string;
+  end: string;
+  quarters: number;
+  peakZ: number;
+  peakPeriod: string;
+}
+
+export interface CapitalFlowTotals {
+  inflowsUsdBn?: number;
+  outflowsUsdBn?: number;
+  netUsdBn?: number;
+  inflowsPctGdp?: number;
+  outflowsPctGdp?: number;
+  inflowsYoyPct?: number;
+  outflowsYoyPct?: number;
+}
+
+export interface CapitalFlowPeriod {
+  period: string;
+  inflows?: CapitalFlowComponents;
+  outflows?: CapitalFlowComponents;
+  errorsOmissions?: number;
+}
+
+export interface CapitalFlowComponents {
+  fdi?: number;
+  portfolio?: number;
+  other?: number;
+  total?: number;
+}
+
+export interface CapitalFlowBank {
+  latestPeriod: string;
+  nonBankDepositsAbroad?: CapitalFlowPosition;
+  householdDepositsAbroad?: CapitalFlowPosition;
+  nonBankBorrowingFromAbroad?: CapitalFlowPosition;
+  topBankLocations: CapitalFlowCounterparty[];
+  publishesBilateral: boolean;
+  topDepositorOrigins: CapitalFlowCounterparty[];
+}
+
+export interface CapitalFlowPosition {
+  stockUsdBn?: number;
+  flow4qUsdBn?: number;
+}
+
+export interface CapitalFlowCounterparty {
+  country: string;
+  stockUsdBn?: number;
+  flow4qUsdBn?: number;
+}
+
+export interface CapitalFlowPortfolio {
+  year: number;
+  foreignHoldingsUsdBn?: number;
+  foreignHoldingsPrevYearUsdBn?: number;
+  changePct?: number;
+  reporterCount: number;
+  topHolders: CapitalFlowCounterparty[];
+  holdingsAbroadUsdBn?: number;
+  topDestinations: CapitalFlowCounterparty[];
+}
+
+export interface CapitalFlowFdi {
+  year: number;
+  inwardUsdBn?: number;
+  topInvestors: CapitalFlowCounterparty[];
+  outwardUsdBn?: number;
+  topDestinations: CapitalFlowCounterparty[];
+}
+
+export interface CapitalFlowLatest {
+  bopQuarter: string;
+  bopYear: string;
+  bisQuarter: string;
+  pipYear: number;
+  fdiYear: number;
+}
+
+export interface CapitalFlowPair {
+  country: string;
+  counterpart: string;
+  bankPeriod: string;
+  portfolioYear: number;
+  aDepositsInB?: CapitalFlowPairLeg;
+  bDepositsInA?: CapitalFlowPairLeg;
+  aBorrowingFromB?: CapitalFlowPairLeg;
+  bBorrowingFromA?: CapitalFlowPairLeg;
+  aHoldingsOfB?: CapitalFlowPairLeg;
+  bHoldingsOfA?: CapitalFlowPairLeg;
+  aFdiInB?: CapitalFlowPairLeg;
+  bFdiInA?: CapitalFlowPairLeg;
+  fdiYear: number;
+}
+
+export interface CapitalFlowPairLeg {
+  status: string;
+  stockUsdBn?: number;
+  flow4qUsdBn?: number;
+  prevYearUsdBn?: number;
+  basis: string;
+  counterpartReportUsdBn?: number;
+  history: CapitalFlowPairPoint[];
+  instrument: string;
+}
+
+export interface CapitalFlowPairPoint {
+  period: string;
+  usdBn: number;
+}
+
 export interface GetWorldCpiMonthlyRequest {
   history: boolean;
   country: string;
@@ -1877,6 +2039,33 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetUsInterestRatesResponse;
+  }
+
+  async getCapitalFlows(req: GetCapitalFlowsRequest, options?: EconomicServiceCallOptions): Promise<GetCapitalFlowsResponse> {
+    let path = "/api/economic/v1/get-capital-flows";
+    const params = new URLSearchParams();
+    if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    if (req.includeSeries) params.set("include_series", String(req.includeSeries));
+    if (req.counterpart != null && req.counterpart !== "") params.set("counterpart", String(req.counterpart));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCapitalFlowsResponse;
   }
 
   async getWorldCpiMonthly(req: GetWorldCpiMonthlyRequest, options?: EconomicServiceCallOptions): Promise<GetWorldCpiMonthlyResponse> {

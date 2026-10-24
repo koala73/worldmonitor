@@ -8,21 +8,58 @@ import type {
   SeverityLevel,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
+import { CROSS_BORDER_SOURCES, projectCrossBorderSnapshots } from '../../displacement/v1/cross-border-data';
 import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';
-import { getCachedJson, readCachedJson, setCachedJson, cachedFetchJsonWithMeta } from '../../../_shared/redis';
-import { CLIMATE_ANOMALIES_KEY } from '../../../_shared/cache-keys';
+import { getCachedJson, readCachedJson, readCachedEnvelopeJson, setCachedJson, cachedFetchJsonWithMeta, runRedisPipeline } from '../../../_shared/redis';
+import { CLIMATE_ANOMALIES_KEY, CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
+import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
+import { ciiCountryAt, ciiCountryForIso2, ciiIsLand } from '../../../../scripts/shared/cii-country-borders.mjs';
+import {
+  parseWildfireFiresSummary,
+  summarizeWildfireDetections,
+  WILDFIRE_FIRES_SUMMARY_KEY,
+  type WildfireFireIntensity,
+} from '../../../../scripts/shared/wildfire-fires-summary.mjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
+import { isAcledConfigured } from '../../../_shared/acled-auth';
 import {
   CII_CONFLICT_ACTIVITY_CAP,
   CII_CONFLICT_ACTIVITY_PIVOT,
   CII_FORMULA_VERSION,
+  CII_GDELT_ESCALATION_CAP,
+  CII_GDELT_ESCALATION_DEADBAND,
+  CII_GDELT_ESCALATION_MAX_AGE_MS,
+  CII_GDELT_ESCALATION_SATURATION,
+  CII_GDELT_ESCALATION_SMOOTHING,
+  CII_GDELT_LEVEL_CONFLICT_FLOOR,
+  CII_GDELT_LEVEL_CONFLICT_SATURATION,
+  CII_GDELT_LEVEL_MIN_ARTICLES,
+  CII_GDELT_LEVEL_PROTEST_FLOOR,
+  CII_GDELT_LEVEL_PROTEST_SATURATION,
+  CII_STRIKE_BOOST_CAP,
+  CII_STRIKE_BOOST_PER_DOUBLING,
+  CII_STRIKE_BOOST_PIVOT,
+  CII_STRIKE_CONFIRMED_MAX_AGE_MS,
+  CII_STRIKE_FLOOR_BASE,
+  CII_STRIKE_FLOOR_CAP,
+  CII_STRIKE_FLOOR_MIN_PRESSURE,
+  CII_STRIKE_FLOOR_PER_DOUBLING,
+  CII_STRIKE_GDELT_MIN_MEASURED_DAYS,
+  CII_STRIKE_GDELT_NOISE_FLOOR,
+  CII_STRIKE_GDELT_SCALE,
+  CII_STRIKE_GDELT_SMOOTHING,
+  CII_STRIKE_GDELT_SUSTAINED_DAYS,
+  CII_STRIKE_HALF_LIFE_DAYS,
+  CII_STRIKE_SEVERITY_WEIGHTS,
+  CII_STRIKE_WINDOW_DAYS,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
   STRATEGIC_RISK_TOP_N,
 } from './_risk-config';
 import {
+  CII_COUNTRY_CODES,
   CII_BASELINE_RISK,
   CII_EVENT_MULTIPLIER,
   DEFAULT_CII_BASELINE_RISK,
@@ -38,6 +75,10 @@ import { CII_CLIMATE_ZONE_COUNTRIES } from '../../../../shared/cii-climate-zones
 // lives in shared/cii-weights.ts so browser-side scoring and server-side
 // scoring cannot drift.
 //
+// Before any change that can move a score, read
+// docs/methodology/cii-change-brief.md: claim the version in
+// docs/methodology/cii-next.json, run tests/cii-invariants.test.mts and post
+// scripts/cii-table-diff.mts output for tests/fixtures/cii/.
 // Change protocol when editing coefficient values in shared/cii-weights.ts:
 //   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts if server/API scores shift.
 //   2. Update docs/methodology/cii-risk-scores.mdx in the SAME commit.
@@ -83,42 +124,6 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   EG: ['egypt', 'egyptian', 'cairo', 'suez', 'sisi'],
   JP: ['japan', 'japanese', 'tokyo', 'okinawa', 'fukushima', 'kishida'],
   QA: ['qatar', 'qatari', 'doha', 'al jazeera'],
-};
-
-// Exported so the seed-military-cii.mjs drift-guard test can assert its re-embedded copy
-// stays in sync (scripts/ cannot import from server/ at runtime, but tests can).
-export const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minLon: number; maxLon: number }> = {
-  US: { minLat: 24.5, maxLat: 49.4, minLon: -125.0, maxLon: -66.9 },
-  RU: { minLat: 41.2, maxLat: 81.9, minLon: 19.6, maxLon: 180.0 },
-  CN: { minLat: 18.2, maxLat: 53.6, minLon: 73.5, maxLon: 135.1 },
-  UA: { minLat: 44.4, maxLat: 52.4, minLon: 22.1, maxLon: 40.2 },
-  IR: { minLat: 25.1, maxLat: 39.8, minLon: 44.0, maxLon: 63.3 },
-  IL: { minLat: 29.5, maxLat: 33.3, minLon: 34.3, maxLon: 35.9 },
-  TW: { minLat: 21.9, maxLat: 25.3, minLon: 120.0, maxLon: 122.0 },
-  KP: { minLat: 37.7, maxLat: 43.0, minLon: 124.3, maxLon: 130.7 },
-  SA: { minLat: 16.4, maxLat: 32.2, minLon: 34.6, maxLon: 55.7 },
-  TR: { minLat: 36.0, maxLat: 42.1, minLon: 26.0, maxLon: 44.8 },
-  PL: { minLat: 49.0, maxLat: 54.8, minLon: 14.1, maxLon: 24.2 },
-  DE: { minLat: 47.3, maxLat: 55.1, minLon: 5.9, maxLon: 15.0 },
-  FR: { minLat: 41.4, maxLat: 51.1, minLon: -5.1, maxLon: 9.6 },
-  GB: { minLat: 49.9, maxLat: 60.9, minLon: -8.2, maxLon: 1.8 },
-  IN: { minLat: 6.7, maxLat: 35.5, minLon: 68.1, maxLon: 97.4 },
-  PK: { minLat: 23.7, maxLat: 37.1, minLon: 60.9, maxLon: 77.8 },
-  SY: { minLat: 32.3, maxLat: 37.3, minLon: 35.7, maxLon: 42.4 },
-  YE: { minLat: 12.1, maxLat: 19.0, minLon: 42.5, maxLon: 54.5 },
-  MM: { minLat: 9.8, maxLat: 28.5, minLon: 92.2, maxLon: 101.2 },
-  VE: { minLat: 0.6, maxLat: 12.2, minLon: -73.4, maxLon: -59.8 },
-  CU: { minLat: 19.8, maxLat: 23.3, minLon: -85.0, maxLon: -74.1 },
-  MX: { minLat: 14.5, maxLat: 32.7, minLon: -118.4, maxLon: -86.7 },
-  BR: { minLat: -33.7, maxLat: 5.3, minLon: -73.9, maxLon: -34.8 },
-  AE: { minLat: 22.6, maxLat: 26.1, minLon: 51.6, maxLon: 56.4 },
-  KR: { minLat: 33.1, maxLat: 38.6, minLon: 125.1, maxLon: 131.9 },
-  IQ: { minLat: 29.1, maxLat: 37.4, minLon: 38.8, maxLon: 48.6 },
-  AF: { minLat: 29.4, maxLat: 38.5, minLon: 60.5, maxLon: 75.0 },
-  LB: { minLat: 33.1, maxLat: 34.7, minLon: 35.1, maxLon: 36.6 },
-  EG: { minLat: 22.0, maxLat: 31.7, minLon: 24.7, maxLon: 36.9 },
-  JP: { minLat: 24.4, maxLat: 45.5, minLon: 122.9, maxLon: 153.0 },
-  QA: { minLat: 24.5, maxLat: 26.2, minLon: 50.7, maxLon: 51.7 },
 };
 
 const ADVISORY_LEVELS_FALLBACK: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> = {
@@ -181,131 +186,6 @@ export function normalizeCountryName(text: string): string | null {
   return null;
 }
 
-const BBOX_BY_AREA = Object.entries(COUNTRY_BBOX)
-  .map(([code, b]) => ({ code, ...b, area: (b.maxLat - b.minLat) * (b.maxLon - b.minLon) }))
-  .sort((a, b) => a.area - b.area);
-
-type CountryBBoxCandidate = (typeof BBOX_BY_AREA)[number];
-
-function isInsideBBox(b: CountryBBoxCandidate, lat: number, lon: number): boolean {
-  return lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon;
-}
-
-function isNorthOfApproxUsMxBorder(lat: number, lon: number): boolean {
-  // Coarse segmented US/MX border approximation inside the shared bbox overlap.
-  if (lon <= -114.70) return lat >= 32.53; // California / Baja California
-  if (lon <= -111.05) return lat >= 31.33; // Arizona / Sonora
-  if (lon <= -106.45) return lat >= 31.73; // New Mexico / Chihuahua
-
-  const rioGrandeChord: Array<[number, number]> = [
-    [-106.45, 31.73], // El Paso / Ciudad Juarez
-    [-104.40, 29.60], // Big Bend / Ojinaga
-    [-100.95, 29.37], // Del Rio / Ciudad Acuna
-    [-100.50, 28.72], // Eagle Pass / Piedras Negras
-    [-99.50, 27.50],  // Laredo / Nuevo Laredo
-    [-98.20, 26.22],  // McAllen / Reynosa
-    [-97.50, 25.89],  // Brownsville / Matamoros
-  ];
-  for (let i = 1; i < rioGrandeChord.length; i++) {
-    const [prevLon, prevLat] = rioGrandeChord[i - 1]!;
-    const [nextLon, nextLat] = rioGrandeChord[i]!;
-    if (lon <= nextLon) {
-      const progress = (lon - prevLon) / (nextLon - prevLon);
-      const borderLat = prevLat + progress * (nextLat - prevLat);
-      return lat >= borderLat;
-    }
-  }
-  const borderLat = 25.89;
-  return lat >= borderLat;
-}
-
-function isWestOfApproxPlUaBorder(lat: number, lon: number): boolean {
-  const border: Array<[number, number]> = [
-    [22.70, 49.05], // Bieszczady / Zakarpattia
-    [23.05, 50.05], // Przemysl / Lviv corridor
-    [23.65, 51.50], // Bug River north of Lublin
-  ];
-  if (lat <= border[0]![1]) return lon <= border[0]![0];
-  for (let i = 1; i < border.length; i++) {
-    const [prevLon, prevLat] = border[i - 1]!;
-    const [nextLon, nextLat] = border[i]!;
-    if (lat <= nextLat) {
-      const progress = (lat - prevLat) / (nextLat - prevLat);
-      const borderLon = prevLon + progress * (nextLon - prevLon);
-      return lon <= borderLon;
-    }
-  }
-  return lon <= border[border.length - 1]![0];
-}
-
-function isKnownNonTier1BBoxGap(lat: number, lon: number, candidates: CountryBBoxCandidate[]): boolean {
-  // Jordan is not a Tier-1 CII country. Its rectangle overlaps Saudi Arabia's
-  // broad bbox; fail closed only when SA is the sole tracked-country candidate.
-  // If a tighter Tier-1 bbox also matches, keep the normal attribution path.
-  return candidates.length === 1
-    && candidates[0]!.code === 'SA'
-    && lat >= 30.8
-    && lat <= 32.6
-    && lon >= 35.4
-    && lon <= 37.4;
-}
-
-function resolveKnownBBoxOverlap(lat: number, lon: number, candidates: CountryBBoxCandidate[]): string | null {
-  const codes = new Set(candidates.map((candidate) => candidate.code));
-
-  if (codes.has('KP') && codes.has('CN') && codes.has('RU') && lat < 42.5) return 'KP';
-  if (codes.has('PL') && codes.has('UA')) return isWestOfApproxPlUaBorder(lat, lon) ? 'PL' : 'UA';
-  if (codes.has('CN') && codes.has('IN') && lat >= 28.5 && lat <= 32.0 && lon >= 89.0 && lon <= 93.5) return 'CN';
-  if (codes.has('TR') && codes.has('SY') && lat >= 36.6 && lat <= 37.6 && lon >= 36.0 && lon <= 38.8) return 'TR';
-  if (codes.has('IR') && codes.has('IQ') && lat >= 33.4 && lat <= 35.2 && lon >= 45.5 && lon <= 48.6) return 'IR';
-  if (codes.has('PK') && codes.has('AF') && lat >= 29.4 && lat <= 31.5 && lon >= 65.0 && lon <= 68.2) return 'PK';
-  if (codes.has('SA') && codes.has('EG') && lat >= 27.5 && lat <= 29.6 && lon >= 35.0 && lon <= 37.1) return 'SA';
-  if (codes.has('SA') && codes.has('IR') && lat >= 25.0 && lat <= 27.8 && lon >= 48.0 && lon <= 51.5) return 'SA';
-  if (codes.has('CN') && codes.has('MM') && lat >= 23.5 && lat <= 25.0 && lon >= 97.3 && lon <= 98.4) return 'CN';
-  if (codes.has('CN') && codes.has('RU') && lat >= 50.5 && lat <= 51.5 && lon >= 127.8 && lon <= 129.6) return 'RU';
-
-  if (codes.has('US') && codes.has('MX')) {
-    return isNorthOfApproxUsMxBorder(lat, lon) ? 'US' : 'MX';
-  }
-  if (codes.has('SY') && codes.has('LB')) {
-    if (lon >= 36.35 || (lat <= 33.75 && lon >= 36.05)) return 'SY';
-    return 'LB';
-  }
-  if (codes.has('RU') && codes.has('UA')) {
-    if ((lat >= 50.25 && lon >= 35.6) || (lon >= 38.7 && lat < 47.8)) return 'RU';
-    return 'UA';
-  }
-  if (codes.has('IN') && codes.has('PK')) {
-    if (lon >= 75.20 || (lon >= 74.75 && lat <= 32.10)) return 'IN';
-    return 'PK';
-  }
-  if (codes.has('CN') && codes.has('RU')) {
-    if (lon >= 132.0 && lat >= 42.40) return 'RU';
-    if (lon >= 131.65 && lat <= 44.10) return 'RU';
-    if (lon >= 126.80 && lon <= 128.20 && lat >= 50.27) return 'RU';
-    return 'CN';
-  }
-  if (codes.has('RU') && codes.has('JP')) {
-    return lat >= 45.25 && lon >= 142.00 ? 'RU' : 'JP';
-  }
-  if (codes.has('KP') && codes.has('KR')) {
-    const westernDmzLat = 37.75;
-    const easternDmzLat = 38.35;
-    const progress = Math.min(1, Math.max(0, (lon - 126.0) / 2.5));
-    const borderLat = westernDmzLat + progress * (easternDmzLat - westernDmzLat);
-    return lat >= borderLat ? 'KP' : 'KR';
-  }
-  if (codes.has('JP') && codes.has('KR')) {
-    if (lat <= 34.85 && lon >= 129.20) return 'JP';
-    return 'KR';
-  }
-  if (codes.has('SA') && codes.has('YE')) {
-    return lat >= 17.35 ? 'SA' : 'YE';
-  }
-
-  return null;
-}
-
 function climateSeverityScore(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   const normalized = String(value || '').toLowerCase();
@@ -331,17 +211,55 @@ export function climateCountriesForAnomaly(anomaly: any): string[] {
   return [...countries].filter((code) => code in TIER1_COUNTRIES);
 }
 
-// Exported so scripts/seed-military-cii.mjs's re-embedded copy can be cross-checked
-// for parity in tests/seed-military-cii-table-drift.test.mts. The seed cannot import
-// from server/ under Railway nixpacks packaging.
-export function geoToCountry(lat: number, lon: number): string | null {
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  const candidates = BBOX_BY_AREA.filter((b) => isInsideBBox(b, lat, lon));
-  if (candidates.length === 0) return null;
-  if (isKnownNonTier1BBoxGap(lat, lon, candidates)) return null;
-  // Preserve the previous smallest-area bbox tie-break for overlap pairs that
-  // do not yet have an explicit border heuristic.
-  return resolveKnownBBoxOverlap(lat, lon, candidates) ?? candidates[0]!.code;
+// Real borders (scripts/shared/cii-country-borders.mjs, generated from the
+// Natural Earth 1:50m map), shared with scripts/seed-military-cii.mjs so the
+// military seeder places flights and vessels exactly as the scorer does.
+// Points on non-Tier-1 land, or more than 12 nautical miles offshore, are null.
+export const geoToCountry: (lat: number, lon: number) => string | null = ciiCountryAt;
+
+// An earthquake scores where its epicentre is. Offshore beyond coastal waters,
+// where bounding boxes used to reach, it takes the country USGS names after the
+// last comma ("151 km E of Namie, Japan") when that text is exactly a country
+// name: never an ocean or region ("Southern Indian Ocean" is not India), and
+// never for an epicentre on non-Tier-1 land, which counts for no Tier-1 country
+// even when USGS describes it from a town across the border.
+function earthquakeCountry(eq: any): string | null {
+  const lat = safeNum(eq?.location?.latitude);
+  const lon = safeNum(eq?.location?.longitude);
+  const code = geoToCountry(lat, lon);
+  if (code || ciiIsLand(lat, lon)) return code;
+  const place = String(eq?.place || '');
+  const comma = place.lastIndexOf(',');
+  return comma < 0 ? null : countryNamedExactly(place.slice(comma + 1));
+}
+
+// Country names only, not news keywords: USGS writes US states after the comma
+// ("Washington") and COUNTRY_KEYWORDS carries cities and leaders.
+const COUNTRY_NAME_ALIASES: Record<string, string> = {
+  'united states of america': 'US', usa: 'US', 'russian federation': 'RU',
+  turkiye: 'TR', burma: 'MM', uae: 'AE', uk: 'GB', 'great britain': 'GB',
+  'republic of korea': 'KR', 'democratic people s republic of korea': 'KP',
+};
+const COUNTRY_NAME_TO_CODE: Map<string, string> = new Map([
+  ...Object.entries(TIER1_COUNTRIES).map(([code, name]) => [normalizeForCountryMatch(name), code] as [string, string]),
+  ...Object.entries(COUNTRY_NAME_ALIASES).map(([name, code]) => [normalizeForCountryMatch(name), code] as [string, string]),
+]);
+
+function countryNamedExactly(text: string): string | null {
+  return COUNTRY_NAME_TO_CODE.get(normalizeForCountryMatch(text)) ?? null;
+}
+
+// A strike event that carries its country (the Middle East strike feed sets
+// countryCode from its gazetteer) scores there, including at sea where no
+// polygon reaches; a non-Tier-1 country scores nowhere. Older events without
+// it fall back to their coordinates, then to the country named in the text.
+export function strikeEventCountry(s: any): string | null {
+  if (typeof s?.countryCode === 'string' && /^[A-Za-z]{2}$/.test(s.countryCode.trim())) {
+    return ciiCountryForIso2(s.countryCode);
+  }
+  const lat = safeNum(s?.lat || s?.latitude);
+  const lon = safeNum(s?.lon || s?.longitude);
+  return geoToCountry(lat, lon) || normalizeCountryName(s?.title || s?.location || '');
 }
 
 function safeNum(v: unknown): number {
@@ -508,21 +426,21 @@ interface CountrySignals {
   fatalities: number;
   protestFatalities: number;
   conflictFatalities: number;
+  /** GDELT term, 0..CII_GDELT_ESCALATION_CAP: max(escalation over the country's own norm, sustained level). */
+  gdeltConflictEscalation: number;
+  gdeltUnrestEscalation: number;
   ucdpWar: boolean;
   ucdpMinor: boolean;
   outageTotalCount: number;
   outageMajorCount: number;
   outagePartialCount: number;
   climateSeverity: number;
-  cyberCriticalCount: number;
-  cyberHighCount: number;
-  cyberMediumCount: number;
   fireCount: number;
   fireHighCount: number;
   gpsHighCount: number;
   gpsMediumCount: number;
-  iranStrikes: number;
-  highSeverityStrikes: number;
+  /** Decayed strike pressure P (v12), 0 when the country has not been struck. */
+  strikePressure: number;
   orefAlertCount: number;
   orefHistoryCount24h: number;
   advisoryLevel: AdvisoryLevel | null;
@@ -559,13 +477,14 @@ function emptySignals(): CountrySignals {
   return {
     protests: 0, riots: 0, battles: 0, explosions: 0, civilianViolence: 0,
     fatalities: 0, protestFatalities: 0, conflictFatalities: 0,
+    gdeltConflictEscalation: 0,
+    gdeltUnrestEscalation: 0,
     ucdpWar: false, ucdpMinor: false,
     outageTotalCount: 0, outageMajorCount: 0, outagePartialCount: 0,
     climateSeverity: 0,
-    cyberCriticalCount: 0, cyberHighCount: 0, cyberMediumCount: 0,
     fireCount: 0, fireHighCount: 0,
     gpsHighCount: 0, gpsMediumCount: 0,
-    iranStrikes: 0, highSeverityStrikes: 0,
+    strikePressure: 0,
     orefAlertCount: 0, orefHistoryCount24h: 0,
     advisoryLevel: null,
     advisoryProvenance: 'absent',
@@ -646,19 +565,291 @@ async function fetchACLEDEvents(): Promise<Array<{ country: string; event_type: 
   return [...recent.map(toRow), ...older.map(toRow)];
 }
 
-interface AuxiliarySources {
+export interface GdeltEscalationSignal {
+  current: number;
+  baselineMedian: number | null;
+}
+
+/** Distinct articles of the seven complete days through yesterday, and how many were coded. */
+export interface GdeltCountryWeek {
+  articles: number;
+  conflict: number;
+  protest: number;
+}
+
+/** { 'YYYY-MM-DD': [strikeArticles, articles] } for a country's measured strike days. */
+export type GdeltStrikeCounts = Record<string, [number, number]>;
+
+export interface GdeltCountryEventsRow {
+  conflict: GdeltEscalationSignal | null;
+  protest: GdeltEscalationSignal | null;
+  week: GdeltCountryWeek | null;
+  strikes?: GdeltStrikeCounts | null;
+}
+
+export interface GdeltCountryEvents {
+  byCountry: Record<string, GdeltCountryEventsRow>;
+  /** Days measured for strikes and their cohorts; null when the summary predates v12. */
+  strikeDays?: Record<string, number> | null;
+}
+
+/** Strike intensity per UTC day ('YYYY-MM-DD' -> weighted strikes or their GDELT equivalent). */
+export type StrikeDays = Record<string, number>;
+
+const STRIKE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseGdeltEscalationSignal(raw: unknown): GdeltEscalationSignal | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { current, baselineMedian } = raw as Record<string, unknown>;
+  if (typeof current !== 'number' || !Number.isFinite(current) || current < 0) return null;
+  return {
+    current,
+    baselineMedian: typeof baselineMedian === 'number' && Number.isFinite(baselineMedian) && baselineMedian >= 0
+      ? baselineMedian
+      : null,
+  };
+}
+
+function parseGdeltCountryWeek(raw: unknown): GdeltCountryWeek | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { articles, conflict, protest } = raw as Record<string, unknown>;
+  const count = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  if (!count(articles) || !count(conflict) || !count(protest)) return null;
+  if (conflict > articles || protest > articles) return null;
+  return { articles, conflict, protest };
+}
+
+function parseGdeltStrikeDays(raw: unknown): Record<string, number> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out: Record<string, number> = {};
+  for (const [date, cohorts] of Object.entries(raw as Record<string, unknown>)) {
+    if (STRIKE_DATE_RE.test(date) && typeof cohorts === 'number' && Number.isInteger(cohorts) && cohorts > 0) out[date] = cohorts;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+function parseGdeltStrikeCounts(raw: unknown, measured: Record<string, number>): GdeltStrikeCounts | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out: GdeltStrikeCounts = {};
+  for (const [date, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Object.prototype.hasOwnProperty.call(measured, date) || !Array.isArray(value) || value.length !== 2) continue;
+    const [strikes, articles] = value;
+    if (typeof strikes !== 'number' || typeof articles !== 'number') continue;
+    if (!Number.isFinite(strikes) || !Number.isFinite(articles) || strikes < 0 || strikes > articles) continue;
+    out[date] = [strikes, articles];
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * The per-country GDELT summary (scripts/_gdelt-country-events.mjs), or null
+ * when it is missing, malformed, older than CII_GDELT_ESCALATION_MAX_AGE_MS
+ * (a stopped materializer must not freeze a spike), or has nothing scoreable.
+ * The three readings are gated separately:
+ * - escalation (conflict/protest) needs the 21-day baseline and a complete
+ *   current window; without them they are null.
+ * - the sustained level (week) needs only weekReady: it reads complete days,
+ *   so it scores from deploy day, before the baseline has backfilled.
+ * - strikes (v12) read only the days the summary lists as measured
+ *   (strikeDays); a day missing there is unknown, not quiet.
+ */
+export function gdeltCountryEventsFromSeed(raw: unknown, nowMs: number): GdeltCountryEvents | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { byCountry, baselineReady, currentComplete, weekReady, updatedAt, strikeDays: rawStrikeDays } = raw as Record<string, unknown>;
+  if (!byCountry || typeof byCountry !== 'object' || Array.isArray(byCountry)) return null;
+  // A current window missing cohorts (materializer outage) is unknown, not calm.
+  const escalationReady = baselineReady === true && currentComplete === true;
+  const levelReady = weekReady === true;
+  const strikeDays = parseGdeltStrikeDays(rawStrikeDays);
+  if (!escalationReady && !levelReady && !strikeDays) return null;
+  const age = nowMs - safeNum(updatedAt);
+  if (!(age <= CII_GDELT_ESCALATION_MAX_AGE_MS)) return null;
+  const rows: Record<string, GdeltCountryEventsRow> = {};
+  for (const [code, row] of Object.entries(byCountry as Record<string, unknown>)) {
+    if (!/^[A-Z]{2}$/.test(code) || !row || typeof row !== 'object') continue;
+    const conflict = escalationReady ? parseGdeltEscalationSignal((row as Record<string, unknown>).conflict) : null;
+    const protest = escalationReady ? parseGdeltEscalationSignal((row as Record<string, unknown>).protest) : null;
+    const week = levelReady ? parseGdeltCountryWeek((row as Record<string, unknown>).week) : null;
+    const strikes = strikeDays ? parseGdeltStrikeCounts((row as Record<string, unknown>).strikes, strikeDays) : null;
+    if (conflict || protest || week || strikes) rows[code] = { conflict, protest, week, strikes };
+  }
+  return { byCountry: rows, strikeDays };
+}
+
+/** 0..CII_GDELT_ESCALATION_CAP; see the constant's note for the curve and its calibration. */
+export function gdeltEscalationScore(signal: GdeltEscalationSignal | undefined | null): number {
+  if (!signal || signal.baselineMedian == null) return 0;
+  const ratio = (signal.current + CII_GDELT_ESCALATION_SMOOTHING)
+    / (signal.baselineMedian + CII_GDELT_ESCALATION_SMOOTHING);
+  if (!(ratio > CII_GDELT_ESCALATION_DEADBAND)) return 0;
+  const scaled = Math.log(ratio / CII_GDELT_ESCALATION_DEADBAND)
+    / Math.log(CII_GDELT_ESCALATION_SATURATION / CII_GDELT_ESCALATION_DEADBAND);
+  return Math.round(Math.min(CII_GDELT_ESCALATION_CAP, scaled * CII_GDELT_ESCALATION_CAP));
+}
+
+/**
+ * 0..CII_GDELT_ESCALATION_CAP from the share of a week's coverage that is
+ * conflict- or protest-coded; see CII_GDELT_LEVEL_* for the curve and its calibration.
+ */
+export function gdeltLevelScore(week: GdeltCountryWeek | undefined | null, field: 'conflict' | 'protest'): number {
+  if (!week || !(week.articles >= CII_GDELT_LEVEL_MIN_ARTICLES)) return 0;
+  const floor = field === 'conflict' ? CII_GDELT_LEVEL_CONFLICT_FLOOR : CII_GDELT_LEVEL_PROTEST_FLOOR;
+  const saturation = field === 'conflict' ? CII_GDELT_LEVEL_CONFLICT_SATURATION : CII_GDELT_LEVEL_PROTEST_SATURATION;
+  const scaled = (week[field] / week.articles - floor) / (saturation - floor);
+  if (!(scaled > 0)) return 0;
+  return Math.round(Math.min(CII_GDELT_ESCALATION_CAP, scaled * CII_GDELT_ESCALATION_CAP));
+}
+
+// --- Strike pressure (v12); constants and calibration in ./_risk-config.ts ---
+
+function strikeUtcDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function addStrikeDay(target: Record<string, StrikeDays>, code: string, date: string, weight: number): void {
+  if (!(weight > 0)) return;
+  const days = (target[code] ??= {});
+  days[date] = (days[date] ?? 0) + weight;
+}
+
+/** [critical, high, elevated, moderate] -> weighted strikes, or null when malformed. */
+function strikeTallyWeight(tally: unknown): number | null {
+  if (!Array.isArray(tally) || tally.length !== 4) return null;
+  if (!tally.every((n) => typeof n === 'number' && Number.isInteger(n) && n >= 0)) return null;
+  const w = CII_STRIKE_SEVERITY_WEIGHTS;
+  return tally[0] * w.critical + tally[1] * w.high + tally[2] * w.elevated + tally[3] * w.moderate;
+}
+
+/**
+ * Weighted confirmed strikes per Tier-1 country and day from the relay's
+ * 30-day tally (conflict:strike-pressure:v1), or null when it is missing,
+ * malformed or older than CII_STRIKE_CONFIRMED_MAX_AGE_MS (GDELT then carries
+ * every country alone). Countries map like every strike input
+ * (Gaza to Israel); a non-Tier-1 country scores nowhere.
+ */
+export function confirmedStrikeDaysFromSeed(raw: unknown, nowMs: number): Record<string, StrikeDays> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { days, updatedAt } = raw as Record<string, unknown>;
+  if (!days || typeof days !== 'object' || Array.isArray(days)) return null;
+  const age = nowMs - safeNum(updatedAt);
+  if (!(safeNum(updatedAt) > 0 && age <= CII_STRIKE_CONFIRMED_MAX_AGE_MS)) return null;
+  const out: Record<string, StrikeDays> = {};
+  for (const [date, byCountry] of Object.entries(days as Record<string, unknown>)) {
+    if (!STRIKE_DATE_RE.test(date) || !byCountry || typeof byCountry !== 'object') continue;
+    for (const [iso2, tally] of Object.entries(byCountry as Record<string, unknown>)) {
+      const code = ciiCountryForIso2(iso2);
+      const weight = strikeTallyWeight(tally);
+      if (code && weight !== null) addStrikeDay(out, code, date, weight);
+    }
+  }
+  return out;
+}
+
+/**
+ * The same weights read straight from the 72h strike window
+ * (conflict:iran-events:v1). The 30-day tally is built from these events, so
+ * the scorer takes the larger of the two per day: the window covers the tally's
+ * first cycles after a deploy, or a relay whose tally write failed.
+ */
+export function confirmedStrikeDaysFromEvents(events: unknown[], nowMs: number): Record<string, StrikeDays> {
+  const out: Record<string, StrikeDays> = {};
+  for (const event of Array.isArray(events) ? events : []) {
+    const severity = String((event as any)?.severity ?? '').toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(CII_STRIKE_SEVERITY_WEIGHTS, severity)) continue;
+    const ts = (event as any)?.timestamp;
+    if (typeof ts !== 'number' || !Number.isFinite(ts) || ts > nowMs + DAY_MS) continue;
+    const code = strikeEventCountry(event);
+    if (code) addStrikeDay(out, code, strikeUtcDay(ts), CII_STRIKE_SEVERITY_WEIGHTS[severity as keyof typeof CII_STRIKE_SEVERITY_WEIGHTS]);
+  }
+  return out;
+}
+
+/**
+ * One country's GDELT strike intensity per measured day: the share of its
+ * coverage reporting strikes on it, over the noise floor, on the confirmed
+ * scale. A day counts only inside a campaign: among the measured days of the
+ * seven ending on it, at least CII_STRIKE_GDELT_MIN_MEASURED_DAYS, and over
+ * the floor on CII_STRIKE_GDELT_SUSTAINED_DAYS in seven of them (4 of 7 when
+ * all are measured). Judged per day, so a campaign keeps decaying after it
+ * ends, and unmeasured days neither count for nor against it.
+ */
+export function gdeltStrikeDays(
+  counts: GdeltStrikeCounts | null | undefined,
+  strikeDays: Record<string, number> | null | undefined,
+  nowMs: number,
+): StrikeDays {
+  if (!counts || !strikeDays) return {};
+  const hits: StrikeDays = {};
+  for (const [date, [strikes, articles]] of Object.entries(counts)) {
+    if (!Object.prototype.hasOwnProperty.call(strikeDays, date)) continue;
+    const share = strikes / (articles + CII_STRIKE_GDELT_SMOOTHING);
+    const intensity = CII_STRIKE_GDELT_SCALE * (share - CII_STRIKE_GDELT_NOISE_FLOOR);
+    if (intensity > 0) hits[date] = intensity;
+  }
+  const out: StrikeDays = {};
+  for (const [date, intensity] of Object.entries(hits)) {
+    const end = Date.parse(`${date}T00:00:00Z`);
+    if (!Number.isFinite(end) || end > nowMs) continue;
+    const week = Array.from({ length: 7 }, (_, i) => strikeUtcDay(end - i * DAY_MS));
+    const measured = week.filter((d) => Object.prototype.hasOwnProperty.call(strikeDays, d)).length;
+    const struck = week.filter((d) => Object.prototype.hasOwnProperty.call(hits, d)).length;
+    if (measured >= CII_STRIKE_GDELT_MIN_MEASURED_DAYS && struck * 7 >= CII_STRIKE_GDELT_SUSTAINED_DAYS * measured) {
+      out[date] = intensity;
+    }
+  }
+  return out;
+}
+
+/** Per-day maximum of two sources reporting the same strikes. */
+function maxStrikeDays(a: StrikeDays | undefined, b: StrikeDays | undefined): StrikeDays {
+  const out: StrikeDays = { ...(a ?? {}) };
+  for (const [date, value] of Object.entries(b ?? {})) out[date] = Math.max(out[date] ?? 0, value);
+  return out;
+}
+
+/** P = sum of x_d * 0.5^(age_d / half-life) over the window; age from each day's midpoint. */
+export function strikePressure(days: StrikeDays | null | undefined, nowMs: number): number {
+  let pressure = 0;
+  for (const [date, value] of Object.entries(days ?? {})) {
+    if (!STRIKE_DATE_RE.test(date) || !(typeof value === 'number' && value > 0)) continue;
+    const start = Date.parse(`${date}T00:00:00Z`);
+    if (!Number.isFinite(start) || start > nowMs) continue;
+    const ageDays = Math.max(0, (nowMs - (start + DAY_MS / 2)) / DAY_MS);
+    if (ageDays >= CII_STRIKE_WINDOW_DAYS) continue;
+    pressure += value * 0.5 ** (ageDays / CII_STRIKE_HALF_LIFE_DAYS);
+  }
+  return pressure;
+}
+
+export function strikePressureFloor(pressure: number): number {
+  if (!(pressure >= CII_STRIKE_FLOOR_MIN_PRESSURE)) return 0;
+  return Math.min(
+    CII_STRIKE_FLOOR_CAP,
+    CII_STRIKE_FLOOR_BASE + CII_STRIKE_FLOOR_PER_DOUBLING * Math.log2(pressure / CII_STRIKE_FLOOR_MIN_PRESSURE),
+  );
+}
+
+export function strikePressureBoost(pressure: number): number {
+  if (!(pressure > 0)) return 0;
+  return Math.min(CII_STRIKE_BOOST_CAP, CII_STRIKE_BOOST_PER_DOUBLING * Math.log2(1 + pressure / CII_STRIKE_BOOST_PIVOT));
+}
+
+export interface AuxiliarySources {
   ucdpEvents: any[];
   outages: any[];
   climate: any[];
-  cyber: any[];
-  fires: any[];
+  // Detections inside each Tier-1 country, from wildfire:fires-summary:v1
+  // (scripts/shared/wildfire-fires-summary.mjs). Null when the summary was
+  // present but unscorable.
+  fires: Record<string, WildfireFireIntensity[]> | null;
   gpsHexes: any[];
   iranEvents: any[];
   orefData: { activeAlertCount: number; historyCount24h: number } | null;
   advisories: { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> } | null;
   // Per-country displaced population by ISO3 code (UNHCR — persists after ceasefires)
   displacedByIso3: Record<string, number>;
-  newsTopStories: Array<{ countryCode: string | null; threatLevel: string; primaryTitle: string }>;
+  crossBorderSurgeCountries?: string[];
+  newsTopStories: NewsTopStory[];
   // Per-country classified headline counts from relay seedClassify() — written to news:threat:summary:v1
   threatSummaryByCountry: Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null;
   // Phase 1 (CII unification) — additive signal sources, all backed by an existing Redis key.
@@ -670,6 +861,24 @@ interface AuxiliarySources {
   // Phase 2 (CII unification) — per-country military activity from intelligence:military-cii:v1
   // (written by scripts/seed-military-cii.mjs). Keyed by ISO2.
   militaryCii: Record<string, any> | null;
+  // Per-country GDELT conflict and protest volume against each country's own baseline;
+  // scored only while ACLED is dark.
+  gdeltCountryEvents: GdeltCountryEvents | null;
+  // Weighted confirmed strikes per country and day from the relay's 30-day tally
+  // (conflict:strike-pressure:v1); null when missing or stale.
+  confirmedStrikes?: Record<string, StrikeDays> | null;
+  // What each Redis-backed input's read returned, for health only; never scored.
+  inputReads?: Partial<Record<CiiInputId, CiiInputRead>>;
+}
+
+type NewsTopStory = { countryCode: string | null; countryCodes?: string[]; threatLevel: string; primaryTitle: string };
+
+// Every country a headline names: "Iran-backed Houthis ... after Riyadh airport attack"
+// is Saudi news as much as Iranian news. Snapshots written before countryCodes existed
+// carry only countryCode.
+function newsStoryCountries(story: NewsTopStory): string[] {
+  if (story.countryCodes?.length) return story.countryCodes;
+  return story.countryCode ? [story.countryCode] : [];
 }
 
 const NEWS_THREAT_WEIGHT: Record<string, number> = {
@@ -682,15 +891,16 @@ const NEWS_THREAT_WEIGHT: Record<string, number> = {
   info: 0,
 };
 
-export const CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT = 3;
+// Conflict and news. Cyber IOC rows were dropped in v14: they place attacker
+// infrastructure, not the country under attack, so they no longer score or count here.
+export const CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT = 2;
 
 function emptyAuxiliarySources(): AuxiliarySources {
   return {
     ucdpEvents: [],
     outages: [],
     climate: [],
-    cyber: [],
-    fires: [],
+    fires: {},
     gpsHexes: [],
     iranEvents: [],
     orefData: null,
@@ -704,6 +914,8 @@ function emptyAuxiliarySources(): AuxiliarySources {
     sanctionsCountryCounts: null,
     temporalAnomalies: [],
     militaryCii: null,
+    gdeltCountryEvents: null,
+    confirmedStrikes: null,
   };
 }
 
@@ -716,6 +928,8 @@ const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLower
 interface RiskInput {
   readonly key: string;
   readonly raw: boolean;
+  /** Preserve the producer clock for inputs with source-age gates. */
+  readonly envelope?: boolean;
 }
 
 /** Only the class is kept: a JSON SyntaxError message quotes the stored payload. */
@@ -749,7 +963,8 @@ function classifyReadFailure(error: unknown): RiskInputFailureClass {
  * waits for the rest to settle and throws, naming every failed key.
  */
 async function readRiskInputs(inputs: ReadonlyArray<RiskInput | null>): Promise<unknown[]> {
-  const results = await Promise.all(inputs.map((input) => (input ? readCachedJson(input.key, input.raw) : null)));
+  const results = await Promise.all(inputs.map(input => input
+    ? (input.envelope ? readCachedEnvelopeJson : readCachedJson)(input.key, input.raw) : null));
   const failures = inputs.flatMap((input, i) => {
     const result = results[i];
     return input && result?.status === 'error' ? [{ key: input.key, failure: classifyReadFailure(result.error) }] : [];
@@ -760,12 +975,14 @@ async function readRiskInputs(inputs: ReadonlyArray<RiskInput | null>): Promise<
 
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
-  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw] = await readRiskInputs([
+  const [ucdpRaw, outagesRaw, climateRaw, firesSummaryRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw, countryEventsRaw, strikePressureRaw] = await readRiskInputs([
     { key: 'conflict:ucdp-events:v1', raw: true },
     { key: 'infra:outages:v1', raw: true },
     { key: CLIMATE_ANOMALIES_KEY, raw: true },
-    { key: 'cyber:threats-bootstrap:v2', raw: true },
-    { key: 'wildfire:fires:v1', raw: true },
+    // Per-country intensity rows derived by seed-fire-detections (#9509). The
+    // canonical wildfire:fires:v1 is 2-5 MB and used to time out the 1.5 s GET,
+    // which rejected the whole build.
+    { key: WILDFIRE_FIRES_SUMMARY_KEY, raw: true },
     { key: 'intelligence:gpsjam:v2', raw: true },
     IRAN_EVENTS_ENABLED ? { key: 'conflict:iran-events:v1', raw: true } : null,
     { key: 'relay:oref:history:v1', raw: true },
@@ -787,11 +1004,141 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     // production snapshot instead of the one this deployment rebuilt.
     { key: 'temporal:anomalies:v1', raw: false },
     { key: 'intelligence:military-cii:v1', raw: true },
+    // Per-country GDELT conflict/protest counts and baselines (seed-gdelt-bulk-materializer.mjs).
+    { key: 'gdelt:bulk:country-events:v1', raw: true },
+    // 30-day per-country strike tally built by the relay from the strike feed (v12).
+    IRAN_EVENTS_ENABLED ? { key: 'conflict:strike-pressure:v1', raw: true } : null,
   ]);
   // The previous year covers a year not yet seeded. An errored current-year
   // read has already thrown above, so it never masquerades as that.
   const displacementRaw = displacementCurrentRaw
     ?? (await readRiskInputs([{ key: `displacement:summary:v1:${currentYear - 1}`, raw: true }]))[0];
+  // The summary is written by the same seeder run as the canonical key, after
+  // it. A miss therefore means the reader deployed before the seeder's next
+  // tick or that extra-key write failed; recompute the projection from the
+  // canonical key then, and only then, so a present-but-unusable summary still
+  // surfaces in health instead of hiding behind the fallback. A canonical
+  // payload that cannot be summarized is passed through so the parser below
+  // reports it unusable rather than missing.
+  const firesCanonicalRaw = firesSummaryRaw == null
+    ? (await readRiskInputs([{ key: 'wildfire:fires:v1', raw: true }]))[0]
+    : null;
+  const firesRaw = firesSummaryRaw
+    ?? (firesCanonicalRaw == null ? null : summarizeWildfireDetections(firesCanonicalRaw) ?? firesCanonicalRaw);
+  const borderSnapshots = await readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true })));
+  return buildCiiAuxiliarySources({
+    ucdp: ucdpRaw,
+    outages: outagesRaw,
+    climate: climateRaw,
+    fires: firesRaw,
+    gpsjam: gpsRaw,
+    iranEvents: iranRaw,
+    oref: orefRaw,
+    advisories: advisoriesRaw,
+    displacement: displacementRaw,
+    newsInsights: insightsRaw,
+    threatSummary: threatSummaryRaw,
+    aviation: aviationRaw,
+    earthquakes: earthquakesRaw,
+    sanctionsPressure: sanctionsRaw,
+    sanctionsCounts: sanctionsCountsRaw,
+    temporalAnomalies: temporalRaw,
+    militaryCii: militaryCiiRaw,
+    gdeltCountryEvents: countryEventsRaw,
+    strikePressure: strikePressureRaw,
+    crossBorder: Object.fromEntries(CROSS_BORDER_SOURCES.map((source, i) => [source.id, borderSnapshots[i]])),
+  }, Date.now(), { iranEventsEnabled: IRAN_EVENTS_ENABLED });
+}
+
+/**
+ * Every payload the CII build reads, as the Redis reads return it (null or
+ * absent for a miss), keyed by input id rather than Redis key. `fires` is the
+ * wildfire summary (or the canonical payload when the summary is missing),
+ * `displacement` the current year's summary or else the previous year's, and
+ * `crossBorder` each CROSS_BORDER_SOURCES seed envelope by source id.
+ * tests/fixtures/cii/ stores captured production inputs in this shape.
+ */
+export interface CiiRawInputs {
+  ucdp?: unknown;
+  outages?: unknown;
+  climate?: unknown;
+  fires?: unknown;
+  gpsjam?: unknown;
+  iranEvents?: unknown;
+  oref?: unknown;
+  advisories?: unknown;
+  displacement?: unknown;
+  newsInsights?: unknown;
+  threatSummary?: unknown;
+  aviation?: unknown;
+  earthquakes?: unknown;
+  sanctionsPressure?: unknown;
+  sanctionsCounts?: unknown;
+  temporalAnomalies?: unknown;
+  militaryCii?: unknown;
+  gdeltCountryEvents?: unknown;
+  strikePressure?: unknown;
+  crossBorder?: Record<string, unknown>;
+}
+
+export interface CiiAuxiliaryOptions {
+  /** IRAN_EVENTS_ENABLED: when false the strike feed and its tally are ignored, as production skips reading them. */
+  iranEventsEnabled: boolean;
+}
+
+/**
+ * Parses raw input payloads into the scorer's sources. Pure: no Redis, no
+ * clock and no environment; `nowMs` drives every age gate.
+ */
+export function buildCiiAuxiliarySources(
+  raw: CiiRawInputs,
+  nowMs: number,
+  options: CiiAuxiliaryOptions,
+): AuxiliarySources {
+  const { iranEventsEnabled } = options;
+  const ucdpRaw = raw.ucdp ?? null;
+  const outagesRaw = raw.outages ?? null;
+  const climateRaw = raw.climate ?? null;
+  const firesRaw = raw.fires ?? null;
+  const gpsRaw = raw.gpsjam ?? null;
+  const iranRaw = iranEventsEnabled ? raw.iranEvents ?? null : null;
+  const orefRaw = raw.oref ?? null;
+  const advisoriesRaw = raw.advisories ?? null;
+  const displacementRaw = raw.displacement ?? null;
+  const insightsRaw = raw.newsInsights ?? null;
+  const threatSummaryRaw = raw.threatSummary ?? null;
+  const aviationRaw = raw.aviation ?? null;
+  const earthquakesRaw = raw.earthquakes ?? null;
+  const sanctionsRaw = raw.sanctionsPressure ?? null;
+  const sanctionsCountsRaw = raw.sanctionsCounts ?? null;
+  const temporalRaw = raw.temporalAnomalies ?? null;
+  const militaryCiiRaw = raw.militaryCii ?? null;
+  const countryEventsRaw = raw.gdeltCountryEvents ?? null;
+  const strikePressureRaw = iranEventsEnabled ? raw.strikePressure ?? null : null;
+  const borderSnapshots = CROSS_BORDER_SOURCES.map((source) => raw.crossBorder?.[source.id] ?? null);
+  const read = (value: unknown): CiiInputRead => (value == null ? 'missing' : 'present');
+  const inputReads: Partial<Record<CiiInputId, CiiInputRead>> = {
+    ucdp: read(ucdpRaw),
+    outages: read(outagesRaw),
+    climate: read(climateRaw),
+    fires: read(firesRaw),
+    gpsjam: read(gpsRaw),
+    iranEvents: iranEventsEnabled ? read(iranRaw) : 'not_configured',
+    oref: read(orefRaw),
+    advisories: read(advisoriesRaw),
+    displacement: read(displacementRaw),
+    crossBorder: borderSnapshots.some(snapshot => snapshot != null) ? 'present' : 'missing',
+    newsInsights: read(insightsRaw),
+    threatSummary: read(threatSummaryRaw),
+    aviation: read(aviationRaw),
+    earthquakes: read(earthquakesRaw),
+    sanctionsPressure: read(sanctionsRaw),
+    sanctionsCounts: read(sanctionsCountsRaw),
+    militaryCii: read(militaryCiiRaw),
+    gdeltCountryEvents: read(countryEventsRaw),
+    strikePressure: iranEventsEnabled ? read(strikePressureRaw) : 'not_configured',
+  };
+  const borderMovements = projectCrossBorderSnapshots(Object.fromEntries(CROSS_BORDER_SOURCES.map((source, i) => [source.id, borderSnapshots[i]])), nowMs).movements;
   const arr = (v: any, field?: string, maxLen = 10000) => {
     let a: any[];
     if (field && v && Array.isArray(v[field])) a = v[field];
@@ -827,6 +1174,9 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     : [];
   const newsTopStories = rawStories.map((s: any) => ({
     countryCode: typeof s.countryCode === 'string' ? s.countryCode : null,
+    countryCodes: Array.isArray(s.countryCodes)
+      ? s.countryCodes.filter((c: unknown): c is string => typeof c === 'string')
+      : [],
     threatLevel: typeof s.threatLevel === 'string' ? s.threatLevel.toLowerCase() : 'low',
     primaryTitle: typeof s.primaryTitle === 'string' ? s.primaryTitle : '',
   }));
@@ -847,8 +1197,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     ucdpEvents: arr(ucdpRaw, 'events'),
     outages: arr(outagesRaw, 'outages'),
     climate: arr(climateRaw, 'anomalies'),
-    cyber: arr(cyberRaw, 'threats'),
-    fires: arr(firesRaw, 'fireDetections').length ? arr(firesRaw, 'fireDetections') : arr(firesRaw, 'fires'),
+    fires: parseWildfireFiresSummary(firesRaw)?.byCountry ?? null,
     gpsHexes: arr(gpsRaw, 'hexes'),
     iranEvents: arr(iranRaw, 'events'),
     orefData,
@@ -856,6 +1205,9 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
       ? { byCountry: (advisoriesRaw as any).byCountry }
       : null,
     displacedByIso3,
+    crossBorderSurgeCountries: borderMovements
+      .filter(m => m.kind === 'arrival' && m.surge && !m.stale)
+      .flatMap(m => [m.countryCode, m.originCode]).filter(Boolean),
     newsTopStories,
     threatSummaryByCountry,
     aviationAlerts: arr(aviationRaw, 'alerts'),
@@ -866,13 +1218,150 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     militaryCii: militaryCiiRaw && typeof militaryCiiRaw === 'object' && (militaryCiiRaw as any).byCountry
       ? (militaryCiiRaw as any).byCountry
       : null,
+    gdeltCountryEvents: gdeltCountryEventsFromSeed(countryEventsRaw, nowMs),
+    confirmedStrikes: confirmedStrikeDaysFromSeed(strikePressureRaw, nowMs),
+    inputReads,
   };
+}
+
+// ========================================================================
+// Input availability (health)
+// ------------------------------------------------------------------------
+// ACLED credentials went missing around 2026-07 (#5134) and Unrest and
+// Conflict read 0 everywhere for months without any health signal. Each build
+// therefore reports every scored input's availability on its seed-meta;
+// api/_cii-input-health.js owns the verdict and must list the same ids.
+// temporal:anomalies:v1 is read but not scored (its producer emits only
+// region 'global'), so it is not reported.
+// ========================================================================
+
+export const CII_HEALTH_INPUT_IDS = [
+  'acled', 'ucdp', 'gdeltCountryEvents', 'iranEvents', 'strikePressure', 'oref',
+  'outages', 'climate', 'fires', 'gpsjam', 'advisories', 'displacement',
+  'crossBorder', 'newsInsights', 'threatSummary', 'aviation', 'earthquakes',
+  'sanctionsPressure', 'sanctionsCounts', 'militaryCii',
+] as const;
+export type CiiInputId = typeof CII_HEALTH_INPUT_IDS[number];
+type CiiInputRead = 'present' | 'missing' | 'not_configured';
+export type CiiInputState = 'live' | 'quiet' | 'missing' | 'unusable' | 'not_configured';
+export interface CiiInputReport { state: CiiInputState; quietSince?: number }
+
+const CII_INPUT_AUX_FIELD: Record<Exclude<CiiInputId, 'acled'>, keyof AuxiliarySources> = {
+  ucdp: 'ucdpEvents',
+  gdeltCountryEvents: 'gdeltCountryEvents',
+  iranEvents: 'iranEvents',
+  strikePressure: 'confirmedStrikes',
+  oref: 'orefData',
+  outages: 'outages',
+  climate: 'climate',
+  fires: 'fires',
+  gpsjam: 'gpsHexes',
+  advisories: 'advisories',
+  displacement: 'displacedByIso3',
+  crossBorder: 'crossBorderSurgeCountries',
+  newsInsights: 'newsTopStories',
+  threatSummary: 'threatSummaryByCountry',
+  aviation: 'aviationAlerts',
+  earthquakes: 'earthquakes',
+  sanctionsPressure: 'sanctionsCountries',
+  sanctionsCounts: 'sanctionsCountryCounts',
+  militaryCii: 'militaryCii',
+};
+
+// Parsers that return null when they reject a present payload: past their own
+// age gate (GDELT 6h, strike tally 72h) or without the field they score.
+const CII_INPUT_REJECTED_AS_NULL = new Set<CiiInputId>([
+  'gdeltCountryEvents', 'strikePressure', 'oref', 'advisories', 'threatSummary', 'militaryCii', 'fires',
+]);
+
+/**
+ * Classifies each scored input for health. An input is `live` when it moves
+ * at least one Tier-1 score on its own: the scorer runs once per input against
+ * an otherwise empty build and the result is compared with the all-empty
+ * build. This reuses computeCIIScores as-is, so it follows any formula change
+ * and measures exactly "zero across all Tier-1 countries". A standby input
+ * (GDELT while ACLED is live) is still graded on what it would contribute.
+ * An input whose whole effect lands under a score floor (UCDP, advisory)
+ * reads quiet; the quiet budgets in api/_cii-input-health.js are set only for
+ * feeds that move unfloored countries every day.
+ */
+export function assessCiiInputAvailability(
+  acled: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }>,
+  aux: AuxiliarySources,
+  nowMs: number,
+  acledConfigured = isAcledConfigured(),
+): Record<CiiInputId, CiiInputState> {
+  const fingerprint = (rows: typeof acled, sources: AuxiliarySources) => JSON.stringify(computeCIIScores(rows, sources, { nowMs }));
+  const baseline = fingerprint([], emptyAuxiliarySources());
+  const states = {
+    acled: !acledConfigured ? 'not_configured' : fingerprint(acled, emptyAuxiliarySources()) !== baseline ? 'live' : 'quiet',
+  } as Record<CiiInputId, CiiInputState>;
+  for (const [id, field] of Object.entries(CII_INPUT_AUX_FIELD) as Array<[Exclude<CiiInputId, 'acled'>, keyof AuxiliarySources]>) {
+    const read = aux.inputReads?.[id] ?? 'missing';
+    if (read !== 'present') {
+      states[id] = read;
+    } else if (aux[field] == null && CII_INPUT_REJECTED_AS_NULL.has(id)) {
+      states[id] = 'unusable';
+    } else {
+      states[id] = fingerprint([], { ...emptyAuxiliarySources(), [field]: aux[field] }) !== baseline ? 'live' : 'quiet';
+    }
+  }
+  return states;
+}
+
+/** Attaches `quietSince`, carried from the previous report while the input stays quiet. */
+export function withCiiInputQuietClocks(
+  states: Record<CiiInputId, CiiInputState>,
+  previousInputs: unknown,
+  nowMs: number,
+): Record<CiiInputId, CiiInputReport> {
+  const previous = previousInputs && typeof previousInputs === 'object'
+    ? previousInputs as Record<string, Partial<CiiInputReport> | undefined>
+    : {};
+  const reports = {} as Record<CiiInputId, CiiInputReport>;
+  for (const id of CII_HEALTH_INPUT_IDS) {
+    const state = states[id];
+    if (state !== 'quiet') {
+      reports[id] = { state };
+      continue;
+    }
+    const since = previous[id]?.state === 'quiet' ? Number(previous[id]?.quietSince) : NaN;
+    reports[id] = { state, quietSince: Number.isFinite(since) && since > 0 && since <= nowMs ? since : nowMs };
+  }
+  return reports;
+}
+
+/** Every term behind one country's score, as computeCIIScores combined them. */
+export interface CiiCountryTerms {
+  baseline: number;
+  eventMultiplier: number;
+  components: { unrest: number; conflict: number; security: number; information: number };
+  /** The parts of each component, before its cap and rounding. */
+  parts: {
+    unrestBase: number; unrestFatalityBoost: number; unrestSeverityBoost: number; outageBoost: number; gdeltUnrest: number;
+    acledScore: number; fatalityScore: number; civilianBoost: number; orefBoost: number; gdeltConflict: number;
+    flightScore: number; vesselScore: number; aviationScore: number; gpsJammingScore: number;
+    newsScore: number; threatSummaryScore: number;
+  };
+  eventScore: number;
+  boosts: {
+    climate: number; fire: number; advisory: number; orefBlend: number; displacement: number; crossBorder: number;
+    newsUrgency: number; earthquake: number; sanctions: number; ais: number; strikePressure: number;
+  };
+  /** baseline and eventScore weighted, plus every boost: the score before floors, rounding and the cap. */
+  blended: number;
+  floors: { ucdp: number; advisory: number; strike: number };
+  /** The largest floor candidate; it binds when it exceeds the rounded blend. */
+  floor: number;
+  strikePressure: number;
+  combinedScore: number;
 }
 
 export function computeCIIScores(
   acled: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }>,
   aux: AuxiliarySources,
   trendOptions: CiiTrendComparisonOptions = {},
+  termsSink?: Record<string, CiiCountryTerms>,
 ): CiiScore[] {
   const computedAt = Number.isFinite(trendOptions.nowMs) ? Number(trendOptions.nowMs) : Date.now();
   const priorByRegion = buildPriorCiiScoreMap(trendOptions.priorScores);
@@ -928,6 +1417,23 @@ export function computeCIIScores(
     data[code].fatalities += fat;
   }
 
+  // --- GDELT conflict and protest escalation (only while ACLED is dark) ---
+  if (acled.length === 0) {
+    for (const [code, row] of Object.entries(aux.gdeltCountryEvents?.byCountry ?? {})) {
+      if (!data[code]) continue;
+      // One signal read two ways (a spike over the norm, or a sustained level):
+      // the larger counts, never the sum.
+      data[code].gdeltConflictEscalation = Math.max(
+        gdeltEscalationScore(row.conflict),
+        gdeltLevelScore(row.week, 'conflict'),
+      );
+      data[code].gdeltUnrestEscalation = Math.max(
+        gdeltEscalationScore(row.protest),
+        gdeltLevelScore(row.week, 'protest'),
+      );
+    }
+  }
+
   // --- UCDP ---
   // Per-country aggregate classification (deaths + event count over a 2-year trailing
   // window), matching the frontend `deriveUcdpClassifications`. The cached feed has no
@@ -956,34 +1462,18 @@ export function computeCIIScores(
     }
   }
 
-  // --- Cyber ---
-  for (const t of aux.cyber) {
-    const code = (t.country || '').toUpperCase();
-    if (!data[code]) continue;
-    // Split by the severity the cached cyber threat already carries (Phase 3b / D7).
-    // seed-cyber-threats.mjs emits the proto enum form ('CRITICALITY_LEVEL_CRITICAL' etc.)
-    // — strip the prefix so bare lowercase fixtures and the production enum both bucket.
-    // NOTE: 'low' / 'info' / unknown severities are intentionally dropped. Pre-unification
-    // the server used a flat `cyberCount++` for every threat regardless of severity, but
-    // the only consumer (cyberBoost in the blend below) reads critical/high/medium with
-    // weights 3 / 1.8 / 0.9 — matching the frontend formula at
-    // src/services/country-instability.ts:609. A 'low' would have no coefficient to land
-    // on, so counting it would be a no-op anyway; the drop just makes the contract explicit.
-    const sev = String(t.severity || '').toLowerCase().replace(/^criticality_level_/, '');
-    if (sev === 'critical') data[code].cyberCriticalCount++;
-    else if (sev === 'high') data[code].cyberHighCount++;
-    else if (sev === 'medium') data[code].cyberMediumCount++;
-  }
+  // Cyber IOC feeds (AbuseIPDB, Feodo, URLhaus, C2Intel, OTX) are not read since v14:
+  // each row's country is where the malicious IP or URL is hosted, not the victim, so
+  // they scored datacenter countries (US, GB, DE, FR) instead of countries under attack.
 
-  // --- Fires ---
-  for (const f of aux.fires) {
-    const lat = safeNum(f.lat || f.latitude || f.location?.latitude);
-    const lon = safeNum(f.lon || f.longitude || f.location?.longitude);
-    const code = geoToCountry(lat, lon);
-    if (!code || !data[code]) continue;
-    data[code].fireCount++;
-    // "High" fire — bright or high radiative power (Phase 3b / D8, matches the frontend).
-    if (safeNonNegativeNum(f.brightness) >= 360 || safeNonNegativeNum(f.frp) >= 50) data[code].fireHighCount++;
+  // --- Fires --- (already attributed to Tier-1 countries by the summary producer)
+  for (const [code, fires] of Object.entries(aux.fires ?? {})) {
+    if (!data[code]) continue;
+    for (const f of fires) {
+      data[code].fireCount++;
+      // "High" fire — bright or high radiative power (Phase 3b / D8, matches the frontend).
+      if (safeNonNegativeNum(f.brightness) >= 360 || safeNonNegativeNum(f.frp) >= 50) data[code].fireHighCount++;
+    }
   }
 
   // --- GPS hex severity split ---
@@ -1016,7 +1506,7 @@ export function computeCIIScores(
     const mag = safeNonNegativeNum(eq.magnitude);
     if (mag < 5.5) continue;
     if (safeNum(eq.occurredAt) < eqCutoff) continue;
-    const code = geoToCountry(safeNum(eq.location?.latitude), safeNum(eq.location?.longitude));
+    const code = earthquakeCountry(eq);
     if (!code || !data[code]) continue;
     if (mag >= 7.5) data[code].earthquakeSevereCount++;
     else if (mag >= 6.5) data[code].earthquakeMajorCount++;
@@ -1054,6 +1544,7 @@ export function computeCIIScores(
   }
 
   // --- Military activity (Phase 2) — per-country aggregate from intelligence:military-cii:v1 ---
+  // Own counts are gathered but not scored since v14 (see the Security score below).
   for (const [code, m] of Object.entries(aux.militaryCii ?? {})) {
     const d = data[code];
     if (!d || !m || typeof m !== 'object') continue;
@@ -1066,15 +1557,18 @@ export function computeCIIScores(
     d.aisDisruptionLowCount = safeNonNegativeNum((m as any).aisDisruptionLow);
   }
 
-  // --- Iran strikes with severity ---
-  for (const s of aux.iranEvents) {
-    const lat = safeNum(s.lat || s.latitude);
-    const lon = safeNum(s.lon || s.longitude);
-    const code = geoToCountry(lat, lon) || normalizeCountryName(s.title || s.location || '');
-    if (!code || !data[code]) continue;
-    data[code].iranStrikes++;
-    const sev = String(s.severity || '').toLowerCase();
-    if (sev === 'high' || sev === 'critical') data[code].highSeverityStrikes++;
+  // --- Strike pressure (v12): confirmed feed and GDELT, per day the larger, decayed ---
+  // The 72h window and the 30-day tally carry the same events (max per day);
+  // GDELT strikes stand in only while ACLED is dark, like the other GDELT terms.
+  const confirmedStrikes = Object.entries(confirmedStrikeDaysFromEvents(aux.iranEvents, computedAt))
+    .reduce<Record<string, StrikeDays>>((out, [code, days]) => {
+      out[code] = maxStrikeDays(out[code], days);
+      return out;
+    }, { ...(aux.confirmedStrikes ?? {}) });
+  const gdeltStrikes = acled.length === 0 ? aux.gdeltCountryEvents : null;
+  for (const code of Object.keys(data)) {
+    const gdelt = gdeltStrikeDays(gdeltStrikes?.byCountry?.[code]?.strikes, gdeltStrikes?.strikeDays, computedAt);
+    data[code]!.strikePressure = strikePressure(maxStrikeDays(confirmedStrikes[code], gdelt), computedAt);
   }
 
   // --- OREF (IL only) ---
@@ -1087,12 +1581,12 @@ export function computeCIIScores(
   for (const story of aux.newsTopStories) {
     const weight = NEWS_THREAT_WEIGHT[story.threatLevel] ?? 0;
     if (weight === 0) continue;
-    // Primary attribution via countryCode from seed-insights geo-extraction
-    let code: string | null = story.countryCode && data[story.countryCode] ? story.countryCode : null;
-    // Fallback: keyword match on title
-    if (!code) code = normalizeCountryName(story.primaryTitle);
-    const signals = code ? data[code] : undefined;
-    if (signals) signals.newsScore += weight;
+    const tracked = newsStoryCountries(story).filter((code) => data[code]);
+    if (tracked.length === 0) {
+      const titleCode = normalizeCountryName(story.primaryTitle);
+      if (titleCode && data[titleCode]) tracked.push(titleCode);
+    }
+    for (const code of tracked) data[code]!.newsScore += weight;
   }
 
   // --- News threat summary (from relay seedClassify — all classified headlines) ---
@@ -1126,7 +1620,9 @@ export function computeCIIScores(
     // severityBoost (Phase 3b / C1) — ported from the frontend calcUnrestScore.
     const unrestSeverityBoost = Math.min(20, d.highSeverityUnrest * 10 * multiplier);
     const outageBoost = Math.min(50, d.outageTotalCount * 30 + d.outageMajorCount * 15 + d.outagePartialCount * 5);
-    const unrest = Math.min(100, Math.round(unrestBase + unrestFatalityBoost + unrestSeverityBoost + outageBoost));
+    const unrest = Math.min(100, Math.round(
+      unrestBase + unrestFatalityBoost + unrestSeverityBoost + outageBoost + d.gdeltUnrestEscalation,
+    ));
 
     // --- Conflict score (ported from frontend calcConflictScore) ---
     const conflictActivityRaw = (d.battles * 3 + d.explosions * 4 + d.civilianViolence * 5) * multiplier;
@@ -1137,19 +1633,22 @@ export function computeCIIScores(
     ));
     const fatalityScore = Math.min(40, Math.round(Math.sqrt(d.conflictFatalities) * 5 * multiplier));
     const civilianBoost = Math.min(10, d.civilianViolence * 3);
-    const strikeBoost = Math.min(50, d.iranStrikes * 3 + d.highSeverityStrikes * 5);
     const orefBoost = (code === 'IL' && d.orefAlertCount > 0)
       ? 25 + Math.min(25, d.orefAlertCount * 5)
       : 0;
-    const conflict = Math.min(100, acledScore + fatalityScore + civilianBoost + strikeBoost + orefBoost);
+    const conflict = Math.min(
+      100,
+      acledScore + fatalityScore + civilianBoost + orefBoost + d.gdeltConflictEscalation,
+    );
 
     // --- Security score (Phase 3b / decision C3 — full 4-input calcSecurityScore) ---
-    // Was GPS-only (issue #3738). Now flights + vessels + aviation + GPS, matching the
-    // frontend. Military counts reconstruct the frontend's array length: foreign presence
-    // is weighted ×2 (the intent of ingestMilitaryForCII's synthetic-{} push), applied
-    // here in the formula instead of as a representation hack.
-    const milFlights = d.militaryOwnFlights + d.militaryForeignFlights * 2;
-    const milVessels = d.militaryOwnVessels + d.militaryForeignVessels * 2;
+    // Flights + vessels + aviation + GPS. Military presence counts only FOREIGN aircraft
+    // and vessels located in the country, weighted ×2 as before. Since v14 a country's own
+    // air force and navy score nothing: own counts follow the operator anywhere in the
+    // world, so routine training (RAF/French sorties took GB 9 → 31, FR 9 → 25 overnight)
+    // and own vessels saturated Security for GB/FR/DE/US every day.
+    const milFlights = d.militaryForeignFlights * 2;
+    const milVessels = d.militaryForeignVessels * 2;
     const flightScore = Math.min(50, milFlights * 3);
     const vesselScore = Math.min(30, milVessels * 5);
     const aviationScore = Math.min(
@@ -1169,10 +1668,7 @@ export function computeCIIScores(
     const eventScore = unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25;
 
     const climateBoost = Math.min(15, d.climateSeverity * 3);
-    // cyber + fire (Phase 3b / D7, D8) — severity-weighted, ported from the frontend
-    // getSupplementalSignalBoost. Was total-count based; the cached cyber/fire feeds
-    // already carry severity / brightness, so this is a faithful port, not a partial one.
-    const cyberBoost = Math.min(12, d.cyberCriticalCount * 3 + d.cyberHighCount * 1.8 + d.cyberMediumCount * 0.9);
+    // fire (Phase 3b / D8) — severity-weighted. (The cyber boost beside it was removed in v14.)
     const fireBoost = Math.min(8, d.fireHighCount * 1.5 + Math.min(20, d.fireCount) * 0.25);
 
     // --- Advisory boost ---
@@ -1210,9 +1706,9 @@ export function computeCIIScores(
         : d.sanctionsEntryCount >= 101 ? 5 : 3;
       if (d.sanctionsNewEntryCount > 0) sanctionsBoost += 2;
     }
-    // supplementalSignalBoost (D4): the frontend's helper sums AIS + fire + cyber +
-    // temporal. AIS is its own blend term below; cyber + fire are the severity-weighted
-    // terms above. The temporal sub-boost is NOT wired — the temporal:anomalies:v1
+    // supplementalSignalBoost (D4): the frontend's helper summed AIS + fire + cyber +
+    // temporal. AIS is its own blend term below; fire is the severity-weighted
+    // term above; cyber was removed in v14. The temporal sub-boost is NOT wired — the temporal:anomalies:v1
     // producer (list-temporal-anomalies.ts) emits every anomaly with region:'global', so
     // they cannot be country-attributed. `temporalAnomaly*Count` stay gathered-not-scored
     // (Phase 1 intent); re-wire a temporalBoost only if the producer emits country-scoped
@@ -1222,27 +1718,57 @@ export function computeCIIScores(
       d.aisDisruptionHighCount * 2.5 + d.aisDisruptionElevatedCount * 1.5 + d.aisDisruptionLowCount * 0.5,
     );
 
+    // Assigned inside the sum so termsSink reports it without restating its constant.
+    let crossBorderBoost: number;
     const blended = baseline * 0.4
       + eventScore * 0.6
       + climateBoost
-      + cyberBoost
       + fireBoost
       + advisoryBoost
       + orefBlendBoost
       + displacementBoost
+      + (crossBorderBoost = aux.crossBorderSurgeCountries?.includes(code) ? 5 : 0)
       + newsUrgencyBoost
       + earthquakeBoost
       + sanctionsBoost
-      + aisBoost;
+      + aisBoost
+      // Strike pressure (v12), capped; replaces the 72h strikeBoost inside Conflict.
+      + strikePressureBoost(d.strikePressure);
 
     // --- Floors ---
     const ucdpFloor = d.ucdpWar ? 70 : (d.ucdpMinor ? 50 : 0);
     const advisoryFloor = d.advisoryLevel === 'do-not-travel' ? 60
       : d.advisoryLevel === 'reconsider' ? 50 : 0;
-    const floor = Math.max(ucdpFloor, advisoryFloor);
+    const strikeFloor = Math.round(strikePressureFloor(d.strikePressure));
+    const floor = Math.max(ucdpFloor, advisoryFloor, strikeFloor);
 
     const composite = Math.min(100, Math.max(floor, Math.round(blended)));
     const { dynamicScore, trend } = deriveCiiTrendDelta(composite, priorByRegion.get(code), computedAt);
+    if (termsSink) {
+      termsSink[code] = {
+        baseline,
+        eventMultiplier: multiplier,
+        components: { unrest, conflict, security, information },
+        parts: {
+          unrestBase, unrestFatalityBoost, unrestSeverityBoost, outageBoost, gdeltUnrest: d.gdeltUnrestEscalation,
+          acledScore, fatalityScore, civilianBoost, orefBoost, gdeltConflict: d.gdeltConflictEscalation,
+          flightScore, vesselScore, aviationScore, gpsJammingScore,
+          newsScore: d.newsScore, threatSummaryScore: d.threatSummaryScore,
+        },
+        eventScore,
+        boosts: {
+          climate: climateBoost, fire: fireBoost, advisory: advisoryBoost, orefBlend: orefBlendBoost,
+          displacement: displacementBoost, crossBorder: crossBorderBoost, newsUrgency: newsUrgencyBoost,
+          earthquake: earthquakeBoost, sanctions: sanctionsBoost, ais: aisBoost,
+          strikePressure: strikePressureBoost(d.strikePressure),
+        },
+        blended,
+        floors: { ucdp: ucdpFloor, advisory: advisoryFloor, strike: strikeFloor },
+        floor,
+        strikePressure: d.strikePressure,
+        combinedScore: composite,
+      };
+    }
 
     scores.push({
       region: code,
@@ -1275,6 +1801,68 @@ export function computeCIIScores(
 
   scores.sort((a, b) => b.combinedScore - a.combinedScore);
   return scores;
+}
+
+// ========================================================================
+// Scoring seam
+// ------------------------------------------------------------------------
+// The whole score table from explicit inputs and a clock value, with every
+// term. Production builds call the same code (fetchAuxiliarySources ->
+// buildCiiAuxiliarySources, then computeCIIScores), so the fixtures in
+// tests/fixtures/cii/, scripts/cii-table-diff.mts and
+// tests/cii-invariants.test.mts measure the deployed formula. See
+// docs/methodology/cii-change-brief.md before changing any score.
+// ========================================================================
+
+export type CiiFloorName = keyof CiiCountryTerms['floors'];
+
+export interface CiiScoreTableRow extends CiiCountryTerms {
+  region: string;
+  /** Floors equal to the binding value when it exceeds the rounded blend; empty when the blend set the score. */
+  bindingFloors: CiiFloorName[];
+}
+
+export interface CiiScoreTable {
+  /** Exactly what computeCIIScores returns: sorted by combinedScore, descending. */
+  scores: CiiScore[];
+  /** One row per country, in the order of `scores`. */
+  rows: CiiScoreTableRow[];
+  aux: AuxiliarySources;
+}
+
+export interface CiiScoreOptions {
+  nowMs: number;
+  /** ACLED rows; production has had none since 2026-07 (no ACLED access). */
+  acledEvents?: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }>;
+  priorScores?: CiiScore[] | null;
+}
+
+/** Scores already-parsed sources. Pure. */
+export function scoreCiiAuxiliarySources(aux: AuxiliarySources, options: CiiScoreOptions): CiiScoreTable {
+  const terms: Record<string, CiiCountryTerms> = {};
+  const scores = computeCIIScores(options.acledEvents ?? [], aux, { nowMs: options.nowMs, priorScores: options.priorScores }, terms);
+  const rows = scores.map((score): CiiScoreTableRow => {
+    const t = terms[score.region]!;
+    const binds = t.floor > Math.round(t.blended);
+    const bindingFloors = binds
+      ? (Object.keys(t.floors) as CiiFloorName[]).filter((name) => t.floors[name] === t.floor)
+      : [];
+    return { region: score.region, ...t, bindingFloors };
+  });
+  return { scores, rows, aux };
+}
+
+/**
+ * The scoring seam: the full CII table from raw input payloads and `nowMs`.
+ * Pure: no Redis, no clock, no environment. IRAN_EVENTS_ENABLED and ACLED
+ * rows are parameters.
+ */
+export function computeCiiScoreTable(
+  raw: CiiRawInputs,
+  options: CiiScoreOptions & CiiAuxiliaryOptions,
+): CiiScoreTable {
+  const aux = buildCiiAuxiliarySources(raw, options.nowMs, { iranEventsEnabled: options.iranEventsEnabled });
+  return scoreCiiAuxiliarySources(aux, options);
 }
 
 export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
@@ -1329,7 +1917,7 @@ export function countCiiRealtimeSignalDensityCoverage(
   // realtime families, not a raw feed heartbeat. Quiet-but-available feeds may
   // produce 0 here; underlying feed freshness is monitored by their own
   // seed-meta/TTL health entries where available.
-  const coveredFamilies = new Set<'conflict' | 'news' | 'cyber'>();
+  const coveredFamilies = new Set<'conflict' | 'news'>();
 
   // Conflict family: satisfied by EITHER the ACLED API path OR the UCDP aux feed.
   // ACLED is only one of two live conflict sources both consumed by computeCIIScores —
@@ -1340,7 +1928,10 @@ export function countCiiRealtimeSignalDensityCoverage(
   // whenever ACLED was thin even though UCDP was fully healthy.
   const acledCoversTier1 = (acled ?? []).some((ev) => isTier1CountryCode(normalizeCountryName(ev.country)));
   const ucdpCoversTier1 = deriveUcdpIntensityByRegion(aux?.ucdpEvents, nowMs).size > 0;
-  if (acledCoversTier1 || ucdpCoversTier1) {
+  // GDELT stands in for ACLED only while the ACLED path is empty, as in computeCIIScores.
+  const gdeltCoversTier1 = !(acled ?? []).length
+    && Object.keys(aux?.gdeltCountryEvents?.byCountry ?? {}).some(isTier1CountryCode);
+  if (acledCoversTier1 || ucdpCoversTier1 || gdeltCoversTier1) {
     coveredFamilies.add('conflict');
   }
 
@@ -1348,7 +1939,7 @@ export function countCiiRealtimeSignalDensityCoverage(
     const weight = NEWS_THREAT_WEIGHT[String(story.threatLevel || '').toLowerCase()] ?? 0;
     if (weight <= 0) continue;
     if (
-      isTier1CountryCode(story.countryCode)
+      newsStoryCountries(story).some(isTier1CountryCode)
       || isTier1CountryCode(normalizeCountryName(story.primaryTitle))
     ) {
       coveredFamilies.add('news');
@@ -1367,18 +1958,6 @@ export function countCiiRealtimeSignalDensityCoverage(
         coveredFamilies.add('news');
         break;
       }
-    }
-  }
-
-  for (const threat of aux?.cyber ?? []) {
-    const code = String(threat.country || '').trim().toUpperCase();
-    const severity = String(threat.severity || '').toLowerCase().replace(/^criticality_level_/, '');
-    if (
-      isTier1CountryCode(code)
-      && (severity === 'critical' || severity === 'high' || severity === 'medium')
-    ) {
-      coveredFamilies.add('cyber');
-      break;
     }
   }
 
@@ -1451,6 +2030,8 @@ export function filterRiskScoresResponse(
 // scripts/seed-forecasts.mjs, scripts/regional-snapshot/*. The seed-meta key
 // (`seed-meta:intelligence:risk-scores`) is unchanged — that's freshness tracking,
 // not the payload itself.
+// Daily history deliberately lives outside the versioned sebuf family. Each
+// member carries its methodology so a formula bump preserves the old series.
 const RISK_CACHE_KEY = `risk:scores:sebuf:${CII_FORMULA_VERSION}`;
 const RISK_STALE_CACHE_KEY = `risk:scores:sebuf:stale:${CII_FORMULA_VERSION}`;
 const RISK_TREND_HISTORY_CACHE_KEY_PREFIX = `risk:scores:sebuf:trend-history:${CII_FORMULA_VERSION}`;
@@ -1566,6 +2147,58 @@ async function persistCiiTrendSnapshot(response: GetRiskScoresResponse): Promise
   );
 }
 
+// Replacement and the heartbeat must be atomic. A plain pipeline can interleave
+// two ZREM/ZADD pairs or stamp health after a failed country write.
+const CII_DAILY_WRITE_LUA = `
+local count = #KEYS - 3
+local day = tonumber(ARGV[1])
+local ttl = tonumber(ARGV[2])
+local captured = tonumber(ARGV[3])
+for i, key in ipairs(KEYS) do
+  local kind = redis.call('TYPE', key).ok
+  local expected = i <= count and 'zset' or 'string'
+  if kind ~= 'none' and kind ~= expected then return redis.error_reply('cii_history_wrong_type') end
+end
+local previous = redis.call('GET', KEYS[count + 2])
+if previous and tonumber(cjson.decode(previous).fetchedAt) > captured then return 0 end
+for i = 1, count do
+  redis.call('ZREMRANGEBYSCORE', KEYS[i], day, day)
+  redis.call('ZADD', KEYS[i], day, ARGV[5 + i])
+  redis.call('ZREMRANGEBYSCORE', KEYS[i], '-inf', day - 365)
+  redis.call('EXPIRE', KEYS[i], ttl)
+end
+redis.call('SET', KEYS[count + 1], ARGV[4], 'EX', ttl)
+redis.call('SET', KEYS[count + 2], ARGV[5], 'EX', ttl + 86400)
+redis.call('SET', KEYS[count + 3], captured)
+return count
+`;
+
+export async function persistCiiDailyHistory(response: GetRiskScoresResponse): Promise<void> {
+  if (response.stale || response.degraded || response.ciiScores.length !== CII_COUNTRY_CODES.length) return;
+  const scores = new Map(response.ciiScores.map(score => [score.region, score]));
+  const members = CII_COUNTRY_CODES.map(code => {
+    const score = scores.get(code);
+    return JSON.stringify({
+      d: score?.computedAt ? new Date(score.computedAt).toISOString().slice(0, 10) : '',
+      v: score?.methodologyVersion, s: score?.combinedScore,
+      u: score?.components?.ciiContribution, c: score?.components?.geoConvergence,
+      m: score?.components?.militaryActivity, n: score?.components?.newsActivity, t: score?.computedAt,
+    });
+  });
+  const capturedAt = Math.max(...response.ciiScores.map(score => score.computedAt));
+  if (!Number.isFinite(capturedAt) || parseCiiDailyPoints(members, capturedAt).invalid
+    || response.ciiScores.some(score => score.computedAt !== capturedAt)) return;
+  const keys = CII_RISK_SCORE_CACHE_KEYS;
+  const results = await runRedisPipeline([[
+    'EVAL', CII_DAILY_WRITE_LUA, CII_COUNTRY_CODES.length + 3,
+    ...CII_COUNTRY_CODES.map(code => `${keys.dailyHistoryPrefix}${code}`), keys.dailyHistoryIndex, keys.dailyHistoryMeta, keys.dailyHistoryActivation,
+    Math.floor(capturedAt / CII_DAY_MS), 400 * 86400, capturedAt,
+    JSON.stringify({ date: new Date(capturedAt).toISOString().slice(0, 10), methodologyVersion: response.ciiScores[0]!.methodologyVersion, countries: CII_COUNTRY_CODES }),
+    JSON.stringify({ fetchedAt: capturedAt, recordCount: CII_COUNTRY_CODES.length }), ...members,
+  ]]);
+  if (results.length !== 1 || results[0]?.error) console.warn('[cii] daily history write unconfirmed');
+}
+
 /**
  * Awaited because a serverless runtime may drop a promise still pending after
  * the response; it runs only on the rejection path and never throws.
@@ -1582,6 +2215,7 @@ async function recordRejectedRiskScoresBuild(err: RiskInputsUnavailableError): P
 async function buildRiskScoresPayload(): Promise<{
   response: GetRiskScoresResponse;
   realtimeSignalDensityCoverageCount: number;
+  ciiInputs: Record<CiiInputId, CiiInputState>;
 }> {
   const nowMs = Date.now();
   const [acled, aux, priorCiiScores] = await Promise.all([
@@ -1599,20 +2233,32 @@ async function buildRiskScoresPayload(): Promise<{
   return {
     response: { ciiScores, strategicRisks, degraded: false, stale: false },
     realtimeSignalDensityCoverageCount,
+    ciiInputs: assessCiiInputAvailability(acled, aux, nowMs),
   };
 }
+
+const RISK_SEED_META_KEY = 'seed-meta:intelligence:risk-scores';
 
 async function persistFreshRiskScorePayload(
   freshResult: GetRiskScoresResponse,
   realtimeSignalDensityCoverageCount: number,
+  ciiInputs: Record<CiiInputId, CiiInputState> | null,
   options: { liveCache?: boolean } = {},
 ): Promise<void> {
+  const fetchedAt = Date.now();
+  // The previous report carries each quiet input's clock. An unreadable one
+  // restarts the clocks, which can only delay a quiet-too-long verdict.
+  const previousMeta = ciiInputs ? await getCachedJson(RISK_SEED_META_KEY).catch(() => null) : null;
+  const inputs = ciiInputs
+    ? withCiiInputQuietClocks(ciiInputs, (previousMeta as { inputs?: unknown } | null)?.inputs, fetchedAt)
+    : undefined;
   const writes: Array<Promise<unknown>> = [
     setCachedJson(RISK_STALE_CACHE_KEY, freshResult, RISK_STALE_TTL),
     persistCiiTrendSnapshot(freshResult),
+    persistCiiDailyHistory(freshResult),
     setCachedJson(
-      'seed-meta:intelligence:risk-scores',
-      { fetchedAt: Date.now(), recordCount: realtimeSignalDensityCoverageCount },
+      RISK_SEED_META_KEY,
+      { fetchedAt, recordCount: realtimeSignalDensityCoverageCount, ...(inputs ? { inputs } : {}) },
       604800,
     ),
   ];
@@ -1631,12 +2277,14 @@ export async function getRiskScores(
 ): Promise<GetRiskScoresResponse> {
   try {
     let realtimeSignalDensityCoverageCount = 0;
+    let ciiInputs: Record<CiiInputId, CiiInputState> | null = null;
     const { data: result, source, leader } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
       RISK_CACHE_KEY,
       RISK_CACHE_TTL,
       async () => {
         const built = await buildRiskScoresPayload();
         realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
+        ciiInputs = built.ciiInputs;
         return built.response;
       },
       undefined,
@@ -1651,6 +2299,7 @@ export async function getRiskScores(
         try {
           const built = await buildRiskScoresPayload();
           realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
+          ciiInputs = built.ciiInputs;
           freshResult = withRiskScoreRuntimeState(built.response, { degraded: false, stale: false });
           liveCacheBackfill = true;
         } catch {
@@ -1685,7 +2334,7 @@ export async function getRiskScores(
       // 7-day TTL matches the warm-ping write so health.maxStaleMin (30min)
       // logic is unchanged.
       if ((source === 'fresh' && leader) || liveCacheBackfill) {
-        await persistFreshRiskScorePayload(freshResult, realtimeSignalDensityCoverageCount, {
+        await persistFreshRiskScorePayload(freshResult, realtimeSignalDensityCoverageCount, ciiInputs, {
           liveCache: liveCacheBackfill,
         });
       }

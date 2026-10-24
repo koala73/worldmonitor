@@ -23,6 +23,7 @@ import {
   isPanelInVariantDefaults,
 } from '@/config';
 import { resolveNewsCategories, enabledNewsCategoryKeys, type ResolvedCategory } from '@/config/feed-resolution';
+import { variantShipsOrUserEnabled } from './panel-data-gate';
 import {
   countRepresentedSources,
   mergeRotatedNewsItems,
@@ -123,7 +124,7 @@ import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
 import { fetchConflictEvents, fetchUcdpEvents, fetchIranEvents } from '@/services/conflict';
-import { fetchCrossBorderArrivals, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
+import { fetchCrossBorderArrivals, fetchDisplacementEvents, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
@@ -273,6 +274,8 @@ const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no fetch, even the
 // CII/risk-scoring path. Set VITE_ENABLE_IRAN_ATTACKS=true to restore. Mirrors CYBER_LAYER_ENABLED.
 const IRAN_ATTACKS_ENABLED = import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
+// Variants whose preset layout carries the trade and supply-chain panels.
+const TRADE_SURFACE_VARIANTS = ['full', 'finance', 'commodity', 'energy'] as const;
 
 export interface DataLoaderCallbacks {
   renderCriticalBanner: (postures: TheaterPostureSummary[]) => void;
@@ -940,6 +943,14 @@ export class DataLoaderManager implements AppModule {
     return panelIds.some((panelId) => this.isPanelNearViewport(panelId, marginPx));
   }
 
+  private hydratesPanel(panelId: string, owningVariants: readonly string[]): boolean {
+    return variantShipsOrUserEnabled({
+      variant: SITE_VARIANT,
+      owningVariants,
+      panelEnabled: this.ctx.panelSettings?.[panelId]?.enabled === true,
+    });
+  }
+
   async loadAllData(forceAll = false): Promise<void> {
     if (this.loadAllDataPromise) {
       this.loadAllDataRerunRequested = true;
@@ -1038,19 +1049,18 @@ export class DataLoaderManager implements AppModule {
       }
 
       // Trade policy + supply-chain data (FULL, FINANCE, COMMODITY, ENERGY variants use supply-chain surface)
-      if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
-        if (shouldLoad('trade-policy')) {
-          tasks.push({ name: 'tradePolicy', task: () => runGuarded('tradePolicy', () => this.loadTradePolicy()) });
-        }
-        if (shouldLoad('supply-chain')) {
-          tasks.push({ name: 'supplyChain', task: () => runGuarded('supplyChain', () => this.loadSupplyChain()) });
-        }
-        if (shouldLoad('china-corridors')) {
-          tasks.push({ name: 'chinaCorridors', task: () => runGuarded('chinaCorridors', () => this.loadChinaCorridors({ skipIfPopulated: true })) });
-        }
-        if (shouldLoad('china-activity-nowcast')) {
-          tasks.push({ name: 'chinaActivityNowcast', task: () => runGuarded('chinaActivityNowcast', () => this.loadChinaActivityNowcast({ skipIfPopulated: true })) });
-        }
+      const loadTradePanel = (id: string): boolean => this.hydratesPanel(id, TRADE_SURFACE_VARIANTS) && shouldLoad(id);
+      if (loadTradePanel('trade-policy')) {
+        tasks.push({ name: 'tradePolicy', task: () => runGuarded('tradePolicy', () => this.loadTradePolicy()) });
+      }
+      if (loadTradePanel('supply-chain')) {
+        tasks.push({ name: 'supplyChain', task: () => runGuarded('supplyChain', () => this.loadSupplyChain()) });
+      }
+      if (loadTradePanel('china-corridors')) {
+        tasks.push({ name: 'chinaCorridors', task: () => runGuarded('chinaCorridors', () => this.loadChinaCorridors({ skipIfPopulated: true })) });
+      }
+      if (loadTradePanel('china-activity-nowcast')) {
+        tasks.push({ name: 'chinaActivityNowcast', task: () => runGuarded('chinaActivityNowcast', () => this.loadChinaActivityNowcast({ skipIfPopulated: true })) });
       }
     }
 
@@ -1126,7 +1136,7 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'intelligence', task: () => runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
     }
 
-    if (SITE_VARIANT === 'full' && (shouldLoad('satellite-fires') || this.ctx.mapLayers.natural)) {
+    if (this.hydratesPanel('satellite-fires', ['full']) && (shouldLoad('satellite-fires') || this.ctx.mapLayers.natural)) {
       // Lock under the map-layer key ('fires') so a hydration load and a
       // loadDataForLayer('fires') toggle one-flight each other instead of
       // double-fetching (loadFirmsData has no internal guard). `name` stays
@@ -1989,8 +1999,18 @@ export class DataLoaderManager implements AppModule {
    */
   private shouldHydrateNews(forceAll: boolean): boolean {
     if (forceAll || this.loadedNewsSignature === null) return true;
-    const current = newsWorkListSignature(this.resolveEnabledNewsCategories(), this.ctx.disabledSources);
+    const current = newsWorkListSignature(
+      this.newsWorkList(this.resolveEnabledNewsCategories(), this.hydratesPanel('intel', ['full'])),
+      this.ctx.disabledSources,
+    );
     return current !== this.loadedNewsSignature;
+  }
+
+  // Intel loads beside the categories, so it joins the work-list signature:
+  // otherwise adding the Intel Feed panel outside the full variant would not
+  // re-arm the news load until the next scheduled tick.
+  private newsWorkList(categories: readonly { key: string }[], loadsIntel: boolean): readonly { key: string }[] {
+    return loadsIntel ? [...categories, { key: 'intel-sources' }] : categories;
   }
 
   /**
@@ -2119,6 +2139,7 @@ export class DataLoaderManager implements AppModule {
     const disabledAtLoadStart = new Set(this.ctx.disabledSources);
 
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
+    const loadsIntel = this.hydratesPanel('intel', ['full']);
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
     const categoryServedStale = new Map<string, boolean>();
     let intelServedStale = false;
@@ -2142,7 +2163,7 @@ export class DataLoaderManager implements AppModule {
             servedStale => categoryServedStale.set(key, servedStale),
           )
         ),
-        loadIntel: SITE_VARIANT === 'full'
+        loadIntel: loadsIntel
           ? (selection, allowDigestPendingFallback, options) => (
             this.loadIntelNews(
               selection,
@@ -2182,7 +2203,7 @@ export class DataLoaderManager implements AppModule {
       collectedNews.push(...items);
     }
 
-    if (SITE_VARIANT === 'full') {
+    if (loadsIntel) {
       collectedNews.push(...intelItems);
     }
 
@@ -2217,7 +2238,7 @@ export class DataLoaderManager implements AppModule {
     const anyItemsCollected = collectedNews.length > 0;
     const noCategoriesToLoad = categories.length === 0;
     const landed = digestCovered || anyItemsCollected || noCategoriesToLoad;
-    if (landed) this.loadedNewsSignature = newsWorkListSignature(categories, disabledAtLoadStart);
+    if (landed) this.loadedNewsSignature = newsWorkListSignature(this.newsWorkList(categories, loadsIntel), disabledAtLoadStart);
     this.ctx.initialLoadComplete = true;
 
     this.ctx.map?.updateHotspotActivity(this.ctx.allNews);
@@ -3613,6 +3634,19 @@ export class DataLoaderManager implements AppModule {
           }
         } catch (error) {
           console.error('[Intelligence] UNHCR cross-border fetch failed:', error);
+        }
+      })());
+      // About 2.5 MB of IDMC events (250 KB gzipped), so it waits for the same switch.
+      tasks.push((async () => {
+        try {
+          const events = await fetchDisplacementEvents();
+          if (events.points.length === 0 && events.countries.length === 0) return;
+          this.callPanel('displacement', 'setEventsData', events);
+          if (this.ctx.mapLayers.displacement) {
+            this.ctx.map?.setDisplacementEvents(events);
+          }
+        } catch (error) {
+          console.error('[Intelligence] IDMC displacement events fetch failed:', error);
         }
       })());
     }

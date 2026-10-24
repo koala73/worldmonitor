@@ -17,6 +17,7 @@ const bundled = await build({
 import { buildImfEconomicIndicators } from './src/services/imf-country-data';
 import { CountryBriefController } from './src/components/CountryBriefController';
 const fixture = globalThis.__ciiPresentationTest;
+const createWebsiteCountryBriefSource = () => ({ mode: 'website', clearLoadedData() {} });
 const COUNTRY_ACTIVITY_BOUNDS = {}, COUNTRY_ALIASES = {};
 const TIER1_COUNTRIES = { CN: 'China', US: 'United States' };
 const getCachedCountryScore = code => { fixture.getterCalls++; return fixture.scores[code] ?? null; };

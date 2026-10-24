@@ -133,6 +133,19 @@ describe('gateway RPC no-store contract', () => {
     assertCacheable(res);
   });
 
+  it('keeps degraded movement sources out of the daily CDN cache', async () => {
+    const path = '/api/displacement/v1/get-cross-border-movements';
+    for (const status of ['ok', 'partial', 'stale', 'unavailable']) {
+      const handler = createDomainGateway([jsonRoute(path, {
+        movements: [], dataAvailable: true, sources: [{ id: 'uk', status: 'ok' }, { id: 'odp', status }],
+      })]);
+      const res = await handler(request(path));
+      assert.equal(res.status, 200);
+      if (status === 'ok') assertCacheable(res);
+      else assertNoStore(res);
+    }
+  });
+
   it('lets a bare energy seed miss opt into no-store through the handler side channel', async () => {
     const handler = createDomainGateway([
       {

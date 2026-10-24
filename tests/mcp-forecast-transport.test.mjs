@@ -13,10 +13,48 @@ const detail = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_case');
 const generation = 1791113000000;
 const full = { generatedAt: generation, predictions: Array.from({ length: 20 }, (_, i) => ({
   id: `case-${i}`, title: `Controlled forecast ${i}`, domain: 'energy', region: 'Europe', probability: i === 0 ? null : 0.4,
+  firstSeenAt: null, firstSeenProbability: null, change24h: null, change7d: null,
   scenario: 'Original executive view', signals: [{ value: 'Original signal' }],
   caseFile: { baseCase: `${i}:` + 'Original original evidence. '.repeat(450), supportingEvidence: [{ summary: 'Original observation', weight: 0.8 }] },
 })) };
 const paid = { inboundHostClass: 'apex', downstreamOrigin: 'https://worldmonitor.app', downstreamOriginTag: 'test', panelScope: 'forecasts' };
+
+describe('published probability history transport', () => {
+  const at = new Date(generation).toISOString();
+  const weekAgo = new Date(generation - 7 * 86_400_000).toISOString();
+  const input = () => ({ predictions: structuredClone(full), probabilityTrail: { generatedAt: generation, forecasts: {
+    'case-1': { region: 'Europe', firstSeenAt: weekAgo, firstSeenProbability: 0.2, lastSeenAt: at, points: [[weekAgo, 0.2], [at, 0.4]] },
+  } } });
+  it('adds first publication and lookback changes; histories cap unbounded requests at ten', () => {
+    const data = input();
+    data.predictions.predictions.forEach(row => { delete row.caseFile; });
+    const result = opening._postFilter(data, { include_history: true, limit: 0 });
+    assert.equal(result.predictions.predictions.length, 10);
+    const row = result.predictions.predictions[1];
+    assert.equal(row.firstSeenProbability, 0.2);
+    assert.equal(row.firstSeenAt, weekAgo);
+    assert.equal(row.change24h, 0.2);
+    assert.equal(row.change7d, 0.2);
+    assert.equal(row.history.length, 2);
+    assert.equal(result.predictions.predictions[2].change24h, null);
+  });
+  it('drops histories in panels, and never joins another subject or generation', () => {
+    assert.equal(opening._postFilter(input(), { include_history: true }, paid).predictions.predictions[1].history, undefined);
+    for (const mutate of [data => { data.probabilityTrail.forecasts['case-1'].region = 'Iran'; }, data => { data.probabilityTrail.generatedAt++; }]) {
+      const data = input(); mutate(data);
+      assert.equal(opening._postFilter(data, {}).predictions.predictions[1].firstSeenAt, null);
+    }
+  });
+  it('keeps large dossiers with full trails inside the opening output budget', () => {
+    const data = input();
+    data.probabilityTrail.forecasts = Object.fromEntries(full.predictions.map(row => [row.id, {
+      ...data.probabilityTrail.forecasts['case-1'], points: Array.from({ length: 120 }, (_, i) => [new Date(generation - i * 3_600_000).toISOString(), 0.123456789]),
+    }]));
+    const result = opening._postFilter(data, { include_history: true });
+    assert.ok(Buffer.byteLength(JSON.stringify(result)) < 131_072);
+    assert.ok(result.predictions.predictions.length <= 10);
+  });
+});
 
 describe('public forecast family history transport', () => {
   const rows = [
@@ -138,7 +176,7 @@ describe('bounded forecast list and original case transport', () => {
       assert.equal(parsed.hostname, 'forecast-notices-fixture.test');
       if (!parsed.pathname.startsWith('/get/')) return Response.json({ result: [9999, 10000] });
       const key = decodeURIComponent(parsed.pathname.slice('/get/'.length));
-      assert.ok(['forecast:predictions:v2', 'seed-meta:forecast:predictions'].includes(key), key);
+      assert.ok(['forecast:predictions:v2', 'seed-meta:forecast:predictions', 'seed-meta:forecast:probability-trail'].includes(key), key);
       return Response.json({ result: JSON.stringify(key === 'forecast:predictions:v2' ? source : { fetchedAt: Date.now() }) });
     };
     const { mcpHandler } = await import('../api/mcp.ts');
@@ -147,7 +185,13 @@ describe('bounded forecast list and original case transport', () => {
       const response = await mcpHandler(proReq('POST', callBody('get_forecast_predictions', args)), deps);
       return (await response.json()).result;
     };
-    const result = await invoke({});
+    let reads = 0;
+    const sourceFetch = globalThis.fetch;
+    globalThis.fetch = async (...args) => {
+      if (new URL(String(args[0])).pathname.startsWith('/get/')) reads++;
+      return sourceFetch(...args);
+    };
+    const result = await invoke({ include_history: true });
     const node = result.structuredContent.data.predictions;
     assert.equal(result.structuredContent.panelRequest.panel, 'forecasts');
     assert.equal(result.structuredContent.stale, false);
@@ -155,11 +199,16 @@ describe('bounded forecast list and original case transport', () => {
     assert.equal(node.stale, true);
     assert.equal(node.error, source.error);
     assert.equal('internalTrace' in node, false);
+    assert.ok(node.predictions.every(row => !('history' in row)));
     assert.ok(node.predictions.every(row => row.hasCaseFile && !('caseFile' in row)));
     assert.ok(Buffer.byteLength(JSON.stringify(result)) <= opening._outputBudgetBytes);
+    const openingReads = reads;
     const replay = await invoke({ panel_request: result.structuredContent.panelRequest.token });
     assert.deepEqual(replay.structuredContent.data.predictions, node);
     assert.equal(pipe.count, 1);
+    assert.equal(reads, openingReads, 'ignored include_history must not change the saved panel response identity');
+    await invoke({ include_history: false, panel_request: result.structuredContent.panelRequest.token });
+    assert.equal(reads, openingReads, 'false and omitted history share the same saved panel response');
     const oversized = opening._postFilter({ predictions: { ...source, error: 'x'.repeat(150000) } }, {}, paid);
     assert.equal(oversized.predictions.error, 'x'.repeat(1200));
     assert.ok(Buffer.byteLength(JSON.stringify({ data: oversized })) < opening._outputBudgetBytes);
@@ -263,12 +312,16 @@ describe('published forecast reliability under the accuracy audit (#8990)', () =
     assert.equal(lifted.status, 'ready');
     assert.equal(lifted.underAudit, undefined);
   });
-  it('leads the scorecard tool description with the override notice or the underAudit rule, inside the tools/list sentence budget', async () => {
+  it('leads the scorecard tool description with the override notice or the underAudit rule, inside the tools/list description budget', async () => {
     const { compressDescription, TOOL_DESCRIPTION_MAX_BYTES } = await import('../api/mcp.ts');
+    // tools/list ships the whole description (the cap is a backstop that must
+    // not bite), so the lead sentence is what a host that truncates sees.
     const listed = (override) => compressDescription(forecastScorecardDescription(override), TOOL_DESCRIPTION_MAX_BYTES);
-    assert.equal(listed(AUDIT), 'Forecast resolution scorecard, under audit since 2026-10-07 (issue 8990): its scores are unverified.');
-    assert.equal(listed(null), 'Forecast resolution scorecard (Brier, calibration, funnel); underAudit marks scores still under audit.');
-    for (const override of [null, AUDIT]) assert.ok(Buffer.byteLength(listed(override)) <= 120, 'inside the tools/list sentence budget');
+    assert.equal(listed(AUDIT), forecastScorecardDescription(AUDIT));
+    assert.equal(listed(null), forecastScorecardDescription(null));
+    assert.ok(listed(AUDIT).startsWith('Forecast resolution scorecard, under audit since 2026-10-07 (issue 8990): its scores are unverified.'));
+    assert.ok(listed(null).startsWith('Forecast resolution scorecard: the accuracy record of WorldMonitor forecasts; underAudit marks scores still under audit.'));
+    for (const override of [null, AUDIT]) assert.ok(Buffer.byteLength(listed(override)) <= TOOL_DESCRIPTION_MAX_BYTES, 'inside the tools/list description budget');
     const scorecardTool = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_scorecard');
     assert.equal(scorecardTool.description, forecastScorecardDescription(FORECAST_ACCURACY_AUDIT_OVERRIDE));
   });

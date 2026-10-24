@@ -226,11 +226,11 @@ const COMPARISON_PAGE_SEEDS = [
     concessions: [
       ['ACLED', 'historical depth, academic citability, and downloadable structured datasets'],
     ],
-    whyWeWin: 'myACLED access, API availability, event detail, and latency vary by tier. World Monitor ingests ACLED among its sources, so treat World Monitor as a complement: a no-signup multi-domain watch on top, with ACLED for deep coded-event research underneath.',
+    whyWeWin: 'myACLED access, API availability, event detail, and latency vary by tier. World Monitor does not hold ACLED data: its conflict layer comes from UCDP coded events and GDELT reporting. Treat it as a complement: a no-signup multi-domain watch on top, with ACLED for deep coded-event research underneath.',
     faqs: [
       ['What is the best free ACLED alternative?', 'World Monitor is a live, source-dependent complement to ACLED: no registration across conflict and adjacent domains, with REST API plans from $99.99/month. ACLED remains stronger for historical coded-event research and downloadable datasets.'],
       ['Is ACLED free?', 'ACLED offers Open access to real-time aggregated data without API access. Research, Partner, and Enterprise tiers add API access and more detailed event data. Commercial use requires a license under the ACLED EULA. The World Monitor public dashboard needs no signup.'],
-      ['Does World Monitor replace ACLED?', 'No. World Monitor ingests ACLED data and adds real-time multi-domain context. Use World Monitor for live monitoring and ACLED for deep historical conflict-event research.'],
+      ['Does World Monitor replace ACLED?', 'No. World Monitor does not hold ACLED data. It builds a live conflict view from UCDP coded events and GDELT reporting and adds multi-domain context. Use World Monitor for live monitoring and ACLED for deep historical conflict-event research.'],
     ],
   },
   {

@@ -10,7 +10,7 @@ Last updated: October 16, 2026
 
 World Monitor is the official name of the real-time global intelligence dashboard at [https://www.worldmonitor.app](https://www.worldmonitor.app). Alternate spellings: WorldMonitor, worldmonitor.app.
 
-This page is the crawlable brand-identity record for agents and search indexes: official name, canonical domain, contact channels, and press mentions that already link to the product. The visual homepage is [https://www.worldmonitor.app/](https://www.worldmonitor.app/); the Markdown homepage twin is [home.md](https://www.worldmonitor.app/home.md).
+This page is the crawlable brand-identity record for agents and search indexes: official name, canonical domain, contact channels, and press mentions that already link to the product. The visual homepage is [https://www.worldmonitor.app/](https://www.worldmonitor.app/); the Markdown homepage twin is [home.md](https://www.worldmonitor.app/home.md). The canonical long-form product description, for directories and listings, is the [About page](https://www.worldmonitor.app/docs/about).
 
 ## Official identity (NAP)
 

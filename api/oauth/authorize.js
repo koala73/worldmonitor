@@ -6,6 +6,7 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { checkBootstrapUserApiKeyRateLimit, validateBootstrapUserApiKey } from '../_user-api-key.js';
 import { redirectDisplayHost } from './_redirect-uri.js';
+import { clientAllowsRedirectUri, clientDisplayInfo, describeClientFailure, isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
 import { isHostedAppOrigin } from '../_cors.js';
 import {
   hashOAuthBindValue,
@@ -101,6 +102,14 @@ async function redisGet(key) {
   try { return JSON.parse(data.result); } catch { return null; }
 }
 
+// The client lookup: a DCR registration, or a fetched CIMD document (#9244).
+function resolveClient(client_id) {
+  return resolveOAuthClient(client_id, {
+    redisGet,
+    redisSetEx: redisSet,
+  });
+}
+
 async function redisSet(key, value, exSeconds) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -144,8 +153,14 @@ function htmlError(title, detail) {
 //   2. When the URL fragment is `#api-key` — Starter+ users can bookmark
 //      `…/oauth/authorize?…#api-key` to skip the disclosure click.
 export function consentPage(params, nonce, errorMsg = '') {
-  const { client_name, redirect_uri } = params;
+  const { client_name, redirect_uri, client_host, localhost_redirect } = params;
   const redirectHost = redirectDisplayHost(redirect_uri);
+  // CIMD clients also show the host that published their metadata document,
+  // since the document's client_name is the vendor's own claim.
+  const clientHostLine = client_host ? `<div class="client-host">client ID from ${escapeHtml(client_host)}</div>` : '';
+  const localhostWarn = localhost_redirect
+    ? '<p class="client-warn">This client sends the authorization only to this computer (localhost). Approve it only if you started this connection from an app on this device.</p>'
+    : '';
   // U3 contract: bridge URL is apex (no www, no return_to). Apex page reads
   // oauth:nonce:<nonce> itself to recover client metadata + mint a grant.
   const proCtaHref = `https://worldmonitor.app/mcp-grant?nonce=${encodeURIComponent(nonce)}`;
@@ -162,6 +177,7 @@ body{font-family:ui-monospace,'SF Mono','Cascadia Code',monospace;background:#0a
 .client-hd{margin-bottom:1.25rem}
 .client-name{font-size:1rem;color:#fff;font-weight:600;margin-bottom:.25rem}
 .client-host{font-size:.75rem;color:#444}
+.client-warn{font-size:.72rem;color:#d97706;line-height:1.5;margin-top:.6rem}
 hr{border:none;border-top:1px solid #1e1e1e;margin:1.25rem 0}
 .scope-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:#444;margin-bottom:.6rem}
 .scope-list{list-style:none}
@@ -192,6 +208,7 @@ button:disabled{opacity:.5;cursor:default}
 <div class="client-hd">
 <div class="client-name">${escapeHtml(client_name)} wants access</div>
 <div class="client-host">via ${escapeHtml(redirectHost)}</div>
+${clientHostLine}${localhostWarn}
 </div>
 <hr>
 <p class="scope-label">Read-only access to</p>
@@ -237,7 +254,7 @@ async function retryConsent(req, nonceData, client, isXHR, failure) {
       headers,
     });
   }
-  const page = consentPage({ ...nonceData, client_name: client.client_name ?? 'Unknown Client' }, retryNonce, failure.message);
+  const page = consentPage({ ...nonceData, ...clientDisplayInfo(client, nonceData.redirect_uri), client_name: client.client_name ?? 'Unknown Client' }, retryNonce, failure.message);
   return new Response(page.body, { status: failure.status === 400 ? 200 : failure.status, headers });
 }
 
@@ -293,18 +310,15 @@ export default async function handler(req) {
       return htmlError('Invalid Request', 'code_challenge must be a 43-character base64url string.');
     }
 
-    let client;
-    try {
-      client = await redisGet(`oauth:client:${client_id}`);
-    } catch {
-      return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
+    const resolved = await resolveClient(client_id);
+    if (!resolved.ok) {
+      return resolved.transient
+        ? htmlError('Service Unavailable', describeClientFailure(resolved))
+        : htmlError('Unknown Client', describeClientFailure(resolved));
     }
-    if (!client) {
-      return htmlError('Unknown Client', 'The client_id is not registered or has expired. Please re-register the client.');
-    }
+    const { client } = resolved;
 
-    const uris = Array.isArray(client.redirect_uris) ? client.redirect_uris : [];
-    if (!uris.includes(redirect_uri)) {
+    if (!clientAllowsRedirectUri(client, redirect_uri)) {
       return htmlError('Redirect URI Mismatch', 'The redirect_uri does not match any registered redirect URI for this client.');
     }
 
@@ -322,6 +336,7 @@ export default async function handler(req) {
     }
 
     const page = consentPage({
+      ...clientDisplayInfo(client, redirect_uri),
       client_name: client.client_name ?? 'Unknown Client',
       redirect_uri, client_id, response_type: 'code', code_challenge, code_challenge_method: 'S256', state,
     }, nonce);
@@ -367,18 +382,23 @@ export default async function handler(req) {
     // Authoritative values come exclusively from server-stored nonce.
     const { client_id, redirect_uri, code_challenge, state, iss } = nonceData;
 
-    let client;
-    try {
-      client = await redisGet(`oauth:client:${client_id}`);
-    } catch {
-      return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
+    const resolved = await resolveClient(client_id);
+    if (!resolved.ok) {
+      // The nonce is spent, so a vendor blip on a CIMD document gets a fresh
+      // one rather than sending the user back to their MCP client.
+      if (resolved.transient && isClientMetadataDocumentId(client_id)) {
+        const placeholder = { client_id, client_name: new URL(client_id).hostname, cimd: true };
+        return retryConsent(req, nonceData, placeholder, isXHR, {
+          error: 'temporarily_unavailable', message: describeClientFailure(resolved), status: 503,
+        });
+      }
+      return resolved.transient
+        ? htmlError('Service Unavailable', describeClientFailure(resolved))
+        : htmlError('Unknown Client', resolved.reason === 'unknown_client' ? 'The client registration has expired. Please re-register.' : describeClientFailure(resolved));
     }
-    if (!client) {
-      return htmlError('Unknown Client', 'The client registration has expired. Please re-register.');
-    }
+    const { client } = resolved;
 
-    const uris = Array.isArray(client.redirect_uris) ? client.redirect_uris : [];
-    if (!uris.includes(redirect_uri)) {
+    if (!clientAllowsRedirectUri(client, redirect_uri)) {
       return htmlError('Redirect URI Mismatch', 'redirect_uri does not match registered set.');
     }
 
@@ -419,8 +439,11 @@ export default async function handler(req) {
       return htmlError('Server Error', 'Failed to store authorization code. Please try again.');
     }
 
-    // Reset client TTL
-    await redisSet(`oauth:client:${client_id}`, { ...client, last_used: Date.now() }, CLIENT_TTL_SECONDS);
+    // Reset the DCR client TTL. A CIMD client has no stored registration.
+    if (!client.cimd) {
+      const { cimd: _cimd, ...record } = client;
+      await redisSet(`oauth:client:${client_id}`, { ...record, last_used: Date.now() }, CLIENT_TTL_SECONDS);
+    }
 
     const redirectUrl = new URL(redirect_uri);
     redirectUrl.searchParams.set('code', code);

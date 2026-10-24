@@ -29,7 +29,12 @@ export const CHINA_MACRO_SERIES_MAX_AGE_DAYS = Object.freeze({
   nbs_fixed_asset_investment_yoy: 75,
   nbs_real_estate_investment_yoy: 75,
   safe_fx_reserves: 45,
-  safe_bank_fx_settlement: 45,
+  // SAFE releases month M's settlement data 13-28 days after month end, so
+  // month M must stay usable through all of month M+1 plus that lag. From
+  // 2022 to 2026 the oldest it reached before its successor landed was 58
+  // days (August 2022, superseded 2022-10-28). 45 rejected the whole snapshot
+  // for days in most months, e.g. 2026-10-15 to 2026-10-20.
+  safe_bank_fx_settlement: 60,
 });
 
 export const CHINA_MACRO_PUBLISHER_IDS = Object.freeze({

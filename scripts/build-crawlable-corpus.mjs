@@ -29,6 +29,7 @@ import {
   renderContextualComparisons,
 } from './build-comparison-pages.mjs';
 import { RELATED_READING_PATH, loadRelatedReading, renderRelatedReading } from './related-reading.mjs';
+import { LIVE_PAGE_LINKS_PATH, chokepointLiveLinks, countryLiveLinks, crisisLiveLinks, renderLiveDataLinks } from './live-pages/related-links.mjs';
 import {
   USE_CASE_PAGES,
   USE_CASES_CONTENT_VERSION,
@@ -40,6 +41,19 @@ import {
   writeAccuracySection,
 } from './build-accuracy-page.mjs';
 import { buildSourceCatalog, buildSourcePages, renderSourcesIndex, sourceCardAnchors } from './crawlable-sources-page.mjs';
+import {
+  COVERAGE_CONTENT_VERSION,
+  COVERAGE_INPUT_PATHS,
+  COVERAGE_PAGE_PATH,
+  loadCoverageCatalog,
+  writeCoverageSection,
+} from './build-coverage-catalog.mjs';
+import {
+  LIVE_TOPIC_PAGES_CONTENT_VERSION,
+  LIVE_TOPIC_PAGES_INPUT_PATHS,
+  writeLiveTopicPages,
+} from './build-live-topic-pages.mjs';
+import { LIVE_TOPIC_PAGES } from './live-pages/index.mjs';
 import { sourceOriginFilterValue } from './source-origin.mjs';
 import {
   attachCoverageToCatalog,
@@ -63,15 +77,28 @@ import { RANKABLE_UNIVERSE_SIZE, getSovereignStatus } from './shared/rankable-un
 // side-effect-free in Node (its only module-scope statement is a
 // `typeof document !== 'undefined'` guard). A mirrored copy could not fail.
 import {
-  chokepointCoverageMetrics,
-  chokepointEvidenceNarrative,
   instabilityBand,
   isLegacyConflatedCiiMovementLabel,
   MAX_FUTURE_SKEW_MS,
   MAX_LIVE_SNAPSHOT_AGE_MS,
   parseCiiMovement,
-  withheldTransitCountSentence,
 } from './crawlable-live-tools.mjs';
+// The chokepoint live section and its formatting helpers are shared with
+// middleware.ts, which renders the same section from a live reading.
+import {
+  escapeHtml,
+  formatObservedNumber,
+  formatScore,
+  formatScoreNumber,
+  formatStaticDateTime,
+  hasObservedValue,
+  LEGACY_ABSENT_STATUS_NOTE,
+  liveUpdatedMarkup,
+  OBSERVED_EVIDENCE,
+  renderChokepointLiveSection,
+} from './crawlable-chokepoint-live.mjs';
+
+export { hasObservedValue, LEGACY_ABSENT_STATUS_NOTE };
 import {
   briefCitationGroundingGap,
   COUNTRY_INDEX_ORIGIN,
@@ -167,6 +194,7 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
   TRADE_ROUTES_PATH,
   CHOKEPOINT_PAGE_CONTENT_PATH,
   EIA_OIL_TRANSIT_BASELINES_PATH,
+  LIVE_PAGE_LINKS_PATH,
 ]);
 /** Compare pages interpolate live provider and chokepoint counts (#7744). */
 export const COMPARISON_PAGE_LASTMOD_PATHS = Object.freeze([
@@ -184,7 +212,7 @@ export const COMPARISON_PAGE_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
-export const COUNTRY_PAGE_CONTENT_VERSION = '2026-10-16';
+export const COUNTRY_PAGE_CONTENT_VERSION = '2026-10-18';
 export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-12';
 // Exported so the #7533 guard test can recompute every family clock without
 // re-implementing the version constants themselves.
@@ -209,7 +237,7 @@ const AVAILABLE_EVIDENCE_LIMIT = 6;
 // This floor is published on country pages, so keep it aligned with
 // docs/methodology/country-resilience-index.mdx#supported-readings-on-unranked-country-pages.
 export const SUPPORTED_READING_MIN_COVERAGE = 0.5;
-export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-10';
+export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-10-18';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-09-10';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
 // must NOT fold into every family's sitemap/page lastmod — that made ~90% of main
@@ -224,7 +252,7 @@ export const DATASET_SCHEMA_CONTENT_VERSION = {
   crisis: '2026-09-03',
   tools: '2026-09-03',
 };
-export const CRISIS_PAGE_CONTENT_VERSION = '2026-09-10';
+export const CRISIS_PAGE_CONTENT_VERSION = '2026-10-18';
 // TOOLS_PAGE_CONTENT_VERSION and RESEARCH_PAGE_CONTENT_VERSION are exported
 // for the same reason as the constants above: the #7533 guard recomputes
 // their families' clocks from the real values.
@@ -544,20 +572,6 @@ export function resolveLatestLivePulseSnapshotPath(rootDir = DEFAULT_ROOT) {
   return relativePath;
 }
 
-function formatStaticDateTime(iso) {
-  const timestamp = Date.parse(iso);
-  if (!Number.isFinite(timestamp)) return String(iso || '');
-  return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: 'UTC',
-    timeZoneName: 'short',
-  }).format(new Date(timestamp));
-}
-
 // parseCiiMovement returns movementText null when the pulse supports no
 // movement claim (no earlier reading, or a legacy label that conflated "no
 // change" with "no data"). Sentences then drop the clause instead of printing
@@ -648,15 +662,6 @@ export function buildCiiRankingEntries(countries, livePulse, { now = Date.now() 
     ageDays,
     movementClaim,
   };
-}
-
-function liveUpdatedMarkup({ asOf, fallbackLabel, prefix = 'Published pulse' }) {
-  if (asOf) {
-    return `<time data-live-updated datetime="${escapeHtml(asOf)}">${escapeHtml(prefix)} ${escapeHtml(formatStaticDateTime(asOf))}</time>`;
-  }
-  // Never put loading prose in a <time> without datetime — crawlers treat that
-  // as an undated temporal claim.
-  return `<span data-live-updated>${escapeHtml(fallbackLabel)}</span>`;
 }
 
 export function laterDate(...values) {
@@ -1026,15 +1031,6 @@ function propertyValue(name, value) {
 const OG_IMAGE_PATH = '/favico/og-image.png';
 const OG_IMAGE_ALT = 'World Monitor — real-time global intelligence dashboard with live markets, geopolitical data, and infrastructure monitoring';
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function escapeJsonScript(value) {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
@@ -1104,39 +1100,6 @@ function formatPercent(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 'not available';
   return `${Math.round(numeric * 100)}%`;
-}
-
-const OBSERVED_EVIDENCE = Object.freeze({ coverage: true });
-
-// A dimension carries an imputationClass ONLY when observedWeight === 0 -- see the
-// four-class taxonomy in proto/worldmonitor/resilience/v1/resilience.proto and
-// server/worldmonitor/resilience/v1/_shared.ts. So an empty class is the allow-list
-// for "observed", exactly as buildMicrostateEvidenceProfile already requires below.
-// Enumerating the withheld classes instead would fail OPEN on any fifth class
-// (it already omitted 'stable-absence', whose imputed scores run 85-88).
-export function hasObservedValue(value, { coverage, evidenceState = '' } = {}) {
-  const numericValue = typeof value === 'string' ? value.replace(/,/g, '').trim() : value;
-  const numericCoverage = Number(coverage);
-  return numericValue !== ''
-    && numericValue != null
-    && Number.isFinite(Number(numericValue))
-    && Number.isFinite(numericCoverage)
-    && numericCoverage > 0
-    && String(evidenceState || '') === '';
-}
-
-function formatObservedNumber(value, evidence, formatter, fallback = '—') {
-  if (!hasObservedValue(value, evidence)) return fallback;
-  const numeric = Number(typeof value === 'string' ? value.replace(/,/g, '') : value);
-  return formatter(numeric);
-}
-
-function formatScoreNumber(numeric) {
-  return numeric.toFixed(1).replace(/\.0$/, '');
-}
-
-function formatScore(value, evidence) {
-  return formatObservedNumber(value, evidence, formatScoreNumber);
 }
 
 function dimensionScoreEvidence(dimension) {
@@ -1792,7 +1755,20 @@ function gitEnvForRoot() {
   return env;
 }
 
+// One build asks for the same few dozen paths in every loadCorpusData call,
+// and each answer cost two git subprocesses. The corpus test file alone spawned
+// 2,657 of them (41 s of its 55 s locally). Answers are cached per process:
+// every caller is a one-shot build or a test, none commits to a root and then
+// re-asks about it.
+const completeHistoryByRoot = new Map();
 function hasCompleteGitHistory(rootDir) {
+  if (!completeHistoryByRoot.has(rootDir)) {
+    completeHistoryByRoot.set(rootDir, probeCompleteGitHistory(rootDir));
+  }
+  return completeHistoryByRoot.get(rootDir);
+}
+
+function probeCompleteGitHistory(rootDir) {
   try {
     return execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
       cwd: rootDir,
@@ -1805,7 +1781,16 @@ function hasCompleteGitHistory(rootDir) {
   }
 }
 
+const gitLastmodByPath = new Map();
 export function gitFileLastmod(rootDir, relativePath) {
+  const key = `${rootDir}\0${relativePath}`;
+  if (!gitLastmodByPath.has(key)) {
+    gitLastmodByPath.set(key, probeGitFileLastmod(rootDir, relativePath));
+  }
+  return gitLastmodByPath.get(key);
+}
+
+function probeGitFileLastmod(rootDir, relativePath) {
   if (!hasCompleteGitHistory(rootDir)) return null;
   try {
     // Committer date rendered in UTC, not the commit's recorded timezone —
@@ -1962,6 +1947,7 @@ export async function loadCorpusData({
     gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
     gitFileLastmod(rootDir, MICROSTATE_TERRITORIES_PATH),
     gitFileLastmod(rootDir, RELATED_READING_PATH),
+    gitFileLastmod(rootDir, LIVE_PAGE_LINKS_PATH),
     // Inputs of the related-country links (scripts/country-related-links.mjs).
     gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
     gitFileLastmod(rootDir, TENSION_PAIRS_PATH),
@@ -1999,9 +1985,22 @@ export async function loadCorpusData({
     gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH),
     TOOLS_PAGE_CONTENT_VERSION,
   );
+  // The hub links every live topic page, so their code moves it too.
+  const toolsIndexLastmod = laterDate(
+    toolsLastmod,
+    LIVE_TOPIC_PAGES_CONTENT_VERSION,
+    ...LIVE_TOPIC_PAGES_INPUT_PATHS.map((path) => gitFileLastmod(rootDir, path)),
+  );
+  // The built readings come from the pulse, so a new capture advances them.
+  const liveTopicsLastmod = laterDate(
+    LIVE_TOPIC_PAGES_CONTENT_VERSION,
+    ...LIVE_TOPIC_PAGES_INPUT_PATHS.map((path) => gitFileLastmod(rootDir, path)),
+    livePulse.liveTopics ? livePulse.capturedAt : null,
+  );
   const crisesLastmod = laterDate(
     gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
     gitFileLastmod(rootDir, RELATED_READING_PATH),
+    gitFileLastmod(rootDir, LIVE_PAGE_LINKS_PATH),
     livePulse.capturedAt,
     CRISIS_PAGE_CONTENT_VERSION,
   );
@@ -2012,6 +2011,14 @@ export async function loadCorpusData({
   const useCasesLastmod = laterDate(
     USE_CASES_CONTENT_VERSION,
     gitFileLastmod(rootDir, 'scripts/build-use-cases.mjs'),
+  );
+  const coverageCatalog = await loadCoverageCatalog({
+    importModule: (relativePath) => importRepoModule(rootDir, relativePath),
+    readJson: (relativePath) => readJson(rootDir, relativePath),
+  });
+  const coverageLastmod = laterDate(
+    COVERAGE_CONTENT_VERSION,
+    ...COVERAGE_INPUT_PATHS.map((path) => gitFileLastmod(rootDir, path)),
   );
   // The pulse folds in because the scorecard the page publishes is captured by
   // the same freeze: a new capture changes every number on the page.
@@ -2064,12 +2071,14 @@ export async function loadCorpusData({
       changelog: CHANGELOG_PATH,
       tradeRoutes: TRADE_ROUTES_PATH,
       liveToolsScript: LIVE_TOOLS_SCRIPT_PATH,
+      liveTopicPagesInputs: [...LIVE_TOPIC_PAGES_INPUT_PATHS],
       countryBboxes: COUNTRY_BBOXES_PATH,
       crisisRegistry: CRISIS_REGISTRY_PATH,
       tensionPairs: TENSION_PAIRS_PATH,
       countryCentroids: COUNTRY_CENTROIDS_PATH,
       researchReports: RESEARCH_REPORTS_INDEX_PATH,
       useCases: 'scripts/build-use-cases.mjs',
+      coverageInputs: [...COVERAGE_INPUT_PATHS],
       accuracy: ACCURACY_PAGE_SOURCE_PATH,
       comparisons: 'scripts/build-comparison-pages.mjs',
       sourceAttributionManifest: SOURCE_ATTRIBUTION_MANIFEST_PATH,
@@ -2087,15 +2096,19 @@ export async function loadCorpusData({
       changelog: changelogLastmod,
       chokepoints: chokepointsLastmod,
       tools: toolsLastmod,
+      toolsIndex: toolsIndexLastmod,
+      liveTopics: liveTopicsLastmod,
       crises: crisesLastmod,
       research: researchLastmod,
       useCases: useCasesLastmod,
+      coverage: coverageLastmod,
       accuracy: accuracyLastmod,
       comparisons: comparisonsLastmod,
       sources: sourcesLastmod,
     },
     sourceStats,
     sourceCatalog,
+    coverageCatalog,
     resilience,
     resilienceCoverage,
     ciiRanking,
@@ -2262,6 +2275,7 @@ function pageDocument({
     .map((entry) => withSpeakableAndGraph(entry, { canonical, breadcrumbId }))
     .map((entry) => withSchemaContext(entry));
   const renderedNav = headerNav || `        <a href="/">World Monitor</a>
+        <a href="/reference/coverage/">Coverage</a>
         <a href="/sources/">Sources</a>
         <a href="/compare/">Compare</a>
         <a href="/countries/">Countries</a>
@@ -3999,6 +4013,7 @@ ${renderCountryDevelopments({ countryCode: country.code, countryName: country.na
 ${analysis.html}
 ${renderCountryRelatedLinks(country, relatedCountries, escapeHtml)}
 ${renderRelatedChokepoints(relatedChokepoints)}
+${renderLiveDataLinks(countryLiveLinks(country.code), escapeHtml)}
 ${renderRelatedReading(relatedReading, escapeHtml)}
 ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
       <p>${escapeHtml(analysis.readingGuide)} <a href="/docs/methodology/country-resilience-index">Full CRI method</a> · <a href="/docs/corrections">revision log</a> · <a href="/accuracy/">forecast accuracy scorecard</a>.</p>` : `      <h2>How to read this page</h2>
@@ -4254,7 +4269,7 @@ function renderChokepointsIndex({ chokepoints, chokepointHubRows, livePulse, bas
     },
     {
       question: 'Why do some chokepoint pages show fewer metrics than others?',
-      answer: 'A metric appears only when the source behind it reported for that snapshot. Navigational warnings, AIS disruptions and AIS congestion each depend on their own feed. The daily transit count and PortWatch week-over-week movement each depend on their own source availability, so either can appear without the other. Unavailable values can appear as an em dash or be hidden, depending on the metric, so a sparse page means missing evidence, not a calm waterway. Published revisions to these rules are in the corrections log.',
+      answer: 'A metric appears only when the source behind it reported for that snapshot. Navigational warnings, AIS disruptions and AIS congestion each depend on their own feed. The latest daily transit count, its 7-day average and the week-over-week movement are IMF PortWatch figures and are withheld together when PortWatch has no history for the waterway; the year-earlier comparison is omitted when no baseline was stored. Unavailable values can appear as an em dash or be hidden, depending on the metric, so a sparse page means missing evidence, not a calm waterway. Published revisions to these rules are in the corrections log.',
     },
   ];
   const datasetId = `${absoluteUrl(baseUrl, path)}#status-dataset`;
@@ -4302,6 +4317,7 @@ ${oilTransitRows.map(({ row, eia }) => `          <tr><td><a href="/chokepoints/
         </tbody>
       </table></div>
       <p class="source" data-snapshot-source="${escapeHtml(EIA_OIL_TRANSIT_BASELINES_PATH)}">Baseline source: U.S. ${escapeHtml(EIA_OIL_TRANSIT_SOURCE)} (${EIA_OIL_TRANSIT_REFERENCE_YEAR}). The remaining ${chokepointHubRows.length - oilTransitRows.length} tracked waterways have no row in that series; their pages say so rather than estimating one.</p>
+      <p>These are transit volumes. For how much crude the US holds in storage this week, see <a href="/tools/crude-oil-inventories/">US crude oil inventories this week</a>.</p>
       <h2>Why each waterway is tracked</h2>
       <dl data-chokepoint-context>
 ${chokepointHubRows.map((row) => {
@@ -4314,7 +4330,7 @@ ${chokepointHubRows.map((row) => {
       <h2>How this list is scoped</h2>
       <p>The ${chokepointHubRows.length} waterways come from a committed registry, not from whatever is in the news. Each has a detail page carrying the same four-source status block, the modelled corridors that route through it, and its alternatives when it is unavailable. A waterway enters the registry because traffic there has no cheap substitute — the test is substitutability, not incident count — so the list changes rarely and changes are recorded in the corrections log.</p>
       <h2>What these pages are not</h2>
-      <p>They are not a navigation product and not an open/closed declaration. A score is a triage signal built from the sources named above; it does not authorise or discourage a transit, and it carries no view on the legality or safety of any particular voyage. Transit counts are a relay observation of vessels seen, not a port authority figure, and the oil volumes above are a ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} annual-average baseline rather than current throughput.</p>
+      <p>They are not a navigation product and not an open/closed declaration. A score is a triage signal built from the sources named above; it does not authorise or discourage a transit, and it carries no view on the legality or safety of any particular voyage. Daily transit counts are IMF PortWatch figures from satellite AIS, published about four days after the day they cover, not a port authority figure, and the oil volumes above are a ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} annual-average baseline rather than current throughput.</p>
       <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)} ${CHOKEPOINT_REGISTRY_PATH}">Sources: World Monitor weekly pulse snapshot and World Monitor chokepoint registry. Published ${escapeHtml(prettyDate(livePulse.capturedAt))}. Methodology: <a href="/docs/methodology/chokepoints">chokepoint disruption scoring</a>. Published revisions: <a href="/docs/corrections">corrections log</a>.</p>`;
   return pageDocument({
     baseUrl,
@@ -4472,20 +4488,6 @@ ${faqs.map((faq) => `        <details data-chokepoint-faq><summary>${escapeHtml(
 // Snapshots frozen before that change still carry the sentence verbatim, so
 // treat it as the absence it always described rather than waiting for a
 // refresh to age it out.
-export const LEGACY_ABSENT_STATUS_NOTE = 'No additional status note was supplied.';
-
-function chokepointDescriptionParagraph(description) {
-  const raw = typeof description === 'string' ? description.trim() : '';
-  const text = raw === LEGACY_ABSENT_STATUS_NOTE ? '' : raw;
-  return text
-    ? `        <p data-chokepoint-description>${escapeHtml(text)}</p>`
-    : '        <p data-chokepoint-description hidden></p>';
-}
-
-function optionalChokepointMetric(label, attribute, value, available) {
-  return `          <div class="metric"${available ? '' : ' hidden'}><span>${escapeHtml(label)}</span><strong ${attribute}>${available ? escapeHtml(value) : ''}</strong></div>`;
-}
-
 function renderChokepointPage({
   chokepoint,
   relatedCountries = [],
@@ -4536,104 +4538,22 @@ function renderChokepointPage({
     relatedItems.push(`<a href="/blog/glossary/${content.glossarySlug}/">${escapeHtml(chokepoint.displayName)} in the glossary</a>`);
   }
   relatedItems.push('<a href="/blog/glossary/maritime-chokepoint/">What is a maritime chokepoint?</a>');
+  for (const link of chokepointLiveLinks({ carriesOil: Boolean(EIA_OIL_TRANSIT_BASELINES.byRegistryId[chokepoint.id]) })) {
+    relatedItems.push(`<a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`);
+  }
   for (const link of editorialLinks) {
     relatedItems.push(`<a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`);
   }
 
-  const pulse = livePulse?.chokepoints?.[chokepoint.id] || null;
-  const hasPulse = hasObservedValue(pulse?.disruptionScore, { coverage: pulse != null });
-  const coverageMetrics = chokepointCoverageMetrics({
-    todayTransits: pulse?.todayTransits,
-    todayCountsAvailable: pulse?.todayCountsAvailable,
-    navigationalWarnings: pulse?.navigationalWarnings,
-    navigationalWarningsAvailable: pulse?.navigationalWarningsAvailable === true,
-    aisDisruptions: pulse?.aisDisruptions,
-    aisSnapshotAvailable: pulse?.aisSnapshotAvailable === true,
-    congestionLevel: pulse?.congestion,
-    weekMovement: pulse?.weekMovement ?? null,
+  const liveSection = renderChokepointLiveSection({
+    chokepoint,
+    pulse: livePulse?.chokepoints?.[chokepoint.id] || null,
   });
-  const transitsLabel = coverageMetrics.todayTransits;
-  const transitsWithheld = hasPulse && transitsLabel == null;
-  const pulsePartial = pulse?.partial === true
-    || transitsWithheld
-    || coverageMetrics.navigationalWarnings === null
-    || coverageMetrics.aisDisruptions === null;
-  const liveState = hasPulse ? (pulsePartial ? 'partial' : 'ready') : 'loading';
-  const liveStatus = hasPulse
-    ? (pulsePartial ? 'Published partial pulse' : 'Published pulse')
-    : 'Waiting for live enhancement';
-  const transitsNote = transitsWithheld
-    ? `        <p data-chokepoint-transits-note>${escapeHtml(withheldTransitCountSentence(chokepoint.displayName, chokepoint.transitMeasurementNote))}</p>`
-    : '        <p data-chokepoint-transits-note hidden></p>';
-  const narrative = hasPulse
-    ? chokepointEvidenceNarrative({
-      displayName: chokepoint.displayName,
-      score: pulse.disruptionScore,
-      bandLabel: pulse.status,
-      description: pulse.description,
-      asOfText: formatStaticDateTime(pulse.asOf),
-      partial: pulsePartial,
-      warningsLabel: coverageMetrics.navigationalWarnings,
-      congestionLabel: coverageMetrics.congestion,
-      aisEventCountLabel: coverageMetrics.aisDisruptions,
-      todayTransits: transitsLabel,
-    })
-    : null;
-  const openStatusHtml = narrative !== null
-    ? escapeHtml(narrative.passage)
-    : `World Monitor has not published current passage evidence for ${escapeHtml(chokepoint.displayName)} yet.`;
-  const openStatusSection = `        <h2>Is ${escapeHtml(chokepoint.displayName)} open right now?</h2>
-        <p data-chokepoint-open-status>${openStatusHtml}</p>
-${narrative !== null
-    ? `        <p data-chokepoint-score-driver>${escapeHtml(narrative.scoreDriver)}</p>`
-    : '        <p data-chokepoint-score-driver hidden></p>'}`;
-  const liveGrid = hasPulse
-    ? `        <div class="grid" data-live-grid aria-label="Current chokepoint status" aria-busy="false">
-          <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score>${escapeHtml(formatScore(pulse.disruptionScore, { coverage: hasPulse }))}</span><small data-chokepoint-band>${escapeHtml(pulse.status)}</small></strong></div>
-${optionalChokepointMetric('Navigational warnings', 'data-chokepoint-warnings', coverageMetrics.navigationalWarnings, coverageMetrics.navigationalWarnings !== null)}
-${optionalChokepointMetric('AIS disruptions', 'data-chokepoint-ais-disruptions', coverageMetrics.aisDisruptions, coverageMetrics.aisDisruptions !== null)}
-${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', coverageMetrics.congestion, coverageMetrics.congestion !== null)}
-          <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits>${escapeHtml(transitsLabel ?? '—')}</strong></div>
-          <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>${escapeHtml(coverageMetrics.weekMovement ?? (transitsWithheld ? '—' : 'Unavailable'))}</strong></div>
-        </div>
-${chokepointDescriptionParagraph(pulse.description)}
-${transitsNote}`
-    : `        <p class="tool-note" data-live-fallback>Current disruption metrics load after page enhancement. The static waterway and route context below remains the dated crawlable reference.</p>
-        <div class="grid" data-live-grid hidden aria-label="Current chokepoint status" aria-busy="true">
-          <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score></span><small data-chokepoint-band></small></strong></div>
-${optionalChokepointMetric('Navigational warnings', 'data-chokepoint-warnings', '', false)}
-${optionalChokepointMetric('AIS disruptions', 'data-chokepoint-ais-disruptions', '', false)}
-${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', '', false)}
-          <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits></strong></div>
-          <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement></strong></div>
-        </div>
-        <p data-chokepoint-description hidden></p>
-        <p data-chokepoint-transits-note hidden></p>`;
 
   const body = `      <p class="eyebrow">Chokepoint</p>
       <h1>${escapeHtml(chokepoint.displayName)}</h1>
       <p class="lede">${escapeHtml(blurb)}</p>
-      <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-chokepoint-name="${escapeHtml(chokepoint.displayName)}" data-transit-measurement-note="${escapeHtml(chokepoint.transitMeasurementNote || '')}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}>
-${openStatusSection}
-        <div class="tool-head">
-          <div>
-            <p class="eyebrow">Current status</p>
-            <h2>${escapeHtml(chokepoint.displayName)} disruption pulse</h2>
-          </div>
-          <span class="live-status" data-live-status role="status" aria-live="polite">${escapeHtml(liveStatus)}</span>
-        </div>
-        <p class="tool-note">Transit counts require observed AIS crossings in the preceding 24 hours. Missing counts do not mean zero traffic.</p>
-${liveGrid}
-        <div class="tool-meta">
-          ${liveUpdatedMarkup({
-            asOf: pulse?.asOf || null,
-            fallbackLabel: 'Live enhancement pending',
-            prefix: 'Published pulse',
-          })}
-          <button class="refresh" type="button" data-live-refresh disabled>Refresh live data</button>
-        </div>
-        <noscript><p>Enable JavaScript to load the live reading. ${hasPulse ? 'The published pulse above remains available without JavaScript.' : 'The static waterway and route context remains available below.'}</p></noscript>
-      </section>
+${liveSection}
       <a class="cta" href="${escapeHtml(mapUrl)}">Open ${escapeHtml(chokepoint.displayName)} on the live map →</a>
       <section class="grid" aria-label="Chokepoint overview">
 ${tiles}
@@ -4919,6 +4839,7 @@ ${snapshotSection}
       <h2>Coverage boundary</h2>
       <p>${escapeHtml(crisis.coverage.map((country) => `${country.name} (${country.code})`).join(', '))}. Events outside this list are not included in the live totals on this page.</p>
 ${renderRelatedChokepoints(relatedChokepoints)}
+${renderLiveDataLinks(crisisLiveLinks({ touchesOilChokepoint: relatedChokepoints.some((chokepoint) => EIA_OIL_TRANSIT_BASELINES.byRegistryId[chokepoint.id]) }), escapeHtml)}
 ${renderRelatedReading(relatedReading, escapeHtml)}
       <h2>How to read this tracker</h2>
       <p>Use these monthly country summaries as a bounded pulse, then inspect the dashboard for event-level context, map layers, and other independent signals. The figures are not forecasts and should not be interpreted as a complete casualty or incident ledger. World Monitor's forecasts are graded separately, and that record is published on the <a href="/accuracy/">forecast accuracy scorecard</a>.</p>
@@ -5026,6 +4947,7 @@ function renderToolsIndex({ baseUrl, lastmod, crisisCount, chokepointCount }) {
         <a class="card" href="/tools/signal-convergence/"><strong>Geographic signal convergence</strong><br><span>Named multi-domain correlation score</span></a>
         <a class="card" href="/chokepoints/"><strong>Maritime chokepoint status</strong><br><span>${chokepointCount} canonical waterways</span></a>
         <a class="card" href="/crises/"><strong>Bounded crisis trackers</strong><br><span>${crisisCount} curated geographic scopes</span></a>
+${LIVE_TOPIC_PAGES.map((page) => `        <a class="card" href="${escapeHtml(page.path)}"><strong>${escapeHtml(page.h1)}</strong><br><span>${escapeHtml(page.question)}</span></a>`).join('\n')}
       </div>
       <h2>How these tools work</h2>
       <p>Each tool asks one narrow operational question — what natural hazards are open right now, is a country's monitored airspace disrupted, where independent streams converge — and answers it from a maintained World Monitor contract. Results are labelled with their source and retrieval time, unavailable data is reported as unavailable rather than zero, and independent signals are never combined into a single opaque threat score unless the tool names that combination explicitly.</p>
@@ -5408,6 +5330,7 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
     '/tools/natural-hazard-pulse/',
     '/tools/airspace-disruption-checker/',
     '/tools/signal-convergence/',
+    ...LIVE_TOPIC_PAGES.map((page) => page.path),
   ];
   const changelogRoutes = Array.from({ length: changelogPageCount }, (_, index) => changelogPagePath(index));
   const glossaryRoutes = data.glossaryTerms.map((term) => `/blog/glossary/${term.slug}/`);
@@ -5465,6 +5388,11 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
         count: USE_CASE_PAGES.length,
         index: '/use-cases/',
         routes: USE_CASE_PAGES.map((page) => page.path),
+      },
+      coverage: {
+        count: 1,
+        index: COVERAGE_PAGE_PATH,
+        routes: [],
       },
       accuracy: {
         count: 1,
@@ -5751,6 +5679,14 @@ export async function buildCorpus({
     tpl: { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument },
   });
 
+  writeCoverageSection({
+    outDir,
+    baseUrl,
+    lastmod: data.lastmod.coverage,
+    catalog: data.coverageCatalog,
+    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument },
+  });
+
   writeAccuracySection({
     outDir,
     baseUrl,
@@ -5789,7 +5725,7 @@ export async function buildCorpus({
     'tools/index.html',
     renderToolsIndex({
       baseUrl,
-      lastmod: data.lastmod.tools,
+      lastmod: data.lastmod.toolsIndex,
       crisisCount: data.crises.length,
       chokepointCount: data.chokepoints.length,
     }),
@@ -5822,6 +5758,13 @@ export async function buildCorpus({
       snapshotPath: data.sources.livePulseSnapshot,
     }),
   );
+  writeLiveTopicPages({
+    outDir,
+    baseUrl,
+    lastmod: data.lastmod.liveTopics,
+    liveTopics: data.livePulse.liveTopics ?? {},
+    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument },
+  });
   writeGeneratedFile(
     outDir,
     datasetDownloadFile('/tools/signal-convergence/', CONVERGENCE_DATASET_DOWNLOAD),

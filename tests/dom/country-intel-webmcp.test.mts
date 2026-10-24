@@ -32,7 +32,7 @@ describe('CountryIntelManager WebMCP presentation cancellation', () => {
     });
 
     expect(getSignals).toHaveBeenCalledExactlyOnceWith('TW', 'Taiwan');
-    expect(page.show).toHaveBeenCalledExactlyOnceWith('Taiwan', 'TW', null, {});
+    expect(page.show).toHaveBeenCalledExactlyOnceWith('Taiwan', 'TW', null, {militaryFlights:null,militaryFlightsInCountry:null,militaryVessels:null,militaryVesselsInCountry:null});
   });
 
   it('removes the loading shell and never presents after an in-flight abort', async () => {

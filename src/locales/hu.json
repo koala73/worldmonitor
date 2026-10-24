@@ -303,7 +303,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "A becslés és imputáció állapota nincs megadva"
     },
     "fiveFactorScorecard": {
       "title": "Öt tényezős ellenállóképesség-pontszám",
@@ -780,10 +781,9 @@
       "alertTitle": {
         "configured": "Asztali beállítások konfigurálva",
         "needsKeys": "Konfiguráld az API-kulcsokat a funkciók feloldásához",
-        "some": "Néhány funkció API-kulcsokat igényel"
+        "some": "Néhány funkció API-kulcsokat igényel",
+        "pro": "A World Monitor Pro aktív"
       },
-      "reserveEarlyAccess": "Foglalj korai hozzáférést",
-      "skipSetup": "Hagyj ki a beállítást — egy World Monitor licenc mindent feloldja. Csatlakozz a várólistához a korai hozzáféréshez.",
       "summary": {
         "desktop": "Asztali mód",
         "web": "Web mód (csak olvasható, szerveren kezelt hitelesítés)",
@@ -811,7 +811,10 @@
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System.",
         "OLLAMA_API_URL": "pl. http://127.0.0.1:11434 (Ollama) vagy http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-kompatibilis végpont.",
         "OLLAMA_MODEL": "pl. llama3.1:8b — összegzéshez használandó modelltag."
-      }
+      },
+      "proCloud": "Az API-kulcs nélküli funkciók a World Monitor felhőadatait használják.",
+      "skipSetupPro": "Hagyja ki a beállítást: jelentkezzen be a World Monitor Pro segítségével a felhőadatok használatához a saját API-kulcsok helyett.",
+      "getPro": "World Monitor Pro beszerzése"
     },
     "settingsWindow": {
       "shellTitle": "World Monitor beállítások",
@@ -1430,7 +1433,7 @@
         "commodityHubs": "Áruközpontok",
         "gulfInvestments": "Golf-öbölbeli Együttműködési Tanács Beruházások",
         "tradeRoutes": "Kereskedelmi útvonalak",
-        "iranAttacks": "Iráni támadások",
+        "iranAttacks": "Közel-keleti csapások",
         "gpsJamming": "Navigációs zavarok",
         "ciiChoropleth": "Ország instabilitása",
         "dayNight": "Nappali/éjszakai",
@@ -1472,7 +1475,9 @@
         "sourceIomDtm": "Forrás: IOM DTM",
         "sinceDate": "{{date}} óta",
         "lastMonth": "a múlt hónapban",
-        "sourceUnhcrOdp": "Forrás: az UNHCR operatív adatportálja"
+        "sourceUnhcrOdp": "Forrás: az UNHCR operatív adatportálja",
+        "displaced": "lakóhelyét elhagyni kényszerült",
+        "sourceIdmc": "Forrás: IDMC"
       },
       "layerHelp": {
         "title": "Térképrétegek útmutatója",
@@ -1688,6 +1693,8 @@
       "capacityPercent": "{{percent}}% kapacitás",
       "noCountryImpacts": "Nem észleltek országra gyakorolt hatásokat",
       "alternativeRoutes": "Alternatív útvonalak",
+      "sharesCutZone": "ugyanaz a szoros",
+      "estimateNote": "Becslés: a kábelkapacitás és a redundancia közelítő, nem mért érték.",
       "countriesAffected": "Érintett országok ({{count}})",
       "links": "linkek",
       "selectInfrastructureHint": "Az infrastruktúra kiválasztásával elemezze a kaszkád hatást",
@@ -1905,7 +1912,21 @@
       "latestChange": "Legutóbbi változás",
       "accelerating": "Gyorsul",
       "inDays": "{{days}} nap alatt",
-      "crossBorderNote": "ENSZ Menekültügyi Ügynökség Operatív Adatportál: olyan emberek, akik az egyes krízisekben átlépték a határokat, a legutóbbi országjelentésekből. A helyzetek átfedésben vannak, ezért nem összegzik őket."
+      "crossBorderNote": "ENSZ Menekültügyi Ügynökség Operatív Adatportál: olyan emberek, akik az egyes krízisekben átlépték a határokat, a legutóbbi országjelentésekből. A helyzetek átfedésben vannak, ezért nem összegzik őket.",
+      "last7And30": "Utolsó 7 / 30 nap",
+      "staleReport": "Elavult jelentés",
+      "reported": "Létszám",
+      "period": "Időszak",
+      "movementNote": "Minden sor megőrzi a forrását, a jelentés dátumát és a mérőszámát. Az állomány, az érkezések és a határellenőrzési események különböző mérőszámok. A források átfedhetik egymást; ne adja össze az értékeiket. A WorldMonitor ezt a nézetet a hivatkozott forrásokból állítja elő; ez nem jelent szolgáltatói jóváhagyást.",
+      "recent": "Közelmúlt",
+      "last30Days": "Utolsó 30 nap",
+      "newThisWeek": "Ezen a héten új",
+      "conflict": "Konfliktus",
+      "disaster": "Katasztrófa",
+      "surge": "Megugrás",
+      "recentNote": "IDMC: az elmúlt 30 napban országukon belül lakóhelyük elhagyására kényszerült emberek. Az IDMC egy adatot medián értékben három héttel a kitelepülés után tesz közzé, így a legutóbbi hetek adatai később töltődnek fel. Az „Ezen a héten új” az elmúlt 7 napban közzétett adatokat számolja. Megugrás: legalább 5000 ember és az előző öt hónap havi átlagának háromszorosa.",
+      "recentAsOf": "Adatok {{date}} szerint.",
+      "recentMissing": "Most nincs adat innen: {{countries}}; a fájljaik betöltése nem sikerült, ez nem jelent nulla kitelepítést."
     },
     "climate": {
       "noAnomalies": "Nem észleltek jelentős anomáliákat",
@@ -1932,7 +1953,8 @@
       "sourceCoverageHint": "{{total}} engedélyezett forrásból {{covered}} látszik — ez a panel minden frissítéskor váltogatja a forrásait",
       "sortBy": "Rendezés:",
       "sortNewest": "Legújabb",
-      "sortRelevance": "Relevancia"
+      "sortRelevance": "Relevancia",
+      "translationUnavailable": "A fordítás nem érhető el. Ellenőrizze az AI-szolgáltató beállításait, és próbálja újra."
     },
     "breakingNews": {
       "critical": "KRITIKUS",
@@ -3810,5 +3832,27 @@
       "description": "Iránnal, Izraellel, az Öböllel és a kurd régiókkal kapcsolatos források engedélyezése"
     },
     "unavailable": "A(z) {{preset}} csomag a jelenlegi panelekkel nem érhető el"
+  },
+  "countryHistory": {
+    "title": "Az ország napi előzményei",
+    "loading": "Napi előzmények betöltése…",
+    "window": "Időszak",
+    "days": "{{days}} nap",
+    "observed": "{{count}} pillanatkép {{days}} nap alatt",
+    "legend": "CII (borostyán): a magasabb érték nagyobb instabilitást jelent. Ellenálló képesség (zöld): a magasabb érték nagyobb kapacitást jelent. A pontok a kiválasztott hírcímeket tartalmazó napokat jelölik.",
+    "chart": "Napi CII- és ellenállóképesség-értékek. A hiányok és a képletváltozások megszakítják a vonalakat.",
+    "selectDate": "{{date}}, {{count}} kiválasztott hírcím",
+    "empty": "Ebben az időszakban nincsenek napi pillanatképek. Az előzmények az aktiválás után gyűlnek.",
+    "unavailable": "Az előzmények átmenetileg nem érhetők el. Próbálja újra.",
+    "retry": "Újra",
+    "stale": "Az utolsó sikeres napi rögzítés több mint 36 órája történt.",
+    "break": "Képletváltozás vagy megfigyelési hiány. Csak azonos képlettel számolt értékeket hasonlítson össze.",
+    "partial": "A hírek lefedettsége részleges volt a rögzítéskor.",
+    "resilience": "Ellenálló képesség",
+    "ciiMissing": "A CII nem érhető el",
+    "resilienceMissing": "Az ellenálló képesség nem érhető el",
+    "noEvents": "Erre a napra nem rögzítettek kiválasztott hírcímeket. Ez nem bizonyítja az események hiányát.",
+    "unlock90": "90 nap feloldása Pro csomaggal",
+    "unlock365": "365 nap feloldása API-csomaggal"
   }
 }

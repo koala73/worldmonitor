@@ -39,6 +39,12 @@ import {
   reserveDirectLlmQuota,
   resolveActiveDirectLlmLimit,
 } from '../server/_shared/direct-llm-quota';
+import {
+  OPERATOR_KEY_DAILY_CEILINGS,
+  operatorKeyQuotaPrincipal,
+  reportHighUsageIfCrossed,
+} from '../server/_shared/high-usage-alarm';
+import { hashKeySync } from '../server/_shared/usage-identity';
 
 const RELAY_BASE = 'https://proxy.worldmonitor.app';
 const WIDGET_AGENT_KEY = process.env.WIDGET_AGENT_KEY ?? '';
@@ -194,14 +200,6 @@ export function __setWidgetAgentSpendDepsForTests(
     : defaultWidgetAgentSpendDeps();
 }
 
-async function spendToken(material: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-    .slice(0, 32);
-}
-
 function directLlmQuotaError(
   status: 429 | 503,
   retryAfterSec: number,
@@ -294,6 +292,8 @@ async function proxyWidgetAgent(
   let spendId = '';
   let quotaUserId = '';
   let directLlmDailyLimit: number | null = DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
+  // Set for tier-3 callers, whose limit is a circuit breaker worth paging on.
+  let alarm: { credential: 'operator-key' | 'enterprise-plan'; principal: string } | null = null;
 
   const headerWorldMonitorKey =
     req.headers.get('X-WorldMonitor-Key') ??
@@ -317,9 +317,12 @@ async function proxyWidgetAgent(
   );
   if (enterpriseKey) {
     isPro = true;
-    spendId = `wm:${await spendToken(enterpriseKey)}`;
+    // The same per-key bucket and ceiling the gateway and chat-analyst charge
+    // for this key: one counter, one cap (high-usage-alarm.ts).
+    spendId = await operatorKeyQuotaPrincipal(enterpriseKey);
     quotaUserId = spendId;
-    directLlmDailyLimit = DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
+    directLlmDailyLimit = OPERATOR_KEY_DAILY_CEILINGS.directLlmCalls;
+    alarm = { credential: 'operator-key', principal: hashKeySync(enterpriseKey) };
   } else {
     const authHeader = req.headers.get('Authorization');
     if (authHeader?.startsWith('Bearer ')) {
@@ -404,6 +407,9 @@ async function proxyWidgetAgent(
       directLlmDailyLimit = entitlementChecked
         ? resolveActiveDirectLlmLimit(ent)
         : DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
+      if (entitlementChecked && ent && ent.features.tier >= 3) {
+        alarm = { credential: 'enterprise-plan', principal: session.userId };
+      }
     } else {
       // Legacy tester key path (wm-widget-key / wm-pro-key)
       const widgetKey = req.headers.get('X-Widget-Key') || (explicitWorldMonitorKey ? '' : widgetCookie);
@@ -515,6 +521,15 @@ async function proxyWidgetAgent(
         corsHeaders,
         reservation.floor ?? directLlmDailyLimit,
       );
+    }
+    if (alarm) {
+      reportHighUsageIfCrossed({
+        meter: 'direct-llm',
+        ...alarm,
+        newCount: reservation.newCount,
+        ceiling: directLlmDailyLimit,
+        ctx,
+      });
     }
     rollbackQuota = reservation.rollback;
   }

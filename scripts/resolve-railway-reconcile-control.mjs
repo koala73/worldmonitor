@@ -482,14 +482,17 @@ function titleContainsIdentifier(title, identifier) {
   return typeof title === 'string' && title.split(/[^A-Za-z0-9._:-]+/).includes(identifier);
 }
 
-function assertTargetWorkflowRun(run, request) {
+function assertTargetWorkflowRun(run, request, repository) {
   const workflowPath = `.github/workflows/${TARGET_WORKFLOW}`;
   const path = typeof run?.path === 'string' ? run.path : '';
   const pathMatches = path === workflowPath || path === `${workflowPath}@refs/heads/main`;
   const targetHead = run?.head_sha;
   const targetHeadIsValid = typeof targetHead === 'string' && /^[0-9a-f]{40}$/.test(targetHead);
   if (!pathMatches || !['workflow_run', 'workflow_dispatch'].includes(run?.event)
-    || run?.head_branch !== 'main' || !targetHeadIsValid) {
+    || run?.head_branch !== 'main' || !targetHeadIsValid
+    || run?.repository?.full_name !== repository
+    || run?.head_repository?.full_name !== repository
+    || run?.head_repository?.fork !== false) {
     fail(
       'TARGET_RUN_IDENTITY_MISMATCH',
       'the evidence-bound run is not an allowed exact target workflow run on main',
@@ -556,14 +559,24 @@ async function collectGitHubProof(request, githubClient, observedAt) {
       await githubClient.readTargetRun(targetId),
     ].map((run) => [numericId(run.id, 'workflowRunId'), run])).values()];
   }
-  const matching = runs.filter((run) => numericId(run.id, 'workflowRunId') === targetId
-    || titleContainsIdentifier(run.display_title, request.priorId));
+  const matching = runs.filter((run) => {
+    if (numericId(run.id, 'workflowRunId') === targetId) return true;
+    const workflowPath = `.github/workflows/${TARGET_WORKFLOW}`;
+    return titleContainsIdentifier(run.display_title, request.priorId)
+      && run.event === 'workflow_dispatch'
+      && run.head_branch === 'main'
+      && /^[0-9a-f]{40}$/i.test(run.head_sha ?? '')
+      && (run.path === workflowPath || run.path === `${workflowPath}@refs/heads/main`)
+      && run.repository?.full_name === githubClient.repository
+      && run.head_repository?.full_name === githubClient.repository
+      && run.head_repository?.fork === false;
+  });
   if (targetId !== null && !matching.some((run) => numericId(run.id, 'workflowRunId') === targetId)) {
     fail('TARGET_RUN_NOT_FOUND', 'the evidence-bound target run was not found in complete workflow history');
   }
   if (targetId !== null) {
     const target = matching.find((run) => numericId(run.id, 'workflowRunId') === targetId);
-    assertTargetWorkflowRun(target, request);
+    assertTargetWorkflowRun(target, request, githubClient.repository);
     if (request.evidence.targetRunAttempt
       > requireAttempt(target.run_attempt, 'workflowRunAttempt')) {
       fail('TARGET_RUN_ATTEMPT_MISMATCH', 'the evidence-bound run attempt is outside the complete attempt history');

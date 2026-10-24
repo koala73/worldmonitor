@@ -23,6 +23,7 @@ import {
   isAllowedImdUrl,
   isNilText,
   parseImdBulletinHtml,
+  parseImdKeralaPdfText,
   shouldActivateImdSnapshot,
   stripNonContentBlocks,
   validateImdEnvelope,
@@ -496,4 +497,122 @@ test('the seeder publishes to its own key with no API credentials or proxy', () 
   const registry = JSON.parse(readFileSync(join(root, 'scripts/railway-services.json'), 'utf8'));
   const service = registry.find((entry) => entry.service === 'seed-imd-cyclone-marine');
   assert.deepEqual(service.requiredEnv, ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']);
+});
+
+test('a complete official Kerala PDF recovers an incomplete HTML bulletin without renewing its source clocks', async (t) => {
+  const kerala = IMD_PRODUCTS.coastalBulletin.pages.find((page) => page.key === 'kerala-karnataka-lakshadweep');
+  const fallbackUrl = 'https://mausam.imd.gov.in/thiruvananthapuram/mcdata/coastal%20bulletin.pdf';
+  const pdf = readFileSync(join(root, 'tests/fixtures/imd/coastalBulletin-kerala-20261021.pdf'));
+  const requests = [];
+  const sleeps = [];
+  const timersAtSleep = [];
+  const timeout = AbortSignal.timeout;
+  let timerCount = 0;
+  t.mock.method(AbortSignal, 'timeout', (ms) => {
+    timerCount++;
+    return timeout(ms);
+  });
+  const fetchFn = async (url) => {
+    requests.push(url);
+    if (url === fallbackUrl) return new Response(pdf, { headers: { 'Content-Type': 'application/pdf' } });
+    const entry = ALL_PAGES.find(({ page }) => page.url === url);
+    return new Response(entry.page.key === kerala.key
+      ? fixture('coastalBulletin-kerala-missing-synoptic.html')
+      : pageFixture(entry.id, entry.page.key));
+  };
+  const snapshot = await fetchImdCycloneMarine({ fetchFn, now: Date.parse('2026-10-21T18:30:00Z'), sleep: async (ms) => {
+    timersAtSleep.push(timerCount);
+    sleeps.push(ms);
+  } });
+  const rows = snapshot.coastalBulletins.filter((row) => row.page === kerala.key);
+  assert.equal(rows.length, 4, 'recover all four complete official PDF areas');
+  assert.equal(requests.filter((url) => url === fallbackUrl).length, 1);
+  assert.deepEqual(sleeps, Array(requests.length - 1).fill(IMD_PAGE_DELAY_MS));
+  assert.deepEqual(timersAtSleep, Array.from({ length: sleeps.length }, (_, index) => index + 1),
+    'primary and fallback request timers start after their pacing waits');
+  assert.equal(snapshot.products.coastalBulletin.requestCount, IMD_PRODUCTS.coastalBulletin.pages.length + 1);
+  assert.equal(snapshot.products.coastalBulletin.pages[kerala.key].fallbackUsed, true);
+  assert.equal(snapshot.products.coastalBulletin.pages[kerala.key].primaryFailure, 'BULLETIN_SYNOPTIC_MISSING');
+  assert.equal(snapshot.products.coastalBulletin.pages[kerala.key].sourceUrl, fallbackUrl);
+  for (const row of rows) {
+    assert.equal(row.sourceUrl, fallbackUrl);
+    assert.equal(row.issuedAt, Date.parse('2026-10-21T07:34:00Z'));
+    assert.equal(row.validFrom, Date.parse('2026-10-21T10:00:00Z'));
+    assert.equal(row.expiresAt, Date.parse('2026-10-21T22:00:00Z'));
+    assert.match(row.synopticSituation, /^THE WELL MARKED LOW PRESSURE AREA/);
+  }
+  assert.equal(rows.find((row) => row.area === 'North Kerala coast').portSignal, 'LC III.');
+  const expired = await fetchImdCycloneMarine({ fetchFn, previous: snapshot, now: Date.parse('2026-10-21T22:00:00Z'), delayMs: 0 });
+  assert.equal(expired.coastalBulletins.length, 0);
+  assert.equal(expired.products.coastalBulletin.pages[kerala.key].status, 'expired');
+});
+
+test('the Kerala PDF adapter keeps all existing completeness and time checks', () => {
+  const text = `CWC THIRUVANANTHAPURAM /
+Coastal Weather Bulletin
+Valid for 12 hrs from 10 UTC of 2026-10-21 to 22 UTC of 2026-10-21
+Synoptic Situation
+Weather seasonal.
+${['Karnataka coast', 'North Kerala coast', 'South Kerala coast', 'Lakshadweep area'].map((area) => `${area}
+Wind North 10 knots
+Weather Fair
+Visibility Good
+Sea Condition Slight
+Port Signal NIL
+Storm Surge/Tidal Warning NIL`).join('\n')}
+Time of Issue 13:04 IST of 2026-10-21`;
+  assert.equal(parseImdKeralaPdfText(text).areas.length, 4);
+  const cases = [
+    [text.replace('Weather seasonal.', ''), 'BULLETIN_SYNOPTIC_MISSING'],
+    [text.replace('North Kerala coast', 'Other coast'), 'BULLETIN_AREAS_MISSING'],
+    [text.replace('Port Signal NIL\n', ''), 'BULLETIN_AREA_INCOMPLETE'],
+    [text.replace('CWC THIRUVANANTHAPURAM', 'ACWC MUMBAI'), 'BULLETIN_OFFICE_MISSING'],
+    [text.replace('to 22 UTC', 'to 23 UTC'), 'BULLETIN_VALIDITY_INCONSISTENT'],
+    [text.replace('13:04 IST', 'pending'), 'BULLETIN_ISSUE_TIME_MISSING'],
+    [text.replace('Wind North 10 knots', 'Wind North\nWind South'), 'BULLETIN_AREA_INCOMPLETE'],
+    ['x'.repeat(64_001), 'BULLETIN_RESPONSE_TOO_LARGE'],
+  ];
+  for (const [input, code] of cases) assert.throws(() => parseImdKeralaPdfText(input), { code });
+});
+
+test('Kerala fallback rejects invalid responses and does not replace successful primary pages', async () => {
+  const page = IMD_PRODUCTS.coastalBulletin.pages.find((entry) => entry.key === 'kerala-karnataka-lakshadweep');
+  const broken = fixture('coastalBulletin-kerala-missing-synoptic.html');
+  const pdf = readFileSync(join(root, 'tests/fixtures/imd/coastalBulletin-kerala-20261021.pdf'));
+  const cases = [
+    [() => new Response('unavailable', { status: 503 }), {}, 'HTTP 503'],
+    [() => new Response('<html>not PDF</html>', { headers: { 'Content-Type': 'application/pdf' } }), {}, 'BULLETIN_PDF_INVALID'],
+    [() => new Response('%PDF-invalid', { headers: { 'Content-Type': 'application/pdf' } }), {}, 'IMD_FETCH_FAILED'],
+    [() => new Response(pdf, { headers: { 'Content-Type': 'text/html' } }), {}, 'BULLETIN_PDF_INVALID'],
+    [() => new Response(pdf, { headers: { 'Content-Type': 'application/pdf', 'Content-Length': '524289' } }), {}, 'BULLETIN_RESPONSE_TOO_LARGE'],
+    [() => { throw new DOMException('timeout', 'TimeoutError'); }, {}, 'IMD_FETCH_TIMEOUT'],
+    [() => new Response(pdf, { headers: { 'Content-Type': 'application/pdf' } }), { maxBytes: 10_000 }, 'BULLETIN_RESPONSE_TOO_LARGE'],
+  ];
+  for (const [response, options, fallbackFailure] of cases) {
+    const result = await fetchImdBulletinPage('coastalBulletin', page, {
+      ...options,
+      delayMs: 0,
+      fetchFn: async (url, init) => {
+        assert.equal(init.redirect, 'error');
+        assert.ok(init.headers['User-Agent']);
+        if (url === page.url) return new Response(broken);
+        assert.equal(url, page.fallbackUrl);
+        assert.equal(init.headers.Accept, 'application/pdf');
+        return response();
+      },
+    });
+    assert.deepEqual(result, { status: 'failed', reason: 'BULLETIN_SYNOPTIC_MISSING', fallbackFailure });
+    const snapshot = assembleImdSnapshot({ pageResults: { coastalBulletin: { [page.key]: result } } });
+    assert.equal(snapshot.products.coastalBulletin.requestCount, IMD_PRODUCTS.coastalBulletin.pages.length + 1);
+    assert.equal(snapshot.products.coastalBulletin.pages[page.key].fallbackFailure, fallbackFailure);
+    assert.equal(snapshot.coastalBulletins.length, 0);
+  }
+  let calls = 0;
+  const good = await fetchImdBulletinPage('coastalBulletin', page, { fetchFn: async () => {
+    calls++;
+    return new Response(pageFixture('coastalBulletin', page.key));
+  } });
+  assert.equal(good.status, 'parsed');
+  assert.equal(calls, 1);
+  assert.equal(good.fallbackUsed, undefined);
 });

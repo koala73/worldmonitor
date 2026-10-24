@@ -236,7 +236,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Statut d’estimation et d’imputation non fourni"
     },
     "fiveFactorScorecard": {
       "title": "Tableau de bord de résilience à cinq facteurs",
@@ -714,7 +715,8 @@
       "alertTitle": {
         "configured": "Paramètres de bureau configurés",
         "needsKeys": "Configurez les clés API pour débloquer les fonctionnalités",
-        "some": "Certaines fonctionnalités nécessitent des clés API"
+        "some": "Certaines fonctionnalités nécessitent des clés API",
+        "pro": "World Monitor Pro est actif"
       },
       "summary": {
         "desktop": "Mode Bureau",
@@ -744,8 +746,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "skipSetup": "Passez la configuration — une seule licence World Monitor débloque tout. Rejoignez la liste d'attente pour un accès anticipé.",
-      "reserveEarlyAccess": "Réservez votre accès anticipé"
+      "proCloud": "Les fonctionnalités sans clé API locale utilisent les données cloud de World Monitor.",
+      "skipSetupPro": "Ignorez la configuration : connectez-vous avec World Monitor Pro pour utiliser les données cloud au lieu de vos propres clés API.",
+      "getPro": "Obtenir World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Validation des clés API...",
@@ -1242,7 +1245,7 @@
         "tradeRoutes": "Routes Commerciales",
         "gpsJamming": "Perturbation de la navigation",
         "dayNight": "Jour/Nuit",
-        "iranAttacks": "Attaques iraniennes",
+        "iranAttacks": "Frappes au Moyen-Orient",
         "ciiChoropleth": "Instabilité des pays",
         "positiveEvents": "Événements positifs",
         "kindness": "Actes de bonté",
@@ -1284,7 +1287,9 @@
         "sourceIomDtm": "Source : IOM DTM",
         "sinceDate": "depuis le {{date}}",
         "lastMonth": "le mois dernier",
-        "sourceUnhcrOdp": "Source : Portail de données opérationnelles du HCR"
+        "sourceUnhcrOdp": "Source : Portail de données opérationnelles du HCR",
+        "displaced": "déplacés",
+        "sourceIdmc": "Source : IDMC"
       },
       "layerHelp": {
         "title": "Guide des couches de carte",
@@ -1501,6 +1506,8 @@
       "capacityPercent": "Capacité {{percent}}%",
       "noCountryImpacts": "Aucun impact pays détecté",
       "alternativeRoutes": "Itinéraires alternatifs",
+      "sharesCutZone": "même détroit",
+      "estimateNote": "Estimation : la capacité et la redondance des câbles sont approximatives, non mesurées.",
       "countriesAffected": "Pays concernés ({{count}})",
       "links": "liens",
       "selectInfrastructureHint": "Sélectionnez l’infrastructure pour analyser l’impact en cascade",
@@ -1639,7 +1646,21 @@
       "latestChange": "Dernière variation",
       "accelerating": "En accélération",
       "inDays": "en {{days}} jours",
-      "crossBorderNote": "Portail de données opérationnelles de l'Agence des Nations unies pour les réfugiés : personnes ayant franchi les frontières dans chaque crise, selon les derniers rapports des pays. Les situations se chevauchent, elles ne sont donc pas cumulées."
+      "crossBorderNote": "Portail de données opérationnelles de l'Agence des Nations unies pour les réfugiés : personnes ayant franchi les frontières dans chaque crise, selon les derniers rapports des pays. Les situations se chevauchent, elles ne sont donc pas cumulées.",
+      "last7And30": "7 / 30 derniers jours",
+      "staleReport": "Rapport périmé",
+      "reported": "Nombre",
+      "period": "Période",
+      "movementNote": "Chaque ligne conserve sa source, la date du rapport et sa mesure. Les effectifs, les arrivées et les événements de contrôle frontalier sont des mesures distinctes. Les sources peuvent se recouper ; ne cumulez pas leurs chiffres. WorldMonitor établit cette vue à partir des sources liées ; cela ne suppose aucun soutien des fournisseurs.",
+      "recent": "Récent",
+      "last30Days": "Les 30 derniers jours",
+      "newThisWeek": "Nouveau cette semaine",
+      "conflict": "Conflit",
+      "disaster": "Catastrophe",
+      "surge": "Pic",
+      "recentNote": "IDMC : personnes déplacées dans leur pays au cours des 30 derniers jours. L'IDMC publie un chiffre en médiane trois semaines après le déplacement, de sorte que les semaines récentes se remplissent tardivement. « Nouveau cette semaine » compte les chiffres publiés au cours des 7 derniers jours. Pic : au moins 5 000 personnes et trois fois la moyenne mensuelle des cinq mois précédents.",
+      "recentAsOf": "Données au {{date}}.",
+      "recentMissing": "Aucune donnée cette fois de {{countries}} ; leurs fichiers n'ont pas pu être chargés, ce qui ne signifie pas un déplacement nul."
     },
     "climate": {
       "noAnomalies": "Aucune anomalie significative détectée",
@@ -1666,7 +1687,8 @@
       "sourceCoverageHint": "Affiche {{covered}} des {{total}} sources activées — ce panneau alterne entre ses sources à chaque actualisation",
       "sortBy": "Trier par",
       "sortNewest": "Plus récent",
-      "sortRelevance": "Pertinence"
+      "sortRelevance": "Pertinence",
+      "translationUnavailable": "Traduction indisponible. Vérifiez les paramètres de votre fournisseur d’IA et réessayez."
     },
     "etfFlows": {
       "unavailable": "données de fonds négociés en bourse temporairement indisponibles",
@@ -3830,5 +3852,27 @@
       "description": "Activer les sources sur l'Iran, Israël, le Golfe et les régions kurdes"
     },
     "unavailable": "Le pack {{preset}} n'est pas disponible avec vos panneaux actuels"
+  },
+  "countryHistory": {
+    "title": "Historique quotidien du pays",
+    "loading": "Chargement de l’historique…",
+    "window": "Période",
+    "days": "{{days}} jours",
+    "observed": "{{count}} instantanés sur {{days}} jours",
+    "legend": "CII (ambre) : une valeur élevée indique plus d’instabilité. Résilience (vert) : une valeur élevée indique plus de capacité. Les points indiquent les jours avec des titres sélectionnés.",
+    "chart": "Scores quotidiens de CII et de résilience. Les lacunes et les changements de formule interrompent les lignes.",
+    "selectDate": "{{date}}, {{count}} titres sélectionnés",
+    "empty": "Aucun instantané quotidien sur cette période. L’historique s’accumule après l’activation.",
+    "unavailable": "L’historique est temporairement indisponible. Réessayez.",
+    "retry": "Réessayer",
+    "stale": "La dernière capture quotidienne réussie date de plus de 36 heures.",
+    "break": "Changement de formule ou lacune d’observation. Comparez uniquement les scores calculés avec la même formule.",
+    "partial": "La couverture des actualités était partielle au moment de la capture.",
+    "resilience": "Résilience",
+    "ciiMissing": "CII indisponible",
+    "resilienceMissing": "Résilience indisponible",
+    "noEvents": "Aucun titre sélectionné n’a été capturé à cette date. Cela ne prouve pas l’absence d’événements.",
+    "unlock90": "Débloquez 90 jours avec Pro",
+    "unlock365": "Débloquez 365 jours avec une offre API"
   }
 }
