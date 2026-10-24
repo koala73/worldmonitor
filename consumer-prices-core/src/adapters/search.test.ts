@@ -66,6 +66,7 @@ describe('isTitlePlausible', () => {
 
   it('preserves digit-prefixed product identity instead of treating it as a quantity unit', () => {
     expect(isTitlePlausible('7up 330ml', 'Cola 350ml')).toBe(false);
+    expect(isTitlePlausible('7up 330ml', 'Cola 500ml')).toBe(false);
     expect(isTitlePlausible('7up 330ml', '7up')).toBe(true);
   });
 

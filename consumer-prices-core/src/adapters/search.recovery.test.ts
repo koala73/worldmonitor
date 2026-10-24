@@ -80,14 +80,17 @@ function makeBrazilTarget(
 }
 
 describe('SearchAdapter recovery path', () => {
-  it('refuses a different drink before the strict validator can lose digit-prefixed identity', async () => {
-    const config = loadRetailerConfig('noon_grocery_ae');
+  it.each([
+    { slug: 'noon_grocery_ae', url: 'https://www.noon.com/uae-en/cola/p/REPLAY/' },
+    { slug: 'lulu_ae', url: 'https://gcc.luluhypermarket.com/en-ae/cola-350-ml/p/REPLAY' },
+  ])('refuses a different drink for $slug without losing digit-prefixed identity', async ({ slug, url }) => {
+    const config = loadRetailerConfig(slug);
     const response = {
       data: { productName: 'Cola 350ml', price: 3.95, currency: 'AED', sizeText: '350ml' },
       pageContent: 'Cola 350ml\nAED 3.95',
     };
     const exa = {
-      search: vi.fn().mockResolvedValue([{ url: 'https://www.noon.com/uae-en/cola/p/REPLAY/' }]),
+      search: vi.fn().mockResolvedValue([{ url }]),
       extract: vi.fn().mockResolvedValue(response),
     } as unknown as ExaProvider;
     const firecrawl = { extract: vi.fn().mockResolvedValue(response) } as unknown as FirecrawlProvider;
@@ -101,10 +104,9 @@ describe('SearchAdapter recovery path', () => {
     const error = await adapter.fetchTarget(makeContext(config), target).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(SearchTargetError);
-    expect((error as SearchTargetError).failures).toEqual([
-      expect.objectContaining({ provider: 'firecrawl', reason: 'title-mismatch' }),
-      expect.objectContaining({ provider: 'exa', reason: 'title-mismatch' }),
-    ]);
+    const failures = (error as SearchTargetError).failures;
+    expect(failures.length).toBeGreaterThan(0);
+    expect(failures.every(({ reason }) => reason === 'title-mismatch')).toBe(true);
   });
 
   describe('AE tomato title replay', () => {

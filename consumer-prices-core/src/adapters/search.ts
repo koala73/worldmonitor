@@ -55,7 +55,7 @@ export function isTitlePlausible(canonicalName: string, productName: string | un
   const tokens = canonicalName
     .toLowerCase()
     .split(/\W+/)
-    .filter((w) => w.length > 2 && !PACKAGING_WORDS.has(w) && !SIZE_LIKE.test(w));
+    .filter((w) => w.length > 2 && !PACKAGING_WORDS.has(w) && !(SIZE_LIKE.test(w) && parseSize(w)));
   if (tokens.length === 0) return true;
   const extracted = productName.toLowerCase();
   const matches = tokens.filter((w) => {
