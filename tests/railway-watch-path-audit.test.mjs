@@ -1005,12 +1005,14 @@ describe('planned Railway service lifecycle', () => {
       // watch-path and deploy-drift checks.
       'seed-crypto-sectors',
       'seed-market-quotes',
-      // seed-notam-nms is planned until FAA grants production NMS-API access:
-      // the issued credentials reach only the staging host, whose test NOTAMs
-      // the seeder refuses to publish, so the Railway service does not exist yet.
-      'seed-notam-nms',
       'seed-service-statuses',
       'seed-weather-alerts',
+      // seed-notam-nms (#9637) is deliberately ABSENT now: it landed planned
+      // until FAA granted production NMS-API access, and service
+      // 4aa3db57-9388-4c69-a248-8a538e576454 now runs
+      // `node seed-notam-nms.mjs` on cron */5 * * * * against the production
+      // host (#9635). Leaving it planned would exempt a live cron from the
+      // watch-path and deploy-drift checks.
       // shipping-webhook-worker (#9217) is deliberately ABSENT now: #9236
       // landed it planned until the Railway service existed, and service
       // a97fa619-a8f4-4244-9748-6c0f6c3eade3 now runs

@@ -2210,7 +2210,6 @@
   {
     "entry": "scripts/seed-notam-nms.mjs",
     "deployMode": "nixpacks-root-scripts",
-    "lifecycle": "planned",
     "service": "seed-notam-nms",
     "startCommand": "node seed-notam-nms.mjs",
     "requiredEnv": [
@@ -2220,6 +2219,7 @@
       "NOTAM_SECRET"
     ],
     "watchPatterns": [
+      "scripts/_env-file.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
