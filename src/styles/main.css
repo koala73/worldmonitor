@@ -5037,7 +5037,7 @@ a.item-title:hover {
 }
 
 .velocity-badge.spike {
-  background: rgba(var(--semantic-critical), 0.2);
+  background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
   color: var(--red);
   animation: pulse-velocity 1.5s infinite;
 }
@@ -5083,7 +5083,7 @@ a.item-title:hover {
 }
 
 .deviation-indicator.spike {
-  background: rgba(var(--semantic-critical), 0.2);
+  background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
   color: var(--red);
   animation: pulse-alert 1s infinite;
 }
@@ -6565,7 +6565,7 @@ body.playback-mode .status-dot {
 
 /* Conflict zones */
 .conflict-zone {
-  fill: rgba(var(--semantic-critical), 0.2);
+  fill: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
   stroke: var(--red);
   stroke-width: 1;
   stroke-dasharray: 4, 2;
@@ -21553,7 +21553,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .posture-critical {
-  background: rgba(var(--semantic-critical), 0.2);
+  background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
   color: var(--semantic-critical);
 }
 
@@ -21725,7 +21725,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .posture-strike {
-  background: rgba(var(--semantic-critical), 0.2);
+  background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
   color: var(--semantic-critical);
   padding: 2px 8px;
   border-radius: 3px;
@@ -28510,6 +28510,15 @@ body.map-width-resizing {
 .markers-settled .military-vessel-marker.interesting,
 .markers-settled .dark-vessel-indicator,
 .markers-settled .tech-event-marker.upcoming-soon::after {
+  animation: none;
+}
+
+/* Low-end devices (src/utils/device-tier.ts): the page-level live indicators
+   pulse forever, even while their panel is off-screen. Map markers on these
+   devices are settled from the first render by MapComponent. */
+.low-end-device .panel-data-badge.live::before,
+.low-end-device .live-media-shell-dot::before,
+.low-end-device .panel-live-count::before {
   animation: none;
 }
 

@@ -62,12 +62,14 @@ import { t } from '@/services/i18n';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { renderLayerTruncationBadges } from '@/utils/layer-truncation-badge';
+import { isLowEndDevice } from '@/utils/device-tier';
 import {
   overlayMarkerPosition,
   projectionPointAtScreenCentre,
 } from '@/utils/overlay-marker-geometry';
 import {
   MAP_OVERLAY_MARKER_BUDGET_DESKTOP,
+  MAP_OVERLAY_MARKER_BUDGET_LOW_END,
   MAP_OVERLAY_MARKER_BUDGET_MOBILE,
   proximityRank,
   selectGlobeMarkers,
@@ -262,6 +264,8 @@ export class MapComponent {
   private destroyed = false;
   // Mobile loads the lighter 110m country topology (U6); passed in from MapContainer.
   private readonly isMobile: boolean;
+  // Low-memory device (src/utils/device-tier.ts): static markers, smaller budget.
+  private readonly lowEndDevice = isLowEndDevice();
   private readonly canToggleLayer: NonNullable<MapComponentOptions['canToggleLayer']>;
   private overlayAppendTarget: ParentNode | null = null;
   // #7112 overlay marker budget. `overlayMarkerCut` holds the marker objects
@@ -2012,9 +2016,11 @@ export class MapComponent {
       else group.rank = nearestFirst;
     }
 
-    const budget = this.isMobile
-      ? MAP_OVERLAY_MARKER_BUDGET_MOBILE
-      : MAP_OVERLAY_MARKER_BUDGET_DESKTOP;
+    const budget = this.lowEndDevice
+      ? MAP_OVERLAY_MARKER_BUDGET_LOW_END
+      : this.isMobile
+        ? MAP_OVERLAY_MARKER_BUDGET_MOBILE
+        : MAP_OVERLAY_MARKER_BUDGET_DESKTOP;
     const { markers, truncated } = selectGlobeMarkers(groups, budget);
 
     const kept = new Set(markers);
@@ -3775,6 +3781,12 @@ export class MapComponent {
   // add .markers-settled on the wrapper so main.css stops the infinite pulses
   // and their compositing layers are released while the map is idle.
   private armMarkerSettle(): void {
+    // Low-end devices skip the attention window: every render restarts ~150
+    // pulses, including the non-compositable conflict-zone fill.
+    if (this.lowEndDevice) {
+      this.wrapper.classList.add('markers-settled');
+      return;
+    }
     this.wrapper.classList.remove('markers-settled');
     if (this.markerSettleTimer !== null) clearTimeout(this.markerSettleTimer);
     this.markerSettleTimer = setTimeout(() => {
