@@ -3,6 +3,7 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall, invokePanelMethod } from '@/app/pending-panel-data';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import { runHydrationTier, type HydrationTask } from '@/app/hydration-scheduler';
+import { ViewportHydrationLedger, type LoadAllDataTrigger } from '@/app/viewport-hydration-ledger';
 import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
@@ -468,6 +469,8 @@ export class DataLoaderManager implements AppModule {
   private loadAllDataPromise: Promise<void> | null = null;
   private loadAllDataRerunRequested = false;
   private loadAllDataQueuedForceAll = false;
+  private loadAllDataQueuedFullPass = false;
+  private readonly viewportHydration = new ViewportHydrationLedger();
   private xIntelAbortController: AbortController | null = null;
   // True once a live X fetch has rendered. Gates whether a later transport
   // failure may blank the panel (it may not) or must surface an error (it must,
@@ -939,10 +942,6 @@ export class DataLoaderManager implements AppModule {
     return panel?.isNearViewport?.(marginPx) ?? false;
   }
 
-  private isAnyPanelNearViewport(panelIds: string[], marginPx = 400): boolean {
-    return panelIds.some((panelId) => this.isPanelNearViewport(panelId, marginPx));
-  }
-
   private hydratesPanel(panelId: string, owningVariants: readonly string[]): boolean {
     return variantShipsOrUserEnabled({
       variant: SITE_VARIANT,
@@ -951,15 +950,17 @@ export class DataLoaderManager implements AppModule {
     });
   }
 
-  async loadAllData(forceAll = false): Promise<void> {
+  async loadAllData(forceAll = false, trigger: LoadAllDataTrigger = 'full'): Promise<void> {
     if (this.loadAllDataPromise) {
       this.loadAllDataRerunRequested = true;
       this.loadAllDataQueuedForceAll = this.loadAllDataQueuedForceAll || forceAll;
+      this.loadAllDataQueuedFullPass = this.loadAllDataQueuedFullPass || trigger === 'full';
       return this.loadAllDataPromise;
     }
 
     this.loadAllDataRerunRequested = true;
     this.loadAllDataQueuedForceAll = forceAll;
+    this.loadAllDataQueuedFullPass = trigger === 'full';
     this.loadAllDataPromise = this.drainLoadAllDataQueue();
     return this.loadAllDataPromise;
   }
@@ -968,28 +969,31 @@ export class DataLoaderManager implements AppModule {
     try {
       while (this.loadAllDataRerunRequested && !this.ctx.isDestroyed) {
         const forceAll = this.loadAllDataQueuedForceAll;
+        const trigger: LoadAllDataTrigger = this.loadAllDataQueuedFullPass ? 'full' : 'viewport';
         this.loadAllDataRerunRequested = false;
         this.loadAllDataQueuedForceAll = false;
+        this.loadAllDataQueuedFullPass = false;
         // Opt-in only (no-op unless __wmLcpDebug is installed), so this costs
         // one property read on the ordinary path. The start/end pair is the
         // only direct witness that a fan-out actually ran and drained: request
         // counters cannot distinguish a repeat pass from a service retry
         // (#7045 U5 review, #7212).
-        markLcpDebug('wm:data:load-all-start', { forceAll });
+        markLcpDebug('wm:data:load-all-start', { forceAll, trigger });
         try {
-          await this.runLoadAllData(forceAll);
+          await this.runLoadAllData(forceAll, trigger);
         } finally {
-          markLcpDebug('wm:data:load-all-end', { forceAll });
+          markLcpDebug('wm:data:load-all-end', { forceAll, trigger });
         }
       }
     } finally {
       this.loadAllDataPromise = null;
       this.loadAllDataRerunRequested = false;
       this.loadAllDataQueuedForceAll = false;
+      this.loadAllDataQueuedFullPass = false;
     }
   }
 
-  private async runLoadAllData(forceAll: boolean): Promise<void> {
+  private async runLoadAllData(forceAll: boolean, trigger: LoadAllDataTrigger = 'full'): Promise<void> {
     const runGuarded = async (name: string, fn: () => Promise<void>): Promise<void> => {
       if (this.ctx.isDestroyed || this.ctx.inFlight.has(name)) return;
       this.ctx.inFlight.add(name);
@@ -1002,8 +1006,28 @@ export class DataLoaderManager implements AppModule {
       }
     };
 
-    const shouldLoad = (id: string): boolean => forceAll || this.isPanelNearViewport(id);
-    const shouldLoadAny = (ids: string[]): boolean => forceAll || this.isAnyPanelNearViewport(ids);
+    // A viewport pass (scroll, panel mount) loads only panels no earlier pass
+    // has loaded; refreshing loaded panels is the refresh scheduler's job.
+    // Every layout read happens here, before any loader writes DOM (#4487).
+    const viewportOnly = trigger === 'viewport' && !forceAll;
+    this.viewportHydration.beginPass(hasPremiumAccess());
+    const panelIds = Object.keys(this.ctx.panels);
+    let unserved: Set<string> | null = null;
+    if (viewportOnly) {
+      unserved = this.viewportHydration.collectUnserved(this.ctx.panels, (id) => this.isPanelNearViewport(id));
+      if (unserved.size === 0) return;
+      this.viewportHydration.markServed(this.ctx.panels, unserved);
+    } else {
+      this.viewportHydration.markServed(this.ctx.panels, forceAll ? panelIds : panelIds.filter((id) => this.isPanelNearViewport(id)));
+    }
+    const shouldLoad = (id: string): boolean => forceAll || (unserved ? unserved.has(id) : this.isPanelNearViewport(id));
+    const shouldLoadAny = (ids: string[]): boolean => ids.some(shouldLoad);
+    // Work tied to no single panel runs on full passes, on the first viewport
+    // pass, and when one of its panels first enters range.
+    const runOncePerViewport = (key: string, ids: readonly string[] = []): boolean => {
+      const first = this.viewportHydration.claim(key);
+      return !viewportOnly || first || ids.some((id) => unserved!.has(id));
+    };
 
     const tasks: HydrationTask[] = [];
     if (this.shouldHydrateNews(forceAll)) {
@@ -1034,7 +1058,8 @@ export class DataLoaderManager implements AppModule {
         tasks.push({ name: 'forecasts', task: () => runGuarded('forecasts', () => this.loadForecasts()) });
         tasks.push({ name: 'simulation-outcome', task: () => runGuarded('simulation-outcome', () => this.loadSimulationOutcome()) });
       }
-      if (SITE_VARIANT === 'full') tasks.push({ name: 'pizzint', task: () => runGuarded('pizzint', () => this.loadPizzInt()) });
+      // The PizzINT header indicator belongs to no panel; its refresh is scheduled.
+      if (SITE_VARIANT === 'full' && (this.viewportHydration.claim('pizzint') || !viewportOnly)) tasks.push({ name: 'pizzint', task: () => runGuarded('pizzint', () => this.loadPizzInt()) });
       if (shouldLoad('economic')) {
         tasks.push({ name: 'fred', task: () => runGuarded('fred', () => this.loadFredData()) });
         tasks.push({ name: 'spending', task: () => runGuarded('spending', () => this.loadGovernmentSpending()) });
@@ -1123,7 +1148,7 @@ export class DataLoaderManager implements AppModule {
       });
     }
 
-    if (SITE_VARIANT === 'full') {
+    if (SITE_VARIANT === 'full' && runOncePerViewport('cii-refresh', ['cii', 'strategic-risk'])) {
       try {
         const cached = await fetchCachedRiskScores().catch(() => null);
         if (cached && cached.cii.length > 0) {
@@ -1201,13 +1226,14 @@ export class DataLoaderManager implements AppModule {
 
     this.updateSearchIndex();
 
-    if (hasPremiumAccess()) {
+    if (hasPremiumAccess() && runOncePerViewport('premium-briefs', ['daily-market-brief', 'market-implications'])) {
       await Promise.allSettled([
         this.loadDailyMarketBrief(),
         this.loadMarketImplications(),
       ]);
     }
 
+    if (!runOncePerViewport('temporal-baseline', ['cii', 'strategic-risk', 'strategic-posture'])) return;
     const bootstrapTemporal = consumeServerAnomalies();
     if (bootstrapTemporal.anomalies.length > 0 || bootstrapTemporal.trackedTypes.length > 0) {
       await runSignalAggregator(this.ctx.statusPanel, 'bootstrap temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes));

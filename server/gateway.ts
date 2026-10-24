@@ -985,10 +985,9 @@ function markAuthErrorNoStore(response: Response): Response {
  * Every request header the gateway or a sibling auth path treats as a
  * credential (#8400). `hasCredentialBearingHeader` consumes this list so a
  * new credential header cannot be added without appearing in the cache-tier
- * guard. `register-interest.ts` desktop HMAC headers and `mcp-internal-hmac.ts`
- * service-auth headers export their own constants and stay OUT: their
- * verification is route-scoped (a single POST RPC, the internal-MCP
- * pre-check) rather than consumed as a bearer by an auth path — per-principal
+ * guard. `mcp-internal-hmac.ts` service-auth headers export their own
+ * constants and stay OUT: their verification is route-scoped (the
+ * internal-MCP pre-check) rather than consumed as a bearer by an auth path — per-principal
  * bodies behind those MUST be no-store at the handler instead of relying on
  * this audience overwrite.
  *

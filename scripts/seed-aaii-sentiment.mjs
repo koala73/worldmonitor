@@ -373,8 +373,11 @@ export function parseHtmlSentiment(html) {
   return rows;
 }
 
-async function fetchAaiiSentiment() {
+async function fetchAaiiSentiment({ fetchDeadlineAtMs }) {
   const retained = await readCanonicalValue(AAII_KEY, { strict: true });
+  if (Date.now() >= fetchDeadlineAtMs) {
+    throw Object.assign(new Error('AAII fetch deadline reached'), { nonRetryable: true });
+  }
   let data = [];
   // AAII robots.txt disallows /files/*, including sentiment.xls.
   try {
@@ -383,11 +386,26 @@ async function fetchAaiiSentiment() {
       headers: { 'User-Agent': CHROME_UA, Accept: 'text/html,application/xhtml+xml' },
       signal: AbortSignal.timeout(8_000),
     });
-    if (!resp.ok) throw httpRetryError(resp);
+    if (!resp.ok) {
+      const err = httpRetryError(resp);
+      const retryAfter = resp.headers.get('Retry-After');
+      const seconds = Number(retryAfter);
+      const retryAt = Date.parse(retryAfter);
+      // AAII requires the full provider delay; the shared helper caps it at 60s.
+      if (Number.isFinite(seconds) && seconds > 0) err.retryAfterMs = seconds * 1000;
+      else if (Number.isFinite(retryAt)) err.retryAfterMs = Math.max(0, retryAt - Date.now());
+      throw err;
+    }
     data = parseHtmlSentiment(await resp.text());
   } catch (e) {
     // AAII's crawl delay also applies to retries after transport failures.
-    if (!e.nonRetryable) e.retryAfterMs = Math.max(10_000, e.retryAfterMs ?? 0);
+    if (!e.nonRetryable) {
+      e.retryAfterMs = Math.max(10_000, e.retryAfterMs ?? 0);
+      if (e.retryAfterMs >= fetchDeadlineAtMs - Date.now()) {
+        e.nonRetryable = true;
+        e.message += ': required retry delay exceeds the remaining AAII fetch budget';
+      }
+    }
     throw e;
   }
 

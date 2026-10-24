@@ -42,6 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
 
       - name: Require matching release target
@@ -125,6 +126,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
 
       - name: Start job timer
@@ -137,10 +139,10 @@ jobs:
           node-version: '24'
           cache: 'npm'
 
-      - name: Install Rust stable
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
         with:
-          toolchain: stable
+          toolchain: 1.99.1
           targets: ${{ contains(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || (matrix.label == 'Linux-ARM64' && 'aarch64-unknown-linux-gnu' || '') }}
 
       - name: Rust cache
@@ -495,6 +497,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
           fetch-depth: 0
 

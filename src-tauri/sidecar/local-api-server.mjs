@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http, { createServer } from 'node:http';
 import https from 'node:https';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
@@ -18,9 +18,6 @@ const { getConfiguredLlmHealthProviders } = await import(
 );
 
 const brotliCompressAsync = promisify(brotliCompress);
-const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
-const DESKTOP_AUTH_TIMESTAMP_HEADER = 'X-WorldMonitor-Desktop-Timestamp';
-const DESKTOP_AUTH_SIGNATURE_HEADER = 'X-WorldMonitor-Desktop-Signature';
 const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
 const MAX_REGISTRATION_BODY_BYTES = 16 * 1024;
 const MAX_REGISTRATION_EMAIL_LENGTH = 254;
@@ -78,22 +75,6 @@ function tokenMatches(candidate, expected) {
   const a = Buffer.from(candidate, 'utf8');
   const b = Buffer.from(expected, 'utf8');
   return a.length === b.length && timingSafeEqual(a, b);
-}
-
-function canonicalizeDesktopAuthPayload(payload) {
-  return JSON.stringify({
-    email: typeof payload?.email === 'string' ? payload.email : '',
-    source: typeof payload?.source === 'string' ? payload.source : '',
-    appVersion: typeof payload?.appVersion === 'string' ? payload.appVersion : '',
-    referredBy: typeof payload?.referredBy === 'string' ? payload.referredBy : '',
-    website: typeof payload?.website === 'string' ? payload.website : '',
-    turnstileToken: typeof payload?.turnstileToken === 'string' ? payload.turnstileToken : '',
-  });
-}
-
-function signDesktopAuthPayload(secret, timestamp, payload) {
-  const message = `${timestamp}\n${canonicalizeDesktopAuthPayload(payload)}`;
-  return `sha256=${createHmac('sha256', secret).update(message).digest('hex')}`;
 }
 
 function isTransientVerificationError(error) {
@@ -349,7 +330,7 @@ const ALLOWED_ENV_KEYS = new Set([
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
   'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'ALPHA_VANTAGE_API_KEY', 'NASA_FIRMS_API_KEY',
   'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WORLDMONITOR_API_KEY', 'WTO_API_KEY',
-  'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN', DESKTOP_AUTH_SECRET_ENV,
+  'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN',
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -873,19 +854,10 @@ async function proxyRegisterInterestToCloud(requestUrl, req, context) {
   headers.delete('Content-Encoding');
   headers.delete('Connection');
   headers.delete('Expect');
-  headers.delete(DESKTOP_AUTH_TIMESTAMP_HEADER);
-  headers.delete(DESKTOP_AUTH_SIGNATURE_HEADER);
   headers.set('Origin', 'https://worldmonitor.app');
   headers.set('User-Agent', CHROME_UA);
   headers.set('Content-Type', 'application/json');
   headers.set('Content-Length', String(Buffer.byteLength(body)));
-
-  const secret = process.env[DESKTOP_AUTH_SECRET_ENV];
-  if (secret) {
-    const timestamp = String(Date.now());
-    headers.set(DESKTOP_AUTH_TIMESTAMP_HEADER, timestamp);
-    headers.set(DESKTOP_AUTH_SIGNATURE_HEADER, signDesktopAuthPayload(secret, timestamp, normalizedPayload));
-  }
 
   return fetchWithTimeout(target, {
     method: 'POST',
@@ -1303,7 +1275,7 @@ function makeCorsHeaders(req) {
   return {
     'Access-Control-Allow-Origin': getSidecarCorsOrigin(req),
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
   };
@@ -1714,9 +1686,6 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 
     case 'ICAO_API_KEY':
       return ok('ICAO API key stored (verification requires NOTAM endpoint access)');
-
-    case DESKTOP_AUTH_SECRET_ENV:
-      return ok('Desktop shared secret stored');
 
     default:
       return ok('Key stored');

@@ -95,6 +95,7 @@ export const REPORT = {
       id: 'summary',
       heading: 'Direct answer',
       layer: 'derived',
+      block: 'current-pointer',
       paragraphs: [
         'Is the Strait of Hormuz open? Commercial transit has partially resumed but remains far below normal. Between 2026-03-01 and {{m:observationEnd}}, IMF PortWatch recorded {{m:disruptionTransits}} vessel transits — a daily average of {{m:disruptionDailyAvg}} against {{m:sameWindow2025DailyAvg}} in the same 2025 window, a {{m:declinePct}} decline. July traffic to date averages {{m:julToDateAvgTotal}} transits per day, about {{m:julVsFebShare}} of the February 2026 pre-disruption baseline.',
         'This report quantifies the collapse and partial recovery using daily AIS-derived transit counts, keeps observed data separate from third-party event reporting, and documents exactly what this data cannot show — including vessels transiting with AIS transmitters off.',

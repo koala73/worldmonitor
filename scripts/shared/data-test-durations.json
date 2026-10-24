@@ -1621,7 +1621,7 @@
   "tests/regional-snapshot-sanitize.test.mjs": 31,
   "tests/regional-snapshot-weekly-brief.test.mjs": 66,
   "tests/regional-snapshot.test.mjs": 178,
-  "tests/register-interest-desktop-auth.test.mjs": 442,
+  "tests/register-interest-desktop-no-bypass.test.mjs": 442,
   "tests/regulatory-entity-decode.test.mjs": 34,
   "tests/regulatory-seed-unit.test.mjs": 69,
   "tests/related-reading.test.mjs": 46,

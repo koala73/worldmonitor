@@ -544,6 +544,7 @@ import { debugGetCells, getCellCount } from '@/services/geo-convergence';
 import { initMetaTags } from '@/services/meta-tags';
 import { installFetchFailureAttribution } from '@/services/fetch-failure-attribution';
 import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runtime';
+import { primeBootstrapFastTier } from '@/services/bootstrap-prefetch';
 import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { loadDesktopSecrets } from '@/services/runtime-config';
 import { applyStoredTheme } from '@/utils/theme-manager';
@@ -663,6 +664,8 @@ if (urlParams.get('settings') === '1') {
     }
   );
 } else {
+  // Start the first dashboard data now instead of after the App chunk loads.
+  primeBootstrapFastTier();
   installUtmInterceptor();
   let resolveBindings!: (bindings: WebMcpAppBindings) => void;
   let rejectBindings!: (error: unknown) => void;
