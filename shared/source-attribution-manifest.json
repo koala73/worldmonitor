@@ -1583,6 +1583,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/cross-strait-activity/japan-x.mjs"
+        },
+        {
           "path": "scripts/lib/company-monitoring-x-provider.mjs"
         },
         {
@@ -10909,6 +10912,9 @@
           "path": "scripts/cross-strait-activity/adapters.mjs"
         },
         {
+          "path": "scripts/cross-strait-activity/japan-x.mjs"
+        },
+        {
           "path": "scripts/eval-classify-labels.mjs"
         },
         {
@@ -15552,6 +15558,9 @@
       "references": [
         {
           "path": "scripts/comparison-shortlist.mjs"
+        },
+        {
+          "path": "scripts/cross-strait-activity/japan-x.mjs"
         },
         {
           "path": "server/worldmonitor/leads/v1/register-interest.ts"

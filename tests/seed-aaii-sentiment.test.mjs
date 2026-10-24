@@ -117,6 +117,7 @@ describe('AAII Sentiment seed parsing', () => {
   describe('parseHtmlSentiment', () => {
     it('extracts percentages from AAII-style HTML with tableTxt class', () => {
       const html = `
+        <span>Week ending October 14, 2026</span>
         <table>
           <tr><td class="tableTxt">35.7%</td></tr>
           <tr><td class="tableTxt">21.3%</td></tr>
@@ -144,6 +145,7 @@ describe('AAII Sentiment seed parsing', () => {
 
     it('reads ssv2 values by class, not by position', () => {
       const html = `
+        <span>Week ending October 21, 2026</span>
         <div class="ssv2-snum bear">45.8%</div>
         <div class="ssv2-snum bull">36.9%</div>
         <div class="ssv2-snum neut">17.3%</div>
@@ -160,16 +162,19 @@ describe('AAII Sentiment seed parsing', () => {
       assert.equal(result.length, 0);
     });
 
-    it('assigns a date that is a Thursday', () => {
+    it('rejects an undated reading instead of assigning the current date', () => {
       const html = `
         <td class="tableTxt">40.0%</td>
         <td class="tableTxt">30.0%</td>
         <td class="tableTxt">30.0%</td>
       `;
       const result = parseHtmlSentiment(html);
-      assert.ok(result.length === 1);
-      const d = new Date(result[0].date + 'T12:00:00Z');
-      assert.equal(d.getUTCDay(), 4, 'Expected Thursday (day 4)');
+      assert.deepEqual(result, []);
+    });
+
+    it('rejects an invalid source date instead of rolling it into another month', () => {
+      const html = '<span>Week ending February 30, 2026</span><div class="ssv2-snum bull">40%</div><div class="ssv2-snum neut">30%</div><div class="ssv2-snum bear">30%</div>';
+      assert.deepEqual(parseHtmlSentiment(html), []);
     });
   });
 

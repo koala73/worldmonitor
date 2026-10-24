@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readCanonicalValue, httpRetryError } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 const AAII_KEY = 'market:aaii-sentiment:v1';
 const AAII_TTL = 604800; // 7 days (weekly data)
 
-const AAII_XLS_URL = 'https://www.aaii.com/files/surveys/sentiment.xls';
 const AAII_HTML_URL = 'https://www.aaii.com/sentimentsurvey';
 
 const CFB_MAGIC = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
@@ -332,12 +331,15 @@ function reportedDateFromWeekEnding(html) {
   const month = MONTHS.indexOf(m[1].toLowerCase());
   if (month < 0) return null;
   const end = new Date(Date.UTC(+m[3], month, +m[2]));
+  if (end.getUTCFullYear() !== +m[3] || end.getUTCMonth() !== month || end.getUTCDate() !== +m[2]) return null;
   const daysToThursday = ((4 - end.getUTCDay() + 7) % 7) || 7;
   return new Date(end.getTime() + daysToThursday * 86400000).toISOString().slice(0, 10);
 }
 
 export function parseHtmlSentiment(html) {
   const rows = [];
+  const date = reportedDateFromWeekEnding(html);
+  if (!date) return rows;
 
   // Current page: <div class="ssv2-snum bull">36.9%</div>, one per bull/neut/bear.
   const byClass = {};
@@ -346,7 +348,7 @@ export function parseHtmlSentiment(html) {
   }
   if (byClass.bull != null && byClass.neut != null && byClass.bear != null) {
     rows.push({
-      date: reportedDateFromWeekEnding(html) ?? mostRecentThursdayUTC(),
+      date,
       bullish: byClass.bull,
       neutral: byClass.neut,
       bearish: byClass.bear,
@@ -361,7 +363,7 @@ export function parseHtmlSentiment(html) {
 
   if (pcts.length >= 3) {
     rows.push({
-      date: mostRecentThursdayUTC(),
+      date,
       bullish: pcts[0],
       neutral: pcts[1],
       bearish: pcts[2],
@@ -372,65 +374,38 @@ export function parseHtmlSentiment(html) {
 }
 
 async function fetchAaiiSentiment() {
+  const retained = await readCanonicalValue(AAII_KEY, { strict: true });
   let data = [];
-  let source;
-
-  // Strategy 1: Fetch the XLS file and parse it
+  // AAII robots.txt disallows /files/*, including sentiment.xls.
   try {
-    console.log('  Attempting XLS download...');
-    const resp = await fetch(AAII_XLS_URL, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/vnd.ms-excel,*/*' },
-      signal: AbortSignal.timeout(15_000),
+    const resp = await fetch(AAII_HTML_URL, {
+      redirect: 'error',
+      headers: { 'User-Agent': CHROME_UA, Accept: 'text/html,application/xhtml+xml' },
+      signal: AbortSignal.timeout(8_000),
     });
-    const declared = Number(resp.headers.get('content-length'));
-    if (resp.ok && declared > MAX_XLS_BYTES) {
-      console.warn(`  XLS fetch: ${declared} bytes exceeds ${MAX_XLS_BYTES}`);
-    } else if (resp.ok) {
-      const buffer = await resp.arrayBuffer();
-      console.log(`  XLS downloaded: ${(buffer.byteLength / 1024).toFixed(0)} KB`);
-      const rows = parseXlsRows(buffer);
-      console.log(`  XLS parsed: ${rows.length} raw rows`);
-      if (rows.length > 10) {
-        data = extractSentimentData(rows);
-        if (data.length > 0) {
-          source = 'xls';
-          console.log(`  XLS extracted: ${data.length} sentiment rows`);
-        }
-      }
-    } else {
-      console.warn(`  XLS fetch: HTTP ${resp.status}`);
-    }
+    if (!resp.ok) throw httpRetryError(resp);
+    data = parseHtmlSentiment(await resp.text());
   } catch (e) {
-    console.warn(`  XLS fetch failed: ${e.message}`);
-  }
-
-  // Strategy 2: Scrape the HTML page for current reading
-  if (data.length === 0) {
-    try {
-      console.log('  Attempting HTML scrape...');
-      const resp = await fetch(AAII_HTML_URL, {
-        headers: { 'User-Agent': CHROME_UA, Accept: 'text/html,application/xhtml+xml' },
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (resp.ok) {
-        const html = await resp.text();
-        data = parseHtmlSentiment(html);
-        if (data.length > 0) {
-          source = 'html';
-          console.log(`  HTML scraped: ${data.length} rows`);
-        }
-      }
-    } catch (e) {
-      console.warn(`  HTML scrape failed: ${e.message}`);
-    }
+    // AAII's crawl delay also applies to retries after transport failures.
+    if (!e.nonRetryable) e.retryAfterMs = Math.max(10_000, e.retryAfterMs ?? 0);
+    throw e;
   }
 
   if (data.length === 0) {
     throw Object.assign(new Error('AAII sources returned no usable sentiment rows'), { nonRetryable: true });
   }
 
-  // Keep last 52 weeks
-  const weeks = data.slice(0, 52);
+  if (data[0].date !== mostRecentThursdayUTC() || !isValidWeek(data[0])) {
+    throw Object.assign(new Error('AAII HTML has no valid current source-dated reading'), { nonRetryable: true });
+  }
+
+  const priorWeeks = retained?.fallback === false && ['html', 'xls'].includes(retained.source) ? retained.weeks : [];
+  if (!Array.isArray(priorWeeks) || priorWeeks.some(w => !isValidWeek(w) || w.date > data[0].date)) {
+    throw Object.assign(new Error('AAII retained history is invalid or newer than the live source'), { nonRetryable: true });
+  }
+  const byDate = new Map(priorWeeks.map(w => [w.date, w]));
+  for (const week of data) byDate.set(week.date, week);
+  const weeks = [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 52);
   const latest = weeks[0];
   const prev = weeks.length > 1 ? weeks[1] : null;
   const historicalAvg = { bullish: 37.5, bearish: 31.0, neutral: 31.5 };
@@ -451,7 +426,7 @@ async function fetchAaiiSentiment() {
   return {
     seededAt: new Date().toISOString(),
     fallback: false,
-    source,
+    source: 'html',
     latest,
     previous: prev,
     avg8w,
@@ -463,6 +438,15 @@ async function fetchAaiiSentiment() {
     },
     weeks,
   };
+}
+
+function isValidWeek(week) {
+  if (!week || typeof week.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(week.date)) return false;
+  const timestamp = Date.parse(week.date);
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== week.date) return false;
+  if (![week.bullish, week.neutral, week.bearish].every(n => Number.isFinite(n) && n >= 0 && n <= 100)) return false;
+  return Number.isFinite(week.spread) && Math.abs(week.bullish + week.neutral + week.bearish - 100) <= 0.2
+    && Math.abs(week.spread - (week.bullish - week.bearish)) <= 0.11;
 }
 
 function validate(data) {
@@ -480,7 +464,7 @@ if (isMain) {
     ttlSeconds: AAII_TTL,
     extendTtlOnFailure: false,
     recordCount: (data) => data?.weeks?.length ?? 0,
-    sourceVersion: 'aaii-xls-html-v1',
+    sourceVersion: 'aaii-html-retained-v2',
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 20160,

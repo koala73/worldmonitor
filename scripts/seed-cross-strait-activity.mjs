@@ -87,6 +87,7 @@ function withoutOperatorOnlyDiagnostics(source) {
     proxyControlProbe: _proxyControlProbe,
     shadowIndexProbe: _shadowIndexProbe,
     candidates: _candidates,
+    xDiscovery: _xDiscovery,
     requestDiagnostics: _requestDiagnostics,
     ...publicSource
   } = source;
@@ -465,8 +466,8 @@ if (process.argv[1]?.endsWith('seed-cross-strait-activity.mjs')) {
     // Bumped with the #5904 discovery cutover and the bounded empty-content
     // proxy fallback: a merged PR is not proof the new adapter is running, and
     // the published `_seed.sourceVersion` is what lets an operator distinguish
-    // this resilient homepage-discovery run from an older deployed adapter.
-    sourceVersion: 'taiwan-mnd-html+japan-joint-staff-homepage-v3',
+    // this X-capable discovery run from an older deployed adapter.
+    sourceVersion: 'taiwan-mnd-html+japan-joint-staff-x-v4',
     schemaVersion: 1,
     maxStaleMin: CROSS_STRAIT_ACTIVITY_MAX_STALE_MIN,
     contentMeta: crossStraitActivityContentMeta,
