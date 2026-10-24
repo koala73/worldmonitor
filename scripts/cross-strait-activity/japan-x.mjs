@@ -1,6 +1,7 @@
 import xPostBudget from '../lib/x-post-budget.cjs';
 import { defaultRedisEval } from '../lib/_upstash-pipeline.mjs';
 
+export const JAPAN_X_MAX_TEXT_LENGTH = 16_000;
 export const JAPAN_X_ACCOUNT_ID = '864751444586397696';
 export const JAPAN_X_POLL_MS = 6 * 60 * 60 * 1000;
 const WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
@@ -21,7 +22,7 @@ export function parseJapanXPosts(body) {
     if (post.author_id !== JAPAN_X_ACCOUNT_ID || !/^[1-9]\d{0,19}$/.test(post.id)
       || !Number.isFinite(Date.parse(post.created_at))) throw new Error('JMOD_X_INVALID_POST');
     const text = post.note_tweet?.text ?? post.text;
-    if (typeof text !== 'string' || !text.trim() || text.length > 16000) {
+    if (typeof text !== 'string' || !text.trim() || text.length > JAPAN_X_MAX_TEXT_LENGTH) {
       throw new Error('JMOD_X_INVALID_POST');
     }
     // Keep the official account's complete posts for review, including summaries

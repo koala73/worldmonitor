@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import xPostBudget from '../scripts/lib/x-post-budget.cjs';
 import { parseJapanXPosts, fetchJapanXOutcome, JAPAN_X_ACCOUNT_ID, JAPAN_X_POLL_MS } from '../scripts/cross-strait-activity/japan-x.mjs';
-import { fetchCrossStraitActivitySnapshot, buildCrossStraitActivitySnapshot } from '../scripts/cross-strait-activity/adapters.mjs';
+import { fetchCrossStraitActivitySnapshot, buildCrossStraitActivitySnapshot, parseTaiwanMndDetail, validateCrossStraitActivitySnapshot } from '../scripts/cross-strait-activity/adapters.mjs';
+import { isCrossStraitActivitySnapshot } from '../src/components/cross-strait-activity-summary.ts';
 import { projectCrossStraitActivityBootstrap } from '../scripts/seed-cross-strait-activity.mjs';
 
 const now = Date.parse('2026-10-24T12:00:00Z');
@@ -150,4 +151,58 @@ test('expired cache fetches once, bounds the candidate queue, and rejects oversi
   const oversized = await fetchOutcome({ fetchFn: async () => new Response('x'.repeat(1024 * 1024 + 1)) });
   assert.equal(oversized.ok, false);
   assert.deepEqual(oversized.errorCodes, ['JMOD_X_RESPONSE_TOO_LARGE']);
+});
+
+function publishableSnapshot(japanOutcome, previousSnapshot = null) {
+  const observation = parseTaiwanMndDetail(readFileSync(new URL('./fixtures/cross-strait-activity/mnd-detail.html', import.meta.url), 'utf8'), {
+    sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+    retrievedAt: new Date(now).toISOString(), expectedPublicationDay: '2026-07-25',
+  });
+  return buildCrossStraitActivitySnapshot({ generatedAt: new Date(now).toISOString(), previousSnapshot,
+    mndOutcome: { ok: true, observations: [observation] }, japanOutcome });
+}
+
+test('projected X snapshot passes the browser contract and preserves reviewed MOD evidence', async () => {
+  const previous = publishableSnapshot({ ok: false });
+  assert.equal(isCrossStraitActivitySnapshot(projectCrossStraitActivityBootstrap(previous)), true);
+  for (const row of previous.observations.filter(row => row.sourceId === 'japan-mod')) {
+    row.indexPresence = 'present';
+    row.indexCoverage = 'covered_by_current_index';
+  }
+  const snapshot = publishableSnapshot(await fetchOutcome(), previous);
+  assert.equal(isCrossStraitActivitySnapshot(projectCrossStraitActivityBootstrap(snapshot)), true);
+  for (const row of snapshot.observations.filter(row => row.sourceId === 'japan-mod')) {
+    assert.equal(row.indexPresence, 'present');
+    assert.equal(row.indexCoverage, 'covered_by_current_index');
+  }
+  const cold = publishableSnapshot(await fetchOutcome());
+  assert.ok(cold.observations.filter(row => row.sourceId === 'japan-mod').every(row => row.indexPresence === 'unknown'));
+});
+
+test('publication accepts bounded X text without loosening unrelated strings or total size', async () => {
+  const body = payload(); body.data[0].note_tweet.text = 'あ'.repeat(16000);
+  const snapshot = publishableSnapshot(await fetchOutcome({ fetchFn: async () => Response.json(body) }));
+  assert.equal(validateCrossStraitActivitySnapshot(snapshot), true);
+  const source = snapshot.sources.find(row => row.id === 'japan-mod');
+  source.candidates[0].text += 'x';
+  assert.equal(validateCrossStraitActivitySnapshot(snapshot), false);
+  source.candidates[0].text = 'short'; source.candidates[0].title = 'x'.repeat(2049);
+  assert.equal(validateCrossStraitActivitySnapshot(snapshot), false);
+  source.candidates[0].title = 'short';
+  source.candidates[0].text = 'x'.repeat(2049);
+  source.candidates[0].sourceUrl = 'https://example.com/not-official';
+  assert.equal(validateCrossStraitActivitySnapshot(snapshot), false);
+  source.candidates[0].text = 'short'; snapshot.extra = Array(5000).fill('x'.repeat(1024));
+  assert.equal(validateCrossStraitActivitySnapshot(snapshot), false);
+});
+
+test('integrated X discovery retains the newest 15 candidates', async () => {
+  const body = payload(); body.data = Array.from({ length: 16 }, (_, index) => ({ ...body.data[0], id: String(100 + index),
+    created_at: new Date(now - (index + 1) * 60000).toISOString() })); body.meta.result_count = 16;
+  const snapshot = await fetchCrossStraitActivitySnapshot({ now, japanXToken: 'test-only', japanXBudget: budget(),
+    mndListUrl: 'https://invalid.example/list', proxyUrl: '', mndProxyUrl: '', sleepFn: async () => {},
+    fetchFn: async () => Response.json(body) });
+  const source = snapshot.sources.find(row => row.id === 'japan-mod');
+  assert.equal(source.candidates.length, 15);
+  assert.equal(source.candidates.at(-1).documentId, 'x-114');
 });

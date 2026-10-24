@@ -661,6 +661,8 @@
       "scripts/_seed-utils.mjs",
       "scripts/china-decision-alerts.mjs",
       "scripts/cross-strait-activity/adapters.mjs",
+      "scripts/cross-strait-activity/japan-x.mjs",
+      "scripts/lib/x-post-budget.cjs",
       "scripts/lib/_upstash-pipeline.mjs",
       "scripts/lib/brief-dedup-consts.mjs",
       "scripts/lib/brief-dedup-jaccard.mjs",
