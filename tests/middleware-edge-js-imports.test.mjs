@@ -10,7 +10,7 @@ import { test } from 'node:test';
 // so only this walk catches it before a preview deploy fails.
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const IMPORT_SPECIFIER = /(?:^|[\s;])(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/gm;
+const IMPORT_SPECIFIER = /(?:^|[\s;])(?:import|export)\s(?:[^'"]*?\sfrom\s*)?['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/gm;
 
 function relativeImports(file) {
   const source = readFileSync(file, 'utf8');
