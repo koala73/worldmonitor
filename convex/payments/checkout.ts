@@ -131,6 +131,27 @@ function normalizeCheckoutLoginEmail(raw: string | undefined): string | null {
   return trimmed;
 }
 
+const MAX_PREFILL_NAME_LENGTH = 100;
+
+/**
+ * Dodo `customer` prefill for the hosted checkout form. Dodo requires an email
+ * to create a customer, so with no usable login email (phone-only signups,
+ * anonymous buyers) nothing is sent and the buyer fills the form as before.
+ */
+function checkoutCustomerPrefill(
+  loginEmail: string | null,
+  rawName: string | undefined,
+): { customer?: { email: string; name?: string } } {
+  if (!loginEmail) return {};
+  const name = typeof rawName === "string" ? rawName.trim() : "";
+  return {
+    customer: {
+      email: loginEmail,
+      ...(name && name.length <= MAX_PREFILL_NAME_LENGTH ? { name } : {}),
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Shared checkout session creation logic
 // ---------------------------------------------------------------------------
@@ -410,13 +431,22 @@ async function _createCheckoutSession(
         createDodoCheckoutSession({
           product_cart: [{ product_id: args.productId, quantity: 1 }],
           return_url: returnUrl,
-          // Note: deliberately not passing `customer` block — Dodo locks
-          // those fields as read-only. User identity is tracked via
-          // metadata.wm_user_id + HMAC signature instead.
+          // Prefill the signed-in email and name so buyers don't retype them.
+          // #2809 dropped this because Dodo made prefilled fields read-only;
+          // the allow_customer_editing_* flags below keep both editable, so a
+          // buyer can still bill a different address. Identity stays on
+          // metadata.wm_user_id + HMAC signature, never on this email.
+          ...checkoutCustomerPrefill(loginEmail, user.name),
           ...(args.discountCode ? { discount_code: args.discountCode } : {}),
           ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+          // Country, plus state/ZIP only where tax needs them, instead of a
+          // full street address.
+          minimal_address: true,
           feature_flags: {
             allow_discount_code: true,
+            allow_customer_editing_email: true,
+            allow_customer_editing_name: true,
+            allow_phone_number_collection: false,
           },
           customization: {
             theme: "dark",
