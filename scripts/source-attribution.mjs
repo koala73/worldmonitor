@@ -338,6 +338,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Office of the U.S. Trade Representative; link to the original release.',
     status: 'reviewed',
   },
+  'jrj.sh.gov.cn': {
+    provider: 'Shanghai Financial Portal',
+    license: 'Shanghai Financial Portal copyright statement section 2 (https://jrj.sh.gov.cn/BQSM/index.html), reviewed 2026-10-24. Numeric facts and publication metadata only; retain the credited underlying source. No article prose or third-party media redistribution.',
+    attribution: 'People’s Bank of China, republished by Shanghai Financial Portal. Link to the dated https://jrj.sh.gov.cn/SCGK194/ report.',
+    status: 'reviewed',
+  },
   '511on.ca': {
     provider: 'Ontario 511',
     license: 'Ontario 511 API terms; Government of Ontario data; attribution required',
@@ -976,8 +982,10 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'd98354f04ec04824262cd243290b38c4b657c6c4da33097239c9cedfc8e9d9b0',
-  reason: 'Preserve reviewed provider identities, register the two official NASA FIRMS Area API hosts as one provider identity, name TradingView as the provider behind the S&P 500 breadth screener scan that replaced the WAF-blocked Barchart quote pages, exclude the Sentry error-tracking host that the resolve-pin audit reads, group the JODI publication catalog with its existing data host, and name the eight major publishers carried as Google News site: feeds after the 2026-10-16 Google News World audit, group the Al Jazeera feed host with the host of its Google News site: search as one Al Jazeera provider, and name the International Trade Administration behind the Consolidated Screening List bulk download with the notice its Data API terms require.',
+  sha256: '68bc5750134cdb616d47fd6899af0e6a7f8f2af8399b140d7ec5e3e86ec52510',
+  // 2026-10-24: add Shanghai Financial Portal as a distinct official
+  // republisher. Preserve PBOC source credit under /BQSM/index.html section 2.
+  reason: 'Preserve all reviewed provider identities and add Shanghai Financial Portal as a distinct official M2 republisher with PBOC source attribution. The 2026-10-24 review of its copyright statement section 2 permits the facts-only source contract with original source credit.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe

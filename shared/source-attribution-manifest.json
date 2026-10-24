@@ -5786,6 +5786,23 @@
       ]
     },
     {
+      "host": "jrj.sh.gov.cn",
+      "provider": "Shanghai Financial Portal",
+      "kind": "structured",
+      "observed": true,
+      "license": "Shanghai Financial Portal copyright statement section 2 (https://jrj.sh.gov.cn/BQSM/index.html), reviewed 2026-10-24. Numeric facts and publication metadata only; retain the credited underlying source. No article prose or third-party media redistribution.",
+      "attribution": "People’s Bank of China, republished by Shanghai Financial Portal. Link to the dated https://jrj.sh.gov.cn/SCGK194/ report.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/_china-macro-contract.mjs"
+        },
+        {
+          "path": "scripts/china-macro/source-contracts.mjs"
+        }
+      ]
+    },
+    {
       "host": "justice.gov",
       "provider": "justice.gov",
       "kind": "feed",
