@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { fetchJapanXOutcome } from './japan-x.mjs';
 
 const {
   parseProxyConfig,
@@ -2193,7 +2194,7 @@ export function buildCrossStraitActivitySnapshot({
       // the record self-sufficient.
       lastAttemptAt: generatedAt,
       lastSuccessAt: japanOutcome?.ok
-        ? generatedAt
+        ? (japanOutcome.acquiredAt ?? generatedAt)
         : previousJapanSource?.lastSuccessAt ?? latestSourceSuccess(previousSnapshot, 'japan-mod'),
       admittedDocumentCount: REVIEWED_JAPAN_MOD_OBSERVATIONS.length,
       ...(Number.isInteger(unreviewedCandidateCount)
@@ -2203,6 +2204,7 @@ export function buildCrossStraitActivitySnapshot({
       // consistent with the retained `lastSuccessAt` they were discovered by;
       // a failure publishes no new candidate and never re-dates an old one.
       ...(japanCandidates.length > 0 ? { candidates: japanCandidates } : {}),
+      ...(japanOutcome?.xDiscovery ? { xDiscovery: japanOutcome.xDiscovery } : {}),
       ...(japanShadowIndexProbe ? { shadowIndexProbe: japanShadowIndexProbe } : {}),
     },
   ];
@@ -2639,6 +2641,8 @@ export async function fetchCrossStraitActivitySnapshot({
   proxyRequestFn = proxyFetch,
   proxyConnectFn = proxyConnectTunnel,
   proxyConnectProbeFn = null,
+  japanXToken = process.env.X_BEARER_TOKEN || '',
+  japanXBudget,
 } = {}) {
   const generatedAt = new Date(now).toISOString();
   const previousMnd = (previousSnapshot?.observations ?? [])
@@ -2687,12 +2691,21 @@ export async function fetchCrossStraitActivitySnapshot({
     ?? (previousSourceHealth?.id === CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.id
       ? previousSourceHealth
       : null);
-  const japanOutcomePromise = fetchJapanIndexOutcome(fetchFn, sleepFn, {
-    proxyFetchFn: resolvedJapanProxyFetchFn,
-    proxyConnectProbeFn: resolvedJapanProxyConnectProbeFn,
-    now,
-    previousShadowIndexProbe: previousJapanSource?.shadowIndexProbe ?? null,
-  });
+  const japanOutcomePromise = japanXToken.trim()
+    ? fetchJapanXOutcome({
+        token: japanXToken,
+        now,
+        previousSource: previousJapanSource,
+        fetchFn,
+        budget: japanXBudget,
+        maxCandidates: JMOD_MAX_CANDIDATES,
+      })
+    : fetchJapanIndexOutcome(fetchFn, sleepFn, {
+        proxyFetchFn: resolvedJapanProxyFetchFn,
+        proxyConnectProbeFn: resolvedJapanProxyConnectProbeFn,
+        now,
+        previousShadowIndexProbe: previousJapanSource?.shadowIndexProbe ?? null,
+      });
   let discoveredCount = 0;
   let requestCount = 0;
   let listRequestCount = 0;
