@@ -352,14 +352,18 @@ jobs:
         # builds now run once in unit-built-output. Four, not three: the
         # test:data step saturates the runner's CPU, so a fourth runner is the
         # cheapest way to get more parallelism. Three paired benchmark runs took
-        # the slowest shard from 236-269s to 176-186s. The
+        # the slowest shard from 236-269s to 176-186s. Five, not four: after
+        # the other Test jobs got faster the unit shards (~207s) were the
+        # slowest job again; on the same runner image the slowest test:data
+        # step took 123s at five shards and 138-155s at four (bench run
+        # 40083951067), and raising concurrency to 6 or 8 did not help. The
         # sharder balances by measured durations and is generic in the count,
         # so the denominator on the test:data step below is the only other
         # place this number lives. tests/ci-test-selection.test.mjs pins that
         # denominator to this matrix's length, and tests/data-test-shards.test.mjs
         # reads the matrix and proves the shards together run the inventory
         # exactly once.
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5]
     timeout-minutes: 15
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -421,7 +425,7 @@ jobs:
         env:
           WM_EXPECT_BUILT_OUTPUT: '1'
           WM_EXPECT_SCRIPTS_DEPS: '1'
-        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/4 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
+        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
       - name: Upload data test timings
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

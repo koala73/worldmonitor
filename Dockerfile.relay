@@ -145,6 +145,7 @@ COPY scripts/shared/compare-and-delete-script.cjs ./scripts/shared/compare-and-d
 # A missing inventory artifact fails the image build before relay startup.
 COPY --from=inventory-builder /workspace/scripts/shared/inventory-facts.generated.json ./scripts/shared/inventory-facts.generated.json
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
+COPY scripts/_env-file.mjs ./scripts/_env-file.mjs
 # _seed-envelope-source.mjs and _seed-contract.mjs are transitively imported
 # by _seed-utils.mjs (lines 9-10) and by seed-chokepoint-flows.mjs /
 # seed-ember-electricity.mjs directly. Missing them here = silent
