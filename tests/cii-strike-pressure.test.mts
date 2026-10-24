@@ -310,7 +310,7 @@ describe('strike pressure in the CII composite', () => {
     assert.ok(hit.combinedScore > calm.combinedScore);
   });
 
-  it('reads GDELT strikes only while ACLED is dark, like the other GDELT terms', () => {
+  it('reads GDELT strikes for every country, whatever ACLED rows exist elsewhere', () => {
     const gdelt = gdeltCountryEventsFromSeed({
       byCountry: { UA: { conflict: null, protest: null, week: null, strikes: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [daysAgo(i), [20, 359]])) } },
       baselineReady: false, currentComplete: false, weekReady: false,
@@ -318,6 +318,6 @@ describe('strike pressure in the CII composite', () => {
     }, NOW);
     const acled = [{ country: 'Brazil', event_type: 'Protests', fatalities: 0 }];
     assert.ok(score(aux({ gdeltCountryEvents: gdelt }), 'UA').combinedScore > score(aux(), 'UA').combinedScore);
-    assert.equal(score(aux({ gdeltCountryEvents: gdelt }), 'UA', acled).combinedScore, score(aux(), 'UA', acled).combinedScore);
+    assert.equal(score(aux({ gdeltCountryEvents: gdelt }), 'UA', acled).combinedScore, score(aux({ gdeltCountryEvents: gdelt }), 'UA').combinedScore);
   });
 });

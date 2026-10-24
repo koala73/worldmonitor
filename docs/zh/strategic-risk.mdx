@@ -227,7 +227,7 @@ Strategic Risk 与国家不稳定指数（CII）评分在服务端预计算，�
 
 `GetRiskScores` RPC 处理器（`get-risk-scores.ts`）：
 
-1. 从 ACLED 拉取近期的抗议/骚乱/战斗/爆炸/针对平民的暴力数据。当 ACLED 不返回事件时（WorldMonitor 没有 ACLED 访问权限），冲突与动荡改为读取 `gdelt:bulk:country-events:v1` 中的 GDELT 项（升级或持续水平）。
+1. 当部署方持有 ACLED 许可时（WorldMonitor 自身的部署没有），从 ACLED 拉取近期的抗议/骚乱/战斗/爆炸/针对平民的暴力数据。冲突与动荡对每个国家读取 `gdelt:bulk:country-events:v1` 中的 GDELT 项（升级或持续水平）；有 ACLED 记录的国家取其 ACLED 项与 GDELT 项中的较大者。
 2. 从 Redis 拉取辅助数据源，包括 UCDP 冲突、中断、气候、火灾、GPS 干扰、伊朗事件、OREF 警报、警示、流离失所、机密新闻摘要、航空警报、地震、制裁以及军事/AIS CII 聚合数据。
 3. 使用 [CII Risk Scoring Methodology](/zh/methodology/cii-risk-scores) 中记录的共享系数表为 31 个 Tier-1 国家计算 CII v14 评分。
 4. 从按权重排名前 5 的 CII 评分推导 Strategic Risk。
@@ -237,14 +237,14 @@ Strategic Risk 与国家不稳定指数（CII）评分在服务端预计算，�
 
 每个国家的评分将静态基线（40%）与动态事件评分（60%）相结合，外加补充加成与下限。
 
-**基线风险**（0-50 分）：反映结构性脆弱性的静态地缘政治风险。按国家的权威数值位于 [CII Risk Scoring Methodology](/zh/methodology/cii-risk-scores#2-各国-baselinerisk-和-eventmultiplier)。
+**基线风险**（0-50 分）：反映结构性脆弱性的静态地缘政治风险。按国家的权威数值位于 [CII Risk Scoring Methodology](/zh/methodology/cii-risk-scores#2-各国-baselinerisk)。
 
 **事件评分**融合四个子组成：
 
 | 子组成 | 权重 | 评分依据 |
 |---------------|--------|---------|
-| Unrest | 25% | ACLED 抗议/骚乱、抗议致死人数、高严重度动乱与中断严重度；ACLED 不返回事件时加入 GDELT 抗议升级或持续水平项 |
-| Conflict | 30% | 按权重加权的 ACLED 战斗/爆炸/针对平民的暴力、致死人数与 OREF 警报压力；ACLED 不返回事件时加入 GDELT 冲突升级或持续水平项。打击通过综合分上的打击压力计入（v12），不在此处 |
+| Unrest | 25% | 取 ACLED 抗议/骚乱（抗议致死人数、高严重度动乱）与 GDELT 抗议升级或持续水平项中的较大者，再加上中断严重度 |
+| Conflict | 30% | 取按权重加权的 ACLED 战斗/针对平民的暴力（含致死人数；ACLED 爆炸计入打击压力）与 GDELT 冲突升级或持续水平项中的较大者，再加上 OREF 警报压力。打击通过综合分上的打击压力计入（v12），不在此处 |
 | Security | 20% | 位于该国的外国军用航班与舰船、航空关闭/延误与 GPS/GNSS 干扰 |
 | Information | 25% | 机密新闻头条与按国家归因的威胁摘要 |
 
@@ -266,19 +266,6 @@ Strategic Risk 与国家不稳定指数（CII）评分在服务端预计算，�
 表时为 `fallback`；当无警示等级影响加成或下限时为
 `absent`。
 
-### 事件显著性乘数
-
-某些国家的事件比其他国家承载更多全球意义：
-
-| 乘数 | 国家 | 依据 |
-|------------|-----------|-----------|
-| 3.0x | 朝鲜 | 任何可见的动乱都极不寻常 |
-| 2.0-2.5x | 中国、俄罗斯、伊朗、沙特阿拉伯、古巴 | 威权国家压制抗议 |
-| 1.5-1.8x | 台湾、巴基斯坦、缅甸、委内瑞拉、阿联酋 | 区域闪点 |
-| 1.0-1.2x | 墨西哥、土耳其 | 中等显著性 |
-| 0.5-0.8x | 英国、法国、德国、波兰、乌克兰、叙利亚、也门、以色列、印度、巴西 | 抗议属常态，或事件已被下限覆盖 |
-| 0.3x | 美国 | 极高可观测性与高体量国内报道需要更强衰减 |
-
 ### Strategic Risk 推导
 
 综合战略风险评分按排名前 5 的 CII 评分加权平均计算：
@@ -294,8 +281,8 @@ Strategic Risk = (Σ CII[i] × weight[i]) / 3.5 × 0.7 + 15
 
 | 来源 | Redis 键 | 用途 |
 |--------|-----------|----------|
-| ACLED | 通过 API 实时拉取 | 抗议、骚乱、战斗、爆炸、针对平民的暴力、致死人数 |
-| GDELT 国家事件 | `gdelt:bulk:country-events:v1` | 相对各国 28 天中位数的冲突与动荡升级，以及过去七天的持续占比，仅在 ACLED 不返回事件时使用 |
+| ACLED | 配置 ACLED 许可时通过 API 实时拉取 | 抗议、骚乱、战斗、爆炸、针对平民的暴力、致死人数；按国家取 ACLED 项与 GDELT 项中的较大者 |
+| GDELT 国家事件 | `gdelt:bulk:country-events:v1` | 相对各国 28 天中位数的冲突与动荡升级，以及过去七天的持续占比，适用于每个国家 |
 | UCDP | `conflict:ucdp-events:v1` | 战争/轻度冲突下限 |
 | 中断 | `infra:outages:v1` | Unrest 中断加成 |
 | 气候 | `climate:anomalies:v2` | 气候严重度加成 |
@@ -304,7 +291,7 @@ Strategic Risk = (Σ CII[i] × weight[i]) / 3.5 × 0.7 + 15
 | 军事 CII | 中继/已播种的军事聚合 | Security 评分（自 v14 起仅计外国航班与舰船）与 AIS 中断加成 |
 | 航空警报 | 已播种的航空中断数据 | Security 评分 |
 | 中东打击 | `conflict:iran-events:v1`（72 小时）与 `conflict:strike-pressure:v1`（30 天计数） | 打击压力：按严重度加权的每日打击，经衰减后形成下限与加成 |
-| GDELT 打击 | `gdelt:bulk:country-events:v1`（打击计数） | ACLED 不返回事件时的全球打击压力 |
+| GDELT 打击 | `gdelt:bulk:country-events:v1`（打击计数） | 全球打击压力 |
 | OREF 警报 | `relay:oref:history:v1` | IL 冲突加成与混合加成 |
 | 新闻威胁 | 机密头条摘要 | Information 评分与新闻紧迫度加成 |
 | 流离失所 | 人道主义流离失所聚合 | 流离失所加成 |
@@ -321,4 +308,4 @@ Strategic Risk = (Σ CII[i] × weight[i]) / 3.5 × 0.7 + 15
 
 RPC 在 `GetRiskScoresResponse` 上暴露兜底状态：过期缓存响应会设置 `degraded=true` 与 `stale=true`；仅冷启动基线响应会设置 `degraded=true` 与 `stale=false`。新鲜/缓存命中响应将两个标志都设为 `false`。
 
-中继的 CII warm-ping 循环在 `scripts/ais-relay.cjs` 中处于活跃状态：它每 8 分钟调用一次 `/api/intelligence/v1/get-risk-scores`，由 RPC 处理器刷新实时/过期缓存状态，并在返回评分时写入 `seed-meta:intelligence:risk-scores` 以供健康监测。该 seed-meta 的 `recordCount` 反映的是实时信号密度覆盖率，而非原始 feed 可用性：它统计 CII 刷新中出现的、与评分相关的 Tier-1 冲突（ACLED、UCDP，或 ACLED 不返回事件时的实时 GDELT 基线）与新闻信号族。因此，安静但新鲜的实时 feed 可能产生 `COVERAGE_PARTIAL`；按来源的新鲜度仍以 feed 心跳视图为准。
+中继的 CII warm-ping 循环在 `scripts/ais-relay.cjs` 中处于活跃状态：它每 8 分钟调用一次 `/api/intelligence/v1/get-risk-scores`，由 RPC 处理器刷新实时/过期缓存状态，并在返回评分时写入 `seed-meta:intelligence:risk-scores` 以供健康监测。该 seed-meta 的 `recordCount` 反映的是实时信号密度覆盖率，而非原始 feed 可用性：它统计 CII 刷新中出现的、与评分相关的 Tier-1 冲突（ACLED、UCDP 或实时 GDELT 基线）与新闻信号族。因此，安静但新鲜的实时 feed 可能产生 `COVERAGE_PARTIAL`；按来源的新鲜度仍以 feed 心跳视图为准。

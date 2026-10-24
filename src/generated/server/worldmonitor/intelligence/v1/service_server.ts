@@ -99,6 +99,7 @@ export interface CiiScore {
   components?: CiiComponents;
   computedAt: number;
   methodologyVersion: string;
+  /** @deprecated */
   eventMultiplier: number;
   advisoryLevel: string;
   advisoryProvenance: string;

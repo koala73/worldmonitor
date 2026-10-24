@@ -45,16 +45,19 @@
 export const CII_FORMULA_VERSION = 'v14';
 
 /**
- * Conflict event activity log curve used before fatality/civilian/strike boosts.
- * Raw activity is weighted by event type and eventMultiplier, then mapped to
- * this cap with `log1p(raw) / log1p(pivot) * cap`.
+ * ACLED Conflict activity log curve, used before the fatality and civilian
+ * boosts where a deployment holds an ACLED licence. Raw activity is weighted
+ * by event type (battles 3, violence against civilians 5; explosions score as
+ * strike pressure instead), then mapped to this cap with
+ * `log1p(raw) / log1p(pivot) * cap`. No per-country multiplier is applied.
  */
 export const CII_CONFLICT_ACTIVITY_CAP = 70;
 export const CII_CONFLICT_ACTIVITY_PIVOT = 4000;
 
 /**
- * GDELT escalation terms inside Conflict and Unrest, used only while the ACLED
- * API returns no events (WorldMonitor has no ACLED access). Input per country
+ * GDELT escalation terms inside Conflict and Unrest, scored for every country.
+ * A country with ACLED rows (licence holders only; WorldMonitor has none) takes
+ * the larger of its ACLED and GDELT term, never the sum. Input per country
  * and signal, from gdelt:bulk:country-events:v1: `current`, the last 24h of
  * distinct articles reporting events located there (Conflict: CAMEO 18/19/20
  * material conflict; Unrest: CAMEO 14 protest), and `baselineMedian`, the
@@ -71,12 +74,12 @@ export const CII_CONFLICT_ACTIVITY_PIVOT = 4000;
  * their median. Calibrated on replayed Sep 10 - Oct 19 2026 exports (all
  * Tier-1 countries, 16 days): the Oct 11-12 Riyadh strikes score 61-68 on
  * Conflict, the week before 0, France's Oct 19 riots 70 on Unrest, and US/GB
- * stay at 0-1 on Conflict and 0-10 on Unrest. eventMultiplier is not applied
- * (it is reserved for verified events). A war or protest movement at its usual
+ * stay at 0-1 on Conflict and 0-10 on Unrest. No per-country multiplier is
+ * applied. A war or protest movement at its usual
  * tempo scores 0 on escalation by design; the sustained level below reads it.
  *
  * CAP is shared with the level term. v10 used 50; v11 uses 70, the cap of the
- * ACLED activity term (CII_CONFLICT_ACTIVITY_CAP) these terms stand in for.
+ * ACLED activity term (CII_CONFLICT_ACTIVITY_CAP), so the two compare on one scale.
  * Replayed on Oct 5, 12, 14 and 19, the US, GB, China, Korea, Taiwan, Qatar and
  * the UAE score identically under 70 and 50; the largest difference is +4
  * (France's riots, Yemen), and Germany, Japan, Egypt and Poland move by at most
@@ -132,13 +135,19 @@ export const CII_GDELT_LEVEL_PROTEST_SATURATION = 0.08;
  * once the strikes stop P halves every three days and is under 4% of its peak
  * after two weeks.
  *
- * x_d = max(confirmed_d, gdelt_d), never the sum (one strike, two reporters):
+ * x_d = max(confirmed_d, gdelt_d, acled_d), never the sum (one strike, several
+ * reporters):
  *  - confirmed_d, from the Middle East strike feed (conflict:strike-pressure:v1,
  *    and the 72h conflict:iran-events:v1 window it is built from), is each
  *    incident weighted by severity (SEVERITY_WEIGHTS).
- *  - gdelt_d, worldwide (gdelt:bulk:country-events:v1, only while ACLED is
- *    dark), is CAMEO 194/195 coverage of strikes on the country as a share of
- *    its coverage that day: GDELT_SCALE * max(0, s / (a + GDELT_SMOOTHING) -
+ *  - acled_d, where a deployment holds an ACLED licence, is the weight of the
+ *    country's heaviest ACLED "Explosions/Remote violence" row that day: high
+ *    if it killed someone, else elevated. A day carries one row's weight, never
+ *    a row count. These rows score here and nowhere else, and they raise the
+ *    boost only: the floor reads P from confirmed_d and gdelt_d alone, so no
+ *    count of ACLED rows can put a country on the floor.
+ *  - gdelt_d, worldwide (gdelt:bulk:country-events:v1), is CAMEO 194/195
+ *    coverage of strikes on the country as a share of its coverage that day: GDELT_SCALE * max(0, s / (a + GDELT_SMOOTHING) -
  *    GDELT_NOISE_FLOOR). Absolute counts are media-volume biased (Oct 5-18
  *    2026: the US 12.9 strike-coded articles a day, Ukraine 11.1); the share
  *    is not (US 0.03%, Ukraine 1.2%, Saudi Arabia 5.5%). GDELT alone counts

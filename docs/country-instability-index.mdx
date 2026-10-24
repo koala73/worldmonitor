@@ -56,8 +56,8 @@ bounded to 0-100.
 
 | Component | What It Measures | Main Inputs |
 |-----------|------------------|-------------|
-| **Unrest** | Civil disorder pressure before or below open conflict | ACLED protests and riots, protest fatalities, high-severity unrest, internet/power outages |
-| **Conflict** | Kinetic violence | ACLED battles, explosions, violence against civilians, fatalities, OREF alerts for Israel; GDELT conflict coverage while ACLED returns no events |
+| **Unrest** | Civil disorder pressure before or below open conflict | The larger of ACLED protests and riots (protest fatalities, high-severity unrest) and GDELT protest coverage, plus internet/power outages |
+| **Conflict** | Kinetic violence | The larger of ACLED battles, violence against civilians and fatalities and GDELT conflict coverage, plus OREF alerts for Israel. ACLED counts only where a deployment holds an ACLED licence; its explosions count as strike pressure |
 | **Security** | Hard-security pressure on the country | Foreign military flights and vessels located in it, aviation closures/delays, GPS/GNSS jamming |
 | **Information** | Information-environment pressure | Classified news headlines and country-attributed threat summaries |
 
@@ -101,12 +101,13 @@ country as UCDP **active war** when total deaths are greater than 1000 or event
 count is greater than 100, and as UCDP **minor conflict** when event count is
 greater than 10 but the war thresholds are not met. Because UCDP GED ships as
 annual releases that lag real time, recent kinetic conflict is carried by
-**ACLED** (real-time) and the cross-source signal feed; UCDP supplies the
-historical baseline floor. In the `riskScores` health/cache signal, the conflict realtime
+**GDELT** per-country coverage, **ACLED** where a deployment holds a licence,
+and the cross-source signal feed; UCDP supplies the historical baseline floor. In the `riskScores` health/cache signal, the conflict realtime
 family is covered when either ACLED or an in-window UCDP feed is present. ACLED
 auth being unconfigured degrades the conflict signal to UCDP-only; it becomes
 `COVERAGE_PARTIAL` only when ACLED is dark and UCDP is also absent, stale, or
-outside the 2-year scoring window (see [Data Sources](/data-sources#dual-source-protest-tracking)).
+outside the 2-year scoring window (see [Data Sources](/data-sources#dual-source-protest-tracking)). A
+live GDELT baseline also covers the family, with or without ACLED.
 
 ## Instability Levels
 
@@ -121,13 +122,13 @@ outside the 2-year scoring window (see [Data Sources](/data-sources#dual-source-
 ## Bias Prevention
 
 CII is intentionally not a raw media-volume index. The v8 model separates
-news pressure from conflict scoring, applies lower event multipliers and log
-dampening in high-observability countries, and uses conflict/advisory floors
+news pressure from conflict scoring, scores GDELT coverage against each
+country's own norm or as a share of its coverage, and uses conflict/advisory floors
 so active crises do not appear quiet during data gaps.
 
 The editorial rationale, Tier-1 inclusion criteria, advisory fallback table,
-Gaza text-attribution caveat, and per-country `baselineRisk` /
-`eventMultiplier` values are published in
+Gaza text-attribution caveat, and per-country `baselineRisk` values are
+published in
 [CII Risk Scoring Methodology](/methodology/cii-risk-scores).
 
 ## Server-Side Pre-Computation

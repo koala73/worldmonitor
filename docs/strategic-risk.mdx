@@ -287,7 +287,7 @@ Strategic risk and Country Instability Index (CII) scores are pre-computed serve
 
 The `GetRiskScores` RPC handler (`get-risk-scores.ts`):
 
-1. Fetches recent protest/riot/battle/explosion/civilian-violence data from ACLED. While ACLED returns no events (WorldMonitor has no ACLED access), Conflict and Unrest instead read GDELT terms (escalation or sustained level) from `gdelt:bulk:country-events:v1`.
+1. Fetches recent protest/riot/battle/explosion/civilian-violence data from ACLED when the deployment holds an ACLED licence (WorldMonitor's own deployment does not). Conflict and Unrest read GDELT terms (escalation or sustained level) from `gdelt:bulk:country-events:v1` for every country; a country with ACLED rows takes the larger of its ACLED and GDELT terms.
 2. Fetches auxiliary sources from Redis, including UCDP conflicts, outages, climate, fires, GPS jamming, Iran events, OREF alerts, advisories, displacement, classified news summaries, aviation alerts, earthquakes, sanctions, and military/AIS CII aggregates.
 3. Computes CII v14 scores for 31 Tier-1 countries using the shared coefficient table documented in [CII Risk Scoring Methodology](/methodology/cii-risk-scores).
 4. Derives Strategic Risk from the weighted top 5 CII scores.
@@ -297,14 +297,14 @@ The `GetRiskScores` RPC handler (`get-risk-scores.ts`):
 
 Each country's score combines a static baseline (40%) with a dynamic event score (60%), plus supplemental boosts and floors.
 
-**Baseline Risk** (0-50 points): Static geopolitical risk reflecting structural fragility. The canonical per-country values live in [CII Risk Scoring Methodology](/methodology/cii-risk-scores#2-per-country-baselinerisk-and-eventmultiplier).
+**Baseline Risk** (0-50 points): Static geopolitical risk reflecting structural fragility. The canonical per-country values live in [CII Risk Scoring Methodology](/methodology/cii-risk-scores#2-per-country-baselinerisk).
 
 **Event Score** blends four sub-components:
 
 | Sub-component | Weight | Scoring |
 |---------------|--------|---------|
-| Unrest | 25% | ACLED protests/riots, protest fatalities, high-severity unrest, and outage severity; GDELT protest escalation or sustained level while ACLED returns no events |
-| Conflict | 30% | Weighted ACLED battles/explosions/civilian violence, fatalities, and OREF alert pressure; GDELT conflict escalation or sustained level while ACLED returns no events. Strikes count through strike pressure on the composite (v12), not here |
+| Unrest | 25% | The larger of ACLED protests/riots (protest fatalities, high-severity unrest) and GDELT protest escalation or sustained level, plus outage severity |
+| Conflict | 30% | The larger of weighted ACLED battles/civilian violence (with fatalities; ACLED explosions count as strike pressure) and GDELT conflict escalation or sustained level, plus OREF alert pressure. Strikes count through strike pressure on the composite (v12), not here |
 | Security | 20% | Foreign military flights and vessels located in the country, aviation closures/delays, and GPS/GNSS jamming |
 | Information | 25% | Classified news headlines and country-attributed threat summaries |
 
@@ -325,19 +325,6 @@ Advisory outputs expose both `advisoryLevel` and `advisoryProvenance` on each
 advisory feed, `fallback` when it used the embedded State Department fallback
 table, and `absent` when no advisory level affected boosts or floors.
 
-### Event Significance Multipliers
-
-Events in some countries carry more global significance than others:
-
-| Multiplier | Countries | Rationale |
-|------------|-----------|-----------|
-| 3.0x | North Korea | Any visible unrest is highly unusual |
-| 2.0-2.5x | China, Russia, Iran, Saudi Arabia, Cuba | Authoritarian states suppress protests |
-| 1.5-1.8x | Taiwan, Pakistan, Myanmar, Venezuela, UAE | Regional flashpoints |
-| 1.0-1.2x | Mexico, Turkey | Moderate significance |
-| 0.5-0.8x | UK, France, Germany, Poland, Ukraine, Syria, Yemen, Israel, India, Brazil | Protests are routine or events already captured by floors |
-| 0.3x | US | Very high observability and high-volume domestic reporting require stronger dampening |
-
 ### Strategic Risk Derivation
 
 The composite strategic risk score is computed as a weighted average of the top 5 CII scores:
@@ -353,8 +340,8 @@ The top countries contribute most heavily, with diminishing influence for lower-
 
 | Source | Redis Key | Used For |
 |--------|-----------|----------|
-| ACLED | Fetched live via API | Protests, riots, battles, explosions, civilian violence, fatalities |
-| GDELT country events | `gdelt:bulk:country-events:v1` | Conflict and Unrest escalation against each country's 28-day median, and the sustained share of its last seven days, only while ACLED returns no events |
+| ACLED | Fetched live via API when an ACLED licence is configured | Protests, riots, battles, explosions, civilian violence, fatalities; per country, the larger of the ACLED and GDELT terms |
+| GDELT country events | `gdelt:bulk:country-events:v1` | Conflict and Unrest escalation against each country's 28-day median, and the sustained share of its last seven days, for every country |
 | UCDP | `conflict:ucdp-events:v1` | War/minor conflict floors |
 | Outages | `infra:outages:v1` | Unrest outage boost |
 | Climate | `climate:anomalies:v2` | Climate severity boost |
@@ -363,7 +350,7 @@ The top countries contribute most heavily, with diminishing influence for lower-
 | Military CII | Relay/seeded military aggregate | Security score (foreign flights and vessels only since v14) and AIS disruption boost |
 | Aviation Alerts | Seeded aviation disruption data | Security score |
 | Middle East strikes | `conflict:iran-events:v1` (72h) and `conflict:strike-pressure:v1` (30-day tally) | Strike pressure: severity-weighted strikes per day, decayed, into a floor and a boost |
-| GDELT strikes | `gdelt:bulk:country-events:v1` (strike counter) | Strike pressure worldwide while ACLED returns no events |
+| GDELT strikes | `gdelt:bulk:country-events:v1` (strike counter) | Strike pressure worldwide |
 | OREF Alerts | `relay:oref:history:v1` | IL conflict boost and blend boost |
 | News Threats | Classified headline summaries | Information score and news urgency boost |
 | Displacement | Humanitarian displacement aggregate | Displacement boost |
@@ -388,6 +375,6 @@ The relay CII warm-ping loop is active in `scripts/ais-relay.cjs`: it calls
 refresh live/stale cache state, and writes `seed-meta:intelligence:risk-scores`
 for health monitoring when scores are returned. That seed-meta `recordCount`
 is real-time signal-density coverage, not raw feed availability: it counts the
-score-relevant Tier-1 conflict (ACLED, UCDP, or a live GDELT baseline while ACLED returns no events) and news signal families
+score-relevant Tier-1 conflict (ACLED, UCDP, or a live GDELT baseline) and news signal families
 present in the CII refresh. Quiet-but-fresh real-time feeds can therefore produce
 `COVERAGE_PARTIAL`; source-specific freshness remains the feed-heartbeat view.

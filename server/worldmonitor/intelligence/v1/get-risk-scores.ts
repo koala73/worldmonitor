@@ -61,14 +61,12 @@ import {
 import {
   CII_COUNTRY_CODES,
   CII_BASELINE_RISK,
-  CII_EVENT_MULTIPLIER,
   DEFAULT_CII_BASELINE_RISK,
-  DEFAULT_CII_EVENT_MULTIPLIER,
 } from '../../../../shared/cii-weights';
 import { CII_CLIMATE_ZONE_COUNTRIES } from '../../../../shared/cii-climate-zones';
 
 // ========================================================================
-// Country risk baselines and multipliers
+// Country risk baselines
 // ------------------------------------------------------------------------
 // Editorial values — see docs/methodology/cii-risk-scores.mdx for the
 // published table and the rationale. The authoritative coefficient table
@@ -90,7 +88,6 @@ import { CII_CLIMATE_ZONE_COUNTRIES } from '../../../../shared/cii-climate-zones
 // Exported so tests and any internal diagnostics can assert the published
 // methodology doc rows match the shared source exactly.
 export const BASELINE_RISK: Record<string, number> = { ...CII_BASELINE_RISK };
-export const EVENT_MULTIPLIER: Record<string, number> = { ...CII_EVENT_MULTIPLIER };
 
 const COUNTRY_KEYWORDS: Record<string, string[]> = {
   US: ['united states', 'usa', 'u.s.', 'u.s.a.', 'america', 'american', 'washington', 'biden', 'trump', 'pentagon'],
@@ -421,7 +418,6 @@ interface CountrySignals {
   protests: number;
   riots: number;
   battles: number;
-  explosions: number;
   civilianViolence: number;
   fatalities: number;
   protestFatalities: number;
@@ -441,6 +437,8 @@ interface CountrySignals {
   gpsMediumCount: number;
   /** Decayed strike pressure P (v12), 0 when the country has not been struck. */
   strikePressure: number;
+  /** P from the confirmed feed and GDELT only: the strike floor's input. ACLED never sets the floor. */
+  strikeFloorPressure: number;
   orefAlertCount: number;
   orefHistoryCount24h: number;
   advisoryLevel: AdvisoryLevel | null;
@@ -475,7 +473,7 @@ interface CountrySignals {
 
 function emptySignals(): CountrySignals {
   return {
-    protests: 0, riots: 0, battles: 0, explosions: 0, civilianViolence: 0,
+    protests: 0, riots: 0, battles: 0, civilianViolence: 0,
     fatalities: 0, protestFatalities: 0, conflictFatalities: 0,
     gdeltConflictEscalation: 0,
     gdeltUnrestEscalation: 0,
@@ -485,6 +483,7 @@ function emptySignals(): CountrySignals {
     fireCount: 0, fireHighCount: 0,
     gpsHighCount: 0, gpsMediumCount: 0,
     strikePressure: 0,
+    strikeFloorPressure: 0,
     orefAlertCount: 0, orefHistoryCount24h: 0,
     advisoryLevel: null,
     advisoryProvenance: 'absent',
@@ -552,13 +551,13 @@ async function fetchACLEDEvents(): Promise<Array<{ country: string; event_type: 
   // when ACLED auth is unconfigured (getAcledAccessToken → null) AND on upstream
   // failure (API error, rate-limit, timeout). With active conflicts ACLED returns
   // thousands of events, so 0 from BOTH windows means the conflict realtime signal
-  // is dark — CII then relies on UCDP alone, which (an annual release) can fall
-  // outside the 2-year recency window and flip /api/health.riskScores to
+  // is dark — CII then relies on GDELT and UCDP, and UCDP (an annual release) can
+  // fall outside the 2-year recency window and flip /api/health.riskScores to
   // COVERAGE_PARTIAL. The message names both causes so an operator doesn't chase a
   // phantom auth problem during an ACLED outage.
   if (recent.length === 0 && older.length === 0) {
     console.warn(
-      '[CII] ACLED returned 0 events for both windows — if auth is unconfigured set ACLED_EMAIL/ACLED_PASSWORD (or ACLED_ACCESS_TOKEN) on the api project, else check for an upstream ACLED API error/rate-limit. CII conflict realtime signal-density coverage is falling back to UCDP only.',
+      '[CII] ACLED returned 0 events for both windows — if auth is unconfigured set ACLED_EMAIL/ACLED_PASSWORD (or ACLED_ACCESS_TOKEN) on the api project, else check for an upstream ACLED API error/rate-limit. CII Conflict and Unrest use the GDELT terms alone.',
     );
   }
 
@@ -862,7 +861,7 @@ export interface AuxiliarySources {
   // (written by scripts/seed-military-cii.mjs). Keyed by ISO2.
   militaryCii: Record<string, any> | null;
   // Per-country GDELT conflict and protest volume against each country's own baseline;
-  // scored only while ACLED is dark.
+  // scored for every country. A country with ACLED rows takes the larger of the two.
   gdeltCountryEvents: GdeltCountryEvents | null;
   // Weighted confirmed strikes per country and day from the relay's 30-day tally
   // (conflict:strike-pressure:v1); null when missing or stale.
@@ -1279,8 +1278,8 @@ const CII_INPUT_REJECTED_AS_NULL = new Set<CiiInputId>([
  * at least one Tier-1 score on its own: the scorer runs once per input against
  * an otherwise empty build and the result is compared with the all-empty
  * build. This reuses computeCIIScores as-is, so it follows any formula change
- * and measures exactly "zero across all Tier-1 countries". A standby input
- * (GDELT while ACLED is live) is still graded on what it would contribute.
+ * and measures exactly "zero across all Tier-1 countries". GDELT is graded on
+ * what it contributes alone, even where ACLED rows outscore it.
  * An input whose whole effect lands under a score floor (UCDP, advisory)
  * reads quiet; the quiet budgets in api/_cii-input-health.js are set only for
  * feeds that move unfloored countries every day.
@@ -1334,7 +1333,6 @@ export function withCiiInputQuietClocks(
 /** Every term behind one country's score, as computeCIIScores combined them. */
 export interface CiiCountryTerms {
   baseline: number;
-  eventMultiplier: number;
   components: { unrest: number; conflict: number; security: number; information: number };
   /** The parts of each component, before its cap and rounding. */
   parts: {
@@ -1354,6 +1352,8 @@ export interface CiiCountryTerms {
   /** The largest floor candidate; it binds when it exceeds the rounded blend. */
   floor: number;
   strikePressure: number;
+  /** Strike pressure from the confirmed feed and GDELT only, which sets the strike floor. */
+  strikeFloorPressure: number;
   combinedScore: number;
 }
 
@@ -1387,6 +1387,10 @@ export function computeCIIScores(
   // --- ACLED ingestion with fatality split and time decay ---
   // Events 0-7 days old: weight 1.0 (full impact)
   // Events 8-30 days old: weight 0.4 (partial — captures post-ceasefire/post-conflict tail)
+  // Explosions/remote violence are strikes: they go to the country's strike
+  // days (below), where they merge with the strike feed and GDELT strikes by
+  // the larger per day, and nowhere else, so one airstrike counts once.
+  const acledStrikes: Record<string, StrikeDays> = {};
   for (const ev of acled) {
     const code = normalizeCountryName(ev.country);
     if (!code || !data[code]) continue;
@@ -1408,8 +1412,12 @@ export function computeCIIScores(
       data[code].battles += weight;
       data[code].conflictFatalities += fat;
     } else if (type.includes('explosion') || type.includes('remote')) {
-      data[code].explosions += weight;
-      data[code].conflictFatalities += fat;
+      // Dated by the UTC day it happened; an event that killed someone weighs as
+      // a high-severity strike, any other as elevated (the strike feed's scale).
+      // A day carries one row's weight at most, never a row count.
+      const date = strikeUtcDay(computedAt - Math.max(0, ev.daysAgo ?? 0) * DAY_MS);
+      const days = (acledStrikes[code] ??= {});
+      days[date] = Math.max(days[date] ?? 0, fatalities > 0 ? CII_STRIKE_SEVERITY_WEIGHTS.high : CII_STRIKE_SEVERITY_WEIGHTS.elevated);
     } else if (type.includes('violence')) {
       data[code].civilianViolence += weight;
       data[code].conflictFatalities += fat;
@@ -1417,21 +1425,21 @@ export function computeCIIScores(
     data[code].fatalities += fat;
   }
 
-  // --- GDELT conflict and protest escalation (only while ACLED is dark) ---
-  if (acled.length === 0) {
-    for (const [code, row] of Object.entries(aux.gdeltCountryEvents?.byCountry ?? {})) {
-      if (!data[code]) continue;
-      // One signal read two ways (a spike over the norm, or a sustained level):
-      // the larger counts, never the sum.
-      data[code].gdeltConflictEscalation = Math.max(
-        gdeltEscalationScore(row.conflict),
-        gdeltLevelScore(row.week, 'conflict'),
-      );
-      data[code].gdeltUnrestEscalation = Math.max(
-        gdeltEscalationScore(row.protest),
-        gdeltLevelScore(row.week, 'protest'),
-      );
-    }
+  // --- GDELT conflict and protest escalation, every country ---
+  // ACLED never gates it: a country with ACLED rows takes max(ACLED, GDELT)
+  // below, and no other country is affected.
+  for (const [code, row] of Object.entries(aux.gdeltCountryEvents?.byCountry ?? {})) {
+    if (!data[code]) continue;
+    // One signal read two ways (a spike over the norm, or a sustained level):
+    // the larger counts, never the sum.
+    data[code].gdeltConflictEscalation = Math.max(
+      gdeltEscalationScore(row.conflict),
+      gdeltLevelScore(row.week, 'conflict'),
+    );
+    data[code].gdeltUnrestEscalation = Math.max(
+      gdeltEscalationScore(row.protest),
+      gdeltLevelScore(row.week, 'protest'),
+    );
   }
 
   // --- UCDP ---
@@ -1558,17 +1566,22 @@ export function computeCIIScores(
   }
 
   // --- Strike pressure (v12): confirmed feed and GDELT, per day the larger, decayed ---
-  // The 72h window and the 30-day tally carry the same events (max per day);
-  // GDELT strikes stand in only while ACLED is dark, like the other GDELT terms.
+  // The 72h window and the 30-day tally carry the same events (max per day).
+  // GDELT strikes count for every country; ACLED does not gate them. A
+  // country's ACLED explosion rows join the same per-day max, never the sum.
   const confirmedStrikes = Object.entries(confirmedStrikeDaysFromEvents(aux.iranEvents, computedAt))
     .reduce<Record<string, StrikeDays>>((out, [code, days]) => {
       out[code] = maxStrikeDays(out[code], days);
       return out;
     }, { ...(aux.confirmedStrikes ?? {}) });
-  const gdeltStrikes = acled.length === 0 ? aux.gdeltCountryEvents : null;
+  const gdeltStrikes = aux.gdeltCountryEvents;
   for (const code of Object.keys(data)) {
     const gdelt = gdeltStrikeDays(gdeltStrikes?.byCountry?.[code]?.strikes, gdeltStrikes?.strikeDays, computedAt);
-    data[code]!.strikePressure = strikePressure(maxStrikeDays(confirmedStrikes[code], gdelt), computedAt);
+    const reported = maxStrikeDays(confirmedStrikes[code], gdelt);
+    // ACLED may raise the strike boost but never the strike floor: a floor a
+    // count of ACLED rows could trip would be a step on an event count.
+    data[code]!.strikeFloorPressure = strikePressure(reported, computedAt);
+    data[code]!.strikePressure = strikePressure(maxStrikeDays(reported, acledStrikes[code]), computedAt);
   }
 
   // --- OREF (IL only) ---
@@ -1608,37 +1621,39 @@ export function computeCIIScores(
   for (const code of Object.keys(TIER1_COUNTRIES)) {
     const d = data[code]!;
     const baseline = BASELINE_RISK[code] ?? DEFAULT_CII_BASELINE_RISK;
-    const multiplier = EVENT_MULTIPLIER[code] ?? DEFAULT_CII_EVENT_MULTIPLIER;
 
-    // --- Unrest score (ported from frontend calcUnrestScore) ---
-    const unrestCount = d.protests + d.riots;
-    const adjustedCount = multiplier < 0.7
-      ? Math.log2(unrestCount + 1) * multiplier * 5
-      : unrestCount * multiplier;
-    const unrestBase = Math.min(50, adjustedCount * 8);
-    const unrestFatalityBoost = Math.min(30, d.protestFatalities * 5 * multiplier);
-    // severityBoost (Phase 3b / C1) — ported from the frontend calcUnrestScore.
-    const unrestSeverityBoost = Math.min(20, d.highSeverityUnrest * 10 * multiplier);
+    // ACLED (optional, licence holders only) and GDELT measure the same
+    // construct, so each component takes the larger of the two for this
+    // country, never their sum. A country with no ACLED rows has ACLED terms
+    // of 0 and scores on GDELT alone. The same evidence scores the same in
+    // every country: no per-country multiplier.
+
+    // --- Unrest score: max(ACLED unrest, GDELT protest term) + outages ---
+    const unrestBase = Math.min(50, (d.protests + d.riots) * 8);
+    const unrestFatalityBoost = Math.min(30, d.protestFatalities * 5);
+    // severityBoost (Phase 3b / C1): a riot, or an unrest event that killed someone.
+    const unrestSeverityBoost = Math.min(20, d.highSeverityUnrest * 10);
     const outageBoost = Math.min(50, d.outageTotalCount * 30 + d.outageMajorCount * 15 + d.outagePartialCount * 5);
     const unrest = Math.min(100, Math.round(
-      unrestBase + unrestFatalityBoost + unrestSeverityBoost + outageBoost + d.gdeltUnrestEscalation,
+      Math.max(unrestBase + unrestFatalityBoost + unrestSeverityBoost, d.gdeltUnrestEscalation) + outageBoost,
     ));
 
-    // --- Conflict score (ported from frontend calcConflictScore) ---
-    const conflictActivityRaw = (d.battles * 3 + d.explosions * 4 + d.civilianViolence * 5) * multiplier;
+    // --- Conflict score: max(ACLED conflict, GDELT conflict term) + OREF ---
+    // Explosions/remote violence score as strike pressure, not here.
+    const conflictActivityRaw = d.battles * 3 + d.civilianViolence * 5;
     const acledScore = Math.round(logScaledScore(
       conflictActivityRaw,
       CII_CONFLICT_ACTIVITY_CAP,
       CII_CONFLICT_ACTIVITY_PIVOT,
     ));
-    const fatalityScore = Math.min(40, Math.round(Math.sqrt(d.conflictFatalities) * 5 * multiplier));
+    const fatalityScore = Math.min(40, Math.round(Math.sqrt(d.conflictFatalities) * 5));
     const civilianBoost = Math.min(10, d.civilianViolence * 3);
     const orefBoost = (code === 'IL' && d.orefAlertCount > 0)
       ? 25 + Math.min(25, d.orefAlertCount * 5)
       : 0;
     const conflict = Math.min(
       100,
-      acledScore + fatalityScore + civilianBoost + orefBoost + d.gdeltConflictEscalation,
+      Math.max(acledScore + fatalityScore + civilianBoost, d.gdeltConflictEscalation) + orefBoost,
     );
 
     // --- Security score (Phase 3b / decision C3 — full 4-input calcSecurityScore) ---
@@ -1739,7 +1754,7 @@ export function computeCIIScores(
     const ucdpFloor = d.ucdpWar ? 70 : (d.ucdpMinor ? 50 : 0);
     const advisoryFloor = d.advisoryLevel === 'do-not-travel' ? 60
       : d.advisoryLevel === 'reconsider' ? 50 : 0;
-    const strikeFloor = Math.round(strikePressureFloor(d.strikePressure));
+    const strikeFloor = Math.round(strikePressureFloor(d.strikeFloorPressure));
     const floor = Math.max(ucdpFloor, advisoryFloor, strikeFloor);
 
     const composite = Math.min(100, Math.max(floor, Math.round(blended)));
@@ -1747,7 +1762,6 @@ export function computeCIIScores(
     if (termsSink) {
       termsSink[code] = {
         baseline,
-        eventMultiplier: multiplier,
         components: { unrest, conflict, security, information },
         parts: {
           unrestBase, unrestFatalityBoost, unrestSeverityBoost, outageBoost, gdeltUnrest: d.gdeltUnrestEscalation,
@@ -1766,6 +1780,7 @@ export function computeCIIScores(
         floors: { ucdp: ucdpFloor, advisory: advisoryFloor, strike: strikeFloor },
         floor,
         strikePressure: d.strikePressure,
+        strikeFloorPressure: d.strikeFloorPressure,
         combinedScore: composite,
       };
     }
@@ -1786,10 +1801,11 @@ export function computeCIIScores(
         militaryActivity: security,
       },
       computedAt,
-      // Disclosure fields (issue #3725) — make the editorial weights and
-      // formula version visible on the wire so API clients can detect drift.
-      // See docs/methodology/cii-risk-scores.mdx.
-      eventMultiplier: multiplier,
+      // Disclosure fields (issue #3725): the formula version on the wire so
+      // API clients can detect drift. See docs/methodology/cii-risk-scores.mdx.
+      // eventMultiplier is deprecated: no live signal is multiplied any more,
+      // so it is always the neutral 1.
+      eventMultiplier: 1,
       methodologyVersion: CII_FORMULA_VERSION,
       // Advisory levels can boost/floor CII scores. Keep the level and its
       // source visible so clients know whether the input was live, embedded
@@ -1928,9 +1944,8 @@ export function countCiiRealtimeSignalDensityCoverage(
   // whenever ACLED was thin even though UCDP was fully healthy.
   const acledCoversTier1 = (acled ?? []).some((ev) => isTier1CountryCode(normalizeCountryName(ev.country)));
   const ucdpCoversTier1 = deriveUcdpIntensityByRegion(aux?.ucdpEvents, nowMs).size > 0;
-  // GDELT stands in for ACLED only while the ACLED path is empty, as in computeCIIScores.
-  const gdeltCoversTier1 = !(acled ?? []).length
-    && Object.keys(aux?.gdeltCountryEvents?.byCountry ?? {}).some(isTier1CountryCode);
+  // GDELT scores every country, with or without ACLED rows, as in computeCIIScores.
+  const gdeltCoversTier1 = Object.keys(aux?.gdeltCountryEvents?.byCountry ?? {}).some(isTier1CountryCode);
   if (acledCoversTier1 || ucdpCoversTier1 || gdeltCoversTier1) {
     coveredFamilies.add('conflict');
   }

@@ -1876,7 +1876,7 @@ export const RPC_TOOLS: ToolDef[] = [
             },
             computedAt: { type: 'number', description: 'CII computation time, Unix epoch milliseconds.' },
             methodologyVersion: { type: 'string', description: 'CII formula version, bumped whenever score or movement semantics change.' },
-            eventMultiplier: { type: 'number', description: 'Editorial per-country multiplier applied to live signals before they roll into combinedScore. Bounds [0, 10].' },
+            eventMultiplier: { type: 'number', description: 'Deprecated: always 1. No live signal is multiplied; kept for existing clients.' },
             advisoryLevel: { type: 'string', description: 'Advisory level the score itself consumed. Empty when no advisory input applied. Distinct from the top-level advisoryLevel.' },
             advisoryProvenance: { type: 'string', description: 'Where cii.advisoryLevel came from — "live" for the advisory cache, otherwise a fallback marker.' },
           },

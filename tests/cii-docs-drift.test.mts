@@ -15,7 +15,6 @@ import {
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_TOP_N,
 } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
-import { CII_COUNTRY_WEIGHTS } from '../shared/cii-weights.ts';
 
 it('current public and translated CII claims use the published formula version', () => {
   const paths = [
@@ -173,7 +172,6 @@ describe('CII docs drift guards', () => {
     const trendSection = markdownSection(doc, '### Trend Detection');
     const pizzintSection = markdownSection(doc, '### DEFCON-Style Alerting');
     const gdeltSection = markdownSection(doc, '### World Monitor Tension Pairs');
-    const multipliersSection = markdownSection(doc, '### Event Significance Multipliers');
 
     assert.match(
       scoreSection,
@@ -245,17 +243,7 @@ describe('CII docs drift guards', () => {
       'strategic-risk tension table must omit unsupported or low-volume pairs',
     );
     assert.match(gdeltSection, /World Monitor tension scores computed independently from GDELT event exports/);
-    assert.equal(CII_COUNTRY_WEIGHTS.US.eventMultiplier, 0.3);
-    assert.match(
-      multipliersSection,
-      /\|\s*0\.3x\s*\|\s*US\s*\|/,
-      'strategic-risk doc must publish the US event multiplier separately from the 0.5-0.8x bucket',
-    );
-    assert.doesNotMatch(
-      multipliersSection,
-      /\|\s*0\.5-0\.8x\s*\|[^|\n]*\bUS\b/,
-      'strategic-risk doc must not list US in the 0.5-0.8x multiplier bucket',
-    );
+    assert.ok(!doc.includes('### Event Significance Multipliers'), 'strategic-risk doc must not publish per-country event multipliers: none is applied');
     assert.doesNotMatch(
       riskLevels,
       /70\/50\/30|50-69|30-49|\*\*Moderate\*\*/,
@@ -504,7 +492,7 @@ describe('CII docs drift guards', () => {
 
   it('the CII version claim names a version after the current formula, and the change protocols point at the brief', () => {
     const claim = JSON.parse(readFileSync(resolve(root, 'docs/methodology/cii-next.json'), 'utf8')) as {
-      next?: unknown; claimedBy?: unknown; claimedAt?: unknown;
+      next?: unknown; claimedBy?: unknown; claimedAt?: unknown; inProgress?: unknown; branch?: unknown;
     };
     assert.match(String(claim.next), /^v\d+$/, 'cii-next.json `next` must be a version such as v15');
     const versionNumber = (v: string) => Number(v.slice(1));
@@ -514,6 +502,11 @@ describe('CII docs drift guards', () => {
     );
     assert.ok(claim.claimedBy === null || (typeof claim.claimedBy === 'string' && claim.claimedBy.length > 0));
     if (claim.claimedBy !== null) assert.ok(Number.isFinite(Date.parse(String(claim.claimedAt))), 'a claim needs an ISO claimedAt');
+    assert.ok(claim.inProgress === undefined || typeof claim.inProgress === 'boolean', 'cii-next.json `inProgress` must be a boolean');
+    if (claim.inProgress === true) {
+      assert.ok(claim.claimedBy !== null, 'an in-progress version must be claimed');
+      assert.ok(typeof claim.branch === 'string' && claim.branch.length > 0, 'an in-progress version names its integration branch');
+    }
 
     const brief = readFileSync(resolve(root, 'docs/methodology/cii-change-brief.md'), 'utf8');
     for (const path of [
