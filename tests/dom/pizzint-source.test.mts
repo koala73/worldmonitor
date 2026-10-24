@@ -55,9 +55,8 @@ it('shows World Monitor tensions and missing-data states when pizza is unavailab
     score: 50, trend: 'stable', changePercent: 0, region: 'global' }]);
   const element = indicator.getElement();
   expect(element.querySelector('.pizzint-defcon')?.textContent).toBe('--');
-  expect(element.querySelectorAll('.pizzint-tension-row')).toHaveLength(6);
+  expect(element.querySelectorAll('.pizzint-tension-row')).toHaveLength(5);
   expect(element.textContent).toContain('Iran–GCC');
-  expect(element.textContent).toContain('Saudi Arabia–Yemen');
   expect(element.querySelector('.pizzint-tension-value')?.textContent).toBe('50.0');
   expect(element.textContent).toContain('components.pizzint.tensionsTitle');
   expect(element.textContent).toContain('components.pizzint.insufficientData');

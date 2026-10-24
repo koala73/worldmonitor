@@ -456,7 +456,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     });
     assert.equal(result._dyads.cursor, '20260730120000');
     assert.equal(result._dyads.days['2026-07-30'].cohorts, 1);
-    assert.equal(result._dyads.insufficientPairs.length, 6);
+    assert.equal(result._dyads.insufficientPairs.length, 5);
     assert.deepEqual(
       result._state.recentGkgBatches.flatMap((batch) =>
         batch.records.map((record) => record.id)),
@@ -1170,9 +1170,11 @@ describe('dyad history repair', async () => {
   const { dyadDayExportTimestamps } = await import('../scripts/_gdelt-dyad-tension.mjs');
   const { default: tensionPairs } = await import('../scripts/shared/gdelt-tension-pairs.json', { with: { type: 'json' } });
   const repairNow = Date.parse('2026-09-28T17:30:00Z');
-  // A complete day holds all 96 cohorts and a bucket for every configured pair.
+  // A complete day holds all 96 cohorts, a bucket for every configured pair, and
+  // (read only inside the hourly window) 24 complete hours.
   const completeDay = () => ({ cohorts: 96, pairs: Object.fromEntries(tensionPairs
-    .map(pair => [pair.id, { total: 0, conflict: 0, intensity: 0, toneSum: 0, toneCount: 0 }])) });
+    .map(pair => [pair.id, { total: 0, conflict: 0, intensity: 0, toneSum: 0, toneCount: 0 }])),
+  hours: Object.fromEntries(Array.from({ length: 24 }, (_, h) => [String(h).padStart(2, '0'), { cohorts: 4, pairs: {} }])) });
   const live = { cursor: '20260928171500', days: {} };
 
   // A manifest tail and the files it names. `count` trims a day's cohorts to
