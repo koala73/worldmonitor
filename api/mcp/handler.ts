@@ -157,7 +157,10 @@ function hasCredentials(req: Request): boolean {
 // Connectors and CLIs name themselves and do sign in, so they keep the
 // challenge; these clients reach the 401 at their first paid tool call, which
 // the Python and TypeScript SDK auth providers answer the same way.
-const GENERIC_HTTP_CLIENT_UA = /^(?:python-httpx2?|python-requests|python-urllib|node|undici|go-http-client|hermes-agent)(?:\/|\s|$)/i;
+// The whole value must be the default form: the library name, an optional
+// `/version` and an optional `(comment)`. A named product after it, such as
+// `node Cursor/1.0`, is a connector and keeps the challenge.
+const GENERIC_HTTP_CLIENT_UA = /^(?:python-httpx2?|python-requests|python-urllib|node|undici|go-http-client|hermes-agent)(?:\/[\w.+-]+)?(?:\s+\([^()]*\))?$/i;
 
 function isGenericHttpClient(req: Request): boolean {
   return GENERIC_HTTP_CLIENT_UA.test(req.headers.get('User-Agent') ?? '');

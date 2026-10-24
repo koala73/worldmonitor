@@ -86,7 +86,9 @@ describe('an unauthenticated initialize on the transport is challenged', () => {
 
   it('keeps challenging connectors, CLIs and unknown clients that sign in', async () => {
     for (const ua of ['Claude-User', 'Cursor/1.0', 'grok-connectors-manager', 'openai-mcp/1.0.0 (ChatGPT)',
-      'claude-code/2.1.308 (cli)', 'codex-mcp-client/0.163.0', 'node-fetch/1.0', 'nodejs-agent/2', 'WorldMonitor-MCP-Smoke/1']) {
+      'claude-code/2.1.308 (cli)', 'codex-mcp-client/0.163.0', 'node-fetch/1.0', 'nodejs-agent/2', 'WorldMonitor-MCP-Smoke/1',
+      // A named product after a library token is a connector, not a default.
+      'node Cursor/1.0', 'python-httpx/0.28.1 Cursor/1.0', 'undici/6.0 (x) grok-connectors-manager']) {
       const res = await post('https://worldmonitor.app/mcp', rpc('initialize', INIT_PARAMS), { 'User-Agent': ua });
       assert.equal(res.status, 401, ua);
     }
