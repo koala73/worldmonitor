@@ -67,7 +67,16 @@ The suite injects evidence into parsed sources (`buildCiiAuxiliarySources` outpu
 - **P3b, P3c.** A campaign of 5 units/day for 3 days, then nothing. The score is sampled every 3 hours for 8 days. No 3-hour drop may exceed 5. The campaign's contribution (score with it minus score without it) must halve in 4–6 days.
 - **P5c.** "Against the evidence" means against the blend: A blends above B but scores below it.
 - **P7a** nulls each input in turn. Every country whose terms change must report a coverage below 1 and below its coverage with the input present. **P7b** asks input health to call a reader that maps none of its records unusable; outages, which read `countryCode` from rows that carry only a name, are the live case.
-- **P8.** Each parsed input is replaced by its empty value. For advisories that is null, which brings in the fallback table, as a failed read does. No country may move by more than **K = 10**.
+- **P8a.** Each parsed input is replaced by its empty value. For advisories it is what a failed read now produces: the live read is null and the last good snapshot, taken from the same fixture, stands in (Stage B2 removed the fallback table). No country may move by more than **K = 10**.
+- **P8b.** An advisory provenance flip raises an input-health alarm. Each case states whether it must alarm, so every case asserts, and a fixture that cannot build the cases fails. The cases are:
+  - a live read, which must not alarm;
+  - a live read with both level sources, which must not alarm;
+  - a live read without the US source;
+  - a partial live map with a fresh snapshot;
+  - a failed read with a fresh snapshot;
+  - a failed read with an expired snapshot;
+  - a failed read with no snapshot;
+  - a failed read whose snapshot read also failed.
 - **P9** compares the span of the cached UCDP rows with the 2-year window the UCDP classes assume. It needs at least 90% of that window.
 - **P10.** Ten more delayed airports per country must not raise S.
 - **P11a.** A critical headline naming country A and a non-Tier-1 target (an attack abroad) must not raise A. **P11b.** +50 own military flights and +20 own vessels must not raise A.
@@ -95,8 +104,30 @@ Replay only on the committed multi-date fixtures in `tests/fixtures/cii/`. A sna
 
 - Each fixture holds trimmed production inputs and the formula's expected table for each version.
 - Where it was captured, a fixture also holds the table production stored at the same moment.
-- `tests/cii-fixtures.test.mts` asserts that the seam reproduces the expected table for the current version, and production's table 31/31.
+- `tests/cii-fixtures.test.mts` asserts that the seam reproduces the expected table for the scored version, and production's table 31/31.
 - Scores that move without a version bump fail it.
+
+**Released tables are immutable.** A released version's expected table is a record: nothing writes or overwrites it, and the fixture test proves `--write-expected` cannot overwrite `v14`.
+
+**An integration branch scores an unreleased version.** While `docs/methodology/cii-next.json` sets `"inProgress": true` and names the `branch`, that branch scores `next` but keeps `CII_FORMULA_VERSION` at the released version, so the single bump happens when the branch merges to main. Meanwhile:
+
+- the scored version is `next`. The seam must reproduce `expected[next]`, and `KNOWN_GAPS[next]` in `tests/cii-invariants.test.mts` lists the gaps;
+- `--write-expected` writes, or overwrites, only `expected[next]`. Every PR on the branch regenerates it after each rebase, and only through `--write-expected`;
+- the production check stays as provenance. Each stored production table must equal `expected[methodologyVersion]`, the table recorded at that version. Only the seam-against-production assertion is skipped, with a message, because the tree no longer runs the released scorer. It runs again once `next` ships and is captured;
+- capture fixtures from a released checkout (main). `scripts/cii-capture-fixture.mts` refuses to run on the branch, then the branch records `next` with `--write-expected`;
+- the protocol snapshot in `tests/cii-scoring.test.mts` follows the same rule. It covers every literal in `computeCIIScores` and the guarded constants. The test checks the current snapshot against `CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION[next]`. A digest pins every released entry, so editing the `v14` hash fails CI. Regenerate the `next` entry only from the hash this command prints, and say in the PR body that the hash changed:
+
+  ```
+  node --import tsx --test --test-name-pattern="snapshot-keyed" tests/cii-scoring.test.mts | grep "CII protocol snapshot hash"
+  ```
+
+The PR that ships `next` to main bumps `CII_FORMULA_VERSION`, clears `inProgress`, and moves the claim on (section 4). It also freezes the `next` hash as released, by updating `CII_RELEASED_PROTOCOL_HASHES_SHA256`.
+
+**The release gate for merging an integration branch into main.** Without it, the branch could reach main with `inProgress` still set and no version bump. Production would then serve the new scores under the old version's label, and every fixture check would stay green. The "CII release gate" tests in `tests/cii-invariants.test.mts` enforce it:
+
+- In CI on main, on a PR into main, or in a merge-queue run for main, `inProgress` must not be set. Those runs are detected from `GITHUB_BASE_REF` and `GITHUB_REF`. Elsewhere, including local runs, the test is skipped with a message.
+- Wherever `inProgress` is unset, the tree must name its own version. `CII_FORMULA_VERSION` must equal `next`, or the claim must have moved on to the version after it. `KNOWN_GAPS[CII_FORMULA_VERSION]` must exist.
+- The integration branch's release-blocker list must be empty. Its assertion joins this gate in the PR that adds the list.
 
 Capture a new fixture GET-only, with no Redis writes:
 
@@ -120,7 +151,7 @@ Paste the output of `node --import tsx scripts/cii-table-diff.mts --base origin/
 
 Every country that moves by ≥3 needs an entry in `docs/methodology/cii-changes/<version>.json`, naming the property or input that caused the move.
 
-A new formula version records its expected tables with `--write-expected`. The script refuses to overwrite an existing version's table.
+A new formula version records its expected tables with `--write-expected`. The script refuses to overwrite a released version's table; only an in-progress `next` table is regenerated.
 
 ### Sensitivity
 

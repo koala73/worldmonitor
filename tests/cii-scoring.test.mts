@@ -16,6 +16,7 @@ import ts from 'typescript';
 
 import { CURATED_COUNTRIES, TIER1_COUNTRIES } from '../src/config/countries.ts';
 import {
+  CII_ADVISORY_MAX_AGE_MS,
   CII_CONFLICT_ACTIVITY_CAP,
   CII_CONFLICT_ACTIVITY_PIVOT,
   CII_FORMULA_VERSION,
@@ -53,6 +54,7 @@ import {
 import { TIER1_COUNTRIES as SERVER_TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.ts';
 import {
   BASELINE_RISK,
+  CII_ADVISORY_LAST_GOOD_KEY,
   CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT,
   CII_TREND_BUCKET_LOOKUP_RADIUS,
   CII_TREND_BUCKET_MS,
@@ -82,6 +84,7 @@ import {
   DEFAULT_CII_EVENT_MULTIPLIER,
 } from '../shared/cii-weights.ts';
 import { CLIMATE_ZONES } from '../scripts/_climate-zones.mjs';
+import { ciiScoredVersion, readCiiVersionClaim } from '../scripts/lib/cii-fixtures.mts';
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -122,7 +125,19 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // v14 drops the cyber boost (hosting-location IOC feeds) and scores only foreign
   // military flights and vessels in Security.
   v14: 'dbfde746fb27478461511b21a72c0d5922b40cae005c41b5ab2ed0f20e025675',
+  // v15 is in progress on the cii-v15 integration branch (docs/methodology/cii-next.json).
+  // Each Stage B PR regenerates this entry, and only this one, with the command in
+  // docs/methodology/cii-change-brief.md section 3, and says so in its PR body. It
+  // is frozen as released when v15 ships.
+  v15: '87ef21afe9bafa57bb431c0f8dba1cff344e3ee08ba2155f382cbb9ebb92e0c1',
 };
+
+// The released entries above are a record. This digest of every entry except
+// the in-progress `next` makes an edit to one of them fail CI. Update it only in
+// the PR that ships a version, when that version's hash becomes released.
+const CII_RELEASED_PROTOCOL_HASHES_SHA256 = '82d6b1e150e452adad1055cf56fa964e2041a1f114f339e71fee069524c3965f';
+const CII_VERSION_CLAIM = readCiiVersionClaim();
+const CII_SCORED_VERSION = ciiScoredVersion(CII_VERSION_CLAIM);
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
 const GUARDED_SCORE_FUNCTION_NAMES = [
@@ -247,7 +262,6 @@ interface NumericConstSnapshot {
 
 interface ScoreHelperInputSnapshot {
   ucdpClassificationWindowMs: NumericConstSnapshot;
-  advisoryLevelsFallback: ScoreHelperSnapshotValue;
   zoneCountryMap: ScoreHelperSnapshotValue;
 }
 
@@ -419,7 +433,6 @@ function extractScoreHelperInputSnapshot(source: string, climateZoneSource = sou
 
   return {
     ucdpClassificationWindowMs: extractNumericConstSnapshot(sourceFile, 'UCDP_CLASSIFICATION_WINDOW_MS'),
-    advisoryLevelsFallback: extractTopLevelConstLiteralSnapshot(sourceFile, 'ADVISORY_LEVELS_FALLBACK'),
     zoneCountryMap: extractTopLevelConstLiteralSnapshot(
       ts.createSourceFile('cii-climate-zones.ts', climateZoneSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
       'CII_CLIMATE_ZONE_COUNTRIES',
@@ -580,7 +593,7 @@ function emptyAux() {
     gpsHexes: [] as any[],
     iranEvents: [] as any[],
     orefData: null as { activeAlertCount: number; historyCount24h: number } | null,
-    advisories: null as { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> } | null,
+    advisories: null as { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'>; provenance?: 'live' | 'fallback'; fetchedAtMs?: number | null } | null,
     displacedByIso3: {} as Record<string, number>,
     crossBorderSurgeCountries: [] as string[],
     newsTopStories: [] as Array<{ countryCode: string | null; countryCodes?: string[]; threatLevel: string; primaryTitle: string }>,
@@ -1163,7 +1176,9 @@ describe('CII scoring', () => {
   });
 
   it('advisory do-not-travel floor: composite >= 60', () => {
-    const scores = computeCIIScores([], emptyAux());
+    const aux = emptyAux();
+    aux.advisories = { byCountry: { UA: 'do-not-travel', SY: 'do-not-travel', YE: 'do-not-travel', MM: 'do-not-travel' } };
+    const scores = computeCIIScores([], aux);
     for (const code of ['UA', 'SY', 'YE', 'MM']) {
       const s = scoreFor(scores, code)!;
       assert.ok(s.combinedScore >= 60, `${code} score ${s.combinedScore} should be >= 60 (do-not-travel)`);
@@ -1171,7 +1186,9 @@ describe('CII scoring', () => {
   });
 
   it('advisory reconsider floor: composite >= 50', () => {
-    const scores = computeCIIScores([], emptyAux());
+    const aux = emptyAux();
+    aux.advisories = { byCountry: { MX: 'reconsider', IR: 'reconsider', PK: 'reconsider', VE: 'reconsider', CU: 'reconsider' } };
+    const scores = computeCIIScores([], aux);
     for (const code of ['MX', 'IR', 'PK', 'VE', 'CU']) {
       const s = scoreFor(scores, code)!;
       assert.ok(s.combinedScore >= 50, `${code} score ${s.combinedScore} should be >= 50 (reconsider)`);
@@ -1179,20 +1196,20 @@ describe('CII scoring', () => {
   });
 
   it('advisory provenance distinguishes live, fallback, and absent inputs', () => {
-    const fallbackScores = computeCIIScores([], emptyAux());
-    const uaFallback = scoreFor(fallbackScores, 'UA') as unknown as {
-      advisoryLevel: string;
-      advisoryProvenance: string;
-    };
-    const usAbsent = scoreFor(fallbackScores, 'US') as unknown as {
-      advisoryLevel: string;
-      advisoryProvenance: string;
-    };
+    // No advisory input is unknown: no country gets a level from anywhere else.
+    for (const score of computeCIIScores([], emptyAux())) {
+      const disclosure = score as unknown as { advisoryLevel: string; advisoryProvenance: string };
+      assert.equal(`${disclosure.advisoryLevel}/${disclosure.advisoryProvenance}`, '/absent', score.region);
+    }
 
+    const snapshotAux = emptyAux();
+    snapshotAux.advisories = { byCountry: { UA: 'do-not-travel' }, provenance: 'fallback', fetchedAtMs: 1 };
+    const uaFallback = scoreFor(computeCIIScores([], snapshotAux), 'UA') as unknown as {
+      advisoryLevel: string;
+      advisoryProvenance: string;
+    };
     assert.equal(uaFallback.advisoryLevel, 'do-not-travel');
     assert.equal(uaFallback.advisoryProvenance, 'fallback');
-    assert.equal(usAbsent.advisoryLevel, '');
-    assert.equal(usAbsent.advisoryProvenance, 'absent');
 
     const aux = emptyAux();
     aux.advisories = { byCountry: { UA: 'caution' } };
@@ -1204,7 +1221,7 @@ describe('CII scoring', () => {
     assert.equal(uaLive.advisoryProvenance, 'live');
   });
 
-  it('invalid live advisory levels do not suppress the fallback table', () => {
+  it('an invalid live advisory level scores nothing', () => {
     const aux = emptyAux();
     aux.advisories = { byCountry: { UA: 'unknown-level' as 'do-not-travel' } };
 
@@ -1213,8 +1230,8 @@ describe('CII scoring', () => {
       advisoryProvenance: string;
     };
 
-    assert.equal(ua.advisoryLevel, 'do-not-travel');
-    assert.equal(ua.advisoryProvenance, 'fallback');
+    assert.equal(ua.advisoryLevel, '');
+    assert.equal(ua.advisoryProvenance, 'absent');
   });
 
   it('OREF active alerts boost IL conflict score', () => {
@@ -1251,8 +1268,12 @@ describe('CII scoring', () => {
   it('conflict fatalities use sqrt scaling', () => {
     const acled100 = [acledEvent('Ukraine', 'Battles', 100)];
     const acled400 = [acledEvent('Ukraine', 'Battles', 400)];
-    const s100 = scoreFor(computeCIIScores(acled100, emptyAux()), 'UA')!;
-    const s400 = scoreFor(computeCIIScores(acled400, emptyAux()), 'UA')!;
+    // The background this case was written on: until v15 an empty build gave
+    // UA a do-not-travel level from the removed fallback table.
+    const aux = emptyAux();
+    aux.advisories = { byCountry: { UA: 'do-not-travel' } };
+    const s100 = scoreFor(computeCIIScores(acled100, aux), 'UA')!;
+    const s400 = scoreFor(computeCIIScores(acled400, aux), 'UA')!;
     const diff = s400.combinedScore - s100.combinedScore;
     assert.ok(diff < (s400.combinedScore - s100.staticBaseline) * 0.5,
       'sqrt scaling should produce diminishing returns for 4x fatalities');
@@ -1791,8 +1812,9 @@ describe('CII scoring', () => {
       advisoryLevel: string;
       advisoryProvenance: string;
     };
-    assert.equal(ua.advisoryLevel, 'do-not-travel');
-    assert.equal(ua.advisoryProvenance, 'fallback');
+    // The level a legacy score used was not recorded, so none is claimed.
+    assert.equal(ua.advisoryLevel, '');
+    assert.equal(ua.advisoryProvenance, 'absent');
     assert.equal(us.advisoryLevel, '');
     assert.equal(us.advisoryProvenance, 'absent');
   });
@@ -1840,11 +1862,19 @@ describe('CII scoring', () => {
     }
   });
 
-  it('CII protocol coefficients are snapshot-keyed to CII_FORMULA_VERSION', () => {
-    const expectedHash = CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION[CII_FORMULA_VERSION];
+  it('released CII protocol snapshot hashes never change', () => {
+    const released = Object.entries(CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION)
+      .filter(([version]) => !(CII_VERSION_CLAIM.inProgress === true && version === CII_VERSION_CLAIM.next));
+    assert.ok(released.some(([version]) => version === CII_FORMULA_VERSION), `${CII_FORMULA_VERSION} is released and must keep its hash`);
+    assert.equal(hashJson(released), CII_RELEASED_PROTOCOL_HASHES_SHA256,
+      'A released CII protocol snapshot hash was edited. Released entries are a record; only the in-progress next version is regenerated.');
+  });
+
+  it('CII protocol coefficients are snapshot-keyed to the scored version (CII_FORMULA_VERSION, or the in-progress next)', (t) => {
+    const expectedHash = CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION[CII_SCORED_VERSION];
     assert.ok(
       expectedHash,
-      `No CII protocol snapshot for ${CII_FORMULA_VERSION}. Add a new snapshot hash when bumping CII_FORMULA_VERSION.`,
+      `No CII protocol snapshot for ${CII_SCORED_VERSION}. Add a new snapshot hash when bumping CII_FORMULA_VERSION.`,
     );
 
     const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');
@@ -1878,6 +1908,7 @@ describe('CII scoring', () => {
         eventMultiplier: DEFAULT_CII_EVENT_MULTIPLIER,
       },
       riskConfig: {
+        CII_ADVISORY_MAX_AGE_MS,
         CII_CONFLICT_ACTIVITY_CAP,
         CII_CONFLICT_ACTIVITY_PIVOT,
         CII_GDELT_ESCALATION_CAP,
@@ -1918,10 +1949,15 @@ describe('CII scoring', () => {
       countryBordersSha256: createHash('sha256').update(readRepoFile('scripts/shared/cii-country-borders.data.mjs')).digest('hex'),
     };
 
+    const currentHash = hashJson(snapshot);
+    // The sanctioned way to read the current hash (docs/methodology/cii-change-brief.md section 3).
+    t.diagnostic(`CII protocol snapshot hash (${CII_SCORED_VERSION}): ${currentHash}`);
     assert.equal(
-      hashJson(snapshot),
+      currentHash,
       expectedHash,
-      'CII coefficient/formula/cutoff snapshot changed. Bump CII_FORMULA_VERSION, update methodology docs/changelogs, and add the new version-keyed snapshot hash.',
+      CII_SCORED_VERSION === CII_FORMULA_VERSION
+        ? 'CII coefficient/formula/cutoff snapshot changed. Bump CII_FORMULA_VERSION, update methodology docs/changelogs, and add the new version-keyed snapshot hash.'
+        : `CII coefficient/formula/cutoff snapshot changed on the ${CII_SCORED_VERSION} integration branch. Regenerate the ${CII_SCORED_VERSION} entry only, and state the change in the PR body.`,
     );
   });
 
@@ -1975,13 +2011,6 @@ describe('CII scoring', () => {
     const helperInputs = extractScoreHelperInputSnapshot(`
       const TWO_YEARS_MS = (2 * 365 * 24 * 60 * 60 * 1000) as const;
       const UCDP_CLASSIFICATION_WINDOW_MS = TWO_YEARS_MS;
-      const HIGH_RISK_FALLBACKS = { UA: 'do-not-travel', SY: 'do-not-travel' } as const;
-      const CAUTION_FALLBACKS = <Record<string, string>>{ RU: 'caution' };
-      const ADVISORY_LEVELS_FALLBACK = {
-        ...CAUTION_FALLBACKS,
-        ...HIGH_RISK_FALLBACKS,
-        IL: 'reconsider',
-      } satisfies Record<string, string>;
       const EUROPE_COUNTRIES = ['DE', 'FR'] as const;
       const EXTRA_MIDDLE_EAST_COUNTRIES = ['IL', 'SA'] as const;
       const MIDDLE_EAST_COUNTRIES = ['IR', ...EXTRA_MIDDLE_EAST_COUNTRIES];
@@ -1993,12 +2022,6 @@ describe('CII scoring', () => {
     `);
 
     assert.equal(helperInputs.ucdpClassificationWindowMs.value, 2 * 365 * 24 * 60 * 60 * 1000);
-    assert.deepEqual(helperInputs.advisoryLevelsFallback, {
-      IL: 'reconsider',
-      RU: 'caution',
-      SY: 'do-not-travel',
-      UA: 'do-not-travel',
-    });
     assert.deepEqual(helperInputs.zoneCountryMap, {
       Europe: ['DE', 'FR'],
       'Middle East': ['IR', 'IL', 'SA'],
@@ -2451,39 +2474,19 @@ describe('CII scoring', () => {
       `methodology doc must mention current CII_FORMULA_VERSION '${CII_FORMULA_VERSION}' — bump the version and update the doc together.`);
   });
 
-  it('methodology doc discloses advisory fallback and CII attribution caveats', () => {
+  it('methodology doc discloses the missing-advisory rule and CII attribution caveats', () => {
     const methodologyDoc = readRepoFile('docs/methodology/cii-risk-scores.mdx');
     const overviewDoc = readRepoFile('docs/country-instability-index.mdx');
     const dataSourcesDoc = readRepoFile('docs/data-sources.mdx');
     const riskScoresSource = readRepoFile('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
-    const fallbackBlock = riskScoresSource.match(/const ADVISORY_LEVELS_FALLBACK[\s\S]*?\};/)?.[0] ?? '';
-    assert.ok(fallbackBlock, 'get-risk-scores.ts must keep the advisory fallback table inspectable.');
-
-    const fallbackRows = [...fallbackBlock.matchAll(/\b([A-Z]{2}): '([^']+)'/g)]
-      .map((match) => ({ code: match[1]!, level: match[2]! }));
-    assert.equal(fallbackRows.length, 15, 'advisory fallback table size changed; update methodology disclosure.');
-
-    for (const { code, level } of fallbackRows) {
-      const label = level === 'do-not-travel' ? 'Do not travel'
-        : level === 'reconsider' ? 'Reconsider'
-        : 'Caution';
-      assert.match(
-        methodologyDoc,
-        new RegExp(`^\\| \`${code}\` \\| [^|]+ \\| ${label} \\|`, 'm'),
-        `cii-risk-scores.mdx must disclose fallback advisory level for ${code}.`,
-      );
-    }
-
+    // v15 removed the embedded advisory table: it disagreed with the live feed.
+    assert.doesNotMatch(riskScoresSource, /ADVISORY_LEVELS_FALLBACK/, 'no embedded advisory table may return.');
     assert.match(
       methodologyDoc,
-      /live security-advisory feed[\s\S]{0,160}fallback/i,
-      'methodology doc must state that live advisory data wins before fallback.',
+      new RegExp(`### Missing advisory data[\\s\\S]*${CII_ADVISORY_LAST_GOOD_KEY}[\\s\\S]*${CII_ADVISORY_MAX_AGE_MS / 3_600_000} hours`),
+      'methodology doc must state the last good snapshot and its maximum age.',
     );
-    assert.match(
-      dataSourcesDoc,
-      /Live advisory feed values override the fallback/i,
-      'data-sources doc must state that CII advisory fallback does not override live feed values.',
-    );
+    assert.match(dataSourcesDoc, /there is no embedded fallback table/i, 'data-sources doc must state that no table stands in for the feed.');
     assert.doesNotMatch(
       dataSourcesDoc,
       /consensus bonus/i,

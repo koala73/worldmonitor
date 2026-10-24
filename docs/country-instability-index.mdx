@@ -80,10 +80,10 @@ arrive outside the base event components:
 | Strike pressure | 10 | Strikes on the country (Middle East strike feed, GDELT worldwide), decayed with a three-day half-life |
 
 The score floor is the larger of UCDP conflict floors, State Department
-advisory floors and the strike floor. When live advisory data is absent, the scorer applies the
-curated fallback levels published in the
-[methodology](/methodology/cii-risk-scores#advisory-fallback-table) before
-calculating the advisory boost and floor.
+advisory floors and the strike floor. Advisory levels come only from the
+seeded advisory feed, or from its last good snapshot for up to 72 hours. Past
+that the advisory boost and floor are absent (see
+[missing advisory data](/methodology/cii-risk-scores#missing-advisory-data)).
 
 | Floor | Threshold |
 |-------|----------:|
@@ -125,7 +125,7 @@ news pressure from conflict scoring, applies lower event multipliers and log
 dampening in high-observability countries, and uses conflict/advisory floors
 so active crises do not appear quiet during data gaps.
 
-The editorial rationale, Tier-1 inclusion criteria, advisory fallback table,
+The editorial rationale, Tier-1 inclusion criteria, missing-advisory rule,
 Gaza text-attribution caveat, and per-country `baselineRisk` /
 `eventMultiplier` values are published in
 [CII Risk Scoring Methodology](/methodology/cii-risk-scores).

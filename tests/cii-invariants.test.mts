@@ -13,11 +13,16 @@ import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
 
 import iso3ToIso2 from '../shared/iso3-to-iso2.json' with { type: 'json' };
-import { loadCiiFixtures, pairsOrderedAgainstBlend, type CiiFixture } from '../scripts/lib/cii-fixtures.mts';
+import { ciiScoredVersion, loadCiiFixtures, pairsOrderedAgainstBlend, readCiiVersionClaim, type CiiFixture } from '../scripts/lib/cii-fixtures.mts';
+import { assessCiiInputs } from '../api/_cii-input-health.js';
 import {
   assessCiiInputAvailability,
   buildCiiAuxiliarySources,
+  ciiInputDetails,
+  computeCiiScoreTable,
+  type CiiRawInputs,
   scoreCiiAuxiliarySources,
+  withCiiInputQuietClocks,
   type AuxiliarySources,
   type CiiScoreTableRow,
 } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
@@ -25,17 +30,28 @@ import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_ris
 import { TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.ts';
 
 /**
- * Properties the formula named by CII_FORMULA_VERSION is known to fail. Shrink
- * it; never grow it to pass CI. A new formula version starts with no entry,
- * so every property asserts until its PR lists, with measured values, the
- * gaps it still has.
+ * Properties each formula version is known to fail, keyed like the fixture
+ * tables (ciiScoredVersion: the in-progress next version on an integration
+ * branch, else CII_FORMULA_VERSION). Shrink it; never grow it to pass CI. A
+ * released version's entry is a record and does not change. A new formula
+ * version starts with no entry, so every property asserts until its PR lists,
+ * with measured values, the gaps it still has. v15 starts from v14's list
+ * because the cii-v15 integration branch began at the v14 formula.
  */
 const KNOWN_GAPS: Record<string, ReadonlySet<string>> = {
   v14: new Set([
     'P1', 'P2', 'P3a', 'P3b', 'P3c', 'P4', 'P5a', 'P5c', 'P7a', 'P7b', 'P8', 'P9', 'P10',
     'P11a', 'P12a', 'P12b', 'P14', 'P15b', 'P15e',
   ]),
+  // B2 split P8: P8a (no country moves > K) is still a gap, P8b (an alarm on
+  // an advisory provenance flip) now holds.
+  v15: new Set([
+    'P1', 'P2', 'P3a', 'P3b', 'P3c', 'P4', 'P5a', 'P5c', 'P7a', 'P7b', 'P8a', 'P9', 'P10',
+    'P11a', 'P12a', 'P12b', 'P14', 'P15b', 'P15e',
+  ]),
 };
+const CLAIM = readCiiVersionClaim();
+const SCORED = ciiScoredVersion(CLAIM);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -325,28 +341,84 @@ function measureP7b(): Measurement {
   return { pass: bad.length === 0, value: `outages: ${c.mapped} of ${c.records} records map to a country, health reads ${c.state} (want unusable)` };
 }
 
-const FAILED_INPUT: Record<string, Partial<AuxiliarySources>> = {
+// A failed advisory read scores the last good snapshot (here: the fixture's own
+// live levels) for up to CII_ADVISORY_MAX_AGE_MS; measureP8a also reports the
+// move once that snapshot has expired.
+const FAILED_INPUT: Record<string, Partial<AuxiliarySources> | ((aux: AuxiliarySources) => Partial<AuxiliarySources>)> = {
   ucdp: { ucdpEvents: [] }, outages: { outages: [] }, climate: { climate: [] }, fires: { fires: null },
-  gpsjam: { gpsHexes: [] }, iranEvents: { iranEvents: [] }, oref: { orefData: null }, advisories: { advisories: null },
+  gpsjam: { gpsHexes: [] }, iranEvents: { iranEvents: [] }, oref: { orefData: null },
+  advisories: (aux) => ({ advisories: aux.advisories ? { ...aux.advisories, provenance: 'fallback' } : null }),
   displacement: { displacedByIso3: {} }, crossBorder: { crossBorderSurgeCountries: [] }, newsInsights: { newsTopStories: [] },
   threatSummary: { threatSummaryByCountry: null }, aviation: { aviationAlerts: [] }, earthquakes: { earthquakes: [] },
   sanctions: { sanctionsCountries: [], sanctionsCountryCounts: null }, militaryCii: { militaryCii: null },
   gdeltCountryEvents: { gdeltCountryEvents: null }, strikePressure: { confirmedStrikes: null },
 };
 
-function measureP8(): Measurement {
+function measureP8a(): Measurement {
   const moves: Array<{ input: string; code: string; label: string; delta: number }> = [];
+  const expired: number[] = [];
   for (const { f, table } of fixtureTables) {
     const aux = parse(f);
     for (const [input, failed] of Object.entries(FAILED_INPUT)) {
-      const next = score({ ...aux, ...failed }, f.nowMs);
+      const next = score({ ...aux, ...(typeof failed === 'function' ? failed(aux) : failed) }, f.nowMs);
       for (const code of CODES) moves.push({ input, code, label: f.label, delta: S(next, code) - S(table, code) });
     }
+    const unknown = score({ ...aux, advisories: null }, f.nowMs);
+    for (const code of CODES) expired.push(S(unknown, code) - S(table, code));
   }
   const top = worst(moves, (m) => Math.abs(m.delta), 3);
+  const advisory = worst(moves.filter((m) => m.input === 'advisories'), (m) => Math.abs(m.delta), 1)[0]!;
+  const lost = worst(expired, (d) => Math.abs(d), 1)[0]!;
   return {
     pass: top.every((m) => Math.abs(m.delta) <= 10),
-    value: `one failed input moves a country by up to ${top.map((m) => `${m.code} ${m.delta > 0 ? '+' : ''}${m.delta} (${m.input})`).join(', ')}; limit K = 10; no provenance-flip alarm exists`,
+    value: `one failed input moves a country by up to ${top.map((m) => `${m.code} ${m.delta > 0 ? '+' : ''}${m.delta} (${m.input})`).join(', ')}; limit K = 10; a failed advisory read moves at most ${Math.abs(advisory.delta)} while its snapshot lasts, ${lost} once it has expired`,
+  };
+}
+
+/**
+ * P8b: an advisory provenance flip raises an input-health alarm. Every case
+ * states whether it must alarm, so each one asserts; a fixture that cannot
+ * build a case fails the property rather than skipping it.
+ */
+function measureP8b(): Measurement {
+  const wrong: string[] = [];
+  let checked = 0;
+  for (const f of FIXTURES) {
+    const live = (f.inputs.advisories as { byCountry?: Record<string, string> } | null)?.byCountry;
+    if (!live || Object.keys(live).length === 0) {
+      wrong.push(`${f.label}: no live advisory map to build the cases from`);
+      continue;
+    }
+    const fresh = { byCountry: live, fetchedAt: f.nowMs - HOUR_MS };
+    const expired = { byCountry: live, fetchedAt: f.nowMs - 4 * DAY_MS };
+    const partial = Object.fromEntries(Object.entries(live).filter(([code]) => code !== 'QA' && code !== 'UA'));
+    const levelItems = (sources: string[]) => sources.map((sourceCountry) => ({ sourceCountry, country: 'QA', level: 'caution' }));
+    const cases: Array<{ name: string; inputs: CiiRawInputs; alarm: boolean }> = [
+      { name: 'live', inputs: f.inputs, alarm: false },
+      { name: 'live with both level sources', inputs: { ...f.inputs, advisories: { byCountry: live, advisories: levelItems(['US', 'AU']) } }, alarm: false },
+      { name: 'live without the US source', inputs: { ...f.inputs, advisories: { byCountry: live, advisories: levelItems(['AU']) } }, alarm: true },
+      { name: 'partial live map with a fresh snapshot', inputs: { ...f.inputs, advisories: { byCountry: partial }, advisoriesLastGood: fresh }, alarm: true },
+      { name: 'failed read with a fresh snapshot', inputs: { ...f.inputs, advisories: null, advisoriesLastGood: fresh }, alarm: true },
+      { name: 'failed read with an expired snapshot', inputs: { ...f.inputs, advisories: null, advisoriesLastGood: expired }, alarm: true },
+      { name: 'failed read, no snapshot', inputs: { ...f.inputs, advisories: null }, alarm: true },
+      { name: 'failed read, snapshot read failed', inputs: { ...f.inputs, advisories: null, advisoriesLastGoodReadFailed: true }, alarm: true },
+    ];
+    for (const c of cases) {
+      const t = computeCiiScoreTable(c.inputs, { nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled });
+      const states = assessCiiInputAvailability([], t.aux, f.nowMs, false);
+      const reports = withCiiInputQuietClocks(states, null, f.nowMs, { details: ciiInputDetails(t.aux) });
+      const alarmed = assessCiiInputs({ inputs: reports }, f.nowMs).dead.some((d: { id: string }) => d.id === 'advisories');
+      const flipped = t.scores.some((s) => s.advisoryProvenance === 'fallback');
+      checked += 1;
+      if (alarmed !== c.alarm) wrong.push(`${f.label}/${c.name}: alarm ${alarmed}, want ${c.alarm}`);
+      else if (flipped && !alarmed) wrong.push(`${f.label}/${c.name}: fallback scores without an alarm`);
+    }
+  }
+  return {
+    pass: checked > 0 && wrong.length === 0,
+    value: wrong.length
+      ? `${wrong.length} of ${checked} advisory provenance case(s) wrong, e.g. ${wrong[0]}`
+      : `${checked} advisory provenance cases: each alarms exactly when the build's advisory levels are not this read's full live table`,
   };
 }
 
@@ -583,7 +655,8 @@ const PROPERTIES: Array<{ id: string; title: string; measure: () => Measurement 
   { id: 'P5c', title: 'preserves information: 0 pairs ordered against the evidence', measure: measureP5c },
   { id: 'P7a', title: 'unknown ≠ calm: a nulled input sets coverage < 1', measure: measureP7a },
   { id: 'P7b', title: 'unknown ≠ calm: a reader mapping 0 of N records is unusable, not quiet', measure: measureP7b },
-  { id: 'P8', title: 'robust to a failed input: no country moves by > 10', measure: measureP8 },
+  { id: 'P8a', title: 'robust to a failed input: no country moves by > 10', measure: measureP8a },
+  { id: 'P8b', title: 'robust to a failed input: an alarm fires on an advisory provenance flip', measure: measureP8b },
   { id: 'P9', title: 'window honesty: the cached window equals the calibrated window', measure: measureP9 },
   { id: 'P10', title: 'normalisation: more infrastructure never raises S', measure: measureP10 },
   { id: 'P11a', title: "exclusion: A's strikes on B leave A unchanged", measure: measureP11a },
@@ -600,19 +673,19 @@ const NOT_COMPUTABLE: Array<{ id: string; title: string; reason: string }> = [
   { id: 'P16', title: 'benchmark agreement ρ ≥ 0.75 vs GPI/FSI/INFORM/ACLED', reason: 'needs external benchmark tables; measure with the methodology review, not CI' },
 ];
 
-const gaps = KNOWN_GAPS[CII_FORMULA_VERSION] ?? new Set<string>();
+const gaps = KNOWN_GAPS[SCORED] ?? new Set<string>();
 const results = PROPERTIES.map((p) => ({ ...p, ...p.measure(), known: gaps.has(p.id) }));
 
-describe(`CII invariants (${CII_FORMULA_VERSION}, ${FIXTURES.length} fixtures)`, () => {
+describe(`CII invariants (${SCORED}, ${FIXTURES.length} fixtures)`, () => {
   it('runs on at least three committed fixture dates', () => {
     assert.ok(FIXTURES.length >= 3, `found ${FIXTURES.length} fixtures in tests/fixtures/cii/`);
   });
 
   for (const r of results) {
-    const name = `${r.id} ${r.title} [${CII_FORMULA_VERSION}: ${r.value}]`;
+    const name = `${r.id} ${r.title} [${SCORED}: ${r.value}]`;
     // A known gap was measured above and its value is in the name; the ratchet
     // below fails once it passes, so its body has nothing left to assert.
-    if (r.known) it(name, { todo: `known ${CII_FORMULA_VERSION} gap` }, () => {});
+    if (r.known) it(name, { todo: `known ${SCORED} gap` }, () => {});
     else it(name, () => assert.ok(r.pass, r.value));
   }
   for (const p of NOT_COMPUTABLE) it(`${p.id} ${p.title}`, { todo: `not computable in CI: ${p.reason}` });
@@ -625,9 +698,53 @@ describe(`CII invariants (${CII_FORMULA_VERSION}, ${FIXTURES.length} fixtures)`,
   });
 });
 
+// ------------------------------------------------------------------------
+// The release gate (docs/methodology/cii-change-brief.md section 3). An
+// integration branch scores `next` under the released CII_FORMULA_VERSION, so
+// its tables are checked under `next`. If that reached main unchanged,
+// production would serve next's scores labelled with the old version and every
+// fixture check would stay green. Main and PRs into main must therefore carry
+// no in-progress version, and a released tree must name its own version.
+// ------------------------------------------------------------------------
+
+const versionNumber = (v: string) => Number(v.slice(1));
+/** CI on main, a PR into main, or a merge-queue run for main. */
+function ciiTargetsMain(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.GITHUB_BASE_REF) return env.GITHUB_BASE_REF === 'main';
+  const ref = env.GITHUB_REF ?? '';
+  return ref === 'refs/heads/main' || ref.startsWith('refs/heads/gh-readonly-queue/main/');
+}
+
+describe('CII release gate', () => {
+  it('main carries no in-progress CII version', {
+    skip: ciiTargetsMain() ? false : 'runs in CI on main and on PRs into main (GITHUB_BASE_REF / GITHUB_REF); this run targets neither',
+  }, () => {
+    assert.notEqual(CLAIM.inProgress, true,
+      `cii-next.json marks ${CLAIM.next} in progress on ${CLAIM.branch}. Before it merges to main: bump CII_FORMULA_VERSION to ${CLAIM.next}, clear inProgress, move the claim on, and freeze the ${CLAIM.next} hash.`);
+  });
+
+  it('a released tree names its own version: CII_FORMULA_VERSION is next, or the claim has moved on to the version after, and it has a KNOWN_GAPS entry', {
+    skip: CLAIM.inProgress === true ? `${CLAIM.next} is in progress on ${CLAIM.branch}; checked once it is cleared` : false,
+  }, () => {
+    const gap = versionNumber(CLAIM.next) - versionNumber(CII_FORMULA_VERSION);
+    assert.ok(gap === 0 || gap === 1,
+      `cii-next.json names ${CLAIM.next} while CII_FORMULA_VERSION is ${CII_FORMULA_VERSION}: a shipped version must bump CII_FORMULA_VERSION and move the claim on by one`);
+    assert.ok(KNOWN_GAPS[CII_FORMULA_VERSION], `KNOWN_GAPS has no ${CII_FORMULA_VERSION} entry; a released version lists its gaps, or an empty set`);
+  });
+
+  it('recognises the CI runs that target main', () => {
+    assert.equal(ciiTargetsMain({ GITHUB_BASE_REF: 'main', GITHUB_REF: 'refs/pull/1/merge' }), true);
+    assert.equal(ciiTargetsMain({ GITHUB_BASE_REF: 'cii-v15', GITHUB_REF: 'refs/pull/1/merge' }), false);
+    assert.equal(ciiTargetsMain({ GITHUB_REF: 'refs/heads/main' }), true);
+    assert.equal(ciiTargetsMain({ GITHUB_REF: 'refs/heads/gh-readonly-queue/main/pr-1-abc' }), true);
+    assert.equal(ciiTargetsMain({ GITHUB_REF: 'refs/heads/cii-v15' }), false);
+    assert.equal(ciiTargetsMain({}), false);
+  });
+});
+
 after(() => {
   const lines = [
-    `CII invariants, ${CII_FORMULA_VERSION}, fixtures ${FIXTURES.map((f) => f.label).join(', ')}`,
+    `CII invariants, ${SCORED}, fixtures ${FIXTURES.map((f) => f.label).join(', ')}`,
     ...results.map((r) => `${r.id.padEnd(5)} ${(r.pass ? 'pass' : r.known ? 'todo' : 'FAIL').padEnd(5)} ${r.value}`),
     ...NOT_COMPUTABLE.map((p) => `${p.id.padEnd(5)} todo  not computable: ${p.reason}`),
     `pass ${results.filter((r) => r.pass).length}, todo ${results.filter((r) => !r.pass && r.known).length + NOT_COMPUTABLE.length}, fail ${results.filter((r) => !r.pass && !r.known).length}`,

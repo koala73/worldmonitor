@@ -10,6 +10,17 @@
 //                   (`quietSince` is when that started)
 //   missing         the Redis key was absent
 //   unusable        present, but the scorer rejected it (too old or malformed)
+//   fallback        some or all of the scored levels came from the last good
+//                   snapshot (`snapshotAt` is its producer clock, `filled` the
+//                   countries taken from it): the read was missing or stale, or
+//                   lost countries. Scores hold, but the input is dead.
+// A report may also carry `sourcesMissing` (a live read lacked one of its
+// sources: dead), `droppedCountries` (countries no read has listed for longer
+// than the snapshot may stand in, now absent) and `snapshotReadFailed`. The
+// last two are not dead on their own: a register can stop listing a country,
+// and a live input that merely lost one is a `warnings` entry, visible beside
+// the states without raising the verdict. Either rides on a dead entry when
+// the input is dead for another reason.
 //   not_configured  disabled by deployment design (no ACLED credentials,
 //                   IRAN_EVENTS_ENABLED off)
 // An unreadable key rejects the whole build, so it surfaces as a stale
@@ -63,12 +74,27 @@ export const CII_INPUT_POLICY = Object.freeze({
   families: Object.freeze(Object.fromEntries(Object.entries(FAMILIES).map(([id, members]) => [id, Object.freeze(members)]))),
 });
 
-const PRODUCER_STATES = new Set(['live', 'quiet', 'missing', 'unusable', 'not_configured']);
+const PRODUCER_STATES = new Set(['live', 'quiet', 'missing', 'unusable', 'not_configured', 'fallback']);
 // Only "past its own staleness budget" marks an input stale here. Every other
 // source-check fault is either reported by the producer (missing key) or
 // leaves usable retained data behind (SEED_ERROR).
 const STALE_SOURCE_STATUSES = new Set(['STALE_SEED']);
 const QUIET_CLOCK_SKEW_MS = 5 * 60_000;
+
+/**
+ * The provenance detail a producer report may carry: Tier-1 countries filled
+ * from a snapshot, sources a live read lacked, a snapshot that could not be
+ * read. A lost source alone makes an input dead; a failed snapshot read alone
+ * does not (the live levels still score) but is shown when the input is dead.
+ */
+function provenanceDetail(report) {
+  const detail = {};
+  if (Array.isArray(report?.filled) && report.filled.length) detail.filled = report.filled.map(String);
+  if (Array.isArray(report?.sourcesMissing) && report.sourcesMissing.length) detail.sourcesMissing = report.sourcesMissing.map(String);
+  if (Array.isArray(report?.droppedCountries) && report.droppedCountries.length) detail.droppedCountries = report.droppedCountries.map(String);
+  if (report?.snapshotReadFailed === true) detail.snapshotReadFailed = true;
+  return detail;
+}
 
 /**
  * Grade the producer's per-input report. `sourceStatuses` maps an input id to
@@ -82,6 +108,7 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
     : null;
   const states = {};
   const dead = [];
+  const warnings = [];
   const notConfigured = [];
   const healthy = new Set();
 
@@ -91,32 +118,45 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
     const sourceCheck = cfg.sourceCheck && STALE_SOURCE_STATUSES.has(sourceStatuses[id]) ? cfg.sourceCheck : null;
     states[id] = state;
 
+    const detail = provenanceDetail(report);
     if (state === 'not_configured') {
       notConfigured.push(id);
     } else if (state === 'missing' && cfg.missingIsQuiet) {
       healthy.add(id);
+    } else if (state === 'fallback') {
+      // A provenance flip: the scores still stand on an older snapshot.
+      const snapshotAt = Number(report.snapshotAt);
+      dead.push(Number.isFinite(snapshotAt) && snapshotAt > 0 && snapshotAt <= now + QUIET_CLOCK_SKEW_MS
+        ? { id, state, ageMin: Math.max(0, Math.floor((now - snapshotAt) / 60_000)), ...detail }
+        : { id, state, ...detail });
     } else if (state === 'missing' || state === 'unusable' || state === 'unreported') {
-      dead.push({ id, state });
+      dead.push({ id, state, ...detail });
     } else if (sourceCheck) {
       states[id] = 'stale';
-      dead.push({ id, state: 'stale', sourceCheck });
+      dead.push({ id, state: 'stale', sourceCheck, ...detail });
     } else if (state === 'quiet') {
       const quietSince = Number(report.quietSince);
       // The producer stamps the clock on another instance, so allow small skew.
       const quietMin = Number.isFinite(quietSince) && quietSince > 0 && quietSince <= now + QUIET_CLOCK_SKEW_MS
         ? Math.max(0, Math.floor((now - quietSince) / 60_000))
         : null;
-      if (quietMin === null) dead.push({ id, state });
-      else if (cfg.maxQuietMin != null && quietMin > cfg.maxQuietMin) dead.push({ id, state, quietMin });
+      if (quietMin === null) dead.push({ id, state, ...detail });
+      else if (cfg.maxQuietMin != null && quietMin > cfg.maxQuietMin) dead.push({ id, state, quietMin, ...detail });
+      else if (detail.sourcesMissing) dead.push({ id, state, ...detail });
       else healthy.add(id);
+    } else if (detail.sourcesMissing) {
+      // Live, but one of the sources behind it is gone: part of the input is unknown.
+      dead.push({ id, state, ...detail });
     } else {
       healthy.add(id);
     }
+    // A country dropped at the source while the input is otherwise healthy.
+    if (healthy.has(id) && detail.droppedCountries) warnings.push({ id, state, droppedCountries: detail.droppedCountries });
   }
 
   const unfedFamilies = Object.entries(CII_INPUT_POLICY.families)
     .filter(([, members]) => !members.some((id) => healthy.has(id)))
     .map(([family]) => family);
 
-  return { valid: reported !== null, states, dead, notConfigured, unfedFamilies };
+  return { valid: reported !== null, states, dead, warnings, notConfigured, unfedFamilies };
 }

@@ -7,6 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import iso3ToIso2 from '../../shared/iso3-to-iso2.json' with { type: 'json' };
+import { isLevelledAdvisoryItem } from '../shared/advisory-registers.mjs';
 import { ciiCountryForIso2 } from '../shared/cii-country-borders.mjs';
 import { parseWildfireFiresSummary, summarizeWildfireDetections } from '../shared/wildfire-fires-summary.mjs';
 import {
@@ -58,6 +59,62 @@ export function loadCiiFixtures(dir = CII_FIXTURE_DIR): CiiFixture[] {
     .sort()
     .map((name) => JSON.parse(readFileSync(resolve(dir, name), 'utf8')) as CiiFixture)
     .filter((fixture) => fixture.schema === CII_FIXTURE_SCHEMA);
+}
+
+// ------------------------------------------------------------------------
+// Which expected table the working tree must reproduce. A released formula
+// version's table is immutable. While docs/methodology/cii-next.json marks
+// the next version in progress on an integration branch, the working tree
+// already scores that unreleased version under the released
+// CII_FORMULA_VERSION, so its table is recorded and checked under `next`,
+// which each rebase may regenerate.
+// ------------------------------------------------------------------------
+
+export const CII_VERSION_CLAIM_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../../docs/methodology/cii-next.json');
+
+export interface CiiVersionClaim {
+  next: string;
+  claimedBy: string | null;
+  claimedAt: string | null;
+  /** Set while `branch` integrates `next` before it ships; CII_FORMULA_VERSION stays at the released version meanwhile. */
+  inProgress?: boolean;
+  branch?: string;
+}
+
+export function readCiiVersionClaim(path = CII_VERSION_CLAIM_PATH): CiiVersionClaim {
+  return JSON.parse(readFileSync(path, 'utf8')) as CiiVersionClaim;
+}
+
+/** The fixture table key the working tree's scorer reproduces: the in-progress `next`, else the released version. */
+export function ciiScoredVersion(claim: CiiVersionClaim = readCiiVersionClaim(), released = CII_FORMULA_VERSION): string {
+  if (claim.inProgress !== true) return released;
+  // Otherwise `next: "v14"` would make the released v14 table writable.
+  if (claim.next === released) {
+    throw new Error(`cii-next.json marks ${claim.next} in progress but names the released ${released}; an in-progress version must be unreleased`);
+  }
+  return claim.next;
+}
+
+/**
+ * Records `table` as the fixture's expected table for the scored version and
+ * returns whether the fixture changed. The in-progress `next` key may be
+ * written or overwritten. A released version's key may be written once, when
+ * absent, and is never overwritten; this throws instead.
+ */
+export function recordExpectedTable(
+  fixture: CiiFixture,
+  table: Record<string, CiiFixtureExpectedRow>,
+  claim: CiiVersionClaim = readCiiVersionClaim(),
+  released = CII_FORMULA_VERSION,
+): boolean {
+  const version = ciiScoredVersion(claim, released);
+  const existing = fixture.expected[version];
+  if (existing && JSON.stringify(existing) === JSON.stringify(table)) return false;
+  if (existing && claim.inProgress !== true) {
+    throw new Error(`${fixture.label}: ${version} is released and already has a different expected table. A score change needs a new CII_FORMULA_VERSION.`);
+  }
+  fixture.expected[version] = table;
+  return true;
 }
 
 export function expectedFromTable(table: CiiScoreTable): Record<string, CiiFixtureExpectedRow> {
@@ -175,6 +232,26 @@ function trimStrikeTally(raw: unknown): unknown {
   return { version: raw.version, updatedAt: raw.updatedAt, days };
 }
 
+/**
+ * Tier-1 levels, `fetchedAt` (the producer clock the advisory age gate reads)
+ * and, from the stored item list, one levelled `{ sourceCountry, country, level }`
+ * item per source: the scorer reads which travel registers are present.
+ */
+function trimAdvisories(v: any): Obj {
+  if (!isObj(v.byCountry)) return {};
+  const items = Array.isArray(v.advisories)
+    ? [...new Map(v.advisories
+      .filter((item: any) => isLevelledAdvisoryItem(item))
+      .map((item: any) => [String(item.sourceCountry ?? ''), { sourceCountry: item.sourceCountry, country: item.country, level: item.level }])).values()]
+    : null;
+  return {
+    byCountry: tier1Entries(v.byCountry),
+    ...(v.fetchedAt != null ? { fetchedAt: v.fetchedAt } : {}),
+    ...(isObj(v.seenAt) ? { seenAt: tier1Entries(v.seenAt) } : {}),
+    ...(items ? { advisories: items } : {}),
+  };
+}
+
 export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
   const nullable = <T,>(v: unknown, fn: (v: any) => T): T | null => (v == null ? null : fn(v));
   return {
@@ -208,7 +285,9 @@ export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
       }),
     })),
     oref: nullable(raw.oref, (v) => pick(v, ['activeAlertCount', 'historyCount24h'])),
-    advisories: nullable(raw.advisories, (v) => (isObj(v.byCountry) ? { byCountry: tier1Entries(v.byCountry) } : {})),
+    advisories: nullable(raw.advisories, trimAdvisories),
+    // Read by production only when the live advisory read cannot be scored.
+    ...(raw.advisoriesLastGood != null ? { advisoriesLastGood: trimAdvisories(raw.advisoriesLastGood) } : {}),
     displacement: trimDisplacement(raw.displacement),
     newsInsights: nullable(raw.newsInsights, (v) => ({
       topStories: (Array.isArray(v.topStories) ? v.topStories : []).map(trimNewsStory),
@@ -323,6 +402,12 @@ export function buildCiiFixture(raw: CiiRawInputs, meta: {
   notes: string[];
   production: CiiFixture['production'];
 }): CiiFixture {
+  const claim = readCiiVersionClaim();
+  if (claim.inProgress === true) {
+    // This tree scores the unreleased next version, so its table is not the
+    // released version production stored. Capture from a released checkout.
+    throw new Error(`cii-next.json marks ${claim.next} in progress on ${claim.branch ?? 'an integration branch'}: capture fixtures from a released checkout (main), then record ${claim.next} with scripts/cii-table-diff.mts --write-expected`);
+  }
   const inputs = trimCiiRawInputs(raw);
   const options = { nowMs: meta.nowMs, iranEventsEnabled: meta.iranEventsEnabled };
   const full = computeCiiScoreTable(raw, options);

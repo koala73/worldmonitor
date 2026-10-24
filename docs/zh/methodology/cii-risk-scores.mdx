@@ -110,41 +110,41 @@ composite = baseline * 0.4
 - **打击下限**（v12）：打击压力 `P` 达到 5 后为 `min(70, 40 + 8 * log2(P / 5))`，否则为 0。一周每天一次高严重性打击（`P` 约 8）带来约 45 的下限；一天五次关键打击（`P` = 20）约 56；一周每天 8 次的行动（`P` 约 31）约 61；`P` 约 67 时达到上限 70。下限随 `P` 衰减而下降。
 
 警示等级也可在下限应用前添加 `advisoryBoost`：
-"请勿旅行" `+15`，"重新考虑旅行" `+10`，"谨慎" `+5`。服务端优先使用
-可用的实时 `intelligence:advisories:v1` `byCountry` 等级。若被追踪国家无实时等级，它可应用
-`server/worldmonitor/intelligence/v1/get-risk-scores.ts` 中内嵌的国务院兜底表。因此每个 `CiiScore`
+"请勿旅行" `+15`，"重新考虑旅行" `+10`，"谨慎" `+5`。等级只来自已播种的警示源
+`intelligence:advisories:v1` `byCountry`；警示源未列出的 Tier-1 国家没有警示等级。因此每个 `CiiScore`
 暴露：
 
 | 传输字段 | 取值 | 含义 |
 |---|---|---|
 | `advisory_level` / `advisoryLevel` | `do-not-travel`、`reconsider`、`caution` 或空 | 用于评分加成/下限的警示等级（如有）。 |
-| `advisory_provenance` / `advisoryProvenance` | `live`、`fallback`、`absent` | `advisory_level` 来自实时已播种警示源、内嵌兜底表，还是无警示输入。 |
+| `advisory_provenance` / `advisoryProvenance` | `live`、`fallback`、`absent` | `advisory_level` 来自本次构建读取的警示源、上一份有效的警示快照，还是无警示输入。 |
 
-### 警示兜底表
+### 警示数据缺失
 
-当实时安全警示源对某 Tier-1 国家无当前等级时，
-评分器在同时计算 `advisoryBoost` 和警示评分下限之前应用一个精选兜底等级。只要实时源数据
-存在，实时数据即胜出；兜底不是额外的共识加成。
+警示读取缺失或过期即表示等级未知。v15 之前，评分器用一张内嵌的 15 国等级表填补这一空缺。
+该表与实时警示源不一致（CU、LB、RU、IR、IQ），且没有 KP、QA、AE、SA 的条目。2026-10-21
+它替代警示源约两小时，期间卡塔尔从 50 跌至 8，俄罗斯从 72 跌至 54。该表已删除。
 
-| 代码 | 国家 | 兜底等级 | 实时等级缺失时的评分效果 |
-|---|---|---|---|
-| `AF` | 阿富汗 | 请勿旅行 | `advisoryBoost +15`；下限 `60` |
-| `MM` | 缅甸 | 请勿旅行 | `advisoryBoost +15`；下限 `60` |
-| `SY` | 叙利亚 | 请勿旅行 | `advisoryBoost +15`；下限 `60` |
-| `UA` | 乌克兰 | 请勿旅行 | `advisoryBoost +15`；下限 `60` |
-| `YE` | 也门 | 请勿旅行 | `advisoryBoost +15`；下限 `60` |
-| `CU` | 古巴 | 重新考虑 | `advisoryBoost +10`；下限 `50` |
-| `IL` | 以色列 | 重新考虑 | `advisoryBoost +10`；下限 `50` |
-| `IQ` | 伊拉克 | 重新考虑 | `advisoryBoost +10`；下限 `50` |
-| `IR` | 伊朗 | 重新考虑 | `advisoryBoost +10`；下限 `50` |
-| `LB` | 黎巴嫩 | 重新考虑 | `advisoryBoost +10`；下限 `50` |
-| `MX` | 墨西哥 | 重新考虑 | `advisoryBoost +10`；下限 `50` |
-| `PK` | 巴基斯坦 | 重新考虑 | `advisoryBoost +10`；下限 `50` |
-| `VE` | 委内瑞拉 | 重新考虑 | `advisoryBoost +10`；下限 `50` |
-| `RU` | 俄罗斯 | 谨慎 | `advisoryBoost +5`；无警示下限 |
-| `TR` | 土耳其 | 谨慎 | `advisoryBoost +5`；无警示下限 |
+每次有实时读取的新鲜构建都会重写 `intelligence:advisories:cii-last-good:v1`：读取中列出的 Tier-1
+等级以种子器的 `fetchedAt` 记为最近一次出现（`seenAt`）；读取中未列出的 Tier-1 国家保留其原有条目与
+出现时间，最长 30 天（`CII_ADVISORY_DROPPED_RETENTION_MS`），之后清除。
 
-理由：这些默认值覆盖了缺失或延迟的警示种子会使已知高风险战区看起来人为平静的 Tier-1 国家。由于该表是会改变评分的编辑策略，添加、删除或重新定级一个国家是一次公式版本化的方法论变更。
+- **读取失败或过期**：读取缺失，或其 `fetchedAt` 已超过 72 小时（`CII_ADVISORY_MAX_AGE_MS`）时，
+  评分器改用该快照，并标注 `advisoryProvenance: fallback`。
+- **部分丢失**：`byCountry` 取美国与澳大利亚等级中的较高者，因此丢失其中一个来源的读取仍可能通过
+  种子器的覆盖检查。快照中有而实时读取中没有的 Tier-1 国家，在其最近一次出现不超过 72 小时时，会从快照
+  补齐并标注为 `fallback`。
+- **被移除的国家**：超过 72 小时没有任何读取列出的国家不再计分，并以 `droppedCountries` 报告，
+  因此某个来源停止列出一个国家时不会悄无声息地消失。登记源可以正当地停止发布某国的建议，因此在
+  其余数据仍为实时时，这只是一条警告（`ciiInputs.warnings`），而不是失效输入。
+- **来源丢失**：实时读取存储的条目列表中没有某个旅行登记源（`US`、`AU`）的带等级条目时，以
+  `sourcesMissing` 报告；这与种子器在自身 seed-meta 上写 `failedSources` 所用的判断相同
+  （`scripts/shared/advisory-registers.mjs`）。
+- **过期**：超过 72 小时的快照不再使用，其本应覆盖的国家的警示加成与下限均不存在。
+- **健康检查**：risk-scores 的 seed-meta 把警示输入报告为 `fallback`（附 `snapshotAt` 与补齐的
+  `filled` 国家）、`missing`，或带 `sourcesMissing` 的 `live`。每种情况都会自第一次受影响的构建起
+  在 `/api/health` 中把 `riskScores` 标为 `COVERAGE_PARTIAL`。
+- **快照无法读取**：构建照常进行，不使用快照，报告中带 `snapshotReadFailed`。
 
 ### 文本归属注意事项
 

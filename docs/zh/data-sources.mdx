@@ -106,12 +106,12 @@ ACLED 需要鉴权：在 API 项目上设置 `ACLED_EMAIL` + `ACLED_PASSWORD`（
 
 **架构**：公告遵循黄金标准模式。一个 Railway 定时种子脚本（`seed-security-advisories.mjs`）每小时通过中继 RSS 代理获取全部 24 个源，按标题去重，构建 `byCountry` 风险等级映射，并写入 Redis。Vercel 的 `ListSecurityAdvisories` RPC 仅读取 Redis（无外部调用）。Bootstrap 水合在页面加载时即时提供公告数据。
 
-**CII 集成** — 服务端 CII 评分器在可用时读取已种子的公告 `byCountry` 等级，否则可能对部分国家使用内嵌的国务院兜底表。每条发出的 `CiiScore` 暴露 `advisoryLevel` 和 `advisoryProvenance`（`live`、`fallback` 或 `absent`），使下游使用者可分辨评分使用的是实时源、兜底表还是无公告输入。公告通过两种机制进入动荡评分：
+**CII 集成** — 服务端 CII 评分器读取已种子的公告 `byCountry` 等级。该读取缺失或超过 72 小时时，使用该源上一份有效快照（最多 72 小时），否则不使用任何等级。每条发出的 `CiiScore` 暴露 `advisoryLevel` 和 `advisoryProvenance`（`live`、`fallback` 或 `absent`），使下游使用者可分辨评分使用的是本次读取、上一份有效快照还是无公告输入。公告通过两种机制进入动荡评分：
 
-- **评分加成**：切勿前往 → +15 分，重新考虑 → +10，谨慎前往 → +5。服务端评分器在存在时使用实时 `byCountry` 等级；若部分 Tier-1 国家缺失实时数据，则回退到已发布的 CII 公告表，而非额外添加多源一致加成。
-- **评分下限**：切勿前往强制 CII 最低分为 60；重新考虑强制最低 50。这防止事件数据稀少但有活跃或经策展的公告风险的国家显示虚假的平静评分。
+- **评分加成**：切勿前往 → +15 分，重新考虑 → +10，谨慎前往 → +5，仅来自 `byCountry` 等级；不另加多源一致加成。
+- **评分下限**：切勿前往强制 CII 最低分为 60；重新考虑强制最低 50。
 
-**CII 公告兜底**：评分位移兜底表刻意保持精简，并随 CII 方法论版本化。目前覆盖 AF、MM、SY、UA、YE 为切勿前往；CU、IL、IQ、IR、LB、MX、PK、VE 为重新考虑；RU、TR 为谨慎前往。实时公告源值会覆盖同一国家的兜底值。其依据与各国评分影响见 [CII 风险评分方法论](/zh/methodology/cii-risk-scores#警示兜底表)。
+**公告数据缺失**：不存在内嵌兜底表；该表因与实时源不一致已删除。公告读取失败从第一次构建起就会标记 `riskScores` 健康检查。详见 [CII 风险评分方法论](/zh/methodology/cii-risk-scores#警示数据缺失)。
 
 安全公告面板显示公告及其彩色级别徽章和来源国国旗，可按严重性（严重、全部）和发布来源组（US、AU、UK、卫生）筛选。
 

@@ -2079,6 +2079,7 @@
       "scripts/package.json",
       "scripts/railpack.json",
       "scripts/seed-security-advisories.mjs",
+      "scripts/shared/advisory-registers.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/rss-allowed-domains.json",

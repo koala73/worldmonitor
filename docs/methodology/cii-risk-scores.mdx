@@ -269,46 +269,55 @@ Component details that are easy to miss:
 
 Advisory levels can also add `advisoryBoost` before the floor is applied:
 `+15` for "do not travel", `+10` for "reconsider travel", and `+5` for
-"caution". The server first uses the live `intelligence:advisories:v1`
-`byCountry` level when available. If no live level is present for a tracked
-country, it may apply the embedded State Department fallback table in
-`server/worldmonitor/intelligence/v1/get-risk-scores.ts`. Each `CiiScore`
-therefore exposes:
+"caution". The level comes only from the seeded advisory feed,
+`intelligence:advisories:v1` `byCountry`. A Tier-1 country the feed does not
+list gets no advisory level. Each `CiiScore` therefore exposes:
 
 | Wire field | Values | Meaning |
 |---|---|---|
 | `advisory_level` / `advisoryLevel` | `do-not-travel`, `reconsider`, `caution`, or empty | Advisory level used for score boosts/floors, if any. |
-| `advisory_provenance` / `advisoryProvenance` | `live`, `fallback`, `absent` | Whether `advisory_level` came from the live seeded advisory feed, the embedded fallback table, or no advisory input. |
+| `advisory_provenance` / `advisoryProvenance` | `live`, `fallback`, `absent` | Whether `advisory_level` came from this build's advisory read, from the last good advisory snapshot, or from no advisory input. |
 
-### Advisory fallback table
+### Missing advisory data
 
-When the live security-advisory feed has no current level for a Tier-1 country,
-the scorer applies a curated fallback level before computing both
-`advisoryBoost` and the advisory score floor. Live feed data wins whenever it is
-present; the fallback is not an additional consensus bonus.
+A missing or stale advisory read means the level is unknown. Until v15 the
+scorer filled that gap from an embedded table of 15 levels. The table disagreed
+with the live feed (CU, LB, RU, IR and IQ) and had no entry for KP, QA, AE or
+SA. On 2026-10-21, while it stood in for the feed for about two hours, Qatar
+fell from 50 to 8 and Russia from 72 to 54. The table has been removed.
 
-| Code | Country | Fallback level | Score effect when live level is absent |
-|---|---|---|---|
-| `AF` | Afghanistan | Do not travel | `advisoryBoost +15`; floor `60` |
-| `MM` | Myanmar | Do not travel | `advisoryBoost +15`; floor `60` |
-| `SY` | Syria | Do not travel | `advisoryBoost +15`; floor `60` |
-| `UA` | Ukraine | Do not travel | `advisoryBoost +15`; floor `60` |
-| `YE` | Yemen | Do not travel | `advisoryBoost +15`; floor `60` |
-| `CU` | Cuba | Reconsider | `advisoryBoost +10`; floor `50` |
-| `IL` | Israel | Reconsider | `advisoryBoost +10`; floor `50` |
-| `IQ` | Iraq | Reconsider | `advisoryBoost +10`; floor `50` |
-| `IR` | Iran | Reconsider | `advisoryBoost +10`; floor `50` |
-| `LB` | Lebanon | Reconsider | `advisoryBoost +10`; floor `50` |
-| `MX` | Mexico | Reconsider | `advisoryBoost +10`; floor `50` |
-| `PK` | Pakistan | Reconsider | `advisoryBoost +10`; floor `50` |
-| `VE` | Venezuela | Reconsider | `advisoryBoost +10`; floor `50` |
-| `RU` | Russia | Caution | `advisoryBoost +5`; no advisory floor |
-| `TR` | Turkey | Caution | `advisoryBoost +5`; no advisory floor |
+Each fresh build with a live read rewrites
+`intelligence:advisories:cii-last-good:v1`. The snapshot holds the Tier-1
+levels the read listed, each stamped with the seeder's `fetchedAt` as its last
+sighting (`seenAt`). A Tier-1 country the read did not list keeps its previous
+entry and sighting for up to 30 days (`CII_ADVISORY_DROPPED_RETENTION_MS`), and
+is then purged.
 
-Rationale: these defaults cover Tier-1 countries where a missing or delayed
-advisory seed would otherwise make known high-risk theatres look artificially
-calm. Because the table is score-shifting editorial policy, adding, removing,
-or re-leveling a country is a formula-versioned methodology change.
+- **A failed or stale read.** When a read is missing, or its `fetchedAt` is
+  more than 72 hours old (`CII_ADVISORY_MAX_AGE_MS`), the scorer uses the
+  snapshot instead and discloses `advisoryProvenance: fallback`.
+- **A partial loss.** `byCountry` is the higher of the US and Australian
+  levels, so a read that lost one of them can still pass the seeder's coverage
+  check. A Tier-1 country that the snapshot lists but the live read does not is
+  filled from the snapshot and disclosed as `fallback`, provided its last
+  sighting is within 72 hours.
+- **A dropped country.** A country that no read has listed for more than 72
+  hours is absent. It is reported in `droppedCountries`, so a source that stops
+  listing a country never vanishes silently. A register can legitimately stop
+  publishing advice for a country, so this is a warning (`ciiInputs.warnings`)
+  rather than a dead input while the rest of the feed is live.
+- **A lost source.** A live read whose stored item list has no levelled
+  item from one of the travel registers (`US`, `AU`) is reported with
+  `sourcesMissing`. This is the same test the seeder uses for `failedSources`
+  on its own seed-meta (`scripts/shared/advisory-registers.mjs`).
+- **Expiry.** A snapshot more than 72 hours old is not used. The advisory boost
+  and floor of the countries it would have covered are then absent.
+- **Health.** The risk-scores seed-meta reports the advisories input as
+  `fallback` (with `snapshotAt` and the `filled` countries), `missing`, or
+  `live` with `sourcesMissing`. Each of these marks `riskScores`
+  `COVERAGE_PARTIAL` in `/api/health` from the first affected build.
+- **An unreadable snapshot.** If the snapshot itself cannot be read, the build
+  goes ahead without it and the report carries `snapshotReadFailed`.
 
 ### Text attribution caveat
 
