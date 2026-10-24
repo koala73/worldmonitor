@@ -193,9 +193,14 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
       ['POST', '2099-99-99'], ['GET', '2099-99-99'], ['HEAD', '2099-99-99'],
       ['POST', ''], ['POST', '2026-07-28'], ['POST', 'not-a-version'],
     ]) {
+      // An anonymous plain GET is an OAuth discovery probe and gets the 401
+      // challenge instead (covered below), so the GET case carries credentials.
       const res = await fetch(server.url, {
         method,
-        headers: { 'MCP-Protocol-Version': version },
+        headers: {
+          'MCP-Protocol-Version': version,
+          ...(method === 'GET' ? { Authorization: `Bearer ${PRO_BEARER}` } : {}),
+        },
         ...(method === 'POST' ? { body: '{' } : {}),
       });
       assert.equal(res.status, 400, method);
@@ -1052,6 +1057,25 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     assert.match(body, /https:\/\/worldmonitor\.app\/mcp/, 'guide must advertise the apex transport URL');
     assert.match(res.headers.get('link') ?? '', /<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/,
       'discovery representation must declare the apex endpoint canonical');
+  });
+
+  it('challenges an anonymous MCP client probing GET /mcp, whatever version it names', async () => {
+    // rmcp (Codex) probes the resource with a plain GET carrying
+    // MCP-Protocol-Version: 2024-11-05, looking for the 401 that names the
+    // protected-resource metadata (RFC 9728 §5.1). A browser never sends the header.
+    for (const version of ['2024-11-05', '2025-11-25']) {
+      const res = await fetch(server.url, { headers: { 'MCP-Protocol-Version': version } });
+      assert.equal(res.status, 401, version);
+      assert.equal(res.headers.get('cache-control'), 'no-store', version);
+      assert.match(res.headers.get('www-authenticate') ?? '',
+        /resource_metadata="https:\/\/worldmonitor\.app\/\.well-known\/oauth-protected-resource\/mcp"/, version);
+    }
+
+    // A credentialed probe keeps the guide, and an unsupported version is still refused.
+    const authed = await fetch(server.url, { headers: { 'MCP-Protocol-Version': '2025-11-25', Authorization: `Bearer ${PRO_BEARER}` } });
+    assert.equal(authed.status, 200);
+    const refused = await fetch(server.url, { headers: { 'MCP-Protocol-Version': '2024-11-05', Authorization: `Bearer ${PRO_BEARER}` } });
+    assert.equal(refused.status, 400);
   });
 
   it('redirects discovery reads when deployment static-asset self-fetches fail', async () => {
