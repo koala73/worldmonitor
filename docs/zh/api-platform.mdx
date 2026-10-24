@@ -199,9 +199,4 @@ Geo-IP 回显：根据调用方 IP 的 CDN 国家头返回 `{ "country": "<ISO2>
 
 捕获邮箱用于 Pro 候补名单注册。写入 Convex 并发送确认邮件。属于 `LeadsService` 的一部分。
 
-浏览器调用方必须通过 Turnstile。使用 `source: "desktop-settings"` 的桌面调用方仅当请求使用共享的桌面密钥进行身份验证时,才能绕过 Turnstile:
-
-- `X-WorldMonitor-Desktop-Timestamp`:Unix epoch 毫秒,与服务器时间相差不超过 5 分钟。
-- `X-WorldMonitor-Desktop-Signature`:`sha256=<hex HMAC-SHA256>`。
-
-HMAC 输入为 `<timestamp>\n<canonical JSON>`,其中 canonical JSON 按顺序包含 `email`、`source`、`appVersion`、`referredBy`、`website` 和 `turnstileToken`。在桌面 sidecar 和云 API 上都要配置 `WM_DESKTOP_SHARED_SECRET`。在滚动推出期间,`WM_DESKTOP_AUTH_ALLOW_LEGACY=true` 仅在云 API 未配置 `WM_DESKTOP_SHARED_SECRET` 时接受未签名的旧版桌面请求。一旦设置了云密钥,桌面请求在缺少有效签名时将拒绝访问(fail closed),且仍受更严格的桌面限流约束。
+所有调用方都必须通过 Turnstile,包括桌面应用。`source`(例如 `desktop-settings`)仅作为标签存储,不会选择任何替代验证路径。

@@ -33,8 +33,6 @@ const ALLOWED_HEADERS = [
   'X-Api-Key',
   'X-Widget-Key',
   'X-Pro-Key',
-  'X-WorldMonitor-Desktop-Timestamp',
-  'X-WorldMonitor-Desktop-Signature',
   'Idempotency-Key',
   'Mcp-Session-Id',
   'MCP-Protocol-Version',

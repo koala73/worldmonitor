@@ -40,9 +40,8 @@ const MENU_HELP_GITHUB_ID: &str = "help.github";
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
 const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
 const SECRET_MANAGEMENT_WINDOWS: [&str; 2] = ["main", "settings"];
-const DESKTOP_SHARED_SECRET_KEY: &str = "WM_DESKTOP_SHARED_SECRET";
-const BUILD_TIME_SIDECAR_ENV_KEYS: [&str; 2] = ["CONVEX_URL", DESKTOP_SHARED_SECRET_KEY];
-const SUPPORTED_SECRET_KEYS: [&str; 29] = [
+const BUILD_TIME_SIDECAR_ENV_KEYS: [&str; 1] = ["CONVEX_URL"];
+const SUPPORTED_SECRET_KEYS: [&str; 28] = [
     "OPENROUTER_API_KEY",
     "EXA_API_KEYS",
     "BRAVE_API_KEYS",
@@ -71,7 +70,6 @@ const SUPPORTED_SECRET_KEYS: [&str; 29] = [
     "WTO_API_KEY",
     "AVIATIONSTACK_API",
     "ICAO_API_KEY",
-    DESKTOP_SHARED_SECRET_KEY,
 ];
 
 struct LocalApiState {
@@ -489,10 +487,10 @@ fn can_manage_renderer_secrets(label: &str) -> bool {
     SECRET_MANAGEMENT_WINDOWS.contains(&label)
 }
 
-// The shared desktop secret is host-managed. All other supported vault keys
-// may be configured by the first-party main/settings renderers.
+// Every supported vault key may be configured by the first-party
+// main/settings renderers.
 fn is_renderer_managed_secret_key(key: &str) -> bool {
-    key != DESKTOP_SHARED_SECRET_KEY && SUPPORTED_SECRET_KEYS.contains(&key)
+    SUPPORTED_SECRET_KEYS.contains(&key)
 }
 
 fn require_secret_management_window(label: &str) -> Result<(), String> {
@@ -1629,7 +1627,6 @@ fn sanitize_path_for_node(p: &Path) -> String {
 fn build_time_sidecar_env_value(key: &str) -> Option<&'static str> {
     match key {
         "CONVEX_URL" => option_env!("CONVEX_URL"),
-        DESKTOP_SHARED_SECRET_KEY => option_env!("WM_DESKTOP_SHARED_SECRET"),
         _ => None,
     }
     .filter(|value| !value.trim().is_empty())
@@ -1883,8 +1880,7 @@ mod sanitize_path_tests {
         build_time_sidecar_env_value, can_manage_renderer_secrets, configured_renderer_secret_keys,
         is_renderer_managed_secret_key, local_api_proxy_path_is_allowed, sanitize_path_for_node,
         read_port_file, watch_for_late_sidecar_port, LocalApiState, SidecarReadinessOutcome,
-        BUILD_TIME_SIDECAR_ENV_KEYS, DEFAULT_LOCAL_API_PORT, DESKTOP_SHARED_SECRET_KEY,
-        SUPPORTED_SECRET_KEYS,
+        BUILD_TIME_SIDECAR_ENV_KEYS, DEFAULT_LOCAL_API_PORT, SUPPORTED_SECRET_KEYS,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -1948,13 +1944,9 @@ mod sanitize_path_tests {
     }
 
     #[test]
-    fn supports_desktop_shared_secret_for_keychain_injection() {
-        assert!(SUPPORTED_SECRET_KEYS.contains(&DESKTOP_SHARED_SECRET_KEY));
-    }
-
-    #[test]
-    fn supports_desktop_shared_secret_for_packaged_sidecar_env() {
-        assert!(BUILD_TIME_SIDECAR_ENV_KEYS.contains(&DESKTOP_SHARED_SECRET_KEY));
+    fn packaged_sidecar_env_only_carries_convex_url() {
+        assert_eq!(BUILD_TIME_SIDECAR_ENV_KEYS, ["CONVEX_URL"]);
+        assert!(!SUPPORTED_SECRET_KEYS.iter().any(|key| key.starts_with("WM_DESKTOP_")));
     }
 
     #[test]
@@ -1963,8 +1955,9 @@ mod sanitize_path_tests {
     }
 
     #[test]
-    fn renderer_secret_commands_cannot_manage_desktop_shared_secret() {
-        assert!(!is_renderer_managed_secret_key(DESKTOP_SHARED_SECRET_KEY));
+    fn renderer_secret_commands_cover_every_supported_key() {
+        assert!(SUPPORTED_SECRET_KEYS.iter().all(|key| is_renderer_managed_secret_key(key)));
+        assert!(!is_renderer_managed_secret_key("GROQ_API_KEY"));
     }
 
     #[test]
@@ -1976,11 +1969,10 @@ mod sanitize_path_tests {
     }
 
     #[test]
-    fn configured_secret_metadata_filters_internal_values_and_keys() {
+    fn configured_secret_metadata_filters_unknown_keys() {
         let secrets = HashMap::from([
             ("OPENROUTER_API_KEY".to_string(), "secret-value".to_string()),
             ("GROQ_API_KEY".to_string(), "retired-value".to_string()),
-            (DESKTOP_SHARED_SECRET_KEY.to_string(), "internal-value".to_string()),
         ]);
         assert_eq!(configured_renderer_secret_keys(&secrets), vec!["OPENROUTER_API_KEY"]);
     }
