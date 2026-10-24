@@ -5410,10 +5410,12 @@ export class DeckGLMap {
     'resilience-choropleth-layer',
   ]);
 
-  // Hover-only area overlays: a click inside one is a click on the country under it.
+  // Hover-only NOTAM shapes (areas and their fallback markers): a click on one
+  // is a click on the country under it.
   private static readonly AREA_OVERLAY_LAYER_IDS = new Set([
     'notam-airspace-polygons',
     'notam-airspace-circles',
+    'notam-airspace-markers',
   ]);
 
   private handleClick(info: PickingInfo): void {

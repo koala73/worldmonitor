@@ -293,8 +293,9 @@ export function isFreshNmsClosures(payload, nowMs) {
 /**
  * Merge closure snapshots ({ closedIcaos, restrictedIcaos, reasons }) from
  * several sources into the aviation:notam:closures:v2 shape, limited to
- * `watchIcaos`. Earlier sources win the reason text; an airport closed by any
- * source is closed. `sourceByIcao` names the source that supplied the reason.
+ * `watchIcaos`. An airport closed by any source is closed. Its reason comes
+ * from the earliest source that closed it, else the earliest that restricted
+ * it. `sourceByIcao` names the source that supplied the reason.
  *
  * @param {{ label: string, snapshot: object | null }[]} sources
  */
@@ -302,19 +303,29 @@ export function mergeClosureSources(sources, watchIcaos) {
   const watch = new Set(watchIcaos);
   const closed = new Set();
   const restricted = new Set();
-  const reasons = {};
-  const sourceByIcao = {};
+  // Notes are kept per bucket: a closed airport's alert is titled from its
+  // reason, so a closing source's text beats an earlier restriction note.
+  const closedNotes = {};
+  const restrictedNotes = {};
   for (const { label, snapshot } of sources) {
     if (!snapshot) continue;
-    const note = (icao) => {
-      if (reasons[icao] === undefined && typeof snapshot.reasons?.[icao] === 'string') {
-        reasons[icao] = snapshot.reasons[icao];
-        sourceByIcao[icao] = label;
+    const note = (notes, icao) => {
+      if (notes[icao] === undefined && typeof snapshot.reasons?.[icao] === 'string') {
+        notes[icao] = { reason: snapshot.reasons[icao], label };
       }
     };
-    for (const icao of snapshot.closedIcaos || []) if (watch.has(icao)) { closed.add(icao); note(icao); }
-    for (const icao of snapshot.restrictedIcaos || []) if (watch.has(icao)) { restricted.add(icao); note(icao); }
+    for (const icao of snapshot.closedIcaos || []) if (watch.has(icao)) { closed.add(icao); note(closedNotes, icao); }
+    for (const icao of snapshot.restrictedIcaos || []) if (watch.has(icao)) { restricted.add(icao); note(restrictedNotes, icao); }
   }
   for (const icao of closed) restricted.delete(icao);
+  const reasons = {};
+  const sourceByIcao = {};
+  for (const icao of [...closed, ...restricted]) {
+    const picked = closedNotes[icao] ?? restrictedNotes[icao];
+    if (picked) {
+      reasons[icao] = picked.reason;
+      sourceByIcao[icao] = picked.label;
+    }
+  }
   return { closedIcaos: [...closed], restrictedIcaos: [...restricted], reasons, sourceByIcao };
 }

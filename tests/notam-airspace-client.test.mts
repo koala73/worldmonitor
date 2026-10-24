@@ -138,12 +138,12 @@ test('DeckGLMap draws the restriction areas under every clickable layer', () => 
   }
 });
 
-test('a click inside a NOTAM area still reaches the country under it', () => {
-  // The areas are hover-only; without this route a 250 NM circle swallows
-  // every country click inside it.
+test('a click on a NOTAM area or marker still reaches the country under it', () => {
+  // NOTAM shapes are hover-only; without this route a 250 NM circle swallows
+  // every country click inside it, and a marker click does nothing.
   const source = readFileSync(DECK_SOURCE, 'utf8');
   const overlays = source.match(/AREA_OVERLAY_LAYER_IDS = new Set\(\[([^\]]*)\]/)?.[1] ?? '';
-  for (const id of ['notam-airspace-polygons', 'notam-airspace-circles']) {
+  for (const id of ['notam-airspace-polygons', 'notam-airspace-circles', 'notam-airspace-markers']) {
     assert.match(overlays, new RegExp(`'${id}'`));
     assert.match(source, new RegExp(`id: '${id}'`), `${id} is the layer id createNotamAirspaceLayers uses`);
   }

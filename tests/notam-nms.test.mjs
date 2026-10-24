@@ -413,15 +413,25 @@ describe('runSeed wiring', () => {
 });
 
 describe('mergeClosureSources', () => {
-  it('closes an airport any source closes, keeps the first reason, and drops unwatched airports', () => {
+  it('closes an airport any source closes, takes the reason from a closing source, and drops unwatched airports', () => {
     const nms = { closedIcaos: ['OEJN'], restrictedIcaos: ['OEMA'], reasons: { OEJN: 'AD CLSD (NMS)', OEMA: 'RESTRICTED (NMS)' } };
     const icao = { closedIcaos: ['OEMA', 'KZZZ'], restrictedIcaos: ['OEDF'], reasons: { OEMA: 'AD CLSD (ICAO)', OEDF: 'PPR (ICAO)', KZZZ: 'AD CLSD' } };
     const merged = mergeClosureSources([{ label: 'FAA NMS NOTAM', snapshot: nms }, { label: 'ICAO NOTAM', snapshot: icao }, { label: 'x', snapshot: null }], ['OEJN', 'OEMA', 'OEDF']);
     assert.deepEqual(merged.closedIcaos.sort(), ['OEJN', 'OEMA']);
     assert.deepEqual(merged.restrictedIcaos, ['OEDF'], 'closed by ICAO beats restricted by NMS');
-    assert.equal(merged.reasons.OEMA, 'RESTRICTED (NMS)');
-    assert.deepEqual(merged.sourceByIcao, { OEJN: 'FAA NMS NOTAM', OEMA: 'FAA NMS NOTAM', OEDF: 'ICAO NOTAM' });
+    // The closure alert is titled from this reason, so it must be closure text.
+    assert.equal(merged.reasons.OEMA, 'AD CLSD (ICAO)');
+    assert.deepEqual(merged.sourceByIcao, { OEJN: 'FAA NMS NOTAM', OEMA: 'ICAO NOTAM', OEDF: 'ICAO NOTAM' });
     assert.equal(merged.reasons.KZZZ, undefined);
+  });
+
+  it('falls back to the restriction note when no closing source gave a reason', () => {
+    const nms = { closedIcaos: [], restrictedIcaos: ['OEMA'], reasons: { OEMA: 'RESTRICTED (NMS)' } };
+    const icao = { closedIcaos: ['OEMA'], restrictedIcaos: [], reasons: {} };
+    const merged = mergeClosureSources([{ label: 'FAA NMS NOTAM', snapshot: nms }, { label: 'ICAO NOTAM', snapshot: icao }], ['OEMA']);
+    assert.deepEqual(merged.closedIcaos, ['OEMA']);
+    assert.equal(merged.reasons.OEMA, 'RESTRICTED (NMS)');
+    assert.equal(merged.sourceByIcao.OEMA, 'FAA NMS NOTAM');
   });
 });
 
