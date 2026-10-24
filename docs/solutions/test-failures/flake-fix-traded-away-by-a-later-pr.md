@@ -1,5 +1,5 @@
 ---
-title: "A flake fix was undone by an unrelated rewrite of the same test block"
+title: "A flake fix was traded away in a later PR, and the flake came back"
 date: 2026-10-24
 category: test-failures
 module: china-policy-events-tests
@@ -16,7 +16,7 @@ related_components: [development_workflow]
 tags: [flaky-test, regression, positive-control, timing-test, ratio-of-mins, median, git-log-s, china-policy]
 ---
 
-# A flake fix was undone by an unrelated rewrite of the same test block
+# A flake fix was traded away in a later PR, and the flake came back
 
 ## Problem
 
@@ -39,7 +39,7 @@ The control failed `unit-shard (1)` on PR #9633 at 11.4x, with the real quadrati
 `git log -S'medianOf' -- tests/china-policy-events.test.mts` found the history:
 
 1. A September fix (PR-less commit "stabilize quadratic gate timing") had already solved this exact flake, after an 11.9x failure. The guard kept ratio-of-mins, so one stalled sample could not falsely trip it. The positive control switched to the **median per-attempt ratio**, because ratio-of-mins squeezes a genuine quadratic down whenever one quadrupled sample comes out fast.
-2. Four days later, PR #8019, an aviation fix, rewrote the measurement block to time fixed batches. That rewrite removed `medianOf` and pointed the control back at `rejectsScaling` (ratio-of-mins). Nothing failed at the time, because the flake needs an unlucky sample.
+2. Four days later, PR #8019 (an aviation fix that squashed in several china-policy test commits) changed the control twice. First, under 16-way CI load the **median itself** fell to 11.8x, so the control got an 11x floor. Then a commit titled "make quadratic control exercise the real scaling guard" rewrote the block to time fixed batches and pointed the control back at `rejectsScaling` (ratio-of-mins). That was a deliberate trade: the control again proved the guard's own predicate can fail, at the cost of the flake the median had fixed. The squashed PR title named neither change, so the history read as unrelated.
 
 PR #9639 restored the median and made the aggregation testable without timing:
 
@@ -77,20 +77,25 @@ It was red before the fix. A mutation pointing `controlTripsGate` back at ratio-
 The two checks need opposite aggregators:
 
 - **The guard must not fail on noise.** The minimum of each series removes stalls, so ratio-of-mins is right for it.
-- **The control must fail on a real quadratic.** The minimum of the quadrupled series is exactly the sample a stall did not slow down, and sometimes it is a sample that ran unusually fast. One fast quadrupled sample against a typical base drops min/min below 12x even though every attempt scaled ~14x. The median attempt ignores that one sample.
+- **The control must fail on a real quadratic.** The minimum of the quadrupled series is the fastest quadrupled sample observed. One unusually fast quadrupled sample against a typical base drops min/min below 12x even though every other attempt scaled ~14x. The median attempt ignores that one sample.
 
-The earlier fix was right. It failed only because nothing tied it down: it was a choice inside a timing test, and a timing test can't show that a choice was wrong. The synthetic-sample test fails on any rewrite that changes the aggregation, without depending on the runner.
+The synthetic-sample test fails on any rewrite that changes the aggregation, without depending on the runner, so the choice can no longer be traded away without a red test.
+
+### Limits of this fix
+
+- **It pins the aggregation choice. It does not prove the timing test cannot flake.** The median fell to 11.8x once under 16-way load. The CI shards now run `test:data` at concurrency 4, but a median control with ~14x typical headroom over a 12x gate can still fail on a slow runner.
+- **The median control proves a different predicate trips than the one the guard uses.** The guard fails on ratio-of-mins; the control now passes on the median. That is the trade #8019 reversed. A stronger control would give the quadratic more headroom (a larger base input makes the quadratic term dominate, pushing it toward 16x) so the guard's own predicate trips reliably, at the cost of a slower test.
 
 ## Prevention
 
-- **Before fixing a flake, search the test's history** for an earlier fix: `git log -S'<helper or constant>' -- <test file>`, or `git log --format='%h %ad %s' -- <test file>` and read the subjects. A flake that "looks new" may be an old fix that a rewrite removed.
+- **Before fixing a flake, search the test's history** for an earlier fix, and read the full squashed commit message, not just the PR title: `git log -S'<helper or constant>' -- <test file>`, or `git log --format='%h %ad %s' -- <test file>` and read the subjects. A flake that "looks new" may be an old fix that a rewrite removed.
 - **Pin the decision a flake fix makes with a deterministic test.** If the fix is "use the median here", test that function on fixed samples that pass under the median and fail under the old aggregator. A timing test alone will not catch the change being reverted.
-- **When rewriting a measurement block in someone else's test, keep its stated invariants.** The September comment explained why the control used the median. That comment was deleted with the code. Read the comments you delete.
+- **When a change trades one property of a test for another, say so where the next reader will look.** #8019 deliberately gave up the median for a control that exercises the guard's own predicate, and deleted the comment explaining the median. The trade lived only in a squashed commit body. Keep the comment, rewritten to state the new trade.
 - A positive control with little headroom over its gate (here ~14x against 12x) fails first. If a control fails near the gate, check the aggregation before touching the threshold.
 
 ## Related Issues
 
 - PR #9639: restores the median control and adds the deterministic test.
-- PR #8019: the rewrite that removed the earlier fix.
+- PR #8019: lowered the control to an 11x floor after an 11.8x median failure, then moved it back onto the guard's ratio-of-mins.
 - PR #9633: where the regression surfaced (`unit-shard (1)`).
 - [CI runners are CPU-bound](../performance-issues/ci-runners-are-cpu-bound-shard-before-parallel-steps.md): the shard work that was running when it surfaced.
