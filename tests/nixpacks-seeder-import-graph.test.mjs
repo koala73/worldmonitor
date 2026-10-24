@@ -305,7 +305,8 @@ function exportsFromScriptsDir(specs) {
   // scripts/node_modules; --preserve-symlinks keeps packages' own dependency
   // lookups inside it too.
   const sandbox = mkdtempSync(join(tmpdir(), 'wm-scripts-link-'));
-  symlinkSync(join(scriptsDir, 'node_modules'), join(sandbox, 'node_modules'), 'dir');
+  // A junction needs no symlink privilege on Windows.
+  symlinkSync(join(scriptsDir, 'node_modules'), join(sandbox, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   const probe =
     `const out = {};` +
     `for (const s of ${JSON.stringify(specs)}) {` +
