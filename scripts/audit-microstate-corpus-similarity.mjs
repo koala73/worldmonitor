@@ -152,6 +152,25 @@ export function auditMicrostateCorpusSimilarity({
   };
 }
 
+// Limits `--family <name> --check` enforces; the corpus test reads the same
+// table. A family without an entry has no agreed limits, so checking it is an
+// error rather than a silent pass.
+export const CORPUS_FAMILY_LIMITS = Object.freeze({
+  crises: Object.freeze({ minWords: 700, maxMeanJaccard: 0.3 }),
+});
+
+export function corpusFamilyViolations(audit, limits = CORPUS_FAMILY_LIMITS[audit.family]) {
+  if (!limits) throw new Error(`No --check limits are defined for the ${audit.family} family`);
+  return [
+    ...audit.pages
+      .filter((page) => page.words < limits.minWords)
+      .map((page) => `${page.route} has ${page.words} main-text words; the floor is ${limits.minWords}`),
+    ...(audit.meanPairwiseJaccard >= limits.maxMeanJaccard
+      ? [`${audit.family} mean pairwise 5-shingle overlap is ${audit.meanPairwiseJaccard.toFixed(3)}; the ceiling is ${limits.maxMeanJaccard}`]
+      : []),
+  ];
+}
+
 function median(values) {
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
@@ -173,6 +192,10 @@ export function auditCorpusFamily({ corpusDir, family }) {
       const route = `/${family}/${slug}/`;
       const mainText = extractMainText(readFileSync(join(familyDir, slug, 'index.html'), 'utf8')).trim();
       if (!mainText) throw new Error(`${route} must contain non-empty <main> content`);
+      // Two pages with no 5-word shingle would score as identical (Jaccard 1).
+      if (wordShingles(mainText).size === 0) {
+        throw new Error(`${route} must contain enough <main> content for a 5-word shingle`);
+      }
       return { slug, route, mainText, words: wordTokens(mainText).length };
     });
   if (pages.length < 2) throw new Error(`${family} needs at least two detail pages to compare`);
@@ -214,7 +237,12 @@ function parseArgs(argv) {
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.family) {
-    process.stdout.write(`${JSON.stringify(auditCorpusFamily(options), null, 2)}\n`);
+    const audit = auditCorpusFamily(options);
+    process.stdout.write(`${JSON.stringify(audit, null, 2)}\n`);
+    if (!options.check) return;
+    const violations = corpusFamilyViolations(audit);
+    for (const violation of violations) process.stderr.write(`${violation}\n`);
+    if (violations.length) process.exitCode = 1;
     return;
   }
   const result = auditMicrostateCorpusSimilarity(options);

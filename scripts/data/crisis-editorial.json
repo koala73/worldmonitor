@@ -116,7 +116,7 @@
       {
         "indicator": "Activity at Natanz, Fordo and Isfahan",
         "why": "The IAEA has had no access to the three bombed sites since June 2025; construction, inspections or strikes there bear directly on the enrichment dispute blocking talks.",
-        "trackedBy": "Nuclear Sites"
+        "trackedBy": "Intel Feed"
       },
       {
         "indicator": "Strike reports inside Iran",
@@ -232,7 +232,7 @@
       {
         "indicator": "Frontline movement",
         "why": "The UN mission recorded civilian casualties on 22 of September 2026's 30 days; a shifting contact line changes which towns are under daily fire.",
-        "trackedBy": "Conflict Zones"
+        "trackedBy": "Armed Conflict Events"
       },
       {
         "indicator": "Strikes on energy infrastructure",
@@ -370,7 +370,7 @@
       {
         "indicator": "Taiz and coastal highlands frontline",
         "why": "IOM recorded 252,181 people displaced since the June 2026 escalation as of 18 October; ACLED says the highlands decide whether the Houthis hold their coastal gains.",
-        "trackedBy": "Conflict Zones"
+        "trackedBy": "Armed Conflict Events"
       }
     ]
   },
@@ -492,7 +492,7 @@
       {
         "indicator": "El Obeid encirclement",
         "why": "UN investigators said in July 2026 the RSF was applying El Fasher-style tactics around North Kordofan's capital; a tightening cordon or a breach would signal the siege-then-storm pattern repeating.",
-        "trackedBy": "Conflict Zones"
+        "trackedBy": "Armed Conflict Events"
       },
       {
         "indicator": "Drone strikes on camps and markets",
@@ -758,7 +758,7 @@
       {
         "indicator": "Attacks on US bases in Gulf states",
         "why": "The IRGC struck Ali Al Salem and the Fifth Fleet base in June and on 22 October threatened US bases if escorts continue; a hit would draw host states further in.",
-        "trackedBy": "Military Bases"
+        "trackedBy": "Middle East Strikes"
       }
     ]
   },
@@ -893,7 +893,7 @@
       {
         "indicator": "Kidal and northern Mali control",
         "why": "The FLA called its October 2026 withdrawal temporary; a renewed FLA–JNIM move on Kidal or Gao would test whether Africa Corps air power can hold the north for Bamako.",
-        "trackedBy": "Conflict Zones"
+        "trackedBy": "Armed Conflict Events"
       },
       {
         "indicator": "Niamey garrison security",
@@ -1170,7 +1170,7 @@
       {
         "indicator": "Towns changing hands",
         "why": "ISP-Myanmar counted 22 of 101 lost towns retaken by August 2026; further recaptures in Kachin or Rakhine, or resistance counter-offensives, show who holds momentum.",
-        "trackedBy": "Conflict Zones"
+        "trackedBy": "Armed Conflict Events"
       },
       {
         "indicator": "Village burnings",

@@ -56,6 +56,7 @@ import {
   laterDate,
   loadCorpusData,
   normalizeCrisisEditorial,
+  renderCrisisCountryReadings,
   MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS,
   MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS,
   assertLivePulseMovementClaim,
@@ -97,6 +98,8 @@ import { htmlToMarkdown } from '../api/_md-url-twin.ts';
 import {
   auditCorpusFamily,
   auditMicrostateCorpusSimilarity,
+  CORPUS_FAMILY_LIMITS,
+  corpusFamilyViolations,
   maskedSentences,
   wordShingles,
 } from '../scripts/audit-microstate-corpus-similarity.mjs';
@@ -6007,8 +6010,11 @@ describe('live-pulse snapshot injection (#7533)', () => {
           ['crises', [
             laterDate(
               gitFileLastmod(repoRoot, data.sources.crisisRegistry),
+              gitFileLastmod(repoRoot, data.sources.crisisEditorial),
               gitFileLastmod(repoRoot, RELATED_READING_PATH),
               pulseDate,
+              data.resilience.capturedAt,
+              ...data.crises.map((crisis) => crisis.editorial.lastReviewed),
               CRISIS_PAGE_CONTENT_VERSION,
             ),
             'crises/index.html',
@@ -8094,6 +8100,14 @@ describe('crisis tracker editorial (#8605)', () => {
       }), crises),
       /names an unknown dashboard surface: Crystal Ball/,
     );
+    // A static reference layer cannot show the change an indicator asks for.
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        entry.whatToWatch[0].trackedBy = 'Conflict Zones';
+        return entry;
+      }), crises),
+      /names an unknown dashboard surface: Conflict Zones/,
+    );
   });
 
   it('names only panels and layers that exist in the dashboard config', () => {
@@ -8109,13 +8123,48 @@ describe('crisis tracker editorial (#8605)', () => {
     const { outDir } = await defaultCorpusBuild();
     const audit = auditCorpusFamily({ corpusDir: outDir, family: 'crises' });
     assert.equal(audit.pageCount, registry.length);
-    for (const page of audit.pages) {
-      assert.ok(page.words >= 700, `${page.route} has ${page.words} main-text words; the floor is 700`);
-    }
-    assert.ok(
-      audit.meanPairwiseJaccard < 0.3,
-      `crisis family mean pairwise 5-shingle overlap is ${audit.meanPairwiseJaccard.toFixed(3)}; the ceiling is 0.30`,
+    assert.deepEqual(CORPUS_FAMILY_LIMITS.crises, { minWords: 700, maxMeanJaccard: 0.3 });
+    assert.deepEqual(corpusFamilyViolations(audit), []);
+  });
+
+  it('flags thin or converging family pages and refuses to check a family with no limits', () => {
+    const pages = [{ route: '/crises/a/', words: 650 }, { route: '/crises/b/', words: 900 }];
+    assert.deepEqual(corpusFamilyViolations({ family: 'crises', pages, meanPairwiseJaccard: 0.31 }), [
+      '/crises/a/ has 650 main-text words; the floor is 700',
+      'crises mean pairwise 5-shingle overlap is 0.310; the ceiling is 0.3',
+    ]);
+    assert.throws(
+      () => corpusFamilyViolations({ family: 'blog', pages, meanPairwiseJaccard: 0 }),
+      /No --check limits are defined for the blog family/,
     );
+  });
+
+  it('rejects a family page too short to form a 5-word shingle', () => {
+    const corpusDir = mkdtempSync(join(tmpdir(), 'wm-family-audit-'));
+    try {
+      for (const [slug, body] of [['a', 'Four words only here.'], ['b', 'Another page with plenty of words for one shingle.']]) {
+        mkdirSync(join(corpusDir, 'crises', slug), { recursive: true });
+        writeFileSync(join(corpusDir, 'crises', slug, 'index.html'), `<!doctype html><html><body><main>${body}</main></body></html>`);
+      }
+      assert.throws(
+        () => auditCorpusFamily({ corpusDir, family: 'crises' }),
+        /\/crises\/a\/ must contain enough <main> content for a 5-word shingle/,
+      );
+    } finally {
+      rmSync(corpusDir, { recursive: true, force: true });
+    }
+  });
+
+  it('agrees the verb and drops "highest" when one of several countries has a CII reading', () => {
+    const crisis = { coverage: [{ code: 'YE', name: 'Yemen' }, { code: 'DJ', name: 'Djibouti' }, { code: 'ER', name: 'Eritrea' }] };
+    const html = renderCrisisCountryReadings({
+      crisis,
+      countryByCode: new Map(),
+      ciiByCode: new Map([['YE', { score: 81, band: 'Critical', trend: 'Rising +2' }]]),
+      rankedCount: 170,
+    });
+    assert.match(html, /Only Yemen, of the 3 covered countries, has a Country Instability Index reading: 81 \(Critical\)\./);
+    assert.doesNotMatch(html, /1 of the 3 covered countries have|The highest is/);
   });
 
   it('cites each milestone and the review date on the rendered page', async () => {

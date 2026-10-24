@@ -1606,7 +1606,10 @@ function normalizeCrises(entries) {
 // Dashboard surfaces a crisis "what to watch" indicator may name. Each value is
 // a panel title from src/config/panels.ts or a layer label from
 // src/config/map-layer-definitions.ts, so the page never points a reader at a
-// view that does not exist.
+// view that does not exist. Only views that change with events belong here:
+// static reference layers (curated Conflict Zones, Nuclear Sites, Military
+// Bases, the Chokepoints outline, Sanctions shading) cannot show a reader the
+// change an indicator asks them to watch.
 export const CRISIS_TRACKED_BY = Object.freeze(new Map([
   ...[
     'Country Instability', 'UCDP Conflict Events', 'UNHCR Displacement', 'Strategic Risk Overview',
@@ -1617,9 +1620,8 @@ export const CRISIS_TRACKED_BY = Object.freeze(new Map([
     'Predictions',
   ].map((name) => [name, 'panel']),
   ...[
-    'Conflict Zones', 'Armed Conflict Events', 'Displacement Flows', 'Protests', 'Military Activity', 'Ship Traffic',
-    'Live Tanker Positions', 'Middle East Strikes', 'Intel Hotspots', 'GPS Jamming', 'Fires', 'Sanctions',
-    'Chokepoints', 'Aviation', 'Nuclear Sites', 'Military Bases',
+    'Armed Conflict Events', 'Displacement Flows', 'Protests', 'Military Activity', 'Ship Traffic',
+    'Live Tanker Positions', 'Middle East Strikes', 'Intel Hotspots', 'GPS Jamming', 'Fires', 'Aviation',
   ].map((name) => [name, 'map layer']),
 ]));
 
@@ -2111,6 +2113,10 @@ export async function loadCorpusData({
     gitFileLastmod(rootDir, RELATED_READING_PATH),
     gitFileLastmod(rootDir, LIVE_PAGE_LINKS_PATH),
     livePulse.capturedAt,
+    // The country readings table renders resilience scores and ranks, and
+    // each page states when its editorial copy was last reviewed.
+    resilience.capturedAt,
+    ...crises.map((crisis) => crisis.editorial.lastReviewed),
     CRISIS_PAGE_CONTENT_VERSION,
   );
   const researchLastmod = laterDate(
@@ -2183,6 +2189,7 @@ export async function loadCorpusData({
       liveTopicPagesInputs: [...LIVE_TOPIC_PAGES_INPUT_PATHS],
       countryBboxes: COUNTRY_BBOXES_PATH,
       crisisRegistry: CRISIS_REGISTRY_PATH,
+      crisisEditorial: CRISIS_EDITORIAL_PATH,
       tensionPairs: TENSION_PAIRS_PATH,
       countryCentroids: COUNTRY_CENTROIDS_PATH,
       researchReports: RESEARCH_REPORTS_INDEX_PATH,
@@ -4922,7 +4929,7 @@ ${watch}
       <p class="source" data-crisis-reviewed>Background, actors, timeline and watch list last reviewed <time datetime="${escapeHtml(editorial.lastReviewed)}">${escapeHtml(prettyDate(editorial.lastReviewed))}</time> against the linked sources. They are context for the monthly figures above, not part of the HAPI/HDX dataset.</p>`;
 }
 
-function renderCrisisCountryReadings({ crisis, countryByCode, ciiByCode, rankedCount }) {
+export function renderCrisisCountryReadings({ crisis, countryByCode, ciiByCode, rankedCount }) {
   const rows = crisis.coverage.map((covered) => {
     const country = countryByCode.get(covered.code);
     const cii = ciiByCode.get(covered.code);
@@ -4947,9 +4954,11 @@ function renderCrisisCountryReadings({ crisis, countryByCode, ciiByCode, rankedC
     ? (crisis.coverage.length === 1
       ? `${crisis.coverage[0].name} is not in the Country Instability Index's monitored set, so only its structural resilience reading is shown.`
       : `None of the ${crisis.coverage.length} ${scopeNoun} in this tracker is in the Country Instability Index's monitored set, so only structural resilience readings are shown.`)
-    : monitored.length === 1 && crisis.coverage.length === 1
-      ? `${monitored[0].covered.name} has a Country Instability Index reading of ${formatScore(monitored[0].cii.score, OBSERVED_EVIDENCE)} (${monitored[0].cii.band}).`
-      : `${monitored.length} of the ${crisis.coverage.length} ${scopeNoun} have a Country Instability Index reading. The highest is ${monitored[0].covered.name} at ${formatScore(monitored[0].cii.score, OBSERVED_EVIDENCE)} (${monitored[0].cii.band})${monitored.length > 1 ? `, and the lowest is ${monitored.at(-1).covered.name} at ${formatScore(monitored.at(-1).cii.score, OBSERVED_EVIDENCE)} (${monitored.at(-1).cii.band})` : ''}.`;
+    : monitored.length === 1
+      ? (crisis.coverage.length === 1
+        ? `${monitored[0].covered.name} has a Country Instability Index reading of ${formatScore(monitored[0].cii.score, OBSERVED_EVIDENCE)} (${monitored[0].cii.band}).`
+        : `Only ${monitored[0].covered.name}, of the ${crisis.coverage.length} ${scopeNoun}, has a Country Instability Index reading: ${formatScore(monitored[0].cii.score, OBSERVED_EVIDENCE)} (${monitored[0].cii.band}).`)
+      : `${monitored.length} of the ${crisis.coverage.length} ${scopeNoun} have a Country Instability Index reading. The highest is ${monitored[0].covered.name} at ${formatScore(monitored[0].cii.score, OBSERVED_EVIDENCE)} (${monitored[0].cii.band}), and the lowest is ${monitored.at(-1).covered.name} at ${formatScore(monitored.at(-1).cii.score, OBSERVED_EVIDENCE)} (${monitored.at(-1).cii.band}).`;
   return `      <h2>Country readings</h2>
       <p>${escapeHtml(summary)} Instability is a live 0-100 stress score; resilience is a structural 0-100 index ranked across countries. Both describe each country as a whole, not this crisis alone, and a country without a reading reflects index coverage, not a statement about risk.</p>
       <div class="table-scroll"><table data-crisis-readings>
