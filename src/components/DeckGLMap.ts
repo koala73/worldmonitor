@@ -2064,6 +2064,13 @@ export class DeckGLMap {
       ));
     }
 
+    // FAA NMS airspace restrictions are area overlays (circles up to 250 NM):
+    // they sit under every point layer so bases, hotspots, airports, aircraft
+    // and other markers inside a restricted area stay hoverable and clickable.
+    if (mapLayers.notamAirspace && this.notamAirspace.length > 0) {
+      layers.push(...this.createNotamAirspaceLayers());
+    }
+
 
     // Military bases layer — hidden at low zoom (E: progressive disclosure) + clusters
     if (mapLayers.bases && this.isLayerVisible('bases')) {
@@ -2205,13 +2212,6 @@ export class DeckGLMap {
     // Repair ships layer (shown with cables)
     if (mapLayers.cables && this.repairShips.length > 0) {
       layers.push(this.createRepairShipsLayer());
-    }
-
-    // FAA NMS airspace restrictions are area overlays: they sit under every
-    // aviation, protest and military layer so aircraft, airports and emergency
-    // markers inside a restricted area stay hoverable and clickable.
-    if (mapLayers.notamAirspace && this.notamAirspace.length > 0) {
-      layers.push(...this.createNotamAirspaceLayers());
     }
 
     // Aviation layer (flight delays + NOTAM closures + aircraft positions)
@@ -5392,9 +5392,16 @@ export class DeckGLMap {
     'resilience-choropleth-layer',
   ]);
 
+  // Hover-only area overlays: a click inside one is a click on the country under it.
+  private static readonly AREA_OVERLAY_LAYER_IDS = new Set([
+    'notam-airspace-polygons',
+    'notam-airspace-circles',
+  ]);
+
   private handleClick(info: PickingInfo): void {
     const isChoropleth = info.layer?.id ? DeckGLMap.CHOROPLETH_LAYER_IDS.has(info.layer.id) : false;
-    if (!info.object || isChoropleth) {
+    const isAreaOverlay = info.layer?.id ? DeckGLMap.AREA_OVERLAY_LAYER_IDS.has(info.layer.id) : false;
+    if (!info.object || isChoropleth || isAreaOverlay) {
       if (info.coordinate && this.onCountryClick) {
         if (this.shouldSuppressCountryClickAfterDrag()) return;
         const [lon, lat] = info.coordinate as [number, number];

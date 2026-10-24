@@ -21,18 +21,22 @@
  * Non-production hosts (NMS_API_HOST pointing at FIT or staging) run as a dry
  * run unless NMS_ALLOW_NONPROD_WRITE=1: pre-prod carries the FAA's test NOTAMs
  * ("AUTOMATED TEST TEXT" closures at KJFK), which must never reach airport
- * alerts or notam_closure notifications.
+ * alerts or notam_closure notifications. With the flag set, a pre-prod run
+ * publishes the airspace key only (publishTargets).
  */
 
 import { gunzipSync } from 'node:zlib';
-import { CHROME_UA, loadEnvFile, markPreservableFetchFailure, readCanonicalValue, runSeed } from './_seed-utils.mjs';
+import { CHROME_UA, loadEnvFile, markPreservableFetchFailure, readCanonicalValue, runSeed, withRetry } from './_seed-utils.mjs';
 import { encodeGzipPayload } from './_seed-payload-codec.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
-import { NMS_CLOSURES_KEY, applyFeatures, buildAirspace, buildClosures, pruneExpired } from './lib/nms-notam.mjs';
+import { NMS_ACTIVATION_KEY, NMS_CLOSURES_KEY, applyFeatures, buildAirspace, buildClosures, pruneExpired } from './lib/nms-notam.mjs';
 
 loadEnvFile(import.meta.url);
 
 export const NMS_PROD_HOST = 'https://api-nms.aim.faa.gov';
+// runSeed writes the canonical meta to seed-meta:<domain>:<resource>.
+export const SEED_DOMAIN = 'aviation';
+export const SEED_RESOURCE = 'notam-airspace';
 export const AIRSPACE_KEY = 'aviation:notam:airspace:v1';
 export const CLOSURES_KEY = NMS_CLOSURES_KEY;
 export const CLOSURES_META_KEY = 'seed-meta:aviation:notam-nms-closures';
@@ -41,7 +45,7 @@ export const FULL_LOAD_GUARD_KEY = 'notam:nms:full-load-at:v1';
 // No TTL: api/health.js ACTIVATION_MARKERS keeps both NMS keys soft
 // (EMPTY_ON_DEMAND) until the first real publish, i.e. until production
 // NMS credentials are deployed. After that, missing data alarms normally.
-export const ACTIVATION_KEY = 'seed-activated:aviation:notam-nms:v1';
+export const ACTIVATION_KEY = NMS_ACTIVATION_KEY;
 export const CLASSIFICATIONS = Object.freeze(['FDC', 'DOMESTIC', 'INTERNATIONAL', 'MILITARY']);
 
 // Cron runs every 5 minutes. Health calls the data stale after 4 missed ticks;
@@ -49,9 +53,10 @@ export const CLASSIFICATIONS = Object.freeze(['FDC', 'DOMESTIC', 'INTERNATIONAL'
 const CACHE_TTL = 3600;
 export const MAX_STALE_MIN = 20;
 const STATE_TTL = 3 * 86_400;
-// Slightly under 24h so a daily resync does not drift later every day, while
-// staying inside "one bulk load every 24 hours".
-export const FULL_LOAD_MIN_INTERVAL_MS = 23.5 * 3600_000;
+// "One bulk load every 24 hours", plus one cron tick of margin. The resync
+// drifts up to 5 minutes later each day, which costs nothing: a complete store
+// keeps delta-syncing while it waits.
+export const FULL_LOAD_MIN_INTERVAL_MS = 24 * 3600_000 + 5 * 60_000;
 // lastUpdatedDate is capped at 24h back; resync before the cursor gets there.
 export const DELTA_MAX_WINDOW_MS = 23 * 3600_000;
 // Re-read a few minutes behind the cursor: a cancelled NOTAM can carry a
@@ -127,6 +132,10 @@ export function createNmsClient({ host, clientId, clientSecret, fetchImpl = (...
   }
 
   return {
+    /** Authenticate now, so a token outage fails before the bulk allowance is claimed. */
+    async ready() {
+      if (!token) await authenticate();
+    },
     /** NOTAMs created, updated or cancelled since `sinceMs` (active and inactive). */
     async delta(sinceMs) {
       return getNotamJson(`lastUpdatedDate=${encodeURIComponent(nmsTime(sinceMs))}`);
@@ -176,7 +185,9 @@ async function syncStateOnce({ state, lastFullLoadAt, markFullLoad, client, nowM
 
   if (needsFullLoad && fullLoadAllowed) {
     // Claim the daily allowance first: a crash mid-download must not let the
-    // next tick pull the bulk files again.
+    // next tick pull the bulk files again. Authenticate before claiming it, so
+    // a token outage does not spend the day's allowance on nothing.
+    await client.ready?.();
     await markFullLoad(nowMs);
     const items = {};
     const stats = { mode: 'full' };
@@ -261,11 +272,43 @@ async function writeFullLoadGuard(at) {
 }
 
 async function writeState(state) {
-  await upstashCommand(requireCreds(), ['SET', STATE_KEY, encodeGzipPayload(JSON.stringify(state)), 'EX', STATE_TTL]);
+  // Redis retries are free: they never reach NMS.
+  await withRetry(() => upstashCommand(requireCreds(), ['SET', STATE_KEY, encodeGzipPayload(JSON.stringify(state)), 'EX', STATE_TTL]));
 }
 
-function validate(data) {
-  return Array.isArray(data?.notams) && Array.isArray(data?.closures?.closedIcaos) && Array.isArray(data?.closures?.restrictedIcaos);
+/**
+ * The runSeed fetch step: read state, sync it, and persist it BEFORE either
+ * output is published. Both outputs are rebuilt from the whole state on every
+ * run, so a failed publish loses nothing; persisting after publish would let
+ * one Redis blip throw away a bulk load whose daily allowance is already spent.
+ */
+export async function fetchSnapshot({ readState: read, readLastFullLoadAt: readGuard, markFullLoad, persistState, client, nowMs, log = console.log, label = '' }) {
+  try {
+    const [state, lastFullLoadAt] = await Promise.all([read(), readGuard()]);
+    const result = await syncState({ state, lastFullLoadAt, markFullLoad, client, nowMs, log });
+    await persistState(result.state);
+    const payload = buildPayload(result.state, nowMs);
+    log(`[NMS] ${label}${summarize(result, payload)}`);
+    return payload;
+  } catch (err) {
+    // A pull already happened by the time a state write fails; runSeed's
+    // retry would pull again inside the FAA delta limit.
+    if (err && typeof err === 'object') err.nonRetryable = true;
+    throw err;
+  }
+}
+
+// runSeed validates the publishTransform output, which carries no closures:
+// the closures extra key is built from the raw payload.
+export function validate(data) {
+  return Array.isArray(data?.notams);
+}
+
+export const publishTransform = ({ generatedAt, source, notams }) => ({ generatedAt, source, notams });
+
+/** Pre-prod carries FAA test NOTAMs; only production publishes by default. */
+export function isDryRun(host, env) {
+  return !isProductionHost(host) && env.NMS_ALLOW_NONPROD_WRITE !== '1';
 }
 
 function summarize(result, payload) {
@@ -287,7 +330,7 @@ async function main() {
   const client = createNmsClient({ host, clientId, clientSecret });
   const nonProd = !isProductionHost(host);
 
-  if (nonProd && process.env.NMS_ALLOW_NONPROD_WRITE !== '1') {
+  if (isDryRun(host, process.env)) {
     // Dry run: no Redis reads or writes, so every run is a bulk load. Pre-prod
     // allows that; production never takes this branch.
     const nowMs = Date.now();
@@ -298,16 +341,15 @@ async function main() {
     process.exit(0);
   }
 
-  let nextState = null;
-  return runSeed('aviation', 'notam-airspace', AIRSPACE_KEY, async () => {
-    const nowMs = Date.now();
-    const [state, lastFullLoadAt] = await Promise.all([readState(), readLastFullLoadAt()]);
-    const result = await syncState({ state, lastFullLoadAt, markFullLoad: writeFullLoadGuard, client, nowMs });
-    nextState = result.state;
-    const payload = buildPayload(result.state, nowMs);
-    console.log(`[NMS] ${nonProd ? `(non-prod ${host}) ` : ''}${summarize(result, payload)}`);
-    return payload;
-  }, {
+  return runSeed(SEED_DOMAIN, SEED_RESOURCE, AIRSPACE_KEY, () => fetchSnapshot({
+    readState,
+    readLastFullLoadAt,
+    markFullLoad: writeFullLoadGuard,
+    persistState: writeState,
+    client,
+    nowMs: Date.now(),
+    label: nonProd ? `(non-prod ${host}) ` : '',
+  }), {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
     lockTtlMs: 300_000,
@@ -317,7 +359,25 @@ async function main() {
     zeroIsValid: true,
     maxStaleMin: MAX_STALE_MIN,
     allowPreservedFetchFailure: true,
-    publishTransform: ({ generatedAt, source, notams }) => ({ generatedAt, source, notams }),
+    publishTransform,
+    extraKeys: publishTargets(host).extraKeys,
+    afterPublish: async () => {
+      if (!publishTargets(host).activates) return;
+      await withRetry(() => upstashCommand(requireCreds(), ['SET', ACTIVATION_KEY, '1']));
+    },
+  });
+}
+
+/**
+ * What a run publishes besides the airspace key. A pre-prod host with
+ * NMS_ALLOW_NONPROD_WRITE=1 feeds the map layer only: its closures are FAA
+ * test NOTAMs (e.g. KJFK "AUTOMATED TEST TEXT") that seed-aviation would merge
+ * into airport alerts and notam_closure notifications, and it must not flip
+ * the production health cutover either.
+ */
+export function publishTargets(host) {
+  if (!isProductionHost(host)) return { extraKeys: [], activates: false };
+  return {
     extraKeys: [{
       key: CLOSURES_KEY,
       ttl: CACHE_TTL,
@@ -325,13 +385,8 @@ async function main() {
       declareRecords: (closures) => closures.closedIcaos.length + closures.restrictedIcaos.length,
       metaKey: CLOSURES_META_KEY,
     }],
-    // State advances only after both outputs published: a failed publish
-    // re-reads the same delta window next tick.
-    afterPublish: async () => {
-      if (nextState) await writeState(nextState);
-      await upstashCommand(requireCreds(), ['SET', ACTIVATION_KEY, '1']);
-    },
-  });
+    activates: true,
+  };
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''));

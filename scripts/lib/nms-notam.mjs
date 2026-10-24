@@ -36,8 +36,12 @@ const AIRPORT_RESTRICTION_SUBJECTS = new Set(['RA', 'RO', 'RT', 'RR', 'RP']);
 
 // Written by seed-notam-nms.mjs, read by seed-aviation.mjs's NOTAM side-car.
 export const NMS_CLOSURES_KEY = 'aviation:notam:nms:closures:v1';
-// Matches seed-notam-nms.mjs MAX_STALE_MIN: older NMS closures are not a
-// current observation and must not be republished as one.
+// Set (no TTL) by the first production NMS publish. From then on NMS is the
+// primary closure source, and seed-aviation will not publish without it.
+export const NMS_ACTIVATION_KEY = 'seed-activated:aviation:notam-nms:v1';
+// seed-notam-nms.mjs's 20-minute health budget (MAX_STALE_MIN) plus 10 minutes
+// of grace for a slow run. Older NMS closures are not a current observation
+// and must not be republished as one.
 export const NMS_CLOSURES_MAX_AGE_MS = 30 * 60_000;
 
 export const AIRSPACE_KINDS = Object.freeze(['closure', 'tfr', 'prohibited', 'restricted', 'danger', 'military', 'reserved', 'overflight']);

@@ -5954,6 +5954,7 @@ export const __testing__ = {
   healthResponseBody,
   collectFailureLogProblems,
   buildFailureLogPersistencePlan,
+  SEED_META,
   ACTIVATION_MARKERS,
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
   RUNTIME_ROLLOUT_PENDING_POLICIES,

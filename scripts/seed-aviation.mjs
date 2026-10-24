@@ -45,7 +45,7 @@ import notificationDedup from './shared/notification-dedup.cjs';
 import countryNameMap from './shared/country-name-to-iso2.cjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { airportNotifyLocation } from './lib/airport-notify-location.mjs';
-import { NMS_CLOSURES_KEY, isFreshNmsClosures, mergeClosureSources } from './lib/nms-notam.mjs';
+import { NMS_ACTIVATION_KEY, NMS_CLOSURES_KEY, isFreshNmsClosures, mergeClosureSources } from './lib/nms-notam.mjs';
 
 const {
   buildDedupMaterial,
@@ -1330,6 +1330,15 @@ async function loadNmsClosures() {
   }
 }
 
+// An unreadable marker counts as activated: holding last-good is the safe miss.
+async function isNmsActivated() {
+  try {
+    return (await upstashGet(NMS_ACTIVATION_KEY)) !== null;
+  } catch {
+    return true;
+  }
+}
+
 const NOTAM_SOURCE_LABELS = { nms: 'FAA NMS NOTAM', icao: 'ICAO NOTAM' };
 
 async function runNotamSideCar() {
@@ -1343,6 +1352,14 @@ async function runNotamSideCar() {
       icaoError = err;
     }
     const nms = await loadNmsClosures();
+    if (!nms && await isNmsActivated()) {
+      // NMS is the primary source once activated. Publishing ICAO alone would
+      // present a partial (today: empty) list as current and reset the
+      // prev-closed state, so every standing closure re-notifies on recovery.
+      const icaoStatus = icaoError ? `ICAO fetch failed: ${icaoError?.message || icaoError}` : 'ICAO alone is partial';
+      await preserveLastGoodNotam(`FAA NMS closures are not current (${icaoStatus})`);
+      return;
+    }
     if (!icao && !nms) {
       if (icaoError) await preserveLastGoodNotam(`ICAO fetch failed: ${icaoError?.message || icaoError}`);
       return; // no source configured

@@ -59,6 +59,18 @@ export function parseNotamAirspace(value: unknown): NotamAirspaceSnapshot {
 }
 
 /**
+ * Rows still in effect at `nowMs`, with `upcoming` re-derived from the clock.
+ * The seeder computes both at publish time, but the client can hold a snapshot
+ * for hours (a failed refresh keeps the last one, and the seeder keeps
+ * last-good alive while NMS is down), so an ended NOTAM must not stay drawn.
+ */
+export function currentRestrictions(rows: NotamAirspaceRestriction[], nowMs: number): NotamAirspaceRestriction[] {
+  return rows
+    .filter((row) => row.endsAt === null || row.endsAt > nowMs)
+    .map((row) => ({ ...row, upcoming: row.startsAt !== null && row.startsAt > nowMs }));
+}
+
+/**
  * The on-demand key is fetched only while the layer is on. Undefined means
  * the fetch failed (or the key is not published yet), not "no restrictions".
  */

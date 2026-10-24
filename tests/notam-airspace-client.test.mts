@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { parseNotamAirspace, type NotamAirspaceRestriction } from '../src/services/notam-airspace.ts';
-import { notamAirspaceTooltip } from '../src/components/map/notam-airspace-style.ts';
+import { currentRestrictions, parseNotamAirspace, type NotamAirspaceRestriction } from '../src/services/notam-airspace.ts';
+import { NOTAM_AIRSPACE_COLORS, NOTAM_AIRSPACE_KIND_LABELS, notamAirspaceTooltip } from '../src/components/map/notam-airspace-style.ts';
+import { AIRSPACE_KINDS } from '../scripts/lib/nms-notam.mjs';
 import { escapeHtml } from '../src/utils/sanitize.ts';
 
 // The same escaper DeckGLMap passes to the tooltip builder.
@@ -52,6 +53,31 @@ test('parseNotamAirspace tolerates a missing or non-object payload', () => {
   assert.deepEqual(parseNotamAirspace({ notams: 'x' }), { generatedAt: null, notams: [] });
 });
 
+test('currentRestrictions drops ended NOTAMs and re-derives upcoming from the clock', () => {
+  // The client can hold a snapshot for hours: a failed refresh keeps it, and
+  // runSeed keeps last-good alive while NMS is down.
+  const now = Date.UTC(2026, 9, 24, 12, 0);
+  const rows = currentRestrictions([
+    ROW,
+    { ...ROW, id: 'ended', endsAt: now - 1 },
+    { ...ROW, id: 'ends-now', endsAt: now },
+    { ...ROW, id: 'perm', endsAt: null },
+    { ...ROW, id: 'started', startsAt: now - 60_000, upcoming: true },
+    { ...ROW, id: 'later', startsAt: now + 60_000 },
+  ], now);
+  assert.deepEqual(rows.map((row) => [row.id, row.upcoming]), [
+    ['NMS_ID_1', false], ['perm', false], ['started', false], ['later', true],
+  ]);
+});
+
+test('the browser renders every airspace kind the seeder emits', () => {
+  assert.deepEqual(Object.keys(NOTAM_AIRSPACE_COLORS).sort(), [...AIRSPACE_KINDS].sort());
+  assert.deepEqual(Object.keys(NOTAM_AIRSPACE_KIND_LABELS).sort(), [...AIRSPACE_KINDS].sort());
+  for (const kind of AIRSPACE_KINDS) {
+    assert.equal(parseNotamAirspace({ notams: [{ ...ROW, kind }] }).notams.length, 1, kind);
+  }
+});
+
 test('notamAirspaceTooltip escapes every upstream field', () => {
   const html = notamAirspaceTooltip({
     ...ROW,
@@ -77,7 +103,7 @@ test('notamAirspaceTooltip labels permanent and upcoming NOTAMs', () => {
 const DECK_SOURCE = new URL('../src/components/DeckGLMap.ts', import.meta.url);
 
 test('DeckGLMap draws the restriction areas under every aircraft and point layer', () => {
-  // A pickable area drawn above aircraft steals their hover and click.
+  // A pickable area drawn above a marker steals its hover and click.
   const source = readFileSync(DECK_SOURCE, 'utf8');
   const at = (call: string) => {
     const index = source.indexOf(`layers.push(${call}`);
@@ -86,6 +112,13 @@ test('DeckGLMap draws the restriction areas under every aircraft and point layer
   };
   const notam = at('...this.createNotamAirspaceLayers(');
   for (const above of [
+    'this.createBasesLayer(',
+    'this.createNuclearLayer(',
+    '...this.createHotspotsLayers(',
+    'this.createEarthquakesLayer(',
+    'this.createFiresLayer(',
+    'this.createOutagesLayer(',
+    'this.createPortsLayer(',
     'this.createFlightDelaysLayer(',
     'this.createAircraftPositionsLayer(',
     '...this.createProtestClusterLayers(',
@@ -96,4 +129,16 @@ test('DeckGLMap draws the restriction areas under every aircraft and point layer
   ]) {
     assert.ok(notam < at(above), `NOTAM areas must be pushed before ${above}`);
   }
+});
+
+test('a click inside a NOTAM area still reaches the country under it', () => {
+  // The areas are hover-only; without this route a 250 NM circle swallows
+  // every country click inside it.
+  const source = readFileSync(DECK_SOURCE, 'utf8');
+  const overlays = source.match(/AREA_OVERLAY_LAYER_IDS = new Set\(\[([^\]]*)\]/)?.[1] ?? '';
+  for (const id of ['notam-airspace-polygons', 'notam-airspace-circles']) {
+    assert.match(overlays, new RegExp(`'${id}'`));
+    assert.match(source, new RegExp(`id: '${id}'`), `${id} is the layer id createNotamAirspaceLayers uses`);
+  }
+  assert.match(source, /if \(!info\.object \|\| isChoropleth \|\| isAreaOverlay\)/);
 });

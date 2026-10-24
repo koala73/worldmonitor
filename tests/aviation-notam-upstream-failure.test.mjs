@@ -39,6 +39,7 @@ if (process.env.TEST_NMS_MODE) {
     },
   }));
 }
+if (process.env.TEST_NMS_ACTIVATED) values.set('seed-activated:aviation:notam-nms:v1', '1');
 const writes = [];
 const expires = [];
 const pushes = [];
@@ -218,12 +219,36 @@ test('without an ICAO key, fresh NMS closures still publish', () => {
   assert.equal(state.meta.recordCount, 3);
 });
 
-test('ICAO and NMS closures merge; NMS reasons win and closed beats restricted', () => {
+// Closed-beats-restricted across sources: tests/notam-nms.test.mjs mergeClosureSources.
+test('ICAO and NMS closures merge and NMS reasons win', () => {
   const { state, stdout, stderr } = runAviation({ TEST_ICAO_MODE: 'ok', TEST_NMS_MODE: 'fresh' });
   assert.equal(state.icaoCalls, 1, stdout + stderr);
   assert.deepEqual(state.notam.closedIcaos, ['OEJN']);
   assert.deepEqual(state.notam.restrictedIcaos.sort(), ['OEDF', 'OEMA']);
   assert.equal(state.notam.reasons.OEMA, 'RESTRICTED (NMS)');
+});
+
+// Once NMS has published in production it is the primary closure source. A
+// stale or expired NMS snapshot must not let an empty ICAO answer (the feed has
+// returned nothing since 2026-10-19) publish "no closures" as current: that
+// clears notam:prev-closed-state:v1, so every standing closure re-notifies when
+// NMS recovers.
+for (const nmsMode of ['stale', '']) {
+  test(`activated NMS ${nmsMode || 'missing'}: an empty ICAO answer keeps last-good closures`, () => {
+    const { state, stdout, stderr } = runAviation({ TEST_ICAO_MODE: 'okEmpty', TEST_NMS_MODE: nmsMode, TEST_NMS_ACTIVATED: '1' });
+    assert.equal(state.icaoCalls, 1, stdout + stderr);
+    assert.match(stderr, /FAA NMS closures are not current.* kept last-good closures/);
+    assert.equal(state.writes.includes(NOTAM_KEY), false);
+    assert.equal(state.writes.includes(NOTAM_META_KEY), false, 'seed-meta ages into STALE');
+    assert.equal(state.writes.includes('notam:prev-closed-state:v1'), false);
+    assert.deepEqual(state.notam.closedIcaos, ['OEDF']);
+  });
+}
+
+test('before NMS activation an empty ICAO answer is still a valid observation', () => {
+  const { state, stdout, stderr } = runAviation({ TEST_ICAO_MODE: 'okEmpty', TEST_NMS_MODE: 'stale' });
+  assert.equal(state.icaoCalls, 1, stdout + stderr);
+  assert.deepEqual(state.notam, { closedIcaos: [], restrictedIcaos: [], reasons: {} });
 });
 
 test('stale NMS closures are ignored: an ICAO outage still keeps last-good', () => {

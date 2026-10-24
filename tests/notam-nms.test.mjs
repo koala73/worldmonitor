@@ -16,19 +16,31 @@ import {
   buildClosures,
   classifyNotam,
   compactFeature,
+  mergeClosureSources,
   parseQCoordinates,
   pruneExpired,
 } from '../scripts/lib/nms-notam.mjs';
 import {
+  ACTIVATION_KEY,
   CLASSIFICATIONS,
+  CLOSURES_KEY,
+  CLOSURES_META_KEY,
   DELTA_MAX_WINDOW_MS,
   DELTA_OVERLAP_MS,
   FULL_LOAD_MIN_INTERVAL_MS,
+  MAX_STALE_MIN,
   NMS_PROD_HOST,
+  SEED_DOMAIN,
+  SEED_RESOURCE,
   buildPayload,
   createNmsClient,
+  fetchSnapshot,
+  isDryRun,
   isProductionHost,
+  publishTargets,
+  publishTransform,
   syncState,
+  validate,
 } from '../scripts/seed-notam-nms.mjs';
 
 const FIXTURE = JSON.parse(readFileSync(new URL('./fixtures/nms-notam-geojson.json', import.meta.url), 'utf8')).features;
@@ -291,6 +303,111 @@ describe('syncState', () => {
       /HTTP 503/,
     );
     assert.equal(guarded, true);
+  });
+
+  it('authenticates before claiming the bulk allowance, so an auth outage cannot spend it', async () => {
+    const client = fakeClient();
+    client.ready = async () => { throw new Error('NMS auth failed: HTTP 503'); };
+    await assert.rejects(
+      syncState({ state: null, lastFullLoadAt: null, markFullLoad: async () => assert.fail('guard claimed before auth'), client, nowMs: NOW, log: quiet }),
+      /auth failed/,
+    );
+    assert.deepEqual(client.calls, []);
+  });
+
+  it('waits a full 24 hours between bulk loads', () => {
+    assert.ok(FULL_LOAD_MIN_INTERVAL_MS >= 24 * HOUR, 'FAA allows one bulk load per 24 hours');
+    assert.ok(DELTA_MAX_WINDOW_MS < FULL_LOAD_MIN_INTERVAL_MS);
+  });
+});
+
+describe('runSeed wiring', () => {
+  const items = {};
+  applyFeatures(items, Object.values(FIXTURE), NOW);
+
+  // runSeed validates the publishTransform output (atomicPublish in
+  // _seed-utils.mjs), not the raw fetch result.
+  it('validate accepts the canonical payload runSeed actually publishes', () => {
+    const published = publishTransform(buildPayload({ cursor: NOW, fullLoadAt: NOW, items }, NOW));
+    assert.deepEqual(Object.keys(published).sort(), ['generatedAt', 'notams', 'source']);
+    assert.equal(validate(published), true);
+    assert.equal(validate({ generatedAt: NOW, source: 'FAA NMS' }), false);
+  });
+
+  it('persists the synced state before returning, so a failed publish cannot lose a bulk load', async () => {
+    const order = [];
+    const client = fakeClient({ classification: { FDC: [FIXTURE.tfr_fdc] } });
+    const payload = await fetchSnapshot({
+      readState: async () => null,
+      readLastFullLoadAt: async () => null,
+      markFullLoad: async () => { order.push('guard'); },
+      persistState: async (state) => { order.push(['state', state.fullLoadAt]); },
+      client,
+      nowMs: NOW,
+      log: () => {},
+    });
+    assert.deepEqual(order, ['guard', ['state', NOW]]);
+    assert.equal(payload.notams.length, 1);
+  });
+
+  it('makes a failed state write single-attempt too, so runSeed cannot re-pull', async () => {
+    const state = { cursor: NOW - 5 * 60_000, fullLoadAt: NOW - 2 * HOUR, items: {} };
+    const client = fakeClient();
+    await assert.rejects(
+      fetchSnapshot({
+        readState: async () => state,
+        readLastFullLoadAt: async () => NOW - 2 * HOUR,
+        markFullLoad: async () => {},
+        persistState: async () => { throw new Error('Upstash SET failed'); },
+        client,
+        nowMs: NOW,
+        log: () => {},
+      }),
+      (err) => err.nonRetryable === true && /Upstash/.test(err.message),
+    );
+    assert.equal(client.calls.length, 1, 'exactly one delta pull');
+  });
+
+  it('dry-runs on every non-production host unless explicitly allowed', () => {
+    assert.equal(isDryRun(NMS_PROD_HOST, {}), false);
+    assert.equal(isDryRun('https://api-staging.cgifederal-aim.com', {}), true);
+    assert.equal(isDryRun('https://api-staging.cgifederal-aim.com', { NMS_ALLOW_NONPROD_WRITE: '1' }), false);
+    assert.equal(isDryRun('https://api-staging.cgifederal-aim.com', { NMS_ALLOW_NONPROD_WRITE: 'true' }), true);
+  });
+
+  it('keeps pre-prod closures out of airport alerts and the health cutover', () => {
+    const prod = publishTargets(NMS_PROD_HOST);
+    assert.deepEqual(prod.extraKeys.map((k) => [k.key, k.metaKey]), [[CLOSURES_KEY, CLOSURES_META_KEY]]);
+    assert.equal(prod.activates, true);
+    const staging = publishTargets('https://api-staging.cgifederal-aim.com');
+    assert.deepEqual(staging.extraKeys, [], 'FAA test closures (KJFK) must not reach seed-aviation');
+    assert.equal(staging.activates, false);
+  });
+
+  it('matches the keys and staleness budget /api/health grades', async () => {
+    const { __testing__ } = await import('../api/health.js');
+    const { SEED_META, ACTIVATION_MARKERS } = __testing__;
+    // runSeed writes the canonical meta as seed-meta:<domain>:<resource>.
+    assert.equal(SEED_META.notamAirspace.key, `seed-meta:${SEED_DOMAIN}:${SEED_RESOURCE}`);
+    assert.equal(SEED_META.notamNmsClosures.key, CLOSURES_META_KEY);
+    for (const name of ['notamAirspace', 'notamNmsClosures']) {
+      assert.equal(SEED_META[name].maxStaleMin, MAX_STALE_MIN, name);
+      assert.equal(SEED_META[name].activationKey, ACTIVATION_KEY, name);
+      assert.equal(ACTIVATION_MARKERS[name], ACTIVATION_KEY, name);
+    }
+  });
+});
+
+describe('mergeClosureSources', () => {
+  it('closes an airport any source closes, keeps the first reason, and drops unwatched airports', () => {
+    const nms = { closedIcaos: ['OEJN'], restrictedIcaos: ['OEMA'], reasons: { OEJN: 'AD CLSD (NMS)', OEMA: 'RESTRICTED (NMS)' } };
+    const icao = { closedIcaos: ['OEMA', 'KZZZ'], restrictedIcaos: ['OEDF'], reasons: { OEMA: 'AD CLSD (ICAO)', OEDF: 'PPR (ICAO)', KZZZ: 'AD CLSD' } };
+    const merged = mergeClosureSources([{ label: 'FAA NMS NOTAM', snapshot: nms }, { label: 'ICAO NOTAM', snapshot: icao }, { label: 'x', snapshot: null }], ['OEJN', 'OEMA', 'OEDF']);
+    assert.deepEqual(merged.closedIcaos.sort(), ['OEJN', 'OEMA']);
+    assert.deepEqual(merged.restrictedIcaos, ['OEDF'], 'closed by ICAO beats restricted by NMS');
+    assert.equal(merged.reasons.OEMA, 'RESTRICTED (NMS)');
+    assert.deepEqual(merged.sourceByIcao, { OEJN: 'FAA NMS NOTAM', OEMA: 'FAA NMS NOTAM', OEDF: 'ICAO NOTAM' });
+    assert.equal(merged.reasons.KZZZ, undefined);
   });
 });
 
