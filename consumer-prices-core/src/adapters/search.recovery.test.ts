@@ -80,6 +80,33 @@ function makeBrazilTarget(
 }
 
 describe('SearchAdapter recovery path', () => {
+  it('refuses a different drink before the strict validator can lose digit-prefixed identity', async () => {
+    const config = loadRetailerConfig('noon_grocery_ae');
+    const response = {
+      data: { productName: 'Cola 350ml', price: 3.95, currency: 'AED', sizeText: '350ml' },
+      pageContent: 'Cola 350ml\nAED 3.95',
+    };
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url: 'https://www.noon.com/uae-en/cola/p/REPLAY/' }]),
+      extract: vi.fn().mockResolvedValue(response),
+    } as unknown as ExaProvider;
+    const firecrawl = { extract: vi.fn().mockResolvedValue(response) } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const target = { id: 'digit-brand', url: config.baseUrl, category: 'beverage', metadata: {
+      canonicalName: '7up 330ml', domain: new URL(config.baseUrl).hostname,
+      currency: config.currencyCode, basketSlug: 'synthetic-drink-guard',
+      itemConstraints: { baseUnit: 'ml', minBaseQty: 300, maxBaseQty: 350 }, direct: false,
+    } };
+
+    const error = await adapter.fetchTarget(makeContext(config), target).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SearchTargetError);
+    expect((error as SearchTargetError).failures).toEqual([
+      expect.objectContaining({ provider: 'firecrawl', reason: 'title-mismatch' }),
+      expect.objectContaining({ provider: 'exa', reason: 'title-mismatch' }),
+    ]);
+  });
+
   describe('AE tomato title replay', () => {
     const item = loadBasketConfig('essentials_ae').items.find(({ id }) => id === 'tomatoes_1kg')!;
     const fixtures = [

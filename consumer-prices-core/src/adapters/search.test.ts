@@ -64,6 +64,11 @@ describe('isTitlePlausible', () => {
     expect(isTitlePlausible('Onions 1kg', 'Tomatoes 1kg')).toBe(false);
   });
 
+  it('preserves digit-prefixed product identity instead of treating it as a quantity unit', () => {
+    expect(isTitlePlausible('7up 330ml', 'Cola 350ml')).toBe(false);
+    expect(isTitlePlausible('7up 330ml', '7up')).toBe(true);
+  });
+
   it('rejects gross mismatches (seeds vs vegetables)', () => {
     expect(isTitlePlausible('Tomatoes Fresh 1kg', 'GGOOT Tomato Seeds 100 pcs Vegetable Garden')).toBe(false);
     expect(isTitlePlausible('Onions 1kg', 'Red Karmen Onion Sets for Planting x200')).toBe(false);
