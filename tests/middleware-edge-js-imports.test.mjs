@@ -10,13 +10,14 @@ import { test } from 'node:test';
 // so only this walk catches it before a preview deploy fails.
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const IMPORT_SPECIFIER = /(?:^|[\s;])(?:import|export)\s(?:[^'"]*?\sfrom\s*)?['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/gm;
+const IMPORT_SPECIFIER = /(?:^|[\s;])(?:import|export)\s(?:[^'"]*?from\s*)?['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/gm;
+
+function importSpecifiers(source) {
+  return [...source.matchAll(IMPORT_SPECIFIER)].map((match) => match[1] ?? match[2]);
+}
 
 function relativeImports(file) {
-  const source = readFileSync(file, 'utf8');
-  return [...source.matchAll(IMPORT_SPECIFIER)]
-    .map((match) => match[1] ?? match[2])
-    .filter((specifier) => specifier.startsWith('.'));
+  return importSpecifiers(readFileSync(file, 'utf8')).filter((specifier) => specifier.startsWith('.'));
 }
 
 function middlewareJsGraph() {
@@ -45,4 +46,29 @@ test('no JavaScript module bundled into middleware.ts imports a TypeScript file'
   const { seen, offenders } = middlewareJsGraph();
   assert.ok(seen.size > 5, `walked only ${seen.size} modules; the import scan is broken`);
   assert.deepEqual(offenders, [], `Edge middleware cannot bundle these imports:\n${offenders.join('\n')}`);
+});
+
+test('the import scan sees every static, side-effect and dynamic import form', () => {
+  const source = [
+    "import { a } from './named.ts';",
+    "import {\n  b,\n} from './multiline.ts';",
+    "import {c}from './unspaced.ts';",
+    "export {d}from './unspaced-reexport.ts';",
+    "export * from './star.ts';",
+    "import fromage from './fromage.ts';",
+    "import './side-effect.ts';",
+    "const lazy = import('./dynamic.ts');",
+    "export const label = 'from';",
+    "export default './not-an-import.ts';",
+  ].join('\n');
+  assert.deepEqual(importSpecifiers(source), [
+    './named.ts',
+    './multiline.ts',
+    './unspaced.ts',
+    './unspaced-reexport.ts',
+    './star.ts',
+    './fromage.ts',
+    './side-effect.ts',
+    './dynamic.ts',
+  ]);
 });

@@ -72,11 +72,11 @@ Vercel's Edge middleware bundler treats a `.ts` specifier reached from a JavaScr
 - The first version of that regex missed side-effect imports (`import './x.mjs';`). The widened pattern is in PR #9625, open as of this writing:
 
   ```js
-  /(?:^|[\s;])(?:import|export)\s(?:[^'"]*?\sfrom\s*)?['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/gm
+  /(?:^|[\s;])(?:import|export)\s(?:[^'"]*?from\s*)?['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/gm
   ```
 
 - When a module under `scripts/` is shared by a generator and `middleware.ts`, pass TypeScript-owned data in as an argument. Do not import it.
-- The same PR hit a second CI-only gate. A new top-level crawlable-corpus prefix must be mapped in `SEGMENT_FAMILIES` in `scripts/lib/seo-url-taxonomy.mjs`, or `tests/seo-url-taxonomy.test.mjs` fails in the unit shard (auto memory [claude]).
+- The same PR hit a second CI-only gate. A new top-level crawlable-corpus prefix must be mapped in `SEGMENT_FAMILIES` in `scripts/lib/seo-url-taxonomy.mjs`, or `tests/seo-url-taxonomy.test.mjs` fails in the unit shard. #9623 hit this on its first CI run.
 
 ## Related Issues
 
