@@ -42,7 +42,6 @@
   "commands.labels.layer.fires": "Toggle satellite fires",
   "commands.labels.layer.flights": "Toggle military flights",
   "commands.labels.layer.hotspots": "Toggle intel hotspots",
-  "commands.labels.layer.notamAirspace": "Toggle NOTAM airspace restrictions overlay",
   "commands.labels.layer.nuclear": "Toggle nuclear facilities",
   "commands.labels.layer.outages": "Toggle internet outages",
   "commands.labels.layer.pipelines": "Toggle pipelines",

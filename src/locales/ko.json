@@ -572,8 +572,7 @@
         "outages": "인터넷 장애 전환",
         "tradeRoutes": "무역 노선 전환",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
-        "notamAirspace": "NOTAM 공역 제한 오버레이 토글"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "다크 모드로 전환",

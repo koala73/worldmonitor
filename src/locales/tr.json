@@ -574,8 +574,7 @@
         "outages": "İnternet kesintilerini aç/kapat",
         "tradeRoutes": "Ticaret yollarını aç/kapat",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
-        "notamAirspace": "NOTAM hava sahasına ilişkin kısıtlamalar katmanını aç/kapat"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Karanlık moda geç",

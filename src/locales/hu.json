@@ -643,8 +643,7 @@
         "outages": "Internetkiesések be/ki",
         "tradeRoutes": "Kereskedelmi útvonalak be/ki",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
-        "notamAirspace": "NOTAM légtéri korlátozások rétegének be/kikapcsolása"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Váltás sötét módra",

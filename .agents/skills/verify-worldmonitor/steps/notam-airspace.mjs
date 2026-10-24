@@ -4,8 +4,9 @@ import { applyFeatures } from '../../../../scripts/lib/nms-notam.mjs';
 import { buildPayload } from '../../../../scripts/seed-notam-nms.mjs';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 
-// NOTAM airspace layer: toggle it on, prove the on-demand key is fetched only
-// then, hover a drawn restriction for its tooltip, and toggle it off.
+// NOTAM airspace areas on the Aviation layer: toggle Aviation on, prove the
+// on-demand key is fetched only then (and never on SVG), hover a drawn
+// restriction for its tooltip, and toggle it off.
 // The payload is built from tests/fixtures/nms-notam-geojson.json with the
 // seeder's own functions. WM_VERIFY_NOTAM_FIXTURE may point at a larger payload
 // (the `aviation:notam:airspace:v1` shape) for density screenshots.
@@ -64,37 +65,35 @@ export default async function ({ page, base, shot, log }) {
   if (mobile) await page.locator('[data-mobile-tab="map"]').click();
   const renderer = await waitForMap(page);
   log('SYNTHETIC replay of FAA NMS fixture rows', { rows: payload.notams.length, focus: focus.id, kind: focus.kind, renderer, mobile });
-  assert.equal(requests, 0, 'the on-demand key must not be fetched while the layer is off');
+  assert.equal(requests, 0, 'the on-demand key must not be fetched while Aviation is off');
   await shot('before-enable');
 
-  // The layer is deck.gl-only. On the SVG renderer (the mobile default and any
-  // browser without WebGL) it must not be offered at all.
+  // NOTAM areas belong to the Aviation (flights) layer, which every renderer
+  // offers. Only deck.gl draws the areas: on the SVG renderer (the mobile
+  // default and any browser without WebGL) Aviation must not fetch them.
+  const layersState = () => page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-layers') || '{}'));
+  const toggleLayer = async () => {
+    if (!mobile) { await page.locator('.layer-toggle[data-layer="flights"]').click(); return; }
+    await page.locator('[data-mobile-tab="search"]').click();
+    await page.locator('.search-overlay .search-input').fill('NOTAM');
+    await page.locator('.search-result-item[data-index]').filter({ hasText: /aviation/i }).first().click();
+    await page.locator('[data-mobile-tab="map"]').click();
+  };
+  assert.equal(await page.locator('.layer-toggle[data-layer="notamAirspace"]').count(), 0, 'no separate NOTAM toggle');
+  await toggleLayer();
+  await page.waitForFunction(() => /[?&]layers=[^&]*flights/.test(location.search)
+    && JSON.parse(localStorage.getItem('worldmonitor-layers')).flights === true);
+
   if (renderer === 'svg') {
-    assert.equal(await page.locator('.layer-toggle[data-layer="notamAirspace"]:visible').count(), 0);
-    if (mobile) {
-      await page.locator('[data-mobile-tab="search"]').click();
-      await page.locator('.search-overlay .search-input').fill('NOTAM airspace');
-      await page.waitForTimeout(500);
-      assert.equal(await page.locator('.search-result-item[data-index]').filter({ hasText: /NOTAM airspace/i }).count(), 0);
-      await shot('svg-search-not-offered');
-    }
-    assert.equal(requests, 0);
-    log('Assertions passed: not offered on the SVG renderer', { renderer, mobile });
+    await page.waitForTimeout(3000);
+    assert.equal(requests, 0, 'the SVG renderer does not fetch NOTAM areas');
+    await shot('svg-aviation-on');
+    log('Assertions passed: Aviation on SVG fetches no NOTAM areas', { renderer, mobile, layers: await layersState() });
     return;
   }
 
-  const toggleLayer = async () => {
-    if (!mobile) { await page.locator('.layer-toggle[data-layer="notamAirspace"]').click(); return; }
-    await page.locator('[data-mobile-tab="search"]').click();
-    await page.locator('.search-overlay .search-input').fill('NOTAM');
-    await page.locator('.search-result-item[data-index]').filter({ hasText: /NOTAM/ }).first().click();
-    await page.locator('[data-mobile-tab="map"]').click();
-  };
-  await toggleLayer();
-  await page.waitForFunction(() => location.search.includes('notamAirspace')
-    && JSON.parse(localStorage.getItem('worldmonitor-layers')).notamAirspace === true);
   for (let i = 0; i < 100 && requests === 0; i++) await page.waitForTimeout(100);
-  assert.ok(requests >= 1, 'enabling the layer fetches notamAirspace');
+  assert.ok(requests >= 1, 'enabling Aviation fetches notamAirspace');
   await page.waitForTimeout(1500); // deck.gl paints on the next animation frames
   await shot('enabled');
 
@@ -110,8 +109,7 @@ export default async function ({ page, base, shot, log }) {
   }
 
   await toggleLayer();
-  await page.waitForFunction(() => !location.search.includes('notamAirspace')
-    && JSON.parse(localStorage.getItem('worldmonitor-layers')).notamAirspace === false);
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('worldmonitor-layers')).flights === false);
   await page.waitForTimeout(1000);
   await shot('disabled');
   log('Assertions passed', { requests, renderer, mobile });

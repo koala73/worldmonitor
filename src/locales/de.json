@@ -574,8 +574,7 @@
         "outages": "Internetausfälle umschalten",
         "tradeRoutes": "Handelsrouten umschalten",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
-        "notamAirspace": "NOTAM-Luftraumbeschränkungen-Overlay umschalten"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Zum Dunkelmodus wechseln",

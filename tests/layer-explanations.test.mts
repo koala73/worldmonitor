@@ -127,7 +127,6 @@ describe('layer explanation metadata', () => {
       'canadaRoads', 'canadaAlerts',
       'flights',
       'aircraftEmergencies',
-      'notamAirspace',
       'ais',
       'waterways',
       'tradeRoutes',
@@ -194,8 +193,9 @@ describe('layer explanation metadata', () => {
 
     const nmsService = JSON.parse(readSource('scripts/railway-services.json')).find((s: { service: string }) => s.service === 'seed-notam-nms');
     assert.equal(nmsService?.cronSchedule, '*/5 * * * *', 'seed-notam-nms runs every 5 minutes');
-    assertDuration(renderedFreshnessText('notamAirspace'), /every\s+([0-9]+)\s+(minute)s?/i, 5, 'FAA NMS seed cadence');
-    assertDuration(renderedFreshnessText('notamAirspace'), /([0-9]+)-\s*(minute)\s+freshness budget/i, healthMaxStale('notamAirspace'), 'FAA NMS health freshness budget');
+    // Airspace NOTAMs are drawn by the Aviation layer, so its card owns the NMS cadence.
+    assertDuration(renderedFreshnessText('flights'), /every\s+([0-9]+)\s+(minute)s?/i, 5, 'FAA NMS seed cadence');
+    assertDuration(renderedFreshnessText('flights'), /([0-9]+)-\s*(minute)\s+freshness budget/i, healthMaxStale('notamAirspace'), 'FAA NMS health freshness budget');
 
     const aviationCadenceMin = maxStaleMin('scripts/seed-aviation.mjs', 'intl') / 3;
     assertDuration(renderedFreshnessText('flights'), /([0-9]+)-\s*(minute)\s+cadence/i, aviationCadenceMin, 'aviation disruption seed cadence');

@@ -834,7 +834,7 @@ export class MapContainer {
     if (this.cachedAircraftPositions) this.setAircraftPositions(this.cachedAircraftPositions);
     if (this.cachedMilitaryFlights) this.setMilitaryFlights(this.cachedMilitaryFlights, this.cachedMilitaryFlightClusters ?? []);
     this.emergencyLayer.setEnabled(!this.useGlobe && this.getState().layers.aircraftEmergencies === true);
-    this.notamAirspaceLayer.setEnabled(this.useDeckGL && this.getState().layers.notamAirspace === true);
+    this.notamAirspaceLayer.setEnabled(this.useDeckGL && this.getState().layers.flights === true);
     if (this.useDeckGL && this.cachedNotamAirspace.length) this.deckGLMap?.setNotamAirspace(this.cachedNotamAirspace);
     if (this.cachedMilitaryVessels) this.setMilitaryVessels(this.cachedMilitaryVessels, this.cachedMilitaryVesselClusters ?? []);
     if (this.cachedNaturalEvents) this.setNaturalEvents(this.cachedNaturalEvents);
@@ -1084,7 +1084,7 @@ export class MapContainer {
     }
     this.initialState = { ...this.initialState, layers: sanitized };
     this.emergencyLayer.setEnabled(!this.useGlobe && sanitized.aircraftEmergencies === true);
-    this.notamAirspaceLayer.setEnabled(this.useDeckGL && sanitized.notamAirspace === true);
+    this.notamAirspaceLayer.setEnabled(this.useDeckGL && sanitized.flights === true);
     if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
     if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
   }
@@ -1514,7 +1514,7 @@ export class MapContainer {
     this.cachedOnLayerChange = callback;
     const notify = (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void => {
       if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(!this.useGlobe && enabled);
-      if (layer === 'notamAirspace') this.notamAirspaceLayer.setEnabled(this.useDeckGL && enabled);
+      if (layer === 'flights') this.notamAirspaceLayer.setEnabled(this.useDeckGL && enabled);
       callback(layer, enabled, source);
     };
     if (this.useGlobe) { this.globeMap?.setOnLayerChange(notify); return; }
@@ -1631,7 +1631,7 @@ export class MapContainer {
     // The renderer reports the change through onLayerChange, which also starts
     // the emergency feed. Start it here too in case no listener is attached yet.
     if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(this.getState().layers.aircraftEmergencies === true);
-    if (layer === 'notamAirspace') this.notamAirspaceLayer.setEnabled(this.useDeckGL && this.getState().layers.notamAirspace === true);
+    if (layer === 'flights') this.notamAirspaceLayer.setEnabled(this.useDeckGL && this.getState().layers.flights === true);
   }
 
   public triggerHotspotClick(id: string): void {

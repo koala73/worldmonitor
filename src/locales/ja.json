@@ -572,8 +572,7 @@
         "outages": "インターネット障害の切り替え",
         "tradeRoutes": "貿易ルートの切り替え",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
-        "notamAirspace": "NOTAM飛行制限空域オーバーレイの表示/非表示"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "ダークモードに切り替え",

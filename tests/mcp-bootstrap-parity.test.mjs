@@ -112,7 +112,7 @@ const EXCLUDED_FROM_MCP = new Map([
   ['intelligence:military-cii:v1',
     'intermediate: per-country military-presence aggregate (own/foreign flights+vessels, AIS disruption buckets) read by server/worldmonitor/intelligence/v1/get-risk-scores.ts to feed the CII Security component; surfaces transitively via the country-risk score returned by get_country_risk. Not a queryable MCP slice on its own.'],
   ['aviation:notam:airspace:v1',
-    'deferred: FAA NMS airspace restrictions (notamAirspace layer): TFRs and restricted/danger/prohibited area geometry, about 1.5 MB raw. Needs a geo-filtered tool, not this blob, once production data exists (activation: #9635). Airport-level closures reach MCP via get_aviation_status (see the next entry).'],
+    'deferred: FAA NMS airspace restrictions (drawn by the Aviation map layer): TFRs and restricted/danger/prohibited area geometry, about 1.5 MB raw. Needs a geo-filtered tool, not this blob, once production data exists (activation: #9635). Airport-level closures reach MCP via get_aviation_status (see the next entry).'],
   ['aviation:notam:nms:closures:v1',
     'intermediate: FAA NMS aerodrome closures. scripts/seed-aviation.mjs merges them into aviation:notam:closures:v2, applyNotam folds that into aviation:delays-bootstrap:v2, and get_aviation_status serves it. Only monitored airports survive the merge; closures elsewhere stay in this key.'],
   ['alerts:canada:v1',

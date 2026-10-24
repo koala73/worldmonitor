@@ -643,8 +643,7 @@
         "outages": "इंटरनेट बंद दिखाएं/छुपाएं",
         "tradeRoutes": "व्यापार मार्ग चालू/बंद करें",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
-        "notamAirspace": "NOTAM हवाई क्षेत्र प्रतिबंध ओवरले टॉगल करें"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "डार्क मोड पर जाएं",

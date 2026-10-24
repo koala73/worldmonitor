@@ -5,7 +5,7 @@ import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime
 const POLL_INTERVAL_MS = 5 * 60_000;
 
 /**
- * Fetches FAA NMS airspace restrictions while the notamAirspace layer is on
+ * Fetches FAA NMS airspace restrictions while the Aviation (flights) layer is on
  * and hands them to the renderer. Off means no requests and an empty layer.
  * A failed refresh keeps the last snapshot, re-filtered on every tick so
  * NOTAMs that have ended since it was published drop off the map.

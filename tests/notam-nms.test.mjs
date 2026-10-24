@@ -55,6 +55,10 @@ function feature(name, patch = {}, geometry) {
   if (geometry !== undefined) f.geometry = geometry;
   return f;
 }
+// The fixture's KLAX NOTAM only restricts GA traffic, which classifyNotam
+// ignores. The state and payload tests need an airport restriction, so they
+// use a KLAX notice that restricts airline traffic.
+const FEATURES = { ...FIXTURE, airport_partial: feature('airport_partial', { text: 'AD AP CLSD EXC SKED FLT, MEDEVAC AND EMERG' }) };
 
 describe('classifyNotam', () => {
   it('treats QFALC "AD AP CLSD" as a closed aerodrome', () => {
@@ -62,8 +66,49 @@ describe('classifyNotam', () => {
   });
 
   it('downgrades a closure that still admits traffic to restricted', () => {
-    // KLAX: "AD AP CLSD TO NON SKED TRANSIENT GA ACFT EXC 24HR PPR ..."
-    assert.deepEqual(classifyNotam(notamOf(FIXTURE.airport_partial)), { airport: 'restricted' });
+    assert.deepEqual(classifyNotam(notamOf(FEATURES.airport_partial)), { airport: 'restricted' });
+  });
+
+  // Texts below are live FAA NMS production aerodrome NOTAMs (2026-10-24).
+  const aerodrome = (text) => classifyNotam({ ...notamOf(FIXTURE.airport_partial), text });
+
+  it('ignores standing restrictions that only limit GA or one traffic class', () => {
+    // The KLAX fixture: airline traffic is unaffected.
+    assert.equal(classifyNotam(notamOf(FIXTURE.airport_partial)), null);
+    for (const text of [
+      'AD AP CLSD TO NON-SKED TRANSIENT GA ACFT EXC 24HR PPR',
+      'AD AP CLSD TO GA ACFT EXC PPR SIGNATURE 512-530-5451',
+      'AD AP CLSD TO TRANSIENT ACFT EXC 30MIN PPR 512-353-2379',
+      'AD AP CLSD TO NON SKED ACFT OPS MORE THAN 30 PAX SEATS EXC 24HR PPR',
+      'AD AP CLSD TO COMMERCIAL AIR CARRIER DIVERTS EXC EMERG ACFT',
+      'AD AP CLSD TO F-35 VTOL',
+      'AD AP CLSD TO ACFT WINGSPAN MORE THAN 60FT EXC 24HR PPR 334-844-4597 EXT 1',
+      'AD AP CLSD FOR PRKG TO ACFT WINGSPAN MORE THAN 60FT EXC PPR 864-364-5653',
+      'AD CLSD TO VISITING FIXED-WING ACFT',
+      'AD CLSD TO CIV TRG FLTS.',
+      'AD CLSD FOR TRG FLIGHTS EXC ACFT BASED ON AD.',
+    ]) assert.equal(aerodrome(text), null, text);
+  });
+
+  it('keeps restrictions that limit traffic in general', () => {
+    for (const text of [
+      'AERODROME CLSD EXCEPT FOR MEDICAL EMERGENCY AND FORCE MAJEURE FLIGHTS, INCLUDING MEDEVAC HELICOPTER OPERATIONS.',
+      'AD CLSD TO ALL NIGHT OPERATIONS.',
+      'AD CLSD TO IFR OPS.',
+      'AD CLOSED TO ALL CIVIL VFR TFC EXC STATE ACFT, MIL FLIGHTS, AMBULANCE',
+      'AD CLSD TO FLT OPS, EXC IN CASES WHERE FLIGHT OPS ARE PERMITTED',
+      'AD AP CLSD EXC 24HR PPR 704-433-4024',
+      'AD CLSD FOR ARR/DEP OF ALL AIRPLANE TYPES DUE TO RWY REPAIR WIP, EXC: - SAR ACFT',
+    ]) assert.deepEqual(aerodrome(text), { airport: 'restricted' }, text);
+  });
+
+  it('treats a closure to all traffic with no exception as closed', () => {
+    for (const text of [
+      'AD CLOSED TO ALL TFC.',
+      'AERODROME CLSD TO ALL TRAFFIC.',
+      'AD CLSD TO ALL ACFT OPS DUE CIVIL UNREST WI VCY OF AD.',
+      'AD CLSD TO ALL FLIGHTS DUE TO SUSPENSION OF AD CERTIFICATE.',
+    ]) assert.deepEqual(aerodrome(text), { airport: 'closed' }, text);
   });
 
   it('does not read routine aerodrome notices as closures', () => {
@@ -169,7 +214,7 @@ describe('applyFeatures / pruneExpired', () => {
     const items = {};
     // 6 of 11: three airport closures (closed, partial, future), tfr, danger,
     // huge-radius restricted. The rest classify as irrelevant.
-    assert.deepEqual(applyFeatures(items, Object.values(FIXTURE), NOW), { upserted: 6, removed: 0 });
+    assert.deepEqual(applyFeatures(items, Object.values(FEATURES), NOW), { upserted: 6, removed: 0 });
     const dangerId = notamOf(FIXTURE.danger_radius).id;
     assert.ok(items[dangerId]);
     // A delta re-emits a cancelled NOTAM with cancelationDate set.
@@ -180,7 +225,7 @@ describe('applyFeatures / pruneExpired', () => {
 
   it('prunes records whose window closed since the last run', () => {
     const items = {};
-    applyFeatures(items, Object.values(FIXTURE), NOW);
+    applyFeatures(items, Object.values(FEATURES), NOW);
     const before = Object.keys(items).length;
     const removed = pruneExpired(items, Date.parse('2026-10-31T00:00:00Z'));
     // airport_closed (Oct 30), danger_radius (Nov 1 — still live), huge_radius
@@ -192,7 +237,7 @@ describe('applyFeatures / pruneExpired', () => {
 
 describe('buildClosures / buildAirspace', () => {
   const items = {};
-  applyFeatures(items, Object.values(FIXTURE), NOW);
+  applyFeatures(items, Object.values(FEATURES), NOW);
 
   it('reports only closures in effect now; closed wins over restricted', () => {
     const c = buildClosures(items, NOW);
@@ -200,7 +245,7 @@ describe('buildClosures / buildAirspace', () => {
     assert.deepEqual(c.closedIcaos, [closedLoc]);
     assert.deepEqual(c.restrictedIcaos, ['KLAX']);
     assert.ok(!c.closedIcaos.includes('LSZH'), 'LSZH closure starts Oct 26');
-    assert.match(c.reasons.KLAX, /CLSD TO NON SKED/);
+    assert.match(c.reasons.KLAX, /CLSD EXC SKED FLT/);
 
     const both = { ...items, extra: { ...items[notamOf(FIXTURE.airport_partial).id], id: 'extra', a: 'closed', txt: 'AD CLSD' } };
     const merged = buildClosures(both, NOW);
@@ -337,7 +382,7 @@ describe('syncState', () => {
 
 describe('runSeed wiring', () => {
   const items = {};
-  applyFeatures(items, Object.values(FIXTURE), NOW);
+  applyFeatures(items, Object.values(FEATURES), NOW);
 
   // runSeed validates the publishTransform output (atomicPublish in
   // _seed-utils.mjs), not the raw fetch result.
@@ -438,7 +483,7 @@ describe('mergeClosureSources', () => {
 describe('buildPayload', () => {
   it('splits the airspace layer from the closures extra key', () => {
     const items = {};
-    applyFeatures(items, Object.values(FIXTURE), NOW);
+    applyFeatures(items, Object.values(FEATURES), NOW);
     const p = buildPayload({ cursor: NOW, fullLoadAt: NOW, items }, NOW);
     assert.equal(p.source, 'FAA NMS');
     assert.equal(p.notams.length, 3);

@@ -572,8 +572,7 @@
         "outages": "切換網際網路中斷",
         "tradeRoutes": "切換貿易路線",
         "canadaRoads": "切換加拿大道路覆蓋層",
-        "canadaAlerts": "切換加拿大省級緊急警報覆蓋層",
-        "notamAirspace": "切換 NOTAM 空域限制覆蓋圖層"
+        "canadaAlerts": "切換加拿大省級緊急警報覆蓋層"
       },
       "view": {
         "dark": "切換到暗色模式",

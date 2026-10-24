@@ -32,6 +32,15 @@ const CLOSURE_TEXT = /^(?:AD|AERODROME|AIRPORT)(?: AP)? (?:CLSD|CLOSED)\b/;
 // A closure that still admits traffic ("CLSD TO NON SKED TRANSIENT GA ACFT EXC
 // 24HR PPR") is a restriction, not a closed airport.
 const PARTIAL_CLOSURE_TEXT = /\b(?:CLSD|CLOSED) TO\b|\bEXC(?:EPT)?\b|\bPPR\b/;
+const EXCEPTION_TEXT = /\bEXC(?:EPT)?\b|\bPPR\b/;
+// "CLSD TO ALL TFC" with no exception closes the aerodrome outright.
+const CLOSED_TO_ALL_TEXT = /\b(?:CLSD|CLOSED) TO ALL (?:TFC|TRAFFIC|ACFT|FLIGHTS|FLTS?)\b/;
+// A closure to one traffic class leaves airline service running, e.g. KLAX's
+// standing "CLSD TO NON SKED TRANSIENT GA ACFT EXC 24HR PPR" or "CLSD TO ACFT
+// WINGSPAN MORE THAN 60FT". Treating these as restrictions flagged major US
+// hubs as disrupted. Closures to all, IFR, night, civil or flight traffic still
+// count.
+const NARROW_CLOSURE_TEXT = /\b(?:CLSD|CLOSED) (?:FOR (?:TRG|TRAINING|PRKG|PARKING)\b|TO (?!(?:ALL|IFR|VFR|NIGHT|PUBLIC|TFC|TRAFFIC|FLT|FLTS|FLIGHT|FLIGHTS|ARR|DEP|LDG|TKOF)\b|CIV(?:IL)? (?:IFR|VFR|FLT|FLTS|FLIGHTS|TFC|TRAFFIC|AIR)\b|ACFT\b(?! (?:MORE|LESS|OVER|UNDER|ABOVE|WITH|WINGSPAN)\b)))/;
 const AIRPORT_RESTRICTION_SUBJECTS = new Set(['RA', 'RO', 'RT', 'RR', 'RP']);
 
 // Written by seed-notam-nms.mjs, read by seed-aviation.mjs's NOTAM side-car.
@@ -140,8 +149,11 @@ export function classifyNotam(notam) {
   const text = normalizeText(upper(notam.text));
   const out = {};
 
-  if (subject === 'FA' && condition === 'LC' || CLOSURE_TEXT.test(text)) {
-    out.airport = PARTIAL_CLOSURE_TEXT.test(text) ? 'restricted' : 'closed';
+  if (NARROW_CLOSURE_TEXT.test(text)) {
+    // Not an airport disruption; the airspace checks below still apply.
+  } else if (subject === 'FA' && condition === 'LC' || CLOSURE_TEXT.test(text)) {
+    const closedToAll = CLOSED_TO_ALL_TEXT.test(text) && !EXCEPTION_TEXT.test(text);
+    out.airport = closedToAll || !PARTIAL_CLOSURE_TEXT.test(text) ? 'closed' : 'restricted';
   } else if (AIRPORT_RESTRICTION_SUBJECTS.has(subject) && (condition === 'RE' || condition === 'RT')) {
     out.airport = 'restricted';
   }

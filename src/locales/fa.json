@@ -643,8 +643,7 @@
         "outages": "Toggle internet outages",
         "tradeRoutes": "Toggle trade routes",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
-        "notamAirspace": "نمایش/پنهان کردن لایه محدودیت‌های فضای هوایی NOTAM"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Switch to dark mode",

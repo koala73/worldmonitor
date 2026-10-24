@@ -2007,7 +2007,7 @@ export class DeckGLMap {
     // they sit above only the day/night background, so cables, pipelines,
     // conflict zones and every marker inside a restricted area stay hoverable
     // and clickable.
-    if (mapLayers.notamAirspace && this.notamAirspace.length > 0) {
+    if (mapLayers.flights && this.notamAirspace.length > 0) {
       layers.push(...this.createNotamAirspaceLayers());
     }
 

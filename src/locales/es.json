@@ -576,8 +576,7 @@
         "outages": "Alternar cortes de internet",
         "tradeRoutes": "Alternar rutas comerciales",
         "canadaRoads": "Alternar capa de carreteras de Canadá",
-        "canadaAlerts": "Alternar capa de alertas de emergencia provinciales de Canadá",
-        "notamAirspace": "Alternar superposición de restricciones de espacio aéreo NOTAM"
+        "canadaAlerts": "Alternar capa de alertas de emergencia provinciales de Canadá"
       },
       "view": {
         "dark": "Cambiar a modo oscuro",

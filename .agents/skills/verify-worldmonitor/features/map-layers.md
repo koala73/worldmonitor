@@ -12,7 +12,7 @@ The layer controls under the map decide what a user sees on it — conflicts, ho
 - `layer-dimension` switches renderer between 2D and 3D from `#mapDimensionToggle`.
 - `aircraft-emergencies` enables the separate 7500/7600/7700 layer on SVG and DeckGL, opens aircraft details, and checks conflict, missing position, unavailable, expiry, and successful empty states. The globe does not offer this layer.
 
-- `notam-airspace` enables the deck.gl-only FAA NMS airspace layer, proves the on-demand `notamAirspace` key is fetched only once the layer is on, hovers a drawn restriction for its tooltip, and checks the layer is not offered on the SVG renderer.
+- `notam-airspace` enables the Aviation layer, proves the on-demand `notamAirspace` key (FAA NMS airspace areas) is fetched only once Aviation is on and only on deck.gl, hovers a drawn restriction for its tooltip, and checks there is no separate NOTAM toggle.
 
 Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/notam-airspace.mjs --name notam-airspace` with `WM_VERIFY_HEADED=1` for deck.gl. It replays rows built from `tests/fixtures/nms-notam-geojson.json` by the seeder's own functions, plus one labelled synthetic polygon, because NMS staging ships polygons only on runway NOTAMs. Set `WM_VERIFY_NOTAM_FIXTURE=<payload.json>`, `WM_VERIFY_CENTER=lon,lat` and `WM_VERIFY_ZOOM` for a density view of a larger payload. The step re-serves the basemap with a CORS header because the tile hosts reject localhost origins. It does not prove live NMS data.
 

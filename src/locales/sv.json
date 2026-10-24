@@ -190,8 +190,7 @@
         "outages": "Växla internetavbrott",
         "tradeRoutes": "Växla handelsrutter",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
-        "notamAirspace": "Slå på/av överlagring för NOTAM-luftrumsbegränsningar"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Byt till mörkt läge",

@@ -4,6 +4,8 @@ import { COUNTRY_ACTIVITY_BOUNDS, isCountryActivityCoordinate, projectCountryMil
 import { CountryBriefController, projectChinaCountrySummary } from '@/components/CountryBriefController';
 import { createWebsiteCountryBriefSource } from '@/services/country-brief-source';
 import { hasTemporalBaselineSnapshot } from '@/services/temporal-baseline';
+import { formatAirportDisruptionLine, isBriefAviationDisruption } from '@/services/country-aviation-context';
+import type { AirportDelayAlert } from '@/services/aviation';
 import type { AppContext, AppModule, CountryBriefSignals } from '@/app/app-context';
 import type { CountrySignalCounts } from '@/types';
 import { getSignalAggregator } from '@/app/lazy-services';
@@ -662,7 +664,11 @@ export class CountryIntelManager implements AppModule {
         try {
           // Temporal feed can arrive after the initial signal snapshot; re-read
           // so chips, prompt, and fallback lines share one fresh observation set.
-          signals = await this.getCountrySignals(code, country);
+          let airportDisruptions: AirportDelayAlert[];
+          [signals, airportDisruptions] = await Promise.all([
+            this.getCountrySignals(code, country),
+            this.countryAviationDisruptions(code, country),
+          ]);
           if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
           if (!this.isCurrentPresentation(presentation)) return;
           const currentScore = presentation.score;
@@ -677,6 +683,8 @@ export class CountryIntelManager implements AppModule {
             context.components = currentScore.components;
             context.change24h = currentScore.change24h;
           }
+
+          context.airportDisruptions = formatAirportDisruptionLine(airportDisruptions);
 
           let contextSnapshot = this.buildBriefContextSnapshot(country, code, currentScore, signals, context);
 
@@ -988,6 +996,9 @@ export class CountryIntelManager implements AppModule {
       `Temporal counts are observed signals, not source coverage. Global context: temporal_anomalies=${signals.globalTemporalAnomalies ?? 'unavailable'}; these global observations are not attributed to ${country} and must not be included in its counts.`,
     );
 
+    const airportDisruptions = typeof context.airportDisruptions === 'string' ? context.airportDisruptions : '';
+    if (airportDisruptions) lines.push(airportDisruptions);
+
     if (signals.travelAdvisoryMaxLevel) {
       lines.push(`Travel advisory max level: ${signals.travelAdvisoryMaxLevel}`);
     }
@@ -1251,13 +1262,7 @@ export class CountryIntelManager implements AppModule {
 
     const activeStrikes = this.getCountryStrikes(code, hasGeoShape).length;
 
-    let aviationDisruptions = 0;
-    if (this.ctx.intelligenceCache.flightDelays) {
-      aviationDisruptions = this.ctx.intelligenceCache.flightDelays.filter(d =>
-        (d.severity === 'major' || d.severity === 'severe' || d.delayType === 'closure') &&
-        (hasGeoShape ? this.isInCountry(d.lat, d.lon, code) : d.country?.toLowerCase() === countryLower)
-      ).length;
-    }
+    const aviationDisruptions = (await this.countryAviationDisruptions(code, country)).length;
 
     const ciiData = getCountryData(code);
     const isTier1 = !!TIER1_COUNTRIES[code];
@@ -1330,6 +1335,29 @@ export class CountryIntelManager implements AppModule {
       sanctionsDesignations,
       sanctionsNewDesignations,
     };
+  }
+
+  /**
+   * Airport closures and severe or major disruptions in this country. The
+   * flight-delay cache is filled only while the Aviation map layer is on, so a
+   * brief opened with the layer off reads the same bootstrap snapshot through
+   * the aviation service instead of reporting zero.
+   */
+  private async countryAviationDisruptions(code: string, country: string): Promise<AirportDelayAlert[]> {
+    let delays = this.ctx.intelligenceCache.flightDelays;
+    if (!delays) {
+      try {
+        const { fetchFlightDelays } = await import('@/services/aviation');
+        delays = await fetchFlightDelays();
+      } catch (err) {
+        console.warn('[CountryBrief] airport disruptions unavailable:', err);
+        return [];
+      }
+    }
+    const countryLower = country.toLowerCase();
+    const hasGeoShape = hasCountryGeometry(code) || !!CountryIntelManager.COUNTRY_BOUNDS[code];
+    return delays.filter(d => isBriefAviationDisruption(d)
+      && (hasGeoShape ? this.isInCountry(d.lat, d.lon, code) : d.country?.toLowerCase() === countryLower));
   }
 
   private newsSeverityRank(item: NewsItem): number {
