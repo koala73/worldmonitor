@@ -254,7 +254,9 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     body.params.protocolVersion = '2026-07-28';
     const res = await fetch(server.url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28' },
+      // A connector User-Agent: fetch's default `node` completes the handshake
+      // anonymously (see mcp-transport-challenge.test.mjs).
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28', 'User-Agent': 'Claude-User' },
       body: JSON.stringify(body),
     });
     assert.equal(res.status, 401);

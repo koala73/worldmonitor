@@ -69,6 +69,35 @@ describe('an unauthenticated initialize on the transport is challenged', () => {
     const res = await post('https://worldmonitor.app/mcp', rpc('initialize', INIT_PARAMS));
     assert.match(res.headers.get('content-type') ?? '', /application\/json/);
   });
+
+  // Production, 2026-10-17 to 10-24: of the IPs whose anonymous initialize got
+  // the 401, python-httpx signed in 1 of 254, node 2 of 195, Go-http-client 0 of
+  // 102, undici 3 of 45. Those clients retried the handshake forever instead
+  // (about 245,000 401s), while Claude-User signed in 34 of 34 and Grok 11 of 69.
+  it('lets a generic HTTP-library client complete the handshake anonymously', async () => {
+    for (const ua of ['python-httpx/0.28.1', 'python-httpx2/2.12.0', 'node', 'undici', 'Go-http-client/2.0',
+      'python-requests/2.32.3', 'Python-urllib/3.12', 'hermes-agent/0.21.3 (worldmonitor-mcp)']) {
+      const res = await post('https://worldmonitor.app/mcp', rpc('initialize', INIT_PARAMS),
+        { 'User-Agent': ua, Accept: 'application/json' });
+      assert.equal(res.status, 200, ua);
+      assert.equal((await res.json()).result.protocolVersion, '2025-06-18', ua);
+    }
+  });
+
+  it('keeps challenging connectors, CLIs and unknown clients that sign in', async () => {
+    for (const ua of ['Claude-User', 'Cursor/1.0', 'grok-connectors-manager', 'openai-mcp/1.0.0 (ChatGPT)',
+      'claude-code/2.1.308 (cli)', 'codex-mcp-client/0.163.0', 'node-fetch/1.0', 'nodejs-agent/2', 'WorldMonitor-MCP-Smoke/1']) {
+      const res = await post('https://worldmonitor.app/mcp', rpc('initialize', INIT_PARAMS), { 'User-Agent': ua });
+      assert.equal(res.status, 401, ua);
+    }
+  });
+
+  it('still challenges a generic client at the first paid tool call', async () => {
+    const res = await post('https://worldmonitor.app/mcp',
+      rpc('tools/call', { name: 'get_market_data', arguments: {} }), { 'User-Agent': 'python-httpx/0.28.1' });
+    assert.equal(res.status, 401);
+    assert.match(res.headers.get('www-authenticate') ?? '', /resource_metadata=/);
+  });
 });
 
 const PRODUCT_MCP_ALIASES = [

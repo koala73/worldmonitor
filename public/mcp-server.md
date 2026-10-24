@@ -52,7 +52,7 @@ Hosts discover the links through `_meta.ui.resourceUri` in `tools/list`, enumera
 
 `get_gold_intelligence` preserves gold quotes and optional COT, ETF and central-bank enrichment with individual observation dates; `unavailable` and absent enrichment remain explicit. It requires subscription access and makes one signed downstream GET, charged at weight 2 on API allowances (the MCP request plus the downstream request). `get_infrastructure_status` reads Cloudflare Radar outages, traffic anomalies and global DDoS summaries from the seeded cache; the traffic `totalCount` is global before filtering and DDoS percentages are not country-filtered. The retired `get_internet_activity` and `get_energy_storage` names still answer with a `deprecation` notice that names their replacements.
 
-- **Connecting an MCP client:** an `initialize` with no credentials gets `401` with a `WWW-Authenticate` challenge, which starts your client's OAuth sign-in. A free account is enough.
+- **Connecting an MCP client:** an `initialize` with no credentials gets `401` with a `WWW-Authenticate` challenge, which starts your client's OAuth sign-in. A free account is enough. A script that sends a default HTTP-library `User-Agent` (`python-httpx`, `node`, `undici`, `Go-http-client` and similar) completes the handshake anonymously and gets the `401` at its first gated tool call.
 - **`tools/list` and other stateless discovery calls:** anonymous, no key.
 - **`get_sources` via `tools/call`:** no credentials and no daily quota; separate fail-closed limit of 10 anonymous calls/minute/IP. Its `tools/list` and server-card entries carry `_meta["worldmonitor/access"]: "free"`.
 - **All other data-bearing `tools/call` and `resources/read`:** need subscription access through an API key or OAuth.
