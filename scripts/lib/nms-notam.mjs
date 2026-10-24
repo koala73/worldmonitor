@@ -98,16 +98,22 @@ export function compactGeometry(geometry, notam) {
     .map((poly) => (Array.isArray(poly?.[0]) ? poly[0] : null))
     .filter((ring) => Array.isArray(ring) && ring.length >= 4 && ring.every(validPosition))
     .map((ring) => ring.map(([lon, lat]) => [round(lon), round(lat)]));
-  if (!point) point = parseQCoordinates(notam?.coordinates);
-  if (!point && rings.length) point = rings[0][0];
-  if (!point) return null;
+  const qPoint = parseQCoordinates(notam?.coordinates);
   // Q-line radius 999 means "whole FIR", and a few NOTAMs carry 600+ NM: drawn
   // literally, one notice paints half a continent. Past the cap the map shows
   // a marker instead of a circle.
   const radiusNm = Number.parseFloat(notam?.radius);
+  const drawnRadius = Number.isFinite(radiusNm) && radiusNm > 0 && radiusNm <= MAX_DRAWN_RADIUS_NM ? radiusNm : null;
+  // The Q-line radius is measured from the Q-line point. The geometry Point is
+  // often the aerodrome reference point instead, miles from the area, so a
+  // drawn circle takes the Q-line centre; a marker keeps the finer Point.
+  if (drawnRadius !== null && qPoint && !rings.length) point = qPoint;
+  if (!point) point = qPoint;
+  if (!point && rings.length) point = rings[0][0];
+  if (!point) return null;
   return {
     c: point,
-    ...(Number.isFinite(radiusNm) && radiusNm > 0 && radiusNm <= MAX_DRAWN_RADIUS_NM ? { r: radiusNm } : {}),
+    ...(drawnRadius !== null ? { r: drawnRadius } : {}),
     ...(rings.length ? { p: rings } : {}),
   };
 }

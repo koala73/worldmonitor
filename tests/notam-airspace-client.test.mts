@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseNotamAirspace, type NotamAirspaceRestriction } from '../src/services/notam-airspace.ts';
 import { notamAirspaceTooltip } from '../src/components/map/notam-airspace-style.ts';
@@ -71,4 +72,28 @@ test('notamAirspaceTooltip escapes every upstream field', () => {
 test('notamAirspaceTooltip labels permanent and upcoming NOTAMs', () => {
   const html = notamAirspaceTooltip({ ...ROW, upcoming: true, endsAt: null }, text);
   assert.match(html, /Starts 2026-10-24 08:00Z → PERM/);
+});
+
+const DECK_SOURCE = new URL('../src/components/DeckGLMap.ts', import.meta.url);
+
+test('DeckGLMap draws the restriction areas under every aircraft and point layer', () => {
+  // A pickable area drawn above aircraft steals their hover and click.
+  const source = readFileSync(DECK_SOURCE, 'utf8');
+  const at = (call: string) => {
+    const index = source.indexOf(`layers.push(${call}`);
+    assert.ok(index > 0, `${call} is pushed in buildLayers`);
+    return index;
+  };
+  const notam = at('...this.createNotamAirspaceLayers(');
+  for (const above of [
+    'this.createFlightDelaysLayer(',
+    'this.createAircraftPositionsLayer(',
+    '...this.createProtestClusterLayers(',
+    'this.createMilitaryVesselsLayer(',
+    'this.createMilitaryFlightsLayer(',
+    'this.createMilitaryFlightClustersLayer(',
+    "new ScatterplotLayer<import('../../shared/aircraft-emergencies')",
+  ]) {
+    assert.ok(notam < at(above), `NOTAM areas must be pushed before ${above}`);
+  }
 });

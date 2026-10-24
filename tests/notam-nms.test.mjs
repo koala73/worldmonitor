@@ -97,6 +97,22 @@ describe('compactFeature', () => {
     assert.ok(Array.isArray(huge.g.c));
   });
 
+  it('centres a radius circle on the Q-line point the radius belongs to', () => {
+    // The geometry Point is the EGNV aerodrome reference point; the Q-line
+    // 5434N00119W is the danger area's centre, ~4.5 NM away (text: "RADIUS OF
+    // 543357N 0011839W"). A 2 NM circle on the aerodrome would miss the area.
+    const g = compactFeature(FIXTURE.danger_radius, NOW).g;
+    assert.deepEqual(g.c, [-1.3167, 54.5667]);
+    assert.equal(g.r, 2);
+  });
+
+  it('keeps the geometry point for a marker, where no radius is drawn', () => {
+    const huge = compactFeature(FIXTURE.huge_radius, NOW);
+    assert.deepEqual(huge.g.c, [-17.7667, 26.0333]);
+    const tfr = compactFeature(FIXTURE.tfr_fdc, NOW);
+    assert.deepEqual(tfr.g.c, [-79.6861, 32.3777]);
+  });
+
   it('keeps polygons and falls back to Q-line coordinates for the centre', () => {
     const ring = [[-76.9357, 41.2386], [-76.9356, 41.2382], [-76.9114, 41.2425], [-76.9357, 41.2386]];
     const poly = compactFeature(feature('danger_radius', { coordinates: undefined }, { type: 'GeometryCollection', geometries: [{ type: 'Polygon', coordinates: [ring] }] }), NOW);
@@ -225,19 +241,45 @@ describe('syncState', () => {
     assert.equal(r.mode, 'full');
   });
 
-  it('never repeats a bulk load inside the allowance window, even with state lost', async () => {
+  // A store the deltas cannot complete (state lost after a failed bulk load,
+  // or a cursor older than the 23h delta window) must not publish as current:
+  // NOTAMs issued before the window would silently vanish under a fresh
+  // generatedAt. It waits for the next bulk allowance, keeping last-good.
+  it('never repeats a bulk load inside the allowance window, and never publishes a delta-only rebuild', async () => {
     const client = fakeClient({ delta: [FIXTURE.tfr_fdc] });
-    const r = await syncState({ state: null, lastFullLoadAt: NOW - HOUR, markFullLoad: async () => assert.fail('bulk allowance already used'), client, nowMs: NOW, log: quiet });
-    assert.equal(r.mode, 'delta');
-    assert.deepEqual(client.calls, [['delta', NOW - DELTA_MAX_WINDOW_MS]], 'rebuilds from the widest delta NMS allows');
-    assert.equal(Object.keys(r.state.items).length, 1);
+    await assert.rejects(
+      syncState({ state: null, lastFullLoadAt: NOW - HOUR, markFullLoad: async () => assert.fail('bulk allowance already used'), client, nowMs: NOW, log: quiet }),
+      (err) => err.preservableFetchFailure === true && err.nonRetryable === true && /bulk load/.test(err.message),
+    );
+    assert.deepEqual(client.calls, [], 'no pull: a 23h delta cannot rebuild older NOTAMs');
   });
 
-  it('caps a stale cursor at the 23h delta window when a resync is blocked', async () => {
+  it('waits for the bulk allowance when the cursor is past the 23h delta window', async () => {
     const state = { cursor: NOW - 30 * HOUR, fullLoadAt: NOW - 30 * HOUR, items: {} };
     const client = fakeClient();
-    await syncState({ state, lastFullLoadAt: NOW - HOUR, markFullLoad: async () => assert.fail('blocked'), client, nowMs: NOW, log: quiet });
-    assert.deepEqual(client.calls, [['delta', NOW - DELTA_MAX_WINDOW_MS]]);
+    await assert.rejects(
+      syncState({ state, lastFullLoadAt: NOW - HOUR, markFullLoad: async () => assert.fail('blocked'), client, nowMs: NOW, log: quiet }),
+      (err) => err.preservableFetchFailure === true && err.nonRetryable === true,
+    );
+    assert.deepEqual(client.calls, []);
+  });
+
+  it('keeps delta-syncing a complete store whose daily resync is blocked', async () => {
+    const state = { cursor: NOW - 5 * 60_000, fullLoadAt: NOW - FULL_LOAD_MIN_INTERVAL_MS, items: {} };
+    const client = fakeClient();
+    const r = await syncState({ state, lastFullLoadAt: NOW - HOUR, markFullLoad: async () => assert.fail('blocked'), client, nowMs: NOW, log: quiet });
+    assert.equal(r.mode, 'delta');
+    assert.deepEqual(client.calls, [['delta', state.cursor - DELTA_OVERLAP_MS]]);
+  });
+
+  it('makes every failed pull single-attempt, so runSeed cannot re-pull inside the FAA 3-minute limit', async () => {
+    const state = { cursor: NOW - 5 * 60_000, fullLoadAt: NOW - 2 * HOUR, items: {} };
+    const client = fakeClient();
+    client.delta = async () => { throw new Error('NMS GET /v1/notams HTTP 429'); };
+    await assert.rejects(
+      syncState({ state, lastFullLoadAt: NOW - 2 * HOUR, markFullLoad: async () => {}, client, nowMs: NOW, log: quiet }),
+      (err) => err.nonRetryable === true && /HTTP 429/.test(err.message),
+    );
   });
 
   it('propagates a failed bulk pull after the guard is claimed', async () => {

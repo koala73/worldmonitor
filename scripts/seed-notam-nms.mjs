@@ -158,7 +158,19 @@ export function createNmsClient({ host, clientId, clientSecret, fetchImpl = (...
  * @param {(at: number) => Promise<void>} args.markFullLoad persists the guard BEFORE the bulk pull
  * @returns {Promise<{ state: object, mode: 'full' | 'delta', stats: object }>}
  */
-export async function syncState({ state, lastFullLoadAt, markFullLoad, client, nowMs = Date.now(), log = console.log }) {
+export async function syncState(args) {
+  try {
+    return await syncStateOnce(args);
+  } catch (err) {
+    // runSeed retries a failed fetch after 1, 2 and 4 seconds. Each retry here
+    // would be another NMS pull, breaking the FAA limit of one delta per three
+    // minutes (or one bulk load per day). The next cron tick is the retry.
+    if (err && typeof err === 'object') err.nonRetryable = true;
+    throw err;
+  }
+}
+
+async function syncStateOnce({ state, lastFullLoadAt, markFullLoad, client, nowMs = Date.now(), log = console.log }) {
   const fullLoadAllowed = lastFullLoadAt === null || nowMs - lastFullLoadAt >= FULL_LOAD_MIN_INTERVAL_MS;
   const needsFullLoad = !state || nowMs - state.cursor > DELTA_MAX_WINDOW_MS || nowMs - state.fullLoadAt >= FULL_LOAD_MIN_INTERVAL_MS;
 
@@ -177,15 +189,20 @@ export async function syncState({ state, lastFullLoadAt, markFullLoad, client, n
     return { state: { cursor: nowMs - DELTA_OVERLAP_MS, fullLoadAt: nowMs, items }, mode: 'full', stats };
   }
 
-  if (needsFullLoad && !state) {
-    // Cold start inside the bulk allowance window (state key lost after a
-    // resync). Build what the 24h delta window can see; the next allowed
-    // resync fills in NOTAMs issued earlier.
-    log(`[NMS] state missing and bulk load used ${Math.round((nowMs - lastFullLoadAt) / 60_000)}min ago — rebuilding from a 23h delta`);
-    state = { cursor: nowMs - DELTA_MAX_WINDOW_MS, fullLoadAt: lastFullLoadAt, items: {} };
-  } else if (needsFullLoad) {
-    log(`[NMS] resync due but bulk load used ${Math.round((nowMs - lastFullLoadAt) / 60_000)}min ago — continuing on deltas`);
+  const usedMin = Math.round((nowMs - lastFullLoadAt) / 60_000);
+  if (!state || nowMs - state.cursor > DELTA_MAX_WINDOW_MS) {
+    // No store the deltas can complete: the state was lost (typically a bulk
+    // load that failed after claiming the allowance) or the cursor is older
+    // than the widest delta NMS serves. A delta-only rebuild would publish
+    // without every NOTAM issued before the window, under a fresh timestamp.
+    // Keep last-good and let health go stale until the next bulk allowance.
+    const waitMin = Math.max(1, Math.ceil((lastFullLoadAt + FULL_LOAD_MIN_INTERVAL_MS - nowMs) / 60_000));
+    throw markPreservableFetchFailure(new Error(
+      `NMS ${state ? 'cursor is past the 23h delta window' : 'state is missing'} and the bulk load was used ${usedMin}min ago; `
+      + `waiting ${waitMin}min for the next bulk load`,
+    ));
   }
+  if (needsFullLoad) log(`[NMS] resync due but bulk load used ${usedMin}min ago — continuing on deltas`);
 
   const since = Math.max(state.cursor - DELTA_OVERLAP_MS, nowMs - DELTA_MAX_WINDOW_MS);
   const features = await client.delta(since);

@@ -629,6 +629,11 @@ export class DeckGLMap {
   private militaryFlights: MilitaryFlight[] = [];
   private emergencyMarkers: import('../../shared/aircraft-emergencies').EmergencyMapMarker[] = [];
   private notamAirspace: NotamAirspaceRestriction[] = [];
+  private notamAirspaceParts: {
+    polygons: { row: NotamAirspaceRestriction; ring: [number, number][] }[];
+    circles: NotamAirspaceRestriction[];
+    markers: NotamAirspaceRestriction[];
+  } = { polygons: [], circles: [], markers: [] };
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
   private activeFlightTrails = new Set<string>();
   private clearTrailsBtn: HTMLButtonElement | null = null;
@@ -2202,6 +2207,13 @@ export class DeckGLMap {
       layers.push(this.createRepairShipsLayer());
     }
 
+    // FAA NMS airspace restrictions are area overlays: they sit under every
+    // aviation, protest and military layer so aircraft, airports and emergency
+    // markers inside a restricted area stay hoverable and clickable.
+    if (mapLayers.notamAirspace && this.notamAirspace.length > 0) {
+      layers.push(...this.createNotamAirspaceLayers());
+    }
+
     // Aviation layer (flight delays + NOTAM closures + aircraft positions)
     if (mapLayers.flights && filteredFlightDelays.length > 0) {
       layers.push(this.createFlightDelaysLayer(filteredFlightDelays));
@@ -2244,12 +2256,6 @@ export class DeckGLMap {
     // Military flight clusters layer
     if (mapLayers.military && filteredMilitaryFlightClusters.length > 0) {
       layers.push(this.createMilitaryFlightClustersLayer(filteredMilitaryFlightClusters));
-    }
-
-    // FAA NMS airspace restrictions sit under the aircraft layers so live
-    // traffic and emergency markers stay clickable inside a restricted area.
-    if (mapLayers.notamAirspace && this.notamAirspace.length > 0) {
-      layers.push(...this.createNotamAirspaceLayers(this.notamAirspace));
     }
 
     // Above military flights: an emergency-squawking military aircraft is drawn
@@ -3274,14 +3280,12 @@ export class DeckGLMap {
   // Polygons where NMS ships them, radius circles (metres, so they scale with
   // zoom) when the Q-line gives a radius, and fixed-size markers otherwise:
   // most FDC TFRs describe their shape only in text.
-  private createNotamAirspaceLayers(restrictions: NotamAirspaceRestriction[]): Layer[] {
+  private createNotamAirspaceLayers(): Layer[] {
     const color = (row: NotamAirspaceRestriction, alpha: number): [number, number, number, number] => {
       const [r, g, b] = NOTAM_AIRSPACE_COLORS[row.kind];
       return [r, g, b, row.upcoming ? Math.round(alpha * 0.45) : alpha];
     };
-    const polygons = restrictions.flatMap((row) => (row.polygons ?? []).map((ring) => ({ row, ring })));
-    const circles = restrictions.filter((row) => !row.polygons?.length && row.radiusNm);
-    const markers = restrictions.filter((row) => !row.polygons?.length && !row.radiusNm);
+    const { polygons, circles, markers } = this.notamAirspaceParts;
     return [
       new PolygonLayer<{ row: NotamAirspaceRestriction; ring: [number, number][] }>({
         id: 'notam-airspace-polygons',
@@ -7351,6 +7355,13 @@ export class DeckGLMap {
 
   public setNotamAirspace(restrictions: NotamAirspaceRestriction[]): void {
     this.notamAirspace = restrictions;
+    // Split once per snapshot: stable data references let deck.gl skip
+    // rebuilding instance attributes on every pan/zoom layer update.
+    this.notamAirspaceParts = {
+      polygons: restrictions.flatMap((row) => (row.polygons ?? []).map((ring) => ({ row, ring }))),
+      circles: restrictions.filter((row) => !row.polygons?.length && row.radiusNm),
+      markers: restrictions.filter((row) => !row.polygons?.length && !row.radiusNm),
+    };
     this.render();
   }
 
