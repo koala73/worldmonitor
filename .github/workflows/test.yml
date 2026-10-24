@@ -1021,6 +1021,16 @@ jobs:
   variant-smoke-pro-webmcp:
     needs: changes
     if: needs.changes.outputs.browser == 'true'
+    # Two runners: the strict WebMCP smoke (61-81s) used to start only after
+    # the /pro gates, so the job took ~200s. It is CPU-bound on the Vite dev
+    # server and Chrome, and more workers did not shorten it (bench run
+    # 40097331565), so the gates moved off its path instead. Both parts keep the
+    # full setup: each builds /pro (the legacy WebMCP tests load
+    # /pro/welcome.html) and a retry records video with Playwright's ffmpeg.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [webmcp, pro-gates]
     runs-on: ubuntu-latest
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
@@ -1125,6 +1135,7 @@ jobs:
             run: npm run build:pro
       - name: Run fail-closed prehydration browser checks
         id: prehydration
+        if: matrix.part == 'pro-gates'
         run: npm run test:e2e:prehydration
       - name: Upload prehydration Playwright artifacts
         if: ${{ !cancelled() && steps.prehydration.outcome != 'skipped' }}
@@ -1135,66 +1146,26 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       # Named explicitly for the same reason as the ci-smoke set above: nothing
-      # runs the e2e/ glob, so this gate reported green while never executing.
-      # It reads the same public/pro/ bytes the build step above produced, and
-      # nothing between here and there rebuilds them -- it sits after the
-      # prehydration upload rather than beside its build because
-      # dashboard-build-guards.test.mjs pins that build/prehydration pair as
-      # literally adjacent text.
-      - name: Run critical-CSS layout-shift gate
-        id: pro-cls
-        run: npm run test:e2e:pro-cls
-      # Its own upload, per the rule above: Playwright clears test-results/ when
-      # the next run starts, so the WebMCP step would otherwise delete this
-      # gate's failure trace before anyone could read it.
-      - name: Upload critical-CSS CLS Playwright artifacts
-        if: ${{ !cancelled() && steps.pro-cls.outcome != 'skipped' }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: playwright-pro-cls-${{ github.run_id }}-${{ github.run_attempt }}
-          path: test-results/
-          if-no-files-found: ignore
-          retention-days: 14
-      # Named explicitly for the same reason as the gates above. It reads the
-      # same public/pro/ bytes and proves mounted /pro fits phone viewports.
-      - name: Run /pro mobile overflow gate
-        id: pro-overflow
-        run: npm run test:e2e:pro-overflow
-      - name: Upload /pro mobile overflow Playwright artifacts
-        if: ${{ !cancelled() && steps.pro-overflow.outcome != 'skipped' }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: playwright-pro-overflow-${{ github.run_id }}-${{ github.run_attempt }}
-          path: test-results/
-          if-no-files-found: ignore
-          retention-days: 14
-      # Named explicitly for the same reason as the gates above: nothing runs
-      # the e2e/ glob, so an unnamed spec would never execute. It reads the same
-      # public/pro/ bytes the build step above produced.
-      - name: Run /pro hero native-animation gate
-        id: pro-hero
-        run: npm run test:e2e:pro-hero
+      # runs the e2e/ glob, so an unnamed gate reported green while never
+      # executing. The four /pro gates (critical-CSS layout shift, mobile
+      # overflow, hero native animation, hero LCP) share one Playwright run:
+      # each run starts the Vite dev server and Chrome (~3.5s), and separate
+      # runs went one after another. They read the same public/pro/ bytes the
+      # build step above produced, and nothing between here and there rebuilds
+      # them -- they sit after the prehydration upload rather than beside its
+      # build because dashboard-build-guards.test.mjs pins that
+      # build/prehydration pair as literally adjacent text.
+      - name: Run /pro critical-CSS, overflow, hero animation and LCP gates
+        id: pro-gates
+        if: matrix.part == 'pro-gates'
+        run: npm run test:e2e:pro-gates
       # Its own upload: Playwright clears test-results/ when the next run
-      # starts, so a later step would delete this gate's failure trace.
-      - name: Upload /pro hero animation Playwright artifacts
-        if: ${{ !cancelled() && steps.pro-hero.outcome != 'skipped' }}
+      # starts, so a later run would delete these gates' failure traces.
+      - name: Upload /pro gate Playwright artifacts
+        if: ${{ !cancelled() && steps.pro-gates.outcome != 'skipped' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: playwright-pro-hero-${{ github.run_id }}-${{ github.run_attempt }}
-          path: test-results/
-          if-no-files-found: ignore
-          retention-days: 14
-      # Named explicitly for the same reason as the gates above. It reads the
-      # same public/pro/ bytes and proves the prerendered hero, not the React
-      # mount, owns the /pro LCP entry.
-      - name: Run /pro hero LCP gate
-        id: pro-lcp
-        run: npm run test:e2e:pro-lcp
-      - name: Upload /pro hero LCP Playwright artifacts
-        if: ${{ !cancelled() && steps.pro-lcp.outcome != 'skipped' }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: playwright-pro-lcp-${{ github.run_id }}-${{ github.run_attempt }}
+          name: playwright-pro-gates-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14
@@ -1203,6 +1174,7 @@ jobs:
       # system Chrome fails the required PR job instead of silently skipping.
       - name: Run strict WebMCP iframe smoke in Chrome
         id: webmcp
+        if: matrix.part == 'webmcp'
         run: npm run test:e2e:webmcp
       # Gated on the WebMCP step having actually run: if an earlier tail step
       # fails, this step is skipped, and without the guard this upload would

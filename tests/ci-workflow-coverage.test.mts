@@ -3012,3 +3012,54 @@ describe('scheduled workflows run only in the upstream repository', () => {
     }
   });
 });
+
+// The strict WebMCP smoke (61-81s) ran after the /pro gates in one job, so the
+// job took ~200s, as long as the slowest unit shard. More workers did not help:
+// the smoke is CPU-bound on the Vite dev server and Chrome, and 4 workers
+// failed a test (bench run 40097331565). Running the two halves on separate
+// runners removes the gates from the WebMCP path. Both halves build /pro: the
+// legacy-API WebMCP tests load /pro/welcome.html.
+describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on separate runners', () => {
+  const job = YAML.parse(testWorkflow).jobs['variant-smoke-pro-webmcp'];
+  const steps: Array<{ name?: string; id?: string; run?: string; if?: string; parallel?: unknown[] }> = job.steps;
+  const flat = steps.flatMap((step) => (step.parallel as typeof steps | undefined) ?? [step]);
+
+  it('splits the job into a webmcp part and a pro-gates part', () => {
+    // webmcp first: it is the longer part, so it should take a runner first.
+    assert.deepEqual(job.strategy.matrix.part, ['webmcp', 'pro-gates']);
+    assert.equal(job.strategy['fail-fast'], false, 'a red half must not cancel the other half\'s evidence');
+  });
+
+  it('builds /pro in both parts and runs each suite in exactly one', () => {
+    const build = flat.find((step) => step.run === 'npm run build:pro');
+    assert.ok(build, 'the job must build /pro');
+    assert.equal(build.if, undefined, 'both parts need /pro: the legacy WebMCP tests load /pro/welcome.html');
+    const partOf = (script: string) => {
+      const step = flat.find((s) => s.run === `npm run ${script}`);
+      assert.ok(step, `the job must run npm run ${script}`);
+      return step.if;
+    };
+    assert.equal(partOf('test:e2e:webmcp'), "matrix.part == 'webmcp'");
+    assert.equal(partOf('test:e2e:prehydration'), "matrix.part == 'pro-gates'");
+    assert.equal(partOf('test:e2e:pro-gates'), "matrix.part == 'pro-gates'");
+  });
+
+  it('runs the four /pro browser gates in one Playwright run', () => {
+    // Each Playwright run starts the Vite dev server and Chrome (~3.5s), and
+    // the four gates ran one after another.
+    const specs = [
+      'e2e/pro-critical-css-cls.spec.ts',
+      'e2e/pro-mobile-overflow.spec.ts',
+      'e2e/pro-hero-animation.spec.ts',
+      'e2e/pro-hero-lcp.spec.ts',
+    ];
+    const script = packageScripts['test:e2e:pro-gates'] ?? '';
+    assert.match(script, /^cross-env VITE_VARIANT=full playwright test /);
+    assert.match(script, / --project=chromium$/);
+    assert.deepEqual(script.match(/e2e\/[\w-]+\.spec\.ts/g), specs);
+    for (const spec of specs) assert.ok(existsSync(resolve(root, spec)), `${spec} must exist`);
+    for (const single of ['pro-cls', 'pro-overflow', 'pro-hero', 'pro-lcp']) {
+      assert.ok(!flat.some((step) => step.run?.includes(`test:e2e:${single}`)), `test:e2e:${single} must run via test:e2e:pro-gates`);
+    }
+  });
+});

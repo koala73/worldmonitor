@@ -112,6 +112,32 @@ screenshots depend on rendering.
   in a group.
 - A `uses:` composite action can be one item of a group.
 
+## The WebMCP smoke: split the job, not the workers
+
+After the unit shards and smoke shards got faster, `variant-smoke-pro-webmcp`
+took ~200s. The strict WebMCP smoke (`npm run test:e2e:webmcp`, 61-81s) ran
+last, after the `/pro` build and five separate `/pro` gate runs. Bench run
+40097331565 ran the smoke alone at 2, 3 and 4 workers:
+
+- Per-worker test time stayed at 55-76s at every worker count: each test got
+  slower in proportion to the worker count. The Vite dev server and Chrome
+  share the runner's CPU.
+- At 4 workers, `validates monitor switches and opens settings and alerts
+  through existing UI` failed on both attempts. That is the contention-
+  sensitive race described in
+  [idle-auto-open-popover-swallows-an-open-modals-escape](../ui-bugs/idle-auto-open-popover-swallows-an-open-modals-escape.md).
+- 100ms `expect.poll` intervals (the default backs off to 1s) were within the
+  57-76s run-to-run noise.
+- The two legacy-API tests need `npm run build:pro`: they load
+  `/pro/welcome.html`. A retry records video, which needs the ffmpeg build in
+  `~/.cache/ms-playwright`, so both halves keep the Playwright cache steps.
+
+The job is now a two-entry matrix (`part: [webmcp, pro-gates]`): the WebMCP
+smoke and the `/pro` gates run on separate runners, and each part builds
+`/pro`. The four `/pro` gates share one Playwright run
+(`npm run test:e2e:pro-gates`), because each run spends ~2.5s starting the
+dev server and Chrome and ~1s shutting down.
+
 ## Prevention
 
 - **Tests that walk `job.steps` do not see steps nested in a `parallel:`

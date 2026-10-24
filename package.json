@@ -179,6 +179,7 @@
     "test:e2e:pro-overflow": "cross-env VITE_VARIANT=full playwright test e2e/pro-mobile-overflow.spec.ts --project=chromium",
     "test:e2e:pro-hero": "cross-env VITE_VARIANT=full playwright test e2e/pro-hero-animation.spec.ts --project=chromium",
     "test:e2e:pro-lcp": "cross-env VITE_VARIANT=full playwright test e2e/pro-hero-lcp.spec.ts --project=chromium",
+    "test:e2e:pro-gates": "cross-env VITE_VARIANT=full playwright test e2e/pro-critical-css-cls.spec.ts e2e/pro-mobile-overflow.spec.ts e2e/pro-hero-animation.spec.ts e2e/pro-hero-lcp.spec.ts --project=chromium",
     "test:e2e:variant-smoke:full": "cross-env VITE_VARIANT=full playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke:tech": "cross-env VITE_VARIANT=tech playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke:finance": "cross-env VITE_VARIANT=finance playwright test e2e/variant-live-smoke.spec.ts",
