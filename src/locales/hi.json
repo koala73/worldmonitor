@@ -643,7 +643,8 @@
         "outages": "इंटरनेट बंद दिखाएं/छुपाएं",
         "tradeRoutes": "व्यापार मार्ग चालू/बंद करें",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "NOTAM हवाई क्षेत्र प्रतिबंध ओवरले टॉगल करें"
       },
       "view": {
         "dark": "डार्क मोड पर जाएं",
@@ -1443,7 +1444,8 @@
         "speciesRecovery": "प्रजाति पुनर्प्राप्ति",
         "renewableInstallations": "स्वच्छ ऊर्जा",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM हवाई क्षेत्र प्रतिबंध"
       },
       "tooltip": {
         "earthquake": "भूकंप",
@@ -1558,7 +1560,8 @@
           "geoBoundaries": "विसैन्यीकृत क्षेत्र, युद्धविराम रेखाएं और विवादित सीमाएं",
           "ciiChoropleth": "देश अस्थिरता सूचकांक हीट-मैप — देशों को स्कोर द्वारा रंगीन करता है (हरा=स्थिर, लाल=गंभीर)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "FAA NOTAM से अस्थायी उड़ान प्रतिबंध और प्रतिबंधित, खतरनाक व निषिद्ध हवाई क्षेत्र, जो अभी प्रभावी हैं या 24 घंटों के भीतर शुरू होंगे"
         },
         "notes": {
           "timeAffects": "प्रभाव: भूकंप, मौसम, प्रदर्शन, व्यवधान"

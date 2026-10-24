@@ -568,6 +568,7 @@ GDACS 事件带有彩色编码的警报级别（红色 = 严重，橙色 = 高�
 | OpenSky Network | 旧版按请求恢复（在军事种子任务中已禁用） | [opensky-network.org](https://opensky-network.org) |
 | FAA ASWS | 美国机场延误和地面停留数据 | [nasstatus.faa.gov](https://nasstatus.faa.gov) |
 | ICAO | NOTAM 空域关闭数据 | [icao.int](https://www.icao.int) |
+| FAA NOTAM Management Service | 全球 NOTAM，用于机场关闭和 NOTAM 空域图层（需凭据） | [faa.gov](https://www.faa.gov) |
 | AviationStack | 国际机场延误覆盖 | [aviationstack.com](https://aviationstack.com/) |
 
 深入阅读：[航空情报面板](/zh/panels/airline-intel)
@@ -581,8 +582,16 @@ GDACS 事件带有彩色编码的警报级别（红色 = 严重，橙色 = 高�
 | **FAA ASWS**       | 美国枢纽机场目录        | 来自 `nasstatus.faa.gov` 的实时 XML 源 — 地面延误、地面停留、到达/出发延误、关闭 |
 | **AviationStack**  | 国际机场目录  | 每个机场最近 100 架航班 — 根据航班记录计算取消率和平均延误时长  |
 | **ICAO NOTAM API** | MENA 机场目录           | 实时 NOTAM（Notice to Air Missions）查询，用于活跃的机场/空域关闭                      |
+| **FAA NMS-API**    | 同一 NOTAM 监测列表      | FAA 全球 NOTAM 库（国内、FDC、国际、军事），通过每日批量加载和增量拉取保持最新 |
 
 **NOTAM 关闭检测**针对 MENA 机场，因军事活动或安全事件导致的空域关闭具有战略意义。检测使用两种方法：ICAO Q 码匹配（机场/空域关闭代码 `FA`、`AH`、`AL`、`AW`、`AC`、`AM` 结合关闭限定符 `LC`、`AS`、`AU`、`XX`、`AW`）和闭包关键词的自由文本正则扫描（`AD CLSD`、`AIRPORT CLOSED`、`AIRSPACE CLOSED`）。当检测到 NOTAM 关闭时，它会以 `severe/closure` 分级覆盖该机场已有的任何延误警报。
+
+**FAA NOTAM Management Service。** `scripts/seed-notam-nms.mjs` 使用 OAuth2 客户端凭据（`NOTAM_KEY`、`NOTAM_SECRET`）认证。每个 NOTAM 分类每 24 小时最多批量加载一次，其余运行只拉取自上次游标以来的变更，符合 FAA 每日一次批量加载、每三分钟一次增量拉取的限制。已取消、已替换和已过结束时间的 NOTAM 会被移除。该库产出两个键：
+
+- `aviation:notam:nms:closures:v1`：完全关闭的机场（Q 码 `FALC` 或 `AD CLSD` 文本）和有限制生效的机场。`AD CLSD TO NON-SKED TRAFFIC` 这类部分关闭按限制计。当该列表不超过 30 分钟时，航空种子任务会把它排在 ICAO 之前合并，按同一监测列表过滤，并把每条警报归属到报告它的数据源。
+- `aviation:notam:airspace:v1`：当前生效或 24 小时内开始的临时飞行限制、禁区、限制区、危险区、军事区、保留区及关闭的空域，用于可选的 **NOTAM 空域限制**地图图层。给出半径的 NOTAM 绘制为圆，半径超过 250 NM 的绘制为标记；给出多边形的绘制为多边形；没有半径、形状仅在文本中描述的 FDC TFR 绘制为标记。
+
+两个键的健康预算均为 20 分钟，在首次生产发布前其健康条目保持软化状态。目前签发的凭据只能访问 FAA 预发布主机，而种子任务对任何非生产主机都只做试运行，因为预发布环境提供的是 FAA 测试 NOTAM。
 
 **严重性阈值**：平均延误 ≥15 分钟或 ≥15% 航班延误 = 轻微；≥30 分钟/30% = 中度；≥45 分钟/45% = 重大；≥60 分钟/60% = 严重。取消率 ≥80% 且航班 ≥10 = 关闭。所有结果在 Redis 中缓存 30 分钟。当未配置 AviationStack API key 时，系统会生成概率性模拟延误以供演示 — 高峰时段和高流量机场获得更高的延误概率。
 

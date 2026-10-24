@@ -112,6 +112,7 @@ before(async () => {
             svgMap: null,
             deckGLMap: null,
             emergencyLayer: { setEnabled() {}, destroy() {} },
+            notamAirspaceLayer: { setEnabled() {}, destroy() {} },
             rendererDemandCleanup: null,
             resizeObserver: null,
             globeInitToken: 0,

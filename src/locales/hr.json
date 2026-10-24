@@ -646,7 +646,8 @@
         "outages": "Uključi/isključi ispade interneta",
         "tradeRoutes": "Uključi/isključi trgovačke rute",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "Uključi/isključi preklapanje NOTAM ograničenja zračnog prostora"
       },
       "view": {
         "dark": "Prebedi na tamni način",
@@ -1451,7 +1452,8 @@
         "speciesRecovery": "Oporavak vrsta",
         "renewableInstallations": "Čista energija",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM ograničenja zračnog prostora"
       },
       "tooltip": {
         "earthquake": "Zemljotres",
@@ -1566,7 +1568,8 @@
           "geoBoundaries": "Demilitarizirane zone, linije primirja i sporne granice",
           "ciiChoropleth": "Toplinska mapa indeksa nestabilnosti države — boje zemlje prema bodovima (zelena=stabilna, crvena=kritična)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Privremena ograničenja letenja i ograničeni, opasni i zabranjeni zračni prostor prema FAA NOTAM-ima, koji su trenutno na snazi ili počinju u roku od 24 sata"
         },
         "notes": {
           "timeAffects": "Utječe na: Zemljotresi, Vrijeme, Protesti, Prekidi"

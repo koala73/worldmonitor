@@ -1005,6 +1005,10 @@ describe('planned Railway service lifecycle', () => {
       // watch-path and deploy-drift checks.
       'seed-crypto-sectors',
       'seed-market-quotes',
+      // seed-notam-nms is planned until FAA grants production NMS-API access:
+      // the issued credentials reach only the staging host, whose test NOTAMs
+      // the seeder refuses to publish, so the Railway service does not exist yet.
+      'seed-notam-nms',
       'seed-service-statuses',
       'seed-weather-alerts',
       // shipping-webhook-worker (#9217) is deliberately ABSENT now: #9236

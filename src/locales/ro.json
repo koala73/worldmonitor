@@ -576,7 +576,8 @@
         "outages": "Comutați întreruperile de internet",
         "tradeRoutes": "Comutați rutele comerciale",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "Activați suprapunerea restricțiilor de spațiu aerian NOTAM"
       },
       "view": {
         "dark": "Comutați în mod întunecat",
@@ -1304,7 +1305,8 @@
         "radiationSpike": "Vârf de radiații",
         "radiationElevated": "Radiații ridicate",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Restricții de spațiu aerian NOTAM"
       },
       "tooltip": {
         "earthquake": "Cutremur",
@@ -1419,7 +1421,8 @@
           "geoBoundaries": "Zone demilitarizate, linii de încetare a focului și granițe disputate",
           "ciiChoropleth": "Hartă termică a Indicelui de instabilitate la nivel de țară — colorează țările după scor (verde=stabil, roșu=critic)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Restricții temporare de zbor și spațiu aerian restricționat, de pericol și interzis din NOTAM-urile FAA, în vigoare acum sau începând în următoarele 24 de ore"
         },
         "notes": {
           "timeAffects": "Afectează: cutremure, vreme, proteste, întreruperi"

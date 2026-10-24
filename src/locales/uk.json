@@ -647,7 +647,8 @@
         "outages": "Toggle internet outages",
         "tradeRoutes": "Toggle trade routes",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "Перемикнути накладення обмежень повітряного простору NOTAM"
       },
       "view": {
         "dark": "Switch to dark mode",
@@ -1451,7 +1452,8 @@
         "speciesRecovery": "Species Recovery",
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Обмеження повітряного простору NOTAM"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1566,7 +1568,8 @@
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
           "ciiChoropleth": "Теплова карта Country Instability Index — країни розфарбовані за балом (зелений=стабільна, червоний=критична)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Тимчасові обмеження польотів та обмежений, небезпечний та заборонений повітряний простір з FAA NOTAMs, які чинні зараз або починаються протягом 24 годин"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"

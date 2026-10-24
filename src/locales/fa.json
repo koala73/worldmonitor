@@ -643,7 +643,8 @@
         "outages": "Toggle internet outages",
         "tradeRoutes": "Toggle trade routes",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "نمایش/پنهان کردن لایه محدودیت‌های فضای هوایی NOTAM"
       },
       "view": {
         "dark": "Switch to dark mode",
@@ -1443,7 +1444,8 @@
         "speciesRecovery": "Species Recovery",
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "محدودیت‌های فضای هوایی NOTAM"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1558,7 +1560,8 @@
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
           "ciiChoropleth": "نقشه حرارتی شاخص بی‌ثباتی کشور — رنگ‌بندی کشورها بر اساس امتیاز (سبز=پایدار، قرمز=حیاتی)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "محدودیت‌های پروازی موقت و فضای هوایی محدود، خطرناک و ممنوع از NOTAM‌های FAA که در حال اجرا هستند یا در طی ۲۴ ساعت آینده شروع می‌شوند"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"

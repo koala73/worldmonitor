@@ -576,7 +576,8 @@
         "outages": "Basculer les pannes internet",
         "tradeRoutes": "Basculer les routes commerciales",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "Activer/désactiver la superposition des restrictions d'espace aérien NOTAM"
       },
       "view": {
         "dark": "Passer en mode sombre",
@@ -1255,7 +1256,8 @@
         "radiationSpike": "Pic de radiation",
         "radiationElevated": "Radiation élevée",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Restrictions d'espace aérien NOTAM"
       },
       "tooltip": {
         "earthquake": "Tremblement de terre",
@@ -1370,7 +1372,8 @@
           "geoBoundaries": "Zones démilitarisées, lignes de cessez-le-feu et frontières contestées",
           "ciiChoropleth": "Carte thermique de l'Indice d'instabilité des pays — colore les pays selon leur score (vert=stable, rouge=critique)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Restrictions de vol temporaires et espaces aériens restreints, dangereux et interdits selon les NOTAMs de la FAA, en vigueur maintenant ou à partir des 24 prochaines heures"
         },
         "notes": {
           "timeAffects": "Affecte : tremblements de terre, conditions météorologiques, manifestations, pannes"

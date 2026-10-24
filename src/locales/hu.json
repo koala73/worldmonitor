@@ -643,7 +643,8 @@
         "outages": "Internetkiesések be/ki",
         "tradeRoutes": "Kereskedelmi útvonalak be/ki",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "NOTAM légtéri korlátozások rétegének be/kikapcsolása"
       },
       "view": {
         "dark": "Váltás sötét módra",
@@ -1443,7 +1444,8 @@
         "speciesRecovery": "Fajmegmentés",
         "renewableInstallations": "Tiszta energia",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM légtéri korlátozások"
       },
       "tooltip": {
         "earthquake": "Földrengés",
@@ -1558,7 +1560,8 @@
           "geoBoundaries": "Demilitarizált zónák, tűzszünet vonalak és vitatott határok",
           "ciiChoropleth": "Ország Instabilitási Index hőtérkép — országokat pontszám szerint színez (zöld=stabil, piros=kritikus)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Ideiglenes repüléskorlátozások, valamint korlátozott, veszélyes és tiltott légtér az FAA NOTAM-jaiból, amely jelenleg érvényes vagy 24 órán belül kezdődik"
         },
         "notes": {
           "timeAffects": "Érintett: Földrengések, Időjárás, Tüntetések, Leállások"

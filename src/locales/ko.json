@@ -572,7 +572,8 @@
         "outages": "인터넷 장애 전환",
         "tradeRoutes": "무역 노선 전환",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "NOTAM 공역 제한 오버레이 토글"
       },
       "view": {
         "dark": "다크 모드로 전환",
@@ -1298,7 +1299,8 @@
         "radiationSpike": "방사능 급증",
         "radiationElevated": "상승된 방사능",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM 공역 제한"
       },
       "tooltip": {
         "earthquake": "지진",
@@ -1413,7 +1415,8 @@
           "geoBoundaries": "비무장지대, 휴전선 및 분쟁 경계선",
           "ciiChoropleth": "Country Instability Index 히트맵 — 점수별 국가 표시(녹색=안정, 적색=심각)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "FAA NOTAM에서 현재 시행 중이거나 24시간 이내에 시작되는 임시 비행 제한, 제한된 공역, 위험 및 금지 공역"
         },
         "notes": {
           "timeAffects": "영향 대상: 지진, 기상, 시위, 장애"

@@ -578,7 +578,8 @@
         "outages": "Переключить интернет-отключения",
         "tradeRoutes": "Переключить торговые маршруты",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "Переключить наложение ограничений воздушного пространства NOTAM"
       },
       "view": {
         "dark": "Переключить на тёмную тему",
@@ -1307,7 +1308,8 @@
         "radiationSpike": "Всплеск радиации",
         "radiationElevated": "Повышенный уровень радиации",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Ограничения воздушного пространства NOTAM"
       },
       "tooltip": {
         "earthquake": "Землетрясение",
@@ -1422,7 +1424,8 @@
           "geoBoundaries": "Демилитаризованные зоны, линии прекращения огня и спорные границы",
           "ciiChoropleth": "Индекс нестабильности стран — тепловая карта, окрашивает страны по баллу (зелёный=стабильна, красный=критично)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Временные ограничения полётов и ограниченное, опасное и запрещённое воздушное пространство из NOTAM FAA, действующие сейчас или начинающиеся в течение 24 часов"
         },
         "notes": {
           "timeAffects": "Влияет на: Землетрясения, Погода, Протесты, Сбои"

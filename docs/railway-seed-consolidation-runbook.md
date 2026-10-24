@@ -1604,15 +1604,17 @@ entries.
 > These data seeds were added **after** the 2026-04-10 inventory above. The rows
 > marked **planned** are registry/documentation entries for services that are
 > not provisioned in production; they remain excluded from the live audit and
-> `--apply` until an explicit lifecycle activation. The four planned rows below
+> `--apply` until an explicit lifecycle activation. Four of the planned rows below
 > that read **planned — not provisioned** are repository-root
 > `nixpacks-root-repo` cron candidates (root directory `.`, start command
 > `node scripts/<file>`), so their eventual packaging can include valid imports
 > outside `scripts/`. Active rows must instead follow the
 > deploy mode and exact `watchPatterns` recorded in `scripts/railway-services.json`.
 > These rows are intentionally **not** part of the 100-service inventory count
-> above. The planned rows are registered with deploy mode
-> `nixpacks-root-repo`; active rows use their verified live mode.
+> above. Those four are registered with deploy mode `nixpacks-root-repo`. The
+> fifth, `seed-notam-nms`, imports only `scripts/` files, so it is registered
+> `nixpacks-root-scripts` with its exact `watchPatterns`, ready for activation.
+> Active rows use their verified live mode.
 >
 > **Cadence below is inferred from each seed's cache TTL** as a documentation
 > aid; confirm the live cron schedule and Service ID against the Railway
@@ -1648,6 +1650,7 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-service-statuses | `node scripts/seed-service-statuses.mjs` | **planned — not provisioned** | Service-status warm-ping; primary seeder is the AIS relay loop |
 | seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **`0 */6 * * *` (verified 2026-09-24)** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root service `11581ac4-24ea-4cfc-bf17-471e41305364` (Railpack, `rootDirectory` `scripts`), reads channel `/live` pages through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` |
 | seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD sea-area and coastal marine bulletins from public pages; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
+| seed-notam-nms | `node seed-notam-nms.mjs` | **planned — not provisioned** (registry cron `*/5 * * * *`, health budget 20 min) | FAA NOTAM Management Service: one daily bulk load per classification, then delta pulls; writes `aviation:notam:airspace:v1` and the closures key `seed-aviation` merges. Needs `NOTAM_KEY`/`NOTAM_SECRET` for the production host; scripts-root Nixpacks once provisioned |
 
 The IMD seeder reads public bulletin pages. It needs no IMD account, API key,
 or proxy. See [Configure the IMD Railway seeder](natural-disasters.mdx#configure-the-imd-railway-seeder).

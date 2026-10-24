@@ -572,7 +572,8 @@
         "outages": "สลับการขัดข้องของอินเทอร์เน็ต",
         "tradeRoutes": "สลับเส้นทางการค้า",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "สลับการแสดงข้อจำกัดเขตอากาศ NOTAM"
       },
       "view": {
         "dark": "เปลี่ยนเป็นโหมดมืด",
@@ -1298,7 +1299,8 @@
         "radiationSpike": "การเพิ่มขึ้นของรังสี",
         "radiationElevated": "รังสีสูงขึ้น",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "ข้อจำกัดเขตอากาศ NOTAM"
       },
       "tooltip": {
         "earthquake": "แผ่นดินไหว",
@@ -1413,7 +1415,8 @@
           "geoBoundaries": "เขตปลอดทหาร แนวหยุดยิง และพรมแดนที่เป็นข้อพิพาท",
           "ciiChoropleth": "แผนความร้อน Country Instability Index — แสดงสีประเทศตามคะแนน (เขียว=เสถียร แดง=วิกฤต)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "การจำกัดการบินชั่วคราวและเขตอากาศที่จำกัด อันตราย และห้ามบินจาก FAA NOTAMs ที่มีผลบังคับใช้ในขณะนี้หรือเริ่มต้นภายใน 24 ชั่วโมง"
         },
         "notes": {
           "timeAffects": "ส่งผลต่อ: แผ่นดินไหว, สภาพอากาศ, การประท้วง, การหยุดชะงัก"

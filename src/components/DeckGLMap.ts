@@ -183,6 +183,8 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { summarizeRenderTiming, formatRenderTiming } from '@/components/map/render-timing';
 import { DeferredHeavyCommit } from '@/components/map/deferred-layer-commit';
 import { ZoomHintGuard } from '@/components/map/zoom-hint-guard';
+import { NOTAM_AIRSPACE_COLORS, notamAirspaceTooltip } from '@/components/map/notam-airspace-style';
+import type { NotamAirspaceRestriction } from '@/services/notam-airspace';
 import { dispatchWebcamLayerClick, resolveWebcamStreamUrl, type WebcamLeafLike } from '@/components/map/webcam-click';
 import {
   type BBox,
@@ -626,6 +628,7 @@ export class DeckGLMap {
   private protests: SocialUnrestEvent[] = [];
   private militaryFlights: MilitaryFlight[] = [];
   private emergencyMarkers: import('../../shared/aircraft-emergencies').EmergencyMapMarker[] = [];
+  private notamAirspace: NotamAirspaceRestriction[] = [];
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
   private activeFlightTrails = new Set<string>();
   private clearTrailsBtn: HTMLButtonElement | null = null;
@@ -2243,6 +2246,12 @@ export class DeckGLMap {
       layers.push(this.createMilitaryFlightClustersLayer(filteredMilitaryFlightClusters));
     }
 
+    // FAA NMS airspace restrictions sit under the aircraft layers so live
+    // traffic and emergency markers stay clickable inside a restricted area.
+    if (mapLayers.notamAirspace && this.notamAirspace.length > 0) {
+      layers.push(...this.createNotamAirspaceLayers(this.notamAirspace));
+    }
+
     // Above military flights: an emergency-squawking military aircraft is drawn
     // in both layers, and its emergency marker must stay visible and clickable.
     if (mapLayers.aircraftEmergencies && this.emergencyMarkers.length > 0) {
@@ -3260,6 +3269,55 @@ export class DeckGLMap {
       radiusMaxPixels: 40,
       pickable: true,
     });
+  }
+
+  // Polygons where NMS ships them, radius circles (metres, so they scale with
+  // zoom) when the Q-line gives a radius, and fixed-size markers otherwise:
+  // most FDC TFRs describe their shape only in text.
+  private createNotamAirspaceLayers(restrictions: NotamAirspaceRestriction[]): Layer[] {
+    const color = (row: NotamAirspaceRestriction, alpha: number): [number, number, number, number] => {
+      const [r, g, b] = NOTAM_AIRSPACE_COLORS[row.kind];
+      return [r, g, b, row.upcoming ? Math.round(alpha * 0.45) : alpha];
+    };
+    const polygons = restrictions.flatMap((row) => (row.polygons ?? []).map((ring) => ({ row, ring })));
+    const circles = restrictions.filter((row) => !row.polygons?.length && row.radiusNm);
+    const markers = restrictions.filter((row) => !row.polygons?.length && !row.radiusNm);
+    return [
+      new PolygonLayer<{ row: NotamAirspaceRestriction; ring: [number, number][] }>({
+        id: 'notam-airspace-polygons',
+        data: polygons,
+        getPolygon: (d) => d.ring,
+        getFillColor: (d) => color(d.row, 45),
+        getLineColor: (d) => color(d.row, 210),
+        lineWidthMinPixels: 1,
+        stroked: true,
+        pickable: true,
+      }),
+      new ScatterplotLayer<NotamAirspaceRestriction>({
+        id: 'notam-airspace-circles',
+        data: circles,
+        getPosition: (d) => d.center,
+        getRadius: (d) => (d.radiusNm ?? 0) * 1852,
+        getFillColor: (d) => color(d, 35),
+        getLineColor: (d) => color(d, 200),
+        stroked: true,
+        lineWidthMinPixels: 1,
+        radiusMinPixels: 3,
+        pickable: true,
+      }),
+      new ScatterplotLayer<NotamAirspaceRestriction>({
+        id: 'notam-airspace-markers',
+        data: markers,
+        getPosition: (d) => d.center,
+        getRadius: 5,
+        radiusUnits: 'pixels',
+        getFillColor: (d) => color(d, 200),
+        getLineColor: [17, 24, 39, 220],
+        stroked: true,
+        lineWidthMinPixels: 1,
+        pickable: true,
+      }),
+    ];
   }
 
   private createAircraftPositionsLayer(): IconLayer<PositionSample> {
@@ -5140,6 +5198,10 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)} (${text(obj.iata)})</strong><br/>${text(obj.severity)}: ${text(obj.reason)}</div>` };
       case 'notam-overlay-layer':
         return { html: `<div class="deckgl-tooltip"><strong style="color:#ff2828;">&#9888; NOTAM CLOSURE</strong><br/>${text(obj.name)} (${text(obj.iata)})<br/><span style="opacity:.7">${text((obj.reason || '').slice(0, 100))}</span></div>` };
+      case 'notam-airspace-polygons':
+      case 'notam-airspace-circles':
+      case 'notam-airspace-markers':
+        return { html: notamAirspaceTooltip((obj.row ?? obj) as NotamAirspaceRestriction, text) };
       case 'aircraft-positions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.icao24)}</strong><br/>${numericLabel(obj.altitudeFt)} ft · ${numericLabel(obj.groundSpeedKts)} kts · ${numericLabel(obj.trackDeg, 0)}°</div>` };
       case 'apt-groups-layer':
@@ -6168,6 +6230,7 @@ export class DeckGLMap {
       helpItem(label('shipTraffic'), 'transportShipping'),
       helpItem(label('tradeRoutes'), 'tradeRoutes'),
       helpItem(label('flightDelays'), 'transportDelays'),
+      helpItem(label('notamAirspace'), 'notamAirspace'),
     ])}
         ${helpSection('naturalEconomic', [
       helpItem(label('naturalEvents'), 'naturalEventsFull'),
@@ -7283,6 +7346,11 @@ export class DeckGLMap {
 
   public setAircraftEmergencies(markers: import('../../shared/aircraft-emergencies').EmergencyMapMarker[]): void {
     this.emergencyMarkers = markers;
+    this.render();
+  }
+
+  public setNotamAirspace(restrictions: NotamAirspaceRestriction[]): void {
+    this.notamAirspace = restrictions;
     this.render();
   }
 

@@ -24,8 +24,24 @@ const values = new Map([
   [notamKey, JSON.stringify(lastGood)],
   [metaKey, JSON.stringify({ fetchedAt, recordCount: 1 })],
 ]);
+// seed-notam-nms.mjs publishes this key in runSeed contract mode, so it is
+// stored as a {_seed, data} envelope.
+if (process.env.TEST_NMS_MODE) {
+  const ageMin = process.env.TEST_NMS_MODE === 'stale' ? 31 : 4;
+  const generatedAt = Date.now() - ageMin * 60_000;
+  values.set('aviation:notam:nms:closures:v1', JSON.stringify({
+    _seed: { fetchedAt: generatedAt, recordCount: 3, sourceVersion: 'faa-nms-api-v1', schemaVersion: 1, state: 'OK' },
+    data: {
+      closedIcaos: ['OEJN', 'KZZZ'],
+      restrictedIcaos: ['OEMA', 'OEDF'],
+      reasons: { OEJN: 'AD CLSD (NMS)', KZZZ: 'AD AP CLSD', OEMA: 'RESTRICTED (NMS)', OEDF: 'AD AP CLSD TO NON SKED GA' },
+      generatedAt,
+    },
+  }));
+}
 const writes = [];
 const expires = [];
+const pushes = [];
 let icaoCalls = 0;
 const command = ([verb, key, value, ...args]) => {
   if (verb === 'GET') return values.get(key) ?? null;
@@ -40,7 +56,7 @@ const command = ([verb, key, value, ...args]) => {
     return values.has(key) ? 1 : 0;
   }
   if (verb === 'EVAL') { values.delete(args[0]); return 1; }
-  if (verb === 'LPUSH') return 1;
+  if (verb === 'LPUSH') { pushes.push(JSON.parse(value)); return 1; }
   if (verb === 'DEL') { values.delete(key); return 1; }
   throw new Error('Unexpected Redis command ' + verb);
 };
@@ -76,7 +92,7 @@ globalThis.fetch = async (input, options = {}) => {
 };
 process.on('exit', () => {
   console.log('FIXTURE_STATE=' + JSON.stringify({
-    icaoCalls, writes, expires, initialFetchedAt: fetchedAt,
+    icaoCalls, writes, expires, pushes, initialFetchedAt: fetchedAt,
     notam: JSON.parse(values.get(notamKey) ?? 'null'),
     meta: JSON.parse(values.get(metaKey) ?? 'null'),
   }));
@@ -179,4 +195,40 @@ test('ICAO success with no NOTAMs is a valid empty observation', () => {
   assert.deepEqual(state.notam, { closedIcaos: [], restrictedIcaos: [], reasons: {} });
   assert.equal(state.meta.recordCount, 0);
   assert.ok(state.meta.fetchedAt > state.initialFetchedAt);
+});
+
+// FAA NMS (seed-notam-nms.mjs) is a second closure source. Its snapshot covers
+// every aerodrome; the side-car keeps only the airports it monitors.
+test('ICAO outage with fresh NMS closures publishes the NMS observation', () => {
+  const { state, stdout, stderr } = runAviation({ TEST_ICAO_MODE: 'retired', TEST_NMS_MODE: 'fresh' });
+  assert.equal(state.icaoCalls, 1, stdout + stderr);
+  assert.doesNotMatch(stderr, /kept last-good closures/);
+  assert.deepEqual(state.notam.closedIcaos, ['OEJN'], 'KZZZ is not a monitored airport');
+  assert.deepEqual(state.notam.restrictedIcaos.sort(), ['OEDF', 'OEMA']);
+  assert.equal(state.notam.reasons.OEJN, 'AD CLSD (NMS)');
+  assert.ok(state.meta.fetchedAt > state.initialFetchedAt, 'NMS is a current observation');
+  const notice = state.pushes.find((p) => p.eventType === 'notam_closure');
+  assert.equal(notice?.payload.source, 'FAA NMS NOTAM');
+});
+
+test('without an ICAO key, fresh NMS closures still publish', () => {
+  const { state, stdout, stderr } = runAviation({ ICAO_API_KEY: '', TEST_NMS_MODE: 'fresh' });
+  assert.equal(state.icaoCalls, 0, stdout + stderr);
+  assert.deepEqual(state.notam.closedIcaos, ['OEJN']);
+  assert.equal(state.meta.recordCount, 3);
+});
+
+test('ICAO and NMS closures merge; NMS reasons win and closed beats restricted', () => {
+  const { state, stdout, stderr } = runAviation({ TEST_ICAO_MODE: 'ok', TEST_NMS_MODE: 'fresh' });
+  assert.equal(state.icaoCalls, 1, stdout + stderr);
+  assert.deepEqual(state.notam.closedIcaos, ['OEJN']);
+  assert.deepEqual(state.notam.restrictedIcaos.sort(), ['OEDF', 'OEMA']);
+  assert.equal(state.notam.reasons.OEMA, 'RESTRICTED (NMS)');
+});
+
+test('stale NMS closures are ignored: an ICAO outage still keeps last-good', () => {
+  const { state, stdout, stderr } = runAviation({ TEST_ICAO_MODE: 'retired', TEST_NMS_MODE: 'stale' });
+  assert.match(stderr, /kept last-good closures/, stdout + stderr);
+  assert.equal(state.writes.includes(NOTAM_KEY), false);
+  assert.deepEqual(state.notam.closedIcaos, ['OEDF']);
 });

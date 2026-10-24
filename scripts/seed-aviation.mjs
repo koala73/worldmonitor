@@ -45,6 +45,7 @@ import notificationDedup from './shared/notification-dedup.cjs';
 import countryNameMap from './shared/country-name-to-iso2.cjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { airportNotifyLocation } from './lib/airport-notify-location.mjs';
+import { NMS_CLOSURES_KEY, isFreshNmsClosures, mergeClosureSources } from './lib/nms-notam.mjs';
 
 const {
   buildDedupMaterial,
@@ -946,7 +947,7 @@ async function dispatchAviationNotifications(alerts) {
   }
 }
 
-async function dispatchNotamNotifications(closedIcaos, reasons) {
+async function dispatchNotamNotifications(closedIcaos, reasons, sourceByIcao = {}) {
   const prev = await upstashGet(NOTAM_PREV_CLOSED_KEY);
   const prevSet = new Set(Array.isArray(prev) ? prev : []);
   const newClosures = closedIcaos.filter(icao => !prevSet.has(icao));
@@ -967,7 +968,7 @@ async function dispatchNotamNotifications(closedIcaos, reasons) {
       eventType: 'notam_closure',
       payload: {
         title: `NOTAM: ${icao} — ${reasons[icao] || 'Airport closure'}`,
-        source: 'ICAO NOTAM',
+        source: sourceByIcao[icao] || 'ICAO NOTAM',
         coalesceKey: `notam:closure:${icao}`,
         ...(countryCode ? { countryCode } : {}),
         ...site,
@@ -1317,16 +1318,41 @@ async function preserveLastGoodNotam(reason) {
   }
 }
 
+// FAA NMS closures (scripts/seed-notam-nms.mjs) cover every aerodrome NMS
+// reports, foreign ones included. A snapshot older than its own freshness
+// budget is not a current observation and is ignored.
+async function loadNmsClosures() {
+  try {
+    const snapshot = await upstashGetUnwrapped(NMS_CLOSURES_KEY);
+    return isFreshNmsClosures(snapshot, Date.now()) ? snapshot : null;
+  } catch {
+    return null;
+  }
+}
+
+const NOTAM_SOURCE_LABELS = { nms: 'FAA NMS NOTAM', icao: 'ICAO NOTAM' };
+
 async function runNotamSideCar() {
   await withLock('aviation:notam', async () => {
-    let notam;
+    let icao = null;
+    let icaoError = null;
     try {
-      notam = await seedNotamClosures();
+      const result = await seedNotamClosures();
+      if (!result.skipped) icao = result;
     } catch (err) {
-      await preserveLastGoodNotam(`ICAO fetch failed: ${err?.message || err}`);
-      return;
+      icaoError = err;
     }
-    if (notam.skipped) return; // no ICAO_API_KEY
+    const nms = await loadNmsClosures();
+    if (!icao && !nms) {
+      if (icaoError) await preserveLastGoodNotam(`ICAO fetch failed: ${icaoError?.message || icaoError}`);
+      return; // no source configured
+    }
+    if (icaoError) console.warn(`[NOTAM] ICAO fetch failed: ${icaoError?.message || icaoError} — publishing FAA NMS closures alone`);
+    // NMS first: its classifier is stricter, so its reason text wins.
+    const notam = mergeClosureSources(
+      [{ label: NOTAM_SOURCE_LABELS.nms, snapshot: nms }, { label: NOTAM_SOURCE_LABELS.icao, snapshot: icao }],
+      NOTAM_LIST,
+    );
     try {
       const metaWritten = await writeExtraKeyWithMeta(
         NOTAM_KEY,
@@ -1341,7 +1367,7 @@ async function runNotamSideCar() {
       await preserveLastGoodNotam(`write error: ${err?.message || err}`);
       return;
     }
-    try { await dispatchNotamNotifications(notam.closedIcaos, notam.reasons); }
+    try { await dispatchNotamNotifications(notam.closedIcaos, notam.reasons, notam.sourceByIcao); }
     catch (e) { console.warn(`[NOTAM] notify error: ${e?.message || e}`); }
   });
 }

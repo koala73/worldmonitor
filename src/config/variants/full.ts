@@ -57,6 +57,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 // Map layers for geopolitical view
 export const DEFAULT_MAP_LAYERS: MapLayers = {
   aircraftEmergencies: false,
+  notamAirspace: false,
   gpsJamming: false,
   satellites: false,
 

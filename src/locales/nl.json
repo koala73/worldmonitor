@@ -190,7 +190,8 @@
         "outages": "Internetstoringen in-/uitschakelen",
         "tradeRoutes": "Handelsroutes in-/uitschakelen",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "NOTAM-luchtruimbeperking overlay in-/uitschakelen"
       },
       "view": {
         "dark": "Naar donkere modus",
@@ -603,7 +604,8 @@
         "radiationSpike": "Stralingspiek",
         "radiationElevated": "Verhoogde straling",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM-luchtruimbeperkingen"
       },
       "layersTitle": "Lagen",
       "layerSearch": "Lagen zoeken...",
@@ -725,7 +727,8 @@
           "geoBoundaries": "Gedemilitariseerde zones, staakt-het-vuren-lijnen en betwiste grenzen",
           "ciiChoropleth": "Country Instability Index heatmap — landen ingekleurd naar score (groen=stabiel, rood=kritiek)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Tijdelijke vliegbeperkingen en beperkt, gevaar- en verboden luchtruim van FAA NOTAMs, nu van kracht of binnen 24 uur van start"
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"

@@ -574,7 +574,8 @@
         "outages": "Internetausfälle umschalten",
         "tradeRoutes": "Handelsrouten umschalten",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "NOTAM-Luftraumbeschränkungen-Overlay umschalten"
       },
       "view": {
         "dark": "Zum Dunkelmodus wechseln",
@@ -1143,7 +1144,8 @@
         "radiationSpike": "Strahlungsspitze",
         "radiationElevated": "Erhöhte Strahlung",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM-Luftraumbeschränkungen"
       },
       "layersTitle": "Ebenen",
       "layerSearch": "Ebenen suchen...",
@@ -1265,7 +1267,8 @@
           "geoBoundaries": "Entmilitarisierte Zonen, Waffenstillstandslinien und umstrittene Grenzen",
           "ciiChoropleth": "Länderinstabilitätsindex-Wärmekarte – färbt Länder nach Punktzahl (grün=stabil, rot=kritisch)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Temporäre Flugbeschränkungen und beschränkter, Gefahren- und verbotener Luftraum aus FAA-NOTAMs, derzeit gültig oder innerhalb von 24 Stunden beginnend"
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"

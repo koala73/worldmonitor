@@ -578,7 +578,8 @@
         "outages": "Přepnout výpadky internetu",
         "tradeRoutes": "Přepnout obchodní trasy",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "Přepnout překrytí omezení vzdušného prostoru NOTAM"
       },
       "view": {
         "dark": "Přepnout na tmavý režim",
@@ -1295,7 +1296,8 @@
         "radiationSpike": "Skokový nárůst radiace",
         "radiationElevated": "Zvýšená radiace",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Omezení vzdušného prostoru NOTAM"
       },
       "tooltip": {
         "earthquake": "Zemětřesení",
@@ -1410,7 +1412,8 @@
           "geoBoundaries": "Demilitarizované zóny, linie příměří a sporné hranice",
           "ciiChoropleth": "Tepelná mapa Country Instability Index — barevně rozlišuje země podle skóre (zelená=stabilní, červená=kritické)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Dočasná omezení letů a omezený, nebezpečný a zakázaný vzdušný prostor z NOTAMů FAA, která jsou právě v platnosti nebo začínají do 24 hodin"
         },
         "notes": {
           "timeAffects": "Ovlivňuje: Zemětřesení, Počasí, Protesty, Výpadky"

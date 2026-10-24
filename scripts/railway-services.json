@@ -2158,6 +2158,37 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {
+    "entry": "scripts/seed-notam-nms.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "lifecycle": "planned",
+    "service": "seed-notam-nms",
+    "startCommand": "node seed-notam-nms.mjs",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "NOTAM_KEY",
+      "NOTAM_SECRET"
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-payload-codec.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/_upstash-rest.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/nms-notam.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/railpack.json",
+      "scripts/seed-notam-nms.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
+    ],
+    "cronSchedule": "*/5 * * * *",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
     "entry": "scripts/process-simulation-tasks.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "simulation-worker",

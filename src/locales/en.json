@@ -665,7 +665,8 @@
         "outages": "Toggle internet outages",
         "tradeRoutes": "Toggle trade routes",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "Toggle NOTAM airspace restrictions overlay"
       },
       "view": {
         "dark": "Switch to dark mode",
@@ -1465,7 +1466,8 @@
         "speciesRecovery": "Species Recovery",
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM Airspace Restrictions"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1580,7 +1582,8 @@
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
           "ciiChoropleth": "Country Instability Index heat-map — colors countries by score (green=stable, red=critical)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Temporary flight restrictions and restricted, danger and prohibited airspace from FAA NOTAMs, in effect now or starting within 24 hours"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"

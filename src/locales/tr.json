@@ -574,7 +574,8 @@
         "outages": "İnternet kesintilerini aç/kapat",
         "tradeRoutes": "Ticaret yollarını aç/kapat",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "NOTAM hava sahasına ilişkin kısıtlamalar katmanını aç/kapat"
       },
       "view": {
         "dark": "Karanlık moda geç",
@@ -1301,7 +1302,8 @@
         "radiationSpike": "Radyasyon artışı",
         "radiationElevated": "Yükseltilmiş radyasyon",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM Hava Sahasına İlişkin Kısıtlamalar"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -1416,7 +1418,8 @@
           "geoBoundaries": "Silahsızlandırılmış bölgeler, ateşkes hatları ve tartışmalı sınırlar",
           "ciiChoropleth": "Ülke İstikrarsızlık Endeksi ısı haritası — ülkeleri puana göre renklendiriyor (yeşil=istikrarlı, kırmızı=kritik)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "FAA NOTAM'larından geçici uçuş kısıtlamaları ve sınırlı, tehlikeli ve yasaklı hava sahaları; şu anda yürürlükte olan veya 24 saat içinde başlayacak olanlar"
         },
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"

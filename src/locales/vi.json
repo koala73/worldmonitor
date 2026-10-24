@@ -572,7 +572,8 @@
         "outages": "Bật/tắt gián đoạn internet",
         "tradeRoutes": "Bật/tắt tuyến thương mại",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay",
+        "notamAirspace": "Bật/tắt lớp phủ hạn chế không phận NOTAM"
       },
       "view": {
         "dark": "Chuyển sang chế độ tối",
@@ -1298,7 +1299,8 @@
         "radiationSpike": "Đột tăng bức xạ",
         "radiationElevated": "Bức xạ tăng cao",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Hạn chế không phận NOTAM"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -1413,7 +1415,8 @@
           "geoBoundaries": "Khu phi quân sự, đường ngừng bắn và ranh giới tranh chấp",
           "ciiChoropleth": "Bản đồ nhiệt Chỉ số Bất ổn định Đất nước — tô màu các quốc gia theo điểm số (xanh=ổn định, đỏ=tới hạn)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Hạn chế bay tạm thời và không phận bị hạn chế, nguy hiểm và bị cấm từ NOTAM của FAA, có hiệu lực ngay bây giờ hoặc bắt đầu trong vòng 24 giờ"
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"

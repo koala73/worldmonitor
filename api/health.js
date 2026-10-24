@@ -515,6 +515,8 @@ const STANDALONE_KEYS = {
   faaDelays:             'aviation:delays:faa:v1',
   intlDelays:            'aviation:delays:intl:v3',
   notamClosures:         'aviation:notam:closures:v2',
+  notamAirspace:         'aviation:notam:airspace:v1',
+  notamNmsClosures:      'aviation:notam:nms:closures:v1',
   positiveEventsLive:    'positive-events:geo:v1',
   cableHealth:           'cable-health-v1',
   submarineCables:       'infrastructure:submarine-cables:v1',
@@ -869,6 +871,21 @@ const SEED_META = {
     cutover: { mode: 'expiring-ack', fromKey: 'seed-meta:aviation:faa', issue: 6987, status: 'STALE_SEED' },
   },
   notamClosures:    { key: 'seed-meta:aviation:notam',          maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
+  // FAA NMS-API seeder (scripts/seed-notam-nms.mjs, */5 cron). Soft until the
+  // first production publish writes the activation marker: the FAA issues
+  // production credentials only after pre-prod validation.
+  notamAirspace: {
+    key: 'seed-meta:aviation:notam-airspace',
+    maxStaleMin: 20, // 4× the */5 Railway cron
+    activationKey: 'seed-activated:aviation:notam-nms:v1',
+    cutover: { mode: 'activation-marker', fromKey: null, activationKey: 'seed-activated:aviation:notam-nms:v1' },
+  },
+  notamNmsClosures: {
+    key: 'seed-meta:aviation:notam-nms-closures',
+    maxStaleMin: 20, // same run as notamAirspace
+    activationKey: 'seed-activated:aviation:notam-nms:v1',
+    cutover: { mode: 'activation-marker', fromKey: null, activationKey: 'seed-activated:aviation:notam-nms:v1' },
+  },
   predictionMarkets: {
     key: 'seed-meta:prediction:markets',
     maxStaleMin: 90,
@@ -2304,6 +2321,8 @@ const ON_DEMAND_KEYS = new Set([
   // first publish, missing data/meta is EMPTY/STALE_SEED like any other key.
   'newsFeedHealth',
   'imdCycloneMarine',
+  'notamAirspace',
+  'notamNmsClosures',
   'forecastCalibrationMap',
   'marketAlertLedger',
   'marketAlertScorecard',
@@ -2414,6 +2433,8 @@ const ACTIVATION_MARKERS = {
   physicalDivergence: SEED_META.physicalDivergence.activationKey,
   scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,
   imdCycloneMarine: SEED_META.imdCycloneMarine.activationKey,
+  notamAirspace: SEED_META.notamAirspace.activationKey,
+  notamNmsClosures: SEED_META.notamNmsClosures.activationKey,
   forecastCalibrationMap: SEED_META.forecastCalibrationMap.activationKey,
   forecastProbabilityTrail: SEED_META.forecastProbabilityTrail.activationKey,
   forecastArchive: SEED_META.forecastArchive.activationKey,

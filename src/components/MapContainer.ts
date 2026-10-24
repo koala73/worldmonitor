@@ -67,6 +67,8 @@ import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
 import { projectChinaCorridorOverlay } from './map/china-corridor-overlay';
 import { AircraftEmergencyLayer } from './AircraftEmergencyLayer';
+import { NotamAirspaceLayer } from './NotamAirspaceLayer';
+import type { NotamAirspaceRestriction } from '@/services/notam-airspace';
 import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -274,12 +276,19 @@ export class MapContainer {
   private cachedChokepointData: GetChokepointStatusResponse | null | undefined;
   private cachedChinaCorridorSelection: ChinaCorridorControlTower | null = null;
   private emergencyLayer: AircraftEmergencyLayer;
+  // DeckGL-only layer: the feed runs only while the DeckGL renderer is active.
+  private notamAirspaceLayer: NotamAirspaceLayer;
+  private cachedNotamAirspace: NotamAirspaceRestriction[] = [];
 
   constructor(container: HTMLElement, initialState: MapContainerState, preferGlobe = false, options: MapContainerOptions = {}) {
     this.container = container;
     this.emergencyLayer = new AircraftEmergencyLayer(container, markers => {
       if (this.useDeckGL) this.deckGLMap?.setAircraftEmergencies(markers);
       else this.svgMap?.setAircraftEmergencies(markers);
+    });
+    this.notamAirspaceLayer = new NotamAirspaceLayer(restrictions => {
+      this.cachedNotamAirspace = restrictions;
+      if (this.useDeckGL) this.deckGLMap?.setNotamAirspace(restrictions);
     });
     this.initialState = initialState;
     this.chrome = options.chrome ?? true;
@@ -825,6 +834,8 @@ export class MapContainer {
     if (this.cachedAircraftPositions) this.setAircraftPositions(this.cachedAircraftPositions);
     if (this.cachedMilitaryFlights) this.setMilitaryFlights(this.cachedMilitaryFlights, this.cachedMilitaryFlightClusters ?? []);
     this.emergencyLayer.setEnabled(!this.useGlobe && this.getState().layers.aircraftEmergencies === true);
+    this.notamAirspaceLayer.setEnabled(this.useDeckGL && this.getState().layers.notamAirspace === true);
+    if (this.useDeckGL && this.cachedNotamAirspace.length) this.deckGLMap?.setNotamAirspace(this.cachedNotamAirspace);
     if (this.cachedMilitaryVessels) this.setMilitaryVessels(this.cachedMilitaryVessels, this.cachedMilitaryVesselClusters ?? []);
     if (this.cachedNaturalEvents) this.setNaturalEvents(this.cachedNaturalEvents);
     if (this.cachedFires) this.setFires(this.cachedFires);
@@ -1073,6 +1084,7 @@ export class MapContainer {
     }
     this.initialState = { ...this.initialState, layers: sanitized };
     this.emergencyLayer.setEnabled(!this.useGlobe && sanitized.aircraftEmergencies === true);
+    this.notamAirspaceLayer.setEnabled(this.useDeckGL && sanitized.notamAirspace === true);
     if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
     if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
   }
@@ -1502,6 +1514,7 @@ export class MapContainer {
     this.cachedOnLayerChange = callback;
     const notify = (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void => {
       if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(!this.useGlobe && enabled);
+      if (layer === 'notamAirspace') this.notamAirspaceLayer.setEnabled(this.useDeckGL && enabled);
       callback(layer, enabled, source);
     };
     if (this.useGlobe) { this.globeMap?.setOnLayerChange(notify); return; }
@@ -1618,6 +1631,7 @@ export class MapContainer {
     // The renderer reports the change through onLayerChange, which also starts
     // the emergency feed. Start it here too in case no listener is attached yet.
     if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(this.getState().layers.aircraftEmergencies === true);
+    if (layer === 'notamAirspace') this.notamAirspaceLayer.setEnabled(this.useDeckGL && this.getState().layers.notamAirspace === true);
   }
 
   public triggerHotspotClick(id: string): void {
@@ -1831,6 +1845,7 @@ export class MapContainer {
 
   public destroy(): void {
     this.emergencyLayer.destroy();
+    this.notamAirspaceLayer.destroy();
     this.destroyed = true;
     this.container.removeEventListener('pointerdown', this.invalidateViewportAuthority);
     this.container.removeEventListener('wheel', this.invalidateViewportAuthority);

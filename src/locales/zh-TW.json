@@ -572,7 +572,8 @@
         "outages": "切換網際網路中斷",
         "tradeRoutes": "切換貿易路線",
         "canadaRoads": "切換加拿大道路覆蓋層",
-        "canadaAlerts": "切換加拿大省級緊急警報覆蓋層"
+        "canadaAlerts": "切換加拿大省級緊急警報覆蓋層",
+        "notamAirspace": "切換 NOTAM 空域限制覆蓋圖層"
       },
       "view": {
         "dark": "切換到暗色模式",
@@ -1298,7 +1299,8 @@
         "radiationSpike": "輻射峰值",
         "radiationElevated": "輻射升高",
         "canadaRoads": "Canada 道路",
-        "canadaAlerts": "加拿大警報（AB + BC + SK）"
+        "canadaAlerts": "加拿大警報（AB + BC + SK）",
+        "notamAirspace": "NOTAM 空域限制"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1413,7 +1415,8 @@
           "geoBoundaries": "非軍事區、停火線和爭議邊界",
           "ciiChoropleth": "國家不穩定指數熱力圖 — 按評分為各國著色（綠色=穩定，紅色=嚴重）",
           "canadaRoads": "加拿大（Canada）受支援轄區的官方道路事件、警報、路況、封閉、施工和危險資訊",
-          "canadaAlerts": "來自 Alberta Emergency Alert、B.C. 疏散令與警報及 SaskAlert 的省級公共安全警報"
+          "canadaAlerts": "來自 Alberta Emergency Alert、B.C. 疏散令與警報及 SaskAlert 的省級公共安全警報",
+          "notamAirspace": "FAA NOTAM 中的臨時飛行限制和受限、危險及禁飛空域，當前生效或將在 24 小時內生效"
         },
         "notes": {
           "timeAffects": "影響範圍：地震、天氣、抗議、中斷"

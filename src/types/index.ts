@@ -706,6 +706,7 @@ export interface MapLayers {
   flights: boolean;
   military: boolean;
   aircraftEmergencies?: boolean;
+  notamAirspace?: boolean;
   natural: boolean;
   spaceports: boolean;
   minerals: boolean;
