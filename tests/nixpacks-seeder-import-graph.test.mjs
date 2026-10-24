@@ -257,7 +257,7 @@ describe('root and scripts/ lock the same major of every shared dependency', () 
 // exactly as Node does at startup. Loading the packages, never the seeders,
 // keeps it side-effect free.
 function namedPackageImports(file) {
-  const source = ts.createSourceFile(file, readFileSync(file, 'utf-8'), ts.ScriptTarget.Latest);
+  const source = ts.createSourceFile(file, readFileSync(file, 'utf-8'), ts.ScriptTarget.Latest, true);
   const found = [];
   for (const node of source.statements) {
     const spec = node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : null;
@@ -274,6 +274,24 @@ function namedPackageImports(file) {
       if (!el.isTypeOnly) found.push({ spec, name: (el.propertyName ?? el.name).text });
     }
   }
+  // `const { a } = await import('pkg')` does not fail at startup, but a missing
+  // package or export still throws on the path that loads it.
+  const visit = (node) => {
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const arg = node.arguments[0];
+      if (arg && ts.isStringLiteralLike(arg) && isBare(arg.text) && !isBuiltin(arg.text)) {
+        const decl = ts.isAwaitExpression(node.parent) ? node.parent.parent : null;
+        const names =
+          decl && ts.isVariableDeclaration(decl) && ts.isObjectBindingPattern(decl.name)
+            ? decl.name.elements.map((el) => el.propertyName ?? el.name).filter(ts.isIdentifier).map((id) => id.text)
+            : [];
+        found.push({ spec: arg.text, name: null });
+        for (const name of names) found.push({ spec: arg.text, name });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
   return found;
 }
 
@@ -309,7 +327,7 @@ describe('named package imports link against the scripts/ install', () => {
   for (const file of files) {
     for (const { spec, name } of namedPackageImports(file)) {
       const users = imports.get(spec) ?? new Map();
-      users.set(name, [...(users.get(name) ?? []), relative(root, file)]);
+      if (name !== null) users.set(name, [...(users.get(name) ?? []), relative(root, file)]);
       imports.set(spec, users);
     }
   }
