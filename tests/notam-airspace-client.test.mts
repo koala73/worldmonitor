@@ -60,7 +60,7 @@ test('notamAirspaceTooltip escapes every upstream field', () => {
     schedule: '<script>s</script>',
     text: '<svg onload=alert(2)>',
   }, text);
-  assert.doesNotMatch(html, /<img|<script|<svg|<b>/);
+  assert.doesNotMatch(html, /<(img|script|svg|b)\b/i);
   assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
   assert.match(html, /Danger area/);
   assert.match(html, /SFC – FL050/);
