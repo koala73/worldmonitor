@@ -58,8 +58,14 @@ globalThis.fetch = async (input, init = {}) => {
   if (url.hostname !== 'www.aaii.com') throw new Error('Unexpected network host ' + url.hostname);
   sources.push(url.pathname);
   if (config.source === 'http-error') return new Response('Unavailable', { status: 503 });
+  if (config.source === 'forbidden') return new Response('Forbidden', { status: 403 });
+  if (sources.length === 1) {
+    if (config.source === 'flaky-http') return new Response('Unavailable', { status: 503 });
+    if (config.source === 'flaky-network') throw new TypeError('temporary connection failure');
+    if (config.source === 'rate-limit') return new Response('Slow down', { status: 429, headers: { 'Retry-After': '20' } });
+  }
   if (url.pathname.endsWith('.xls')) return new Response(new Uint8Array(0));
-  if (['html', 'redis-error', 'stale-html'].includes(config.source)) return new Response('<span>Week ending October ' + (config.source === 'stale-html' ? '7' : '14') + ', 2026</span><td class="tableTxt">40.0%</td><td class="tableTxt">30.0%</td><td class="tableTxt">30.0%</td>');
+  if (['html', 'redis-error', 'stale-html', 'flaky-http', 'flaky-network', 'rate-limit'].includes(config.source)) return new Response('<span>Week ending October ' + (config.source === 'stale-html' ? '7' : '14') + ', 2026</span><td class="tableTxt">40.0%</td><td class="tableTxt">30.0%</td><td class="tableTxt">30.0%</td>');
   return new Response('<html>No survey rows</html>');
 };
 process.on('exit', () => writeFileSync(process.env.AAII_FIXTURE_RESULT, JSON.stringify({ cache: Object.fromEntries(cache), commands, sources })));
@@ -77,6 +83,8 @@ function run({ cache = {}, source = 'empty' } = {}) {
       env: {
         PATH: process.env.PATH,
         NODE_ENV: 'test',
+        NODE_TEST_CONTEXT: 'child-v8',
+        WM_SEED_RETRY_DELAY_MS: '0',
         UPSTASH_REDIS_REST_URL: 'https://aaii-redis.invalid',
         UPSTASH_REDIS_REST_TOKEN: 'synthetic',
         AAII_FIXTURE_CONFIG: configPath,
@@ -128,10 +136,34 @@ for (const [name, cache] of [
 }
 
 test('failed HTTP responses do not become a valid empty publication', () => {
-  const result = run({ source: 'http-error' });
+  const cache = previous(false);
+  const result = run({ source: 'http-error', cache });
   assert.equal(result.status, 75, result.log);
-  assert.deepEqual(result.cache, {});
+  assert.deepEqual(result.cache, cache);
+  assert.equal(result.sources.length, 4);
   assert.doesNotMatch(result.log, /"state":"OK_ZERO"|"event":"seed_complete"/);
+});
+
+for (const source of ['flaky-http', 'flaky-network', 'rate-limit']) {
+  test(`${source} retries before publishing while preserving the provider delay`, () => {
+    const result = run({ source, cache: fullHistory() });
+    assert.equal(result.status, 0, result.log);
+    assert.deepEqual(result.sources, ['/sentimentsurvey', '/sentimentsurvey']);
+    assert.match(result.log, new RegExp('Retry 1/3 in ' + (source === 'rate-limit' ? '20000' : '10000') + 'ms'));
+    const canonical = JSON.parse(result.cache[key].value);
+    assert.equal(canonical._seed.recordCount, 52);
+    assert.equal(canonical.data.latest.date, '2026-10-15');
+    assert.match(result.log, /"event":"seed_complete"/);
+  });
+}
+
+test('permission denial fails immediately without replacing data or renewing expiry', () => {
+  const cache = fullHistory();
+  const result = run({ source: 'forbidden', cache });
+  assert.equal(result.status, 75, result.log);
+  assert.deepEqual(result.sources, ['/sentimentsurvey']);
+  assert.deepEqual(result.cache, cache);
+  assert.doesNotMatch(result.log, /Retry|"event":"seed_complete"/);
 });
 
 function fullHistory() {
