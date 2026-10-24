@@ -47393,7 +47393,7 @@ components:
                     description: 'Detection time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 country:
                     type: string
-                    description: Affected country (ISO 3166-1 alpha-2).
+                    description: Affected country name.
                 region:
                     type: string
                     description: Affected region within the country.

@@ -9,7 +9,12 @@
 //   quiet           present and accepted, but moved no Tier-1 score
 //                   (`quietSince` is when that started)
 //   missing         the Redis key was absent
-//   unusable        present, but the scorer rejected it (too old or malformed)
+//   unusable        present, but the scorer rejected it (too old or malformed,
+//                   or none of its records map to a country)
+//   degraded        present and read, but a record that could have scored
+//                   could not be judged (an ASN outage whose national impact
+//                   is unknown); `excluded` names the rule. Dead: unknown is
+//                   not calm.
 //   not_configured  disabled by deployment design (no ACLED credentials,
 //                   IRAN_EVENTS_ENABLED off)
 // An unreadable key rejects the whole build, so it surfaces as a stale
@@ -63,7 +68,7 @@ export const CII_INPUT_POLICY = Object.freeze({
   families: Object.freeze(Object.fromEntries(Object.entries(FAMILIES).map(([id, members]) => [id, Object.freeze(members)]))),
 });
 
-const PRODUCER_STATES = new Set(['live', 'quiet', 'missing', 'unusable', 'not_configured']);
+const PRODUCER_STATES = new Set(['live', 'quiet', 'missing', 'unusable', 'not_configured', 'degraded']);
 // Only "past its own staleness budget" marks an input stale here. Every other
 // source-check fault is either reported by the producer (missing key) or
 // leaves usable retained data behind (SEED_ERROR).
@@ -97,6 +102,9 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
       healthy.add(id);
     } else if (state === 'missing' || state === 'unusable' || state === 'unreported') {
       dead.push({ id, state });
+    } else if (state === 'degraded') {
+      const excluded = report.excluded && typeof report.excluded === 'object' ? Object.keys(report.excluded) : [];
+      dead.push({ id, state, ...(excluded.length ? { excluded } : {}) });
     } else if (sourceCheck) {
       states[id] = 'stale';
       dead.push({ id, state: 'stale', sourceCheck });

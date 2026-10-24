@@ -130,7 +130,40 @@ async function seedFixture(entries, plan, now, redisOrigin) {
     },
   };
 
-  const bodyFor = (leg) => (plan.payload === 'full' ? FULL[leg] : EMPTY[leg]);
+  // An outage Radar files against networks only (no `locations`): one RU ASN
+  // carrying 60% of RU traffic, fully down 2026-09-01 00:00-03:00.
+  const ASN_ANNOTATION = {
+    id: 'ann-asn',
+    locations: [],
+    asnsDetails: [{ asn: '41039', name: 'DON-FTTH', location: { code: 'RU', name: 'Russian Federation' } }],
+    startDate: '2026-09-01T00:00:00Z',
+    endDate: '2026-09-01T03:00:00Z',
+    description: 'Data center drone strike',
+    outage: { outageType: 'NETWORK', outageCause: 'MILITARY_ACTION' },
+  };
+  const ASN = {
+    ...FULL,
+    annotations: { success: true, result: { annotations: [...FULL.annotations.result.annotations, ASN_ANNOTATION] } },
+  };
+  const bodyFor = (leg) => (plan.payload === 'asn' ? ASN[leg] : plan.payload === 'full' ? FULL[leg] : EMPTY[leg]);
+  const netflows = (url) => {
+    if (plan.netflows === 'http-503') return new Response('upstream down', { status: 503 });
+    // A NetFlows API that never answers (and ignores the abort signal).
+    if (plan.netflows === 'stall') return new Promise(() => {});
+    if (url.pathname.endsWith('/netflows/top/ases')) {
+      return Response.json({ success: true, result: { top_0: [{ clientASN: 41039, value: '60' }, { clientASN: 12389, value: '40' }] } });
+    }
+    const from = Date.parse(url.searchParams.get('dateStart'));
+    const to = Date.parse(url.searchParams.get('dateEnd'));
+    const step = url.searchParams.get('aggInterval') === '15m' ? 15 * 60_000 : 3_600_000;
+    const [down0, down1] = [Date.parse(ASN_ANNOTATION.startDate), Date.parse(ASN_ANNOTATION.endDate)];
+    const timestamps = []; const values = [];
+    for (let t = from; t < to; t += step) {
+      timestamps.push(new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z'));
+      values.push(t >= down0 && t < down1 ? '0' : '1');
+    }
+    return Response.json({ success: true, result: { serie_0: { timestamps, values }, meta: { normalization: 'MIN0_MAX' } } });
+  };
 
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(typeof input === 'string' ? input : input.url);
@@ -166,6 +199,7 @@ async function seedFixture(entries, plan, now, redisOrigin) {
     if (url.pathname.endsWith('/summary/vector')) return radar(plan.vector, bodyFor('vector'));
     if (url.pathname.endsWith('/top/locations/target')) return radar(plan.target, bodyFor('target'));
     if (url.pathname.endsWith('/traffic_anomalies')) return radar(plan.traffic, bodyFor('traffic'));
+    if (url.pathname.includes('/radar/netflows/')) return netflows(url);
     throw new Error(`unexpected Radar path ${url.pathname}`);
   };
 
@@ -182,13 +216,14 @@ const DEFAULT_PLAN = {
   target: 'ok',
   traffic: 'ok',
   payload: 'empty',
+  netflows: 'ok',
   redisRejectKey: null,
   // null = reject that key's writes forever; a number = reject only the first N,
   // which is how a transient Upstash blip is modelled.
   redisRejectAttempts: null,
 };
 
-function runSeeder({ entries = [], plan = {}, now = NOW } = {}) {
+function runSeeder({ entries = [], plan = {}, now = NOW, env = {} } = {}) {
   const merged = { ...DEFAULT_PLAN, ...plan };
   const args = [entries, merged, now, REDIS_ORIGIN].map((value) => JSON.stringify(value)).join(', ');
   const result = spawnSync(
@@ -210,6 +245,7 @@ function runSeeder({ entries = [], plan = {}, now = NOW } = {}) {
         TEST_SEED_URL: new URL('../scripts/seed-internet-outages.mjs', import.meta.url).href,
         UPSTASH_REDIS_REST_URL: REDIS_ORIGIN,
         UPSTASH_REDIS_REST_TOKEN: 'fixture-token',
+        ...env,
       },
     },
   );
@@ -625,4 +661,59 @@ test('healthy to empty to source error to recovery never resurrects an old event
 
   const served = await readThroughRpcs(recovered.store);
   assert.deepEqual(served.traffic.anomalies, []);
+});
+
+test('a published outage carries Radar\'s ISO2 location code beside the display name', () => {
+  // The CII scorer and the resilience scorer place an outage by countryCode.
+  // Before this field existed the record held only the name, so the CII
+  // reader mapped none of them (0 of 15 in production on 2026-10-23).
+  const run = runSeeder({ entries: lastGoodEntries(), plan: { payload: 'full' } });
+
+  assert.equal(run.exitCode, 0, run.output);
+  const [outage] = JSON.parse(run.store.get(OUTAGES_KEY)).data.outages;
+  assert.equal(outage.countryCode, 'US');
+  assert.equal(outage.country, 'United States');
+  assert.equal(outage.cause, 'POWER_OUTAGE');
+  assert.equal(outage.detectedAt, Date.parse('2026-09-01T00:00:00Z'));
+});
+
+test('an outage filed against networks only is kept, with its measured national impact', () => {
+  // Before Stage B8 the seeder dropped every annotation without `locations`.
+  const run = runSeeder({ entries: lastGoodEntries(), plan: { payload: 'asn' } });
+  assert.equal(run.exitCode, 0, run.output);
+  const payload = JSON.parse(run.store.get(OUTAGES_KEY)).data;
+  assert.deepEqual(payload.outages.map((o) => o.id), ['cf-ann-1'], 'the located record is unchanged and alone in `outages`');
+  assert.equal(payload.asnOutages.length, 1);
+  const [asn] = payload.asnOutages;
+  assert.equal(asn.id, 'cf-ann-asn-RU');
+  assert.equal(asn.countryCode, 'RU');
+  assert.deepEqual(asn.asns, [41039]);
+  assert.equal(asn.cause, 'MILITARY_ACTION');
+  assert.equal(asn.impactMeasure, 'asn-traffic-share-x-drop');
+  assert.ok(Math.abs(asn.nationalImpact - 0.6) < 1e-9, `60% share fully down is 60% national, got ${asn.nationalImpact}`);
+  assert.equal(asn.impactIsUpperBound, false);
+});
+
+test('an ASN outage whose impact Radar cannot supply is kept with an unknown impact', () => {
+  const run = runSeeder({ entries: lastGoodEntries(), plan: { payload: 'asn', netflows: 'http-503' } });
+  assert.equal(run.exitCode, 0, `an impact failure must not fail the outage publish\n${run.output}`);
+  const [asn] = JSON.parse(run.store.get(OUTAGES_KEY)).data.asnOutages;
+  assert.equal(asn.nationalImpact, null);
+  assert.match(asn.impactUnknownReason, /503/);
+});
+
+test('a stalled NetFlows API cannot hold back the outage publish: the impact pass has its own budget', () => {
+  // Greptile on 864152495: the ASN requests ran one after another with no
+  // deadline. A 48 s bundle section leaves runSeed an 8 s fetch deadline, so
+  // the impact budget is about 3 s; the run must publish well inside it.
+  const began = Date.now();
+  const run = runSeeder({ entries: lastGoodEntries(), plan: { payload: 'asn', netflows: 'stall' }, env: { BUNDLE_SECTION_TIMEOUT_MS: '48000' } });
+  const took = Date.now() - began;
+  assert.equal(run.exitCode, 0, run.output);
+  assert.ok(took < 15_000, `the run took ${took} ms`);
+  const payload = JSON.parse(run.store.get(OUTAGES_KEY)).data;
+  assert.deepEqual(payload.outages.map((o) => o.id), ['cf-ann-1'], 'the fresh located outage is published');
+  const [asn] = payload.asnOutages;
+  assert.equal(asn.nationalImpact, null);
+  assert.equal(asn.impactUnknownReason, 'budget');
 });
