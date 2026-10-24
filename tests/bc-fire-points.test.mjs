@@ -659,6 +659,14 @@ describe('host allowlist, cache key, transport', () => {
     assert.ok(!diagnostic.signals.includes('invalid_property'), 'do not inspect beyond the bounded prefix');
     assert.ok(Buffer.byteLength(logs[0]) < 1024);
     assert.doesNotMatch(logs[0], /SECRET|\\u001b|\r|\n/);
+    await assert.rejects(fetchApprovedBcUrl(buildBcWfsUrl(), {
+      fetchFn: async () => new Response('<ExceptionText>'.padEnd(8192, ' ')
+        + 'SQLSyntaxErrorException SECRET_AFTER_SCAN_LIMIT</ExceptionText>', { status: 400 }),
+    }), /HTTP_400/);
+    assert.deepEqual(JSON.parse(logs.at(-1)).wfsDiagnostic, {
+      exceptionTextPresent: true, scanTruncated: true, signals: [],
+    });
+    assert.doesNotMatch(logs.at(-1), /SECRET/);
   });
 
   it('handles encoded, malformed and unknown WFS responses without exposing raw text', async t => {
