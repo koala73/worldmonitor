@@ -184,6 +184,19 @@ test('a pair added to the config mid-day does not crash the live merge and is re
     'a past day missing a configured pair is rebuilt');
 });
 
+test('a complete day missing only a configured pair is rebuilt with that pair', () => {
+  // 96 cohorts and complete hours: the missing bucket is the only defect.
+  const snapshot = { cursor: '20260928171500', days: {} };
+  for (let i = 1; i <= 90; i++) snapshot.days[dayOf(i)] = rebuildDyadDay(dayOf(i), cohortBatches(dayOf(i)));
+  delete snapshot.days[dayOf(2)].pairs.iran_gcc;
+  delete snapshot.days[dayOf(40)].pairs.iran_gcc;
+  assert.deepEqual(planDyadRepair(snapshot, repairNow, 90), [dayOf(2), dayOf(40)]);
+  const rebuilt = { [dayOf(2)]: rebuildDyadDay(dayOf(2), cohortBatches(dayOf(2))), [dayOf(40)]: rebuildDyadDay(dayOf(40), cohortBatches(dayOf(40))) };
+  const replaced = replaceDyadDays(snapshot, rebuilt, repairNow);
+  assert.ok(replaced.days[dayOf(2)].pairs.iran_gcc && replaced.days[dayOf(40)].pairs.iran_gcc);
+  assert.equal(planDyadRepair(replaced, repairNow, 90).length, 0);
+});
+
 test('Iran–GCC sums Iran against every GCC member, in both directions', () => {
   const data = parseDyadExport(['SAU', 'ARE', 'QAT', 'KWT', 'BHR', 'OMN'].flatMap(member => [row('IRN', member, 4), row(member, 'IRN', 3)])
     .concat(row('IRN', 'IRQ', 4), row('SAU', 'ARE', 4)).join('\n'));

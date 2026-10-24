@@ -20,6 +20,7 @@ it('names no venue source during the BestTime fallback and credits PizzINT on re
   };
   const source = () => indicator.getElement().querySelector<HTMLAnchorElement>('.pizzint-source a')!;
   const venue = () => indicator.getElement().querySelector<HTMLElement>('.pizzint-venue-source')!;
+  expect(venue().hidden, 'no venue credit before any status arrives').toBe(true);
   indicator.updateStatus(status);
   expect(indicator.getElement().querySelector('.pizzint-score')).toBeNull();
   expect(indicator.getElement().querySelector('.pizzint-source')!.textContent).toContain('components.pizzint.indexSource');
@@ -61,6 +62,7 @@ it('shows World Monitor tensions and missing-data states when pizza is unavailab
   expect(element.textContent).toContain('components.pizzint.tensionsTitle');
   expect(element.textContent).toContain('components.pizzint.insufficientData');
   expect(element.querySelector('.pizzint-source')?.textContent).toContain('components.pizzint.indexSource');
+  expect(element.querySelector<HTMLElement>('.pizzint-venue-source')?.hidden, 'no venues, no venue credit').toBe(true);
   expect(element.querySelector('.pizzint-source a')?.textContent).toBe('PizzINT');
   expect(element.querySelector('.pizzint-tensions-source')).toBeNull();
   expect(element.textContent).not.toContain('components.pizzint.tensionsSource');
