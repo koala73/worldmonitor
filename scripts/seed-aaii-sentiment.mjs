@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, readCanonicalValue } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readCanonicalValue, httpRetryError } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 const AAII_KEY = 'market:aaii-sentiment:v1';
@@ -382,9 +382,12 @@ async function fetchAaiiSentiment() {
       headers: { 'User-Agent': CHROME_UA, Accept: 'text/html,application/xhtml+xml' },
       signal: AbortSignal.timeout(8_000),
     });
-    if (resp.ok) data = parseHtmlSentiment(await resp.text());
+    if (!resp.ok) throw httpRetryError(resp);
+    data = parseHtmlSentiment(await resp.text());
   } catch (e) {
-    console.warn(`  HTML scrape failed: ${e.message}`);
+    // AAII's crawl delay also applies to retries after transport failures.
+    if (!e.nonRetryable) e.retryAfterMs = Math.max(10_000, e.retryAfterMs ?? 0);
+    throw e;
   }
 
   if (data.length === 0) {
