@@ -138,6 +138,13 @@ smoke and the `/pro` gates run on separate runners, and each part builds
 (`npm run test:e2e:pro-gates`), because each run spends ~2.5s starting the
 dev server and Chrome and ~1s shutting down.
 
+The split exposed one more cost. `setup-node`'s npm cache in this job was keyed
+on the root lockfile, so it restored the 583 MB root download cache, which only
+serves the pro-test install inside `build:pro` (root `node_modules` comes from
+`install-root-deps`). One job pulled it at ~95 MB/s in ~6s. Two jobs pulling the
+same blob at the same moment took 12-62s on PR #9626. The job now sets
+`cache-dependency-path: pro-test/package-lock.json`.
+
 ## Prevention
 
 - **Tests that walk `job.steps` do not see steps nested in a `parallel:`

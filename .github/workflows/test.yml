@@ -1042,6 +1042,11 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
+          # node_modules comes from install-root-deps, so ~/.npm serves only
+          # the pro-test install inside build:pro. Keyed on the root lockfile
+          # it restored the 583 MB root download cache, and both parts pulling
+          # it at once took 12-62s instead of ~6s.
+          cache-dependency-path: pro-test/package-lock.json
       - uses: ./.github/actions/install-root-deps
         with:
           # setup-node restores the npm cache for this job's other install.

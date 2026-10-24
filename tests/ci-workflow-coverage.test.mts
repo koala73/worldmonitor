@@ -3044,6 +3044,17 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     assert.equal(partOf('test:e2e:pro-gates'), "matrix.part == 'pro-gates'");
   });
 
+  it('keys setup-node\'s npm cache to the only install that reads it', () => {
+    // node_modules comes from install-root-deps, so ~/.npm serves only
+    // `npm --prefix pro-test ci` inside build:pro. Keyed on the root lockfile
+    // it restored the 583 MB root download cache, and the two parts pulling
+    // that blob at the same moment took 12-62s instead of ~6s (PR #9626).
+    const setup = flat.find((step) => (step as { uses?: string }).uses?.startsWith('actions/setup-node@')) as
+      { with: Record<string, string> } | undefined;
+    assert.equal(setup?.with.cache, 'npm');
+    assert.equal(setup?.with['cache-dependency-path'], 'pro-test/package-lock.json');
+  });
+
   it('runs the four /pro browser gates in one Playwright run', () => {
     // Each Playwright run starts the Vite dev server and Chrome (~3.5s), and
     // the four gates ran one after another.
