@@ -20,6 +20,9 @@ import {
   escapeDigestText,
   formatDigestItemTitle,
 } from './_digest-markdown.mjs';
+import { loadEnvFile } from './_env-file.mjs';
+
+loadEnvFile(import.meta.url);
 
 const require = createRequire(import.meta.url);
 const DIGEST_DIPLOMACY_DATA = require('../shared/diplomacy-keywords.json');

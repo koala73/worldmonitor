@@ -53,6 +53,13 @@ PR #8966:
   by recorded file durations, so only the matrix and the `/N` denominator
   changed. The slowest single files (111s, 92s, 81s) set a floor that more
   shards cannot go below.
+- **Five unit shards (October 2026).** Once the slowest files were fixed
+  (the slowest is now 36s), the unit shards were the slowest Test job again at
+  ~207s. Bench run 40083951067 ran `test:data` on the same runners: the slowest
+  shard took 123s at five shards and 138-155s at four. Concurrency 6 or 8
+  inside a shard gave nothing, because the step is CPU-bound. Each file also
+  pays ~0.2-0.3s of import cost that the recorded durations leave out, so the
+  wall time per shard is ~30-40s above the duration estimate.
 - **Parallel setup.** In the smoke shards, `install-root-deps` runs beside the
   apt install of Playwright's OS libraries. The pro-webmcp OS library install
   runs beside the `/pro` build. `node_modules` does not exist yet in the smoke

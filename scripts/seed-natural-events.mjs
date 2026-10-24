@@ -176,7 +176,8 @@ function sourceFailureDetails(error) {
 
 function isDualFamilyConnectFailure(error) {
   try {
-    const aggregate = error?.cause;
+    const cause = error?.cause;
+    const aggregate = cause?.code === 'UND_ERR_CONNECT_TIMEOUT' ? cause.cause : cause;
     if (!(error instanceof TypeError) || !(aggregate instanceof AggregateError)
       || aggregate.code !== 'ETIMEDOUT' || aggregate.errors.length !== 2) return false;
     const [ipv4, ipv6] = aggregate.errors;

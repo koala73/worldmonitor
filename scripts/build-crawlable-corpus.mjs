@@ -341,6 +341,7 @@ const MAX_TOOL_LATITUDE_SPAN = 45;
 const MAX_TOOL_LONGITUDE_SPAN = 60;
 const META_DESCRIPTION_MIN = 155;
 const META_DESCRIPTION_MAX = 160;
+const CRISIS_DESCRIPTION_MIN = 120;
 
 // Search-friendly common names for ISO2 codes whose source identities use a
 // formal long form, truncated token ("Uk", "Korea Rep", "Lao Pdr"), or code.
@@ -1591,6 +1592,14 @@ function normalizeCrises(entries) {
       || coverage.some((country) => !/^[A-Z]{2}$/.test(country.code) || !country.name)
     ) {
       throw new Error(`Invalid crawlable crisis registry entry: ${slug || '(missing slug)'}`);
+    }
+    // The description is the tracker's meta description and lede; past the
+    // snippet limit search engines cut it mid-sentence.
+    const descriptionLength = String(entry.description).length;
+    if (descriptionLength < CRISIS_DESCRIPTION_MIN || descriptionLength > META_DESCRIPTION_MAX) {
+      throw new Error(
+        `Crisis ${slug} description must be ${CRISIS_DESCRIPTION_MIN}-${META_DESCRIPTION_MAX} characters, got ${descriptionLength}`,
+      );
     }
     seen.add(slug);
     return {

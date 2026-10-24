@@ -199,14 +199,19 @@ test('EONET success and malformed JSON release header and idle timers', async t 
   }
 });
 
-function dualFamilyFailure() {
-  return new TypeError('fetch failed', { cause: Object.assign(new AggregateError([
+function dualFamilyFailure(wrapped = false) {
+  const aggregate = Object.assign(new AggregateError([
     Object.assign(new Error(), { code: 'ETIMEDOUT', syscall: 'connect', address: '127.0.0.1' }),
     Object.assign(new Error(), { code: 'ENETUNREACH', syscall: 'connect', address: '::1' }),
-  ]), { code: 'ETIMEDOUT' }) });
+  ]), { code: 'ETIMEDOUT' });
+  const cause = wrapped
+    ? Object.assign(new Error('connect timeout', { cause: aggregate }), { code: 'UND_ERR_CONNECT_TIMEOUT' })
+    : aggregate;
+  return new TypeError('fetch failed', { cause });
 }
 
-test('EONET retries the dual-family connect failure over IPv4 and destroys its dispatcher', async t => {
+for (const wrapped of [false, true]) {
+test(`EONET retries ${wrapped ? 'wrapped' : 'direct'} dual-family connect failure over IPv4 and destroys its dispatcher`, async t => {
   const server = createServer((_req, res) => { res.end(JSON.stringify({ events: [event] })); });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -221,7 +226,7 @@ test('EONET retries the dual-family connect failure over IPv4 and destroys its d
   let dispatcher;
   const transport = fixture(async (source, attempt, options) => {
     if (source !== 'eonet') { assert.equal(options.dispatcher, undefined); return; }
-    if (attempt === 1) { assert.equal(options.dispatcher, undefined); throw dualFamilyFailure(); }
+    if (attempt === 1) { assert.equal(options.dispatcher, undefined); throw dualFamilyFailure(wrapped); }
     dispatcher = options.dispatcher;
     return fetch(`http://eonet.fixture.invalid:${server.address().port}`, options);
   });
@@ -236,19 +241,28 @@ test('EONET retries the dual-family connect failure over IPv4 and destroys its d
   assert.ok(result.events.some(item => item.id === event.id));
   assert.equal(result._sourceSnapshots.eonet.fetchedAt, NOW);
 });
+}
 
 test('IPv4 fallback is limited to EONET and the exact connect failure signature', async () => {
   const wrongFamily = dualFamilyFailure();
   wrongFamily.cause.errors[1].address = '127.0.0.2';
   const wrongCode = dualFamilyFailure();
   wrongCode.cause.errors[1].code = 'ECONNREFUSED';
+  const wrongWrapper = dualFamilyFailure(true);
+  wrongWrapper.cause.code = 'UND_ERR_SOCKET';
+  const wrappedWrongFamily = dualFamilyFailure(true);
+  wrappedWrongFamily.cause.cause.errors[1].address = '127.0.0.2';
   for (const [source, failure] of [
     ['gdacs:TC', dualFamilyFailure()],
+    ['gdacs:TC', dualFamilyFailure(true)],
     ['eonet', new DOMException('timeout', 'TimeoutError')],
     ['eonet', new TypeError('fetch failed', { cause: { code: 'ETIMEDOUT' } })],
     ['eonet', new TypeError('fetch failed', { cause: new AggregateError([]) })],
     ['eonet', wrongFamily],
     ['eonet', wrongCode],
+    ['eonet', wrongWrapper],
+    ['eonet', wrappedWrongFamily],
+    ['eonet', new TypeError('fetch failed', { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } })],
   ]) {
     const transport = fixture((current, _attempt, options) => {
       assert.equal(options.dispatcher, undefined);
@@ -259,12 +273,13 @@ test('IPv4 fallback is limited to EONET and the exact connect failure signature'
   }
 });
 
-test('failed IPv4 retry destroys its dispatcher and preserves the previous success and expiry', async () => {
+for (const wrapped of [false, true]) {
+test(`failed IPv4 retry for ${wrapped ? 'wrapped' : 'direct'} error destroys its dispatcher and preserves the previous success and expiry`, async () => {
   const initial = await run(fixture());
   let dispatcher;
   const transport = fixture((source, attempt, options) => {
     if (source !== 'eonet') return;
-    if (attempt === 1) throw dualFamilyFailure();
+    if (attempt === 1) throw dualFamilyFailure(wrapped);
     dispatcher = options.dispatcher;
     throw new DOMException('timeout', 'TimeoutError');
   });
@@ -285,6 +300,7 @@ test('failed IPv4 retry destroys its dispatcher and preserves the previous succe
   assert.equal(health.lastAttemptAt, now);
   assert.equal(health.retainedUntil, NOW + 18 * 3_600_000);
 });
+}
 
 test('a body-stage failure does not select the EONET connect fallback', async () => {
   const transport = fixture((source, _attempt, options) => {
