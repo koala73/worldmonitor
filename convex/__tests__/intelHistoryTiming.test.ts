@@ -66,3 +66,18 @@ test('history mutation failure preserves response and emits only a fixed failure
   expect(events().slice(-2).map(e => e.phase)).toEqual(['mutation_failed', 'response_ready']);
   expect(JSON.stringify(log.mock.calls)).not.toContain('private-error');
 });
+
+test.each(['invalid-json', 'invalid-record'] as const)('history %s rejection never starts a mutation', async (kind) => {
+  const { request, events } = setup();
+  vi.spyOn(request, 'json').mockImplementation(async () => {
+    if (kind === 'invalid-json') throw new SyntaxError('private-parser-detail');
+    return { ...body, records: [{ ...body.records[0], embedding: [] }] };
+  });
+  const runMutation = vi.fn();
+  const response = await handler({ runMutation }, request);
+  expect(response.status).toBe(400);
+  expect((await response.json()).error).toBe(kind === 'invalid-json' ? 'INVALID_JSON' : 'INVALID_RECORD');
+  expect(runMutation).not.toHaveBeenCalled();
+  expect(events().map(e => e.phase)).toEqual(['handler_enter', 'auth_complete', 'body_complete', 'response_ready']);
+  expect(events().at(-1)).toMatchObject({ status: 400 });
+});
