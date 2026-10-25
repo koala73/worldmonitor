@@ -68,18 +68,18 @@
     },
     "militaryActivity": "Военная активность",
     "defenseIndustrial": {
-      "title": "Defense Industrial Base",
-      "expenditure": "Military spend",
-      "personnel": "Personnel",
-      "armsImports": "Arms imports",
+      "title": "База оборонной промышленности",
+      "expenditure": "Военные расходы",
+      "personnel": "Личный состав",
+      "armsImports": "Импорт вооружений",
       "concentration": "Индекс концентрации поставщиков",
-      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "suppliers": "Поставщики вооружения ({{start}}–{{end}})",
       "source": "Источники: Всемирный банк и база данных SIPRI Arms Transfers Database. Показатель объема передачи измеряет относительный объем поставок вооружения, не финансовую стоимость.",
-      "sourceWorldBank": "Source: World Bank.",
+      "sourceWorldBank": "Источник: Всемирный банк.",
       "snapshotAssembled": "Снимок данных {{source}} сформирован {{time}}",
-      "unavailable": "Not available",
-      "coverage": "Mapped coverage",
-      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+      "unavailable": "Недоступно",
+      "coverage": "Картированное освещение",
+      "supplierRetained": "Данные поставщиков сохранены с последнего успешного обновления импортера."
     },
     "economicIndicators": "Экономические показатели",
     "ownFlights": "Собственные рейсы",
@@ -198,47 +198,47 @@
       "activityNowcast": "Нокаст активности",
       "decisionSignalsUnavailable": "Снимок сигналов принятия решений Китая в настоящее время недоступен."
     },
-    "foodStocks": "Food stocks",
+    "foodStocks": "Продовольственные запасы",
     "foodStocksHelp": "Производство, поставки и распределение продовольствия по Минсельхозу США, запасы к использованию по маркетинговому году с мировым соотношением для контекста. Продовольственные балансы FAOSTAT предоставляют данные о производстве и внутренних поставках, если данные Production, Supply and Distribution не полны.",
-    "loadingFoodStocks": "Loading food stocks…",
-    "foodStocksUnavailable": "Food stocks unavailable.",
-    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
-    "foodStocksCommodity": "Commodity",
-    "foodStocksMarketingYear": "Marketing year",
-    "foodStocksRatio": "Stocks-to-use",
-    "foodStocksWorld": "World",
+    "loadingFoodStocks": "Загрузка продовольственных запасов…",
+    "foodStocksUnavailable": "Продовольственные запасы недоступны.",
+    "foodStocksProLocked": "Перейдите на PRO для получения данных о запасах товаров",
+    "foodStocksCommodity": "Товар",
+    "foodStocksMarketingYear": "Маркетинговый год",
+    "foodStocksRatio": "Запасы к использованию",
+    "foodStocksWorld": "Мир",
     "commodities": {
-      "wheat": "Wheat",
-      "corn": "Corn",
-      "rice": "Rice",
-      "soybeans": "Soybeans",
-      "barley": "Barley",
-      "palmOil": "Palm oil"
+      "wheat": "Пшеница",
+      "corn": "Кукуруза",
+      "rice": "Рис",
+      "soybeans": "Соевые бобы",
+      "barley": "Ячмень",
+      "palmOil": "Пальмовое масло"
     },
     "demographicsCapability": {
-      "title": "Demographics & Workforce",
+      "title": "Демография и рабочая сила",
       "help": "Возрастная структура, образовательный потенциал и кадровая емкость промышленности из World Population Prospects ООН, UNESCO Institute for Statistics и World Development Indicators Всемирного банка, и ILOSTAT.",
-      "loading": "Loading demographics and workforce data…",
-      "unavailable": "Demographics and workforce data unavailable.",
-      "proLocked": "Upgrade to PRO for demographics and workforce data",
-      "notAvailable": "Not available",
-      "ageStructure": "Age structure",
-      "education": "Education pipeline",
-      "industrialWorkforce": "Industrial workforce",
-      "medianAge": "Median age",
-      "oldAgeDependency": "Old-age dependency",
-      "totalDependency": "Total dependency",
-      "workingAgePopulation": "Working-age population",
-      "workingAgeProjection": "Working-age population (+10 years)",
-      "tertiaryEnrollment": "Tertiary enrollment",
+      "loading": "Загрузка демографических данных и данных о рабочей силе…",
+      "unavailable": "Демографические данные и данные о рабочей силе недоступны.",
+      "proLocked": "Перейдите на PRO для получения демографических данных и данных о рабочей силе",
+      "notAvailable": "Недоступно",
+      "ageStructure": "Возрастная структура",
+      "education": "Образовательный конвейер",
+      "industrialWorkforce": "Промышленная рабочая сила",
+      "medianAge": "Средний возраст",
+      "oldAgeDependency": "Коэффициент старовозрастной зависимости",
+      "totalDependency": "Общий коэффициент зависимости",
+      "workingAgePopulation": "Население трудоспособного возраста",
+      "workingAgeProjection": "Население трудоспособного возраста (+10 лет)",
+      "tertiaryEnrollment": "Поступление в высшие учебные заведения",
       "stemGraduates": "Выпускники в области науки, технологии, инженерии и математики",
-      "researchers": "Researchers",
-      "craftTrades": "Craft and trades workers",
-      "plantOperators": "Plant and machine operators",
-      "trainedIndustrialWorkforce": "Combined industrial workforce",
-      "manufacturingShare": "Manufacturing employment",
-      "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh.",
+      "researchers": "Исследователи",
+      "craftTrades": "Рабочие ремесел и специальных профессий",
+      "plantOperators": "Операторы установок и машин",
+      "trainedIndustrialWorkforce": "Подготовленная промышленная рабочая сила",
+      "manufacturingShare": "Занятость в производстве",
+      "source": "Источники: {{sources}}.",
+      "retained": "{{stage}} данные сохранены с последнего успешного обновления.",
       "statusNotSupplied": "Статус оценки и заполнения пропусков не указан"
     },
     "fiveFactorScorecard": {
@@ -273,7 +273,7 @@
         "pillar-unavailable": "Столп недоступен"
       },
       "inputs": {
-        "population": "Population",
+        "population": "Население",
         "food_productionBalance": "Баланс производства",
         "food_stocksToUse": "Запасы для использования",
         "food_waterSecurity": "Водная безопасность",
@@ -435,9 +435,9 @@
     "climate": "Климатические аномалии",
     "populationExposure": "Подверженность населения",
     "securityAdvisories": "Предупреждения безопасности",
-    "orefSirens": "Israel Sirens",
+    "orefSirens": "Сирены Израиля",
     "telegramIntel": "Разведка Telegram",
-    "xIntel": "X News Accounts",
+    "xIntel": "Новостные аккаунты X",
     "startups": "Стартапы и венчурный капитал",
     "vcblogs": "Инсайты и статьи венчурного капитала",
     "regionalStartups": "Мировые новости стартапов",
@@ -577,8 +577,8 @@
         "climate": "Переключить климатические аномалии",
         "outages": "Переключить интернет-отключения",
         "tradeRoutes": "Переключить торговые маршруты",
-        "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaRoads": "Переключить наложение дорог Канады",
+        "canadaAlerts": "Переключить наложение экстренных оповещений провинций Канады"
       },
       "view": {
         "dark": "Переключить на тёмную тему",
@@ -644,7 +644,7 @@
       "flightMilitaryOnGround": "Военный · {{type}} · на земле",
       "flightSearchHint": "Нажмите Enter или кликните для поиска текущей позиции",
       "flightNotFound": "Текущая позиция не найдена для {{callsign}}",
-      "addPanel": "Add"
+      "addPanel": "Добавить"
     },
     "signal": {
       "title": "РАЗВЕДЫВАТЕЛЬНОЕ ОБНАРУЖЕНИЕ",
@@ -746,8 +746,8 @@
         "ABUSEIPDB_API_KEY": "Дополнительный источник репутации вредоносных IP-адресов.",
         "FINNHUB_API_KEY": "Задержанные или предзагруженные котировки акций и рыночные данные. Ключ — это не прямая трансляция.",
         "NASA_FIRMS_API_KEY": "Система управления информацией о пожарах.",
-        "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
-        "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
+        "OLLAMA_API_URL": "например http://127.0.0.1:11434 (Ollama) или http://127.0.0.1:1234/v1 (LM Studio) — совместимая с OpenAI конечная точка.",
+        "OLLAMA_MODEL": "например llama3.1:8b — тег модели для использования при суммировании."
       },
       "proCloud": "Функции без локального ключа API используют облачные данные World Monitor.",
       "skipSetupPro": "Пропустить настройку: войдите с World Monitor Pro, чтобы использовать облачные данные вместо собственных ключей API.",
@@ -905,7 +905,7 @@
       "matches": "совпадений"
     },
     "regulation": {
-      "dashboard": "AI Regulation Dashboard",
+      "dashboard": "Панель мониторинга нормативных актов по ИИ",
       "timeline": "Хронология",
       "deadlines": "Сроки",
       "regulations": "Нормативные акты",
@@ -920,18 +920,18 @@
       "active": "Действует",
       "proposed": "Предлагается",
       "updated": "Обновлено",
-      "actionsCount": "{{count}} actions",
-      "deadlinesCount": "{{count}} deadlines",
-      "days": "days",
-      "activeCount": "Active Regulations ({{count}})",
-      "proposedCount": "Proposed Regulations ({{count}})",
-      "moreProvisions": "+{{count}} more...",
-      "source": "Source",
+      "actionsCount": "Действия: {{count}}",
+      "deadlinesCount": "Сроки: {{count}}",
+      "days": "дн.",
+      "activeCount": "Активные нормативные акты ({{count}})",
+      "proposedCount": "Предлагаемые нормативные акты ({{count}})",
+      "moreProvisions": "+{{count}} еще...",
+      "source": "Источник",
       "stances": {
-        "strict": "Strict",
-        "moderate": "Moderate",
-        "permissive": "Permissive",
-        "undefined": "Undefined"
+        "strict": "Строгий",
+        "moderate": "Умеренный",
+        "permissive": "Разрешительный",
+        "undefined": "Не определено"
       },
       "infoTooltip": "<strong>Регулирование</strong> Регуляторные действия, изменения политик и обновления правоприменения от глобальных регуляторов: финансовые, технологические, энергетические и торговые органы. Источник: официальные правительственные и регуляторные публикации."
     },
@@ -943,16 +943,16 @@
       "noIndicatorData": "Данные индикаторов еще не загружены - идёт загрузка данных Федеральной резервной системы",
       "fredKeyMissing": "Требуется API ключ Federal Reserve Economic Data. Добавьте его в Параметры для включения экономических индикаторов.",
       "in": "в",
-      "centralBanks": "Central Banks",
-      "laborMarket": "Labor Market",
-      "metroUnemployment": "Metro Unemployment",
+      "centralBanks": "Центральные банки",
+      "laborMarket": "Рынок труда",
+      "metroUnemployment": "Безработица в мегаполисах",
       "noBisData": "Данные Bank for International Settlements временно недоступны - повтор попытки",
-      "policyRate": "Policy Rate",
+      "policyRate": "Ставка рефинансирования",
       "creditToGdp": "Кредит относительно ВВП",
       "realEer": "Реальный эффективный валютный курс",
-      "cut": "cut",
-      "hike": "hike",
-      "hold": "hold",
+      "cut": "снижение",
+      "hike": "повышение",
+      "hold": "статус-кво",
       "pressure": {
         "label": "Макро-давление",
         "stress": "Стресс",
@@ -975,12 +975,12 @@
       "spikeAlert": "Обнаружен всплеск — ставка значительно выше средней за 52 недели (еженедельно)",
       "warnings": "предупреждений",
       "aisDisruptions": "Сбои отслеживания судов",
-      "disruption": "Disruption",
-      "vessels": "vessels",
-      "incidents7d": "incidents (7d)",
-      "corridorDisruption": "Corridor Disruption",
-      "corridor": "Corridor",
-      "loadingCorridors": "Loading corridor data...",
+      "disruption": "Нарушение",
+      "vessels": "суда",
+      "incidents7d": "инцидентов (7д)",
+      "corridorDisruption": "Нарушение коридора",
+      "corridor": "Коридор",
+      "loadingCorridors": "Загрузка данных коридора...",
       "mineral": "Минерал",
       "topProducers": "Крупнейшие производители",
       "risk": "Риск",
@@ -993,12 +993,12 @@
       "loadingHistory": "Загрузка истории транзита…",
       "historyUnavailable": "История транзита недоступна",
       "transitDataUnavailable": "Данные транзита недоступны (верхний поток частичный)",
-      "infoTooltip": "<strong>Supply Chain Monitor</strong> Глобальное отслеживание логистики и ресурсов:<ul><li><strong>Узловые пункты</strong>: Статус морских перевозок, показатели нарушений и количество судов</li><li><strong>Судоходство</strong>: Индекс Baltic Dry и тренды фрахтовых ставок</li><li><strong>Полезные ископаемые</strong>: Риск концентрации критических минералов (индекс концентрации производителей) и ведущие производители</li></ul>Нажмите на карточку узлового пункта, чтобы развернуть диаграмму истории перевозок.",
-      "mineStage": "Mine",
-      "refineryStage": "Refine",
-      "stageUnavailable": "No published figures for this stage",
-      "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "infoTooltip": "<strong>Монитор цепочек поставок</strong> Глобальное отслеживание логистики и ресурсов:<ul><li><strong>Узловые пункты</strong>: Статус морских перевозок, показатели нарушений и количество судов</li><li><strong>Судоходство</strong>: Индекс Baltic Dry и тренды фрахтовых ставок</li><li><strong>Полезные ископаемые</strong>: Риск концентрации критических минералов (индекс концентрации производителей) и ведущие производители</li></ul>Нажмите на карточку узлового пункта, чтобы развернуть диаграмму истории перевозок.",
+      "mineStage": "Добыча",
+      "refineryStage": "Переработка",
+      "stageUnavailable": "Опубликованные данные для этого этапа отсутствуют",
+      "withheldNote": "W скрыто",
+      "productionCaption": "Доля стран в фактическом производстве. Слой месторождений на карте показывает, где находятся ресурсы; эта таблица показывает, кто их добывает или перерабатывает.",
       "productionProLocked": "Перейдите на PRO для доли стран по добыче и переработке с концентрацией (индекс концентрации производителей) по стадиям."
     },
     "tradePolicy": {
@@ -1066,9 +1066,9 @@
       "no": "Нет",
       "vol": "Объём",
       "closes": "Закрывается",
-      "leanYes": "Lean Yes",
-      "leanNo": "Lean No",
-      "tossUp": "Toss-up"
+      "leanYes": "Скорее да",
+      "leanNo": "Скорее нет",
+      "tossUp": "Неопределенно"
     },
     "stablecoins": {
       "pegHealth": "Здоровье привязки",
@@ -1077,7 +1077,7 @@
       "mcap": "Капитализация",
       "vol24h": "Объём 24ч",
       "chg24h": "Изм. 24ч",
-      "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
+      "infoTooltip": "<strong>Стейблкоины</strong> Здоровье привязки, капитализация и объём за 24ч для основных USD-привязанных токенов (USDT, USDC, DAI, BUSD). Нарушение привязки сигнализирует о системном риске."
     },
     "status": {
       "updatedAt": "Обновлено {{time}}"
@@ -1087,10 +1087,10 @@
       "live": "ПРЯМОЙ ЭФИР",
       "historicalPlayback": "Историческое воспроизведение",
       "close": "Закрыть",
-      "skipToStart": "Skip to start",
-      "previous": "Previous",
-      "next": "Next",
-      "skipToEnd": "Skip to end"
+      "skipToStart": "Перейти в начало",
+      "previous": "Назад",
+      "next": "Далее",
+      "skipToEnd": "Перейти в конец"
     },
     "pizzint": {
       "indexSource": "Индекс: World Monitor",
@@ -1423,8 +1423,8 @@
           "dayNight": "Солнечный терминатор в реальном времени, показывающий зоны дня и ночи",
           "geoBoundaries": "Демилитаризованные зоны, линии прекращения огня и спорные границы",
           "ciiChoropleth": "Индекс нестабильности стран — тепловая карта, окрашивает страны по баллу (зелёный=стабильна, красный=критично)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "canadaRoads": "Официальные дорожные происшествия, оповещения, условия, закрытия, строительство и опасности в поддерживаемых юрисдикциях Canada",
+          "canadaAlerts": "Оповещения о безопасности провинций от Alberta Emergency Alert, B.C. Evacuation Orders and Alerts и SaskAlert",
           "notamAirspace": "Временные ограничения полётов и ограниченное, опасное и запрещённое воздушное пространство из NOTAM FAA, действующие сейчас или начинающиеся в течение 24 часов"
         },
         "notes": {
@@ -1437,8 +1437,8 @@
       "infoTooltip": "<strong>Методология</strong><ul><li><strong>Б</strong>еспорядки: гражданские волнения и протесты</li><li><strong>К</strong>онфликт: интенсивность вооружённого конфликта</li><li><strong>Б</strong>езопасность: военные рейсы/суда над территорией</li><li><strong>И</strong>нформация: скорость новостей и корреляция фокусных точек</li><li>Усиление при близости к горячим точкам (стратегические объекты)</li></ul><em>Б:К:Б:И показывают оценки компонентов.</em> Обнаружение фокусных точек коррелирует сущности новостей с сигналами на карте для точной оценки.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Включает базовое значение по стране + множитель события — см. /docs/methodology/cii-risk-scores для опубликованной таблицы",
-      "sectionFollowing": "Following",
-      "sectionAll": "All",
+      "sectionFollowing": "Отслеживаемые",
+      "sectionAll": "Все",
       "sourceStates": {
         "degraded": "деградировавший",
         "stale": "устаревший"
@@ -1446,11 +1446,11 @@
     },
     "insights": {
       "noStories": "Пока нет экстренных или мультиисточниковых сюжетов",
-      "step": "Step {{step}}/{{total}}",
-      "waitingForData": "Waiting for news data...",
-      "rankingStories": "Ranking important stories...",
-      "analyzingSentiment": "Analyzing sentiment...",
-      "generatingBrief": "Generating world brief...",
+      "step": "Шаг {{step}}/{{total}}",
+      "waitingForData": "Ожидание данных новостей...",
+      "rankingStories": "Ранжирование важных новостей...",
+      "analyzingSentiment": "Анализ тональности...",
+      "generatingBrief": "Создание мирового брифинга...",
       "infoTooltip": "<strong>ИИ-аналитика</strong><br>• <strong>Мировая сводка</strong>: ИИ-суммаризация (OpenRouter)<br>• <strong>Тональность</strong>: Анализ тона новостей<br>• <strong>Скорость</strong>: Быстро развивающиеся сюжеты<br>• <strong>Фокусные точки</strong>: Корреляция сущностей новостей с сигналами карты (военные, протесты, сбои)<br><em>Только для десктопа • На основе Llama 3.3 + Обнаружение фокусных точек</em>",
       "streamQualityLabel": "Качество видео",
       "streamQualityDesc": "Установить качество для всех прямых трансляций (низкое экономит трафик)",
@@ -1461,8 +1461,8 @@
         "auto": "Авто (устройство)",
         "1_5": "Чёткий (1.5x)"
       },
-      "mapFlashLabel": "Live Event Pulse",
-      "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "mapFlashLabel": "Пульс живых событий",
+      "mapFlashDesc": "Подсвечивайте локации на карте при поступлении экстренных новостей",
       "aiFlowCloudLabel": "Облачный ИИ (OpenRouter)",
       "aiFlowCloudDesc": "Отправлять заголовки в облако для ИИ-суммирования (рекомендуется)",
       "aiFlowBrowserLabel": "Локальная модель браузера",
@@ -1476,7 +1476,7 @@
       "aiFlowStatusBrowserOnly": "Только модель браузера",
       "aiFlowStatusDisabled": "Нет включённых провайдеров ИИ",
       "insightsDisabledTitle": "Анализ ИИ отключён",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "insightsDisabledHint": "Включите провайдеров через значок настроек в заголовке карты",
       "badgeAnimLabel": "Анимация значков",
       "badgeAnimDesc": "Анимировать значки обновлений в заголовках панелей",
       "headlineMemoryLabel": "Память заголовков",
@@ -1582,28 +1582,28 @@
         "deEscalating": "Снижающийся",
         "stable": "Стабильный"
       },
-      "insufficientData": "Insufficient Data",
-      "unableToAssess": "Unable to assess risk level.",
-      "enableDataSources": "Enable data sources to begin monitoring.",
-      "requiredDataSources": "Required Data Sources",
-      "optionalSources": "Optional Sources",
-      "enableCoreFeeds": "Enable Core Feeds",
-      "waitingForData": "Waiting for data...",
-      "refresh": "Refresh",
-      "learningMode": "Learning Mode - {{minutes}}m until reliable",
-      "noData": "no data",
-      "enable": "Enable",
-      "convergenceMetric": "Convergence",
+      "insufficientData": "Недостаточно данных",
+      "unableToAssess": "Не удалось оценить уровень риска.",
+      "enableDataSources": "Включите источники данных для начала мониторинга.",
+      "requiredDataSources": "Необходимые источники данных",
+      "optionalSources": "Дополнительные источники",
+      "enableCoreFeeds": "Включить основные потоки",
+      "waitingForData": "Ожидание данных...",
+      "refresh": "Обновить",
+      "learningMode": "Режим обучения — {{minutes}}м до надежности",
+      "noData": "нет данных",
+      "enable": "Включить",
+      "convergenceMetric": "Конвергенция",
       "ciiDeviation": "Отклонение Индекса нестабильности стран",
-      "infraEvents": "Infra Events",
-      "highAlerts": "High Alerts",
-      "topRisks": "Top Risks",
-      "recentAlerts": "Recent Alerts ({{count}})",
-      "updated": "Updated: {{time}}",
+      "infraEvents": "События инфраструктуры",
+      "highAlerts": "Высокие оповещения",
+      "topRisks": "Основные риски",
+      "recentAlerts": "Недавние оповещения ({{count}})",
+      "updated": "Обновлено: {{time}}",
       "time": {
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago"
+        "justNow": "только что",
+        "minutesAgo": "{{count}}м назад",
+        "hoursAgo": "{{count}}ч назад"
       },
       "infoTooltip": "<strong>Методология</strong> Составная оценка (0-100) на основе:<ul><li>50% Нестабильность стран (топ-5, взвешенные)</li><li>30% Географические зоны конвергенции</li><li>20% Инфраструктурные инциденты</li></ul>Автообновление каждые 5 минут.",
       "cachedCiiStatus": "Кэшированный Индекс нестабильности стран {{states}}",
@@ -1611,37 +1611,37 @@
         "degraded": "деградировавший",
         "stale": "устаревший"
       },
-      "dataFreshness": "Data Freshness",
-      "sourcesDetail": "{{active}}/{{total}} sources"
+      "dataFreshness": "Актуальность данных",
+      "sourcesDetail": "{{active}}/{{total}} источников"
     },
     "techEvents": {
       "loading": "Загрузка технологических мероприятий...",
       "noEvents": "Нет мероприятий для отображения",
       "showOnMap": "Показать на карте",
       "moreInfo": "Подробнее",
-      "upcoming": "Upcoming",
-      "conferences": "Conferences",
-      "earnings": "Earnings",
-      "all": "All",
-      "conferencesCount": "{{count}} conferences",
-      "onMap": "{{count}} on map",
+      "upcoming": "Предстоящие",
+      "conferences": "Конференции",
+      "earnings": "Отчёты о прибыли",
+      "all": "Все",
+      "conferencesCount": "Конференции: {{count}}",
+      "onMap": "{{count}} на карте",
       "techmemeEvents": "Techmeme Events ↗",
-      "today": "TODAY",
-      "soon": "SOON",
+      "today": "СЕГОДНЯ",
+      "soon": "СКОРО",
       "infoTooltip": "<strong>Технологические события</strong> Предстоящие и недавние технологические события: конференции, запуски продуктов, регуляторные слушания и звонки по отчётности. Агрегировано из официальных календарей событий и отраслевых источников."
     },
     "techReadiness": {
       "internetUsers": "Интернет-пользователи",
       "mobileSubscriptions": "Мобильные подписки",
       "rdSpending": "Расходы на исследования и разработки",
-      "fetchingData": "Fetching World Bank Data",
-      "internetUsersIndicator": "Internet Users",
-      "mobileSubscriptionsIndicator": "Mobile Subscriptions",
-      "broadbandAccess": "Broadband Access",
+      "fetchingData": "Загрузка данных World Bank",
+      "internetUsersIndicator": "Пользователи интернета",
+      "mobileSubscriptionsIndicator": "Мобильные подписки",
+      "broadbandAccess": "Доступ в широкополосную сеть",
       "rdExpenditure": "Расходы на исследования и разработки",
-      "analyzingCountries": "Analyzing 200+ countries...",
-      "source": "Source: World Bank",
-      "updated": "Updated: {{date}}",
+      "analyzingCountries": "Анализ 200+ стран...",
+      "source": "Источник: Всемирный банк",
+      "updated": "Обновлено: {{date}}",
       "infoTooltip": "<strong>Готовность технологий</strong> Композитный балл Всемирного банка, 0–100. Веса: исследования и разработки 35%, интернет 30%, широкополосная связь 20% и мобильная связь 15%. Пользователи интернета — процент населения; мобильные подписки на 100 человек; расходы на исследования — доля экономического выпуска. Отсутствующие значения показаны прочерком. Данные охватывают 2019–2024.",
       "dataPreparing": "Обновление данных о готовности технологий — скоро появится."
     },
@@ -1656,7 +1656,7 @@
       "noMatching": "Нет предупреждений для этого фильтра",
       "critical": "Критический",
       "health": "Здоровье",
-      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
+      "sources": "Госдеп США, DFAT Австралии, FCDO Великобритании, CDC, ECDC, ВОЗ, Посольства США",
       "refresh": "Обновить",
       "levels": {
         "doNotTravel": "Не путешествовать",
@@ -1674,14 +1674,14 @@
       "infoTooltip": "<strong>Предупреждения безопасности</strong><br>Рекомендации по поездкам и предупреждения от государственных ведомств."
     },
     "orefSirens": {
-      "checking": "Checking siren alerts...",
-      "noAlerts": "No active sirens — all clear",
-      "notConfigured": "Sirens service not configured",
-      "activeSirens": "{{count}} active siren(s)",
-      "justNow": "just now",
+      "checking": "Проверка сигналов тревоги сирен...",
+      "noAlerts": "Активных сирен нет — все спокойно",
+      "notConfigured": "Служба сирен не настроена",
+      "activeSirens": "Активные сирены: {{count}}",
+      "justNow": "только что",
       "historySummary": "{{count}} оповещений за 24ч — {{waves}} волн",
       "loadingHistory": "Загрузка истории...",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
+      "infoTooltip": "<strong>Сирены Израиля</strong><br>Оповещение в реальном времени о ракетных и ракетно-зенитных сигналах тревоги от Командования тыла Израиля.<br><br>Данные проверяются каждые 10 секунд. Пульсирующий красный индикатор означает, что активны сирены."
     },
     "satelliteFires": {
       "region": "Регион",
@@ -1829,8 +1829,8 @@
       "critical": "СРОЧНО",
       "high": "ВАЖНО",
       "dismiss": "Скрыть",
-      "alertsRegion": "Breaking news alerts",
-      "viewPanel": "View related panel"
+      "alertsRegion": "Оповещения о срочных новостях",
+      "viewPanel": "Просмотреть связанную панель"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Срочные оповещения",
@@ -1902,54 +1902,54 @@
       "filterCyber": "Кибер"
     },
     "xIntel": {
-      "infoTooltip": "Curated public news-account posts from X. Official API only.",
-      "loading": "Connecting to X news-account relay...",
-      "empty": "No posts available",
-      "disabled": "X news-account relay not active",
-      "filterAll": "All",
-      "filterBreaking": "Breaking",
-      "filterConflict": "Conflict",
+      "infoTooltip": "Избранные посты новостных аккаунтов X. Только официальный API.",
+      "loading": "Подключение к трансляции новостных аккаунтов X...",
+      "empty": "Посты недоступны",
+      "disabled": "Трансляция новостных аккаунтов X неактивна",
+      "filterAll": "Все",
+      "filterBreaking": "Срочные новости",
+      "filterConflict": "Конфликты",
       "filterOsint": "открытые источники",
-      "filterMiddleeast": "Middle East",
-      "live": "LIVE",
-      "viewSource": "View Source",
-      "filterGeopolitics": "Geopolitics",
-      "filterCyber": "Cyber"
+      "filterMiddleeast": "Ближний Восток",
+      "live": "ПРЯМОЙ ЭФИР",
+      "viewSource": "Просмотреть источник",
+      "filterGeopolitics": "Геополитика",
+      "filterCyber": "Кибер"
     },
     "investments": {
       "infoTooltip": "База данных прямых иностранных инвестиций Саудовской Аравии и ОАЭ в мировую критическую инфраструктуру. Нажмите на строку для перехода к инвестиции на карте.",
-      "searchPlaceholder": "Search assets, countries, entities…",
-      "allCountries": "All Countries",
-      "saudiArabia": "Saudi Arabia",
-      "uae": "UAE",
-      "allSectors": "All Sectors",
-      "allEntities": "All Entities",
-      "allStatuses": "All Statuses",
-      "operational": "Operational",
-      "underConstruction": "Under Construction",
-      "announced": "Announced",
-      "rumoured": "Rumoured",
-      "divested": "Divested",
-      "asset": "Asset",
-      "country": "Country",
-      "sector": "Sector",
-      "investment": "Investment",
-      "year": "Year",
-      "noMatch": "No investments match filters",
-      "undisclosed": "Undisclosed",
+      "searchPlaceholder": "Поиск активов, стран, юридических лиц…",
+      "allCountries": "Все страны",
+      "saudiArabia": "Саудовская Аравия",
+      "uae": "ОАЭ",
+      "allSectors": "Все секторы",
+      "allEntities": "Все юридические лица",
+      "allStatuses": "Все статусы",
+      "operational": "Оперативно",
+      "underConstruction": "На стадии строительства",
+      "announced": "Объявлено",
+      "rumoured": "По слухам",
+      "divested": "Отчуждено",
+      "asset": "Актив",
+      "country": "Страна",
+      "sector": "Сектор",
+      "investment": "Инвестиция",
+      "year": "Год",
+      "noMatch": "Инвестиции, соответствующие фильтрам, не найдены",
+      "undisclosed": "Не разглашается",
       "sectors": {
-        "ports": "Ports",
-        "pipelines": "Pipelines",
-        "energy": "Energy",
-        "datacenters": "Data Centers",
-        "airports": "Airports",
-        "railways": "Railways",
-        "telecoms": "Telecoms",
-        "water": "Water",
-        "logistics": "Logistics",
-        "mining": "Mining",
-        "realEstate": "Real Estate",
-        "manufacturing": "Manufacturing"
+        "ports": "Порты",
+        "pipelines": "Трубопроводы",
+        "energy": "Энергетика",
+        "datacenters": "Центры данных",
+        "airports": "Аэропорты",
+        "railways": "Железные дороги",
+        "telecoms": "Телекоммуникации",
+        "water": "Водоснабжение",
+        "logistics": "Логистика",
+        "mining": "Горнодобыча",
+        "realEstate": "Недвижимость",
+        "manufacturing": "Производство"
       }
     },
     "prediction": {
@@ -1986,16 +1986,16 @@
         "flow": "Поток",
         "regime": "Режим",
         "btcTrend": "Тренд BTC",
-        "hashRate": "Hash Rate",
-        "momentum": "Momentum",
+        "hashRate": "Хеш-рейт",
+        "momentum": "Импульс",
         "fearGreed": "Страх &amp; Жадность"
       },
       "infoTooltip": "<strong>Условия рынка Bitcoin</strong> Панель сводного сигнала для позиционирования Bitcoin и аппетита к риску:<ul><li><strong>Ликвидность</strong>: Прокси чистой ликвидности ФРС</li><li><strong>Поток</strong>: 5-дневная доходность BTC против QQQ</li><li><strong>Режим</strong>: Ротация QQQ против XLP (риск вкл/выкл)</li><li><strong>Тренд BTC</strong>: Цена против SMA50/200, множитель Мейера</li><li><strong>Хеш-рейт</strong>: Изменение хеша сети за 30 дней</li><li><strong>Страх и алчность</strong>: Индекс рыночного настроения</li></ul>Эта панель предназначена для режима и позиционирования, а не для широких макроэкономических данных."
     },
     "panel": {
-      "showMethodologyInfo": "Show methodology info",
-      "dragToResize": "Drag to resize (double-click to reset)",
-      "openSettings": "Open Settings",
+      "showMethodologyInfo": "Показать информацию о методологии",
+      "dragToResize": "Перетащить для изменения размера (двойной щелчок для сброса)",
+      "openSettings": "Открыть параметры",
       "closePanel": "Закрыть панель",
       "collapsePanel": "Свернуть панель",
       "expandPanel": "Развернуть панель",
@@ -2005,50 +2005,50 @@
       "mapLabelsFallbackVi": "Подписи на карте пока отображаются на английском для вьетнамского языка."
     },
     "serviceStatus": {
-      "checkingServices": "Checking services...",
-      "allOperational": "All services operational",
+      "checkingServices": "Проверка служб...",
+      "allOperational": "Все службы функционируют нормально",
       "ok": "OK",
-      "degraded": "Degraded",
-      "outage": "Outage",
+      "degraded": "Снижение производительности",
+      "outage": "Сбой",
       "categories": {
-        "all": "All",
-        "cloud": "Cloud",
-        "dev": "Dev Tools",
-        "comm": "Comms",
+        "all": "Все",
+        "cloud": "Облако",
+        "dev": "Инструменты разработки",
+        "comm": "Коммуникации",
         "ai": "AI",
         "saas": "SaaS"
       },
       "infoTooltip": "<strong>Статус сервисов</strong> Оперативный статус в реальном времени крупных облачных платформ, финансовой инфраструктуры и критических интернет-сервисов. Источник: официальные страницы статуса (AWS, Azure, GCP, Cloudflare, биржи). Инциденты могут указывать на более масштабные события нарушений."
     },
     "verification": {
-      "title": "Information Verification Checklist",
-      "hint": "Based on Bellingcat's OSH Framework",
+      "title": "Чек-лист проверки информации",
+      "hint": "На основе OSH Framework Bellingcat",
       "verdicts": {
-        "verified": "VERIFIED",
-        "likely": "LIKELY AUTHENTIC",
-        "uncertain": "UNCERTAIN",
-        "unreliable": "UNRELIABLE"
+        "verified": "ПРОВЕРЕНО",
+        "likely": "ВЕРОЯТНО ПОДЛИННО",
+        "uncertain": "НЕОПРЕДЕЛЕННО",
+        "unreliable": "НЕДОСТОВЕРНО"
       },
-      "notesTitle": "Verification Notes",
-      "noNotes": "No notes added",
-      "addNotePlaceholder": "Add verification note...",
-      "add": "Add",
-      "resetChecklist": "Reset Checklist",
+      "notesTitle": "Примечания проверки",
+      "noNotes": "Примечания не добавлены",
+      "addNotePlaceholder": "Добавить примечание проверки...",
+      "add": "Добавить",
+      "resetChecklist": "Сбросить чек-лист",
       "checks": {
-        "recency": "Recent timestamp confirmed",
-        "geolocation": "Location verified",
-        "source": "Primary source identified",
-        "crossref": "Cross-referenced with other sources",
-        "noAi": "No AI generation artifacts",
-        "noRecrop": "Not recycled/old footage",
-        "metadata": "Metadata verified",
-        "context": "Context established"
+        "recency": "Недавняя временная метка подтверждена",
+        "geolocation": "Местоположение проверено",
+        "source": "Определен первичный источник",
+        "crossref": "Перекрестно проверено с другими источниками",
+        "noAi": "Нет артефактов генерации ИИ",
+        "noRecrop": "Не переиспользованы/не старые кадры",
+        "metadata": "Метаданные проверены",
+        "context": "Контекст установлен"
       }
     },
     "liveNews": {
-      "notLive": "{{name}} is not currently live",
+      "notLive": "{{name}} сейчас не в эфире",
       "signInToYouTube": "Войти в YouTube",
-      "openOnYouTube": "Open on YouTube",
+      "openOnYouTube": "Открыть на YouTube",
       "manage": "Управление каналами",
       "addChannel": "Добавить канал",
       "remove": "Удалить",
@@ -2092,7 +2092,7 @@
       "clearTrails": "Очистить следы"
     },
     "internetDisruptions": {
-      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>",
+      "infoTooltip": "<strong>Интернет-сбои</strong> Сбои интернета в реальном времени, DDoS-атаки и аномалии трафика из глобального сетевого мониторинга:<ul><li><strong>Сбои</strong>: отказы подключения, обнаруженные BGP, по странам</li><li><strong>DDoS</strong>: отчеты о объемных атаках по протоколам и векторам</li><li><strong>Аномалии</strong>: необычные паттерны трафика из Cloudflare Radar</li></ul>",
       "noOutages": "Активных сбоев не обнаружено",
       "noDdos": "Данных о DDoS нет",
       "noAnomalies": "Аномалий трафика не обнаружено",
@@ -2101,16 +2101,16 @@
       "topTargets": "Страны-мишени"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
-      "commodities": "Commodities",
-      "physicalPremiums": "Physical premium",
-      "physical": "Physical",
-      "paper": "Paper",
-      "premium": "Premium",
-      "asOf": "As of {{date}}",
+      "infoTooltip": "<strong>Сырьевые товары</strong> Торгуемые энергонезависимые сырьевые товары с фокусом на металлы и материалы. Цены энергоносителей находятся в Energy Complex; макроэкономические индикаторы стресса находятся в Macro Stress.",
+      "commodities": "Сырьевые товары",
+      "physicalPremiums": "Физическая премия",
+      "physical": "Физический",
+      "paper": "Бумага",
+      "premium": "Премия",
+      "asOf": "По состоянию на {{date}}",
       "metals": {
-        "gold": "Gold",
-        "silver": "Silver"
+        "gold": "Золото",
+        "silver": "Серебро"
       },
       "divergence": {
         "compositeValue": "Индекс физического стресса: {{value}} / 100",
@@ -2130,7 +2130,7 @@
       }
     },
     "crypto": {
-      "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
+      "infoTooltip": "<strong>Криптовалюты</strong> Текущие цены, изменения за 24ч и объём для крупных криптовалют. Данные от CoinGecko."
     },
     "gulfEconomies": {
       "infoTooltip": "<strong>Экономики Персидского залива</strong> Индексы акций Персидского залива, курсы валют и цены на нефть для стран Совета сотрудничества арабских государств Персидского залива (Саудовская Аравия, ОАЭ, Кувейт, Катар, Бахрейн, Оман)."
@@ -2139,25 +2139,25 @@
       "infoTooltip": "<strong>Индекс продуктов</strong> Глобальное сравнение цен на продовольственные товары в 24 странах — отслеживает инфляцию потребительских товаров в реальности независимо от официального индекса потребительских цен."
     },
     "bigmac": {
-      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+      "infoTooltip": "<strong>Real Big Mac Index</strong> Big Mac Index The Economist измеряет паритет покупательной способности путём сравнения цен на бургер McDonald's по странам. Обновляется при выпуске новых данных (квартально/ежегодно)."
     },
     "defiTokens": {
-      "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
+      "infoTooltip": "<strong>Токены DeFi</strong> Цены и динамика за 24ч/7д для ключевых токенов децентрализованных финансов — DEXes, кредитные платформы и протоколы доходности."
     },
     "aiTokens": {
-      "infoTooltip": "<strong>AI Tokens</strong> Prices and 24h/7d performance for AI and machine learning sector tokens — compute networks, decentralized AI infrastructure, and data protocols."
+      "infoTooltip": "<strong>Токены ИИ</strong> Цены и динамика за 24ч/7д для токенов AI и машинного обучения — сети вычислений, децентрализованная AI-инфраструктура и протоколы данных."
     },
     "altTokens": {
-      "infoTooltip": "<strong>Alt Tokens</strong> Prices and 24h/7d performance for alternative and emerging crypto tokens outside the major-cap tiers."
+      "infoTooltip": "<strong>Альтернативные токены</strong> Цены и динамика за 24ч/7д для альтернативных и развивающихся крипто-токенов вне основных категорий по капитализации."
     },
     "stockAnalysis": {
-      "infoTooltip": "<strong>Premium Stock Analysis</strong> AI-powered analysis for stocks in your watchlist — buy/hold/sell signals, price targets, key risks, and catalysts updated daily."
+      "infoTooltip": "<strong>Премиум-анализ акций</strong> AI-анализ акций из вашего списка отслеживания — сигналы покупки/удержания/продажи, целевые цены, ключевые риски и катализаторы, обновляются ежедневно."
     },
     "stockBacktest": {
-      "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
+      "infoTooltip": "<strong>Премиум-бэктестинг</strong> Историческая производительность бэктестов для акций из вашего списка отслеживания — прошлые доходы, максимальное снижение и показатели волатильности."
     },
     "dailyMarketBrief": {
-      "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
+      "infoTooltip": "<strong>Ежедневный обзор рынка</strong> Генерируемый AI ежедневный обзор глобальных рыночных условий, ключевых макротрендов и сигналов по секторам — обновляется каждый торговый день."
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>Мониторинг центральных банков</strong> Последние заявления, решения по ставкам и коммуникация Федеральной резервной системы, Европейского центрального банка, Банка Англии и других крупнейших центральных банков мира."
@@ -2285,8 +2285,8 @@
       "metrics": {
         "vix": "VIX",
         "hySpread": "Спрэд высокодоходной задолженности",
-        "hygPrice": "HYG Price",
-        "tltPrice": "TLT Price"
+        "hygPrice": "Цена HYG",
+        "tltPrice": "Цена TLT"
       },
       "errors": {
         "unavailable": "Данные Индекса финансового стресса недоступны",
@@ -2376,30 +2376,30 @@
         "movers": "Изменения цен",
         "spread": "Разброс розницы",
         "health": "Качество данных",
-        "world": "World"
+        "world": "Мир"
       },
       "infoTooltip": "<strong>Цены потребителей</strong> Живые корзины продуктов, еженедельные изменения, тренды по категориям, лидеры цен и различия между розничными торговцами. Мировой вид использует годовую инфляцию из Перспектив развития мировой экономики Международного валютного фонда.",
       "world": {
-        "country": "Country",
+        "country": "Страна",
         "inflationYoY": "Годовая инфляция",
-        "endOfPeriod": "End-of-Period",
-        "year": "Year",
-        "filterPlaceholder": "Filter countries…",
-        "loading": "Loading global inflation…",
-        "empty": "Inflation data not yet available",
-        "noMatches": "No matching countries",
+        "endOfPeriod": "Конец периода",
+        "year": "Год",
+        "filterPlaceholder": "Фильтр стран…",
+        "loading": "Загрузка глобальной инфляции…",
+        "empty": "Данные по инфляции пока недоступны",
+        "noMatches": "Совпадений не найдено",
         "source": "Источник: Перспективы развития мировой экономики Международного валютного фонда · годовая инфляция индекса потребительских цен, все отчитывающиеся экономики",
-        "countSingular": "country",
-        "countPlural": "countries"
+        "countSingular": "страна",
+        "countPlural": "стран"
       }
     },
     "marketImplications": {
       "infoTooltip": "<strong>Рыночные последствия AI</strong> Торговые сигналы, созданные LLM на основе текущих геополитических, сырьевых и макроэкономических данных после каждого цикла прогноза.<ul><li><strong>Направление</strong>: LONG / SHORT / HEDGE</li><li><strong>Период</strong>: горизонт 1W, 2W, 1M или 3M</li><li><strong>Драйвер</strong>: ключевой катализатор сигнала</li><li><strong>Риск</strong>: оговорка или условие инвалидации</li></ul><em>Только в информационных целях. Не является инвестиционным советом.</em>",
       "title": "Последствия для рынка AI",
       "directions": {
-        "long": "LONG",
-        "short": "SHORT",
-        "hedge": "HEDGE"
+        "long": "ЛОНГ",
+        "short": "ШОРТ",
+        "hedge": "ХЕДЖИРОВАНИЕ"
       },
       "rationale": "Обоснование:",
       "driver": "Драйвер:",
@@ -2413,7 +2413,7 @@
       "unscored": "Гипотетические сценарии, без оценки точности."
     },
     "forecast": {
-      "infoTooltip": "<strong>AI Forecasts</strong> Сгенерированные ИИ оценки вероятности геополитических и экономических событий:<ul><li>Охват нескольких областей: конфликты, рынки, цепи поставок, кибербезопасность, политика</li><li>Каждый прогноз показывает предполагаемую вероятность, уровень уверенности и временной горизонт</li></ul>Прогнозы обновляются по мере поступления новых разведывательных сигналов. Фильтруйте по домену, используя вкладки выше.",
+      "infoTooltip": "<strong>Прогнозы ИИ</strong> Сгенерированные ИИ оценки вероятности геополитических и экономических событий:<ul><li>Охват нескольких областей: конфликты, рынки, цепи поставок, кибербезопасность, политика</li><li>Каждый прогноз показывает предполагаемую вероятность, уровень уверенности и временной горизонт</li></ul>Прогнозы обновляются по мере поступления новых разведывательных сигналов. Фильтруйте по домену, используя вкладки выше.",
       "record": {
         "label": "Послужной список",
         "labelHint": "Как оценивались опубликованные прогнозы после разрешения за последние {{days}} дней. Наведите курсор на число, чтобы узнать, что оно означает.",
@@ -2484,37 +2484,37 @@
       }
     },
     "escalationCorrelation": {
-      "infoTooltip": "<strong>Escalation Monitor</strong> Обнаруживает сходящиеся геополитические сигналы:<ul><li>Коррелирует военные движения, события конфликтов и всплески новостей</li><li>Оценивает зоны сходимости по степени серьезности (критическая/высокая/средняя/низкая)</li><li>Отслеживает тенденции эскалации или деэскалации с течением времени</li></ul>Нажмите на карточку, чтобы увеличить область на карте."
+      "infoTooltip": "<strong>Монитор эскалации</strong> Обнаруживает сходящиеся геополитические сигналы:<ul><li>Коррелирует военные движения, события конфликтов и всплески новостей</li><li>Оценивает зоны сходимости по степени серьезности (критическая/высокая/средняя/низкая)</li><li>Отслеживает тенденции эскалации или деэскалации с течением времени</li></ul>Нажмите на карточку, чтобы увеличить область на карте."
     },
     "economicCorrelation": {
-      "infoTooltip": "<strong>Economic Warfare</strong> Обнаруживает сходящиеся сигналы экономического давления:<ul><li>Санкции, торговые ограничения и движения валют</li><li>Сбои в поставках товаров, связанные с геополитическими игроками</li><li>Кросс-доменная корреляция между экономическими и безопасностью событиями</li></ul>Нажмите на карточку, чтобы увеличить затронутый регион."
+      "infoTooltip": "<strong>Экономическое противостояние</strong> Обнаруживает сходящиеся сигналы экономического давления:<ul><li>Санкции, торговые ограничения и движения валют</li><li>Сбои в поставках товаров, связанные с геополитическими игроками</li><li>Кросс-доменная корреляция между экономическими и безопасностью событиями</li></ul>Нажмите на карточку, чтобы увеличить затронутый регион."
     },
     "militaryCorrelation": {
-      "infoTooltip": "<strong>Force Posture</strong> Коррелирует военную активность с геополитическим контекстом:<ul><li>Концентрация военных самолетов и военно-морских судов по регионам</li><li>Перекрестная ссылка с активными зонами конфликтов и всплесками новостей</li><li>Выделяет необычные накопления сил или переброски</li></ul>Нажмите на карточку, чтобы увеличить область на карте."
+      "infoTooltip": "<strong>Дислокация сил</strong> Коррелирует военную активность с геополитическим контекстом:<ul><li>Концентрация военных самолетов и военно-морских судов по регионам</li><li>Перекрестная ссылка с активными зонами конфликтов и всплесками новостей</li><li>Выделяет необычные накопления сил или переброски</li></ul>Нажмите на карточку, чтобы увеличить область на карте."
     },
     "disasterCorrelation": {
-      "infoTooltip": "<strong>Disaster Cascade</strong> Обнаруживает сходящиеся сигналы природных бедствий и инфраструктуры:<ul><li>Коррелирует землетрясения, лесные пожары, наводнения и экстремальную погоду</li><li>Отслеживает каскадные эффекты на инфраструктуру и цепи поставок</li><li>Выделяет регионы с сопутствующим риском бедствий</li></ul>Нажмите на карточку, чтобы увеличить затронутый регион."
+      "infoTooltip": "<strong>Каскад бедствий</strong> Обнаруживает сходящиеся сигналы природных бедствий и инфраструктуры:<ul><li>Коррелирует землетрясения, лесные пожары, наводнения и экстремальную погоду</li><li>Отслеживает каскадные эффекты на инфраструктуру и цепи поставок</li><li>Выделяет регионы с сопутствующим риском бедствий</li></ul>Нажмите на карточку, чтобы увеличить затронутый регион."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Задержанные или предзагруженные котировки индексов, акции и цены крипто. Настройте свой список отслеживания с помощью кнопки Список отслеживания. Спарклайны показывают недавний ценовой тренд.",
+      "infoTooltip": "<strong>Рынки</strong> Задержанные или предзагруженные котировки индексов, акции и цены крипто. Настройте свой список отслеживания с помощью кнопки Список отслеживания. Спарклайны показывают недавний ценовой тренд.",
       "chart": {
         "title": "График цены {{symbol}}",
         "close": "Закрыть график"
       },
       "unavailable": {
         "symbols": "{{symbols}} — {{reason}}",
-        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
-        "notFound": "no quote available",
-        "providerError": "quote lookup failed, retrying shortly",
-        "rateLimited": "quote provider rate limited, retrying shortly",
-        "notConfigured": "quote provider not configured",
-        "requestLimit": "too many symbols requested",
-        "budget": "not loaded yet, retrying shortly",
-        "seed": "market data temporarily unavailable"
+        "symbolsMore": "{{symbols}} +{{count}} еще — {{reason}}",
+        "notFound": "котировка недоступна",
+        "providerError": "ошибка поиска котировки, повторная попытка в ближайшее время",
+        "rateLimited": "поставщик котировок: превышен лимит запросов, повторная попытка в ближайшее время",
+        "notConfigured": "поставщик котировок не настроен",
+        "requestLimit": "запрошено слишком много символов",
+        "budget": "еще не загружено, повторная попытка в ближайшее время",
+        "seed": "данные рынка временно недоступны"
       }
     },
     "heatmap": {
-      "infoTooltip": "<strong>Sector Heatmap</strong> Производительность секторов S&P 500 с первого взгляда. Интенсивность цвета отражает величину дневного изменения. Зеленый = прибыль, Красный = убытки."
+      "infoTooltip": "<strong>Секторная тепловая карта</strong> Производительность секторов S&P 500 с первого взгляда. Интенсивность цвета отражает величину дневного изменения. Зеленый = прибыль, Красный = убытки."
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Цены на топливо</strong> Розничные цены на бензин и дизельное топливо в 30+ странах, приведены к USD/литру для сравнения. Цены получены из официальных государственных программ открытых данных и обновляются еженедельно. Выделены страны с самыми дешёвыми и самыми дорогими ценами. Показано изменение неделя к неделе при наличии данных за предыдущую неделю.",
@@ -2813,10 +2813,10 @@
         "strategic": "Стратегические"
       },
       "badges": {
-        "conflictAdjacent": "conflict-adj",
-        "energyAdjacent": "energy-adj",
-        "industrial": "industrial",
-        "strategic": "strategic"
+        "conflictAdjacent": "прилегающий к конфликту",
+        "energyAdjacent": "прилегающий к энергообъекту",
+        "industrial": "промышленный",
+        "strategic": "стратегический"
       },
       "observations_one": "{{count}} наб",
       "observations_other": "{{count}} наб",
@@ -3378,17 +3378,17 @@
       "speed": "СКОРОСТЬ",
       "heading": "КУРС",
       "mmsi": "Международный морской идентификационный номер",
-      "region": "REGION",
-      "strikeGroup": "STRIKE GROUP",
+      "region": "РЕГИОН",
+      "strikeGroup": "УДАРНАЯ ГРУППА",
       "usniIntel": "Разведданные US Naval Institute",
       "usniSource": "Источник: Fleet Tracker новостного портала US Naval Institute",
       "approximatePosition": "Позиция примерная — на основе еженедельного отчёта US Naval Institute, не данные отслеживания в реальном времени.",
       "darkDescription": "⚠ Судно прекратило передачу сигнала — отслеживание потеряно. Может указывать на специальные операции.",
-      "recentTracking": "Recent Tracking",
-      "lastReport": "LATEST",
-      "nearChokepoint": "NEAR CHOKEPOINT",
-      "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN",
+      "recentTracking": "Недавний мониторинг",
+      "lastReport": "ПОСЛЕДНИЙ ОТЧЕТ",
+      "nearChokepoint": "РЯДОМ С УЗЛОВОЙ ТОЧКОЙ",
+      "nearBase": "РЯДОМ С БАЗОЙ",
+      "lastSeen": "ПОСЛЕДНИЙ РАЗ ЗАМЕЧЕН",
       "estPosition": "ПРИ. ПОЗИЦИЯ",
       "aisLive": "Отслеживание судна в реальном времени"
     },
@@ -3684,11 +3684,11 @@
     "unavailable": "НЕДОСТУПНО",
     "close": "Закрыть",
     "currentVariant": "(текущий)",
-    "retry": "Retry",
-    "refresh": "Refresh",
+    "retry": "Повторить",
+    "refresh": "Обновить",
     "all": "Все",
     "cancel": "Отмена",
-    "dismiss": "Dismiss"
+    "dismiss": "Скрыть"
   },
   "preferences": {
     "display": "Отображение",
@@ -3804,8 +3804,8 @@
       "orefSirens2": "Зонирование сирен с классификацией угроз",
       "telegramIntel1": "Подборка открытых каналов разведданных в Telegram",
       "telegramIntel2": "Обновления по конфликтам и геополитике в режиме реального времени",
-      "xIntel1": "Curated public news accounts on X",
-      "xIntel2": "API-fresh posts with official permalinks"
+      "xIntel1": "Отобранные новостные аккаунты в X",
+      "xIntel2": "Свежие публикации из API и постоянные ссылки"
     }
   },
   "auth": {

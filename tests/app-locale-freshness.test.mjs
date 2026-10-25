@@ -45,13 +45,16 @@ const ENGLISH_CEILING = {
   // are the same in German, which keeps the "Tier" term the catalogue uses.
   // PizzINT's "NORMAL" is also the correct German and Romanian spelling.
   // Each locale gains exactly one legitimate English-identical label.
-  ar: 359, bg: 250, cs: 292, de: 278, el: 359, es: 433,
+  // de 278 -> 166, ru 377 -> 61, uk 2708 -> 95: copied English prose in those
+  // catalogues was translated. What remains is brands, typed command examples,
+  // acronyms, and words spelled the same in that language.
+  ar: 359, bg: 250, cs: 292, de: 166, el: 359, es: 433,
   // fr 425 -> 426: "Concentration" (supply vulnerability) and "Normal"
   // (divergence regime) are spelled identically in French. Both are correct
   // translations, not placeholder copies.
   fa: 2576, fr: 426, hi: 141, hr: 281, hu: 255, it: 242,
   ja: 390, ko: 239, nl: 513, pl: 460, pt: 466, ro: 391,
-  ru: 377, sv: 490, sw: 393, th: 307, tr: 404, uk: 2708,
+  ru: 61, sv: 490, sw: 393, th: 307, tr: 404, uk: 95,
   vi: 185, zh: 358, 'zh-TW': 358,
 };
 
