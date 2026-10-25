@@ -43,7 +43,8 @@
           "Physical metals divergence, minerals concentration & sovereign debt data",
           "Scheduled AI digest + alert rules engine",
           "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
-          "Custom widgets & 10 dashboards (vs 3)"
+          "Custom widgets & 10 dashboards (vs 3)",
+          "Desktop key for the desktop app (2 keys)"
         ],
         "highlightFeatures": [
           "Personal license",
@@ -58,6 +59,7 @@
           "Data export — CSV, JSON & PDF reports",
           "25 custom dashboards (vs 10)",
           "MCP + SDK: 250 calls/day (vs 50)",
+          "Desktop key for the desktop app (3 keys)",
           "Priority support"
         ],
         "highlightFeatures": [
@@ -699,7 +701,7 @@
       "q8": "Do I need an account?",
       "a8": "No. The dashboard works instantly with no signup. An account only matters when you upgrade to Pro or want settings synced across devices.",
       "q9": "Is it open source?",
-      "a9": "Yes — open source under AGPL-3.0 on GitHub: read the code, self-host it, or build on it. Native desktop apps for Windows, macOS and Linux are available too, plus an Android TV app for wall displays.",
+      "a9": "Yes — open source under AGPL-3.0 on GitHub: read the code, self-host it, or build on it. Pro and Pro Business include desktop keys, so your own desktop build can load Pro cloud data; Docker copies run on their own data. Native desktop apps for Windows, macOS and Linux are available too, plus an Android TV app for wall displays.",
       "q10": "Why isn't World Monitor Palantir?",
       "a10": "Palantir makes an institution's own data operational inside that institution. World Monitor starts from the other end: it assembles, normalizes, correlates, and monitors public-world data, then publishes that intelligence layer through a free dashboard and open-source code. Different job, different product.",
       "q11": "Which World Monitor license do I need?",

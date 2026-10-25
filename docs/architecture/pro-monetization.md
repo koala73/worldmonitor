@@ -24,6 +24,7 @@ Products are served at runtime from `https://api.worldmonitor.app/api/product-ca
 - **Free** — `price: 0`, no productId, card links to dashboard.
 - **Pro Monthly** — `pdt_0Nbtt71uObulf7fGXhQup` ($39.99/mo).
 - **Pro Annual** — `pdt_0NbttMIfjLWC10jHQWYgJ` ($399.99/yr, ~17% discount).
+- **Desktop keys** — Pro includes 2 and Pro Business 3 (same `wm_` format; kind stored server-side). They give the subscriber a signed-in Pro session's access from the desktop app, up to 7,500 requests/day and 120/minute per account, and are denied on `/api/v2/`, shipping webhooks, MCP via key and OAuth key grants. They are denied, not revoked, when coverage lapses.
 - **API Starter** — `pdt_0NbttVmG1SERrxhygbbUq` ($99.99/mo, 1k req/day).
 - **API Annual** — `pdt_0Nbu2lawHYE3dv2THgSEV` ($999/yr).
 - **API Business** — `pdt_0Nbttg7NuOJrhbyBGCius` ($299.99/mo, 10k req/day, commercial-use license + 5 bundled Pro seats (any corporate email domain); monthly-only, published in #4945; Starter→Business upgrades ride the Dodo collection/portal path).

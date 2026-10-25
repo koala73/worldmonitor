@@ -41,7 +41,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 500,
-      "description": "Everything in Free — panels, sources & followed countries uncapped, WM Analyst chat + AI stock analysis & backtesting, Cost-shock modelling & supply-chain stress tests, Intel memory — historical search, timelines & similar events, Physical metals divergence, minerals concentration & sovereign debt data, Scheduled AI digest + alert rules engine, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Custom widgets & 10 dashboards (vs 3), Personal license, 1 named user"
+      "description": "Everything in Free — panels, sources & followed countries uncapped, WM Analyst chat + AI stock analysis & backtesting, Cost-shock modelling & supply-chain stress tests, Intel memory — historical search, timelines & similar events, Physical metals divergence, minerals concentration & sovereign debt data, Scheduled AI digest + alert rules engine, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Custom widgets & 10 dashboards (vs 3), Desktop key for the desktop app (2 keys), Personal license, 1 named user"
     },
     {
       "planKey": "pro_annual",
@@ -71,7 +71,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 2500,
-      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Priority support, Commercial license included, 1 named user — not a shared login"
+      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Desktop key for the desktop app (3 keys), Priority support, Commercial license included, 1 named user — not a shared login"
     },
     {
       "planKey": "pro_business_annual",
@@ -279,7 +279,8 @@ export const TIER_CONFIG = {
       "Physical metals divergence, minerals concentration & sovereign debt data",
       "Scheduled AI digest + alert rules engine",
       "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
-      "Custom widgets & 10 dashboards (vs 3)"
+      "Custom widgets & 10 dashboards (vs 3)",
+      "Desktop key for the desktop app (2 keys)"
     ],
     "highlightFeatures": [
       "Personal license",
@@ -307,6 +308,7 @@ export const TIER_CONFIG = {
       "Data export — CSV, JSON & PDF reports",
       "25 custom dashboards (vs 10)",
       "MCP + SDK: 250 calls/day (vs 50)",
+      "Desktop key for the desktop app (3 keys)",
       "Priority support"
     ],
     "highlightFeatures": [
