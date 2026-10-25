@@ -3326,8 +3326,10 @@ exit 0
   it('keeps update-types off the github-actions group so major bumps still get proposed', () => {
     const actions = (dependabotConfig.updates as { 'package-ecosystem': string; groups?: Record<string, Record<string, unknown>> }[])
       .find((entry) => entry['package-ecosystem'] === 'github-actions');
-    const group = Object.values(actions?.groups ?? {})[0];
-    assert.ok(group, 'the github-actions ecosystem must define a group');
+    // By name, not by position: the ecosystem also carries the `codeql` group,
+    // and the first entry is whichever group the file happens to list first.
+    const group = actions?.groups?.['github-actions'];
+    assert.ok(group, 'the github-actions ecosystem must define a `github-actions` group');
     // dependabot-core's DependencyGroup#contains? never reads update-types, so a
     // group filtered on minor/patch still marks every matching action handled
     // once it has an open PR -- and the majors it excluded then get no PR from
