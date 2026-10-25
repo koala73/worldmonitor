@@ -101,14 +101,6 @@ const SOCIAL_IMAGE_UA =
 const BRIEF_CAROUSEL_PATH_RE =
   /^\/api\/brief\/carousel\/[^/]+\/\d{4}-\d{2}-\d{2}-\d{4}\/[0-2]\/?$/;
 
-const VARIANT_HOST_MAP: Record<string, string> = {
-  'tech.worldmonitor.app': 'tech',
-  'finance.worldmonitor.app': 'finance',
-  'commodity.worldmonitor.app': 'commodity',
-  'happy.worldmonitor.app': 'happy',
-  'energy.worldmonitor.app': 'energy',
-};
-
 function hasLegacyDashboardRootState(searchParams: URLSearchParams): boolean {
   return LEGACY_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
 }
@@ -539,13 +531,16 @@ function liveSituationPage(url: URL): Promise<Response> {
   return liveHtmlPage(url, 'situation', async (html) => {
     const sections = await Promise.allSettled(SITUATION_SECTIONS.map(async (section) => {
       const reading = situationReading(section, await fetchPublicReading(url, section.statusPath));
-      return reading === null ? null : section.renderSection(reading, { live: true });
+      return reading === null ? null : {
+        marker: situationMarker(section),
+        html: section.renderSection(reading, { live: true }),
+      };
     }));
     let next = html;
     let swapped = false;
-    sections.forEach((result, index) => {
+    sections.forEach((result) => {
       if (result.status !== 'fulfilled' || result.value === null) return;
-      const replaced = replaceLiveSection(next, situationMarker(SITUATION_SECTIONS[index]), result.value);
+      const replaced = replaceLiveSection(next, result.value.marker, result.value.html);
       if (replaced === null) return;
       next = replaced;
       swapped = true;

@@ -4,6 +4,6 @@
     "types": ["vite/client"],
     "tsBuildInfoFile": "node_modules/.cache/tsconfig.api.tsbuildinfo"
   },
-  "include": ["api", "src/generated", "server", "shared/mcp-host-policy.ts"],
+  "include": ["api", "src/generated", "server", "shared/mcp-host-policy.ts", "middleware.ts"],
   "exclude": ["server/__tests__/**"]
 }
