@@ -16,7 +16,7 @@ import { getSourcePropagandaRisk } from '../../../shared/source-provenance.ts';
 
 const anchor = new Anchor({ apiKey: '' });
 const snapshotDesk = () => ({
-  source: new CombinedSource(null, new ArchiveSource([new URL('../snapshots', import.meta.url).pathname], { days: 100000 })),
+  source: new CombinedSource(null, new ArchiveSource([new URL('../snapshots', import.meta.url).pathname], { days: 100000 }), { noNetwork: true }),
   anchor,
 });
 
@@ -191,9 +191,9 @@ test('a fetched article is credited to the publisher of its own link', async () 
 
 test('article text: scripts with spaced end tags are dropped, entities decode once', async () => {
   const { fetchArticleText } = await import('../lib/sources.mjs');
-  const body = `<p>Officials said 31 people died.</p><script>var x = "200 dead";</script ><style>.a{}</style >
+  const body = `<p>${'İstanbul '.repeat(40)}Officials said 31 people died.</p><script>var x = "200 dead";</script ><style>.a{}</style >
     <p>Tom &amp;lt;Jerry&amp;gt; &quot;quoted&quot; &amp; more ${'filler text '.repeat(30)}</p>`;
-  const text = await fetchArticleText('https://example.com/a', { fetchImpl: async () => ({ ok: true, status: 200, text: async () => body }), lookupImpl: async () => [{ address: '93.184.215.14' }] });
+  const text = await fetchArticleText('https://example.com/a', { fetchImpl: async () => new Response(body), lookupImpl: async () => [{ address: '93.184.215.14' }] });
   assert.ok(text.includes('31 people died'));
   assert.ok(!text.includes('200'), 'script content is not article text');
   assert.ok(text.includes('Tom &lt;Jerry&gt; "quoted" & more'), text.slice(0, 120));
@@ -415,7 +415,7 @@ test('article fetch never reaches private, loopback or metadata addresses, even 
     if (url === 'https://news.example/moved') return { ok: false, status: 302, headers: new Headers({ location: 'http://evil.example/secret' }) };
     if (url === 'https://news.example/loop') return { ok: false, status: 301, headers: new Headers({ location: '/loop' }) };
     if (url === 'https://news.example/hop') return { ok: false, status: 302, headers: new Headers({ location: '/story' }) };
-    return { ok: true, status: 200, text: async () => page };
+    return new Response(page);
   };
   assert.equal(await fetchArticleText('https://news.example/moved', { fetchImpl, lookupImpl }), null, 'redirect to a private address is refused');
   assert.deepEqual(fetched.map((u) => new URL(u).hostname), ['news.example'], 'the private hop is never requested');

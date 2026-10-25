@@ -19,6 +19,23 @@ import * as access from './lib/access.mjs';
 
 loadEnv();
 const PORT = Number(process.env.PORT || 4317);
+if (access.enabled() && access.password().length < 16) {
+  console.error('DESK_PASSWORD must contain at least 16 characters.');
+  process.exit(1);
+}
+const publicOrigin = process.env.DESK_PUBLIC_ORIGIN
+  || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null);
+const hostedUrl = publicOrigin ? new URL(publicOrigin) : null;
+if (hostedUrl && (!/^https?:$/.test(hostedUrl.protocol) || hostedUrl.origin !== publicOrigin)) {
+  throw new Error('DESK_PUBLIC_ORIGIN must be an http(s) origin with no path.');
+}
+const allowedOrigins = new Map([
+  [`localhost:${PORT}`, `http://localhost:${PORT}`],
+  [`127.0.0.1:${PORT}`, `http://127.0.0.1:${PORT}`],
+  [`[::1]:${PORT}`, `http://[::1]:${PORT}`],
+]);
+if (hostedUrl) allowedOrigins.set(hostedUrl.host, hostedUrl.origin);
+const throttle = access.loginThrottle();
 const desk = buildDesk();
 const PUBLIC = path.join(ROOT, 'public');
 const CACHE_DIR = path.join(DATA_DIR, 'cache');
@@ -132,15 +149,20 @@ async function tts(text) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-async function readRaw(req) {
+async function readRaw(req, timeoutMs = 0) {
   const chunks = [];
   let size = 0;
-  for await (const c of req) {
-    size += c.length;
-    if (size > 64_000) throw new Error('body too large');
-    chunks.push(c);
+  const timer = timeoutMs ? setTimeout(() => req.destroy(new Error('body read timed out')), timeoutMs) : null;
+  try {
+    for await (const c of req) {
+      size += c.length;
+      if (size > 64_000) throw new Error('body too large');
+      chunks.push(c);
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  } finally {
+    clearTimeout(timer);
   }
-  return Buffer.concat(chunks).toString('utf8');
 }
 
 async function readBody(req) {
@@ -149,21 +171,43 @@ async function readBody(req) {
 
 const server = createServer(async (req, res) => {
   try {
-    // Inside the try: a malformed Host header must answer 500, not exit the process.
-    const url = new URL(req.url, `http://${req.headers.host}`);
+    const origin = allowedOrigins.get(req.headers.host);
+    if (!origin || !req.url.startsWith('/') || req.url.startsWith('//')) {
+      return sendJson(res, 403, { error: 'untrusted host' });
+    }
+    const url = new URL(req.url, origin);
+    if (url.pathname.startsWith('/api/') || (url.pathname === '/login' && req.method === 'POST')) {
+      const suppliedOrigin = req.headers.origin;
+      const site = req.headers['sec-fetch-site'];
+      if ((suppliedOrigin !== undefined && suppliedOrigin !== origin)
+        || (site !== undefined && site !== 'same-origin')
+        || (suppliedOrigin === undefined && site !== 'same-origin')) {
+        return sendJson(res, 403, { error: 'same-origin request required' });
+      }
+    }
 
     // Hosted desk: everything sits behind DESK_PASSWORD (see lib/access.mjs).
     if (access.enabled()) {
       if (url.pathname === '/login' && req.method === 'POST') {
-        const given = new URLSearchParams(await readRaw(req)).get('password');
-        if (!access.passwordMatches(given)) {
-          await new Promise((r) => setTimeout(r, 800)); // slow down guessing
-          res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-          return res.end(access.LOGIN_PAGE(true));
+        const given = new URLSearchParams(await readRaw(req, 2000)).get('password');
+        const retryAfter = throttle.retryAfter();
+        if (retryAfter) {
+          res.setHeader('Retry-After', retryAfter);
+          return sendJson(res, 429, { error: 'try login again later' });
         }
-        const secure = req.headers['x-forwarded-proto'] === 'https';
-        res.writeHead(303, { 'Set-Cookie': access.sessionCookie(Date.now(), secure), Location: '/' });
-        return res.end();
+        let success = false;
+        try {
+          success = access.passwordMatches(given);
+          if (!success) {
+            res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+            return res.end(access.LOGIN_PAGE(true));
+          }
+          const secure = origin.startsWith('https:');
+          res.writeHead(303, { 'Set-Cookie': access.sessionCookie(Date.now(), secure), Location: '/' });
+          return res.end();
+        } finally {
+          throttle.finish(success);
+        }
       }
       if (!access.authorized(req)) {
         if (url.pathname.startsWith('/api/')) return sendJson(res, 401, { error: 'login required' });
@@ -229,6 +273,9 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/reveal') return sendJson(res, 200, await reveal());
 
     if (url.pathname === '/api/tts' && req.method === 'POST') {
+      if (req.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json') {
+        return sendJson(res, 415, { error: 'application/json required' });
+      }
       const { text } = await readBody(req);
       const audio = text ? await tts(String(text).slice(0, 2500)) : null;
       if (!audio) return sendJson(res, 204, {});

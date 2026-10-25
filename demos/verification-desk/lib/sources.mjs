@@ -3,8 +3,11 @@
 // tools only see the live digest window, so "last week" needs an archive).
 
 import { lookup } from 'node:dns/promises';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { readdir, readFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
+import { Readable } from 'node:stream';
 import path from 'node:path';
 import { dig } from './mcp-client.mjs';
 import { overlapScore } from './text.mjs';
@@ -94,10 +97,30 @@ const ENTITIES = { nbsp: ' ', amp: '&', quot: '"', '#39': "'", apos: "'" };
 
 // Plain text for figure checks only; it is never rendered as HTML.
 function stripHtml(html) {
-  return String(html)
-    .replace(/<script\b[\s\S]*?<\/script\b[^>]*>/gi, ' ')
-    .replace(/<style\b[\s\S]*?<\/style\b[^>]*>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
+  const lower = html.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+  const parts = [];
+  let cursor = 0;
+  while (cursor < html.length) {
+    const open = html.indexOf('<', cursor);
+    if (open < 0) { parts.push(html.slice(cursor)); break; }
+    parts.push(html.slice(cursor, open), ' ');
+    const end = html.indexOf('>', open + 1);
+    if (end < 0) break;
+    const rawTag = /^<(script|style)\b/i.exec(html.slice(open, end + 1));
+    cursor = end + 1;
+    if (rawTag) {
+      const closing = `</${rawTag[1].toLowerCase()}`;
+      let close = lower.indexOf(closing, cursor);
+      while (close >= 0 && /[\w]/.test(lower[close + closing.length] ?? '')) {
+        close = lower.indexOf(closing, close + closing.length);
+      }
+      if (close < 0) break;
+      const closeEnd = html.indexOf('>', close + closing.length);
+      if (closeEnd < 0) break;
+      cursor = closeEnd + 1;
+    }
+  }
+  return parts.join('')
     // One pass, so "&amp;lt;" stays "&lt;" (no double unescaping).
     .replace(/&(nbsp|amp|quot|#39|apos);/g, (_, name) => ENTITIES[name])
     .replace(/\s+/g, ' ')
@@ -132,40 +155,95 @@ export function isPrivateAddress(ip) {
 }
 
 /** http(s) only, no credentials, and every address the host resolves to is public. */
-export async function isPublicHttpUrl(raw, lookupImpl = (host) => lookup(host, { all: true, verbatim: true })) {
+async function publicHttpTarget(raw, lookupImpl = (host) => lookup(host, { all: true, verbatim: true })) {
   let url;
-  try { url = new URL(raw); } catch { return false; }
-  if (!/^https?:$/.test(url.protocol) || url.username || url.password) return false;
+  try { url = new URL(raw); } catch { return null; }
+  if (!/^https?:$/.test(url.protocol) || url.username || url.password) return null;
   const host = url.hostname.replace(/^\[|\]$/g, '');
-  if (!host || /^localhost$|\.localhost$|\.internal$|\.local$/i.test(host)) return false;
-  if (isIP(host)) return !isPrivateAddress(host);
+  if (!host || /^localhost$|\.localhost$|\.internal$|\.local$/i.test(host)) return null;
   try {
-    const addrs = await lookupImpl(host);
-    return addrs.length > 0 && addrs.every((a) => !isPrivateAddress(a.address));
+    const addresses = isIP(host) ? [{ address: host, family: isIP(host) }] : await lookupImpl(host);
+    if (!addresses.length || addresses.some((a) => isPrivateAddress(a.address))) return null;
+    return { url, addresses: addresses.map((a) => ({ address: a.address, family: isIP(a.address) })) };
   } catch {
-    return false;
+    return null;
   }
 }
 
-const MAX_REDIRECTS = 5;
+export async function isPublicHttpUrl(raw, lookupImpl) {
+  return (await publicHttpTarget(raw, lookupImpl)) !== null;
+}
 
-export async function fetchArticleText(url, { timeoutMs = 5000, fetchImpl = (...a) => globalThis.fetch(...a), lookupImpl } = {}) {
+const MAX_REDIRECTS = 5;
+const MAX_ARTICLE_BYTES = 1_000_000;
+const ARTICLE_TEXT_BUDGET = 60_000;
+
+function requestArticle(url, options, requestImpl) {
+  return new Promise((resolve, reject) => {
+    const request = requestImpl ?? (new URL(url).protocol === 'https:' ? httpsRequest : httpRequest);
+    const req = request(url, { ...options, agent: false }, (res) => resolve({
+      status: res.statusCode,
+      ok: res.statusCode >= 200 && res.statusCode < 300,
+      headers: new Headers(res.headers),
+      body: Readable.toWeb(res),
+    }));
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function articleBody(res) {
+  const reader = res.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_ARTICLE_BYTES) throw new Error('article too large');
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks).toString('utf8').slice(0, ARTICLE_TEXT_BUDGET);
+  } finally {
+    try {
+      await reader.cancel();
+    } finally {
+      reader.releaseLock();
+    }
+  }
+}
+
+export async function fetchArticleText(url, { timeoutMs = 5000, fetchImpl = requestArticle, lookupImpl, requestImpl } = {}) {
   if (!url || !/^https?:\/\//.test(url)) return null;
   try {
     const signal = AbortSignal.timeout(timeoutMs);
     let current = url;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      if (!(await isPublicHttpUrl(current, lookupImpl))) return null;
-      const res = await fetchImpl(current, { headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' }, signal, redirect: 'manual' });
+      const target = await publicHttpTarget(current, lookupImpl);
+      if (!target) return null;
+      signal.throwIfAborted();
+      const pinnedLookup = (_host, options, callback) => {
+        if (options.all) callback(null, target.addresses);
+        else callback(null, target.addresses[0].address, target.addresses[0].family);
+      };
+      const res = await fetchImpl(target.url.href, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'text/html', 'Accept-Encoding': 'identity' },
+        signal, redirect: 'manual', lookup: pinnedLookup,
+      }, requestImpl);
       if (res.status >= 300 && res.status < 400) {
+        await res.body?.cancel();
         const next = res.headers?.get?.('location');
         if (!next) return null;
         current = new URL(next, current).href;
         continue;
       }
-      if (!res.ok) return null;
-      const text = stripHtml(await res.text());
-      return text.length > 200 ? text.slice(0, 60_000) : null;
+      if (!res.ok || !['identity', null].includes(res.headers?.get('content-encoding') ?? null)) {
+        await res.body?.cancel();
+        return null;
+      }
+      const text = stripHtml(await articleBody(res));
+      return text.length > 200 ? text : null;
     }
     return null; // too many redirects
   } catch {
