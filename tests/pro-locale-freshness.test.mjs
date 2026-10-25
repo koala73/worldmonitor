@@ -151,16 +151,10 @@ const INTENTIONAL_ENGLISH = {
   'zh-TW': ['pricingTable.fWhiteLabel'],
 };
 
-// Ceilings, not exact counts. Rewording an English value drops the count on its
-// own (the stale Persian copy stops matching the new English), so an exact count
-// would red every unrelated en.json copy edit. Lower the ceiling as fa improves.
-//
-// 403 is the same Persian freeze as the old 388. The review-list filter used to
-// subtract those keys before the count (#9165). Removing it counts them. fa.json
-// did not gain English strings. Do not raise this for new copy.
-const TEMPORARY_LOCALE_EXEMPTIONS = {
-  fa: 403,
-};
+// No locale gets a count ceiling. A ceiling hides new English copy, which is
+// how fa.json stayed an English placeholder (#5644). Brands and tokens that
+// stay English are named in ENGLISH_ALLOWED_KEYS or INTENTIONAL_ENGLISH.
+const TEMPORARY_LOCALE_EXEMPTIONS = {};
 
 describe('pro locale freshness', () => {
   it('tracks every shipped locale', () => {
