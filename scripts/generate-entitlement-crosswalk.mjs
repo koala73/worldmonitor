@@ -30,7 +30,7 @@ const add = (source, id, detail) => rules.push({ rule: `${source}:${id}`, source
 // 1. productCatalog — every (plan × gating field) pair
 {
   const s = R('convex/config/productCatalog.ts');
-  const FIELDS = ['tier','maxDashboards','apiRateLimit','prioritySupport','mcpAccess','dataExport','apiAccess','embedAccess','apiRequestsPerDay','apiBurstRequestsPerMinute','mcpCallsPerDay','mcpBurstRequestsPerMinute','apiDailyAllowance','exportFormats','historyDays'];
+  const FIELDS = ['tier','maxDashboards','apiRateLimit','prioritySupport','mcpAccess','dataExport','apiAccess','embedAccess','desktopKeyAccess','maxDesktopKeys','desktopKeyRequestsPerDay','desktopKeyBurstPerMinute','apiRequestsPerDay','apiBurstRequestsPerMinute','mcpCallsPerDay','mcpBurstRequestsPerMinute','apiDailyAllowance','exportFormats','historyDays'];
   for (const m of s.matchAll(/const (FREE|PRO|PRO_BUSINESS|API_STARTER|API_BUSINESS|ENTERPRISE)_FEATURES[^=]*=\s*\{([\s\S]*?)\n\};/g)) {
     const [, plan, body] = m;
     for (const f of FIELDS) {
@@ -72,7 +72,7 @@ for (const f of ['src/config/panels.ts','convex/constants.ts','src/services/gate
 
 
 // ------------------------------------------------------- code-site gates
-const PAT = "features\\.tier\\s*[<>=]|tier\\s*[<>]=?\\s*1|!hasPremiumAccess\\(\\)|features\\.apiAccess|features\\.mcpAccess|features\\.dataExport|requiresPremium|isCallerPremium\\(|has(Account)?EmbedAccess\\(|resolvePremiumCallerIdentity\\(|!isProUser\\(\\)";
+const PAT = "features\\.tier\\s*[<>=]|tier\\s*[<>]=?\\s*1|!hasPremiumAccess\\(\\)|features\\.apiAccess|features\\.mcpAccess|features\\.dataExport|requiresPremium|isCallerPremium\\(|has(Account)?EmbedAccess\\(|hasDesktopKeyAccess\\(|admitsDesktopKeyPrincipal\\(|resolvePremiumCallerIdentity\\(|!isProUser\\(\\)";
 const out = execSync(`grep -rnE "${PAT}" --include="*.ts" --include="*.js" src api convex server 2>/dev/null || true`, { encoding: 'utf8', maxBuffer: 1 << 26 });
 const sites = [];
 for (const ln of out.split('\n')) {
@@ -91,6 +91,7 @@ for (const ln of out.split('\n')) {
     : /features\.mcpAccess/.test(t)  ? 'mcpAccess'
     : /features\.dataExport/.test(t) ? 'dataExport'
     : /has(?:Account)?EmbedAccess\(/.test(t) ? 'embedAccess'
+    : /hasDesktopKeyAccess\(|admitsDesktopKeyPrincipal\(/.test(t) ? 'desktopKeyAccess'
     : /requiresPremium/.test(t)      ? 'requiresPremium'
     : /isCallerPremium\(/.test(t)    ? 'isCallerPremium'
     : /resolvePremiumCallerIdentity\(/.test(t) ? 'resolvePremiumCallerIdentity'
@@ -111,6 +112,10 @@ const MAP = [
   [/^catalog:\w+\.dataExport$/,              { cap: 'export.data' }],
   [/^catalog:\w+\.apiAccess$/,               { cap: 'api.keys' }],
   [/^catalog:\w+\.embedAccess$/,             { cap: 'embed.panels', note: 'wme_ key issuance' }],
+  [/^catalog:\w+\.desktopKeyAccess$/,        { cap: 'desktop.keys', note: 'desktop wm_ key issuance and use' }],
+  [/^catalog:\w+\.maxDesktopKeys$/,          { cap: 'desktop.keys', note: 'active desktop keys per account' }],
+  [/^catalog:\w+\.desktopKeyRequestsPerDay$/,{ cap: 'desktop.keys', note: 'per-account daily ceiling' }],
+  [/^catalog:\w+\.desktopKeyBurstPerMinute$/,{ cap: 'desktop.keys', note: 'per-account burst ceiling' }],
   [/^catalog:\w+\.apiRequestsPerDay$/,       { cap: 'api.rest' }],
   [/^catalog:\w+\.apiRateLimit$/,            { cap: 'api.rest', note: 'rate ceiling' }],
   [/^catalog:\w+\.apiBurstRequestsPerMinute$/,{ cap: 'api.rest', note: 'burst ceiling' }],

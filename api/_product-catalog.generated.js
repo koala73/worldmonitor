@@ -259,6 +259,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 0,
       "dashboardAiCallsPerDay": 0,
       "mcpBurstRequestsPerMinute": 0,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Get Started",
@@ -289,6 +291,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 50,
       "dashboardAiCallsPerDay": 500,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
     "highlighted": true
@@ -315,6 +319,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 250,
       "dashboardAiCallsPerDay": 2500,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
     "highlighted": false
@@ -340,6 +346,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 1000,
       "dashboardAiCallsPerDay": 1000,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
     "highlighted": false
@@ -365,6 +373,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 10000,
       "dashboardAiCallsPerDay": 10000,
       "mcpBurstRequestsPerMinute": 300,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
     "highlighted": false
@@ -392,6 +402,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 25000,
       "dashboardAiCallsPerDay": 25000,
       "mcpBurstRequestsPerMinute": 1000,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Contact Sales",
