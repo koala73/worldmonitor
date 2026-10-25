@@ -259,6 +259,7 @@ jobs:
             /^scripts\/check-desktop-build-env\.mjs$/ { count++; next }
             /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
             /^scripts\/check-rust-security-floors\.mjs$/ { count++; next }
+            /^scripts\/download-node\.sh$/ { count++; next }
             /^\.github\/workflows\/.*\.ya?ml$/ { count++ }
             END { print count + 0 }
           ')
@@ -785,6 +786,22 @@ jobs:
         # silently drop the desktop app back onto a crate version with a known
         # advisory.
         run: node scripts/check-rust-security-floors.mjs
+
+  # The release build bundles Node on Windows through Git Bash, which the
+  # Linux sidecar job never runs. v2.11.5's Windows build failed there first.
+  desktop-node-windows:
+    needs: changes
+    if: needs.changes.outputs.desktop_config == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Bundle the shipped Windows Node.js runtime
+        shell: bash
+        run: bash scripts/download-node.sh --target x86_64-pc-windows-msvc
+      - name: Run the bundled Windows Node.js runtime
+        shell: bash
+        run: src-tauri/sidecar/node/node.exe --version
 
   desktop-rust:
     needs: changes

@@ -251,6 +251,7 @@ const REQUIRED_TEST_JOBS = [
   'variant-smoke-full',
   'resilience-validation-smoke',
   'desktop-config',
+  'desktop-node-windows',
   'desktop-rust',
 ] as const;
 
@@ -263,6 +264,7 @@ const TIMEOUT_CAPPED_TEST_JOBS = [
   'variant-smoke-full',
   'resilience-validation-smoke',
   'desktop-config',
+  'desktop-node-windows',
   'desktop-rust',
 ] as const;
 
