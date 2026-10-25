@@ -36,7 +36,9 @@ function keyKindOf(key: Pick<Doc<"userApiKeys">, "keyKind">): ApiKeyKind {
  * existing desktop rows also stop validating — an older edge's generic
  * validators accept any entry with a userId, so a desktop row reaching one
  * would be granted API scope. Flipping the flag off suspends every desktop
- * key at once; flipping it back on restores them (no row is rewritten).
+ * key once its edge cache entry expires (`user-api-key:` TTL, 60 s), which is
+ * why the rollback waits that long; flipping it back on restores them (no row
+ * is rewritten).
  */
 function desktopKeysEnabled(): boolean {
   return process.env.DESKTOP_KEYS_ENABLED === "true";
