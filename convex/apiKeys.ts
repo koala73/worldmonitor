@@ -2,15 +2,39 @@ import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireUserId, resolveUserId } from "./lib/auth";
+import { mergeEntitlementFeatures } from "./lib/entitlements";
 import { activeAccountForOwner } from "./companyMonitoring/_shared";
 import { ensureActiveAccount } from "./companyMonitoring/accounts";
 import {
   COMPANY_MONITORING_RPC_SCOPES,
   type CompanyMonitoringApiScope,
 } from "../shared/company-monitoring-contract";
+import { hasDesktopKeyAccess } from "../shared/desktop-key-access";
+import type { Doc } from "./_generated/dataModel";
 
-/** Maximum number of active (non-revoked) API keys per user. */
+/**
+ * Maximum number of active (non-revoked) API keys per user. Desktop keys are
+ * capped separately by the plan's `maxDesktopKeys` and never count here.
+ */
 const MAX_KEYS_PER_USER = 5;
+
+export type ApiKeyKind = "api" | "desktop";
+const keyKindValidator = v.union(v.literal("api"), v.literal("desktop"));
+
+/** A row's kind. Rows written before `keyKind` existed are API keys (KTD2). */
+function keyKindOf(key: Pick<Doc<"userApiKeys">, "keyKind">): ApiKeyKind {
+  return key.keyKind === "desktop" ? "desktop" : "api";
+}
+
+/**
+ * Desktop-key issuance switch (Deploy Order, plan 2026-10-25-001). Off unless
+ * the Convex env var is exactly "true": the edge validators must be live and
+ * kind-aware before any desktop row can exist, and rolling the edge back
+ * means flipping this off first.
+ */
+function desktopKeysEnabled(): boolean {
+  return process.env.DESKTOP_KEYS_ENABLED === "true";
+}
 const COMPANY_MONITORING_SCOPES = [
   ...new Set(Object.values(COMPANY_MONITORING_RPC_SCOPES)),
 ] as CompanyMonitoringApiScope[];
@@ -64,10 +88,16 @@ export const createApiKey = mutation({
     keyPrefix: v.string(),
     keyHash: v.string(),
     scopes: v.optional(v.array(v.string())),
+    // Omitted means "api", so every existing caller is unchanged.
+    keyKind: v.optional(keyKindValidator),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     await assertAccountWritable(ctx, userId);
+
+    if (args.keyKind === "desktop") {
+      return await createDesktopKey(ctx, userId, args);
+    }
 
     // Entitlement gate: only users with apiAccess may create API keys.
     // This is catalog-driven — Pro (tier 1) has apiAccess=false;
@@ -113,7 +143,9 @@ export const createApiKey = mutation({
       .query("userApiKeys")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .collect();
-    const active = existing.filter((k) => !k.revokedAt);
+    // Desktop keys have their own cap and must never be revoked by this
+    // convergence, so only API rows count here.
+    const active = existing.filter((k) => !k.revokedAt && keyKindOf(k) === "api");
     let activeCount = active.length;
     if (active.length > MAX_KEYS_PER_USER) {
       active.sort((a, b) => a.createdAt - b.createdAt);
@@ -129,14 +161,7 @@ export const createApiKey = mutation({
       throw new ConvexError("KEY_LIMIT_REACHED");
     }
 
-    // Guard against duplicate hash (astronomically unlikely, but belt-and-suspenders)
-    const dup = await ctx.db
-      .query("userApiKeys")
-      .withIndex("by_keyHash", (q) => q.eq("keyHash", args.keyHash))
-      .first();
-    if (dup) {
-      throw new ConvexError("DUPLICATE_KEY");
-    }
+    await assertUniqueKeyHash(ctx, args.keyHash);
 
     const id = await ctx.db.insert("userApiKeys", {
       userId,
@@ -145,6 +170,7 @@ export const createApiKey = mutation({
       keyHash: args.keyHash,
       scopes,
       companyMonitoringAccountId: companyMonitoringAccount?.logicalAccountId,
+      keyKind: "api",
       createdAt: Date.now(),
       ...(await keySourceFields(ctx, userId)),
     });
@@ -155,9 +181,106 @@ export const createApiKey = mutation({
       keyPrefix: args.keyPrefix,
       scopes,
       companyMonitoringAccountId: companyMonitoringAccount?.logicalAccountId,
+      keyKind: "api" as const,
     };
   },
 });
+
+// Guard against duplicate hash (astronomically unlikely, but belt-and-suspenders)
+async function assertUniqueKeyHash(ctx: MutationCtx, keyHash: string) {
+  const dup = await ctx.db
+    .query("userApiKeys")
+    .withIndex("by_keyHash", (q) => q.eq("keyHash", keyHash))
+    .first();
+  if (dup) {
+    throw new ConvexError("DUPLICATE_KEY");
+  }
+}
+
+/**
+ * Issue a desktop key (plan 2026-10-25-001, U2): a `wm_` key that reaches what
+ * a signed-in Pro session reaches minus the API-only surfaces. Same shown-once
+ * discipline and key shape as an API key; the kind is stored server-side.
+ *
+ * Gated by the Deploy Order flag, then the shared desktop-key predicate on the
+ * MERGED features, as `createEmbedKey` does: rows written before
+ * `desktopKeyAccess` existed omit it, and the predicate is fail-closed on
+ * `undefined`. The cap is the plan's `maxDesktopKeys` (also catalog-merged).
+ */
+async function createDesktopKey(
+  ctx: MutationCtx,
+  userId: string,
+  args: { name: string; keyPrefix: string; keyHash: string; scopes?: string[] },
+) {
+  if (!desktopKeysEnabled()) {
+    throw new ConvexError("DESKTOP_KEYS_DISABLED");
+  }
+
+  const entitlement = await ctx.db
+    .query("entitlements")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .first();
+  const merged = entitlement
+    ? {
+        features: mergeEntitlementFeatures(entitlement.planKey, entitlement.features),
+        validUntil: entitlement.validUntil,
+      }
+    : null;
+  if (!merged || !hasDesktopKeyAccess(merged, Date.now())) {
+    throw new ConvexError("DESKTOP_KEY_ACCESS_REQUIRED");
+  }
+
+  // Company Monitoring scopes belong to API-plan keys only.
+  if (args.scopes && args.scopes.length > 0) {
+    throw new ConvexError("INVALID_API_KEY_SCOPES");
+  }
+
+  if (!args.name.trim()) {
+    throw new ConvexError("INVALID_NAME");
+  }
+  if (!/^wm_[a-f0-9]{5}$/.test(args.keyPrefix)) {
+    throw new ConvexError("INVALID_PREFIX");
+  }
+  if (!/^[a-f0-9]{64}$/.test(args.keyHash)) {
+    throw new ConvexError("INVALID_HASH");
+  }
+
+  // R5 / KTD5: an owner without apiAccess (a downgraded API customer) keeps
+  // their generic keys working at desktop scope, up to the same cap, so those
+  // count toward it too. Unlike the API path this never revokes to make room.
+  const ownerHasApiAccess = merged.features.apiAccess === true;
+  const existing = await ctx.db
+    .query("userApiKeys")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .collect();
+  const counted = existing.filter(
+    (k) => !k.revokedAt && (keyKindOf(k) === "desktop" || !ownerHasApiAccess),
+  ).length;
+  if (counted >= (merged.features.maxDesktopKeys ?? 0)) {
+    throw new ConvexError("DESKTOP_KEY_LIMIT_REACHED");
+  }
+
+  await assertUniqueKeyHash(ctx, args.keyHash);
+
+  const id = await ctx.db.insert("userApiKeys", {
+    userId,
+    name: args.name.trim(),
+    keyPrefix: args.keyPrefix,
+    keyHash: args.keyHash,
+    keyKind: "desktop",
+    createdAt: Date.now(),
+    ...(await keySourceFields(ctx, userId)),
+  });
+
+  return {
+    id,
+    name: args.name.trim(),
+    keyPrefix: args.keyPrefix,
+    scopes: undefined,
+    companyMonitoringAccountId: undefined,
+    keyKind: "desktop" as const,
+  };
+}
 
 /** List all API keys for the current user (active + revoked). */
 export const listApiKeys = query({
@@ -186,6 +309,7 @@ export const listApiKeys = query({
       revokedAt: k.revokedAt,
       scopes: k.scopes,
       companyMonitoringAccountId: k.companyMonitoringAccountId,
+      keyKind: keyKindOf(k),
     }));
   },
 });
@@ -217,6 +341,9 @@ export const revokeApiKey = mutation({
  * Look up an API key by its SHA-256 hash.
  * Returns the key row (with userId) if found and not revoked, else null.
  * Used by the edge gateway to validate incoming API keys.
+ *
+ * `keyKind` is always explicit ("api" for legacy rows), so the edge never has
+ * to guess a key's scope from a missing field (KTD2, KTD3).
  */
 export const validateKeyByHash = internalQuery({
   args: { keyHash: v.string() },
@@ -256,6 +383,7 @@ export const validateKeyByHash = internalQuery({
       name: key.name,
       scopes: key.scopes,
       companyMonitoringAccountId: key.companyMonitoringAccountId,
+      keyKind: keyKindOf(key),
       // Consumed ONLY by the /api/internal-validate-api-key route to decide
       // whether scheduling touchKeyLastUsed is worthwhile; the route strips
       // it before responding, so the gateway cache blob is unchanged.

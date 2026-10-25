@@ -1738,6 +1738,13 @@ export default defineSchema({
     // counting only. OPTIONAL and not backfilled.
     sourceRef: v.optional(v.string()),
     source: v.optional(v.string()),
+    // What the key is for, fixed at creation (plan 2026-10-25-001, KTD2).
+    // "api" is an API-plan key; "desktop" is a Pro desktop key scoped to what
+    // a signed-in Pro session reaches minus the API-only surfaces. A separate
+    // column because `scopes` belongs to Company Monitoring. OPTIONAL and not
+    // backfilled: a missing value means "api", and every read path in
+    // apiKeys.ts maps it there so callers always see an explicit kind.
+    keyKind: v.optional(v.union(v.literal("api"), v.literal("desktop"))),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_revokedAt", ["userId", "revokedAt"])

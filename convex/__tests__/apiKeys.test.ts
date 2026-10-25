@@ -460,6 +460,369 @@ describe("touchKeyLastUsed", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Desktop keys (plan 2026-10-25-001, U2)
+//
+// A desktop key is a `userApiKeys` row with keyKind "desktop". Issuance is
+// gated by the DESKTOP_KEYS_ENABLED Convex env flag (Deploy Order step 3) and
+// the merged desktop-key predicate; the cap is the plan's maxDesktopKeys and
+// counts a downgraded owner's still-working generic keys too (R5, KTD5).
+// ---------------------------------------------------------------------------
+
+const PRO_BUSINESS_USER = { subject: "user-pro-biz", tokenIdentifier: "clerk|user-pro-biz" };
+
+function desktopArgs(n: number) {
+  return { ...makeKeyArgs(n), keyKind: "desktop" as const };
+}
+
+async function seedEntitlementRow(
+  t: ReturnType<typeof convexTest>,
+  userId: string,
+  planKey: string,
+  opts: { validUntil?: number; stripDesktopFields?: boolean } = {},
+) {
+  await t.run(async (ctx) => {
+    const features: any = { ...getFeaturesForPlan(planKey) };
+    if (opts.stripDesktopFields) {
+      // A row written before desktop keys existed: no flag, no cap, no limits.
+      delete features.desktopKeyAccess;
+      delete features.maxDesktopKeys;
+      features.planLimits = { ...features.planLimits };
+      delete features.planLimits.desktopKeyRequestsPerDay;
+      delete features.planLimits.desktopKeyBurstPerMinute;
+    }
+    await ctx.db.insert("entitlements", {
+      userId,
+      planKey,
+      features,
+      validUntil: opts.validUntil ?? FUTURE,
+      updatedAt: NOW,
+    });
+  });
+}
+
+async function seedKeyRows(
+  t: ReturnType<typeof convexTest>,
+  userId: string,
+  rows: Array<{ n: number; keyKind?: "api" | "desktop"; revoked?: boolean }>,
+) {
+  await t.run(async (ctx) => {
+    const now = Date.now();
+    for (const row of rows) {
+      const args = makeKeyArgs(row.n);
+      await ctx.db.insert("userApiKeys", {
+        userId,
+        name: args.name,
+        keyPrefix: args.keyPrefix,
+        keyHash: args.keyHash,
+        createdAt: now - (100 - row.n) * 1000,
+        ...(row.keyKind ? { keyKind: row.keyKind } : {}),
+        ...(row.revoked ? { revokedAt: now } : {}),
+      });
+    }
+  });
+}
+
+describe("desktop keys", () => {
+  beforeEach(() => {
+    process.env.DESKTOP_KEYS_ENABLED = "true";
+  });
+  afterEach(() => {
+    delete process.env.DESKTOP_KEYS_ENABLED;
+  });
+
+  test("Pro owner creates a desktop key; row and result carry keyKind desktop", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+
+    const created = await t.withIdentity(PRO_USER).mutation(
+      api.apiKeys.createApiKey,
+      desktopArgs(1),
+    );
+    expect(created).toMatchObject({ name: "test-key-1", keyPrefix: "wm_00001", keyKind: "desktop" });
+
+    const row = await t.run(async (ctx) => ctx.db.get(created.id));
+    expect(row?.keyKind).toBe("desktop");
+  });
+
+  test("AE3: third desktop key on Pro fails with the limit error", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    const asPro = t.withIdentity(PRO_USER);
+
+    await asPro.mutation(api.apiKeys.createApiKey, desktopArgs(1));
+    await asPro.mutation(api.apiKeys.createApiKey, desktopArgs(2));
+    await expect(
+      asPro.mutation(api.apiKeys.createApiKey, desktopArgs(3)),
+    ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+  });
+
+  test("Pro Business stops at three desktop keys", async () => {
+    const t = convexTest(schema, modules);
+    await seedEntitlementRow(t, "user-pro-biz", "pro_business_monthly");
+    const asBiz = t.withIdentity(PRO_BUSINESS_USER);
+
+    for (let i = 1; i <= 3; i++) {
+      await asBiz.mutation(api.apiKeys.createApiKey, desktopArgs(i));
+    }
+    await expect(
+      asBiz.mutation(api.apiKeys.createApiKey, desktopArgs(4)),
+    ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+  });
+
+  test("downgraded owner with three generic keys cannot create a desktop key", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    // Two legacy rows (no keyKind) and one explicit api row, all still active.
+    await seedKeyRows(t, "user-pro", [{ n: 1 }, { n: 2 }, { n: 3, keyKind: "api" }]);
+
+    await expect(
+      t.withIdentity(PRO_USER).mutation(api.apiKeys.createApiKey, desktopArgs(10)),
+    ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+  });
+
+  test("downgraded owner: one generic key plus one desktop key fills the Pro cap", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await seedKeyRows(t, "user-pro", [{ n: 1 }, { n: 2, revoked: true }]);
+    const asPro = t.withIdentity(PRO_USER);
+
+    await asPro.mutation(api.apiKeys.createApiKey, desktopArgs(10));
+    await expect(
+      asPro.mutation(api.apiKeys.createApiKey, desktopArgs(11)),
+    ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+  });
+
+  test("free account cannot create a desktop key", async () => {
+    const t = convexTest(schema, modules);
+    await expect(
+      t.withIdentity(FREE_USER).mutation(api.apiKeys.createApiKey, desktopArgs(1)),
+    ).rejects.toThrow(/DESKTOP_KEY_ACCESS_REQUIRED/);
+
+    await seedEntitlementRow(t, "user-free", "free");
+    await expect(
+      t.withIdentity(FREE_USER).mutation(api.apiKeys.createApiKey, desktopArgs(1)),
+    ).rejects.toThrow(/DESKTOP_KEY_ACCESS_REQUIRED/);
+  });
+
+  test("lapsed Pro owner cannot create a desktop key", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro", { validUntil: PAST });
+    await expect(
+      t.withIdentity(PRO_USER).mutation(api.apiKeys.createApiKey, desktopArgs(1)),
+    ).rejects.toThrow(/DESKTOP_KEY_ACCESS_REQUIRED/);
+  });
+
+  test("API Starter owner cannot create a desktop key", async () => {
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    await expect(
+      t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, desktopArgs(1)),
+    ).rejects.toThrow(/DESKTOP_KEY_ACCESS_REQUIRED/);
+  });
+
+  test("Pro still cannot create an api key, with or without an explicit kind", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    const asPro = t.withIdentity(PRO_USER);
+
+    await expect(
+      asPro.mutation(api.apiKeys.createApiKey, makeKeyArgs(1)),
+    ).rejects.toThrow(/API_ACCESS_REQUIRED/);
+    await expect(
+      asPro.mutation(api.apiKeys.createApiKey, { ...makeKeyArgs(1), keyKind: "api" }),
+    ).rejects.toThrow(/API_ACCESS_REQUIRED/);
+  });
+
+  test("legacy Pro entitlement row without desktopKeyAccess can create after merge", async () => {
+    const t = convexTest(schema, modules);
+    await seedEntitlementRow(t, "user-pro", "pro_monthly", { stripDesktopFields: true });
+    const asPro = t.withIdentity(PRO_USER);
+
+    await asPro.mutation(api.apiKeys.createApiKey, desktopArgs(1));
+    await asPro.mutation(api.apiKeys.createApiKey, desktopArgs(2));
+    // The cap also comes from the catalog merge, not the (missing) stored value.
+    await expect(
+      asPro.mutation(api.apiKeys.createApiKey, desktopArgs(3)),
+    ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+  });
+
+  test("desktop keys reject Company Monitoring scopes", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await expect(
+      t.withIdentity(PRO_USER).mutation(api.apiKeys.createApiKey, {
+        ...desktopArgs(1),
+        scopes: ["company_monitoring:read"],
+      }),
+    ).rejects.toThrow(/INVALID_API_KEY_SCOPES/);
+    const rows = await t.run(async (ctx) => ctx.db.query("userApiKeys").collect());
+    expect(rows).toHaveLength(0);
+  });
+
+  test("desktop keys keep prefix, hash, name, and duplicate-hash validation", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    const asPro = t.withIdentity(PRO_USER);
+
+    await expect(
+      asPro.mutation(api.apiKeys.createApiKey, { ...desktopArgs(1), keyPrefix: "wm_toolong00" }),
+    ).rejects.toThrow(/INVALID_PREFIX/);
+    await expect(
+      asPro.mutation(api.apiKeys.createApiKey, { ...desktopArgs(1), keyHash: "nope" }),
+    ).rejects.toThrow(/INVALID_HASH/);
+    await expect(
+      asPro.mutation(api.apiKeys.createApiKey, { ...desktopArgs(1), name: "  " }),
+    ).rejects.toThrow(/INVALID_NAME/);
+
+    await asPro.mutation(api.apiKeys.createApiKey, desktopArgs(1));
+    await expect(
+      asPro.mutation(api.apiKeys.createApiKey, { ...desktopArgs(1), name: "other" }),
+    ).rejects.toThrow(/DUPLICATE_KEY/);
+  });
+
+  test("flag off: desktop creation is refused for everyone", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await seedEntitlementRow(t, "user-pro-biz", "pro_business_monthly");
+
+    for (const value of [undefined, "false", "1", "TRUE"]) {
+      if (value === undefined) delete process.env.DESKTOP_KEYS_ENABLED;
+      else process.env.DESKTOP_KEYS_ENABLED = value;
+      for (const identity of [PRO_USER, PRO_BUSINESS_USER, FREE_USER, API_USER]) {
+        await expect(
+          t.withIdentity(identity).mutation(api.apiKeys.createApiKey, desktopArgs(1)),
+        ).rejects.toThrow(/DESKTOP_KEYS_DISABLED/);
+      }
+    }
+    const rows = await t.run(async (ctx) => ctx.db.query("userApiKeys").collect());
+    expect(rows).toHaveLength(0);
+  });
+
+  test("flag off does not affect api key creation", async () => {
+    delete process.env.DESKTOP_KEYS_ENABLED;
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    const created = await t.withIdentity(API_USER).mutation(
+      api.apiKeys.createApiKey,
+      makeKeyArgs(1),
+    );
+    expect(created.keyKind).toBe("api");
+  });
+
+  test("revoking a desktop key frees a slot", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    const asPro = t.withIdentity(PRO_USER);
+
+    const first = await asPro.mutation(api.apiKeys.createApiKey, desktopArgs(1));
+    await asPro.mutation(api.apiKeys.createApiKey, desktopArgs(2));
+    await expect(
+      asPro.mutation(api.apiKeys.createApiKey, desktopArgs(3)),
+    ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+
+    const revoked = await asPro.mutation(api.apiKeys.revokeApiKey, { keyId: first.id });
+    expect(revoked).toEqual({ ok: true, keyHash: makeKeyArgs(1).keyHash });
+    const third = await asPro.mutation(api.apiKeys.createApiKey, desktopArgs(3));
+    expect(third.keyKind).toBe("desktop");
+  });
+
+  test("desktop rows do not count against, and are never revoked by, the api-key limit", async () => {
+    // R8 upgrade case: a Pro owner's two desktop keys survive an upgrade to
+    // API Starter, and the owner still gets the full five api keys.
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    await seedKeyRows(t, "user-api", [
+      { n: 90, keyKind: "desktop" },
+      { n: 91, keyKind: "desktop" },
+    ]);
+    const asApi = t.withIdentity(API_USER);
+
+    for (let i = 1; i <= 5; i++) {
+      await asApi.mutation(api.apiKeys.createApiKey, makeKeyArgs(i));
+    }
+    await expect(
+      asApi.mutation(api.apiKeys.createApiKey, makeKeyArgs(6)),
+    ).rejects.toThrow(/KEY_LIMIT_REACHED/);
+
+    const keys = await asApi.query(api.apiKeys.listApiKeys, {});
+    const desktop = keys.filter((k: any) => k.keyKind === "desktop");
+    expect(desktop).toHaveLength(2);
+    expect(desktop.every((k: any) => !k.revokedAt)).toBe(true);
+  });
+
+  test("api overflow convergence revokes only api rows, never desktop rows", async () => {
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    // Desktop rows are the OLDEST, so an oldest-first revoke that ignored kind
+    // would hit them first.
+    await seedKeyRows(t, "user-api", [
+      { n: 1, keyKind: "desktop" },
+      { n: 2, keyKind: "desktop" },
+      { n: 3 },
+      { n: 4 },
+      { n: 5 },
+      { n: 6, keyKind: "api" },
+      { n: 7, keyKind: "api" },
+      { n: 8, keyKind: "api" },
+    ]);
+    const asApi = t.withIdentity(API_USER);
+    await asApi.mutation(api.apiKeys.createApiKey, makeKeyArgs(20));
+
+    const keys = await asApi.query(api.apiKeys.listApiKeys, {});
+    const activeApi = keys.filter((k: any) => !k.revokedAt && k.keyKind === "api");
+    const activeDesktop = keys.filter((k: any) => !k.revokedAt && k.keyKind === "desktop");
+    expect(activeApi).toHaveLength(5);
+    expect(activeDesktop).toHaveLength(2);
+    // Six active api rows converge to four plus the new one: the two oldest
+    // API rows go, the older desktop rows stay.
+    expect(keys.filter((k: any) => k.revokedAt).map((k: any) => k.name).sort()).toEqual([
+      "test-key-3",
+      "test-key-4",
+    ]);
+  });
+
+  test("listApiKeys returns keyKind, mapping legacy rows to api", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await seedKeyRows(t, "user-pro", [{ n: 1 }]);
+    await t.withIdentity(PRO_USER).mutation(api.apiKeys.createApiKey, desktopArgs(2));
+
+    const keys = await t.withIdentity(PRO_USER).query(api.apiKeys.listApiKeys, {});
+    const byName = Object.fromEntries(keys.map((k: any) => [k.name, k.keyKind]));
+    expect(byName).toEqual({ "test-key-1": "api", "test-key-2": "desktop" });
+  });
+
+  test("validate-by-hash returns desktop for new desktop rows and api for legacy and api rows", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await seedApiEntitlement(t, "user-api");
+    await seedKeyRows(t, "user-pro", [{ n: 1 }]); // legacy, no keyKind
+    await t.withIdentity(PRO_USER).mutation(api.apiKeys.createApiKey, desktopArgs(2));
+    await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(3));
+
+    const kindOf = async (n: number) =>
+      (await t.query(internal.apiKeys.validateKeyByHash, { keyHash: makeKeyArgs(n).keyHash }))
+        ?.keyKind;
+    expect(await kindOf(1)).toBe("api");
+    expect(await kindOf(2)).toBe("desktop");
+    expect(await kindOf(3)).toBe("api");
+  });
+
+  test("validate-by-hash returns null for a revoked desktop key", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    const asPro = t.withIdentity(PRO_USER);
+    const created = await asPro.mutation(api.apiKeys.createApiKey, desktopArgs(1));
+    await asPro.mutation(api.apiKeys.revokeApiKey, { keyId: created.id });
+
+    const result = await t.query(internal.apiKeys.validateKeyByHash, {
+      keyHash: makeKeyArgs(1).keyHash,
+    });
+    expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // HTTP route /api/internal-validate-api-key — touch scheduling gate
 //
 // Convex Insights (2026-08): apiKeys:touchKeyLastUsed produced 1,036 OCC
@@ -582,7 +945,23 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
     const res = await validate(t, makeKeyArgs(1).keyHash);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["id", "name", "userId"]);
+    expect(Object.keys(body).sort()).toEqual(["id", "keyKind", "name", "userId"]);
+    expect(body.keyKind).toBe("api");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+  });
+
+  test("response body carries keyKind desktop for a desktop row and api for a legacy row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    const t = convexTest(schema, modules);
+    await seedKeyRows(t, "user-pro", [{ n: 1 }, { n: 2, keyKind: "desktop" }]);
+
+    const legacy = await validate(t, makeKeyArgs(1).keyHash);
+    expect(((await legacy.json()) as Record<string, unknown>).keyKind).toBe("api");
+    const desktop = await validate(t, makeKeyArgs(2).keyHash);
+    const body = (await desktop.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ userId: "user-pro", name: "test-key-2", keyKind: "desktop" });
+    expect(Object.keys(body).sort()).toEqual(["id", "keyKind", "name", "userId"]);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
   });
 });
