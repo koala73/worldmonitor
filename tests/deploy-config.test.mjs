@@ -931,12 +931,12 @@ describe('crawlable content corpus deployment contracts', () => {
   // pointing at these files, and a disallowed URL is a claim Google is
   // forbidden to verify (#7660).
   it('marks the machine-readable data surface noindex without touching corpus HTML or the AI-citation surface (#8608)', () => {
-    const dataHeaderSources = vercelConfig.headers
-      .map(({ source }) => source)
-      .filter((source) => /\.(?:json|ya?ml)$/i.test(source))
-      .filter((source) => !source.replaceAll('\\', '').startsWith('/.well-known/'));
-    for (const source of dataHeaderSources) {
-      assert.equal(getHeaderValueForSource(source, 'X-Robots-Tag'), 'noindex, follow', source);
+    const dataHeaderRules = vercelConfig.headers
+      .filter(({ source }) => /\.(?:json|ya?ml)$/i.test(source))
+      .filter(({ source }) => !source.replaceAll('\\', '').startsWith('/.well-known/'));
+    for (const { source, headers } of dataHeaderRules) {
+      const robotsTag = headers.find(({ key }) => key.toLowerCase() === 'x-robots-tag');
+      assert.equal(robotsTag?.value ?? null, 'noindex, follow', source);
     }
 
     const dataFiles = [
