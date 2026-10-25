@@ -307,18 +307,24 @@ PR readiness, merge, deployment, production observation, and acceptance separate
 
 ### CodeQL scan schedule and setup handover
 
-`.github/workflows/codeql.yml` scans languages affected by a PR, including both
-sides of renames and relevant dependency manifests. An incomplete or failed PR
-file lookup runs all six languages. Changes to the CodeQL workflow or configuration
-also run all six. These filters select jobs; each selected job scans the repository,
-not only the changed files.
+`.github/workflows/codeql.yml` does not run on pull requests. CodeQL does not
+gate merges, and a JavaScript/TypeScript scan takes about ten minutes, so findings
+appear in **Security > Code scanning** a few minutes after a change reaches `main`.
 
-JavaScript/TypeScript runs daily at 03:23 UTC. Sunday's run also scans Actions, Go,
-Python, Ruby and Rust. Manual dispatch scans all six for recovery. New commits
-cancel older scans of the same PR; scheduled and manual scans are never cancelled
-by PR activity. Pushes to `main` scan all six only when the CodeQL workflow itself
-changes, so default-branch findings can lag by one day for JS/TS and one week for
-the other languages, plus runner delays.
+Each push to `main` scans the languages changed since the last successful push
+scan, including both sides of renames and relevant dependency manifests. Diffing
+from that scan, rather than from the push's parent, keeps coverage when a newer
+push replaces a pending run. A missing baseline, a failed lookup, a non-linear
+diff or a diff of 300 or more files runs all six languages. Changes to the CodeQL
+workflow or configuration also run all six. A push that changes no scanned
+language runs no analysis. These filters select jobs; each selected job scans the
+repository, not only the changed files.
+
+Pushes share one concurrency group. A running scan is never cancelled, and a
+newer push replaces a pending one, so a burst of merges becomes one running and
+one pending scan. Sunday at 03:23 UTC a scheduled
+run scans all six languages, and manual dispatch does the same for recovery. Both
+use their own concurrency groups, so a push cannot replace them.
 
 After each default-branch scan, the `prune-overlay-bases` job deletes every CodeQL
 overlay-base cache except the newest per workflow/job/language group, because
@@ -336,7 +342,7 @@ The repository owner must coordinate activation with the approved merge:
 3. Confirm all six `Analyze (<language>)` jobs succeed and publish fresh results
    for the merged commit in **Security > Code scanning**. Check any required
    code-scanning rules still accept the new workflow; do not treat skipped jobs
-   as proof of analysis. Confirm the next daily and Sunday runs, and compare
+   as proof of analysis. Confirm the next push and Sunday runs, and compare
    runner-minutes after seven days before claiming savings.
 4. If analysis or uploads fail, restore default setup and disable the advanced
    workflow until repaired. Avoid leaving both disabled or allowing both to run

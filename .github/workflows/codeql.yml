@@ -1,21 +1,21 @@
 name: CodeQL
 
 on:
-  pull_request:
-  # CodeQL annotates every run that has no on.push hook. Scoped to this file, it
-  # also scans all six languages on main when the scan configuration changes.
+  # PRs are not scanned: CodeQL does not gate merges, and a full JS/TS scan takes
+  # ~10 minutes. Findings surface on main minutes after merge instead.
   push:
     branches: [main]
-    paths: ['.github/workflows/codeql.yml']
   schedule:
-    # JS/TS every day; Sunday includes the other five languages.
-    - cron: '23 3 * * 1-6'
+    # Sunday: all six languages, whatever pushes selected during the week.
     - cron: '23 3 * * 0'
   workflow_dispatch:
 
+# Pushes share one group: a running scan is never cancelled and a newer push replaces
+# a pending one, so a burst of merges coalesces into one running and one pending scan. Scheduled and manual scans get their own
+# group, so a push cannot replace them.
 concurrency:
-  group: codeql-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: codeql-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -27,7 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      pull-requests: read
+      actions: read
+      contents: read
     outputs:
       languages: ${{ steps.select.outputs.languages }}
     steps:
@@ -37,24 +38,27 @@ jobs:
           script: |
             const all = ['actions', 'go', 'javascript-typescript', 'python', 'ruby', 'rust'];
             const emit = languages => core.setOutput('languages', JSON.stringify(languages));
-            if (context.eventName !== 'pull_request') {
-              emit(context.eventName === 'schedule' && context.payload.schedule === '23 3 * * 1-6'
-                ? ['javascript-typescript'] : all);
+            if (context.eventName !== 'push') {
+              emit(all);
               return;
             }
             try {
-              const pr = context.payload.pull_request;
-              const params = { ...context.repo, pull_number: pr.number };
-              const files = await github.paginate(github.rest.pulls.listFiles, { ...params, per_page: 100 });
-              const { data: current } = await github.rest.pulls.get(params);
-              // Same conservative fallback as lint-code: never trust a capped or moved diff.
-              if (current.head.sha !== pr.head.sha || current.base.sha !== pr.base.sha ||
-                  current.changed_files !== files.length || files.length >= 3000 || !files.length) {
-                throw new Error('PR diff moved or is incomplete');
+              // Diff from the last successful scan, not from the push's `before`: a newer push
+              // replaces a pending run, and the replaced push's changes must still be scanned.
+              const { data: { workflow_runs: [last] } } = await github.rest.actions.listWorkflowRuns({
+                ...context.repo, workflow_id: 'codeql.yml', branch: 'main', event: 'push', status: 'success', per_page: 1,
+              });
+              if (!last?.head_sha) throw new Error('No earlier successful push scan on main');
+              const { data: diff } = await github.rest.repos.compareCommitsWithBasehead({
+                ...context.repo, basehead: `${last.head_sha}...${context.sha}`,
+              });
+              // The compare API lists at most 300 files; never trust a capped or non-linear diff.
+              if (diff.status !== 'ahead' || !diff.files?.length || diff.files.length >= 300) {
+                throw new Error(`Diff since ${last.head_sha} is ${diff.status} with ${diff.files?.length ?? 0} files`);
               }
-              const paths = files.flatMap(file => [file.filename, ...(file.previous_filename ? [file.previous_filename] : [])]);
+              const paths = diff.files.flatMap(file => [file.filename, ...(file.previous_filename ? [file.previous_filename] : [])]);
               if (paths.some(path => typeof path !== 'string' || !path.length)) {
-                throw new Error('Invalid PR file paths');
+                throw new Error('Invalid changed file paths');
               }
               if (paths.some(path => /^\.github\/(workflows\/codeql\.yml$|codeql[/.])/.test(path))) {
                 emit(all);
@@ -110,7 +114,7 @@ jobs:
   # and cache eviction is least-recently-accessed, so stale bases push out hot caches.
   prune-overlay-bases:
     needs: analyze
-    if: ${{ (!cancelled() && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+    if: ${{ (!cancelled() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
