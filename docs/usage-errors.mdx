@@ -70,7 +70,11 @@ Generated RPC handlers preserve the same billing decision in their native error 
 | `invalid_payload` | Body failed schema validation. |
 | `invalid_date_shape` | Date param not `YYYY-MM-DD`. |
 | `brief_not_found` | No composed brief for the requested `{userId, issueSlot}`. |
-| `Too many requests` | 429 fired; honor `Retry-After`. |
+| `Too many requests` | 429 fired; honor `Retry-After`. For a [desktop key](/api-keys#desktop-keys) the body also carries `limit_type: "per_minute"` — the account's burst limit (120 requests a minute). |
+| `Daily request limit reached` | 429 for a [desktop key](/api-keys#desktop-keys): the account used its daily allowance (7,500 requests, shared by all its desktop keys and counted per UTC day). The body carries `limit_type: "daily"` and `reset`; `Retry-After` is the seconds to the next UTC midnight. Revoking and recreating a key does not reset it. |
+| `Rate-limit service temporarily unavailable` | 503 with `X-RateLimit-Mode: degraded` and `Retry-After: 5`: the desktop-key counter could not be read, so the request was refused rather than served unmetered. Retry. |
+| `Desktop key limit reached for this account` | 403: the account has more working keys than its plan allows desktop keys (Pro 2, Pro Business 3) — typically an API-plan owner who moved to Pro. The oldest keys keep working; revoke one to free a slot. |
+| `This endpoint requires an API plan` | 403: a desktop key reached an API-only surface (any `/api/v2/` path, shipping webhooks, MCP, OAuth). Use an API key from an API plan. |
 | `Service temporarily unavailable` | Upstash or another hard dependency missing at request time. |
 | `service_unavailable` | Signing secret / required env not configured. |
 | `Failed to enqueue scenario job` | Redis pipeline failure on `/api/scenario/v1/run-scenario`. |
