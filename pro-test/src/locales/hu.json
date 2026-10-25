@@ -372,7 +372,8 @@
           "Fizikai fémek divergenciája, ásványi anyag koncentrációja és szuverén adósság adat",
           "Ütemezett AI kivonat + riasztási szabálymotor",
           "MCP + SDK hozzáférés Claude Desktophoz és más AI kliensekhez (50 hívás/nap)",
-          "Egyéni widgetek és 10 dashboard (vs 3)"
+          "Egyéni widgetek és 10 dashboard (vs 3)",
+          "Asztali kulcs az asztali alkalmazáshoz (2 kulcs)"
         ],
         "highlightFeatures": [
           "Személyes licenc",
@@ -432,7 +433,8 @@
           "Adatexportálás — CSV, JSON és PDF jelentések",
           "25 egyéni irányítópult (szemben 10-zel)",
           "MCP + SDK: 250 hívás/nap (vs. 50)",
-          "Prioritásos támogatás"
+          "Asztali kulcs az asztali alkalmazáshoz (3 kulcs)",
+          "Prioritás támogatás"
         ],
         "highlightFeatures": [
           "Kereskedelmi licenc mellékelve",
@@ -686,7 +688,7 @@
       "q8": "Szükségem van fiókra?",
       "a8": "Nem. Az irányítópult azonnal működik regisztráció nélkül. A fiók csak akkor számít, ha a Pro verzióra frissítesz vagy beállításokat szeretnél szinkronizálni az eszközök között.",
       "q9": "Nyílt forráskódú?",
-      "a9": "Igen — nyílt forráskód az AGPL-3.0 alatt a GitHubon: olvasd el a kódot, hostold saját magad, vagy építs rá. Natív asztali alkalmazások Windows, macOS és Linux rendszerre érhetők el, valamint Android TV-alkalmazás falra szerelt kijelzőkhöz.",
+      "a9": "Igen — nyílt forráskód az AGPL-3.0 alatt a GitHubon: olvasd el a forráskódot, futtatsd saját szervereden, vagy építs rá. A Pro és Pro Business asztali kulcsokat tartalmaz, így az Ön asztali buildje betöltheti a Pro felhő adatokat; a Docker másolatok a saját adataikon futnak. Natív asztali alkalmazások érhető el Windows, macOS és Linux rendszerre, valamint egy Android TV alkalmazás falra szerelt kijelzőkhöz.",
       "q10": "Miért nem a World Monitor a Palantir?",
       "a10": "A Palantir egy intézmény saját adatait működteti az adott intézményen belül. A World Monitor az ellenkező végről indul: összegyűjt, normalizál, korrelál és nyomon követ nyilvános adatokat, majd ezt az intelligencia réteget egy ingyenes irányítópulton és nyílt forráskódú kódok révén közzéteszi. Más feladat, más termék.",
       "q11": "Melyik World Monitor-licenc kell nekem?",

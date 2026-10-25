@@ -372,7 +372,8 @@
           "Divergência de metais físicos, concentração de minerais e dados de dívida soberana",
           "Digest de IA agendado + mecanismo de regras de alerta",
           "Acesso MCP + SDK para Claude Desktop e outros clientes AI (50 chamadas/dia)",
-          "Widgets customizados e 10 dashboards (vs 3)"
+          "Widgets customizados e 10 dashboards (vs 3)",
+          "Chave desktop para o app desktop (2 chaves)"
         ],
         "highlightFeatures": [
           "Licença pessoal",
@@ -432,6 +433,7 @@
           "Exportação de dados — relatórios CSV, JSON e PDF",
           "25 painéis personalizados (vs 10)",
           "MCP + SDK: 250 chamadas/dia (vs 50)",
+          "Chave desktop para o app desktop (3 chaves)",
           "Suporte prioritário"
         ],
         "highlightFeatures": [
@@ -686,7 +688,7 @@
       "q8": "Preciso de uma conta?",
       "a8": "Não. O dashboard funciona instantaneamente sem inscrição. Uma conta só importa quando você atualiza para Pro ou quer sincronizar configurações entre dispositivos.",
       "q9": "É open source?",
-      "a9": "Sim — open source sob AGPL-3.0 no GitHub: leia o código, auto-hospede ou construa sobre ele. Aplicativos de desktop nativos para Windows, macOS e Linux estão disponíveis também, além de um aplicativo Android TV para exibições em parede.",
+      "a9": "Sim — código aberto sob AGPL-3.0 no GitHub: leia o código, faça auto-hospedagem ou construa sobre ele. Pro e Pro Business incluem chaves desktop, então sua própria compilação desktop pode carregar dados cloud Pro; instâncias Docker rodam com seus próprios dados. Apps desktop nativos para Windows, macOS e Linux também estão disponíveis, além de um app Android TV para painéis de parede.",
       "q10": "Por que o World Monitor não é Palantir?",
       "a10": "Palantir torna os dados próprios de uma instituição operacionais dentro dessa instituição. World Monitor começa do outro lado: reúne, normaliza, correlaciona e monitora dados do mundo público, depois publica essa camada de inteligência por meio de um painel gratuito e código aberto. Trabalho diferente, produto diferente.",
       "q11": "Qual licença do World Monitor preciso?",

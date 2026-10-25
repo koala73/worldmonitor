@@ -773,19 +773,17 @@
       },
       "worldMonitor": {
         "apiKey": {
-          "title": "Clé de licence / API",
+          "title": "Clé de bureau",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Les abonnés API Starter et API Business créent cette clé dans le tableau de bord web via Settings → API Keys. Si la clé complète est perdue, révoquez-la et créez-en une nouvelle."
+          "description": "Pour les builds sans connexion. Pro : créez-en une dans Paramètres → Clés API sur le web ; les clés de forfait API fonctionnent aussi. Pour votre usage personnel ; les déploiements partagés ou publics nécessitent un forfait API. Aide : worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "OU",
         "register": {
-          "title": "Besoin d'une clé API ?",
-          "description": "Consultez worldmonitor.app/docs/api-keys pour obtenir des instructions détaillées. Les clés API manuelles nécessitent un forfait API Starter ou API Business.",
-          "submitBtn": "Voir les forfaits API"
+          "submitBtn": "Voir les forfaits"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Connexion avec Pro",
+          "description": "Pro fonctionne ici une fois connecté depuis la fenêtre principale. Aucune clé requise."
         }
       },
       "shellTitle": "Paramètres de World Monitor",

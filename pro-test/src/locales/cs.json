@@ -372,7 +372,8 @@
           "Divergence fyzických kovů, koncentrace minerálů a data o státního dluhu",
           "Plánovaný AI přehled + stroj s pravidly upozornění",
           "Přístup k MCP + SDK pro Claude Desktop a další AI klienty (50 volání/den)",
-          "Vlastní widgety a 10 dashboardů (vs 3)"
+          "Vlastní widgety a 10 dashboardů (vs 3)",
+          "Klíč pro desktopovou aplikaci (2 klíče)"
         ],
         "highlightFeatures": [
           "Osobní licence",
@@ -432,6 +433,7 @@
           "Export dat — CSV, JSON a PDF reporty",
           "25 vlastních dashboardů (vs 10)",
           "MCP + SDK: 250 volání/den (vs 50)",
+          "Klíč pro desktopovou aplikaci (3 klíče)",
           "Prioritní podpora"
         ],
         "highlightFeatures": [
@@ -685,7 +687,7 @@
       "q8": "Potřebuji účet?",
       "a8": "Ne. Dashboard funguje okamžitě bez registrace. Účet je důležitý pouze pokud upgradujete na Pro nebo chcete synchronizovat nastavení mezi zařízeními.",
       "q9": "Je to open source?",
-      "a9": "Ano — open source pod AGPL-3.0 na GitHubu: čtěte kód, hostujte jej sami nebo na něm stavějte. Nativní desktopové aplikace pro Windows, macOS a Linux jsou také dostupné, plus Android TV aplikace pro nástěnné displeje.",
+      "a9": "Ano — open source pod licencí AGPL-3.0 na GitHubu: prohlédněte si kód, hostujte jej sami nebo na něm stavějte. Pro a Pro Business obsahují desktopové klíče, takže vaše vlastní desktopová verze může načítat data z cloudu Pro; Docker kontejnery běží s vlastními daty. Dostupné jsou také nativní desktopové aplikace pro Windows, macOS a Linux a aplikace Android TV pro nástěnné displeje.",
       "q6": "Proč bych měl důvěřovat upozornění?",
       "q10": "Proč není World Monitor Palantir?",
       "a10": "Palantir zprovozňuje vlastní data instituce uvnitř té instituce. World Monitor začíná z druhé strany: shromažďuje, normalizuje, koreluje a monitoruje data veřejného světa, poté publikuje tuto inteligenční vrstvu přes bezplatný dashboard a open-source kód. Jiná úloha, jiný produkt.",

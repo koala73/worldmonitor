@@ -760,19 +760,17 @@
       "logCleared": "Đã xóa log.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Khóa giấy phép / API",
+          "title": "Khóa Desktop",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Người đăng ký API Starter và API Business tạo khóa này trong bảng điều khiển web tại Settings → API Keys. Nếu mất khóa đầy đủ, hãy thu hồi và tạo khóa thay thế."
+          "description": "Cho các bản dựng không có đăng nhập. Pro: tạo khóa trong Settings → API Keys trên web; khóa API-plan cũng hoạt động. Dành cho sử dụng cá nhân; các triển khai chia sẻ hoặc công khai cần một API plan. Trợ giúp: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "HOẶC",
         "register": {
-          "title": "Bạn cần khóa API?",
-          "description": "Xem worldmonitor.app/docs/api-keys để được hướng dẫn từng bước. Khóa API thủ công yêu cầu gói API Starter hoặc API Business.",
-          "submitBtn": "Xem các gói API"
+          "submitBtn": "Xem các gói"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Đăng nhập với Pro",
+          "description": "Pro hoạt động ở đây sau khi bạn đăng nhập từ cửa sổ chính. Không cần khóa."
         }
       },
       "table": {

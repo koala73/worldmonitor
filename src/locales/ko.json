@@ -760,19 +760,17 @@
       "logCleared": "로그가 삭제되었습니다.",
       "worldMonitor": {
         "apiKey": {
-          "title": "라이선스 / API 키",
+          "title": "데스크톱 키",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "API Starter 및 API Business 구독자는 웹 대시보드의 Settings → API Keys에서 이 키를 생성합니다. 전체 키를 분실한 경우 기존 키를 취소하고 새 키를 생성하세요."
+          "description": "로그인이 없는 빌드의 경우입니다. Pro: 웹의 설정 → API 키에서 생성하세요. API 플랜 키도 작동합니다. 개인 사용용이며, 공유 또는 공개 배포는 API 플랜이 필요합니다. 도움말: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "또는",
         "register": {
-          "title": "API 키가 필요하신가요?",
-          "description": "단계별 안내는 worldmonitor.app/docs/api-keys에서 확인하세요. 수동 API 키에는 API Starter 또는 API Business 요금제가 필요합니다.",
-          "submitBtn": "API 요금제 보기"
+          "submitBtn": "플랜 보기"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Pro로 로그인",
+          "description": "메인 창에서 로그인하면 이곳에서 Pro를 사용할 수 있습니다. 키가 필요하지 않습니다."
         }
       },
       "table": {

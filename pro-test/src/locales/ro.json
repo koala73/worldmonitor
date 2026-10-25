@@ -372,7 +372,8 @@
           "Divergență metale fizice, concentrație minerale și date datorii suverane",
           "Digest AI programat + motor reguli de alertare",
           "Acces MCP + SDK pentru Claude Desktop și alți clienți AI (50 apeluri/zi)",
-          "Widgeturi personalizate și 10 dashboard-uri (vs 3)"
+          "Widgeturi personalizate și 10 dashboard-uri (vs 3)",
+          "Cheie desktop pentru aplicația desktop (2 chei)"
         ],
         "highlightFeatures": [
           "Licență personală",
@@ -432,7 +433,8 @@
           "Export de date — rapoarte CSV, JSON și PDF",
           "25 de tablouri de bord personalizate (vs 10)",
           "MCP + SDK: 250 apeluri/zi (vs 50)",
-          "Suport prioritar"
+          "Cheie desktop pentru aplicația desktop (3 chei)",
+          "Asistență prioritară"
         ],
         "highlightFeatures": [
           "Licență comercială inclusă",
@@ -686,7 +688,7 @@
       "q8": "Am nevoie de un cont?",
       "a8": "Nu. Tabloul de bord funcționează instant fără înregistrare. Un cont este important doar atunci când te actualizezi la Pro sau când vrei ca setările să se sincronizeze pe mai multe dispozitive.",
       "q9": "Este open source?",
-      "a9": "Da — open source sub AGPL-3.0 pe GitHub: citește codul, auto-găzduiește-l sau construiește pe baza lui. Aplicații desktop native pentru Windows, macOS și Linux sunt disponibile, plus o aplicație Android TV pentru afișaje pe perete.",
+      "a9": "Da — open source sub AGPL-3.0 pe GitHub: citește codul, găzduiește-l singur sau construiește pe baza lui. Pro și Pro Business includ chei desktop, deci construcția desktop proprie poate încărca datele cloud Pro; instanțele Docker rulează cu datele proprii. Sunt disponibile și aplicații desktop native pentru Windows, macOS și Linux, plus o aplicație Android TV pentru afișaje de perete.",
       "q10": "De ce World Monitor nu este Palantir?",
       "a10": "Palantir face datele proprii ale unei instituții operaționale în cadrul acesteia. World Monitor pornește de la celălalt capăt: adună, normalizează, corelează și monitorizează datele din domeniul public, apoi publică acel strat de inteligență printr-un tablou de bord gratuit și cod open-source. Sarcini diferite, produse diferite.",
       "q11": "De ce licență World Monitor am nevoie?",

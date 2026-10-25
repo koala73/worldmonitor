@@ -372,7 +372,8 @@
           "Divergencija fizičkih metala, koncentracija minerala i podaci o suverenoj dugu",
           "Zakazani AI sažetak + sustav pravila za upozorenja",
           "MCP + SDK pristup za Claude Desktop i druge AI klijente (50 poziva/dan)",
-          "Prilagođeni widgeti i 10 nadzornih ploča (nasuprot 3)"
+          "Prilagođeni widgeti i 10 nadzornih ploča (nasuprot 3)",
+          "Ključ za desktop aplikaciju (2 ključa)"
         ],
         "highlightFeatures": [
           "Osobna licenca",
@@ -432,6 +433,7 @@
           "Izvoz podataka — CSV, JSON i PDF izvještaji",
           "25 prilagođenih nadzornih ploča (nasuprot 10)",
           "MCP + SDK: 250 poziva/dan (vs 50)",
+          "Ključ za desktop aplikaciju (3 ključa)",
           "Prioritetna podrška"
         ],
         "highlightFeatures": [
@@ -686,7 +688,7 @@
       "q8": "Trebam li račun?",
       "a8": "Ne. Dashboard radi odmah bez prijave. Račun je bitan samo kada nadogradiš na Pro ili želiš sinkronizirati postavke na više uređaja.",
       "q9": "Je li to open source?",
-      "a9": "Da — open source pod AGPL-3.0 na GitHubu: čitaj kod, samodostavi ili izgradi na njemu. Izvorne desktop aplikacije za Windows, macOS i Linux dostupne su, plus Android TV aplikacija za zidne zaslone.",
+      "a9": "Da — otvoreni kod pod AGPL-3.0 na GitHubu: čitajte kod, hostajte ga sami ili ga proširite. Pro i Pro Business uključuju desktop ključeve, tako da vaša vlastita desktop verzija može učitati Pro cloud podatke; Docker kopije se izvršavaju s vlastitim podacima. Dostupne su i native desktop aplikacije za Windows, macOS i Linux, plus Android TV aplikacija za prikaz na zidovima.",
       "q10": "Zašto World Monitor nije Palantir?",
       "a10": "Palantir čini podatke institucije operativnima unutar te institucije. World Monitor počinje s druge strane: skuplja, normalizira, korelira i prati javne podatke svijeta, a zatim objavljuje taj sloj obavještajnih podataka kroz besplatnu nadzornu ploču i kod otvorenog koda. Drugi zadatak, drugi proizvod.",
       "q11": "Koju licencu World Monitora trebam?",

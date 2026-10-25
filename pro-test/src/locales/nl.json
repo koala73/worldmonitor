@@ -372,7 +372,8 @@
           "Fysieke metalen afwijking, mineraalconcentratie en staatsschuldgegevens",
           "Geplande AI-digest + waarschuwingsregelengine",
           "MCP + SDK-toegang voor Claude Desktop & andere AI-clients (50 oproepen/dag)",
-          "Aangepaste widgets en 10 dashboards (versus 3)"
+          "Aangepaste widgets en 10 dashboards (versus 3)",
+          "Desktopsleutel voor de desktopapp (2 sleutels)"
         ],
         "highlightFeatures": [
           "Persoonlijke licentie",
@@ -432,6 +433,7 @@
           "Gegevensexport — CSV, JSON & PDF-rapporten",
           "25 aangepaste dashboards (tegen 10)",
           "MCP + SDK: 250 calls/dag (vs 50)",
+          "Desktopsleutel voor de desktopapp (3 sleutels)",
           "Prioriteitsondersteuning"
         ],
         "highlightFeatures": [
@@ -686,7 +688,7 @@
       "q8": "Heb ik een account nodig?",
       "a8": "Nee. Het dashboard werkt direct zonder registratie. Een account is alleen belangrijk wanneer je upgradet naar Pro of instellingen wilt synchroniseren op meerdere apparaten.",
       "q9": "Is het open source?",
-      "a9": "Ja — open source onder AGPL-3.0 op GitHub: lees de code, host het zelf, of bouw erop voort. Native desktop-apps voor Windows, macOS en Linux zijn ook beschikbaar, plus een Android TV-app voor wanddisplays.",
+      "a9": "Ja — open source onder AGPL-3.0 op GitHub: lees de code, host het zelf, of bouw erop voort. Pro en Pro Business bevatten desktopsleutels, zodat je eigen desktopbuild Pro-cloudgegevens kan laden; Docker-kopieën draaien op hun eigen gegevens. Systeemeigen desktopapps voor Windows, macOS en Linux zijn ook beschikbaar, plus een Android TV-app voor wandschermen.",
       "q10": "Waarom is World Monitor niet Palantir?",
       "a10": "Palantir maakt de eigen data van een organisatie operationeel binnen die organisatie. World Monitor begint vanaf het andere uiteinde: het verzamelt, normaliseert, correleert en monitort openbare data, en publiceert die intelligentielaag via een gratis dashboard en open-source code. Ander doel, ander product.",
       "q11": "Welke World Monitor-licentie heb ik nodig?",

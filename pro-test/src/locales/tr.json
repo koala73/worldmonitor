@@ -372,7 +372,8 @@
           "Fiziksel metaller farklılaşması, mineraller konsantrasyonu ve egemen borç verileri",
           "Planlı AI özeti + uyarı kuralları motoru",
           "Claude Desktop ve diğer AI istemcileri için MCP + SDK erişimi (50 çağrı/gün)",
-          "Özel parçacıklar ve 10 pano (vs 3)"
+          "Özel parçacıklar ve 10 pano (vs 3)",
+          "Masaüstü uygulaması için anahtar (2 anahtar)"
         ],
         "highlightFeatures": [
           "Kişisel lisans",
@@ -432,6 +433,7 @@
           "Veri dışa aktarma — CSV, JSON ve PDF raporları",
           "25 özel pano (vs 10)",
           "MCP + SDK: 250 çağrı/gün (vs 50)",
+          "Masaüstü uygulaması için anahtar (3 anahtar)",
           "Öncelikli destek"
         ],
         "highlightFeatures": [
@@ -686,7 +688,7 @@
       "q8": "Hesaba ihtiyacım var mı?",
       "a8": "Hayır. Pano kaydolmadan anında çalışır. Bir hesap yalnızca Pro'ya yükselttikten sonra veya cihazlar arasında ayarları senkronize etmek istediğinizde önemlidir.",
       "q9": "Açık kaynaklı mı?",
-      "a9": "Evet — GitHub'da AGPL-3.0 altında açık kaynaklı: kodu okuyun, kendi sunucunuzda barındırın veya üzerine kurun. Windows, macOS ve Linux için yerel masaüstü uygulamaları ve duvar ekranları için Android TV uygulaması da mevcuttur.",
+      "a9": "Evet — GitHub'da AGPL-3.0 altında açık kaynak: kodu okuyun, kendi barındırın veya üzerine inşa edin. Pro ve Pro Business masaüstü anahtarları içerir, böylece kendi masaüstü yapınız Pro bulut verilerini yükleyebilir; Docker kopyaları kendi verileri üzerinde çalışır. Windows, macOS ve Linux için yerel masaüstü uygulamalar ve duvar ekranları için Android TV uygulaması da mevcuttur.",
       "q10": "World Monitor neden Palantir değil?",
       "a10": "Palantir, bir kurumun kendi verilerini o kurum içinde operasyonel hale getirir. World Monitor ise ters yönden başlar: halka açık verileri toplar, normalleştirir, ilişkilendirir ve izler, ardından bu istihbarat katmanını ücretsiz bir pano ve açık kaynak kod aracılığıyla yayınlar. Farklı görev, farklı ürün.",
       "q11": "Hangi World Monitor lisansına ihtiyacım var?",

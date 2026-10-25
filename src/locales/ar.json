@@ -782,19 +782,17 @@
       },
       "worldMonitor": {
         "apiKey": {
-          "title": "مفتاح الترخيص / API",
+          "title": "مفتاح سطح المكتب",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "ينشئ مشتركو API Starter وAPI Business هذا المفتاح في لوحة الويب ضمن Settings → API Keys. إذا فُقد المفتاح الكامل، فألغِه وأنشئ بديلاً."
+          "description": "للإصدارات بدون تسجيل دخول. Pro: أنشئ واحداً في الإعدادات → مفاتيح API على الويب؛ تعمل أيضاً مفاتيح خطة API. للاستخدام الشخصي؛ النشرات المشتركة أو العامة تحتاج إلى خطة API. المساعدة: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "أو",
         "register": {
-          "title": "هل تحتاج إلى مفتاح API؟",
-          "description": "راجع worldmonitor.app/docs/api-keys للحصول على إرشادات خطوة بخطوة. تتطلب مفاتيح API اليدوية خطة API Starter أو API Business.",
-          "submitBtn": "عرض خطط API"
+          "submitBtn": "عرض الخطط"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "تسجيل الدخول باستخدام Pro",
+          "description": "يعمل Pro هنا بعد تسجيل الدخول من النافذة الرئيسية. لا توجد حاجة لمفتاح."
         }
       },
       "shellTitle": "إعدادات مراقب العالم",

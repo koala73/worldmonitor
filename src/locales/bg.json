@@ -763,19 +763,17 @@
       "logCleared": "Дневник изчистен.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Лицензионен / API ключ",
+          "title": "Desktop ключ",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Абонатите на API Starter и API Business създават този ключ в уеб таблото от Settings → API Keys. Ако пълният ключ е изгубен, отменете го и създайте нов."
+          "description": "За версии без вход. Pro: създайте един в Settings → API Keys в интернета; работят и API-план ключове. За личното ви ползване; споделени или публични разгръщания изискват API план. Помощ: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "ИЛИ",
         "register": {
-          "title": "Нуждаете се от API ключ?",
-          "description": "Вижте worldmonitor.app/docs/api-keys за инструкции стъпка по стъпка. Ръчните API ключове изискват план API Starter или API Business.",
-          "submitBtn": "Вижте API плановете"
+          "submitBtn": "Преглед на плановете"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Вход с Pro",
+          "description": "Pro работи тук след вход от главния прозорец. Не е необходим ключ."
         }
       },
       "table": {

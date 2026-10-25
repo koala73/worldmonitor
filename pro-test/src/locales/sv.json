@@ -372,7 +372,8 @@
           "Data om fysisk metallskillnad, mineralkoncentration och statsskuld",
           "Schemalagd AI-sammanfattning och varningsregelmotor",
           "MCP + SDK-åtkomst för Claude Desktop och andra AI-klienter (50 samtal/dag)",
-          "Anpassade widgetar och 10 instrumentpaneler (mot 3)"
+          "Anpassade widgetar och 10 instrumentpaneler (mot 3)",
+          "Skrivbordsnyckel för skrivbordsappen (2 nycklar)"
         ],
         "highlightFeatures": [
           "Personlig licens",
@@ -432,6 +433,7 @@
           "Dataexport — CSV, JSON & PDF-rapporter",
           "25 anpassade instrumentpaneler (mot 10)",
           "MCP + SDK: 250 samtal/dag (mot 50)",
+          "Skrivbordsnyckel för skrivbordsappen (3 nycklar)",
           "Prioriterad support"
         ],
         "highlightFeatures": [
@@ -686,7 +688,7 @@
       "q8": "Behöver jag ett konto?",
       "a8": "Nej. Instrumentbrädan fungerar omedelbar utan registrering. Ett konto spelar endast roll när du uppgraderar till Pro eller vill synkronisera inställningar mellan enheter.",
       "q9": "Är det öppen källkod?",
-      "a9": "Ja — öppen källkod under AGPL-3.0 på GitHub: läs koden, själv-host den, eller bygg vidare på den. Interna skrivbordsprogram för Windows, macOS och Linux är också tillgängliga, plus en Android TV-app för väggdisplajer.",
+      "a9": "Ja — öppen källkod under AGPL-3.0 på GitHub: läs koden, själv-host eller bygg vidare på den. Pro och Pro Business inkluderar skrivbordsnycklar, så din egen skrivbordsbuild kan ladda Pro-molndata; Docker-kopior körs på egen data. Inbyggda skrivbordsappar för Windows, macOS och Linux är också tillgängliga, plus en Android TV-app för väggdisplayer.",
       "q10": "Varför är World Monitor inte Palantir?",
       "a10": "Palantir gör en institutions egna data operationell inom den institutionen. World Monitor börjar från andra änden: det samlar, normaliserar, korrelerar och övervakar offentlig världsdata, och publicerar sedan det intelligensskiktet genom en gratis instrumentpanel och öppen källkod. Olika uppgift, olika produkt.",
       "q11": "Vilken World Monitor-licens behöver jag?",

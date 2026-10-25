@@ -763,19 +763,17 @@
       "logCleared": "Log temizlendi.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Lisans / API Anahtarı",
+          "title": "Masaüstü anahtarı",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "API Starter ve API Business aboneleri bu anahtarı web panosunda Settings → API Keys bölümünden oluşturur. Tam anahtar kaybolursa anahtarı iptal edin ve yenisini oluşturun."
+          "description": "Oturum açma olmayan derlemeler için. Pro: web üzerinde Ayarlar → API Anahtarları'nda bir tane oluşturun; API planı anahtarları da çalışır. Kendi kullanımınız için; paylaşılan veya herkese açık dağıtımlar bir API planı gerektirir. Yardım: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "VEYA",
         "register": {
-          "title": "API anahtarına mı ihtiyacınız var?",
-          "description": "Adım adım yardım için worldmonitor.app/docs/api-keys adresine bakın. Manuel API anahtarları için API Starter veya API Business planı gerekir.",
-          "submitBtn": "API planlarını görüntüle"
+          "submitBtn": "Planları görüntüle"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Pro ile oturum aç",
+          "description": "Pro, ana pencereden oturum açtığınızda burada çalışır. Anahtar gerekmez."
         }
       },
       "table": {

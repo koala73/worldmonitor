@@ -43,7 +43,8 @@
           "Tofauti ya metali ya kimwili, mkusanyo wa madini & data ya deni la serikali",
           "Muhtasari wa AI uliopangiliwa + kinjini cha sheria ya neno la onyo",
           "Upatikanaji wa MCP + SDK kwa Claude Desktop & wateja wengine wa AI (mahitaji 50 kwa siku)",
-          "Vidget maalum & mdashboard 10 (dhidi ya 3)"
+          "Vidget maalum & mdashboard 10 (dhidi ya 3)",
+          "Funguo ya programu ya desktop (funguo 2)"
         ],
         "highlightFeatures": [
           "Leseni ya binafsi",
@@ -58,7 +59,8 @@
           "Kupandisha data — CSV, JSON & ripoti za PDF",
           "Dashibodi 25 za kadhaa (vs 10)",
           "MCP + SDK: mahitaji 250 kwa siku (vs 50)",
-          "Msaada wa haraka"
+          "Funguo ya programu ya desktop (funguo 3)",
+          "Msaada wa ziada"
         ],
         "highlightFeatures": [
           "Leseni ya biashara iliyojumuishwa",
@@ -686,7 +688,7 @@
       "q8": "Je, nahitaji akaunti?",
       "a8": "Hapana. Dasibodi inafanya kazi haraka bila kuweka akaunti. Akaunti ni muhimu tu wakati wa kuongeza kwa Pro au wakati unataka mipango kusambazwa katika vifaa.",
       "q9": "Je, ni chanzo wazi?",
-      "a9": "Ndiyo — chanzo wazi chini ya AGPL-3.0 kwenye GitHub: soma nambari, jifanyie-host au ujenge. Programu za kawaida za desktop kwa Windows, macOS na Linux zinapatikana, pamoja na programu ya Android TV kwa onyesho la ukuta.",
+      "a9": "Ndiyo — programu huru chini ya leseni ya AGPL-3.0 kwenye GitHub: soma kod, jifanyie mwenyewe, au jenga juu yake. Pro na Pro Business zinajumuisha funguo za desktop, kwa hivyo ujenzi wako mwenyewe wa desktop unaweza kupakia data ya Pro ya mabingu; nakala za Docker zinaendeshwa kwenye data yake mwenyewe. Programu za desktop asilia kwa Windows, macOS na Linux zinapatikana pia, pamoja na programu ya Android TV kwa madispleni ya kuta.",
       "q10": "Kwa nini World Monitor si Palantir?",
       "a10": "Palantir inafanya data ya taasisi operative ndani ya taasisi hiyo. World Monitor inaanza kutoka upande mwingine: inakusanya, kurekezesha, kuhusiana, na kufuatilia data ya dunia nyingi, kisha kuchapisha tabaka hilo la akili kupitia dasibodi ya bure na nambari wazi. Kazi tofauti, bidhaa tofauti.",
       "q11": "Ni leseni gani ya World Monitor ninayohitaji?",

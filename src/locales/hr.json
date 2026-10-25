@@ -842,19 +842,17 @@
       "logCleared": "Dnevnik obrisan.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Ključ licence / API ključ",
+          "title": "Ključ za desktop",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Pretplatnici na API Starter i API Business stvaraju ovaj ključ na web nadzornoj ploči putem Settings → API Keys. Ako izgubiš cijeli ključ, opozovi ga i izradi zamjenski."
+          "description": "Za izdanja bez prijave. Pro: kreirajte ga u Postavkama → API ključevi na webu; radi i s ključevima za API plan. Za vlastitu upotrebu; deljene ili javne instalacije trebaju API plan. Pomoć: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "ILI",
         "register": {
-          "title": "Trebaš API ključ?",
-          "description": "Detaljne upute potraži na worldmonitor.app/docs/api-keys. Ručni API ključevi zahtijevaju plan API Starter ili API Business.",
-          "submitBtn": "Prikaži API planove"
+          "submitBtn": "Prikazi planove"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Prijava s Pro",
+          "description": "Pro funkcionira ovdje čim se prijavite iz glavnog prozora. Ključ nije potreban."
         }
       },
       "table": {

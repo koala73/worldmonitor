@@ -760,19 +760,17 @@
       "logCleared": "ログをクリア済。",
       "worldMonitor": {
         "apiKey": {
-          "title": "ライセンス / APIキー",
+          "title": "デスクトップキー",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "API StarterまたはAPI Businessの利用者は、ウェブダッシュボードのSettings → API Keysからこのキーを作成します。完全なキーを紛失した場合は、失効させて新しいキーを作成してください。"
+          "description": "サインインなしのビルド向け。Pro：ウェブの設定 → APIキーで作成してください。APIプランのキーも使用できます。個人使用向け。共有またはパブリックデプロイメントはAPIプランが必要です。ヘルプ：worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "または",
         "register": {
-          "title": "APIキーが必要ですか？",
-          "description": "手順についてはworldmonitor.app/docs/api-keysをご覧ください。手動APIキーにはAPI StarterまたはAPI Businessプランが必要です。",
-          "submitBtn": "APIプランを見る"
+          "submitBtn": "プランを表示"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Proでサインイン",
+          "description": "メインウィンドウからサインインすると、ここでProが使用できます。キーは不要です。"
         }
       },
       "table": {

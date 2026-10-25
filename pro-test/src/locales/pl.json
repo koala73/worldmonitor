@@ -372,7 +372,8 @@
           "Rozbieżność metali fizycznych, koncentracja minerałów i dane długu suwerennego",
           "Zaplanowany digest AI + silnik reguł alertów",
           "Dostęp do MCP + SDK dla Claude Desktop i innych klientów AI (50 wywołań/dzień)",
-          "Niestandardowe widgety i 10 dashboardów (zamiast 3)"
+          "Niestandardowe widgety i 10 dashboardów (zamiast 3)",
+          "Klucz desktopowy do aplikacji na pulpit (2 klucze)"
         ],
         "highlightFeatures": [
           "Licencja osobista",
@@ -432,7 +433,8 @@
           "Eksport danych — raporty CSV, JSON i PDF",
           "25 niestandardowych pulpitów (zamiast 10)",
           "MCP + SDK: 250 wywołań/dzień (vs 50)",
-          "Priorytetowe wsparcie"
+          "Klucz desktopowy do aplikacji na pulpit (3 klucze)",
+          "Wsparcie priorytetowe"
         ],
         "highlightFeatures": [
           "Licencja komercyjna w zestawie",
@@ -686,7 +688,7 @@
       "q8": "Czy potrzebuję konta?",
       "a8": "Nie. Pulpit nawigacyjny działa natychmiast bez rejestracji. Konto ma znaczenie tylko gdy uaktualnisz do Pro lub chcesz synchronizować ustawienia na różnych urządzeniach.",
       "q9": "Czy to open source?",
-      "a9": "Tak — open source na AGPL-3.0 na GitHub: przeczytaj kod, samodzielnie go hostuj, lub na nim buduj. Natywne aplikacje desktopowe dla Windows, macOS i Linux są również dostępne, a także aplikacja Android TV do wyświetlaczy ściennych.",
+      "a9": "Tak — otwarte oprogramowanie na licencji AGPL-3.0 na GitHub: przeczytaj kod, samodzielnie go hostuj lub na nim buduj. Pro i Pro Business zawierają klucze desktopowe, więc Twoja własna kompilacja desktopowa może ładować dane chmury Pro; instancje Docker działają na własnych danych. Dostępne są też natywne aplikacje desktopowe dla Windows, macOS i Linux, plus aplikacja Android TV do wyświetlaczy ściennych.",
       "q10": "Dlaczego World Monitor nie jest Palantir?",
       "a10": "Palantir sprawia, że własne dane instytucji stają się operacyjne w ramach tej instytucji. World Monitor zaczyna od drugiej strony: zbiera, normalizuje, koreluje i monitoruje dane z publicznej domeny, następnie publikuje tę warstwę analizy poprzez bezpłatny dashboard i kod open-source. Inne zadanie, inny produkt.",
       "q11": "Której licencji World Monitor potrzebuję?",

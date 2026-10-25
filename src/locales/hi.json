@@ -838,19 +838,17 @@
       "logCleared": "लॉग साफ़ किया गया।",
       "worldMonitor": {
         "apiKey": {
-          "title": "लाइसेंस / API कुंजी",
+          "title": "डेस्कटॉप कुंजी",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "API Starter और API Business सदस्य यह कुंजी वेब डैशबोर्ड में Settings → API Keys से बनाते हैं। पूरी कुंजी खो जाने पर उसे रद्द करें और नई कुंजी बनाएँ।"
+          "description": "साइन-इन के बिना बिल्ड के लिए। Pro: वेब पर Settings → API Keys में एक बनाएँ; API-plan कुंजियाँ भी काम करती हैं। अपने व्यक्तिगत उपयोग के लिए; साझा या सार्वजनिक तैनाती के लिए API plan की आवश्यकता है। सहायता: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "या",
         "register": {
-          "title": "API कुंजी चाहिए?",
-          "description": "चरण-दर-चरण सहायता के लिए worldmonitor.app/docs/api-keys देखें। मैन्युअल API कुंजियों के लिए API Starter या API Business योजना आवश्यक है।",
-          "submitBtn": "API योजनाएँ देखें"
+          "submitBtn": "योजनाएँ देखें"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Pro के साथ साइन इन करें",
+          "description": "Pro यहाँ काम करता है जब आप मुख्य विंडो से साइन इन करते हैं। कोई कुंजी की आवश्यकता नहीं है।"
         }
       },
       "table": {

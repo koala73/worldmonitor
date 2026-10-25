@@ -372,7 +372,8 @@
           "Physische Metalle-Divergenz, Mineralien-Konzentration und Staatsverschuldungsdaten",
           "Geplante KI-Zusammenfassung + Warnregeln-Engine",
           "MCP + SDK-Zugriff für Claude Desktop & andere KI-Clients (50 Aufrufe/Tag)",
-          "Benutzerdefinierte Widgets und 10 Dashboards (vs. 3)"
+          "Benutzerdefinierte Widgets und 10 Dashboards (vs. 3)",
+          "Desktop-Schlüssel für die Desktop-App (2 Schlüssel)"
         ],
         "highlightFeatures": [
           "Persönliche Lizenz",
@@ -432,6 +433,7 @@
           "Datenexport — CSV-, JSON- & PDF-Berichte",
           "25 benutzerdefinierte Dashboards (vs 10)",
           "MCP + SDK: 250 Aufrufe/Tag (statt 50)",
+          "Desktop-Schlüssel für die Desktop-App (3 Schlüssel)",
           "Prioritäts-Support"
         ],
         "highlightFeatures": [
@@ -686,7 +688,7 @@
       "q8": "Benötige ich ein Konto?",
       "a8": "Nein. Das Dashboard funktioniert sofort ohne Anmeldung. Ein Konto ist nur wichtig, wenn Sie auf Pro upgraden oder Einstellungen geräteübergreifend synchronisieren möchten.",
       "q9": "Ist es Open Source?",
-      "a9": "Ja — Open Source unter AGPL-3.0 auf GitHub: Code lesen, selbst hosten oder erweitern. Native Desktop-Apps für Windows, macOS und Linux sind ebenfalls verfügbar, plus eine Android-TV-App für Wanddisplays.",
+      "a9": "Ja – Open Source unter AGPL-3.0 auf GitHub: Code einsehen, selbst hosten oder darauf aufbauen. Pro und Pro Business enthalten Desktop-Schlüssel, sodass dein eigener Desktop-Build Pro Cloud-Daten laden kann; Docker-Instanzen laufen auf ihren eigenen Daten. Native Desktop-Apps für Windows, macOS und Linux sind ebenfalls verfügbar, plus eine Android TV-App für Wall Displays.",
       "q10": "Warum ist World Monitor nicht Palantir?",
       "a10": "Palantir macht die eigenen Daten einer Institution innerhalb dieser Institution einsatzfähig. World Monitor startet von der anderen Seite: Es sammelt, normalisiert, korreliert und überwacht öffentliche Daten, veröffentlicht dann diese Intelligenzschicht über ein kostenloses Dashboard und Open-Source-Code. Andere Aufgabe, anderes Produkt.",
       "q11": "Welche World Monitor-Lizenz brauche ich?",

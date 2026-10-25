@@ -769,19 +769,17 @@
       "logCleared": "Protokol vymazán.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Licenční / API klíč",
+          "title": "Klíč počítače",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Předplatitelé API Starter a API Business vytvoří tento klíč na webovém panelu v části Settings → API Keys. Pokud celý klíč ztratíte, zrušte jej a vytvořte náhradní."
+          "description": "Pro buildy bez přihlášení. Pro: vytvořte si klíč v Nastavení → Klíče API na webu; fungují i klíče API plánu. Určeno pro osobní použití; sdílená nebo veřejná nasazení vyžadují plán API. Nápověda: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "NEBO",
         "register": {
-          "title": "Potřebujete API klíč?",
-          "description": "Podrobný návod najdete na worldmonitor.app/docs/api-keys. Ruční API klíče vyžadují tarif API Starter nebo API Business.",
-          "submitBtn": "Zobrazit tarify API"
+          "submitBtn": "Zobrazit plány"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Přihlášení s Pro",
+          "description": "Pro funguje zde po přihlášení z hlavního okna. Není potřeba klíč."
         }
       },
       "table": {

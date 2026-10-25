@@ -844,19 +844,17 @@
       "logCleared": "Журнал очищено.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Ліцензія / API Key",
+          "title": "Ключ для Desktop",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Підписники API Starter та API Business створюють цей ключ на веб-панелі в розділі Settings → API Keys. Якщо повний ключ втрачено, відкличте його та створіть новий."
+          "description": "Для версій без входу. Pro: створіть його в Settings → API Keys на вебсайті; ключі плану API також працюють. Для особистого користування; спільні або публічні розгортання потребують плану API. Довідка: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "АБО",
         "register": {
-          "title": "Потребуєте ключ API?",
-          "description": "Див. worldmonitor.app/docs/api-keys для покрокової інструкції. Ручні ключі API вимагають плану API Starter або API Business.",
-          "submitBtn": "Переглянути плани API"
+          "submitBtn": "Переглянути плани"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Вхід через Pro",
+          "description": "Pro працює тут після входу з головного вікна. Ключ не потрібен."
         }
       },
       "table": {

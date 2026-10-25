@@ -838,19 +838,17 @@
       "logCleared": "Napló törlve.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Licenc- / API-kulcs",
+          "title": "Asztalialkalmazás-kulcs",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Az API Starter és API Business előfizetők a webes irányítópult Settings → API Keys részében hozzák létre ezt a kulcsot. Ha a teljes kulcs elveszett, vonja vissza, és hozzon létre újat."
+          "description": "Bejelentkezés nélküli buildekhez. Pro: hozz létre egyet a Beállítások → API-kulcsok menüben az interneten; az API-terv kulcsai is működnek. Személyes használatra; megosztott vagy nyilvános telepítésekhez API-terv szükséges. Segítség: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "VAGY",
         "register": {
-          "title": "API-kulcsra van szüksége?",
-          "description": "A részletes útmutatóért keresse fel a worldmonitor.app/docs/api-keys oldalt. A kézi API-kulcsokhoz API Starter vagy API Business csomag szükséges.",
-          "submitBtn": "API-csomagok megtekintése"
+          "submitBtn": "Csomagok megtekintése"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Bejelentkezés Pro-val",
+          "description": "A Pro működik itt, miután bejelentkezel a főablakból. Nincs szükség kulcsra."
         }
       },
       "table": {

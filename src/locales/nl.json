@@ -456,19 +456,17 @@
       "logCleared": "Logboek gewist.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Licentie- / API-sleutel",
+          "title": "Desktop-sleutel",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Abonnees van API Starter en API Business maken deze sleutel in het webdashboard via Settings → API Keys. Als u de volledige sleutel kwijt bent, trekt u deze in en maakt u een vervangende sleutel."
+          "description": "Voor builds zonder aanmelding. Pro: maak er een aan in Instellingen → API-sleutels op het web; API-plansleutels werken ook. Voor eigen gebruik; gedeelde of openbare implementaties hebben een API-plan nodig. Help: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "OF",
         "register": {
-          "title": "Een API-sleutel nodig?",
-          "description": "Ga naar worldmonitor.app/docs/api-keys voor stapsgewijze hulp. Handmatige API-sleutels vereisen een API Starter- of API Business-abonnement.",
-          "submitBtn": "API-abonnementen bekijken"
+          "submitBtn": "Abonnementen bekijken"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Aanmelden met Pro",
+          "description": "Pro werkt hier zodra je je aanmeldt vanuit het hoofdvenster. Geen sleutel nodig."
         }
       },
       "shellTitle": "World Monitor-instellingen",

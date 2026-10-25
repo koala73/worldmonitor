@@ -760,19 +760,17 @@
       "logCleared": "ล้างบันทึกแล้ว",
       "worldMonitor": {
         "apiKey": {
-          "title": "คีย์ใบอนุญาต / API",
+          "title": "Desktop key",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "สมาชิก API Starter และ API Business สร้างคีย์นี้ในแดชบอร์ดเว็บที่ Settings → API Keys หากคีย์แบบเต็มสูญหาย ให้เพิกถอนและสร้างคีย์ใหม่"
+          "description": "สำหรับบิลด์ที่ไม่มีการลงชื่อเข้าใช้ Pro: สร้างคีย์ได้ใน Settings → API Keys บนเว็บ; คีย์แบบ API-plan ก็ใช้ได้เช่นกัน สำหรับการใช้ของคุณเอง; การปรับใช้ที่ใช้ร่วมกันหรือสาธารณะต้องมี API plan ช่วยเหลือ: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "หรือ",
         "register": {
-          "title": "ต้องการคีย์ API หรือไม่?",
-          "description": "ดูคำแนะนำทีละขั้นตอนได้ที่ worldmonitor.app/docs/api-keys คีย์ API แบบกำหนดเองต้องใช้แผน API Starter หรือ API Business",
-          "submitBtn": "ดูแผน API"
+          "submitBtn": "ดูแผน"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "ลงชื่อเข้าใช้ด้วย Pro",
+          "description": "Pro ทำงานที่นี่เมื่อคุณลงชื่อเข้าใช้จากหน้าต่างหลัก ไม่ต้องใช้คีย์"
         }
       },
       "table": {

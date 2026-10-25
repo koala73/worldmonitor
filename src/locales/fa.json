@@ -838,19 +838,17 @@
       "logCleared": "Log cleared.",
       "worldMonitor": {
         "apiKey": {
-          "title": "کلید مجوز / API",
+          "title": "کلید دسکتاپ",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "مشترکان API Starter و API Business این کلید را در داشبورد وب از مسیر Settings → API Keys ایجاد می‌کنند. اگر کلید کامل گم شد، آن را لغو و یک کلید جایگزین ایجاد کنید."
+          "description": "برای نسخه‌هایی بدون ورود. Pro: یکی را در Settings → API Keys در وب ایجاد کنید؛ کلیدهای طرح API نیز کار می‌کنند. برای استفاده شخصی؛ استقرارهای اشتراکی یا عمومی به یک طرح API نیاز دارند. کمک: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "یا",
         "register": {
-          "title": "به کلید API نیاز دارید؟",
-          "description": "برای راهنمای گام‌به‌گام به worldmonitor.app/docs/api-keys مراجعه کنید. کلیدهای دستی API به طرح API Starter یا API Business نیاز دارند.",
-          "submitBtn": "مشاهده طرح‌های API"
+          "submitBtn": "مشاهده طرح‌ها"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "ورود با Pro",
+          "description": "Pro پس از ورود از پنجره اصلی کار می‌کند. کلید نیازی نیست."
         }
       },
       "table": {

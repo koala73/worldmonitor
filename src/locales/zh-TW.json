@@ -760,19 +760,17 @@
       "logCleared": "日誌已清除。",
       "worldMonitor": {
         "apiKey": {
-          "title": "許可證 / API 金鑰",
+          "title": "桌面金鑰",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "API Starter 和 API Business 訂閱者可在網頁控制檯的 Settings → API Keys 中建立此金鑰。如果完整金鑰丟失，請撤銷並建立替代金鑰。"
+          "description": "適用於無登入功能的構建版本。Pro 使用者：在網頁版設定 → API 金鑰中建立；API 計劃金鑰也可使用。僅供個人使用；共享或公開部署需要 API 計劃。幫助：worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "或",
         "register": {
-          "title": "需要 API 金鑰？",
-          "description": "請造訪 worldmonitor.app/docs/api-keys 檢視分步說明。手動 API 金鑰需要 API Starter 或 API Business 方案。",
-          "submitBtn": "檢視 API 方案"
+          "submitBtn": "檢視套餐"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "使用 Pro 登入",
+          "description": "登入主視窗後，Pro 功能即可在此處使用。無需金鑰。"
         }
       },
       "table": {

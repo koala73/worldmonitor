@@ -840,19 +840,17 @@
       "logCleared": "Protokoll gelöscht.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Lizenz- / API-Schlüssel",
+          "title": "Desktop-Schlüssel",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Abonnenten von API Starter und API Business erstellen diesen Schlüssel im Web-Dashboard unter Settings → API Keys. Wenn der vollständige Schlüssel verloren ist, widerrufen Sie ihn und erstellen Sie einen Ersatz."
+          "description": "Für Builds ohne Anmeldung. Pro: Erstelle einen unter Einstellungen → API-Schlüssel im Web; API-Plan-Schlüssel funktionieren auch. Für deine eigene Nutzung; gemeinsame oder öffentliche Deployments benötigen einen API-Plan. Hilfe: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "ODER",
         "register": {
-          "title": "Benötigen Sie einen API-Schlüssel?",
-          "description": "Eine Schritt-für-Schritt-Anleitung finden Sie unter worldmonitor.app/docs/api-keys. Manuelle API-Schlüssel erfordern einen API Starter- oder API Business-Tarif.",
-          "submitBtn": "API-Tarife ansehen"
+          "submitBtn": "Pläne anzeigen"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Mit Pro anmelden",
+          "description": "Pro funktioniert hier, sobald du dich im Hauptfenster anmeldest. Kein Schlüssel erforderlich."
         }
       },
       "shellTitle": "World Monitor – Einstellungen",

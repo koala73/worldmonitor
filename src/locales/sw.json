@@ -838,19 +838,17 @@
       "logCleared": "Kumbukumbu imefutwa.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Leseni / Kitufe cha API",
+          "title": "Ufunguo wa Desktop",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "API Starter na API Business waliojisajili huunda ufunguo huu kwenye dashibodi ya wavuti chini ya Settings → API Keys. Ufunguo kamili ukipotea, ubatilishe na uunde mbadala."
+          "description": "Kwa matolani bila kuingia. Pro: tengeneza mmoja katika Settings → API Keys kwenye wavuti; vifunguo vya mpango wa API pia vinafanya kazi. Kwa matumizi yako; uwekaji wa pamoja au wa umma unahitaji mpango wa API. Msaada: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "AU",
         "register": {
-          "title": "Je, unahitaji ufunguo wa API?",
-          "description": "Tazama worldmonitor.app/docs/api-keys kwa usaidizi wa hatua kwa hatua. Vifunguo vya mwongozo vinahitaji API Starter au API Business plan.",
-          "submitBtn": "Tazama mipango ya API"
+          "submitBtn": "Tazama mipango"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Ingia kwa Pro",
+          "description": "Pro inafanya kazi hapa baada ya kuingia kutoka kwa dirisha kuu. Hamna ufunguo unaohitajika."
         }
       },
       "table": {

@@ -843,19 +843,17 @@
       "logCleared": "Registro borrado.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Clave de licencia / API",
+          "title": "Clave de escritorio",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Los suscriptores de API Starter y API Business crean esta clave en el panel web desde Settings → API Keys. Si pierde la clave completa, revóquela y cree una de reemplazo."
+          "description": "Para compilaciones sin inicio de sesión. Pro: crea una en Configuración → Claves API en la web; las claves del plan API también funcionan. Para tu uso personal; las implementaciones compartidas o públicas requieren un plan API. Ayuda: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "O",
         "register": {
-          "title": "¿Necesita una clave API?",
-          "description": "Consulte worldmonitor.app/docs/api-keys para obtener instrucciones paso a paso. Las claves API manuales requieren un plan API Starter o API Business.",
-          "submitBtn": "Ver planes API"
+          "submitBtn": "Ver planes"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Inicia sesión con Pro",
+          "description": "Pro funciona aquí una vez que inicies sesión desde la ventana principal. No se requiere clave."
         }
       },
       "shellTitle": "Configuración de World Monitor",

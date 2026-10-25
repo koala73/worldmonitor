@@ -846,19 +846,17 @@
       "logCleared": "Log wyczyszczony.",
       "worldMonitor": {
         "apiKey": {
-          "description": "Subskrybenci API Starter i API Business tworzą ten klucz w panelu internetowym przez Settings → API Keys. Jeśli pełny klucz zostanie utracony, unieważnij go i utwórz nowy.",
+          "description": "Dla wersji bez logowania. Pro: utwórz klucz w Ustawienia → Klucze API na stronie; klucze z planu API też działają. Do użytku osobistego; wdrożenia współdzielone lub publiczne wymagają planu API. Pomoc: worldmonitor.app/docs/api-keys",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "title": "Klucz licencyjny / API"
+          "title": "Klucz desktopowy"
         },
         "dividerOr": "LUB",
         "register": {
-          "description": "Instrukcje krok po kroku znajdziesz na worldmonitor.app/docs/api-keys. Ręczne klucze API wymagają planu API Starter lub API Business.",
-          "submitBtn": "Zobacz plany API",
-          "title": "Potrzebujesz klucza API?"
+          "submitBtn": "Wyświetl plany"
         },
         "signIn": {
-          "title": "Sign in with Pro",
-          "description": "Pro works here once you sign in from the main window. No key needed."
+          "title": "Zaloguj się za pomocą Pro",
+          "description": "Pro działa tutaj po zalogowaniu się z głównego okna. Klucz nie jest potrzebny."
         }
       },
       "shellTitle": "Ustawienia World Monitor",

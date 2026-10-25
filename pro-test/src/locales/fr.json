@@ -372,7 +372,8 @@
           "Données de divergence métaux physiques, concentration minérale et dette souveraine",
           "Digest IA planifié + moteur de règles d'alertes",
           "Accès MCP + SDK pour Claude Desktop et autres clients IA (50 appels/jour)",
-          "Widgets personnalisés et 10 dashboards (vs 3)"
+          "Widgets personnalisés et 10 dashboards (vs 3)",
+          "Clé de bureau pour l'app de bureau (2 clés)"
         ],
         "highlightFeatures": [
           "Licence personnelle",
@@ -432,6 +433,7 @@
           "Export de données — rapports CSV, JSON et PDF",
           "25 tableaux de bord personnalisés (vs 10)",
           "MCP + SDK : 250 appels/jour (vs 50)",
+          "Clé de bureau pour l'app de bureau (3 clés)",
           "Support prioritaire"
         ],
         "highlightFeatures": [
@@ -686,7 +688,7 @@
       "q8": "Ai-je besoin d'un compte ?",
       "a8": "Non. Le tableau de bord fonctionne instantanément sans inscription. Un compte n'importe que si vous montez en grade vers Pro ou voulez synchroniser les paramètres sur les appareils.",
       "q9": "Est-ce open source ?",
-      "a9": "Oui — open source sous AGPL-3.0 sur GitHub : lisez le code, auto-hébergez-le, ou construisez dessus. Des applications de bureau natives pour Windows, macOS et Linux sont également disponibles, plus une application Android TV pour les affichages muraux.",
+      "a9": "Oui — open source sous AGPL-3.0 sur GitHub : consultez le code, auto-hébergez-le, ou construisez dessus. Pro et Pro Business incluent des clés de bureau, donc votre propre build de bureau peut charger les données Pro cloud ; les copies Docker fonctionnent sur leurs propres données. Des applications de bureau natives pour Windows, macOS et Linux sont aussi disponibles, ainsi qu'une app Android TV pour les écrans muraux.",
       "q10": "Pourquoi World Monitor n'est-il pas Palantir ?",
       "a10": "Palantir rend opérationnelles les données propres d'une institution au sein de cette institution. World Monitor part de l'autre côté : il assemble, normalise, met en corrélation et surveille les données du domaine public, puis publie cette couche de renseignement via un tableau de bord gratuit et du code open-source. Missions différentes, produits différents.",
       "q11": "De quelle licence World Monitor ai-je besoin ?",
