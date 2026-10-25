@@ -34,7 +34,7 @@ That correlation layer is the product's central idea: separate weak signals beco
 
 ## What Is Included in the Free Dashboard?
 
-The public dashboard exposes a shared map-layer catalog, curated news feeds backed by observed upstream hosts, country briefs, instability scores, chokepoints, infrastructure, markets, disasters, and watchlists. Every layer except the Resilience layer is available on the free plan, and the dashboard can be opened without an account.
+The public dashboard exposes a shared map-layer catalog, curated news feeds backed by observed upstream hosts, [country briefs](/countries/), [instability scores](/country-instability-index/), [chokepoints](/chokepoints/), infrastructure, markets, disasters, and watchlists. Every layer except the Resilience layer is available on the free plan, and the dashboard can be opened without an account.
 
 World Monitor currently maintains:
 
