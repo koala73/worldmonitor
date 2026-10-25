@@ -53,6 +53,9 @@ jobs:
           node-version: '24'
           cache: 'npm'
       - uses: ./.github/actions/install-root-deps
+        with:
+          # setup-node restores the npm cache for this job's other install.
+          npm-cache: 'false'
       - run: npm run typecheck
       - run: npm run typecheck:api
       # `npm run typecheck` covers src/ only, so tests/ and shared modules reached only from tests

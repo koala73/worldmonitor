@@ -9,6 +9,13 @@ const root = resolve(import.meta.dirname, '..');
 const require = createRequire(import.meta.url);
 const { xFetchJson } = require('../scripts/lib/x-news-accounts.cjs');
 const approved = new Map([
+  ['scripts/cross-strait-activity/japan-x.mjs', {
+    endpoints: ['/2/users/${JAPAN_X_ACCOUNT_ID}/tweets'],
+    wrappers: [
+      /budget\.withReturnedPosts\([\s\S]{0,300}execute: async[\s\S]{0,100}assertXPostBudgetAdmission\(url, admission\)/,
+      /assertXPostBudgetAdmission\(url, admission\)[\s\S]{0,100}fetchFn\(url\.href/,
+    ],
+  }],
   ['scripts/lib/company-monitoring-x-provider.mjs', {
     endpoints: ['/2/tweets', '/2/tweets/search/recent'],
     wrappers: [

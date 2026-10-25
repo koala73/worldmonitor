@@ -1146,7 +1146,8 @@
         "radiationSpike": "Picco di radiazione",
         "radiationElevated": "Radiazione elevata",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Restrizioni Spazio Aereo NOTAM"
       },
       "layersTitle": "Livelli",
       "layerSearch": "Cerca livelli...",
@@ -1268,7 +1269,8 @@
           "geoBoundaries": "Zone demilitarizzate, linee di cessate il fuoco e confini contestati",
           "ciiChoropleth": "Mappa di calore dell'Indice di instabilità del paese — colora i paesi in base al punteggio (verde=stabile, rosso=critico)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Restrizioni di volo temporanee e spazio aereo ristretto, pericoloso e proibito dai NOTAM della FAA, in vigore ora o a partire entro 24 ore"
         },
         "notes": {
           "timeAffects": "Effetti: terremoti, condizioni meteorologiche, proteste, interruzioni"
@@ -1324,7 +1326,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Indice: World Monitor · dati dei locali:",
+      "indexSource": "Indice: World Monitor",
+      "venueSource": "dati dei locali:",
       "statusNormal": "NORMALE",
       "statusNoData": "NESSUN DATO",
       "statusNoBaseline": "NESSUN RIFERIMENTO",
@@ -3072,7 +3075,9 @@
         "africa": "Africa"
       },
       "scheduled": "Pianificato",
-      "estimated": "Stimato"
+      "estimated": "Stimato",
+      "normalOperations": "OPERAZIONI NORMALI",
+      "open": "APERTO"
     },
     "cyberThreat": {
       "title": "MINACCIA INFORMATICA"
@@ -3478,7 +3483,12 @@
       "position": "Posizione",
       "ground": "A terra",
       "airborne": "In volo"
-    }
+    },
+    "upcomingForecast": "Previsione futura",
+    "currentForecast": "Previsione attuale",
+    "expiredForecast": "Previsione scaduta",
+    "validFrom": "Valida dal",
+    "validUntil": "Valida fino al"
   },
   "signals": {
     "context": {

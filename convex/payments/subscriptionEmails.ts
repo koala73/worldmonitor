@@ -266,7 +266,7 @@ function userWelcomeHtml(planName: string, planKey: string, signInEmail?: string
     ? `Welcome to ${planName} — your intel, delivered.`
     : `Welcome to ${planName}!`;
   const ctaLabel = isPro ? "Open My Brief" : "Open Dashboard";
-  const ctaHref = isPro ? "https://worldmonitor.app/brief" : "https://worldmonitor.app";
+  const ctaHref = isPro ? "https://www.worldmonitor.app/dashboard" : "https://www.worldmonitor.app";
   const supportLine = isPro
     ? `<p style="font-size: 11px; color: #666; text-align: center; margin: 0 0 20px;">Questions? Reply to this email or ping <a href="mailto:${ADMIN_EMAIL}" style="color: #4ade80;">${ADMIN_EMAIL}</a>.</p>`
     : "";

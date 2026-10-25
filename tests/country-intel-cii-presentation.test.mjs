@@ -16,6 +16,7 @@ const bundled = await build({
   stdin: { contents: `
 import { buildImfEconomicIndicators } from './src/services/imf-country-data';
 import { CountryBriefController } from './src/components/CountryBriefController';
+import { isBriefAviationDisruption } from './src/services/country-aviation-context';
 const fixture = globalThis.__ciiPresentationTest;
 const createWebsiteCountryBriefSource = () => ({ mode: 'website', clearLoadedData() {} });
 const COUNTRY_ACTIVITY_BOUNDS = {}, COUNTRY_ALIASES = {};
@@ -57,6 +58,7 @@ export { CountryBriefController };
       '@/services/defense-industrial': 'export const getCountryDefenseIndustrialBase = async () => ({});',
       '@/utils/country-codes': 'export const iso2ToIso3 = value => value, iso2ToUnCode = value => value, iso2ToComtradeReporterCode = value => value;',
       '@/services/runtime': 'export const toApiUrl = value => value;',
+      '@/services/aviation': 'export const fetchFlightDelays = async () => [];',
       '@/services/country-coverage': 'export async function fetchCountryCoverage() { return {headlines: [], timelineEvents: []}; }',
       '@/components/CountryDeepDivePanel': 'export const CountryDeepDivePanel = class { constructor() { return globalThis.__ciiPresentationTest.makePanel(); } };',
     };

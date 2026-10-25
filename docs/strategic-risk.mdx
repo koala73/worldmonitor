@@ -160,12 +160,13 @@ The indicator also displays World Monitor tension scores computed independently 
 | Russia ↔ Ukraine | Active conflict zone |
 | USA ↔ China | Economic and military competition |
 | USA ↔ Iran | Middle East regional tensions |
+| Iran ↔ GCC | Iran against the Gulf states: Saudi Arabia, UAE, Qatar, Kuwait, Bahrain, Oman |
 
 Each pair shows:
 
 - **Current tension score** (World Monitor's normalized score)
-- **7-day trend** (rising, falling, stable)
-- **Percentage change** from previous period
+- **Trend** (rising, falling, stable)
+- **Percentage change**: the last 24 hours against the previous seven days' daily average
 
 This provides context for the activity levels. See the country-pair tension section below for scoring and data-availability rules.
 
@@ -183,28 +184,48 @@ This provides context for the activity levels. See the country-pair tension sect
 ### World Monitor country-pair tensions
 
 Tensions use GDELT event exports, not PizzINT's GPR scale. The materializer counts
-both actor directions for US–Russia, Russia–Ukraine, US–China, and US–Iran.
+both actor directions for the pairs in `shared/gdelt-tension-pairs.json`:
+US–Russia, Russia–Ukraine, US–China, US–Iran, and Iran–GCC. A side can be a
+group: Iran–GCC sums Iran's events with each Gulf Cooperation Council member
+(Saudi Arabia, the UAE, Qatar, Kuwait, Bahrain, Oman) into one bucket; events
+between members are not counted. Saudi Arabia–Yemen is not pinned: GDELT codes
+Houthi actors as plain Yemen (`YEM`), and most violent events located in Saudi
+Arabia carry no attacker country, so the pair under-reads Houthi attacks.
 China–Taiwan and US–Venezuela did not meet the initial 20 conflict events/day
 measurement threshold and are excluded. No GDELT query API is used.
+
+A pair added to the list scores **Insufficient data** until its 90-day history
+is rebuilt (below), about 11 hours after the worker first runs with it. The
+day in progress gets no bucket for the new pair, since it would miss the
+earlier cohorts; that day is rebuilt once it is complete.
 
 For each UTC day, conflict intensity is the sum of
 `NumMentions × max(0, −GoldsteinScale)` for events in QuadClass 3 or 4.
 The daily bucket also retains total events, conflict events, and tone sum/count
 (mean tone is their quotient). Events are assigned to their export cohort's UTC
-day; the current partial day is excluded from scoring.
+day. For the last eight days, each day also keeps per-hour conflict counts and
+intensity, so scoring can follow the live feed instead of waiting for midnight.
 
-The score is the percentile of the last seven completed days' mean intensity
-against the pair's 90 completed daily intensities:
+The score is the percentile of the live seven-day mean against the pair's 90
+completed daily intensities. The live mean is the last 168 complete hours
+divided by seven; an hour is complete once all four of its 15-minute export
+cohorts are in, so the hour in progress is not counted. If any of the last 192
+hours is missing or partial, the pair falls back to the last seven completed
+days. The percentile is
 `100 × (days below the mean + 0.5 × days equal to it) / 90`.
 A non-flat history's maximum scores 100; a flat history scores 50.
 This measures relative event intensity, not the probability of conflict.
-The last seven days must contain at least 140 conflict events (20 × 7).
+The scored seven days (live or completed) must contain at least 140 conflict events (20 × 7).
 All 90 days must have all 96 export cohorts. Missing or partial days do not
 count as quiet days. During initial history collection, or when these conditions
 fail, the stored `insufficientPairs` lists the pair; the API omits its numeric
 score and the panel shows **Insufficient data**.
 
-Change is `100 × (recent seven-day mean − preceding seven-day mean) / preceding mean`.
+Change is `100 × (last 24 hours − preceding seven-day daily mean) / preceding mean`,
+where the preceding seven days are the 168 hours before the last 24. A surge
+therefore shows within the hour, and so does the weekend dip in news volume:
+on a Saturday or Sunday, quieter pairs can read falling with no change on the ground. In the completed-day
+fallback, change compares the last seven days' mean with the seven before.
 The trend rises above +10%, falls below −10%, and is stable at the boundaries.
 A zero preceding mean with positive recent intensity has no finite percentage
 change, so that pair is also withheld. Two zero means give a zero change.
@@ -221,7 +242,8 @@ sets its durable activation marker. It then enforces freshness permanently.
 Pizza outages do not hide available tensions.
 
 Each worker run also repairs history. It walks the past days in the window
-that are missing or lack any of their 96 cohorts, newest first, and rebuilds
+that are missing, lack any of their 96 cohorts, or lack a bucket for a pair
+added after the day began, newest first, and rebuilds
 up to two of them from that day's GDELT export files. A rebuilt day replaces
 the stored day. It is never added to it, so the partial first day of
 collection counts once. Only days before the replay cursor's day are repaired,

@@ -15,7 +15,7 @@ export async function getPizzintStatus(
   ctx: ServerContext,
   req: GetPizzintStatusRequest,
 ): Promise<GetPizzintStatusResponse> {
-  // Recheck the source clock on every request; the route's slow cache tier
+  // Recheck the source clock on every request; the route's shared cache tier
   // would otherwise keep numeric scores beyond the source freshness budget.
   if (req.includeGdelt) markNoCacheResponse(ctx.request);
   let failed = false;

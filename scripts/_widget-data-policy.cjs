@@ -213,6 +213,7 @@ const EXCLUDED_BOOTSTRAP_KEYS = {
   torontoRoads: "Road/traffic feed, ~2 MB (2,342 records); unusable in a widget",
   bcOpen511: "Road/traffic event feed (DriveBC); not widget data",
   imdCycloneMarine: "IMD marine bulletin text by sea area; map-layer feed, not widget data",
+  notamAirspace: "FAA NMS airspace restriction geometry, ~1.5 MB; map-layer feed, not widget data",
   temporalAnomalies: "Internal anomaly detector output; usually empty",
   aaiiSentiment: "Stale fallback data (fallback=true, last update 2026-04-03)",
 };

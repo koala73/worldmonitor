@@ -1237,7 +1237,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Індекс: World Monitor · дані закладів:",
+      "indexSource": "Індекс: World Monitor",
+      "venueSource": "дані закладів:",
       "statusNormal": "НОРМА",
       "statusNoData": "НЕМАЄ ДАНИХ",
       "statusNoBaseline": "НЕМАЄ БАЗОВОГО РІВНЯ",
@@ -1451,7 +1452,8 @@
         "speciesRecovery": "Species Recovery",
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Обмеження повітряного простору NOTAM"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1566,7 +1568,8 @@
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
           "ciiChoropleth": "Теплова карта Country Instability Index — країни розфарбовані за балом (зелений=стабільна, червоний=критична)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Тимчасові обмеження польотів та обмежений, небезпечний та заборонений повітряний простір з FAA NOTAMs, які чинні зараз або починаються протягом 24 годин"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
@@ -3162,7 +3165,9 @@
         "apac": "Asia-Pacific",
         "mena": "Middle East",
         "africa": "Africa"
-      }
+      },
+      "normalOperations": "ЗВИЧАЙНІ ОПЕРАЦІЇ",
+      "open": "ВІДКРИТО"
     },
     "aircraft": {
       "altitude": "Altitude",
@@ -3567,7 +3572,12 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "Venezuela Crisis",
       "yemen_houthis": "Yemen/Houthis"
-    }
+    },
+    "upcomingForecast": "Майбутній прогноз",
+    "currentForecast": "Чинний прогноз",
+    "expiredForecast": "Прострочений прогноз",
+    "validFrom": "Чинний з",
+    "validUntil": "Чинний до"
   },
   "signals": {
     "context": {

@@ -1,6 +1,7 @@
 import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { iso2ToCountryName } from '@/utils/country-codes';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 
@@ -502,7 +503,7 @@ export class StorageFacilityMapPanel extends Panel {
         <div class="sf-kv">
           <div class="sf-kv-key">Operator</div>   <div>${escapeHtml(f.operator)}</div>
           <div class="sf-kv-key">Type</div>       <div>${escapeHtml(typeLabel)}</div>
-          <div class="sf-kv-key">Country</div>    <div>${escapeHtml(f.country)}</div>
+          <div class="sf-kv-key">Country</div>    <div>${escapeHtml(iso2ToCountryName(f.country))}</div>
           <div class="sf-kv-key">Capacity</div>   <div>${escapeHtml(capacityLabel(f))}</div>
           <div class="sf-kv-key">Location</div>   <div>${(f.location?.lat ?? 0).toFixed(3)}°, ${(f.location?.lon ?? 0).toFixed(3)}°</div>
           <div class="sf-kv-key">In service</div> <div>${f.inService > 0 ? escapeHtml(String(f.inService)) : '—'}</div>

@@ -1247,6 +1247,7 @@ function createMissionHarness(options: {
     initialLoadComplete: true,
     resolvedLocation: 'global',
     activeChokepoint: null,
+    pendingCountryBrief: null,
     initialUrlState: null,
     PANEL_ORDER_KEY: 'panel-order',
     PANEL_SPANS_KEY: 'panel-spans',

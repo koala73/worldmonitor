@@ -8,6 +8,7 @@ import { openStockResearchOverlay } from '@/features/stock-research/stock-resear
 import { openExternalUrl } from '@/services/external-navigation';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import type { AppContext } from '@/app/app-context';
+import type { LoadAllDataTrigger } from '@/app/viewport-hydration-ledger';
 import { applyVisibleMapDimension } from '@/app/map-dimension-control';
 import {
   REFRESH_INTERVALS,
@@ -385,6 +386,7 @@ export class App {
   /** Earliest `Date.now()` at which a failed prime key may be retried. */
   private visiblePanelPrimeRetryAt = new Map<string, number>();
   private visiblePanelPrimeRaf: number | null = null;
+  private visiblePanelPrimeFullPass = false;
   private viewportHydrationReady = false;
   private viewportHydrationReadyAt = 0;
   private slowTierWaitTimedOut = false;
@@ -428,18 +430,22 @@ export class App {
     ) {
       return;
     }
+    // A resize can move panels across layout breakpoints, so it keeps a full
+    // pass. A scroll only needs data for panels entering range for the first
+    // time; re-running loaded panels re-fetched their data on every frame.
+    if (event?.type === 'resize') this.visiblePanelPrimeFullPass = true;
     if (this.visiblePanelPrimeRaf !== null) return;
     this.visiblePanelPrimeRaf = window.requestAnimationFrame(() => {
       this.visiblePanelPrimeRaf = null;
+      const trigger: LoadAllDataTrigger = this.visiblePanelPrimeFullPass ? 'full' : 'viewport';
+      this.visiblePanelPrimeFullPass = false;
       markLcpDebug('wm:hydration:viewport-trigger');
       void this.primeVisiblePanelData();
       // loadAllData covers panels primeVisiblePanelData does not (news,
       // markets, intelligence, fred, …). Now that bootstrap runs with
       // forceAll=false, below-fold panels need this re-trigger on scroll
-      // so their data lands when they enter the viewport. Both are
-      // viewport-gated and inflight-guarded — repeat invocations are
-      // cheap.
-      void this.dataLoader.loadAllData();
+      // so their data lands when they enter the viewport.
+      void this.dataLoader.loadAllData(false, trigger);
     });
   };
   private readonly handleConnectivityChange = (): void => {
@@ -1589,6 +1595,7 @@ export class App {
       clustersSettled: false,
       resolvedLocation: 'global',
       activeChokepoint: initialUrlState.chokepoint ?? null,
+      pendingCountryBrief: null,
       initialUrlState,
       PANEL_ORDER_KEY,
       PANEL_SPANS_KEY,
@@ -1625,7 +1632,7 @@ export class App {
         track('search-open', { source: 'pro-onboarding' });
         void this.openSearch();
       },
-      loadAllData: () => this.dataLoader.loadAllData(),
+      loadAllData: (forceAll, trigger) => this.dataLoader.loadAllData(forceAll, trigger),
       primeVisiblePanelData: () => {
         if (!this.viewportHydrationReady || this.state.isDestroyed) return;
         void this.primeVisiblePanelData();
@@ -2596,13 +2603,20 @@ export class App {
       // periodic-refresh handlers). ensureWmSession() genuinely rejects on the
       // old WebView / Smart-TV engines this module targets — `new
       // AbortController()` and the timeout setTimeout sit outside mintSession's
-      // try — and init() has no try/catch, so a bare await would abort boot
-      // here: no bootstrap hydration, no auth, no UI. main.ts catches that with
+      // try — and init() has no try/catch, so an unguarded await would abort
+      // boot: no bootstrap hydration, no auth, no UI. main.ts catches that with
       // `.catch(console.error)`, so it would not even reach Sentry. Session
       // establishment is best-effort at this point; the refresh-on-401 layer is
       // the safety net.
-      await ensureWmSession().catch(() => false);
-      markLcpDebug('wm:boot:session-ready');
+      //
+      // Boot does not await the mint. The fast tier is a credential-less public
+      // read the interceptor passes straight through, and every session-bound
+      // call goes through the interceptor, which awaits the in-flight mint.
+      // Awaiting here put a full /api/wm-session round trip in front of the
+      // first dashboard data.
+      void ensureWmSession()
+        .catch(() => false)
+        .then(() => markLcpDebug('wm:boot:session-ready'));
     }
 
     // Hydrate in-memory cache from bootstrap endpoint. Awaits only the fast tier; the slow
@@ -2801,7 +2815,8 @@ export class App {
         }
 
         // Accept a Business Pro seat invite carried in the URL (mirror of the
-        // anon-claim hook). The invite link is /settings?accept-business-invite=<id>&token=<t>.
+        // anon-claim hook). The invite link is /dashboard?accept-business-invite=<id>&token=<t>;
+        // older emails used /settings, which vercel.json redirects here.
         // Runs after sign-in so the invitee's Clerk email is available server-side.
         const businessInviteGrantId = new URLSearchParams(window.location.search).get('accept-business-invite');
         const businessInviteToken = new URLSearchParams(window.location.search).get('token');
@@ -3014,7 +3029,11 @@ export class App {
       document.documentElement.dataset.wmEventHandlersReady = 'true';
     }
 
-    this.state.countryBriefPage?.onStateChange?.(() => {
+    this.countryIntel.onBriefStateChange(({ visible }) => {
+      // The loading panel opens with a placeholder code; the deep link stays
+      // pending until a real country shows or the panel closes.
+      const code = this.state.countryBriefPage?.getCode();
+      if (!visible || (code && !code.startsWith('__'))) this.state.pendingCountryBrief = null;
       this.eventHandlers.syncUrlState();
     });
 
@@ -3862,6 +3881,10 @@ export class App {
     if (deepLinkCountry) {
       trackDeeplinkOpened('country', deepLinkCountry);
       const cName = CountryIntelManager.resolveCountryName(deepLinkCountry);
+      // Set in the same task as setupUrlStateSync(), before its first debounced
+      // write, and only here: search and story links return above and open no
+      // ?country brief.
+      this.state.pendingCountryBrief = { code: deepLinkCountry, expanded: deepLinkExpanded };
       setTimeout(() => {
         void this.countryIntel.openCountryBriefByCode(deepLinkCountry, cName, {
           maximize: deepLinkExpanded,
@@ -3869,6 +3892,12 @@ export class App {
           console.error('[CountryBrief] Failed to open country brief:', err);
           this.state.map?.setRenderPaused(false);
           showToast('Country brief failed to open. Please try again.');
+        }).finally(() => {
+          // The open also resolves without a brief (a failed chunk import is
+          // handled inside it, a stale request returns). Once it settles the
+          // panel itself decides the URL.
+          this.state.pendingCountryBrief = null;
+          this.eventHandlers.syncUrlState();
         });
         this.eventHandlers.syncUrlState();
       }, DEEP_LINK_INITIAL_DELAY_MS);

@@ -19,8 +19,17 @@ import {
 } from './scripts/crawlable-chokepoint-live.mjs';
 import { liveTopicPageForPath, liveTopicReading } from './scripts/live-pages/index.mjs';
 import { replaceLiveSection } from './scripts/live-pages/common.mjs';
+import {
+  SITUATION_PAGE_PATH,
+  situationMarker,
+  situationReading,
+  situationSections,
+} from './scripts/situation-page/sections.mjs';
+import { CHOKEPOINT_REGISTRY } from './src/config/chokepoint-registry';
 
 type LiveTopicPage = NonNullable<ReturnType<typeof liveTopicPageForPath>>;
+
+const SITUATION_SECTIONS = situationSections(CHOKEPOINT_REGISTRY);
 
 const AGENT_UA = new RegExp(`(?:^|[^a-z0-9-])(?:${agentRequestPolicy.userAgents.join('|')})(?:$|[^a-z0-9-])`, 'i');
 
@@ -299,6 +308,7 @@ export default function middleware(request: Request) {
 
     if (isLiveHtmlRequest(request, url)) {
       if (CHOKEPOINT_PAGE_PATH.test(url.pathname)) return liveChokepointPage(url);
+      if (url.pathname === SITUATION_PAGE_PATH) return liveSituationPage(url);
       const topic = liveTopicPageForPath(url.pathname);
       if (topic) return liveTopicPage(url, topic);
     }
@@ -502,11 +512,7 @@ function liveChokepointPage(url: URL): Promise<Response> {
     // rather than return a reading it cannot vouch for.
     const view = chokepointStatusViewModel(await fetchPublicReading(url, CHOKEPOINT_STATUS_PUBLIC_PATH), id);
     const section = renderChokepointLiveSection({
-      chokepoint: {
-        id,
-        displayName,
-        transitMeasurementNote: sectionAttribute(html, 'data-transit-measurement-note') ?? '',
-      },
+      chokepoint: { id, displayName },
       pulse: chokepointPulseRecord(view),
       live: true,
     });
@@ -520,6 +526,31 @@ function liveTopicPage(url: URL, topic: LiveTopicPage): Promise<Response> {
     // An unpublishable reading (stale, empty) keeps the built page's dated one.
     if (record === null) return null;
     return replaceLiveSection(html, topic.slug, topic.renderSection(record, { live: true }));
+  });
+}
+
+/**
+ * /monitor-the-situation/ carries several live sections, each from its own
+ * public reading. They are fetched together and swapped one by one, so a
+ * source that fails or reports a stale reading leaves its built section in
+ * place while the others go live. Nothing is swapped when no section can be.
+ */
+function liveSituationPage(url: URL): Promise<Response> {
+  return liveHtmlPage(url, 'situation', async (html) => {
+    const sections = await Promise.allSettled(SITUATION_SECTIONS.map(async (section) => {
+      const reading = situationReading(section, await fetchPublicReading(url, section.statusPath));
+      return reading === null ? null : section.renderSection(reading, { live: true });
+    }));
+    let next = html;
+    let swapped = false;
+    sections.forEach((result, index) => {
+      if (result.status !== 'fulfilled' || result.value === null) return;
+      const replaced = replaceLiveSection(next, situationMarker(SITUATION_SECTIONS[index]), result.value);
+      if (replaced === null) return;
+      next = replaced;
+      swapped = true;
+    });
+    return swapped ? next : null;
   });
 }
 

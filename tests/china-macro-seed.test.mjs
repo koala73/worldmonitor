@@ -55,7 +55,7 @@ function officialFetch({ calls = [], overrides = new Map() } = {}) {
       if (override instanceof Response) return override;
       return new Response(override);
     }
-    if (target === 'https://www.pbc.gov.cn/robots.txt') {
+    if (target === 'https://www.pbc.gov.cn/robots.txt' || target === 'https://jrj.sh.gov.cn/robots.txt') {
       return new Response('User-agent: *\nDisallow: /\n');
     }
     if (
@@ -456,7 +456,7 @@ describe('China official macro source adapters', () => {
     assert.equal(SAFE_MAX_REQUESTS_PER_RUN, 6);
     assert.equal(PBOC_MAX_REQUESTS_PER_RUN, 2);
     assert.equal(GACC_MAX_REQUESTS_PER_RUN, 2);
-    assert.equal(calls.length, 11);
+    assert.equal(calls.length, 12);
     assert.equal(snapshot.schemaVersion, 2);
     assert.equal(snapshot.launchReady, true);
     assert.equal(snapshot.status, 'degraded');
@@ -529,6 +529,20 @@ describe('China official macro source adapters', () => {
           redirectBehavior: 'none',
           termsStatus: 'not_evaluated_robots_blocked',
           sourceUrl: 'https://www.pbc.gov.cn/',
+        },
+        {
+          publisherId: 'publisher:shanghai-finance-cn',
+          source: 'Shanghai Municipal Financial Commission Office',
+          host: 'jrj.sh.gov.cn',
+          status: 'blocked',
+          reason: 'ROBOTS_DISALLOW',
+          checkedAt: retrievalTime,
+          requestBudget: 6,
+          requestCount: 1,
+          robotsStatus: 'disallow_candidate_paths',
+          redirectBehavior: 'none',
+          termsStatus: 'reviewed_2026-10-24_facts_only_source_credit_required',
+          sourceUrl: 'https://jrj.sh.gov.cn/SCGK194/index.html',
         },
         {
           publisherId: 'publisher:gacc-cn',
@@ -714,6 +728,7 @@ describe('China official macro source adapters', () => {
         ['www.stats.gov.cn', 'followed'],
         ['www.safe.gov.cn', 'followed'],
         ['www.pbc.gov.cn', 'followed'],
+        ['jrj.sh.gov.cn', 'none'],
         ['english.customs.gov.cn', 'followed'],
       ],
     );

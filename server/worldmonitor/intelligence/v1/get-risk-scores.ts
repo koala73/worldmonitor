@@ -75,6 +75,10 @@ import { CII_CLIMATE_ZONE_COUNTRIES } from '../../../../shared/cii-climate-zones
 // lives in shared/cii-weights.ts so browser-side scoring and server-side
 // scoring cannot drift.
 //
+// Before any change that can move a score, read
+// docs/methodology/cii-change-brief.md: claim the version in
+// docs/methodology/cii-next.json, run tests/cii-invariants.test.mts and post
+// scripts/cii-table-diff.mts output for tests/fixtures/cii/.
 // Change protocol when editing coefficient values in shared/cii-weights.ts:
 //   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts if server/API scores shift.
 //   2. Update docs/methodology/cii-risk-scores.mdx in the SAME commit.
@@ -249,7 +253,7 @@ function countryNamedExactly(text: string): string | null {
 // countryCode from its gazetteer) scores there, including at sea where no
 // polygon reaches; a non-Tier-1 country scores nowhere. Older events without
 // it fall back to their coordinates, then to the country named in the text.
-function strikeEventCountry(s: any): string | null {
+export function strikeEventCountry(s: any): string | null {
   if (typeof s?.countryCode === 'string' && /^[A-Za-z]{2}$/.test(s.countryCode.trim())) {
     return ciiCountryForIso2(s.countryCode);
   }
@@ -830,7 +834,7 @@ export function strikePressureBoost(pressure: number): number {
   return Math.min(CII_STRIKE_BOOST_CAP, CII_STRIKE_BOOST_PER_DOUBLING * Math.log2(1 + pressure / CII_STRIKE_BOOST_PIVOT));
 }
 
-interface AuxiliarySources {
+export interface AuxiliarySources {
   ucdpEvents: any[];
   outages: any[];
   climate: any[];
@@ -1022,14 +1026,104 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const firesRaw = firesSummaryRaw
     ?? (firesCanonicalRaw == null ? null : summarizeWildfireDetections(firesCanonicalRaw) ?? firesCanonicalRaw);
   const borderSnapshots = await readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true })));
-  const read = (raw: unknown): CiiInputRead => (raw == null ? 'missing' : 'present');
+  return buildCiiAuxiliarySources({
+    ucdp: ucdpRaw,
+    outages: outagesRaw,
+    climate: climateRaw,
+    fires: firesRaw,
+    gpsjam: gpsRaw,
+    iranEvents: iranRaw,
+    oref: orefRaw,
+    advisories: advisoriesRaw,
+    displacement: displacementRaw,
+    newsInsights: insightsRaw,
+    threatSummary: threatSummaryRaw,
+    aviation: aviationRaw,
+    earthquakes: earthquakesRaw,
+    sanctionsPressure: sanctionsRaw,
+    sanctionsCounts: sanctionsCountsRaw,
+    temporalAnomalies: temporalRaw,
+    militaryCii: militaryCiiRaw,
+    gdeltCountryEvents: countryEventsRaw,
+    strikePressure: strikePressureRaw,
+    crossBorder: Object.fromEntries(CROSS_BORDER_SOURCES.map((source, i) => [source.id, borderSnapshots[i]])),
+  }, Date.now(), { iranEventsEnabled: IRAN_EVENTS_ENABLED });
+}
+
+/**
+ * Every payload the CII build reads, as the Redis reads return it (null or
+ * absent for a miss), keyed by input id rather than Redis key. `fires` is the
+ * wildfire summary (or the canonical payload when the summary is missing),
+ * `displacement` the current year's summary or else the previous year's, and
+ * `crossBorder` each CROSS_BORDER_SOURCES seed envelope by source id.
+ * tests/fixtures/cii/ stores captured production inputs in this shape.
+ */
+export interface CiiRawInputs {
+  ucdp?: unknown;
+  outages?: unknown;
+  climate?: unknown;
+  fires?: unknown;
+  gpsjam?: unknown;
+  iranEvents?: unknown;
+  oref?: unknown;
+  advisories?: unknown;
+  displacement?: unknown;
+  newsInsights?: unknown;
+  threatSummary?: unknown;
+  aviation?: unknown;
+  earthquakes?: unknown;
+  sanctionsPressure?: unknown;
+  sanctionsCounts?: unknown;
+  temporalAnomalies?: unknown;
+  militaryCii?: unknown;
+  gdeltCountryEvents?: unknown;
+  strikePressure?: unknown;
+  crossBorder?: Record<string, unknown>;
+}
+
+export interface CiiAuxiliaryOptions {
+  /** IRAN_EVENTS_ENABLED: when false the strike feed and its tally are ignored, as production skips reading them. */
+  iranEventsEnabled: boolean;
+}
+
+/**
+ * Parses raw input payloads into the scorer's sources. Pure: no Redis, no
+ * clock and no environment; `nowMs` drives every age gate.
+ */
+export function buildCiiAuxiliarySources(
+  raw: CiiRawInputs,
+  nowMs: number,
+  options: CiiAuxiliaryOptions,
+): AuxiliarySources {
+  const { iranEventsEnabled } = options;
+  const ucdpRaw = raw.ucdp ?? null;
+  const outagesRaw = raw.outages ?? null;
+  const climateRaw = raw.climate ?? null;
+  const firesRaw = raw.fires ?? null;
+  const gpsRaw = raw.gpsjam ?? null;
+  const iranRaw = iranEventsEnabled ? raw.iranEvents ?? null : null;
+  const orefRaw = raw.oref ?? null;
+  const advisoriesRaw = raw.advisories ?? null;
+  const displacementRaw = raw.displacement ?? null;
+  const insightsRaw = raw.newsInsights ?? null;
+  const threatSummaryRaw = raw.threatSummary ?? null;
+  const aviationRaw = raw.aviation ?? null;
+  const earthquakesRaw = raw.earthquakes ?? null;
+  const sanctionsRaw = raw.sanctionsPressure ?? null;
+  const sanctionsCountsRaw = raw.sanctionsCounts ?? null;
+  const temporalRaw = raw.temporalAnomalies ?? null;
+  const militaryCiiRaw = raw.militaryCii ?? null;
+  const countryEventsRaw = raw.gdeltCountryEvents ?? null;
+  const strikePressureRaw = iranEventsEnabled ? raw.strikePressure ?? null : null;
+  const borderSnapshots = CROSS_BORDER_SOURCES.map((source) => raw.crossBorder?.[source.id] ?? null);
+  const read = (value: unknown): CiiInputRead => (value == null ? 'missing' : 'present');
   const inputReads: Partial<Record<CiiInputId, CiiInputRead>> = {
     ucdp: read(ucdpRaw),
     outages: read(outagesRaw),
     climate: read(climateRaw),
     fires: read(firesRaw),
     gpsjam: read(gpsRaw),
-    iranEvents: IRAN_EVENTS_ENABLED ? read(iranRaw) : 'not_configured',
+    iranEvents: iranEventsEnabled ? read(iranRaw) : 'not_configured',
     oref: read(orefRaw),
     advisories: read(advisoriesRaw),
     displacement: read(displacementRaw),
@@ -1042,9 +1136,9 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     sanctionsCounts: read(sanctionsCountsRaw),
     militaryCii: read(militaryCiiRaw),
     gdeltCountryEvents: read(countryEventsRaw),
-    strikePressure: IRAN_EVENTS_ENABLED ? read(strikePressureRaw) : 'not_configured',
+    strikePressure: iranEventsEnabled ? read(strikePressureRaw) : 'not_configured',
   };
-  const borderMovements = projectCrossBorderSnapshots(Object.fromEntries(CROSS_BORDER_SOURCES.map((source, i) => [source.id, borderSnapshots[i]]))).movements;
+  const borderMovements = projectCrossBorderSnapshots(Object.fromEntries(CROSS_BORDER_SOURCES.map((source, i) => [source.id, borderSnapshots[i]])), nowMs).movements;
   const arr = (v: any, field?: string, maxLen = 10000) => {
     let a: any[];
     if (field && v && Array.isArray(v[field])) a = v[field];
@@ -1124,8 +1218,8 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     militaryCii: militaryCiiRaw && typeof militaryCiiRaw === 'object' && (militaryCiiRaw as any).byCountry
       ? (militaryCiiRaw as any).byCountry
       : null,
-    gdeltCountryEvents: gdeltCountryEventsFromSeed(countryEventsRaw, Date.now()),
-    confirmedStrikes: confirmedStrikeDaysFromSeed(strikePressureRaw, Date.now()),
+    gdeltCountryEvents: gdeltCountryEventsFromSeed(countryEventsRaw, nowMs),
+    confirmedStrikes: confirmedStrikeDaysFromSeed(strikePressureRaw, nowMs),
     inputReads,
   };
 }
@@ -1237,10 +1331,37 @@ export function withCiiInputQuietClocks(
   return reports;
 }
 
+/** Every term behind one country's score, as computeCIIScores combined them. */
+export interface CiiCountryTerms {
+  baseline: number;
+  eventMultiplier: number;
+  components: { unrest: number; conflict: number; security: number; information: number };
+  /** The parts of each component, before its cap and rounding. */
+  parts: {
+    unrestBase: number; unrestFatalityBoost: number; unrestSeverityBoost: number; outageBoost: number; gdeltUnrest: number;
+    acledScore: number; fatalityScore: number; civilianBoost: number; orefBoost: number; gdeltConflict: number;
+    flightScore: number; vesselScore: number; aviationScore: number; gpsJammingScore: number;
+    newsScore: number; threatSummaryScore: number;
+  };
+  eventScore: number;
+  boosts: {
+    climate: number; fire: number; advisory: number; orefBlend: number; displacement: number; crossBorder: number;
+    newsUrgency: number; earthquake: number; sanctions: number; ais: number; strikePressure: number;
+  };
+  /** baseline and eventScore weighted, plus every boost: the score before floors, rounding and the cap. */
+  blended: number;
+  floors: { ucdp: number; advisory: number; strike: number };
+  /** The largest floor candidate; it binds when it exceeds the rounded blend. */
+  floor: number;
+  strikePressure: number;
+  combinedScore: number;
+}
+
 export function computeCIIScores(
   acled: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }>,
   aux: AuxiliarySources,
   trendOptions: CiiTrendComparisonOptions = {},
+  termsSink?: Record<string, CiiCountryTerms>,
 ): CiiScore[] {
   const computedAt = Number.isFinite(trendOptions.nowMs) ? Number(trendOptions.nowMs) : Date.now();
   const priorByRegion = buildPriorCiiScoreMap(trendOptions.priorScores);
@@ -1597,6 +1718,8 @@ export function computeCIIScores(
       d.aisDisruptionHighCount * 2.5 + d.aisDisruptionElevatedCount * 1.5 + d.aisDisruptionLowCount * 0.5,
     );
 
+    // Assigned inside the sum so termsSink reports it without restating its constant.
+    let crossBorderBoost: number;
     const blended = baseline * 0.4
       + eventScore * 0.6
       + climateBoost
@@ -1604,7 +1727,7 @@ export function computeCIIScores(
       + advisoryBoost
       + orefBlendBoost
       + displacementBoost
-      + (aux.crossBorderSurgeCountries?.includes(code) ? 5 : 0)
+      + (crossBorderBoost = aux.crossBorderSurgeCountries?.includes(code) ? 5 : 0)
       + newsUrgencyBoost
       + earthquakeBoost
       + sanctionsBoost
@@ -1621,6 +1744,31 @@ export function computeCIIScores(
 
     const composite = Math.min(100, Math.max(floor, Math.round(blended)));
     const { dynamicScore, trend } = deriveCiiTrendDelta(composite, priorByRegion.get(code), computedAt);
+    if (termsSink) {
+      termsSink[code] = {
+        baseline,
+        eventMultiplier: multiplier,
+        components: { unrest, conflict, security, information },
+        parts: {
+          unrestBase, unrestFatalityBoost, unrestSeverityBoost, outageBoost, gdeltUnrest: d.gdeltUnrestEscalation,
+          acledScore, fatalityScore, civilianBoost, orefBoost, gdeltConflict: d.gdeltConflictEscalation,
+          flightScore, vesselScore, aviationScore, gpsJammingScore,
+          newsScore: d.newsScore, threatSummaryScore: d.threatSummaryScore,
+        },
+        eventScore,
+        boosts: {
+          climate: climateBoost, fire: fireBoost, advisory: advisoryBoost, orefBlend: orefBlendBoost,
+          displacement: displacementBoost, crossBorder: crossBorderBoost, newsUrgency: newsUrgencyBoost,
+          earthquake: earthquakeBoost, sanctions: sanctionsBoost, ais: aisBoost,
+          strikePressure: strikePressureBoost(d.strikePressure),
+        },
+        blended,
+        floors: { ucdp: ucdpFloor, advisory: advisoryFloor, strike: strikeFloor },
+        floor,
+        strikePressure: d.strikePressure,
+        combinedScore: composite,
+      };
+    }
 
     scores.push({
       region: code,
@@ -1653,6 +1801,68 @@ export function computeCIIScores(
 
   scores.sort((a, b) => b.combinedScore - a.combinedScore);
   return scores;
+}
+
+// ========================================================================
+// Scoring seam
+// ------------------------------------------------------------------------
+// The whole score table from explicit inputs and a clock value, with every
+// term. Production builds call the same code (fetchAuxiliarySources ->
+// buildCiiAuxiliarySources, then computeCIIScores), so the fixtures in
+// tests/fixtures/cii/, scripts/cii-table-diff.mts and
+// tests/cii-invariants.test.mts measure the deployed formula. See
+// docs/methodology/cii-change-brief.md before changing any score.
+// ========================================================================
+
+export type CiiFloorName = keyof CiiCountryTerms['floors'];
+
+export interface CiiScoreTableRow extends CiiCountryTerms {
+  region: string;
+  /** Floors equal to the binding value when it exceeds the rounded blend; empty when the blend set the score. */
+  bindingFloors: CiiFloorName[];
+}
+
+export interface CiiScoreTable {
+  /** Exactly what computeCIIScores returns: sorted by combinedScore, descending. */
+  scores: CiiScore[];
+  /** One row per country, in the order of `scores`. */
+  rows: CiiScoreTableRow[];
+  aux: AuxiliarySources;
+}
+
+export interface CiiScoreOptions {
+  nowMs: number;
+  /** ACLED rows; production has had none since 2026-07 (no ACLED access). */
+  acledEvents?: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }>;
+  priorScores?: CiiScore[] | null;
+}
+
+/** Scores already-parsed sources. Pure. */
+export function scoreCiiAuxiliarySources(aux: AuxiliarySources, options: CiiScoreOptions): CiiScoreTable {
+  const terms: Record<string, CiiCountryTerms> = {};
+  const scores = computeCIIScores(options.acledEvents ?? [], aux, { nowMs: options.nowMs, priorScores: options.priorScores }, terms);
+  const rows = scores.map((score): CiiScoreTableRow => {
+    const t = terms[score.region]!;
+    const binds = t.floor > Math.round(t.blended);
+    const bindingFloors = binds
+      ? (Object.keys(t.floors) as CiiFloorName[]).filter((name) => t.floors[name] === t.floor)
+      : [];
+    return { region: score.region, ...t, bindingFloors };
+  });
+  return { scores, rows, aux };
+}
+
+/**
+ * The scoring seam: the full CII table from raw input payloads and `nowMs`.
+ * Pure: no Redis, no clock, no environment. IRAN_EVENTS_ENABLED and ACLED
+ * rows are parameters.
+ */
+export function computeCiiScoreTable(
+  raw: CiiRawInputs,
+  options: CiiScoreOptions & CiiAuxiliaryOptions,
+): CiiScoreTable {
+  const aux = buildCiiAuxiliarySources(raw, options.nowMs, { iranEventsEnabled: options.iranEventsEnabled });
+  return scoreCiiAuxiliarySources(aux, options);
 }
 
 export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {

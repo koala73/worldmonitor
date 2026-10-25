@@ -14,7 +14,7 @@
       "type": "skill-md",
       "description": "Retrieve current airport delay and cancellation alerts worldwide — delay type, severity, average delay minutes, and affected-flight percentages per airport. Use when the user asks whether an airport is delayed, disrupted, or experiencing cancellations.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/check-airport-delays/SKILL.md",
-      "digest": "sha256:04057959beb677e917a5c3f72ff1cf316b25a76d635533685a82e154d2f8fbc9"
+      "digest": "sha256:f2eec5b726047f83addbb55a0862ab34fa9b16f8b4e1e2ea7531ba9c433bc977"
     },
     {
       "name": "check-chokepoint-status",

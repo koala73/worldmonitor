@@ -1112,7 +1112,8 @@
         "radiationSpike": "Skok radioaktywności",
         "radiationElevated": "Podwyższona radioaktywność",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Ograniczenia przestrzeni powietrznej NOTAM"
       },
       "layersTitle": "Warstwy",
       "layerSearch": "Szukaj warstw...",
@@ -1234,7 +1235,8 @@
           "geoBoundaries": "Strefy zdemilitaryzowane, linie zawieszenia broni i sporne granice",
           "ciiChoropleth": "Mapa ciepła Country Instability Index — koduje kraje według wyniku (zielony=stabilny, czerwony=krytyczny)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Tymczasowe ograniczenia lotów oraz strefy ograniczone, niebezpieczne i zakazane z NOTAM-ów FAA, obowiązujące obecnie lub rozpoczynające się w ciągu 24 godzin"
         },
         "notes": {
           "timeAffects": "Wpływ na: Trzęsienia ziemi, Pogoda, Protesty, Przestoje"
@@ -1290,7 +1292,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Indeks: World Monitor · dane lokali:",
+      "indexSource": "Indeks: World Monitor",
+      "venueSource": "dane lokali:",
       "statusNormal": "NORMALNIE",
       "statusNoData": "BRAK DANYCH",
       "statusNoBaseline": "BRAK POZIOMU ODNIESIENIA",
@@ -3092,7 +3095,9 @@
         "africa": "Afryka"
       },
       "scheduled": "Plan.",
-      "estimated": "Szcz."
+      "estimated": "Szcz.",
+      "normalOperations": "NORMALNE OPERACJE",
+      "open": "OTWARTE"
     },
     "cyberThreat": {
       "title": "CYBERZAGROŻENIE"
@@ -3498,7 +3503,12 @@
       "position": "Pozycja",
       "ground": "Na ziemi",
       "airborne": "W powietrzu"
-    }
+    },
+    "upcomingForecast": "Nadchodząca prognoza",
+    "currentForecast": "Aktualna prognoza",
+    "expiredForecast": "Wygasła prognoza",
+    "validFrom": "Ważna od",
+    "validUntil": "Ważna do"
   },
   "signals": {
     "context": {

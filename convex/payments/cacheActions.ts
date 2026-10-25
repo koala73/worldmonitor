@@ -28,6 +28,11 @@ function getEntitlementKey(userId: string): string {
   return `entitlements:${envPrefix}:${userId}`;
 }
 
+/** Edge AI routing policy cache key; same env namespace as the entitlement key. */
+function getAiRoutingPolicyKey(userId: string): string {
+  return getEntitlementKey(userId).replace(/^entitlements:/, 'ai-routing:');
+}
+
 /**
  * Writes a user's entitlements to Redis via Upstash REST API.
  *
@@ -170,6 +175,41 @@ export const deleteEntitlementCache = internalAction({
       // page via Convex auto-Sentry.
       console.warn(
         "[cacheActions] Redis cache delete failed:",
+        err instanceof Error ? err.message : String(err),
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+});
+
+/**
+ * Deletes the edge's cached AI routing policy lookup for a user
+ * (server/_shared/ai-routing-policy.ts) so a policy change applies at once
+ * rather than after the 60 s cache TTL.
+ */
+export const deleteAiRoutingPolicyCache = internalAction({
+  args: { userId: v.string() },
+  handler: async (_ctx, args) => {
+    const url = process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+    if (!url || !token) return;
+    const key = getAiRoutingPolicyKey(args.userId);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REDIS_FETCH_TIMEOUT_MS);
+    try {
+      const resp = await fetch(`${url}/del/${encodeURIComponent(key)}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      });
+      if (!resp.ok) {
+        console.warn(`[cacheActions] Redis DEL failed: HTTP ${resp.status} for key ${key}`);
+      }
+    } catch (err) {
+      // sentry-coverage-ok — the edge entry self-expires within 60 s.
+      console.warn(
+        "[cacheActions] AI routing cache delete failed:",
         err instanceof Error ? err.message : String(err),
       );
     } finally {

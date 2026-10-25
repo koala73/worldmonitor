@@ -1229,7 +1229,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "شاخص: World Monitor · داده‌های مکان‌ها:",
+      "indexSource": "شاخص: World Monitor",
+      "venueSource": "داده‌های مکان‌ها:",
       "statusNormal": "عادی",
       "statusNoData": "بدون داده",
       "statusNoBaseline": "بدون مبنا",
@@ -1443,7 +1444,8 @@
         "speciesRecovery": "Species Recovery",
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "محدودیت‌های فضای هوایی NOTAM"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1558,7 +1560,8 @@
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
           "ciiChoropleth": "نقشه حرارتی شاخص بی‌ثباتی کشور — رنگ‌بندی کشورها بر اساس امتیاز (سبز=پایدار، قرمز=حیاتی)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "محدودیت‌های پروازی موقت و فضای هوایی محدود، خطرناک و ممنوع از NOTAM‌های FAA که در حال اجرا هستند یا در طی ۲۴ ساعت آینده شروع می‌شوند"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
@@ -3122,7 +3125,9 @@
         "apac": "Asia-Pacific",
         "mena": "Middle East",
         "africa": "Africa"
-      }
+      },
+      "normalOperations": "عملیات عادی",
+      "open": "باز"
     },
     "aircraft": {
       "altitude": "Altitude",
@@ -3527,7 +3532,12 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "Venezuela Crisis",
       "yemen_houthis": "Yemen/Houthis"
-    }
+    },
+    "upcomingForecast": "پیش‌بینی آتی",
+    "currentForecast": "پیش‌بینی معتبر فعلی",
+    "expiredForecast": "پیش‌بینی منقضی‌شده",
+    "validFrom": "معتبر از",
+    "validUntil": "معتبر تا"
   },
   "signals": {
     "context": {

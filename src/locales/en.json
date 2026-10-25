@@ -1251,7 +1251,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · venue data:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "venue data:",
       "statusNormal": "NORMAL",
       "statusNoData": "NO DATA",
       "statusNoBaseline": "NO BASELINE",
@@ -1465,7 +1466,8 @@
         "speciesRecovery": "Species Recovery",
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM Airspace Restrictions"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1580,7 +1582,8 @@
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
           "ciiChoropleth": "Country Instability Index heat-map — colors countries by score (green=stable, red=critical)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Temporary flight restrictions and restricted, danger and prohibited airspace from FAA NOTAMs, in effect now or starting within 24 hours"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
@@ -3127,6 +3130,8 @@
       "departureDelay": "DEPARTURE DELAYS",
       "arrivalDelay": "ARRIVAL DELAYS",
       "delaysReported": "DELAYS REPORTED",
+      "normalOperations": "NORMAL OPERATIONS",
+      "open": "OPEN",
       "closure": "AIRPORT CLOSURE",
       "delays": "DELAYS",
       "avgDelay": "AVG DELAY",
@@ -3278,6 +3283,11 @@
     "time": "Time",
     "area": "Area",
     "expires": "Expires",
+    "upcomingForecast": "Upcoming forecast",
+    "currentForecast": "Current forecast",
+    "expiredForecast": "Expired forecast",
+    "validFrom": "Valid from",
+    "validUntil": "Valid until",
     "aisGapSpike": "Spike in ship tracking gaps",
     "chokepointCongestion": "CHOKEPOINT CONGESTION",
     "darkening": "DARKENING",

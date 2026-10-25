@@ -5,10 +5,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEST_DIR="${ROOT_DIR}/src-tauri/sidecar/node"
 NODE_VERSION="${NODE_VERSION:-22.23.4}"
+# Independent trust anchor from https://github.com/nodejs/release-keys.
+# Update the commit and digest together after reviewing release-key changes.
+NODE_RELEASE_KEYS_COMMIT="481637f813e912c4aa3622d7964ab426c97b8e8d"
+NODE_RELEASE_KEYS_SHA256="140f2ad5260fd62773b6243ce8e1d3009645d558f121b8262c55e383dc285932"
 
 usage() {
   cat <<'EOF'
 Usage: bash scripts/download-node.sh [--target <triple>]
+
+Requires: curl, GnuPG (gpg), and sha256sum or shasum.
 
 Supported targets:
   - x86_64-pc-windows-msvc
@@ -165,6 +171,23 @@ esac
 BASE_URL="https://nodejs.org/dist/v${NODE_VERSION}"
 ARCHIVE_URL="${BASE_URL}/${ARCHIVE_NAME}"
 SHASUMS_URL="${BASE_URL}/SHASUMS256.txt"
+RELEASE_KEYS_URL="https://raw.githubusercontent.com/nodejs/release-keys/${NODE_RELEASE_KEYS_COMMIT}/gpg-only-active-keys/pubring.kbx"
+
+if ! command -v gpg >/dev/null 2>&1; then
+  echo "GnuPG (gpg) is required to verify the Node.js release signature." >&2
+  exit 1
+fi
+
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{ print $1 }'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{ print $1 }'
+  else
+    echo "Neither sha256sum nor shasum is available for checksum verification." >&2
+    return 1
+  fi
+}
 
 TMP_DIR="$(mktemp -d)"
 cleanup() {
@@ -173,8 +196,18 @@ cleanup() {
 trap cleanup EXIT
 
 echo "[download-node] Downloading ${ARCHIVE_NAME}"
-curl -fsSL "${ARCHIVE_URL}" -o "${TMP_DIR}/${ARCHIVE_NAME}"
+curl -fsSL "${RELEASE_KEYS_URL}" -o "${TMP_DIR}/release-keys.kbx"
+if [[ "$(sha256 "${TMP_DIR}/release-keys.kbx")" != "${NODE_RELEASE_KEYS_SHA256}" ]]; then
+  echo "Release keyring checksum mismatch" >&2
+  exit 1
+fi
+
 curl -fsSL "${SHASUMS_URL}" -o "${TMP_DIR}/SHASUMS256.txt"
+curl -fsSL "${SHASUMS_URL}.sig" -o "${TMP_DIR}/SHASUMS256.txt.sig"
+mkdir -m 700 "${TMP_DIR}/gnupg"
+gpg --no-options --homedir "${TMP_DIR}/gnupg" --batch --no-default-keyring \
+  --keyring "${TMP_DIR}/release-keys.kbx" --no-auto-key-retrieve \
+  --verify "${TMP_DIR}/SHASUMS256.txt.sig" "${TMP_DIR}/SHASUMS256.txt"
 
 EXPECTED_SHA="$(awk -v file="${ARCHIVE_NAME}" '$2 == file { print $1 }' "${TMP_DIR}/SHASUMS256.txt")"
 if [[ -z "${EXPECTED_SHA}" ]]; then
@@ -182,14 +215,8 @@ if [[ -z "${EXPECTED_SHA}" ]]; then
   exit 1
 fi
 
-if command -v sha256sum >/dev/null 2>&1; then
-  ACTUAL_SHA="$(sha256sum "${TMP_DIR}/${ARCHIVE_NAME}" | awk '{ print $1 }')"
-elif command -v shasum >/dev/null 2>&1; then
-  ACTUAL_SHA="$(shasum -a 256 "${TMP_DIR}/${ARCHIVE_NAME}" | awk '{ print $1 }')"
-else
-  echo "Neither sha256sum nor shasum is available for checksum verification." >&2
-  exit 1
-fi
+curl -fsSL "${ARCHIVE_URL}" -o "${TMP_DIR}/${ARCHIVE_NAME}"
+ACTUAL_SHA="$(sha256 "${TMP_DIR}/${ARCHIVE_NAME}")"
 
 if [[ "${EXPECTED_SHA}" != "${ACTUAL_SHA}" ]]; then
   echo "Checksum mismatch for ${ARCHIVE_NAME}" >&2

@@ -701,6 +701,45 @@ describe('public product facts generation contract', () => {
     assert.match(result.stderr, /docs\/about\.mdx: expected 1 match\(es\) of .*subsea cables/);
   });
 
+  it('states the measured source inventory on every surface that quotes it', () => {
+    const stats = buildSourceAttributionStats({ validate: false });
+    const providers = `${stats.providerCount} attributed providers`;
+    const hosts = `${stats.activeHosts} observed source hosts`;
+    const surfaces = [
+      ['index.html', [`${stats.feedHosts} news and OSINT feeds from ${providers} across ${hosts}`]],
+      ['docs/about.mdx', [`${stats.feedHosts} news and OSINT feeds from ${providers}`, `all ${providers}`]],
+      ['ARCHITECTURE.md', [hosts]],
+      ['public/llms-full.txt', [`${providers} across ${hosts}`]],
+      ['blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', [`${providers} across ${hosts}`]],
+      ['api/oauth/authorize.js', [`events from ${providers}`]],
+      ['mcp-grant.html', [`events from ${providers}`]],
+    ];
+    for (const [path, phrases] of surfaces) {
+      const text = read(path);
+      for (const phrase of phrases) assert.ok(text.includes(phrase), `${path} must state "${phrase}"`);
+      // The hand-typed totals these surfaces had drifted to before they were restated.
+      assert.doesNotMatch(text, /\b(?:578\+? observed upstream hosts|574 active providers|100\+ global sources)\b/, path);
+    }
+  });
+
+  it('fails generation when a restated homepage source phrase loses its wording', () => {
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
+      import fs from 'node:fs';
+      const readFileSync = fs.readFileSync;
+      fs.readFileSync = (path, ...rest) => {
+        const text = readFileSync(path, ...rest);
+        return String(path).endsWith('/index.html') && !String(path).includes('pro-test')
+          ? String(text).replace(/observed source hosts/, 'upstream hosts')
+          : text;
+      };
+      (await import('node:module')).syncBuiltinESMExports();
+      process.argv.push('--check');
+      await import('./scripts/generate-public-product-facts.mjs');
+    `], { cwd: ROOT, encoding: 'utf8' });
+    assert.notEqual(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stderr, /index\.html: expected 1 match\(es\) of .*observed source hosts/);
+  });
+
   it('fails discovery generation when the natural-disasters tool is absent', () => {
     const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
       import { TOOL_REGISTRY } from './api/mcp/registry/index.ts';

@@ -28,6 +28,7 @@ import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/c
 import { buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt';
 import { buildActionEvents } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions';
 import { callLlmReasoningStream } from '../server/_shared/llm';
+import { getAiRoutingDecisionForUser, toLlmRoutingPolicy } from '../server/_shared/ai-routing-policy';
 import { sanitizeForPrompt } from '../server/_shared/llm-sanitize.js';
 
 const MAX_QUERY_LEN = 500;
@@ -289,8 +290,12 @@ export default async function handler(req: Request): Promise<Response> {
       { role: 'user', content: query },
     ];
 
+    // Chat turns are the caller's own text: a restricted account streams only
+    // from its allowed providers (ai-routing-policy.ts).
+    const routingPolicy = toLlmRoutingPolicy(await getAiRoutingDecisionForUser(premiumIdentity.userId));
     const llmStream = callLlmReasoningStream({
       messages,
+      routingPolicy,
       maxTokens: 600,
       temperature: 0.35,
       timeoutMs: 25_000,

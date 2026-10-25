@@ -842,6 +842,18 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_validUntil", ["validUntil"]),
 
+  // Customer AI routing restriction (contractual, e.g. "Anthropic only").
+  // Kept out of `entitlements.features` on purpose: billing webhooks rewrite
+  // that object, and a compliance control must not ride on it. When a row
+  // exists, the edge uses `allowedProviders` as the whole LLM provider chain
+  // for this user's own input (server/_shared/ai-routing-policy.ts).
+  aiRoutingPolicies: defineTable({
+    userId: v.string(),
+    allowedProviders: v.array(v.string()),
+    reason: v.string(),
+    updatedAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
   apiUsageRollups: defineTable({
     userId: v.string(),
     planKey: v.string(),
@@ -1224,6 +1236,19 @@ export default defineSchema({
     productId: v.string(),
     occurredAt: v.number(),
   }).index("by_occurredAt", ["occurredAt"]),
+
+  // Dodo checkout sessions handed to buyers: the funnel step between Umami
+  // `checkout-start` and a Dodo payment attempt. See payments/checkoutSessionLog.ts.
+  checkoutSessionEvents: defineTable({
+    userId: v.string(),
+    productId: v.string(),
+    // Dodo session id; joins to a payment's `checkout_session_id`.
+    sessionId: v.optional(v.string()),
+    anonymous: v.boolean(),
+    occurredAt: v.number(),
+  })
+    .index("by_occurredAt", ["occurredAt"])
+    .index("by_user", ["userId"]),
 
   productPlans: defineTable({
     dodoProductId: v.string(),

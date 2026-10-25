@@ -78,7 +78,7 @@ test('the repair plan targets incomplete past days in the scoring window, newest
   const snapshot = { cursor: '20260928171500', days: {
     '2026-09-28': { cohorts: 70, pairs: {} },
     '2026-09-27': { cohorts: 15, pairs: {} },
-    [dayOf(3)]: { cohorts: 96, pairs: {} },
+    [dayOf(3)]: rebuildDyadDay(dayOf(3), cohortBatches(dayOf(3))),
     [dayOf(91)]: { cohorts: 3, pairs: {} },
   } };
   const plan = planDyadRepair(snapshot, repairNow, 200);
@@ -168,4 +168,125 @@ test('once repair completes the 90-day window, every pair with enough events is 
   assert.equal(planDyadRepair(snapshot, repairNow, 90).length, 0);
   const scored = scoreDyads(snapshot, repairNow);
   assert.ok(scored.tensionPairs.some(pair => pair.id === 'usa_russia'));
+});
+
+test('a pair added to the config mid-day does not crash the live merge and is rebuilt, not scored partial', () => {
+  // The day was created before usa_iran was configured, so it has no bucket.
+  const previous = { cursor: '20260927120000', days: { '2026-09-27': { cohorts: 48, pairs: {
+    usa_russia: { total: 0, conflict: 0, intensity: 0, toneSum: 0, toneCount: 0 },
+  } } } };
+  const batch = { timestamp: '20260927121500', dyads: parseDyadExport(row('USA', 'IRN', 4)) };
+  const merged = mergeDyadBuckets(previous, [batch], Date.parse('2026-09-27T12:20:00Z'));
+  assert.equal(merged.days['2026-09-27'].cohorts, 49);
+  assert.equal(merged.days['2026-09-27'].pairs.usa_iran, undefined, 'a bucket started mid-day would be partial');
+  const next = { ...merged, cursor: '20260928000000' };
+  assert.ok(planDyadRepair(next, Date.parse('2026-09-28T00:20:00Z'), 5).includes('2026-09-27'),
+    'a past day missing a configured pair is rebuilt');
+});
+
+test('a complete day missing only a configured pair is rebuilt with that pair', () => {
+  // 96 cohorts and complete hours: the missing bucket is the only defect.
+  const snapshot = { cursor: '20260928171500', days: {} };
+  for (let i = 1; i <= 90; i++) snapshot.days[dayOf(i)] = rebuildDyadDay(dayOf(i), cohortBatches(dayOf(i)));
+  delete snapshot.days[dayOf(2)].pairs.iran_gcc;
+  delete snapshot.days[dayOf(40)].pairs.iran_gcc;
+  assert.deepEqual(planDyadRepair(snapshot, repairNow, 90), [dayOf(2), dayOf(40)]);
+  const rebuilt = { [dayOf(2)]: rebuildDyadDay(dayOf(2), cohortBatches(dayOf(2))), [dayOf(40)]: rebuildDyadDay(dayOf(40), cohortBatches(dayOf(40))) };
+  const replaced = replaceDyadDays(snapshot, rebuilt, repairNow);
+  assert.ok(replaced.days[dayOf(2)].pairs.iran_gcc && replaced.days[dayOf(40)].pairs.iran_gcc);
+  assert.equal(planDyadRepair(replaced, repairNow, 90).length, 0);
+});
+
+test('Iran–GCC sums Iran against every GCC member, in both directions', () => {
+  const data = parseDyadExport(['SAU', 'ARE', 'QAT', 'KWT', 'BHR', 'OMN'].flatMap(member => [row('IRN', member, 4), row(member, 'IRN', 3)])
+    .concat(row('IRN', 'IRQ', 4), row('SAU', 'ARE', 4)).join('\n'));
+  assert.equal(data.iran_gcc.conflict, 12);
+  assert.equal(Object.values(data).reduce((sum, pair) => sum + pair.total, 0), 12, 'non-members and intra-GCC rows are not counted');
+});
+
+// Live scoring: the last 168 complete hours, so a surge counts before midnight.
+const liveNow = Date.parse('2026-10-24T18:20:00Z');
+const liveDay = (i) => new Date(liveNow - i * 86400000).toISOString().slice(0, 10);
+const pinnedIds = Object.keys(parseDyadExport(''));
+const emptyBucket = () => ({ total: 0, conflict: 0, intensity: 0, toneSum: 0, toneCount: 0 });
+function liveSnapshot(hourIntensity) {
+  const days = {};
+  for (let i = 0; i <= 90; i++) {
+    const pairs = Object.fromEntries(pinnedIds.map(id => [id, emptyBucket()]));
+    pairs.usa_russia = { total: 30, conflict: 24, intensity: 100, toneSum: 0, toneCount: 30 };
+    days[liveDay(i)] = { cohorts: i === 0 ? 73 : 96, pairs };
+    if (i > 8) continue;
+    days[liveDay(i)].hours = {};
+    for (let h = 0; h < (i === 0 ? 19 : 24); h++) {
+      const hh = String(h).padStart(2, '0');
+      days[liveDay(i)].hours[hh] = { cohorts: i === 0 && h === 18 ? 1 : 4,
+        pairs: { usa_russia: [1, hourIntensity(i, h)] } };
+    }
+  }
+  return { cursor: '20261024180000', days };
+}
+const usaRussia = (snapshot) => scoreDyads(snapshot, liveNow).tensionPairs.find(pair => pair.id === 'usa_russia');
+
+test('a surge today moves the score and the 24-hour change before the day completes', () => {
+  // Every completed day reads 100; today's hours through 17:00 read 1000 each.
+  const pair = usaRussia(liveSnapshot((i, h) => (i === 0 ? 1000 : 100 / 24)));
+  assert.equal(pair.score, 100, 'the 168-hour mean is above every daily value');
+  assert.equal(pair.trend, 'TREND_DIRECTION_RISING');
+  // Last 24 h: today 00-17 (18 × 1000) + yesterday 18-23 (6 × 100/24) = 18025,
+  // against a previous 7-day daily mean of 100.
+  assert.equal(pair.changePercent, 17925);
+});
+
+test('the hour in progress waits; the window ends at the last complete hour', () => {
+  // 18:00 has only its first cohort, so a value there must not count.
+  const snapshot = liveSnapshot((i, h) => (i === 0 && h === 18 ? 1e9 : 100 / 24));
+  const pair = usaRussia(snapshot);
+  assert.equal(pair.trend, 'TREND_DIRECTION_STABLE');
+  assert.equal(pair.changePercent, 0);
+  snapshot.cursor = '20261024174500';
+  assert.equal(usaRussia(snapshot).changePercent, 0, 'the :45 cohort completes its own hour');
+});
+
+test('any unusable hour falls the pair back to completed days, never a partial number', () => {
+  const missing = liveSnapshot((i) => (i === 0 ? 1000 : 100 / 24));
+  delete missing.days[liveDay(3)].hours['05'];
+  const daily = usaRussia(missing);
+  assert.equal(daily.score, 50, 'seven days of 100 among ninety of 100');
+  assert.equal(daily.changePercent, 0);
+  const partial = liveSnapshot((i) => (i === 0 ? 1000 : 100 / 24));
+  partial.days[liveDay(1)].hours['12'].cohorts = 3;
+  assert.equal(usaRussia(partial).score, 50);
+  const newPair = liveSnapshot((i) => (i === 0 ? 1000 : 100 / 24));
+  delete newPair.days[liveDay(0)].pairs.usa_russia;
+  assert.equal(usaRussia(newPair).score, 50, 'a day without the pair bucket is not read hourly');
+});
+
+test('the live merge fills hours, never completes one it joined late, and prunes old hours', () => {
+  const previous = { cursor: '20261024171500', days: {
+    [liveDay(0)]: { cohorts: 70, pairs: Object.fromEntries(pinnedIds.map(id => [id, emptyBucket()])) },
+    [liveDay(9)]: { cohorts: 96, pairs: {}, hours: { '00': { cohorts: 4, pairs: {} } } },
+  } };
+  const batches = ['20261024173000', '20261024174500', '20261024180000', '20261024181500', '20261024183000', '20261024184500']
+    .map(timestamp => ({ timestamp, dyads: parseDyadExport(row('USA', 'RUS', 4, 2, -5)) }));
+  const merged = mergeDyadBuckets(previous, batches, Date.parse('2026-10-24T18:50:00Z'));
+  const hours = merged.days[liveDay(0)].hours;
+  assert.equal(hours['17'].cohorts, 2, 'joined at :30, so 17:00 stays incomplete');
+  assert.deepEqual(hours['18'], { cohorts: 4, pairs: { usa_russia: [4, 40] } });
+  assert.equal(merged.days[liveDay(9)].hours, undefined, 'hours older than the window are dropped');
+});
+
+test('a recent day without complete hours is rebuilt with them; an older day is not', () => {
+  const day = (date) => rebuildDyadDay(date, cohortBatches(date));
+  const now = repairNow;
+  const snapshot = { cursor: '20260928171500', days: {} };
+  for (let i = 1; i <= 90; i++) snapshot.days[dayOf(i)] = day(dayOf(i));
+  assert.equal(Object.keys(snapshot.days[dayOf(1)].hours).length, 24);
+  assert.equal(planDyadRepair(snapshot, now, 90).length, 0);
+  delete snapshot.days[dayOf(2)].hours;
+  delete snapshot.days[dayOf(10)].hours;
+  assert.deepEqual(planDyadRepair(snapshot, now, 90), [dayOf(2)]);
+  snapshot.days[dayOf(20)].cohorts = 95;
+  const replaced = replaceDyadDays(snapshot, { [dayOf(2)]: day(dayOf(2)), [dayOf(20)]: day(dayOf(20)) }, now);
+  assert.equal(Object.keys(replaced.days[dayOf(2)].hours).length, 24);
+  assert.equal(replaced.days[dayOf(20)].hours, undefined, 'an older rebuilt day keeps no hours');
 });

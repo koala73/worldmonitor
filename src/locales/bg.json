@@ -1087,7 +1087,8 @@
       "skipToEnd": "Към края"
     },
     "pizzint": {
-      "indexSource": "Индекс: World Monitor · данни за заведенията:",
+      "indexSource": "Индекс: World Monitor",
+      "venueSource": "данни за заведенията:",
       "statusNormal": "НОРМАЛНО",
       "statusNoData": "НЯМА ДАННИ",
       "statusNoBaseline": "НЯМА БАЗОВО НИВО",
@@ -1301,7 +1302,8 @@
         "radiationSpike": "Пик на радиация",
         "radiationElevated": "Повишена радиация",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Ограничения на въздушното пространство NOTAM"
       },
       "tooltip": {
         "earthquake": "Земетресение",
@@ -1416,7 +1418,8 @@
           "geoBoundaries": "Демилитаризирани зони, линии на примирие и спорни граници",
           "ciiChoropleth": "Тепловидна карта на Country Instability Index — оцветява страните по оценка (зелено=стабилна, червено=критична)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Временни ограничения на полетите и ограничено, опасно и забранено въздушно пространство от FAA NOTAM, действащи в момента или започващи в рамките на 24 часа"
         },
         "notes": {
           "timeAffects": "Засяга: Земетресения, Метеорология, Протести, Прекъсвания"
@@ -3053,7 +3056,9 @@
         "africa": "Африка"
       },
       "scheduled": "Запл.",
-      "estimated": "Оч."
+      "estimated": "Оч.",
+      "normalOperations": "НОРМАЛНО ФУНКЦИОНИРАНЕ",
+      "open": "ОТВОРЕНО"
     },
     "aircraft": {
       "altitude": "Височина",
@@ -3458,7 +3463,12 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "Венецуела криза",
       "yemen_houthis": "Йемен/Houthis"
-    }
+    },
+    "upcomingForecast": "Предстояща прогноза",
+    "currentForecast": "Текуща прогноза",
+    "expiredForecast": "Изтекла прогноза",
+    "validFrom": "Валидна от",
+    "validUntil": "Валидна до"
   },
   "signals": {
     "context": {

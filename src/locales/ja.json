@@ -1084,7 +1084,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "指数: World Monitor · 店舗データ:",
+      "indexSource": "指数: World Monitor",
+      "venueSource": "店舗データ:",
       "statusNormal": "通常",
       "statusNoData": "データなし",
       "statusNoBaseline": "基準なし",
@@ -1298,7 +1299,8 @@
         "radiationSpike": "放射線スパイク",
         "radiationElevated": "放射線上昇",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM飛行制限空域"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1413,7 +1415,8 @@
           "geoBoundaries": "非武装地帯、停戦ライン、係争境界線",
           "ciiChoropleth": "Country Instability Index ヒートマップ — スコア別に国をカラーリング(緑=安定、赤=深刻)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "FAA NOTAMの一時的飛行制限および制限空域、危険空域、禁止空域。現在有効、または24時間以内に開始予定"
         },
         "notes": {
           "timeAffects": "影響: 地震、気象、抗議活動、障害"
@@ -3033,7 +3036,9 @@
         "africa": "アフリカ"
       },
       "scheduled": "予定",
-      "estimated": "推定"
+      "estimated": "推定",
+      "normalOperations": "通常運用",
+      "open": "運用中"
     },
     "aircraft": {
       "altitude": "高度",
@@ -3438,7 +3443,12 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "ベネズエラ危機",
       "yemen_houthis": "イエメン/フーシ"
-    }
+    },
+    "upcomingForecast": "今後の予報",
+    "currentForecast": "現在有効な予報",
+    "expiredForecast": "期限切れの予報",
+    "validFrom": "有効開始",
+    "validUntil": "有効期限"
   },
   "signals": {
     "context": {

@@ -1229,7 +1229,8 @@
       "skipToEnd": "Ugrás a végére"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · helyadatok:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "helyadatok:",
       "statusNormal": "NORMÁL",
       "statusNoData": "NINCS ADAT",
       "statusNoBaseline": "NINCS VISZONYÍTÁSI ALAP",
@@ -1443,7 +1444,8 @@
         "speciesRecovery": "Fajmegmentés",
         "renewableInstallations": "Tiszta energia",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM légtéri korlátozások"
       },
       "tooltip": {
         "earthquake": "Földrengés",
@@ -1558,7 +1560,8 @@
           "geoBoundaries": "Demilitarizált zónák, tűzszünet vonalak és vitatott határok",
           "ciiChoropleth": "Ország Instabilitási Index hőtérkép — országokat pontszám szerint színez (zöld=stabil, piros=kritikus)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Ideiglenes repüléskorlátozások, valamint korlátozott, veszélyes és tiltott légtér az FAA NOTAM-jaiból, amely jelenleg érvényes vagy 24 órán belül kezdődik"
         },
         "notes": {
           "timeAffects": "Érintett: Földrengések, Időjárás, Tüntetések, Leállások"
@@ -3122,7 +3125,9 @@
         "apac": "Ázsia-Csendes-óceán",
         "mena": "Közel-Kelet",
         "africa": "Afrika"
-      }
+      },
+      "normalOperations": "NORMÁL ÜZEMELTETÉS",
+      "open": "NYITVA"
     },
     "aircraft": {
       "altitude": "Magasság",
@@ -3527,7 +3532,12 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "venezuelai válság",
       "yemen_houthis": "Jemen/Houthik"
-    }
+    },
+    "upcomingForecast": "Közelgő előrejelzés",
+    "currentForecast": "Jelenlegi előrejelzés",
+    "expiredForecast": "Lejárt előrejelzés",
+    "validFrom": "Érvényes ettől",
+    "validUntil": "Érvényes eddig"
   },
   "signals": {
     "context": {

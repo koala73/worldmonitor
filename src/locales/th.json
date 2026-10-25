@@ -1084,7 +1084,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "ดัชนี: World Monitor · ข้อมูลสถานที่:",
+      "indexSource": "ดัชนี: World Monitor",
+      "venueSource": "ข้อมูลสถานที่:",
       "statusNormal": "ปกติ",
       "statusNoData": "ไม่มีข้อมูล",
       "statusNoBaseline": "ไม่มีค่าฐาน",
@@ -1298,7 +1299,8 @@
         "radiationSpike": "การเพิ่มขึ้นของรังสี",
         "radiationElevated": "รังสีสูงขึ้น",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "ข้อจำกัดเขตอากาศ NOTAM"
       },
       "tooltip": {
         "earthquake": "แผ่นดินไหว",
@@ -1413,7 +1415,8 @@
           "geoBoundaries": "เขตปลอดทหาร แนวหยุดยิง และพรมแดนที่เป็นข้อพิพาท",
           "ciiChoropleth": "แผนความร้อน Country Instability Index — แสดงสีประเทศตามคะแนน (เขียว=เสถียร แดง=วิกฤต)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "การจำกัดการบินชั่วคราวและเขตอากาศที่จำกัด อันตราย และห้ามบินจาก FAA NOTAMs ที่มีผลบังคับใช้ในขณะนี้หรือเริ่มต้นภายใน 24 ชั่วโมง"
         },
         "notes": {
           "timeAffects": "ส่งผลต่อ: แผ่นดินไหว, สภาพอากาศ, การประท้วง, การหยุดชะงัก"
@@ -3033,7 +3036,9 @@
         "africa": "แอฟริกา"
       },
       "scheduled": "ตามกำหนด",
-      "estimated": "คาดการณ์"
+      "estimated": "คาดการณ์",
+      "normalOperations": "การบินปกติ",
+      "open": "เปิด"
     },
     "aircraft": {
       "altitude": "ระดับความสูง",
@@ -3438,7 +3443,12 @@
       "uae_ecsr": "สหรัฐอาหรับเอมิเรตส์/ECSR",
       "venezuela_crisis": "วิกฤตเวเนซุเอลา",
       "yemen_houthis": "เยเมน/ฮูตี"
-    }
+    },
+    "upcomingForecast": "พยากรณ์ล่วงหน้า",
+    "currentForecast": "พยากรณ์ที่มีผลในขณะนี้",
+    "expiredForecast": "พยากรณ์ที่หมดอายุ",
+    "validFrom": "มีผลตั้งแต่",
+    "validUntil": "มีผลถึง"
   },
   "signals": {
     "context": {

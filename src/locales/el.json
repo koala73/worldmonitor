@@ -1087,7 +1087,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Δείκτης: World Monitor · δεδομένα καταστημάτων:",
+      "indexSource": "Δείκτης: World Monitor",
+      "venueSource": "δεδομένα καταστημάτων:",
       "statusNormal": "ΚΑΝΟΝΙΚΟ",
       "statusNoData": "ΧΩΡΙΣ ΔΕΔΟΜΕΝΑ",
       "statusNoBaseline": "ΧΩΡΙΣ ΒΑΣΗ",
@@ -1301,7 +1302,8 @@
         "radiationSpike": "Αιχμή ραδιενέργειας",
         "radiationElevated": "Αυξημένη ραδιενέργεια",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Περιορισμοί Εναέριου Χώρου NOTAM"
       },
       "tooltip": {
         "earthquake": "Σεισμός",
@@ -1416,7 +1418,8 @@
           "geoBoundaries": "Αποστρατικοποιημένες ζώνες, γραμμές εκεχειρίας και αμφισβητούμενα σύνορα",
           "ciiChoropleth": "Θερμικός χάρτης Country Instability Index — χρώματα χώρες κατά βαθμό (πράσινο=σταθερή, κόκκινο=κρίσιμη)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Προσωρινοί περιορισμοί πτήσης και περιορισμένος, επικίνδυνος και απαγορευμένος εναέριος χώρος από FAA NOTAMs, σε ισχύ τώρα ή ξεκινώντας εντός 24 ωρών"
         },
         "notes": {
           "timeAffects": "Επηρεάζει: Σεισμούς, Καιρό, Διαμαρτυρίες, Διακοπές"
@@ -3053,7 +3056,9 @@
         "africa": "Αφρική"
       },
       "scheduled": "Προγρ.",
-      "estimated": "Εκτ."
+      "estimated": "Εκτ.",
+      "normalOperations": "ΚΑΝΟΝΙΚΗ ΛΕΙΤΟΥΡΓΙΑ",
+      "open": "ΑΝΟΙΚΤΟ"
     },
     "aircraft": {
       "altitude": "Υψόμετρο",
@@ -3458,7 +3463,12 @@
       "uae_ecsr": "ΗΑΕ/ECSR",
       "venezuela_crisis": "Κρίση Βενεζουέλας",
       "yemen_houthis": "Υεμένη/Χούθι"
-    }
+    },
+    "upcomingForecast": "Επερχόμενη πρόγνωση",
+    "currentForecast": "Τρέχουσα πρόγνωση",
+    "expiredForecast": "Ληγμένη πρόγνωση",
+    "validFrom": "Ισχύει από",
+    "validUntil": "Ισχύει έως"
   },
   "signals": {
     "context": {

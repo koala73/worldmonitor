@@ -457,6 +457,18 @@ async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> 
 }
 
 /**
+ * First-touch acquisition record for the checkout payload. Loaded on demand so
+ * the module stays out of the main chunk; any failure sends no attribution.
+ */
+async function loadAcquisitionForCheckout() {
+  try {
+    return (await import('../../shared/acquisition-source')).getFirstTouchAcquisitionForCheckout();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * High-level checkout entry point for UI code.
  *
  * Creates a checkout session via the /api/create-checkout edge endpoint
@@ -632,6 +644,7 @@ export async function startCheckout(
         discountCode: options?.discountCode,
         referralCode: effectiveReferral,
         attributionSource: options?.attributionSource,
+        acquisition: await loadAcquisitionForCheckout(),
         // #4438: only set when the user confirmed "start a new checkout anyway"
         // from the pending-payment dialog. Skips the backend pending guard.
         ...(options?.bypassPendingGuard ? { bypassPendingGuard: true } : {}),

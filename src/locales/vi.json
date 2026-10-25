@@ -1084,7 +1084,8 @@
       "skipToEnd": "Tới cuối"
     },
     "pizzint": {
-      "indexSource": "Chỉ số: World Monitor · dữ liệu địa điểm:",
+      "indexSource": "Chỉ số: World Monitor",
+      "venueSource": "dữ liệu địa điểm:",
       "statusNormal": "BÌNH THƯỜNG",
       "statusNoData": "KHÔNG CÓ DỮ LIỆU",
       "statusNoBaseline": "KHÔNG CÓ MỐC CHUẨN",
@@ -1298,7 +1299,8 @@
         "radiationSpike": "Đột tăng bức xạ",
         "radiationElevated": "Bức xạ tăng cao",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Hạn chế không phận NOTAM"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -1413,7 +1415,8 @@
           "geoBoundaries": "Khu phi quân sự, đường ngừng bắn và ranh giới tranh chấp",
           "ciiChoropleth": "Bản đồ nhiệt Chỉ số Bất ổn định Đất nước — tô màu các quốc gia theo điểm số (xanh=ổn định, đỏ=tới hạn)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Hạn chế bay tạm thời và không phận bị hạn chế, nguy hiểm và bị cấm từ NOTAM của FAA, có hiệu lực ngay bây giờ hoặc bắt đầu trong vòng 24 giờ"
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"
@@ -3033,7 +3036,9 @@
         "africa": "Châu Phi"
       },
       "scheduled": "Lịch",
-      "estimated": "Dự kiến"
+      "estimated": "Dự kiến",
+      "normalOperations": "HOẠT ĐỘNG BÌNH THƯỜNG",
+      "open": "MỞ CỬA"
     },
     "aircraft": {
       "altitude": "Độ cao",
@@ -3438,7 +3443,12 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "Khủng hoảng Venezuela",
       "yemen_houthis": "Yemen/Houthis"
-    }
+    },
+    "upcomingForecast": "Dự báo sắp tới",
+    "currentForecast": "Dự báo hiện hành",
+    "expiredForecast": "Dự báo hết hạn",
+    "validFrom": "Có hiệu lực từ",
+    "validUntil": "Có hiệu lực đến"
   },
   "signals": {
     "context": {

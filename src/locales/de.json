@@ -1143,7 +1143,8 @@
         "radiationSpike": "Strahlungsspitze",
         "radiationElevated": "Erhöhte Strahlung",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM-Luftraumbeschränkungen"
       },
       "layersTitle": "Ebenen",
       "layerSearch": "Ebenen suchen...",
@@ -1265,7 +1266,8 @@
           "geoBoundaries": "Entmilitarisierte Zonen, Waffenstillstandslinien und umstrittene Grenzen",
           "ciiChoropleth": "Länderinstabilitätsindex-Wärmekarte – färbt Länder nach Punktzahl (grün=stabil, rot=kritisch)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Temporäre Flugbeschränkungen und beschränkter, Gefahren- und verbotener Luftraum aus FAA-NOTAMs, derzeit gültig oder innerhalb von 24 Stunden beginnend"
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"
@@ -1321,7 +1323,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · Standortdaten:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "Standortdaten:",
       "statusNormal": "NORMAL",
       "statusNoData": "KEINE DATEN",
       "statusNoBaseline": "KEIN REFERENZWERT",
@@ -3052,7 +3055,9 @@
         "africa": "Afrika"
       },
       "scheduled": "Plan.",
-      "estimated": "Gesch."
+      "estimated": "Gesch.",
+      "normalOperations": "NORMALBETRIEB",
+      "open": "OFFEN"
     },
     "cyberThreat": {
       "title": "CYBERBEDROHUNG"
@@ -3458,7 +3463,12 @@
       "position": "Position",
       "ground": "Am Boden",
       "airborne": "In der Luft"
-    }
+    },
+    "upcomingForecast": "Künftige Vorhersage",
+    "currentForecast": "Aktuelle Vorhersage",
+    "expiredForecast": "Abgelaufene Vorhersage",
+    "validFrom": "Gültig ab",
+    "validUntil": "Gültig bis"
   },
   "signals": {
     "context": {

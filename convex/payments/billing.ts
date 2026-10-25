@@ -3946,6 +3946,16 @@ export const claimSubscription = mutation({
       await ctx.db.patch(payment._id, { userId: realUserId });
     }
 
+    // Funnel rows follow the buyer so account deletion (by_user) finds them;
+    // `anonymous` stays true because it records how the checkout started.
+    const checkoutSessions = await ctx.db
+      .query("checkoutSessionEvents")
+      .withIndex("by_user", (q) => q.eq("userId", args.anonId))
+      .take(100);
+    for (const session of checkoutSessions) {
+      await ctx.db.patch(session._id, { userId: realUserId });
+    }
+
     await recomputeEntitlementFromAllSubs(ctx, realUserId, recomputeTimestamp);
     const recomputedEntitlement = await ctx.db
       .query("entitlements")

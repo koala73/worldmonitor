@@ -604,7 +604,8 @@
         "radiationSpike": "Pico de radiação",
         "radiationElevated": "Radiação elevada",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Restrições de Espaço Aéreo NOTAM"
       },
       "layersTitle": "Camadas",
       "layerSearch": "Pesquisar camadas...",
@@ -726,7 +727,8 @@
           "geoBoundaries": "Zonas desmilitarizadas, linhas de cessar-fogo e fronteiras disputadas",
           "ciiChoropleth": "Mapa de calor do Índice de Instabilidade do País — colore os países por pontuação (verde=estável, vermelho=crítico)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Restrições temporárias de voo e espaço aéreo restrito, perigoso e proibido dos NOTAMs da FAA, em vigência agora ou começando nas próximas 24 horas"
         },
         "notes": {
           "timeAffects": "Afeta: terremotos, clima, protestos, interrupções"
@@ -782,7 +784,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Índice: World Monitor · dados dos locais:",
+      "indexSource": "Índice: World Monitor",
+      "venueSource": "dados dos locais:",
       "statusNormal": "NORMAL",
       "statusNoData": "SEM DADOS",
       "statusNoBaseline": "SEM REFERÊNCIA",
@@ -2686,7 +2689,9 @@
         "africa": "África"
       },
       "scheduled": "Prog",
-      "estimated": "Est"
+      "estimated": "Est",
+      "normalOperations": "OPERAÇÕES NORMAIS",
+      "open": "ABERTO"
     },
     "cyberThreat": {
       "title": "CIBERAMEAÇA"
@@ -3092,7 +3097,12 @@
       "position": "Posição",
       "ground": "No solo",
       "airborne": "Em voo"
-    }
+    },
+    "upcomingForecast": "Previsão futura",
+    "currentForecast": "Previsão vigente",
+    "expiredForecast": "Previsão expirada",
+    "validFrom": "Válida a partir de",
+    "validUntil": "Válida até"
   },
   "signals": {
     "context": {

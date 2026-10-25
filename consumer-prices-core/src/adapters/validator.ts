@@ -46,6 +46,7 @@ export interface ValidatorInput {
   canonicalName: string;
   productName: string | undefined;
   sizeText: string | undefined;
+  marketCode?: string;
   item: Pick<BasketItem, 'baseUnit' | 'minBaseQty' | 'maxBaseQty' | 'negativeTokens'>;
 }
 
@@ -135,6 +136,7 @@ function findNonFoodIndicator(productName: string): string | null {
 function evaluateSizeWindow(
   sizeText: string | undefined,
   item: ValidatorInput['item'],
+  marketCode: string | undefined,
 ): { status: SizeWindowStatus; baseQty: number | null; baseUnit: string | null } {
   // `absent` = nothing to verify (no window configured, or no sizeText at all).
   // `unverified` = a size was present but we declined or failed to judge it
@@ -143,7 +145,7 @@ function evaluateSizeWindow(
   const absent = { status: 'absent' as const, baseQty: null, baseUnit: null };
   if (item.minBaseQty == null && item.maxBaseQty == null) return absent;
   if (!sizeText) return absent;
-  const parsed = parseSize(sizeText);
+  const parsed = parseSize(sizeText, marketCode ? { baseUnit: item.baseUnit, marketCode } : undefined);
   if (!parsed) return { status: 'unverified', baseQty: null, baseUnit: null };
 
   const min = item.minBaseQty ?? 0;
@@ -203,7 +205,7 @@ export function validateSearchHit(input: ValidatorInput): ValidatorResult {
   const overlapFloor = 0.4;
   if (overlap < overlapFloor) reasons.push(`low-token-overlap:${overlap.toFixed(2)}`);
 
-  const sizeEval = evaluateSizeWindow(input.sizeText, input.item);
+  const sizeEval = evaluateSizeWindow(input.sizeText, input.item, input.marketCode);
   signals.sizeWindow = sizeEval.status;
   signals.extractedBaseQty = sizeEval.baseQty;
   signals.extractedBaseUnit = sizeEval.baseUnit;

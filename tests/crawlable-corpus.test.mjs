@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 import { brotliCompressSync, constants as zlibConstants } from 'node:zlib';
 
 import { Window } from 'happy-dom';
@@ -40,6 +40,7 @@ import {
   countryMetaDescription,
   COUNTRY_PAGE_CONTENT_VERSION,
   CRISIS_PAGE_CONTENT_VERSION,
+  CRISIS_TRACKED_BY,
   DATASET_SCHEMA_CONTENT_VERSION,
   datasetObservationCoverage,
   datasetTemporalCoverage,
@@ -54,6 +55,8 @@ import {
   hasObservedValue,
   laterDate,
   loadCorpusData,
+  normalizeCrisisEditorial,
+  renderCrisisCountryReadings,
   MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS,
   MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS,
   assertLivePulseMovementClaim,
@@ -77,6 +80,7 @@ import {
   chokepointEvidenceNarrative,
   MAX_FUTURE_SKEW_MS,
   MAX_LIVE_SNAPSHOT_AGE_MS,
+  chokepointOfficialMetrics,
 } from '../scripts/crawlable-live-tools.mjs';
 import {
   CHOKEPOINT_CONTENT,
@@ -92,7 +96,10 @@ import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 import { buildLlmsFullText } from '../scripts/build-llms-full.mjs';
 import { htmlToMarkdown } from '../api/_md-url-twin.ts';
 import {
+  auditCorpusFamily,
   auditMicrostateCorpusSimilarity,
+  CORPUS_FAMILY_LIMITS,
+  corpusFamilyViolations,
   maskedSentences,
   wordShingles,
 } from '../scripts/audit-microstate-corpus-similarity.mjs';
@@ -106,6 +113,7 @@ import { LIVE_TOPIC_PAGES } from '../scripts/live-pages/index.mjs';
 import { RELATED_READING_PATH } from '../scripts/related-reading.mjs';
 import { MAX_RELATED_COUNTRIES } from '../scripts/country-related-links.mjs';
 import { ACCURACY_CONTENT_VERSION } from '../scripts/build-accuracy-page.mjs';
+import { SITUATION_CONTENT_VERSION, SITUATION_PAGE_INPUT_PATHS } from '../scripts/build-situation-page.mjs';
 import { COMPARISONS_CONTENT_VERSION } from '../scripts/build-comparison-pages.mjs';
 import { shiftLivePulseDates } from './helpers/shift-live-pulse-dates.mjs';
 import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw-catalog-providers.mjs';
@@ -120,6 +128,26 @@ async function corpusDataForRendering() {
   renderingFixture ??= loadCorpusData({ rootDir: repoRoot });
   return structuredClone(await renderingFixture);
 }
+
+// The default production build, shared by the tests that only read its output.
+// Tests that build a modified corpus or inject a snapshot still build their own.
+let defaultCorpusOutDir;
+let defaultCorpus;
+function defaultCorpusBuild() {
+  defaultCorpus ??= (async () => {
+    defaultCorpusOutDir = mkdtempSync(join(tmpdir(), 'wm-crawlable-corpus-'));
+    const manifest = await buildCorpus({
+      rootDir: repoRoot,
+      outDir: defaultCorpusOutDir,
+      baseUrl: 'https://www.worldmonitor.app',
+    });
+    return { outDir: defaultCorpusOutDir, manifest };
+  })();
+  return defaultCorpus;
+}
+after(() => {
+  if (defaultCorpusOutDir) rmSync(defaultCorpusOutDir, { recursive: true, force: true });
+});
 
 // data.sources keys whose files decide the related-country links on every
 // country page (scripts/country-related-links.mjs), so they move its lastmod.
@@ -244,9 +272,21 @@ function assertPulseFixtureShape(fixture, live) {
             disruptionScore: 'string', status: 'string', congestion: 'string|null',
             navigationalWarnings: 'string|null', navigationalWarningsAvailable: 'boolean',
             aisDisruptions: 'string|null', aisSnapshotAvailable: 'boolean', description: 'string|null',
-            todayTransits: 'string|null', todayCountsAvailable: 'boolean', weekMovement: 'string|null',
+            weekMovement: 'string|null',
             partial: 'boolean', asOf: 'string',
-          }, `chokepoints.${id}`);
+          }, `chokepoints.${id}`, {
+            // IMF PortWatch official figures; null is withheld. Optional only
+            // because freezes before they existed carry the legacy relay AIS
+            // count instead, which the page never renders. The freeze suite
+            // pins that a new capture carries the official fields.
+            officialLatestDate: 'string|null', officialLatestTotal: 'number|null', officialAvg7d: 'number|null',
+            baselineAvgDaily: 'number|null', baselineFrom: 'string|null', baselineTo: 'string|null',
+            todayTransits: 'string|null', todayCountsAvailable: 'boolean',
+          });
+          assert.ok(
+            'officialLatestTotal' in record || 'todayTransits' in record,
+            `chokepoints.${id} must carry either the PortWatch figures or the legacy relay count`,
+          );
         }
       }
       continue;
@@ -2211,89 +2251,75 @@ describe('crawlable corpus generator', () => {
   // in each body, so a `footerBody` override cannot drop it — assert it on the
   // families that do override, plus the whole corpus.
   it('renders a maintainer byline on every generated page (#7980)', async () => {
-    const outDir = mkdtempSync(join(tmpdir(), 'wm-corpus-byline-'));
-    try {
-      await buildCorpus({ rootDir: repoRoot, outDir, baseUrl: 'https://www.worldmonitor.app' });
-      const pages = readdirSync(outDir, { recursive: true })
-        .map(String)
-        .filter((path) => path.endsWith('.html'));
-      assert.ok(pages.length > 200, `expected the full corpus, saw ${pages.length} pages`);
-      for (const page of pages) {
-        const html = read(outDir, page);
-        assert.match(html, /<p class="byline">/, `${page} must render a byline`);
-        assert.match(html, /World Monitor research team/, `${page} must name who maintains it`);
-        assert.match(html, /href="\/docs\/corrections"/, `${page} byline must link the corrections log`);
-        // #8603: /docs is a 307 to /docs/documentation, so the byline must name
-        // a 200 methodology page instead of the docs root.
-        assert.match(html, /href="\/docs\/algorithms"/, `${page} byline must link a 200 methodology page`);
-        assert.doesNotMatch(html, /href="\/docs"/, `${page} must not link the /docs redirect`);
-      }
-      // The families that pass their own footerBody still carry it.
-      for (const page of ['use-cases/index.html', 'compare/index.html', 'sources/index.html']) {
-        assert.match(read(outDir, page), /<p class="byline">/, page);
-      }
-      // The CII hub is the page the issue named: a published 0-100 score.
-      assert.match(read(outDir, 'country-instability-index/index.html'), /<p class="byline">/);
-    } finally {
-      rmSync(outDir, { recursive: true, force: true });
+    const { outDir } = await defaultCorpusBuild();
+    const pages = readdirSync(outDir, { recursive: true })
+      .map(String)
+      .filter((path) => path.endsWith('.html'));
+    assert.ok(pages.length > 200, `expected the full corpus, saw ${pages.length} pages`);
+    for (const page of pages) {
+      const html = read(outDir, page);
+      assert.match(html, /<p class="byline">/, `${page} must render a byline`);
+      assert.match(html, /World Monitor research team/, `${page} must name who maintains it`);
+      assert.match(html, /href="\/docs\/corrections"/, `${page} byline must link the corrections log`);
+      // #8603: /docs is a 307 to /docs/documentation, so the byline must name
+      // a 200 methodology page instead of the docs root.
+      assert.match(html, /href="\/docs\/algorithms"/, `${page} byline must link a 200 methodology page`);
+      assert.doesNotMatch(html, /href="\/docs"/, `${page} must not link the /docs redirect`);
     }
+    // The families that pass their own footerBody still carry it.
+    for (const page of ['use-cases/index.html', 'compare/index.html', 'sources/index.html']) {
+      assert.match(read(outDir, page), /<p class="byline">/, page);
+    }
+    // The CII hub is the page the issue named: a published 0-100 score.
+    assert.match(read(outDir, 'country-instability-index/index.html'), /<p class="byline">/);
   });
 
   it('names tracker and reference sources in reader terms, keeping repo paths as provenance attributes', async () => {
-    const outDir = mkdtempSync(join(tmpdir(), 'wm-source-lines-'));
-    try {
-      await buildCorpus({ rootDir: repoRoot, outDir, baseUrl: 'https://www.worldmonitor.app' });
-      const visibleText = (html) => html
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, ' ')
-        .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ');
-      for (const [page, expected] of [
-        ['chokepoints/index.html', /Sources: World Monitor weekly pulse snapshot and World Monitor chokepoint registry/],
-        ['chokepoints/index.html', /Baseline source: U\.S\. EIA World Oil Transit Chokepoints \(2023\)/],
-        ['crises/index.html', /Scope source:\s+World Monitor crisis registry/],
-        ['chokepoints/strait-of-hormuz/index.html', /World Monitor chokepoint registry and trade-route reference/],
-        ['crises/red-sea-security/index.html', /World Monitor weekly pulse snapshot/],
-        ['tools/signal-convergence/index.html', /World Monitor weekly pulse snapshot/],
-      ]) {
-        const html = read(outDir, page);
-        const text = visibleText(html);
-        assert.doesNotMatch(text, /docs\/snapshots\/|src\/config\/|crawlable-live-pulse|shared\/[\w-]+\.json|scripts\/[\w-]+\.mjs/, `${page} shows a repository path to readers`);
-        assert.match(text, expected, `${page} names its source in reader terms`);
-        assert.match(html, /data-snapshot-source="(?:docs\/snapshots\/|src\/config\/|shared\/|scripts\/)[^"]+"/, `${page} keeps the repo path as provenance`);
-      }
-      const repoPath = /docs\/[\w./-]+|CHANGELOG\.md/;
-      for (const [page, expected, provenance] of [
-        ['accuracy/index.html', /Source: World Monitor forecast scorecard snapshot/, /data-snapshot-source="docs\/snapshots\/[^"]+"/],
-        ['research/strait-of-hormuz-transit-report-2026-07/index.html', /Snapshot: World Monitor chokepoint transit snapshot, retrieved \d{4}-\d{2}-\d{2}\./, /data-snapshot-source="docs\/snapshots\/[^"]+"/],
-        ['tools/signal-convergence/index.html', /Cited from the\s+Geographic Convergence Detection methodology/, /data-snapshot-source="docs\/geographic-convergence\.mdx"/],
-        ['reference/changelog/index.html', /Source: World Monitor release notes/, /data-snapshot-source="CHANGELOG\.md"/],
-      ]) {
-        const html = read(outDir, page);
-        // Release notes legitimately name repository files, so judge only the
-        // page's own framing: the lede and every source line.
-        const framing = [...html.matchAll(/<p class="(?:lede|source)"[^>]*>[\s\S]*?<\/p>/g)]
-          .map((match) => visibleText(match[0])).join(' ');
-        assert.doesNotMatch(framing, repoPath, `${page} shows a repository path to readers`);
-        assert.match(framing, expected, `${page} names its source in reader terms`);
-        assert.match(html, provenance, `${page} keeps the repo path as provenance`);
-      }
-    } finally {
-      rmSync(outDir, { recursive: true, force: true });
+    const { outDir } = await defaultCorpusBuild();
+    const visibleText = (html) => html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ');
+    for (const [page, expected] of [
+      ['chokepoints/index.html', /Sources: World Monitor weekly pulse snapshot and World Monitor chokepoint registry/],
+      ['chokepoints/index.html', /Baseline source: U\.S\. EIA World Oil Transit Chokepoints \(2023\)/],
+      ['crises/index.html', /Scope source:\s+World Monitor crisis registry/],
+      ['chokepoints/strait-of-hormuz/index.html', /World Monitor chokepoint registry and trade-route reference/],
+      ['crises/red-sea-security/index.html', /World Monitor weekly pulse snapshot/],
+      ['tools/signal-convergence/index.html', /World Monitor weekly pulse snapshot/],
+    ]) {
+      const html = read(outDir, page);
+      const text = visibleText(html);
+      assert.doesNotMatch(text, /docs\/snapshots\/|src\/config\/|crawlable-live-pulse|shared\/[\w-]+\.json|scripts\/[\w-]+\.mjs/, `${page} shows a repository path to readers`);
+      assert.match(text, expected, `${page} names its source in reader terms`);
+      assert.match(html, /data-snapshot-source="(?:docs\/snapshots\/|src\/config\/|shared\/|scripts\/)[^"]+"/, `${page} keeps the repo path as provenance`);
+    }
+    const repoPath = /docs\/[\w./-]+|CHANGELOG\.md/;
+    for (const [page, expected, provenance] of [
+      ['accuracy/index.html', /Source: World Monitor forecast scorecard snapshot/, /data-snapshot-source="docs\/snapshots\/[^"]+"/],
+      ['research/strait-of-hormuz-transit-report-2026-07/index.html', /Snapshot: World Monitor chokepoint transit snapshot, retrieved \d{4}-\d{2}-\d{2}\./, /data-snapshot-source="docs\/snapshots\/[^"]+"/],
+      ['tools/signal-convergence/index.html', /Cited from the\s+Geographic Convergence Detection methodology/, /data-snapshot-source="docs\/geographic-convergence\.mdx"/],
+      ['reference/changelog/index.html', /Source: World Monitor release notes/, /data-snapshot-source="CHANGELOG\.md"/],
+    ]) {
+      const html = read(outDir, page);
+      // Release notes legitimately name repository files, so judge only the
+      // page's own framing: the lede and every source line.
+      const framing = [...html.matchAll(/<p class="(?:lede|source)"[^>]*>[\s\S]*?<\/p>/g)]
+        .map((match) => visibleText(match[0])).join(' ');
+      assert.doesNotMatch(framing, repoPath, `${page} shows a repository path to readers`);
+      assert.match(framing, expected, `${page} names its source in reader terms`);
+      assert.match(html, provenance, `${page} keeps the repo path as provenance`);
     }
   });
 
   it('builds a non-trivial static corpus with canonical raw HTML pages', async () => {
-    const outDir = mkdtempSync(join(tmpdir(), 'wm-crawlable-corpus-'));
-    try {
+    const { outDir, manifest } = await defaultCorpusBuild();
+    // A plain block keeps the body's indentation, and its blame, unchanged.
+    {
       const clock = await loadCorpusData({ rootDir: repoRoot });
       const countriesLastmod = clock.lastmod.countries;
       const ciiCountriesLastmod = clock.lastmod.ciiCountries;
       const ciiIndexLastmod = clock.lastmod.countryInstabilityIndex;
-      const manifest = await buildCorpus({
-        rootDir: repoRoot,
-        outDir,
-        baseUrl: 'https://www.worldmonitor.app',
-      });
 
       assert.equal(manifest.sections.countries.count, 196);
       assert.equal(manifest.sections.countryInstabilityIndex.count, 1);
@@ -2308,6 +2334,8 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.research.count, 1);
       assert.equal(manifest.sections.useCases.count, 3);
       assert.equal(manifest.sections.accuracy.count, 1);
+      assert.equal(manifest.sections.situation.count, 1);
+      assert.equal(manifest.sections.situation.index, '/monitor-the-situation/');
   assert.equal(manifest.sections.comparisons.count, 13);
       assert.equal(manifest.sections.sources.count, manifest.sections.sources.routes.length + 1);
       assert.ok(manifest.sections.sources.routes.length > 1);
@@ -2350,6 +2378,8 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.coverage.routes,
         manifest.sections.accuracy.index,
         ...manifest.sections.accuracy.routes,
+        manifest.sections.situation.index,
+        ...manifest.sections.situation.routes,
         manifest.sections.comparisons.index,
         ...manifest.sections.comparisons.routes,
         manifest.sections.changelog.index,
@@ -2765,6 +2795,7 @@ describe('crawlable corpus generator', () => {
         'sources/index.html',
         'accuracy/index.html',
         'accuracy/scorecard.json',
+        'monitor-the-situation/index.html',
         'crawlable-corpus.json',
       ]) {
         assert.ok(existsSync(join(outDir, path)), `missing generated file ${path}`);
@@ -4166,13 +4197,13 @@ describe('crawlable corpus generator', () => {
       )?.acceptedAnswer?.text;
       assert.match(
         sparseMetricsAnswer,
-        /The daily transit count and PortWatch week-over-week movement each depend on their own source availability/,
-        'the hub FAQ must describe transit-count and PortWatch movement availability independently',
+        /The latest daily transit count, its 7-day average and the week-over-week movement are IMF PortWatch figures and are withheld together when PortWatch has no history for the waterway; the year-earlier comparison is omitted when no baseline was stored/,
+        'the hub FAQ must describe the PortWatch figures as one source and the baseline comparison as separately omittable',
       );
       assert.doesNotMatch(
         sparseMetricsAnswer,
-        /every transit-derived value[^.]+is withheld when the day's transit count is unavailable/,
-        'the hub FAQ must not claim PortWatch movement depends on the daily transit count',
+        /each depend on their own source availability|either can appear without the other/,
+        'the hub FAQ must not describe the daily count and the movement as independent sources now that both are PortWatch',
       );
       assert.match(
         sparseMetricsAnswer,
@@ -4554,7 +4585,7 @@ describe('crawlable corpus generator', () => {
       );
       assert.match(
         hormuzDriver,
-        /Observed score inputs: .+\. Context only \(not score inputs\): AIS event count (?:\(.+\)|unavailable); transit count (?:\(.+\)|unavailable)\.$/,
+        /Observed score inputs: .+\. Context only \(not score inputs\): AIS event count (?:\(.+\)|unavailable); IMF PortWatch latest daily count (?:\(.+\)|unavailable)\.$/,
       );
       assert.doesNotMatch(hormuz, /data-chokepoint-status-mapping/);
       assert.ok(hormuz.includes(liveScriptTag), 'chokepoint live script must match the production CSP nonce');
@@ -4564,41 +4595,47 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(hormuz, /data-chokepoint-band>Loading/);
       assert.match(hormuz, /<time data-live-updated datetime="20\d{2}-\d{2}-\d{2}T/);
       assert.match(hormuz, /data-chokepoint-score>\d/);
-      // #7457: a frozen pulse once stored todayTransits "0" with a non-zero
-      // WoW for Hormuz. That 0 is an AIS-window zero-fill, not a measurement,
-      // so the page withholds the count. Which branch Hormuz is on follows the
-      // committed pulse (#9115); the per-chokepoint loop below holds every
-      // page to its own flags.
+      // The page headlines the IMF PortWatch official daily count (2026-10-22:
+      // the relay's AIS zone-exit count reached the page as "38 transits"
+      // against PortWatch's 4). Which branch Hormuz is on follows the committed
+      // pulse; a freeze from before the fields existed withholds the figures.
+      // The per-chokepoint loop below holds every page to its own record.
       const hormuzDocument = htmlDocument(
         hormuz,
         'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/',
       );
-      const hormuzTransitsNote = hormuzDocument.querySelector('[data-chokepoint-transits-note]');
       // The generator's own publish-or-withhold rule and label formatting.
-      const hormuzTransitsLabel = chokepointCoverageMetrics({
-        todayTransits: hormuzPulse.todayTransits,
-        todayCountsAvailable: hormuzPulse.todayCountsAvailable,
-      }).todayTransits;
-      if (hormuzTransitsLabel != null) {
-        assert.ok(hormuz.includes(`data-chokepoint-transits>${hormuzTransitsLabel}<`), `Hormuz must publish its count ${hormuzTransitsLabel}`);
-        assert.doesNotMatch(hormuz, /World Monitor is not currently publishing a transit count for Strait of Hormuz/);
-        assert.equal(hormuzTransitsNote.hidden, true, 'a published count carries no withhold note');
+      const hormuzOfficial = chokepointOfficialMetrics(hormuzPulse);
+      if (hormuzOfficial.latestTransits != null) {
+        assert.ok(
+          hormuz.includes(`data-chokepoint-official-transits>${hormuzOfficial.latestTransits}</span><small data-chokepoint-official-date>${hormuzOfficial.latestDate}<`),
+          `Hormuz must publish the official count ${hormuzOfficial.latestTransits} with its date`,
+        );
+        assert.ok(hormuz.includes(`data-chokepoint-official-average>${hormuzOfficial.average}<`));
+        assert.match(hormuz, /IMF PortWatch counted \d[\d,]* transits? (?:through the Strait of Hormuz )?on /);
       } else {
-        assert.match(hormuz, /data-chokepoint-transits>—/);
+        assert.match(hormuz, /data-chokepoint-official-transits>—</);
         assert.doesNotMatch(
           hormuz,
-          /data-chokepoint-transits>0</,
-          'absent-feed chokepoint must not render a numeric 0 transit count',
+          /data-chokepoint-official-transits>0</,
+          'a chokepoint without a published PortWatch day must not render a numeric 0',
         );
-        assert.match(
-          hormuz,
-          /World Monitor is not currently publishing a transit count for Strait of Hormuz for this period/,
-        );
-        assert.match(hormuzTransitsNote.textContent,
-          /Not measured here in this snapshot.*matched AIS entry and exit reports/);
+        assert.match(hormuz, /data-chokepoint-official-average>—</);
+        assert.match(hormuz, /No IMF PortWatch daily transit count is published for this snapshot/);
       }
-      assert.match(hormuzDocument.querySelector('[data-live-chokepoint]').dataset.transitMeasurementNote,
-        /Historical PortWatch totals/);
+      assert.match(hormuz, /Daily transit counts are official IMF PortWatch figures/, 'the source is attributed by name');
+      assert.doesNotMatch(
+        hormuz,
+        /Today's transits|data-chokepoint-transits\b|data-transit-measurement-note|observed transit count|not currently publishing a transit count|Transit counts require observed AIS crossings/,
+        'the relay AIS count and its framing must not reach the page',
+      );
+      if (hormuzPulse.todayTransits != null) {
+        assert.doesNotMatch(
+          hormuz,
+          new RegExp(`>\\s*${String(hormuzPulse.todayTransits).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*<`),
+          'a legacy relay count in the frozen record must not be rendered',
+        );
+      }
       // Visibility follows the pulse's availability flags, not a fixed
       // expectation. This asserted `hidden === true` unconditionally, which was
       // only true while the committed snapshot predated the #7535 flags; the
@@ -4632,12 +4669,7 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(
         hormuz,
         /AIS-derived feed has no data/,
-        'the withhold note must not name AIS -- dataAvailable is PortWatch presence, so the count can be withheld while AIS is healthy',
-      );
-      assert.doesNotMatch(
-        hormuz,
-        /data-chokepoint-transits>0[\s\S]{0,400}data-chokepoint-movement>\+12\.9%/,
-        'a page cannot show 0 transits and a non-zero WoW change together',
+        'the withhold wording must not name AIS -- dataAvailable is PortWatch presence, so the count can be withheld while AIS is healthy',
       );
       // Operator-facing review-hygiene text must never reach crawlable HTML.
       assert.doesNotMatch(
@@ -4846,8 +4878,9 @@ describe('crawlable corpus generator', () => {
         );
         const document = htmlDocument(page, `https://www.worldmonitor.app/chokepoints/${meta.slug}/`);
         const passageText = document.querySelector('[data-chokepoint-open-status]')?.textContent ?? '';
-        const asOfText = passageText.match(/^As of (.*), (?:source coverage|the observed transit count)/)?.[1];
+        const asOfText = passageText.match(/^As of (.*), (?:source coverage|IMF PortWatch counted|no IMF PortWatch daily transit count)/)?.[1];
         assert.ok(asOfText, `${meta.name} passage evidence must carry an as-of timestamp`);
+        const official = chokepointOfficialMetrics(pulse);
         const expectedNarrative = chokepointEvidenceNarrative({
           displayName: meta.name,
           score: pulse.disruptionScore,
@@ -4855,7 +4888,7 @@ describe('crawlable corpus generator', () => {
           description: pulse.description,
           asOfText,
           partial: pulse.partial === true
-            || pulse.todayTransits == null
+            || official.latestTransits == null
             || pulse.navigationalWarningsAvailable !== true
             || pulse.aisSnapshotAvailable !== true,
           warningsLabel: pulse.navigationalWarningsAvailable === true
@@ -4863,7 +4896,12 @@ describe('crawlable corpus generator', () => {
             : null,
           congestionLabel: pulse.aisSnapshotAvailable === true ? pulse.congestion : null,
           aisEventCountLabel: pulse.aisSnapshotAvailable === true ? pulse.aisDisruptions : null,
-          todayTransits: pulse.todayTransits,
+          officialLatestDate: pulse.officialLatestDate,
+          officialLatestTotal: pulse.officialLatestTotal,
+          officialAvg7d: pulse.officialAvg7d,
+          baselineAvgDaily: pulse.baselineAvgDaily,
+          baselineFrom: pulse.baselineFrom,
+          baselineTo: pulse.baselineTo,
         });
         assert.equal(passageText, expectedNarrative.passage, `${meta.name} must use the shared passage policy`);
         assert.equal(
@@ -4874,8 +4912,13 @@ describe('crawlable corpus generator', () => {
         if (expectedNarrative.passage.includes('source coverage')) {
           assert.match(passageText, /cannot verify operational passage status/);
         } else {
-          assert.match(passageText, /observed transit count/);
+          assert.match(passageText, /IMF PortWatch counted \d/);
           assert.match(passageText, /does not verify unrestricted passage or operational closure/);
+        }
+        if (official.baselineShare !== null) {
+          assert.match(passageText, new RegExp(`${official.baselineShare} of the ${official.baselineAverage}-a-day average for `));
+        } else {
+          assert.doesNotMatch(passageText, /a-day average for/, `${meta.name} must not invent a baseline comparison`);
         }
         assert.doesNotMatch(
           passageText,
@@ -4899,37 +4942,42 @@ describe('crawlable corpus generator', () => {
           /Configured geopolitical baseline: Traffic down/,
           `${meta.name} must not quote the transit anomaly as the threat baseline`,
         );
-        const raw = Number(String(pulse.todayTransits ?? '').replace(/,/g, ''));
-        const noteRe = new RegExp(
-          `World Monitor is not currently publishing a transit count for ${meta.name} for this period`,
-        );
-        const countsAvailable = pulse.todayCountsAvailable ?? (Number.isFinite(raw) && raw >= 1);
-        if (countsAvailable && (raw === 0 || raw >= 1)) {
+        const withheldRe = /No IMF PortWatch daily transit count is published for this snapshot/;
+        if (official.latestTransits != null) {
           publishedCounts++;
-          assert.match(
-            page,
-            new RegExp(`data-chokepoint-transits>${pulse.todayTransits}<`),
-            `${meta.name} has a supplied count of ${pulse.todayTransits} and must publish it`,
+          assert.ok(
+            page.includes(`data-chokepoint-official-transits>${official.latestTransits}</span><small data-chokepoint-official-date>${official.latestDate}<`),
+            `${meta.name} has a published PortWatch day of ${official.latestTransits} and must publish it with its date`,
           );
-          assert.doesNotMatch(page, noteRe, `${meta.name} publishes a count and must not carry the withhold note`);
+          assert.ok(
+            page.includes(`data-chokepoint-official-average>${official.average ?? '—'}<`),
+            `${meta.name} must render the 7-day average exactly as the shared formatter does`,
+          );
+          assert.doesNotMatch(page, withheldRe, `${meta.name} publishes a count and must not carry the withhold sentence`);
           assert.ok(
             page.includes(`data-chokepoint-movement>${pulse.weekMovement ?? 'Unavailable'}<`),
-            `${meta.name} has a supplied count and must keep week movement visible`,
+            `${meta.name} has a published count and must keep week movement visible`,
           );
         } else {
           withheldCounts++;
-          assert.match(page, /data-chokepoint-transits>—/);
+          assert.match(page, /data-chokepoint-official-transits>—</);
           assert.doesNotMatch(
             page,
-            /data-chokepoint-transits>0</,
-            `${meta.name} must not render a numeric 0 for an unsupplied transit count`,
+            /data-chokepoint-official-transits>0</,
+            `${meta.name} must not render a numeric 0 for an unpublished PortWatch day`,
           );
+          assert.match(page, /data-chokepoint-official-average>—</);
           assert.ok(
             page.includes(`data-chokepoint-movement>${pulse.weekMovement ?? '—'}<`),
-            `${meta.name} must keep week movement independent from today's count`,
+            `${meta.name} must keep week movement independent from the latest day`,
           );
-          assert.match(page, noteRe);
+          assert.match(page, withheldRe);
         }
+        assert.doesNotMatch(
+          page,
+          /Today's transits|data-chokepoint-transits\b|observed transit count|not currently publishing a transit count/,
+          `${meta.name} must not present the relay AIS count as transits`,
+        );
         const pageDocument = htmlDocument(page, `https://www.worldmonitor.app/chokepoints/${meta.slug}/`);
         // Each source governs only its own tile, and the tile is hidden exactly
         // when that source is unavailable. This asserted `hidden === true`
@@ -5470,8 +5518,6 @@ describe('crawlable corpus generator', () => {
       );
       assert.match(changelogPage2, /<link rel="prev" href="https:\/\/www\.worldmonitor\.app\/reference\/changelog\/">/);
       assert.match(changelogPage2, /name="robots" content="noindex, follow"/);
-    } finally {
-      rmSync(outDir, { recursive: true, force: true });
     }
   });
 
@@ -5849,15 +5895,29 @@ describe('live-pulse snapshot injection (#7533)', () => {
     const fixture = JSON.parse(readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH), 'utf8'));
     const live = structuredClone(fixture);
     const record = Object.values(live.chokepoints)[0];
-    for (const field of ['todayTransits', 'description', 'congestion', 'navigationalWarnings', 'aisDisruptions', 'weekMovement']) {
+    for (const field of [
+      'officialLatestDate', 'officialLatestTotal', 'officialAvg7d', 'baselineAvgDaily', 'baselineFrom', 'baselineTo',
+      'description', 'congestion', 'navigationalWarnings', 'aisDisruptions', 'weekMovement',
+    ]) {
       record[field] = null;
     }
-    record.todayCountsAvailable = false;
     record.navigationalWarningsAvailable = false;
     record.aisSnapshotAvailable = false;
     record.partial = true;
     assert.doesNotThrow(() => assertPulseFixtureShape(fixture, live));
-    delete record.todayTransits;
+    delete record.weekMovement;
+    assert.throws(() => assertPulseFixtureShape(fixture, live), /nested shape/);
+    record.weekMovement = null;
+    // A legacy record carries the relay count instead of the official figures;
+    // one with neither is not a chokepoint pulse at all.
+    for (const field of ['officialLatestDate', 'officialLatestTotal', 'officialAvg7d', 'baselineAvgDaily', 'baselineFrom', 'baselineTo']) {
+      delete record[field];
+    }
+    assert.throws(() => assertPulseFixtureShape(fixture, live), /either the PortWatch figures or the legacy relay count/);
+    record.todayTransits = null;
+    record.todayCountsAvailable = false;
+    assert.doesNotThrow(() => assertPulseFixtureShape(fixture, live));
+    record.officialLatestTotal = '4';
     assert.throws(() => assertPulseFixtureShape(fixture, live), /nested shape/);
   });
 
@@ -5888,6 +5948,8 @@ describe('live-pulse snapshot injection (#7533)', () => {
         CRISIS_PAGE_CONTENT_VERSION,
         COMPARISONS_CONTENT_VERSION,
         ACCURACY_CONTENT_VERSION,
+        SITUATION_CONTENT_VERSION,
+        ...SITUATION_PAGE_INPUT_PATHS.map((path) => gitFileLastmod(repoRoot, path)),
         ...COMPARISON_PAGE_LASTMOD_PATHS.map((path) => gitFileLastmod(repoRoot, path)),
       ].filter(Boolean).sort().at(-1);
       const pulseDate = !latestOther || latestOther < today ? today : dayAfter(latestOther);
@@ -5956,8 +6018,11 @@ describe('live-pulse snapshot injection (#7533)', () => {
           ['crises', [
             laterDate(
               gitFileLastmod(repoRoot, data.sources.crisisRegistry),
+              gitFileLastmod(repoRoot, data.sources.crisisEditorial),
               gitFileLastmod(repoRoot, RELATED_READING_PATH),
               pulseDate,
+              data.resilience.capturedAt,
+              ...data.crises.map((crisis) => crisis.editorial.lastReviewed),
               CRISIS_PAGE_CONTENT_VERSION,
             ),
             'crises/index.html',
@@ -6012,6 +6077,15 @@ describe('live-pulse snapshot injection (#7533)', () => {
               pulseDate,
             ),
             pageFor(manifest.sections.accuracy.index),
+          ]],
+          ['situation', [
+            laterDate(
+              SITUATION_CONTENT_VERSION,
+              ...data.sources.situationInputs.map((path) => gitFileLastmod(repoRoot, path)),
+              gitFileLastmod(repoRoot, data.sources.crisisRegistry),
+              pulseDate,
+            ),
+            pageFor(manifest.sections.situation.index),
           ]],
           ['sources', [
             sourcePageLastmod({
@@ -6132,7 +6206,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
   // #7533-allowlist: 2026-01-02 x12 2026-01-05 x1 2026-01-09 x1 2026-01-15 x10 — laterDate unit pins, synthetic resolver-test snapshots, committed pulse fixture date (test-owned)
   // #7533-allowlist: 2026-01-01 x2 2026-01-31 x2 — datasetTemporalCoverage observation-interval range fixture
   // #7533-allowlist: 2025-05-28 x2 2026-02-14 x4 — shiftLivePulseDates unit-test fixtures (derived from 2026-01-15 +-30/232d)
-  // #7533-allowlist: 2026-02-03 x2 2026-02-30 x1 2026-02-31 x1 — laterDate unit pin; invalid-calendar CII/chokepoint timestamp fixtures
+  // #7533-allowlist: 2026-02-03 x2 2026-02-30 x2 2026-02-31 x1 2001-02-29 x1 — laterDate unit pin; invalid-calendar CII/chokepoint timestamp and crisis-editorial date fixtures
   // #7533-allowlist: 2026-03-04 x6 2026-03-14 x2 2026-04-09 x1 2026-05-01 x2 — laterDate unit pin; resolveChokepointObservation fallback constants
   // #7533-allowlist: 2026-05-28 x2 — datasetTemporalCoverage pure-function fixture
   // #7533-allowlist: 2026-06-01 x2 2026-07-28 x3 — synthetic git-commit and sitemap stub dates
@@ -6401,7 +6475,35 @@ describe('country recent developments', () => {
   });
 
   it('applies the publish rules to the committed snapshot at load time', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    // The freeze already applies these rules, so the committed rows pass them
+    // with or without the loader. Break two briefs in a copy of the committed
+    // snapshot, or this test stays green when the loader stops applying them.
+    const committedPath = resolveLatestLivePulseSnapshotPath(repoRoot);
+    const snapshot = JSON.parse(read(repoRoot, committedPath));
+    const [markdownCode, thinCode] = Object.entries(snapshot.countries)
+      .filter(([, row]) => row.developments?.brief?.sources?.length >= 2)
+      .map(([code]) => code);
+    assert.ok(markdownCode && thinCode, 'the committed snapshot carries two multi-source briefs');
+    const markdownBrief = snapshot.countries[markdownCode].developments.brief;
+    markdownBrief.text = markdownBrief.text.replace(/^(\S+)/, '**$1**');
+    const thinBrief = snapshot.countries[thinCode].developments.brief;
+    thinBrief.sources = thinBrief.sources.slice(0, 1);
+    thinBrief.text = thinBrief.text.replace(/\[\d+\]/g, '[1]');
+    const dir = mkdtempSync(join(tmpdir(), 'wm-pulse-publish-rules-'));
+    const snapshotPath = join(dir, committedPath.split('/').pop());
+    writeFileSync(snapshotPath, JSON.stringify(snapshot));
+    let data;
+    try {
+      data = await loadCorpusData({ rootDir: repoRoot, livePulseSnapshotPath: snapshotPath });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    const markdownRow = data.livePulse.countries[markdownCode].developments;
+    assert.ok(markdownRow.brief, `${markdownCode} keeps its brief once the markdown is stripped`);
+    assert.ok(!markdownRow.brief.text.includes('**'), `${markdownCode} brief still carries markdown`);
+    const thinRow = data.livePulse.countries[thinCode].developments;
+    assert.equal(thinRow.brief, null, `${thinCode} publishes a brief off one source`);
+    assert.equal(thinRow.briefSkipped, 'thin-grounding');
     const rows = Object.entries(data.livePulse.countries)
       .map(([code, row]) => [code, row.developments])
       .filter(([, developments]) => developments && typeof developments === 'object');
@@ -7892,7 +7994,10 @@ describe('chokepoint disruption-score methodology', () => {
       warningsLabel: '2 warnings',
       congestionLabel: 'High',
       aisEventCountLabel: '3 AIS disruptions',
-      todayTransits: '6',
+      // Derived, not a literal: this file's calendar-date guard (#7533) only
+      // admits dates taken from the loaded clock or documented in an allowlist.
+      officialLatestDate: new Date(Date.UTC(2026, 7, 31)).toISOString().slice(0, 10),
+      officialLatestTotal: 6,
     });
     for (const { id } of CHOKEPOINT_SCORE_INPUTS) {
       assert.match(
@@ -7950,4 +8055,177 @@ it('retains API country-name aliases through the final country page renderer', a
     assert.ok(html.includes(`${name} announces new trade rules while its travel advisory is Exercise Increased Caution. [1][E1]`));
     assert.ok(!html.includes('<h3>Situation now</h3>'), 'Recent developments already lists the situation');
   }
+});
+
+describe('crisis tracker editorial (#8605)', () => {
+  const registry = JSON.parse(readFileSync(join(repoRoot, 'shared/crawlable-crises.json'), 'utf8'));
+  const editorial = JSON.parse(readFileSync(join(repoRoot, 'scripts/data/crisis-editorial.json'), 'utf8'));
+  const crises = registry.map((crisis) => ({ slug: crisis.slug }));
+  const withEntry = (slug, patch) => editorial.map((entry) => (entry.slug === slug ? patch(structuredClone(entry)) : entry));
+  const first = editorial[0].slug;
+
+  it('accepts the committed editorial for every registry crisis', () => {
+    const bySlug = normalizeCrisisEditorial(editorial, crises);
+    assert.deepEqual([...bySlug.keys()].sort(), registry.map((crisis) => crisis.slug).sort());
+  });
+
+  it('fails the build when a crisis loses its editorial entry', () => {
+    assert.throws(
+      () => normalizeCrisisEditorial(editorial.filter((entry) => entry.slug !== first), crises),
+      new RegExp(`Crisis editorial missing for ${first}`),
+    );
+  });
+
+  it('requires a source URL on every timeline milestone', () => {
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        delete entry.timeline[0].sourceUrl;
+        return entry;
+      }), crises),
+      /timeline 1 needs a valid source URL/,
+    );
+  });
+
+  it('rejects Wikipedia, plain-http and unsourced background citations', () => {
+    for (const [sourceUrls, message] of [
+      [['https://en.wikipedia.org/wiki/Example'], /cites Wikipedia/],
+      [['http://reliefweb.int/report'], /source must use https/],
+      [[], /background paragraph without a source/],
+    ]) {
+      assert.throws(
+        () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+          entry.background[0].sourceUrls = sourceUrls;
+          return entry;
+        }), crises),
+        message,
+      );
+    }
+  });
+
+  it('rejects impossible calendar days in review and timeline dates', () => {
+    // Date.parse rolls 2026-02-30 over to March 2 instead of failing.
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        entry.lastReviewed = '2026-02-30';
+        return entry;
+      }), crises),
+      /needs an ISO lastReviewed date/,
+    );
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        entry.timeline[0].date = '2001-02-29';
+        return entry;
+      }), crises),
+      /timeline 1 needs a YYYY-MM or YYYY-MM-DD date/,
+    );
+    assert.doesNotThrow(() => normalizeCrisisEditorial(withEntry(first, (entry) => {
+      entry.timeline[0].date = entry.timeline[0].date.slice(0, 7);
+      return entry;
+    }), crises));
+  });
+
+  it('rejects an out-of-order timeline and a watch item naming no real dashboard view', () => {
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        entry.timeline.reverse();
+        return entry;
+      }), crises),
+      /timeline must be in chronological order/,
+    );
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        entry.whatToWatch[0].trackedBy = 'Crystal Ball';
+        return entry;
+      }), crises),
+      /names an unknown dashboard surface: Crystal Ball/,
+    );
+    // A static reference layer cannot show the change an indicator asks for.
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        entry.whatToWatch[0].trackedBy = 'Conflict Zones';
+        return entry;
+      }), crises),
+      /names an unknown dashboard surface: Conflict Zones/,
+    );
+  });
+
+  it('names only panels and layers that exist in the dashboard config', () => {
+    const panels = readFileSync(join(repoRoot, 'src/config/panels.ts'), 'utf8');
+    const layers = readFileSync(join(repoRoot, 'src/config/map-layer-definitions.ts'), 'utf8');
+    for (const [name, kind] of CRISIS_TRACKED_BY) {
+      const quoted = `'${name}'`;
+      assert.ok((kind === 'panel' ? panels : layers).includes(quoted), `${kind} ${name} must exist in the dashboard config`);
+    }
+  });
+
+  it('renders every crisis page past 700 main-text words with family overlap under 0.30', async () => {
+    const { outDir } = await defaultCorpusBuild();
+    const audit = auditCorpusFamily({ corpusDir: outDir, family: 'crises' });
+    assert.equal(audit.pageCount, registry.length);
+    assert.deepEqual(CORPUS_FAMILY_LIMITS.crises, { minWords: 700, maxMeanJaccard: 0.3 });
+    assert.deepEqual(corpusFamilyViolations(audit), []);
+  });
+
+  it('flags thin or converging family pages and refuses to check a family with no limits', () => {
+    const pages = [{ route: '/crises/a/', words: 650 }, { route: '/crises/b/', words: 900 }];
+    assert.deepEqual(corpusFamilyViolations({ family: 'crises', pages, meanPairwiseJaccard: 0.31 }), [
+      '/crises/a/ has 650 main-text words; the floor is 700',
+      'crises mean pairwise 5-shingle overlap is 0.310; the ceiling is 0.3',
+    ]);
+    assert.throws(
+      () => corpusFamilyViolations({ family: 'blog', pages, meanPairwiseJaccard: 0 }),
+      /No --check limits are defined for the blog family/,
+    );
+  });
+
+  it('rejects a family page too short to form a 5-word shingle', () => {
+    const corpusDir = mkdtempSync(join(tmpdir(), 'wm-family-audit-'));
+    try {
+      for (const [slug, body] of [['a', 'Four words only here.'], ['b', 'Another page with plenty of words for one shingle.']]) {
+        mkdirSync(join(corpusDir, 'crises', slug), { recursive: true });
+        writeFileSync(join(corpusDir, 'crises', slug, 'index.html'), `<!doctype html><html><body><main>${body}</main></body></html>`);
+      }
+      assert.throws(
+        () => auditCorpusFamily({ corpusDir, family: 'crises' }),
+        /\/crises\/a\/ must contain enough <main> content for a 5-word shingle/,
+      );
+    } finally {
+      rmSync(corpusDir, { recursive: true, force: true });
+    }
+  });
+
+  it('agrees the verb and drops "highest" when one of several countries has a CII reading', () => {
+    const crisis = { coverage: [{ code: 'YE', name: 'Yemen' }, { code: 'DJ', name: 'Djibouti' }, { code: 'ER', name: 'Eritrea' }] };
+    const html = renderCrisisCountryReadings({
+      crisis,
+      countryByCode: new Map(),
+      ciiByCode: new Map([['YE', { score: 81, band: 'Critical', trend: 'Rising +2' }]]),
+      rankedCount: 170,
+    });
+    assert.match(html, /Only Yemen, of the 3 covered countries, has a Country Instability Index reading: 81 \(Critical\)\./);
+    assert.doesNotMatch(html, /1 of the 3 covered countries have|The highest is/);
+  });
+
+  it('cites each milestone and the review date on the rendered page', async () => {
+    const { outDir } = await defaultCorpusBuild();
+    for (const entry of editorial) {
+      const window = new Window();
+      try {
+        window.document.write(read(outDir, `crises/${entry.slug}/index.html`));
+        const items = [...window.document.querySelectorAll('main [data-crisis-timeline] li')];
+        assert.equal(items.length, entry.timeline.length, `${entry.slug} renders every milestone`);
+        items.forEach((item, index) => {
+          assert.equal(item.querySelector('a')?.getAttribute('href'), new URL(entry.timeline[index].sourceUrl).href);
+        });
+        assert.equal(
+          window.document.querySelector('main [data-crisis-reviewed] time')?.getAttribute('datetime'),
+          entry.lastReviewed,
+        );
+        const readings = window.document.querySelectorAll('main [data-crisis-readings] tbody tr');
+        assert.equal(readings.length, registry.find((crisis) => crisis.slug === entry.slug).coverage.length);
+      } finally {
+        window.close();
+      }
+    }
+  });
 });

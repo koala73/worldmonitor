@@ -1090,7 +1090,8 @@
       "skipToEnd": "Treci la final"
     },
     "pizzint": {
-      "indexSource": "Indice: World Monitor · date despre localuri:",
+      "indexSource": "Indice: World Monitor",
+      "venueSource": "date despre localuri:",
       "statusNormal": "NORMAL",
       "statusNoData": "FĂRĂ DATE",
       "statusNoBaseline": "FĂRĂ REFERINȚĂ",
@@ -1304,7 +1305,8 @@
         "radiationSpike": "Vârf de radiații",
         "radiationElevated": "Radiații ridicate",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Restricții de spațiu aerian NOTAM"
       },
       "tooltip": {
         "earthquake": "Cutremur",
@@ -1419,7 +1421,8 @@
           "geoBoundaries": "Zone demilitarizate, linii de încetare a focului și granițe disputate",
           "ciiChoropleth": "Hartă termică a Indicelui de instabilitate la nivel de țară — colorează țările după scor (verde=stabil, roșu=critic)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Restricții temporare de zbor și spațiu aerian restricționat, de pericol și interzis din NOTAM-urile FAA, în vigoare acum sau începând în următoarele 24 de ore"
         },
         "notes": {
           "timeAffects": "Afectează: cutremure, vreme, proteste, întreruperi"
@@ -3073,7 +3076,9 @@
         "africa": "Africa"
       },
       "scheduled": "Programat",
-      "estimated": "Est"
+      "estimated": "Est",
+      "normalOperations": "OPERAȚIUNI NORMALE",
+      "open": "DESCHIS"
     },
     "aircraft": {
       "altitude": "Altitudine",
@@ -3478,7 +3483,12 @@
       "uae_ecsr": "EAU/ECSR",
       "venezuela_crisis": "Criza din Venezuela",
       "yemen_houthis": "Yemen/Houthi"
-    }
+    },
+    "upcomingForecast": "Prognoză viitoare",
+    "currentForecast": "Prognoză actuală",
+    "expiredForecast": "Prognoză expirată",
+    "validFrom": "Valabilă de la",
+    "validUntil": "Valabilă până la"
   },
   "signals": {
     "context": {

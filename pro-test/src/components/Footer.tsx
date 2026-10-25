@@ -18,16 +18,16 @@ export const Footer = () => (
         <a href="/chokepoints/" className="hover:text-wm-text transition-colors">Chokepoints</a>
         <a href="/crises/" className="hover:text-wm-text transition-colors">Crises</a>
         <a href="/tools/" className="hover:text-wm-text transition-colors">Tools</a>
-        <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
-        <a href="https://www.worldmonitor.app/docs/documentation" className="hover:text-wm-text transition-colors">Docs</a>
+        <a href="/blog/" className="hover:text-wm-text transition-colors">Blog</a>
+        <a href="/docs/documentation" className="hover:text-wm-text transition-colors">Docs</a>
         <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
         <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
-        <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
+        <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X (Twitter)</a>
       </div>
       {/* The visible byline backs the welcome page's JSON-LD `author` (#7459a). */}
       <span className="text-xs text-wm-muted mt-4 md:mt-0" suppressHydrationWarning>
         &copy; {new Date().getFullYear()} WorldMonitor · Built by{' '}
-        <a href="https://www.worldmonitor.app/blog/authors/elie-habib/" className="hover:text-wm-text transition-colors">Elie Habib</a>
+        <a href="/blog/authors/elie-habib/" className="hover:text-wm-text transition-colors">Elie Habib</a>
       </span>
     </div>
     <PressFooterNav />

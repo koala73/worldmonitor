@@ -603,7 +603,8 @@
         "radiationSpike": "Stralingspiek",
         "radiationElevated": "Verhoogde straling",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM-luchtruimbeperkingen"
       },
       "layersTitle": "Lagen",
       "layerSearch": "Lagen zoeken...",
@@ -725,7 +726,8 @@
           "geoBoundaries": "Gedemilitariseerde zones, staakt-het-vuren-lijnen en betwiste grenzen",
           "ciiChoropleth": "Country Instability Index heatmap — landen ingekleurd naar score (groen=stabiel, rood=kritiek)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Tijdelijke vliegbeperkingen en beperkt, gevaar- en verboden luchtruim van FAA NOTAMs, nu van kracht of binnen 24 uur van start"
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"
@@ -781,7 +783,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · locatiegegevens:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "locatiegegevens:",
       "statusNormal": "NORMAAL",
       "statusNoData": "GEEN GEGEVENS",
       "statusNoBaseline": "GEEN REFERENTIE",
@@ -2668,7 +2671,9 @@
         "africa": "Afrika"
       },
       "scheduled": "Ingepland",
-      "estimated": "Geschat"
+      "estimated": "Geschat",
+      "normalOperations": "NORMALE OPERATIES",
+      "open": "OPEN"
     },
     "cyberThreat": {
       "title": "CYBERDREIGING"
@@ -3074,7 +3079,12 @@
       "position": "Positie",
       "ground": "Op de grond",
       "airborne": "In de lucht"
-    }
+    },
+    "upcomingForecast": "Komende verwachting",
+    "currentForecast": "Actuele verwachting",
+    "expiredForecast": "Verlopen verwachting",
+    "validFrom": "Geldig vanaf",
+    "validUntil": "Geldig tot"
   },
   "signals": {
     "context": {

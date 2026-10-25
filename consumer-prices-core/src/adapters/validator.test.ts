@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { validateSearchHit, AUTO_MATCH_THRESHOLD } from './validator.js';
 import type { BasketItem } from '../config/types.js';
+import { loadBasketConfig } from '../config/loader.js';
 
 const item = (over: Partial<BasketItem> = {}): BasketItem => ({
   id: 'x',
@@ -9,6 +10,43 @@ const item = (over: Partial<BasketItem> = {}): BasketItem => ({
   weight: 0.1,
   baseUnit: 'g',
   ...over,
+});
+
+describe('retained basket quantity context', () => {
+  const eggs = loadBasketConfig('essentials_ae').items.find(i => i.id === 'eggs_12')!;
+  const milk = loadBasketConfig('essentials_gb').items.find(i => i.id === 'milk_1l')!;
+
+  it.each([
+    { item: eggs, marketCode: 'ae', sizeText: '12 Pack', productName: 'Eggs Fresh 12 Pack', quantity: 12 },
+    { item: milk, marketCode: 'gb', sizeText: '2 Pint', productName: 'Morrisons British Semi Skimmed Milk 2 Pint', quantity: 1136.5225 },
+  ])('verifies explicit retained $sizeText using basket and market context', fixture => {
+    const r = validateSearchHit({ ...fixture, canonicalName: fixture.item.canonicalName });
+    expect(r.ok).toBe(true);
+    expect(r.score).toBe(1);
+    expect(r.signals.sizeWindow).toBe('pass');
+    expect(r.signals.extractedBaseQty).toBeCloseTo(fixture.quantity);
+  });
+
+  it('does not choose GB pint conversion without GB context', () => {
+    for (const marketCode of [undefined, 'us', 'ae']) {
+      const r = validateSearchHit({ canonicalName: milk.canonicalName, productName: 'Morrisons British Semi Skimmed Milk 2 Pint', sizeText: '2 Pint', item: milk, marketCode });
+      expect(r.signals.sizeWindow).toBe('unverified');
+      expect(r.score).toBeLessThan(AUTO_MATCH_THRESHOLD);
+    }
+  });
+
+  it('does not infer item count from plural packages', () => {
+    const r = validateSearchHit({ canonicalName: eggs.canonicalName, productName: 'Eggs Fresh 12 Packs', sizeText: '12 Packs', item: eggs, marketCode: 'ae' });
+    expect(r.signals.sizeWindow).toBe('unverified');
+    expect(r.signals.extractedBaseQty).toBeNull();
+    expect(r.score).toBeLessThan(AUTO_MATCH_THRESHOLD);
+  });
+
+  it('keeps class rejection when a count quantity can be normalized', () => {
+    const r = validateSearchHit({ canonicalName: eggs.canonicalName, productName: 'Eggs Fresh 12 Pack seeds', sizeText: '12 Pack', item: eggs, marketCode: 'ae' });
+    expect(r.ok).toBe(false);
+    expect(r.signals.nonFoodIndicatorHit).toBe('seeds');
+  });
 });
 
 describe('validateSearchHit — known bad log examples', () => {

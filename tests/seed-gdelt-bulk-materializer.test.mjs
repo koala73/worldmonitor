@@ -456,7 +456,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     });
     assert.equal(result._dyads.cursor, '20260730120000');
     assert.equal(result._dyads.days['2026-07-30'].cohorts, 1);
-    assert.equal(result._dyads.insufficientPairs.length, 4);
+    assert.equal(result._dyads.insufficientPairs.length, 5);
     assert.deepEqual(
       result._state.recentGkgBatches.flatMap((batch) =>
         batch.records.map((record) => record.id)),
@@ -1168,7 +1168,13 @@ describe('dyad health activation', () => {
 describe('dyad history repair', async () => {
   const { repairCountryEventsHistory, repairDyadHistory } = await import('../scripts/seed-gdelt-bulk-materializer.mjs');
   const { dyadDayExportTimestamps } = await import('../scripts/_gdelt-dyad-tension.mjs');
+  const { default: tensionPairs } = await import('../scripts/shared/gdelt-tension-pairs.json', { with: { type: 'json' } });
   const repairNow = Date.parse('2026-09-28T17:30:00Z');
+  // A complete day holds all 96 cohorts, a bucket for every configured pair, and
+  // (read only inside the hourly window) 24 complete hours.
+  const completeDay = () => ({ cohorts: 96, pairs: Object.fromEntries(tensionPairs
+    .map(pair => [pair.id, { total: 0, conflict: 0, intensity: 0, toneSum: 0, toneCount: 0 }])),
+  hours: Object.fromEntries(Array.from({ length: 24 }, (_, h) => [String(h).padStart(2, '0'), { cohorts: 4, pairs: {} }])) });
   const live = { cursor: '20260928171500', days: {} };
 
   // A manifest tail and the files it names. `count` trims a day's cohorts to
@@ -1285,7 +1291,7 @@ describe('dyad history repair', async () => {
     let seen;
     const recovered = await tick(async ({ snapshot }) => {
       seen = snapshot.repairFailures;
-      return { days: { '2026-07-29': { cohorts: 96, pairs: {} } }, outcomes: { repaired: 1 } };
+      return { days: { '2026-07-29': completeDay() }, outcomes: { repaired: 1 } };
     }, failed._dyads);
     assert.deepEqual(seen, failed._dyads.repairFailures, 'the next tick plans against the stored failures');
     assert.equal(recovered._dyads.repairFailures, undefined);
@@ -1364,7 +1370,7 @@ describe('dyad history repair', async () => {
 
   it('does not repair a day the manifest tail does not reach', async () => {
     const source = repairSource(['2026-09-27']);
-    const snapshot = { ...live, days: { '2026-09-27': { cohorts: 96, pairs: {} } } };
+    const snapshot = { ...live, days: { '2026-09-27': completeDay() } };
     const result = await repairDyadHistory({ snapshot, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 1 });
     assert.deepEqual(result.days, {});
     assert.deepEqual(result.outcomes, { manifest_short: 1 }, '2026-09-26 predates the tail');
@@ -1373,7 +1379,7 @@ describe('dyad history repair', async () => {
 
   it('does nothing, not even the manifest read, when history is complete', async () => {
     const days = {};
-    for (let i = 1; i <= 90; i++) days[new Date(repairNow - i * 86_400_000).toISOString().slice(0, 10)] = { cohorts: 96, pairs: {} };
+    for (let i = 1; i <= 90; i++) days[new Date(repairNow - i * 86_400_000).toISOString().slice(0, 10)] = completeDay();
     const source = repairSource([]);
     const result = await repairDyadHistory({ snapshot: { ...live, days }, nowMs: repairNow, fetchImpl: source.fetchImpl });
     assert.deepEqual(result, { days: {}, outcomes: {}, failures: {} });
@@ -1406,7 +1412,7 @@ describe('dyad history repair', async () => {
   it('keeps the days a repair finished before its budget ran out', async () => {
     const stalled = await liveTick({
       _repairDyadHistory: ({ into }) => {
-        into['2026-07-29'] = { cohorts: 96, pairs: {} };
+        into['2026-07-29'] = completeDay();
         return new Promise(() => {});
       },
       _dyadRepairBudgetMs: 20,
@@ -1419,7 +1425,7 @@ describe('dyad history repair', async () => {
     const result = await liveTick({
       _repairDyadHistory: async ({ snapshot }) => {
         seen = snapshot;
-        return { days: { '2026-07-29': { cohorts: 96, pairs: {} } }, outcomes: { repaired: 1 } };
+        return { days: { '2026-07-29': completeDay() }, outcomes: { repaired: 1 } };
       },
     });
     assert.equal(seen.cursor, '20260730120000', 'repair plans against the post-merge cursor');
@@ -1436,14 +1442,14 @@ describe('dyad history repair', async () => {
     await liveTick({ _repairDyadHistory: noDyadRepair, _repairCountryEventsHistory: countryRepair });
     await liveTick({
       _repairDyadHistory: async ({ into }) => {
-        into['2026-07-29'] = { cohorts: 96, pairs: {} };
+        into['2026-07-29'] = completeDay();
         return { days: into, outcomes: { repaired: 1 }, failures: {} };
       },
       _repairCountryEventsHistory: countryRepair,
     });
     await liveTick({
       _repairDyadHistory: async ({ into, failures }) => {
-        into['2026-07-29'] = { cohorts: 96, pairs: {} };
+        into['2026-07-29'] = completeDay();
         failures['2026-07-28'] = 1;
         return { days: into, outcomes: { repaired: 1, verify_failed: 1 }, failures };
       },

@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import http, { createServer, request as httpRequest } from 'node:http';
 import https from 'node:https';
-import { createHmac } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { EventEmitter } from 'node:events';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -1206,10 +1205,8 @@ test('preserves POST body when cloud fallback is triggered after local non-OK re
   }
 });
 
-test('signs desktop register-interest cloud fallback when shared secret is configured', async () => {
-  const originalSecret = process.env.WM_DESKTOP_SHARED_SECRET;
+test('forwards desktop register-interest to the cloud RPC without legacy signature headers', async () => {
   const originalConvex = process.env.CONVEX_URL;
-  process.env.WM_DESKTOP_SHARED_SECRET = 'desktop-test-secret';
   delete process.env.CONVEX_URL;
 
   const remote = await setupRegisterInterestRemote();
@@ -1228,10 +1225,9 @@ test('signs desktop register-interest cloud fallback when shared secret is confi
       email: 'desktop@example.com',
       source: 'web-form',
       appVersion: '2.8.0',
+      turnstileToken: 'desktop-turnstile-token',
     }, {
       'Content-Encoding': 'gzip',
-      'X-WorldMonitor-Desktop-Timestamp': '1',
-      'X-WorldMonitor-Desktop-Signature': 'sha256=bad',
     });
     assert.equal(response.status, 200);
     assert.equal(remote.requests.length, 1);
@@ -1239,33 +1235,15 @@ test('signs desktop register-interest cloud fallback when shared secret is confi
     const request = remote.requests[0];
     assert.equal(request.path, '/api/leads/v1/register-interest');
     assert.equal(request.json.source, 'desktop-settings');
-    const timestamp = request.headers['x-worldmonitor-desktop-timestamp'];
-    const signature = request.headers['x-worldmonitor-desktop-signature'];
+    assert.equal(request.json.turnstileToken, 'desktop-turnstile-token');
     assert.equal(request.headers['content-encoding'], undefined);
     assert.match(request.headers['user-agent'], /Chrome\/131\.0\.0\.0/);
-    assert.match(timestamp, /^\d+$/);
-    assert.match(signature, /^sha256=[a-f0-9]{64}$/);
-    assert.notEqual(timestamp, '1');
-    assert.notEqual(signature, 'sha256=bad');
-
-    const canonical = JSON.stringify({
-      email: 'desktop@example.com',
-      source: 'desktop-settings',
-      appVersion: '2.8.0',
-      referredBy: '',
-      website: '',
-      turnstileToken: '',
-    });
-    const expected = `sha256=${createHmac('sha256', process.env.WM_DESKTOP_SHARED_SECRET)
-      .update(`${timestamp}\n${canonical}`)
-      .digest('hex')}`;
-    assert.equal(signature, expected);
+    const legacyHeaders = Object.keys(request.headers).filter((name) => name.startsWith('x-worldmonitor-desktop-'));
+    assert.deepEqual(legacyHeaders, []);
   } finally {
     await app.close();
     await localApi.cleanup();
     await remote.close();
-    if (originalSecret === undefined) delete process.env.WM_DESKTOP_SHARED_SECRET;
-    else process.env.WM_DESKTOP_SHARED_SECRET = originalSecret;
     if (originalConvex === undefined) delete process.env.CONVEX_URL;
     else process.env.CONVEX_URL = originalConvex;
   }
@@ -2668,36 +2646,6 @@ test('accepts OLLAMA_MODEL via /api/local-env-update', async () => {
   }
 });
 
-test('accepts WM_DESKTOP_SHARED_SECRET via /api/local-env-update', async () => {
-  const originalSecret = process.env.WM_DESKTOP_SHARED_SECRET;
-  const localApi = await setupApiDir({});
-
-  const app = await createLocalApiServer({
-    port: 0,
-    apiDir: localApi.apiDir,
-    logger: { log() { }, warn() { }, error() { } },
-  });
-  const { port } = await app.start();
-
-  try {
-    const response = await authFetch(`http://127.0.0.1:${port}/api/local-env-update`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: 'WM_DESKTOP_SHARED_SECRET', value: 'desktop-secret-from-runtime' }),
-    });
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.ok, true);
-    assert.equal(body.key, 'WM_DESKTOP_SHARED_SECRET');
-    assert.equal(process.env.WM_DESKTOP_SHARED_SECRET, 'desktop-secret-from-runtime');
-  } finally {
-    if (originalSecret === undefined) delete process.env.WM_DESKTOP_SHARED_SECRET;
-    else process.env.WM_DESKTOP_SHARED_SECRET = originalSecret;
-    await app.close();
-    await localApi.cleanup();
-  }
-});
-
 test('accepts ALPHA_VANTAGE_API_KEY via /api/local-env-update', async () => {
   const originalKey = process.env.ALPHA_VANTAGE_API_KEY;
   const localApi = await setupApiDir({});
@@ -2741,32 +2689,6 @@ test('stores ALPHA_VANTAGE_API_KEY without claiming the provider demo response v
     assert.equal(response.status, 200);
     assert.equal(response.json?.valid, true);
     assert.equal(response.json?.message, 'Key stored');
-  } finally {
-    await app.close();
-    await localApi.cleanup();
-  }
-});
-
-test('validates WM_DESKTOP_SHARED_SECRET without provider probe', async () => {
-  const localApi = await setupApiDir({});
-
-  const app = await createLocalApiServer({
-    port: 0,
-    apiDir: localApi.apiDir,
-    logger: { log() { }, warn() { }, error() { } },
-  });
-  const { port } = await app.start();
-
-  try {
-    const response = await authFetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: 'WM_DESKTOP_SHARED_SECRET', value: 'desktop-secret-from-runtime' }),
-    });
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.valid, true);
-    assert.equal(body.message, 'Desktop shared secret stored');
   } finally {
     await app.close();
     await localApi.cleanup();

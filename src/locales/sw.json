@@ -1229,7 +1229,8 @@
       "skipToEnd": "Ruka hadi mwisho"
     },
     "pizzint": {
-      "indexSource": "Faharasa: World Monitor · data za maeneo:",
+      "indexSource": "Faharasa: World Monitor",
+      "venueSource": "data za maeneo:",
       "statusNormal": "KAWAIDA",
       "statusNoData": "HAKUNA DATA",
       "statusNoBaseline": "HAKUNA MSINGI",
@@ -1443,7 +1444,8 @@
         "speciesRecovery": "Urejeshaji wa Aina",
         "renewableInstallations": "Nishati Safi",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Vikwazo vya Anga la NOTAM"
       },
       "tooltip": {
         "earthquake": "Tetemeko la ardhi",
@@ -1558,7 +1560,8 @@
           "geoBoundaries": "Maeneo yasiyoruhusiwa kijeshi, njia za kusitisha mapigano, na mipaka yenye mizozo",
           "ciiChoropleth": "Ramani ya joto ya Fahirisi ya Kutokuwa na Uthabiti wa Nchi — rangizo nchi kwa alama (kijani=imara, nyekundu=muhimu)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Vikwazo vya kuruka kwa muda na anga yenye vikwazo, hatari na iliyokatazwa kutoka kwa NOTAMs za FAA, inayotumika sasa au kuanza ndani ya saa 24"
         },
         "notes": {
           "timeAffects": "Athari: Matetemeko ya Ardhi, Hali ya Hewa, Maandamano, Kukatika"
@@ -3122,7 +3125,9 @@
         "apac": "Asia-Pasifiki",
         "mena": "Mashariki ya Kati",
         "africa": "Afrika"
-      }
+      },
+      "normalOperations": "UENDESHAJI WA KAWAIDA",
+      "open": "WAZI"
     },
     "aircraft": {
       "altitude": "Mwinuko",
@@ -3527,7 +3532,12 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "Mgogoro wa Venezuela",
       "yemen_houthis": "Yemen/Houthi"
-    }
+    },
+    "upcomingForecast": "Utabiri ujao",
+    "currentForecast": "Utabiri wa sasa",
+    "expiredForecast": "Utabiri uliopitwa na wakati",
+    "validFrom": "Halali kuanzia",
+    "validUntil": "Halali hadi"
   },
   "signals": {
     "context": {

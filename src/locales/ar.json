@@ -1050,7 +1050,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "المؤشر: World Monitor · بيانات المطاعم:",
+      "indexSource": "المؤشر: World Monitor",
+      "venueSource": "بيانات المطاعم:",
       "statusNormal": "طبيعي",
       "statusNoData": "لا توجد بيانات",
       "statusNoBaseline": "لا يوجد خط أساس",
@@ -1264,7 +1265,8 @@
         "radiationSpike": "ارتفاع حاد في الإشعاع",
         "radiationElevated": "إشعاع مرتفع",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "قيود المجال الجوي NOTAM"
       },
       "tooltip": {
         "earthquake": "زلزال",
@@ -1379,7 +1381,8 @@
           "geoBoundaries": "مناطق منزوعة السلاح وخطوط الهدنة والحدود المتنازع عليها",
           "ciiChoropleth": "خريطة حرارية لمؤشر عدم الاستقرار القطري — تلون الدول حسب التقييم (أخضر=مستقرة، أحمر=حرجة)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "قيود الطيران المؤقتة والمجال الجوي المقيد والخطر والمحظور من إشعارات FAA NOTAM، سارية الآن أو تبدأ خلال 24 ساعة"
         },
         "notes": {
           "timeAffects": "يؤثر على: الزلازل، الطقس، الاحتجاجات، الانقطاعات"
@@ -3133,7 +3136,9 @@
         "africa": "أفريقيا"
       },
       "scheduled": "مجدول",
-      "estimated": "متوقع"
+      "estimated": "متوقع",
+      "normalOperations": "العمليات الطبيعية",
+      "open": "مفتوح"
     },
     "cyberThreat": {
       "title": "تهديد سيبراني"
@@ -3538,7 +3543,12 @@
       "position": "الموقع",
       "ground": "على الأرض",
       "airborne": "في الجو"
-    }
+    },
+    "upcomingForecast": "توقعات قادمة",
+    "currentForecast": "توقعات سارية",
+    "expiredForecast": "توقعات منتهية",
+    "validFrom": "صالحة من",
+    "validUntil": "صالحة حتى"
   },
   "signals": {
     "context": {

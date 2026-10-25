@@ -603,7 +603,8 @@
         "radiationSpike": "Strålningsökning",
         "radiationElevated": "Förhöjd strålning",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM-luftrumsbegränsningar"
       },
       "layersTitle": "Lager",
       "layerSearch": "Sök lager...",
@@ -725,7 +726,8 @@
           "geoBoundaries": "Demilitariserade zoner, eldupphörslinjer och omtvistade gränser",
           "ciiChoropleth": "Landinstabilitetsindexvärmekarta — färger länder efter poäng (grön=stabil, röd=kritisk)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Tillfälliga flygbegränsningar och begränsat, farligt och förbjudet luftrum från FAA NOTAMs, gäller nu eller börjar inom 24 timmar"
         },
         "notes": {
           "timeAffects": "Påverkar: Jordbävningar, väder, protester, avbrott"
@@ -781,7 +783,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · platsdata:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "platsdata:",
       "statusNormal": "NORMALT",
       "statusNoData": "INGA DATA",
       "statusNoBaseline": "INGEN REFERENS",
@@ -2668,7 +2671,9 @@
         "africa": "Afrika"
       },
       "scheduled": "Planerad",
-      "estimated": "Beräknad"
+      "estimated": "Beräknad",
+      "normalOperations": "NORMAL DRIFT",
+      "open": "ÖPPEN"
     },
     "cyberThreat": {
       "title": "CYBERHOT"
@@ -3074,7 +3079,12 @@
       "position": "Position",
       "ground": "På marken",
       "airborne": "I luften"
-    }
+    },
+    "upcomingForecast": "Kommande prognos",
+    "currentForecast": "Aktuell prognos",
+    "expiredForecast": "Utgången prognos",
+    "validFrom": "Giltig från",
+    "validUntil": "Giltig till"
   },
   "signals": {
     "context": {

@@ -115,11 +115,12 @@ const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = requi
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
 // Same implementation the RPC handler scores with — see the module header for
 // why it lives in shared/ rather than beside the other scoring helpers.
-const { detectTrafficAnomaly } = require('../shared/chokepoint-traffic-anomaly.js');
+const { detectTrafficAnomaly, summarizePortwatchHistory } = require('../shared/chokepoint-traffic-anomaly.js');
 const { CHOKEPOINT_THREAT_LEVELS } = require('../shared/chokepoint-threat-levels.js');
 const { classifyVesselType } = require('../shared/ais-vessel-type.js');
 const { readTransitWindow } = require('../shared/chokepoint-transit-window.js');
-const { createTransitTracker } = require('../shared/chokepoint-transit-tracker.js');
+const { createDurableTransitTracker } = require('../shared/chokepoint-transit-store.js');
+const { CHOKEPOINT_TRANSIT_GATES } = require('../shared/chokepoint-transit-gates.js');
 const { CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel } = require('../shared/corridor-risk.js');
 // AIS upstream reconnect policy: failure classification (transport | auth |
 // rate-limit), the throttle ceiling escalation, and the silence verdict. Pure and
@@ -9704,20 +9705,21 @@ const CHOKEPOINTS = [
 const chokepointCrossings = new Map();
 const TRANSIT_COOLDOWN_MS = 30 * 60 * 1000;
 const TRANSIT_WINDOW_MS = 24 * 60 * 60 * 1000;
-const MIN_DWELL_MS = 5 * 60 * 1000;
-// How long zone membership outlives a vessel's last report inside the zone.
-// It must exceed DENSITY_WINDOW: the vessel table drops a vessel after 30
-// silent minutes, and an exit reported after that gap is still an exit.
-const TRANSIT_MAX_EXIT_GAP_MS = 6 * 60 * 60 * 1000;
+// How long a gate sighting waits for the opposite gate. It covers the slowest
+// gate-to-gate passage (about 180 nm at Malacca and the Cape) and must exceed
+// DENSITY_WINDOW: the vessel table drops a vessel after 30 silent minutes.
+const TRANSIT_MAX_GATE_GAP_MS = 18 * 60 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_KEY = 'supply_chain:chokepoint_transits:v1';
 const CHOKEPOINT_TRANSIT_TTL = 3600; // 1h — 6x interval; survives ~5 consecutive missed pings
-const transitTracker = createTransitTracker({
-  zones: CHOKEPOINTS,
-  minDwellMs: MIN_DWELL_MS,
+const transitTracker = createDurableTransitTracker({
+  gates: CHOKEPOINT_TRANSIT_GATES,
+  maxTransitMs: TRANSIT_MAX_GATE_GAP_MS,
   cooldownMs: TRANSIT_COOLDOWN_MS,
-  maxExitGapMs: TRANSIT_MAX_EXIT_GAP_MS,
-  crossings: chokepointCrossings,
+  evaluate: upstashEval,
 });
+setInterval(() => {
+  transitTracker.flush(Date.now()).catch(error => console.warn('[Transit] Gate persistence failed:', error.message));
+}, 10_000).unref?.();
 
 // Dark-ship (AIS gap) count envelope — the trusted producer behind the
 // temporal anomalies `ais_gaps` count source (#7574). Written on its own
@@ -10413,10 +10415,12 @@ setInterval(() => {
 
 async function seedChokepointTransits() {
   const now = Date.now();
+  const unavailable = await transitTracker.flush(now);
+  if (unavailable.size) console.warn(`[Transit] Capacity-limited waterways: ${[...unavailable].join(', ')}`);
   const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
   const transits = {};
   for (const cp of CHOKEPOINTS) {
-    const recent = window.get(cp.name) || [];
+    const recent = unavailable.has(cp.name) ? [] : window.get(cp.name) || [];
     // An empty observed window cannot establish zero traffic.
     transits[cp.name] = {
       tanker: recent.filter(c => c.type === 'tanker').length,
@@ -10520,6 +10524,8 @@ async function seedTransitSummaries() {
 
   const now = Date.now();
   const summaries = {};
+  const unavailable = await transitTracker.flush(now);
+  if (unavailable.size) console.warn(`[Transit] Capacity-limited waterways: ${[...unavailable].join(', ')}`);
   const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
   // Iterate the canonical chokepoint ID set rather than whatever pw happens to
   // carry today. If seed-portwatch dropped 3 of 13 (flaky ArcGIS), those 3
@@ -10544,12 +10550,16 @@ async function seedTransitSummaries() {
     const threatLevel = CHOKEPOINT_THREAT_LEVELS[cpId] || 'normal';
     const history = cpData?.history ?? [];
     const anomaly = detectTrafficAnomaly(history, threatLevel);
+    // The official IMF PortWatch figures: latest published day, trailing
+    // 7-day mean, and the seeder's year-earlier baseline. Null when PortWatch
+    // has nothing for this chokepoint -- never a zero-fill.
+    const official = summarizePortwatchHistory(history, cpData?.baseline);
 
     // Get relay transit counts for this chokepoint
     let relayTransit = null;
     for (const [relayName, canonicalId] of Object.entries(RELAY_NAME_TO_ID)) {
       if (canonicalId === cpId) {
-        const recent = window.get(relayName) || [];
+        const recent = unavailable.has(relayName) ? [] : window.get(relayName) || [];
         if (recent.length > 0) {
           relayTransit = {
             tanker: recent.filter(c => c.type === 'tanker').length,
@@ -10576,6 +10586,12 @@ async function seedTransitSummaries() {
       todayCargo: relayTransit?.cargo ?? null,
       todayOther: relayTransit?.other ?? null,
       wowChangePct: cpData?.wowChangePct ?? 0,
+      officialLatestDate: official.latestDate,
+      officialLatestTotal: official.latestTotal,
+      officialAvg7d: official.avg7d,
+      baselineAvgDaily: official.baselineAvgDaily,
+      baselineFrom: official.baselineFrom,
+      baselineTo: official.baselineTo,
       riskLevel: cr?.riskLevel ?? '',
       incidentCount7d: cr?.incidentCount7d ?? 0,
       disruptionPct: cr?.disruptionPct ?? 0,
@@ -13245,6 +13261,11 @@ const server = http.createServer(async (req, res) => {
             'Accept': 'application/rss+xml, application/xml, text/xml, */*',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
+            // Smartraveller's Akamai edge never answers a request without
+            // Accept-Encoding (the relay logged `read ETIMEDOUT` on every miss).
+            // gzip only: the body handler below decodes gzip and deflate, and
+            // gzip is the one every server that compresses supports.
+            'Accept-Encoding': 'gzip',
             ...conditionalHeaders,
           },
           timeout: 15000,
@@ -15587,6 +15608,7 @@ async function gracefulShutdown(signal) {
     // already silent, and the process is about to exit regardless.
     try { upstreamSocket.terminate(); } catch {}
   }
+  await transitTracker.flush(Date.now()).catch(error => console.warn('[Transit] Shutdown gate flush failed:', error.message));
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 12_000);
 }

@@ -76,7 +76,7 @@ export function internetOutagesRecord(payload, now = Date.now()) {
   };
 }
 
-function answerText(record) {
+export function internetOutagesAnswer(record) {
   if (!record) return 'World Monitor has no current internet outage reading.';
   if (record.total === 0) return `As of ${formatStaticDateTime(record.asOf)}, World Monitor lists no internet disruptions in the current Cloudflare Radar window.`;
   const latest = record.outages[0];
@@ -86,9 +86,11 @@ function answerText(record) {
   return `As of ${formatStaticDateTime(record.asOf)}, World Monitor lists ${disruptions} in ${countries} reported by Cloudflare Radar since ${formatStaticDateTime(record.oldest)}, ${status}. ${record.total === 1 ? 'It was' : 'The most recent is'} a ${latest.severity.toLowerCase()} disruption in ${latest.country}${latest.cause ? ` (${latest.cause.toLowerCase()})` : ''}, detected ${formatStaticDateTime(latest.detectedAt)}.`;
 }
 
-function bodyHtml(record) {
+/** The metrics and the most recent rows; `rows` caps the table for a page that shows a digest of the list. */
+export function internetOutagesBody(record, { rows: rowLimit = LISTED_OUTAGES } = {}) {
   if (!record) return '        <p class="tool-note">Open the live dashboard for the internet outage map.</p>';
   const rows = record.outages
+    .slice(0, rowLimit)
     .map((outage) => `            <tr><td>${escapeHtml(formatStaticDateTime(outage.detectedAt))}</td><td>${escapeHtml(outage.country)}</td><td>${escapeHtml(outage.severity)}${outage.ongoing ? ', ongoing' : ''}</td><td>${escapeHtml(outage.cause || '—')}</td><td>${outage.description ? escapeHtml(outage.description) : '—'}${outage.link ? ` <a href="${escapeHtml(outage.link)}" rel="nofollow">Source</a>` : ''}</td></tr>`)
     .join('\n');
   return `        <div class="grid">
@@ -123,8 +125,8 @@ export const internetOutagesPage = Object.freeze({
       question: this.question,
       record,
       live,
-      answer: answerText(record),
-      bodyHtml: bodyHtml(record),
+      answer: internetOutagesAnswer(record),
+      bodyHtml: internetOutagesBody(record),
       asOf: record?.asOf,
       sourceHtml: 'Source: Cloudflare Radar outage center (<a href="https://radar.cloudflare.com/outage-center" rel="nofollow">radar.cloudflare.com</a>).',
     });

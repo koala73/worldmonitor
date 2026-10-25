@@ -1084,7 +1084,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "지수: World Monitor · 매장 데이터:",
+      "indexSource": "지수: World Monitor",
+      "venueSource": "매장 데이터:",
       "statusNormal": "정상",
       "statusNoData": "데이터 없음",
       "statusNoBaseline": "기준 없음",
@@ -1298,7 +1299,8 @@
         "radiationSpike": "방사능 급증",
         "radiationElevated": "상승된 방사능",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM 공역 제한"
       },
       "tooltip": {
         "earthquake": "지진",
@@ -1413,7 +1415,8 @@
           "geoBoundaries": "비무장지대, 휴전선 및 분쟁 경계선",
           "ciiChoropleth": "Country Instability Index 히트맵 — 점수별 국가 표시(녹색=안정, 적색=심각)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "FAA NOTAM에서 현재 시행 중이거나 24시간 이내에 시작되는 임시 비행 제한, 제한된 공역, 위험 및 금지 공역"
         },
         "notes": {
           "timeAffects": "영향 대상: 지진, 기상, 시위, 장애"
@@ -3033,7 +3036,9 @@
         "africa": "아프리카"
       },
       "scheduled": "예정",
-      "estimated": "추정"
+      "estimated": "추정",
+      "normalOperations": "정상 운항",
+      "open": "운영 중"
     },
     "aircraft": {
       "altitude": "고도",
@@ -3438,7 +3443,12 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "베네수엘라 위기",
       "yemen_houthis": "예멘/후티"
-    }
+    },
+    "upcomingForecast": "예정된 예보",
+    "currentForecast": "현재 유효한 예보",
+    "expiredForecast": "만료된 예보",
+    "validFrom": "유효 시작",
+    "validUntil": "유효 종료"
   },
   "signals": {
     "context": {

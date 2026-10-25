@@ -5,7 +5,7 @@ vi.mock('@/services/i18n', () => ({ t: (key: string) => key }));
 
 import { PizzIntIndicator } from '@/components/PizzIntIndicator';
 
-it('switches source attribution during fallback and restores it on recovery', () => {
+it('names no venue source during the BestTime fallback and credits PizzINT on recovery', () => {
   const indicator = new PizzIntIndicator();
   const status: PizzIntStatus = {
     defconLevel: 3, defconLabel: 'Elevated Activity', aggregateActivity: 60,
@@ -19,12 +19,17 @@ it('switches source attribution during fallback and restores it on recovery', ()
     }],
   };
   const source = () => indicator.getElement().querySelector<HTMLAnchorElement>('.pizzint-source a')!;
+  const venue = () => indicator.getElement().querySelector<HTMLElement>('.pizzint-venue-source')!;
+  expect(venue().hidden, 'no venue credit before any status arrives').toBe(true);
   indicator.updateStatus(status);
   expect(indicator.getElement().querySelector('.pizzint-score')).toBeNull();
   expect(indicator.getElement().querySelector('.pizzint-source')!.textContent).toContain('components.pizzint.indexSource');
-  expect(source().textContent).toBe('BestTime');
-  expect(source().href).toBe('https://besttime.app/');
+  expect(venue().hidden).toBe(true);
+  expect(indicator.getElement().innerHTML).not.toContain('BestTime');
+  expect(indicator.getElement().innerHTML).not.toContain('besttime.app');
   indicator.updateStatus({ ...status, locations: status.locations.map(loc => ({ ...loc, data_source: 'google' })) });
+  expect(venue().hidden).toBe(false);
+  expect(venue().textContent).toContain('components.pizzint.venueSource');
   expect(source().textContent).toBe('PizzINT');
   expect(source().href).toBe('https://www.pizzint.watch/');
   const label = () => indicator.getElement().querySelector('.pizzint-location-status')!.textContent;
@@ -51,11 +56,13 @@ it('shows World Monitor tensions and missing-data states when pizza is unavailab
     score: 50, trend: 'stable', changePercent: 0, region: 'global' }]);
   const element = indicator.getElement();
   expect(element.querySelector('.pizzint-defcon')?.textContent).toBe('--');
-  expect(element.querySelectorAll('.pizzint-tension-row')).toHaveLength(4);
+  expect(element.querySelectorAll('.pizzint-tension-row')).toHaveLength(5);
+  expect(element.textContent).toContain('Iran–GCC');
   expect(element.querySelector('.pizzint-tension-value')?.textContent).toBe('50.0');
   expect(element.textContent).toContain('components.pizzint.tensionsTitle');
   expect(element.textContent).toContain('components.pizzint.insufficientData');
   expect(element.querySelector('.pizzint-source')?.textContent).toContain('components.pizzint.indexSource');
+  expect(element.querySelector<HTMLElement>('.pizzint-venue-source')?.hidden, 'no venues, no venue credit').toBe(true);
   expect(element.querySelector('.pizzint-source a')?.textContent).toBe('PizzINT');
   expect(element.querySelector('.pizzint-tensions-source')).toBeNull();
   expect(element.textContent).not.toContain('components.pizzint.tensionsSource');

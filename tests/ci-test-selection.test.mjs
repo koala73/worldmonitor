@@ -157,7 +157,7 @@ test('required unit aggregate rejects failed, cancelled and unexpected skips', (
   assert.deepEqual(aggregate.needs, ['changes', 'unit-shards', 'unit-built-output']);
   assert.equal(aggregate.if, 'always()');
   const shards = workflow.jobs['unit-shards'];
-  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3, 4]);
+  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3, 4, 5]);
   assert.equal(shards.strategy['fail-fast'], false);
   // Both halves of the data inventory run under the same change selection;
   // a built-output job gated differently would skip its suites on a code PR.

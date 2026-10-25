@@ -446,6 +446,20 @@
       ]
     },
     {
+      "host": "api-nms.aim.faa.gov",
+      "provider": "api-nms.aim.faa.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit api-nms.aim.faa.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-notam-nms.mjs"
+        }
+      ]
+    },
+    {
       "host": "api.abuseipdb.com",
       "provider": "api.abuseipdb.com",
       "kind": "structured",
@@ -513,6 +527,20 @@
       "references": [
         {
           "path": "scripts/seed-economy.mjs"
+        }
+      ]
+    },
+    {
+      "host": "api.anthropic.com",
+      "provider": "api.anthropic.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "server/_shared/llm-anthropic.ts"
         }
       ]
     },
@@ -1583,6 +1611,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/cross-strait-activity/japan-x.mjs"
+        },
+        {
           "path": "scripts/lib/company-monitoring-x-provider.mjs"
         },
         {
@@ -2017,9 +2048,6 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs"
-        },
-        {
-          "path": "src/components/PizzIntIndicator.ts"
         }
       ]
     },
@@ -3062,6 +3090,21 @@
       "references": [
         {
           "path": "scripts/seed-yield-curve-ch.mjs"
+        }
+      ]
+    },
+    {
+      "host": "data.stats.gov.cn",
+      "provider": "data.stats.gov.cn",
+      "kind": "structured",
+      "observed": true,
+      "catalogActive": false,
+      "license": "NBS Terms of Service section III permits statistical data download and use, with NBS attribution (https://www.stats.gov.cn/english/nbs/200701/t20070104_59236.html; checked 2026-10-24). Saved-response extraction only; canonical publication remains blocked by missing source clocks. No authenticated download, application-code reuse or access bypass.",
+      "attribution": "Quoted from the website of the National Bureau of Statistics: www.stats.gov.cn. Retain the National Data source URL and exact indicator reference.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/china-macro/extract-nbs-national-data.mjs"
         }
       ]
     },
@@ -5767,6 +5810,23 @@
       "references": [
         {
           "path": "api/mcp/constants.ts"
+        }
+      ]
+    },
+    {
+      "host": "jrj.sh.gov.cn",
+      "provider": "Shanghai Financial Portal",
+      "kind": "structured",
+      "observed": true,
+      "license": "Shanghai Financial Portal copyright statement section 2 (https://jrj.sh.gov.cn/BQSM/index.html), reviewed 2026-10-24. Numeric facts and publication metadata only; retain the credited underlying source. No article prose or third-party media redistribution.",
+      "attribution": "People’s Bank of China, republished by Shanghai Financial Portal. Link to the dated https://jrj.sh.gov.cn/SCGK194/ report.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/_china-macro-contract.mjs"
+        },
+        {
+          "path": "scripts/china-macro/source-contracts.mjs"
         }
       ]
     },
@@ -10877,6 +10937,9 @@
           "path": "scripts/cross-strait-activity/adapters.mjs"
         },
         {
+          "path": "scripts/cross-strait-activity/japan-x.mjs"
+        },
+        {
           "path": "scripts/eval-classify-labels.mjs"
         },
         {
@@ -13759,9 +13822,6 @@
         },
         {
           "path": "scripts/seed-conflict-intel.mjs"
-        },
-        {
-          "path": "src/components/PizzIntIndicator.ts"
         }
       ]
     },
@@ -15520,6 +15580,9 @@
       "references": [
         {
           "path": "scripts/comparison-shortlist.mjs"
+        },
+        {
+          "path": "scripts/cross-strait-activity/japan-x.mjs"
         },
         {
           "path": "server/worldmonitor/leads/v1/register-interest.ts"

@@ -81,6 +81,7 @@ import { getCachedFuelShortageRegistry } from '@/shared/fuel-shortage-registry-s
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
+import { createIdleAwareFrameProvider } from '@/utils/idle-aware-frame-provider';
 import { isInputPending, scheduleYield } from '@/utils/after-paint';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { localizeMapLabels } from '@/utils/map-locale';
@@ -182,7 +183,11 @@ import { fetchWebcamImage } from '@/services/webcams';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { summarizeRenderTiming, formatRenderTiming } from '@/components/map/render-timing';
 import { DeferredHeavyCommit } from '@/components/map/deferred-layer-commit';
+import { createDeckLoopRecovery } from '@/components/map/deck-loop-recovery';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { ZoomHintGuard } from '@/components/map/zoom-hint-guard';
+import { NOTAM_AIRSPACE_COLORS, notamAirspaceTooltip } from '@/components/map/notam-airspace-style';
+import type { NotamAirspaceRestriction } from '@/services/notam-airspace';
 import { dispatchWebcamLayerClick, resolveWebcamStreamUrl, type WebcamLeafLike } from '@/components/map/webcam-click';
 import {
   type BBox,
@@ -264,6 +269,10 @@ const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; z
 };
 
 const VIEWPORT_MOVEMENT_EVENT_KEY = 'worldMonitorViewportGeneration';
+const DECK_IDLE_FRAME_INTERVAL_MS = 250;
+const DECK_ACTIVE_FRAME_WINDOW_MS = 300;
+// 'render' covers every map frame, including repaints deck itself requests.
+const DECK_FRAME_WAKE_EVENTS = ['render', 'movestart', 'mousemove', 'mousedown', 'wheel', 'touchstart', 'click', 'resize'] as const;
 
 type ViewportMovementEventData = {
   worldMonitorViewportGeneration?: unknown;
@@ -586,11 +595,26 @@ function installDeckInterleavedRaceFilter(): void {
   }, { capture: true });
 }
 
+/** Every stop is a real map freeze, and the console warning alone never reached us (#9653). */
+function reportDeckLoopStop(error: Error, recovery: 'restart' | 'svg-fallback'): void {
+  console.warn(`[DeckGLMap] deck.gl render loop stopped (${recovery}):`, error.message);
+  enqueueSentryCall((Sentry) => {
+    Sentry.captureException?.(error, { tags: { kind: 'deck_loop_stopped', surface: 'map', component: 'deckgl-loop', recovery } });
+  });
+}
+
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
 
   private container: HTMLElement;
   private deckOverlay: MapLibreOverlay | null = null;
+  // deck.gl's loop polls for layer changes on every display frame. Between
+  // map activity it polls on a slow timer instead, which removes most idle
+  // main-thread work; any map event or layer update wakes it back to vsync.
+  private readonly deckFrameProvider = createIdleAwareFrameProvider({
+    idleIntervalMs: DECK_IDLE_FRAME_INTERVAL_MS,
+    activeWindowMs: DECK_ACTIVE_FRAME_WINDOW_MS,
+  });
   private maplibreMap: maplibregl.Map | null = null;
   private state: DeckMapState;
   private popup: MapPopup;
@@ -626,6 +650,12 @@ export class DeckGLMap {
   private protests: SocialUnrestEvent[] = [];
   private militaryFlights: MilitaryFlight[] = [];
   private emergencyMarkers: import('../../shared/aircraft-emergencies').EmergencyMapMarker[] = [];
+  private notamAirspace: NotamAirspaceRestriction[] = [];
+  private notamAirspaceParts: {
+    polygons: { row: NotamAirspaceRestriction; ring: [number, number][] }[];
+    circles: NotamAirspaceRestriction[];
+    markers: NotamAirspaceRestriction[];
+  } = { polygons: [], circles: [], markers: [] };
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
   private activeFlightTrails = new Set<string>();
   private clearTrailsBtn: HTMLButtonElement | null = null;
@@ -821,6 +851,14 @@ export class DeckGLMap {
     schedule: (fn) => scheduleYield(fn),
     isAlive: () => !this.renderPaused && !this.webglLost && !!this.maplibreMap,
     onCommit: () => this.updateLayers(true),
+  });
+  private readonly deckLoopRecovery = createDeckLoopRecovery({
+    hasPendingFrame: () => this.deckFrameProvider.hasPendingFrame(),
+    isAlive: () => !this.destroyed && !this.webglLost && !!this.maplibreMap && !!this.deckOverlay,
+    restart: (error) => this.restartDeck(error),
+    giveUp: (error) => { reportDeckLoopStop(error, 'svg-fallback'); this.onFatalError?.(error); },
+    maxRestarts: 3,
+    windowMs: 60_000,
   });
   private destroyed = false;
   private usedFallbackStyle = false;
@@ -1319,27 +1357,10 @@ export class DeckGLMap {
 
     installDeckInterleavedRaceFilter();
 
-    this.deckOverlay = new MapLibreOverlay({
-      interleaved: true,
-      layers: this.buildLayers(true),
-      getTooltip: (info: PickingInfo) => this.getTooltip(info),
-      onClick: (info: PickingInfo) => this.handleClick(info),
-      pickingRadius: 10,
-      useDevicePixels: window.devicePixelRatio > 2 ? 2 : true,
-      onError: (error: Error) => {
-        console.warn('[DeckGLMap] Render error (non-fatal):', error.message);
-        if (error.message.includes('apt-groups-layer')) {
-          this.aptGroupsLayerFailed = true;
-        }
-        if (error.message.includes('satellite-imagery-layer')) {
-          this.satelliteImageryLayerFailed = true;
-          console.warn('[DeckGLMap] Satellite imagery layer failed (likely Intel GPU driver incompatibility) — rebuilding layer stack without it');
-          this.updateLayers();
-        }
-      },
-    });
-
+    this.deckOverlay = this.createDeckOverlay();
     this.maplibreMap.addControl(this.deckOverlay as unknown as maplibregl.IControl);
+    const wakeDeckFrames = () => this.deckFrameProvider.wake();
+    for (const event of DECK_FRAME_WAKE_EVENTS) this.maplibreMap.on(event, wakeDeckFrames);
 
     this.maplibreMap.on('movestart', () => {
       if (this.moveTimeoutId) {
@@ -1400,6 +1421,43 @@ export class DeckGLMap {
       this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
       this.onStateChange?.(this.getState());
     });
+  }
+
+  private createDeckOverlay(): MapLibreOverlay {
+    const overlayProps = {
+      interleaved: true,
+      // Forwarded by Deck.setProps to luma.gl's AnimationLoop.setProps.
+      animationFrameProvider: this.deckFrameProvider,
+      layers: this.buildLayers(true),
+      getTooltip: (info: PickingInfo) => this.getTooltip(info),
+      onClick: (info: PickingInfo) => this.handleClick(info),
+      pickingRadius: 10,
+      useDevicePixels: window.devicePixelRatio > 2 ? 2 : true,
+      onError: (error: Error) => {
+        console.warn('[DeckGLMap] Render error (non-fatal):', error.message);
+        if (error.message.includes('apt-groups-layer')) {
+          this.aptGroupsLayerFailed = true;
+        }
+        if (error.message.includes('satellite-imagery-layer')) {
+          this.satelliteImageryLayerFailed = true;
+          console.warn('[DeckGLMap] Satellite imagery layer failed (likely Intel GPU driver incompatibility) — rebuilding layer stack without it');
+          this.updateLayers();
+        }
+        this.deckLoopRecovery(error);
+      },
+    };
+    return new MapLibreOverlay(overlayProps);
+  }
+
+  private restartDeck(error: Error): void {
+    if (!this.maplibreMap) return;
+    reportDeckLoopStop(error, 'restart');
+    // A finalized deck.gl layer cannot join a new Deck.
+    this.layerCache.clear();
+    this.deckOverlay?.finalize();
+    this.deckOverlay = this.createDeckOverlay();
+    this.maplibreMap.addControl(this.deckOverlay as unknown as maplibregl.IControl);
+    this.render();
   }
 
   public setIsResizing(value: boolean): void {
@@ -1976,6 +2034,14 @@ export class DeckGLMap {
     } else {
       if (this.dayNightIntervalId) this.stopDayNightTimer();
       this.layerCache.delete('day-night-layer');
+    }
+
+    // FAA NMS airspace restrictions are area overlays (circles up to 250 NM):
+    // they sit above only the day/night background, so cables, pipelines,
+    // conflict zones and every marker inside a restricted area stay hoverable
+    // and clickable.
+    if (mapLayers.flights && this.notamAirspace.length > 0) {
+      layers.push(...this.createNotamAirspaceLayers());
     }
 
     if (this.selectedChinaCorridorOverlay) {
@@ -3260,6 +3326,53 @@ export class DeckGLMap {
       radiusMaxPixels: 40,
       pickable: true,
     });
+  }
+
+  // Polygons where NMS ships them, radius circles (metres, so they scale with
+  // zoom) when the Q-line gives a radius, and fixed-size markers otherwise:
+  // most FDC TFRs describe their shape only in text.
+  private createNotamAirspaceLayers(): Layer[] {
+    const color = (row: NotamAirspaceRestriction, alpha: number): [number, number, number, number] => {
+      const [r, g, b] = NOTAM_AIRSPACE_COLORS[row.kind];
+      return [r, g, b, row.upcoming ? Math.round(alpha * 0.45) : alpha];
+    };
+    const { polygons, circles, markers } = this.notamAirspaceParts;
+    return [
+      new PolygonLayer<{ row: NotamAirspaceRestriction; ring: [number, number][] }>({
+        id: 'notam-airspace-polygons',
+        data: polygons,
+        getPolygon: (d) => d.ring,
+        getFillColor: (d) => color(d.row, 45),
+        getLineColor: (d) => color(d.row, 210),
+        lineWidthMinPixels: 1,
+        stroked: true,
+        pickable: true,
+      }),
+      new ScatterplotLayer<NotamAirspaceRestriction>({
+        id: 'notam-airspace-circles',
+        data: circles,
+        getPosition: (d) => d.center,
+        getRadius: (d) => (d.radiusNm ?? 0) * 1852,
+        getFillColor: (d) => color(d, 35),
+        getLineColor: (d) => color(d, 200),
+        stroked: true,
+        lineWidthMinPixels: 1,
+        radiusMinPixels: 3,
+        pickable: true,
+      }),
+      new ScatterplotLayer<NotamAirspaceRestriction>({
+        id: 'notam-airspace-markers',
+        data: markers,
+        getPosition: (d) => d.center,
+        getRadius: 5,
+        radiusUnits: 'pixels',
+        getFillColor: (d) => color(d, 200),
+        getLineColor: [17, 24, 39, 220],
+        stroked: true,
+        lineWidthMinPixels: 1,
+        pickable: true,
+      }),
+    ];
   }
 
   private createAircraftPositionsLayer(): IconLayer<PositionSample> {
@@ -5140,6 +5253,10 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)} (${text(obj.iata)})</strong><br/>${text(obj.severity)}: ${text(obj.reason)}</div>` };
       case 'notam-overlay-layer':
         return { html: `<div class="deckgl-tooltip"><strong style="color:#ff2828;">&#9888; NOTAM CLOSURE</strong><br/>${text(obj.name)} (${text(obj.iata)})<br/><span style="opacity:.7">${text((obj.reason || '').slice(0, 100))}</span></div>` };
+      case 'notam-airspace-polygons':
+      case 'notam-airspace-circles':
+      case 'notam-airspace-markers':
+        return { html: notamAirspaceTooltip((obj.row ?? obj) as NotamAirspaceRestriction, text) };
       case 'aircraft-positions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.icao24)}</strong><br/>${numericLabel(obj.altitudeFt)} ft · ${numericLabel(obj.groundSpeedKts)} kts · ${numericLabel(obj.trackDeg, 0)}°</div>` };
       case 'apt-groups-layer':
@@ -5326,9 +5443,18 @@ export class DeckGLMap {
     'resilience-choropleth-layer',
   ]);
 
+  // Hover-only NOTAM shapes (areas and their fallback markers): a click on one
+  // is a click on the country under it.
+  private static readonly AREA_OVERLAY_LAYER_IDS = new Set([
+    'notam-airspace-polygons',
+    'notam-airspace-circles',
+    'notam-airspace-markers',
+  ]);
+
   private handleClick(info: PickingInfo): void {
     const isChoropleth = info.layer?.id ? DeckGLMap.CHOROPLETH_LAYER_IDS.has(info.layer.id) : false;
-    if (!info.object || isChoropleth) {
+    const isAreaOverlay = info.layer?.id ? DeckGLMap.AREA_OVERLAY_LAYER_IDS.has(info.layer.id) : false;
+    if (!info.object || isChoropleth || isAreaOverlay) {
       if (info.coordinate && this.onCountryClick) {
         if (this.shouldSuppressCountryClickAfterDrag()) return;
         const [lon, lat] = info.coordinate as [number, number];
@@ -6168,6 +6294,7 @@ export class DeckGLMap {
       helpItem(label('shipTraffic'), 'transportShipping'),
       helpItem(label('tradeRoutes'), 'tradeRoutes'),
       helpItem(label('flightDelays'), 'transportDelays'),
+      helpItem(label('notamAirspace'), 'notamAirspace'),
     ])}
         ${helpSection('naturalEconomic', [
       helpItem(label('naturalEvents'), 'naturalEventsFull'),
@@ -6391,6 +6518,7 @@ export class DeckGLMap {
       const built = this.buildLayers(!deferred);
       jsBuild = performance.now() - buildStart;
       layerCount = built.length;
+      this.deckFrameProvider.wake();
       this.deckOverlay?.setProps({ layers: built });
     } catch { /* map may be mid-teardown (null.getProjection) */ }
     if (import.meta.env.DEV) {
@@ -7283,6 +7411,18 @@ export class DeckGLMap {
 
   public setAircraftEmergencies(markers: import('../../shared/aircraft-emergencies').EmergencyMapMarker[]): void {
     this.emergencyMarkers = markers;
+    this.render();
+  }
+
+  public setNotamAirspace(restrictions: NotamAirspaceRestriction[]): void {
+    this.notamAirspace = restrictions;
+    // Split once per snapshot: stable data references let deck.gl skip
+    // rebuilding instance attributes on every pan/zoom layer update.
+    this.notamAirspaceParts = {
+      polygons: restrictions.flatMap((row) => (row.polygons ?? []).map((ring) => ({ row, ring }))),
+      circles: restrictions.filter((row) => !row.polygons?.length && row.radiusNm),
+      markers: restrictions.filter((row) => !row.polygons?.length && !row.radiusNm),
+    };
     this.render();
   }
 
@@ -8514,6 +8654,7 @@ export class DeckGLMap {
   public destroy(): void {
     this.destroyed = true;
     this.aircraftFetchSeq += 1;
+    this.deckFrameProvider.dispose();
     this.settleViewportMovement(false);
     this.stopTradeAnimation();
     this.activeFlightTrails.clear();

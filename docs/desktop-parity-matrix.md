@@ -18,7 +18,7 @@ Classifications: `parity` · `intentional difference` · `blocked` · `n/a`.
 
 | Fact | Value | Evidence |
 | --- | --- | --- |
-| Repo version | 2.11.2 (package.json = tauri.conf.json = Cargo.toml; `npm run version:check` green) | `scripts/sync-desktop-version.mjs` |
+| Repo version | 2.11.3 (package.json = tauri.conf.json = Cargo.toml; `npm run version:check` green) | `scripts/sync-desktop-version.mjs` |
 | Newest published desktop release | v2.5.23, built from `e51058e17` (2026-03-01); no `-tech` tag has ever been published | GitHub releases; `gh run list` |
 | Release delta | ~5 months of `main` unreleased; the unified map-layer catalog (`src/config/map-layer-definitions.ts`, #943) postdates the release entirely | `git show e51058e17` — file absent |
 | Shipped-build capability loss | **Fixed by #5905**: all Tauri build steps now declare the desktop-required client `VITE_*` set (Clerk/Convex/cyber + relay/basemap parity keys; web-push VAPID remains intentionally excluded on Tauri), a two-way completeness gate (`scripts/check-desktop-build-env.mjs`, `npm run desktop:check-env`) blocks regressions, and tag-push or published manual releases hard-fail on empty client secrets. Capabilities activate once the repo secrets are provisioned (ops step in the #5905 PR). Historical state: only `VITE_VARIANT`, `VITE_DESKTOP_RUNTIME`, `VITE_WS_API_URL`, `CONVEX_URL` were passed — sign-in, subscription entitlements, web push, and the Cyber Threats layer were silently disabled in every CI-built release | `.github/workflows/build-desktop.yml` build-leg env blocks; `scripts/check-desktop-build-env.mjs` |
@@ -29,7 +29,7 @@ Classifications: `parity` · `intentional difference` · `blocked` · `n/a`.
 
 | Blocker | Issue | Status |
 | --- | --- | --- |
-| Tauri origin-confusion CVE-2026-42184 (CVSS 8.8): lockfile pins tauri 2.10.3, needs ≥ 2.11.1; `Cargo.toml` carries an unbounded `version = "2"` caret | #5518 | open — release-blocking security finding |
+| Tauri origin-confusion CVE-2026-42184 (CVSS 8.8): needs tauri ≥ 2.11.1 | #5518 | **Fixed by #5934**: `Cargo.lock` pins tauri 2.11.5, `Cargo.toml` requires `>=2.11.1, <3`, and `scripts/check-rust-security-floors.mjs` fails the desktop build if the lockfile drops below the floor |
 | Desktop build env omits Clerk/Convex/VAPID/cyber `VITE_*` vars → sign-in, Pro, push, Cyber Threats dead in shipped builds | #5905 | fix landed (env declared + completeness gate + release preflight); remaining ops step: provision the four new repo secrets, after which release builds hard-fail if they go empty again |
 | Linux secret storage fails without an activatable Secret Service; every keyring error in `SecretsCache::load_from_keychain` is silently swallowed (`if let Ok`), so users get an empty vault with zero diagnostics | #802 / #1905 | open — needs secure fallback + migration + diagnostics |
 | Released 2.5.23 lacks Internet Outages / Cyber Threats layers | #5829 | diagnosed — three compounding causes, see row below |
@@ -138,9 +138,18 @@ release-candidate checklist:
    `workflow_dispatch` defaults to `draft: false` so a dispatched build is
    actually served, and the unbuildable tech/finance packaging surface is gone.
    `tests/desktop-one-binary-model.test.mjs` fails if any surface drifts back.
-2. Bundled Node 22.23.4 vs CI Node 24 everywhere; SHASUMS fetched without GPG
-   verification. → #5909. The bundle stays on 22.x because the Node 24 macOS
-   binaries require macOS 13.5, while 22.x runs on macOS 11.
+2. **#5909 addressed:** the bundle pins Node 22.23.4. The `sidecar` CI job
+   runs `test:sidecar` on both repository Node 24 and the exact runtime from
+   `scripts/download-node.sh`. The bundle stays on 22.x because the Node 24
+   macOS binaries require macOS 13.5, while 22.x runs on macOS 11.
+   The downloader requires GnuPG and verifies `SHASUMS256.txt.sig` before
+   checking or extracting the archive. It trusts only the active release
+   keyring from a pinned commit of [Node's release-key repository](https://github.com/nodejs/release-keys),
+   with a separate pinned SHA256 digest. It uses a temporary GPG home and
+   never retrieves missing keys. To update the keyring, review the upstream
+   key changes and update both `NODE_RELEASE_KEYS_COMMIT` and
+   `NODE_RELEASE_KEYS_SHA256` in the downloader. Verify the intended Node
+   release against the updated keyring before committing the change.
 3. README/docs drift: "Stable" label, missing Linux ARM64 row, `windows-exe`
    badges vs `windows-msi` in-app, wrong updater host/TTL in
    `docs/desktop-app.mdx`, phantom 50 MB cap in `docs/usage-rate-limits.mdx`,

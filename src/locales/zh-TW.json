@@ -1084,7 +1084,8 @@
       "skipToEnd": "跳到結尾"
     },
     "pizzint": {
-      "indexSource": "指數：World Monitor · 場所資料：",
+      "indexSource": "指數：World Monitor",
+      "venueSource": "場所資料：",
       "statusNormal": "正常",
       "statusNoData": "無資料",
       "statusNoBaseline": "無基準",
@@ -1298,7 +1299,8 @@
         "radiationSpike": "輻射峰值",
         "radiationElevated": "輻射升高",
         "canadaRoads": "Canada 道路",
-        "canadaAlerts": "加拿大警報（AB + BC + SK）"
+        "canadaAlerts": "加拿大警報（AB + BC + SK）",
+        "notamAirspace": "NOTAM 空域限制"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1413,7 +1415,8 @@
           "geoBoundaries": "非軍事區、停火線和爭議邊界",
           "ciiChoropleth": "國家不穩定指數熱力圖 — 按評分為各國著色（綠色=穩定，紅色=嚴重）",
           "canadaRoads": "加拿大（Canada）受支援轄區的官方道路事件、警報、路況、封閉、施工和危險資訊",
-          "canadaAlerts": "來自 Alberta Emergency Alert、B.C. 疏散令與警報及 SaskAlert 的省級公共安全警報"
+          "canadaAlerts": "來自 Alberta Emergency Alert、B.C. 疏散令與警報及 SaskAlert 的省級公共安全警報",
+          "notamAirspace": "FAA NOTAM 中的臨時飛行限制和受限、危險及禁飛空域，當前生效或將在 24 小時內生效"
         },
         "notes": {
           "timeAffects": "影響範圍：地震、天氣、抗議、中斷"
@@ -3033,7 +3036,9 @@
         "africa": "非洲"
       },
       "scheduled": "計劃",
-      "estimated": "預計"
+      "estimated": "預計",
+      "normalOperations": "正常運營",
+      "open": "開放"
     },
     "aircraft": {
       "altitude": "高度",
@@ -3438,7 +3443,12 @@
       "uae_ecsr": "阿聯酋/ECSR",
       "venezuela_crisis": "委內瑞拉危機",
       "yemen_houthis": "葉門/胡塞武裝"
-    }
+    },
+    "upcomingForecast": "即將生效的預報",
+    "currentForecast": "當前有效預報",
+    "expiredForecast": "已過期預報",
+    "validFrom": "生效時間",
+    "validUntil": "失效時間"
   },
   "signals": {
     "context": {
