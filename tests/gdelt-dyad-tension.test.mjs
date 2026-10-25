@@ -204,42 +204,74 @@ test('Iran–GCC sums Iran against every GCC member, in both directions', () => 
   assert.equal(Object.values(data).reduce((sum, pair) => sum + pair.total, 0), 12, 'non-members and intra-GCC rows are not counted');
 });
 
-// Live scoring: the last 168 complete hours, so a surge counts before midnight.
+// Live scoring: the last 336 complete hours, so a surge counts before midnight.
+const HOUR = 3_600_000;
+const DAY = 86_400_000;
 const liveNow = Date.parse('2026-10-24T18:20:00Z');
-const liveDay = (i) => new Date(liveNow - i * 86400000).toISOString().slice(0, 10);
+const liveDay = (i) => new Date(liveNow - i * DAY).toISOString().slice(0, 10);
 const pinnedIds = Object.keys(parseDyadExport(''));
 const emptyBucket = () => ({ total: 0, conflict: 0, intensity: 0, toneSum: 0, toneCount: 0 });
-function liveSnapshot(hourIntensity) {
+// 90 completed days and today for usa_russia, from one hourly intensity
+// rate(hourStartMs): a day's bucket sums its hours, and the last 15 days keep
+// them. The cursor is now's hour, which holds only its first cohort.
+function liveSnapshot(rate, now = liveNow) {
+  const nowHour = Math.floor(now / HOUR) * HOUR;
   const days = {};
   for (let i = 0; i <= 90; i++) {
-    const pairs = Object.fromEntries(pinnedIds.map(id => [id, emptyBucket()]));
-    pairs.usa_russia = { total: 30, conflict: 24, intensity: 100, toneSum: 0, toneCount: 30 };
-    days[liveDay(i)] = { cohorts: i === 0 ? 73 : 96, pairs };
-    if (i > 8) continue;
-    days[liveDay(i)].hours = {};
-    for (let h = 0; h < (i === 0 ? 19 : 24); h++) {
-      const hh = String(h).padStart(2, '0');
-      days[liveDay(i)].hours[hh] = { cohorts: i === 0 && h === 18 ? 1 : 4,
-        pairs: { usa_russia: [1, hourIntensity(i, h)] } };
+    const start = Math.floor(now / DAY) * DAY - i * DAY;
+    const hours = {};
+    let intensity = 0;
+    for (let ms = start; ms < start + DAY && ms <= nowHour; ms += HOUR) {
+      intensity += rate(ms);
+      hours[new Date(ms).toISOString().slice(11, 13)] = { cohorts: ms === nowHour ? 1 : 4, pairs: { usa_russia: [1, rate(ms)] } };
     }
+    const pairs = Object.fromEntries(pinnedIds.map(id => [id, emptyBucket()]));
+    pairs.usa_russia = { total: 30, conflict: 24, intensity, toneSum: 0, toneCount: 30 };
+    const cohorts = i === 0 ? Object.keys(hours).length * 4 - 3 : 96;
+    days[new Date(start).toISOString().slice(0, 10)] = { cohorts, pairs, ...(i < 15 && { hours }) };
   }
-  return { cursor: '20261024180000', days };
+  return { cursor: new Date(nowHour).toISOString().replace(/\D/g, '').slice(0, 14), days };
 }
-const usaRussia = (snapshot) => scoreDyads(snapshot, liveNow).tensionPairs.find(pair => pair.id === 'usa_russia');
+const usaRussia = (snapshot, now = liveNow) => scoreDyads(snapshot, now).tensionPairs.find(pair => pair.id === 'usa_russia');
+const reading = ({ score, trend, changePercent }) => ({ score, trend, changePercent });
+// The 168 hours ending at 17:00, the last complete hour at liveNow, read 15;
+// every earlier hour reads 10.
+const lastHour = Date.parse('2026-10-24T17:00:00Z');
+const weekSurge = (ms) => (ms > lastHour - 168 * HOUR ? 15 : 10);
 
-test('a surge today moves the score and the 24-hour change before the day completes', () => {
-  // Every completed day reads 100; today's hours through 17:00 read 1000 each.
-  const pair = usaRussia(liveSnapshot((i, h) => (i === 0 ? 1000 : 100 / 24)));
+test('a surge today moves the score and the weekly change before the day completes', () => {
+  // Every completed day reads 240; today's hours through 17:00 read 1000 each.
+  const today = Date.parse('2026-10-24T00:00:00Z');
+  const pair = usaRussia(liveSnapshot(ms => (ms >= today ? 1000 : 10)));
   assert.equal(pair.score, 100, 'the 168-hour mean is above every daily value');
   assert.equal(pair.trend, 'TREND_DIRECTION_RISING');
-  // Last 24 h: today 00-17 (18 × 1000) + yesterday 18-23 (6 × 100/24) = 18025,
-  // against a previous 7-day daily mean of 100.
-  assert.equal(pair.changePercent, 17925);
+  // Last 168 h: today 00-17 (18 × 1000) + 150 earlier hours × 10 = 19500,
+  // against 168 × 10 = 1680 in the 168 hours before them.
+  assert.equal(pair.changePercent, 1060.7);
+});
+
+test('a week-long surge reads rising against the week before it', () => {
+  const pair = usaRussia(liveSnapshot(weekSurge));
+  assert.equal(pair.changePercent, 50, '168 hours × 15 against 168 hours × 10');
+  assert.equal(pair.trend, 'TREND_DIRECTION_RISING');
+  assert.equal(pair.score, 100, 'the 168-hour mean of 360 a day matches the highest completed day');
+});
+
+test('a weekday news rhythm reads stable on a Sunday, live and from completed days', () => {
+  // Weekend hours carry 0.7 of the weekday volume, the same every week.
+  const sunday = Date.parse('2026-10-25T18:20:00Z');
+  const rhythm = (ms) => ([0, 6].includes(new Date(ms).getUTCDay()) ? 7 : 10);
+  const snapshot = liveSnapshot(rhythm, sunday);
+  const live = usaRussia(snapshot, sunday);
+  assert.equal(live.changePercent, 0, 'each week holds the same weekdays and weekend');
+  assert.equal(live.trend, 'TREND_DIRECTION_STABLE');
+  delete snapshot.days['2026-10-20'].hours['05'];
+  assert.deepEqual(reading(usaRussia(snapshot, sunday)), reading(live), 'the completed days read the same two weeks');
 });
 
 test('the hour in progress waits; the window ends at the last complete hour', () => {
   // 18:00 has only its first cohort, so a value there must not count.
-  const snapshot = liveSnapshot((i, h) => (i === 0 && h === 18 ? 1e9 : 100 / 24));
+  const snapshot = liveSnapshot(ms => (ms === lastHour + HOUR ? 1e9 : 10));
   const pair = usaRussia(snapshot);
   assert.equal(pair.trend, 'TREND_DIRECTION_STABLE');
   assert.equal(pair.changePercent, 0);
@@ -247,24 +279,50 @@ test('the hour in progress waits; the window ends at the last complete hour', ()
   assert.equal(usaRussia(snapshot).changePercent, 0, 'the :45 cohort completes its own hour');
 });
 
-test('any unusable hour falls the pair back to completed days, never a partial number', () => {
-  const missing = liveSnapshot((i) => (i === 0 ? 1000 : 100 / 24));
+test('any unusable hour among the 336 falls the pair back to completed days, never a partial number', () => {
+  // Completed days 1-6 read 360, day 7 holds 6 surge hours (270), older days
+  // 240. Days 1-7 sum 2430 against 1680 for days 8-14, and their mean of
+  // 347.1 is above 84 of the 90 days.
+  const daily = { score: 93.3, trend: 'TREND_DIRECTION_RISING', changePercent: 44.6 };
+  const oldest = liveSnapshot(weekSurge);
+  oldest.days[liveDay(14)].hours['18'].cohorts = 3;
+  assert.deepEqual(reading(usaRussia(oldest)), daily, 'the oldest hour of the window is partial');
+  const before = liveSnapshot(weekSurge);
+  before.days[liveDay(14)].hours['17'].cohorts = 3;
+  assert.equal(usaRussia(before).changePercent, 50, 'an hour before the window does not matter');
+  const missing = liveSnapshot(weekSurge);
   delete missing.days[liveDay(3)].hours['05'];
-  const daily = usaRussia(missing);
-  assert.equal(daily.score, 50, 'seven days of 100 among ninety of 100');
-  assert.equal(daily.changePercent, 0);
-  const partial = liveSnapshot((i) => (i === 0 ? 1000 : 100 / 24));
-  partial.days[liveDay(1)].hours['12'].cohorts = 3;
-  assert.equal(usaRussia(partial).score, 50);
-  const newPair = liveSnapshot((i) => (i === 0 ? 1000 : 100 / 24));
+  assert.deepEqual(reading(usaRussia(missing)), daily);
+  const newPair = liveSnapshot(weekSurge);
   delete newPair.days[liveDay(0)].pairs.usa_russia;
-  assert.equal(usaRussia(newPair).score, 50, 'a day without the pair bucket is not read hourly');
+  assert.deepEqual(reading(usaRussia(newPair)), daily, 'a day without the pair bucket is not read hourly');
+});
+
+test('each pair reads its weekly change against its own usual weekly swing', () => {
+  // Both pairs rise from 100 a day to 130 over the last 7 days, +30%. Before
+  // that US–Russia held 100 a day, while US–China alternated weeks of 50 and
+  // 100, so most of its weekly changes exceed 30% and +30% is ordinary for it.
+  const days = {};
+  const bucket = (intensity) => ({ total: 30, conflict: 20, intensity, toneSum: 0, toneCount: 30 });
+  for (let i = 1; i <= 90; i++) {
+    const recent = i <= 7 ? 130 : i <= 14 ? 100 : null;
+    days[new Date(now - i * DAY).toISOString().slice(0, 10)] = { cohorts: 96, pairs: {
+      usa_russia: bucket(recent ?? 100),
+      usa_china: bucket(recent ?? (Math.floor((i - 15) / 7) % 2 ? 100 : 50)),
+    } };
+  }
+  const scored = Object.fromEntries(scoreDyads({ days }, now).tensionPairs.map(pair => [pair.id, pair]));
+  assert.equal(scored.usa_russia.changePercent, 30);
+  assert.equal(scored.usa_russia.trend, 'TREND_DIRECTION_RISING', 'a calm pair keeps the 10% floor');
+  assert.equal(scored.usa_china.changePercent, 30);
+  assert.equal(scored.usa_china.trend, 'TREND_DIRECTION_STABLE', 'a volatile pair needs more than its usual swing');
 });
 
 test('the live merge fills hours, never completes one it joined late, and prunes old hours', () => {
   const previous = { cursor: '20261024171500', days: {
     [liveDay(0)]: { cohorts: 70, pairs: Object.fromEntries(pinnedIds.map(id => [id, emptyBucket()])) },
-    [liveDay(9)]: { cohorts: 96, pairs: {}, hours: { '00': { cohorts: 4, pairs: {} } } },
+    [liveDay(15)]: { cohorts: 96, pairs: {}, hours: { '00': { cohorts: 4, pairs: {} } } },
+    [liveDay(16)]: { cohorts: 96, pairs: {}, hours: { '00': { cohorts: 4, pairs: {} } } },
   } };
   const batches = ['20261024173000', '20261024174500', '20261024180000', '20261024181500', '20261024183000', '20261024184500']
     .map(timestamp => ({ timestamp, dyads: parseDyadExport(row('USA', 'RUS', 4, 2, -5)) }));
@@ -272,7 +330,8 @@ test('the live merge fills hours, never completes one it joined late, and prunes
   const hours = merged.days[liveDay(0)].hours;
   assert.equal(hours['17'].cohorts, 2, 'joined at :30, so 17:00 stays incomplete');
   assert.deepEqual(hours['18'], { cohorts: 4, pairs: { usa_russia: [4, 40] } });
-  assert.equal(merged.days[liveDay(9)].hours, undefined, 'hours older than the window are dropped');
+  assert.deepEqual(merged.days[liveDay(15)].hours, { '00': { cohorts: 4, pairs: {} } }, 'hours from the last 15 days are kept');
+  assert.equal(merged.days[liveDay(16)].hours, undefined, 'hours older than the window are dropped');
 });
 
 test('a recent day without complete hours is rebuilt with them; an older day is not', () => {
@@ -282,11 +341,22 @@ test('a recent day without complete hours is rebuilt with them; an older day is 
   for (let i = 1; i <= 90; i++) snapshot.days[dayOf(i)] = day(dayOf(i));
   assert.equal(Object.keys(snapshot.days[dayOf(1)].hours).length, 24);
   assert.equal(planDyadRepair(snapshot, now, 90).length, 0);
-  delete snapshot.days[dayOf(2)].hours;
-  delete snapshot.days[dayOf(10)].hours;
-  assert.deepEqual(planDyadRepair(snapshot, now, 90), [dayOf(2)]);
+  delete snapshot.days[dayOf(15)].hours;
+  delete snapshot.days[dayOf(16)].hours;
+  assert.deepEqual(planDyadRepair(snapshot, now, 90), [dayOf(15)]);
   snapshot.days[dayOf(20)].cohorts = 95;
-  const replaced = replaceDyadDays(snapshot, { [dayOf(2)]: day(dayOf(2)), [dayOf(20)]: day(dayOf(20)) }, now);
-  assert.equal(Object.keys(replaced.days[dayOf(2)].hours).length, 24);
+  const replaced = replaceDyadDays(snapshot, { [dayOf(15)]: day(dayOf(15)), [dayOf(20)]: day(dayOf(20)) }, now);
+  assert.equal(Object.keys(replaced.days[dayOf(15)].hours).length, 24);
   assert.equal(replaced.days[dayOf(20)].hours, undefined, 'an older rebuilt day keeps no hours');
+});
+
+test('each configured country pair is counted by its own pair', async () => {
+  const { default: config } = await import('../scripts/shared/gdelt-tension-pairs.json', { with: { type: 'json' } });
+  for (const pair of config) {
+    const [left, right] = pair.actors.map(side => [side].flat());
+    for (const a of left) for (const b of right) {
+      const counts = parseDyadExport([row(a, b, 4), row(b, a, 3)].join('\n'));
+      assert.equal(counts[pair.id].conflict, 2, `${a}–${b} counts for ${pair.id} in both directions`);
+    }
+  }
 });
