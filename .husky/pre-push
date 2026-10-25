@@ -474,6 +474,7 @@ PROTO_INPUTS=(
   scripts/shared/giving-published-estimate-claims.json
   scripts/shared/iso2-to-region.json
   server/_shared/api-key-rate-limit.ts
+  server/_shared/api-only-paths.ts
   server/_shared/auth-session.ts
   server/_shared/bounded-jmespath.ts
   server/_shared/bounded-json.ts
@@ -481,6 +482,8 @@ PROTO_INPUTS=(
   server/_shared/client-ip.ts
   server/_shared/country-history-access.ts
   server/_shared/deprecation-policy.ts
+  server/_shared/desktop-key-meter.ts
+  server/_shared/desktop-key-principal.ts
   server/_shared/direct-llm-quota.ts
   server/_shared/entitlement-check.ts
   server/_shared/entitlement-coverage.ts
@@ -499,6 +502,7 @@ PROTO_INPUTS=(
   server/_shared/sub-request-admission.ts
   server/_shared/usage-identity.ts
   server/_shared/usage.ts
+  server/_shared/user-api-key.ts
   server/auth-session.ts
   server/cors.ts
   server/error-mapper.ts
@@ -518,6 +522,7 @@ PROTO_INPUTS=(
   shared/decision-signal-provenance-contract.ts
   shared/decision-signal-provenance-families.ts
   shared/decision-signal-provenance.ts
+  shared/desktop-key-access.js
   shared/embed-access.ts
   shared/embed-panels.ts
   shared/event-triggers.json

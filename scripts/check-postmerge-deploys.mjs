@@ -83,6 +83,7 @@ export const MONITORED_WORKFLOWS = Object.freeze([
       'shared/company-monitoring-contract.ts',
       'shared/company-monitoring-evidence.ts',
       'shared/embed-access.ts',
+      'shared/desktop-key-access.js',
       'shared/legal.ts',
       'shared/agent-client-source.js',
       'shared/acquisition-source.ts',
