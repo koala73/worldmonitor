@@ -260,7 +260,7 @@ export const AIRPORTS = [
   { iata: 'BND', icao: 'OIKB', name: 'Bandar Abbas International',    city: 'Bandar Abbas', country: 'Iran',         lat: 27.2181, lon: 56.3778, region: 'mena', sources: ['notam'] },
   { iata: 'TUN', icao: 'DTTA', name: 'Tunis–Carthage',                city: 'Tunis',        country: 'Tunisia',      lat: 36.8510, lon: 10.2272, region: 'mena', sources: ['notam'] },
   { iata: 'ALG', icao: 'DAAG', name: 'Houari Boumediene',             city: 'Algiers',      country: 'Algeria',      lat: 36.6910, lon: 3.2154, region: 'mena', sources: ['notam'] },
-  { iata: 'TIP', icao: 'HLLM', name: 'Mitiga International',          city: 'Tripoli',      country: 'Libya',        lat: 32.8951, lon: 13.2760, region: 'mena', sources: ['notam'] },
+  { iata: 'MJI', icao: 'HLLM', name: 'Mitiga International',          city: 'Tripoli',      country: 'Libya',        lat: 32.8951, lon: 13.2760, region: 'mena', sources: ['notam'] },
   { iata: 'THR', icao: 'OIII', name: 'Mehrabad International',      city: 'Tehran',   country: 'Iran',   lat: 35.6892, lon: 51.3134, region: 'mena', sources: ['notam'] },
   { iata: 'IFN', icao: 'OIFM', name: 'Isfahan International',       city: 'Isfahan',  country: 'Iran',   lat: 32.7508, lon: 51.8613, region: 'mena', sources: ['notam'] },
   { iata: 'BSR', icao: 'ORMM', name: 'Basra International',         city: 'Basra',    country: 'Iraq',   lat: 30.5491, lon: 47.6622, region: 'mena', sources: ['notam'] },

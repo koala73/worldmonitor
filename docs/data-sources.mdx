@@ -653,7 +653,7 @@ Airports across the Americas, Europe, Asia-Pacific, MENA, and Africa are continu
 | ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------- |
 | **FAA ASWS**       | 14 US hub airports        | Real-time XML feed from `nasstatus.faa.gov` — ground delays, ground stops, arrival/departure delays, closures |
 | **AviationStack**  | 56 international airports  | Last 100 flights per airport — cancellation rate and average delay duration computed from flight records  |
-| **ICAO NOTAM API** | 91 airports worldwide     | Real-time NOTAM (Notice to Air Missions) query for active airport/airspace closures                      |
+| **ICAO NOTAM API** | Watchlist airports worldwide | Real-time NOTAM (Notice to Air Missions) query for active airport/airspace closures                      |
 | **FAA NMS-API**    | Same NOTAM watchlist      | Worldwide FAA NOTAM store (domestic, FDC, international, military), kept current by daily bulk loads and delta pulls |
 
 **NOTAM closure detection** targets MENA airports where airspace closures due to military activity or security events carry strategic significance. Detection uses two methods: ICAO Q-code matching (aerodrome/airspace closure codes `FA`, `AH`, `AL`, `AW`, `AC`, `AM` combined with closure qualifiers `LC`, `AS`, `AU`, `XX`, `AW`) and free-text regex scanning for closure keywords (`AD CLSD`, `AIRPORT CLOSED`, `AIRSPACE CLOSED`). When a NOTAM closure is detected, it overrides any existing delay alert for that airport with a `severe/closure` classification.
