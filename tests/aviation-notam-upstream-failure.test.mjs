@@ -32,10 +32,10 @@ if (process.env.TEST_NMS_MODE) {
   values.set('aviation:notam:nms:closures:v1', JSON.stringify({
     _seed: { fetchedAt: generatedAt, recordCount: 3, sourceVersion: 'faa-nms-api-v1', schemaVersion: 1, state: 'OK' },
     data: {
-      closedIcaos: ['OEJN', 'KZZZ'],
+      closedIcaos: ['OEJN', 'KZZZ'].concat(process.env.TEST_NMS_MODE === 'dashboard' ? ['HSSK'] : []),
       restrictedIcaos: ['OEMA', 'OEDF'],
-      reasons: { OEJN: 'AD CLSD (NMS)', KZZZ: 'AD AP CLSD', OEMA: 'RESTRICTED (NMS)', OEDF: 'AD AP CLSD TO NON SKED GA' },
-      coveredIcaos: ['KZZZ', 'OEJN', 'OIIE'],
+      reasons: { OEJN: 'AD CLSD (NMS)', KZZZ: 'AD AP CLSD', OEMA: 'RESTRICTED (NMS)', OEDF: 'AD AP CLSD TO NON SKED GA', HSSK: 'AD CLSD' },
+      coveredIcaos: ['EGKK', 'KZZZ', 'OEJN', 'OIIE'],
       generatedAt,
     },
   }));
@@ -212,10 +212,25 @@ test('ICAO outage with fresh NMS closures publishes the NMS observation', () => 
   assert.deepEqual(state.notam.closedIcaos, ['OEJN'], 'KZZZ is not a monitored airport');
   assert.deepEqual(state.notam.restrictedIcaos.sort(), ['OEDF', 'OEMA']);
   assert.equal(state.notam.reasons.OEJN, 'AD CLSD (NMS)');
-  assert.deepEqual(state.notam.coveredIcaos, ['OEJN', 'OIIE'], 'coverage is limited to monitored airports');
+  assert.deepEqual(state.notam.coveredIcaos, ['EGKK', 'OEJN', 'OIIE'], 'coverage is limited to monitored airports');
   assert.ok(state.meta.fetchedAt > state.initialFetchedAt, 'NMS is a current observation');
   const notice = state.pushes.find((p) => p.eventType === 'notam_closure');
   assert.equal(notice?.payload.source, 'FAA NMS NOTAM');
+});
+
+// Khartoum and London Gatwick were listed only in src/config/airports.ts, which
+// the Railway container does not ship, so their NMS closures and coverage were
+// dropped. tests/aviation-notify-location.test.mjs keeps the registries aligned.
+test('NMS closures and coverage reach airports that were dashboard-only', () => {
+  const { state, stdout, stderr } = runAviation({ ICAO_API_KEY: '', TEST_NMS_MODE: 'dashboard' });
+  assert.deepEqual(state.notam.closedIcaos.sort(), ['HSSK', 'OEJN']);
+  assert.equal(state.notam.reasons.HSSK, 'AD CLSD');
+  assert.ok(state.notam.coveredIcaos.includes('EGKK'));
+  const notice = state.pushes.find((p) => p.eventType === 'notam_closure' && p.payload.coalesceKey === 'notam:closure:HSSK');
+  assert.ok(notice, stdout + stderr);
+  assert.equal(notice.payload.countryCode, 'SD');
+  assert.equal(typeof notice.payload.lat, 'number');
+  assert.doesNotMatch(stderr, /notam_closure HSSK: no registry country/);
 });
 
 test('without an ICAO key, fresh NMS closures still publish', () => {

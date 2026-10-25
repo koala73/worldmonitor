@@ -154,6 +154,9 @@ export const AIRPORTS = [
   { iata: 'BOG', icao: 'SKBO', name: 'El Dorado International',   city: 'Bogotá',       country: 'Colombia', lat: 4.7016,   lon: -74.1469, region: 'americas', sources: ['aviationstack', 'notam'] },
   { iata: 'SCL', icao: 'SCEL', name: 'Arturo Merino Benítez',     city: 'Santiago',     country: 'Chile',    lat: -33.3930, lon: -70.7858, region: 'americas', sources: ['aviationstack', 'notam'] },
 
+  // Americas NOTAM-only
+  { iata: 'LIM', icao: 'SPJC', name: 'Jorge Chávez International', city: 'Lima', country: 'Peru', lat: -12.0219, lon: -77.1143, region: 'americas', sources: ['notam'] },
+
   // ── Americas — FAA + NOTAM (US only; many dual-covered with AviationStack too for intl flights) ──
   { iata: 'ATL', icao: 'KATL', name: 'Hartsfield–Jackson Atlanta',            city: 'Atlanta',       country: 'USA', lat: 33.6407, lon: -84.4277, region: 'americas', sources: ['faa', 'notam'] },
   { iata: 'ORD', icao: 'KORD', name: "Chicago O'Hare",                         city: 'Chicago',       country: 'USA', lat: 41.9742, lon: -87.9073, region: 'americas', sources: ['faa', 'notam'] },
@@ -207,6 +210,8 @@ export const AIRPORTS = [
   { iata: 'OSL', icao: 'ENGM', name: 'Oslo Gardermoen',      city: 'Oslo',      country: 'Norway',  lat: 60.1939, lon: 11.1004, region: 'europe', sources: ['notam'] },
   { iata: 'ARN', icao: 'ESSA', name: 'Stockholm Arlanda',    city: 'Stockholm', country: 'Sweden',  lat: 59.6519, lon: 17.9186, region: 'europe', sources: ['notam'] },
   { iata: 'HEL', icao: 'EFHK', name: 'Helsinki-Vantaa',      city: 'Helsinki',  country: 'Finland', lat: 60.3172, lon: 24.9633, region: 'europe', sources: ['notam'] },
+  { iata: 'LGW', icao: 'EGKK', name: 'London Gatwick',             city: 'London', country: 'UK',     lat: 51.1537, lon: -0.1821, region: 'europe', sources: ['notam'] },
+  { iata: 'SVO', icao: 'UUEE', name: 'Sheremetyevo International', city: 'Moscow', country: 'Russia', lat: 55.9736, lon: 37.4125, region: 'europe', sources: ['notam'] },
 
   // ── APAC — AviationStack + NOTAM ──
   { iata: 'HND', icao: 'RJTT', name: 'Tokyo Haneda',                 city: 'Tokyo',        country: 'Japan',       lat: 35.5494, lon: 139.7798, region: 'apac', sources: ['aviationstack', 'notam'] },
@@ -221,6 +226,13 @@ export const AIRPORTS = [
   { iata: 'KUL', icao: 'WMKK', name: 'Kuala Lumpur International',   city: 'Kuala Lumpur', country: 'Malaysia',    lat: 2.7456,  lon: 101.7099, region: 'apac', sources: ['aviationstack', 'notam'] },
   { iata: 'TPE', icao: 'RCTP', name: 'Taiwan Taoyuan International', city: 'Taipei',       country: 'Taiwan',      lat: 25.0797, lon: 121.2342, region: 'apac', sources: ['aviationstack'] },
   { iata: 'MNL', icao: 'RPLL', name: 'Ninoy Aquino International',   city: 'Manila',       country: 'Philippines', lat: 14.5086, lon: 121.0197, region: 'apac', sources: ['aviationstack'] },
+  // APAC NOTAM-only
+  { iata: 'MEL', icao: 'YMML', name: 'Melbourne Airport',            city: 'Melbourne', country: 'Australia',   lat: -37.6690, lon: 144.8410, region: 'apac', sources: ['notam'] },
+  { iata: 'CGK', icao: 'WIII', name: 'Soekarno-Hatta International', city: 'Jakarta',   country: 'Indonesia',   lat: -6.1256,  lon: 106.6558, region: 'apac', sources: ['notam'] },
+  { iata: 'AKL', icao: 'NZAA', name: 'Auckland Airport',             city: 'Auckland',  country: 'New Zealand', lat: -37.0082, lon: 174.7850, region: 'apac', sources: ['notam'] },
+  { iata: 'KHI', icao: 'OPKC', name: 'Jinnah International',         city: 'Karachi',   country: 'Pakistan',    lat: 24.9065,  lon: 67.1610, region: 'apac', sources: ['notam'] },
+  { iata: 'ISB', icao: 'OPIS', name: 'Islamabad International',      city: 'Islamabad', country: 'Pakistan',    lat: 33.5605,  lon: 72.8526, region: 'apac', sources: ['notam'] },
+  { iata: 'LHE', icao: 'OPLA', name: 'Allama Iqbal International',   city: 'Lahore',    country: 'Pakistan',    lat: 31.5216,  lon: 74.4036, region: 'apac', sources: ['notam'] },
 
   // ── MENA — AviationStack + NOTAM ──
   { iata: 'DXB', icao: 'OMDB', name: 'Dubai International',          city: 'Dubai',       country: 'UAE',         lat: 25.2532, lon: 55.3657, region: 'mena', sources: ['aviationstack', 'notam'] },
@@ -248,7 +260,20 @@ export const AIRPORTS = [
   { iata: 'BND', icao: 'OIKB', name: 'Bandar Abbas International',    city: 'Bandar Abbas', country: 'Iran',         lat: 27.2181, lon: 56.3778, region: 'mena', sources: ['notam'] },
   { iata: 'TUN', icao: 'DTTA', name: 'Tunis–Carthage',                city: 'Tunis',        country: 'Tunisia',      lat: 36.8510, lon: 10.2272, region: 'mena', sources: ['notam'] },
   { iata: 'ALG', icao: 'DAAG', name: 'Houari Boumediene',             city: 'Algiers',      country: 'Algeria',      lat: 36.6910, lon: 3.2154, region: 'mena', sources: ['notam'] },
-  { iata: 'TIP', icao: 'HLLT', name: 'Tripoli International',         city: 'Tripoli',      country: 'Libya',        lat: 32.8951, lon: 13.2760, region: 'mena', sources: ['notam'] },
+  { iata: 'TIP', icao: 'HLLM', name: 'Mitiga International',          city: 'Tripoli',      country: 'Libya',        lat: 32.8951, lon: 13.2760, region: 'mena', sources: ['notam'] },
+  { iata: 'THR', icao: 'OIII', name: 'Mehrabad International',      city: 'Tehran',   country: 'Iran',   lat: 35.6892, lon: 51.3134, region: 'mena', sources: ['notam'] },
+  { iata: 'IFN', icao: 'OIFM', name: 'Isfahan International',       city: 'Isfahan',  country: 'Iran',   lat: 32.7508, lon: 51.8613, region: 'mena', sources: ['notam'] },
+  { iata: 'BSR', icao: 'ORMM', name: 'Basra International',         city: 'Basra',    country: 'Iraq',   lat: 30.5491, lon: 47.6622, region: 'mena', sources: ['notam'] },
+  { iata: 'EBL', icao: 'ORER', name: 'Erbil International',         city: 'Erbil',    country: 'Iraq',   lat: 36.2376, lon: 43.9632, region: 'mena', sources: ['notam'] },
+  { iata: 'NJF', icao: 'ORNI', name: 'Al Najaf International',      city: 'Najaf',    country: 'Iraq',   lat: 31.9900, lon: 44.4040, region: 'mena', sources: ['notam'] },
+  { iata: 'ALP', icao: 'OSAP', name: 'Aleppo International',        city: 'Aleppo',   country: 'Syria',  lat: 36.1807, lon: 37.2244, region: 'mena', sources: ['notam'] },
+  { iata: 'SAH', icao: 'OYSN', name: "Sana'a International",        city: "Sana'a",   country: 'Yemen',  lat: 15.4763, lon: 44.2197, region: 'mena', sources: ['notam'] },
+  { iata: 'ADE', icao: 'OYAA', name: 'Aden International',          city: 'Aden',     country: 'Yemen',  lat: 12.8295, lon: 45.0288, region: 'mena', sources: ['notam'] },
+  { iata: 'DWC', icao: 'OMDW', name: 'Al Maktoum International',    city: 'Dubai',    country: 'UAE',    lat: 24.8960, lon: 55.1614, region: 'mena', sources: ['notam'] },
+  { iata: 'SAW', icao: 'LTFJ', name: 'Sabiha Gökçen International', city: 'Istanbul', country: 'Turkey', lat: 40.8986, lon: 29.3092, region: 'mena', sources: ['notam'] },
+  { iata: 'ESB', icao: 'LTAC', name: 'Esenboğa International',      city: 'Ankara',   country: 'Turkey', lat: 40.1281, lon: 32.9951, region: 'mena', sources: ['notam'] },
+  { iata: 'ADB', icao: 'LTBJ', name: 'Adnan Menderes Airport',      city: 'Izmir',    country: 'Turkey', lat: 38.2924, lon: 27.1570, region: 'mena', sources: ['notam'] },
+  { iata: 'AYT', icao: 'LTAI', name: 'Antalya Airport',             city: 'Antalya',  country: 'Turkey', lat: 36.8987, lon: 30.8005, region: 'mena', sources: ['notam'] },
 
   // ── Africa — AviationStack + NOTAM ──
   { iata: 'JNB', icao: 'FAOR', name: "O.R. Tambo International",      city: 'Johannesburg', country: 'South Africa', lat: -26.1392, lon: 28.2460, region: 'africa', sources: ['aviationstack', 'notam'] },
@@ -258,6 +283,11 @@ export const AIRPORTS = [
   { iata: 'CPT', icao: 'FACT', name: 'Cape Town International',       city: 'Cape Town',    country: 'South Africa', lat: -33.9715, lon: 18.6021, region: 'africa', sources: ['aviationstack'] },
   // Africa NOTAM-only
   { iata: 'GBE', icao: 'FBSK', name: 'Sir Seretse Khama International', city: 'Gaborone',    country: 'Botswana',    lat: -24.5553, lon: 25.9183, region: 'africa', sources: ['notam'] },
+  { iata: 'ACC', icao: 'DGAA', name: 'Kotoka International',         city: 'Accra',         country: 'Ghana',     lat: 5.6052,   lon: -0.1668, region: 'africa', sources: ['notam'] },
+  { iata: 'DAR', icao: 'HTDA', name: 'Julius Nyerere International', city: 'Dar es Salaam', country: 'Tanzania',  lat: -6.8781,  lon: 39.2026, region: 'africa', sources: ['notam'] },
+  { iata: 'MRU', icao: 'FIMP', name: 'Sir Seewoosagur Ramgoolam',    city: 'Mauritius',     country: 'Mauritius', lat: -20.4302, lon: 57.6836, region: 'africa', sources: ['notam'] },
+  { iata: 'BEN', icao: 'HLLB', name: 'Benina International',         city: 'Benghazi',      country: 'Libya',     lat: 32.0968,  lon: 20.2695, region: 'africa', sources: ['notam'] },
+  { iata: 'KRT', icao: 'HSSK', name: 'Khartoum International',       city: 'Khartoum',      country: 'Sudan',     lat: 15.5895,  lon: 32.5532, region: 'africa', sources: ['notam'] },
 ];
 
 // Derived per-source views (built once at module load)
