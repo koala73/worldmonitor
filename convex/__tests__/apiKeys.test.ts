@@ -275,6 +275,9 @@ describe("revokeApiKey", () => {
     const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
     process.env.UPSTASH_REDIS_REST_URL = "https://redis.example";
     process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
+    // The jobs are asserted as scheduled, never run: on real timers they fire
+    // after the test ends and write to a torn-down database.
+    vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules);
       await seedApiEntitlement(t, "user-api");
@@ -298,6 +301,7 @@ describe("revokeApiKey", () => {
       expect(keyHashes[0]).toBe(makeKeyArgs(1).keyHash);
       expect(new Set(keyHashes)).toEqual(new Set([makeKeyArgs(1).keyHash, makeKeyArgs(2).keyHash, makeKeyArgs(3).keyHash]));
     } finally {
+      vi.useRealTimers();
       if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = savedUrl;
       if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN; else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
     }
