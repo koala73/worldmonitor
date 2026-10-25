@@ -3011,9 +3011,11 @@ async function writeStoryTracking(
     // Archive keys are deliberately raw: the Railway resolver and backfill
     // operate outside a Vercel deployment prefix and must read this same
     // durable evidence namespace.
+    // Keep each record's lastSeen and its index score in the same transaction.
+    // Concurrent pipelines can otherwise leave a mixed pair and block recovery.
     const evidenceTimeoutMs = redisTimeoutForDeadline(deadlineAt);
     const evidencePromise = evidenceEligible && evidenceTimeoutMs !== undefined
-      ? runRedisPipeline(evidenceBatchCommands, true, evidenceTimeoutMs)
+      ? runRedisTransaction(evidenceBatchCommands, true, evidenceTimeoutMs)
       : Promise.resolve([]);
     if (evidenceEligible && evidenceTimeoutMs === undefined) evidenceWritesConfirmed = false;
     for (const trackingChunk of chunkRedisCommands(commands)) {
