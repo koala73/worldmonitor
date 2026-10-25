@@ -51,7 +51,7 @@
 | **Web app** | [worldmonitor.app](https://www.worldmonitor.app) and the tech, finance, commodity, happy and energy variants | [Getting Started](https://www.worldmonitor.app/docs/getting-started) |
 | **Desktop app** (Tauri) | Windows, macOS and Linux downloads above | [Desktop App](https://www.worldmonitor.app/docs/desktop-app) |
 | **Terminal dashboard** | `npx worldmonitor` | [Terminal Dashboard](https://www.worldmonitor.app/docs/cli-dashboard) |
-| **CLI** | `npm install -g worldmonitor` | [Command-Line Client](https://www.worldmonitor.app/docs/cli) |
+| **CLI** | `npm install -g worldmonitor` or `brew install worldmonitor` | [Command-Line Client](https://www.worldmonitor.app/docs/cli) |
 | **SDKs** | Python `worldmonitor-sdk`, Ruby `worldmonitor`, Go `sdk/go` | [SDKs](https://www.worldmonitor.app/docs/sdks) |
 | **MCP server** | `https://worldmonitor.app/mcp` | [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) |
 
@@ -146,6 +146,7 @@ World Monitor is built for agents and scripts as well as browsers:
   ```sh
   npx worldmonitor tools          # run ad-hoc — list every MCP tool (no key needed)
   npm install -g worldmonitor     # or install the `worldmonitor` (alias `wm`) command
+  brew install worldmonitor       # or install it with Homebrew
   worldmonitor risk IR --api-key wm_xxx
   ```
 

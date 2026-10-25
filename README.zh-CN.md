@@ -128,6 +128,7 @@ World Monitor 同时为智能体、脚本和浏览器而构建：
   ```sh
   npx worldmonitor tools          # run ad-hoc — list every MCP tool (no key needed)
   npm install -g worldmonitor     # or install the `worldmonitor` (alias `wm`) command
+  brew install worldmonitor       # or install it with Homebrew
   worldmonitor risk IR --api-key wm_xxx
   ```
 

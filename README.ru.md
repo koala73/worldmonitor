@@ -130,6 +130,7 @@ World Monitor рассчитан и на агентов/скрипты, и на 
   ```sh
   npx worldmonitor tools          # разово — список всех MCP-инструментов (ключ не нужен)
   npm install -g worldmonitor     # или установить команду `worldmonitor` (псевдоним `wm`)
+  brew install worldmonitor       # или установить через Homebrew
   worldmonitor risk IR --api-key wm_xxx
   ```
 
