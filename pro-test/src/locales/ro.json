@@ -161,7 +161,7 @@
     "oneKey": "Servicii Live, 1 Cheie",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky și mai mult — toate active, fără înregistrări separate.",
     "deliveryLabel": "Alege cum te găsește intelligence-ul",
-    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLab": "Laborator de stres al lanțului de aprovizionare",
     "supplyChainLabDesc": "Modelează un șoc de cost pe țări și sectoare. Clasifică vulnerabilitatea mărfurilor după dependența de puncte de strangulare. Urmărește concentrația mine-rafinărie și divergența primei fizice SGE–COMEX — seria care se mișcă înainte ca titlul să apară.",
     "roadmapNote": "Pe foaia de parcurs: supraveghere orbitală, istoric mai lung, straturi de hartă premium."
   },
@@ -244,12 +244,12 @@
     "infraLayers": "Straturi infrastructură",
     "satellite": "Supraveghere orbitală",
     "connectorsRow": "Conectori",
-    "deployment": "Deployment",
+    "deployment": "Implementare",
     "securityRow": "Securitate",
     "f5_15min": "5-15 minute",
     "fLt60s": "<60 secunde",
     "fPerRequest": "Per cerere",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "În direct",
     "f50panels": "Paneluri",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
@@ -331,9 +331,9 @@
   },
   "soonBadge": "În curând",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | Inteligență AI și MCP",
     "description": "World Monitor Pro adaugă un analist AI, rezumate inteligente programate, widgeturi personalizate, cercetare de piață și acces MCP la date geopolitice și financiare în timp real.",
-    "ogTitle": "World Monitor Pro | Geopolitical AI",
+    "ogTitle": "World Monitor Pro | IA geopolitică",
     "ogDescription": "Întreabă, abonează-te, construiește. WM Analyst chat, un digest AI conform programului tău (zilnic, de două ori pe zi sau săptămânal), constructor de widget-uri personalizat și MCP pentru Claude/GPT — pe serviciile live sub o singură cheie."
   },
   "pricing": {
@@ -444,7 +444,7 @@
       "checkoutDefault": "Să încep",
       "learnMore": "Aflați mai multe"
     },
-    "axisPersonal": "Personal",
+    "axisPersonal": "Uz personal",
     "axisPersonalNote": "utilizare individuală",
     "axisCommercial": "Comercial",
     "axisCommercialNote": "muncă, clienți și produse"
@@ -478,7 +478,7 @@
       "ctaFree": "Gratuit · Fără înregistrare · Se încarcă în secunde",
       "ctaSecondary": "Vedeți cum îl folosesc oamenii ↓",
       "trustUsers": "2M+ utilizatori",
-      "trustOpenSource": "Open source · AGPL-3.0",
+      "trustOpenSource": "Sursă deschisă · AGPL-3.0",
       "screenshotAlt": "Tabloul de bord de inteligență live World Monitor — hartă globală cu straturi de conflict, transport și piață",
       "plateNote": "Capturat din harta în direct — faceți clic pentru a o deschide",
       "trustBuild": "Construiți pe ea:",

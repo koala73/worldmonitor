@@ -81,7 +81,7 @@
     "windowTitle": "worldmonitor.app — Live-dashboard",
     "openFullScreen": "Öppna helskärm",
     "tryLiveDashboard": "Prova live-dashboarden",
-    "iframeTitle": "World Monitor — Live Intelligence Dashboard",
+    "iframeTitle": "World Monitor — Live-dashboard för underrättelser",
     "description": "3D WebGL-globs · interaktiva kartlager · realtids marknads-, makro-, geopolitiska, energi- och infrastrukturdata"
   },
   "socialProof": {
@@ -161,7 +161,7 @@
     "oneKey": "Live-tjänster, 1 nyckel",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky och fler — alla aktiva, inga separata registreringar.",
     "deliveryLabel": "Välj hur intelligence hittar dig",
-    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLab": "Stresstestlabb för leveranskedjan",
     "supplyChainLabDesc": "Modellera en kostnadschock över länder och sektorer. Rangordna råvaruöversälj efter beroende av flaskhalsar. Spåra koncentration från gruva till raffin och SGE–COMEX-premiumskillnaden — serien som rör sig före rubrikerna.",
     "roadmapNote": "På vägkartan: orbitövervakning, längre historik, premiumkartlager."
   },
@@ -244,7 +244,7 @@
     "infraLayers": "Infrastrukturlager",
     "satellite": "Orbital övervakning",
     "connectorsRow": "Konnektorer",
-    "deployment": "Deployment",
+    "deployment": "Driftsättning",
     "securityRow": "Säkerhet",
     "f5_15min": "5-15 minuter",
     "fLt60s": "<60 sekunder",
@@ -331,7 +331,7 @@
   },
   "soonBadge": "Snart",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | AI-underrättelser och MCP",
     "description": "World Monitor Pro lägger till en AI-analytiker, schemalagda intelligenssammanfattningar, anpassade widgetar, marknadsundersökningar och MCP-åtkomst till live-data för geopolitik och finans.",
     "ogTitle": "World Monitor Pro | Geopolitisk AI",
     "ogDescription": "Fråga den, prenumerera på den, bygg på den. WM Analyst chat, en AI-sammandrag enligt ditt schema (dagligen, två gånger dagligen eller veckovis), anpassad widgetbyggare och MCP för Claude/GPT — över live-tjänster under en nyckel."
@@ -599,7 +599,7 @@
       "s5l": "Instabilitetsindex · direkt",
       "s6l": "Resilienserbjudanden",
       "s7l": "Undersjöiska kablar",
-      "s8l": "Pipelines & LNG",
+      "s8l": "Rörledningar och LNG",
       "s9l": "AI-datacenter kartlagda",
       "s10l": "Bedömda hotspots",
       "s11l": "Börser & tillgångar",

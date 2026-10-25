@@ -249,7 +249,7 @@
     "f5_15min": "5-15 minut",
     "fLt60s": "<60 sekund",
     "fPerRequest": "Na żądanie",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "Na żywo",
     "f50panels": "Panele",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
@@ -331,9 +331,9 @@
   },
   "soonBadge": "Wkrótce",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | Analiza AI i MCP",
     "description": "World Monitor Pro dodaje analityka AI, zaplanowane digesty wywiadowcze, niestandardowe widżety, badania rynku oraz dostęp MCP do danych geopolitycznych i finansowych na żywo.",
-    "ogTitle": "World Monitor Pro | Geopolitical AI",
+    "ogTitle": "World Monitor Pro | Geopolityczna AI",
     "ogDescription": "Pytaj, subskrybuj, buduj na bazie. WM Analyst chat — podsumowanie AI według Twojego harmonogramu (codziennie, dwa razy dziennie lub tygodniowo), konstruktor custom widgetów i MCP dla Claude/GPT — na wszystkich live usługach pod jednym kluczem."
   },
   "pricing": {
@@ -478,7 +478,7 @@
       "ctaFree": "Darmowe · Bez rejestracji · Wczytuje się w sekundy",
       "ctaSecondary": "Zobacz, jak go używają ↓",
       "trustUsers": "2M+ użytkowników",
-      "trustOpenSource": "Open source · AGPL-3.0",
+      "trustOpenSource": "Otwarty kod · AGPL-3.0",
       "screenshotAlt": "Żywa mapa inteligencji World Monitor — globalna mapa z warstwami konfliktów, transportu i rynków",
       "plateNote": "Przechwycone z żywej mapy — kliknij, aby ją otworzyć",
       "trustBuild": "Buduj na jej podstawie:",

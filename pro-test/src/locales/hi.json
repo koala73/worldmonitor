@@ -71,7 +71,7 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) और Claude, GPT, custom LLMs के लिए MCP."
   },
   "deliveryDesk": {
-    "eyebrow": "DELIVERY DESK",
+    "eyebrow": "डिलीवरी डेस्क",
     "title": "व्यक्तिगत इंटेलिजेंस डेस्क क्या है?",
     "body": "प्रति भेजने पर 30 तक क्रमबद्ध आइटम, स्रोतों के पार डीडुप किए गए, आपकी निगरानी सूची के विरुद्ध स्कोर किए गए। अपनी आवृत्ति चुनें — दैनिक, दिन में दो बार, या साप्ताहिक — एक AI मूल्यांकन और Slack, Discord, Telegram, Email, या webhook को वितरित देखने के लिए संकेत।",
     "closer": "Newsletter नहीं। एक analyst.",
@@ -81,7 +81,7 @@
     "windowTitle": "worldmonitor.app — लाइव डैशबोर्ड",
     "openFullScreen": "Full screen खोलें",
     "tryLiveDashboard": "Live Dashboard आज़माएँ",
-    "iframeTitle": "World Monitor — Live Intelligence Dashboard",
+    "iframeTitle": "World Monitor — लाइव इंटेलिजेंस डैशबोर्ड",
     "description": "3D WebGL ग्लोब · इंटरैक्टिव मानचित्र परतें · रीयल-टाइम बाजार, मैक्रो, भू-राजनीतिक, ऊर्जा, और बुनियादी ढांचे का डेटा"
   },
   "socialProof": {
@@ -169,7 +169,7 @@
     "morningBrief": "सुबह का ब्रीफ़",
     "markets": "बाजार",
     "marketsText": "S&P 500 futures pre-market -1.2%. Fed Chair testimony 10am EST पर — rate-sensitive sectors दबाव में। Q2 earnings पर analyst consensus बदल रहा है।",
-    "elevated": "Macro",
+    "elevated": "मैक्रो",
     "elevatedText": "ECB rates को 3.75% पर रखता है। Euro area GDP 1.1% तक revise up. Central bank divergence बढ़ रहा है — USD/EUR 3-month high पर।",
     "watch": "भू-राजनीतिक",
     "watchText": "Hormuz AIS anomaly पर Brent +2.3%. 6h में 4 dark ships. Commodity supply chain risk elevated — energy sector correlations spiking."
@@ -268,7 +268,7 @@
     "fImagerySar": "इमेजरी + SAR",
     "f100plus": "उपलब्ध",
     "fCloud": "क्लाउड",
-    "fCloudOnPrem": "Cloud/on-prem/air-gap",
+    "fCloudOnPrem": "क्लाउड/on-prem/air-gap",
     "fStandard": "मानक",
     "fKeyAuth": "कुंजी प्रमाणीकरण",
     "fSsoMfa": "SSO/MFA/RBAC/ऑडिट",
@@ -331,9 +331,9 @@
   },
   "soonBadge": "जल्द",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | एआई इंटेलिजेंस और MCP",
     "description": "World Monitor Pro एक AI विश्लेषक, निर्धारित intelligence डाइजेस्ट, कस्टम विजेट, बाजार अनुसंधान, और लाइव भू-राजनीतिक और वित्तीय डेटा तक MCP एक्सेस जोड़ता है।",
-    "ogTitle": "World Monitor Pro | Geopolitical AI",
+    "ogTitle": "World Monitor Pro | भू-राजनीतिक AI",
     "ogDescription": "इसे पूछें, इसकी सदस्यता लें, इसपर निर्माण करें। WM Analyst chat, आपके शेड्यूल पर एक AI डाइजेस्ट (दैनिक, दिन में दो बार, या साप्ताहिक), कस्टम विजेट बिल्डर, और Claude/GPT के लिए MCP — एक ही कुंजी के तहत लाइव सेवाएं।"
   },
   "pricing": {

@@ -249,7 +249,7 @@
     "f5_15min": "5-15 分",
     "fLt60s": "<60 秒",
     "fPerRequest": "リクエストごと",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "ライブエッジ",
     "f50panels": "パネル",
     "fWhiteLabel": "ホワイトラベル",
     "fBYOK": "BYOK",
@@ -331,7 +331,7 @@
   },
   "soonBadge": "近日公開",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | AIインテリジェンスとMCP",
     "description": "World Monitor Pro は AI アナリスト、スケジュール済みインテリジェンスダイジェスト、カスタムウィジェット、市場調査、および地政学的・金融データへのライブアクセス用 MCP を追加します。",
     "ogTitle": "World Monitor Pro | 地政学的 AI",
     "ogDescription": "質問を投げかけたり、購読したり、その上に構築できます。WM Analyst chat（スケジュール設定可能な日次・2日次・週次のAIダイジェスト）、カスタムウィジェットビルダー、Claude/GPT向けMCP — ひとつのキーで複数のライブサービスを統合。"

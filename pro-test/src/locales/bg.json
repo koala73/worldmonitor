@@ -249,7 +249,7 @@
     "f5_15min": "5-15 мин",
     "fLt60s": "<60 секунди",
     "fPerRequest": "На заявка",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "На живо",
     "f50panels": "Панели",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
@@ -331,7 +331,7 @@
   },
   "soonBadge": "Скоро",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | ИИ разузнаване и MCP",
     "description": "World Monitor Pro добавя AI анализатор, планирани интелигентни резюмета, персонализирани пиксели, пазарни изследвания и MCP достъп до живи геополитични и финансови данни.",
     "ogTitle": "World Monitor Pro | Геополитичен AI",
     "ogDescription": "Попитай го, абонирай се, разработи върху него. WM Analyst chat, AI дайджест по график (дневно, два пъти дневно или седмично), конструктор на персонализирани widgets и MCP за Claude/GPT — всички live услуги под един ключ."

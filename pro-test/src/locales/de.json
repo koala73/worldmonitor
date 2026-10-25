@@ -71,7 +71,7 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + KI) und MCP für Claude, GPT, eigene LLMs."
   },
   "deliveryDesk": {
-    "eyebrow": "DELIVERY DESK",
+    "eyebrow": "LIEFERPULT",
     "title": "Was ist der persönliche Intelligence Desk?",
     "body": "Bis zu 30 bewertete Elemente pro Versand, dedupliziert über Quellen, bewertet gegen Ihre Watchlist. Wählen Sie Ihren Rhythmus – täglich, zweimal täglich oder wöchentlich – mit KI-Bewertung und zu beobachtenden Signalen, geliefert an Slack, Discord, Telegram, Email oder Webhook.",
     "closer": "Kein Newsletter. Ein Analyst.",
@@ -81,7 +81,7 @@
     "windowTitle": "worldmonitor.app — Live-Dashboard",
     "openFullScreen": "Vollbild öffnen",
     "tryLiveDashboard": "Live-Dashboard testen",
-    "iframeTitle": "World Monitor — Live Intelligence Dashboard",
+    "iframeTitle": "World Monitor — Live-Intelligence-Dashboard",
     "description": "3D-WebGL-Globus · interaktive Kartenebenen · Echtzeit-Markt-, Makro-, geopolitische, Energie- und Infrastrukturdaten"
   },
   "socialProof": {
@@ -244,7 +244,7 @@
     "infraLayers": "Infrastruktur-Ebenen",
     "satellite": "Orbitale Überwachung",
     "connectorsRow": "Konnektoren",
-    "deployment": "Deployment",
+    "deployment": "Bereitstellung",
     "securityRow": "Sicherheit",
     "f5_15min": "5-15 Min",
     "fLt60s": "<60 Sekunden",
@@ -502,7 +502,7 @@
       "chokeSummary": "{{disrupted}} von {{total}} unterbrochen",
       "cardMarkets": "Märkte",
       "marketBreadth": "Steigend",
-      "marketBest": "Best",
+      "marketBest": "Beste",
       "marketWeakest": "Schwächste",
       "trendRising": "steigend",
       "trendFalling": "fallend",
@@ -599,7 +599,7 @@
       "s5l": "Instabilitätsindex · live",
       "s6l": "Resilienz-Rankings",
       "s7l": "Unterseekabel",
-      "s8l": "Pipelines & LNG",
+      "s8l": "Pipelines und LNG",
       "s9l": "AI-Rechenzentren kartiert",
       "s10l": "Bewertete Hotspots",
       "s11l": "Börsen & Vermögenswerte",

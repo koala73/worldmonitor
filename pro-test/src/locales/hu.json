@@ -71,7 +71,7 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) és MCP Claude-hoz, GPT-hez, saját LLM-ekhez."
   },
   "deliveryDesk": {
-    "eyebrow": "DELIVERY DESK",
+    "eyebrow": "KÉZBESÍTŐPULT",
     "title": "Mi az a személyes intelligence desk?",
     "body": "Legfeljebb 30 rangsorolt elem küldésenként, forrásokon közösen eltávolítva, figyelőlistádhoz képest pontozva. Válaszd meg az ütemezésedet — napi, naponta kétszer vagy hetente — AI Assessment és Signals to watch mellett a Slackre, Discordra, Telegramba, e-mailbe vagy webhookra.",
     "closer": "Nem hírlevél. Elemző.",
@@ -161,7 +161,7 @@
     "oneKey": "Élő Szolgáltatások, 1 Kulcs",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky és még sok más — mind aktív, külön regisztrációk nélkül.",
     "deliveryLabel": "Válassza ki, hogyan találjon Önre az intelligencia",
-    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLab": "Ellátásilánc-stresszlabor",
     "supplyChainLabDesc": "Költségsokkot szimulálhat országok és szektorok között. Rangsorolhatja az árucikkek sebezhetőségét szűk keresztmetszetek függőségei alapján. Nyomon követheti a bánya-finomítókoncentrációt és az SGE–COMEX fizikai prémium divergenciáját — azt a mutatót, amely a hírek előtt változik meg.",
     "roadmapNote": "Tervezett funkciók: műholdas megfigyelés, hosszabb történelem, prémium térképrétegek."
   },
@@ -331,7 +331,7 @@
   },
   "soonBadge": "Hamarosan",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | AI-hírszerzés és MCP",
     "description": "A World Monitor Pro AI-elemzőt, ütemezett hírösszefoglalókat, egyéni widgeteket, piackutatást és MCP-hozzáférést ad az élő geopolitikai és pénzügyi adatokhoz.",
     "ogTitle": "World Monitor Pro | Geopolitikai AI",
     "ogDescription": "Kérdezd meg, iratkozz fel, fejlessz tovább. WM Analyst chat, mesterséges intelligencia alapú összefoglaló az ütemezésed szerint (napi, naponta kétszer vagy hetente), egyéni widget builder és MCP Claude/GPT-hez — összes élő szolgáltatás egy kulcssal."

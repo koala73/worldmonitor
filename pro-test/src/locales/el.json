@@ -169,7 +169,7 @@
     "morningBrief": "Πρωινό brief",
     "markets": "Αγορές",
     "marketsText": "Futures S&P 500 -1,2% πριν την αγορά. Κατάθεση προέδρου Fed στις 10:00 EST — τομείς ευαίσθητοι στα επιτόκια υπό πίεση. Η συναίνεση των αναλυτών μετατοπίζεται για τα αποτελέσματα Q2.",
-    "elevated": "Macro",
+    "elevated": "Μακρο",
     "elevatedText": "ΕΚΤ διατηρεί επιτόκια στο 3,75%. ΑΕΠ ευρωζώνης αναθεωρήθηκε ανοδικά στο 1,1%. Απόκλιση κεντρικών τραπεζών διευρύνεται — USD/EUR σε υψηλό 3μήνου.",
     "watch": "Γεωπολιτικά",
     "watchText": "Brent +2,3% λόγω ανωμαλίας AIS στον Ορμούζ. 4 σκοτεινά πλοία σε 6 ώρες. Κίνδυνος εφοδιαστικής αλυσίδας εμπορευμάτων αυξημένος — συσχετίσεις ενεργειακού τομέα εκτοξεύονται."
@@ -244,12 +244,12 @@
     "infraLayers": "Επίπεδα υποδομής",
     "satellite": "Τροχιακή επιτήρηση",
     "connectorsRow": "Σύνδεσμοι",
-    "deployment": "Deployment",
+    "deployment": "Ανάπτυξη",
     "securityRow": "Ασφάλεια",
     "f5_15min": "5-15 λεπτά",
     "fLt60s": "<60 δευτερόλεπτα",
     "fPerRequest": "Ανά αίτημα",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "Ζωντανά",
     "f50panels": "Πάνελ",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
@@ -267,9 +267,9 @@
     "fPassAlerts": "Ειδοποιήσεις διέλευσης + ανάλυση",
     "fImagerySar": "Εικόνες + SAR",
     "f100plus": "Διαθέσιμο",
-    "fCloud": "Cloud",
-    "fCloudOnPrem": "Cloud/on-prem/air-gap",
-    "fStandard": "Standard",
+    "fCloud": "Νέφος",
+    "fCloudOnPrem": "Νέφος/on-prem/air-gap",
+    "fStandard": "Τυπικό",
     "fKeyAuth": "Auth με κλειδί",
     "fSsoMfa": "SSO/MFA/RBAC/έλεγχος",
     "noteBelow": "Η βασική πλατφόρμα παραμένει δωρεάν. Τα επί πληρωμή πλάνα ξεκλειδώνουν equity research, macro αναλυτική, AI briefings και οργανωτική χρήση.",
@@ -331,7 +331,7 @@
   },
   "soonBadge": "Σύντομα",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | Πληροφορίες AI και MCP",
     "description": "Το World Monitor Pro προσθέτει έναν αναλυτή AI, προγραμματισμένα δελτία πληροφοριών, προσαρμοσμένα γραφήματα, έρευνα αγοράς και πρόσβαση MCP σε live γεωπολιτικά και χρηματοοικονομικά δεδομένα.",
     "ogTitle": "World Monitor Pro | Γεωπολιτική AI",
     "ogDescription": "Ρωτήστε το, εγγραφείτε σε αυτό, δημιουργήστε πάνω σε αυτό. WM Analyst chat, μια AI σύνοψη σύμφωνα με το πρόγραμμά σας (καθημερινή, δύο φορές ημερησίως ή εβδομαδιαία), custom widget builder και MCP για Claude/GPT — σε όλες τις live υπηρεσίες με ένα κλειδί."
@@ -640,9 +640,9 @@
       "resources": {
         "title": "Επιλέξτε το σημείο εισόδου σας",
         "briefing": "Briefing agent",
-        "mcp": "MCP server",
+        "mcp": "Διακομιστής MCP",
         "api": "REST API",
-        "agentView": "Agent view"
+        "agentView": "Προβολή πράκτορα"
       }
     },
     "pricing": {

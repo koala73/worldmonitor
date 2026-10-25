@@ -71,7 +71,7 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) en MCP voor Claude, GPT, eigen LLM's."
   },
   "deliveryDesk": {
-    "eyebrow": "DELIVERY DESK",
+    "eyebrow": "AFLEVERBALIE",
     "title": "Wat is het persoonlijke inlichtingenburo?",
     "body": "Tot 30 gerangschikte items per verzending, gededupliceerd over bronnen, gescoord tegen je watchlist. Kies je ritme — dagelijks, tweemaal per dag of wekelijks — met een AI-beoordeling en signalen om op te letten, verzonden naar Slack, Discord, Telegram, Email of webhook.",
     "closer": "Geen nieuwsbrief. Een analist.",
@@ -81,7 +81,7 @@
     "windowTitle": "worldmonitor.app — Live dashboard",
     "openFullScreen": "Open volledig scherm",
     "tryLiveDashboard": "Probeer het live dashboard",
-    "iframeTitle": "World Monitor — Live Intelligence Dashboard",
+    "iframeTitle": "World Monitor — Live inlichtingendashboard",
     "description": "3D WebGL-globe · interactieve kaartlagen · real-time gegevens voor markten, macro-economie, geopolitiek, energie en infrastructuur"
   },
   "socialProof": {
@@ -161,7 +161,7 @@
     "oneKey": "Live Services, 1 Sleutel",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky en meer — alles actief, geen aparte registraties.",
     "deliveryLabel": "Kies hoe intelligence jou vindt",
-    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLab": "Stresslab voor de toeleveringsketen",
     "supplyChainLabDesc": "Model een kostenschok over landen en sectoren. Rank grondstoffengevoeligheid op basis van chokepoint-afhankelijkheid. Volg concentratie van mijn tot raffinaderij en de SGE–COMEX fysieke premiumafwijking — de reeks die vóór het bericht beweegt.",
     "roadmapNote": "Op de routekaart: orbitale bewaking, langere geschiedenis, premiumkaartlagen."
   },
@@ -244,7 +244,7 @@
     "infraLayers": "Infrastructuurlagen",
     "satellite": "Orbitale surveillance",
     "connectorsRow": "Connectoren",
-    "deployment": "Deployment",
+    "deployment": "Uitrol",
     "securityRow": "Beveiliging",
     "f5_15min": "5-15 minuten",
     "fLt60s": "<60 seconden",
@@ -478,7 +478,7 @@
       "ctaFree": "Gratis · Geen registratie · Laadt in seconden",
       "ctaSecondary": "Zie hoe mensen het gebruiken ↓",
       "trustUsers": "2M+ gebruikers",
-      "trustOpenSource": "Open source · AGPL-3.0",
+      "trustOpenSource": "Open broncode · AGPL-3.0",
       "screenshotAlt": "World Monitor live inlichtingendashboard — wereldkaart met conflicten, scheepvaart- en marktlagen",
       "plateNote": "Vastgelegd van de live kaart — klik om deze te openen",
       "trustBuild": "Bouw erop:",

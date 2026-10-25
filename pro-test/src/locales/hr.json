@@ -71,7 +71,7 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) i MCP za Claude, GPT i vlastite LLM-ove."
   },
   "deliveryDesk": {
-    "eyebrow": "DELIVERY DESK",
+    "eyebrow": "DOSTAVNI PULT",
     "title": "Što je osobni obavještajni stol?",
     "body": "Do 30 rangiranih stavki po slanju, deduplikovano kroz izvore, ocijenjeno prema tvojoj watchlisti. Odaberi ritam — dnevno, dva puta dnevno ili tjedno — s AI Procjenom i Signalima za praćenje dostavljenim na Slack, Discord, Telegram, Email ili webhook.",
     "closer": "Nije newsletter. To je analitičar.",
@@ -267,8 +267,8 @@
     "fPassAlerts": "Upozorenja o preletima + analiza",
     "fImagerySar": "Snimke + SAR",
     "f100plus": "Dostupno",
-    "fCloud": "Cloud",
-    "fCloudOnPrem": "Cloud/on-prem/air-gap",
+    "fCloud": "Oblak",
+    "fCloudOnPrem": "Oblak/on-prem/air-gap",
     "fStandard": "Standard",
     "fKeyAuth": "Autentifikacija ključem",
     "fSsoMfa": "SSO/MFA/RBAC/revizija",
@@ -331,7 +331,7 @@
   },
   "soonBadge": "Uskoro",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | AI obavještajni podaci i MCP",
     "description": "World Monitor Pro dodaje AI analitičara, zakazane izvještaje obavještajnih podataka, prilagođene widgete, tržišna istraživanja i MCP pristup uživo geopolitičkim i financijskim podacima.",
     "ogTitle": "World Monitor Pro | Geopolitički AI",
     "ogDescription": "Pitaj je, pretplati se na nju, razvija na njoj. WM Analyst chat, AI sažetak po tvojoj shemi (dnevno, dva puta dnevno ili tjedno), prilagođeni widget builder i MCP za Claude/GPT — preko Live Services pod jednom ključem."
@@ -640,9 +640,9 @@
       "resources": {
         "title": "Odaberite vašu početnu točku",
         "briefing": "Brifing agenta",
-        "mcp": "MCP server",
+        "mcp": "MCP poslužitelj",
         "api": "REST API",
-        "agentView": "Agent view"
+        "agentView": "Prikaz agenta"
       }
     },
     "pricing": {

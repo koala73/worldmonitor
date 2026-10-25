@@ -249,7 +249,7 @@
     "f5_15min": "5-15 phút",
     "fLt60s": "<60 giây",
     "fPerRequest": "Theo yêu cầu",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "Trực tiếp",
     "f50panels": "Bảng điều khiển",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
@@ -267,8 +267,8 @@
     "fPassAlerts": "Cảnh báo đi qua + phân tích",
     "fImagerySar": "Hình ảnh + SAR",
     "f100plus": "Có sẵn",
-    "fCloud": "Cloud",
-    "fCloudOnPrem": "Cloud/on-prem/air-gap",
+    "fCloud": "Đám mây",
+    "fCloudOnPrem": "Đám mây/on-prem/air-gap",
     "fStandard": "Tiêu chuẩn",
     "fKeyAuth": "Xác thực khóa",
     "fSsoMfa": "SSO/MFA/RBAC/kiểm toán",
@@ -331,9 +331,9 @@
   },
   "soonBadge": "Sắp ra mắt",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | Tình báo AI và MCP",
     "description": "World Monitor Pro thêm nhà phân tích AI, bản tóm tắt tình báo theo lịch trình, widget tùy chỉnh, nghiên cứu thị trường và quyền truy cập MCP vào dữ liệu địa chính trị và tài chính trực tiếp.",
-    "ogTitle": "World Monitor Pro | Geopolitical AI",
+    "ogTitle": "World Monitor Pro | AI địa chính trị",
     "ogDescription": "Hỏi nó, đăng ký nó, phát triển trên nó. WM Analyst chat, một bản tóm tắt AI theo lịch của bạn (hàng ngày, hai lần mỗi ngày hoặc hàng tuần), trình tạo widget tùy chỉnh, và MCP cho Claude/GPT — trên các dịch vụ trực tiếp dưới một khóa."
   },
   "pricing": {

@@ -75,48 +75,91 @@ const ENGLISH_ALLOWED_KEYS = new Set([
   'enterpriseShowcase.soc',
 ]);
 
-const PENDING_ENGLISH_REVIEW_KEYS = new Set([
-  'meta.title',
-  'meta.ogTitle',
-  'welcome.nav.blog',
-  'welcome.live.liveBadge',
-  'welcome.nav.menu',
-  'welcome.hero.trustOpenSource',
-  'welcome.live.marketBest',
-  'welcome.live.trendStable',
-  'welcome.depth.s8l',
-  'welcome.moments.m2.c1',
-  'welcome.moments.m4.c3',
-  'welcome.agents.resources.mcp',
-  'welcome.agents.resources.agentView',
-  'welcome.agents.termTitle',
-  'pricingTable.fCloud',
-  'pricingTable.fStandard',
-  'pricingTable.fStandardCadence',
-  'pricingTable.deployment',
-  'pricingTable.dashboard',
-  'pricingTable.fCloudOnPrem',
-  'pricingTable.fLiveEdge',
-  'pricingTable.fWhiteLabel',
-  'pricingTable.fQuotes30s',
-  'pricingTable.f50panels',
-  'proShowcase.supplyChainLab',
-  'deliveryDesk.eyebrow',
-  'slackMock.elevated',
-  'pricing.axisCommercial',
-  'pricing.axisPersonal',
-  'hero.signalWord',
-  'whatsNew.eyebrow',
-  'pricing.tiers.proBusiness.features[4]',
-  'pricing.tiers.apiBusiness.features[2]',
-  'livePreview.iframeTitle',
-]);
+// Same-spelling words and product tokens a locale already uses. A global
+// allowlist would let a locale that translates the word fall back to English
+// without a failing test, so the exemption is per locale. #9165.
+// pricingTable.fWhiteLabel is listed only where the catalog still keeps that
+// token in the enterprise sentences. ja, ko, and sw translate it. de spells
+// the cell White-Label, so an exact English copy there still fails.
+const INTENTIONAL_ENGLISH = {
+  ar: ['pricingTable.fWhiteLabel'],
+  bg: ['pricingTable.fWhiteLabel'],
+  cs: [
+    'welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge',
+    'pricingTable.fCloud', 'pricingTable.fStandard', 'pricingTable.dashboard',
+    'pricingTable.fCloudOnPrem', 'pricingTable.fWhiteLabel',
+  ],
+  de: [
+    'welcome.nav.blog', 'welcome.live.liveBadge', 'pricingTable.fCloud',
+    'pricingTable.fStandard', 'pricingTable.fStandardCadence', 'pricingTable.dashboard',
+    'pricingTable.f50panels', 'hero.signalWord',
+  ],
+  el: ['pricingTable.fWhiteLabel'],
+  es: ['welcome.nav.blog', 'slackMock.elevated', 'pricingTable.fWhiteLabel'],
+  fa: ['pricingTable.fWhiteLabel'],
+  fr: [
+    'welcome.nav.blog', 'welcome.nav.menu', 'pricingTable.fCloud',
+    'pricingTable.fStandard', 'pricingTable.fStandardCadence', 'pricingTable.fCloudOnPrem',
+    'slackMock.elevated', 'pricing.axisCommercial', 'welcome.live.trendStable',
+    'welcome.moments.m2.c1', 'welcome.moments.m4.c3', 'welcome.agents.termTitle',
+    'hero.signalWord', 'pricingTable.fWhiteLabel',
+  ],
+  hi: ['pricingTable.fLiveEdge', 'pricingTable.fWhiteLabel'],
+  hr: [
+    'welcome.nav.blog', 'pricingTable.fStandard', 'pricingTable.fLiveEdge',
+    'hero.signalWord', 'pricingTable.fWhiteLabel',
+  ],
+  hu: [
+    'welcome.nav.blog', 'pricingTable.fStandard', 'pricingTable.fStandardCadence',
+    'pricingTable.fLiveEdge', 'pricingTable.fWhiteLabel',
+  ],
+  it: [
+    'welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge',
+    'pricingTable.fCloud', 'pricingTable.fStandard', 'pricingTable.fStandardCadence',
+    'pricingTable.dashboard', 'pricingTable.fCloudOnPrem', 'slackMock.elevated',
+    'pricingTable.fWhiteLabel',
+  ],
+  nl: [
+    'welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge',
+    'pricingTable.fCloud', 'pricingTable.dashboard', 'pricingTable.fCloudOnPrem',
+    'pricingTable.fLiveEdge', 'slackMock.elevated', 'pricingTable.fWhiteLabel',
+  ],
+  pl: [
+    'welcome.nav.blog', 'welcome.nav.menu', 'pricingTable.fStandard',
+    'pricingTable.fWhiteLabel',
+  ],
+  pt: [
+    'welcome.nav.blog', 'welcome.nav.menu', 'pricingTable.fCloud',
+    'pricingTable.fCloudOnPrem', 'slackMock.elevated', 'pricingTable.fWhiteLabel',
+  ],
+  ro: [
+    'welcome.nav.blog', 'welcome.live.liveBadge', 'pricingTable.fCloud',
+    'pricingTable.fStandard', 'pricingTable.fStandardCadence',
+    'pricingTable.fCloudOnPrem', 'slackMock.elevated', 'pricingTable.fWhiteLabel',
+  ],
+  ru: ['pricingTable.fWhiteLabel'],
+  sv: [
+    'welcome.live.liveBadge', 'pricingTable.fStandard', 'pricingTable.fStandardCadence',
+    'pricingTable.dashboard', 'pricingTable.fLiveEdge', 'welcome.agents.termTitle',
+    'hero.signalWord', 'pricingTable.fWhiteLabel',
+  ],
+  th: ['pricingTable.fWhiteLabel'],
+  tr: ['welcome.nav.blog', 'pricingTable.fWhiteLabel'],
+  uk: ['pricingTable.fWhiteLabel'],
+  vi: ['welcome.nav.blog', 'welcome.nav.menu', 'pricingTable.fWhiteLabel'],
+  zh: ['pricingTable.fWhiteLabel'],
+  'zh-TW': ['pricingTable.fWhiteLabel'],
+};
 
 // Ceilings, not exact counts. Rewording an English value drops the count on its
 // own (the stale Persian copy stops matching the new English), so an exact count
 // would red every unrelated en.json copy edit. Lower the ceiling as fa improves.
+//
+// 403 is the same Persian freeze as the old 388. The review-list filter used to
+// subtract those keys before the count (#9165). Removing it counts them. fa.json
+// did not gain English strings. Do not raise this for new copy.
 const TEMPORARY_LOCALE_EXEMPTIONS = {
-  fa: 388,
+  fa: 403,
 };
 
 describe('pro locale freshness', () => {
@@ -191,23 +234,26 @@ describe('pro locale freshness', () => {
     assert.deepEqual(problems, [], 'pro locales are out of date. ' + hintFor(problemLocales));
   });
 
-  it('names only real catalog keys in the English allowlist and the review exemption', () => {
-    const overlap = [...ENGLISH_ALLOWED_KEYS].filter((key) => PENDING_ENGLISH_REVIEW_KEYS.has(key));
-    const missing = [...ENGLISH_ALLOWED_KEYS, ...PENDING_ENGLISH_REVIEW_KEYS].filter((key) => !(key in enFlat));
-    const idlePending = [];
-    for (const key of PENDING_ENGLISH_REVIEW_KEYS) {
-      const stillEnglish = LOCALES.some((locale) => {
-        if (locale in TEMPORARY_LOCALE_EXEMPTIONS) return false;
-        const file = join(LOCALES_DIR, locale + '.json');
-        if (!existsSync(file)) return false;
-        const flat = flatten(readJson(file));
-        return flat[key] === enFlat[key];
-      });
-      if (!stillEnglish) idlePending.push(key);
+  it('names only real catalog keys in the English allowlist and the per-locale exemptions', () => {
+    const intentionalPairs = Object.entries(INTENTIONAL_ENGLISH).flatMap(([locale, keys]) =>
+      keys.map((key) => locale + ' ' + key),
+    );
+    const overlap = intentionalPairs.filter((pair) => ENGLISH_ALLOWED_KEYS.has(pair.split(' ')[1]));
+    const missing = [
+      ...ENGLISH_ALLOWED_KEYS,
+      ...intentionalPairs.map((pair) => pair.split(' ')[1]),
+    ].filter((key) => !(key in enFlat));
+    const idle = [];
+    for (const [locale, keys] of Object.entries(INTENTIONAL_ENGLISH)) {
+      const file = join(LOCALES_DIR, locale + '.json');
+      const flat = existsSync(file) ? flatten(readJson(file)) : {};
+      for (const key of keys) {
+        if (flat[key] !== enFlat[key]) idle.push(locale + ' ' + key);
+      }
     }
     assert.deepEqual(
-      { overlap, missing, idlePending },
-      { overlap: [], missing: [], idlePending: [] },
+      { overlap, missing, idle },
+      { overlap: [], missing: [], idle: [] },
     );
   });
 
@@ -219,7 +265,7 @@ describe('pro locale freshness', () => {
       const flat = flatten(readJson(file));
       const unexplained = Object.keys(flat)
         .filter((key) => key in enFlat && flat[key] === enFlat[key])
-        .filter((key) => !ENGLISH_ALLOWED_KEYS.has(key) && !PENDING_ENGLISH_REVIEW_KEYS.has(key))
+        .filter((key) => !ENGLISH_ALLOWED_KEYS.has(key) && !(INTENTIONAL_ENGLISH[locale] ?? []).includes(key))
         .sort();
       const exemption = TEMPORARY_LOCALE_EXEMPTIONS[locale];
       if (exemption !== undefined) {

@@ -249,7 +249,7 @@
     "f5_15min": "5-15분",
     "fLt60s": "<60초",
     "fPerRequest": "요청당",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "라이브 엣지",
     "f50panels": "패널",
     "fWhiteLabel": "화이트 라벨",
     "fBYOK": "BYOK",
@@ -331,7 +331,7 @@
   },
   "soonBadge": "출시 예정",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | AI 인텔리전스 및 MCP",
     "description": "World Monitor Pro는 AI 분석가, 예약된 인텔리전스 다이제스트, 맞춤 위젯, 시장 조사, 그리고 실시간 지정학 및 금융 데이터에 대한 MCP 액세스를 추가합니다.",
     "ogTitle": "World Monitor Pro | 지정학 AI",
     "ogDescription": "물어보고, 구독하고, 구축하세요. WM Analyst 채팅(매일, 하루 2회 또는 주간 AI 요약), 커스텀 위젯 빌더, Claude/GPT용 MCP — 하나의 키로 모든 라이브 서비스 통합."
@@ -431,7 +431,7 @@
           "클라이언트 작업, 내부 도구 및 보고용으로 사용",
           "데이터 내보내기 — CSV, JSON 및 PDF 보고서",
           "커스텀 대시보드 25개 (vs 10개)",
-          "MCP + SDK: 250 calls/day (vs 50)",
+          "MCP + SDK: 하루 250회 (50회 대비)",
           "우선 지원"
         ],
         "highlightFeatures": [
