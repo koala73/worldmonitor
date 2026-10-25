@@ -2544,15 +2544,18 @@ describe('gated workflows evict superseded PR runs (#8443)', () => {
   });
 });
 
-// Which refs may publish the `latest` container tag is decided entirely by a
-// GitHub expression. It is one edited character away from being much wider
-// than intended, and a too-wide `latest` overwrites what self-hosters pull
-// without leaving a trace. Evaluate the real expressions the way 'live cache
-// sweep deployment timing' above does, rather than asserting on their text.
-describe('docker-publish conditions', () => {
+// Two privileged decisions in this repository are made entirely by a GitHub
+// expression: which refs may publish the `latest` container tag, and which
+// Dependabot pull requests may merge themselves. Both are one edited character
+// away from being much wider than intended, and neither leaves a trace when it
+// goes wrong -- a too-wide `latest` overwrites what self-hosters pull, and a
+// too-wide auto-merge lands code nobody read. Evaluate the real expressions the
+// way 'live cache sweep deployment timing' above does, rather than asserting on
+// their text.
+describe('privileged publish and auto-merge conditions', () => {
   // GitHub expressions are close enough to JavaScript to evaluate, with two
-  // exceptions: kebab-case context keys parse as subtraction, and the built-in
-  // functions do not exist.
+  // exceptions: kebab-case context keys (`steps.metadata.outputs.update-type`)
+  // parse as subtraction, and the built-in functions do not exist.
   const evaluateExpression = (expression: string, context: Record<string, unknown>) =>
     runInNewContext(
       expression.replace(/\.([A-Za-z_][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)+)/g, "['$1']"),
@@ -2587,6 +2590,34 @@ describe('docker-publish conditions', () => {
     );
 
   const dockerPublish = YAML.parse(read(resolve(workflowsDir, 'docker-publish.yml')));
+  const autoMerge = YAML.parse(read(resolve(workflowsDir, 'dependabot-auto-merge.yml')));
+  const dependabotConfig = YAML.parse(read(resolve(root, '.github/dependabot.yml')));
+
+  // One dependabot-auto-merge.yml run, as its step conditions see it.
+  const autoMergeRunBase = {
+    actor: 'dependabot[bot]',
+    ecosystem: 'github_actions',
+    group: 'github-actions',
+    updateType: 'version-update:semver-patch',
+    trusted: 'true',
+  };
+  const autoMergeRunContext = (overrides: Partial<typeof autoMergeRunBase>) => {
+    const run = { ...autoMergeRunBase, ...overrides };
+    return {
+      github: { actor: run.actor },
+      steps: {
+        publisher: { outputs: { trusted: run.trusted } },
+        metadata: {
+          outputs: {
+            'package-ecosystem': run.ecosystem,
+            'dependency-group': run.group,
+            'update-type': run.updateType,
+          },
+        },
+      },
+    };
+  };
+
   const tagEnableExpressions = () => {
     const metaStep = dockerPublish.jobs.docker.steps.find(
       (step: { id?: string }) => step.id === 'meta',
@@ -3018,6 +3049,323 @@ if [ "$1 $2" = "issue list" ]; then printf '%s' "\${FAKE_EXISTING_ISSUE:-}"; fi
       assert.doesNotMatch(repeat, /issue create/, 'a repeat failure must not open a duplicate');
     } finally {
       rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the auto-merge workflow inside the trust envelope its header argues from', () => {
+    // The header's safety argument: a fork's token stays read-only under
+    // `pull_request` (never pull_request_target, which would hand a fork PR this
+    // job's write token), the grant sits on the job and not the workflow,
+    // nothing checks out the pull request's code, and arming has no plain-merge
+    // fallback, which would merge without waiting for the Deploy Gate.
+    const triggers = typeof autoMerge.on === 'string' ? [autoMerge.on] : Object.keys(autoMerge.on);
+    assert.deepEqual(triggers, ['pull_request']);
+    assert.deepEqual(autoMerge.permissions, {}, 'the workflow level stays default-deny');
+    const job = autoMerge.jobs['auto-merge'] as { permissions: Record<string, string>; steps: { uses?: string; run?: string }[] };
+    assert.deepEqual(job.permissions, { contents: 'write', 'pull-requests': 'write' });
+    assert.ok(
+      !job.steps.some((step) => String(step.uses ?? '').startsWith('actions/checkout')),
+      'nothing may check out the pull request',
+    );
+    for (const step of job.steps) {
+      const code = String(step.run ?? '')
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('#'))
+        .join('\n');
+      for (const merge of code.matchAll(/gh pr merge[^\n]*/g)) {
+        assert.match(merge[0], /--auto|--disable-auto/, `no plain merge: ${merge[0]}`);
+      }
+    }
+  });
+
+  it('arms Dependabot auto-merge only for a trusted, grouped, minor or patch action bump', () => {
+    const job = autoMerge.jobs['auto-merge'];
+    const enable = (job.steps as { name?: string; if?: string }[]).find(
+      (step) => step.name === 'Enable auto-merge',
+    );
+    assert.ok(enable?.if, 'dependabot-auto-merge.yml must keep a guarded Enable auto-merge step');
+
+    const evaluate = (overrides: Partial<typeof autoMergeRunBase>) =>
+      evaluateExpression(enable.if as string, autoMergeRunContext(overrides));
+
+    // Arming is bound to the head the guards vetted, so a run that lost a race
+    // with a newer push -- or a re-run of an old one -- cannot arm a later head.
+    assert.match(String((enable as { run?: string }).run), /gh pr merge --auto --squash --match-head-commit "\$HEAD_SHA"/);
+    assert.equal(
+      (enable as { env?: Record<string, string> }).env?.HEAD_SHA,
+      '${{ github.event.pull_request.head.sha }}',
+    );
+
+    assert.equal(evaluate({}), true, 'a trusted grouped patch bump is the whole point');
+    assert.equal(evaluate({ updateType: 'version-update:semver-minor' }), true);
+    // Each of these is a guard whose removal would widen the automation.
+    assert.equal(evaluate({ updateType: 'version-update:semver-major' }), false, 'a major must wait for a human');
+    assert.equal(evaluate({ ecosystem: 'docker' }), false, 'base-image bumps are what the push-triggered rebuild publishes');
+    assert.equal(evaluate({ ecosystem: 'npm' }), false);
+    assert.equal(evaluate({ group: '' }), false, 'an ungrouped or advisory action PR is out of scope');
+    assert.equal(evaluate({ trusted: 'false' }), false, 'an untrusted publisher keeps the human merge click');
+    assert.equal(evaluate({ actor: 'a-maintainer' }), false, 'a human push must not ride in on the bot\'s arming');
+  });
+
+  it('cancels a superseded auto-merge run instead of racing its disarm step', () => {
+    // Without this, two `synchronize` runs for the same PR can execute
+    // concurrently. The disarm step only checks whether auto-merge IS armed,
+    // not which commit armed it, so a slow run evaluating a stale commit can
+    // finish after a faster run for the qualifying newer commit and disarm
+    // what that run just correctly armed (CodeRabbit, #7808). Cancelling the
+    // older run outright removes the race: it is grouped per PR, not per
+    // workflow, so it cannot evict a run for a different Dependabot PR.
+    const concurrency = autoMerge.concurrency as { group: string; 'cancel-in-progress': boolean };
+    assert.ok(concurrency, 'concurrent synchronize runs for one PR must not race');
+    assert.equal(concurrency['cancel-in-progress'], true, 'a stale run must not survive to reach its disarm step');
+    const group = (number: number) =>
+      evaluateExpression(concurrency.group.replace(/^\$\{\{(.+)\}\}$/s, '$1'), {
+        github: { event: { pull_request: { number } } },
+      });
+    assert.notEqual(group(101), group(102), 'PRs must not share a slot and evict each other');
+  });
+
+  it('disarms auto-merge whenever the commit under review does not qualify', () => {
+    const job = autoMerge.jobs['auto-merge'];
+    // The JOB is gated on the author, which stays dependabot[bot] for the life
+    // of the PR -- that is what lets a human's push reach the disarm step
+    // instead of skipping the workflow and leaving a stale arming in place.
+    assert.match(String(job.if), /github\.event\.pull_request\.user\.login == 'dependabot\[bot\]'/);
+    assert.equal(
+      evaluateExpression(String(job.if), {
+        github: { event: { pull_request: { user: { login: 'dependabot[bot]' } } } },
+      }),
+      true,
+    );
+    // ...and only on that author: widening it would let any PR reach the
+    // arming steps.
+    for (const login of ['a-maintainer', 'dependabot-preview[bot]', 'renovate[bot]']) {
+      assert.equal(
+        evaluateExpression(String(job.if), { github: { event: { pull_request: { user: { login } } } } }),
+        false,
+        `${login} is not Dependabot`,
+      );
+    }
+
+    const steps = job.steps as { name?: string; if?: string; run?: string }[];
+    const disarm = steps.find((step) => String(step.run ?? '').includes('--disable-auto'));
+    const enable = steps.find((step) => step.name === 'Enable auto-merge');
+    assert.ok(disarm, 'a disqualified commit must revoke a previous arming, not merely skip renewing it');
+    assert.ok(enable?.if);
+    // Without a status function GitHub wraps the condition in `success() &&`,
+    // so the step would be skipped when the metadata or publisher step failed,
+    // leaving the earlier arming on a commit that no longer qualifies.
+    assert.match(String(disarm.if), /!cancelled\(\)/, 'the disarm step must still run after a failed guard step');
+    assert.equal(namesStatusFunction(enable.if), false, 'the enable step must keep the implicit success() gate');
+    const disarms = (overrides: Partial<typeof autoMergeRunBase>) =>
+      evaluateExpression(String(disarm.if), autoMergeRunContext(overrides));
+    const arms = (overrides: Partial<typeof autoMergeRunBase>) =>
+      evaluateExpression(String(enable.if), autoMergeRunContext(overrides));
+
+    // A human's push: the metadata steps are skipped, so their outputs are empty.
+    const humanPush = { actor: 'a-maintainer', ecosystem: '', group: '', updateType: '', trusted: '' };
+    // Dependabot refreshing its own group PR keeps the actor, so an actor check
+    // alone would leave the earlier arming on a group that now carries a major
+    // or an untrusted action.
+    for (const [label, overrides] of [
+      ['a human push', humanPush],
+      ['Dependabot adding a major to the group', { updateType: 'version-update:semver-major' }],
+      ['Dependabot adding an untrusted action', { trusted: 'false' }],
+      ['a guard step that failed and wrote nothing', { trusted: '' }],
+    ] as [string, Partial<typeof autoMergeRunBase>][]) {
+      assert.equal(disarms(overrides), true, `${label} must disarm`);
+    }
+    // Every run ends armed or disarmed, never neither and never both.
+    for (const overrides of [{}, { updateType: 'version-update:semver-minor' }, humanPush, { group: '' }, { ecosystem: 'docker' }]) {
+      assert.equal(disarms(overrides), !arms(overrides), JSON.stringify(overrides));
+    }
+    assert.match(String(disarm.run), /retry gh pr merge --disable-auto/, 'a transient API failure must not leave a stale arming');
+  });
+
+  it('leaves a newer run\'s arming alone when a stale disarm run reaches the API late', () => {
+    // cancel-in-progress removes most of the race, but GitHub does not
+    // guarantee event ordering (CodeRabbit, citing GitHub's own docs): a
+    // disqualified run for an old commit can still execute this step after a
+    // newer, qualifying run has already armed for a different head.
+    // `--match-head-commit` gives the enable call an atomic guard against
+    // exactly this; `--disable-auto` has none, so the script checks by hand.
+    // Executes the real step against a fake `gh` rather than evaluating the
+    // `if:` expression, because the guard this covers is bash logic inside
+    // the step, not a step condition, and takes its environment from the
+    // step's own `env:` block, so a wrong mapping there (HEAD_SHA read from
+    // `github.sha`, which is the merge commit, never the PR head) fails here.
+    const disarm = (autoMerge.jobs['auto-merge'].steps as { name?: string; run?: string; env?: Record<string, string> }[]).find(
+      (step) => step.name === 'Disarm auto-merge when this commit does not qualify',
+    );
+    assert.ok(disarm?.run, 'dependabot-auto-merge.yml must keep the disarm step');
+
+    const workDir = mkdtempSync(resolve(tmpdir(), 'wm-disarm-'));
+    try {
+      const callLog = resolve(workDir, 'calls');
+      const ghPath = resolve(workDir, 'gh');
+      // Answers both `gh pr view` shapes the step queries, and records every
+      // invocation so the test can assert whether --disable-auto ran.
+      writeFileSync(
+        ghPath,
+        `#!/bin/bash
+echo "$*" >> "${callLog}"
+if [[ "$*" == *"--json autoMergeRequest"* ]]; then
+  [ "$FAKE_ARMED" = yes ] && echo '{"state":"ENABLED"}'
+elif [[ "$*" == *"--json headRefOid"* ]]; then
+  echo "$FAKE_CURRENT_HEAD"
+fi
+exit 0
+`,
+        { mode: 0o755 },
+      );
+
+      const runDisarm = ({ eventHead, liveHead, armed = true }: { eventHead: string; liveHead: string; armed?: boolean }) => {
+        writeFileSync(callLog, '');
+        const env = stepEnvironment(disarm, {
+          github: { event: { pull_request: { html_url: 'https://github.com/koala73/worldmonitor/pull/1', head: { sha: eventHead } } }, sha: 'merge-commit-sha' },
+          secrets: { GITHUB_TOKEN: 'token' },
+        });
+        execFileSync('bash', ['-c', disarm.run as string], {
+          env: {
+            ...env,
+            PATH: `${workDir}:${process.env.PATH}`,
+            FAKE_CURRENT_HEAD: liveHead,
+            FAKE_ARMED: armed ? 'yes' : 'no',
+            GITHUB_ACTOR: 'a-maintainer',
+          },
+          stdio: 'pipe',
+        });
+        return readFileSync(callLog, 'utf8');
+      };
+
+      // This run's own head is still the PR's live head: disarm for real.
+      assert.match(runDisarm({ eventHead: 'abc123', liveHead: 'abc123' }), /--disable-auto/, 'a genuinely stale run must still disarm');
+      // A newer run already moved the head before this stale run reached the
+      // API: it must not disarm what the newer run may have just armed.
+      assert.doesNotMatch(
+        runDisarm({ eventHead: 'abc123', liveHead: 'def456' }),
+        /--disable-auto/,
+        'a run racing behind a newer head must leave the decision to the run evaluating that head',
+      );
+      // Nothing armed, nothing to revoke.
+      assert.doesNotMatch(
+        runDisarm({ eventHead: 'abc123', liveHead: 'abc123', armed: false }),
+        /--disable-auto/,
+        'an unarmed PR must not be touched',
+      );
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it('classifies bumped actions against the trusted publishers', () => {
+    const publisher = (autoMerge.jobs['auto-merge'].steps as { id?: string; run?: string }[]).find(
+      (step) => step.id === 'publisher',
+    );
+    assert.ok(publisher?.run, 'dependabot-auto-merge.yml must keep the publisher step');
+    // Execute the real script: the Enable test above only feeds it a literal.
+    const outputDir = mkdtempSync(resolve(tmpdir(), 'wm-publisher-'));
+    try {
+      const trustedFor = (dependencyNames: string) => {
+        const outputFile = resolve(outputDir, 'output');
+        writeFileSync(outputFile, '');
+        execFileSync('bash', ['-c', publisher.run as string], {
+          env: { PATH: process.env.PATH, DEPENDENCY_NAMES: dependencyNames, GITHUB_OUTPUT: outputFile },
+          stdio: 'pipe',
+        });
+        return readFileSync(outputFile, 'utf8').trim();
+      };
+      assert.equal(trustedFor('actions/checkout, github/codeql-action,docker/build-push-action'), 'trusted=true');
+      assert.equal(trustedFor('actions/checkout, tauri-apps/tauri-action'), 'trusted=false', 'one untrusted action withholds the group');
+      assert.equal(trustedFor('actions-rs/toolchain'), 'trusted=false', 'a look-alike org is not a trusted org');
+      assert.equal(trustedFor(''), 'trusted=false', 'no names reported must not read as all trusted');
+      // The list is comma-separated; a name must not be able to hide behind a
+      // trusted neighbour when the separator is missing a space, or a prefix
+      // that merely starts like a trusted org.
+      assert.equal(trustedFor('actions/checkout,tauri-apps/tauri-action'), 'trusted=false', 'no space after the comma');
+      assert.equal(trustedFor(' actions/checkout , docker/build-push-action '), 'trusted=true', 'stray spaces around names');
+      for (const lookAlike of ['githubnext-fork/x', 'github-evil/x', 'docker-practice/x', 'dockerhub/x']) {
+        assert.equal(trustedFor(lookAlike), 'trusted=false', `${lookAlike} is not a trusted org`);
+      }
+    } finally {
+      rmSync(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the auto-merge group predicate in step with the group dependabot.yml defines', () => {
+    const enable = (autoMerge.jobs['auto-merge'].steps as { name?: string; if?: string }[]).find(
+      (step) => step.name === 'Enable auto-merge',
+    );
+    const expected = String(enable?.if).match(/dependency-group'\] == '([^']+)'/)
+      ?? String(enable?.if).match(/dependency-group == '([^']+)'/);
+    assert.ok(expected, 'the Enable auto-merge condition must name the group it trusts');
+
+    const actions = (dependabotConfig.updates as { 'package-ecosystem': string; groups?: Record<string, unknown> }[])
+      .find((entry) => entry['package-ecosystem'] === 'github-actions');
+    assert.ok(actions?.groups, 'the github-actions ecosystem must define a group');
+    // Renaming the group in dependabot.yml without editing the workflow does not
+    // fail anything at runtime -- auto-merge just silently stops arming, which
+    // looks exactly like a quiet week.
+    // CodeQL's init and analyze must move together (tests/codeql-workflow.test.mjs),
+    // so that group exists beside the trusted one. It must stay a different group:
+    // the workflow arms only the group it names, which is what keeps a CodeQL bump
+    // with a human.
+    assert.notEqual(expected[1], 'codeql', 'the CodeQL group must not be the auto-merged one');
+    assert.deepEqual(Object.keys(actions.groups).sort(), ['codeql', expected[1]].sort());
+    // The same silence follows from a group that no longer carries the bumps:
+    // version updates only (a security-updates group never reaches the
+    // dependency-group output the workflow reads) and every action in it.
+    const group = (actions.groups as Record<string, { 'applies-to'?: string; patterns?: string[]; 'exclude-patterns'?: string[] }>)[expected[1]];
+    assert.equal(group['applies-to'], 'version-updates');
+    assert.deepEqual(group.patterns, ['*']);
+    // ...except CodeQL's, which would otherwise match both groups and leave the
+    // choice to Dependabot's group order.
+    assert.deepEqual(group['exclude-patterns'], ['github/codeql-action/*']);
+  });
+
+  it('keeps update-types off the github-actions group so major bumps still get proposed', () => {
+    const actions = (dependabotConfig.updates as { 'package-ecosystem': string; groups?: Record<string, Record<string, unknown>> }[])
+      .find((entry) => entry['package-ecosystem'] === 'github-actions');
+    const group = Object.values(actions?.groups ?? {})[0];
+    assert.ok(group, 'the github-actions ecosystem must define a group');
+    // dependabot-core's DependencyGroup#contains? never reads update-types, so a
+    // group filtered on minor/patch still marks every matching action handled
+    // once it has an open PR -- and the majors it excluded then get no PR from
+    // either path (dependabot/dependabot-core#14202). The minor/patch guarantee
+    // belongs to dependabot-auto-merge.yml, which the tests above pin.
+    assert.equal(
+      group['update-types'],
+      undefined,
+      'filtering this group on update-types suppresses action majors entirely; gate them in dependabot-auto-merge.yml instead',
+    );
+  });
+
+  it('keeps every Dockerfile directory, and the major holds, in the one docker entry', () => {
+    const docker = (dependabotConfig.updates as {
+      'package-ecosystem': string;
+      directories?: string[];
+      ignore?: { 'dependency-name': string; 'update-types'?: string[] }[];
+      groups?: Record<string, Record<string, unknown>>;
+    }[]).filter((entry) => entry['package-ecosystem'] === 'docker');
+    // Three entries were folded into one; a directory dropped in that fold
+    // silently stops getting base bumps.
+    assert.equal(docker.length, 1);
+    // Derived from the Dockerfiles that exist, so a new one in a new directory
+    // is flagged here instead of silently never getting a base bump.
+    const dockerfileDirectories = [...new Set(collectDockerfiles().map((file) => (dirname(file) === '.' ? '/' : `/${dirname(file)}`)))].sort();
+    assert.deepEqual([...(docker[0].directories ?? [])].sort(), dockerfileDirectories);
+    // A Node or Postgres major is a deliberate migration, never a grouped
+    // base-image refresh.
+    for (const name of ['node', 'postgres']) {
+      const rule = docker[0].ignore?.find((entry) => entry['dependency-name'] === name);
+      assert.deepEqual(rule?.['update-types'], ['version-update:semver-major'], `${name} majors must stay ignored`);
+    }
+    // Digest-only bumps (the common case) carry no semver update type, so a
+    // filter would leave them ungrouped.
+    const dockerGroups = Object.values(docker[0].groups ?? {});
+    assert.ok(dockerGroups.length > 0, 'the docker entry must keep its group');
+    for (const group of dockerGroups) {
+      assert.equal(group['update-types'], undefined);
     }
   });
 });
