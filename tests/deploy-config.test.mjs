@@ -931,6 +931,14 @@ describe('crawlable content corpus deployment contracts', () => {
   // pointing at these files, and a disallowed URL is a claim Google is
   // forbidden to verify (#7660).
   it('marks the machine-readable data surface noindex without touching corpus HTML or the AI-citation surface (#8608)', () => {
+    const dataHeaderSources = vercelConfig.headers
+      .map(({ source }) => source)
+      .filter((source) => /\.(?:json|ya?ml)$/i.test(source))
+      .filter((source) => !source.replaceAll('\\', '').startsWith('/.well-known/'));
+    for (const source of dataHeaderSources) {
+      assert.equal(getHeaderValueForSource(source, 'X-Robots-Tag'), 'noindex, follow', source);
+    }
+
     const dataFiles = [
       // Corpus dataset downloads - scripts/build-crawlable-corpus.mjs.
       '/country-instability-index/cii-ranking.json',
