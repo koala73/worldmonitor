@@ -449,7 +449,10 @@ jobs:
         with:
           # The health-probe cutover gate compares the exact PR base with the
           # candidate tree. A shallow checkout would make that gate vacuous.
+          # Blobless like the unit shards: the gate reads one blob
+          # (api/health.js at the base), fetched on demand.
           fetch-depth: 0
+          filter: blob:none
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
