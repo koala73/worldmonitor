@@ -10,22 +10,28 @@ const all = ['actions', 'go', 'javascript-typescript', 'python', 'ruby', 'rust']
 
 async function select(paths, options = {}) {
   const outputs = {};
+  const calls = {};
   const files = paths.map(path => typeof path === 'string' ? { filename: path } : path);
   const github = {
-    rest: { pulls: {
-      listFiles() {},
-      async get() { return { data: { head: { sha: 'head' }, base: { sha: 'base' }, changed_files: files.length, ...options.metadata } }; },
-    } },
-    async paginate() { if (options.error) throw new Error('API unavailable'); return files; },
+    rest: {
+      actions: { async listWorkflowRuns(params) {
+        calls.runs = params;
+        if (options.error === 'runs') throw new Error('API unavailable');
+        return { data: { workflow_runs: options.noBaseline ? [] : [{ head_sha: 'last' }] } };
+      } },
+      repos: { async compareCommitsWithBasehead(params) {
+        calls.compare = params;
+        if (options.error === 'compare') throw new Error('API unavailable');
+        return { data: { status: options.status ?? 'ahead', files } };
+      } },
+    },
   };
-  const context = {
-    eventName: options.event ?? 'pull_request', repo: { owner: 'test', repo: 'test' },
-    payload: { schedule: options.schedule, pull_request: { number: 1, head: { sha: 'head' }, base: { sha: 'base' } } },
-  };
+  const context = { eventName: options.event ?? 'push', sha: 'head', repo: { owner: 'test', repo: 'test' }, payload: {} };
   await runInNewContext(`(async () => { ${selector} })()`, {
     github, context, core: { setOutput: (key, value) => { outputs[key] = value; }, warning() {} },
   });
-  return JSON.parse(outputs.languages);
+  // Objects built inside the vm realm have foreign prototypes; compare them as JSON.
+  return options.calls ? JSON.parse(JSON.stringify(calls)) : JSON.parse(outputs.languages);
 }
 
 test('selects only affected languages, including source outside SDK directories', async () => {
@@ -47,29 +53,39 @@ test('includes renamed-away and deleted source paths', async () => {
   assert.deepEqual(await select([{ filename: 'old.rb', status: 'removed' }]), ['ruby']);
 });
 
-test('scans all languages if lookup is unreliable or scan configuration changes', async () => {
+test('diffs from the last successful push scan on main, so coalesced pushes still count', async () => {
+  const calls = await select(['src/app.ts'], { calls: true });
+  assert.deepEqual(calls.runs, {
+    owner: 'test', repo: 'test', workflow_id: 'codeql.yml', branch: 'main', event: 'push', status: 'success', per_page: 1,
+  });
+  assert.deepEqual(calls.compare, { owner: 'test', repo: 'test', basehead: 'last...head' });
+});
+
+test('scans all languages if the diff is unreliable or scan configuration changes', async () => {
   for (const options of [
-    { error: true }, { metadata: { changed_files: 3001 } },
-    { metadata: { head: { sha: 'moved' } } }, { metadata: { base: { sha: 'moved' } } },
-  ]) assert.deepEqual(await select(['docs/readme.md'], options), all);
+    { error: 'runs' }, { error: 'compare' }, { noBaseline: true },
+    { status: 'diverged' }, { status: 'behind' }, { status: 'identical' },
+  ]) assert.deepEqual(await select(['docs/readme.md'], options), all, JSON.stringify(options));
   assert.deepEqual(await select([]), all);
   assert.deepEqual(await select([{ filename: null }]), all);
   assert.deepEqual(await select(['.github/workflows/codeql.yml']), all);
   assert.deepEqual(await select(['.github/codeql/config.yml']), all);
-  assert.deepEqual(await select(Array.from({ length: 3000 }, () => 'docs/readme.md')), all);
+  assert.deepEqual(await select(Array.from({ length: 300 }, () => 'docs/readme.md')), all);
+  assert.deepEqual(await select(Array.from({ length: 299 }, () => 'docs/readme.md')), []);
 });
 
-test('daily JS/TS and weekly all-language scans, with full manual recovery', async () => {
-  assert.deepEqual(await select([], { event: 'schedule', schedule: '23 3 * * 1-6' }), ['javascript-typescript']);
-  assert.deepEqual(await select([], { event: 'schedule', schedule: '23 3 * * 0' }), all);
+test('pushes to main and a weekly all-language scan, never PRs', async () => {
+  assert.deepEqual(await select([], { event: 'schedule' }), all);
   assert.deepEqual(await select([], { event: 'workflow_dispatch' }), all);
-  assert.deepEqual(await select([], { event: 'push' }), all);
-  assert.deepEqual(workflow.on.schedule.map(entry => entry.cron), ['23 3 * * 1-6', '23 3 * * 0']);
-  // CodeQL warns on every run without an on.push hook. Scoping it to this file
-  // silences that and scans all languages on main when scan config lands.
-  assert.deepEqual(workflow.on.push, { branches: ['main'], paths: ['.github/workflows/codeql.yml'] });
-  assert.ok('pull_request' in workflow.on);
-  assert.equal(workflow.on.pull_request?.paths, undefined);
+  assert.equal('pull_request' in workflow.on, false);
+  assert.equal('pull_request_target' in workflow.on, false);
+  assert.deepEqual(workflow.on.push, { branches: ['main'] });
+  assert.deepEqual(workflow.on.schedule.map(entry => entry.cron), ['23 3 * * 0']);
+  assert.ok('workflow_dispatch' in workflow.on);
+  // Pushes coalesce instead of cancelling; schedule and dispatch use their own groups.
+  assert.equal(workflow.concurrency['cancel-in-progress'], false);
+  assert.equal(workflow.concurrency.group, 'codeql-${{ github.event_name }}-${{ github.ref }}');
+  assert.deepEqual(workflow.jobs.changes.permissions, { actions: 'read', contents: 'read' });
 });
 
 test('scan jobs use selected languages, least privilege, and stable categories', () => {
@@ -78,8 +94,6 @@ test('scan jobs use selected languages, least privilege, and stable categories',
   assert.equal(analyze.strategy.matrix.language, '${{ fromJSON(needs.changes.outputs.languages) }}');
   assert.equal(analyze.permissions['security-events'], 'write');
   assert.equal(workflow.permissions.contents, 'read');
-  assert.equal(workflow.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}");
-  assert.match(workflow.concurrency.group, /github.run_id/);
   const init = analyze.steps.find(step => step.uses?.startsWith('github/codeql-action/init@'));
   assert.equal(init.with['build-mode'], "${{ matrix.language == 'go' && 'autobuild' || 'none' }}");
   assert.equal(init.with.languages, '${{ matrix.language }}');
@@ -105,7 +119,6 @@ test('default-branch runs prune stale overlay-base caches with the only actions:
   assert.ok(prune, 'prune-overlay-bases job exists');
   assert.equal(prune.needs, 'analyze');
   assert.match(prune.if, /!cancelled\(\)/);
-  assert.match(prune.if, /github\.event_name != 'pull_request'/);
   assert.match(prune.if, /github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/);
   assert.deepEqual(prune.permissions, { contents: 'read', actions: 'write' });
   for (const [name, job] of Object.entries(workflow.jobs)) {
