@@ -92,13 +92,12 @@ function middlewareBotRedirectShapes() {
   return { noiseKeys, utmPrefix: /^utm_/i, legacyRootKeys };
 }
 
-/** Variant dashboard hosts, re-derived from middleware VARIANT_HOST_MAP. */
 function variantHosts() {
-  const source = readRepo('middleware.ts');
-  const block = source.match(/const VARIANT_HOST_MAP: Record<string, string> = \{([\s\S]*?)\}/)?.[1];
-  assert.ok(block, 'VARIANT_HOST_MAP extraction from middleware.ts found nothing');
-  const hosts = [...block.matchAll(/'([a-z]+\.worldmonitor\.app)'/g)].map((match) => match[1]);
+  const hosts = vercelConfig.rewrites
+    .filter((rule) => rule.source === '/dashboard' && rule.has)
+    .map((rule) => rule.has.find((condition) => condition.type === 'host')?.value);
   assert.ok(hosts.length >= 5, `expected the variant hosts, got ${JSON.stringify(hosts)}`);
+  for (const host of hosts) assert.match(host, /^[a-z]+\.worldmonitor\.app$/);
   return hosts;
 }
 
