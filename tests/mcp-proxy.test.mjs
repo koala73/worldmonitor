@@ -328,6 +328,120 @@ describe('api/mcp-proxy', () => {
       assert.equal(res.status, 200);
     });
 
+    // Plan 2026-10-25-001 KTD6 / R6: a desktop key is premium here (Pro-session
+    // treatment), and because this edge is not served by the gateway it must
+    // charge the owner's per-account desktop meter itself. Real premium-check,
+    // real validators and real meter over the fake Upstash plus a stubbed
+    // Convex; the upstream MCP server is the usual stub. The clock is frozen so
+    // the day and minute counter names cannot straddle a boundary mid-test.
+    describe('desktop keys are metered per owner (KTD6)', () => {
+      const DESKTOP_KEY = `wm_${'d5'.repeat(20)}`;
+      const OWNER = 'user_desktop_owner';
+      const FROZEN_NOW = Date.UTC(2026, 9, 25, 12, 0, 30);
+      const DAY_KEY = `rl:desktopkey:day:${OWNER}:2026-10-25`;
+      const MINUTE_KEY = `rl:desktopkey:min:${OWNER}:${Math.floor(FROZEN_NOW / 60_000)}`;
+      const ENV = ['CONVEX_SITE_URL', 'CONVEX_SERVER_SHARED_SECRET', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV', 'DODO_PAYMENTS_ENVIRONMENT'];
+      let saved;
+      let redis;
+      let keyHash;
+
+      beforeEach(async (t) => {
+        t.mock.timers.enable({ apis: ['Date'], now: FROZEN_NOW });
+        saved = new Map(ENV.map((k) => [k, process.env[k]]));
+        process.env.CONVEX_SITE_URL = 'https://convex.test';
+        process.env.CONVEX_SERVER_SHARED_SECRET = 'desktop-key-shared-secret';
+        delete process.env.DODO_PAYMENTS_ENVIRONMENT;
+        const { installRedis } = await import('./helpers/fake-upstash-redis.mts');
+        const { __resetKeyPrefixCacheForTests, __clearLocalUnavailableBackoffForTests } = await import('../server/_shared/redis.ts');
+        const { __resetEntitlementNegativeCacheForTests } = await import('../server/_shared/entitlement-check.ts');
+        const { __resetRateLimitForTest } = await import('../server/_shared/rate-limit.ts');
+        __resetKeyPrefixCacheForTests();
+        __clearLocalUnavailableBackoffForTests();
+        __resetEntitlementNegativeCacheForTests();
+        // The scoped per-IP limiter memoizes a Redis client per scope on first
+        // use; drop it so a client bound to the fake never outlives this block.
+        __resetRateLimitForTest();
+        redis = installRedis({});
+        const { getEntitlementFeatures } = await import('../convex/config/productCatalog.ts');
+        const { createHash } = await import('node:crypto');
+        keyHash = createHash('sha256').update(DESKTOP_KEY).digest('hex');
+        const redisFetch = globalThis.fetch;
+        const mcpFetch = makeMcpFetch({ tools: [] });
+        globalThis.fetch = async (input, init) => {
+          const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+          if (url.endsWith('/api/internal-validate-api-key')) {
+            const body = JSON.parse(String(init?.body ?? '{}'));
+            return Response.json(body.keyHash === keyHash
+              ? { id: 'key_desk', userId: OWNER, name: 'laptop', keyKind: 'desktop', activeKeyRank: 0 }
+              : null);
+          }
+          if (url.endsWith('/api/internal-entitlements')) {
+            return Response.json({ planKey: 'pro_monthly', validUntil: FROZEN_NOW + 86_400_000, features: getEntitlementFeatures('pro_monthly') });
+          }
+          if (url.startsWith('https://redis.example')) return redisFetch(input, init);
+          return mcpFetch(input, init);
+        };
+      });
+
+      afterEach(async (t) => {
+        t.mock.timers.reset();
+        for (const [k, v] of saved) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+        const { __resetRateLimitForTest } = await import('../server/_shared/rate-limit.ts');
+        __resetRateLimitForTest();
+      });
+
+      const desktopGet = () => new Request('https://worldmonitor.app/api/mcp-proxy?serverUrl=https%3A%2F%2Fmcp.example.com%2Fmcp', {
+        method: 'GET',
+        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': DESKTOP_KEY, 'x-real-ip': uniqueCallerIp() },
+      });
+
+      it('a desktop key is served and charges the owner day counter once per request', async () => {
+        const res = await handler(desktopGet());
+        assert.equal(res.status, 200, await res.clone().text());
+        assert.equal(redis.redis.get(DAY_KEY), '1');
+        assert.equal(redis.redis.get(MINUTE_KEY), '1');
+        assert.equal((await handler(desktopGet())).status, 200);
+        assert.equal(redis.redis.get(DAY_KEY), '2');
+      });
+
+      it('an owner past the daily ceiling gets the shared 429 and no upstream call', async () => {
+        redis.redis.set(DAY_KEY, '7500');
+        const res = await handler(desktopGet());
+        assert.equal(res.status, 429);
+        assert.deepEqual(await res.json(), {
+          error: 'Daily request limit reached',
+          plan: 'pro_monthly',
+          limit: 7500,
+          limit_type: 'daily',
+          reset: new Date(Date.UTC(2026, 9, 26)).toISOString(),
+        });
+        assert.equal(res.headers.get('Retry-After'), String(12 * 3600 - 30));
+        assertNoStore(res, 'desktop 429');
+        assert.equal(redis.redis.get(DAY_KEY), '7500', 'a rejected request is not charged');
+      });
+
+      it('a Redis failure on the meter is the degraded 503', async () => {
+        const redisFetch = globalThis.fetch;
+        globalThis.fetch = async (input, init) => {
+          const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+          if (url.startsWith('https://redis.example') && String(init?.body ?? '').includes('rl:desktopkey:')) {
+            return new Response('upstream error', { status: 500 });
+          }
+          return redisFetch(input, init);
+        };
+        const res = await handler(desktopGet());
+        assert.equal(res.status, 503);
+        assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+        assert.deepEqual(await res.json(), { error: 'Rate-limit service temporarily unavailable' });
+      });
+
+      it('an enterprise key never touches the desktop meter', async () => {
+        const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+        assert.equal(res.status, 200);
+        assert.equal([...redis.redis.keys()].some((k) => k.startsWith('rl:desktopkey:')), false);
+      });
+    });
+
     // Bearer-JWT acceptance is the OTHER positive path (normal web Pro
     // users). End-to-end coverage would need a stubbed Clerk
     // validateBearerToken — out of scope for this unit test. The Bearer

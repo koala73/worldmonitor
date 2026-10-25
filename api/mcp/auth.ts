@@ -637,10 +637,23 @@ function hasCurrentApiAccess(ent: Awaited<ReturnType<McpHandlerDeps['getEntitlem
     && validUntil >= Date.now();
 }
 
-/** Owner's plan sells desktop keys (Pro, Pro Business): the KTD5 downgrade case. */
-function isOnDesktopKeyPlan(ent: Awaited<ReturnType<McpHandlerDeps['getEntitlements']>>): boolean {
+/**
+ * A covered tier>=1 owner whose row does not prove an API plan: the KTD5
+ * downgrade case (Pro, Pro Business — `desktopKeyAccess: true`), read
+ * fail-closed. An entitlement entry written before the catalog carried the
+ * flag has it `undefined`, not `false`; reading that as "not a desktop-key
+ * plan" let a downgraded owner keep MCP through a key for as long as the
+ * legacy entry stayed warm. Every merged row carries the flag, so only a
+ * legacy cache entry or a row from a backend predating the catalog change
+ * lands here with it absent, and neither is evidence of an API plan — the
+ * same `undefined === false` posture `mcpAccess` has in this file. Tier 0
+ * is excluded so the #6716 free-account allowance is untouched.
+ */
+function lacksProvenApiPlan(ent: Awaited<ReturnType<McpHandlerDeps['getEntitlements']>>): boolean {
   if (!ent || typeof ent !== 'object' || !ent.features || typeof ent.features !== 'object') return false;
-  return (ent.features as { desktopKeyAccess?: unknown }).desktopKeyAccess === true;
+  const validUntil = Number((ent as { validUntil?: unknown }).validUntil ?? 0);
+  if (!(ent.features.tier >= 1) || !Number.isFinite(validUntil) || validUntil < Date.now()) return false;
+  return (ent.features as { desktopKeyAccess?: unknown }).desktopKeyAccess !== false;
 }
 
 /**
@@ -729,7 +742,7 @@ async function checkMcpEntitlementGate(
   if (
     options.requireApiAccess &&
     gate?.kind !== 'billing_verification' &&
-    isOnDesktopKeyPlan(ent) &&
+    lacksProvenApiPlan(ent) &&
     !hasCurrentApiAccess(ent)
   ) {
     return {

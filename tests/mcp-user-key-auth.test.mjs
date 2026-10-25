@@ -256,6 +256,29 @@ describe('api/mcp — user API keys on /mcp (#4859) + pre-check hardening (#4860
     assert.equal(pipe.count, 0, 'nothing is reserved for a rejected caller');
   });
 
+  it('KTD5: a warm pre-deploy entry (tier 1, no desktopKeyAccess field) is read fail-closed — still rejected', async () => {
+    const { deps, pipe } = makeUserKeyDeps({
+      getEntitlements: async () => ({
+        planKey: 'pro_monthly',
+        features: { tier: 1, mcpAccess: true, apiAccess: false },
+        validUntil: Date.now() + 86_400_000,
+      }),
+    });
+    const res = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
+    assert.equal(res.status, 403, 'an unproven API plan cannot use MCP through a key while its legacy entry is warm');
+    const body = await res.json();
+    assert.equal(body.error?.data?.reason, 'upgrade-required');
+    assert.equal(pipe.count, 0);
+  });
+
+  it('KTD5: a free owner\'s key keeps the metered free-account path (tier 0 is never read as a desktop-key plan)', async () => {
+    const { deps } = makeUserKeyDeps({
+      getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false, apiAccess: false }, validUntil: 0 }),
+    });
+    const res = await mcpHandler(userKeyReq(callBody('describe_tool', { tool_name: 'get_market_data' })), deps);
+    assert.equal(res.status, 200);
+  });
+
   it('KTD5: an active API-plan owner still passes (apiAccess true)', async () => {
     const { deps } = makeUserKeyDeps();
     const res = await mcpHandler(userKeyReq(callBody('describe_tool', { tool_name: 'get_market_data' })), deps);

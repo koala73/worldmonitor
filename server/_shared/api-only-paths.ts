@@ -39,9 +39,15 @@ export const API_ONLY_EXACT_PATHS: ReadonlySet<string> = new Set([
   '/api/oauth/register',
 ]);
 
-/** True when `pathname` is in the API-only set. Trailing slashes are ignored. */
+/**
+ * True when `pathname` is in the API-only set. Duplicate slashes are collapsed
+ * first (`//api/v2/x` and `/api//v2/x` are the same route to a router that
+ * normalizes them) and trailing slashes are ignored, so neither spelling can
+ * slip a desktop principal past the prefix check.
+ */
 export function isApiOnlyPath(pathname: string): boolean {
-  const normalized = pathname.length > 1 && pathname.endsWith('/') ? pathname.replace(/\/+$/, '') : pathname;
+  const collapsed = pathname.replace(/\/{2,}/g, '/');
+  const normalized = collapsed.length > 1 && collapsed.endsWith('/') ? collapsed.replace(/\/+$/, '') : collapsed;
   if (API_ONLY_EXACT_PATHS.has(normalized)) return true;
   return API_ONLY_PATH_PREFIXES.some((prefix) => normalized.startsWith(prefix) || normalized === prefix.slice(0, -1));
 }

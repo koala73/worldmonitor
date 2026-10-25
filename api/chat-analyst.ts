@@ -20,6 +20,7 @@ import { getCorsHeaders } from './_cors.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { renderBillingVerificationDenial } from '../server/_shared/entitlement-check';
 import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
+import { chargeDesktopKeyBudget, desktopKeyBudgetResponse } from '../server/_shared/desktop-key-meter';
 import { checkRateLimit } from '../server/_shared/rate-limit';
 import { runRedisPipeline } from '../server/_shared/redis';
 import { DIRECT_LLM_DAILY_QUOTA_LIMIT, reserveDirectLlmQuota } from '../server/_shared/direct-llm-quota';
@@ -205,6 +206,20 @@ export default async function handler(req: Request): Promise<Response> {
     // outage must not silently lift the budget. (#3531)
     const rateLimitResponse = await checkRateLimit(req, corsHeaders, { failClosed: true });
     if (rateLimitResponse) return rateLimitResponse;
+
+    // Per-account desktop-key meter (plan 2026-10-25-001, KTD6 / R6). This
+    // route is not served by the gateway, so the owner's daily ceiling and
+    // burst bucket are charged here — every desktop-key request counts, as on
+    // the gateway, before the body is read; the direct-LLM quota below is the
+    // separate spend control and still waits for a valid query.
+    if (premiumIdentity.kind === 'desktop-key') {
+      const budget = await chargeDesktopKeyBudget({
+        userId: premiumIdentity.userId,
+        entitlement: premiumIdentity.desktopKeyMeter,
+        pipeline: (cmds) => runRedisPipeline(cmds),
+      });
+      if (!budget.ok) return desktopKeyBudgetResponse(budget, corsHeaders);
+    }
 
     let body: ChatAnalystRequestBody;
     try {

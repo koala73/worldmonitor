@@ -22,3 +22,8 @@ export function admitsDesktopKeyPrincipal(
   entitlement: DesktopKeyEntitlement | null | undefined,
   now: number,
 ): boolean;
+
+/** 403 body for a key beyond the owner's `maxDesktopKeys` (R5 / AE6). */
+export const DESKTOP_KEY_LIMIT_ERROR: 'Desktop key limit reached for this account';
+/** 403 body for a desktop principal on an API-only path (KTD7). */
+export const DESKTOP_KEY_API_ONLY_ERROR: 'This endpoint requires an API plan';

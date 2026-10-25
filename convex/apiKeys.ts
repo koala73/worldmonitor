@@ -1,6 +1,7 @@
 import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { requireUserId, resolveUserId } from "./lib/auth";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
 import { activeAccountForOwner } from "./companyMonitoring/_shared";
@@ -27,10 +28,15 @@ function keyKindOf(key: Pick<Doc<"userApiKeys">, "keyKind">): ApiKeyKind {
 }
 
 /**
- * Desktop-key issuance switch (Deploy Order, plan 2026-10-25-001). Off unless
- * the Convex env var is exactly "true": the edge validators must be live and
- * kind-aware before any desktop row can exist, and rolling the edge back
- * means flipping this off first.
+ * Desktop-key switch (Deploy Order, plan 2026-10-25-001). Off unless the Convex
+ * env var is exactly "true". It gates BOTH issuance (`createDesktopKey`) and
+ * validation (`validateKeyByHash` answers null for a desktop row while off):
+ * the edge validators must be live and kind-aware before any desktop row can
+ * be used, and "flip the flag off before rolling the edge back" only holds if
+ * existing desktop rows also stop validating — an older edge's generic
+ * validators accept any entry with a userId, so a desktop row reaching one
+ * would be granted API scope. Flipping the flag off suspends every desktop
+ * key at once; flipping it back on restores them (no row is rewritten).
  */
 function desktopKeysEnabled(): boolean {
   return process.env.DESKTOP_KEYS_ENABLED === "true";
@@ -329,9 +335,41 @@ export const revokeApiKey = mutation({
     }
 
     await ctx.db.patch(args.keyId, { revokedAt: Date.now() });
+    await scheduleSiblingKeyCacheInvalidation(ctx, userId, key.keyHash);
     return { ok: true, keyHash: key.keyHash };
   },
 });
+
+/**
+ * A revocation changes every sibling's `activeKeyRank` (plan 2026-10-25-001
+ * KTD5 / R5): the next-oldest key moves within `maxDesktopKeys` the moment
+ * one above it is revoked. The edge caches that rank on the shared
+ * `user-api-key:<hash>` entry for 60 s, and the client-driven
+ * `/api/invalidate-user-api-key-cache` only drops the REVOKED key's entry, so
+ * without this a denied third key stays denied until its sibling entry ages
+ * out. Invalidate the revoked key and every other active key of the owner
+ * through the same action the account lifecycle uses. Scheduled only when
+ * Redis is configured, matching `scheduleScopedKeyCacheInvalidation`.
+ */
+async function scheduleSiblingKeyCacheInvalidation(
+  ctx: MutationCtx,
+  ownerUserId: string,
+  revokedKeyHash: string,
+): Promise<void> {
+  if (!process.env.UPSTASH_REDIS_REST_URL && !process.env.UPSTASH_REDIS_REST_TOKEN) return;
+  const active = await ctx.db
+    .query("userApiKeys")
+    .withIndex("by_userId_revokedAt", (q) =>
+      q.eq("userId", ownerUserId).eq("revokedAt", undefined),
+    )
+    .collect();
+  const keyHashes = [revokedKeyHash, ...active.map((k) => k.keyHash).filter((h) => h !== revokedKeyHash)];
+  await ctx.scheduler.runAfter(
+    0,
+    internal.payments.cacheActions.invalidateUserApiKeyCaches,
+    { keyHashes },
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Internal (service-to-service) — called from HTTP actions / middleware
@@ -354,6 +392,9 @@ export const validateKeyByHash = internalQuery({
       .first();
 
     if (!key || key.revokedAt) return null;
+    // Kill switch: with DESKTOP_KEYS_ENABLED off, a desktop row is unknown to
+    // every validator (see `desktopKeysEnabled`). API rows are unaffected.
+    if (keyKindOf(key) === "desktop" && !desktopKeysEnabled()) return null;
 
     if (key.scopes && key.scopes.length > 0) {
       let scopes: string[] | undefined;

@@ -19,7 +19,8 @@ import {
 } from './mcp-internal-hmac.js';
 import { validateUserApiKeyPrincipal } from './user-api-key.js';
 import { isApiOnlyPath } from './api-only-paths.js';
-import { resolveUserKeyScope } from './desktop-key-principal.js';
+import { resolveUserKeyEntitlement, resolveUserKeyScope } from './desktop-key-principal.js';
+import type { DesktopKeyMeterEntitlement } from './desktop-key-meter.js';
 import {
   DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
   resolveActiveDirectLlmLimit,
@@ -52,6 +53,18 @@ export type PremiumCallerIdentity =
        * owner's plan, and the API-only set is denied before this arm.
        */
       kind: 'user-api-key' | 'bearer' | 'desktop-key';
+      /**
+       * Present on `desktop-key` only: what the per-account desktop meter
+       * (KTD6 / R6) needs — the owner's plan and its sold limits — so a
+       * standalone edge (api/mcp-proxy.ts, api/chat-analyst.ts) can charge
+       * `chargeDesktopKeyBudget` without a second entitlement read. The meter
+       * is NOT charged here: gateway-served handlers resolve this identity too
+       * and the gateway has already charged them; charging twice would halve
+       * every desktop allowance. REQUIRED on that arm for the same reason
+       * `directLlmDailyLimit` is — an edge that forgets it would serve
+       * unmetered — and the type below pins the pairing.
+       */
+      desktopKeyMeter?: NonNullable<DesktopKeyMeterEntitlement>;
       quotaExempt: false;
       /**
        * Daily direct-LLM budget for this caller. `null` is unlimited.
@@ -343,7 +356,9 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
       // kind; the scope resolver decides what the kind may reach (KTD4/KTD5).
       const userKey = await validateUserApiKeyPrincipal(wmKey);
       if (userKey) {
-        const ent = await getEntitlements(userKey.userId);
+        // One cached read; a pre-deploy entry that cannot answer the desktop
+        // decision is refetched through Convex (desktop-key-principal.ts).
+        const ent = await resolveUserKeyEntitlement(userKey.userId, userKey);
         const keyScope = resolveUserKeyScope(userKey, ent);
         if (keyScope.scope === 'api' && ent) {
           return {
@@ -363,6 +378,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
             isPremium: true,
             userId: userKey.userId,
             kind: 'desktop-key',
+            desktopKeyMeter: { planKey: ent.planKey, features: { planLimits: ent.features.planLimits } },
             quotaExempt: false,
             directLlmDailyLimit: resolveActiveDirectLlmLimit(ent),
             enterprisePlan: ent.features.tier >= 3,

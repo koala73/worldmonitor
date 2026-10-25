@@ -270,6 +270,39 @@ describe("revokeApiKey", () => {
     expect(result.keyHash).toBe(makeKeyArgs(1).keyHash);
   });
 
+  test("schedules cache invalidation for the revoked key AND the owner's other active keys (their ranks shift)", async () => {
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = "https://redis.example";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
+    try {
+      const t = convexTest(schema, modules);
+      await seedApiEntitlement(t, "user-api");
+      const asApiUser = t.withIdentity(API_USER);
+      const first = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+      await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(2));
+      await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(3));
+      const revokedEarlier = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(4));
+      await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: revokedEarlier.id });
+      // Another owner's key must never ride along.
+      await seedApiEntitlement(t, "user-other");
+      await t.withIdentity(OTHER_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(9));
+
+      await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: first.id });
+
+      const scheduled = await t.run(async (ctx) => ctx.db.system.query("_scheduled_functions").collect());
+      const jobs = scheduled.filter((job) => job.name.includes("invalidateUserApiKeyCaches"));
+      const last = jobs[jobs.length - 1];
+      expect(last).toBeDefined();
+      const keyHashes = (last!.args[0] as { keyHashes: string[] }).keyHashes;
+      expect(keyHashes[0]).toBe(makeKeyArgs(1).keyHash);
+      expect(new Set(keyHashes)).toEqual(new Set([makeKeyArgs(1).keyHash, makeKeyArgs(2).keyHash, makeKeyArgs(3).keyHash]));
+    } finally {
+      if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = savedUrl;
+      if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN; else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
+    }
+  });
+
   test("rejects non-owner revoke attempt", async () => {
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
@@ -753,6 +786,28 @@ describe("desktop keys", () => {
     expect(rows).toHaveLength(0);
   });
 
+  test("kill switch: with the flag off an existing desktop row validates null; an api row is unaffected", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await seedApiEntitlement(t, "user-api");
+    const desk = await t.withIdentity(PRO_USER).mutation(api.apiKeys.createApiKey, desktopArgs(1));
+    const generic = await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(2));
+    expect(await t.query(internal.apiKeys.validateKeyByHash, { keyHash: desktopArgs(1).keyHash })).toMatchObject({ id: desk.id, keyKind: "desktop" });
+
+    for (const value of [undefined, "false", "TRUE"]) {
+      if (value === undefined) delete process.env.DESKTOP_KEYS_ENABLED;
+      else process.env.DESKTOP_KEYS_ENABLED = value;
+      expect(await t.query(internal.apiKeys.validateKeyByHash, { keyHash: desktopArgs(1).keyHash })).toBeNull();
+      expect(await t.query(internal.apiKeys.validateKeyByHash, { keyHash: makeKeyArgs(2).keyHash })).toMatchObject({ id: generic.id, keyKind: "api" });
+    }
+
+    // Flipping it back on restores the key: nothing was rewritten.
+    process.env.DESKTOP_KEYS_ENABLED = "true";
+    expect(await t.query(internal.apiKeys.validateKeyByHash, { keyHash: desktopArgs(1).keyHash })).toMatchObject({ id: desk.id, keyKind: "desktop" });
+    const row = await t.run(async (ctx) => ctx.db.get(desk.id));
+    expect(row?.revokedAt).toBeUndefined();
+  });
+
   test("flag off does not affect api key creation", async () => {
     delete process.env.DESKTOP_KEYS_ENABLED;
     const t = convexTest(schema, modules);
@@ -1008,15 +1063,22 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
   test("response body carries keyKind desktop for a desktop row and api for a legacy row", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(T0);
-    const t = convexTest(schema, modules);
-    await seedKeyRows(t, "user-pro", [{ n: 1 }, { n: 2, keyKind: "desktop" }]);
+    // A desktop row validates only while the kill switch is on (the same flag
+    // that gates issuance); the route contract below is what the edge caches.
+    process.env.DESKTOP_KEYS_ENABLED = "true";
+    try {
+      const t = convexTest(schema, modules);
+      await seedKeyRows(t, "user-pro", [{ n: 1 }, { n: 2, keyKind: "desktop" }]);
 
-    const legacy = await validate(t, makeKeyArgs(1).keyHash);
-    expect(((await legacy.json()) as Record<string, unknown>).keyKind).toBe("api");
-    const desktop = await validate(t, makeKeyArgs(2).keyHash);
-    const body = (await desktop.json()) as Record<string, unknown>;
-    expect(body).toMatchObject({ userId: "user-pro", name: "test-key-2", keyKind: "desktop" });
-    expect(Object.keys(body).sort()).toEqual(["activeKeyRank", "id", "keyKind", "name", "userId"]);
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+      const legacy = await validate(t, makeKeyArgs(1).keyHash);
+      expect(((await legacy.json()) as Record<string, unknown>).keyKind).toBe("api");
+      const desktop = await validate(t, makeKeyArgs(2).keyHash);
+      const body = (await desktop.json()) as Record<string, unknown>;
+      expect(body).toMatchObject({ userId: "user-pro", name: "test-key-2", keyKind: "desktop" });
+      expect(Object.keys(body).sort()).toEqual(["activeKeyRank", "id", "keyKind", "name", "userId"]);
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+    } finally {
+      delete process.env.DESKTOP_KEYS_ENABLED;
+    }
   });
 });

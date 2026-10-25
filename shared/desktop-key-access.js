@@ -57,3 +57,14 @@ export function admitsDesktopKeyPrincipal(entitlement, now) {
     (features.desktopKeyAccess === true || features.apiAccess === true)
   );
 }
+
+/**
+ * Denial copy shared by every surface that turns a desktop-key verdict into a
+ * response (gateway, premium-check, bootstrap). Defined once here because the
+ * self-contained `api/*.js` entries cannot import `server/`, and two copies of
+ * one sentence drift.
+ */
+/** 403 body for a key beyond the owner's `maxDesktopKeys` (R5 / AE6). */
+export const DESKTOP_KEY_LIMIT_ERROR = 'Desktop key limit reached for this account';
+/** 403 body for a desktop principal on an API-only path (KTD7). */
+export const DESKTOP_KEY_API_ONLY_ERROR = 'This endpoint requires an API plan';

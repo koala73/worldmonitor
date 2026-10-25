@@ -33,6 +33,8 @@ import {
 } from '../convex/config/productCatalog.ts';
 import { installRedis, type FakeRedisState } from './helpers/fake-upstash-redis.mts';
 import { API_ONLY_EXACT_PATHS, API_ONLY_PATH_PREFIXES, isApiOnlyPath } from '../server/_shared/api-only-paths.ts';
+import { DESKTOP_KEY_LIMIT_ERROR } from '../shared/desktop-key-access.js';
+import { invalidateUserApiKeyCaches } from '../convex/payments/cacheActions.ts';
 import {
   DESKTOP_KEY_BURST_PER_MINUTE as METER_BURST,
   DESKTOP_KEY_DAILY_CEILING as METER_CEILING,
@@ -116,12 +118,13 @@ const handler = createDomainGateway([
 ]);
 
 // ── Convex stubs ────────────────────────────────────────────────────────────
-type KeyRow = { id: string; userId: string; name: string; keyKind: 'api' | 'desktop'; activeKeyRank?: number };
+type KeyRow = { id: string; userId: string; name: string; keyKind: 'api' | 'desktop'; activeKeyRank?: number; rankUnknown?: true };
 type Entitlement = Record<string, unknown> | { __status: number };
 const keysByHash = new Map<string, KeyRow | null>();
 const entitlementsByUser = new Map<string, Entitlement>();
 let redis: FakeRedisState;
 let failRedisFor: ((commands: Array<Array<string | number>>) => boolean) | null = null;
+let entitlementFetches = 0;
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -135,9 +138,47 @@ function mintKey(row: Omit<KeyRow, 'id'> & { id?: string }): string {
   return key;
 }
 
-function revoke(key: string): void {
+/**
+ * What Convex `validateKeyByHash` answers for `keyHash`: the row with its
+ * `activeKeyRank` computed the way `activeKeyRankOf` does — position among
+ * the owner's ACTIVE keys of both kinds, oldest (minted) first. A row minted
+ * with an explicit rank keeps it (the pre-rank / poisoned-entry scenarios).
+ */
+function convexValidateAnswer(keyHash: string): KeyRow | null {
+  const row = keysByHash.get(keyHash);
+  if (!row) return null;
+  if (row.rankUnknown) { const { rankUnknown: _omit, ...bare } = row; return bare; }
+  if (row.activeKeyRank !== undefined) return row;
+  const siblings = [...keysByHash.entries()].filter(([, r]) => r && r.userId === row.userId);
+  return { ...row, activeKeyRank: siblings.findIndex(([hash]) => hash === keyHash) };
+}
+
+/** Convex-side revocation only: the row is gone, nothing in Redis is touched. */
+function revokeRow(key: string): void {
   keysByHash.set(sha256(key), null);
-  redis.redis.delete(`user-api-key:${sha256(key)}`);
+}
+
+/**
+ * The production revoke path (plan R5 / KTD5): `convex/apiKeys.ts
+ * revokeApiKey` flags the row AND schedules
+ * `payments/cacheActions.invalidateUserApiKeyCaches` for the revoked key plus
+ * the owner's other active keys, because their `activeKeyRank` just shifted.
+ * This runs that action's handler against the same fake Upstash the gateway
+ * reads, so the test proves the sibling entry is dropped by production code,
+ * not by a hand-written `redis.delete`.
+ */
+async function revokeThroughProduction(key: string): Promise<void> {
+  const hash = sha256(key);
+  const row = keysByHash.get(hash);
+  assert.ok(row, 'revoking a key that exists');
+  revokeRow(key);
+  const siblingHashes = [...keysByHash.entries()]
+    .filter(([, r]) => r && r.userId === row.userId)
+    .map(([h]) => h);
+  const action = invalidateUserApiKeyCaches as unknown as {
+    _handler: (ctx: unknown, args: { keyHashes: string[] }) => Promise<void>;
+  };
+  await action._handler({}, { keyHashes: [hash, ...siblingHashes] });
 }
 
 function entitlement(planKey: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -192,6 +233,7 @@ beforeEach(() => {
   entitlementsByUser.clear();
   seenByHandler.length = 0;
   failRedisFor = null;
+  entitlementFetches = 0;
   __resetEntitlementNegativeCacheForTests();
   __resetKeyPrefixCacheForTests();
   __clearLocalUnavailableBackoffForTests();
@@ -201,9 +243,10 @@ beforeEach(() => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     if (url.endsWith('/api/internal-validate-api-key')) {
       const body = JSON.parse(String(init?.body ?? '{}')) as { keyHash?: string };
-      return Response.json(keysByHash.get(body.keyHash ?? '') ?? null);
+      return Response.json(convexValidateAnswer(body.keyHash ?? ''));
     }
     if (url.endsWith('/api/internal-entitlements')) {
+      entitlementFetches += 1;
       const body = JSON.parse(String(init?.body ?? '{}')) as { userId?: string };
       const value = entitlementsByUser.get(body.userId ?? '') ?? null;
       if (value && '__status' in value) return Response.json({}, { status: value.__status });
@@ -333,7 +376,7 @@ describe('AE5 / KTD6: one meter per owner per UTC day, plus a burst bucket', () 
     assert.equal((await call(REGULAR, first)).status, 200);
     assert.equal((await call(REGULAR, first)).status, 200);
 
-    revoke(first);
+    await revokeThroughProduction(first);
     assert.equal((await call(REGULAR, first)).status, 401, 'a revoked key is rejected');
 
     const recreated = mintKey({ userId: 'pro_owner', name: 'laptop-2', keyKind: 'desktop' });
@@ -384,9 +427,7 @@ describe('AE5 / KTD6: one meter per owner per UTC day, plus a burst bucket', () 
 describe('AE6: a downgraded API customer keeps their oldest keys at desktop scope', () => {
   it('AE6: two oldest keys get Pro data, the third is denied until one is revoked, and all lose REST v2', async () => {
     setEntitlement('downgraded', entitlement('pro_monthly'));
-    const keys = [0, 1, 2].map((rank) => mintKey({
-      userId: 'downgraded', name: `server-${rank}`, keyKind: 'api', activeKeyRank: rank,
-    }));
+    const keys = [0, 1, 2].map((rank) => mintKey({ userId: 'downgraded', name: `server-${rank}`, keyKind: 'api' }));
 
     for (const key of keys.slice(0, 2)) {
       const res = await call(COUNTRY_BRIEF, key);
@@ -404,17 +445,27 @@ describe('AE6: a downgraded API customer keeps their oldest keys at desktop scop
       }
     }
 
-    // Revoke the oldest: Convex now ranks the third key within the cap.
-    revoke(keys[0]!);
-    keysByHash.set(sha256(keys[2]!), { id: 'key_3', userId: 'downgraded', name: 'server-2', keyKind: 'api', activeKeyRank: 1 });
-    redis.redis.delete(`user-api-key:${sha256(keys[2]!)}`);
+    // Revoke the oldest through the production path. The third key's entry is
+    // WARM with rank 2 from the denial above; only the sibling invalidation the
+    // revoke schedules lets Convex re-rank it within the cap before its TTL.
+    assert.ok(redis.redis.has(`user-api-key:${sha256(keys[2]!)}`), 'the third key entry is warm before the revoke');
+    await revokeThroughProduction(keys[0]!);
+    assert.equal(redis.redis.has(`user-api-key:${sha256(keys[2]!)}`), false, 'revocation drops the sibling entry');
     const promoted = await call(COUNTRY_BRIEF, keys[2]!);
     assert.equal(promoted.status, 200, 'after a revocation the next-oldest key qualifies');
   });
 
+  it('AE6: without the sibling invalidation a warm over-cap entry would outlive the revoke (the gap the production path closes)', async () => {
+    setEntitlement('downgraded', entitlement('pro_monthly'));
+    const keys = [0, 1, 2].map((rank) => mintKey({ userId: 'downgraded', name: `server-${rank}`, keyKind: 'api' }));
+    assert.equal((await call(COUNTRY_BRIEF, keys[2]!)).status, 403);
+    revokeRow(keys[0]!); // Convex-side only: no cache invalidation
+    assert.equal((await call(COUNTRY_BRIEF, keys[2]!)).status, 403, 'the warm rank-2 entry still denies');
+  });
+
   it('AE6: a downgraded key whose rank is unknown (pre-rank cache entry) fails closed', async () => {
     setEntitlement('downgraded', entitlement('pro_monthly'));
-    const key = mintKey({ userId: 'downgraded', name: 'server', keyKind: 'api' });
+    const key = mintKey({ userId: 'downgraded', name: 'server', keyKind: 'api', rankUnknown: true });
     const res = await call(COUNTRY_BRIEF, key);
     assert.equal(res.status, 403);
   });
@@ -570,6 +621,122 @@ describe('KTD6: the meter module', () => {
 
     for (const bad of [async () => [], async () => null, async () => { throw new Error('boom'); }, async () => [{ result: 'x' }, {}, {}, {}]]) {
       const result = await reserveDesktopKeyBudget({ userId: 'u1', dailyLimit: 1, burstPerMinute: 1, pipeline: bad as never, date: at });
+      assert.deepEqual(result, { ok: null, reason: 'unavailable' });
+    }
+  });
+});
+
+describe('R5: the cap applies to desktop-kind keys too (a Pro Business owner who drops to Pro)', () => {
+  it('three desktop keys under a Pro cap of 2: ranks 0 and 1 are admitted, rank 2 gets the one-sentence 403', async () => {
+    setEntitlement('shrunk', entitlement('pro_monthly'));
+    const keys = [0, 1, 2].map((n) => mintKey({ userId: 'shrunk', name: `desk-${n}`, keyKind: 'desktop' }));
+    assert.equal(getEntitlementFeatures('pro_monthly').maxDesktopKeys, 2);
+
+    for (const key of keys.slice(0, 2)) {
+      const res = await call(COUNTRY_BRIEF, key);
+      assert.equal(res.status, 200, 'the two oldest desktop keys keep Pro data');
+    }
+    const third = await call(COUNTRY_BRIEF, keys[2]!);
+    assert.equal(third.status, 403, 'the third desktop key is denied, not revoked');
+    assert.deepEqual(await third.json(), { error: DESKTOP_KEY_LIMIT_ERROR });
+    assert.equal(third.headers.get('Cache-Control'), 'no-store');
+    assert.equal(seenByHandler.length, 2);
+  });
+
+  it('an API-plan owner\'s desktop keys are admitted regardless of rank (API plans sell 0 desktop slots; R8/AE7)', async () => {
+    setEntitlement('api_owner', entitlement('api_starter'));
+    const keys = [0, 1, 2].map((n) => mintKey({ userId: 'api_owner', name: `desk-${n}`, keyKind: 'desktop' }));
+    for (const key of keys) assert.equal((await call(COUNTRY_BRIEF, key)).status, 200);
+  });
+
+  it('a desktop key whose rank is unknown fails closed with the Pro-required 403', async () => {
+    setEntitlement('shrunk', entitlement('pro_monthly'));
+    const key = mintKey({ userId: 'shrunk', name: 'desk', keyKind: 'desktop', rankUnknown: true });
+    const res = await call(COUNTRY_BRIEF, key);
+    assert.equal(res.status, 403);
+    assert.deepEqual(await res.json(), { error: 'Pro subscription required' });
+  });
+});
+
+describe('warm entitlement entries written before the deploy (no desktopKeyAccess field)', () => {
+  /** A Pro entry as the pre-deploy edge cached it: current shape minus the desktop fields. */
+  function legacyEntry(planKey: string): Record<string, unknown> {
+    const { desktopKeyAccess: _a, maxDesktopKeys: _b, planLimits, ...features } = getEntitlementFeatures(planKey) as Record<string, unknown> & { planLimits: Record<string, unknown> };
+    const { desktopKeyRequestsPerDay: _c, desktopKeyBurstPerMinute: _d, ...legacyLimits } = planLimits;
+    return { planKey, validUntil: Date.now() + 86_400_000, features: { ...features, planLimits: legacyLimits } };
+  }
+
+  it('a desktop key of a Pro owner with a warm legacy entry is admitted after one Convex refetch', async () => {
+    setEntitlement('pro_owner', entitlement('pro_monthly'));
+    redis.redis.set('entitlements:test:pro_owner', JSON.stringify(legacyEntry('pro_monthly')));
+    const key = mintKey({ userId: 'pro_owner', name: 'laptop', keyKind: 'desktop' });
+
+    const res = await call(COUNTRY_BRIEF, key);
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.equal(entitlementFetches, 1, 'the legacy entry is a miss for the desktop decision');
+    const rewritten = JSON.parse(redis.redis.get('entitlements:test:pro_owner') ?? 'null') as { features?: { desktopKeyAccess?: boolean } };
+    assert.equal(rewritten.features?.desktopKeyAccess, true, 'the refetch rewrites the entry in the merged shape');
+    assert.equal((await call(COUNTRY_BRIEF, key)).status, 200);
+    assert.equal(entitlementFetches, 1, 'the rewritten entry is served from cache');
+  });
+
+  it('an API-plan owner\'s api key keeps the api-access decision from the legacy entry with no refetch', async () => {
+    setEntitlement('api_owner', entitlement('api_starter'));
+    redis.redis.set('entitlements:test:api_owner', JSON.stringify(legacyEntry('api_starter')));
+    const key = mintKey({ userId: 'api_owner', name: 'server', keyKind: 'api' });
+
+    assert.equal((await call('/api/v2/shipping/route-intelligence', key, 'POST')).status, 200);
+    assert.equal(entitlementFetches, 0, 'the api-access decision does not refetch');
+  });
+
+  it('a downgraded owner\'s api key with a warm legacy entry is re-read through Convex', async () => {
+    setEntitlement('downgraded', entitlement('pro_monthly'));
+    redis.redis.set('entitlements:test:downgraded', JSON.stringify(legacyEntry('pro_monthly')));
+    const key = mintKey({ userId: 'downgraded', name: 'server', keyKind: 'api' });
+
+    assert.equal((await call(COUNTRY_BRIEF, key)).status, 200);
+    assert.equal(entitlementFetches, 1);
+  });
+
+  it('a Convex row that still lacks the field (backend predating the catalog change) stays denied', async () => {
+    setEntitlement('pro_owner', legacyEntry('pro_monthly'));
+    const key = mintKey({ userId: 'pro_owner', name: 'laptop', keyKind: 'desktop' });
+    assert.equal((await call(COUNTRY_BRIEF, key)).status, 403, 'fail closed: nothing widens on an unmerged row');
+  });
+});
+
+describe('KTD7 hardening: duplicate slashes cannot escape the API-only prefix', () => {
+  it('collapses // before the prefix check', () => {
+    assert.equal(isApiOnlyPath('//api/v2/shipping/route-intelligence'), true);
+    assert.equal(isApiOnlyPath('/api//v2/shipping/route-intelligence'), true);
+    assert.equal(isApiOnlyPath('/api/v2//shipping'), true);
+    assert.equal(isApiOnlyPath('//api//mcp'), true);
+    assert.equal(isApiOnlyPath('//api/v1/x'), false);
+  });
+
+  it('a desktop key on //api/v2/... is denied at the gateway', async () => {
+    setEntitlement('pro_owner', entitlement('pro_monthly'));
+    const key = mintKey({ userId: 'pro_owner', name: 'laptop', keyKind: 'desktop' });
+    const res = await handler(new Request('https://www.worldmonitor.app//api/v2/shipping/route-intelligence', {
+      method: 'POST',
+      headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' },
+      body: '{}',
+    }), ctx);
+    assert.equal(res.status, 403);
+    const body = await res.json() as { leaked?: boolean };
+    assert.notEqual(body.leaked, true, 'handler must not run');
+  });
+});
+
+describe('KTD6 hardening: an errored EXPIRE in the meter pipeline fails closed', () => {
+  it('reserveDesktopKeyBudget reports unavailable when any pipeline entry carries an error', async () => {
+    const at = new Date(Date.UTC(2026, 9, 25, 12, 0, 0));
+    for (const bad of [
+      async () => [{ result: 1 }, { error: 'ERR wrong type' }, { result: 1 }, { result: 1 }],
+      async () => [{ result: 1 }, { result: 1 }, { result: 1 }, { error: 'OOM' }],
+      async () => [{ result: 1 }, { result: 1 }, { error: 'ERR' }, { result: 1 }],
+    ]) {
+      const result = await reserveDesktopKeyBudget({ userId: 'u1', dailyLimit: 10, burstPerMinute: 10, pipeline: bad as never, date: at });
       assert.deepEqual(result, { ok: null, reason: 'unavailable' });
     }
   });

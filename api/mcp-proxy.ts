@@ -5,6 +5,8 @@ import { Agent, Dispatcher1Wrapper } from 'undici';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check.js';
+import { chargeDesktopKeyBudget, desktopKeyBudgetResponse } from '../server/_shared/desktop-key-meter.js';
+import { runRedisPipeline } from '../server/_shared/redis.js';
 import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification.js';
 import { buildUsageIdentity } from '../server/_shared/usage-identity.js';
 import {
@@ -1020,6 +1022,22 @@ export async function handler(req, ctx) {
   if (proofDenied) {
     emitProxyUsage(req, proofDenied.status, Date.now() - startedAt, ctx);
     return proofDenied;
+  }
+
+  // Per-account desktop-key meter (plan 2026-10-25-001, KTD6 / R6). This edge
+  // is not served by the gateway, so nothing upstream has charged the owner's
+  // daily ceiling and burst bucket; charge them here with the same contract
+  // (429 with Retry-After, degraded 503) before any upstream work is done.
+  if (callerIdentity.kind === 'desktop-key') {
+    const budget = await chargeDesktopKeyBudget({
+      userId: callerIdentity.userId,
+      entitlement: callerIdentity.desktopKeyMeter,
+      pipeline: (cmds) => runRedisPipeline(cmds),
+    });
+    if (!budget.ok) {
+      emitProxyUsage(req, budget.status, Date.now() - startedAt, ctx, callerIdentity);
+      return desktopKeyBudgetResponse(budget, withProxyNoStore(cors));
+    }
   }
   const ip = getClientIp(req);
   const meta: ProxyMeta = { targetHost: '', targetPath: '', headerNames: [] };

@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import handler from './bootstrap.js';
+import { DESKTOP_KEY_LIMIT_ERROR } from '../shared/desktop-key-access.js';
 import { issueSessionToken } from './_session.js';
 import {
   assertPublicBootstrapCorsHeaders,
@@ -1019,15 +1020,21 @@ async function sha256HexForTest(value) {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function utcDateForTest(now = new Date()) {
+// Every desktop scenario runs on a frozen clock (midday UTC, mid-minute) so the
+// day and minute counter names the test computes and the ones the meter
+// computes cannot straddle a UTC-midnight or minute boundary mid-run. Inputs
+// that mean "now" are derived from the same instant, never from the real clock.
+const FROZEN_NOW = Date.UTC(2026, 9, 25, 12, 0, 30);
+
+function utcDateForTest(now = new Date(FROZEN_NOW)) {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
 }
 const desktopDayKey = (userId) => `rl:desktopkey:day:${userId}:${utcDateForTest()}`;
-const desktopMinuteKey = (userId) => `rl:desktopkey:min:${userId}:${Math.floor(Date.now() / 60_000)}`;
+const desktopMinuteKey = (userId) => `rl:desktopkey:min:${userId}:${Math.floor(FROZEN_NOW / 60_000)}`;
 
 const proDesktopEntitlement = (overrides = {}) => ({
   planKey: 'pro_monthly',
-  validUntil: Date.now() + 86_400_000,
+  validUntil: FROZEN_NOW + 86_400_000,
   features: {
     tier: 1,
     apiAccess: false,
@@ -1045,6 +1052,7 @@ const proDesktopEntitlement = (overrides = {}) => ({
 
 const apiStarterEntitlement = () => ({
   ...activeApiEntitlement(),
+  validUntil: FROZEN_NOW + 86_400_000,
   features: {
     ...activeApiEntitlement().features,
     desktopKeyAccess: false,
@@ -1054,6 +1062,7 @@ const apiStarterEntitlement = () => ({
 });
 
 async function withDesktopBootstrapAuth({ keys, entitlements, seed = {}, failDesktopCounter = false }, fn) {
+  mock.timers.enable({ apis: ['Date'], now: FROZEN_NOW });
   const restoreEnv = snapshotEnv([
     'CONVEX_SITE_URL',
     'CONVEX_SERVER_SHARED_SECRET',
@@ -1074,7 +1083,10 @@ async function withDesktopBootstrapAuth({ keys, entitlements, seed = {}, failDes
 
   const rowsByHash = new Map();
   for (const [key, row] of Object.entries(keys)) rowsByHash.set(await sha256HexForTest(key), row);
-  const redis = new Map(Object.entries(seed).map(([k, v]) => [k, String(v)]));
+  const redis = new Map([
+    [MARKET_QUOTES_REDIS_KEY, JSON.stringify(SEEDED_MARKET_QUOTES)],
+    ...Object.entries(seed).map(([k, v]) => [k, String(v)]),
+  ]);
 
   const run = (command) => {
     const [verb, key, ...args] = command;
@@ -1117,10 +1129,19 @@ async function withDesktopBootstrapAuth({ keys, entitlements, seed = {}, failDes
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv();
+    mock.timers.reset();
   }
 }
 
-const desktopRow = (userId, overrides = {}) => ({ id: `key_${userId}`, userId, name: 'laptop', keyKind: 'desktop', ...overrides });
+// Convex validateKeyByHash always reports `activeKeyRank` (desktop rows cannot
+// predate it); rank 0 is the owner's oldest key unless a scenario says otherwise.
+const desktopRow = (userId, overrides = {}) => ({ id: `key_${userId}`, userId, name: 'laptop', keyKind: 'desktop', activeKeyRank: 0, ...overrides });
+
+// The seeded bootstrap payload every desktop scenario is served. `marketQuotes`
+// is the key makeBootstrapRequest asks for; its Redis name comes from the
+// shared registry (shared/bootstrap-tier-keys.js).
+const MARKET_QUOTES_REDIS_KEY = 'market:stocks-bootstrap:v1';
+const SEEDED_MARKET_QUOTES = { quotes: [{ symbol: 'SPY', price: 512.34, changePct: 0.42 }], updatedAt: '2026-10-25T12:00:00.000Z' };
 
 test('AE1 (bootstrap): a desktop key is served the bootstrap payload a signed-in Pro session gets', async () => {
   await withDesktopBootstrapAuth({
@@ -1129,7 +1150,10 @@ test('AE1 (bootstrap): a desktop key is served the bootstrap payload a signed-in
   }, async ({ redis }) => {
     const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }));
     assert.equal(resp.status, 200, await resp.clone().text());
-    assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
+    const body = await resp.json();
+    assert.deepEqual(Object.keys(body).sort(), ['data', 'missing']);
+    assert.deepEqual(body.data.marketQuotes, SEEDED_MARKET_QUOTES, 'the seeded payload is served, not an empty body');
+    assert.equal(body.missing.includes('marketQuotes'), false);
     assertNonSharedCacheHeaders(resp);
     assert.equal(redis.get(desktopDayKey('pro_owner')), '1', 'the owner daily counter is charged once');
   });
@@ -1158,7 +1182,7 @@ test('AE5 (bootstrap): an owner past the daily ceiling gets 429 with Retry-After
 
 test('AE5 (bootstrap): two desktop keys of one owner share the counter', async () => {
   await withDesktopBootstrapAuth({
-    keys: { [DESKTOP_KEY]: desktopRow('pro_owner'), [DESKTOP_KEY_2]: desktopRow('pro_owner', { id: 'key_2' }) },
+    keys: { [DESKTOP_KEY]: desktopRow('pro_owner'), [DESKTOP_KEY_2]: desktopRow('pro_owner', { id: 'key_2', activeKeyRank: 1 }) },
     entitlements: { pro_owner: proDesktopEntitlement() },
   }, async ({ redis }) => {
     assert.equal((await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }))).status, 200);
@@ -1201,7 +1225,7 @@ test('AE4 (bootstrap): a lapsed owner gets the billing denial; renewal restores 
   await withDesktopBootstrapAuth({
     keys: { [DESKTOP_KEY]: desktopRow('pro_owner') },
     entitlements: {
-      pro_owner: proDesktopEntitlement({ validUntil: Date.now() - 1_000, billingStatus: 'subscription_lapsed' }),
+      pro_owner: proDesktopEntitlement({ validUntil: FROZEN_NOW - 1_000, billingStatus: 'subscription_lapsed' }),
     },
   }, async ({ redis, entitlements }) => {
     const denied = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }));
@@ -1235,6 +1259,42 @@ test('AE6 (bootstrap): a downgraded owner keeps the two oldest api keys; the thi
     assert.match((await third.json()).error, /desktop key limit/i);
     assert.equal(third.headers.get('cache-control'), 'no-store');
     assert.equal(redis.get(desktopDayKey('downgraded')), '2', 'desktop meter charged for the admitted keys only');
+  });
+});
+
+test('R5 (bootstrap): a Pro owner with three desktop keys — ranks 0 and 1 served, rank 2 gets the one-sentence 403', async () => {
+  const keys = {};
+  DOWNGRADED_KEYS.forEach((key, rank) => {
+    keys[key] = desktopRow('shrunk', { id: `desk_${rank}`, name: `desk-${rank}`, activeKeyRank: rank });
+  });
+  await withDesktopBootstrapAuth({ keys, entitlements: { shrunk: proDesktopEntitlement() } }, async ({ redis }) => {
+    for (const key of DOWNGRADED_KEYS.slice(0, 2)) {
+      const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': key }));
+      assert.equal(resp.status, 200, await resp.clone().text());
+    }
+    const third = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DOWNGRADED_KEYS[2] }));
+    assert.equal(third.status, 403);
+    assert.deepEqual(await third.json(), { error: DESKTOP_KEY_LIMIT_ERROR });
+    assert.equal(third.headers.get('cache-control'), 'no-store');
+    assert.equal(redis.get(desktopDayKey('shrunk')), '2', 'the denied key is not metered');
+  });
+});
+
+test('R5 (bootstrap): a desktop key whose rank is unknown fails closed with the Pro-required 403', async () => {
+  const { activeKeyRank: _omit, ...rankless } = desktopRow('shrunk');
+  await withDesktopBootstrapAuth({ keys: { [DESKTOP_KEY]: rankless }, entitlements: { shrunk: proDesktopEntitlement() } }, async () => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }));
+    assert.equal(resp.status, 403);
+    assert.deepEqual(await resp.json(), { error: 'Pro subscription required' });
+  });
+});
+
+test('R5 (bootstrap): an API-plan owner\'s desktop keys are served regardless of rank (0 slots to rank against)', async () => {
+  await withDesktopBootstrapAuth({
+    keys: { [DESKTOP_KEY]: desktopRow('upgraded', { activeKeyRank: 7 }) },
+    entitlements: { upgraded: apiStarterEntitlement() },
+  }, async () => {
+    assert.equal((await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }))).status, 200);
   });
 });
 

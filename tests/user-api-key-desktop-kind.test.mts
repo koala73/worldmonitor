@@ -34,6 +34,7 @@ import {
   __resetKeyPrefixCacheForTests,
 } from '../server/_shared/redis.ts';
 import {
+  resolveBootstrapUserKeyAccess,
   validateBootstrapDesktopKeyAccess,
   validateBootstrapUserApiAccess,
   validateBootstrapUserApiKey,
@@ -692,5 +693,86 @@ describe('bootstrap desktop entitlement check (merged features)', () => {
     const result = await validateBootstrapDesktopKeyAccess(userId);
     assert.equal(result.ok, true);
     assert.equal(harness.entitlementCalls, 0);
+  });
+
+  it('a warm pre-deploy Pro entry (no desktopKeyAccess field) is a miss for the desktop check and is refetched once', async () => {
+    const userId = user();
+    const legacy = proEntitlement({ features: { tier: 1, apiAccess: false, mcpAccess: true } });
+    harness.redis.set(`entitlements:test:${userId}`, JSON.stringify(legacy));
+    harness.entitlementQueue.push(proEntitlement());
+    const result = await validateBootstrapDesktopKeyAccess(userId);
+    assert.equal(result.ok, true, 'the merged row from Convex admits the owner');
+    assert.equal(harness.entitlementCalls, 1);
+    const rewritten = JSON.parse(harness.redis.get(`entitlements:test:${userId}`) ?? 'null') as { features?: { desktopKeyAccess?: boolean } };
+    assert.equal(rewritten.features?.desktopKeyAccess, true, 'the refetch rewrites the entry in the merged shape');
+    assert.equal((await validateBootstrapDesktopKeyAccess(userId)).ok, true);
+    assert.equal(harness.entitlementCalls, 1, 'the rewritten entry is served from cache');
+  });
+
+  it('the api-access check keeps serving a pre-deploy entry without a refetch', async () => {
+    const userId = user();
+    harness.redis.set(`entitlements:test:${userId}`, JSON.stringify({
+      planKey: 'api_starter', validUntil: Date.now() + 86_400_000, features: { tier: 2, apiAccess: true, mcpAccess: true },
+    }));
+    assert.equal((await validateBootstrapUserApiAccess(userId)).ok, true);
+    assert.equal(harness.entitlementCalls, 0, 'the api-access decision never reads the desktop field');
+  });
+
+  it('a pre-deploy entry for a free or lapsed owner is not refetched (tier 0 cannot hold desktop keys)', async () => {
+    const userId = user();
+    harness.redis.set(`entitlements:test:${userId}`, JSON.stringify({ planKey: 'free', validUntil: Date.now() + 86_400_000, features: { tier: 0, apiAccess: false } }));
+    const result = await validateBootstrapDesktopKeyAccess(userId);
+    assert.equal(result.ok, false);
+    assert.equal(harness.entitlementCalls, 0);
+  });
+});
+
+describe('resolveBootstrapUserKeyAccess (bootstrap scope)', () => {
+  let userSeq = 0;
+  const user = () => `user_scope_${++userSeq}`;
+  const apiPrincipal = (userId: string, activeKeyRank?: number) => ({
+    userId, keyId: 'key_1', keyKind: 'api' as const, keyHash: 'a'.repeat(64),
+    ...(activeKeyRank === undefined ? {} : { activeKeyRank }),
+  });
+  const desktopPrincipal = (userId: string, activeKeyRank?: number) => ({ ...apiPrincipal(userId, activeKeyRank), keyKind: 'desktop' as const });
+
+  it('an entitlement outage on the api check is returned as is: ONE Convex call, no desktop fallback', async () => {
+    const userId = user();
+    harness.entitlementQueue.push({ status: 503 });
+    const result = await resolveBootstrapUserKeyAccess(apiPrincipal(userId, 0));
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.status, 503);
+    assert.equal(!result.ok && result.reason, 'entitlement_verification_unavailable');
+    assert.equal(harness.entitlementCalls, 1, 'the desktop check must not re-dial a dependency that just failed');
+  });
+
+  it('a 403 from the api check falls through to the desktop check (one cached read, no second Convex call)', async () => {
+    const userId = user();
+    harness.entitlementQueue.push(proEntitlement());
+    const result = await resolveBootstrapUserKeyAccess(apiPrincipal(userId, 0));
+    assert.equal(result.ok, true);
+    assert.equal(result.ok && result.scope, 'desktop');
+    assert.equal(harness.entitlementCalls, 1);
+  });
+
+  it('R5: desktop-kind keys of an owner without apiAccess are capped by rank too', async () => {
+    const userId = user();
+    harness.entitlementQueue.push(proEntitlement());
+    assert.equal((await resolveBootstrapUserKeyAccess(desktopPrincipal(userId, 1))).ok, true);
+    const third = await resolveBootstrapUserKeyAccess(desktopPrincipal(userId, 2));
+    assert.equal(third.ok, false);
+    assert.equal(!third.ok && third.status, 403);
+    assert.equal(!third.ok && third.error, 'Desktop key limit reached for this account');
+    const unknown = await resolveBootstrapUserKeyAccess(desktopPrincipal(userId));
+    assert.equal(unknown.ok, false);
+    assert.equal(!unknown.ok && unknown.error, 'Pro subscription required');
+  });
+
+  it('R8: a desktop key of an API-plan owner is admitted without a rank', async () => {
+    const userId = user();
+    harness.entitlementQueue.push({ planKey: 'api_starter', validUntil: Date.now() + 86_400_000, features: { tier: 2, apiAccess: true } });
+    const result = await resolveBootstrapUserKeyAccess(desktopPrincipal(userId));
+    assert.equal(result.ok, true);
+    assert.equal(result.ok && result.scope, 'desktop');
   });
 });

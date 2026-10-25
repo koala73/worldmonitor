@@ -96,9 +96,10 @@ import { isApiOnlyPath } from './_shared/api-only-paths';
 import {
   DESKTOP_KEY_API_ONLY_ERROR,
   DESKTOP_KEY_LIMIT_ERROR,
+  resolveUserKeyEntitlement,
   resolveUserKeyScope,
 } from './_shared/desktop-key-principal';
-import { reserveDesktopKeyBudget, resolveDesktopKeyLimits } from './_shared/desktop-key-meter';
+import { chargeDesktopKeyBudget } from './_shared/desktop-key-meter';
 import type { UserKeyPrincipal } from './_shared/user-api-key';
 import {
   DIRECT_LLM_DAILY_QUOTA_LIMIT,
@@ -1863,7 +1864,9 @@ export function createDomainGateway(
     let userKeyEntitlement: CachedEntitlements | null | undefined;
     let isDesktopPrincipal = false;
     if (isUserApiKey && sessionUserId && userKeyPrincipal) {
-      userKeyEntitlement = await getEntitlements(sessionUserId);
+      // One cached read; a pre-deploy entry that cannot answer the desktop
+      // decision is refetched through Convex (desktop-key-principal.ts).
+      userKeyEntitlement = await resolveUserKeyEntitlement(sessionUserId, userKeyPrincipal);
       recordUsageEntitlement(userKeyEntitlement);
       const keyScope = resolveUserKeyScope(userKeyPrincipal, userKeyEntitlement);
       const billingDenial = denyForBillingVerification(
@@ -2297,48 +2300,20 @@ export function createDomainGateway(
       // included, like the account meters above. Fails CLOSED: a Redis error
       // is the same rate-limit-degraded 503 the sub-request admission emits.
       if (isDesktopPrincipal && sessionUserId) {
-        const limits = resolveDesktopKeyLimits(userKeyEntitlement);
-        const budget = await reserveDesktopKeyBudget({
+        const budget = await chargeDesktopKeyBudget({
           userId: sessionUserId,
-          dailyLimit: limits.dailyLimit,
-          burstPerMinute: limits.burstPerMinute,
+          entitlement: userKeyEntitlement,
           pipeline: (cmds) => runRedisPipeline(cmds),
         });
-        if (budget.ok === null) {
-          emitRequest(503, 'rate_limit_degraded', null);
-          return new Response(JSON.stringify({ error: 'Rate-limit service temporarily unavailable' }), {
-            status: 503,
-            headers: {
-              'Content-Type': 'application/json',
-              'Cache-Control': 'no-store',
-              ...RATE_LIMIT_DEGRADED_HEADERS,
-              ...corsHeaders,
-            },
-          });
-        }
-        if (budget.ok === false) {
-          const daily = budget.limitType === 'daily';
-          emitRequest(429, daily ? 'rl_ceiling_429' : 'rl_min_429', null);
-          return new Response(JSON.stringify({
-            error: daily ? 'Daily request limit reached' : 'Too many requests',
-            plan: userKeyEntitlement?.planKey,
-            limit: budget.limit,
-            limit_type: budget.limitType,
-            reset: new Date(budget.resetMs).toISOString(),
-          }), {
-            status: 429,
-            headers: {
-              'Content-Type': 'application/json',
-              'Cache-Control': 'no-store',
-              ...rateLimitHeaders({
-                limit: budget.limit,
-                remaining: 0,
-                resetMs: budget.resetMs,
-                retryAfterSec: budget.retryAfterSec,
-                windowSec: daily ? 86_400 : 60,
-              }),
-              ...corsHeaders,
-            },
+        if (!budget.ok) {
+          emitRequest(
+            budget.status,
+            budget.reason === 'unavailable' ? 'rate_limit_degraded' : budget.reason === 'daily' ? 'rl_ceiling_429' : 'rl_min_429',
+            null,
+          );
+          return new Response(JSON.stringify(budget.body), {
+            status: budget.status,
+            headers: { 'Content-Type': 'application/json', ...budget.headers, ...corsHeaders },
           });
         }
         rollbackDailyMeter = budget.rollback;
