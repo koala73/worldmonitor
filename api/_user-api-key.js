@@ -4,8 +4,17 @@ import {
   RATE_LIMIT_DEGRADED_HEADERS,
   getClientRateLimitKey,
 } from './_client-ip.js';
+// Plain JS with a .d.ts beside it, written for exactly this import (the same
+// pairing as shared/bootstrap-tier-keys.js); lint-boundaries allows shared/.
+import { admitsDesktopKeyPrincipal } from '../shared/desktop-key-access.js';
 
 const USER_API_KEY_RE = /^wm_[a-f0-9]{40}$/;
+// Plan 2026-10-25-001 (KTD3, KTD8). Cache-entry version for the shared
+// user-api-key:<hash> entry; tests/user-api-key-desktop-kind.test.mts pins it
+// equal to the copy in server/_shared/user-api-key.ts. A hit without it is
+// re-validated at Convex, never trusted and never a 401.
+const USER_API_KEY_CACHE_VERSION = 2;
+const USER_API_KEY_KINDS = new Set(['api', 'desktop']);
 const CONVEX_VALIDATE_PATH = '/api/internal-validate-api-key';
 const CONVEX_ENTITLEMENTS_PATH = '/api/internal-entitlements';
 const VALIDATION_TIMEOUT_MS = 3_000;
@@ -48,10 +57,18 @@ function userApiKeyCacheKey(keyHash) {
   return `${getServerRedisKeyPrefix()}${USER_KEY_CACHE_PREFIX}${keyHash}`;
 }
 
-function isUserKeyResult(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  if (!Object.prototype.hasOwnProperty.call(value, 'userId')) return false;
-  if (typeof value.userId !== 'string' || value.userId.length === 0) return false;
+function isPlainObject(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasNonEmptyString(value, field) {
+  if (!Object.prototype.hasOwnProperty.call(value, field)) return false;
+  return typeof value[field] === 'string' && value[field].length > 0;
+}
+
+// Company Monitoring binding rule shared by the Convex row and the cache
+// entry: either no binding at all, or exact scopes AND an account.
+function hasValidCompanyMonitoringBinding(value) {
   if (value.scopes === undefined && value.companyMonitoringAccountId === undefined) return true;
   if (!Array.isArray(value.scopes) || value.scopes.length === 0) return false;
   if (typeof value.companyMonitoringAccountId !== 'string' || value.companyMonitoringAccountId.length === 0) {
@@ -61,9 +78,54 @@ function isUserKeyResult(value) {
     value.scopes.every((scope) => typeof scope === 'string' && COMPANY_MONITORING_SCOPES.has(scope));
 }
 
+// A cache entry is trusted only in the current shape: version stamp, userId,
+// keyId, an explicit known keyKind, and a valid (or absent) Company Monitoring
+// binding. Anything else — a pre-version entry, a missing or unknown kind, a
+// poisoned value — falls through to Convex (never trusted, never a 401).
+function isCurrentUserKeyCacheEntry(value) {
+  if (!isPlainObject(value)) return false;
+  if (!Object.prototype.hasOwnProperty.call(value, 'v') || value.v !== USER_API_KEY_CACHE_VERSION) return false;
+  if (!hasNonEmptyString(value, 'userId') || !hasNonEmptyString(value, 'keyId')) return false;
+  if (typeof value.keyKind !== 'string' || !USER_API_KEY_KINDS.has(value.keyKind)) return false;
+  return hasValidCompanyMonitoringBinding(value);
+}
+
+// Convex validateKeyByHash returns `id`, not `keyId`; map it so the gateway
+// (server/_shared/user-api-key.ts), which reads the same entry, never sees
+// keyId undefined when bootstrap won the cache race. `keyKind` is explicit on
+// every row Convex writes since U2; a row WITHOUT it can only come from a
+// backend that predates the column, which cannot hold desktop rows (Deploy
+// Order: the edge ships first, desktop creation stays off until the Convex
+// deploy is live), so it is an `api` key. Any other value is contract drift:
+// null here, which the caller denies like any unreadable payload (this
+// module's existing posture), never a principal.
+function toCacheEntry(value) {
+  if (!isPlainObject(value)) return null;
+  if (!hasNonEmptyString(value, 'userId') || !hasNonEmptyString(value, 'id')) return null;
+  if (!hasValidCompanyMonitoringBinding(value)) return null;
+  if (value.keyKind !== undefined && (typeof value.keyKind !== 'string' || !USER_API_KEY_KINDS.has(value.keyKind))) {
+    return null;
+  }
+  return {
+    v: USER_API_KEY_CACHE_VERSION,
+    userId: value.userId,
+    keyId: value.id,
+    ...(typeof value.name === 'string' ? { name: value.name } : {}),
+    keyKind: value.keyKind === undefined ? 'api' : value.keyKind,
+    ...(value.scopes === undefined ? {} : { scopes: value.scopes }),
+    ...(value.companyMonitoringAccountId === undefined
+      ? {}
+      : { companyMonitoringAccountId: value.companyMonitoringAccountId }),
+  };
+}
+
 // Generic bootstrap auth accepts only legacy, unscoped user API keys.
 function isGenericUserKeyResult(value) {
   return value.scopes === undefined && value.companyMonitoringAccountId === undefined;
+}
+
+function invalidKey(reason) {
+  return { ok: false, status: 401, error: 'Invalid API key', reason };
 }
 
 function bootstrapUserApiKeyNegativeCacheKey(keyHash) {
@@ -239,10 +301,12 @@ async function postConvexJson(path, body) {
   }
 }
 
+// Generic bootstrap/OAuth/telegram auth: only an explicit `api` kind with no
+// Company Monitoring binding is a principal. A desktop key gets the same 401
+// as an unknown key while its cache entry stays intact for the desktop-aware
+// variant below (KTD3).
 export async function validateBootstrapUserApiKey(key) {
-  if (!isCanonicalUserApiKey(key)) {
-    return { ok: false, status: 401, error: 'Invalid API key', reason: 'malformed' };
-  }
+  if (!isCanonicalUserApiKey(key)) return invalidKey('malformed');
 
   const keyHash = await sha256Hex(key);
   return validateUserApiKeyHash(keyHash);
@@ -250,22 +314,50 @@ export async function validateBootstrapUserApiKey(key) {
 
 // OAuth stores only the key hash. Reuse the same revocation and scope checks.
 export async function validateUserApiKeyHash(keyHash) {
-  if (typeof keyHash !== 'string' || !/^[a-f0-9]{64}$/.test(keyHash)) {
-    return { ok: false, status: 401, error: 'Invalid API key', reason: 'malformed' };
-  }
-  return coalesce(userKeyInFlight, keyHash, () => validateBootstrapUserApiKeyHash(keyHash));
+  const resolved = await resolveUserApiKeyHash(keyHash);
+  if (!resolved.ok) return resolved;
+  const { entry } = resolved;
+  if (!isGenericUserKeyResult(entry) || entry.keyKind !== 'api') return invalidKey('invalid');
+  return { ok: true, userId: entry.userId };
 }
 
-async function validateBootstrapUserApiKeyHash(keyHash) {
+// Desktop-aware variant for the surfaces that admit desktop keys (bootstrap,
+// U4). Returns the principal with its kind and hash for an `api` or `desktop`
+// key; Company Monitoring-bound keys and unknown kinds are rejected exactly as
+// in the generic validator. The caller decides what the kind may reach.
+export async function validateBootstrapUserApiKeyPrincipal(key) {
+  if (!isCanonicalUserApiKey(key)) return invalidKey('malformed');
+
+  const keyHash = await sha256Hex(key);
+  const resolved = await resolveUserApiKeyHash(keyHash);
+  if (!resolved.ok) return resolved;
+  const { entry } = resolved;
+  if (!isGenericUserKeyResult(entry)) return invalidKey('invalid');
+  return {
+    ok: true,
+    userId: entry.userId,
+    keyId: entry.keyId,
+    keyKind: entry.keyKind,
+    keyHash,
+  };
+}
+
+// Cache-then-Convex lookup shared by every validator above. Resolves to
+// `{ ok: true, entry }` with a current cache entry, or to the same failure
+// objects the validators return (401 invalid / 503 unavailable).
+async function resolveUserApiKeyHash(keyHash) {
+  if (typeof keyHash !== 'string' || !/^[a-f0-9]{64}$/.test(keyHash)) return invalidKey('malformed');
+  return coalesce(userKeyInFlight, keyHash, () => resolveUserApiKeyHashUncached(keyHash));
+}
+
+async function resolveUserApiKeyHashUncached(keyHash) {
   const cacheKey = userApiKeyCacheKey(keyHash);
   const cached = await readCachedJson(cacheKey);
-  if (cached.status === 'hit') {
-    if (isUserKeyResult(cached.value)) {
-      if (!isGenericUserKeyResult(cached.value)) {
-        return { ok: false, status: 401, error: 'Invalid API key', reason: 'invalid' };
-      }
-      return { ok: true, userId: cached.value.userId };
-    }
+  // Only a current-shape entry is trusted. A pre-version entry, a missing or
+  // unknown kind, or a poisoned value falls through to Convex and is rewritten
+  // (KTD8): "not trusted" is not "denied".
+  if (cached.status === 'hit' && isCurrentUserKeyCacheEntry(cached.value)) {
+    return { ok: true, entry: cached.value };
   }
 
   // The gateway also owns user-api-key:<hash> and represents both invalid keys
@@ -274,7 +366,7 @@ async function validateBootstrapUserApiKeyHash(keyHash) {
   const negativeCacheKey = bootstrapUserApiKeyNegativeCacheKey(keyHash);
   const cachedNegative = await readCachedJson(negativeCacheKey);
   if (cachedNegative.status === 'hit' && cachedNegative.value === NEG_SENTINEL) {
-    return { ok: false, status: 401, error: 'Invalid API key', reason: 'cached-invalid' };
+    return invalidKey('cached-invalid');
   }
 
   const result = await postConvexJson(CONVEX_VALIDATE_PATH, { keyHash });
@@ -282,43 +374,20 @@ async function validateBootstrapUserApiKeyHash(keyHash) {
     return serviceUnavailable();
   }
 
-  const value = result.value;
-  if (!isUserKeyResult(value)) {
+  // null is the definitive unknown/revoked answer. A non-null payload this
+  // module cannot read (ownerless binding, unknown kind) is denied the same
+  // way and never written to the shared positive entry.
+  const entry = toCacheEntry(result.value);
+  if (entry === null) {
     await writeCachedJson(negativeCacheKey, NEG_SENTINEL, USER_KEY_NEGATIVE_CACHE_TTL_SECONDS);
-    return { ok: false, status: 401, error: 'Invalid API key', reason: 'invalid' };
+    return invalidKey('invalid');
   }
 
   // Cache the full gateway-shared shape, including immutable Company
   // Monitoring scope/account binding when present, so both validators see the
   // same principal contract.
-  // gateway's validateUserApiKey (server/_shared/user-api-key.ts) — which reads
-  // and writes the same `user-api-key:<hash>` key typed as UserKeyResult — never
-  // reads back a value with keyId/name undefined when bootstrap won the cache
-  // race. Convex validateKeyByHash returns `id`, so map it to `keyId` here.
-  await writeCachedJson(
-    cacheKey,
-    {
-      userId: value.userId,
-      keyId: value.id,
-      name: value.name,
-      ...(value.scopes === undefined ? {} : { scopes: value.scopes }),
-      ...(value.companyMonitoringAccountId === undefined
-        ? {}
-        : { companyMonitoringAccountId: value.companyMonitoringAccountId }),
-    },
-    USER_KEY_CACHE_TTL_SECONDS,
-  );
-  // Company Monitoring keys are bound to an account and exact RPC scopes.
-  // Generic bootstrap callers do not enforce either constraint, so deny the
-  // principal after preserving its full positive cache entry for a future
-  // dedicated validator.
-  if (!isGenericUserKeyResult(value)) {
-    return { ok: false, status: 401, error: 'Invalid API key', reason: 'invalid' };
-  }
-  return {
-    ok: true,
-    userId: value.userId,
-  };
+  await writeCachedJson(cacheKey, entry, USER_KEY_CACHE_TTL_SECONDS);
+  return { ok: true, entry };
 }
 
 function hasCurrentApiAccess(value) {
@@ -334,13 +403,13 @@ function clampRetryAfterSeconds(rawRetryAfter) {
     : VALIDATION_RETRY_AFTER_SECONDS;
 }
 
-function billingVerificationFailure(value) {
+function billingVerificationFailure(value, lapsedError = API_ACCESS_POLICY.lapsedError) {
   const status = value?.billingStatus;
   if (status === 'subscription_lapsed') {
     return {
       ok: false,
       status: 403,
-      error: 'API access subscription lapsed',
+      error: lapsedError,
       reason: status,
       headers: noStoreHeaders({ 'X-Billing-Verification': status }),
     };
@@ -390,27 +459,66 @@ function entitlementCacheTtlSeconds(value) {
   return notApplicableTtl ?? ENTITLEMENT_CACHE_TTL_SECONDS;
 }
 
-export async function validateBootstrapUserApiAccess(userId) {
-  if (!userId || typeof userId !== 'string') {
-    return { ok: false, status: 403, error: 'API access subscription required', reason: 'missing-user' };
-  }
+// Which entitlement admits the principal. Both policies read the same
+// `entitlements:<env>:<userId>` cache entry, which holds Convex's wire
+// response — already merged with the catalog at read time
+// (convex/entitlements.ts getEntitlementsHandler → mergeEntitlementFeatures),
+// so `desktopKeyAccess` is present on every Pro row the edge sees, including
+// rows written before the flag existed.
+const API_ACCESS_POLICY = Object.freeze({
+  name: 'api',
+  admits: hasCurrentApiAccess,
+  forbiddenError: 'API access subscription required',
+  lapsedError: 'API access subscription lapsed',
+});
 
-  return coalesce(entitlementInFlight, userId, () => validateBootstrapUserApiAccessUncached(userId));
+// Desktop keys (plan 2026-10-25-001): covered and `desktopKeyAccess` or
+// `apiAccess` (R8 upgrade case), decided by the shared predicate.
+const DESKTOP_KEY_POLICY = Object.freeze({
+  name: 'desktop',
+  admits: (value) => isPlainObject(value) && isPlainObject(value.features)
+    && admitsDesktopKeyPrincipal(value, Date.now()),
+  forbiddenError: 'Pro subscription required',
+  lapsedError: 'Subscription lapsed',
+});
+
+export async function validateBootstrapUserApiAccess(userId) {
+  return validateBootstrapEntitlement(userId, API_ACCESS_POLICY);
 }
 
-async function validateBootstrapUserApiAccessUncached(userId) {
+// Desktop variant of the bootstrap entitlement check (U3; wired by U4). Same
+// cache, billing-verification contract and outage 503 as the API-plan check;
+// only the admission predicate differs.
+export async function validateBootstrapDesktopKeyAccess(userId) {
+  return validateBootstrapEntitlement(userId, DESKTOP_KEY_POLICY);
+}
+
+async function validateBootstrapEntitlement(userId, policy) {
+  if (!userId || typeof userId !== 'string') {
+    return { ok: false, status: 403, error: policy.forbiddenError, reason: 'missing-user' };
+  }
+
+  // Keyed per policy: two checks for one owner must not share an answer.
+  return coalesce(
+    entitlementInFlight,
+    `${policy.name}:${userId}`,
+    () => validateBootstrapEntitlementUncached(userId, policy),
+  );
+}
+
+async function validateBootstrapEntitlementUncached(userId, policy) {
   const cacheKey = `entitlements:${ENTITLEMENT_ENV_PREFIX}:${userId}`;
   const cached = await readCachedJson(cacheKey);
   if (cached.status === 'hit' && cached.value && typeof cached.value === 'object') {
-    if (hasCurrentApiAccess(cached.value)) return { ok: true, entitlement: cached.value };
-    const cachedBillingFailure = billingVerificationFailure(cached.value);
+    if (policy.admits(cached.value)) return { ok: true, entitlement: cached.value };
+    const cachedBillingFailure = billingVerificationFailure(cached.value, policy.lapsedError);
     if (cachedBillingFailure) return cachedBillingFailure;
     if (notApplicableVerificationTtlSeconds(cached.value) !== null) {
-      return { ok: false, status: 403, error: 'API access subscription required', reason: 'cached-forbidden' };
+      return { ok: false, status: 403, error: policy.forbiddenError, reason: 'cached-forbidden' };
     }
     const validUntil = Number(cached.value.validUntil ?? 0);
     if (Number.isFinite(validUntil) && validUntil >= Date.now()) {
-      return { ok: false, status: 403, error: 'API access subscription required', reason: 'cached-forbidden' };
+      return { ok: false, status: 403, error: policy.forbiddenError, reason: 'cached-forbidden' };
     }
   }
 
@@ -438,9 +546,9 @@ async function validateBootstrapUserApiAccessUncached(userId) {
     await writeCachedJson(cacheKey, result.value, entitlementCacheTtlSeconds(result.value));
   }
 
-  if (hasCurrentApiAccess(result.value)) return { ok: true, entitlement: result.value };
-  const billingFailure = billingVerificationFailure(result.value);
+  if (policy.admits(result.value)) return { ok: true, entitlement: result.value };
+  const billingFailure = billingVerificationFailure(result.value, policy.lapsedError);
   if (billingFailure) return billingFailure;
 
-  return { ok: false, status: 403, error: 'API access subscription required', reason: 'forbidden' };
+  return { ok: false, status: 403, error: policy.forbiddenError, reason: 'forbidden' };
 }

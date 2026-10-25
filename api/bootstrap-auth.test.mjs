@@ -97,7 +97,8 @@ async function withMockedBootstrapAuth({
 
     if (url.endsWith('/api/internal-validate-api-key')) {
       if (userKeyResponse === 'valid') {
-        return new Response(JSON.stringify({ userId: 'user_api_owner', keyId: 'key_1', name: 'pipeline' }), {
+        // Convex validateKeyByHash wire shape: `id`, not `keyId`; the validator maps it.
+        return new Response(JSON.stringify({ id: 'key_1', userId: 'user_api_owner', name: 'pipeline', keyKind: 'api' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });

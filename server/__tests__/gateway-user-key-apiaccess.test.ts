@@ -428,7 +428,7 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
       delete process.env[missingConfig];
       const realKeys = await vi.importActual<typeof import("../_shared/user-api-key")>("../_shared/user-api-key");
       const realEntitlements = await vi.importActual<typeof import("../_shared/entitlement-check")>("../_shared/entitlement-check");
-      cachedUserKey.mockResolvedValue({ userId: "cached-key-config-test" });
+      cachedUserKey.mockResolvedValue({ v: 2, userId: "cached-key-config-test", keyId: "k-config", keyKind: "api" });
       validateUserApiKey.mockImplementation(realKeys.validateUserApiKey as typeof validateUserApiKey);
       getEntitlements.mockImplementation(realEntitlements.getEntitlements as typeof getEntitlements);
       const key = `wm_${"a".repeat(40)}`;
@@ -452,7 +452,7 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
 
       process.env.CONVEX_SITE_URL = "https://fixture.invalid";
       process.env.CONVEX_SERVER_SHARED_SECRET = "fixture-only";
-      cachedUserKey.mockResolvedValue({ userId: "cached-key-config-test" });
+      cachedUserKey.mockResolvedValue({ v: 2, userId: "cached-key-config-test", keyId: "k-config", keyKind: "api" });
       getEntitlements.mockResolvedValue(ACTIVE);
       expect((await makeGateway()(keyReq(REGULAR_PATH, "GET", key), ctx)).status).toBe(200);
       expect(routeHandler).toHaveBeenCalledTimes(1);
