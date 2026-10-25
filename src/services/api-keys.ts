@@ -25,7 +25,15 @@ export interface ApiKeyInfo {
   createdAt: number;
   lastUsedAt?: number;
   revokedAt?: number;
+  /** Fixed at creation. Convex reports legacy rows as `api`. */
+  keyKind?: ApiKeyKind;
 }
+
+/**
+ * `desktop` keys give the subscriber's own desktop app what a signed-in Pro
+ * session gets, minus the API-only surfaces (plan 2026-10-25-001).
+ */
+export type ApiKeyKind = 'api' | 'desktop';
 
 export interface CreateApiKeyResult {
   id: string;
@@ -50,12 +58,13 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 /**
- * Create a new API key for the current user.
- * Returns the full plaintext key (shown once) and metadata.
+ * Create a new API key (or, with `keyKind: 'desktop'`, a desktop key) for the
+ * current user. Returns the full plaintext key (shown once) and metadata.
  */
-export async function createApiKey(name: string): Promise<CreateApiKeyResult> {
+export async function createApiKey(name: string, keyKind: ApiKeyKind = 'api'): Promise<CreateApiKeyResult> {
+  const noun = keyKind === 'desktop' ? 'desktop key' : 'API key';
   const userId = getCurrentClerkUser()?.id;
-  if (!userId) throw new Error('Sign in to create an API key.');
+  if (!userId) throw new Error(`Sign in to create ${keyKind === 'desktop' ? 'a' : 'an'} ${noun}.`);
 
   const plaintext = generateKey();
   const keyPrefix = plaintext.slice(0, 8);
@@ -64,18 +73,21 @@ export async function createApiKey(name: string): Promise<CreateApiKeyResult> {
   const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
   if (!client || !api) throw new Error('Convex unavailable');
   if (!await waitForConvexAuthForUser(userId)) {
-    throw new Error('Account changed while creating the API key. Try again.');
+    throw new Error(`Account changed while creating the ${noun}. Try again.`);
   }
 
   const result = await settleAccountOperation(
     userId,
-    'creating the API key',
+    `creating the ${noun}`,
     () => client.mutation(
       (api as any).apiKeys.createApiKey,
-      { name: name.trim(), keyPrefix, keyHash },
+      // Omit keyKind for API keys so the mutation args stay exactly as before.
+      keyKind === 'desktop'
+        ? { name: name.trim(), keyPrefix, keyHash, keyKind }
+        : { name: name.trim(), keyPrefix, keyHash },
     ),
   );
-  assertAccountStillCurrent(userId, 'creating the API key');
+  assertAccountStillCurrent(userId, `creating the ${noun}`);
 
   return { id: result.id, name: result.name, keyPrefix: result.keyPrefix, key: plaintext };
 }

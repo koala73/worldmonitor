@@ -26931,6 +26931,30 @@ body.map-width-resizing {
   font-weight: 600;
 }
 
+.api-keys-item-kind-badge {
+  align-self: flex-start;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+
+.desktop-keys-count {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  margin: -8px 0 12px;
+}
+
+.desktop-keys-count:empty {
+  display: none;
+}
+
+.desktop-keys-count.at-limit {
+  color: var(--text);
+}
+
 .api-keys-revoke-btn,
 .embed-keys-revoke-btn {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));

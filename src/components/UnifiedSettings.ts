@@ -55,6 +55,7 @@ import {
   type BillingStatusTone,
 } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
+import { hasDesktopKeyAccess } from '../../shared/desktop-key-access.js';
 import { createEmbedKey, listEmbedKeys, revokeEmbedKey, type EmbedKeyInfo } from '@/services/embed-keys';
 import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
 import {
@@ -645,7 +646,7 @@ export class UnifiedSettings {
       if (panel) {
         setTrustedHtml(panel, trustedHtml(this.renderApiKeysContent(), "legacy direct innerHTML migration"));
         this.attachApiKeysHandlers();
-        if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
+        if (this.activeTab === 'api-keys' && this.canManageKeys()) {
           void this.loadApiKeys();
         }
       }
@@ -1003,7 +1004,7 @@ export class UnifiedSettings {
       if (this.activeTab === 'api-keys' || this.activeTab === 'mcp-clients') {
         void this.loadPlanLimitNotices();
       }
-      if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
+      if (this.activeTab === 'api-keys' && this.canManageKeys()) {
         void this.loadApiKeys();
       }
       if (this.activeTab === 'embeds' && getAuthState().user && hasEmbedAccessForAccount(getAuthState().user?.role)) {
@@ -1049,6 +1050,8 @@ export class UnifiedSettings {
 
     if (tab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadPlanLimitNotices();
+    }
+    if (tab === 'api-keys' && this.canManageKeys()) {
       void this.loadApiKeys();
     }
 
@@ -1926,9 +1929,9 @@ export class UnifiedSettings {
       });
     }
 
-    // Gate CTA click (sign-in for anonymous, checkout for free)
-    const gateBtn = this.overlay.querySelector<HTMLElement>('.api-keys-gate-btn');
-    if (gateBtn) {
+    // Gate CTA click (sign-in for anonymous, API Starter checkout otherwise).
+    // The free prompt's "Upgrade to Pro" uses the delegated .upgrade-pro-cta.
+    this.overlay.querySelectorAll<HTMLElement>('.api-keys-gate-btn').forEach((gateBtn) => {
       gateBtn.addEventListener('click', () => {
         if (!getAuthState().user) {
           this.close();
@@ -1940,7 +1943,106 @@ export class UnifiedSettings {
           });
         }
       });
+    });
+  }
+
+  /**
+   * Which key section the API Keys tab shows (plan 2026-10-25-001, U5).
+   * `apiAccess` wins, so API-plan owners keep the existing section. Pro and
+   * Pro Business get desktop keys; that branch also catches a downgraded API
+   * customer, whose generic keys now work at desktop scope.
+   */
+  private keysMode(): 'signed-out' | 'api' | 'desktop' | 'upgrade' {
+    if (!getAuthState().user) return 'signed-out';
+    if (hasFeature('apiAccess')) return 'api';
+    if (hasDesktopKeyAccess(getEntitlementState(), Date.now())) return 'desktop';
+    return 'upgrade';
+  }
+
+  private canManageKeys(): boolean {
+    const mode = this.keysMode();
+    return mode === 'api' || mode === 'desktop';
+  }
+
+  private desktopKeyLimit(): number {
+    return getEntitlementState()?.features.maxDesktopKeys ?? 0;
+  }
+
+  /**
+   * In desktop mode every active key counts toward `maxDesktopKeys`: desktop
+   * keys, plus a downgraded owner's generic keys (convex/apiKeys.ts
+   * createDesktopKey counts the same set).
+   */
+  private activeDesktopKeyCount(): number {
+    return this.apiKeys.filter(k => !k.revokedAt).length;
+  }
+
+  private desktopKeyErrorMessage(err: unknown): string {
+    const data = (err as { data?: unknown } | null)?.data;
+    const raw = typeof data === 'string' ? data : err instanceof Error ? err.message : '';
+    const limit = this.desktopKeyLimit();
+    if (raw.includes('DESKTOP_KEY_LIMIT_REACHED')) {
+      return `Your plan allows ${limit} desktop keys. Revoke one to create another.`;
     }
+    if (raw.includes('DESKTOP_KEYS_DISABLED')) {
+      return "Desktop keys aren't available yet. Try again later.";
+    }
+    if (raw.includes('DESKTOP_KEY_ACCESS_REQUIRED')) {
+      return 'Desktop keys need an active Pro or Pro Business plan.';
+    }
+    if (raw.includes('INVALID_API_KEY_SCOPES')) {
+      return 'Desktop keys cannot have API scopes.';
+    }
+    return raw || 'Failed to create desktop key';
+  }
+
+  private renderDesktopKeysContent(): string {
+    return `
+      <div class="api-keys-section desktop-keys-section">
+        <div class="api-keys-header">
+          <p class="api-keys-desc"><strong>Desktop keys</strong> are for your own desktop app: paste one into the desktop app to get your Pro data without signing in. Shared or public deployments need an API plan. Keys are shown once on creation.</p>
+        </div>
+        <div class="desktop-keys-count" data-desktop-keys-count aria-live="polite"></div>
+        <div class="api-keys-create-form">
+          <input type="text" class="api-keys-name-input" placeholder="Key name (e.g. my-laptop)" aria-label="Desktop key name" maxlength="64" />
+          <button class="btn btn-primary api-keys-create-btn">Create desktop key</button>
+        </div>
+        <div class="api-keys-created-banner" id="usApiKeysBanner" style="display:none;"></div>
+        <div class="api-keys-error" id="usApiKeysError" style="display:none;"></div>
+        <div class="api-keys-list" id="usApiKeysList">
+          <div class="api-keys-loading">Loading...</div>
+        </div>
+      </div>`;
+  }
+
+  /**
+   * Shows the used/limit count and holds create closed at the cap. Called after
+   * every list render and after a create settles, so a finished create cannot
+   * re-enable the button past the limit.
+   */
+  private syncDesktopKeyLimit(): void {
+    if (this.keysMode() !== 'desktop') return;
+    const countEl = this.overlay.querySelector<HTMLElement>('[data-desktop-keys-count]');
+    const input = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
+    const btn = this.overlay.querySelector<HTMLButtonElement>('.api-keys-create-btn');
+    if (!countEl) return;
+    if (this.apiKeysLoading && this.apiKeys.length === 0) {
+      countEl.textContent = '';
+      return;
+    }
+    const used = this.activeDesktopKeyCount();
+    const limit = this.desktopKeyLimit();
+    const atLimit = used >= limit;
+    const over = used - limit;
+    const note = over > 0
+      ? ` Your plan allows ${limit} desktop keys, and keys over the limit don't work. Revoke ${over} key${over === 1 ? '' : 's'} to get back within it.`
+      : atLimit
+      ? ` Your plan allows ${limit} desktop keys. Revoke one to create another.`
+      : '';
+    countEl.textContent = `${used} of ${limit} desktop keys in use.${note}`;
+    countEl.classList.toggle('at-limit', atLimit);
+    if (input) input.disabled = atLimit;
+    if (btn && btn.textContent !== 'Creating...') btn.disabled = atLimit;
   }
 
   private renderApiKeysContent(): string {
@@ -1956,13 +2058,18 @@ export class UnifiedSettings {
         </div>`;
     }
 
-    if (!hasFeature('apiAccess')) {
+    const mode = this.keysMode();
+    if (mode === 'desktop') return this.renderDesktopKeysContent();
+
+    if (mode === 'upgrade') {
       const upgradeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
       return `
         <div class="panel-locked-state">
           <div class="panel-locked-icon">${upgradeIcon}</div>
-          <div class="panel-locked-desc">Create and manage API keys to access WorldMonitor data programmatically.</div>
+          <div class="panel-locked-desc">Desktop keys come with Pro. Use one to get your Pro data in your own desktop app.</div>
           ${checkoutConsentHtml(WEB_APP_ORIGIN)}
+          <button class="panel-locked-cta upgrade-pro-cta">Upgrade to Pro</button>
+          <div class="panel-locked-desc">Need programmatic access or a shared deployment? That needs an API plan.</div>
           <button class="panel-locked-cta api-keys-gate-btn">Upgrade to API Starter</button>
         </div>`;
     }
@@ -2015,6 +2122,8 @@ export class UnifiedSettings {
     const request = this.captureAccountRequest();
     if (!request) return;
 
+    const desktop = this.keysMode() === 'desktop';
+    const idleLabel = desktop ? 'Create desktop key' : 'Create Key';
     btn.disabled = true;
     btn.textContent = 'Creating...';
     this.apiKeysError = '';
@@ -2022,17 +2131,20 @@ export class UnifiedSettings {
     this.hideBanner();
 
     try {
-      const result = await createApiKey(name);
+      const result = desktop ? await createApiKey(name, 'desktop') : await createApiKey(name);
       if (!this.isAccountRequestCurrent(request)) return;
       trackApiAction('key-created');
       this.newlyCreatedKey = result.key;
       input.value = '';
-      this.showCreatedBanner(result.key);
+      this.showCreatedBanner(result.key, desktop);
       await this.loadApiKeys();
     } catch (err) {
       if (!this.isAccountRequestCurrent(request)) return;
       const msg = err instanceof Error ? err.message : 'Failed to create key';
-      this.apiKeysError = msg.includes('KEY_LIMIT_REACHED')
+      // Desktop codes first: DESKTOP_KEY_LIMIT_REACHED contains KEY_LIMIT_REACHED.
+      this.apiKeysError = desktop
+        ? this.desktopKeyErrorMessage(err)
+        : msg.includes('KEY_LIMIT_REACHED')
         ? 'Maximum of 5 active keys reached. Revoke an existing key first.'
         : msg.includes('API_ACCESS_REQUIRED')
         ? 'API keys require an API access subscription (API Starter or higher).'
@@ -2041,7 +2153,8 @@ export class UnifiedSettings {
     } finally {
       if (this.isAccountRequestCurrent(request)) {
         btn.disabled = false;
-        btn.textContent = 'Create Key';
+        btn.textContent = idleLabel;
+        this.syncDesktopKeyLimit();
       }
     }
   }
@@ -2051,7 +2164,10 @@ export class UnifiedSettings {
     if (!request) return;
     const keyInfo = this.apiKeys.find(k => k.id === keyId);
     const keyName = keyInfo?.name ?? 'this key';
-    if (!confirm(`Revoke "${keyName}"? This cannot be undone. Any applications using this key will stop working.`)) return;
+    const consequence = this.keysMode() === 'desktop'
+      ? 'Any desktop app using this key will stop getting Pro data.'
+      : 'Any applications using this key will stop working.';
+    if (!confirm(`Revoke "${keyName}"? This cannot be undone. ${consequence}`)) return;
 
     try {
       await revokeApiKey(keyId);
@@ -2065,13 +2181,14 @@ export class UnifiedSettings {
     }
   }
 
-  private showCreatedBanner(key: string): void {
+  private showCreatedBanner(key: string, desktop = false): void {
     const banner = this.overlay.querySelector<HTMLElement>('#usApiKeysBanner');
     if (!banner) return;
 
     banner.style.display = 'block';
     setTrustedHtml(banner, trustedHtml(`
-      <div class="api-keys-banner-title">Key created — copy it now, it won't be shown again</div>
+      <div class="api-keys-banner-title">${desktop ? 'Desktop key' : 'Key'} created — copy it now, it won't be shown again</div>
+      ${desktop ? '<div class="api-keys-desc">Paste it into the desktop app under Settings → Desktop key.</div>' : ''}
       <div class="api-keys-banner-key">
         <code class="api-keys-key-value">${escapeHtml(key)}</code>
         <button class="btn btn-secondary api-keys-copy-btn">Copy</button>
@@ -2103,20 +2220,40 @@ export class UnifiedSettings {
     const container = this.overlay.querySelector('#usApiKeysList');
     if (!container) return;
 
+    const desktopMode = this.keysMode() === 'desktop';
+
     if (this.apiKeysLoading && this.apiKeys.length === 0) {
       setTrustedHtml(container, trustedHtml('<div class="api-keys-loading">Loading...</div>', "legacy direct innerHTML migration"));
+      this.syncDesktopKeyLimit();
       return;
     }
 
     this.renderApiKeysError();
+    this.syncDesktopKeyLimit();
 
     const active = this.apiKeys.filter(k => !k.revokedAt);
     const revoked = this.apiKeys.filter(k => k.revokedAt);
 
     if (active.length === 0 && revoked.length === 0) {
-      setTrustedHtml(container, trustedHtml('<div class="api-keys-empty">No API keys yet. Create one above to get started.</div>', "legacy direct innerHTML migration"));
+      const empty = desktopMode
+        ? 'No desktop keys yet. Create one above to use in your desktop app.'
+        : 'No API keys yet. Create one above to get started.';
+      setTrustedHtml(container, trustedHtml(`<div class="api-keys-empty">${empty}</div>`, "legacy direct innerHTML migration"));
       return;
     }
+
+    // Desktop mode: a generic key here belongs to a downgraded API customer and
+    // now works at desktop scope only. API mode: a desktop key here belongs to
+    // an owner who upgraded from Pro and keeps desktop scope (R8).
+    const kindBadge = (k: ApiKeyInfo): string => {
+      if (desktopMode && k.keyKind !== 'desktop') {
+        return '<span class="api-keys-item-kind-badge" title="Created as an API key. On your current plan it works as a desktop key.">Desktop access</span>';
+      }
+      if (!desktopMode && k.keyKind === 'desktop') {
+        return '<span class="api-keys-item-kind-badge" title="Works in your desktop app only, not for API access.">Desktop key</span>';
+      }
+      return '';
+    };
 
     const formatDate = (ts: number) => new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
@@ -2127,6 +2264,7 @@ export class UnifiedSettings {
           <div class="api-keys-item-main">
             <span class="api-keys-item-name">${escapeHtml(k.name)}</span>
             <code class="api-keys-item-prefix">${escapeHtml(k.keyPrefix)}${'*'.repeat(8)}</code>
+            ${isRevoked ? '' : kindBadge(k)}
           </div>
           <div class="api-keys-item-meta">
             <span>Created ${formatDate(k.createdAt)}</span>
