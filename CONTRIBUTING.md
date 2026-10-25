@@ -507,7 +507,7 @@ The pinned sebuf version is set by `SEBUF_VERSION` in the `Makefile` (currently 
 
 ### Derived Files
 
-Product facts, `llms.txt`, the AI search briefing, source attribution, catalogs, locales, legal digests and notices are committed outputs of generators in `scripts/`. Run `npm run generate` after changing anything they read; it runs each generator's `--check` and rewrites only what is stale, in dependency order. `npm run generate:check` reports without writing. The pre-push hook regenerates stale files and stops the push so you can commit them, and the always-on `docs-stats` CI job runs the check. Proto output is separate (`make generate`, below). App translations, internal links, the sitemap and docs page dates are not covered; see the header of `scripts/generate-derived.mjs`.
+Product facts, `llms.txt`, the AI search briefing, source attribution, catalogs, locales and legal digests are committed outputs of generators in `scripts/`. Run `npm run generate` after changing anything they read; it runs each generator's `--check` and rewrites only what is stale, in dependency order. `npm run generate:check` reports without writing. The pre-push hook regenerates stale files and stops the push so you can commit them, and the always-on `docs-stats` CI job runs the check. Proto output is separate (`make generate`, below). App translations, internal links, the sitemap and docs page dates are not covered; see the header of `scripts/generate-derived.mjs`.
 
 ### Generated Artifacts in Pull Requests
 

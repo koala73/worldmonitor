@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Regenerates every committed derived file (product facts, docs stats, llms,
-// AI search, catalogs, locales, notices, …) whose freshness check
+// AI search, catalogs, locales, legal digests, …) whose freshness check
 // fails. Stale derived files were over half of CI test failures, and fixing
 // one meant finding which of these generators the failing test wanted.
 //
@@ -27,11 +27,10 @@ const TSX = [NODE, '--import', 'tsx'];
 const MAX_PASSES = 3;
 
 // [name, command, write flag]. Every command also accepts --check. Order
-// follows the data flow: the product config feeds the facts, which feed
-// inventory, AI search and the crawlable pages.
+// follows the data flow: the product config feeds the facts, which feed AI
+// search and the crawlable pages.
 export const STEPS = [
   ['product facts', [...TSX, 'scripts/generate-public-product-facts.mjs']],
-  ['inventory facts', [NODE, 'scripts/generate-inventory-facts.mjs']],
   ['entitlement crosswalk', [NODE, 'scripts/generate-entitlement-crosswalk.mjs']],
   ['country corpus slugs', [...TSX, 'scripts/generate-country-corpus-slugs.mjs']],
   ['llms.txt', [...TSX, 'scripts/build-llms-full.mjs']],
@@ -50,7 +49,6 @@ export const STEPS = [
   ['Sentry Convex probe filters', [NODE, 'scripts/sync-sentry-convex-probe-filters.mjs'], '--write'],
   ['legal digests', [NODE, 'scripts/legal-digests.mjs']],
   ['legal PDFs', [NODE, 'scripts/build-legal-pdfs.mjs']],
-  ['third-party notices', [NODE, 'scripts/generate-third-party-notices.mjs']],
   ['story phase fading study', [NODE, 'scripts/study-story-phase-fading.mjs']],
   ['desktop version', [NODE, 'scripts/sync-desktop-version.mjs']],
 ];
@@ -77,6 +75,13 @@ function main() {
 
   const regenerated = new Set();
   for (let pass = 0; ; pass++) {
+    // Inventory facts are gitignored, read by later steps, and derived from the
+    // product facts, so every pass refreshes them before checking.
+    const inventory = run([NODE, 'scripts/generate-inventory-facts.mjs']);
+    if (!inventory.ok) {
+      console.error(`generate: inventory facts failed:\n${inventory.output}`);
+      return 1;
+    }
     const stale = [];
     for (const [name, command, writeFlag] of steps) {
       const { ok, output } = run(command, '--check');
