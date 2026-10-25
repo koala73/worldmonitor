@@ -198,13 +198,13 @@ every Yemeni actor, Houthi or government. US–Venezuela did not meet the initia
 API is used.
 
 A pair added to the list scores **Insufficient data** until its 90-day history
-is rebuilt (below), about 11 hours after the worker first runs with it. The
+is rebuilt (below), 11 to 22 hours after the worker first runs with it. The
 day in progress gets no bucket for the new pair, since it would miss the
 earlier cohorts; that day is rebuilt once it is complete. China–Taiwan,
 Israel–Iran and Saudi Arabia–Yemen were added together with the fifteen-day
 hourly window, so the first runs after that deploy rebuild every stored day,
-newest first. Until the last fourteen completed days have their hours, about
-two hours, the existing pairs read from completed days.
+newest first. Until the last fourteen completed days have their hours, two to
+four hours, the existing pairs read from completed days.
 
 For each UTC day, conflict intensity is the sum of
 `NumMentions × max(0, −GoldsteinScale)` for events in QuadClass 3 or 4.
@@ -270,8 +270,9 @@ skipped for six hours, so it cannot hold the run's slots while older days wait.
 A later successful rebuild clears its record. The repair has a 60-second budget
 per run. When the budget runs out, the worker aborts in-flight downloads and
 starts no new ones. A failure or an overrun keeps the days that finished and
-never delays or fails the live publication. An empty window fills in about 45
-runs, about 11 hours.
+never delays or fails the live publication. A run usually rebuilds two days and
+sometimes one when downloads are slow, so an empty window fills in 45 to 90
+runs, 11 to 22 hours.
 
 ## Related Assets
 
