@@ -52,7 +52,9 @@ import {
 } from '@/services/push-notifications';
 import { getServerInsights, fetchServerInsights } from '@/services/insights-loader';
 import { loadWidgets, loadWidgetsStrict } from '@/services/widget-store';
+import { listMcpClients } from '@/services/mcp-clients';
 import {
+  resolveHasUsedPowerFeature,
   ACTIVATION_EVENTS,
   buildActivationSteps,
   hasAnyActivatedProFunctionality,
@@ -899,7 +901,12 @@ export interface ActivationContext {
 }
 
 export interface ProActivationFlowDependencies {
-  readContext: (expectedUserId: string, strict: boolean) => Promise<ActivationContext>;
+  /** Flow-open read; `signal` aborts when the flow's account stops being current. */
+  readContext: (
+    expectedUserId: string,
+    strict: boolean,
+    signal: AbortSignal,
+  ) => Promise<ActivationContext>;
   claimPresentation: (
     activationKey: string,
     claimNonce: string,
@@ -924,6 +931,8 @@ export interface ProActivationFlowDependencies {
   openInterstitial: typeof openProActivationInterstitial;
   /** Per-operation deadline; injectable only to keep timeout regressions fast. */
   operationTimeoutMs?: number;
+  /** Deadline for the flow-open MCP-clients lookup; injectable for the same reason. */
+  mcpClientsTimeoutMs?: number;
 }
 
 function isFlowAccountCurrent(options: ProActivationFlowOptions): boolean {
@@ -980,6 +989,34 @@ function hasUsedPowerFeature(): boolean {
 /** Strict counterpart for markerless cohort suppression; storage failure retries. */
 function hasUsedPowerFeatureStrict(): boolean {
   return loadWidgetsStrict().length > 0;
+}
+
+const MCP_CLIENTS_SIGNAL_TIMEOUT_MS = 3_000;
+
+/**
+ * Whether the subscriber has used an unrevoked MCP client. Bounded
+ * by `timeoutMs` and settled as soon as `signal` aborts: `listMcpClients` takes
+ * no signal, so the race is what stops the flow waiting on it. Rejects on
+ * failure, timeout or abort; the caller chooses what a failed read means.
+ */
+async function readConnectedMcpClients(timeoutMs: number, signal: AbortSignal): Promise<boolean> {
+  // Not `throwIfAborted()`: iOS < 15.4 WebKit lacks it.
+  if (signal.aborted) throw signal.reason;
+  let onAbort = (): void => {};
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    const clients = await withTimeout(
+      Promise.race([listMcpClients(), aborted]),
+      timeoutMs,
+      'activation-mcp-clients-read',
+    );
+    return resolveHasUsedPowerFeature(0, clients);
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
 }
 
 /** Platform capabilities from the live push runtime (drives the alerts-step gate). */
@@ -1076,6 +1113,47 @@ export async function readActivationContext(expectedUserId?: string): Promise<Ac
       hasEnabledRule: false,
     };
   }
+}
+
+/**
+ * The context read that opens the flow: the cohort's config reader plus the
+ * connected-MCP-client half of the power-step signal (#5612). The confirm
+ * handlers call the readers above directly and never pay for the lookup; they
+ * act on channels and rules, not on the power step.
+ *
+ * A stored widget already answers the question, so only an empty widget store
+ * starts the lookup, and it runs alongside the channels read, not after it.
+ *
+ * A failed, timed-out or aborted lookup means different things per cohort:
+ * - day-0 (checkout return) fails open to the widget-only signal, the pre-#5612
+ *   behaviour. The post-checkout welcome must open even when Convex is slow;
+ *   the cost of a miss is showing a done step as not done.
+ * - markerless (`strict`) rethrows, so the flow returns 'retry'. That cohort is
+ *   suppressed when anything is already activated, and reading a failed lookup
+ *   as "no clients" would fabricate the "nothing activated" snapshot the strict
+ *   reader exists to refuse.
+ */
+async function readActivationFlowContext(
+  expectedUserId: string,
+  strict: boolean,
+  signal: AbortSignal,
+  mcpClientsTimeoutMs: number,
+): Promise<ActivationContext> {
+  const hasWidget = strict ? hasUsedPowerFeatureStrict() : hasUsedPowerFeature();
+  const mcpLookup = hasWidget
+    ? null
+    : readConnectedMcpClients(mcpClientsTimeoutMs, signal).then(
+      (connected) => ({ connected }),
+      (error: unknown) => ({ error }),
+    );
+  const context = strict
+    ? await readActivationContextStrict(expectedUserId)
+    : await readActivationContext(expectedUserId);
+  if (!mcpLookup || context.config.hasUsedPowerFeature) return context;
+  const lookup = await mcpLookup;
+  if ('connected' in lookup) context.config.hasUsedPowerFeature = lookup.connected;
+  else if (strict) throw lookup.error;
+  return context;
 }
 
 /** Read the hour the user picked in the brief step frame, defaulting safely. */
@@ -1570,10 +1648,13 @@ export async function openProActivationFlow(
   injected: Partial<ProActivationFlowDependencies> = {},
 ): Promise<'opened' | 'not-eligible' | 'retry'> {
   const dependencies: ProActivationFlowDependencies = {
-    readContext: (expectedUserId, strict) =>
-      strict
-        ? readActivationContextStrict(expectedUserId)
-        : readActivationContext(expectedUserId),
+    readContext: (expectedUserId, strict, signal) =>
+      readActivationFlowContext(
+        expectedUserId,
+        strict,
+        signal,
+        injected.mcpClientsTimeoutMs ?? MCP_CLIENTS_SIGNAL_TIMEOUT_MS,
+      ),
     claimPresentation: claimProActivationPresentation,
     confirmPresentation: confirmProActivationPresentation,
     openDay0Presentation: openProActivationDay0Presentation,
@@ -1583,15 +1664,24 @@ export async function openProActivationFlow(
   };
   if (!isFlowAccountCurrent(options)) return 'retry';
   let ctx: ActivationContext;
+  // An account switch discards this read (the currency check below), so stop
+  // waiting on its MCP lookup the moment it happens.
+  const readController = new AbortController();
+  const stopWatchingAccount = subscribeAuthState(() => {
+    if (!isFlowAccountCurrent(options)) readController.abort();
+  });
   try {
     ctx = await dependencies.readContext(
       options.accountUserId,
       options.onlyIfUnactivated === true,
+      readController.signal,
     );
   } catch {
     // Markerless backfill must never turn a failed read into a fabricated
     // "nothing activated" snapshot. Retry on a later evaluation/boot.
     return 'retry';
+  } finally {
+    stopWatchingAccount();
   }
   if (!isFlowAccountCurrent(options)) return 'retry';
   if (

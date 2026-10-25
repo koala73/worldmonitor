@@ -1476,11 +1476,17 @@ function familyCount(rows) {
 
 const brierDeltaStatistic = (sample) => mean(sample.map((row) => rowBrier(row, 'calibrated') - rowBrier(row, 'raw')));
 
+// The activation gate reads only the Brier interval. A caller that needs only
+// the verdict passes `eceIntervals: false` and gets `eceCi95: null`. Each
+// resample draws its families before any statistic runs, so dropping the ECE
+// statistics leaves the Brier interval unchanged.
 function summarizeShadowRows(rows, scope, options) {
   const intervals = pairedBootstrap(rows, {
     brierDelta: brierDeltaStatistic,
-    rawEce: (sample) => expectedCalibrationError(sample, 'raw'),
-    calibratedEce: (sample) => expectedCalibrationError(sample, 'calibrated'),
+    ...(options.eceIntervals !== false && {
+      rawEce: (sample) => expectedCalibrationError(sample, 'raw'),
+      calibratedEce: (sample) => expectedCalibrationError(sample, 'calibrated'),
+    }),
   }, { ...options, scope });
   const side = (field, eceCi95) => ({
     brier: round(mean(rows.map((row) => rowBrier(row, field)))),
@@ -1492,8 +1498,8 @@ function summarizeShadowRows(rows, scope, options) {
     count: rows.length,
     families: familyCount(rows),
     positives: rows.reduce((sum, row) => sum + row.y, 0),
-    raw: side('raw', intervals.rawEce),
-    calibrated: side('calibrated', intervals.calibratedEce),
+    raw: side('raw', intervals.rawEce ?? null),
+    calibrated: side('calibrated', intervals.calibratedEce ?? null),
     // calibrated − raw: negative means the map lowered Brier on this cohort.
     brierDelta: { mean: round(brierDeltaStatistic(rows)), ci95: intervals.brierDelta },
     ...(options.preBlendStage !== false && { internal: summarizeInternalStage(rows, scope, options) }),
@@ -1822,6 +1828,36 @@ export function buildPublicReceipts(ledger, nowMs, { limit = PUBLIC_RECEIPT_LIMI
     .filter(Boolean)
     .sort((a, b) => b.resolvedAt - a.resolvedAt || a.question.localeCompare(b.question))
     .slice(0, limit);
+}
+
+function publicReceiptEntries(ledger, nowMs) {
+  const minResolvedAt = nowMs - DEFAULT_ROLLING_WINDOW_DAYS * DAY_MS;
+  return normalizeLedger(ledger).filter(entry => entry?.status === 'resolved'
+    && !isHorizonEntry(entry) && !isDuplicateWindow(entry) && !isWithheldEntry(entry)
+    && !isPlaceholderBet(entry) && isPublishedOriginEntry(entry)
+    && Number(entry.resolvedAt) >= minResolvedAt && Number(entry.resolvedAt) <= nowMs);
+}
+
+export function buildPublicForecastArchive(ledger, nowMs) {
+  const rows = publicReceiptEntries(ledger, nowMs).flatMap(entry => {
+    const receipt = publicReceipt(entry);
+    if (!receipt) return [];
+    return [{ ...receipt,
+      forecastId: publicText(entry.id, 160), domain: publicText(entry.domain, 80), region: publicText(entry.region, 160),
+      lane: entry.spec?.kind === 'hard' ? 'hard' : 'judged',
+      deadline: Number.isFinite(entry.deadline) ? entry.deadline : null,
+      firstSeenAt: Number.isFinite(entry.firstSeenAt) ? entry.firstSeenAt : null,
+      lastSeenAt: Number.isFinite(entry.lastSeenAt) ? entry.lastSeenAt : null,
+      ...(entry.spec?.kind === 'judged' && Number.isInteger(entry.evidence?.selectionVersion)
+        ? { evidence: { selectionVersion: entry.evidence.selectionVersion } } : {}),
+      ...(Array.isArray(entry.trajectory) ? { trajectory: entry.trajectory.slice(0, 30).filter(point => Array.isArray(point)
+        && point.length === 2 && typeof point[0] === 'string' && Number.isFinite(Date.parse(point[0]))
+        && Number.isFinite(point[1]) && point[1] >= 0 && point[1] <= 1).map(([at, p]) => [at, p]) } : {}),
+    }];
+  }).sort((a, b) => b.resolvedAt - a.resolvedAt || a.forecastId.localeCompare(b.forecastId) || a.question.localeCompare(b.question));
+  const archive = { generatedAt: nowMs, rollingWindowDays: DEFAULT_ROLLING_WINDOW_DAYS, rows };
+  if (Buffer.byteLength(JSON.stringify(archive)) > 512 * 1024 - 1024) throw new Error('Forecast archive exceeds 512 KB');
+  return archive;
 }
 
 function mean(values) {

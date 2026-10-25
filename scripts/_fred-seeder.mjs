@@ -3,6 +3,7 @@ import {
   allSettledWithConcurrency,
   fredFetchJson,
   getRedisCredentials,
+  markPreservableFetchFailure,
   redisCommand,
   resolveProxyForConnect,
 } from './_seed-utils.mjs';
@@ -241,7 +242,9 @@ async function fetchOneFredSeries(seriesId, apiKey, fredFetchFn, proxyAuth, cach
   const [obsResp, metaResp] = await Promise.allSettled(requests);
 
   if (obsResp.status === 'rejected') {
-    throw new Error(`fetch failed — ${obsResp.reason?.message || obsResp.reason}`);
+    throw Object.assign(new Error(`fetch failed — ${obsResp.reason?.message || obsResp.reason}`, {
+      cause: obsResp.reason,
+    }), { preservableFetchFailure: obsResp.reason?.preservableFetchFailure === true });
   }
 
   const obsData = obsResp.value;
@@ -285,6 +288,7 @@ export async function fetchFredSeries({
   proxyAuth = resolveProxyForConnect(),
   readMetaCache = readFredSeriesMetaCache,
   writeMetaCache = writeFredSeriesMetaCache,
+  throwOnEmpty = false,
 } = {}) {
   const apiKey = process.env.FRED_API_KEY;
   if (!apiKey) throw new Error('Missing FRED_API_KEY');
@@ -325,5 +329,15 @@ export async function fetchFredSeries({
   const metaHits = FRED_SEED_SERIES.filter((seriesId) => cachedMeta[seriesId]).length;
   console.log(`  FRED series: ${fredCount}/${FRED_SEED_SERIES.length} (series-meta cache: ${metaHits}/${FRED_SEED_SERIES.length} hits)`);
   if (fredCount === 0) console.warn('  [WARN] FRED series: 0 fetched — all series failed or returned no observations. Check FRED_API_KEY and PROXY_URL. FRED-dependent panels will go stale.');
+  if (fredCount === 0 && throwOnEmpty) {
+    const error = new AggregateError(
+      settled.filter((result) => result.status === 'rejected').map((result) => result.reason),
+      'FRED returned no usable series',
+    );
+    if (settled.every((result) => result.status === 'rejected' && result.reason?.preservableFetchFailure === true)) {
+      markPreservableFetchFailure(error);
+    }
+    throw error;
+  }
   return results;
 }

@@ -24,6 +24,11 @@ import {
 
 
 type SortMode = 'relevance' | 'newest';
+type NewsIdentity = Pick<NewsItem, 'link' | 'title' | 'source'>;
+
+function matchesNewsItem(item: NewsIdentity, link: string, identity?: NewsIdentity): boolean {
+  return item.link === link && (!identity || (identity.link === link && item.title === identity.title && item.source === identity.source));
+}
 
 /** Threshold for enabling virtual scrolling */
 const VIRTUAL_SCROLL_THRESHOLD = 15;
@@ -60,6 +65,8 @@ export class NewsPanel extends Panel {
   private windowedList: WindowedList<PreparedCluster> | null = null;
   private useVirtualScroll = true;
   private renderRequestId = 0;
+  private searchReveal: { link: string; identity?: NewsIdentity; renderRequestId: number; expiresAt: number } | null = null;
+  private searchRevealTimer: ReturnType<typeof setTimeout> | null = null;
   private boundScrollHandler: (() => void) | null = null;
   private boundClickHandler: (() => void) | null = null;
 
@@ -331,6 +338,7 @@ export class NewsPanel extends Panel {
   }
 
   private async handleTranslate(element: HTMLElement, text: string): Promise<void> {
+    if (element.hasAttribute('disabled')) return;
     // Target language for the translation, so the full tag — same reason as
     // handleSummarize above. The `en` short-circuit is unaffected: no tag that
     // resolves to a Chinese catalogue equals 'en'.
@@ -341,13 +349,19 @@ export class NewsPanel extends Panel {
     if (!titleEl) return;
 
     const originalText = titleEl.textContent || '';
+    const item = element.closest('.item');
+    item?.querySelector('.item-translation-error')?.remove();
 
     // Visual feedback
     setTrustedHtml(element, trustedHtml('...', "legacy direct innerHTML migration"));
+    element.setAttribute('disabled', '');
     element.style.pointerEvents = 'none';
 
     try {
-      const translated = await this.newsServices.translateText(text, currentLang);
+      const translated = await this.newsServices.translateText(text, currentLang).catch((e) => {
+        console.error('Translation failed', e);
+        return null;
+      });
       if (!this.element?.isConnected) return;
       if (translated) {
         titleEl.textContent = translated;
@@ -357,14 +371,15 @@ export class NewsPanel extends Panel {
         element.classList.add('translated');
       } else {
         setTrustedHtml(element, trustedHtml('文', "legacy direct innerHTML migration"));
-        // Shake animation or error state could be added here
+        const error = document.createElement('span');
+        error.className = 'item-translation-error';
+        error.setAttribute('role', 'status');
+        error.textContent = t('components.newsPanel.translationUnavailable');
+        item?.appendChild(error);
       }
-    } catch (e) {
-      if (!this.element?.isConnected) return;
-      console.error('Translation failed', e);
-      setTrustedHtml(element, trustedHtml('文', "legacy direct innerHTML migration"));
     } finally {
       if (element.isConnected) {
+        element.removeAttribute('disabled');
         element.style.pointerEvents = 'auto';
       }
     }
@@ -489,8 +504,9 @@ export class NewsPanel extends Panel {
   }
 
   public renderNews(items: NewsItem[]): void {
+    this.clearSearchReveal();
+    this.renderRequestId += 1;
     if (items.length === 0) {
-      this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
       this.renderedBadgeState = 'unavailable';
       this.setDataBadge('unavailable');
       this.showError(t('common.noNewsAvailable'));
@@ -509,6 +525,7 @@ export class NewsPanel extends Panel {
   }
 
   public renderFilteredEmpty(message: string): void {
+    this.clearSearchReveal();
     this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
     this.lastRawClusters = null;
     this.lastRawItems = null;
@@ -522,12 +539,13 @@ export class NewsPanel extends Panel {
   }
 
   private async renderClustersAsync(items: NewsItem[]): Promise<void> {
-    const requestId = ++this.renderRequestId;
+    const requestId = this.renderRequestId;
 
     try {
       const clusters = await this.newsServices.clusterNews(items);
       if (requestId !== this.renderRequestId) return;
       const enriched = await enrichWithVelocityML(clusters);
+      if (requestId !== this.renderRequestId) return;
       this.renderClusters(enriched);
     } catch (error) {
       if (requestId !== this.renderRequestId) return;
@@ -538,6 +556,7 @@ export class NewsPanel extends Panel {
 
   private renderFlat(items: NewsItem[]): void {
     this.lastRawItems = items;
+    this.lastRawClusters = null;
 
     let sorted: NewsItem[];
     if (this.sortMode === 'newest') {
@@ -566,8 +585,9 @@ export class NewsPanel extends Panel {
     const html = sorted
       .map((item) => {
         const provenance = renderPrimarySourceProvenance(item.source);
+        const titleLink = sanitizeUrl(item.link);
         return `
-      <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
+      <div class="item ${item.isAlert ? 'alert' : ''}" data-news-id="${escapeHtml(item.link)}" data-news-title="${escapeHtml(item.title)}" data-news-source="${escapeHtml(item.source)}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
         <div class="item-source">
           ${escapeHtml(item.source)}
           ${renderCredibilityBadge(item.source, item)}
@@ -580,7 +600,7 @@ export class NewsPanel extends Panel {
           ${item.storyMeta?.phase === 'sustained' ? '<span class="phase-badge sustained">ONGOING</span>' : ''}
           ${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
         </div>
-        <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
+        ${titleLink ? `<a class="item-title" href="${titleLink}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>` : `<span class="item-title">${escapeHtml(item.title)}</span>`}
         ${item.snippet ? `<div class="item-snippet">${escapeHtml(item.snippet.length > 200 ? item.snippet.slice(0, 200).replace(/\s+\S*$/, '') + '…' : item.snippet)}</div>` : ''}
         <div class="item-time">
           ${formatTime(item.pubDate)}
@@ -591,7 +611,7 @@ export class NewsPanel extends Panel {
       })
       .join('');
 
-    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'), () => this.revealSearchItem());
   }
 
   private renderClusters(clusters: ClusteredEvent[]): void {
@@ -669,13 +689,16 @@ export class NewsPanel extends Panel {
 
     // Use windowed rendering for large lists, direct render for small
     if (this.useVirtualScroll && sorted.length > VIRTUAL_SCROLL_THRESHOLD && this.windowedList) {
+      this.setContentNodes();
+      if (this.isLocked) return;
       this.windowedList.setItems(prepared);
+      this.revealSearchItem();
     } else {
       // Direct render for small lists
       const html = prepared
         .map(p => this.renderClusterHtmlSafely(p.cluster, p.isNew, p.shouldHighlight, p.showNewTag))
         .join('');
-      this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'), () => this.revealSearchItem());
     }
     this.refreshRelatedAssetsAfterLazyTables(sorted);
   }
@@ -816,6 +839,7 @@ export class NewsPanel extends Panel {
       isNew ? 'item-new' : '',
     ].filter(Boolean).join(' ');
 
+    const titleLink = sanitizeUrl(cluster.primaryLink);
     return `
       <div class="${itemClasses}" ${cluster.monitorColor ? `style="border-inline-start-color: ${escapeHtml(cluster.monitorColor)}"` : ''} data-cluster-id="${escapeHtml(cluster.id)}" data-news-id="${escapeHtml(cluster.primaryLink)}">
         <div class="item-source">
@@ -834,7 +858,7 @@ export class NewsPanel extends Panel {
           ${categoryBadge}
           ${riskBadge}
         </div>
-        <a class="item-title" href="${sanitizeUrl(cluster.primaryLink)}" target="_blank" rel="noopener">${escapeHtml(cluster.primaryTitle)}</a>
+        ${titleLink ? `<a class="item-title" href="${titleLink}" target="_blank" rel="noopener">${escapeHtml(cluster.primaryTitle)}</a>` : `<span class="item-title">${escapeHtml(cluster.primaryTitle)}</span>`}
         <div class="cluster-meta">
           <div class="cluster-roster">${rosterView ? renderPublisherRosterHtml(rosterView) : ''}</div>
           <span class="item-time">${formatTime(cluster.lastUpdated)}</span>
@@ -909,14 +933,14 @@ export class NewsPanel extends Panel {
    * Returns true if this panel contains a news item with the given link
    * (either as a cluster primary or secondary article).
    */
-  public hasNewsItem(link: string): boolean {
+  public hasNewsItem(link: string, identity?: NewsIdentity): boolean {
     if (this.lastRawClusters) {
       return this.lastRawClusters.some(
-        c => c.primaryLink === link || c.allItems.some(i => i.link === link)
+        c => (!identity && c.primaryLink === link) || c.allItems.some(item => matchesNewsItem(item, link, identity))
       );
     }
     if (this.lastRawItems) {
-      return this.lastRawItems.some(i => i.link === link);
+      return this.lastRawItems.some(item => matchesNewsItem(item, link, identity));
     }
     return false;
   }
@@ -925,42 +949,64 @@ export class NewsPanel extends Panel {
    * Scroll the panel to the item with the given link and flash-highlight it.
    * For virtual-scrolled panels, renders the containing chunk first.
    */
-  public scrollToNewsItem(link: string): void {
-    // In clustered mode, scroll via windowedList so off-screen chunks are rendered first
-    if (this.lastRawClusters && this.windowedList) {
-      const found = this.windowedList.scrollToItem(
-        (p: { cluster: ClusteredEvent }) =>
-          p.cluster.primaryLink === link || p.cluster.allItems.some((i: { link: string }) => i.link === link)
-      );
-      if (found) {
-        setTimeout(() => {
-          const el = this.content.querySelector(`[data-news-id="${CSS.escape(link)}"]`)
-            ?? this.content.querySelector(`a[href="${CSS.escape(link)}"]`);
-          if (el) this.flashHighlight(el);
-        }, 350);
-        return;
+  public scrollToNewsItem(link: string, identity?: NewsIdentity): void {
+    this.clearSearchReveal();
+    if (!this.hasNewsItem(link, identity)) return;
+    this.searchReveal = { link, identity, renderRequestId: this.renderRequestId, expiresAt: Date.now() + 3100 };
+    this.searchRevealTimer = setTimeout(() => this.clearSearchReveal(), 3100);
+    this.revealSearchItem();
+  }
+
+  private clearSearchReveal(): void {
+    if (this.searchRevealTimer !== null) clearTimeout(this.searchRevealTimer);
+    this.searchRevealTimer = null;
+    this.searchReveal = null;
+    this.content.querySelectorAll('.search-highlight').forEach(el => el.classList.remove('search-highlight'));
+  }
+
+  private revealSearchItem(): void {
+    const selection = this.searchReveal;
+    if (!selection || selection.renderRequestId !== this.renderRequestId || this.isLocked) return;
+    if (Date.now() >= selection.expiresAt) {
+      this.clearSearchReveal();
+      return;
+    }
+    const { link, identity } = selection;
+    if (!this.hasNewsItem(link, identity)) return;
+    const cluster = this.lastRawClusters?.find(c =>
+      (!identity && c.primaryLink === link) || c.allItems.some(item => matchesNewsItem(item, link, identity)));
+    const selector = cluster
+      ? `.item.clustered[data-cluster-id="${CSS.escape(cluster.id)}"]`
+      : `.item[data-news-id="${CSS.escape(link)}"]`;
+    const reveal = () => {
+      if (this.searchReveal !== selection || selection.renderRequestId !== this.renderRequestId || Date.now() >= selection.expiresAt) return;
+      const el = identity && !cluster
+        ? [...this.content.querySelectorAll<HTMLElement>(selector)].find(row => row.dataset.newsTitle === identity.title && row.dataset.newsSource === identity.source)
+        : this.content.querySelector(selector);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        this.flashHighlight(el);
       }
+    };
+    if (cluster && this.useVirtualScroll && this.lastRawClusters && this.lastRawClusters.length > VIRTUAL_SCROLL_THRESHOLD && this.windowedList) {
+      if (this.windowedList.scrollToItem(prepared => prepared.cluster.id === cluster.id)) setTimeout(reveal, 350);
+      return;
     }
-    // Flat mode or small lists rendered directly in DOM
-    const el = this.content.querySelector(`[data-news-id="${CSS.escape(link)}"]`)
-      ?? this.content.querySelector(`a[href="${CSS.escape(link)}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      this.flashHighlight(el);
-    }
+    reveal();
   }
 
   private flashHighlight(el: Element): void {
     el.classList.remove('search-highlight');
     void (el as HTMLElement).offsetWidth;
     el.classList.add('search-highlight');
-    setTimeout(() => el.classList.remove('search-highlight'), 3100);
   }
 
   /**
    * Clean up resources
    */
   public destroy(): void {
+    this.clearSearchReveal();
+    this.renderRequestId += 1;
     // Clean up windowed list
     this.windowedList?.destroy();
     this.windowedList = null;

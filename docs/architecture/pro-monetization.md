@@ -78,7 +78,7 @@ Both surfaces take the same path since #4449: a top-level redirect to Dodo's hos
 ## Billing management
 
 - **Entry point**: `UnifiedSettings.ts:450` renders a `<button class="manage-billing-btn">Manage Billing</button>` inside the settings modal.
-- **Edge gateway**: `api/customer-portal.ts` validates Clerk bearer, relays to `/relay/customer-portal` on Convex, which calls Dodo to mint a user-scoped portal session.
+- **Edge gateway**: `api/customer-portal.ts` validates Clerk bearer, relays to `/relay/customer-portal` on Convex, which calls Dodo to mint a user-scoped portal session. Payment-failure emails link to `GET /api/customer-portal?t=<token>` instead. Convex verifies the HMAC token (`verifyDunningPortalToken`) and mints a session only while the user still has an on-hold subscription.
 - **Client-side**: `src/services/billing.ts:openBillingPortal()` fetches the portal URL via Convex action and opens in a new tab. Falls back to `https://customer.dodopayments.com` (generic portal) on any failure.
 - **/pro parallel**: `pro-test/src/services/checkout.ts:openBillingPortal()` is triggered when a `/pro`-origin checkout hits `ACTIVE_SUBSCRIPTION_EXISTS`; currently redirects via `window.location.assign()` (same-tab).
 - **Payment failures**: `src/components/payment-failure-banner.ts` renders a persistent red banner when subscription status is `on_hold`; auto-hides on return to `active`.

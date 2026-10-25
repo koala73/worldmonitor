@@ -1372,6 +1372,22 @@ describe('#5857 — pure formatters cannot be tricked into forging a line', () =
       `the body must not be able to open its own section; got:\n${viaBody}`);
   });
 
+  it('buildEnergyExposure: marks rows older than the header year with their own year', () => {
+    const out = buildEnergyExposure({
+      year: 2025,
+      gas: [{ name: 'Algeria', share: 99, year: 2024 }, { name: 'Italy', share: 46, year: 2025 }],
+      oil: [{ name: 'Western Sahara', share: 100, year: 2009 }],
+    });
+    assert.match(out, /Algeria 99% \(2024\), Italy 46%(,|\n|$)/);
+    assert.match(out, /Western Sahara 100% \(2009\)/);
+  });
+
+  it('buildEnergyExposure: marks undated rows (pre-reseed payload) as year unavailable', () => {
+    const out = buildEnergyExposure({ year: 2025, gas: [{ name: 'Qatar', share: 100 }] });
+    assert.match(out, /Qatar 100% \(year n\/a\)/);
+    assert.doesNotMatch(buildEnergyExposure({ gas: [{ name: 'Qatar', share: 100 }] }), /n\/a/);
+  });
+
   it('buildEnergyExposure: a newline in a country name does not forge an extra line', () => {
     const out = buildEnergyExposure({ year: 2023, gas: [{ name: `Italy${FORGED_BULLET}`, share: 46 }] });
     assertNoForgedBullet(out, 0, 'buildEnergyExposure');

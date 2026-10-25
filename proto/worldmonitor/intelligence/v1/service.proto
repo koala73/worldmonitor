@@ -8,6 +8,8 @@ import "worldmonitor/intelligence/v1/get_company_enrichment.proto";
 import "worldmonitor/intelligence/v1/get_country_facts.proto";
 import "worldmonitor/intelligence/v1/get_country_intel_brief.proto";
 import "worldmonitor/intelligence/v1/get_country_risk.proto";
+import "worldmonitor/intelligence/v1/get_country_history.proto";
+import "worldmonitor/intelligence/v1/get_country_signal_observations.proto";
 import "worldmonitor/intelligence/v1/get_pizzint_status.proto";
 import "worldmonitor/intelligence/v1/get_risk_scores.proto";
 import "worldmonitor/intelligence/v1/list_security_advisories.proto";
@@ -41,6 +43,11 @@ import "worldmonitor/intelligence/v1/get_similar_events.proto";
 service IntelligenceService {
   option (sebuf.http.service_config) = {base_path: "/api/intelligence/v1"};
 
+  // Read one bounded country-qualified observation family or eligible flight page for the country panel, with source clocks and coverage.
+  rpc GetCountrySignalObservations(GetCountrySignalObservationsRequest) returns (GetCountrySignalObservationsResponse) {
+    option (sebuf.http.config) = {path: "/get-country-signal-observations", method: HTTP_METHOD_GET};
+  }
+
   // Retrieve composite country risk scores and strategic assessments by region, with component contributions and advisory context for geopolitical risk monitoring.
   rpc GetRiskScores(GetRiskScoresRequest) returns (GetRiskScoresResponse) {
     option (sebuf.http.config) = {
@@ -60,6 +67,14 @@ service IntelligenceService {
   // ClassifyEvent analyzes a news event using AI models.
   rpc ClassifyEvent(ClassifyEventRequest) returns (ClassifyEventResponse) {
     option (sebuf.http.config) = {path: "/classify-event", method: HTTP_METHOD_GET};
+  }
+
+  // Daily country snapshots with source versions, gaps and tier-limited depth.
+  rpc GetCountryHistory(GetCountryHistoryRequest) returns (GetCountryHistoryResponse) {
+    option (sebuf.http.config) = {
+      path: "/get-country-history"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // GetCountryRisk retrieves composite risk intelligence for a specific country.

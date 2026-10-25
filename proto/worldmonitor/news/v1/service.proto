@@ -9,6 +9,8 @@ import "worldmonitor/news/v1/list_feed_digest.proto";
 import "worldmonitor/news/v1/list_country_headlines.proto";
 import "worldmonitor/news/v1/list_label_changes.proto";
 import "worldmonitor/news/v1/error_reports.proto";
+import "worldmonitor/news/v1/search_fact_checks.proto";
+import "worldmonitor/news/v1/search_claim_headlines.proto";
 
 // NewsService provides AI-powered article summarization and feed aggregation.
 service NewsService {
@@ -54,5 +56,15 @@ service NewsService {
   // Requires the X-Trust-Review-Key header (the server's TRUST_REVIEW_SECRET), not an API key; without it the response is 401.
   rpc ReviewErrorReport(ReviewErrorReportRequest) returns (ReviewErrorReportResponse) {
     option (sebuf.http.config) = {path: "/review-error-report", method: HTTP_METHOD_POST};
+  }
+
+  // SearchFactChecks returns ratings that IFCN-verified fact-checkers published about claims similar to the one given, for citation with attribution.
+  rpc SearchFactChecks(SearchFactChecksRequest) returns (SearchFactChecksResponse) {
+    option (sebuf.http.config) = {path: "/search-fact-checks", method: HTTP_METHOD_GET};
+  }
+
+  // SearchClaimHeadlines returns the fresh headlines from every configured feed that share a claim's words, so the /verify page and verify_claim can build its coverage card.
+  rpc SearchClaimHeadlines(SearchClaimHeadlinesRequest) returns (SearchClaimHeadlinesResponse) {
+    option (sebuf.http.config) = {path: "/search-claim-headlines", method: HTTP_METHOD_GET};
   }
 }

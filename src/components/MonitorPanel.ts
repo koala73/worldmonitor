@@ -9,6 +9,15 @@ import { h, replaceChildren } from '@/utils/dom-utils';
 export class MonitorPanel extends Panel {
   private monitors: Monitor[] = [];
   private onMonitorsChange?: (monitors: Monitor[]) => void;
+  private readonly input = h('input', {
+    type: 'text',
+    className: 'monitor-input',
+    id: 'monitorKeywords',
+    placeholder: t('components.monitor.placeholder'),
+    onKeypress: (e: Event) => { if ((e as KeyboardEvent).key === 'Enter') this.addMonitor(); },
+  }) as HTMLInputElement;
+  private readonly monitorsList = h('div', { id: 'monitorsList' });
+  private readonly monitorsResults = h('div', { id: 'monitorsResults' });
 
   constructor(initialMonitors: Monitor[] = []) {
     super({ id: 'monitors', title: t('panels.monitors'), infoTooltip: t('components.monitors.infoTooltip') });
@@ -17,33 +26,22 @@ export class MonitorPanel extends Panel {
   }
 
   private renderInput(): void {
-    const input = h('input', {
-      type: 'text',
-      className: 'monitor-input',
-      id: 'monitorKeywords',
-      placeholder: t('components.monitor.placeholder'),
-      onKeypress: (e: Event) => { if ((e as KeyboardEvent).key === 'Enter') this.addMonitor(); },
-    });
-
     const inputContainer = h('div', { className: 'monitor-input-container' },
-      input,
+      this.input,
       h('button', { className: 'monitor-add-btn', id: 'addMonitorBtn', onClick: () => this.addMonitor() },
         t('components.monitor.add'),
       ),
     );
 
-    const monitorsList = h('div', { id: 'monitorsList' });
-    const monitorsResults = h('div', { id: 'monitorsResults' });
-
     // Route through the sanctioned helper (#6557): the monitor UI is the
     // panel's authoritative content — atomic replace with error-state clear.
-    this.setContentNodes(inputContainer, monitorsList, monitorsResults);
+    this.setContentNodes(inputContainer, this.monitorsList, this.monitorsResults);
 
     this.renderMonitorsList();
   }
 
   private addMonitor(): void {
-    const input = document.getElementById('monitorKeywords') as HTMLInputElement;
+    const input = this.input;
     const keywords = input.value.trim();
 
     if (!keywords) return;
@@ -67,10 +65,7 @@ export class MonitorPanel extends Panel {
   }
 
   private renderMonitorsList(): void {
-    const list = document.getElementById('monitorsList');
-    if (!list) return;
-
-    replaceChildren(list,
+    replaceChildren(this.monitorsList,
       ...this.monitors.map((m) =>
         h('span', { className: 'monitor-tag' },
           h('span', { className: 'monitor-tag-color', style: { background: m.color } }),
@@ -85,8 +80,7 @@ export class MonitorPanel extends Panel {
   }
 
   public renderResults(news: NewsItem[]): void {
-    const results = document.getElementById('monitorsResults');
-    if (!results) return;
+    const results = this.monitorsResults;
 
     if (this.monitors.length === 0) {
       replaceChildren(results,

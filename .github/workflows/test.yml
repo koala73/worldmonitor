@@ -32,6 +32,7 @@ jobs:
       consumer_prices: ${{ steps.diff.outputs.consumer_prices }}
       desktop_config: ${{ steps.diff.outputs.desktop_config }}
       desktop_rust: ${{ steps.diff.outputs.desktop_rust }}
+      zapier: ${{ steps.diff.outputs.zapier }}
     steps:
       - id: diff
         shell: bash
@@ -53,6 +54,7 @@ jobs:
             echo "consumer_prices=true" >> "$GITHUB_OUTPUT"
             echo "desktop_config=true" >> "$GITHUB_OUTPUT"
             echo "desktop_rust=true" >> "$GITHUB_OUTPUT"
+            echo "zapier=true" >> "$GITHUB_OUTPUT"
           }
           ZERO=0000000000000000000000000000000000000000
           if [ "${{ github.event_name }}" = "push" ]; then
@@ -161,6 +163,15 @@ jobs:
             END { print count + 0 }
           ')
           echo "code=$( [ "$CODE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          ZAPIER=$(printf '%s\n' "$FILES" | awk '
+            /^integrations\/zapier\// { count++; next }
+            /^shared\/event-triggers\.json$/ { count++; next }
+            /^tests\/package-test-command-paths\.test\.mjs$/ { count++; next }
+            /^\.github\/workflows\/test\.yml$/ { count++; next }
+            /^\.github\/scripts\/deploy-gate\.sh$/ { count++; next }
+            END { print count + 0 }
+          ')
+          echo "zapier=$( [ "$ZAPIER" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           # Only proven non-browser inputs may skip this job. New paths run it
           # until their owner can establish that they cannot affect the smoke.
           BROWSER=$(printf '%s\n' "$FILES" | awk '
@@ -263,6 +274,26 @@ jobs:
           ')
           echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
+  zapier:
+    needs: changes
+    if: needs.changes.outputs.zapier == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: integrations/zapier
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: integrations/zapier/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
+
   docs-stats:
     # Always-on: derives build-owned inventory facts and validates fixed or
     # semantic documentation contracts. Runs on every PR/push (docs-only PRs
@@ -278,7 +309,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - uses: ./.github/actions/install-root-deps
       - name: Generate and validate build-owned inventory facts
         run: |
@@ -295,6 +325,8 @@ jobs:
         # Docs-only PRs skip the unit shards, so without this step a missing
         # docs/zh mirror surfaces only as a red main after merge (#8968).
         run: node --test tests/docs-i18n-parity.test.mjs
+      - name: Published internal links resolve without redirects
+        run: node --import tsx --test tests/internal-link-redirects.test.mjs
       - name: Source attribution inventory is current
         run: node scripts/source-attribution.mjs --check
       - name: Homepage teaser strip matches the committed pulse snapshot
@@ -320,14 +352,18 @@ jobs:
         # builds now run once in unit-built-output. Four, not three: the
         # test:data step saturates the runner's CPU, so a fourth runner is the
         # cheapest way to get more parallelism. Three paired benchmark runs took
-        # the slowest shard from 236-269s to 176-186s. The
+        # the slowest shard from 236-269s to 176-186s. Five, not four: after
+        # the other Test jobs got faster the unit shards (~207s) were the
+        # slowest job again; on the same runner image the slowest test:data
+        # step took 123s at five shards and 138-155s at four (bench run
+        # 40083951067), and raising concurrency to 6 or 8 did not help. The
         # sharder balances by measured durations and is generic in the count,
         # so the denominator on the test:data step below is the only other
         # place this number lives. tests/ci-test-selection.test.mjs pins that
         # denominator to this matrix's length, and tests/data-test-shards.test.mjs
         # reads the matrix and proves the shards together run the inventory
         # exactly once.
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5]
     timeout-minutes: 15
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -349,36 +385,47 @@ jobs:
             package-lock.json
             pro-test/package-lock.json
             blog-site/package-lock.json
-      # The dependency restore is a cache download and the Redis install is an
-      # apt pass. Neither reads the other's output, so they run side by side.
-      - parallel:
-          - uses: ./.github/actions/install-root-deps
-          # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
-          # archive's Lua runs against a real server: the relay harness stubs the
-          # EVAL and the proxy command-gate test only matches the script TEXT. That
-          # suite self-skips when the binaries are absent, so without this step the
-          # capacity refusal, newest-capture-wins compare, EXPIREAT and atomic
-          # seed-meta update were verified by nothing in CI. ubuntu-latest does not
-          # ship redis-server. Cheap (~2s) and shard-agnostic, so every shard gets it.
-          # The runner image package index goes stale when Ubuntu supersedes a
-          # redis build: the pinned .deb then 404s and every shard fails before
-          # tests run (2026-10-08, 7.0.15-1ubuntu0.24.04.4). Refresh the index
-          # and retry only when the fast install fails.
-          - name: Install Redis for the archive Lua suite
-            run: |
-              sudo apt-get install -y --no-install-recommends redis-server redis-tools \
-                || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends redis-server redis-tools; }
+            scripts/package-lock.json
+      # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
+      # archive's Lua runs against a real server: the relay harness stubs the
+      # EVAL and the proxy command-gate test only matches the script TEXT. That
+      # suite self-skips when the binaries are absent, so without this step the
+      # capacity refusal, newest-capture-wins compare, EXPIREAT and atomic
+      # seed-meta update were verified by nothing in CI. ubuntu-latest does not
+      # ship redis-server, so every shard installs it. The action installs
+      # from a package cache with dpkg (a slow mirror used to put 24-58s on
+      # the slowest shard), refreshes the stale index only on a miss, and
+      # fails the shard if the binaries are missing.
+      #
+      # It runs before install-root-deps, not beside it: both composite actions
+      # use actions/cache, which this job does not reference at the top level,
+      # so in a parallel group the runner downloaded it twice at once and one
+      # copy failed ("Could not find file .../actions/cache/<sha>/examples.md",
+      # run 39936254975). Run in turn, the second reuses the first download.
+      - name: Install Redis for the archive Lua suite
+        uses: ./.github/actions/install-redis
+      - uses: ./.github/actions/install-root-deps
+        with:
+          # setup-node restores the npm cache for this job's other install.
+          npm-cache: 'false'
       - name: Install blog-site deps for SEO contract tests
         # Unit-only nested install; keeps postinstall free of blog-site.
         # Needed so blog-seo-contract can load astro.config.mjs.
         run: npm run ci:blog-site
+      - name: Install scripts/ deps for the seeder link check
+        # Railway seeders install scripts/package-lock.json, not the root tree.
+        # tests/nixpacks-seeder-import-graph.test.mjs links their named package
+        # imports against this install (#9608 shipped an undici 8 import to an
+        # undici 7 container with every suite green).
+        run: npm ci --prefix scripts --ignore-scripts --no-audit --no-fund
       - name: Data tests without built output
         # No build here: the unit-built-output job builds dist/ and public/pro/
         # once and runs every suite that names them. The marker stays set, so a
         # guarded suite that lands in a shard fails instead of skipping.
         env:
           WM_EXPECT_BUILT_OUTPUT: '1'
-        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/4 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
+          WM_EXPECT_SCRIPTS_DEPS: '1'
+        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
       - name: Upload data test timings
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -402,7 +449,10 @@ jobs:
         with:
           # The health-probe cutover gate compares the exact PR base with the
           # candidate tree. A shallow checkout would make that gate vacuous.
+          # Blobless like the unit shards: the gate reads one blob
+          # (api/health.js at the base), fetched on demand.
           fetch-depth: 0
+          filter: blob:none
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
@@ -412,6 +462,9 @@ jobs:
             pro-test/package-lock.json
             blog-site/package-lock.json
       - uses: ./.github/actions/install-root-deps
+        with:
+          # setup-node restores the npm cache for this job's other install.
+          npm-cache: 'false'
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
@@ -654,9 +707,17 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - uses: ./.github/actions/install-root-deps
       - run: npm run test:sidecar
+
+      - name: Download the shipped Node.js runtime
+        run: bash scripts/download-node.sh --target x86_64-unknown-linux-gnu
+
+      - name: Test sidecar with the shipped Node.js runtime
+        run: |
+          export PATH="$PWD/src-tauri/sidecar/node:$PATH"
+          node --version
+          npm run test:sidecar
 
   # Desktop drift gates (#5902): path-conditional so unrelated PRs skip them
   # (deploy-gate counts "skipped" as passing). desktop-config is the cheap
@@ -737,10 +798,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - name: Install Rust stable
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
         with:
-          toolchain: stable
+          toolchain: 1.99.1
       - name: Rust cache
         uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
@@ -775,7 +836,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - uses: ./.github/actions/install-root-deps
       - run: npm run test:convex
 
@@ -793,7 +853,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - uses: ./.github/actions/install-root-deps
       # `npm run typecheck` only covers src/, so these files would otherwise
       # never be type-checked — the first run of this config caught four real
@@ -810,8 +869,10 @@ jobs:
         # runner's CPU 81-85% busy, and four workers only bought ~15% with more
         # flaky retries, so more runners is where the time comes from. The spec
         # lists in package.json (test:e2e:ci-smoke:1..4) are balanced by
-        # measured test-seconds, ~197s each. Re-balance them from the per-test
-        # durations in the list reporter output when a spec grows.
+        # measured test-seconds (history in docs/solutions/performance-issues/
+        # ci-runners-are-cpu-bound-shard-before-parallel-steps.md). Re-balance
+        # them from the per-test durations in the list reporter output when a
+        # spec grows.
         shard: [1, 2, 3, 4]
     timeout-minutes: 20
     needs: changes
@@ -825,7 +886,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - name: Use Ubuntu repositories for browser OS libraries
         # Playwright needs Ubuntu libraries. Unrelated Chrome repository index
         # failures must not prevent their installation on this disposable runner.
@@ -979,6 +1039,16 @@ jobs:
   variant-smoke-pro-webmcp:
     needs: changes
     if: needs.changes.outputs.browser == 'true'
+    # Two runners: the strict WebMCP smoke (61-81s) used to start only after
+    # the /pro gates, so the job took ~200s. It is CPU-bound on the Vite dev
+    # server and Chrome, and more workers did not shorten it (bench run
+    # 40097331565), so the gates moved off its path instead. Both parts keep the
+    # full setup: each builds /pro (the legacy WebMCP tests load
+    # /pro/welcome.html) and a retry records video with Playwright's ffmpeg.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [webmcp, pro-gates]
     runs-on: ubuntu-latest
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
@@ -990,7 +1060,15 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
+          # node_modules comes from install-root-deps, so ~/.npm serves only
+          # the pro-test install inside build:pro. Keyed on the root lockfile
+          # it restored the 583 MB root download cache, and both parts pulling
+          # it at once took 12-62s instead of ~6s.
+          cache-dependency-path: pro-test/package-lock.json
       - uses: ./.github/actions/install-root-deps
+        with:
+          # setup-node restores the npm cache for this job's other install.
+          npm-cache: 'false'
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -1080,6 +1158,7 @@ jobs:
             run: npm run build:pro
       - name: Run fail-closed prehydration browser checks
         id: prehydration
+        if: matrix.part == 'pro-gates'
         run: npm run test:e2e:prehydration
       - name: Upload prehydration Playwright artifacts
         if: ${{ !cancelled() && steps.prehydration.outcome != 'skipped' }}
@@ -1090,66 +1169,26 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       # Named explicitly for the same reason as the ci-smoke set above: nothing
-      # runs the e2e/ glob, so this gate reported green while never executing.
-      # It reads the same public/pro/ bytes the build step above produced, and
-      # nothing between here and there rebuilds them -- it sits after the
-      # prehydration upload rather than beside its build because
-      # dashboard-build-guards.test.mjs pins that build/prehydration pair as
-      # literally adjacent text.
-      - name: Run critical-CSS layout-shift gate
-        id: pro-cls
-        run: npm run test:e2e:pro-cls
-      # Its own upload, per the rule above: Playwright clears test-results/ when
-      # the next run starts, so the WebMCP step would otherwise delete this
-      # gate's failure trace before anyone could read it.
-      - name: Upload critical-CSS CLS Playwright artifacts
-        if: ${{ !cancelled() && steps.pro-cls.outcome != 'skipped' }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: playwright-pro-cls-${{ github.run_id }}-${{ github.run_attempt }}
-          path: test-results/
-          if-no-files-found: ignore
-          retention-days: 14
-      # Named explicitly for the same reason as the gates above. It reads the
-      # same public/pro/ bytes and proves mounted /pro fits phone viewports.
-      - name: Run /pro mobile overflow gate
-        id: pro-overflow
-        run: npm run test:e2e:pro-overflow
-      - name: Upload /pro mobile overflow Playwright artifacts
-        if: ${{ !cancelled() && steps.pro-overflow.outcome != 'skipped' }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: playwright-pro-overflow-${{ github.run_id }}-${{ github.run_attempt }}
-          path: test-results/
-          if-no-files-found: ignore
-          retention-days: 14
-      # Named explicitly for the same reason as the gates above: nothing runs
-      # the e2e/ glob, so an unnamed spec would never execute. It reads the same
-      # public/pro/ bytes the build step above produced.
-      - name: Run /pro hero native-animation gate
-        id: pro-hero
-        run: npm run test:e2e:pro-hero
+      # runs the e2e/ glob, so an unnamed gate reported green while never
+      # executing. The four /pro gates (critical-CSS layout shift, mobile
+      # overflow, hero native animation, hero LCP) share one Playwright run:
+      # each run starts the Vite dev server and Chrome (~3.5s), and separate
+      # runs went one after another. They read the same public/pro/ bytes the
+      # build step above produced, and nothing between here and there rebuilds
+      # them -- they sit after the prehydration upload rather than beside its
+      # build because dashboard-build-guards.test.mjs pins that
+      # build/prehydration pair as literally adjacent text.
+      - name: Run /pro critical-CSS, overflow, hero animation and LCP gates
+        id: pro-gates
+        if: matrix.part == 'pro-gates'
+        run: npm run test:e2e:pro-gates
       # Its own upload: Playwright clears test-results/ when the next run
-      # starts, so a later step would delete this gate's failure trace.
-      - name: Upload /pro hero animation Playwright artifacts
-        if: ${{ !cancelled() && steps.pro-hero.outcome != 'skipped' }}
+      # starts, so a later run would delete these gates' failure traces.
+      - name: Upload /pro gate Playwright artifacts
+        if: ${{ !cancelled() && steps.pro-gates.outcome != 'skipped' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: playwright-pro-hero-${{ github.run_id }}-${{ github.run_attempt }}
-          path: test-results/
-          if-no-files-found: ignore
-          retention-days: 14
-      # Named explicitly for the same reason as the gates above. It reads the
-      # same public/pro/ bytes and proves the prerendered hero, not the React
-      # mount, owns the /pro LCP entry.
-      - name: Run /pro hero LCP gate
-        id: pro-lcp
-        run: npm run test:e2e:pro-lcp
-      - name: Upload /pro hero LCP Playwright artifacts
-        if: ${{ !cancelled() && steps.pro-lcp.outcome != 'skipped' }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: playwright-pro-lcp-${{ github.run_id }}-${{ github.run_attempt }}
+          name: playwright-pro-gates-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14
@@ -1158,6 +1197,7 @@ jobs:
       # system Chrome fails the required PR job instead of silently skipping.
       - name: Run strict WebMCP iframe smoke in Chrome
         id: webmcp
+        if: matrix.part == 'webmcp'
         run: npm run test:e2e:webmcp
       # Gated on the WebMCP step having actually run: if an earlier tail step
       # fails, this step is skipped, and without the guard this upload would
@@ -1212,7 +1252,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
       - uses: ./.github/actions/install-root-deps
       - run: npm run test:resilience-validation-smoke
 

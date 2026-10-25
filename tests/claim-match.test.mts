@@ -3,8 +3,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  CLAIM_CANDIDATE_LIMIT,
   CLAIM_MATCH_MAX_CLUSTERS,
   buildClaimCard,
+  claimCandidates,
   checkClaimFigures,
   claimOverlap,
   claimTokens,
@@ -157,5 +159,37 @@ describe('buildClaimCard state', () => {
     const empty = buildClaimCard('Mars colony declares independence', []);
     assert.equal(empty.state, 'unknown');
     assert.equal(empty.found, false);
+  });
+
+  it('candidates of a searched pool: none left is still not-found, because the pool was searched', () => {
+    assert.equal(buildClaimCard('Mars colony declares independence', [], 2).state, 'not-found');
+  });
+});
+
+describe('claimCandidates over a large pool', () => {
+  // Clustering keeps only the newest 1,000 items, so 1,200 newer headlines
+  // about something else push the two older reports of the claim out.
+  const older = new Date('2026-10-14T08:00:00Z');
+  const pool = [
+    ...Array.from({ length: 1200 }, (_, i) => item(`Feed ${i}`, `Storm number ${i} reaches the coast`, { pubDate: new Date(Date.parse('2026-10-16T08:00:00Z') + i * 1000) })),
+    item('Reuters', 'Brazil abolishes six-day workweek in win for Lula', { pubDate: older }),
+    item('BBC World', 'Brazil abolishes six-day working week, a win for Lula', { pubDate: older }),
+  ];
+  const claim = 'Brazil abolishes six-day workweek in win for Lula';
+
+  it('the whole pool loses the older reports to the clustering cap', () => {
+    assert.equal(buildClaimCard(claim, pool).state, 'not-found');
+  });
+
+  it('the candidates keep them, best overlap first, and only headlines sharing a word', () => {
+    const candidates = claimCandidates(claim, pool);
+    assert.deepEqual(candidates.map((c) => c.source), ['Reuters', 'BBC World']);
+    assert.equal(buildClaimCard(claim, candidates, pool.length).state, 'corroborated');
+  });
+
+  it('caps the candidates, newest first among equal overlap', () => {
+    const tied = claimCandidates('storm coast', pool, 3);
+    assert.deepEqual(tied.map((c) => c.source), ['Feed 1199', 'Feed 1198', 'Feed 1197']);
+    assert.equal(claimCandidates(claim, pool).length <= CLAIM_CANDIDATE_LIMIT, true);
   });
 });

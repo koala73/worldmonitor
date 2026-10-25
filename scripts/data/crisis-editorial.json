@@ -1,0 +1,1829 @@
+[
+  {
+    "slug": "iran-israel-escalation",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "Israel opened direct war with Iran on 13 June 2025 under the name Operation Rising Lion, striking military sites and the Natanz, Fordo and Isfahan nuclear facilities, according to France 24. US bombers hit the same sites on 21 June; a ceasefire took effect on 24 June, and Iran's health ministry put its civilian toll at 610 killed. Iran's president signed a law on 2 July halting cooperation with the IAEA, and on 28 August France, Germany and the UK triggered the UN 'snapback' mechanism, which returned an arms embargo and nuclear- and missile-related sanctions at the end of September.",
+        "sourceUrls": [
+          "https://www.france24.com/en/middle-east/20251226-looking-back-israel-iran-12-day-war-direct-conflict-breaks-out-between-arch-enemies",
+          "https://www.aljazeera.com/news/2026/2/28/us-israel-bomb-iran-a-timeline-of-talks-and-threats-leading-up-to-attacks",
+          "https://www.france24.com/en/live-news/20250927-snapback-what-sanctions-will-be-reimposed-on-iran"
+        ]
+      },
+      {
+        "text": "On 28 February 2026 the United States and Israel launched joint strikes on Iran; Iranian state media confirmed Supreme Leader Ali Khamenei had been killed at his office, and Netanyahu said Revolutionary Guard commanders and senior nuclear officials also died. The Assembly of Experts named his son Mojtaba Khamenei supreme leader on 8 March. A Pakistan-brokered ceasefire halted 40 days of attacks on 8 April, and on 17 June Presidents Trump and Pezeshkian signed the 14-point Islamabad Memorandum of Understanding for 60 days of talks. Al Jazeera reported that it unravelled over wording on the Strait of Hormuz: Trump declared it 'over' on 7 July and it lapsed on 17 August.",
+        "sourceUrls": [
+          "https://www.france24.com/en/asia-pacific/20260228-what-we-know-about-joint-us-israeli-air-strikes-on-iran",
+          "https://aljazeera.com/news/2026/2/28/irans-supreme-leader-ali-khamenei-killed-in-us-israeli-attacks-reports",
+          "https://www.aljazeera.com/news/2026/3/8/iran-names-khameneis-son-as-new-supreme-leader-after-fathers-killing-2",
+          "https://aljazeera.com/news/2026/4/8/us-iran-ceasefire-deal-what-are-the-terms-and-whats-next",
+          "https://www.aljazeera.com/news/2026/6/17/iran-confirms-that-mou-has-been-signed-electronically-by-both-sides",
+          "https://www.aljazeera.com/news/2026/10/20/pakistan-army-chief-in-tehran-can-diplomacy-prevent-new-us-iran-fighting",
+          "https://www.aljazeera.com/news/2026/8/17/us-iran-memorandum-of-understanding-expires-how-and-why-it-fell-apart"
+        ]
+      },
+      {
+        "text": "The diplomatic track is stalled. On 9 September 2026 the IAEA Board of Governors voted to refer Iran to the UN Security Council over non-compliance, its first such resolution in 20 years; inspectors have had no access to Iran's three bombed facilities since June 2025, and the agency suspects about 400 kg of highly enriched uranium remains. Al Jazeera reported on 21 October that Qatari- and Pakistani-mediated talks are blocked by the enrichment question. Trump has said the US will not attack Iran before the 3 November midterms, while Netanyahu has repeated a pledge to topple Iran's government ahead of Israel's 27 October election.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2026/9/9/iaea-board-resolves-to-report-iran-to-security-council-over-nuclear-program",
+          "https://aljazeera.com/news/2026/10/21/irans-enriched-uranium-re-emerges-as-point-of-contention-in-us-talks",
+          "https://www.aljazeera.com/news/2026/10/15/us-iran-stalemate-what-are-trumps-next-military-options",
+          "https://www.aljazeera.com/news/2026/10/20/pakistan-army-chief-in-tehran-can-diplomacy-prevent-new-us-iran-fighting"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Mojtaba Khamenei",
+        "role": "Named supreme leader by the Assembly of Experts on 8 March 2026 after his father's killing; aged 56, never elected, with deep ties to the IRGC.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/3/8/iran-names-khameneis-son-as-new-supreme-leader-after-fathers-killing-2"
+      },
+      {
+        "name": "Israeli government under Benjamin Netanyahu",
+        "role": "Co-launched the 28 February 2026 war with the US; Netanyahu says toppling Iran's government is key to preventing nuclear weapons.",
+        "sourceUrl": "https://aljazeera.com/news/2026/10/21/irans-enriched-uranium-re-emerges-as-point-of-contention-in-us-talks"
+      },
+      {
+        "name": "United States",
+        "role": "Co-belligerent since 28 February 2026; it keeps a naval blockade on Iran's southern ports and at least three carrier strike groups in or heading to the Gulf.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/15/us-iran-stalemate-what-are-trumps-next-military-options"
+      },
+      {
+        "name": "International Atomic Energy Agency (IAEA)",
+        "role": "UN nuclear watchdog whose board referred Iran to the Security Council on 9 September 2026; it has been barred from Iran's three nuclear facilities since June 2025.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/9/9/iaea-board-resolves-to-report-iran-to-security-council-over-nuclear-program"
+      },
+      {
+        "name": "Pakistan",
+        "role": "Mediator of the 8 April ceasefire and the Islamabad memorandum; army chief Asim Munir made his fifth visit to Tehran since April on 20 October 2026.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/20/pakistan-army-chief-in-tehran-can-diplomacy-prevent-new-us-iran-fighting"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2025-06-13",
+        "event": "Israel launched Operation Rising Lion, with about 200 aircraft striking Iranian military sites and the Natanz, Fordo and Isfahan nuclear facilities.",
+        "sourceUrl": "https://www.france24.com/en/middle-east/20251226-looking-back-israel-iran-12-day-war-direct-conflict-breaks-out-between-arch-enemies"
+      },
+      {
+        "date": "2025-09-27",
+        "event": "UN sanctions lifted under the 2015 nuclear deal returned at midnight after France, Germany and the UK invoked the snapback mechanism.",
+        "sourceUrl": "https://www.france24.com/en/live-news/20250927-snapback-what-sanctions-will-be-reimposed-on-iran"
+      },
+      {
+        "date": "2026-02-28",
+        "event": "The US and Israel began joint strikes on Iran; Iranian state media confirmed Supreme Leader Ali Khamenei was killed at his office.",
+        "sourceUrl": "https://aljazeera.com/news/2026/2/28/irans-supreme-leader-ali-khamenei-killed-in-us-israeli-attacks-reports"
+      },
+      {
+        "date": "2026-04-08",
+        "event": "A Pakistan-brokered two-week ceasefire halted 40 days of US-Israeli attacks, with Iran saying Hormuz shipping could resume in coordination with its armed forces.",
+        "sourceUrl": "https://aljazeera.com/news/2026/4/8/us-iran-ceasefire-deal-what-are-the-terms-and-whats-next"
+      },
+      {
+        "date": "2026-06-17",
+        "event": "Presidents Trump and Pezeshkian electronically signed the Islamabad Memorandum of Understanding, extending the ceasefire for 60 days of negotiations on the nuclear programme and sanctions.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/6/17/iran-confirms-that-mou-has-been-signed-electronically-by-both-sides"
+      },
+      {
+        "date": "2026-07-07",
+        "event": "Trump declared the memorandum 'over' as US strikes on Iran continued; the 60-day window lapsed on 17 August with no deal.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/8/17/us-iran-memorandum-of-understanding-expires-how-and-why-it-fell-apart"
+      },
+      {
+        "date": "2026-09-09",
+        "event": "The IAEA Board of Governors voted, with Russia, China and Niger against, to refer Iran to the UN Security Council over non-compliance.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/9/9/iaea-board-resolves-to-report-iran-to-security-council-over-nuclear-program"
+      },
+      {
+        "date": "2026-10-20",
+        "event": "Pakistan's army chief Asim Munir arrived in Tehran as the US sent an additional carrier to the region and Trump pledged no attack before the 3 November midterms.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/20/pakistan-army-chief-in-tehran-can-diplomacy-prevent-new-us-iran-fighting"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Missile and drone alerts over Israel",
+        "why": "Iranian retaliation for any renewed strike would first register as sirens across Israel, as in February-April 2026; a resumption ends the current pause.",
+        "trackedBy": "Israel Sirens"
+      },
+      {
+        "indicator": "US carrier strike groups in the Gulf",
+        "why": "At least three carrier groups were in or heading to the Gulf in mid-October with another due by late November; arrivals show whether post-midterm strikes are being staged.",
+        "trackedBy": "Force Posture"
+      },
+      {
+        "indicator": "Activity at Natanz, Fordo and Isfahan",
+        "why": "The IAEA has had no access to the three bombed sites since June 2025; construction, inspections or strikes there bear directly on the enrichment dispute blocking talks.",
+        "trackedBy": "Intel Feed"
+      },
+      {
+        "indicator": "Strike reports inside Iran",
+        "why": "Trump has ruled out US attacks before 3 November; any strike before then breaks that pledge, and one after it confirms the escalation both governments have signalled.",
+        "trackedBy": "Middle East Strikes"
+      }
+    ]
+  },
+  {
+    "slug": "ukraine-war",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "Ukraine's borders have been contested since 2014. On 27 March 2014 the UN General Assembly declared the 16 March Crimea referendum to have 'no validity' and reaffirmed Ukraine's territorial integrity by 100 votes to 11. Overnight on 23-24 February 2022, while the Security Council was in session, Russian President Vladimir Putin announced a 'military operation' in Ukraine. In September 2022 UN Secretary-General Antonio Guterres said any annexation of Donetsk, Luhansk, Kherson and Zaporizhzhia 'would have no legal value'.",
+        "sourceUrls": [
+          "https://news.un.org/en/story/2014/03/464812",
+          "https://unric.org/fr/invasion-de-lukraine-le-moment-le-plus-triste-de-mon-mandat-dit-le-chef-de-lonu/",
+          "https://news.un.org/en/story/2022/09/1129047"
+        ]
+      },
+      {
+        "text": "UN agencies keep the tallies. Marking the fourth anniversary in February 2026, Guterres cited more than 15,000 civilians killed and over 41,000 injured, including 3,200 children, Reuters reported. UNHCR estimated 5.9 million refugees from Ukraine recorded globally at the end of 2025, close to 5.4 million of them in Europe, and about 1.4 million who had returned for at least three months. OCHA's 2026 plan counts 10.8 million people in need inside Ukraine and seeks US$2.3 billion to assist 4.1 million.",
+        "sourceUrls": [
+          "https://www.arabnews.com/node/2634319/amp",
+          "https://data.unhcr.org/en/documents/download/122638",
+          "https://ukraine.un.org/en/node/308290"
+        ]
+      },
+      {
+        "text": "Diplomacy and bombardment run in parallel. In September 2026 Al Jazeera reported that US efforts had stalled during Washington's war with Iran and that US envoys proposed technical three-way talks. The UN human rights mission verified at least 328 civilians killed and 2,105 injured in September 2026, 85 per cent more than a year earlier, and recorded strikes on Kyiv's three main power stations on 13-14 October. On 23 October Reuters reported a local ceasefire for occupied Oleshky and a 270-for-270 prisoner exchange.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2026/9/25/us-seeking-to-revive-russia-ukraine-ceasefire-talks",
+          "https://news.un.org/en/story/2026/10/1168614",
+          "https://www.yahoo.com/news/world/articles/russia-ukraine-agree-local-ceasefire-011130487.html"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Ukraine (government of President Volodymyr Zelenskyy)",
+        "role": "Defending state; Zelenskyy says any peace deal requires 'substantial security guarantees' and funding to sustain Ukraine's military for another decade.",
+        "sourceUrl": "https://www.yahoo.com/news/world/articles/russia-ukraine-agree-local-ceasefire-011130487.html"
+      },
+      {
+        "name": "Russia (government of President Vladimir Putin)",
+        "role": "Invading state; Putin said in September 2026 that Moscow was ready to resume talks with Kyiv after Russia's parliamentary elections.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/9/25/us-seeking-to-revive-russia-ukraine-ceasefire-talks"
+      },
+      {
+        "name": "United States",
+        "role": "Mediator under President Donald Trump; envoy Steve Witkoff hosted Ukrainian, European and NATO officials in Miami in October 2026 as Trump eased Russian diesel sanctions.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/10/us-hosts-productive-trilateral-talks-to-end-russia-ukraine-war"
+      },
+      {
+        "name": "European Union",
+        "role": "Backer of Kyiv; foreign policy chief Kaja Kallas announced the release of $7.5bn in military-aid-linked funds for Ukraine in September 2026.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/9/25/us-seeking-to-revive-russia-ukraine-ceasefire-talks"
+      },
+      {
+        "name": "UN Human Rights Monitoring Mission in Ukraine",
+        "role": "OHCHR mission led by Danielle Bell that verifies civilian casualties; it called early October 2026 among the deadliest periods for civilians in years.",
+        "sourceUrl": "https://news.un.org/en/story/2026/10/1168614"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2014-03-27",
+        "event": "The UN General Assembly declared the Crimea referendum to have 'no validity' and reaffirmed Ukraine's territorial integrity by 100 votes to 11.",
+        "sourceUrl": "https://news.un.org/en/story/2014/03/464812"
+      },
+      {
+        "date": "2022-02-24",
+        "event": "Putin announced a 'military operation' in Ukraine as the Security Council met; Guterres called it the saddest moment of his tenure and urged Russia to withdraw.",
+        "sourceUrl": "https://unric.org/fr/invasion-de-lukraine-le-moment-le-plus-triste-de-mon-mandat-dit-le-chef-de-lonu/"
+      },
+      {
+        "date": "2022-09-29",
+        "event": "Guterres said annexing Donetsk, Luhansk, Kherson and Zaporizhzhia would have 'no legal value', calling the votes held there no genuine expression of popular will.",
+        "sourceUrl": "https://news.un.org/en/story/2022/09/1129047"
+      },
+      {
+        "date": "2024-08",
+        "event": "Ukrainian forces pushed into Russia's Kursk region; Moscow said on 26 April 2025 it had expelled them, which Kyiv denied, AP reported.",
+        "sourceUrl": "https://www.pbs.org/newshour/world/putin-visits-kursk-region-following-moscows-claim-that-it-drove-out-ukrainian-forces"
+      },
+      {
+        "date": "2025-08-15",
+        "event": "Trump and Putin met in Anchorage, Alaska, without Zelenskyy; the summit ended in under three hours with no deal to end the war.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/8/16/no-deal-at-trump-putin-meeting-key-takeaways-from-alaska-summit"
+      },
+      {
+        "date": "2026-09-25",
+        "event": "Al Jazeera reported Washington had proposed trilateral technical talks, with the UAE suggested as host, after Russian strikes on Kyiv killed at least seven people.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/9/25/us-seeking-to-revive-russia-ukraine-ceasefire-talks"
+      },
+      {
+        "date": "2026-10-10",
+        "event": "A Russian attack on Zaporizhzhia killed 20 people, including three children, a day after Trump announced a deal lifting sanctions on Russian diesel exports.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/10/us-hosts-productive-trilateral-talks-to-end-russia-ukraine-war"
+      },
+      {
+        "date": "2026-10-16",
+        "event": "The UN human rights mission reported at least 328 civilians killed and 2,105 injured in September, and strikes that left 600,000 Kyiv residents without electricity.",
+        "sourceUrl": "https://news.un.org/en/story/2026/10/1168614"
+      },
+      {
+        "date": "2026-10-23",
+        "event": "Reuters reported a local ceasefire in occupied Oleshky from 27 October for aid and evacuations, a 270-for-270 prisoner swap and November talks.",
+        "sourceUrl": "https://www.yahoo.com/news/world/articles/russia-ukraine-agree-local-ceasefire-011130487.html"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Frontline movement",
+        "why": "The UN mission recorded civilian casualties on 22 of September 2026's 30 days; a shifting contact line changes which towns are under daily fire.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Strikes on energy infrastructure",
+        "why": "Strikes on 13-14 October 2026 cut power to 600,000 Kyiv residents; repeats as winter deepens would be OCHA's 'crisis within a crisis'.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Refugee departures and returns",
+        "why": "UNHCR counted 5.9 million refugees at end-2025 and 1.4 million returnees; rising departures would signal that winter attacks are displacing people again.",
+        "trackedBy": "UNHCR Displacement"
+      },
+      {
+        "indicator": "Sanctions relief on Russian energy",
+        "why": "Trump's October 2026 move on Russian diesel drew EU objections; further waivers or new designations show whether pressure on Moscow is easing or tightening.",
+        "trackedBy": "Sanctions Pressure"
+      }
+    ]
+  },
+  {
+    "slug": "red-sea-security",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "Yemen's war predates the shipping crisis. UN News says government forces backed by a Saudi-led coalition have fought the Houthis (Ansar Allah) since 2014, with the recognised authorities based largely in Aden and the Houthis holding Sana'a and much of the north and west. A UN-brokered truce took effect on 2 April 2022, halting offensive operations inside Yemen and across its borders. OCHA's 2026 plan counts more than 22 million people in need, including 5.2 million internally displaced.",
+        "sourceUrls": [
+          "https://news.un.org/en/story/2026/02/1166951",
+          "https://news.un.org/en/story/2022/04/1115392",
+          "https://yemen.un.org/en/312711-ocha-yemen-yemen-humanitarian-needs-and-response-plan-2026-march-2026"
+        ]
+      },
+      {
+        "text": "The maritime campaign began after the Gaza war. Al Jazeera reports the Houthis launched attacks in October 2023 in support of Palestinians; on 19 November 2023 armed men rappelled from a helicopter onto the car carrier Galaxy Leader near Hodeidah, NBC News reported. After nearly two months of daily US strikes, Oman announced a US-Houthi ceasefire on 6 May 2025 covering the Red Sea and Bab al-Mandab. In July 2025 the Eternity C sank after Houthi attacks that killed at least three crew, AP reported.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2025/5/6/trump-says-bombing-of-yemen-to-stop-as-oman-confirms-us-houthi-ceasefire",
+          "https://www.nbcnews.com/news/rcna125883",
+          "https://www.yahoo.com/news/rescuers-search-missing-crew-red-071904599.html"
+        ]
+      },
+      {
+        "text": "Reuters reported in July 2026 that the Houthis declared a naval blockade of Saudi Arabia and fired on Aramco sites in Jizan and Yanbu as the 2022 ceasefire broke down, effectively joining, in Reuters' words, the wider war with Iran. By 10 September UN envoy Hans Grundberg said the Houthis controlled Mokha near Bab al-Mandeb, and Djibouti counted about 3,400 boat arrivals within days, Al Jazeera reported. On 9 October Grundberg said Yemen 'has slid back into full-scale war'; a 10 October strike on Riyadh's airport killed 12 people, Saudi authorities said.",
+        "sourceUrls": [
+          "https://gcaptain.com/houthis-fire-on-saudi-red-sea-oil-sites/",
+          "https://osesgy.unmissions.org/en/news/briefing-by-the-un-special-envoy-for-yemen-hans-grundberg-to-the-security-council-2",
+          "https://www.aljazeera.com/news/2026/9/15/thousands-flee-to-djibouti-amid-renewed-yemen-fighting",
+          "https://osesgy.unmissions.org/en/news/briefing-by-the-un-special-envoy-for-yemen-hans-grundberg-to-the-security-council-3",
+          "https://osesgy.unmissions.org/en/news/statement-by-un-special-envoy-for-yemen-hans-grundberg-on-latest-attacks-against-saudi"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Houthis (Ansar Allah)",
+        "role": "Known to the UN as Ansar Allah; by October 2026 it was fighting from the Bab al-Mandab coast to Marib and striking Saudi civilian and energy infrastructure.",
+        "sourceUrl": "https://osesgy.unmissions.org/en/news/briefing-by-the-un-special-envoy-for-yemen-hans-grundberg-to-the-security-council-3"
+      },
+      {
+        "name": "Saudi Arabia",
+        "role": "Leads the coalition backing Yemen's government and is bombing the Houthis; Saudi authorities said the 10 October 2026 Riyadh airport strike killed 12 people.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/11/world-condemns-deadly-houthi-attack-on-saudi-arabias-riyadh-airport"
+      },
+      {
+        "name": "Government of Yemen (Presidential Leadership Council)",
+        "role": "Aden-based, Saudi-backed government; President Rashad al-Alimi announced in October 2026 'the start of military operations to retake the remaining territory of the republic'.",
+        "sourceUrl": "https://www.newcastleherald.com.au/story/9362341/yemeni-leader-announces-major-operation-against-houthis/"
+      },
+      {
+        "name": "Djibouti",
+        "role": "Receives those fleeing across the strait; authorities counted about 3,400 arrivals at Obock by mid-September 2026 and prepared for up to 10,000.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/9/15/thousands-flee-to-djibouti-amid-renewed-yemen-fighting"
+      },
+      {
+        "name": "UN Special Envoy Hans Grundberg",
+        "role": "UN mediator; on 9 October 2026 he told the Security Council Yemen had 'slid back into full-scale war' and 72 UN colleagues remained detained.",
+        "sourceUrl": "https://osesgy.unmissions.org/en/news/briefing-by-the-un-special-envoy-for-yemen-hans-grundberg-to-the-security-council-3"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2022-04-02",
+        "event": "A UN-brokered two-month truce took effect; the parties agreed to halt offensive operations inside Yemen and across its borders.",
+        "sourceUrl": "https://news.un.org/en/story/2022/04/1115392"
+      },
+      {
+        "date": "2025-05-06",
+        "event": "Trump said US bombing of Yemen would stop as Oman confirmed a ceasefire under which neither side would target the other in the Red Sea.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/5/6/trump-says-bombing-of-yemen-to-stop-as-oman-confirms-us-houthi-ceasefire"
+      },
+      {
+        "date": "2025-07-09",
+        "event": "The Greek-owned Eternity C sank after hours of Houthi gunfire and drone attacks killed at least three crew, days after the Magic Seas, AP reported.",
+        "sourceUrl": "https://www.yahoo.com/news/rescuers-search-missing-crew-red-071904599.html"
+      },
+      {
+        "date": "2026-07-25",
+        "event": "Houthi forces fired on Aramco sites in Jizan and Yanbu after declaring a naval blockade of Saudi Arabia; Reuters said Brent rose above $100.",
+        "sourceUrl": "https://gcaptain.com/houthis-fire-on-saudi-red-sea-oil-sites/"
+      },
+      {
+        "date": "2026-08-24",
+        "event": "The Saudi-operated tanker Amzan was struck 63 nautical miles west of Yanbu, UKMTO said; the Houthis claimed a ballistic missile strike under their Saudi shipping 'ban'.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/8/24/yemens-houthis-report-attack-on-saudi-ship"
+      },
+      {
+        "date": "2026-09-10",
+        "event": "Grundberg told the Security Council the Houthis had gained control of Mokha near Bab al-Mandeb, ending over four years of relative calm.",
+        "sourceUrl": "https://osesgy.unmissions.org/en/news/briefing-by-the-un-special-envoy-for-yemen-hans-grundberg-to-the-security-council-2"
+      },
+      {
+        "date": "2026-10-09",
+        "event": "Grundberg said Yemen 'has slid back into full-scale war', naming fronts in Taiz, Lahj, the Bab al-Mandab coast, Marib, al-Jawf and Hajjah.",
+        "sourceUrl": "https://osesgy.unmissions.org/en/news/briefing-by-the-un-special-envoy-for-yemen-hans-grundberg-to-the-security-council-3"
+      },
+      {
+        "date": "2026-10-10",
+        "event": "A Houthi strike on Riyadh's King Khalid International Airport killed 12 people and injured over 300, according to Saudi authorities cited by the UN envoy.",
+        "sourceUrl": "https://osesgy.unmissions.org/en/news/statement-by-un-special-envoy-for-yemen-hans-grundberg-on-latest-attacks-against-saudi"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Bab al-Mandab transits",
+        "why": "The Security Council warned in September 2026 that Houthi advances in the Bab al-Mandab risk expanding the conflict; falling transits would show that risk being repriced.",
+        "trackedBy": "Chokepoint Status"
+      },
+      {
+        "indicator": "Strikes on Saudi airports and oil sites",
+        "why": "Attacks on Abha and Riyadh airports and Aramco facilities drew the UN envoy's 'grave escalation' warning; new targets would raise the risk to exports via Yanbu.",
+        "trackedBy": "Middle East Strikes"
+      },
+      {
+        "indicator": "Boat arrivals in Djibouti",
+        "why": "Djibouti logged about 3,400 arrivals at Obock within days in September 2026; renewed crossings would signal fighting returning to Yemen's coast.",
+        "trackedBy": "Displacement Flows"
+      },
+      {
+        "indicator": "Taiz and coastal highlands frontline",
+        "why": "IOM recorded 252,181 people displaced since the June 2026 escalation as of 18 October; ACLED says the highlands decide whether the Houthis hold their coastal gains.",
+        "trackedBy": "Armed Conflict Events"
+      }
+    ]
+  },
+  {
+    "slug": "sudan-conflict",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "Sudan's war began on 15 April 2023 when fighting erupted in Khartoum between the Sudanese Armed Forces (SAF) under General Abdel Fattah al-Burhan and the Rapid Support Forces (RSF) under Mohamed Hamdan Dagalo, known as Hemedti. The two had shared power after the 2019 ouster of Omar al-Bashir and jointly seized power in a 2021 coup; UN News says a dispute over integrating the RSF into the army triggered the war. The RSF traces its roots to the Janjaweed militias of the earlier Darfur conflict. Jeddah talks in May 2023, backed by the US and Saudi Arabia, yielded ceasefire pledges that were repeatedly violated.",
+        "sourceUrls": [
+          "https://news.un.org/en/story/2026/02/1166997",
+          "https://news.un.org/en/story/2025/10/1166224",
+          "https://news.un.org/en/story/2026/10/1168638",
+          "https://www.aljazeera.com/news/2023/5/31/fighting-in-sudan-a-timeline-of-key-events"
+        ]
+      },
+      {
+        "text": "UNHCR calls Sudan the world's largest displacement crisis and worst humanitarian crisis. OCHA counts 33.7 million people needing assistance in 2026 and more than 9 million displaced inside the country; UNHCR reported in February 2026 that 4.3 million Sudanese refugees were in neighbouring countries, mostly Egypt and eastern Chad. The UN fact-finding mission said in July 2026 the war had killed at least 59,000 people; Al Jazeera cites aid-worker estimates above 200,000. The IPC Famine Review Committee confirmed famine in Zamzam camp near El Fasher in August 2024 and in five areas by December 2024.",
+        "sourceUrls": [
+          "https://news.un.org/en/story/2026/02/1166979",
+          "https://www.unocha.org/sudan",
+          "https://news.un.org/en/story/2026/07/1167897",
+          "https://www.aljazeera.com/news/2026/8/13/sudan-army-says-rsf-advance-on-key-town-bordering-ethiopia",
+          "https://www.unicef.org/press-releases/famine-confirmed-sudans-north-darfur-confirming-un-agencies-worst-fears",
+          "https://www.aljazeera.com/news/2024/12/24/famine-spreading-in-war-torn-sudan-un-backed-report-says"
+        ]
+      },
+      {
+        "text": "The army retook the presidential palace in Khartoum on 21 March 2025 and holds the east and centre, while the RSF consolidated the west. In July 2025 the RSF-led Tasis alliance announced a parallel government headed by Hemedti, with SPLM-N leader Abdelaziz al-Hilu as deputy. The RSF captured El Fasher, the army's last major Darfur stronghold, in late October 2025 after a siege UN officials put at over 500 days. Fighting has since shifted to Kordofan, where Al Jazeera reports one in five recorded attacks since April 2023 has occurred, and to Blue Nile, where the RSF and SPLM-N entered Kurmuk in August 2026.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2025/3/21/sudans-army-retakes-presidential-palace-in-khartoum-strikes-blow-to-rsf",
+          "https://www.aljazeera.com/news/2025/7/28/why-sudans-rsf-chose-this-parallel-government-ahead-of-peace-talks",
+          "https://news.un.org/en/story/2025/10/1166224",
+          "https://www.aljazeera.com/news/2026/10/2/sudans-army-says-it-captured-rsf-stronghold-in-north-kordofan",
+          "https://www.aljazeera.com/news/2026/8/13/sudan-army-says-rsf-advance-on-key-town-bordering-ethiopia"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Sudanese Armed Forces (SAF)",
+        "role": "National army under General Abdel Fattah al-Burhan that holds Khartoum, the east and centre, and in October 2026 rejected negotiations, vowing to retake all RSF-held territory.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/7/sudans-al-burhan-rejects-talks-vows-to-retake-all-territory-from-rsf"
+      },
+      {
+        "name": "Rapid Support Forces (RSF)",
+        "role": "Paramilitary force led by Mohamed Hamdan Dagalo (Hemedti), rooted in the Janjaweed militias, which overran the army's last major Darfur stronghold, El Fasher, in October 2025.",
+        "sourceUrl": "https://news.un.org/en/story/2025/10/1166224"
+      },
+      {
+        "name": "Tasis alliance (parallel government)",
+        "role": "RSF-led coalition, formed February 2025, that unveiled a rival government in July 2025 with Hemedti heading its presidential council and Mohamed Hassan al-Ta'aishi as prime minister.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/7/28/why-sudans-rsf-chose-this-parallel-government-ahead-of-peace-talks"
+      },
+      {
+        "name": "SPLM-N (al-Hilu faction)",
+        "role": "Breakaway faction of the SPLM led by Abdel Aziz al-Hilu, whose fighters in South Kordofan have aligned with the RSF and joined its parallel government.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/2/sudans-army-says-it-captured-rsf-stronghold-in-north-kordofan"
+      },
+      {
+        "name": "The Quad (US, Saudi Arabia, UAE, Egypt)",
+        "role": "Mediation grouping whose ceasefire proposal al-Burhan rejected in November 2025 as the worst yet, objecting to the UAE's membership; the RSF then declared a unilateral truce.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/11/24/rsf-announces-unilateral-three-month-humanitarian-truce-in-sudan"
+      },
+      {
+        "name": "UN Personal Envoy for Sudan (Pekka Haavisto)",
+        "role": "Convener, with Switzerland, of the mediators' consultative meetings, most recently in Geneva on 21 October 2026, where neither the government nor the RSF was represented.",
+        "sourceUrl": "https://news.un.org/en/story/2026/10/1168638"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2023-04-15",
+        "event": "Heavy gunfire and explosions rocked Khartoum as fighting began between the army under al-Burhan and the RSF under Hemedti, each side blaming the other.",
+        "sourceUrl": "https://www.aljazeera.com/news/2023/5/31/fighting-in-sudan-a-timeline-of-key-events"
+      },
+      {
+        "date": "2024-08-01",
+        "event": "The IPC Famine Review Committee confirmed famine in Zamzam camp, North Darfur, its first famine determination in more than seven years, UNICEF and WFP said.",
+        "sourceUrl": "https://www.unicef.org/press-releases/famine-confirmed-sudans-north-darfur-confirming-un-agencies-worst-fears"
+      },
+      {
+        "date": "2025-03-21",
+        "event": "The army recaptured the presidential palace in Khartoum, its most symbolic gain since launching a counteroffensive against the RSF in September 2024.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/3/21/sudans-army-retakes-presidential-palace-in-khartoum-strikes-blow-to-rsf"
+      },
+      {
+        "date": "2025-07-26",
+        "event": "The RSF-led Tasis alliance unveiled a parallel government, three days before Quad-convened talks, with Hemedti heading its presidential council.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/7/28/why-sudans-rsf-chose-this-parallel-government-ahead-of-peace-talks"
+      },
+      {
+        "date": "2025-10-26",
+        "event": "The RSF seized El Fasher after an 18-month siege; rights groups and witnesses reported mass killings and sexual violence, and more than 100,000 people fled, per UN figures.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/11/19/sudans-el-fasher-a-crime-scene-after-rsf-takeover-un-aid-chief"
+      },
+      {
+        "date": "2026-02-19",
+        "event": "The UN fact-finding mission reported that the RSF's conduct in El Fasher bore the hallmarks of genocide against the Zaghawa and Fur communities.",
+        "sourceUrl": "https://news.un.org/en/story/2026/02/1166997"
+      },
+      {
+        "date": "2026-08-13",
+        "event": "The RSF and SPLM-N entered Kurmuk in Blue Nile state, on the Ethiopian border, as the army withdrew, military and government sources told Al Jazeera.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/8/13/sudan-army-says-rsf-advance-on-key-town-bordering-ethiopia"
+      },
+      {
+        "date": "2026-10-06",
+        "event": "Al-Burhan told a gathering in Merowe that the army would seize every inch of RSF-held territory and ruled out negotiations.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/7/sudans-al-burhan-rejects-talks-vows-to-retake-all-territory-from-rsf"
+      },
+      {
+        "date": "2026-10-23",
+        "event": "UN rights chief Volker Türk said drone strikes attributed to both sides killed at least 306 people in three weeks of October, 139 of them in a repeat strike at Dibab, West Kordofan.",
+        "sourceUrl": "https://news.un.org/en/story/2026/10/1168661"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "El Obeid encirclement",
+        "why": "UN investigators said in July 2026 the RSF was applying El Fasher-style tactics around North Kordofan's capital; a tightening cordon or a breach would signal the siege-then-storm pattern repeating.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Drone strikes on camps and markets",
+        "why": "OHCHR attributed at least 306 drone deaths in three weeks of October 2026 to both sides, many at displacement sites; a rising count shows the toll shifting from front lines to shelters.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Outflows to Chad and Egypt",
+        "why": "UNHCR counts 4.3 million Sudanese refugees regionally and planned for 470,000 new arrivals in 2026; a surge at Chad's border would mark renewed flight from Darfur or Kordofan.",
+        "trackedBy": "UNHCR Displacement"
+      },
+      {
+        "indicator": "Kordofan connectivity blackouts",
+        "why": "OHCHR said telecom and internet outages hindered casualty reporting after Bara fell in October 2025; new shutdowns around El Obeid or Kadugli would again limit what can be verified.",
+        "trackedBy": "Internet Disruptions"
+      },
+      {
+        "indicator": "Army posture toward mediation",
+        "why": "Al-Burhan has ruled out talks and neither party attended the October 2026 Geneva consultations; any army move toward the Quad's humanitarian-truce framework would change the trajectory.",
+        "trackedBy": "Country Instability"
+      }
+    ]
+  },
+  {
+    "slug": "lebanon-israel-escalation",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "Israel and Hezbollah fought for more than a year after October 2023 before a ceasefire took effect at 4am on 27 November 2024. It gave 60 days for Israeli troops to leave the south and for Hezbollah to pull back north of the Litani River, with the Lebanese army to become the only armed body there under a US-led monitoring task force. Israel kept five positions inside Lebanon and struck on a near-daily basis; the Lebanese government counted more than 2,000 violations in the last three months of 2025, and IOM found over 64,000 people still displaced in October 2025.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2024/11/26/ceasefire-between-lebanons-hezbollah-and-israel-what-to-know",
+          "https://www.aljazeera.com/features/2026/2/2/a-year-after-hezbollah-israel-ceasefire-over-64000-lebanese-displaced"
+        ]
+      },
+      {
+        "text": "On 5 August 2025 the Lebanese cabinet tasked the army with a plan to confine weapons to state forces before the end of the year; Hezbollah said it would treat the decision 'as if it does not exist', and Hezbollah- and Amal-affiliated ministers walked out. On 28 August the UN Security Council unanimously adopted Resolution 2790, extending UNIFIL for a final time to 31 December 2026 with a year for withdrawal. In December Prime Minister Nawaf Salam said the first phase, south of the Litani, was days from completion, while Israel kept striking and said it would act 'as necessary' if Lebanon failed to move against Hezbollah.",
+        "sourceUrls": [
+          "https://www.france24.com/en/middle-east/20250805-lebanon-tasks-army-with-securing-a-monopoly-on-arms-in-challenge-to-hezbollah",
+          "https://www.aljazeera.com/news/2025/8/6/hezbollah-to-treat-lebanons-disarmament-decision-as-if-it-does-not-exist",
+          "https://news.un.org/en/story/2025/08/1165736",
+          "https://www.aljazeera.com/news/2025/12/20/first-phase-of-hezbollahs-disarmament-close-to-complete-lebanons-salam"
+        ]
+      },
+      {
+        "text": "Hezbollah re-entered the war on 2 March 2026 with a rocket and drone attack on a base in Haifa, citing the killing of Iran's Ali Khamenei; Israel bombed Beirut the same day, killing 31 people according to Lebanon's National News Agency, and announced a ground operation on 16 March. The UN said more than 1.2 million people were displaced by late March. A Lebanon-Israel-US framework signed on 26 June ties Israel's 'progressive' redeployment to verified disarmament through 'pilot zones', with no withdrawal timetable. Lebanese authorities say Israeli attacks since 2 March have killed more than 4,300 people; IOM recorded 329,686 still displaced as of 29 September 2026.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2026/3/2/israel-bombs-beirut-after-hezbollah-launches-rocket-attack",
+          "https://www.aljazeera.com/news/2026/3/17/israeli-strikes-target-beirut-southern-lebanon-one-million-displaced",
+          "https://www.aljazeera.com/news/2026/3/26/israel-sends-more-troops-into-southern-lebanon-as-ground-invasion-expands",
+          "https://www.aljazeera.com/features/2026/6/27/israel-lebanon-deal-ties-ceasefire-to-hezbollah-disarmament-will-it-work",
+          "https://www.aljazeera.com/news/2026/10/11/two-killed-near-israeli-occupied-area-in-south-lebanon",
+          "https://dtm.iom.int/reports/lebanon-mobility-snapshot-round-118-01-october-2026"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Hezbollah",
+        "role": "Lebanese armed group and party whose leader Naim Qassem rejected the June 2026 framework as 'null and void' and called tying Israeli withdrawal to disarmament 'a very dangerous proposition'.",
+        "sourceUrl": "https://www.aljazeera.com/features/2026/6/27/israel-lebanon-deal-ties-ceasefire-to-hezbollah-disarmament-will-it-work"
+      },
+      {
+        "name": "Israeli government and military",
+        "role": "Holds a self-declared 'security zone' about 10 km deep along the border that officials say will remain 'for as long as Hezbollah remains armed'.",
+        "sourceUrl": "https://www.france24.com/en/middle-east/20260720-lebanese-army-south-lebanon-pilot-zones-israel-withdrawal"
+      },
+      {
+        "name": "Lebanese government and Lebanese Armed Forces",
+        "role": "President Joseph Aoun and Prime Minister Nawaf Salam back a state monopoly on arms; the army began taking over Froun, Srifa and Zawtar al-Gharbiya on 20 July 2026.",
+        "sourceUrl": "https://www.france24.com/en/middle-east/20260720-lebanese-army-south-lebanon-pilot-zones-israel-withdrawal"
+      },
+      {
+        "name": "UNIFIL",
+        "role": "UN force in south Lebanon whose mandate ends on 31 December 2026; it logged more than 1,800 Israeli projectiles and none from Hezbollah between 21 June and 11 August.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/8/11/future-southern-lebanon-peacekeeping-uncertain-amid-unifil-phase-out"
+      },
+      {
+        "name": "United States",
+        "role": "Mediator of the trilateral framework announced by Secretary of State Marco Rubio on 26 June 2026 and signed by the Israeli and Lebanese ambassadors in Washington.",
+        "sourceUrl": "https://www.france24.com/en/middle-east/20260626-lebanon-israel-us-sign-framework-agreement-in-washington"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2024-11-27",
+        "event": "A ceasefire between Israel and Hezbollah took effect at 4am, giving 60 days for Israeli withdrawal from the south and Hezbollah's pullback north of the Litani.",
+        "sourceUrl": "https://www.aljazeera.com/news/2024/11/26/ceasefire-between-lebanons-hezbollah-and-israel-what-to-know"
+      },
+      {
+        "date": "2026-03-02",
+        "event": "Hezbollah fired rockets and drones at a base in Haifa, citing Khamenei's killing; Israeli strikes on Beirut and the south killed 31 people, according to the National News Agency.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/3/2/israel-bombs-beirut-after-hezbollah-launches-rocket-attack"
+      },
+      {
+        "date": "2026-03-16",
+        "event": "Israel announced a 'limited and targeted ground operation' against Hezbollah as Lebanese authorities registered more than one million people displaced since 2 March.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/3/17/israeli-strikes-target-beirut-southern-lebanon-one-million-displaced"
+      },
+      {
+        "date": "2026-04-16",
+        "event": "Trump announced a 10-day Israel-Lebanon ceasefire from 21:00 GMT; Netanyahu said Israeli forces would stay in an 'extensive' security zone with the right to strike in self-defence.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/4/16/trump-says-israel-and-lebanon-agree-to-temporary-ceasefire"
+      },
+      {
+        "date": "2026-06-26",
+        "event": "Israeli and Lebanese ambassadors signed a trilateral framework agreement with the US at the State Department; Israel's envoy called it 'performance-based'.",
+        "sourceUrl": "https://www.france24.com/en/middle-east/20260626-lebanon-israel-us-sign-framework-agreement-in-washington"
+      },
+      {
+        "date": "2026-09-25",
+        "event": "Prime Minister Salam told the UN General Assembly weapons must be 'exclusively in the hands of the state', as Israeli shelling near Froun set fires that firefighters were blocked from reaching.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/9/25/israeli-shelling-continues-as-lebanons-pm-demands-withdrawal-in-un-speech"
+      },
+      {
+        "date": "2026-10-13",
+        "event": "Hezbollah announced compensation payments of up to $14,000 per destroyed home, in the same week the government seized hundreds of kilograms of explosives linked to the group.",
+        "sourceUrl": "https://aljazeera.com/news/2026/10/19/hezbollah-funding-plan-indicates-a-new-challenge-to-lebanons-government"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Rocket and drone alerts in northern Israel",
+        "why": "Hezbollah fire pulled Lebanon back into war on 2 March 2026, and UNIFIL logged no Hezbollah projectiles from 21 June to 11 August; renewed sirens would mark a break in that restraint.",
+        "trackedBy": "Israel Sirens"
+      },
+      {
+        "indicator": "Strike tempo in Nabatieh and Bint Jbeil districts",
+        "why": "Israel struck Lebanon near-daily even during the 2024 ceasefire; a sustained rise in recorded events south of the Litani would show the June framework eroding.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Returns to southern villages",
+        "why": "IOM counted 329,686 people still displaced and 877,203 returned as of 29 September 2026; a reversal in returns would indicate residents judging the border strip unsafe again.",
+        "trackedBy": "Displacement Flows"
+      },
+      {
+        "indicator": "Fires along the occupied border strip",
+        "why": "Al Jazeera reported Israeli artillery causing uncontrollable fires near Froun in September with firefighters blocked; satellite fire detections around occupied villages track that shelling pattern.",
+        "trackedBy": "Fires"
+      }
+    ]
+  },
+  {
+    "slug": "hormuz-gulf-security",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "The Strait of Hormuz carried about 20 million barrels of oil a day in 2024, roughly a fifth of global petroleum liquids consumption, and around one-fifth of global LNG trade, according to the US Energy Information Administration; Saudi Arabia accounted for 38 percent of crude flows, and EIA estimated only about 2.6 million b/d of Saudi and UAE pipeline capacity could bypass the strait. Every Gulf Cooperation Council state hosts US forces, including Al Udeid in Qatar, the Fifth Fleet in Bahrain and Camp Arifjan in Kuwait, and US troops are also based near Baghdad and in Erbil.",
+        "sourceUrls": [
+          "https://www.eia.gov/todayinenergy/detail.php?id=65504",
+          "https://www.aljazeera.com/news/2026/3/20/who-are-the-gulfs-military-allies-and-how-are-they-helping-in-iran-war",
+          "https://www.aljazeera.com/news/2026/3/5/drone-targets-us-base-in-iraq-as-iran-attacks-hit-region-amid-us-israel-war"
+        ]
+      },
+      {
+        "text": "After the US-Israeli strikes on Iran of 28 February 2026, an IRGC adviser declared the strait 'closed' on 2 March and threatened to set ships ablaze. Within a week the IMO had listed nine attacks on ships and seven seafarers killed, and drones hit Saudi Arabia's Ras Tanura refinery, Qatar's Ras Laffan LNG complex, Abu Dhabi's Mussafah terminal and Oman's Duqm port, which Iranian officials denied targeting. Iranian missiles struck Ras Laffan again on 18 March; QatarEnergy said repairs would sideline 12.8 million tonnes of LNG a year for three to five years, and EIA estimated Gulf producers shut in 7.5 million b/d of crude in March.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2026/3/2/iran-says-will-attack-any-ship-trying-to-pass-through-strait-of-hormuz",
+          "https://www.france24.com/en/live-news/20260308-10-vessels-attacked-in-hormuz-strait-analysts",
+          "https://www.aljazeera.com/news/2026/3/4/which-oil-and-gas-facilities-in-the-gulf-have-been-attacked",
+          "https://www.aljazeera.com/news/2026/3/18/qatar-says-iran-missile-attack-sparks-fire-causes-damage-at-gas-facility",
+          "https://www.aljazeera.com/news/2026/3/24/qatarenergy-declares-force-majeure-on-some-lng-contracts",
+          "https://www.eia.gov/pressroom/releases/press586.php"
+        ]
+      },
+      {
+        "text": "An April ceasefire, a US blockade of Iranian ports from 13 April and a 17 June memorandum that was to reopen the strait did not restore traffic: Al Jazeera reported about five transits a day from mid-July to late August against more than 100 before the war. Attacks surged in October. UKMTO logged 15 between 6 and 14 October, the container ship GFS Pride sank after what the US military called an IRGC projectile strike, and on 22 October the IRGC claimed seven tankers hit in one day, which CENTCOM disputed. Qatar's deputy prime minister warned on 19 October that the energy shock had not yet peaked.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2026/6/11/iran-shuts-hormuz-strait-but-wasnt-it-already-closed",
+          "https://www.aljazeera.com/news/2026/8/27/how-a-95-percent-drop-in-hormuz-traffic-changed-global-shipping",
+          "https://www.aljazeera.com/news/2026/10/14/iran-steps-up-hormuz-surveillance-attacks-soar-oil-flows-crash-again",
+          "https://www.aljazeera.com/news/2026/10/17/us-and-iran-both-claim-control-of-strait-of-hormuz-amid-attacks-on-vessels",
+          "https://www.aljazeera.com/news/2026/10/22/iran-says-seven-ships-hit-in-hormuz-strait-warns-us-of-wider-response",
+          "https://www.aljazeera.com/news/2026/10/19/qatar-warns-global-energy-shockwaves-from-iran-war-have-yet-to-peak"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Islamic Revolutionary Guard Corps (IRGC) naval forces",
+        "role": "Iran's force in the strait; it says the waterway 'remains unsafe for vessels which do not coordinate with Iran's Persian Gulf Strait Authority'.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/17/us-and-iran-both-claim-control-of-strait-of-hormuz-amid-attacks-on-vessels"
+      },
+      {
+        "name": "US Central Command (CENTCOM)",
+        "role": "Runs the blockade of Iranian ports and tanker escorts; commander Brad Cooper says the strait 'is controlled by the United States and our regional partners, not Iran'.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/17/us-and-iran-both-claim-control-of-strait-of-hormuz-amid-attacks-on-vessels"
+      },
+      {
+        "name": "Qatar and QatarEnergy",
+        "role": "LNG exporter whose Ras Laffan complex was damaged by Iranian strikes in March 2026; Doha says a new regional defence partnership prioritising air defence is imminent.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/19/qatar-warns-global-energy-shockwaves-from-iran-war-have-yet-to-peak"
+      },
+      {
+        "name": "Oman",
+        "role": "Co-littoral state negotiating with Iran on managing the strait; Iran and Oman issued shipping routes that conflicted with the US-backed route, and ships using the US route were targeted.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/8/17/us-iran-memorandum-of-understanding-expires-how-and-why-it-fell-apart"
+      },
+      {
+        "name": "Saudi Arabia",
+        "role": "Largest shipper of crude through Hormuz; after missiles were fired at Riyadh in March 2026, its foreign minister said it reserves 'the right to take military actions if deemed necessary'.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/3/19/wrap-iran-ratchets-up-pressure-on-gulf-states"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2026-03-02",
+        "event": "IRGC adviser Ebrahim Jabari declared the strait 'closed' and threatened to set transiting ships ablaze; Saudi Arabia's Ras Tanura refinery came under drone attack.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/3/2/iran-says-will-attack-any-ship-trying-to-pass-through-strait-of-hormuz"
+      },
+      {
+        "date": "2026-03-18",
+        "event": "Iranian missiles struck Qatar's Ras Laffan Industrial City, causing what Qatar called 'significant damage'; Qatar expelled Iran's military and security attaches.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/3/18/qatar-says-iran-missile-attack-sparks-fire-causes-damage-at-gas-facility"
+      },
+      {
+        "date": "2026-04-13",
+        "event": "The US announced a blockade of Iranian ports after Islamabad talks collapsed; Iran reopened the strait for a few hours on 17 April, then closed it again on 18 April.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/6/11/iran-shuts-hormuz-strait-but-wasnt-it-already-closed"
+      },
+      {
+        "date": "2026-06-17",
+        "event": "The Islamabad memorandum committed Iran to gradually reopen the strait and the US to end its blockade; Iran said it would manage the strait with Oman and 'charge fees for services'.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/6/17/iran-confirms-that-mou-has-been-signed-electronically-by-both-sides"
+      },
+      {
+        "date": "2026-06-28",
+        "event": "The IRGC fired missiles and drones at Ali Al Salem air base in Kuwait and the US Fifth Fleet in Bahrain after US strikes on 10 Iranian targets near the strait.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/6/28/iran-attacks-kuwait-and-bahrain-in-response-to-us-strikes"
+      },
+      {
+        "date": "2026-07-08",
+        "event": "IMO Secretary-General Arsenio Dominguez condemned two days of attacks on transiting ships and urged flag states and shipowners to avoid the strait, citing nearly 6,000 stranded seafarers.",
+        "sourceUrl": "https://www.imo.org/en/mediacentre/secretarygeneral/pages/new-attacks-on-ships-in-the-strait-of-hormuz.aspx"
+      },
+      {
+        "date": "2026-09-09",
+        "event": "CENTCOM sank five Iranian tankers after saying the IRGC targeted a US warship; Iran said it hit 10 ships, a seafarer died on the Hercules Star off Dubai, and Brent passed $100.",
+        "sourceUrl": "https://www.france24.com/en/middle-east/20260909-iran-and-us-strike-tankers-in-biggest-shipping-attack-since-war-began"
+      },
+      {
+        "date": "2026-10-22",
+        "event": "The IRGC claimed seven tankers struck in one day, the most since the war began, and warned it could hit US bases; CENTCOM said 95 percent of vessels were getting through.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/22/iran-says-seven-ships-hit-in-hormuz-strait-warns-us-of-wider-response"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Daily transits through the strait",
+        "why": "Al Jazeera reported about five transits a day in July-August against more than 100 pre-war; the count is the most direct measure of whether the strait is open.",
+        "trackedBy": "Strait of Hormuz Tracker"
+      },
+      {
+        "indicator": "Tankers waiting or going dark in the Gulf of Oman",
+        "why": "Iran's navy has warned ships not to switch off transponders and the IRGC targets vessels on 'unauthorised' routes; bunching and AIS gaps have preceded attack waves.",
+        "trackedBy": "Live Tanker Positions"
+      },
+      {
+        "indicator": "Outages at Gulf energy sites",
+        "why": "Ras Tanura, Ras Laffan, Mussafah and Duqm were all hit in March 2026; a new onshore outage would show the campaign widening again from ships to export infrastructure.",
+        "trackedBy": "Energy Disruptions Log"
+      },
+      {
+        "indicator": "Attacks on US bases in Gulf states",
+        "why": "The IRGC struck Ali Al Salem and the Fifth Fleet base in June and on 22 October threatened US bases if escorts continue; a hit would draw host states further in.",
+        "trackedBy": "Middle East Strikes"
+      }
+    ]
+  },
+  {
+    "slug": "sahel-insurgency",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "The central Sahel insurgency grew out of the 2012 rebellion in northern Mali and spread to Niger and Burkina Faso by 2015. JNIM, al-Qaeda's Sahel affiliate, formed in 2017 from AQIM's Saharan branch and the Malian groups Ansar Dine, Al-Murabitun and Katiba Macina; its rival, Islamic State Sahel Province (ISSP), is based in Mali's Ménaka region. A UN experts' report submitted to the Security Council in August 2026 put JNIM at 7,000 to 8,000 fighters and the Islamic State group at about 2,000. Coups in Mali (2020, 2021), Burkina Faso (2022) and Niger (July 2023) installed juntas that expelled French forces and turned to Russia.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2023/9/16/mali-niger-and-burkina-faso-establish-sahel-security-alliance",
+          "https://www.aljazeera.com/news/2025/11/6/is-mali-about-to-fall-to-al-qaeda-affiliate-jnim",
+          "https://www.africanews.com/2026/10/16/rival-jnim-and-islamic-state-jihadists-clash-in-intensifying-sahel-turf-war/",
+          "https://www.aljazeera.com/news/2026/10/6/tuareg-rebels-withdraw-from-strategic-town-of-kidal-in-northern-mali",
+          "https://news.un.org/en/story/2024/08/1153646",
+          "https://www.aljazeera.com/news/2023/7/28/niger-general-tchiani-named-head-of-transitional-government-after-coup",
+          "https://www.aljazeera.com/news/2025/10/27/mali-shuts-schools-as-fuel-blockade-imposed-by-fighters-paralyses-country"
+        ]
+      },
+      {
+        "text": "The three juntas signed the Liptako-Gourma charter on 16 September 2023, creating the Alliance of Sahel States (AES), a mutual-defence pact; their withdrawal from ECOWAS took effect on 29 January 2025. In Mali, Russia's Wagner group was replaced in June 2025 by Africa Corps, a force under the Russian Defence Ministry. Burkina Faso's government under Captain Ibrahim Traoré dissolved all political parties in January 2026. In Niger, General Abdourahamane Tchiani survived a mutiny on 29 August 2026 in which, Al Jazeera reported, about 200 Africa Corps soldiers helped loyalists retake Air Base 101; at least 27 people were killed.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2023/9/16/mali-niger-and-burkina-faso-establish-sahel-security-alliance",
+          "https://www.aljazeera.com/news/2025/1/29/military-governments-lead-west-african-trio-out-of-ecowas-regional-bloc",
+          "https://www.aljazeera.com/news/2026/10/6/tuareg-rebels-withdraw-from-strategic-town-of-kidal-in-northern-mali",
+          "https://www.aljazeera.com/news/2026/1/30/why-has-burkina-faso-banned-political-parties-and-whats",
+          "https://www.aljazeera.com/news/2026/9/14/niger-mutiny-exposes-growing-reliance-on-russia"
+        ]
+      },
+      {
+        "text": "JNIM declared a blockade on fuel imports into Mali in September 2025, attacking tankers from Senegal and Ivory Coast and forcing a two-week nationwide school closure in October. On 25 April 2026 JNIM and the Tuareg-led Azawad Liberation Front (FLA) attacked sites across Mali, killing Defence Minister Sadio Camara in Kati and seizing Kidal; the army, backed by Africa Corps, re-entered Kidal on 6 October 2026. UNHCR counted about 2.1 million forcibly displaced people in Burkina Faso at end-2025, WFP reported over 415,000 internally displaced in Mali in February 2026, and UNFPA put Niger's internally displaced above 548,000.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2025/10/27/mali-shuts-schools-as-fuel-blockade-imposed-by-fighters-paralyses-country",
+          "https://www.aljazeera.com/news/2026/4/26/malis-defence-minister-sadio-camara-killed-amid-coordinated-attacks",
+          "https://www.aljazeera.com/news/2026/10/6/tuareg-rebels-withdraw-from-strategic-town-of-kidal-in-northern-mali",
+          "https://reliefweb.int/report/burkina-faso/burkina-faso-unhcr-operational-update-quarterly-october-december-2025",
+          "https://reliefweb.int/report/mali/wfp-mali-country-brief-february-2026",
+          "https://reliefweb.int/report/niger/unfpa-niger-country-appeal-2026"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Jama'at Nusrat al-Islam wal-Muslimin (JNIM)",
+        "role": "Al-Qaeda's Sahel affiliate, led by Iyad Ag Ghali, which blockaded Bamako's fuel supply from 2025 and claimed the April 2026 capture of Kidal jointly with the FLA.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/4/27/rival-armed-groups-join-forces-against-the-malian-state-what-next"
+      },
+      {
+        "name": "Islamic State Sahel Province (ISSP)",
+        "role": "Islamic State's Sahel branch, based in Ménaka and estimated at about 2,000 fighters by UN experts, which claimed over 400 JNIM dead in Burkina Faso's Oudalan in October 2026.",
+        "sourceUrl": "https://www.africanews.com/2026/10/16/rival-jnim-and-islamic-state-jihadists-clash-in-intensifying-sahel-turf-war/"
+      },
+      {
+        "name": "Azawad Liberation Front (FLA)",
+        "role": "Tuareg separatist movement that seized Kidal with JNIM in April 2026 and announced a strategic and controlled withdrawal from the city on 6 October 2026, calling it temporary.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/6/tuareg-rebels-withdraw-from-strategic-town-of-kidal-in-northern-mali"
+      },
+      {
+        "name": "Alliance of Sahel States (AES)",
+        "role": "The military governments of Mali, Burkina Faso and Niger, bound since 16 September 2023 by the Liptako-Gourma charter to treat an attack on one as aggression against all.",
+        "sourceUrl": "https://www.aljazeera.com/news/2023/9/16/mali-niger-and-burkina-faso-establish-sahel-security-alliance"
+      },
+      {
+        "name": "Africa Corps",
+        "role": "Russian Defence Ministry force that replaced Wagner in Mali in June 2025 and whose air and ground campaign the FLA blamed for its October 2026 withdrawal from Kidal.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/6/tuareg-rebels-withdraw-from-strategic-town-of-kidal-in-northern-mali"
+      },
+      {
+        "name": "Niger's military government (Abdourahamane Tchiani)",
+        "role": "Niger's ruler since the 2023 coup, who expelled French and US troops and relied on Africa Corps units to retake Niamey's Air Base 101 from mutineers in August 2026.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/9/14/niger-mutiny-exposes-growing-reliance-on-russia"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2023-07-26",
+        "event": "Niger's presidential guard detained President Mohamed Bazoum; its commander Abdourahamane Tchiani declared himself head of a transitional government two days later.",
+        "sourceUrl": "https://www.aljazeera.com/news/2023/7/28/niger-general-tchiani-named-head-of-transitional-government-after-coup"
+      },
+      {
+        "date": "2023-09-16",
+        "event": "Mali, Burkina Faso and Niger signed the Liptako-Gourma charter establishing the Alliance of Sahel States, pledging military assistance to any member attacked.",
+        "sourceUrl": "https://www.aljazeera.com/news/2023/9/16/mali-niger-and-burkina-faso-establish-sahel-security-alliance"
+      },
+      {
+        "date": "2024-08-24",
+        "event": "Around 200 people were killed in Barsalogho, Burkina Faso, as residents dug defensive trenches; the UN Secretary-General condemned the attack, attributed in news reports to JNIM.",
+        "sourceUrl": "https://news.un.org/en/story/2024/08/1153646"
+      },
+      {
+        "date": "2025-01-29",
+        "event": "ECOWAS announced the formal withdrawal of Niger, Mali and Burkina Faso, saying it would keep its doors open and asking members to preserve free movement.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/1/29/military-governments-lead-west-african-trio-out-of-ecowas-regional-bloc"
+      },
+      {
+        "date": "2025-09",
+        "event": "JNIM declared a blockade on fuel imported into Mali and began attacking tankers from Senegal and Ivory Coast; by late October schools nationwide closed for two weeks.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/10/27/mali-shuts-schools-as-fuel-blockade-imposed-by-fighters-paralyses-country"
+      },
+      {
+        "date": "2026-04-25",
+        "event": "JNIM and the FLA launched simultaneous attacks across Mali, killing Defence Minister Sadio Camara at his Kati home, with fighting in Bamako, Gao, Sevare and Kidal.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/4/26/malis-defence-minister-sadio-camara-killed-amid-coordinated-attacks"
+      },
+      {
+        "date": "2026-08-29",
+        "event": "Soldiers styling themselves the Armed Forces for the Restoration of the Homeland attacked Niamey's Air Base 101, the presidential palace and the broadcaster; loyalists and Africa Corps put down the mutiny.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/9/14/niger-mutiny-exposes-growing-reliance-on-russia"
+      },
+      {
+        "date": "2026-10-06",
+        "event": "Mali's army, backed by Africa Corps, entered Kidal after the FLA announced a strategic and controlled withdrawal citing Russian air strikes; the FLA said troops entered without a fight.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/6/tuareg-rebels-withdraw-from-strategic-town-of-kidal-in-northern-mali"
+      },
+      {
+        "date": "2026-10-12",
+        "event": "ISSP claimed to have killed more than 400 JNIM fighters in Burkina Faso's Oudalan province; the toll was unconfirmed, and ACLED said it would be the groups' deadliest battle if verified.",
+        "sourceUrl": "https://www.africanews.com/2026/10/16/rival-jnim-and-islamic-state-jihadists-clash-in-intensifying-sahel-turf-war/"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Bamako fuel corridors",
+        "why": "JNIM's attacks on tankers from Senegal and Ivory Coast forced school closures in 2025 and still require escorted convoys; renewed shortages in the capital would show the siege tactic resuming.",
+        "trackedBy": "Global Fuel Shortage Registry"
+      },
+      {
+        "indicator": "JNIM–ISSP fighting in Liptako-Gourma",
+        "why": "ISSP's October 2026 claim of 400 JNIM dead in Oudalan would, if confirmed, be the deadliest inter-jihadist battle recorded; sustained clashes decide which group controls the tri-border zone.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Kidal and northern Mali control",
+        "why": "The FLA called its October 2026 withdrawal temporary; a renewed FLA–JNIM move on Kidal or Gao would test whether Africa Corps air power can hold the north for Bamako.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Niamey garrison security",
+        "why": "Niger's airport complex was attacked by ISSP in January and JNIM in June 2026, then by mutineers in August; further incidents there show threats reaching the junta's core.",
+        "trackedBy": "Country Instability"
+      },
+      {
+        "indicator": "Displacement across the three states",
+        "why": "Burkina Faso had about 2.1 million forcibly displaced at end-2025 and Niger's internally displaced rose 18 percent in early 2026, per UNFPA; new spikes would mark spreading rural insecurity.",
+        "trackedBy": "UNHCR Displacement"
+      }
+    ]
+  },
+  {
+    "slug": "horn-of-africa",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "Ethiopia's 2020–22 Tigray war ended with the AU-mediated Pretoria agreement of 2 November 2022, which Eritrea, a combatant on the federal side, did not join. Army–Fano fighting began in Amhara in July 2023. On 23 September 2026 a seven-group alliance including the Tigray People's Liberation Front (TPLF) attacked federal forces in Tigray, Amhara and Afar; federal troops and the allied Tigray Peace Force entered Mekelle on 3 October after the TPLF withdrew. Ethiopia closed its Asmara embassy on 1 October, Eritrea severed ties, and Addis Ababa told the Security Council that Eritrean troops had advanced up to 60 km into Tigray, which Asmara denies.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2022/11/2/ethiopias-warring-sides-agree-cessation-of-hostilities-au",
+          "https://www.aljazeera.com/news/2025/3/22/ethiopias-army-says-more-than-300-fano-fighters-killed-in-renewed-fighting",
+          "https://www.aljazeera.com/news/2026/10/11/ethiopia-eritrea-ramp-up-rhetoric-are-they-inching-towards-war",
+          "https://www.aljazeera.com/news/2026/10/7/witnesses-spot-eritrean-troops-inside-northern-ethiopia-as-tensions-flare",
+          "https://www.aljazeera.com/news/2026/10/5/ethiopias-forces-retake-mekelle-amid-renewed-tigray-fighting",
+          "https://www.internazionale.it/ultime-notizie-reuters/2026/10/01/explosions-heard-overnight-in-ethiopia-s-capital-diplomatic-sources-say"
+        ]
+      },
+      {
+        "text": "Somalia's government has fought al-Shabaab since 2007; the group holds territory in parts of southern and central Somalia and in April 2025 claimed Adan Yabaal, an army logistics hub 220 km north of Mogadishu. A new African Union mission replaced a larger force at the start of 2025 with uncertain funding, while the US carried out at least 111 air strikes in Somalia in 2025, per the New America Foundation. President Hassan Sheikh Mohamud's term expired on 15 May 2026 and a constitutional amendment extended it a year; government and opposition-aligned forces fought in Mogadishu on 3–4 June, and on 15 October the electoral commission set elections for April and May 2027.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2026/6/4/fighting-in-somalias-capital-as-anger-over-election-delay-erupts",
+          "https://www.aljazeera.com/news/2025/4/16/al-shabaab-attack-strategic-town-in-central-somalia",
+          "https://www.aljazeera.com/news/2025/12/17/us-dramatically-escalates-air-strikes-on-somalia-under-trump-this-year",
+          "https://www.aljazeera.com/news/2026/6/5/why-mogadishu-clashes-are-deepening-somalias-political-crisis-again",
+          "https://www.aljazeera.com/news/2026/10/15/somalia-says-it-will-hold-elections-in-2027"
+        ]
+      },
+      {
+        "text": "In South Sudan, the 2018 peace deal between President Salva Kiir and First Vice President Riek Machar unravelled after a March 2025 White Army attack on an army base at Nasir, Upper Nile, which the government says killed more than 250 soldiers on Machar's orders; Machar was placed under house arrest and his treason trial opened on 22 September 2025. UNMISS told the Security Council in August 2026 that violence displaced more than 420,000 people in the first half of the year, mainly in Jonglei, with elections scheduled for December. Eritrea, reported nationally here, is drawn in through Tigray: witnesses told Reuters they saw Eritrean soldiers in Adigrat on 7 October 2026.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2025/9/22/treason-trial-begins-for-south-sudan-vp-machar-as-unity-government-breaks",
+          "https://unmiss.unmissions.org/en/press-releases/remarks-by-anita-kiki-gbeho-special-representative-of-the-secretary-general-0",
+          "https://www.aljazeera.com/news/2026/10/7/witnesses-spot-eritrean-troops-inside-northern-ethiopia-as-tensions-flare"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Ethiopian federal government and army",
+        "role": "Abiy Ahmed's federal forces, which with the allied Tigray Peace Force retook Mekelle, Adwa, Adigrat and Aksum in October 2026 and accuse Eritrea, Sudan and Egypt of backing the rebels.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/15/ethiopian-forces-expand-control-in-tigray-as-militia-claims-eritrean-losses"
+      },
+      {
+        "name": "Tigray People's Liberation Front (TPLF)",
+        "role": "Tigray's dominant party and armed movement, which withdrew from Mekelle in early October 2026; its commander Fisseha Kidanu has told fighters to keep resisting.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/23/tigray-official-urges-rebels-to-disarm"
+      },
+      {
+        "name": "Eritrea",
+        "role": "Neighbour that fought alongside Ethiopia in 2020–22, severed diplomatic ties on 1 October 2026 and denies backing the alliance; it says it fears Ethiopia will seize Assab.",
+        "sourceUrl": "https://www.internazionale.it/ultime-notizie-reuters/2026/10/01/explosions-heard-overnight-in-ethiopia-s-capital-diplomatic-sources-say"
+      },
+      {
+        "name": "Al-Shabaab",
+        "role": "Al-Qaeda affiliate fighting Somalia's government since 2007 that controls large areas of south-central Somalia and is the main target of intensified US air strikes.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/12/17/us-dramatically-escalates-air-strikes-on-somalia-under-trump-this-year"
+      },
+      {
+        "name": "Somali federal government (Hassan Sheikh Mohamud)",
+        "role": "Administration that extended its mandate by constitutional amendment in May 2026 and scheduled 2027 elections over objections of opposition parties that boycotted the amendment vote.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/15/somalia-says-it-will-hold-elections-in-2027"
+      },
+      {
+        "name": "South Sudan's rival camps (Kiir and Machar)",
+        "role": "President Salva Kiir's SSPDF and Riek Machar's SPLA-IO, in armed confrontation in Jonglei while Machar's trial passed 100 court days with him still detained, as of August 2026.",
+        "sourceUrl": "https://unmiss.unmissions.org/en/press-releases/remarks-by-anita-kiki-gbeho-special-representative-of-the-secretary-general-0"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2022-11-02",
+        "event": "Ethiopia's government and the TPLF agreed a permanent cessation of hostilities in Pretoria under AU mediation; Eritrea and allied regional forces took no part.",
+        "sourceUrl": "https://www.aljazeera.com/news/2022/11/2/ethiopias-warring-sides-agree-cessation-of-hostilities-au"
+      },
+      {
+        "date": "2025-03",
+        "event": "White Army fighters attacked a South Sudanese army base in Nasir, Upper Nile; the government said over 250 soldiers died on Machar's orders and put him under house arrest.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/9/22/treason-trial-begins-for-south-sudan-vp-machar-as-unity-government-breaks"
+      },
+      {
+        "date": "2025-12-26",
+        "event": "Israel became the first state to recognise Somaliland; Somalia demanded a reversal and called the move an act of state aggression.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/12/27/state-aggression-somalia-demands-israel-withdraw-somaliland-recognition"
+      },
+      {
+        "date": "2026-06-03",
+        "event": "Government forces and opposition-aligned militias exchanged fire in Mogadishu ahead of protests against President Mohamud staying in office after his term expired.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/6/4/fighting-in-somalias-capital-as-anger-over-election-delay-erupts"
+      },
+      {
+        "date": "2026-09-23",
+        "event": "A rebel alliance including the TPLF attacked Ethiopian government forces in Tigray, Amhara and Afar, reopening large-scale fighting in the north.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/11/ethiopia-eritrea-ramp-up-rhetoric-are-they-inching-towards-war"
+      },
+      {
+        "date": "2026-10-01",
+        "event": "Ethiopia ordered its Asmara embassy closed and expelled 10 Eritrean diplomats after overnight blasts in Addis Ababa; Eritrea severed all diplomatic ties.",
+        "sourceUrl": "https://www.internazionale.it/ultime-notizie-reuters/2026/10/01/explosions-heard-overnight-in-ethiopia-s-capital-diplomatic-sources-say"
+      },
+      {
+        "date": "2026-10-03",
+        "event": "Federal forces and Tigray Peace Force fighters entered Mekelle after the TPLF said it had temporarily moved out and would govern from elsewhere.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/5/ethiopias-forces-retake-mekelle-amid-renewed-tigray-fighting"
+      },
+      {
+        "date": "2026-10-15",
+        "event": "Somalia's election commission set parliamentary elections for 15 April 2027 and a presidential vote for 15 May 2027; former presidents Farmaajo and Sharif rejected the plan.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/15/somalia-says-it-will-hold-elections-in-2027"
+      },
+      {
+        "date": "2026-10-23",
+        "event": "An official in Tigray's six-month caretaker administration urged rebels to disarm, hours after TPLF commander Fisseha Kidanu said Tigray was still at war.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/23/tigray-official-urges-rebels-to-disarm"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Ethiopia–Eritrea border",
+        "why": "ACLED documented Ethiopian tanks moving toward the border and Eritrean troops withdrawing through Zalambessa in mid-October 2026; sustained movement there would signal the Tigray war turning interstate.",
+        "trackedBy": "Military Activity"
+      },
+      {
+        "indicator": "Tigray and Afar front lines",
+        "why": "TPLF commanders say they will fight on from outside Mekelle; new clashes around Aksum or Adigrat, or drone strikes in the city, would show whether the caretaker administration can hold.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Mogadishu political violence",
+        "why": "Elections are set for April–May 2027 without opposition agreement; renewed fighting between government and opposition-aligned forces, as in June 2026, would signal breakdown of the process.",
+        "trackedBy": "Country Instability"
+      },
+      {
+        "indicator": "Al-Shabaab pressure on Somali and AU forces",
+        "why": "The group still holds south-central territory and seized a logistics hub in 2025; a rise in attacks would test an AU mission whose funding Al Jazeera described as uncertain.",
+        "trackedBy": "UCDP Conflict Events"
+      },
+      {
+        "indicator": "Jonglei displacement before the December vote",
+        "why": "UNMISS reported over 420,000 people displaced in the first half of 2026, mainly in Jonglei; further displacement before South Sudan's scheduled December election would show electoral conditions eroding.",
+        "trackedBy": "UNHCR Displacement"
+      }
+    ]
+  },
+  {
+    "slug": "myanmar-civil-war",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "The counts on this page are a country-level pulse, not an incident ledger or a territorial control map. Myanmar's military detained Aung San Suu Kyi and President Win Myint on 1 February 2021 and declared a year-long state of emergency, a move UN Secretary-General António Guterres called a serious blow to democratic reforms. The crackdown that followed pushed protesters to take up arms as People's Defence Forces, nominally under the National Unity Government of ousted lawmakers, often trained by ethnic armed groups fighting the state since independence in 1948.",
+        "sourceUrls": [
+          "https://news.un.org/en/story/2021/02/1083442",
+          "https://www.aljazeera.com/features/2026/3/27/who-is-fighting-in-myanmars-multi-front-civil-war"
+        ]
+      },
+      {
+        "text": "Offensives in 2023 and 2024 stripped the military of dozens of towns, but the balance has shifted. ISP-Myanmar, cited by Al Jazeera, counted 22 of 101 lost towns retaken by August 2026, helped by conscription, air power and Chinese pressure on border ethnic armies. The UN human rights office reported more than 125,000 forced conscripts deployed, credible-source counts of at least 8,075 civilians killed by the military from the coup to 31 May 2026, and air strikes as the main cause of civilian deaths.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2026/8/30/air-raids-conscripts-and-china-how-myanmars-military-is-regaining-ground",
+          "https://www.ohchr.org/sites/default/files/documents/hrbodies/hrcouncil/sessions-regular/session63/advance-versions/a-hrc-63-21-aev.pdf"
+        ]
+      },
+      {
+        "text": "Three rounds of voting between 28 December 2025 and 25 January 2026 took place with Aung San Suu Kyi detained, her party dissolved and polls called off in one in five townships; Min Aung Hlaing resigned as armed forces chief and was sworn in as president on 10 April 2026. OCHA estimated in July 2026 that nearly 3.8 million people were displaced; UNHCR counted 4,051,000 internally displaced as of 12 October 2026. Since April he has visited five ASEAN states while fighting continues in Rakhine, Chin, Kachin, Karen and Sagaing.",
+        "sourceUrls": [
+          "https://www.france24.com/en/live-news/20260126-myanmar-pro-military-party-declares-victory-in-junta-run-polls",
+          "https://www.france24.com/en/live-news/20260410-myanmar-junta-chief-sworn-in-as-president",
+          "https://www.unocha.org/publications/report/myanmar/myanmar-humanitarian-update-no-52-13-july-2026",
+          "https://data.unhcr.org/en/situations/myanmar",
+          "https://www.aljazeera.com/news/2026/10/16/as-war-rages-myanmars-coup-leader-turned-president-wins-back-neighbours"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Myanmar military and President Min Aung Hlaing's government",
+        "role": "Coup leader sworn in as president on 10 April 2026; over two-thirds of his 30 ministers are serving or retired officers.",
+        "sourceUrl": "https://www.france24.com/en/live-news/20260410-myanmar-junta-chief-sworn-in-as-president"
+      },
+      {
+        "name": "National Unity Government (NUG) and People's Defence Forces (PDF)",
+        "role": "Shadow government of ousted lawmakers nominally commanding PDF militias, which fight in central Myanmar with seized, black-market and homemade weapons.",
+        "sourceUrl": "https://www.aljazeera.com/features/2026/3/27/who-is-fighting-in-myanmars-multi-front-civil-war"
+      },
+      {
+        "name": "Arakan Army (AA)",
+        "role": "Controls nearly all of Rakhine State except a few military-held urban centres, including Kyauktaw, struck on 28 September 2026.",
+        "sourceUrl": "https://www.france24.com/en/live-news/20260929-myanmar-airstrike-toll-hits-50-as-families-gather-dead"
+      },
+      {
+        "name": "Kachin Independence Army (KIA)",
+        "role": "Ethnic army of up to 30,000 troops, partly funded by rare-earth mining, operating jointly with post-coup resistance forces.",
+        "sourceUrl": "https://www.aljazeera.com/features/2026/3/27/who-is-fighting-in-myanmars-multi-front-civil-war"
+      },
+      {
+        "name": "MNDAA and TNLA",
+        "role": "Northern Shan State ethnic armies that Chinese pressure pulled out of the fight, freeing the military to redeploy troops.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/8/30/air-raids-conscripts-and-china-how-myanmars-military-is-regaining-ground"
+      },
+      {
+        "name": "China",
+        "role": "Brokered ceasefires between the military and border ethnic armies and pressed the United Wa State Army to stop arming the opposition.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/8/30/air-raids-conscripts-and-china-how-myanmars-military-is-regaining-ground"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2021-02-01",
+        "event": "The military detained Aung San Suu Kyi and President Win Myint and declared a one-year state of emergency.",
+        "sourceUrl": "https://news.un.org/en/story/2021/02/1083442"
+      },
+      {
+        "date": "2023-10-27",
+        "event": "The TNLA, Arakan Army and MNDAA jointly attacked military positions across northern Shan State, closing roads to China.",
+        "sourceUrl": "https://www.france24.com/en/live-news/20231027-ethnic-rebels-launch-attacks-across-northern-myanmar"
+      },
+      {
+        "date": "2024-08",
+        "event": "The MNDAA ousted the military from Lashio and its northeastern command, called its worst strategic loss since the coup.",
+        "sourceUrl": "https://www.france24.com/en/live-news/20250422-myanmar-rebels-prepare-to-hand-key-city-back-to-junta-china-says"
+      },
+      {
+        "date": "2025-03-28",
+        "event": "Earthquakes of magnitude 7.7 and 6.9 struck central Myanmar; OCHA later reported more than 3,800 deaths as air attacks persisted.",
+        "sourceUrl": "https://www.unocha.org/publications/report/myanmar/myanmar-humanitarian-update-no-46-23-may-2025"
+      },
+      {
+        "date": "2025-04",
+        "event": "China's foreign ministry said the MNDAA would hand Lashio back without a fight under a Chinese-monitored ceasefire.",
+        "sourceUrl": "https://www.france24.com/en/live-news/20250422-myanmar-rebels-prepare-to-hand-key-city-back-to-junta-china-says"
+      },
+      {
+        "date": "2026-01-25",
+        "event": "The election's final round ended; a USDP official claimed a majority, with voting cancelled in one in five townships.",
+        "sourceUrl": "https://www.france24.com/en/live-news/20260126-myanmar-pro-military-party-declares-victory-in-junta-run-polls"
+      },
+      {
+        "date": "2026-04-10",
+        "event": "Min Aung Hlaing was sworn in as president for a five-year term after resigning as armed forces chief.",
+        "sourceUrl": "https://www.france24.com/en/live-news/20260410-myanmar-junta-chief-sworn-in-as-president"
+      },
+      {
+        "date": "2026-09-28",
+        "event": "A military air strike hit Kyauktaw's riverside market in Rakhine; an aid worker and the Arakan Army reported 50 dead.",
+        "sourceUrl": "https://www.france24.com/en/live-news/20260929-myanmar-airstrike-toll-hits-50-as-families-gather-dead"
+      },
+      {
+        "date": "2026-10",
+        "event": "Min Aung Hlaing got an honour-guard welcome in Kuala Lumpur, where Anwar Ibrahim pledged to help reintegrate Myanmar into ASEAN.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/16/as-war-rages-myanmars-coup-leader-turned-president-wins-back-neighbours"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Air strike tempo",
+        "why": "OHCHR says air strikes are the main cause of civilian deaths; a sustained fall would be the first sign the peace-talk offer is more than rhetoric.",
+        "trackedBy": "UCDP Conflict Events"
+      },
+      {
+        "indicator": "Displacement totals",
+        "why": "OCHA put displacement near 3.8 million in July 2026 and UNHCR at 4.05 million in October; further growth in the northwest signals widening offensives.",
+        "trackedBy": "UNHCR Displacement"
+      },
+      {
+        "indicator": "Towns changing hands",
+        "why": "ISP-Myanmar counted 22 of 101 lost towns retaken by August 2026; further recaptures in Kachin or Rakhine, or resistance counter-offensives, show who holds momentum.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Village burnings",
+        "why": "OHCHR recorded 597 arson attacks in the year to May 2026, mostly in Sagaing and Mandalay; clustered fire detections near villages can flag burnings before reports emerge.",
+        "trackedBy": "Fires"
+      }
+    ]
+  },
+  {
+    "slug": "haiti-gang-crisis",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "President Jovenel Moïse was shot dead at his Port-au-Prince residence on 7 July 2021, weeks after the UN's top official in Haiti briefed the Security Council on rising gang violence. In early 2024 gang leader Jimmy 'Barbecue' Chérizier said his G9 and rival gangs had revived a non-aggression pact called Viv Ansanm. Coordinated attacks from 29 February 2024 stormed Haiti's two biggest prisons, freeing more than 4,000 inmates, and shut the main airport; Prime Minister Ariel Henry resigned in April as a nine-member Transitional Presidential Council was sworn in.",
+        "sourceUrls": [
+          "https://news.un.org/en/story/2021/07/1095422",
+          "https://www.france24.com/en/americas/20240307-haiti-how-lack-leadership-gangs-take-over-violence-jimmy-cherizier-barbecue-ariel-henry",
+          "https://www.france24.com/en/americas/20240425-ariel-henry-resigns-as-haiti-s-pm-as-transitional-council-takes-power"
+        ]
+      },
+      {
+        "text": "A Kenya-led Multinational Security Support mission, launched in October 2023, landed its first contingent on 25 June 2024 but, UN News said, stayed underfunded and never deployed its mandated 2,500 personnel. On 30 September 2025 the Security Council authorised a Gang Suppression Force of up to 5,550 uniformed personnel; its first Chadian troops arrived on 1 April 2026. Resolution 2829 of 29 September 2026 renewed the force to 31 March 2027, with China, Russia and Pakistan abstaining. As of 12 October 2026 it had 1,563 uniformed members.",
+        "sourceUrls": [
+          "https://news.un.org/en/story/2025/10/1166012",
+          "https://www.france24.com/en/americas/20240625-kenyan-police-force-arrives-haiti-un-backed-security-mission",
+          "https://www.aljazeera.com/news/2026/4/1/first-troops-from-un-backed-gang-suppression-force-arrive-in-haiti",
+          "https://press.un.org/en/2026/sc16466.doc.htm",
+          "https://news.un.org/en/story/2026/10/1168626"
+        ]
+      },
+      {
+        "text": "The UN reported 1,123 people killed in gang-related violence between July and early October 2026, and an attack on Kenscoff on 23-24 August killed at least 47. IOM counted nearly 1.5 million displaced people in September 2026, almost 80 per cent of them outside Port-au-Prince, with the steepest rise in Artibonite. On 7 October the electoral council postponed the 13 December first-round elections indefinitely; Haiti has not held national elections since 2016. Armed-group territorial control and displacement are tracked separately by humanitarian agencies and are not in the counts on this page.",
+        "sourceUrls": [
+          "https://news.un.org/en/story/2026/10/1168626",
+          "https://news.un.org/en/story/2026/09/1168447",
+          "https://www.france24.com/en/americas/20261007-haiti-postpones-elections-indefinitely-as-gang-violence-hampers-preparations"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Viv Ansanm",
+        "role": "Gang coalition led by Jimmy Chérizier, also listed as G-9 and Living Together, added to the UN Haiti sanctions list on 8 July 2025.",
+        "sourceUrl": "https://press.un.org/en/2025/sc16113.doc.htm"
+      },
+      {
+        "name": "Gran Grif",
+        "role": "Also known as Gran Grif de Savien and led by Luckson Elan; listed by the UN Haiti sanctions committee alongside Viv Ansanm on 8 July 2025.",
+        "sourceUrl": "https://press.un.org/en/2025/sc16113.doc.htm"
+      },
+      {
+        "name": "Haitian National Police (HNP)",
+        "role": "Runs daily patrols and large-scale operations in gang-held areas, supported by the international force and a private security company.",
+        "sourceUrl": "https://www.france24.com/en/live-news/20260117-haiti-security-forces-commence-major-anti-gang-operation"
+      },
+      {
+        "name": "Gang Suppression Force (GSF)",
+        "role": "International force mandated to 31 March 2027; the United States named Chad, El Salvador, Guatemala, Jamaica, Mongolia and Sri Lanka as contributors.",
+        "sourceUrl": "https://press.un.org/en/2026/sc16466.doc.htm"
+      },
+      {
+        "name": "Prime Minister Alix Didier Fils-Aimé",
+        "role": "Sole executive since 7 February 2026, when the Transitional Presidential Council handed over after nearly two years; backed by Washington.",
+        "sourceUrl": "https://www.france24.com/en/americas/20260207-haiti-transitional-council-transfers-power-prime-minister-fils-aim%C3%A9-us-gang-violence"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2021-07-07",
+        "event": "President Jovenel Moïse was shot dead in an overnight attack at his private residence in Port-au-Prince.",
+        "sourceUrl": "https://news.un.org/en/story/2021/07/1095422"
+      },
+      {
+        "date": "2024-02-29",
+        "event": "Gangs launched coordinated attacks across Port-au-Prince, storming the two biggest prisons and freeing more than 4,000 inmates.",
+        "sourceUrl": "https://www.france24.com/en/americas/20240425-ariel-henry-resigns-as-haiti-s-pm-as-transitional-council-takes-power"
+      },
+      {
+        "date": "2024-04-25",
+        "event": "Ariel Henry's resignation was released as the nine-member Transitional Presidential Council, mandated to 7 February 2026, was sworn in.",
+        "sourceUrl": "https://www.france24.com/en/americas/20240425-ariel-henry-resigns-as-haiti-s-pm-as-transitional-council-takes-power"
+      },
+      {
+        "date": "2025-09-30",
+        "event": "The Security Council authorised the Gang Suppression Force to replace the Kenya-led mission: 5,550 uniformed personnel, 12-month mandate.",
+        "sourceUrl": "https://news.un.org/en/story/2025/10/1166012"
+      },
+      {
+        "date": "2026-02-07",
+        "event": "The Transitional Presidential Council handed power to Prime Minister Alix Didier Fils-Aimé, now the only politician with executive power.",
+        "sourceUrl": "https://www.france24.com/en/americas/20260207-haiti-transitional-council-transfers-power-prime-minister-fils-aim%C3%A9-us-gang-violence"
+      },
+      {
+        "date": "2026-04-01",
+        "event": "An advance team of Chadian troops, the Gang Suppression Force's first deployment, arrived with Special Representative Jack Christofides.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/4/1/first-troops-from-un-backed-gang-suppression-force-arrive-in-haiti"
+      },
+      {
+        "date": "2026-08-23",
+        "event": "Gunmen attacked Kenscoff, south-east of Port-au-Prince; the UN reported at least 47 killed, 22 wounded and 52 taken hostage.",
+        "sourceUrl": "https://news.un.org/en/story/2026/10/1168626"
+      },
+      {
+        "date": "2026-09-29",
+        "event": "The Security Council adopted resolution 2829, renewing the Gang Suppression Force until 31 March 2027 with three abstentions.",
+        "sourceUrl": "https://press.un.org/en/2026/sc16466.doc.htm"
+      },
+      {
+        "date": "2026-10-07",
+        "event": "The Provisional Electoral Council postponed the 13 December first round of presidential and legislative elections indefinitely.",
+        "sourceUrl": "https://www.france24.com/en/americas/20261007-haiti-postpones-elections-indefinitely-as-gang-violence-hampers-preparations"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Killings outside Port-au-Prince",
+        "why": "The UN says gangs are spreading into rural areas, with 241 killed in West and Artibonite for allegedly resisting them; rising rural counts signal expansion.",
+        "trackedBy": "UCDP Conflict Events"
+      },
+      {
+        "indicator": "Displacement outside the capital",
+        "why": "IOM put almost 80 per cent of 1.5 million displaced people outside Port-au-Prince in September 2026; a rising share means the crisis is becoming national.",
+        "trackedBy": "Displacement Flows"
+      },
+      {
+        "indicator": "Gang Suppression Force deployment",
+        "why": "At 1,563 uniformed members against 5,550 authorised in October 2026, deployment pace decides whether recovered areas can be held; the Council reviews it in March 2027.",
+        "trackedBy": "Force Posture"
+      },
+      {
+        "indicator": "Election timetable",
+        "why": "The 13 December vote was postponed with 759,257 of 6.5 million estimated voters registered; the UN warned new dates without a feasibility assessment would erode confidence.",
+        "trackedBy": "Country Instability"
+      }
+    ]
+  },
+  {
+    "slug": "drc-eastern-conflict",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "Fighting is concentrated in North Kivu, South Kivu and Ituri, but the monthly counts on this page are national and include incidents elsewhere in the country. M23 emerged as a major armed movement in 2012 and resurfaced in 2022 with a new offensive. Kinshasa, the United States and UN experts accuse Rwanda of backing the group; Kigali denies this and accuses Kinshasa of arming the FDLR, rooted in forces that fled Rwanda after the 1994 genocide.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2026/9/15/geneva-talks-put-rwanda-drc-peace-deal-to-the-test",
+          "https://www.aljazeera.com/news/2026/10/13/former-dr-congo-president-kabila-joins-m23-rebels-in-a-new-coalition"
+        ]
+      },
+      {
+        "text": "In late January 2025 M23 fighters backed by Rwandan troops took Goma's airport and most of the city; an AFP hospital tally counted more than 100 dead, and a UN expert report cited by France 24 put up to 4,000 Rwandan soldiers alongside the group. In mid-February M23 and Rwandan forces entered Bukavu, the South Kivu capital. OCHA reported in May 2026 that more than 5.7 million people were internally displaced nationwide and the 2026 response plan was 30.2 per cent funded at end-March.",
+        "sourceUrls": [
+          "https://www.france24.com/en/africa/20250129-dr-congo-and-rwanda-leaders-in-crisis-talks-as-m23-rebels-on-brink-of-seizing-goma",
+          "https://www.france24.com/en/africa/20250216-rwanda-backed-m23-troops-advance-democratic-republic-congo-bukavu-uk-warns-regional-escalation",
+          "https://www.unocha.org/publications/report/democratic-republic-congo/democratic-republic-congo-humanitarian-dashboard-march-2026"
+        ]
+      },
+      {
+        "text": "Two diplomatic tracks run in parallel. The DRC and Rwanda signed a peace agreement in Washington on 27 June 2025, reaffirmed by the Washington Accords that December, committing Kinshasa to neutralise the FDLR and Rwanda to disengage its forces. Under Qatari mediation, Kinshasa and AFC/M23 signed a declaration of principles in July 2025 and the Doha Framework on 15 November 2025. M23 captured Uvira days after the December signing, and on 12 October 2026 former president Joseph Kabila launched a coalition replacing the AFC/M23 alliance.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2026/9/15/geneva-talks-put-rwanda-drc-peace-deal-to-the-test",
+          "https://www.france24.com/en/africa/20250719-dr-congo-rwanda-backed-m23-rebels-sign-ceasefire-agreement-qatar",
+          "https://www.state.gov/releases/office-of-the-spokesperson/2026/03/sanctioning-rwandan-violators-of-the-washington-accords-for-peace-and-prosperity/",
+          "https://www.aljazeera.com/news/2026/10/13/former-dr-congo-president-kabila-joins-m23-rebels-in-a-new-coalition",
+          "https://www.aljazeera.com/news/2026/10/18/fears-grow-in-drc-as-former-president-joseph-kabila-joins-rebellion"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Congolese Armed Forces (FARDC)",
+        "role": "National army; said on 19 January 2026 it had retaken Uvira after AFC/M23 withdrew, with pro-Kinshasa Wazalendo militias entering first.",
+        "sourceUrl": "https://www.france24.com/en/africa/20260120-congolese-army-retakes-strategic-city-of-uvira-after-m23-withdrawal"
+      },
+      {
+        "name": "AFC/M23 (Congo River Alliance / March 23 Movement)",
+        "role": "Rebel coalition that captured Goma and Bukavu in 2025 and signed the Doha Framework with Kinshasa on 15 November 2025.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/9/15/geneva-talks-put-rwanda-drc-peace-deal-to-the-test"
+      },
+      {
+        "name": "Rwanda Defence Force (RDF)",
+        "role": "Sanctioned by the United States on 2 March 2026, with four senior officers, for what Washington called direct operational support to M23.",
+        "sourceUrl": "https://www.state.gov/releases/office-of-the-spokesperson/2026/03/sanctioning-rwandan-violators-of-the-washington-accords-for-peace-and-prosperity/"
+      },
+      {
+        "name": "Democratic Forces for the Liberation of Rwanda (FDLR)",
+        "role": "Rooted in forces that fled Rwanda after the 1994 genocide; its neutralisation is Kinshasa's core obligation under the Washington agreement.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/9/15/geneva-talks-put-rwanda-drc-peace-deal-to-the-test"
+      },
+      {
+        "name": "Allied Democratic Forces (ADF)",
+        "role": "Islamic State-affiliated group from Uganda, under UN sanctions since 2014; killed at least 49 civilians at a Komanda church vigil in July 2025.",
+        "sourceUrl": "https://news.un.org/en/story/2025/07/1165511"
+      },
+      {
+        "name": "Front for the Refoundation of the Nation (FRN)",
+        "role": "Coalition including M23, launched in Goma on 12 October 2026 by former president Joseph Kabila, with Corneille Nangaa among his deputies.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/13/former-dr-congo-president-kabila-joins-m23-rebels-in-a-new-coalition"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2025-01-28",
+        "event": "M23 fighters backed by Rwandan troops took Goma's airport and most of the city; an AFP hospital tally counted over 100 dead.",
+        "sourceUrl": "https://www.france24.com/en/africa/20250129-dr-congo-and-rwanda-leaders-in-crisis-talks-as-m23-rebels-on-brink-of-seizing-goma"
+      },
+      {
+        "date": "2025-02-16",
+        "event": "M23 and Rwandan forces marched largely unchecked into Bukavu, the South Kivu capital, security and humanitarian sources said.",
+        "sourceUrl": "https://www.france24.com/en/africa/20250216-rwanda-backed-m23-troops-advance-democratic-republic-congo-bukavu-uk-warns-regional-escalation"
+      },
+      {
+        "date": "2025-06-27",
+        "event": "The DRC and Rwanda signed a peace agreement in Washington covering FDLR neutralisation and Rwandan force disengagement.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/9/15/geneva-talks-put-rwanda-drc-peace-deal-to-the-test"
+      },
+      {
+        "date": "2025-07-27",
+        "event": "ADF fighters killed at least 49 civilians, including nine children, mostly worshippers at a church vigil in Komanda, Ituri.",
+        "sourceUrl": "https://news.un.org/en/story/2025/07/1165511"
+      },
+      {
+        "date": "2025-11-15",
+        "event": "Kinshasa and AFC/M23 signed the Doha Framework, with eight protocols including ceasefire monitoring and prisoner exchange.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/11/15/drc-rwanda-backed-m23-sign-framework-deal-for-peace-after-talks-in-qatar"
+      },
+      {
+        "date": "2025-12-04",
+        "event": "Presidents Tshisekedi and Kagame signed the Washington Accords at the White House; days later M23 captured Uvira.",
+        "sourceUrl": "https://www.state.gov/releases/office-of-the-spokesperson/2026/03/sanctioning-rwandan-violators-of-the-washington-accords-for-peace-and-prosperity/"
+      },
+      {
+        "date": "2026-01-19",
+        "event": "The Congolese army said it had retaken Uvira after AFC/M23 withdrew its remaining forces from the city.",
+        "sourceUrl": "https://www.france24.com/en/africa/20260120-congolese-army-retakes-strategic-city-of-uvira-after-m23-withdrawal"
+      },
+      {
+        "date": "2026-08-24",
+        "event": "The first ceasefire verification mission, with government and AFC/M23 representatives, deployed by UN helicopter to Minembwe, South Kivu.",
+        "sourceUrl": "https://www.france24.com/en/africa/20260824-ceasefire-verification-mission-deploys-eastern-dr-congo"
+      },
+      {
+        "date": "2026-10-12",
+        "event": "Joseph Kabila launched the Front for the Refoundation of the Nation in Goma, with Corneille Nangaa among his deputies.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/13/former-dr-congo-president-kabila-joins-m23-rebels-in-a-new-coalition"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Clashes around Minembwe, Uvira and Kalehe",
+        "why": "The Doha verification mission reached Minembwe in August 2026; recorded clashes in these South Kivu areas show whether the ceasefire holds.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "New displacement in North and South Kivu",
+        "why": "OCHA counts more than 5.7 million displaced nationally; a rise concentrated in the Kivus would signal renewed M23-FARDC fighting rather than ADF violence.",
+        "trackedBy": "UNHCR Displacement"
+      },
+      {
+        "indicator": "ADF attacks in Ituri and North Kivu",
+        "why": "ADF massacres such as Komanda in July 2025 enter the national count even when the M23 front is quiet; spikes there are not Doha breakdowns.",
+        "trackedBy": "UCDP Conflict Events"
+      },
+      {
+        "indicator": "FRN military moves after Kabila's launch",
+        "why": "The FRN says it inherits the AFC's Doha commitments; new offensives from Goma or Bukavu would show whether it changes the war or only its leadership.",
+        "trackedBy": "Escalation Monitor"
+      }
+    ]
+  },
+  {
+    "slug": "nigeria-security-crisis",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "Boko Haram's insurgency in the northeast dates from July 2009, when founder Mohammed Yusuf died in police custody in Maiduguri and successor Abubakar Shekau launched a campaign of attacks. The group split in 2016, and the Islamic State West Africa Province (ISWAP) faction became dominant after Shekau's death in 2021. OCHA describes a 16-year conflict in Borno, Adamawa and Yobe; its $516 million appeal for 2026 targets 2.5 million people, and in March 2026 alone insecurity killed or injured 700 people in Borno and Yobe. ISWAP still attacks remote bases, including the 101 Special Forces Battalion at Kukawa on 6 October 2026.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2019/7/30/death-anguish-and-flickers-of-hope-10-years-of-boko-haram",
+          "https://www.aljazeera.com/features/2023/9/8/rivalry-among-boko-haram-factions-compounds-violence-in-northern-nigeria",
+          "https://reliefweb.int/report/nigeria/nigeria-borno-adamawa-and-yobe-bay-states-situation-report-5-february-2026",
+          "https://reliefweb.int/report/nigeria/nigeria-borno-adamawa-and-yobe-bay-states-situation-report-3-april-2026",
+          "https://www.lanacion.com.ar/usa/islamic-state-group-affiliated-militants-attack-military-base-in-nigeria-killing-several-soldiers-nid07102026/"
+        ]
+      },
+      {
+        "text": "In the northwest, armed gangs known as bandits raid villages and kidnap for ransom; Al Jazeera reports mass kidnappings have become common across northern Nigeria, with girls taken from a government boarding school in Kebbi State on 17 November 2025 and more than 300 students and staff seized from a Catholic school in Niger State days later. Lakurawa, a group the army first acknowledged in November 2024, operates from Sokoto and Kebbi. In the north-central Middle Belt, where mostly Fulani herders and farmers clash over land and water, an overnight attack on Yelwata, Benue State, in June 2025 killed at least 100 people, Amnesty International said; a state official confirmed 45.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2025/11/25/twenty-four-schoolgirls-released-in-northwestern-nigeria-kidnapping-case",
+          "https://www.aljazeera.com/news/2025/1/10/lakurawa-the-new-armed-group-wreaking-havoc-on-the-nigeria-niger-border",
+          "https://www.aljazeera.com/news/2025/6/14/at-least-100-people-killed-in-gunmen-attack-in-nigeria-rights-group"
+        ]
+      },
+      {
+        "text": "On 3 February 2026 gunmen killed at least 162 civilians in Woro, Kwara State, according to the African Union Commission; no group claimed the attack, and President Bola Tinubu blamed Boko Haram and deployed an army battalion. US involvement grew after Christmas Day 2025 strikes in Sokoto State, which Nigeria said were coordinated: 100 US soldiers arrived in February 2026 to train local forces, and in May a joint operation killed Abu-Bilal al-Minuki, described by Washington as ISIL's global second-in-command, in the Lake Chad Basin. This tracker combines the north-eastern insurgency, north-western banditry and Middle Belt communal violence into one national total.",
+        "sourceUrls": [
+          "https://au.int/en/pressreleases/20260204/chairperson-condemns-deadly-attack-woro-kwara-state-nigeria",
+          "https://www.aljazeera.com/news/2026/2/4/gunmen-kill-more-than-30-people-in-nigerias-kwara-state-authorities",
+          "https://www.aljazeera.com/news/2026/2/21/gunmen-on-motorcycles-kill-at-least-50-in-northwest-nigeria-report",
+          "https://www.aljazeera.com/news/2026/5/16/trump-says-isil-second-in-command-abu-bilal-al-minuki-killed"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Boko Haram (JAS)",
+        "role": "Group founded in 2002 whose insurgency had killed nearly 30,000 people and displaced more than two million by 2019, according to tracker figures cited by Al Jazeera.",
+        "sourceUrl": "https://www.aljazeera.com/news/2019/7/30/death-anguish-and-flickers-of-hope-10-years-of-boko-haram"
+      },
+      {
+        "name": "Islamic State West Africa Province (ISWAP)",
+        "role": "Boko Haram splinter that frequently attacks remote, lightly fortified bases in the northeast to seize weapons, most recently at Kukawa in Borno on 6 October 2026.",
+        "sourceUrl": "https://www.lanacion.com.ar/usa/islamic-state-group-affiliated-militants-attack-military-base-in-nigeria-killing-several-soldiers-nid07102026/"
+      },
+      {
+        "name": "Bandit gangs of the northwest",
+        "role": "Armed criminal groups in Zamfara and neighbouring states that arrive on motorcycles, burn homes and abduct residents; at least 50 were killed in Tungan Dutse, Zamfara, in February 2026.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/2/21/gunmen-on-motorcycles-kill-at-least-50-in-northwest-nigeria-report"
+      },
+      {
+        "name": "Lakurawa",
+        "role": "Group first acknowledged by the army in November 2024, operating from Sokoto and Kebbi along the Niger border; its fighters are believed to come from Mali and levy cattle taxes.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/1/10/lakurawa-the-new-armed-group-wreaking-havoc-on-the-nigeria-niger-border"
+      },
+      {
+        "name": "Nigerian armed forces",
+        "role": "Federal forces running air and ground operations in the northeast; an April 2026 air strike near Jilli market on the Yobe–Borno border killed more than 100, according to Amnesty International.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/4/12/dozens-feared-dead-in-air-strike-on-village-in-northeastern-nigeria"
+      },
+      {
+        "name": "United States forces",
+        "role": "Partner that struck Sokoto State on 25 December 2025, has since deployed hundreds of troops in what Nigeria calls a noncombat role, and joined the May 2026 al-Minuki operation.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/5/16/trump-says-isil-second-in-command-abu-bilal-al-minuki-killed"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2009-07",
+        "event": "Boko Haram founder Mohammed Yusuf was killed in police custody in Maiduguri; successor Abubakar Shekau vowed revenge and launched the insurgency.",
+        "sourceUrl": "https://www.aljazeera.com/news/2019/7/30/death-anguish-and-flickers-of-hope-10-years-of-boko-haram"
+      },
+      {
+        "date": "2014-04",
+        "event": "Boko Haram kidnapped 276 schoolgirls from a boarding school in Chibok, Borno State, drawing global attention to the insurgency.",
+        "sourceUrl": "https://www.aljazeera.com/news/2019/7/30/death-anguish-and-flickers-of-hope-10-years-of-boko-haram"
+      },
+      {
+        "date": "2025-06-13",
+        "event": "Gunmen attacked Yelwata in Benue State overnight; Amnesty International said at least 100 people were killed, while a state official confirmed 45 deaths.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/6/14/at-least-100-people-killed-in-gunmen-attack-in-nigeria-rights-group"
+      },
+      {
+        "date": "2025-11-17",
+        "event": "Armed men stormed a government girls' boarding school in Kebbi State shortly after a military detachment left and abducted students; 24 girls were released on 25 November.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/11/25/twenty-four-schoolgirls-released-in-northwestern-nigeria-kidnapping-case"
+      },
+      {
+        "date": "2025-12-25",
+        "event": "US forces struck what Washington called ISIS positions in northwest Nigeria, with Jabo in Sokoto State confirmed hit; Nigeria's foreign minister said the strikes were coordinated.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/12/26/us-bombs-target-isil-in-nigeria-whats-really-going-on"
+      },
+      {
+        "date": "2026-02-03",
+        "event": "Gunmen attacked the village of Woro in Kwara State, killing at least 162 civilians, the African Union Commission said in condemning the attack.",
+        "sourceUrl": "https://au.int/en/pressreleases/20260204/chairperson-condemns-deadly-attack-woro-kwara-state-nigeria"
+      },
+      {
+        "date": "2026-05-16",
+        "event": "The US and Nigerian presidents announced a joint operation had killed Abu-Bilal al-Minuki, described as ISIL's global second-in-command, at a compound in the Lake Chad Basin.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/5/16/trump-says-isil-second-in-command-abu-bilal-al-minuki-killed"
+      },
+      {
+        "date": "2026-08-05",
+        "event": "The presidency announced the rescue of 308 kidnap victims from Kainji Lake National Park in Niger State, including people abducted in the February Woro attack.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/8/5/nigeria-announces-rescue-of-308-kidnapped-citizens"
+      },
+      {
+        "date": "2026-10-06",
+        "event": "ISWAP fighters attacked the 101 Special Forces Battalion at Kukawa, Borno, from four directions; the army said over 25 militants died and a senior officer told AP 10 soldiers were killed.",
+        "sourceUrl": "https://www.lanacion.com.ar/usa/islamic-state-group-affiliated-militants-attack-military-base-in-nigeria-killing-several-soldiers-nid07102026/"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Attacks on Lake Chad military bases",
+        "why": "ISWAP raids remote northeastern bases to seize weapons, as at Kukawa on 6 October 2026; a cluster of such assaults would signal the group rebuilding capacity around Lake Chad.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Mass abductions in the northwest and north-central",
+        "why": "School and village kidnappings for ransom, such as the Kebbi school raid of November 2025, recur where state presence is thin; a run of mass abductions shows bandit groups extending their reach.",
+        "trackedBy": "UCDP Conflict Events"
+      },
+      {
+        "indicator": "Lean-season hunger in Borno, Adamawa and Yobe",
+        "why": "OCHA projected 5.8 million people in Crisis or worse for June–September 2026, including 15,000 in Catastrophe in Borno, with food aid 1.3 percent funded in March; worsening access deepens famine-like pockets.",
+        "trackedBy": "Country Instability"
+      },
+      {
+        "indicator": "US military footprint",
+        "why": "After the December 2025 strikes and the May 2026 al-Minuki operation, further US strikes or troop announcements would mark escalation of a partnership Nigeria describes as noncombat support.",
+        "trackedBy": "Military Activity"
+      },
+      {
+        "indicator": "Middle Belt mass-casualty raids",
+        "why": "Yelwata (June 2025) and Woro (February 2026) followed warnings residents say went unheeded; new raids in Benue or Kwara and resulting changes to foreign travel advisories would reflect spreading risk.",
+        "trackedBy": "Security Advisories"
+      }
+    ]
+  },
+  {
+    "slug": "afghanistan-crisis",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "The Taliban reached Kabul on 15 August 2021; UN Secretary-General Antonio Guterres urged 'utmost restraint' and said women's hard-won rights must be protected. On 20 December 2022 the authorities barred women from universities and on 24 December ordered NGOs to stop female staff working, prompting Save the Children, the Norwegian Refugee Council and CARE to suspend programmes. By August 2026 UN agencies counted more than 100 decrees restricting women and an estimated 2.4 million girls excluded from secondary education.",
+        "sourceUrls": [
+          "https://news.un.org/en/story/2021/08/1097832",
+          "https://www.aljazeera.com/news/2022/12/26/top-un-ngo-officials-to-meet-over-taliban-ban-on-women-staff",
+          "https://news.un.org/en/story/2026/08/1168123"
+        ]
+      },
+      {
+        "text": "Economic contraction and mass returns, not fighting, drive humanitarian need. IOM counts 22 million people in need, cites a 'persistent macroeconomic contraction' and says over 2.8 million undocumented Afghans returned from Iran and Pakistan in 2025, with returns since 2023 equal to about 11 per cent of the population. Pakistan's 1 November 2023 deadline for undocumented foreigners to leave, affecting an estimated 1.7 million Afghans, opened this era. On 20 October 2026 OCHA's Olga Cherevko said nearly 16 million Afghans face crisis-level hunger, rising to around 19 million in winter.",
+        "sourceUrls": [
+          "https://crisisresponse.iom.int/response/afghanistan-crisis-response-plan-2026",
+          "https://www.voanews.com/a/pakistan-200-000-afghan-nationals-returned-home-/7333541.html",
+          "https://news.un.org/en/story/2026/10/1168631"
+        ]
+      },
+      {
+        "text": "Shocks since 2025 compounded the strain. A magnitude 6.0 earthquake on 31 August 2025 in Kunar and Nangarhar killed more than 2,164 people, UN News reported, and days later Taliban security forces barred Afghan female UN staff from UN compounds in Kabul. A nationwide internet shutdown from 29 September 2025 was crippling banking and isolating women, UNAMA said. UNAMA attributes 512 civilian deaths to cross-border violence with Pakistan since October 2025, and in June 2026 the Security Council unanimously urged the Taliban to reverse their crackdown on women.",
+        "sourceUrls": [
+          "https://news.un.org/en/story/2025/09/1165832",
+          "https://ny1.com/nyc/all-boroughs/ap-top-news/2025/09/30/the-un-mission-appeals-to-the-taliban-to-restore-internet-access-across-afghanistan",
+          "https://news.un.org/en/story/2026/10/1168605",
+          "https://wtop.com/news/2026/06/un-calls-on-afghanistans-taliban-rulers-to-reverse-crackdown-on-women/"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Taliban de facto authorities",
+        "role": "Afghanistan's de facto rulers; UNAMA recorded 443 arbitrary arrests by their virtue-and-vice inspectors and a police law banning all demonstrations in July-September 2026.",
+        "sourceUrl": "https://news.un.org/en/story/2026/10/1168605"
+      },
+      {
+        "name": "UN Assistance Mission in Afghanistan (UNAMA)",
+        "role": "UN political mission in Kabul; the Security Council unanimously extended its mandate for one year, until 17 June 2027, under resolution 2822 (2026).",
+        "sourceUrl": "https://unama.unmissions.org/en/news/un-security-council-extends-unama-mandate-for-one-year"
+      },
+      {
+        "name": "Pakistan",
+        "role": "Host to millions of Afghans; it set a 1 November 2023 deadline for undocumented foreigners to leave, its interior minister estimating 1.7 million Afghans affected.",
+        "sourceUrl": "https://www.voanews.com/a/pakistan-200-000-afghan-nationals-returned-home-/7333541.html"
+      },
+      {
+        "name": "Iran",
+        "role": "Main source of returns in early 2025; the UN reported over 605,000 Afghans returned from Iran in the six months to June 2025.",
+        "sourceUrl": "https://afghanistan.un.org/en/node/296987"
+      },
+      {
+        "name": "WFP and FAO",
+        "role": "UN food agencies warning of record acute malnutrition; WFP's John Aylieff said in October 2026 'we still have a window to act, but it is closing fast'.",
+        "sourceUrl": "https://news.un.org/en/story/2026/10/1168605"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2021-08-15",
+        "event": "Taliban forces reached Kabul after capturing provincial capitals over several weeks; Guterres urged all parties to exercise 'utmost restraint'.",
+        "sourceUrl": "https://news.un.org/en/story/2021/08/1097832"
+      },
+      {
+        "date": "2022-12-24",
+        "event": "The Taliban economy ministry ordered NGOs to stop female staff working, days after barring women from universities; several major aid agencies suspended programmes.",
+        "sourceUrl": "https://www.aljazeera.com/news/2022/12/26/top-un-ngo-officials-to-meet-over-taliban-ban-on-women-staff"
+      },
+      {
+        "date": "2023-11-01",
+        "event": "Pakistan's deadline for undocumented foreigners to leave took effect; its interior minister estimated 1.7 million Afghans faced forced return, VOA reported.",
+        "sourceUrl": "https://www.voanews.com/a/pakistan-200-000-afghan-nationals-returned-home-/7333541.html"
+      },
+      {
+        "date": "2025-08-31",
+        "event": "A magnitude 6.0 earthquake struck Kunar and Nangarhar; UN News reported more than 2,164 deaths, at least 3,428 injuries and some 6,700 homes destroyed.",
+        "sourceUrl": "https://news.un.org/en/story/2025/09/1165832"
+      },
+      {
+        "date": "2025-09-29",
+        "event": "A Taliban-ordered internet shutdown became nationwide, the first since 2021; UNAMA said it was crippling banking and isolating women, AP reported.",
+        "sourceUrl": "https://ny1.com/nyc/all-boroughs/ap-top-news/2025/09/30/the-un-mission-appeals-to-the-taliban-to-restore-internet-access-across-afghanistan"
+      },
+      {
+        "date": "2025-10-19",
+        "event": "Pakistan and Afghanistan agreed an immediate ceasefire in Doha, mediated by Qatar and Turkiye, after a week of border clashes and Pakistani air strikes.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/10/19/afghanistan-pakistan-agree-to-immediate-ceasefire-after-talks-in-doha"
+      },
+      {
+        "date": "2026-06-15",
+        "event": "The Security Council unanimously urged the Taliban to reverse their crackdown on women after at least 30 women were arrested in Herat over dress rules, AP reported.",
+        "sourceUrl": "https://wtop.com/news/2026/06/un-calls-on-afghanistans-taliban-rulers-to-reverse-crackdown-on-women/"
+      },
+      {
+        "date": "2026-10-20",
+        "event": "OCHA spokesperson Olga Cherevko said nearly 16 million Afghans face crisis-level hunger and warned numbers would rise to around 19 million in winter.",
+        "sourceUrl": "https://news.un.org/en/story/2026/10/1168631"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Returns from Pakistan and Iran",
+        "why": "UNHCR assisted 433,189 returnees between 1 January and 17 October 2026; a surge in weekly arrivals would signal renewed deportation drives in either neighbour.",
+        "trackedBy": "UNHCR Displacement"
+      },
+      {
+        "indicator": "Nationwide connectivity shutdowns",
+        "why": "The September 2025 blackout hit banking, remittances and aviation within hours; a repeat would be an early sign of a new enforcement campaign.",
+        "trackedBy": "Internet Disruptions"
+      },
+      {
+        "indicator": "Cross-border strikes with Pakistan",
+        "why": "UNAMA attributes 512 civilian deaths inside Afghanistan to cross-border violence since October 2025; new strikes in Kunar or Helmand would test the Doha ceasefire.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Protests over arrests of women",
+        "why": "A June 2026 Herat protest over dress-code arrests was dispersed with one person shot dead, UNAMA said; further protests would be a rare public challenge.",
+        "trackedBy": "Protests"
+      }
+    ]
+  },
+  {
+    "slug": "palestine-gaza-crisis",
+    "lastReviewed": "2026-10-24",
+    "background": [
+      {
+        "text": "The war began on 7 October 2023, when Hamas-led attacks in Israel killed 1,139 people and took about 240 captive, according to Al Jazeera; UN News puts the number taken at some 250. Three years on, Gaza's Ministry of Health, as cited by Al Jazeera, had recorded 74,382 Palestinians killed as of 12 October 2026, and OCHA counted 1.98 million people displaced, about 90 percent of the population. The Board of Peace's high representative told the Security Council in May 2026 that around 80 percent of Gaza's buildings are damaged or destroyed.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2026/10/7/three-years-of-israels-genocide-in-gaza-in-numbers",
+          "https://news.un.org/en/story/2025/10/1166084",
+          "https://www.aljazeera.com/news/2026/10/13/palestine-weekly-gaza-marks-year-of-ceasefire-with-more-israeli-killing",
+          "https://news.un.org/en/story/2026/05/1167568"
+        ]
+      },
+      {
+        "text": "A first-phase ceasefire under President Trump's 20-point plan was announced on 10 October 2025; Hamas freed the 20 surviving hostages on 13 October and Israel released more than 1,900 Palestinian prisoners. On 17 November the Security Council adopted Resolution 2803, welcoming a Board of Peace as Gaza's transitional administration and authorising an International Stabilization Force. The force has not deployed: Israel's cabinet approved only a 200-member pilot in a Rafah 'test' zone in July 2026, and a Board-announced disarmament roadmap of 30 July ties Israeli withdrawal to verified decommissioning, which Hamas says it will not implement unless Israel fulfils its obligations.",
+        "sourceUrls": [
+          "https://www.ochaopt.org/content/humanitarian-situation-report-2-october-2026",
+          "https://www.france24.com/en/middle-east/20251012-gaza-live-trump-gaza-war-israel-release-hostages",
+          "https://news.un.org/en/story/2025/11/1166391",
+          "https://www.aljazeera.com/news/2026/10/13/palestine-weekly-gaza-marks-year-of-ceasefire-with-more-israeli-killing",
+          "https://www.aljazeera.com/news/2026/7/27/israels-approval-of-limited-gaza-force-a-calculated-manoeuvre-experts-say",
+          "https://www.aljazeera.com/news/2026/7/31/gaza-board-of-peace-announces-hamas-disarmament-agreement-what-we-know"
+        ]
+      },
+      {
+        "text": "OCHA reports that the Ministry of Health had recorded 1,493 deaths since the ceasefire as of 12 October 2026, and that Israeli restrictions still bar access to 65 percent of Gaza's land. Al Jazeera reports Israeli forces pushing the 'Yellow Line' into Gaza City neighbourhoods and aid trucks entering at about a third of the agreed rate. In the West Bank, OCHA documented more than 2,060 settler attacks causing casualties or damage since the start of 2026; after gunmen killed two Israeli soldiers near Hebron on 23 October, Netanyahu ordered the city sealed and a West Bank-wide lockdown, the fourth closure in a month according to the UN.",
+        "sourceUrls": [
+          "https://www.ochaopt.org/content/humanitarian-situation-report-15-october-2026",
+          "https://www.ochaopt.org/content/humanitarian-situation-report-2-october-2026",
+          "https://www.aljazeera.com/news/2026/10/13/palestine-weekly-gaza-marks-year-of-ceasefire-with-more-israeli-killing",
+          "https://news.un.org/en/story/2026/10/1168660"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Hamas",
+        "role": "Palestinian armed group and former de facto authority in Gaza; negotiator Ghazi Hamad said it 'will not implement any step' of the disarmament roadmap unless Israeli forces fulfil their obligations.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/7/31/gaza-board-of-peace-announces-hamas-disarmament-agreement-what-we-know"
+      },
+      {
+        "name": "Israeli government and military",
+        "role": "Controls territory behind the 'Yellow Line', which Al Jazeera says covers up to 70 percent of Gaza, and says there will be no withdrawal until Hamas fully disarms.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/7/27/israels-approval-of-limited-gaza-force-a-calculated-manoeuvre-experts-say"
+      },
+      {
+        "name": "Palestinian Authority",
+        "role": "Mahmoud Abbas's Ramallah-based government, which has postponed Palestinian legislative elections to September 2027 as settler attacks and demolitions mount in the West Bank.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/13/palestine-weekly-gaza-marks-year-of-ceasefire-with-more-israeli-killing"
+      },
+      {
+        "name": "Board of Peace",
+        "role": "Gaza's transitional oversight body under Resolution 2803, chaired by Trump; with Egyptian, Qatari, Turkish and US mediators it announced the phased disarmament roadmap on 30 July 2026.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/7/31/gaza-board-of-peace-announces-hamas-disarmament-agreement-what-we-know"
+      },
+      {
+        "name": "Israeli settlers",
+        "role": "OCHA recorded 244 settler incidents across 113 West Bank communities in the two weeks to mid-October 2026, with 74 percent of Palestinian injuries occurring in settler attacks.",
+        "sourceUrl": "https://www.ochaopt.org/content/humanitarian-situation-report-15-october-2026"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2023-10-07",
+        "event": "Hamas-led attacks on southern Israel killed 1,139 people and took about 240 captive, according to Al Jazeera's count, beginning the Gaza war.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/7/three-years-of-israels-genocide-in-gaza-in-numbers"
+      },
+      {
+        "date": "2025-10-10",
+        "event": "A first-phase ceasefire under the US 20-point plan was announced; OCHA uses this date as the start of its count of casualties since the ceasefire.",
+        "sourceUrl": "https://www.ochaopt.org/content/humanitarian-situation-report-2-october-2026"
+      },
+      {
+        "date": "2025-10-13",
+        "event": "Hamas freed the 20 surviving hostages and Israel released more than 1,900 Palestinian prisoners as leaders met in Sharm el-Sheikh, with the US, Egypt, Qatar and Turkiye signing as guarantors.",
+        "sourceUrl": "https://www.france24.com/en/middle-east/20251012-gaza-live-trump-gaza-war-israel-release-hostages"
+      },
+      {
+        "date": "2025-11-17",
+        "event": "The Security Council adopted Resolution 2803 by 13 votes with China and Russia abstaining, welcoming the Board of Peace and authorising an International Stabilization Force.",
+        "sourceUrl": "https://news.un.org/en/story/2025/11/1166391"
+      },
+      {
+        "date": "2026-07-26",
+        "event": "Israel's security cabinet approved a 200-member foreign-force pilot in a Rafah 'test' zone, restricted to operating outside the Yellow Line.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/7/27/israels-approval-of-limited-gaza-force-a-calculated-manoeuvre-experts-say"
+      },
+      {
+        "date": "2026-07-30",
+        "event": "Trump announced that the Board of Peace and mediators had agreed a phased Hamas disarmament roadmap under which Israeli forces withdraw as disarmament is completed.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/7/31/gaza-board-of-peace-announces-hamas-disarmament-agreement-what-we-know"
+      },
+      {
+        "date": "2026-10-12",
+        "event": "The Gaza Ministry of Health count of deaths since the ceasefire reached 1,493, with 5,299 injured, according to OCHA; five Palestinians were killed in the West Bank in two weeks.",
+        "sourceUrl": "https://www.ochaopt.org/content/humanitarian-situation-report-15-october-2026"
+      },
+      {
+        "date": "2026-10-23",
+        "event": "Gunmen killed two Israeli soldiers near Hebron; Netanyahu ordered the city sealed and a full West Bank lockdown, the fourth territory-wide closure in a month.",
+        "sourceUrl": "https://news.un.org/en/story/2026/10/1168660"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Strikes along the Yellow Line",
+        "why": "OCHA counts 1,493 deaths since the ceasefire and Al Jazeera reports the line being pushed into Gaza City; a rise in strikes there would show the truce decaying further.",
+        "trackedBy": "Middle East Strikes"
+      },
+      {
+        "indicator": "Deployment of the International Stabilization Force",
+        "why": "No ISF troops have deployed a year into the ceasefire and the disarmament roadmap depends on them; first arrivals in the Rafah test zone would restart the stalled sequence.",
+        "trackedBy": "Live Intelligence"
+      },
+      {
+        "indicator": "West Bank closures and raids",
+        "why": "Israel imposed four territory-wide closures in the month to 23 October; continued lockdowns and raids on Hebron, Nablus and Jenin after the 27 October election would mark a sustained escalation.",
+        "trackedBy": "Country Instability"
+      },
+      {
+        "indicator": "Settler attacks during the olive harvest",
+        "why": "OCHA logged over 2,060 settler attacks in 2026 to mid-October and 74 percent of recent injuries in settler attacks; harvest-season incidents concentrate in rural communities and drive displacement.",
+        "trackedBy": "Armed Conflict Events"
+      }
+    ]
+  }
+]

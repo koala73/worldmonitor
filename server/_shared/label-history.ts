@@ -153,10 +153,19 @@ export function storyLabel(
     readonly originPublisher?: string;
     readonly originPublisherTrusted?: boolean;
     readonly corroborationCount?: number;
+    readonly title?: string;
+    readonly description?: string;
   }[],
 ): StoryLabel {
+  // Title and lead feed the same-copy check (#9095), so a reprint counts once
+  // here exactly as it does in the News panel (#9213).
   const evidence = evidenceFromCluster({
-    allItems: items.map((item) => ({ source: publisherLabel(item), corroborationCount: item.corroborationCount })),
+    allItems: items.map((item) => ({
+      source: publisherLabel(item),
+      corroborationCount: item.corroborationCount,
+      ...(typeof item.title === 'string' ? { title: item.title } : {}),
+      ...(typeof item.description === 'string' ? { snippet: item.description } : {}),
+    })),
   });
   const corroboration = assessCorroboration(evidence);
   return {
@@ -169,6 +178,21 @@ export function storyLabel(
 export function encodeStoryLabel(label: StoryLabel): string {
   if (!isLabelHistoryState(label.state) || label.publishers === null) return UNTRACKED_LABEL;
   return `${label.state}|${label.publishers}`;
+}
+
+/**
+ * #9213: story-track field holding the label a digest variant served this
+ * cycle, all four states. Alert and digest text read it, so they show the
+ * verdict the dashboard showed instead of recomputing it. Scoped per variant
+ * and language because the track row is shared and each variant keeps a
+ * different set of a story's feeds.
+ */
+export const STORY_CORROBORATION_FIELD = (variant: string, lang: string) => `corroboration:${variant}:${lang}`;
+
+/** `state|publishers`, or `unknown`. Read by parseCorroboration in scripts/lib/corroboration-text.cjs. */
+export function encodeStoryCorroboration(label: Corroboration | Pick<StoryLabel, 'state' | 'publishers'>): string {
+  const publishers = 'publishers' in label ? label.publishers : null;
+  return label.state === 'unknown' || publishers === null ? 'unknown' : `${label.state}|${publishers}`;
 }
 
 export function decodeStoryLabel(raw: unknown): { state: LabelHistoryState; publishers: number } | null {

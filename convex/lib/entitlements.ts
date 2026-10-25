@@ -30,7 +30,8 @@ export function getFeaturesForPlan(planKey: string): PlanFeatures {
 /** Merge stored per-user overrides with newly added catalog defaults. */
 export function mergeEntitlementFeatures(
   planKey: string,
-  storedFeatures: Omit<PlanFeatures, "planLimits"> & {
+  storedFeatures: Omit<PlanFeatures, "planLimits" | "historyDays"> & {
+    historyDays?: number;
     planLimits?: Partial<NonNullable<PlanFeatures["planLimits"]>>;
   },
 ): PlanFeatures {
@@ -49,9 +50,27 @@ export function mergeEntitlementFeatures(
   if (planLimits && catalogDefaults.planLimits?.mcpCallsPerDay === SHARED_API_BUDGET) {
     planLimits.mcpCallsPerDay = SHARED_API_BUDGET;
   }
+  // The same structural rule for the retired "unlimited" markers. Rows store
+  // the catalog's features at grant time and nothing writes per-user limit
+  // overrides, so a stored `null` daily limit or `-1` allowance can only be the
+  // Enterprise catalog's old value. Now that the catalog sets a finite ceiling,
+  // it wins; otherwise every row granted before the change would stay uncapped
+  // until a billing event happened to rewrite it.
+  if (planLimits && catalogDefaults.planLimits) {
+    for (const field of ["apiRequestsPerDay", "mcpCallsPerDay", "dashboardAiCallsPerDay"] as const) {
+      if (planLimits[field] === null && typeof catalogDefaults.planLimits[field] === "number") {
+        (planLimits as Record<typeof field, unknown>)[field] = catalogDefaults.planLimits[field];
+      }
+    }
+  }
+  const apiDailyAllowance =
+    storedFeatures.apiDailyAllowance === -1 && (catalogDefaults.apiDailyAllowance ?? -1) >= 0
+      ? catalogDefaults.apiDailyAllowance
+      : storedFeatures.apiDailyAllowance;
   return {
     ...catalogDefaults,
     ...storedFeatures,
+    ...(apiDailyAllowance !== undefined ? { apiDailyAllowance } : {}),
     planLimits,
   };
 }

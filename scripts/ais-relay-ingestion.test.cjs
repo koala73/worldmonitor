@@ -1351,3 +1351,85 @@ test('theater-posture uses adsb.lol, then Wingbits, without routine OpenSky debi
     await upstash.close();
   }
 });
+
+// Google answers a rejected RPC with HTTP 200 and a `wrb.fr` row whose payload
+// slot is null and whose error slot holds the RPC status. Captured verbatim
+// from GetShoppingResults on 2026-10-16, when every search returned this.
+// Results-page bodies in the live framing: the shopping payload is the `ds:1`
+// block, and a rejected search carries `errorHasStatus: true` instead.
+const googlePage = (dataJson) => `<script>AF_initDataCallback({key: 'ds:1', hash: '9', data:${dataJson}, sideChannel: {}});</script>`;
+const GOOGLE_PAGE_REJECTION = `<script>AF_initDataCallback({key: 'ds:1',  data:[3,null,[["type.googleapis.com/travel.frontend.flights.ErrorResponse",[]]]],errorHasStatus: true,});</script>`;
+const googleShoppingPage = (items) => googlePage(JSON.stringify([null, null, items, null]));
+const googleFlightRow = () => {
+  const leg = [];
+  Object.assign(leg, { 3: 'JFK', 6: 'LHR', 8: [18, 30], 10: [6, 45], 11: 435, 20: [2026, 11, 15], 21: [2026, 11, 16], 22: ['BA', '178'] });
+  const flight = [];
+  Object.assign(flight, { 2: [leg], 9: 435 });
+  return [flight, [[null, 512]]];
+};
+
+test('Google Flights rejections fail the relay call instead of reading as zero flights', async () => {
+  const { child, ready } = spawnRelay({
+    RELAY_GOOGLE_FLIGHTS_RATE_LIMIT_MAX: '1000',
+    RELAY_TEST_GOOGLE_STATUS_SEQUENCE: Array(11).fill('200').join(','),
+    RELAY_TEST_GOOGLE_BODY_SEQUENCE: JSON.stringify([
+      GOOGLE_PAGE_REJECTION,
+      ...Array(8).fill(GOOGLE_PAGE_REJECTION),
+      googleShoppingPage(null),
+      googleShoppingPage([[googleFlightRow()]]),
+    ]),
+  });
+
+  try {
+    const { port } = await ready;
+
+    const rejected = await get(port, '/google-flights/search?origin=JFK&destination=LHR&departure_date=2026-11-15');
+    assert.equal(rejected.status, 502, 'an error page is an upstream failure, not an empty result');
+    assert.match(JSON.parse(rejected.body).error, /Google Flights rejected the search/);
+
+    const rejectedDates = await get(port, '/google-flights/search-dates?origin=JFK&destination=LHR&start_date=2026-11-15&end_date=2026-11-22');
+    assert.equal(rejectedDates.status, 502);
+    assert.match(JSON.parse(rejectedDates.body).error, /Google Flights rejected the search/);
+
+    const empty = await get(port, '/google-flights/search?origin=JFK&destination=LHR&departure_date=2026-11-16');
+    assert.equal(empty.status, 200, 'a well-formed payload without flight rows is a genuine empty result');
+    assert.deepEqual(JSON.parse(empty.body).flights, []);
+
+    const found = await get(port, '/google-flights/search?origin=JFK&destination=LHR&departure_date=2026-11-17');
+    assert.equal(found.status, 200);
+    const [flight] = JSON.parse(found.body).flights;
+    assert.equal(flight.price, 512);
+    assert.equal(flight.legs[0].flightNumber, '178');
+  } finally {
+    await stop(child);
+  }
+});
+
+test('Google Flights pages or rows in an unexpected shape fail instead of reading as results', async () => {
+  const { child, ready } = spawnRelay({
+    RELAY_GOOGLE_FLIGHTS_RATE_LIMIT_MAX: '1000',
+    RELAY_TEST_GOOGLE_STATUS_SEQUENCE: '200,200,200,200',
+    RELAY_TEST_GOOGLE_BODY_SEQUENCE: JSON.stringify([
+      '<html><body>Our systems have detected unusual traffic</body></html>',
+      googlePage('{}'),
+      googlePage('[1,'),
+      googleShoppingPage([[[[], []]]]),
+    ]),
+  });
+
+  try {
+    const { port } = await ready;
+    for (const [day, reason] of [
+      ['15', /Google Flights returned a page without flight results/],
+      ['16', /Google Flights returned an unrecognized payload/],
+      ['17', /Google Flights returned an unreadable results page/],
+      ['18', /Google Flights returned flight rows in an unrecognized shape/],
+    ]) {
+      const response = await get(port, `/google-flights/search?origin=JFK&destination=LHR&departure_date=2026-11-${day}`);
+      assert.equal(response.status, 502, `departure 2026-11-${day} must not read as a successful search`);
+      assert.match(JSON.parse(response.body).error, reason);
+    }
+  } finally {
+    await stop(child);
+  }
+});

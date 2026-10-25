@@ -44,8 +44,8 @@ The top-level `status` describes user-visible platform availability, not perfect
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
-    "total": 318,
-    "ok": 318,
+    "total": 335,
+    "ok": 335,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 0,
@@ -164,7 +164,7 @@ Keys are grouped into three tiers that determine alert severity:
 | `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |
 | `EMPTY` | Crit | Bootstrap or seeded standalone key has no data. Outranks any concurrent producer fault, which would otherwise report the softer `SEED_ERROR` (see below) |
 | `EMPTY_DATA` | Crit | Key exists but contains zero records (and 0 is not a valid state for it) |
-| `RELAY_GATE_MISCONFIGURED` | Crit | The production build serving `/api/health` cannot see `CONVEX_TENANT_RELAY_SECRET` or a relay site URL (`CONVEX_SITE_URL`, or `CONVEX_URL` as the gateways accept), or the resolved URL is malformed or not `https:`; in every case the verdict is reached before any request is sent, so the tenant secret never travels over plaintext. On the missing-env shape checkout, the customer portal and notification channels answer 503 before reaching Convex. Reported on the `relayGatewayGate` liveness entry, which is not a data key; on a production build it is counted once in `summary.total`, so `total` there is the key-registry size plus one and the `ok + warn + onDemandWarn + crit` partition still holds. Set the value (`CONVEX_SITE_URL`, or `CONVEX_URL` as the gateways accept), then push a new commit; a same-commit redeploy is cancelled by the ignored-build step |
+| `RELAY_GATE_MISCONFIGURED` | Crit | The production build serving `/api/health` cannot see `CONVEX_TENANT_RELAY_SECRET` or a relay site URL (`CONVEX_SITE_URL`, or `CONVEX_URL` as the gateways accept), or the resolved URL is malformed or not `https:`; in every case the verdict is reached before any request is sent, so the tenant secret never travels over plaintext. On the missing-env shape checkout, the customer portal and notification channels answer 503 before reaching Convex. Reported on the `relayGatewayGate` liveness entry, which is not a data key; on a production build it is counted once in `summary.total`, so `total` there is the key-registry size plus one and the `ok + warn + onDemandWarn + crit` partition still holds. Set the value (`CONVEX_SITE_URL`, or `CONVEX_URL` as the gateways accept), then redeploy production; the ignored-build step builds a same-commit redeploy on `main` |
 | `RELAY_GATE_REJECTED` | Crit | The deployed Convex tenant-relay gate answered `401` to this build's gateway credential on a body-less `POST /relay/create-checkout`. Either side can be stale: a variable written after the last `convex deploy` reads as undefined inside deployed functions until the next push. The probe runs once per verdict snapshot (60 s), never per poll |
 | `RELAY_GATE_UNREACHABLE` | Warn after grace | The gate probe got no classifiable answer (network error, timeout, 5xx, or anything other than `401` / `400 MISSING_FIELDS`). A transport verdict, not a credential one. The first sighting carries a three-minute `transportGraceUntil` during which it counts as `ok`, appears in compact `pending` and is not an operational problem; a stall still present when the deadline passes moves to `problems` and counts in `summary.warn`. The deadline is kept in Redis across sweeps, including by a sweep that only waited on another sweep's probe (it stores its fallback with `probed: false`, which the next sweep re-probes rather than reuses), so a probing sweep that dies before publishing does not restart the grace — but only when another sweep was waiting on it, since that fallback is written only by a sweep that lost the probe lease. If the sole scheduled caller takes the lease and dies before publishing, nothing is stored and the next run is a first sighting. Once the deadline passes the streak continues under `transportGraceExpiredAt` instead, because republishing an expired softening deadline would make every verdict snapshot unservable and turn each poll into a full sweep instead of a warm read. The relay itself is not re-probed at that rate: whenever a reusable gate verdict is cached, the gateway is contacted about once per freshness window however often the endpoint is polled. Two paths leave no reusable verdict — a stored fallback from a sweep that only waited (`probed: false`), and a probe whose publish failed — and the sweep after either one probes again. Persistent across sweeps means a Convex outage or a wrong `CONVEX_SITE_URL` |
 
@@ -396,12 +396,62 @@ Some keys use fallback chains. If any sibling has data, empty siblings report `O
 
 `riskScores` is intentionally stricter than a raw feed heartbeat. Its
 `recordCount` is realtime signal-density coverage: the count of score-relevant
-Tier-1 conflict, news, and cyber signal families present during the CII refresh.
-The conflict family is satisfied by either the ACLED path or the UCDP event
-feed, matching the CII v8 scorer. When those feeds are reachable but quiet,
+Tier-1 conflict and news signal families present during the CII refresh
+(cyber IOC rows stopped counting in CII v14: they place attacker infrastructure).
+The conflict family is satisfied by the ACLED path, the UCDP event feed, or,
+while the ACLED path returns no events, a live GDELT snapshot from
+`gdelt:bulk:country-events:v1` for a Tier-1 country (fresh, with either its
+baseline and current window complete or its seven-day week ready), matching the
+CII v14 scorer. The GDELT snapshot counts even when its escalation and level
+scores are 0. When those feeds are reachable but quiet,
 `riskScores` can still report
 `COVERAGE_PARTIAL`; underlying feed freshness is tracked by the source-specific
 health entries where those feeds publish seed metadata.
+
+That count cannot see a dead input. ACLED credentials went missing around July
+2026 and Unrest and Conflict read 0 for every country for months while
+`riskScores` stayed `OK`, because the UCDP floor kept the conflict family
+counted. Each CII build therefore also reports every scored input on the same
+seed-meta, under `inputs`. The producer runs the scorer once per input against
+an otherwise empty build and records one of these states:
+
+| State | Meaning |
+| --- | --- |
+| `live` | The input moved at least one Tier-1 score |
+| `quiet` | Present and accepted, but moved no Tier-1 score; `quietSince` records when that started |
+| `missing` | The Redis key was absent |
+| `unusable` | Present, but the scorer rejected it as too old or malformed (for example a GDELT summary past its 6-hour gate) |
+| `not_configured` | Disabled by deployment design: ACLED without credentials, or the strike feed and strike tally with `IRAN_EVENTS_ENABLED` off |
+
+An unreadable input rejects the whole build, so it surfaces as a stale
+`riskScores` seed-meta, with the failed keys in
+`risk:scores:sebuf:rejected:<version>`.
+
+`/api/health` grades that report with `api/_cii-input-health.js` and attaches
+it to the `riskScores` entry as `ciiInputs` (`states`, `dead`,
+`notConfigured`, `unfedFamilies`). An input is dead when it is `missing`,
+`unusable`, not reported at all, `stale` because its own health check reads
+`STALE_SEED`, or `quiet` past its plausibility budget. Feeds that can be quiet
+indefinitely, such as earthquakes, outages and the strike feed, have no quiet
+budget, so quiet but fresh is never dead. An absent OREF history is quiet,
+because the relay writes it only when sirens change. `not_configured` is shown
+but never alarms on its own.
+
+| Condition | Status |
+| --- | --- |
+| A family has no live or plausibly quiet input, or the seed-meta has no `inputs` block | `COVERAGE_DEGRADED` |
+| An input is dead but every family is still fed | `COVERAGE_PARTIAL` |
+
+The families are `conflict` (ACLED and the GDELT country events, the realtime
+feeds behind Unrest and Conflict; UCDP is an annual floor and cannot stand in
+for them), `information` (news insights and the threat summary), and `security`
+(military activity, GPS jamming and aviation). These verdicts
+only raise an `OK` or `COVERAGE_PARTIAL` result, and they are never contained
+behind the served payload: the payload is present, but its scores are missing
+a signal. `ciiInputs` is operator-only: the anonymous `?compact=1` body keeps
+the status and drops the block. `/api/seed-health` grades the same report for
+`intelligence:risk-scores` and reports `coverage_partial` with the same
+`ciiInputs` block, without the sibling staleness checks.
 
 `portwatchPortActivity` also uses `minRecordCount`. A fresh
 `seed-meta:supply_chain:portwatch-ports` record below 174 countries reports

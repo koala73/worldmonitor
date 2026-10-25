@@ -3,7 +3,7 @@
  * Every sentence describes coverage: who reported it, how independent they are,
  * and which figures they state. No wording here calls a claim true or false.
  */
-import type { ClaimCard, ClaimCardHeadline } from '@/services/verify-claim';
+import type { ClaimCard, ClaimCardHeadline, FactCheckResult } from '@/services/verify-claim';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { TIER_DOCS_HREF } from '@/utils/tier-docs';
 
@@ -158,4 +158,50 @@ export function renderClaimCardHtml(card: ClaimCard, now = Date.now()): string {
       ${headlinesHtml(card, now)}
       <p class="vc-caveat">${escapeHtml(card.caveat)}</p>
     </article>`;
+}
+
+/** Must equal FACT_CHECK_LABEL in server/_shared/fact-checks.ts (tests check it); kept here so the page does not bundle the allowlist. */
+export const FACT_CHECK_LABEL = 'A published fact-check of a similar claim';
+
+function factCheckDate(iso: string): string {
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms)
+    ? new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+    : '';
+}
+
+/**
+ * Published fact-checks (#9094), shown below the coverage card and never in
+ * place of it. Each rating is quoted with the fact-checker, date and link, in
+ * the fact-checker's words; no colour or wording here grades the claim.
+ * `null` renders the loading state.
+ */
+export function renderFactChecksHtml(result: FactCheckResult | null): string {
+  let body: string;
+  if (result === null) {
+    body = '<p class="vc-note">Looking for published fact-checks…</p>';
+  } else if (result.state !== 'ok') {
+    body = '<p class="vc-note">Published fact-checks could not be checked right now.</p>';
+  } else if (result.factChecks.length === 0) {
+    body = '<p class="vc-note">No published fact-check of a similar claim was found among IFCN-verified fact-checkers.</p>';
+  } else {
+    const rows = result.factChecks.map((check) => {
+      const href = sanitizeUrl(check.url);
+      const publisher = escapeHtml(check.publisher);
+      const by = href ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${publisher}</a>` : publisher;
+      const date = factCheckDate(check.reviewedAt);
+      return `<li>
+          <p class="fc-label">${escapeHtml(FACT_CHECK_LABEL)}</p>
+          <p class="fc-rating">Rated <strong>“${escapeHtml(check.rating)}”</strong> by ${by}${date ? ` on ${escapeHtml(date)}` : ''}</p>
+          <p class="fc-claim">Claim they rated: “${escapeHtml(check.claimReviewed)}”</p>
+        </li>`;
+    }).join('');
+    body = `<ul class="fc-list">${rows}</ul>`;
+  }
+  const caveat = result?.caveat ? `<p class="vc-caveat">${escapeHtml(result.caveat)}</p>` : '';
+  return `<section class="vc-factchecks" aria-labelledby="vc-factchecks-title" aria-live="polite">
+      <h2 id="vc-factchecks-title" class="fc-title">Published fact-checks</h2>
+      ${body}
+      ${caveat}
+    </section>`;
 }

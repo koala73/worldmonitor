@@ -2062,6 +2062,46 @@ describe('api/mcp-proxy — observability', () => {
     assert.equal(proxyFailureFor(new Error('HTTP 401')).report, true);
   });
 
+  // HTTP 429 is the remote server rate-limiting the caller (a keyless panel
+  // polling past its free quota), the HTTP shape of the same verdict as a
+  // JSON-RPC rejection. One search.parallel.ai panel sent 1,019 such events in
+  // a day after the 401/403 and JSON-RPC exclusions shipped (WORLDMONITOR-172
+  // second regrowth). The audit log keeps the upstream status.
+  it('does not report an upstream rate limit to Sentry, but still reports upstream server faults', async () => {
+    const { McpProxyUpstreamError, proxyFailureFor } = await import(
+      `../api/mcp-proxy.ts?rate-limit=${Date.now()}`
+    );
+    const limited = proxyFailureFor(
+      new McpProxyUpstreamError('tools/call failed: HTTP 429', { upstreamStatus: 429 }),
+    );
+    assert.equal(limited.report, false, "upstream 429 is the remote's quota decision about the caller");
+    assert.equal(limited.level, 'warning');
+    for (const status of [500, 502, 503, 404, 400]) {
+      assert.equal(
+        proxyFailureFor(new McpProxyUpstreamError(`tools/call failed: HTTP ${status}`, { upstreamStatus: status })).report,
+        true,
+        `upstream ${status} still reports`,
+      );
+    }
+    assert.equal(proxyFailureFor(new McpProxyUpstreamError('tools/call failed: HTTP 429')).report, true);
+  });
+
+  it('audits the upstream status of a rate-limited call', async () => {
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => { logs.push(args); };
+    try {
+      stubAxiom(async () => new Response('Too Many Requests', { status: 429 }));
+      const res = await obsHandler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 422);
+    } finally {
+      console.log = originalLog;
+    }
+    const audit = logs.find(([tag, entry]) => tag === '[mcp-proxy]' && entry?.event === 'mcp_proxy_call');
+    assert.ok(audit, 'the proxy call is still audited');
+    assert.equal(audit[1].upstream_status, 429);
+  });
+
   // A JSON-RPC `error` object answered on HTTP 200 is the remote server's
   // decision about the caller's own request (a keyless panel over its free
   // quota, an unknown tool name). One search.parallel.ai panel saved without
@@ -2219,12 +2259,13 @@ describe('api/mcp-proxy — pinned upstream dispatch (GHSA-887j)', () => {
   let pinHandler;
   let pinning;
   let Agent;
+  let Dispatcher1Wrapper;
 
   beforeEach(async () => {
     const mod = await import(`../api/mcp-proxy.ts?pin=${Date.now()}`);
     pinHandler = mod.handler;
     pinning = mod.__testing__;
-    ({ Agent } = await import('undici'));
+    ({ Agent, Dispatcher1Wrapper } = await import('undici'));
   });
 
   afterEach(() => {
@@ -2244,7 +2285,7 @@ describe('api/mcp-proxy — pinned upstream dispatch (GHSA-887j)', () => {
     globalThis.fetch = async (url, init) => {
       const { hostname } = new URL(String(url));
       if (UPSTREAM_HOSTS.has(hostname)) {
-        dispatches.push({ hostname, method: init?.method ?? 'GET', pinned: init?.dispatcher instanceof Agent });
+        dispatches.push({ hostname, method: init?.method ?? 'GET', pinned: init?.dispatcher instanceof Dispatcher1Wrapper });
       }
       return upstream(url, init);
     };
@@ -2399,7 +2440,7 @@ describe('api/mcp-proxy — pinned socket on a real TLS connection (GHSA-887j)',
     undici.setGlobalDispatcher(loopbackPlatformResolver(platformLookups));
     const pinned = new undici.Agent({ connect: { ca: tls.cert, lookup: pinning.pinnedLookup('::1', 6) } });
     try {
-      const res = await fetch(`https://rebind.example:${port}/mcp`, { dispatcher: pinned });
+      const res = await fetch(`https://rebind.example:${port}/mcp`, { dispatcher: new undici.Dispatcher1Wrapper(pinned) });
       assert.equal(await res.text(), 'vetted');
       assert.deepEqual(platformLookups, [], 'a pinned request must never consult the platform resolver');
       assert.equal(hits.rebind, 0, 'the rebind target must receive nothing');
@@ -2426,7 +2467,7 @@ describe('api/mcp-proxy — pinned socket on a real TLS connection (GHSA-887j)',
     }, '127.0.0.1');
     const agent = new undici.Agent({ connect: { ca: tls.cert, lookup: pinning.pinnedLookup('127.0.0.1', 4) } });
     try {
-      const res = await fetch(`https://rebind.example:${server.address().port}/sse`, { dispatcher: agent });
+      const res = await fetch(`https://rebind.example:${server.address().port}/sse`, { dispatcher: new undici.Dispatcher1Wrapper(agent) });
       // fetchMcpUpstream closes the dispatcher as soon as fetch() resolves.
       const closed = agent.close();
       const body = await res.text();

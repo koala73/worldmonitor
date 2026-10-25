@@ -470,6 +470,28 @@ describe('News Intelligence supplied reliability and selection coverage', () => 
       corroboration: { state: 'corroborated', publishers: 4 } }]),
   });
 
+  it('distinguishes stored cluster priority from the CNA publisher declaration', async () => {
+    const value = envelope([{ ...story(0), primaryTitle: 'Controlled CNA cluster priority mismatch',
+      primarySource: 'CNA', primaryLink: 'https://example.com/cna-story', pubDate: '2026-10-02T12:34:56.000Z',
+      sourceTier: 4, credibilityScore: 77, publishers: [{ name: 'CNA', tier: 2 }], publishersUnlisted: 0,
+      corroboration: { state: 'single-publisher', publishers: 1 } }]);
+    await mount(result(value), document => {
+      const row = rows(document)[0];
+      assert.match(row.textContent, /Cluster priority tier: 4/);
+      assert.match(row.textContent, /This stored cluster tier may use a default when a source is absent from its tier table\./);
+      assert.match(row.textContent, /Publishers: CNA \(declared tier 2\)/);
+      assert.match(row.textContent, /Source reliability: 77\/100/);
+      assert.match(row.textContent, /Corroboration coverage: single-publisher/);
+      assert.match(row.textContent, /Reported publishers: 1/);
+      assert.doesNotMatch(row.textContent, /Declared source tier/);
+      assert.equal(row.querySelector('.story-title').textContent, 'Controlled CNA cluster priority mismatch');
+      assert.equal(row.querySelector('.story-title').getAttribute('href'), 'https://example.com/cna-story');
+      assert.ok(row.textContent.includes('2026-10-02T12:34:56.000Z'));
+      assert.equal(rows(document).length, 1);
+      assert.match(foot(document), /Showing 1 of 1 loaded stories/);
+    });
+  });
+
   it('preserves supplied reliability, source tiers, corroboration and selection drops across accepted shapes', async () => {
     const original = supplied();
     original.data.insights.provenance = { selectionDrops: { admissibility: 0, sourceCap: 3, overflow: 168 } };
@@ -478,7 +500,7 @@ describe('News Intelligence supplied reliability and selection coverage', () => 
       result(original, true), result(original.data, true), result(summary, true)]) {
       await mount(wire, document => {
         assert.match(rows(document)[0].textContent, /Source reliability: 77\/100/);
-        assert.match(rows(document)[0].textContent, /Declared source tier: 2/);
+        assert.match(rows(document)[0].textContent, /Cluster priority tier: 2/);
         assert.match(rows(document)[0].textContent, /Corroboration coverage: single-publisher/);
         assert.match(rows(document)[0].textContent, /Reported publishers: 1/);
         assert.match(rows(document)[1].textContent, /Source reliability: 89\/100/);
@@ -511,7 +533,7 @@ describe('News Intelligence supplied reliability and selection coverage', () => 
       value.data.insights.provenance = { selectionDrops: { admissibility: 0, sourceCap: 0, overflow: 0 } };
       await mount(result(value), document => {
         assert.ok(rows(document)[0].textContent.includes('Source reliability: ' + credibilityScore + '/100'));
-        assert.match(rows(document)[0].textContent, /Declared source tier: 4/);
+        assert.match(rows(document)[0].textContent, /Cluster priority tier: 4/);
         assert.match(rows(document)[0].textContent, /Corroboration coverage: unknown/);
         assert.match(rows(document)[0].textContent, /Reported publishers: 0/);
         assert.doesNotMatch(rows(document)[0].textContent, /Reported publishers: 99/);
@@ -547,7 +569,8 @@ describe('News Intelligence supplied reliability and selection coverage', () => 
       value.data.insights.provenance = { selectionDrops: { admissibility: invalid, sourceCap: invalid, overflow: invalid } };
       await mount(result(value), document => {
         assert.match(rows(document)[0].textContent, /Source reliability unavailable/);
-        assert.match(rows(document)[0].textContent, /Declared source tier unavailable/);
+        assert.match(rows(document)[0].textContent, /Cluster priority tier unavailable/);
+        assert.doesNotMatch(rows(document)[0].textContent, /This stored cluster tier may use a default/);
         assert.match(rows(document)[0].textContent, /Corroboration coverage unavailable/);
         assert.match(rows(document)[0].textContent, /Reported publisher count unavailable/);
         assert.match(foot(document), /Selection exclusions: admissibility unavailable; source cap unavailable; overflow unavailable/);
@@ -563,14 +586,15 @@ describe('News Intelligence supplied reliability and selection coverage', () => 
       value.data.insights.provenance = { selectionDrops: { admissibility: 1.5, sourceCap: -1, overflow: '168' } };
       await mount(result(value), document => {
         assert.match(rows(document)[0].textContent, /Source reliability unavailable/);
-        assert.match(rows(document)[0].textContent, /Declared source tier unavailable/);
+        assert.match(rows(document)[0].textContent, /Cluster priority tier unavailable/);
+        assert.doesNotMatch(rows(document)[0].textContent, /This stored cluster tier may use a default/);
         assert.match(rows(document)[0].textContent, /Corroboration coverage: tier4-only/);
         assert.match(rows(document)[0].textContent, /Reported publisher count unavailable/);
         assert.match(foot(document), /admissibility unavailable; source cap unavailable; overflow unavailable/);
       });
     }
     await mount(result(envelope([{ ...story(0), sourceTier: 1 }])), document => {
-      assert.match(rows(document)[0].textContent, /Declared source tier: 1/);
+      assert.match(rows(document)[0].textContent, /Cluster priority tier: 1/);
     });
   });
 
@@ -578,7 +602,8 @@ describe('News Intelligence supplied reliability and selection coverage', () => 
     await mount(result(supplied()), (document, send) => {
       send(result({ insights: { topStories: [story(0)], provenance: { selectionDrops: { overflow: 168 } } } }, true));
       assert.match(rows(document)[0].textContent, /Source reliability unavailable/);
-      assert.match(rows(document)[0].textContent, /Declared source tier unavailable/);
+      assert.match(rows(document)[0].textContent, /Cluster priority tier unavailable/);
+      assert.doesNotMatch(rows(document)[0].textContent, /This stored cluster tier may use a default/);
       assert.match(rows(document)[0].textContent, /Reported publisher count unavailable/);
       assert.doesNotMatch(rows(document)[0].textContent, /77\/100|single-publisher|Reported publishers: 1/);
       assert.match(foot(document), /admissibility unavailable; source cap unavailable; overflow 168/);

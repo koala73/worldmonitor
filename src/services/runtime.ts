@@ -339,11 +339,16 @@ async function fetchLocalWithStartupRetry(
   const maxAttempts = 4;
   let lastError: unknown = null;
   const signal = init?.signal === undefined ? (input instanceof Request ? input.signal : undefined) : init.signal;
+  // Routes that can carry local secrets never leave the machine, so they
+  // never need the user's cloud credential.
+  const userAuthorization = isLocalOnlyApiTarget(target)
+    ? undefined
+    : (await (await import('@/services/desktop-cloud-auth')).getDesktopCloudAuthorization()) ?? undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const { proxyLocalApiRequest } = await import('@/services/tauri-bridge');
-      return await proxyLocalApiRequest(target, input, init);
+      return await proxyLocalApiRequest(target, input, init, userAuthorization);
     } catch (error) {
       lastError = error;
 

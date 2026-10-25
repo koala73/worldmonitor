@@ -1,6 +1,9 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
+import * as predictionScoring from '../scripts/_prediction-scoring.mjs';
+import { buildBootstrapPools } from '../scripts/_prediction-classify.mjs';
 import { PREDICTION_MARKETS_APP_HTML } from '../api/mcp/ui/prediction-markets-app.ts';
 import { buildStructuredContent } from '../api/mcp/structured-content.ts';
 import { summarizeData } from '../api/mcp/filters.ts';
@@ -27,6 +30,69 @@ async function mount(list) {
 afterEach(async () => { await Promise.all(windows.splice(0).map(win => win.happyDOM.close())); });
 
 describe('prediction MCP card parity with the website presentation', () => {
+  it('renders the real Kalshi producer display URL while preserving outcome identity', async () => {
+    const seed = readFileSync(new URL('../scripts/seed-prediction-markets.mjs', import.meta.url), 'utf8');
+    const body = seed.slice(seed.indexOf('function kalshiTitle('), seed.indexOf('async function fetchKalshiCountryMarkets('));
+    const event = {
+      title: '2028 Democratic presidential nominee', series_ticker: 'KXPRESNOMD', event_ticker: 'KXPRESNOMD-28',
+      markets: [{ ticker: 'KXPRESNOMD-28-GN', yes_sub_title: 'Gavin Newsom', last_price_dollars: '0.14', volume_fp: '10800000', close_time: '2028-11-07T15:00:00Z', market_type: 'binary', status: 'active' }],
+    };
+    const subject = new Function(...Object.keys(predictionScoring), 'fetchKalshiEvents', `${body}\nreturn { fetchKalshiMarkets };`)(
+      ...Object.values(predictionScoring), async () => ({ events: [event], complete: true }),
+    );
+    const produced = await subject.fetchKalshiMarkets();
+    const { pools } = buildBootstrapPools(produced.featured, { now: Date.parse('2026-10-17T10:21:20Z') });
+    const original = structuredClone(pools);
+    const rows = Object.values(pools).flat();
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].url, 'https://kalshi.com/markets/KXPRESNOMD-28-GN');
+    assert.equal(rows[0].displayUrl, 'https://kalshi.com/markets/kxpresnomd');
+    const { doc, sendResult } = await mount([]);
+    const envelope = { cached_at: '2026-10-17T10:21:20Z', data: { 'markets-bootstrap': pools } };
+    sendResult({ structuredContent: buildStructuredContent(envelope, { reshaped: false, rider: null }) });
+    const link = doc.querySelector('.mkt-title');
+    assert.equal(link.href, 'https://kalshi.com/markets/kxpresnomd');
+    assert.equal(link.textContent, '2028 Democratic presidential nominee: Gavin Newsom');
+    assert.equal(link.target, '_blank');
+    assert.match(link.rel, /noopener/);
+    const text = doc.getElementById('groups').textContent;
+    assert.match(text, /Kalshi/);
+    assert.match(text, /Yes 14%/);
+    assert.match(text, /Vol: \$10\.8M/);
+    const date = new Date(event.markets[0].close_time).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    assert.ok(text.includes(`Closes: ${date}`));
+    assert.deepEqual(pools, original);
+  });
+  it('sanitizes the chosen Kalshi display URL without falling back from an invalid value', async () => {
+    const { doc, send } = await mount([]);
+    const identity = 'https://kalshi.com/markets/KXPRESNOMD-28-GN';
+    for (const displayUrl of [undefined, null, 'https://kalshi.com/markets/kxpresnomd', '', 'javascript:alert(1)', 'not a URL', {}, [], true, 7]) {
+      const row = { ...market, source: 'kalshi', url: identity, ...(displayUrl === undefined ? {} : { displayUrl }) };
+      send(payload([row]));
+      const expected = displayUrl == null ? identity : displayUrl === 'https://kalshi.com/markets/kxpresnomd' ? displayUrl : null;
+      assert.equal(doc.querySelector('a.mkt-title')?.href ?? null, expected);
+      assert.equal(row.url, identity);
+    }
+    send(payload([{ ...market, displayUrl: 'https://kalshi.com/markets/kxpresnomd' }]));
+    assert.equal(doc.querySelector('.mkt-title').href, market.url);
+  });
+  it('keeps Kalshi display links when expanding and replacing loaded contracts without another read', async () => {
+    const landing = 'https://kalshi.com/markets/kxpresnomd';
+    const kalshi = { ...market, source: 'kalshi', title: 'Later Kalshi contract', url: 'https://kalshi.com/markets/KXPRESNOMD-28-GN', displayUrl: landing };
+    const { win, doc, send } = await mount([...Array.from({ length: 6 }, () => market), kalshi]);
+    const original = structuredClone(kalshi);
+    let reads = 0;
+    win.fetch = async () => { reads++; throw new Error('Unexpected data read'); };
+    doc.querySelector('.mkt-more').click();
+    assert.equal(doc.querySelectorAll('.mkt-title')[6].href, landing);
+    assert.equal(doc.querySelectorAll('.mkt-title')[6].textContent, kalshi.title);
+    send(payload([{ ...kalshi, title: 'Replacement Kalshi contract', displayUrl: 'https://kalshi.com/markets/kxhighny' }]));
+    assert.equal(doc.querySelectorAll('.mkt').length, 1);
+    assert.equal(doc.querySelector('.mkt-title').href, 'https://kalshi.com/markets/kxhighny');
+    assert.doesNotMatch(doc.getElementById('groups').textContent, /Later Kalshi contract/);
+    assert.equal(reads, 0);
+    assert.deepEqual(kalshi, original);
+  });
   it('renders the contract handoff, volume, closing date, conviction and complementary odds', async () => {
     const { doc } = await mount([market]);
     const link = doc.querySelector('.mkt-title');

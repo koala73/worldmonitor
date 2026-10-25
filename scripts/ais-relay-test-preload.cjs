@@ -13,6 +13,10 @@ const googleStatuses = (process.env.RELAY_TEST_GOOGLE_STATUS_SEQUENCE || '429')
   .split(',')
   .map((value) => Number(value.trim()))
   .filter(Number.isFinite);
+// Raw Google Flights results-page bodies consumed per response; exhausted -> ''.
+const googleBodies = process.env.RELAY_TEST_GOOGLE_BODY_SEQUENCE
+  ? JSON.parse(process.env.RELAY_TEST_GOOGLE_BODY_SEQUENCE)
+  : [];
 // OpenSky upstream statuses consumed per request; exhausted -> 429 (throttled,
 // the production condition under test). A 200 serves one military-callsign
 // state inside iran-theater bounds.
@@ -93,12 +97,13 @@ function request({ callback, statusCode, body = '', headers = {}, error = null, 
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url, options) => {
   const target = String(url);
-  if (target.includes('FlightsFrontendService')) {
+  if (target.includes('/travel/flights/search')) {
     const status = nextValue(googleStatuses, 200);
+    const body = nextValue(googleBodies, '');
     return {
       status,
       ok: status >= 200 && status < 300,
-      text: async () => '',
+      text: async () => body,
     };
   }
   if (target.includes('api.adsb.lol')) {

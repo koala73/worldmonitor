@@ -38,6 +38,9 @@ import {
   toPublisherRosterJson,
 } from '../../../server/_shared/corroboration';
 import { CLAIM_CARD_MAX_HEADLINES, CLAIM_CARD_STATES, CLAIM_MAX_CHARS, buildClaimCard } from '../../../server/_shared/claim-match';
+import { FACT_CHECK_CAVEAT, FACT_CHECK_LABEL } from '../../../server/_shared/fact-checks';
+import { lookupFactChecks, type FactCheckLookup } from '../../../server/_shared/fact-check-search';
+import { searchClaimPool } from '../../../server/worldmonitor/news/v1/search-claim-headlines';
 import { buildAuthHeaders } from '../auth';
 import { fetchMcpDownstream } from '../downstream';
 import { assertToolFetchOk } from '../billing-denial';
@@ -63,9 +66,24 @@ const CLASSIFY_SEVERITIES = [
 const EXTRACT_TEXT_MAX_CHARS = 2048; // issue #5697's 2 KB arbitrary-text cap
 const NLP_DIGEST_TIMEOUT_MS = 6_000;
 const NLP_UA = 'worldmonitor-mcp-edge/1.0';
+/** verify_claim's published fact-checks (#9094): cited ratings, never a WorldMonitor verdict. */
+type FactCheckBlock = { state: FactCheckLookup['state']; label: string; caveat: string; items: FactCheckLookup['factChecks'] };
+
+/**
+ * Published fact-checks for the claim: the same lookup SearchFactChecks
+ * serves /verify, run in-process so it is not a second billed downstream
+ * request. Never fails the tool: a lookup that did not run is `unavailable`
+ * or `not-configured`, which says nothing about whether a fact-check exists.
+ */
+async function factCheckBlock(claim: string): Promise<FactCheckBlock> {
+  const { state, factChecks } = await lookupFactChecks(claim);
+  return { state, label: FACT_CHECK_LABEL, caveat: FACT_CHECK_CAVEAT, items: factChecks };
+}
 const NLP_DIGEST_SOURCE_MAX_BYTES = 160;
 const NLP_DIGEST_TITLE_MAX_BYTES = 512;
 const NLP_DIGEST_LINK_MAX_BYTES = 2_048;
+// Lead text for same-copy detection (#9095): it compares the first ~60 words.
+const NLP_DIGEST_SNIPPET_MAX_BYTES = 2_048;
 const NLP_DIGEST_METADATA_MAX_BYTES = 64;
 const NLP_DIGEST_NOTE_MAX_BYTES = 2_048;
 const KEYWORD_SPIKE_BASELINE_MS = 48 * 60 * 60 * 1000; // digest:accumulator retention
@@ -84,7 +102,7 @@ type NlpDigestVariant = typeof NLP_DIGEST_VARIANTS[number];
 const FULL_DIGEST_CATEGORIES = [
   'politics', 'us', 'europe', 'middleeast', 'tech', 'ai', 'finance',
   'commodities', 'gov', 'africa', 'latam', 'asia', 'energy', 'thinktanks',
-  'crisis', 'layoffs', 'intel',
+  'crisis', 'layoffs', 'science', 'intel',
 ] as const;
 const TECH_DIGEST_CATEGORIES = [
   'tech', 'ai', 'startups', 'vcblogs', 'regionalStartups', 'unicorns',
@@ -153,7 +171,7 @@ function patternEntityKind(value: string): 'cve' | 'apt' | 'fin' | 'leader' {
 
 type NlpDigestCategoryGroup = {
   items?: Array<{
-    source?: string; title?: string; link?: string; publishedAt?: number;
+    source?: string; title?: string; snippet?: string; link?: string; publishedAt?: number;
     isAlert?: boolean; credibilityScore?: number; corroborationCount?: number;
     threat?: { level?: string; category?: string; confidence?: number; source?: string };
   }>;
@@ -380,6 +398,11 @@ async function fetchNlpDigestItems(
       items.push({
         source,
         title,
+        // #9095: without the lead, same-copy detection cannot merge reprints and
+        // max(seen, reported) restores the count the digest already lowered.
+        ...(typeof raw.snippet === 'string' && raw.snippet.trim() !== ''
+          ? { snippet: nlpTruncateUtf8(raw.snippet, NLP_DIGEST_SNIPPET_MAX_BYTES) }
+          : {}),
         link,
         pubDate: new Date(Number(raw.publishedAt) || 0),
         isAlert: raw.isAlert === true,
@@ -462,7 +485,7 @@ export const NLP_TOOLS: ToolDef[] = [
     name: 'classify_event',
     title: 'Classify a news event',
     _outputBudgetBytes: 4096,
-    description: 'Classify a supplied news headline or short text into a threat category and severity via the enum-validated WorldMonitor event classifier (temperature-0, 24h-cached per title, never free-form LLM output). Input is capped at 500 characters. classification is null when the classifier cannot produce an enum-valid result.',
+    description: 'Classify one supplied headline or short text (1-500 characters) into {category, level, severity, confidence} with the enum-validated WorldMonitor event classifier (temperature 0, cached 24 h per title, never free-form LLM output). classification is null when the classifier cannot produce an enum-valid result; longer input is rejected, not truncated. Operates only on the text passed in; no news lookup. Requires a paid plan; one downstream request, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -843,7 +866,7 @@ export const NLP_TOOLS: ToolDef[] = [
     name: 'verify_claim',
     title: 'Check a claim against news coverage',
     _outputBudgetBytes: 65536,
-    description: 'Evidence card for a claim or headline (#9092): finds the live-digest clusters reporting the same event and returns a result state (corroborated, single-publisher, tier4-only, unknown, or not-found when the digest was searched and nothing reports it; unknown when the digest had no headlines to search) with WorldMonitor\'s coverage verdict over the matched clusters, the publishers roster with declared tiers, the matched headlines with fail-closed source provenance, a figure check (numbers and dates in the claim that no matched headline states), and first/last sighting. found=false means the claim was not matched (state tells whether the digest was searched), never that it is false. Coverage, not accuracy: nothing here says a claim is true or false. Deterministic — no LLM.',
+    description: 'Return an evidence card for a claim or headline: the live-digest clusters reporting the same event, a result state (corroborated, single-publisher, tier4-only, unknown, or not-found when the digest was searched and nothing reports it; unknown when there were no headlines to search), WorldMonitor\'s coverage verdict over the matched clusters, the publishers roster with declared tiers, matched headlines with fail-closed source provenance, a figure check (numbers and dates in the claim that no matched headline states) and first/last sighting. found=false means the claim was not matched, never that it is false; this is coverage, not accuracy. factChecks quotes ratings IFCN-verified fact-checkers published about a similar claim, each with checker, date and link; the rating is theirs and never changes state. Deterministic, no LLM. Requires a paid plan; one downstream search, weight 2 on API plans. claim is up to 300 characters; variant picks the full or tech digest. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -896,6 +919,32 @@ export const NLP_TOOLS: ToolDef[] = [
           },
         },
         caveat: { type: 'string', description: 'Fixed reminder that the verdict describes coverage, not accuracy.' },
+        factChecks: {
+          type: 'object',
+          required: ['state', 'label', 'caveat', 'items'],
+          description: 'Published fact-checks of a similar claim (#9094), cited with attribution. Strong text matches only, from IFCN-verified fact-checkers, English, newest first; disagreeing ratings are all listed. The ratings are the fact-checkers\' own and never change state or corroboration.',
+          properties: {
+            state: { type: 'string', enum: ['ok', 'unavailable', 'not-configured'], description: 'ok when the lookup ran (an empty list then means no published fact-check of a similar claim was found); unavailable or not-configured when it did not run.' },
+            label: { type: 'string', description: 'How to introduce each item: a fact-check of a similar claim, never of this claim.' },
+            caveat: { type: 'string' },
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['publisher', 'site', 'rating', 'reviewedAt', 'url', 'title', 'claimReviewed'],
+                properties: {
+                  publisher: { type: 'string', description: 'The fact-checker.' },
+                  site: { type: 'string', description: 'Its IFCN-allowlisted domain.' },
+                  rating: { type: 'string', description: 'The fact-checker\'s own rating, verbatim.' },
+                  reviewedAt: { type: 'string', description: 'When the fact-check was published (ISO 8601).' },
+                  url: { type: 'string' },
+                  title: { type: 'string' },
+                  claimReviewed: { type: 'string', description: 'The claim the fact-checker rated (similar, not necessarily identical).' },
+                },
+              },
+            },
+          },
+        },
         generatedAt: { type: 'string' },
         variant: { type: 'string', enum: [...NLP_DIGEST_VARIANTS] },
         digestCoverage: NLP_DIGEST_COVERAGE_OUTPUT_SCHEMA,
@@ -911,16 +960,36 @@ export const NLP_TOOLS: ToolDef[] = [
       if (!claim) return { ...empty, error: 'claim is required' };
       if (!variant) return { ...empty, error: `variant must be one of: ${NLP_DIGEST_VARIANTS.join(', ')}` };
 
+      // full searches every fresh headline in the feed caches, in-process like
+      // the fact-checks, not only the ~280 the digest serves. Other variants,
+      // and a search that could not run, use the variant's digest.
+      const [search, factChecks] = await Promise.all([
+        variant === 'full' ? searchClaimPool(claim).catch(() => null) : null,
+        factCheckBlock(claim),
+      ]);
+      if (search && search.state !== 'unavailable') {
+        return {
+          ...buildClaimCard(claim, search.candidates, search.searchedHeadlines),
+          factChecks,
+          generatedAt: search.readAt,
+          variant,
+        };
+      }
       const digest = await fetchNlpDigestItems(base, context, variant, '', execution);
       return {
         ...buildClaimCard(claim, digest.items),
+        factChecks,
         generatedAt: digest.generatedAt,
         variant: digest.variant,
         ...(digest.digestCoverage ? { digestCoverage: digest.digestCoverage } : {}),
       };
     },
+    // search-fact-checks and search-claim-headlines: covered by the same
+    // in-process lookups they serve.
     _apiPaths: [
       'GET /api/news/v1/list-feed-digest',
+      'GET /api/news/v1/search-fact-checks',
+      'GET /api/news/v1/search-claim-headlines',
     ],
   },
   {

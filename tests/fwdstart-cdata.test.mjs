@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { XMLValidator } from 'fast-xml-parser';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
 
 // #7206: scraped title/description are interpolated into CDATA without escaping
 // the terminator. A `]]>` in upstream text must not break the feed XML.
@@ -56,17 +56,17 @@ const ARCHIVE_HTML = `
 </div>
 `;
 
-function installStub() {
+function installStub({ html = ARCHIVE_HTML, cached = null } = {}) {
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     if (url.startsWith('https://redis.example.test/get/')) {
-      return new Response(JSON.stringify({ result: null }), { status: 200 });
+      return new Response(JSON.stringify({ result: cached === null ? null : JSON.stringify(cached) }), { status: 200 });
     }
     if (url === 'https://redis.example.test/pipeline') {
       return new Response(JSON.stringify([{ result: 'OK' }, { result: 'OK' }]), { status: 200 });
     }
     if (url.startsWith('https://www.fwdstart.me/')) {
-      return new Response(ARCHIVE_HTML, { status: 200 });
+      return new Response(html, { status: 200 });
     }
     throw new Error(`unexpected request: ${url}`);
   };
@@ -96,4 +96,79 @@ test('cdata() splits the terminator and strips illegal control characters', asyn
   assert.equal(cdata('a]]>b'), '<![CDATA[a]]]]><![CDATA[>b]]>');
   assert.equal(cdata('safe'), '<![CDATA[safe]]>');
   assert.equal(cdata('x\x00y\x08z'), '<![CDATA[xyz]]>');
+});
+
+const INJECTED_HREF = "/p/</link><script xmlns='http://www.w3.org/1999/xhtml' nonce='wm-static-bootstrap'>alert(1)</script><link>";
+const INVALID_PATHS = [
+  INJECTED_HREF,
+  '/p/</link></item><item><title>Forged item</title></item><item><link>',
+  '/p/bad&entity;', '/p/bad\'quote', '/p/bad]]>slug', '/p/bad<slug',
+  '/p/bad%3Cslug', '/p/nested/slug', '/p/', '/p/bad slug',
+];
+
+test('scraped links cannot add XML nodes and valid post URLs survive', async (t) => {
+  t.after(restoreEnvironment);
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  const html = INVALID_PATHS.map((href) => `<div class="embla__slide">
+    <a href="${href}"></a><img alt="Rejected post title" />
+  </div>`).join('') + ARCHIVE_HTML + `<div class="embla__slide">
+    <a href="/p/Post_123-slug?x=1&amp;y=2#section"></a><img alt="Valid query post" />
+  </div>`;
+  installStub({ html });
+  const { default: handler } = await import('../api/fwdstart.js');
+  const response = await handler(request());
+  assert.equal(response.status, 200);
+  const rss = await response.text();
+  assert.equal(XMLValidator.validate(rss), true);
+  const items = new XMLParser().parse(rss).rss.channel.item;
+  assert.deepEqual(items.map(({ link }) => link), [
+    'https://www.fwdstart.me/p/cdata-break',
+    'https://www.fwdstart.me/p/Post_123-slug',
+  ]);
+  for (const item of items) assert.equal(item.guid, item.link);
+  assert.doesNotMatch(rss, /<script|Forged item|Rejected post title/);
+  assert.match(rss, /<link><!\[CDATA\[https:\/\/www\.fwdstart\.me\/p\/cdata-break\]\]><\/link>/);
+  assert.match(rss, /<guid><!\[CDATA\[https:\/\/www\.fwdstart\.me\/p\/cdata-break\]\]><\/guid>/);
+});
+
+test('cached links are validated before serialization without re-scraping valid items', async (t) => {
+  t.after(restoreEnvironment);
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  const invalidLinks = [
+    ...INVALID_PATHS.map((path) => `https://www.fwdstart.me${path}`),
+    'https://evil.example/p/post', 'https://www.fwdstart.me.evil.example/p/post',
+    'http://www.fwdstart.me/p/post', 'https://user:pass@www.fwdstart.me/p/post',
+    'https://www.fwdstart.me:8443/p/post', 'javascript:alert(1)', 'http://[', null,
+  ];
+  const item = (link) => ({ title: 'Cached post title', link, date: '2026-01-12T00:00:00.000Z', description: '' });
+  installStub({
+    html: '<div>must not scrape on a valid cache hit</div>',
+    cached: [...invalidLinks.map(item), null, item('https://www.fwdstart.me/p/Cached_123?x=1&y=2#section')],
+  });
+  const { default: handler } = await import('../api/fwdstart.js');
+  const response = await handler(request());
+  assert.equal(response.status, 200);
+  const rss = await response.text();
+  assert.equal(XMLValidator.validate(rss), true);
+  const parsed = new XMLParser().parse(rss).rss.channel.item;
+  assert.equal(parsed.title, 'Cached post title');
+  assert.equal(parsed.link, 'https://www.fwdstart.me/p/Cached_123');
+  assert.equal(parsed.guid, parsed.link);
+  assert.doesNotMatch(rss, /<script|Forged item/);
+});
+
+test('a cache containing only rejected links falls back to the live archive', async (t) => {
+  t.after(restoreEnvironment);
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  installStub({ cached: [{ title: 'Poisoned post', link: `https://www.fwdstart.me${INJECTED_HREF}` }] });
+  const { default: handler } = await import('../api/fwdstart.js');
+  const response = await handler(request());
+  assert.equal(response.status, 200);
+  const rss = await response.text();
+  assert.equal(XMLValidator.validate(rss), true);
+  assert.equal(titleFromRss(rss), DANGEROUS_TITLE);
+  assert.doesNotMatch(rss, /Poisoned post|<script/);
 });

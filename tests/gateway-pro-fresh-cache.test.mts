@@ -7,6 +7,7 @@ import { issueSessionToken } from '../api/_session.js';
 import { createDomainGateway } from '../server/gateway.ts';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
+import { getCountryHistory } from '../server/worldmonitor/intelligence/v1/get-country-history';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_ENV = {
@@ -17,6 +18,7 @@ const ORIGINAL_ENV = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
   VERCEL_ENV: process.env.VERCEL_ENV,
+  WORLDMONITOR_VALID_KEYS: process.env.WORLDMONITOR_VALID_KEYS,
 };
 
 type Entitlement = {
@@ -34,6 +36,7 @@ type Entitlement = {
 };
 
 const entitlements = new Map<string, Entitlement | null>();
+let entitlementReads = 0;
 let privateKey: CryptoKey;
 let jwksServer: Server;
 let jwksPort = 0;
@@ -46,6 +49,9 @@ const handler = createDomainGateway(
     handler: async () => new Response('{"ok":true}', { status: 200 }),
   })),
 );
+
+const historyPath = '/api/intelligence/v1/get-country-history';
+const historyHandler = createDomainGateway([{ method: 'GET', path: historyPath, handler: async request => Response.json(await getCountryHistory({ request, pathParams: {}, headers: {} }, { country: 'US', days: 365 })) }]);
 
 function entitlement(planKey: string, tier: number, validUntil = Date.now() + 60_000): Entitlement {
   return {
@@ -131,13 +137,19 @@ before(async () => {
           ? input.href
           : input.url;
     if (url.endsWith('/api/internal-entitlements')) {
+      entitlementReads++;
       const body = JSON.parse(String(init?.body ?? '{}')) as { userId?: string };
+      if (body.userId === 'history-enterprise-outage') return Response.json({}, { status: 503 });
       return new Response(JSON.stringify(entitlements.get(body.userId ?? '') ?? null), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
     }
     if (url.startsWith(process.env.UPSTASH_REDIS_REST_URL ?? '\0')) {
+      const commands = JSON.parse(String(init?.body ?? '[]'));
+      if (commands[0]?.[0] === 'ZRANGEBYSCORE' && commands[0]?.[1] === 'history:country:US') {
+        return Response.json([{ result: [] }, { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 196 }) }]);
+      }
       return redis.fetchImpl(input, init);
     }
     return ORIGINAL_FETCH(input, init);
@@ -151,6 +163,48 @@ after(async () => {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
+});
+
+describe('country history verified retention', () => {
+  it('serves anonymous seven-day history and ignores spoofed tier/user headers', async () => {
+    const response = await historyHandler(request(historyPath, { 'x-user-id': 'paid-user', 'x-history-days': '365' }));
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).effectiveDays, 7);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assertPrivateCache(response);
+  });
+
+  it('uses verified Pro/API plans, then clamps expired plans back to free', async () => {
+    for (const [user, tier, validUntil, expected] of [
+      ['history-pro', 1, Date.now() + 60000, 90],
+      ['history-api', 2, Date.now() + 60000, 365],
+      ['history-expired', 1, Date.now() - 60000, 7],
+    ] as const) {
+      entitlements.set(user, entitlement(tier === 2 ? 'api_starter' : 'pro_monthly', tier, validUntil));
+      const response = await historyHandler(request(historyPath, { Authorization: `Bearer ${await signToken(user)}` }));
+      assert.equal(response.status, 200, user);
+      assert.equal((await response.json()).effectiveDays, expected, user);
+      assert.equal(response.headers.get('Cache-Control'), 'no-store');
+      assertPrivateCache(response);
+    }
+  });
+
+  it('keeps enterprise-key history available with a bearer whose entitlement service is unavailable', async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = 'history-enterprise-fixture';
+    const reads = entitlementReads;
+    try {
+      const response = await historyHandler(request(historyPath, {
+        'X-WorldMonitor-Key': 'history-enterprise-fixture',
+        Authorization: `Bearer ${await signToken('history-enterprise-outage')}`,
+      }));
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).allowedDays, 365);
+      assert.equal(entitlementReads, reads);
+    } finally {
+      if (ORIGINAL_ENV.WORLDMONITOR_VALID_KEYS === undefined) delete process.env.WORLDMONITOR_VALID_KEYS;
+      else process.env.WORLDMONITOR_VALID_KEYS = ORIGINAL_ENV.WORLDMONITOR_VALID_KEYS;
+    }
+  });
 });
 
 describe('Pro-only market freshness cache contract', () => {

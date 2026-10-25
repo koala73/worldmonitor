@@ -1,5 +1,5 @@
-import type { NewsItem, ThreatLevel as ClientThreatLevel } from '@/types';
-import type { NewsItem as ProtoNewsItem } from '@/generated/client/worldmonitor/news/v1/service_client';
+import type { NewsItem } from '@/types';
+import type { NewsItem as ProtoNewsItem, ThreatClassification as ProtoThreatClassification } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { protoThreatLevelToLabel } from '../../shared/news-clustering-core.js';
 
 const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
@@ -9,8 +9,16 @@ const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
   STORY_PHASE_FADING:     'fading',
 };
 
+export function protoThreatToNewsThreat(threat: ProtoThreatClassification | undefined): NewsItem['threat'] {
+  return threat ? {
+    level: protoThreatLevelToLabel(threat.level),
+    category: threat.category as import('@/services/threat-classifier').EventCategory,
+    confidence: threat.confidence,
+    source: (threat.source || 'keyword') as 'keyword' | 'ml' | 'llm',
+  } : undefined;
+}
+
 export function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
-  const level: ClientThreatLevel = protoThreatLevelToLabel(p.threat?.level);
   return {
     source: p.source,
     title: p.title,
@@ -26,12 +34,7 @@ export function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
       sourceCount:  p.storyMeta.sourceCount,
       phase: PROTO_TO_CLIENT_PHASE[p.storyMeta.phase] ?? 'breaking',
     } : undefined,
-    threat: p.threat ? {
-      level,
-      category: p.threat.category as import('@/services/threat-classifier').EventCategory,
-      confidence: p.threat.confidence,
-      source: (p.threat.source || 'keyword') as 'keyword' | 'ml' | 'llm',
-    } : undefined,
+    threat: protoThreatToNewsThreat(p.threat),
     ...(p.locationName && { locationName: p.locationName }),
     ...(p.location && { lat: p.location.latitude, lon: p.location.longitude }),
     ...(p.importanceScore ? { importanceScore: p.importanceScore } : {}),

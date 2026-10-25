@@ -15,9 +15,11 @@ import {
   createMaterialLastmodResolver,
   generateSitemapIndexXml,
   generateSitemapXml,
+  readDeclaredLastmod,
   validateSitemapEntries,
   validateSitemapIndex,
 } from '../scripts/build-sitemap.mjs';
+import { INDEXABLE_LANDING_LOCALES, landingHreflangCluster } from '../shared/indexable-landing-locales.ts';
 import { gitFileLastmod } from '../scripts/build-crawlable-corpus.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -48,6 +50,9 @@ describe('root sitemap generator', () => {
 
     const locations = STATIC_ROUTE_MANIFEST.map((route) => route.loc);
     assert.ok(locations.includes(`${SITE_ORIGIN}/`));
+    for (const locale of INDEXABLE_LANDING_LOCALES) {
+      assert.ok(locations.includes(`${SITE_ORIGIN}${locale.canonicalPath}`), locale.canonicalPath);
+    }
     assert.ok(locations.includes(`${SITE_ORIGIN}/dashboard`));
     assert.ok(locations.includes(`${SITE_ORIGIN}/pro`));
     assert.ok(locations.includes('https://worldmonitor.app/mcp'));
@@ -88,6 +93,7 @@ describe('root sitemap generator', () => {
       });
 
       const resolveMaterialLastmod = () => '2026-07-21';
+      const resolveDeclaredLastmod = () => '2026-07-21';
       const existingSitemapSource = `<?xml version="1.0"?><urlset><url>`
         + `<loc>${SITE_ORIGIN}/countries/norway/</loc>`
         + '<lastmod>2026-07-20</lastmod></url></urlset>';
@@ -96,6 +102,7 @@ describe('root sitemap generator', () => {
         publicDir,
         existingSitemapSource,
         resolveMaterialLastmod,
+        resolveDeclaredLastmod,
         requireCompleteCorpus: false,
         today: '2026-07-27',
       });
@@ -104,6 +111,7 @@ describe('root sitemap generator', () => {
         publicDir,
         existingSitemapSource,
         resolveMaterialLastmod,
+        resolveDeclaredLastmod,
         requireCompleteCorpus: false,
         today: '2026-07-27',
       });
@@ -121,6 +129,19 @@ describe('root sitemap generator', () => {
       assert.match(first, /<lastmod>2026-05-28<\/lastmod>/);
       assert.match(first, /<lastmod>2026-07-20<\/lastmod>/);
       assert.doesNotMatch(first, /<changefreq>|<priority>/);
+      assert.match(first, /xmlns:xhtml="http:\/\/www.w3.org\/1999\/xhtml"/);
+      for (const alternate of landingHreflangCluster()) {
+        assert.match(
+          first,
+          new RegExp(
+            `<xhtml:link rel="alternate" hreflang="${alternate.hreflang}" href="${alternate.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"/>`,
+          ),
+        );
+      }
+      assert.doesNotMatch(
+        first.slice(first.indexOf(`${SITE_ORIGIN}/dashboard`)),
+        /<xhtml:link[\s\S]*https:\/\/www\.worldmonitor\.app\/dashboard/,
+      );
       assert.doesNotMatch(first, /worldmonitor\.app\/blog/);
       assert.doesNotMatch(first, /worldmonitor\.app\/docs/);
 
@@ -129,6 +150,40 @@ describe('root sitemap generator', () => {
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  // A generated-stat commit between pulse freezes moved the Git date of the
+  // landing sources, so the sitemap said 2026-10-24 while the page's own
+  // lastmod meta and #software dateModified said 2026-10-19.
+  it('dates landing routes from the page-declared lastmod, other routes from Git', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-sitemap-declared-'));
+    try {
+      const entries = buildSitemapEntries({
+        repoRoot,
+        publicDir: join(tempRoot, 'public'),
+        existingSitemapSource: '',
+        resolveMaterialLastmod: () => '2026-07-21',
+        resolveDeclaredLastmod: (entry) => {
+          assert.equal(entry.declaredLastmodSource, 'pro-test/welcome.html');
+          return '2026-07-19';
+        },
+        requireCompleteCorpus: false,
+        today: '2026-07-27',
+      });
+      const lastmodFor = (loc) => entries.find((entry) => entry.loc === loc)?.lastmod;
+      for (const locale of INDEXABLE_LANDING_LOCALES) {
+        assert.equal(lastmodFor(`${SITE_ORIGIN}${locale.canonicalPath}`), '2026-07-19', locale.canonicalPath);
+      }
+      assert.equal(lastmodFor(`${SITE_ORIGIN}/dashboard`), '2026-07-21');
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('reads the committed welcome page date and agrees with its #software dateModified', () => {
+    const declared = readDeclaredLastmod(repoRoot, 'pro-test/welcome.html');
+    const welcome = readFileSync(join(repoRoot, 'pro-test/welcome.html'), 'utf8');
+    assert.match(welcome, new RegExp(`"dateModified": "${declared}"`));
   });
 
   it('requires the exact Country Instability Index route in a complete corpus', () => {

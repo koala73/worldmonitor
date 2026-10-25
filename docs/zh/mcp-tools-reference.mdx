@@ -22,7 +22,7 @@ export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # or use the OAuth 
 如果您已完成 OAuth 流程，请在每个示例中将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
 
 <Tip>
-**近期新增**（2026 年 5 月）：`get_displacement_data`、`get_health_signals`、`get_energy_intelligence`、`get_consumer_prices`、`get_tariff_trends`、`get_chokepoint_status` — 六个新的捆绑工具，通过 MCP 暴露了此前缓存的领域。
+**近期新增**（2026 年 5 月）：`get_displacement_data`、`get_health_signals`、`get_energy_intelligence`、`get_consumer_prices`、`get_price_and_debt_indicators`（原 `get_tariff_trends`）、`get_chokepoint_status` — 六个新的捆绑工具，通过 MCP 暴露了此前缓存的领域。
 </Tip>
 
 ## 发现工具
@@ -31,9 +31,9 @@ export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # or use the OAuth 
 
 MCP 覆盖是有意精选的。某些 OpenAPI 操作仅限 REST，因为它们会修改状态、传递 LLM 成本、在缓存未命中时获取付费/高基数上游，或需要手动缓存键映射。[API 覆盖部分](/zh/mcp-overview#api-覆盖) 列出了强制类别并链接了当前的跟进追踪。
 
-### `describe_tool` — 按需获取完整未压缩定义
+### `describe_tool` — 按需获取单个工具的定义
 
-自 v1.5.0 起，`tools/list` 返回每个工具的 `description`，截断为第一句（≤120 UTF-8 字节）。当 LLM 只需扫描名称时，这能保持每个会话的输入 token 成本较低 — 而且同一个 `tools/list` 条目现在附带 `outputSchema`（v1.6.0），使模型能在首次调用时编写 JMESPath 投影。当压缩描述存在歧义时，调用 `describe_tool` 获取完整版本：
+自 v1.34.0 起，`tools/list` 返回每个工具的完整 `description`（每条已注册描述都在 1,024 字节的逐工具预算内，由 CI 强制执行），并附带其 `inputSchema` 与 `outputSchema`（v1.6.0），使模型仅凭列表即可选择工具并编写 JMESPath 投影。`describe_tool` 返回同一工具的相同定义，用于在不重新列出整个目录的情况下重读单个条目：
 
 ```json
 {
@@ -44,7 +44,7 @@ MCP 覆盖是有意精选的。某些 OpenAPI 操作仅限 REST，因为它们�
 }
 ```
 
-响应 — 与 `tools/list` 条目形状相同，包含完整未压缩的 `description` 和完整的 `inputSchema.properties` 文本：
+响应 — 与该工具的 `tools/list` 条目完全相同：同样的 `description` 和同样的 `inputSchema.properties` 文本：
 
 ```json
 {
@@ -54,7 +54,7 @@ MCP 覆盖是有意精选的。某些 OpenAPI 操作仅限 REST，因为它们�
     "content": [
       {
         "type": "text",
-        "text": "{\"name\":\"get_chokepoint_status\",\"description\":\"Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.\",\"inputSchema\":{ /* full properties with full descriptions */ },\"outputSchema\":{ /* … */ },\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false},\"_meta\":{ /* … */ }}"
+        "text": "{\"name\":\"get_chokepoint_status\",\"description\":\"Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, a port-country coverage index, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.\",\"inputSchema\":{ /* full properties with full descriptions */ },\"outputSchema\":{ /* … */ },\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false},\"_meta\":{ /* … */ }}"
       }
     ],
     "structuredContent": { "name": "get_chokepoint_status", "description": "…", "inputSchema": {}, "outputSchema": {}, "annotations": {}, "_meta": {} }
@@ -62,9 +62,9 @@ MCP 覆盖是有意精选的。某些 OpenAPI 操作仅限 REST，因为它们�
 }
 ```
 
-`describe_tool` **豁免 Pro 每日配额**（每分钟速率限制仍然适用）。此豁免是有意为之 — 将元数据查询计入 50/天 的上限会阻碍探索，违背压缩的初衷。两种常见工作流：
+`describe_tool` **豁免 Pro 每日配额**（每分钟速率限制仍然适用）。此豁免是有意为之 — 将元数据查询计入 50/天 的上限会阻碍探索。两种常见工作流：
 
-- **压缩条目对行为或参数语义存在歧义。** 调用 `describe_tool` 查看完整的长格式描述以及每个属性的完整描述。
+- **会话中途重读单个工具。** 调用 `describe_tool` 把单个工具的定义重新放回上下文，而无需再次为整个 `tools/list` 目录付出代价。
 - **针对不熟悉的响应首次编写 JMESPath。** 调用 `describe_tool` 读取 `outputSchema`（见下一节），无需为真正的 `tools/call` 消耗配额槽位。
 
 `describe_tool` 在正常的 `content[0].text` 内返回两种软错误信封：
@@ -112,6 +112,7 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
   "properties": {
     "countryCode": { "type": "string" },
     "countryName": { "type": "string" },
+    "ciiHistory": { "type": "object", "description": "Optional UTC daily history, added only with history_days." },
     "cii": {
       "type": ["object", "null"],
       "description": "Absent when the country is not tracked, and always absent when upstreamUnavailable is true.",
@@ -160,6 +161,12 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
 type CountryRisk = {
   countryCode: string;
   countryName: string;
+  ciiHistory?: {
+    methodologyVersion: string; requestedDays: number; returnedDays: number; stale: boolean;
+    points: Array<{ date: string; combinedScore: number; components: { ciiContribution: number; geoConvergence: number; militaryActivity: number; newsActivity: number } }>;
+    change: { fromDate: string; fromScore: number; toDate: string; toScore: number; delta: number } | null;
+    versionBreaks: Array<{ date: string; from: string; to: string }>;
+  };
   // The four component names are historical misnomers: ciiContribution is
   // domestic unrest, geoConvergence is armed conflict, militaryActivity is
   // security/mobility, newsActivity is the information environment.
@@ -480,21 +487,23 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
-### `get_tariff_trends`
+### `get_price_and_debt_indicators`
 
-全球贸易和价格指标：美国 MFN 适用关税趋势（全部产品平均；其他报告国、伙伴或产品组请使用 `get_tariff_averages`）、巨无霸指数、FAO 食品价格指数和各国国家债务水平。
+价格和债务指标：巨无霸指数、FAO 食品价格指数和各国国家债务水平。
+
+原名 `get_tariff_trends`。旧名上仅含 tariffs 的调用会运行 `get_tariff_averages` 并返回美国 MFN 序列。旧名上的其他数据集仍返回本捆绑包。自 #9301 起本捆绑包不含关税序列。美国 MFN 序列属于 Pro 数据。请调用 `get_tariff_averages`，报告国设为 `840`，不传伙伴和产品组。在本工具上使用 `dataset: ["tariffs"]` 会返回 Invalid params。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `dataset` | `array<string: tariffs / bigmac / fao-ffpi / national-debt>` | 将响应限制为一个或多个子数据集。省略则返回完整捆绑包。 |
+| `dataset` | `array<string: bigmac / fao-ffpi / national-debt>` | 将响应限制为一个或多个子数据集。省略则返回完整捆绑包。 |
 | `country` | string | 将按国家数据集筛选为一个 ISO 3166-1 alpha-2 国家代码（例如 "US"）。内部会为 national-debt 数据集转换为 alpha-3；直接传 alpha-3 代码也可。 |
-| `limit` | number | 将每个列表数据集（关税数据点、BigMac 国家、债务条目）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `limit` | number | 将每个列表数据集（BigMac 国家、债务条目）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
 - **API 端点：** `GET /api/economic/v1/get-fao-food-price-index`, `GET /api/economic/v1/get-national-debt`, `GET /api/economic/v1/list-bigmac-prices`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **9 小时**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 按子数据集计算 — BigMac **7 天**，FAO FFPI 和国家债务各 **60 天**。任一子数据集超出自身预算时，`stale` 即为 true。
 
 <CodeGroup>
 
@@ -505,7 +514,44 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_tariff_trends","arguments":{}}
+    "params":{"name":"get_price_and_debt_indicators","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_capital_flows`
+
+返回约 230 个经济体资金的流入与流出,以及任意两个经济体之间的资金往来,数据来自官方统计。IMF 国际收支:总流入与总流出,按 FDI、证券投资和其他投资拆分,按国家为季度或年度数据,并附推导的 Forbes-Warnock 状态(流入为 surge 或 stop,流出为 flight 或 retrenchment)及 z 分数。按国家和按国家对:BIS 跨境银行存款与贷款、IMF 证券投资持有和 IMF 直接投资头寸。居民身份变更不是国际收支流量。来源滞后 1–3 个季度(FDI 约 2 年);10 天未更新或最新国际收支季度超过一年时标记为过期。缓存读取:API 套餐权重 1,计入已登录账户的免费额度。country(最多 10 个)返回完整视图;counterpart 增加每个国家对的双向数据,每个分项标注 reported、not_itemized 或 not_published。不指定 country 时,对具备排序指标的国家排名(默认 outflow_z;仅有年度数据的序列没有该指标),按 limit 截断(默认 30,传 0 不限)。
+
+适用于任意经济体和任意国家对:传入多个 `country` 进行比较,加上 `counterpart` 获取双边明细,或省略 `country`,对具备所选 `sort` 指标的经济体排名(默认 `outflow_z` 不含仅有年度数据、没有 z 分数的序列)。阶段标签按 Forbes 与 Warnock(2012)方法由已报告的流量推导。各视图、分项和状态的说明见[资本流动方法论](/zh/methodology/capital-flows)。
+
+**参数(工具专用):**
+
+| 名称 | 类型 | 说明 |
+|------|------|-------------|
+| `country` | `array<string>` | 返回完整视图的国家:ISO 3166-1 alpha-2、alpha-3 或英文名称。省略则返回跨国排名。 |
+| `include_series` | boolean | 与 country 一起使用时,同时返回逐期国际收支流量(12 个季度或 6 年)。默认 false。 |
+| `counterpart` | string | 与 country 一起使用的对手国(alpha-2、alpha-3 或名称)。返回 pairs[]:双方非银行在对方银行的存款和双向银行贷款(存量、四季度流量、八个季度历史),双方对彼此证券的持有,以及带双方数字的双向直接投资,另加对手国自身的视图。 |
+| `sort` | `string: outflow_z / inflow_z / outflows_pct_gdp / inflows_pct_gdp / net_usd_bn / bank_deposits_abroad_flow_4q / foreign_portfolio_change_pct` | 省略 country 时的排名字段。默认 outflow_z。 |
+| `ascending` | boolean | 升序排列。默认 false。 |
+| `limit` | number | 排名最多返回的国家数(默认 30,传 0 表示不限)。传入 country 时忽略。 |
+
+- **API 端点:** `GET /api/economic/v1/get-capital-flows`
+- **访问:** `free-account` — 任何已登录账户均可调用;免费账户消耗每日免费额度,Pro 调用消耗每日配额。支持通用 `summary` 参数。
+- **类型:** 缓存读取 — 从 Redis 亚秒级响应。
+- **新鲜度预算:** 距上次每周种子 **10 天**,另有内容时效检查:最新 IMF 国际收支季度超过 12 个月时 `stale` 变为 true。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_capital_flows","arguments":{"country":["DE"],"counterpart":"JP"}}
   }'
 ```
 
@@ -519,7 +565,7 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `reporter` | string | WTO 报告国的 3 位 UN M49 代码（例如 "840" 表示美国）。默认为 "840"。目前仅提供与世界（"000"）之间的数据；其他伙伴代码会返回 `not_covered`。 |
+| `reporter` | string | 报告国的 ISO 3166-1 alpha-2 代码（"US"）或 3 位 UN M49 代码（"840"）；ISO2 会映射为 M49。默认为 "840"（美国）。目前仅提供与世界（"000"）之间的数据；其他伙伴代码会返回 `not_covered`。 |
 | `years` | integer | 从最新发布年份向前回看的年数，包含起止年份（10 会返回 11 个日历年）。默认为 10；30 是完整播种窗口。 |
 
 **响应区分：** `unavailableReason` 使用 RPC 的封闭 `TradeFlowUnavailableReason` 枚举。`TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED` 是合约答案：该组合不在播种覆盖范围内，重试无效。其他非 UNSPECIFIED 原因均表示故障（`seed_missing`、`coverage_unknown`、`cache_unavailable`），并带有 `upstreamUnavailable: true`。
@@ -545,7 +591,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_averages`
 
-一个国家按年份适用的平均关税。不传伙伴和产品组时，返回任一报告国的 WTO 全部产品 MFN 平均税率（`TP_A_0010`），不限于 `get_tariff_trends` 中的美国序列。传入非“世界”的伙伴或产品组时，返回来自 UNCTAD TRAINS（经 World Bank WITS）的实际适用平均税率：
+一个国家按年份适用的平均关税：截至 2023 年的税则税率，不含 301/232 条款关税。不传伙伴和产品组时，返回任一报告国的 WTO 全部产品 MFN 平均税率（`TP_A_0010`），包括美国（`840`）。传入非“世界”的伙伴或产品组时，返回来自 UNCTAD TRAINS（经 World Bank WITS）的实际适用平均税率：
 
 - `tariffRate` 为简单平均（`AHS-SMPL-AVRG`），计入该伙伴可享受的优惠。
 - `weightedRate` 为进口加权平均（`AHS-WGHTD-AVRG`）。
@@ -562,6 +608,8 @@ curl -s https://worldmonitor.app/mcp \
 | `years` | integer | 返回的年数，保留最新年份（0–30）。0 或省略表示路由默认值（10）。 |
 
 **响应区分：** 每个数据点的 `indicatorCode`、`partnerCountry` 和 `productSector` 说明由哪个序列作答。`TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED` 是覆盖范围答案（WITS 没有该序列）。`TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` 是故障，并带有 `upstreamUnavailable: true`；请稍后重试。
+
+**覆盖范围：** 除上游故障外，每个答案都带有一个由 MCP 服务器添加的 `coverage` 对象。上游故障（`upstreamUnavailable: true`）不提供任何答案，因此不带该对象。`dataset` 表示所查询的数据集；信任税率之前，请先检查 `unavailableReason`。它在未传入非“世界”伙伴且未传入产品组时为 `WTO_MFN`，否则为 `WITS_TRAINS`。`rateBasis` 为 `SCHEDULE`，`includesUnilateralDuties` 为 `false`，`excludedDutyTypes` 列出 `SECTION_301`、`SECTION_232`、`IEEPA`、`ANTI_DUMPING` 和 `COUNTERVAILING`。`latestYear` 取 `coverageEndYear`，没有时取最新数据点的年份，没有任何年份作答时不出现。报告国为美国时，`seeAlso` 指向 `get_us_import_duty` 并说明原因。
 
 - **API 端点：** `GET /api/trade/v1/get-tariff-trends`
 - **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：无 `summary` 参数（使用 `jmespath` 精简响应）。
@@ -584,7 +632,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_bilateral_tariff`
 
-一个国家在某一年对来自某一伙伴的某个 6 位 HS 产品适用的关税，来自 UNCTAD TRAINS（经 World Bank WITS）。`appliedRate` 是该伙伴实际支付的税率：其可享受的最优优惠税率，否则为 MFN。`basis` 说明是哪一种。`mfnRate`、`preferentialRate` 和按协定列出的 `groupPreferences` 分别报告。MFN 为从量税时，`mfnAveRate` 给出从价等值。欧盟成员国按欧盟税则作答（`filingReporter` 为 `918`）。
+两国之间某一 HS6 产品的关税：截至 2023 年的税则税率，不含 301/232 条款关税。即一个国家在某一年对来自某一伙伴的某个 6 位 HS 产品适用的关税，来自 UNCTAD TRAINS（经 World Bank WITS）。`appliedRate` 是该伙伴实际支付的税率：其可享受的最优优惠税率，否则为 MFN。`basis` 说明是哪一种。`mfnRate`、`preferentialRate` 和按协定列出的 `groupPreferences` 分别报告。MFN 为从量税时，`mfnAveRate` 给出从价等值。欧盟成员国按欧盟税则作答（`filingReporter` 为 `918`）。
 
 仅为税则税率：不包含 301 条款、232 条款、反倾销及其他单边关税。TRAINS 没有 2021 年以后的美国优惠数据，也没有 2023 年以后的美国数据，因此美国请使用 `get_us_import_duty`。
 
@@ -598,6 +646,8 @@ curl -s https://worldmonitor.app/mcp \
 | `year` | integer | 关税年份。0 或省略表示有数据的最新年份。 |
 
 **响应区分：** `BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED` 是覆盖范围答案。`BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` 是故障，并带有 `upstreamUnavailable: true`。
+
+**覆盖范围：** 除上游故障外，每个答案都带有一个由 MCP 服务器添加的 `coverage` 对象。上游故障（`upstreamUnavailable: true`）不提供任何答案，因此不带该对象。`dataset` 表示所查询的数据集；信任税率之前，请先检查 `unavailableReason`。它始终为 `WITS_TRAINS`。`rateBasis` 为 `SCHEDULE`，`includesUnilateralDuties` 为 `false`，`excludedDutyTypes` 列出 `SECTION_301`、`SECTION_232`、`IEEPA`、`ANTI_DUMPING` 和 `COUNTERVAILING`。`latestYear` 为作答的年份，`NOT_COVERED` 答案中不出现。报告国为美国时，`seeAlso` 指向 `get_us_import_duty` 并说明原因。
 
 - **API 端点：** `GET /api/trade/v1/get-bilateral-tariff`
 - **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：无 `summary` 参数（使用 `jmespath` 精简响应）。
@@ -620,7 +670,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_us_import_duty`
 
-美国当前对来自某国的某一产品征收的关税。对 `hs_code` 下的每个 8 位税目，返回 USITC 协调关税表（HTS）的实时税率和 `basis`（`MFN`、带 `preferenceProgram` 的 `PREFERENTIAL`，或 `COLUMN_2`）。同时返回现行有效的第 99 章 301 条款和 232 条款关税，每项带有 `status`：
+美国当前对来自某国的某一产品征收的关税：实时 HTS 税率，加上现行有效的 301 条款和 232 条款关税（如适用）。对 `hs_code` 下的每个 8 位税目，返回 USITC 协调关税表（HTS）的实时税率和 `basis`（`MFN`、带 `preferenceProgram` 的 `PREFERENTIAL`，或 `COLUMN_2`）。同时返回现行有效的第 99 章 301 条款和 232 条款关税，每项带有 `status`：
 
 - `APPLIES`
 - `CONDITIONAL`，并以 `condition` 说明取决于什么
@@ -635,6 +685,8 @@ curl -s https://worldmonitor.app/mcp \
 |------|------|-------------|
 | `hs_code` | string | 6、8 或 10 位 HTS 编码（必填），如 `870380` 或 `8703.80.00`。点号会被忽略。 |
 | `partner` | string | 原产国（必填）。3 位代码、ISO alpha-2 或 alpha-3，或英文名称。 |
+
+**覆盖范围：** 除上游故障外，每个答案都带有一个由 MCP 服务器添加的 `coverage` 对象。上游故障（`upstreamUnavailable: true`）不提供任何答案，因此不带该对象。`dataset` 表示所查询的数据集；信任税率之前，请先检查 `unavailableReason`。它为 `USITC_HTS`，`rateBasis` 为 `CURRENT_DUTY`。只有 `additionalDutiesLoaded` 为 `true` 时，`includesUnilateralDuties` 才为 `true`，此时 `excludedDutyTypes` 列出 `IEEPA`、`ANTI_DUMPING` 和 `COUNTERVAILING`。否则答案仅含基础税率：`includesUnilateralDuties` 为 `false`，`excludedDutyTypes` 还会列出 `SECTION_301` 和 `SECTION_232`。`asOf` 为作答的 HTS 版本。
 
 - **API 端点：** `GET /api/trade/v1/get-us-import-duty`
 - **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：无 `summary` 参数（使用 `jmespath` 精简响应）。
@@ -808,7 +860,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_commodity_geo`
 
-全球矿业地点，含坐标、运营商、矿产类型和生产状态。覆盖全球 71 座主要矿山，涵盖黄金、白银、铜、锂、铀、煤和其他矿物。
+精选的静态清单，收录 71 座主要矿山，含坐标、国家、矿种、运营商、状态（producing、development、exploration），以及有记录时的年产量和产量排名标签。矿种：金、银、铜、锂、钴、稀土、镍、铂、钯、铁矿石和铀。它回答某种矿产在哪里开采、矿山由谁运营；不含国家产量总量、市场份额、冶炼或价格。`mineral` 为精确且区分大小写的匹配（"Gold"、"Rare Earths"）；`country` 为不区分大小写的子串匹配。
 
 **参数：**
 
@@ -846,11 +898,13 @@ curl -s https://worldmonitor.app/mcp \
 | `category` | string: geopolitical / tech / finance | 限制为一个市场类别桶。省略则返回全部三类。`finance` 也接收未分类的非地缘政治记录。 |
 | `query` | string | 仅保留标题包含此文本的市场（不区分大小写）。 |
 | `source` | string: kalshi / polymarket | 筛选为一个预测市场来源。Kalshi 目前不提供分类器标签，因此与 `category=tech` 组合不会返回记录。 |
+| `sort` | string: rank / move_24h / move_7d | 默认 `rank` 保留种子排序。`move_24h` 和 `move_7d` 在每个类别内按变化绝对值降序排列，然后应用 limit；缺失值排在最后。 |
 | `limit` | number | 限制每个类别的记录数，默认 30。零或负数表示不限。正小数使用整数部分。 |
 | `refresh` | boolean | 仅限付费面板。默认 false 复用预测分配。true 必须附带 UUID request_id，并开始一次新分配。刷新时省略 panel_request。 |
 | `request_id` | string | 付费刷新 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
 | `panel_request` | string | 服务器签发的预测凭据，用于到期前的授权精选读取。API 和免费账户调用不接受该凭据。 |
 
+- **概率变化：** 可选 `change24h` 和 `change7d` 为 `yesPrice` 0–100 标度的百分点变化。上游缺失时不返回该字段，零表示没有变化。Kalshi 仅提供 24 小时变化。REST 的 `yesPriceChange24h` 和 `yesPriceChange7d` 使用 0–1 概率标度。
 - **API 端点：** `GET /api/prediction/v1/list-prediction-markets`
 - **访问：** `free-account`，任意已登录账户均可调用。免费账户消耗每日免费额度，API 套餐仍按工具权重计费。接受通用 `summary` 参数。
 - **付费面板计量：** Pro 与 Pro Business 打开面板扣一次额度。规范化筛选与重复打开在五分钟内复用预测分配。返回的 `panelRequest.token` 在到期前授权精选预测读取。本地类别展开只读取已加载数据，不发起新的工具调用。每份分配最多允许 64 次未缓存工具执行，未缓存执行与已确认缓存回放分别限制为每分钟 64 次。工具执行次数不等于单条 Redis 命令数。
@@ -879,17 +933,17 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_energy_intelligence`
 
-能源供应、价格、存储、中断和政策：EIA 石油库存、电力价格（Ember）、天然气存储（GIE）、燃料短缺、化石和可再生能源份额、活跃能源中断、政府危机政策。
+能源供应、价格、存储、中断和政策：EIA 石油库存、电力价格（Ember）、各国天然气存储（GIE）、燃料短缺、化石和可再生能源份额、活跃能源中断、政府危机政策，以及欧盟天然气总存储、美国天然气存储和美国商业原油库存的带日期历史。原 `get_energy_storage` 已并入本工具，旧名称仍可调用并返回 `deprecation` 提示。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable>` | 将响应限制为一个或多个能源子数据集。省略则返回完整捆绑包。 |
+| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable / eu-gas-storage / nat-gas-storage / crude-inventories>` | 将响应限制为一个或多个能源子数据集。省略则返回完整捆绑包。 |
 | `country` | string | 将按国家键控的数据集（Ember 电力组合、天然气存储、燃料短缺、能源中断、化石份额）筛选为一个 ISO 3166-1 alpha-2 代码。 |
-| `limit` | number | 将每个含列表的能源切片（危机政策、电力地区、天然气存储国家、世界银行可再生能源历史/地区）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `limit` | integer | 将每个含列表的能源切片（危机政策、电力地区、天然气存储国家、世界银行可再生能源历史/地区、按新到旧排列的存储和库存历史）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
-- **API 端点：** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`
+- **API 端点：** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`, `GET /api/economic/v1/get-eu-gas-storage`, `GET /api/economic/v1/get-nat-gas-storage`, `GET /api/economic/v1/get-crude-inventories`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **3 天**（由 seeder cron 的预期间隔设定）。
 
@@ -924,8 +978,14 @@ curl -s https://worldmonitor.app/mcp \
 | `panel_request` | string | 付费冲突事件凭据，在到期前复用受限内部筛选读取。API 和免费账户不接受。 |
 | `refresh` | boolean | 仅限付费面板。true 需附带 UUID request_id，并省略 panel_request，以开始一次新分配。 |
 | `request_id` | string | 显式付费刷新的 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
+| `bbox` | object | 仅保留此范围内的事件。sw_lon > ne_lon 表示跨越 180° 经线。不能与 lat/lon/radius_km 同时使用。 |
+| `lat` | number | radius_km 的中心纬度；需同时提供 lon 和 radius_km。 |
+| `lon` | number | radius_km 的中心经度；需同时提供 lat 和 radius_km。 |
+| `radius_km` | number | 仅保留距 lat/lon 大圆距离在此范围内的事件（最大 2000）。 |
+| `since_days` | integer | 仅保留最近 N 天内的事件。 |
 
 - **API 端点：** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
+- **区域与时间筛选：** `bbox` 需提供 `sw_lat`、`sw_lon`、`ne_lat` 和 `ne_lon`（均为必填）。请只传 `bbox`，或同时传 `lat`、`lon` 和 `radius_km` 三者；混用或只传部分半径参数会在扣除任何额度前返回 Invalid params。筛选作用于 UCDP、伊朗和动荡事件，在 `country` 与 `min_fatalities` 之后、`limit` 之前执行；国家风险评分没有坐标，不受筛选。缺少有效坐标（或在使用 `since_days` 时缺少日期）的事件会被丢弃，`data.geo_filter.excluded` 按列表统计这些行，避免把空结果误读为附近没有事件。当 `since_days` 早于某列表最早的带日期行时，`data.geo_filter.oldest_held` 给出该行的时间（epoch 毫秒），避免把宽时间窗误读为完整覆盖。不传这些参数时响应不含 `geo_filter`。
 - **访问与计量：** `free-account`。免费账户使用免费额度，API 套餐保留按工具权重计费。Pro 与 Pro Business 首次打开扣一次额度，规范化筛选与重复打开在五分钟内复用冲突事件分配。每份分配最多允许 64 次未缓存工具执行，未缓存执行与成功缓存回放分别限制为每分钟 64 次。每次执行读取五个固定 Redis 键，启用伊朗事件时为六个，不分别扣额度。
 - **复用与刷新：** 相同筛选的成功原始结果在摘要或 JMESPath 呈现之前回放。显式刷新使用新的 UUID 扣一次新额度；同一 UUID 的重试复用该分配。授权凭据读取查询当前额度，不另行预留；计数器未知时保留数据并省略数字通知。付费参数在预留前拒绝未知字段及非有限数值。普通 API 和免费调用保留既有筛选转换，不接受付费凭据或刷新控制。
 - **来源观察与恢复：** 可选 `conflict_source.ucdp` 仅保留已读取元数据中类型正确的 `fetchedAt`、`candidateVersion`、`candidateComplete` 和 `annualFailedPages`，缺失字段保持缺失。已知不完整、缺失、格式错误、过期或不兼容的数据保持可重试；可用列表仍按请求筛选。元数据与数据不是原子快照，该观察不能证明所有动荡提供方的完整覆盖或 CII/伊朗的独立新鲜度。
@@ -949,6 +1009,8 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_country_risk`
 
+可选 `history_days` 返回 `ciiHistory`，最多覆盖 90 个 UTC 日。当天的最新成功计算替换当天记录。历史从启用时开始积累，不回填。`points` 仅包含当前方法版本，保留日期缺口；不足两个点时 `change` 为 null，否则列出实际使用的日期和分数。`versionBreaks` 列出窗口内的方法变更。历史缺失、读取失败或超过 30 分钟时 `stale` 为 true。此参数仅用于 MCP，调用权重仍为 2。
+
 特定国家的结构化风险情报：综合不稳定指数（CII）位于 `cii.combinedScore`（0-100），四个贡献项位于 `cii.components`（国内动荡、武装冲突、安全与出行、信息环境），政府旅行警示级别，以及以 `sanctionsActive` 和 `sanctionsCount` 表示的 OFAC 制裁敞口。快速 Redis 读取 - 无 LLM。解读低分前先检查 `upstreamUnavailable`：为 true 表示至少一个必需的上游读取失败，归零的风险字段代表 UNKNOWN，而不是平静。用于量化风险筛选或回答“X 现在有多危险？”
 
 **参数：**
@@ -956,6 +1018,7 @@ curl -s https://worldmonitor.app/mcp \
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|---------:|-------------|
 | `country_code` | string | **是** | ISO2、ISO3 或英文国家名称，例如 "RU"、"RUS"、"Russia" |
+| `history_days` | integer | 否 | 含今天的 UTC 日历窗口，1-90 天；省略时不读取历史 |
 | `panel_request` | string | 否 | 服务端签发的同一国家凭据，用于已授权付费读取 |
 | `refresh` | boolean | 否 | 仅付费账户可用，分配一次新国家额度；需要 UUID 且不附带凭据 |
 | `request_id` | string (UUID) | 否 | 刷新时必需；同一 UUID 的重试复用该额度 |
@@ -1174,7 +1237,7 @@ curl -s https://worldmonitor.app/mcp \
 | 名称 | 类型 | 描述 |
 |------|------|------|
 | `text` | string | 可选的提取文本，最长 2048 字符（超长输入返回 `error`）。省略时，工具转而跨当前头条摘要聚合实体。 |
-| `category` | string（枚举） | 在头条模式下，将聚合限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
+| `category` | string（枚举） | 在头条模式下，将聚合限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`science`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
 | `limit` | integer | 每个列表的最大实体数（1-50）。默认 20。 |
 
 - **API 端点：** `GET /api/news/v1/list-feed-digest`（仅头条模式；文本模式不发起任何请求）。
@@ -1206,8 +1269,9 @@ curl -s https://worldmonitor.app/mcp \
 |------|------|------|
 | `limit` | integer | 返回簇的上限（1-25）。默认 10。 |
 | `min_sources` | integer | 仅返回覆盖**不同媒体来源数**不低于该值的簇（1-10）—— 真正的交叉印证，而非同一家媒体重复发稿。默认 1。 |
-| `category` | string（枚举） | 将聚类限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
+| `category` | string（枚举） | 将聚类限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`science`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
 
+- **交叉印证：** 每个簇都带有 `corroboration`，形如 `{ state, publishers }`。`state` 取值为 `corroborated`（两个及以上发布方家族，且并非全部为第 4 层级）、`single-publisher`、`tier4-only`（两个及以上家族，且每个都是已声明的第 4 层级聚合站或博客）或 `unknown`；`publishers` 统计不同的发布方家族，`state` 为 `unknown` 时为 `null`。新闻面板、地图弹窗和摘要为该故事显示相同的判定。实时提醒只携带该故事的发布方数量，因此只报告 `single-publisher` 或 `corroborated`，从不报告 `tier4-only`。它描述的是报道覆盖面，而非准确性：任何状态都不表示某条说法为真或为假。旁边的 `publishers` 名单列出每个发布方及其声明层级。
 - **API 端点：** `GET /api/news/v1/list-feed-digest`
 - **类型：** 确定性本地计算 —— 每次调用对约 150-200 条摘要头条运行聚类（上游为 CDN/Redis 缓存，15 分钟节奏）。
 - **配额：** 标准 —— 每次调用消耗 MCP 每日预留。
@@ -1229,9 +1293,19 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `verify_claim`
 
-针对一条说法或标题的证据卡。在实时摘要中找出报道同一事件的话题簇（一个事件常分布在多个簇中），并基于匹配簇给出 WorldMonitor 的覆盖判定。当簇中某条标题包含说法中至少一半的实义词且至少两个时即视为匹配；最多保留匹配度最高的 8 个簇。判定由 `assessCorroboration` 对所有匹配标题计算，因此同一发布方的转载源只计一次。
+针对一条说法或标题的证据卡。在最新标题中找出报道同一事件的话题簇（一个事件常分布在多个簇中），并基于匹配簇给出 WorldMonitor 的覆盖判定。`variant: full`（默认）检索 WorldMonitor 信息源缓存中的所有最新标题（每个信息源最多 30 条），而不只是仪表板摘要提供的标题；与说法共享实义词最多的 100 条标题参与聚类。`tech` 变体检索其摘要。当簇中某条标题包含说法中至少一半的实义词且至少两个时即视为匹配；最多保留匹配度最高的 8 个簇。判定由 `assessCorroboration` 对所有匹配标题计算，因此同一发布方的转载源只计一次。
 
 返回 `found`、`state`（覆盖判定；已检索摘要但没有任何报道时为 `not-found`；摘要为空或不可用、未进行检索时为 `unknown` 且 `found: false`）、`corroboration`（`single-publisher`、`tier4-only`、`corroborated`、`unknown`）、带声明层级的 `publishers` 名单、最多 10 条带来源溯源信息的匹配 `headlines`、最佳匹配的 `credibilityScore`、`firstSeen` / `lastUpdated`，以及 `figures`：用简报溯源规则核对说法中的数字和日期是否出现在匹配标题中。`figures.ungrounded` 列出没有任何匹配标题提及的数字，并不表示该数字错误。`found: false` 表示没有匹配：`state` 为 `not-found` 时，该说法不在 WorldMonitor 当前的来源中；为 `unknown` 时，表示未进行检索。它绝不表示该说法为假。每个响应都带有相同的 `caveat`：衡量的是覆盖情况，而非准确性。
+
+`factChecks` 引用事实核查机构已就相似说法发布的评级。WorldMonitor 不对说法作出评级，只像引用通讯社报道一样注明出处地引用这些评级。每一项给出事实核查机构（`publisher`、`site`）、其原样评级 `rating`、发布日期 `reviewedAt`、链接 `url` 以及其所评级的说法 `claimReviewed`，并以 `label` 引出：这是对相似说法的事实核查，而非对本说法的核查。规则如下：
+
+- 仅限 [IFCN 原则准则](https://github.com/IFCN/verified-signatories)的认证签署机构，名单保存在 `shared/fact-checkers.json` 中，并像来源层级一样接受审核。以链接本身的域名为准，而非数据源报告的名称。
+- 仅显示强匹配：说法与被评级的说法须各自包含对方至少 60% 的实义词，且至少共有三个实义词。较弱的匹配不显示任何内容。
+- 英文事实核查，不限年份，按时间由新到旧排列。相互矛盾的评级全部列出，不作取舍。
+- 无论说法出自何人，规则均相同：匹配逻辑中不涉及任何人物、党派、话题或国家。
+- 评级绝不会改变 `state`、`corroboration` 或卡片中的任何其他内容。
+
+查询已执行时 `factChecks.state` 为 `ok`（此时 `items` 为空表示未找到）；未执行时为 `unavailable` 或 `not-configured`。查询失败绝不会导致工具调用失败。评级来自 Google Fact Check Tools API。
 
 **参数（工具专属）：**
 
@@ -1240,9 +1314,9 @@ curl -s https://worldmonitor.app/mcp \
 | `claim` | string | 要核查的说法或标题，最多 300 个字符。必填。 |
 | `variant` | `string: full / tech` | 要搜索的标题摘要变体。默认为 full。 |
 
-- **API 端点：** `GET /api/news/v1/list-feed-digest`
+- **API 端点：** `GET /api/news/v1/list-feed-digest`、`GET /api/news/v1/search-fact-checks`、`GET /api/news/v1/search-claim-headlines`
 - **访问：** `subscription` — 需要 Pro 订阅。
-- **类型：** 基于实时摘要窗口的确定性本地计算，并非历史索引。不使用 LLM。
+- **类型：** 基于最新标题窗口（最近 96 小时）的确定性本地计算，并非历史索引。不使用 LLM。
 - **配额：** 标准 — 每次调用都会消耗 MCP 每日配额。
 
 <CodeGroup>
@@ -1325,20 +1399,25 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_sanctions_data`
 
-OFAC SDN 制裁实体列表和按国家分列的制裁压力评分。适用于合规筛选和地缘政治压力分析。
+读取 OFAC SDN、OFAC Consolidated、加拿大 SEMA 制裁和国家压力评分，并可筛查美国综合筛查清单（CSL）中的六个出口管制清单：BIS 实体清单、拒绝人员清单、未核实清单、军事最终用户清单，以及国务院 ITAR 禁止清单和防扩散制裁清单。压力评分只统计 OFAC 和 SEMA；CSL 条目的 `et` 为 `unspecified`，其变更事件带有 `notice`（《联邦公报》引用）和 `url`。`screen` 支持名称、每个实体最多 10 个保留别名和精确 IMO 编号，返回 `score`、`matched_on`、`matched_text`；不要同时提供 `screen` 和 `changes_since_days`。`changes_since_days` 选择仅变更历史模式，返回指定天数内观测到的新增、移除和制裁项目变更。匹配结果仅供进一步向发布机构核实，不构成法律意见。每次调用权重为 1，不在请求时获取外部来源。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
 | `country` | string | 将制裁实体和压力评分筛选为一个 ISO 3166-1 alpha-2 国家代码。 |
-| `entity_type` | string | 筛选为一种实体类型（不区分大小写的子串，例如 "vessel"、"aircraft"、"person"、"entity"）。 |
+| `entity_type` | string | 筛选为一种实体类型（不区分大小写的子串，例如 "vessel"、"aircraft"、"individual"、"entity"；CSL 行为 "unspecified"）。 |
 | `query` | string | 仅保留名称包含此文本的制裁实体（不区分大小写）。 |
-| `limit` | number | 将实体列表和近期压力条目限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `screen` | string | 按名称、别名或 IMO 编号筛选，长度 2-200 字符；实体筛选时不要提供 `changes_since_days`。 |
+| `min_score` | number | 最低匹配分数 0-100，默认 70，仅与 `screen` 一起使用。 |
+| `changes_since_days` | integer | 仅返回过去 1–90 天的历史。国家、实体类型和名称查询筛选事件；每页均保留覆盖缺口。 |
+| `changes_cursor` | string | 使用上一页的 `changes.nextCursor` 继续，并保持相同筛选条件。种子历史变化后须重新开始。 |
+| `limit` | number | 默认 30。历史模式中，传 0 或大于 100 的值每页最多返回 100 个事件，并可能因响应预算而减少；其他模式中传 0 表示不限。 |
 
 - **API 端点：** `GET /api/sanctions/v1/list-sanctions-pressure`, `GET /api/sanctions/v1/lookup-sanction-entity`
+- **访问权限：** 仅限订阅用户（Pro/API）。
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **1 天**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **12 小时**（由 seeder cron 的预期间隔设定）。
 
 <CodeGroup>
 
@@ -1349,15 +1428,19 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_sanctions_data","arguments":{}}
+    "params":{"name":"get_sanctions_data","arguments":{"screen":"Northern Star","min_score":70}}
   }'
 ```
 
 </CodeGroup>
 
+变更记录最多保留 90 天或 10,000 个事件，按观测时间从新到旧返回。`at` 是观测时间（毫秒）；`effectiveAt` 是来源的生效时间字符串，未知时为 `"0"`。制裁项目集合变更产生 `amended` 和 `prevPr`。`gaps` 记录来源保留、不可用、缺少有效基线或单次移除超过 5% 的情况；这些区间不能证明没有变更。`truncatedBefore` 表示事件数量上限导致的历史截断边界。未提供 `changes_since_days` 时省略 `changes`。
+
+历史请求仅返回 `changes`，独立读取缓存并检查新鲜度。时间窗口以 `changes.fetchedAt` 为准。将 `changes.nextCursor` 作为 `changes_cursor` 继续，保持相同筛选条件，直至游标为空；`matchingEvents` 是筛选后的总数。新种子替换历史后，移除游标重新开始。每页均保留窗口内的覆盖缺口。历史缺失或无效时不会重置；当前实体和压力数据仍可继续更新。
+
 ### `get_social_velocity`
 
-Reddit 地缘政治社交速度：来自 worldnews、geopolitics 及相关子版块的顶级帖子，含互动评分和趋势信号。
+r/worldnews 与 r/geopolitics 中 `velocityScore`（得分对数 × 点赞率 × 6 小时衰减）最高的 30 条帖子，含得分、点赞率、评论数和链接（字段 `url`）。中继约每 3 小时刷新一次，超过 9 小时标记为过期，与 `/api/health` 的预算一致。帖子是未经核实的用户投稿：该工具衡量公众关注度，而非事件本身。
 
 **参数（工具特定）：**
 
@@ -1368,7 +1451,7 @@ Reddit 地缘政治社交速度：来自 worldnews、geopolitics 及相关子版
 
 - **API 端点：** `GET /api/intelligence/v1/get-social-velocity`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **9 小时**（中继约每 3 小时刷新一次；与 `/api/health` 预算一致）。
 
 <CodeGroup>
 
@@ -1530,6 +1613,8 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_alert_digest`
 
+weekly 视图增加 `weekly.cii_movers`，在 31 个 CII 国家中分别列出最多五个上升和下降项。比较最新点与起始日当天或之前的最后一点，使用实际 `fromDate`。排除 ±1 分以内的变动；两端必须属于当前方法版本。缺少可比历史的国家列入 `insufficient_history`，`as_of` 为最新有效源时间。历史不可用时在 `data.unavailable` 中列出 `cii_history`；超过 30 分钟则响应标为 stale。历史从启用时开始积累，七日排名至少需要七天的观测。
+
 跨域警报摘要：七个域（国家不稳定性、军事激增、电缆健康、进行中的断网、时间异常、热点升级、航运压力）的所有阈值触发，使用每个生产者自己的严重度词汇 — 本工具不发明阈值。有数据但无触发的域列为 quiet，缓存不可用的域单独列出，静默绝不会被误认为平静。
 
 **参数（工具特定）：**
@@ -1537,6 +1622,7 @@ curl -s https://worldmonitor.app/mcp \
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
 | `view` | string: today / weekly | today 列出当前阈值触发（默认）；weekly 增加趋势上下文。 |
+| `movers_days` | integer | weekly 的 CII 比较窗口，7-90 天，默认 7；today 视图拒绝此参数 |
 
 - **API 端点：** 无（仅 MCP 的派生分析）。
 - **类型：** 派生分析 — 共享摘要核心，基于七个 Redis 种子缓存。
@@ -1620,7 +1706,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_chokepoint_status`
 
-实时海上咽喉状态：每个咽喉的船只通行计数（10 分钟节奏）、滚动通行汇总、按港口的活动，以及静态参考数据（咽喉几何、规范 13 咽喉注册表）和流量汇总。覆盖苏伊士、霍尔木兹、马六甲、曼德海峡、巴拿马等。
+实时海上咽喉状态：每个咽喉的船只通行计数（10 分钟节奏）、滚动通行汇总、港口国家覆盖索引，以及静态参考数据（咽喉几何、规范 13 咽喉注册表）和流量汇总。覆盖苏伊士、霍尔木兹、马六甲、曼德海峡、巴拿马等。
 
 **参数（工具特定）：**
 
@@ -1633,7 +1719,7 @@ curl -s https://worldmonitor.app/mcp \
 | `dataset` | `array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows>` | 将响应限制为一个或多个子数据集。省略则返回完整捆绑包。 |
 | `limit` | number | 将 chokepoint-baselines 列表和 _countries ISO2 索引限制为最多这么多项（默认 30，传 0 表示不限）。键控对象映射（transit-summaries、chokepoint_transits、ref、chokepoint-flows）有意不做限制 — 请改用 `chokepoint` 筛选。 |
 
-- **API 端点：** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
+- **API 端点：** `GET /api/supply-chain/v1/get-chokepoint-status`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算（按切片）：** 当任意贡献切片超过其单独预算时标记 `stale: true` — 实时通行汇总（中继）**30 分钟**、PortWatch 港口活动 **36 小时**、咽喉流量 **12 小时**、PortWatch 咽喉参考 **14 天**，静态咽喉注册表/地理基准线最多 **~400 天**。捆绑包的 `cached_at` 反映最旧的贡献种子；`stale: true` 并不意味着所有数据都过时。
 - **按国家的内容新鲜度（PortWatch 切片）：** 当决策关键国家（`CN`/`HK`）自身的观测超过 **10 天**时，`stale: true` 同样会被标记 —— 即使该次运行的心跳是新鲜的、且全部 174 个国家均已发布。只要上游 `max(date)` 未推进，seeder 就会复用缓存的国家载荷，因此传输时效与记录数都显示健康，而某个国家的数据已过时数日。这与 `/api/health` 对同一 seed 键给出的 `STALE_CONTENT` 判定一致 —— 参见[健康检查端点](/zh/health-endpoints)。`stale` 仍是单一布尔值，不会说明是哪个维度触发；指名过时国家的是 `/api/health`。
@@ -1698,7 +1784,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_positive_events`
 
-积极的地缘政治事件：外交协议、人道主义援助、发展里程碑和全球和平倡议。
+返回缓存的正面新闻地点地图：每个条目是一个地点（name、latitude、longitude），附带提及该地点的正面基调 GDELT 批量报道计数、按报道关键词分类的类别（science-health、nature-wildlife、climate-wins、innovation-tech、humanity-kindness、culture-community）以及最新报道的时间戳。这是地点聚合桶而非单条新闻：没有标题、正文或来源 URL，且一个桶至少需要 3 条报道才会出现。由 GDELT 批量源写入种子，1 小时后标记为过期。缓存读取，无实时抓取：API 套餐权重 1，包含在已登录免费额度内。category 选择六个类别之一；limit 限制列表长度（默认 30，0 表示不限）。
 
 **参数（工具特定）：**
 
@@ -1848,7 +1934,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_aviation_status`
 
-机场延误、NOTAM 空域关闭和被追踪的军用飞机。涵盖 FAA 延误数据和活跃空域限制。
+返回缓存的机场中断快照：每个受监控机场（全球约 85 个主要机场）一行告警，含 iata、name、country 和 severity，由国际枢纽的 AviationStack 延误聚合、美国机场的 FAA ASWS 延误以及 ICAO NOTAM 关闭构成。约每 30 分钟写入种子、90 分钟后标记为过期。快照包含所有受监控机场，因此除非设置 disrupted_only=true，大多数行的 severity 为 "normal"；默认 limit 30 只返回其中一部分（0 返回完整列表）。仅机场级状态；不含票价、航班时刻或航迹。缓存读取，无实时抓取：API 套餐权重 1，包含在已登录免费额度内。country 为不区分大小写的名称子串，iata 选择单个机场，limit 限制列表长度（默认 30，0 表示不限）。
 
 **参数（工具特定）：**
 
@@ -1909,15 +1995,16 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_maritime_activity`
 
-某国海域的实时船舶交通和海上中断。返回 AIS 密度区（每日船只数、强度评分）、暗船事件和来自 AIS 追踪的咽喉拥堵。
+按国家查询海上活动。`view: "traffic"` 为默认视图，返回实时 AIS 密度和中断。`view: "ports"` 返回最多 25 个港口的 30 天油轮到访量、进口与出口载重吨，以及相对前 30 天的变化。前期到访量为零或未知时 `trend_delta_pct` 为 null。未覆盖或过期数据返回 `available:false`。PortWatch 数据按计划采集，可能滞后于实时，`fetched_at` 为抓取时间。两个视图均需订阅，API 权重均为 2，且各调用一次下游接口。
 
 **参数：**
 
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|---------:|-------------|
 | `country_code` | string | **是** | ISO 3166-1 alpha-2 国家代码（例如 "AE"、"SA"、"JP"、"EG"） |
+| `view` | `traffic / ports` | 否 | 默认 `traffic`；`ports` 为定期采集的港口油轮活动。 |
 
-- **API 端点：** `GET /api/maritime/v1/get-vessel-snapshot`
+- **API 端点：** `GET /api/maritime/v1/get-vessel-snapshot`, `GET /api/intelligence/v1/get-country-port-activity`
 - **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**8.0s**。
 
 <CodeGroup>
@@ -1929,7 +2016,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_maritime_activity","arguments":{"country_code":"US"}}
+    "params":{"name":"get_maritime_activity","arguments":{"country_code":"NL","view":"ports"}}
   }'
 ```
 
@@ -1937,20 +2024,22 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_supply_chain_data`
 
-干散货航运压力指数、海关收入流和 COMTRADE 双边贸易数据。追踪全球供应链压力和贸易中断。
+返回运价指数、纽约联储 GSCPI、基于 BDRY 和航运公司股票的压力代理指标、海关收入及 COMTRADE 贸易流。仅限订阅用户，API 权重为 1。FRED 指数包含原始值和历史；SSE 仅含变化百分比、方向和 z 分数，不返回 Baltic 指数。GSCPI 单位为标准差，月度值可能修订。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `dataset` | `array<string: shipping_stress / customs-revenue / flows>` | 将响应限制为一个或多个子数据集（干散货航运压力 / 海关收入 / COMTRADE 流）。省略则返回全部。 |
+| `dataset` | `array<string: shipping_stress / customs-revenue / flows / freight-rates / gscpi>` | 将响应限制为一个或多个子数据集（股票航运压力代理指标 / 海关收入 / COMTRADE 流 / 运价 / GSCPI）。省略则返回全部。 |
 | `commodity` | string | 将 COMTRADE 流筛选为一种大宗商品 — 精确匹配 HS 代码或按子串匹配大宗商品描述（例如 "2709" 或 "crude"）。 |
 | `reporter` | string | 按数字报告方代码或报告方名称筛选 COMTRADE 流（例如 "156" 或 "China"）。 |
-| `limit` | number | 将每个列表数据集（承运商、月份、流）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `limit` | number | 将每个列表数据集（承运商、月份、贸易流、运价指数、GSCPI 观测值）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
-- **API 端点：** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`
+- **API 端点：** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`, `GET /api/supply-chain/v1/get-shipping-rates`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **2 天**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 运价为 **7 小时**，GSCPI 与海关收入为 **2 天**。
+
+`freight-rates.indices[]` 包含来源、频率、观测日期、期间变化和基线统计。z 分数使用除最新点外的历史均值和总体标准差；少于 12 个基线点或方差为零时为 null。SSE 每周历史上限为 56 点，仅从后续采集累积，不能回填。`gscpi.series.observations` 保留最新 `limit` 个月并按时间升序排列。数据来源为 Federal Reserve Bank of New York，值可能修订。
 
 <CodeGroup>
 
@@ -1961,7 +2050,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_supply_chain_data","arguments":{}}
+    "params":{"name":"get_supply_chain_data","arguments":{"dataset":["freight-rates","gscpi"],"limit":12}}
   }'
 ```
 
@@ -1969,19 +2058,20 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_infrastructure_status`
 
-互联网基础设施健康：Cloudflare Radar 故障和主要云提供商及互联网服务的服务状态。
+Cloudflare Radar 互联网快照，分三个数据集：`outages`（故障及主要云提供商和互联网服务的状态）、`traffic`（流量异常，`totalCount` 为筛选前的全球总数）和 `ddos`（全球 DDoS 协议、向量和目标国家摘要）。原 `get_internet_activity` 已并入本工具，旧名称仍可调用并返回 `deprecation` 提示。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `country` | string | 按名称筛选为一个国家（不区分大小写的子串）。 |
+| `dataset` | `array<string: outages / traffic / ddos>` | 将响应限制为故障、流量异常或 DDoS 摘要。省略则返回全部三个。 |
+| `country` | string | 按 ISO 3166-1 alpha-2 或 alpha-3 代码或英文国家名称筛选故障和流量异常。无法解析的输入返回 Invalid params。DDoS 摘要为全球数据，仅请求 DDoS 时传入 `country` 会返回 Invalid params。 |
 | `severity` | string | 筛选为一种故障严重度（不区分大小写的子串）。 |
-| `limit` | number | 将故障列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `limit` | integer | 将每个列表（故障、异常、DDoS 协议、向量和目标国家）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
-- **API 端点：** `GET /api/infrastructure/v1/list-internet-outages`
+- **API 端点：** `GET /api/infrastructure/v1/list-internet-outages`, `GET /api/infrastructure/v1/list-internet-traffic-anomalies`, `GET /api/infrastructure/v1/list-internet-ddos-attacks`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 故障 **30 分钟**，流量异常和 DDoS **60 分钟**；任一数据集超出预算即标记 `stale: true`。
 
 <CodeGroup>
 
@@ -2000,7 +2090,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `search_flights`
 
-在 Google Flights 上搜索特定日期两个机场之间的实时航班选项。返回可用航班，含价格、经停、航空公司和航段详情。使用 IATA 机场代码（例如 "JFK"、"LHR"、"DXB"）。
+从 Google Flights 结果页实时读取特定日期两个机场之间的行程。每个行程包含全部乘客的美元总价、经停、时长，以及每个航段的航空公司、航班号、机场和当地出发与到达时间。提供 return_date 时价格覆盖往返行程，航段为去程。degraded 带 error 表示数据源失败；无 degraded 的空列表表示未找到行程。机场使用 IATA 代码（例如 "JFK"、"LHR"、"DXB"）。
 
 **参数：**
 
@@ -2035,7 +2125,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `search_flight_prices_by_date`
 
-在 Google Flights 上搜索日期范围内日期网格的定价。返回两个机场之间每个出发日期的最便宜价格。适用于寻找最便宜的飞行日期。使用 IATA 机场代码。
+两个机场之间每个出发日期的 Google Flights 最低票价，日期范围最多 31 天（每个日期一次结果页搜索）。每行包含日期、往返行程的返程日期（出发日期加 trip_duration），以及全部乘客的最低美元总价。没有行程的日期不列出。degraded 带 error 表示部分或全部日期失败，列表只包含有结果的日期。机场使用 IATA 代码。
 
 **参数：**
 
@@ -2044,7 +2134,7 @@ curl -s https://worldmonitor.app/mcp \
 | `origin` | string | **是** | 出发机场的 IATA 代码，例如 "JFK" |
 | `destination` | string | **是** | 到达机场的 IATA 代码，例如 "LHR" |
 | `start_date` | string | **是** | 日期范围起始，格式为 YYYY-MM-DD |
-| `end_date` | string | **是** | 日期范围结束，格式为 YYYY-MM-DD |
+| `end_date` | string | **是** | 日期范围结束，格式为 YYYY-MM-DD，最多在 start_date 之后 30 天 |
 | `is_round_trip` | boolean | 否 | 是否搜索往返价格（默认 false）。为 true 时需要 trip_duration。 |
 | `trip_duration` | number | 否 | 行程天数 — is_round_trip 为 true 时必填（例如 7 表示一周行程） |
 | `cabin_class` | string | 否 | 舱位等级："economy"、"premium_economy"、"business" 或 "first"（可选） |
@@ -2085,7 +2175,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/climate/v1/get-co2-monitoring`, `GET /api/climate/v1/get-ocean-ice-data`, `GET /api/climate/v1/list-air-quality-data`, `GET /api/climate/v1/list-climate-anomalies`, `GET /api/climate/v1/list-climate-disasters`, `GET /api/climate/v1/list-climate-news`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **2 天**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 各子数据集使用与 `/api/health` 一致的播种时间预算：天气警报 **45 分钟**、气候新闻 **90 分钟**、异常 **9 小时**、灾害 **12 小时**、空气质量 **3 小时**、海洋/海冰 **48 小时**、CO2 监测 **72 小时**。异常和气候新闻还检查生产者的内容时效预算，目前分别为 **14 天**和 **7 天**。任一播种过期、刷新失败、元数据缺失或内容过期都会使整个捆绑包标记为 `stale: true`。`cached_at` 是所有来源中最早的播种时间，并非统一的过期时间。`dataset` 在捆绑包新鲜度检查后筛选返回的数据。
 
 <CodeGroup>
 
@@ -2117,8 +2207,14 @@ curl -s https://worldmonitor.app/mcp \
 | `min_magnitude` | number | 丢弃低于此震级的地震和自然事件。 |
 | `active_only` | boolean | 仅保留仍处于活跃状态（未关闭）的自然事件。 |
 | `limit` | number | 将每个灾害列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `bbox` | object | 仅保留此范围内的事件。sw_lon > ne_lon 表示跨越 180° 经线。不能与 lat/lon/radius_km 同时使用。 |
+| `lat` | number | radius_km 的中心纬度；需同时提供 lon 和 radius_km。 |
+| `lon` | number | radius_km 的中心经度；需同时提供 lat 和 radius_km。 |
+| `radius_km` | number | 仅保留距 lat/lon 大圆距离在此范围内的事件（最大 2000）。 |
+| `since_days` | integer | 仅保留最近 N 天内的事件。 |
 
 - **API 端点：** `GET /api/natural/v1/list-natural-events`, `GET /api/seismology/v1/list-earthquakes`, `GET /api/wildfire/v1/list-fire-detections`
+- **区域与时间筛选：** `bbox` 需提供 `sw_lat`、`sw_lon`、`ne_lat` 和 `ne_lon`（均为必填）。请只传 `bbox`，或同时传 `lat`、`lon` 和 `radius_km` 三者；混用或只传部分半径参数会在扣除任何额度前返回 Invalid params。筛选作用于地震、火点和自然事件（包括区域列表 `events.westernPacific.events` 与 `events.hkoWarnings.warnings`），在 `min_magnitude` 与 `active_only` 之后、`limit` 之前执行。缺少有效坐标（或在使用 `since_days` 时缺少日期）的行会被丢弃，`data.geo_filter.excluded` 按数据集统计这些行，避免把空结果误读为附近没有事件。当 `since_days` 早于某列表最早的带日期行时，`data.geo_filter.oldest_held` 给出该行的时间（epoch 毫秒），避免把宽时间窗误读为完整覆盖。不传这些参数时响应不含 `geo_filter`。
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
 
@@ -2242,18 +2338,23 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_displacement_data`
 
-按国家分列的难民和国内流离失所者计数（UNHCR 年度数据）。
+UNHCR 单一报告年度的年度流离失所统计：全球总数、按来源国统计的难民、寻求庇护者、国内流离失所者和无国籍者，各庇护国收容总数，以及最大的来源国至庇护国难民流向。仅为年度存量数据，不含月度抵达或危机局势更新。UNHCR 发布当年数据前，快照为上一年数据，由 `summary.year` 标明。
+
+传入 `view: "events"` 时，工具改为在 `iduEvents` 中返回 IDMC 国内流离失所更新：各国过去 30 天在本国境内流离失所的人数（分冲突和灾害）、`newlyReported7d`（IDMC 在过去 7 天发布的数字，不论流离失所日期）、`surge` 标志（至少 5,000 人且为此前 150 天月均值的三倍），以及过去 180 天内带位置的 IDMC 数字，按时间由新到旧排列。IDMC 发布数字的中位滞后约为三周，因此最近几周的数据并不完整。
+
+传入 `view: "regions"` 时，工具在 `dtmRegions` 中返回 IOM 流离失所跟踪矩阵（DTM）数据：过去 18 个月内每个 DTM 行动的最新一轮调查，按规模由大到小排列，包括国内流离失所者总数、按原因的划分、各一级行政区的人数（已知时附 OCHA P-code 和坐标）以及最多 30 条区域间流向。同一国家的行动可能重叠（全国性行动与省级行动），因此不要将其总数相加。调查轮次最多每月一次。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `countries` | `array<string>` | 要保留的 ISO 3166-1 alpha-3 国家代码（例如 ["SYR","UKR","AFG"]）。匹配逐国总数和来源/庇护流。省略则返回全部。 |
-| `limit` | number | 将逐国和顶级流列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `countries` | `array<string>` | 要保留的国家名称、ISO alpha-2 或 alpha-3 代码（例如 ["Syria","UA","AFG"]）。匹配逐国总数、来源/庇护流、IDMC 数据和 DTM 行动。省略则返回全部。无法解析的国家名称和 alpha-3 代码返回 Invalid params；未知的两字母代码不会报错，只是没有匹配结果。 |
+| `limit` | number | 将逐国、顶级流、IDMC 和 DTM 行动列表限制为最多这么多项（默认 30，传 0 表示不限）。IDMC 事件最多 100 条。 |
+| `view` | `string: annual / movements / events / regions` | `annual`（默认）：`summary` 中的 UNHCR 年度存量。`movements`：按来源日期的跨境流动报告。`events`：`iduEvents` 中的 IDMC 国内流离失所数据。`regions`：`dtmRegions` 中的 IOM DTM 行动数据。 |
 
 - **API 端点：** `GET /api/displacement/v1/get-displacement-summary`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **2.5 天**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 年度视图最多 **2.5 天**、事件和区域视图最多 **2 天**后标记 `stale: true`（由 seeder cron 的预期间隔设定）；区域视图的最新调查轮次超过 90 天时也标记为过期。
 
 <CodeGroup>
 
@@ -2335,35 +2436,6 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
-### `generate_forecasts`
-
-生成实时 AI 地缘政治和经济预测。与 get_forecast_predictions（预计算缓存）不同，此工具直接调用预测模型以获取新的概率估计。注意：比缓存工具慢。
-
-**参数：**
-
-| 名称 | 类型 | 必填 | 描述 |
-|------|------|---------:|-------------|
-| `domain` | string | 否 | 预测领域："geopolitical"、"economic"、"military"、"climate"，或留空表示所有领域 |
-| `region` | string | 否 | 地理区域筛选，例如 "Middle East"、"Europe"、"Asia Pacific"，或留空表示全球 |
-
-- **API 端点：** 无公开 OpenAPI 行；运行时代理 `POST /api/forecast/v1/get-forecasts`（OpenAPI 规范仅在该路径上声明 `GET`，由 `get_forecast_predictions` 覆盖 — 此工具的 POST 变体运行新的预测）。
-- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**25.0s**。
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"generate_forecasts","arguments":{}}
-  }'
-```
-
-</CodeGroup>
-
 ### `get_forecast_predictions`
 
 来自 WorldMonitor 预测模型的 AI 生成地缘政治和经济预测。涵盖即将到来的风险事件和概率评估。
@@ -2375,9 +2447,12 @@ curl -s https://worldmonitor.app/mcp \
 | `domain` | string | 筛选为一个预测领域（精确、不区分大小写 — 例如 "shipping"、"energy"、"macro"）。 |
 | `region` | string | 筛选为一个地区/战区（不区分大小写的子串）。 |
 | `limit` | number | 付费面板接受 1–30 的整数。普通 API 调用保留现有的上限规则。 |
+| `include_history` | boolean | 附加最近 30 天的概率轨迹，每项最多 120 个点，列表最多 10 项。交互面板不返回轨迹。 |
 | `refresh` | boolean | 付费面板打开请求：设为 `true` 时启动新的准入，需要新的 `request_id`。 |
 | `request_id` | string | 可选 UUID，用于复用显式的付费面板打开请求。 |
 | `panel_request` | string | 签名的预测准入凭证，用于有界的已加载列表重放。 |
+
+每项还包含 `firstSeenAt`（ISO 时间）、`firstSeenProbability`、`change24h` 和 `change7d`（概率绝对变化）。轨迹缺失或不足时返回 null。地区变化会开始新片段；首次写入只回填仍保留的历史，因此 firstSeenAt 可能晚于最初发布时间。历史点为 `[isoTime, probability]`，采样可能有空档。
 
 - **API 端点：** `GET /api/forecast/v1/get-forecasts`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
@@ -2400,7 +2475,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_forecast_case`
 
-读取已加载列表中指定 ID 和 generation 对应的原始预测案例，保留案例内容。此操作需要有效的付费预测面板准入。现有的 64 次读取额度包含此内部读取，不会额外扣减每日面板配额。缺少数据源、ID 不存在、generation 已更改或单个案例超出大小限制时，都会明确报告。数据源恢复后可重试失败的案例；成功的案例会被复用。
+读取指定 ID 和列表 generation 对应的原始预测案例，保留案例内容。专用 MCP 套餐需要有效的付费预测面板准入：现有的 64 次读取额度包含此读取，不会额外扣减每日面板配额。API 套餐无法持有面板，无需 `panel_request` 即可读取，按工具的常规单次权重计费。generation 已更改时返回 `generation_changed` 且不含案例。缺少数据源、ID 不存在、generation 已更改或单个案例超出大小限制时，都会明确报告。数据源恢复后可重试失败的案例；成功的案例会被复用。
 
 **参数（工具特定）：**
 
@@ -2408,34 +2483,45 @@ curl -s https://worldmonitor.app/mcp \
 |------|------|-------------|
 | `forecast_id` | string | 已加载列表中的精确原始预测 ID。 |
 | `generated_at` | string | 已加载列表中的精确 `String(generatedAt)` 值。 |
-| `panel_request` | string | 签名的预测面板凭证。 |
+| `panel_request` | string | 签名的预测面板凭证。专用 MCP 套餐必填；API 套餐不接受。 |
 
 - **API 端点：** `GET /api/forecast/v1/get-forecasts`
-- **访问权限：** `subscription` — 需要通过所有者、范围、有效期和权益检查的有效付费预测面板准入。
+- **访问权限：** `subscription`。专用 MCP 套餐需要通过所有者、范围、有效期和权益检查的有效付费预测面板准入；API 套餐按次计费。
 - **类型：** 读取固定规范预测数据集的缓存；不会访问任意缓存键，也不会运行模型生成。
 - **输出上限：** 单个完整原始案例为 128 KB；不会静默截断案例内容。
 - **新鲜度预算：** 1.5 小时；原始案例的数据源通知与打开面板时的快照分开处理。
 
 ### `get_forecast_theaters`
 
-使用有效的付费预测准入读取最新原始模拟战区摘要。保留原始路径、参与者及可选角色、反应、稳定因素、失效条件、独立来源运行 ID 和时间以及完成计数。来源时间不能证明新鲜度；部分和未知覆盖不会被视为完整覆盖或空结果。
+读取最新原始模拟战区摘要。专用 MCP 套餐需要有效的付费预测准入；API 套餐无需 `panel_request`，按工具的常规单次权重计费。保留原始路径、参与者及可选角色、反应、稳定因素、失效条件、独立来源运行 ID 和时间以及完成计数。来源时间不能证明新鲜度；部分和未知覆盖不会被视为完整覆盖或空结果。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `panel_request` | string | `get_forecast_predictions` 返回的签名预测凭证。不接受其他参数。 |
+| `panel_request` | string | `get_forecast_predictions` 返回的签名预测凭证。专用 MCP 套餐必填；API 套餐不接受。不接受其他参数。 |
 
 - **API 端点：** `GET /api/forecast/v1/get-simulation-outcome`，只读取最新摘要。
 - **访问权限：** `subscription`，检查所有者、范围、有效期和权益。
-- **配额：** 共享打开面板时的每日分配和 64 次未缓存读取上限。完整且通过验证的快照及明确无符合条件的空快照可以复用；部分、失败、缺失、处理中及未知结果可以手动重试。
+- **配额：** 专用 MCP 套餐共享打开面板时的每日分配和 64 次未缓存读取上限；API 套餐每次调用按工具权重计费。完整且通过验证的快照及明确无符合条件的空快照可以复用；部分、失败、缺失、处理中及未知结果可以手动重试。
 - **输出上限：** 原始证据为 128 KB。无效或过大的来源报告不可用，不会静默截断，不支持任意运行选择、模拟触发或私有产物读取。
 
 ### `get_forecast_scorecard`
 
 预测结算记分卡，含校准、Brier/对数分数、领域和生成来源细分，以及待判/已判结算计数。
 
-**参数（工具特定）：** 无
+**参数（工具专用）：**
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `view` | string | `summary`（默认，输出不变）或 `archive`（180 天内已结算的公开预测）。 |
+| `domain` | string | 精确筛选归档领域。 |
+| `outcome` | string | 筛选 YES、NO 或 VOID。 |
+| `forecast_id` | string | 精确的预测族 ID，附加结算时保存的轨迹，最多 30 个点。 |
+| `before` | number or string | 排除该 resolvedAt 时间戳（毫秒）及之后的记录，或传入上一页的 `nextBefore`。续页时保留相同筛选条件。 |
+| `limit` | integer | 归档每页最多 1–50 项，默认 25；响应预算可能缩短页面。 |
+
+归档返回当前评分卡的 `underAudit`、归档 seed-meta 的 `archive.stale`（36 小时预算）以及 `nextBefore`（末页为 null）。摘要形状保持不变。仅指定 `forecast_id` 时返回轨迹，不会借用其他地区的轨迹。归档使用公开凭证字段白名单，不含原始账本、评审理由、新闻归档内容或内部指标路径。历史结算可能大多为 VOID；归档本身不能证明预测能力。
 
 - **API 端点：** `GET /api/forecast/v1/get-forecast-scorecard`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
@@ -2471,15 +2557,32 @@ curl -s https://worldmonitor.app/mcp \
 - **API 共享：** `sharedWithRestApi` 表示计数器是否包含 REST 请求。影子模式的 API 计数器仍使用已售 API 上限。账户总数不能识别具体调用者。
 - **API 端点：** 无。工具与账户资源共用一个强制执行计数器读取器。响应为 `no-store`。
 
+### `start_upgrade`
+
+为已登录账户创建绑定该账户的付费套餐结账链接。当拒绝响应的 `error.data` 带有 `checkoutTool: "start_upgrade"` 时调用，并传入该拒绝中的 `recommendedPlan`。只有免费账户会收到 `checkoutTool`；付费调用方的拒绝只带 `recommendedPlan`，因为同一套餐系列内的升级通过账单门户完成。用户在浏览器中打开链接完成付款；此工具从不扣款，智能体也不接触付款信息。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `plan` | string | 是 | 取值之一：`pro_monthly`、`pro_annual`、`pro_business_monthly`、`pro_business_annual`、`api_starter`、`api_starter_annual`、`api_business`、`api_business_annual`。其他值返回 `-32602`，并在 `error.data.plans` 中列出可用值。 |
+
+**响应：** `{ checkoutUrl, plan, nextStep }`。每次调用都会创建新的结账会话。此工具不接受 `jmespath` 投影（返回 `-32602`）：投影运行前结账会话已经创建，投影可能丢掉唯一一份 `checkoutUrl`。
+
+- **访问：** `free-account`。要求绑定用户的 OAuth 或 `wm_…` 凭据。匿名调用返回常规的 `-32001` `no-account` 拒绝；运营方密钥返回 `-32002`。
+- **配额：** 不消耗每日额度，也不消耗免费账户调用次数，因此额度用尽后仍可调用。每分钟限流照常适用。
+- **结账路径：** 与定价页相同，因此账户结账限流以及已有订阅、待处理付款检查都适用。账户已持有同一系列的套餐时返回 `-32002`，`error.data.reason` 为 `"already-subscribed"`；从 Pro 升级到 Pro Business 需先取消 Pro，从 API Starter 升级到 API Business 则在账单门户中按比例变更。存在 15 分钟内的待处理付款时返回 `reason: "payment-in-progress"`。触发结账限流（每个账户每 10 分钟 5 个会话，与定价页共用）时返回 HTTP 429 的 `-32029`，并带 `Retry-After`。
+- **服务条款：** 创建会话时会记录该账户接受服务条款，与定价页相同。[服务条款](/zh/terms)将 MCP 请求视为接受。
+- **付款之后：** 付款 webhook 到达后，下一次 `get_mcp_allowance` 调用即报告付费套餐的额度，无需重新授权。
+- **API 端点：** 无。响应为 `no-store`。
+
 ### `describe_tool`
 
-按名称返回任何其他工具的完整未压缩定义。当压缩的 `tools/list` 条目对行为或参数语义存在歧义时使用 — 自 v1.5.0 起，`tools/list` 返回每个工具的 `description`，截断为第一句（≤120 UTF-8 字节）；`describe_tool` 返回完整的长格式文本以及相同的 `inputSchema`（每个属性的完整描述）。
+按名称返回任何其他工具的完整定义 — 与其 `tools/list` 条目相同的 `description`、`inputSchema`（每个属性的描述）、`outputSchema`、`annotations` 和 `_meta`。自 v1.34.0 起，`tools/list` 在 1,024 字节的逐工具预算内完整返回每条描述，因此这是对单个工具的重读，而不再是获取完整文本的唯一途径（v1.5.0 至 v1.33.0 期间列表被截断为第一句，≤120 字节）。
 
 | 参数 | 类型 | 必填 | 描述 |
 |-----------|------|----------|-------------|
 | `tool_name` | string | **是** | 来自 `tools/list` 的确切工具名称（例如 `"get_market_data"`）。 |
 
-**响应形状：** 与单个 `tools/list` 条目相同 — `{ name, description, inputSchema, outputSchema, annotations }` — 含完整未压缩的 `description` 和相同的 `inputSchema.properties`（包括缓存工具注入的 `summary` 和每个工具的 `jmespath`）。
+**响应形状：** 与单个 `tools/list` 条目相同 — `{ name, description, inputSchema, outputSchema, annotations, _meta }` — 含相同的 `description` 和相同的 `inputSchema.properties`（包括缓存工具注入的 `summary` 和每个工具的 `jmespath`）。
 
 **软错误**（HTTP 200，在正常的 `content[0].text` 信封内返回 — 非 JSON-RPC 错误）：
 

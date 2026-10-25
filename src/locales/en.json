@@ -1,4 +1,26 @@
 {
+  "countryHistory": {
+    "title": "Daily country history",
+    "loading": "Loading daily history…",
+    "window": "Window",
+    "days": "{{days}} days",
+    "observed": "{{count}} snapshots in {{days}} days",
+    "legend": "CII (amber): higher means more instability. Resilience (green): higher means more capacity. Dots mark days with selected headlines.",
+    "chart": "Daily CII and resilience scores. Gaps and formula changes break the lines.",
+    "selectDate": "{{date}}, {{count}} selected headlines",
+    "empty": "No daily snapshots in this window. History accumulates after activation.",
+    "unavailable": "History is temporarily unavailable. Try again.",
+    "retry": "Retry",
+    "stale": "The last successful daily capture is over 36 hours old.",
+    "break": "Formula or observation gap. Compare scores only within the same formula.",
+    "partial": "News coverage was partial at capture time.",
+    "resilience": "Resilience",
+    "ciiMissing": "CII unavailable",
+    "resilienceMissing": "Resilience unavailable",
+    "noEvents": "No selected headlines were captured for this date. This does not prove no events occurred.",
+    "unlock90": "Unlock 90 days with Pro",
+    "unlock365": "Unlock 365 days with an API plan"
+  },
   "shell": {
     "documentTitle": "World Monitor — Real-Time Global Intelligence Dashboard",
     "metaDescription": "Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, open-source intelligence in one view.",
@@ -97,6 +119,7 @@
       "unavailable": "Demographics and workforce data unavailable.",
       "proLocked": "Upgrade to PRO for demographics and workforce data",
       "notAvailable": "Not available",
+      "statusNotSupplied": "Estimate and imputation status not supplied",
       "ageStructure": "Age structure",
       "education": "Education pipeline",
       "industrialWorkforce": "Industrial workforce",
@@ -480,6 +503,7 @@
     "goldIntelligence": "Gold Intelligence",
     "gov": "Government",
     "thinktanks": "Think Tanks",
+    "science": "Science",
     "polymarket": "Predictions",
     "commodities": "Metals & Materials",
     "economic": "Macro Stress",
@@ -779,10 +803,12 @@
       "alertTitle": {
         "configured": "Desktop settings configured",
         "needsKeys": "Configure API keys to unlock features",
-        "some": "Some features need API keys"
+        "some": "Some features need API keys",
+        "pro": "World Monitor Pro is active"
       },
-      "reserveEarlyAccess": "Reserve Your Early Access",
-      "skipSetup": "Skip the setup — a single World Monitor license unlocks everything. Join the waitlist for early access.",
+      "proCloud": "Features without a local API key use World Monitor cloud data.",
+      "skipSetupPro": "Skip the setup: sign in with World Monitor Pro to use cloud data instead of your own API keys.",
+      "getPro": "Get World Monitor Pro",
       "summary": {
         "desktop": "Desktop mode",
         "web": "Web mode (read-only, server-managed credentials)",
@@ -1225,7 +1251,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · venue data:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "venue data:",
       "statusNormal": "NORMAL",
       "statusNoData": "NO DATA",
       "statusNoBaseline": "NO BASELINE",
@@ -1429,7 +1456,7 @@
         "commodityHubs": "Commodity Hubs",
         "gulfInvestments": "Gulf Cooperation Council Investments",
         "tradeRoutes": "Trade Routes",
-        "iranAttacks": "Iran Attacks",
+        "iranAttacks": "Middle East Strikes",
         "gpsJamming": "Navigation interference",
         "ciiChoropleth": "Country instability",
         "dayNight": "Day/Night",
@@ -1439,7 +1466,8 @@
         "speciesRecovery": "Species Recovery",
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM Airspace Restrictions"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1471,7 +1499,9 @@
         "sourceIomDtm": "Source: IOM DTM",
         "sinceDate": "since {{date}}",
         "lastMonth": "last month",
-        "sourceUnhcrOdp": "Source: UNHCR Operational Data Portal"
+        "sourceUnhcrOdp": "Source: UNHCR Operational Data Portal",
+        "displaced": "displaced",
+        "sourceIdmc": "Source: IDMC"
       },
       "layerHelp": {
         "title": "Map Layers Guide",
@@ -1552,7 +1582,8 @@
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
           "ciiChoropleth": "Country Instability Index heat-map — colors countries by score (green=stable, red=critical)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Temporary flight restrictions and restricted, danger and prohibited airspace from FAA NOTAMs, in effect now or starting within 24 hours"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
@@ -1687,6 +1718,8 @@
       "capacityPercent": "{{percent}}% capacity",
       "noCountryImpacts": "No country impacts detected",
       "alternativeRoutes": "Alternative Routes",
+      "sharesCutZone": "same chokepoint",
+      "estimateNote": "Estimated: cable capacity and redundancy are approximated, not measured.",
       "countriesAffected": "Countries Affected ({{count}})",
       "links": "links",
       "selectInfrastructureHint": "Select infrastructure to analyze cascade impact",
@@ -1904,7 +1937,21 @@
       "latestChange": "Latest change",
       "accelerating": "Accelerating",
       "inDays": "in {{days}} days",
-      "crossBorderNote": "UN Refugee Agency Operational Data Portal: people who crossed borders in each crisis, from the latest country reports. Situations overlap, so they are not added together."
+      "last7And30": "Last 7d / 30d",
+      "staleReport": "Stale report",
+      "reported": "Count",
+      "period": "Period",
+      "crossBorderNote": "UN Refugee Agency Operational Data Portal: people who crossed borders in each crisis, from the latest country reports. Situations overlap, so they are not added together.",
+      "movementNote": "Each row keeps its source, report date and measure. Stocks, arrivals and encounter events are different measures. Sources can overlap; do not add their counts. WorldMonitor derives this view from the linked sources; no provider endorsement is implied.",
+      "recent": "Recent",
+      "last30Days": "Last 30 days",
+      "newThisWeek": "New this week",
+      "conflict": "Conflict",
+      "disaster": "Disaster",
+      "surge": "Surge",
+      "recentNote": "IDMC: people displaced within their country in the last 30 days. IDMC publishes a figure a median of three weeks after the displacement, so recent weeks fill in late. New this week counts figures published in the last 7 days. Surge: at least 5,000 people and three times the monthly average of the previous five months.",
+      "recentAsOf": "Data as of {{date}}.",
+      "recentMissing": "No data this time from {{countries}}; their files failed to load, which is not zero displacement."
     },
     "climate": {
       "noAnomalies": "No significant anomalies detected",
@@ -1921,6 +1968,7 @@
     },
     "newsPanel": {
       "close": "Close",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again.",
       "summarize": "Summarize this panel",
       "generatingSummary": "Generating summary...",
       "summaryError": "Could not generate summary",
@@ -1944,6 +1992,7 @@
       "rosterSummaryTier1": "Reported by {{publishers}}, including {{tier1}} tier-1",
       "rosterListed": "({{listed}} listed)",
       "rosterFeeds": "Feeds seen: {{labels}}",
+      "rosterSameCopy": "Same copy, counted once",
       "rosterLegend": "Tiers rank sources; they do not judge this claim.",
       "tierDocsLink": "How tiers are assigned",
       "tierChip": "T{{tier}}",
@@ -3081,6 +3130,8 @@
       "departureDelay": "DEPARTURE DELAYS",
       "arrivalDelay": "ARRIVAL DELAYS",
       "delaysReported": "DELAYS REPORTED",
+      "normalOperations": "NORMAL OPERATIONS",
+      "open": "OPEN",
       "closure": "AIRPORT CLOSURE",
       "delays": "DELAYS",
       "avgDelay": "AVG DELAY",
@@ -3232,6 +3283,11 @@
     "time": "Time",
     "area": "Area",
     "expires": "Expires",
+    "upcomingForecast": "Upcoming forecast",
+    "currentForecast": "Current forecast",
+    "expiredForecast": "Expired forecast",
+    "validFrom": "Valid from",
+    "validUntil": "Valid until",
     "aisGapSpike": "Spike in ship tracking gaps",
     "chokepointCongestion": "CHOKEPOINT CONGESTION",
     "darkening": "DARKENING",

@@ -879,3 +879,49 @@ describe("Company Monitoring admission decision persistence", () => {
     }))).toEqual({ decisions: [], candidates: [] });
   });
 });
+
+describe("Company Monitoring admission under an AI routing policy", () => {
+  async function setPolicy(t: ReturnType<typeof convexTest>, allowedProviders: string[]) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("aiRoutingPolicies", {
+        userId: "user_admission",
+        allowedProviders,
+        reason: "test",
+        updatedAt: NOW,
+      });
+    });
+  }
+
+  test("rejects an owner's candidate before any evidence leaves when the policy excludes the classifier route", async () => {
+    const t = convexTest(schema, modules);
+    await seedCandidate(t);
+    await setPolicy(t, ["anthropic"]);
+    expect(await t.mutation(
+      ADMISSION.claimNextAdmissionCandidateForTest,
+      claimArgs("worker-policy-blocked"),
+    )).toEqual({ status: "idle" });
+    const { candidate, decisions } = await t.run(async (ctx) => ({
+      candidate: await ctx.db.query("companyMonitoringCandidates").unique(),
+      decisions: await ctx.db.query("companyMonitoringAdmissionDecisions").collect(),
+    }));
+    expect(candidate).toMatchObject({ state: "terminal", terminalReason: "rejected" });
+    expect(candidate?.classificationLeaseToken).toBeUndefined();
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]).toMatchObject({
+      decision: "reject",
+      reasonCodes: ["ai_routing_policy_excludes_classifier"],
+      modelVersion: "not-invoked",
+    });
+  });
+
+  test("still classifies when the owner's policy allows the classifier route", async () => {
+    const t = convexTest(schema, modules);
+    await seedCandidate(t);
+    await setPolicy(t, ["anthropic", "openrouter"]);
+    const claim = await t.mutation(
+      ADMISSION.claimNextAdmissionCandidateForTest,
+      claimArgs("worker-policy-allowed"),
+    );
+    expect(claim.status).toBe("claimed");
+  });
+});

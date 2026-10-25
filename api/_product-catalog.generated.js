@@ -160,31 +160,31 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": false,
       "selfServe": false,
-      "dashboardAiCallsPerDay": null,
+      "dashboardAiCallsPerDay": 25000,
       "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO, SCIM, Custom security and privacy settings, Fully white-labeled — with or without revenue sharing"
     }
   ],
   "heroProofStats": {
     "mapLayers": 58,
-    "feeds": 460,
-    "providers": 761,
+    "feeds": 469,
+    "providers": 775,
     "alertOrigins": 5
   },
   "depthProofStats": {
     "mapLayers": 58,
-    "feeds": 460,
-    "providers": 761,
+    "feeds": 469,
+    "providers": 775,
     "alertOrigins": 5,
     "chokepoints": 13,
     "instabilityCountries": 31,
     "resilienceRanked": 170,
-    "submarineCables": 86,
+    "submarineCables": 98,
     "pipelinesLng": 159,
     "aiDatacenters": 313,
     "hotspots": 29,
     "stockExchanges": 29,
-    "mcpTools": 94,
-    "commands": 620,
+    "mcpTools": 95,
+    "commands": 621,
     "languages": 28
   },
   "resilienceCoverage": {
@@ -387,10 +387,10 @@ export const TIER_CONFIG = {
       "Fully white-labeled — with or without revenue sharing"
     ],
     "planLimits": {
-      "apiRequestsPerDay": null,
+      "apiRequestsPerDay": 100000,
       "apiBurstRequestsPerMinute": 1000,
-      "mcpCallsPerDay": null,
-      "dashboardAiCallsPerDay": null,
+      "mcpCallsPerDay": 25000,
+      "dashboardAiCallsPerDay": 25000,
       "mcpBurstRequestsPerMinute": 1000,
       "mcpDailyBudgetSharedWithRest": false
     },

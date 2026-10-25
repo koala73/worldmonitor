@@ -17,7 +17,14 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { runFetchPipeline } from '../scripts/seed-portwatch.mjs';
+import {
+  BASELINE_BUDGET_MS,
+  BASELINE_MIN_DAYS,
+  baselineBudgetMs,
+  baselineWindow,
+  buildBaseline,
+  runFetchPipeline,
+} from '../scripts/seed-portwatch.mjs';
 
 // Minimal feature-shape factory — only the fields buildHistory cares about.
 function makeFeature(date, total = 100) {
@@ -202,5 +209,159 @@ test('output shape: each entry has {history, wowChangePct} (back-compat with con
     assert.ok(entry, `${cp.id} present`);
     assert.ok(Array.isArray(entry.history), `${cp.id}.history is array`);
     assert.equal(typeof entry.wowChangePct, 'number', `${cp.id}.wowChangePct is number`);
+  }
+});
+
+// ── Year-earlier baseline pass (IMF PortWatch outStatistics) ─────────────
+//
+// The public chokepoint pages headline the official PortWatch count against
+// a year-earlier baseline (Hormuz 2026-10-22: ~4/day vs 87.4/day). The
+// baseline is a third pipeline pass over the chokepoints that have history;
+// it must never cost a chokepoint its history.
+
+const WINDOW = baselineWindow(Date.UTC(2026, 9, 22, 17, 30));
+
+test('baseline: attaches {avgDaily, days, from, to} per chokepoint from the injected stats fetcher', async () => {
+  const seen = [];
+  const stats = {
+    'Strait of Hormuz': { avg_total: 87.550684931506851, day_count: 365 },
+    'Suez Canal': { avg_total: 37.5, day_count: 365 },
+  };
+  const fetchBaselineFn = async (name, window) => {
+    seen.push({ name, window });
+    return stats[name] ?? { avg_total: 10, day_count: 365 };
+  };
+  const result = await runFetchPipeline(CHOKEPOINTS, Date.now(), async () => makeFullHistory(), 0, {
+    fetchBaselineFn,
+    baselineWindow: WINDOW,
+  });
+  assert.deepEqual(result.hormuz_strait.baseline, { avgDaily: 87.6, days: 365, from: '2024-10-22', to: '2025-10-21' });
+  assert.deepEqual(result.suez.baseline, { avgDaily: 37.5, days: 365, from: '2024-10-22', to: '2025-10-21' });
+  assert.ok(result.hormuz_strait.history.length, 'history is untouched by the baseline pass');
+  assert.equal(seen.length, CHOKEPOINTS.length, 'one baseline query per covered chokepoint');
+  assert.ok(seen.every((call) => call.window === WINDOW), 'the seeder-wide window is passed through');
+});
+
+test('baseline: a rejected baseline is retried once and then stored as null without dropping history', async () => {
+  const calls = new Map();
+  const fetchBaselineFn = async (name) => {
+    calls.set(name, (calls.get(name) || 0) + 1);
+    if (name === 'Strait of Hormuz') throw new Error('ArcGIS 503');
+    if (name === 'Suez Canal' && calls.get(name) === 1) throw new Error('ECONNRESET');
+    return { avg_total: 40, day_count: 365 };
+  };
+  const result = await runFetchPipeline(CHOKEPOINTS, Date.now(), async () => makeFullHistory(), 0, {
+    fetchBaselineFn,
+    baselineWindow: WINDOW,
+  });
+  assert.equal(result.hormuz_strait.baseline, null, 'a permanent baseline failure stores null');
+  assert.ok(result.hormuz_strait.history.length, 'history survives a baseline failure');
+  assert.equal(typeof result.hormuz_strait.wowChangePct, 'number');
+  assert.equal(calls.get('Strait of Hormuz'), 2, 'one retry');
+  assert.deepEqual(result.suez.baseline, { avgDaily: 40, days: 365, from: '2024-10-22', to: '2025-10-21' }, 'a transient failure recovers on retry');
+  assert.equal(Object.keys(result).length, CHOKEPOINTS.length, 'no chokepoint is dropped by the baseline pass');
+});
+
+// Review on #9550: 13 timed-out baseline queries plus retries outran the
+// fetch-phase deadline, so runSeed published nothing and the fresh daily
+// counts were lost for an optional comparison.
+test('baseline: a hung baseline source stops at the budget and keeps every history', async () => {
+  const started = Date.now();
+  const result = await runFetchPipeline(CHOKEPOINTS, Date.now(), async () => makeFullHistory(), 0, {
+    fetchBaselineFn: () => new Promise(() => {}),
+    baselineWindow: WINDOW,
+    baselineBudgetMs: 300,
+  });
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 2_000, `baseline pass ran ${elapsed}ms against a 300ms budget`);
+  assert.equal(Object.keys(result).length, CHOKEPOINTS.length, 'no chokepoint is dropped');
+  for (const cp of CHOKEPOINTS) {
+    assert.ok(result[cp.id].history.length, `${cp.id} keeps its history`);
+    assert.equal(result[cp.id].baseline, null, `${cp.id} baseline is null`);
+  }
+});
+
+// Review on #9550: runSeed's fetch deadline (240s here) is the real bound.
+// When the history passes leave less than the 45s budget, the baseline pass
+// must shrink to what is left, or skip, so the fresh counts still publish.
+test('baseline budget is cut to the time runSeed leaves after history', () => {
+  const now = 1_000_000;
+  assert.equal(baselineBudgetMs(null, now), BASELINE_BUDGET_MS, 'standalone calls keep the fixed budget');
+  assert.equal(baselineBudgetMs(now + 200_000, now), BASELINE_BUDGET_MS);
+  assert.equal(baselineBudgetMs(now + 30_000, now), 20_000, 'a 10s margin stays before the deadline');
+  assert.equal(baselineBudgetMs(now + 5_000, now), 0);
+});
+
+test('baseline: no time left before the fetch deadline skips the pass and keeps every history', async () => {
+  let queried = 0;
+  const result = await runFetchPipeline(CHOKEPOINTS, Date.now(), async () => makeFullHistory(), 0, {
+    fetchBaselineFn: async () => { queried++; return { avg_total: 5, day_count: 365 }; },
+    baselineWindow: WINDOW,
+    fetchDeadlineAtMs: Date.now() + 5_000,
+  });
+  assert.equal(queried, 0, 'no baseline request starts without budget');
+  assert.equal(Object.keys(result).length, CHOKEPOINTS.length);
+  for (const cp of CHOKEPOINTS) assert.equal(result[cp.id].baseline, null);
+});
+
+test('baseline: requests get a timeout no longer than the remaining budget', async () => {
+  const timeouts = [];
+  await runFetchPipeline(CHOKEPOINTS, Date.now(), async () => makeFullHistory(), 0, {
+    fetchBaselineFn: async (_name, _window, timeoutMs) => { timeouts.push(timeoutMs); return { avg_total: 5, day_count: 365 }; },
+    baselineWindow: WINDOW,
+    baselineBudgetMs: 1_000,
+  });
+  assert.equal(timeouts.length, CHOKEPOINTS.length);
+  assert.ok(timeouts.every((ms) => ms > 0 && ms <= 1_000), `timeouts ${timeouts.join(',')}`);
+});
+
+test('baseline: a thin window stores null rather than a partial-year mean', async () => {
+  const result = await runFetchPipeline(CHOKEPOINTS, Date.now(), async () => makeFullHistory(), 0, {
+    fetchBaselineFn: async (name) => (name === 'Gibraltar Strait'
+      ? { avg_total: 50, day_count: BASELINE_MIN_DAYS - 1 }
+      : { avg_total: 50, day_count: BASELINE_MIN_DAYS }),
+    baselineWindow: WINDOW,
+  });
+  assert.equal(result.gibraltar.baseline, null);
+  assert.equal(result.suez.baseline.days, BASELINE_MIN_DAYS);
+});
+
+test('baseline: chokepoints without history are never queried, and no fetcher leaves baseline null', async () => {
+  const queried = [];
+  const result = await runFetchPipeline(
+    CHOKEPOINTS,
+    Date.now(),
+    async (name) => (name === 'Cape of Good Hope' ? [] : makeFullHistory()),
+    0,
+    { fetchBaselineFn: async (name) => { queried.push(name); return { avg_total: 1, day_count: 365 }; }, baselineWindow: WINDOW },
+  );
+  assert.equal(result.cape_of_good_hope, undefined);
+  assert.ok(!queried.includes('Cape of Good Hope'), 'a dropped chokepoint has no history to qualify');
+  assert.equal(queried.length, CHOKEPOINTS.length - 1);
+
+  const legacy = await runFetchPipeline(CHOKEPOINTS, Date.now(), async () => makeFullHistory(), 0);
+  for (const cp of CHOKEPOINTS) {
+    assert.equal(legacy[cp.id].baseline, null, `${cp.id} baseline is null, not absent, without a fetcher`);
+  }
+});
+
+test('baseline window is the 12 UTC-aligned months ending one year ago, with inclusive day labels', () => {
+  assert.deepEqual(WINDOW, {
+    fromEpoch: Date.UTC(2024, 9, 22),
+    toEpoch: Date.UTC(2025, 9, 22),
+    from: '2024-10-22',
+    to: '2025-10-21',
+  });
+  assert.equal((WINDOW.toEpoch - WINDOW.fromEpoch) / 86_400_000, 365);
+  // Day-aligned: any time of day on 2026-10-22 produces the same window.
+  assert.deepEqual(baselineWindow(Date.UTC(2026, 9, 22, 0, 0, 1)), WINDOW);
+  assert.deepEqual(baselineWindow(Date.UTC(2026, 9, 22, 23, 59, 59)), WINDOW);
+});
+
+test('buildBaseline rounds the mean to one decimal and rejects malformed or thin rows', () => {
+  assert.deepEqual(buildBaseline({ avg_total: 87.550684931506851, day_count: 365 }, WINDOW), { avgDaily: 87.6, days: 365, from: '2024-10-22', to: '2025-10-21' });
+  assert.deepEqual(buildBaseline({ avg_total: 0, day_count: 365 }, WINDOW), { avgDaily: 0, days: 365, from: '2024-10-22', to: '2025-10-21' });
+  for (const row of [null, undefined, {}, { avg_total: 'x', day_count: 365 }, { avg_total: 50 }, { avg_total: -1, day_count: 365 }, { avg_total: 50, day_count: 365.5 }, { avg_total: 50, day_count: BASELINE_MIN_DAYS - 1 }]) {
+    assert.equal(buildBaseline(row, WINDOW), null, JSON.stringify(row));
   }
 });

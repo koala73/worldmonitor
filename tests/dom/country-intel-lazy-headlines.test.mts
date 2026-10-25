@@ -7,6 +7,17 @@ const coverageMocks = vi.hoisted(() => ({
   fetchCountryCoverage: vi.fn(),
   createPanel: vi.fn(),
   premiumFetch: vi.fn(),
+  activeFramework: vi.fn(),
+  summarize: vi.fn(),
+  localSummaryAvailable: false,
+}));
+
+vi.mock('@/services/ml-worker', () => ({
+  mlWorker: {
+    get isAvailable() { return coverageMocks.localSummaryAvailable; },
+    isModelLoaded: (model: string) => coverageMocks.localSummaryAvailable && model.startsWith('summarization'),
+    summarize: (...args: unknown[]) => coverageMocks.summarize(...args),
+  },
 }));
 
 vi.mock('@/services/premium-fetch', () => ({
@@ -67,7 +78,7 @@ vi.mock('@/services/panel-gating', async (importOriginal) => ({
 vi.mock('@/services/analysis-framework-store', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/analysis-framework-store')>(),
   subscribeFrameworkChange: () => () => {},
-  getActiveFrameworkForPanel: () => null,
+  getActiveFrameworkForPanel: () => coverageMocks.activeFramework(),
 }));
 
 vi.mock('@/services/country-geometry', async (importOriginal) => ({
@@ -210,7 +221,66 @@ describe('CountryIntelManager lazy coverage headlines', () => {
     coverageMocks.fetchCountryCoverage.mockReset();
     coverageMocks.premiumFetch.mockReset();
     coverageMocks.premiumFetch.mockRejectedValue(new Error('offline'));
+    coverageMocks.activeFramework.mockReset().mockReturnValue(null);
+    coverageMocks.localSummaryAvailable = false;
+    coverageMocks.summarize.mockReset();
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+  });
+
+  it('uses the shared default assessment without browser grounding and preserves its accepted timestamp', async () => {
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    const accepted = {
+      brief: 'Accepted server assessment [1].',
+      sources: [{ title: 'United States policy update', source: 'Server wire', url: 'https://example.com/accepted', publishedAt: '2026-10-19T10:00:00Z' }],
+      generatedAt: '2026-10-19T10:05:00Z',
+      cached: true,
+      evidence: [],
+    };
+    coverageMocks.premiumFetch.mockImplementation(async (input: unknown) => {
+      if (!String(input).includes('/get-country-intel-brief?')) throw new Error('offline');
+      return new Response(JSON.stringify(accepted));
+    });
+    const harness = createBriefHarness([newsItem('United States browser-only news')], { realBriefFetch: true });
+    await harness.open();
+    await vi.waitFor(() => expect(coverageMocks.premiumFetch.mock.calls.some(([input]) => String(input).includes('/get-country-intel-brief?'))).toBe(true));
+    const briefCall = coverageMocks.premiumFetch.mock.calls.find(([input]) => String(input).includes('/get-country-intel-brief?'))!;
+    const url = new URL(String(briefCall[0]), 'https://worldmonitor.app');
+    expect(url.searchParams.get('country_code')).toBe('US');
+    expect(url.searchParams.has('context')).toBe(false);
+    expect(url.searchParams.has('framework')).toBe(false);
+    await vi.waitFor(() => expect(harness.briefUpdates).toContainEqual(expect.objectContaining({
+      brief: accepted.brief, generatedAt: accepted.generatedAt, cached: true,
+      sources: expect.arrayContaining([expect.objectContaining({ url: 'https://example.com/accepted' })]),
+    })));
+  });
+
+  it('preserves browser context only for an explicitly selected framework', async () => {
+    coverageMocks.activeFramework.mockReturnValue({ systemPromptAppend: 'Focus on energy.' });
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    const harness = createBriefHarness([newsItem('United States energy policy')], { realBriefFetch: true });
+    await harness.open();
+    await vi.waitFor(() => expect(coverageMocks.premiumFetch.mock.calls.some(([input]) => String(input).includes('/get-country-intel-brief?'))).toBe(true));
+    const briefCall = coverageMocks.premiumFetch.mock.calls.find(([input]) => String(input).includes('/get-country-intel-brief?'))!;
+    const url = new URL(String(briefCall[0]), 'https://worldmonitor.app');
+    expect(url.searchParams.get('framework')).toBe('Focus on energy.');
+    expect(url.searchParams.get('context')).toContain('United States energy policy');
+  });
+
+  it.each([200, 503])('keeps browser source links on a local fallback after HTTP %s without an accepted brief', async (status) => {
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    coverageMocks.localSummaryAvailable = true;
+    coverageMocks.summarize.mockResolvedValue(['Local summary of the two United States headlines.']);
+    coverageMocks.premiumFetch.mockImplementation(async (input: unknown) => {
+      if (!String(input).includes('/get-country-intel-brief?')) throw new Error('offline');
+      return new Response(JSON.stringify({ brief: '', sources: [] }), { status });
+    });
+    const headlines = [newsItem('United States energy policy'), newsItem('United States trade policy')];
+    const harness = createBriefHarness(headlines, { realBriefFetch: true });
+    await harness.open();
+    await vi.waitFor(() => expect(harness.briefUpdates).toContainEqual(expect.objectContaining({
+      brief: 'Local summary of the two United States headlines.', fallback: true,
+      sources: headlines.map(item => expect.objectContaining({ url: item.link })),
+    })));
   });
 
   it('keeps coverage alive on close but aborts it when another brief opens', async () => {

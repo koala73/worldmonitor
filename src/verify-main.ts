@@ -1,18 +1,19 @@
 /**
  * `/verify` page bootstrap (#9092): paste a claim, see who is reporting it.
  *
- * The page reads the public news digest once and builds the same evidence card
- * the verify_claim MCP tool returns, in the browser, so a check costs no API
- * call and works signed out. The claim lives in `?claim=` so a result can be
- * shared as a link.
+ * Each check searches every fresh headline in WorldMonitor's feed caches for
+ * the claim's words, then builds the same evidence card the verify_claim MCP
+ * tool returns, in the browser. It works signed out. The claim lives in
+ * `?claim=` so a result can be shared as a link.
  */
-import { renderClaimCardHtml } from '@/components/claim-card';
+import { renderClaimCardHtml, renderFactChecksHtml } from '@/components/claim-card';
 import {
   CLAIM_MAX_CHARS,
   checkClaim,
-  fetchClaimDigest,
+  fetchClaimSearch,
+  fetchFactChecks,
   normalizeClaim,
-  type ClaimDigest,
+  type ClaimSearch,
 } from '@/services/verify-claim';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { safeStorageGet } from '@/utils/safe-storage';
@@ -27,24 +28,27 @@ const result = document.getElementById('result') as HTMLDivElement;
 
 input.maxLength = CLAIM_MAX_CHARS;
 
-let digest: Promise<ClaimDigest> | null = null;
-// Only the latest check may touch the page: a slow first digest load must not
-// let an earlier claim paint over a newer one, or over a URL with no claim.
+// Only the latest check may touch the page: a slow earlier search must not
+// paint over a newer one, or over a URL with no claim. The status line has its
+// own counter, so only the latest search to start may write it.
 let latestRun = 0;
+let latestStatus = 0;
 
-function loadDigest(): Promise<ClaimDigest> {
-  digest ??= fetchClaimDigest().catch((error: unknown) => {
-    digest = null;
-    throw error;
-  });
-  return digest;
+function showCounts(search: ClaimSearch | null, statusId: number): void {
+  if (statusId !== latestStatus) return;
+  status.textContent = search ? describeSearch(search) : 'The live headlines are unavailable right now.';
 }
 
-function describeDigest(loaded: ClaimDigest): string {
-  const age = loaded.generatedAt ? Math.round((Date.now() - Date.parse(loaded.generatedAt)) / 60_000) : NaN;
+/** The status line with no claim: an empty claim returns only the counts. */
+function loadCounts(): void {
+  const statusId = ++latestStatus;
+  fetchClaimSearch('').then((search) => showCounts(search, statusId), () => showCounts(null, statusId));
+}
+
+function describeSearch(search: ClaimSearch): string {
+  const age = search.readAt ? Math.round((Date.now() - Date.parse(search.readAt)) / 60_000) : NaN;
   const updated = Number.isFinite(age) && age >= 0 ? `, updated ${age < 1 ? 'just now' : `${age} min ago`}` : '';
-  const stale = loaded.stale ? ' The live feed is delayed, so this is the last good copy.' : '';
-  return `Searching ${loaded.items.length} live headlines from ${loaded.publishers} feeds${updated}.${stale}`;
+  return `Searching ${search.searched.toLocaleString('en-US')} live headlines from ${search.feeds} feeds${updated}.`;
 }
 
 function resetSubmit(): void {
@@ -58,6 +62,7 @@ async function run(claim: string, { push }: { push: boolean }): Promise<void> {
   if (!text) {
     result.replaceChildren();
     resetSubmit();
+    loadCounts();
     return;
   }
   if (push) {
@@ -67,18 +72,32 @@ async function run(claim: string, { push }: { push: boolean }): Promise<void> {
   }
   submit.disabled = true;
   submit.textContent = 'Checking…';
+  // #9094: published fact-checks load beside the headline search and render
+  // below the coverage card, which never waits for them.
+  const factChecks = fetchFactChecks(text);
+  const statusId = ++latestStatus;
   try {
-    const loaded = await loadDigest();
+    const search = await fetchClaimSearch(text);
+    showCounts(search, statusId);
     if (runId !== latestRun) return;
-    status.textContent = describeDigest(loaded);
-    setTrustedHtml(result, trustedHtml(renderClaimCardHtml(checkClaim(text, loaded)), 'claim card escapes every digest and claim string'));
+    setTrustedHtml(result, trustedHtml(
+      renderClaimCardHtml(checkClaim(text, search)) + '<div id="factChecks"></div>',
+      'claim card escapes every headline and claim string',
+    ));
+    const slot = document.getElementById('factChecks') as HTMLDivElement;
+    setTrustedHtml(slot, trustedHtml(renderFactChecksHtml(null), 'static loading text'));
+    void factChecks.then((found) => {
+      if (runId !== latestRun) return;
+      setTrustedHtml(slot, trustedHtml(renderFactChecksHtml(found), 'fact-check card escapes every fact-check string'));
+    });
   } catch {
+    showCounts(null, statusId);
     if (runId !== latestRun) return;
     result.replaceChildren();
     const error = document.createElement('p');
     error.className = 'vc-error';
     error.setAttribute('role', 'alert');
-    error.textContent = 'The live news digest could not be loaded. Try again in a moment.';
+    error.textContent = 'The live headlines could not be searched. Try again in a moment.';
     result.append(error);
   } finally {
     if (runId === latestRun) resetSubmit();
@@ -106,6 +125,3 @@ function runFromLocation(): void {
 window.addEventListener('popstate', runFromLocation);
 
 runFromLocation();
-loadDigest().then((loaded) => { status.textContent = describeDigest(loaded); }).catch(() => {
-  status.textContent = 'The live news digest is unavailable right now.';
-});

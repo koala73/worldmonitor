@@ -1,3 +1,4 @@
+// @vitest-environment-options {"settings":{"enableIframePageLoading":true}}
 /**
  * T2 (#5634) — the Export PDF click cycle, composed.
  *

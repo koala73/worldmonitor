@@ -28,7 +28,7 @@ service ShippingV2Service {
     option (sebuf.http.config) = {path: "/route-intelligence", method: HTTP_METHOD_GET};
   }
 
-  // RegisterWebhook subscribes a callback URL to chokepoint disruption alerts.
+  // RegisterWebhook subscribes a callback URL to one event type.
   // Returns the subscriberId and the raw HMAC secret — the secret is never
   // returned again except via rotate-secret.
   rpc RegisterWebhook(RegisterWebhookRequest) returns (RegisterWebhookResponse) {

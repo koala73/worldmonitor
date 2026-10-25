@@ -157,6 +157,10 @@
       "name": "seed-cot"
     },
     {
+      "id": "d295b2c7-59ba-4748-9525-62292c5bc98c",
+      "name": "seed-country-history"
+    },
+    {
       "id": "fd27928b-0b9b-45d6-b056-92fa2f5d60a6",
       "name": "seed-cyber-threats"
     },
@@ -289,6 +293,10 @@
       "name": "seed-natural-events"
     },
     {
+      "id": "4aa3db57-9388-4c69-a248-8a538e576454",
+      "name": "seed-notam-nms"
+    },
+    {
       "id": "96fabace-d56d-4854-8096-3f5bcfe0d88a",
       "name": "seed-prediction-markets"
     },
@@ -331,6 +339,10 @@
     {
       "id": "2bf93afa-1922-4f9c-936d-f5054051b8a5",
       "name": "seed-webcams"
+    },
+    {
+      "id": "a97fa619-a8f4-4244-9748-6c0f6c3eade3",
+      "name": "shipping-webhook-worker"
     },
     {
       "id": "67264e35-0b51-457b-984f-4ef20e36a117",

@@ -36,8 +36,11 @@ export class PizzIntIndicator {
       ),
       h('div', { className: 'pizzint-footer' },
         h('span', { className: 'pizzint-source' },
-          t('components.pizzint.indexSource'), ' ',
-          h('a', { href: 'https://www.pizzint.watch', target: '_blank', rel: 'noopener' }, 'PizzINT'),
+          t('components.pizzint.indexSource'),
+          h('span', { className: 'pizzint-venue-source', hidden: true },
+            ' · ', t('components.pizzint.venueSource'), ' ',
+            h('a', { href: 'https://www.pizzint.watch', target: '_blank', rel: 'noopener' }, 'PizzINT'),
+          ),
         ),
         h('span', { className: 'pizzint-updated' }),
       ),
@@ -74,6 +77,12 @@ export class PizzIntIndicator {
     const labelEl = this.element.querySelector('.pizzint-defcon-label') as HTMLElement;
     const locationsEl = this.element.querySelector('.pizzint-locations') as HTMLElement;
     const updatedEl = this.element.querySelector('.pizzint-updated') as HTMLElement;
+    // PizzINT is credited for its venue data. The BestTime fallback is a
+    // paid API, not a source to name, so the footer reads only the index.
+    const venueEl = this.element.querySelector<HTMLElement>('.pizzint-venue-source');
+    if (venueEl) venueEl.hidden = this.status.locationsMonitored === 0
+      || this.status.locations.some(loc => loc.data_source === 'besttime');
+
     if (this.status.locationsMonitored === 0) {
       defconEl.textContent = '--';
       defconEl.style.background = '';
@@ -83,13 +92,6 @@ export class PizzIntIndicator {
       replaceChildren(locationsEl);
       updatedEl.textContent = '';
       return;
-    }
-
-    const sourceEl = this.element.querySelector<HTMLAnchorElement>('.pizzint-source a');
-    if (sourceEl) {
-      const isBestTime = this.status.locations.some(loc => loc.data_source === 'besttime');
-      sourceEl.textContent = isBestTime ? 'BestTime' : 'PizzINT';
-      sourceEl.href = isBestTime ? 'https://besttime.app' : 'https://www.pizzint.watch';
     }
 
     const color = DEFCON_COLORS[this.status.defconLevel] || '#888';

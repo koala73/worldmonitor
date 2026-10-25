@@ -12,6 +12,11 @@ export interface ParsedSize {
   rawText: string;
 }
 
+export interface SizeContext {
+  baseUnit: string;
+  marketCode: string;
+}
+
 // A Map, not an object literal: `UNIT_MAP['constructor']` on a literal
 // resolves through the prototype chain to a truthy Function, so
 // parseSize('5 constructor') used to return a ParsedSize with a NaN
@@ -89,10 +94,31 @@ function normalizeUnit(raw: string): string | null {
 const PACK_PATTERN = /^(\d+)\s*(?:[x×]|pack\b)\s*(.+)$/i;
 const SIZE_PATTERN = /(\d+(?:\.\d+)?)\s*([a-z]+)/i;
 
-export function parseSize(raw: string | null | undefined): ParsedSize | null {
+export function parseSize(raw: string | null | undefined, context?: SizeContext): ParsedSize | null {
   if (!raw) return null;
 
   const text = raw.trim().toLowerCase();
+
+  const contextualUnit = context?.baseUnit === 'ct'
+    ? { pattern: /^(\d+)\s*(pack)$/, base: 'ct', factor: 1 }
+    : context?.baseUnit === 'ml' && context.marketCode === 'gb'
+      ? { pattern: /^(\d+(?:\.\d+)?)\s*(pints?)$/, base: 'ml', factor: 568.26125 }
+      : undefined;
+  const contextualMatch = contextualUnit?.pattern.exec(text);
+  if (contextualMatch && contextualUnit) {
+    const sizeValue = Number(contextualMatch[1]);
+    const baseQuantity = sizeValue * contextualUnit.factor;
+    if (!Number.isFinite(baseQuantity) || baseQuantity <= 0 ||
+      (contextualUnit.base === 'ct' && !Number.isSafeInteger(sizeValue))) return null;
+    return {
+      packCount: 1,
+      sizeValue,
+      sizeUnit: contextualMatch[2],
+      baseQuantity,
+      baseUnit: contextualUnit.base,
+      rawText: raw,
+    };
+  }
 
   let packCount = 1;
   let sizeStr = text;

@@ -37,6 +37,7 @@ concurrency:
 
 jobs:
   refresh:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     # The freeze fetches five digest variants, tops every under-filled country
     # up from the per-country GDELT index (~190 requests, ~50 minutes if every
@@ -167,6 +168,7 @@ jobs:
             tests/accuracy-corpus.test.mjs \
             tests/seo-geo-residue.test.mjs \
             tests/crawlable-corpus.test.mjs \
+            tests/situation-page.test.mjs \
             tests/crawlable-developments.test.mjs \
             tests/crawlable-live-tools.test.mjs \
             tests/country-mention.test.mjs \
@@ -203,7 +205,7 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "chore(corpus): align pulse sitemap dates ${snapshot_date}"
           fi
-          node scripts/build-sitemap.mjs --check
+          node --import tsx scripts/build-sitemap.mjs --check
           git push --set-upstream origin "$BRANCH_NAME"
           body="Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, llms-full forecast-accuracy section, and the homepage welcome-teaser strip (#7608, #8070)."
           draft=()

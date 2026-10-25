@@ -41,7 +41,7 @@ function sentHeaders(callIndex = 0): Headers {
 // injection is now path-gated. Using `some-premium-rpc` (a non-existent
 // path) made every "Clerk Bearer attached" assertion silently fail under
 // the new logic. See PREMIUM_RPC_PATHS in src/shared/premium-paths.ts.
-const TARGET = 'https://api.worldmonitor.app/api/sanctions/v1/list-sanctions-pressure';
+const TARGET = 'https://api.worldmonitor.app/api/economic/v1/list-global-tenders';
 // A real PUBLIC path used to verify the path-gating bypass: hits below
 // fetch the same way but should NOT see Bearer attached.
 const PUBLIC_TARGET = 'https://api.worldmonitor.app/api/economic/v1/get-fred-series-batch';
@@ -265,6 +265,17 @@ describe('premiumFetch', () => {
     assert.equal(sentHeaders().get('Authorization'), 'Bearer insider-clerk-token');
     await proFreshRpcFetch(PREMIUM_INSIDER_TRANSACTIONS_TARGET);
     assert.equal(sentHeaders(1).get('Authorization'), 'Bearer insider-clerk-token');
+  });
+
+  it('country history attaches paid credentials while retaining anonymous session recovery', async () => {
+    const target = 'https://api.worldmonitor.app/api/intelligence/v1/get-country-history?country=US&days=90';
+    setup({ clerkToken: 'history-clerk-token' });
+    await proFreshRpcFetch(target);
+    assert.equal(sentHeaders().get('Authorization'), 'Bearer history-clerk-token');
+    setup();
+    await proFreshRpcFetch(target);
+    assert.equal(sentHeaders().get('Authorization'), null);
+    assert.equal(hasPremiumIntent(fetchMock.mock.calls[0].arguments[1] as RequestInit), false);
   });
 
   it('non-premium path: tester key still attached (works on any path)', async () => {
@@ -778,6 +789,6 @@ describe('premiumFetch forwards the caller signal to the 5xx report', () => {
       headers: { Authorization: 'Bearer existing-token' },
       signal: new AbortController().signal,
     });
-    assert.deepEqual(captured, ['API 503: /api/sanctions/v1/list-sanctions-pressure']);
+    assert.deepEqual(captured, ['API 503: /api/economic/v1/list-global-tenders']);
   });
 });

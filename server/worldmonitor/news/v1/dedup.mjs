@@ -18,6 +18,9 @@ import {
 // one newsroom ships many ("Reuters World", "Reuters US", …), so counting
 // labels let a wire corroborate itself.
 import { publisherFamilyForItem } from '../../../../shared/publisher-families.js';
+// #9095: families whose items carry the same copy (title + lead) count once,
+// so an unlisted network under several mastheads cannot corroborate itself.
+import { detectSyndication } from '../../../../shared/syndication.js';
 
 /** @param {string[]} headlines */
 export function deduplicateHeadlines(headlines) {
@@ -100,7 +103,7 @@ export async function assignStoryIdentity(items, normalizeTitle, sha256Hex) {
     // server-configured label because RSS <source> is forgeable upstream text.
     const corroborationCount = Math.max(
       1,
-      new Set(indices.map((i) => publisherFamilyForItem(items[i]))).size,
+      detectSyndication(indices.map((i) => items[i]), publisherFamilyForItem).publishers,
     );
 
     if (canonical === null) {

@@ -1,5 +1,6 @@
 import { sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
 import { validateImfDataset } from './_imf-dataset.js';
+import { stripTrailingSlashes } from './_strip-trailing-slashes.js';
 import { waitUntil as vercelWaitUntil } from '@vercel/functions';
 
 import {
@@ -151,6 +152,11 @@ const ON_DEMAND_CACHE_PROFILES = {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
     cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
   },
+  // FAA NMS seeder on a 5min interval against a 20min health budget.
+  notamAirspace: {
+    browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
+    cdn: 'public, s-maxage=300, stale-while-revalidate=120, stale-if-error=900',
+  },
   // seed-aviation aggregate, 90min health budget. Default 2h on-demand
   // shield would outlive the budget after #7046 moved this key off FAST.
   flightDelays: {
@@ -186,7 +192,7 @@ export function isAnonymousWeatherBootstrapRequest(req) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
 
   const url = new URL(req.url);
-  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+  const pathname = stripTrailingSlashes(url.pathname);
   if (pathname !== '/api/bootstrap') return false;
 
   const params = Array.from(url.searchParams.keys());

@@ -208,6 +208,47 @@ export interface ReviewErrorReportResponse {
   report?: ErrorReport;
 }
 
+export interface SearchFactChecksRequest {
+  claim: string;
+}
+
+export interface SearchFactChecksResponse {
+  factChecks: FactCheck[];
+  state: string;
+  caveat: string;
+}
+
+export interface FactCheck {
+  publisher: string;
+  site: string;
+  rating: string;
+  reviewedAt: string;
+  url: string;
+  title: string;
+  claimReviewed: string;
+}
+
+export interface SearchClaimHeadlinesRequest {
+  claim: string;
+}
+
+export interface SearchClaimHeadlinesResponse {
+  headlines: ClaimHeadline[];
+  searchedHeadlines: number;
+  searchedFeeds: number;
+  feedTotal: number;
+  feedCached: number;
+  state: string;
+  readAt: string;
+}
+
+export interface ClaimHeadline {
+  source: string;
+  title: string;
+  link: string;
+  publishedAt: number;
+}
+
 export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";
 
 export type SummarizeStatus = "SUMMARIZE_STATUS_UNSPECIFIED" | "SUMMARIZE_STATUS_SUCCESS" | "SUMMARIZE_STATUS_CACHED" | "SUMMARIZE_STATUS_SKIPPED" | "SUMMARIZE_STATUS_ERROR";
@@ -267,6 +308,8 @@ export interface NewsServiceHandler {
   submitErrorReport(ctx: ServerContext, req: SubmitErrorReportRequest): Promise<SubmitErrorReportResponse>;
   listErrorReports(ctx: ServerContext, req: ListErrorReportsRequest): Promise<ListErrorReportsResponse>;
   reviewErrorReport(ctx: ServerContext, req: ReviewErrorReportRequest): Promise<ReviewErrorReportResponse>;
+  searchFactChecks(ctx: ServerContext, req: SearchFactChecksRequest): Promise<SearchFactChecksResponse>;
+  searchClaimHeadlines(ctx: ServerContext, req: SearchClaimHeadlinesRequest): Promise<SearchClaimHeadlinesResponse>;
 }
 
 export function createNewsServiceRoutes(
@@ -309,7 +352,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -356,7 +399,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -404,7 +447,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -451,7 +494,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -499,7 +542,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -542,7 +585,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -589,7 +632,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -632,7 +675,101 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/search-fact-checks",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchFactChecksRequest = {
+            claim: params.get("claim") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchFactChecks", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchFactChecks(ctx, body);
+          return new Response(JSON.stringify(result as SearchFactChecksResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/search-claim-headlines",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchClaimHeadlinesRequest = {
+            claim: params.get("claim") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchClaimHeadlines", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchClaimHeadlines(ctx, body);
+          return new Response(JSON.stringify(result as SearchClaimHeadlinesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },

@@ -227,7 +227,7 @@ Page Load → parallel fetch ─┬─ /api/bootstrap?tier=fast  (s-maxage=1200)
 
 ### Railway 种子数据管道
 
-21 个 Railway 定时任务持续用从外部 API 预计算的数据刷新 Redis 缓存。种子按可配置计划运行（从数分钟到每日），同时写入规范域名键（用于 RPC 处理器查找）和引导键（用于页面加载水合）。这种双键策略确保引导水合和 RPC 处理器在数据格式和新鲜度上始终一致。
+Railway 定时服务持续用从外部 API 预计算的数据刷新 Redis 缓存。下表每一行是一个种子脚本，而非单独的定时任务：捆绑服务会在同一计划中运行多个种子（例如，流离失所和边境种子都在 `seed-bundle-health` 中运行）。种子按可配置计划运行（从数分钟到每日），同时写入规范域名键（用于 RPC 处理器查找）和引导键（用于页面加载水合）。这种双键策略确保引导水合和 RPC 处理器在数据格式和新鲜度上始终一致。
 
 | 种子脚本 | 数据来源 | 更新频率 | 引导键 |
 | --- | --- | --- | --- |
@@ -248,8 +248,12 @@ Page Load → parallel fetch ─┬─ /api/bootstrap?tier=fast  (s-maxage=1200)
 | `seed-gulf-quotes` | Yahoo Finance（Tadawul、DFM、ADX） | 10 分钟 | `market:gulf-quotes:v1` |
 | `seed-unrest-events` | ACLED 抗议 + GDELT | 45 分钟 | `unrest:events:v1` |
 | `seed-ucdp-events` | UCDP GED API | 6 小时 | `conflict:ucdp-events:v1` |
-| `seed-iran-events` | LiveUAMap 地理编码事件 | 10 分钟 | `conflict:iran-events:v1` |
-| `seed-displacement-summary` | UNHCR / IOM | 30 分钟 | N/A |
+| `ais-relay`（中东打击循环） | Telegram 频道 + GDELT 事件导出 | 10 分钟 | `conflict:iran-events:v1`、`conflict:strike-pressure:v1`（供 CII 使用的 30 天按国家计数） |
+| `seed-displacement-summary` | UNHCR Population API | 每日 | N/A |
+| `seed-idmc-idu-displacement` | IDMC 境内流离失所更新（HDX） | 每日 | `displacement:idmc-idu:v1` |
+| `seed-dtm-displacement` | IOM 流离失所追踪矩阵 API | 每日 | N/A |
+| `seed-cross-border-arrivals` | UNHCR 业务数据门户 | 每日 | `displacement:cross-border:v1` |
+| `seed-border-{uk,cbp,frontex,panama}` | 英国内政部、美国 CBP、Frontex、巴拿马移民统计 | 每日 | N/A |
 | `seed-military-bases` | 经审核的军事基地注册表 | 每日 | N/A |
 | `seed-wb-indicators` | World Bank 技术准备度 | 每日 | `economic:worldbank-techreadiness:v1` |
 | `seed-forecasts` | OpenRouter LLM + 多领域信号 | 15 分钟 | `forecast:predictions:v2` |

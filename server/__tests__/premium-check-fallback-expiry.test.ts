@@ -25,6 +25,7 @@ import {
   type CachedEntitlements,
 } from "../_shared/entitlement-check";
 import { resolvePremiumCallerIdentity } from "../_shared/premium-check";
+import { OPERATOR_KEY_DAILY_CEILINGS } from "../_shared/high-usage-alarm";
 import { checkProMcpAccess } from '../_shared/pro-mcp-gate';
 import { checkEntitlementDetailed } from '../_shared/entitlement-check';
 import {
@@ -189,7 +190,14 @@ describe("Convex paid fallback through the marker cache and premium resolver", (
   test("operator and complimentary role grants do not depend on an entitlement", async () => {
     expect(await resolvePremiumCallerIdentity(new Request("https://www.worldmonitor.app/api/chat-analyst", {
       headers: { "X-WorldMonitor-Key": "operator-test-key" },
-    }))).toMatchObject({ isPremium: true, kind: "enterprise", quotaExempt: true });
+    }))).toMatchObject({
+      isPremium: true,
+      kind: "enterprise",
+      // Metered per key against a circuit breaker, not exempt (high-usage-alarm.ts).
+      quotaExempt: false,
+      quotaUserId: expect.stringMatching(/^wm:[0-9a-f]{32}$/),
+      directLlmDailyLimit: OPERATOR_KEY_DAILY_CEILINGS.directLlmCalls,
+    });
     vi.mocked(validateBearerToken).mockResolvedValue({ valid: true, role: "pro", userId: USER });
     expect(await resolvePremiumCallerIdentity(requestFor("bearer"))).toMatchObject({
       isPremium: true, kind: "bearer", directLlmDailyLimit: 50,

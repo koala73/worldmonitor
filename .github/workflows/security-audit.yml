@@ -20,10 +20,11 @@ permissions:
 
 jobs:
   audit-lockfile:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     name: audit-lockfile
     runs-on: ubuntu-latest
-    # Nine bounded audits plus setup and verdict upload.
-    timeout-minutes: 95
+    # Ten bounded audits plus setup and verdict upload.
+    timeout-minutes: 105
     env:
       # Authenticate advisory lookups used to date findings for the grace clock.
       GITHUB_TOKEN: ${{ github.token }}
@@ -32,6 +33,33 @@ jobs:
       AUDIT_FAIL_ON_OUTAGE: ${{ github.event_name == 'schedule' && '1' || '0' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/scripts/audit-production-dependencies.mjs
+            /.npmrc
+            /blog-site/.npmrc
+            /pro-test/.npmrc
+            /package.json
+            /package-lock.json
+            /scripts/package.json
+            /scripts/package-lock.json
+            /consumer-prices-core/package.json
+            /consumer-prices-core/package-lock.json
+            /blog-site/package.json
+            /blog-site/package-lock.json
+            /pro-test/package.json
+            /pro-test/package-lock.json
+            /docker/runtime-package.json
+            /docker/runtime-package-lock.json
+            /workers/railway-reconcile-control/package.json
+            /workers/railway-reconcile-control/package-lock.json
+            /workers/api-cors-preflight/package.json
+            /workers/api-cors-preflight/package-lock.json
+            /demos/verification-desk/package.json
+            /demos/verification-desk/package-lock.json
+            /integrations/zapier/package.json
+            /integrations/zapier/package-lock.json
       # The introduced-vs-inherited split needs the base commit in the object
       # DB. checkout leaves a shallow merge ref, so fetch just that one commit.
       - name: Fetch base commit
@@ -139,6 +167,17 @@ jobs:
             --workspace "demos/verification-desk" \
             --package-json "demos/verification-desk/package.json" \
             --lockfile "demos/verification-desk/package-lock.json"
+      - name: Audit integrations/zapier/package-lock.json
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        env:
+          AUDIT_STATUS_FILE: ${{ runner.temp }}/audit-status/zapier.txt
+        run: |
+          mkdir -p "${{ runner.temp }}/audit-status"
+          node .github/scripts/audit-production-dependencies.mjs \
+            --workspace "integrations/zapier" \
+            --package-json "integrations/zapier/package.json" \
+            --lockfile "integrations/zapier/package-lock.json"
       # always(): a blocking finding must still publish its verdict, otherwise
       # the aggregate cannot tell it apart from a job that never ran.
       - name: Upload audit verdict
@@ -151,11 +190,19 @@ jobs:
           retention-days: 1
 
   audit-rust:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     name: audit-rust
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/scripts/audit-rust-dependencies.mjs
+            /.github/rust-advisory-decisions.json
+            /scripts/lib/main-module.mjs
+            /src-tauri/Cargo.lock
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
@@ -186,7 +233,7 @@ jobs:
     name: security-audit
     runs-on: ubuntu-latest
     needs: [audit-lockfile, audit-rust]
-    if: ${{ always() }}
+    if: ${{ (always()) && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     steps:
       - name: Download audit verdicts
         id: verdicts
@@ -202,7 +249,7 @@ jobs:
           RUST_RESULT: ${{ needs.audit-rust.result }}
           # Names must match the audit-lockfile steps exactly; the
           # ci-workflow-coverage test asserts they do.
-          AUDIT_NAMES: 'root scripts consumer-prices-core blog-site pro-test docker-runtime railway-reconcile-control api-cors-preflight verification-desk'
+          AUDIT_NAMES: 'root scripts consumer-prices-core blog-site pro-test docker-runtime railway-reconcile-control api-cors-preflight verification-desk zapier'
           FAIL_ON_OUTAGE: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: |
           # On a run this workflow's concurrency group evicted (#8443), this

@@ -35,6 +35,14 @@ export const CLAIM_MATCH_MAX_CLUSTERS = 8;
 
 export const CLAIM_CARD_MAX_HEADLINES = 10;
 
+/**
+ * Headlines passed on to clustering for one claim. The searched pool holds
+ * thousands of headlines and clustering keeps only the newest 1,000, so the
+ * best-overlapping ones go first. On the 2026-10-16 Google News World set, the
+ * top 100 gave the same card as the top 1,000 for all 70 stories.
+ */
+export const CLAIM_CANDIDATE_LIMIT = 100;
+
 /** Shown with every claim card, found or not. */
 export const CLAIM_CARD_CAVEAT = 'Coverage, not accuracy: this shows who reported the claim and whether they are independent, not whether it is true. Not found means not in WorldMonitor\'s current sources.';
 
@@ -88,6 +96,25 @@ export function claimOverlap(claim: string, headline: string): { score: number; 
     }
   }
   return { score: hit / wanted.length, shared };
+}
+
+/**
+ * The headlines worth clustering for a claim: those sharing at least one of
+ * its content words, best overlap first, then newest, up to `limit`.
+ */
+export function claimCandidates<T extends NewsItemCore>(
+  claim: string,
+  items: readonly T[],
+  limit = CLAIM_CANDIDATE_LIMIT,
+): T[] {
+  return items
+    .map((item) => ({ item, overlap: claimOverlap(claim, item.title) }))
+    .filter(({ overlap }) => overlap.shared >= 1)
+    .sort((a, b) => b.overlap.score - a.overlap.score
+      || b.item.pubDate.getTime() - a.item.pubDate.getTime()
+      || a.item.link.localeCompare(b.item.link))
+    .slice(0, limit)
+    .map(({ item }) => item);
 }
 
 export type ClaimClusterMatch<C extends ClusteredEventCore = ClusteredEventCore> = {
@@ -218,19 +245,25 @@ export type ClaimCard = {
 } & PublisherRosterJson;
 
 /**
- * The evidence card for a claim over a set of digest items: the verify_claim
+ * The evidence card for a claim over a set of headlines: the verify_claim
  * MCP tool and the /verify page both build it here, so they cannot disagree.
- * The claim is used as given (callers trim and cap it).
+ * The claim is used as given (callers trim and cap it). `searched` is how many
+ * headlines were searched when `digestItems` holds only the claimCandidates
+ * of a larger pool.
  */
-export function buildClaimCard(claim: string, digestItems: readonly NewsItemCore[]): ClaimCard {
+export function buildClaimCard(
+  claim: string,
+  digestItems: readonly NewsItemCore[],
+  searched = digestItems.length,
+): ClaimCard {
   const matches = claim ? matchClaimToClusters(claim, clusterNewsCore([...digestItems], getSourceTier)) : [];
   if (matches.length === 0) {
     return {
       claim,
       found: false,
-      // not-found claims a search happened: with no digest items (coverage
-      // unavailable) nothing was searched, so the state stays unknown.
-      state: digestItems.length > 0 ? 'not-found' : 'unknown',
+      // not-found claims a search happened: with nothing searched (coverage
+      // unavailable) the state stays unknown.
+      state: searched > 0 ? 'not-found' : 'unknown',
       corroboration: toCorroborationJson({ state: 'unknown' }),
       publishers: [],
       publishersUnlisted: 0,

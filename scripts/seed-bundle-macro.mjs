@@ -50,6 +50,10 @@ const MACRO_SECTIONS = [
   // fail-closed preflight (RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true).
   { label: 'WB-External-Debt', script: 'seed-wb-external-debt.mjs', seedMetaKey: 'economic:wb-external-debt', canonicalKey: 'economic:wb-external-debt:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
   { label: 'BIS-LBS', script: 'seed-bis-lbs.mjs', seedMetaKey: 'economic:bis-lbs', canonicalKey: 'economic:bis-lbs:v1', intervalMs: 7 * DAY, timeoutMs: 300_000 },
+  // Cross-country capital flows: IMF BOP quarterly + annual + PIP and two BIS
+  // LBS pulls, all in parallel, plus World Bank GDP. PIP (~43s) is the long
+  // pole; per-call timeouts with one retry keep the worst case under 300_000.
+  { label: 'Capital-Flows', script: 'seed-capital-flows.mjs', seedMetaKey: 'economic:capital-flows', canonicalKey: 'economic:capital-flows:v1', completionMetaKey: 'seed-completion:economic:capital-flows', intervalMs: 7 * DAY, timeoutMs: 300_000 },
   // FATF fetches 3 URLs (entry sequential, black+grey parallel) through a 6-tier
   // fallback chain (direct → proxy → wayback-cdx-direct → wayback-cdx-proxy →
   // wayback-snap-direct → wayback-snap-proxy, ≤125s/URL). Worst-case ≤250s;

@@ -8,7 +8,7 @@ canonical: "https://www.worldmonitor.app/home.md"
 
 By the time it's news, you already knew.
 
-As of 2026-10-12.
+As of 2026-10-19.
 
 World Monitor is a free real-time global intelligence dashboard. It brings ships, aircraft, conflict events, alerts, infrastructure, markets, weather, cyber signals, and curated news onto one live map. Its analysis layer helps users see when separate signals begin to converge into one event that matters.
 
@@ -42,7 +42,7 @@ Users can compare these parts on one map and then open the underlying panels for
 
 - A global map with a shared catalog of conflict, military, infrastructure, environment, transport, and market layers
 - Curated news and OSINT feeds grouped by topic and product variant
-- CII v8 for 31 Tier-1 countries, resilience scores for the 196-country public rankable universe, and global live conflict tracking
+- CII v14 for 31 Tier-1 countries, resilience scores for the 196-country public rankable universe, and global live conflict tracking
 - Market quotes, sector heatmaps, macro indicators, and commodity context
 - Shipping chokepoints, ports, and vessel-transit intelligence
 - Aircraft, satellites, GPS interference, submarine cables, energy assets, and datacenters

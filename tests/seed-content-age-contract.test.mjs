@@ -315,6 +315,7 @@ test('runSeed passes one run clock and publishes null for a persisted future GDE
   };
   let observedRunClock;
   let fetchRunClock;
+  let fetchDeadlineAt;
 
   await runWithExitTrap(() =>
     runSeed(
@@ -323,6 +324,7 @@ test('runSeed passes one run clock and publishes null for a persisted future GDE
       'test:gdelt-future-cache:v1',
       (runContext) => {
         fetchRunClock = runContext.runStartedAtMs;
+        fetchDeadlineAt = runContext.fetchDeadlineAtMs;
         return fetchAllTopics({
           runStartedAtMs: fetchRunClock,
           _now: () => fetchRunClock,
@@ -356,6 +358,7 @@ test('runSeed passes one run clock and publishes null for a persisted future GDE
 
   assert.ok(Number.isFinite(observedRunClock), 'runSeed must pass its immutable run clock to contentMeta');
   assert.equal(observedRunClock, fetchRunClock, 'fetch ordering and content health must share the same run clock');
+  assert.ok(fetchDeadlineAt > fetchRunClock, 'runSeed passes the absolute fetch deadline so optional fetch work can stop in time');
   const meta = lastMetaSetBody('gdelt-future-cache');
   assert.ok(meta, 'seed-meta must be written through the publish path');
   assert.equal(meta.newestItemAt, null, 'a persisted far-future cache stamp must fail closed');

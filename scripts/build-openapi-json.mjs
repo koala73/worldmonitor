@@ -199,10 +199,14 @@ export function shortenGeneratedSuccessDescriptions(spec) {
  * and still callable: only this one artifact omits it. Every entry names why.
  */
 export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
+  '/api/intelligence/v1/get-country-signal-observations': 'Internal country panel observation carrier; documented in the IntelligenceService spec and YAML bundle.',
   '/api/news/v1/list-label-changes': 'Label history read by the /trust page (#9093); documented in the NewsService spec.',
   '/api/news/v1/submit-error-report': 'The /trust page "Report an error" form (#9093); documented in the NewsService spec.',
   '/api/news/v1/list-error-reports': 'Operator review queue, secret-gated (#9093).',
   '/api/news/v1/review-error-report': 'Operator review decision, secret-gated (#9093).',
+  '/api/news/v1/search-fact-checks': 'Fact-check lookup for the /verify page and verify_claim (#9094); documented in the NewsService spec.',
+  '/api/news/v1/search-claim-headlines': 'Claim headline search for the /verify page and verify_claim; documented in the NewsService spec.',
+  '/api/economic/v1/get-capital-flows': 'Budget: the operation costs more than the bundle\'s remaining headroom (~2 KB on main at the time) and its full field documentation is kept rather than trimmed. Served, documented in the EconomicService spec and the YAML bundle, and exposed to agents by MCP get_capital_flows, whose tool description and schema do not depend on this artifact.',
 });
 
 /**
@@ -217,6 +221,36 @@ export function excludeScannerBundleOperations(spec, excluded = SCANNER_BUNDLE_E
     if (spec.paths && Object.prototype.hasOwnProperty.call(spec.paths, path)) {
       delete spec.paths[path];
       stats.excluded += 1;
+    }
+  }
+  return stats;
+}
+
+/**
+ * Remove securitySchemes no root or operation `security` entry names. Runs
+ * after excludeScannerBundleOperations: a scheme only excluded operations used
+ * (TrustReviewKey, #9192) would otherwise ship as an orphan. Returns { dropped }.
+ */
+export function dropUnreferencedSecuritySchemes(spec) {
+  const stats = { dropped: 0 };
+  const schemes = spec.components?.securitySchemes;
+  if (!schemes) return stats;
+  const referenced = new Set();
+  const collect = (security) => {
+    for (const requirement of security ?? []) {
+      for (const name of Object.keys(requirement)) referenced.add(name);
+    }
+  };
+  collect(spec.security);
+  for (const ops of Object.values(spec.paths ?? {})) {
+    for (const op of Object.values(ops ?? {})) {
+      if (op && typeof op === 'object') collect(op.security);
+    }
+  }
+  for (const name of Object.keys(schemes)) {
+    if (!referenced.has(name)) {
+      delete schemes[name];
+      stats.dropped += 1;
     }
   }
   return stats;
@@ -278,6 +312,7 @@ export function buildBundle({ spec: provided } = {}) {
   }
 
   const excludedStats = excludeScannerBundleOperations(spec);
+  dropUnreferencedSecuritySchemes(spec);
   const stats = dedupeErrorResponses(spec);
   const headerStats = dedupeSharedResponseHeaders(spec);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);

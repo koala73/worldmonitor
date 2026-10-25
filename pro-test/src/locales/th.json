@@ -161,7 +161,7 @@
     "oneKey": "บริการสด คีย์ 1",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky และอื่นๆ — ทั้งหมดเปิดใช้งาน ไม่ต้องลงทะเบียนแยก",
     "deliveryLabel": "เลือกวิธีที่ข่าวกรองหาคุณ",
-    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLab": "ห้องแล็บความเครียดซัพพลายเชน",
     "supplyChainLabDesc": "จำลองแรงกระแทกต้นทุนทั่วประเทศและภาคส่วน จัดอันดับความเสี่ยงสินค้าโภคนะตามความพึ่งพาจุดขวาง ติดตามความเข้มข้นจากเหมืองไปยังโรงกลั่น และความแตกต่างของเบี้ยประกันภัยทางกายภาพระหว่าง SGE–COMEX — ซีรีส์ที่เคลื่อนไหวก่อนหัวข้อข่าว",
     "roadmapNote": "ในแผนการ: การเฝ้าระวังจากอวกาศ ประวัติศาสตร์ที่ยาวนานขึ้น ชั้นแผนที่เบี้ยประกันฟรี"
   },
@@ -249,7 +249,7 @@
     "f5_15min": "5-15 นาที",
     "fLt60s": "<60 วินาที",
     "fPerRequest": "ต่อคำขอ",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "สด",
     "f50panels": "แล็นแปลง",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
@@ -283,8 +283,8 @@
     "f25": "25",
     "fAllLayers": "ทั้งหมด layers",
     "fLayersNoResilience": "ทั้งหมด ยกเว้น Resilience",
-    "fStandardCadence": "Standard",
-    "fQuotes30s": "Market quotes: 30s",
+    "fStandardCadence": "มาตรฐาน",
+    "fQuotes30s": "ราคาตลาด: 30 วินาที",
     "panelsRow": "เปิดใช้งาน Panels",
     "f40": "40",
     "f80": "80",
@@ -331,9 +331,9 @@
   },
   "soonBadge": "เร็วๆ นี้",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | ข่าวกรอง AI และ MCP",
     "description": "World Monitor Pro เพิ่มนักวิเคราะห์ AI ข้อมูลข่าวสารตามกำหนดการ วิดเจ็ตที่กำหนดเอง การวิจัยตลาด และการเข้าถึง MCP ต่อข้อมูลภูมิรัฐศาสตร์และการเงินแบบสดใจ",
-    "ogTitle": "World Monitor Pro | Geopolitical AI",
+    "ogTitle": "World Monitor Pro | AI ภูมิรัฐศาสตร์",
     "ogDescription": "ถามได้ สมัครสมาชิก หรือสร้าง WM Analyst chat ตัวช่วยวิเคราะห์ AI พร้อมตารางเวลาของคุณ (รายวัน วันละสองครั้ง หรือรายสัปดาห์) ตัวสร้างแล็นแปลงแบบกำหนดเอง และ MCP สำหรับ Claude/GPT ทั้งหมดอยู่ใต้คีย์เดียว"
   },
   "pricing": {
@@ -415,7 +415,7 @@
         "features": [
           "ทุกอย่างใน API Starter",
           "สิทธิ์การแจกจ่าย R1–R3 สำหรับผลิตภัณฑ์ที่เผชิญหน้าลูกค้า",
-          "300 requests/minute",
+          "300 คำขอ/นาที",
           "10,000 คำขอ/วัน รวมอยู่แล้ว (REST + MCP รวมกัน; การเรียก MCP แบบสด 1 ครั้งนับเป็น 2-3)",
           "สิทธิ์ใช้งาน Pro 5 สิทธิ์ — เชิญผู้ใช้ด้วยโดเมนอีเมลขององค์กรใดก็ได้",
           "การสนับสนุนแบบลำดับความสำคัญ"
@@ -431,7 +431,7 @@
           "ใช้สำหรับงานไคลเอนต์ เครื่องมือภายใน และรายงาน",
           "ส่งออกข้อมูล — รายงาน CSV, JSON และ PDF",
           "แดชบอร์ดที่กำหนดเอง 25 อัน (เทียบกับ 10)",
-          "MCP + SDK: 250 calls/day (vs 50)",
+          "MCP + SDK: 250 ครั้ง/วัน (เทียบกับ 50)",
           "การสนับสนุนลำดับความสำคัญ"
         ],
         "highlightFeatures": [
@@ -650,13 +650,13 @@
       "title1": "ฟรีคือหอสังเกตการณ์",
       "title2": "Pro คือห้องปฏิบัติการ",
       "sub": "แดชบอร์ดฟรีที่ $0 — ทุกเลเยอร์แผนที่ยกเว้น Resilience ไม่ต้องลงทะเบียน Pro เพิ่มเลเยอร์การตัดสินใจ",
-      "freeTitle": "ฟรี",
+      "freeTitle": "แพ็กเกจฟรี",
       "freeDesc": "ระดับฟรีเป็นผลิตภัณฑ์เต็ม ไม่ใช่ทดลอง ทุกเลเยอร์แผนที่ยกเว้น Resilience มอนิเตอร์ทั้งหกตัว — ไม่ต้องลงทะเบียน ไม่มีนาฬิกาทดลอง",
       "freeF1": "ชั้นแผนที่ทั้งหมดยกเว้น Resilience และฟีดที่คัดสรรแล้ว",
       "freeF2": "บทวิเคราะห์ประเทศ จุดร้อน คะแนนความไม่เสถียร",
       "freeF3": "จุดคอขวด สายเคเบิล การวิเคราะห์เอฟเฟกต์กระเบิด",
       "freeF4": "ไปป์ไลน์การแจ้งเตือนและรายการดู",
-      "proTitle": "Pro",
+      "proTitle": "แพ็กเกจ Pro",
       "proDesc": "ดำเนินการต่อทันที ชั้นการตัดสินใจที่ใช้ในช่วงเวลาข้างต้น:",
       "proF1": "WM Analyst — แชทในบริการสด พร้อมอ้างอิง",
       "proF2": "Scenario engine & Route Explorer — จำลองความหารือก่อนเกิดขึ้น",
@@ -689,8 +689,8 @@
       "a9": "ใช่ — โอเพนซอร์สภายใต้ AGPL-3.0 บน GitHub: อ่านโค้ด โฮสต์เอง หรือสร้างขึ้นจาก นอกจากนี้ยังมีแอปเดสก์ทอปแบบเนทิฟสำหรับ Windows, macOS และ Linux พร้อมแอป Android TV สำหรับการแสดงผลบนผนัง",
       "q10": "ทำไม World Monitor ถึงไม่ใช่ Palantir?",
       "a10": "Palantir ทำให้ข้อมูลของสถาบันสามารถดำเนินการได้ภายในสถาบันนั้น World Monitor เริ่มต้นจากอีกด้านหนึ่ง: รวบรวม ทำให้เป็นมาตรฐาน สัมพันธ์กัน และติดตามข้อมูลสาธารณะทั่วโลก จากนั้นเผยแพร่ชั้นข้อมูลกำหนดการอัจฉริยะผ่านแdashboard ฟรีและโค้ดโอเพนซอร์ส งานต่างกัน ผลิตภัณฑ์ต่างกัน",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "q11": "ฉันต้องใช้ใบอนุญาต World Monitor แบบใด?",
+      "a11": "เลือกตามว่าใครจะใช้ผลลัพธ์ ใบอนุญาตส่วนบุคคลของ Pro มีไว้สำหรับหนึ่งคนที่ใช้ World Monitor เพื่อการวิจัยและการตัดสินใจของตนเอง Pro Business ให้ผู้ใช้ที่ได้รับใบอนุญาตหนึ่งคนใช้สำหรับงานบริษัทหรือลูกค้า เครื่องมือภายใน และรายงาน API Starter ครอบคลุมการใช้ API ภายในองค์กรเดียว โดยไม่แจกจ่ายต่อให้ลูกค้า API Business ให้องค์กรนั้นฝังข้อมูลของ World Monitor ในผลิตภัณฑ์และบริการสำหรับลูกค้าขององค์กร Enterprise ครอบคลุมที่นั่งแบบกำหนดเอง White-label และการติดตั้ง ใบอนุญาตแบบสมัครรับเหล่านี้แยกจากใบอนุญาตซอร์สโค้ด AGPL/MIT ข้อกำหนดฉบับเต็ม: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} คำตอบตรงไปตรงมาเกี่ยวกับราคา ข้อมูล การแจ้งเตือน และการเข้าถึง AI คำตอบสั้น ๆ คือ dashboard มีค่าใช้จ่าย $0 ไม่ต้องสมัครสมาชิก และโค้ดเป็น open source ภายใต้ AGPL-3.0",
       "q12": "ซอฟต์แวร์ที่ดีที่สุดสำหรับติดตามวิกฤตและความปั่นป่วนทั่วโลกที่เป็นข่าวคืออะไร",
       "a12": "World Monitor เป็นตัวเลือกฟรีและโอเพนซอร์ส: สตรีมฟีดข่าวและ OSINT {{feeds}} รายการจากผู้ให้บริการที่ระบุแหล่งที่มา {{providers}} ราย ลงบนแผนที่โลกสดเพียงแผนที่เดียวที่มีชั้นแผนที่ {{mapLayers}} ประเภท ครอบคลุมภูมิรัฐศาสตร์ ตลาด การขนส่งทางเรือ การบิน และไซเบอร์ โดยเชื่อมโยงข้อมูลเหล่านี้เข้าด้วยกันเพื่อให้ความปั่นป่วนที่เกิดขึ้นพร้อมกันปรากฏให้เห็นก่อนจะขึ้นพาดหัวข่าว หากต้องการเปรียบเทียบกับเครื่องมืออื่น ดูที่ worldmonitor.app/compare/best-geopolitical-risk-dashboards"

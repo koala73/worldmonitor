@@ -16,6 +16,7 @@ import {
 import { getCountryCentroid, ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import type { CountryScore } from '@/services/country-instability';
 import { t } from '@/services/i18n';
+import { CountryHistory } from './CountryHistory';
 import { getCountryInfrastructure } from '@/services/related-assets';
 import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType, NewsItem, RelatedAsset } from '@/types';
@@ -139,7 +140,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentScore: CountryScore | null = null;
   private currentSignals: CountrySignalCounts | null = null;
   private signalCoverageNotes: readonly string[] = [];
-  private currentSignalDetails: CountryDeepDiveSignalDetails | null = null;
+  private currentSignalDetails: CountryDeepDiveSignalDetails | 'unavailable' | null = null;
+  private qualifiedCountrySignals: import('../../shared/country-signal-observations').QualifiedCountrySignals | null = null;
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
@@ -160,6 +162,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private sections: BriefSection[] = [];
   private outputClose: (() => void) | null = null;
   private atlasRevision = 0;
+  private hostedAtlasRead: Promise<void> = Promise.resolve();
+  private hostedResilienceRead: Promise<unknown> = Promise.resolve();
   private hostedAtlasBody: HTMLElement | null = null;
   private hostedAtlas: { code: string; signal: AbortSignal; pipelines?: ListPipelinesResponse; facilities?: ListStorageFacilitiesResponse; shortages?: ListFuelShortagesResponse } | null = null;
   private atlasSelection: { type: 'pipeline' | 'storage' | 'shortage'; id: string } | null = null;
@@ -310,6 +314,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const body = id === 'energy' && this.hostedAtlasBody ? this.energyBody! : section.body;
     const notice = state === 'locked' ? this.makeProLocked(reason) : this.makeEmpty(reason);
     notice.dataset.briefState = state;
+    if (id === 'signals' && state === 'unavailable' && this.signalBreakdownBody && this.signalRecentBody) {
+      this.currentSignalDetails = 'unavailable';
+      this.signalBreakdownBody.replaceChildren(notice);
+      this.signalRecentBody.replaceChildren();
+      return;
+    }
     body.querySelector('.cdp-refresh-failure')?.remove();
     const previous = briefSectionState({ id, title: '', card, body });
     if (state === 'unavailable' && previous === 'ready') {
@@ -378,6 +388,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public show(country: string, code: string, score: CountryScore | null, signals: CountrySignalCounts | null): void {
+    this.qualifiedCountrySignals = null;
     this.abortController.abort();
     this.abortController = new AbortController();
     this.currentCode = code;
@@ -396,7 +407,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.renderSkeleton(country, code, score, signals);
     if (this.source?.mode === 'host') this.renderAtlasExposure(true);
     this.content.scrollTop = 0;
-    this.open();
+    // open() reports only a closed-to-open change. Opened by showLoading(),
+    // the panel now has its real country, so report that too.
+    if (!this.open()) this.onStateChangeCallback?.({ visible: true, maximized: this.isMaximizedState });
   }
 
   public hide(origin: OverlayCloseOrigin = 'control'): void {
@@ -498,6 +511,36 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.signalBreakdownBody || !this.signalRecentBody) return;
     this.renderSignalBreakdown(details);
     this.renderRecentSignals(details.recentHigh);
+  }
+
+  public getQualifiedCountrySignals() { return this.qualifiedCountrySignals; }
+
+  public clearQualifiedCountrySignals(): void {
+    this.qualifiedCountrySignals = null;
+    this.currentSignalDetails = 'unavailable';
+    this.signalBreakdownBody?.replaceChildren(this.makeEmpty('Qualified country observations are unavailable.'));
+    this.signalRecentBody?.replaceChildren();
+    this.signalsBody?.querySelector('.cdp-qualified-coverage')?.remove();
+  }
+
+  public updateQualifiedCountrySignals(value: import('../../shared/country-signal-observations').QualifiedCountrySignals): void {
+    if (value.countryCode !== this.currentCode || this.signal.aborted) return;
+    this.qualifiedCountrySignals = value;
+    if (value.details) this.updateSignalDetails(value.details);
+    else {
+      this.currentSignalDetails = 'unavailable';
+      this.signalBreakdownBody?.replaceChildren(this.makeEmpty('Qualified country observations are unavailable. This is not zero activity.'));
+      this.signalRecentBody?.replaceChildren();
+    }
+    const notes = this.el('div', 'cdp-qualified-coverage');
+    notes.append(this.el('p', 'cdp-economic-source', 'Included country observations. Source windows vary; this is not a 24-hour total.'));
+    for (const family of value.families) {
+      const sampling = family.sampledRows === null ? '' : ` Included source rows: ${family.sampledRows}; omitted by local bounds: ${family.omittedRows ?? 'unknown'}.`;
+      const upstream = family.sampleBeforeCountryFilter ? ' The upstream sample was selected before country filtering.' : '';
+      notes.append(this.el('p', 'cdp-economic-source', `${family.family}: ${family.state}${family.partial ? ' (partial)' : ''}. ${family.scope}. ${family.attribution}. Source time: ${family.snapshotAt ?? 'unknown'}.${family.observationWindow ? ` ${family.observationWindow}.` : ''}${sampling}${upstream} ${family.reason ?? ''}`));
+    }
+    this.signalsBody?.querySelector('.cdp-qualified-coverage')?.remove();
+    this.signalsBody?.append(notes);
   }
 
   public updateNews(headlines: NewsItem[]): void {
@@ -636,6 +679,20 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       void this.renderFiveFactorScorecard(code, this.fiveFactorScorecardBody, request.signal);
     }
     void this.resilienceWidget?.refresh();
+  }
+
+  public async settleHostedOpeningReads(): Promise<void> {
+    const signal = this.signal;
+    signal.throwIfAborted();
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => reject(signal.reason);
+      signal.addEventListener('abort', abort, { once: true });
+      void Promise.allSettled([this.hostedAtlasRead, this.hostedResilienceRead]).then(() => {
+        signal.removeEventListener('abort', abort);
+        resolve();
+      });
+    });
+    signal.throwIfAborted();
   }
 
   public syncCountryPremiumSectionsAccess(hasAccess: boolean): void {
@@ -881,6 +938,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     grid.append(this.factItem(t('countryBrief.facts.currencies'), data.currencies.join(', ')));
 
     this.factsBody.append(grid);
+    this.factsBody.append(this.el('p', 'cdp-economic-source', 'Configured structured facts source: Wikidata.'));
+    if (data.wikipediaSummary.trim()) {
+      this.factsBody.append(this.el('p', 'cdp-measure-note', 'Description: Wikipedia.'));
+    }
+    this.factsBody.append(this.el('p', 'cdp-measure-note', 'Reference years are not supplied.'));
   }
 
   public updateHousingCycle(data: {
@@ -966,6 +1028,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.proMetricBox('Status', data.sanctionsActive ? 'Active' : 'None'),
     );
     this.sanctionsBody.append(grid);
+    this.sanctionsBody.append(
+      this.el('p', 'cdp-economic-source', 'Configured dataset sources: OFAC SDN and Consolidated lists; Global Affairs Canada consolidated sanctions.'),
+      this.el('p', 'cdp-measure-note', 'Count includes merged records linked to this country. Active means the count is greater than zero, not a legal assessment of the country.'),
+      this.el('p', 'cdp-measure-note', 'Per-source contributions, coverage and publication dates are not supplied here.'),
+    );
   }
 
   public updateComtradeFlows(flows: Array<{ partnerName: string; cmdDesc: string; tradeValueUsd: number; yoyChange: number }> | null): void {
@@ -1315,12 +1382,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.energyBody) return;
     this.energyBody.replaceChildren();
 
+    const sourceNotes: HTMLElement[] = [];
+    if (!data.jodiOilAvailable) sourceNotes.push(this.el('p', 'cdp-economic-source', 'JODI oil data not supplied in this profile.'));
+    if (!data.jodiGasAvailable) sourceNotes.push(this.el('p', 'cdp-economic-source', 'JODI gas data not supplied in this profile.'));
+    if (!data.ieaStocksAvailable) sourceNotes.push(this.el('p', 'cdp-economic-source', 'IEA oil stocks data not supplied in this profile.'));
+
     const hasAny = data.mixAvailable || data.jodiOilAvailable || data.ieaStocksAvailable
       || data.jodiGasAvailable || data.gasStorageAvailable || data.electricityAvailable
       || data.emberAvailable || data.sprAvailable || data.importShareAvailable;
 
     if (!hasAny) {
-      this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'));
+      this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'), ...sourceNotes);
       this.renderAtlasExposure();
       return;
     }
@@ -1562,7 +1634,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (data.emberAvailable) {
       const section = this.el('div', '');
       section.style.cssText = 'margin-top:10px';
-      const monthLabel = data.emberDataMonth || 'latest';
+      const monthLabel = data.emberDataMonth.trim() ? data.emberDataMonth : 'observation month not supplied';
       section.append(this.el('div', 'cdp-subtitle', `Monthly Generation Mix (${monthLabel})`));
 
       const segments: Array<{ label: string; color: string; value: number }> = [
@@ -1628,6 +1700,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.energyBody.append(this.renderShockScenarioWidget());
     }
 
+    this.energyBody.append(...sourceNotes);
     this.renderAtlasExposure();
   }
 
@@ -1636,7 +1709,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const iso2 = this.currentCode;
     if (!iso2 || iso2.length !== 2) return;
     if (this.source?.mode === 'host') {
-      if (hostRefresh) void this.loadHostedAtlas(iso2, ++this.atlasRevision, this.signal);
+      if (hostRefresh) this.hostedAtlasRead = this.loadHostedAtlas(iso2, ++this.atlasRevision, this.signal);
       return;
     }
     const signal = this.signal;
@@ -1755,6 +1828,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const stores = data.facilities?.facilities.filter(f => f.country === code) ?? [];
     const crises = data.shortages?.shortages.filter(s => s.country === code && !s.resolvedAt) ?? [];
     const confirmed = crises.filter(s => s.severity === 'confirmed').length;
+    if (data.shortages && !data.shortages.upstreamUnavailable && crises.length === 0) this.hostedAtlasBody?.append(this.makeEmpty(`No active fuel shortages in ${code} in the loaded registry.`));
     this.appendAtlasRow(`Pipelines touching ${code}`, `${pipes.length} pipeline${pipes.length === 1 ? '' : 's'}`, pipes.map(p => ({ id: p.id, label: p.name, event: 'energy:open-pipeline-detail', detail: { pipelineId: p.id } })));
     this.appendAtlasRow(`Storage in ${code}`, `${stores.length} facilit${stores.length === 1 ? 'y' : 'ies'}`, stores.map(f => ({ id: f.id, label: f.name, event: 'energy:open-storage-facility-detail', detail: { facilityId: f.id } })));
     this.appendAtlasRow(`Fuel shortages in ${code}`, confirmed ? `${confirmed} confirmed · ${crises.length - confirmed} watch` : `${crises.length} watch`, crises.map(s => ({ id: s.id, label: `${s.product} — ${s.shortDescription}`, event: 'energy:open-fuel-shortage-detail', detail: { shortageId: s.id } })));
@@ -2918,7 +2992,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (_signals) {
       this.currentSignals = _signals;
       this.signalsBody?.querySelector('.cdp-signal-chips')?.replaceWith(this.buildSignalChipsElement(_signals));
-      if (!this.currentSignalDetails) this.renderInitialSignalBreakdown(_signals);
+      if (!this.currentSignalDetails) this.signalBreakdownBody?.replaceChildren(this.makeEmpty('Qualified country observations are loading.'));
     }
     if (!this.scoreCard) return;
     // Partial DOM update: score number, level color, trend, component bars only
@@ -3249,6 +3323,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const bodyGrid = this.el('div', 'cdp-grid');
     const [signalsCard, signalBody] = this.sectionCard('signals', t('countryBrief.activeSignals'));
     const [timelineCard, timelineBody] = this.sectionCard('timeline', t('countryBrief.timeline'));
+    let historyCard: HTMLElement | undefined;
+    if (this.source?.mode !== 'host') {
+      const [card, body] = this.sectionCard('history', t('countryHistory.title'));
+      historyCard = card;
+      new CountryHistory(body, code, this.signal);
+    }
     const [newsCard, newsBody] = this.sectionCard('news', t('countryBrief.topNews'));
     const [militaryCard, militaryBody] = this.sectionCard('military', t('countryBrief.militaryActivity'));
     const [infraCard, infraBody] = this.sectionCard('infrastructure', t('countryBrief.infrastructure'));
@@ -3398,7 +3478,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(fiveFactorScorecardCard, factsCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), signalsCard, timelineCard, newsCard, militaryCard, sanctionsCard, economicCard, housingCard, debtCard, comtradeCard, tariffCard, tradeCard, costShockCalcCard, productImportsCard, marketsCard, energyCard, maritimeCard, commodityVulnerabilityCard, foodStocksCard, infraCard, demographicsCard);
+    bodyGrid.append(fiveFactorScorecardCard, factsCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), signalsCard, timelineCard, ...(historyCard ? [historyCard] : []), newsCard, militaryCard, sanctionsCard, economicCard, housingCard, debtCard, comtradeCard, tariffCard, tradeCard, costShockCalcCard, productImportsCard, marketsCard, energyCard, maritimeCard, commodityVulnerabilityCard, foodStocksCard, infraCard, demographicsCard);
     const lead = this.el('div', 'cdp-overview-lead');
     lead.append(briefCard, summaryGrid);
     shell.append(header, lead, bodyGrid);
@@ -3522,9 +3602,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         t,
       ));
     } catch (error) {
-      console.warn('[CountryDeepDivePanel] demographics capability load failed', error);
-      const aborted = (error as { name?: string })?.name === 'AbortError' || signal.aborted;
+      const aborted = (error as { name?: string })?.name === 'AbortError' || signal.aborted || !stillCurrent();
       if (!aborted) {
+        console.warn('[CountryDeepDivePanel] demographics capability load failed', error);
         this.captureCountryDeepDiveLoadFailure(error, code, {
           message: 'Demographics capability load failed',
           widget: 'demographics-capability',
@@ -3590,9 +3670,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       if (!stillCurrent() || !this.canRequestPremium()) return;
       body.replaceChildren(renderFiveFactorScorecardSection(response, t));
     } catch (error) {
-      console.warn('[CountryDeepDivePanel] five-factor scorecard load failed', error);
       const cancelled = signal.aborted || accessSignal.aborted || !stillCurrent();
       if (!cancelled) {
+        console.warn('[CountryDeepDivePanel] five-factor scorecard load failed', error);
         this.captureCountryDeepDiveLoadFailure(error, code, {
           message: 'Five-factor scorecard load failed',
           widget: 'five-factor-scorecard',
@@ -3702,7 +3782,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       slot.replaceChildren(this.makeEmpty(t('countryBrief.resilienceScoreUnavailable')));
     };
 
-    import('@/components/ResilienceWidget')
+    this.hostedResilienceRead = import('@/components/ResilienceWidget')
       .then(({ ResilienceWidget }) => {
         if (requestId !== this.resilienceWidgetRequestId) return;
         if (typeof ResilienceWidget !== 'function') throw new Error('ResilienceWidget export is unavailable.');
@@ -3860,7 +3940,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private renderInitialSignals(signals: CountrySignalCounts | null): void {
-    this.currentSignalDetails = null;
     if (!this.signalsBody) return;
     this.signalsBody.replaceChildren();
     if (!signals) { this.signalsBody.append(this.makeEmpty('Dashboard signal observations are unavailable in this host.')); return; }
@@ -3872,22 +3951,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.signalRecentBody = this.el('div', 'cdp-signal-recent');
     this.signalsBody.append(this.signalBreakdownBody, this.signalRecentBody);
 
-    if (this.renderInitialSignalBreakdown(signals)) this.signalRecentBody.append(this.makeLoading('Loading top high-severity signals…'));
-  }
-
-  private renderInitialSignalBreakdown(signals: CountrySignalCounts): boolean {
-    if (!this.signalBreakdownBody) return false;
-    const sum = (...values: Array<number | null>) => values.some(value => value === null) ? null : values.reduce<number>((total, value) => total + (value ?? 0), 0);
-    const critical = sum(signals.criticalNews, signals.activeStrikes);
-    const high = sum(signals.militaryFlights, signals.militaryVessels, signals.protests);
-    const medium = sum(signals.outages, signals.cyberThreats, signals.aisDisruptions, signals.radiationAnomalies);
-    const low = sum(signals.earthquakes, signals.temporalAnomalies, signals.satelliteFires);
-    if (critical === null || high === null || medium === null || low === null) {
-      this.signalBreakdownBody.replaceChildren(this.makeEmpty('Aggregate severity and recent high-severity observations are unavailable. Military counts alone do not establish these totals.'));
-      return false;
-    }
-    this.renderSignalBreakdown({ critical, high, medium, low, recentHigh: [] });
-    return true;
+    if (this.qualifiedCountrySignals?.countryCode === this.currentCode) this.updateQualifiedCountrySignals(this.qualifiedCountrySignals);
+    else if (this.currentSignalDetails && this.currentSignalDetails !== 'unavailable') this.updateSignalDetails(this.currentSignalDetails);
+    else this.signalBreakdownBody.append(this.makeEmpty('Aggregate severity and recent high-severity observations are unavailable. Qualified country observations are loading.'));
   }
 
   private addSignalChip(container: HTMLElement, count: number | null, label: string, icon: string, cls: string, tooltip?: string): void {
@@ -3960,7 +4026,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         this.badge(item.severity.toUpperCase(), `cdp-severity-badge sev-${item.severity}`),
       );
       const desc = this.el('div', 'cdp-signal-desc', item.description);
-      const ts = this.el('div', 'cdp-signal-time', this.formatRelativeTime(item.timestamp));
+      const ts = this.el('div', 'cdp-signal-time', item.timestamp ? this.formatRelativeTime(item.timestamp) : 'Source time unknown');
+      if (item.source) row.append(this.el('div', 'cdp-economic-source', item.source));
       row.append(line, desc, ts);
       this.signalRecentBody.append(row);
     }
@@ -4115,8 +4182,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.map.flashAssets(type, assets.map((asset) => asset.id));
   }
 
-  private open(): void {
-    if (this.panel.classList.contains('active')) return;
+  /** Returns true when the panel was closed and is now open. */
+  private open(): boolean {
+    if (this.panel.classList.contains('active')) return false;
     this.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.panel.classList.add('active');
     this.panel.setAttribute('aria-hidden', 'false');
@@ -4129,6 +4197,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       if (this.panel.classList.contains('active')) this.closeButton.focus();
     });
     this.onStateChangeCallback?.({ visible: true, maximized: this.isMaximizedState });
+    return true;
   }
 
   private close(): void {

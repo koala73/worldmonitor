@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { fetchJapanXOutcome, JAPAN_X_MAX_TEXT_LENGTH } from './japan-x.mjs';
 
 const {
   parseProxyConfig,
@@ -1986,13 +1987,15 @@ function crossStraitSnapshotStatus(hasMnd, anyError, usableMndReportingDays) {
   return 'healthy';
 }
 
-function persistedStringsWithinLimit(value) {
+function persistedStringsWithinLimit(value, longTextCandidates = null) {
   if (typeof value === 'string') return value.length <= MAX_PERSISTED_STRING_LENGTH;
-  if (Array.isArray(value)) return value.every(persistedStringsWithinLimit);
+  if (Array.isArray(value)) return value.every((row) => persistedStringsWithinLimit(row, longTextCandidates));
   if (value && typeof value === 'object') {
     return Object.entries(value).every(([key, nested]) => (
       key.length <= MAX_PERSISTED_STRING_LENGTH
-      && persistedStringsWithinLimit(nested)
+      && (key === 'text' && longTextCandidates?.has(value)
+        ? typeof nested === 'string' && nested.length <= JAPAN_X_MAX_TEXT_LENGTH
+        : persistedStringsWithinLimit(nested, longTextCandidates))
     ));
   }
   return true;
@@ -2091,18 +2094,19 @@ export function buildCrossStraitActivitySnapshot({
       .map((row) => [row.id, row]),
   );
   const hasCurrentJapanIndex = japanOutcome?.ok === true;
+  const hasCurrentModIndex = hasCurrentJapanIndex && japanOutcome?.transportPath !== 'x_api';
   const availableJapanUrls = new Set(japanOutcome?.availableDocumentUrls ?? []);
   const japan = REVIEWED_JAPAN_MOD_OBSERVATIONS.map((row) => {
     const previous = previousJapanById.get(row.id);
     const previousPresence = previous?.indexPresence;
-    const indexPresence = hasCurrentJapanIndex
+    const indexPresence = hasCurrentModIndex
       ? japanIndexPresence(row.sourceUrl, availableJapanUrls)
       : (previousPresence === 'present'
         || previousPresence === 'not_observed_in_current_index'
         || previousPresence === 'unknown'
         ? previousPresence
         : 'unknown');
-    const indexCoverage = hasCurrentJapanIndex
+    const indexCoverage = hasCurrentModIndex
       ? japanIndexCoverage(row.sourceUrl, availableJapanUrls)
       : (previous?.indexCoverage === 'covered_by_current_index'
         || previous?.indexCoverage === 'not_covered_by_current_index'
@@ -2193,7 +2197,7 @@ export function buildCrossStraitActivitySnapshot({
       // the record self-sufficient.
       lastAttemptAt: generatedAt,
       lastSuccessAt: japanOutcome?.ok
-        ? generatedAt
+        ? (japanOutcome.acquiredAt ?? generatedAt)
         : previousJapanSource?.lastSuccessAt ?? latestSourceSuccess(previousSnapshot, 'japan-mod'),
       admittedDocumentCount: REVIEWED_JAPAN_MOD_OBSERVATIONS.length,
       ...(Number.isInteger(unreviewedCandidateCount)
@@ -2203,6 +2207,7 @@ export function buildCrossStraitActivitySnapshot({
       // consistent with the retained `lastSuccessAt` they were discovered by;
       // a failure publishes no new candidate and never re-dates an old one.
       ...(japanCandidates.length > 0 ? { candidates: japanCandidates } : {}),
+      ...(japanOutcome?.xDiscovery ? { xDiscovery: japanOutcome.xDiscovery } : {}),
       ...(japanShadowIndexProbe ? { shadowIndexProbe: japanShadowIndexProbe } : {}),
     },
   ];
@@ -2639,6 +2644,8 @@ export async function fetchCrossStraitActivitySnapshot({
   proxyRequestFn = proxyFetch,
   proxyConnectFn = proxyConnectTunnel,
   proxyConnectProbeFn = null,
+  japanXToken = process.env.X_BEARER_TOKEN || '',
+  japanXBudget,
 } = {}) {
   const generatedAt = new Date(now).toISOString();
   const previousMnd = (previousSnapshot?.observations ?? [])
@@ -2687,12 +2694,20 @@ export async function fetchCrossStraitActivitySnapshot({
     ?? (previousSourceHealth?.id === CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.id
       ? previousSourceHealth
       : null);
-  const japanOutcomePromise = fetchJapanIndexOutcome(fetchFn, sleepFn, {
-    proxyFetchFn: resolvedJapanProxyFetchFn,
-    proxyConnectProbeFn: resolvedJapanProxyConnectProbeFn,
-    now,
-    previousShadowIndexProbe: previousJapanSource?.shadowIndexProbe ?? null,
-  });
+  const japanOutcomePromise = japanXToken.trim()
+    ? fetchJapanXOutcome({
+        token: japanXToken,
+        now,
+        previousSource: previousJapanSource,
+        fetchFn,
+        budget: japanXBudget,
+      })
+    : fetchJapanIndexOutcome(fetchFn, sleepFn, {
+        proxyFetchFn: resolvedJapanProxyFetchFn,
+        proxyConnectProbeFn: resolvedJapanProxyConnectProbeFn,
+        now,
+        previousShadowIndexProbe: previousJapanSource?.shadowIndexProbe ?? null,
+      });
   let discoveredCount = 0;
   let requestCount = 0;
   let listRequestCount = 0;
@@ -2946,7 +2961,11 @@ export function validateCrossStraitActivitySnapshot(snapshot) {
     || snapshot.coverage.usableMndReportingDays < 1
     || snapshot.baselines?.sourceId !== 'taiwan-mnd'
     || snapshot.baselines?.semantics !== 'prior-usable-reporting-days-excluding-current'
-    || !persistedStringsWithinLimit(snapshot)
+    || !persistedStringsWithinLimit(snapshot, new Set(snapshot.sources
+      .filter((source) => source?.id === 'japan-mod')
+      .flatMap((source) => Array.isArray(source.candidates) ? source.candidates : [])
+      .filter((candidate) => candidate?.admission === 'manual_review_required'
+        && /^https:\/\/x\.com\/jointstaffpa\/status\/[1-9]\d{0,19}$/.test(candidate.sourceUrl))))
     || serializedBytes(snapshot) > CROSS_STRAIT_ACTIVITY_MAX_SERIALIZED_BYTES
   ) return false;
   const mnd = snapshot.observations.filter((row) => row?.sourceId === 'taiwan-mnd');

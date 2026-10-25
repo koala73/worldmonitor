@@ -283,6 +283,7 @@ describe('durable last-good wiring (#7084)', () => {
       'const s = globalThis.__digestRedisStub;',
       'export async function readCachedJson(k) { s.readCalls.push(k); return s.reads.get(k) ?? { status: "miss" }; }',
       'export async function setCachedJson(k, v, t) { s.writes.push({ key: k, value: v, ttl: t }); return s.writeResult; }',
+      'export async function setCachedJsonIfAbsent() { return false; }',
       'export async function cachedFetchJson() { return null; }',
       'export async function cachedFetchJsonWithMeta(k, _t, _f, _n, o) { s.fetchKeys.push(k); const r = s.fetchMeta ?? { data: null, source: "skipped", leader: false }; if (r.data && r.source === "fresh" && r.leader) await o?.onPositiveResult?.(r.data); return r; }',
       'export async function getCachedJson() { return null; }',

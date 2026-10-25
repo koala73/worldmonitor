@@ -6,9 +6,10 @@
  *   get_bilateral_tariff -> GET /api/trade/v1/get-bilateral-tariff
  *   get_us_import_duty   -> GET /api/trade/v1/get-us-import-duty
  *
- * Each tool signs one gateway fetch and returns the route's answer unchanged,
- * so coverage, fault and caching rules live in the handlers only. The cached
- * `get_tariff_trends` bundle keeps serving the seeded US MFN series.
+ * Each tool signs one gateway fetch and adds a `coverage` object to the route's
+ * answer. Fault and caching rules live in the handlers only. The US MFN
+ * series is served here only: the free-account `get_price_and_debt_indicators`
+ * bundle (formerly get_tariff_trends) dropped it (#9301).
  *
  * Upstream budget: these routes read WITS or USITC on a cache miss. Over MCP
  * that work is bounded by the caller's own metering (Pro daily quota, or 2
@@ -122,12 +123,116 @@ function productGroupParam(raw: unknown, operation: string): string {
   return group === 'all' ? '' : group;
 }
 
+// ---------------------------------------------------------------------------
+// coverage: what answered and where it stops, in data rather than prose.
+//
+// The two schedule tools answer from WTO/WITS schedules with dataset-specific
+// coverage and never carry Section 301 or 232 duties; get_us_import_duty answers from
+// the live HTS with them. An agent that reads only the payload must still be
+// able to tell those apart, so every answer except an upstream outage
+// (upstreamUnavailable: true, which answers nothing) carries `coverage`.
+// It is added here, at the MCP layer, because the route bodies are shared
+// with REST callers whose OpenAPI contract does not include it.
+// ---------------------------------------------------------------------------
+
+const US_CODE = '840';
+const SCHEDULE_EXCLUDED_DUTIES = ['SECTION_301', 'SECTION_232', 'IEEPA', 'ANTI_DUMPING', 'COUNTERVAILING'];
+const US_DUTY_EXCLUDED_DUTIES = ['IEEPA', 'ANTI_DUMPING', 'COUNTERVAILING'];
+const US_SEE_ALSO = {
+  tool: 'get_us_import_duty',
+  reason: 'Schedule rates leave out Section 301 and 232 duties; get_us_import_duty returns the US duty in force, including them.',
+};
+
+type CoverageRequest =
+  | { tool: 'get_tariff_averages'; reporter: string; partner: string; productGroup: string }
+  | { tool: 'get_bilateral_tariff'; reporter: string }
+  | { tool: 'get_us_import_duty' };
+
+function positiveYear(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function newestDatapointYear(datapoints: unknown): number | undefined {
+  if (!Array.isArray(datapoints)) return undefined;
+  let newest: number | undefined;
+  for (const point of datapoints) {
+    const year = positiveYear((point as { year?: unknown } | null)?.year);
+    if (year !== undefined && (newest === undefined || year > newest)) newest = year;
+  }
+  return newest;
+}
+
+/** The `coverage` object for one successful tariff answer. */
+export function buildCoverage(request: CoverageRequest, body: Record<string, unknown>): Record<string, unknown> {
+  if (request.tool === 'get_us_import_duty') {
+    const asOf = typeof body.htsRelease === 'string' && body.htsRelease !== '' ? body.htsRelease : undefined;
+    // Chapter 99 duties are joined from a seeded catalog; unless the route
+    // confirms it was read, the answer is base rates only and must not claim them.
+    const loaded = body.additionalDutiesLoaded === true;
+    return {
+      dataset: 'USITC_HTS',
+      rateBasis: 'CURRENT_DUTY',
+      includesUnilateralDuties: loaded,
+      excludedDutyTypes: loaded ? [...US_DUTY_EXCLUDED_DUTIES] : ['SECTION_301', 'SECTION_232', ...US_DUTY_EXCLUDED_DUTIES],
+      ...(asOf !== undefined ? { asOf } : {}),
+    };
+  }
+  let dataset = 'WITS_TRAINS';
+  let latestYear: number | undefined;
+  if (request.tool === 'get_tariff_averages') {
+    if ((request.partner === '' || request.partner === WORLD_CODE) && request.productGroup === '') dataset = 'WTO_MFN';
+    latestYear = positiveYear(body.coverageEndYear) ?? newestDatapointYear(body.datapoints);
+  } else {
+    latestYear = positiveYear(body.year);
+  }
+  return {
+    dataset,
+    rateBasis: 'SCHEDULE',
+    includesUnilateralDuties: false,
+    excludedDutyTypes: [...SCHEDULE_EXCLUDED_DUTIES],
+    ...(latestYear !== undefined ? { latestYear } : {}),
+    ...(request.reporter === US_CODE ? { seeAlso: { ...US_SEE_ALSO } } : {}),
+  };
+}
+
+function coverageSchema(vintage: 'latestYear' | 'asOf'): Record<string, unknown> {
+  const properties: Record<string, unknown> = {
+    dataset: { type: 'string', enum: vintage === 'asOf' ? ['USITC_HTS'] : ['WTO_MFN', 'WITS_TRAINS'], description: 'Dataset consulted; check unavailableReason before trusting the rates.' },
+    rateBasis: { type: 'string', enum: vintage === 'asOf' ? ['CURRENT_DUTY'] : ['SCHEDULE'], description: 'SCHEDULE: a tariff schedule rate. CURRENT_DUTY: the duty in force today.' },
+    includesUnilateralDuties: { type: 'boolean', description: 'Whether Section 301 and 232 duties are in the answer.' },
+    excludedDutyTypes: { type: 'array', items: { type: 'string' }, description: 'Duty types the answer leaves out, e.g. SECTION_301, IEEPA, ANTI_DUMPING.' },
+  };
+  if (vintage === 'asOf') {
+    properties.asOf = { type: 'string', description: 'HTS revision that answered. Absent when the route named none.' };
+  } else {
+    properties.latestYear = { type: 'number', description: 'Newest year in the answer. Absent when no year answered.' };
+    properties.seeAlso = {
+      type: 'object',
+      description: 'Present when the reporter is the United States: the tool that returns the current US duty.',
+      properties: { tool: { type: 'string' }, reason: { type: 'string' } },
+      required: ['tool', 'reason'],
+      additionalProperties: false,
+    };
+  }
+  return {
+    type: 'object',
+    description: 'What answered and where it stops. Added by the MCP server on every answer except upstream outages.',
+    properties,
+    required: ['dataset', 'rateBasis', 'includesUnilateralDuties', 'excludedDutyTypes'],
+    additionalProperties: false,
+  };
+}
+
 export const TARIFF_TOOLS: ToolDef[] = [
   {
     name: 'get_tariff_averages',
+    _validateArgs: params => {
+      if (params.reporter !== undefined && params.reporter !== '') tradeCountryCode(params.reporter, 'get-tariff-averages', 'reporter', { allowEu: true });
+      if (params.partner !== undefined && params.partner !== '') tradeCountryCode(params.partner, 'get-tariff-averages', 'partner', { allowWorld: true });
+    },
     title: 'Average tariff rates',
     _outputBudgetBytes: 65536,
-    description: 'Average tariff one country applies, by year, optionally to one partner\'s goods and/or one product group. With no partner and no product group it is the WTO MFN average over all products (TP_A_0010) for any reporter. With a partner other than World, or a product group, it is the effectively applied average from UNCTAD TRAINS via World Bank WITS: tariffRate is the simple average (AHS-SMPL-AVRG, preferences counted), weightedRate the import-weighted one. Series run from about 1990 to 2023 for most reporters; US preferences are reported only through 2021. These are schedule rates: Section 301, 232 and other unilateral duties are NOT included (use get_us_import_duty for the US). unavailableReason NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault worth retrying later.',
+    description: 'Average tariff a country applies by year: schedule rates, no Section 301/232 duties. Read coverage.dataset and coverage.latestYear for the answering series and its latest year. With no partner and no product group it is the WTO MFN average over all products (TP_A_0010). With a partner other than World, or a product group, it is the effectively applied average from UNCTAD TRAINS via World Bank WITS: tariffRate is the simple average (AHS-SMPL-AVRG, preferences counted), weightedRate the import-weighted one. WTO MFN years follow the seeded provider series. WITS coverage varies by reporter, starting around 1990; US preferences are reported only through 2021. These are schedule rates: Section 301, 232 and other unilateral duties are NOT included. unavailableReason NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault worth retrying later.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -142,7 +247,7 @@ export const TARIFF_TOOLS: ToolDef[] = [
       },
       required: [],
     },
-    // Mirrors GetTariffTrendsResponse; _execute returns the route JSON unchanged.
+    // Mirrors GetTariffTrendsResponse; _execute adds only `coverage`.
     outputSchema: {
       type: 'object',
       properties: {
@@ -168,19 +273,20 @@ export const TARIFF_TOOLS: ToolDef[] = [
         unavailableReason: { type: 'string', description: 'Empty or TARIFF_TREND_UNAVAILABLE_REASON_UNSPECIFIED when served; otherwise why not.' },
         coverageStartYear: { type: 'number' },
         coverageEndYear: { type: 'number' },
+        coverage: coverageSchema('latestYear'),
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     _execute: async (params, base, context, execution) => {
       const operation = 'get-tariff-trends';
-      const query = new URLSearchParams({
-        reporting_country: params.reporter === undefined || params.reporter === ''
-          ? '840'
-          : tariffTrendsCountryCode(params.reporter, operation, 'reporter', { allowEu: true }),
-      });
-      if (params.partner !== undefined && params.partner !== '') {
-        query.set('partner_country', tariffTrendsCountryCode(params.partner, operation, 'partner', { allowWorld: true }));
-      }
+      const reporter = params.reporter === undefined || params.reporter === ''
+        ? US_CODE
+        : tariffTrendsCountryCode(params.reporter, operation, 'reporter', { allowEu: true });
+      const query = new URLSearchParams({ reporting_country: reporter });
+      const partner = params.partner === undefined || params.partner === ''
+        ? ''
+        : tariffTrendsCountryCode(params.partner, operation, 'partner', { allowWorld: true });
+      if (partner) query.set('partner_country', partner);
       const group = productGroupParam(params.product_group, operation);
       if (group) query.set('product_sector', group);
       const years = optionalInt(params.years, operation, 'years', 0, 30);
@@ -193,7 +299,8 @@ export const TARIFF_TOOLS: ToolDef[] = [
         signal: AbortSignal.timeout(12_000),
       }, execution);
       await assertMcpToolFetchOk(response, { operation, tool: 'get_tariff_averages', auth: context, execution });
-      return response.json();
+      const body = await response.json() as Record<string, unknown>;
+      return { ...body, ...(body.upstreamUnavailable !== true ? { coverage: buildCoverage({ tool: 'get_tariff_averages', reporter, partner, productGroup: group }, body) } : {}) };
     },
     _apiPaths: [
       'GET /api/trade/v1/get-tariff-trends',
@@ -201,9 +308,14 @@ export const TARIFF_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_bilateral_tariff',
+    _validateArgs: params => {
+      tradeCountryCode(params.reporter, 'get-bilateral-tariff', 'reporter', { allowEu: true });
+      tradeCountryCode(params.partner, 'get-bilateral-tariff', 'partner');
+      hsDigits(params.hs_code, 'get-bilateral-tariff', /^[0-9]{6}$/, '6 digits');
+    },
     title: 'Product tariff between two countries',
     _outputBudgetBytes: 65536,
-    description: 'Tariff one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. appliedRate is what the partner pays: the best preferential rate it qualifies for, else MFN (basis says which). mfnRate and preferentialRate are reported separately, with mfnAveRate an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (filingReporter 918). Year 0 means the latest year with data. Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties are NOT included, and TRAINS has no US preferences after 2021 and no US data after 2023 (use get_us_import_duty for the US). NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault.',
+    description: 'Tariff on one HS6 product between two countries: schedule rate through 2023, no Section 301/232 duties. The rate one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. appliedRate is what the partner pays: the best preferential rate it qualifies for, else MFN (basis says which). mfnRate and preferentialRate are reported separately, with mfnAveRate an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (filingReporter 918). Year 0 means the latest year with data. Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties are NOT included, and TRAINS has no US preferences after 2021 and no US data after 2023. NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -214,7 +326,7 @@ export const TARIFF_TOOLS: ToolDef[] = [
       },
       required: ['reporter', 'partner', 'hs_code'],
     },
-    // Mirrors GetBilateralTariffResponse; _execute returns the route JSON unchanged.
+    // Mirrors GetBilateralTariffResponse; _execute adds only `coverage`.
     outputSchema: {
       type: 'object',
       properties: {
@@ -238,13 +350,15 @@ export const TARIFF_TOOLS: ToolDef[] = [
         upstreamUnavailable: { type: 'boolean' },
         unavailableReason: { type: 'string' },
         filingReporter: { type: 'string', description: 'Code whose schedule answered, e.g. 918 for an EU member.' },
+        coverage: coverageSchema('latestYear'),
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     _execute: async (params, base, context, execution) => {
       const operation = 'get-bilateral-tariff';
+      const reporter = tradeCountryCode(params.reporter, operation, 'reporter', { allowEu: true });
       const query = new URLSearchParams({
-        reporting_country: tradeCountryCode(params.reporter, operation, 'reporter', { allowEu: true }),
+        reporting_country: reporter,
         partner_country: tradeCountryCode(params.partner, operation, 'partner'),
         hs_code: hsDigits(params.hs_code, operation, /^[0-9]{6}$/, '6 digits'),
       });
@@ -260,7 +374,8 @@ export const TARIFF_TOOLS: ToolDef[] = [
         signal: AbortSignal.timeout(25_000),
       }, execution);
       await assertMcpToolFetchOk(response, { operation, tool: 'get_bilateral_tariff', auth: context, execution });
-      return response.json();
+      const body = await response.json() as Record<string, unknown>;
+      return { ...body, ...(body.upstreamUnavailable !== true ? { coverage: buildCoverage({ tool: 'get_bilateral_tariff', reporter }, body) } : {}) };
     },
     _apiPaths: [
       'GET /api/trade/v1/get-bilateral-tariff',
@@ -268,9 +383,13 @@ export const TARIFF_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_us_import_duty',
+    _validateArgs: params => {
+      tradeCountryCode(params.partner, 'get-us-import-duty', 'partner');
+      hsDigits(params.hs_code, 'get-us-import-duty', /^[0-9]{6}([0-9]{2}){0,2}$/, '6, 8 or 10 digits');
+    },
     title: 'US import duty for a product',
     _outputBudgetBytes: 131072,
-    description: 'Current US duty on one product from one country: the live USITC Harmonized Tariff Schedule rates for each 8-digit line under hs_code, plus the chapter 99 Section 301 and 232 duties in force. Each additional duty has a status: APPLIES, CONDITIONAL (condition says what decides it), EXEMPT or SCHEDULED. estimatedRate adds only APPLIES duties to the base rate; estimateComplete is false when a specific duty, a condition or an unresolved preference program leaves it open. IEEPA duties are not collected and not reported; anti-dumping and countervailing duties are not included. additionalDutiesLoaded false means only base rates were available.',
+    description: 'Return the current US import duty for one product from one country: the live USITC Harmonized Tariff Schedule rates for each 8-digit line under hs_code, plus the chapter 99 Section 301 and 232 duties in force. Each additional duty has a status of APPLIES, CONDITIONAL (condition says what decides it), EXEMPT or SCHEDULED; estimatedRate adds only APPLIES duties to the base rate, and estimateComplete is false when a specific duty, a condition or an unresolved preference program leaves it open. IEEPA, anti-dumping and countervailing duties are not included; additionalDutiesLoaded=false means only base rates were available. Requires a paid plan; one live USITC lookup, weight 2 on API plans. hs_code is 6, 8 or 10 digits; partner is an alpha-2, alpha-3, M49 code or country name. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -279,7 +398,7 @@ export const TARIFF_TOOLS: ToolDef[] = [
       },
       required: ['hs_code', 'partner'],
     },
-    // Mirrors GetUsImportDutyResponse; _execute returns the route JSON unchanged.
+    // Mirrors GetUsImportDutyResponse; _execute adds only `coverage`.
     outputSchema: {
       type: 'object',
       properties: {
@@ -317,6 +436,7 @@ export const TARIFF_TOOLS: ToolDef[] = [
         sourceUrl: { type: 'string' },
         upstreamUnavailable: { type: 'boolean' },
         unavailableReason: { type: 'string' },
+        coverage: coverageSchema('asOf'),
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
@@ -333,7 +453,8 @@ export const TARIFF_TOOLS: ToolDef[] = [
         signal: AbortSignal.timeout(15_000),
       }, execution);
       await assertMcpToolFetchOk(response, { operation, tool: 'get_us_import_duty', auth: context, execution });
-      return response.json();
+      const body = await response.json() as Record<string, unknown>;
+      return { ...body, ...(body.upstreamUnavailable !== true ? { coverage: buildCoverage({ tool: 'get_us_import_duty' }, body) } : {}) };
     },
     // The seeded chapter 99 catalog the route joins with each live HTS read.
     _coverageKeys: [

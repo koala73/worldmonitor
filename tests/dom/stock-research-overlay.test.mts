@@ -41,6 +41,10 @@ const {
 
 function analysis(headlines: Array<Record<string, unknown>> = []) {
   return {
+    available: true,
+    fallback: false,
+    provider: 'openrouter',
+    model: '',
     ratingSummary: 'Rating summary',
     summary: 'Summary',
     newsSentiment: 0.25,
@@ -200,5 +204,176 @@ describe('stock research overlay overlapping opens', () => {
     await first;
     expect(analyzeSection()?.textContent).toContain('SECOND');
     expect(analyzeSection()?.textContent).not.toContain('FIRST');
+  });
+});
+
+describe('stock research overlay discloses AI-vs-template provenance (#5498)', () => {
+  const provenance = () => analyzeSection()?.querySelector('[data-analysis-provenance]') as HTMLElement | null;
+
+  it('labels a rules-based fallback template as such, above the summary', async () => {
+    analyzeStock.mockResolvedValue({ ...analysis(), provider: 'rules', fallback: true, model: '' });
+    await openStockResearchOverlay('AAPL');
+
+    expect(analyzeSection()?.dataset.analysisProvenance).toBe('rules-fallback');
+    expect(provenance()?.dataset.analysisProvenance).toBe('rules-fallback');
+    expect(provenance()?.textContent).toContain('Rules-based template');
+    // The disclosure precedes the prose it qualifies.
+    const section = analyzeSection()!;
+    const order = [...section.querySelectorAll('p')].map((p) => p.textContent ?? '');
+    expect(order.findIndex((t) => t.includes('Rules-based template'))).toBeLessThan(order.findIndex((t) => t.includes('Rating summary')));
+  });
+
+  it('treats provider "rules" as a fallback even if the flag is missing', async () => {
+    analyzeStock.mockResolvedValue({ ...analysis(), provider: 'rules', fallback: undefined });
+    await openStockResearchOverlay('AAPL');
+    expect(analyzeSection()?.dataset.analysisProvenance).toBe('rules-fallback');
+  });
+
+  it('labels the full-template response after blank model rating summaries as rules (#9338)', async () => {
+    const ratingSummary = 'BABA screens as hold with a bullish setup and a 60/100 score.';
+    analyzeStock.mockResolvedValue({
+      ...analysis(),
+      provider: 'rules',
+      model: '',
+      fallback: true,
+      ratingSummary,
+      summary: 'BABA screens as buy with a bullish setup and a 70/100 score.',
+      newsSentiment: undefined,
+    });
+    await openStockResearchOverlay('BABA');
+
+    expect(provenance()?.dataset.analysisProvenance).toBe('rules-fallback');
+    expect(provenance()?.textContent).toContain('Rules-based template');
+    expect(provenance()?.textContent).not.toMatch(/AI commentary ·/);
+    expect(analyzeSection()?.querySelectorAll('p')[1]?.textContent).toBe(ratingSummary);
+    expect(analyzeSection()?.querySelector('[data-news-overlay]')).toBeNull();
+  });
+
+  it('labels a recovered provider rating summary as model commentary (#9338)', async () => {
+    analyzeStock.mockResolvedValue({
+      ...analysis(),
+      provider: 'generic',
+      model: 'test-recovery-model',
+      ratingSummary: 'Model rating summary.',
+      summary: 'Model technical summary.',
+    });
+    await openStockResearchOverlay('BABA');
+
+    expect(provenance()?.dataset.analysisProvenance).toBe('model');
+    expect(provenance()?.textContent).toContain('AI commentary · generic (test-recovery-model)');
+    expect(analyzeSection()?.querySelectorAll('p')[1]?.textContent).toBe('Model rating summary.');
+    expect(analyzeSection()?.textContent).not.toContain('Rules-based template');
+  });
+
+  it('labels model-generated commentary with its provider and model', async () => {
+    analyzeStock.mockResolvedValue({ ...analysis(), provider: 'openrouter', model: 'meta-llama/llama-3.3-70b', fallback: false });
+    await openStockResearchOverlay('AAPL');
+
+    expect(analyzeSection()?.dataset.analysisProvenance).toBe('model');
+    expect(provenance()?.textContent).toContain('AI commentary');
+    expect(provenance()?.textContent).toContain('openrouter');
+    expect(provenance()?.textContent).toContain('meta-llama/llama-3.3-70b');
+    expect(analyzeSection()?.textContent).not.toContain('Rules-based template');
+  });
+
+  it('escapes provider and model strings', async () => {
+    analyzeStock.mockResolvedValue({ ...analysis(), provider: '<img src=x onerror=alert(1)>', model: '</p><script>1</script>', fallback: false });
+    await openStockResearchOverlay('AAPL');
+
+    expect(analyzeSection()?.querySelector('img, script')).toBeNull();
+    expect(provenance()?.textContent).toContain('<img src=x onerror=alert(1)>');
+  });
+
+  it('renders an unavailable state, not a template label, when the server computed nothing', async () => {
+    // buildEmptyAnalysisResponse: Yahoo history timeout, a no-history symbol,
+    // or an empty symbol. It carries fallback: true, but no indicators were
+    // computed, so "assembled from the indicators" would be false.
+    analyzeStock.mockResolvedValue({
+      available: false,
+      fallback: true,
+      provider: '',
+      model: '',
+      summary: '',
+      ratingSummary: '',
+      headlines: [],
+    });
+    await openStockResearchOverlay('AAPL');
+
+    expect(analyzeSection()?.dataset.analyzeState).toBe('unavailable');
+    expect(analyzeSection()?.dataset.analysisProvenance).toBeUndefined();
+    expect(document.querySelector('[data-analysis-provenance]')).toBeNull();
+    expect(analyzeSection()?.textContent).not.toContain('Rules-based template');
+    expect(analyzeSection()?.textContent).not.toContain('No analysis summary.');
+    expect(analyzeSection()?.textContent).toContain('No analysis is available for AAPL right now.');
+  });
+
+  it('renders no provenance line in the locked or error states', async () => {
+    hasPremiumAccess.mockReturnValue(false);
+    await openStockResearchOverlay('AAPL');
+    expect(document.querySelector('[data-analysis-provenance]')).toBeNull();
+    closeStockResearchOverlay();
+
+    hasPremiumAccess.mockReturnValue(true);
+    analyzeStock.mockRejectedValue(new Error('boom'));
+    await openStockResearchOverlay('AAPL');
+    expect(document.querySelector('[data-analysis-provenance]')).toBeNull();
+  });
+});
+
+describe('stock research overlay chart width', () => {
+  const stock = {
+    symbol: 'AAPL',
+    name: 'Apple Inc.',
+    display: 'AAPL',
+    price: 231.42,
+    change: 1.18,
+    sparkline: [220, 222, 221, 224, 226, 231.42],
+  };
+  const chartSvg = () => document.querySelector('.stock-research-chart svg');
+
+  function stubChartHostWidth(width: number) {
+    // happy-dom has no layout; give only the chart host a measured width.
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains('stock-research-chart') ? width : 0;
+      },
+    });
+    return () => {
+      if (original) Object.defineProperty(HTMLElement.prototype, 'clientWidth', original);
+    };
+  }
+
+  it('renders the chart at the room width on a narrow screen so labels keep their size', async () => {
+    const restore = stubChartHostWidth(296);
+    try {
+      await openStockResearchOverlay('AAPL', stock);
+      expect(chartSvg()?.getAttribute('width')).toBe('296');
+      expect(chartSvg()?.getAttribute('aria-label')).toBe('AAPL price chart');
+    } finally {
+      restore();
+    }
+  });
+
+  it('caps the chart at 640px when the room is wider', async () => {
+    const restore = stubChartHostWidth(874);
+    try {
+      await openStockResearchOverlay('AAPL', stock);
+      expect(chartSvg()?.getAttribute('width')).toBe('640');
+    } finally {
+      restore();
+    }
+  });
+
+  it('falls back to 640px when the room has no measured width', async () => {
+    await openStockResearchOverlay('AAPL', stock);
+    expect(chartSvg()?.getAttribute('width')).toBe('640');
+  });
+
+  it('keeps the no-series message when there is nothing to plot', async () => {
+    await openStockResearchOverlay('AAPL', { ...stock, sparkline: [231.42] });
+    expect(chartSvg()).toBeNull();
+    expect(document.querySelector('.stock-research-chart')?.textContent).toContain('No plottable Yahoo series');
   });
 });
