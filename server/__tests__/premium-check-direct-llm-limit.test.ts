@@ -32,9 +32,13 @@ vi.mock("../_shared/entitlement-check", async (importOriginal) => {
   };
 });
 
+// The premium resolver reads the desktop-aware principal (plan 2026-10-25-001
+// U4); the generic validator stays mocked for any sibling import.
 const validateUserApiKey = vi.fn();
+const validateUserApiKeyPrincipal = vi.fn();
 vi.mock("../_shared/user-api-key", () => ({
   validateUserApiKey: (...a: unknown[]) => validateUserApiKey(...a),
+  validateUserApiKeyPrincipal: (...a: unknown[]) => validateUserApiKeyPrincipal(...a),
 }));
 
 vi.mock("../_shared/mcp-internal-hmac", async (importOriginal) => {
@@ -84,7 +88,46 @@ beforeEach(() => {
   validateBearerToken.mockReset();
   getEntitlements.mockReset().mockResolvedValue(null);
   validateUserApiKey.mockReset().mockResolvedValue(null);
+  validateUserApiKeyPrincipal.mockReset().mockResolvedValue(null);
 });
+
+function principal(keyKind: "api" | "desktop", activeKeyRank?: number) {
+  return {
+    userId: "u2",
+    keyId: "key_2",
+    keyKind,
+    keyHash: "a".repeat(64),
+    ...(activeKeyRank === undefined ? {} : { activeKeyRank }),
+  };
+}
+
+function keyRequest(path = "/api/chat-analyst") {
+  return new Request(`https://www.worldmonitor.app${path}`, {
+    method: "POST",
+    headers: { "X-WorldMonitor-Key": "wm_key" },
+  });
+}
+
+/** Catalog-shaped Pro row: desktopKeyAccess on, two keys, no apiAccess. */
+function proRow(validUntil: number, extra: Record<string, unknown> = {}) {
+  return {
+    planKey: "pro_monthly",
+    features: {
+      tier: 1,
+      apiAccess: false,
+      apiRateLimit: 0,
+      maxDashboards: 10,
+      prioritySupport: false,
+      exportFormats: [],
+      mcpAccess: true,
+      desktopKeyAccess: true,
+      maxDesktopKeys: 2,
+      planLimits: { dashboardAiCallsPerDay: 500, desktopKeyRequestsPerDay: 7_500, desktopKeyBurstPerMinute: 120 },
+    },
+    validUntil,
+    ...extra,
+  };
+}
 
 describe("premium identity carries a direct-LLM limit for every arm", () => {
   test("active Pro Business bearer gets its catalog allowance", async () => {
@@ -145,7 +188,7 @@ describe("premium identity carries a direct-LLM limit for every arm", () => {
   });
 
   test("user-api-key caller with a LAPSED row loses premium access", async () => {
-    validateUserApiKey.mockResolvedValue({ userId: "u2" });
+    validateUserApiKeyPrincipal.mockResolvedValue(principal("api", 0));
     getEntitlements.mockResolvedValue(entitlement(2, 10_000, LAPSED()));
 
     const identity = await resolvePremiumCallerIdentity(
@@ -161,7 +204,7 @@ describe("premium identity carries a direct-LLM limit for every arm", () => {
   });
 
   test("user-api-key caller with an ACTIVE row keeps its catalog allowance", async () => {
-    validateUserApiKey.mockResolvedValue({ userId: "u2" });
+    validateUserApiKeyPrincipal.mockResolvedValue(principal("api", 0));
     getEntitlements.mockResolvedValue(entitlement(2, 10_000, ACTIVE()));
 
     const identity = await resolvePremiumCallerIdentity(
@@ -175,5 +218,94 @@ describe("premium identity carries a direct-LLM limit for every arm", () => {
       kind: "user-api-key",
       directLlmDailyLimit: 10_000,
     });
+  });
+});
+
+describe("desktop-key principals in the premium resolver (plan 2026-10-25-001 U4)", () => {
+  test("AE1: a desktop key of a covered Pro owner is premium with the Pro direct-LLM allowance", async () => {
+    validateUserApiKeyPrincipal.mockResolvedValue(principal("desktop"));
+    getEntitlements.mockResolvedValue(proRow(ACTIVE()));
+
+    const identity = await resolvePremiumCallerIdentity(keyRequest());
+
+    expect(identity).toMatchObject({
+      isPremium: true,
+      userId: "u2",
+      kind: "desktop-key",
+      quotaExempt: false,
+      directLlmDailyLimit: 500,
+      enterprisePlan: false,
+    });
+  });
+
+  test("AE2: a desktop key on an API-only path is denied without a billing upsell", async () => {
+    validateUserApiKeyPrincipal.mockResolvedValue(principal("desktop"));
+    getEntitlements.mockResolvedValue(proRow(ACTIVE()));
+
+    for (const path of ["/api/v2/shipping/route-intelligence", "/api/v2/shipping/webhooks", "/api/mcp", "/api/oauth/authorize"]) {
+      const identity = await resolvePremiumCallerIdentity(keyRequest(path));
+      expect(identity).toMatchObject({ isPremium: false });
+      expect((identity as { billingDenial?: unknown }).billingDenial).toBeUndefined();
+    }
+  });
+
+  test("AE4: a lapsed Pro owner's desktop key carries the lapse classification", async () => {
+    validateUserApiKeyPrincipal.mockResolvedValue(principal("desktop"));
+    getEntitlements.mockResolvedValue(proRow(LAPSED(), { billingStatus: "subscription_lapsed" }));
+
+    const identity = await resolvePremiumCallerIdentity(keyRequest());
+
+    expect(identity).toMatchObject({ isPremium: false, billingDenial: { code: "subscription_lapsed" } });
+  });
+
+  test("AE6: a downgraded owner's api key within maxDesktopKeys is a desktop principal; beyond it is denied", async () => {
+    getEntitlements.mockResolvedValue(proRow(ACTIVE()));
+
+    validateUserApiKeyPrincipal.mockResolvedValue(principal("api", 1));
+    expect(await resolvePremiumCallerIdentity(keyRequest())).toMatchObject({
+      isPremium: true,
+      kind: "desktop-key",
+      directLlmDailyLimit: 500,
+    });
+
+    validateUserApiKeyPrincipal.mockResolvedValue(principal("api", 2));
+    const beyond = await resolvePremiumCallerIdentity(keyRequest());
+    expect(beyond).toMatchObject({ isPremium: false });
+    expect((beyond as { billingDenial?: unknown }).billingDenial).toBeUndefined();
+
+    // A rank the cache does not carry yet fails closed, never open.
+    validateUserApiKeyPrincipal.mockResolvedValue(principal("api"));
+    expect(await resolvePremiumCallerIdentity(keyRequest())).toMatchObject({ isPremium: false });
+  });
+
+  test("AE7: a desktop key of an API-plan owner stays premium and is still denied on REST v2", async () => {
+    validateUserApiKeyPrincipal.mockResolvedValue(principal("desktop"));
+    getEntitlements.mockResolvedValue(entitlement(2, 10_000, ACTIVE()));
+
+    expect(await resolvePremiumCallerIdentity(keyRequest())).toMatchObject({
+      isPremium: true,
+      kind: "desktop-key",
+      directLlmDailyLimit: 10_000,
+    });
+    expect(await resolvePremiumCallerIdentity(keyRequest("/api/v2/shipping/route-intelligence"))).toMatchObject({
+      isPremium: false,
+    });
+  });
+
+  test("an api key whose owner has apiAccess keeps today's identity on API-only paths", async () => {
+    validateUserApiKeyPrincipal.mockResolvedValue(principal("api", 0));
+    getEntitlements.mockResolvedValue(entitlement(2, 10_000, ACTIVE()));
+
+    expect(await resolvePremiumCallerIdentity(keyRequest("/api/v2/shipping/route-intelligence"))).toMatchObject({
+      isPremium: true,
+      kind: "user-api-key",
+    });
+  });
+
+  test("a desktop key whose owner has no desktop entitlement (free) is denied", async () => {
+    validateUserApiKeyPrincipal.mockResolvedValue(principal("desktop"));
+    getEntitlements.mockResolvedValue(entitlement(0, undefined, ACTIVE()));
+
+    expect(await resolvePremiumCallerIdentity(keyRequest())).toMatchObject({ isPremium: false });
   });
 });

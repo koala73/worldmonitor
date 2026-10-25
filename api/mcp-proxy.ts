@@ -142,7 +142,7 @@ export function proxyUsageIdentityFor(req, identity) {
     : null;
   return buildUsageIdentity({
     sessionUserId: identity.userId,
-    isUserApiKey: identity.kind === 'user-api-key',
+    isUserApiKey: identity.kind === 'user-api-key' || identity.kind === 'desktop-key',
     enterpriseApiKey,
     widgetKey: null,
     clerkOrgId: null,

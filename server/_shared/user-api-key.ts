@@ -43,6 +43,14 @@ interface UserKeyCacheEntry {
   keyId: string;
   name?: string;
   keyKind: UserApiKeyKind;
+  /**
+   * 0-based rank among the owner's active keys of both kinds, oldest first
+   * (KTD5 / R5; computed by Convex `validateKeyByHash`). Optional: an entry
+   * written before Convex carried it, or by a backend that predates it, has
+   * none, and the desktop-scope consumers fail CLOSED on an absent rank. Same
+   * version stamp — the meaning of the existing fields is unchanged.
+   */
+  activeKeyRank?: number;
   scopes?: CompanyMonitoringApiScope[];
   companyMonitoringAccountId?: string;
 }
@@ -60,6 +68,8 @@ export interface UserKeyPrincipal {
   keyId: string;
   keyKind: UserApiKeyKind;
   keyHash: string;
+  /** See `UserKeyCacheEntry.activeKeyRank`; absent when Convex did not say. */
+  activeKeyRank?: number;
 }
 
 /**
@@ -137,7 +147,13 @@ function isCurrentUserKeyCacheEntry(value: unknown): value is UserKeyCacheEntry 
   if (!Object.prototype.hasOwnProperty.call(value, 'v') || value.v !== USER_API_KEY_CACHE_VERSION) return false;
   if (!hasNonEmptyString(value, 'userId') || !hasNonEmptyString(value, 'keyId')) return false;
   if (typeof value.keyKind !== 'string' || !USER_API_KEY_KINDS.has(value.keyKind)) return false;
+  if (value.activeKeyRank !== undefined && !isActiveKeyRank(value.activeKeyRank)) return false;
   return hasValidCompanyMonitoringBinding(value);
+}
+
+/** A rank is a non-negative integer; anything else is dropped, never trusted. */
+function isActiveKeyRank(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
 /**
@@ -161,6 +177,7 @@ function toCacheEntry(value: unknown): UserKeyCacheEntry | null {
     keyId: value.id as string,
     ...(typeof value.name === 'string' ? { name: value.name } : {}),
     keyKind,
+    ...(isActiveKeyRank(value.activeKeyRank) ? { activeKeyRank: value.activeKeyRank } : {}),
     ...(value.scopes === undefined ? {} : { scopes: value.scopes as CompanyMonitoringApiScope[] }),
     ...(value.companyMonitoringAccountId === undefined
       ? {}
@@ -234,6 +251,7 @@ export async function validateUserApiKeyPrincipal(key: string): Promise<UserKeyP
     // The hash is what the entry was looked up by; recomputing it here keeps
     // the function pure for callers that never saw the cache key.
     keyHash: await sha256Hex(key),
+    ...(entry.activeKeyRank === undefined ? {} : { activeKeyRank: entry.activeKeyRank }),
   };
 }
 

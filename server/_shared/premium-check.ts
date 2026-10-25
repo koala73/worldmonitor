@@ -17,7 +17,9 @@ import {
   TRUSTED_USER_ID_HEADER,
   getInternalMcpVerifiedNonce,
 } from './mcp-internal-hmac.js';
-import { validateUserApiKey } from './user-api-key.js';
+import { validateUserApiKeyPrincipal } from './user-api-key.js';
+import { isApiOnlyPath } from './api-only-paths.js';
+import { resolveUserKeyScope } from './desktop-key-principal.js';
 import {
   DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
   resolveActiveDirectLlmLimit,
@@ -43,7 +45,13 @@ export type PremiumCallerIdentity =
   | {
       isPremium: true;
       userId: string;
-      kind: 'user-api-key' | 'bearer';
+      /**
+       * `desktop-key` (plan 2026-10-25-001): a desktop principal — a `desktop`
+       * key, or a downgraded owner's `api` key within `maxDesktopKeys` — with
+       * Pro-session treatment: the owner's tier decides, limits come from the
+       * owner's plan, and the API-only set is denied before this arm.
+       */
+      kind: 'user-api-key' | 'bearer' | 'desktop-key';
       quotaExempt: false;
       /**
        * Daily direct-LLM budget for this caller. `null` is unlimited.
@@ -331,10 +339,13 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
     // treat them as invalid keys; fall through so a co-present bearer can still
     // grant premium, and fail closed for the user-key path itself.
     try {
-      const userKey = await validateUserApiKey(wmKey);
+      // Desktop-aware (KTD3): returns `api` and `desktop` keys with their
+      // kind; the scope resolver decides what the kind may reach (KTD4/KTD5).
+      const userKey = await validateUserApiKeyPrincipal(wmKey);
       if (userKey) {
         const ent = await getEntitlements(userKey.userId);
-        if (hasCurrentEntitlementCoverage(ent) && ent.features.apiAccess === true) {
+        const keyScope = resolveUserKeyScope(userKey, ent);
+        if (keyScope.scope === 'api' && ent) {
           return {
             isPremium: true,
             userId: userKey.userId,
@@ -344,6 +355,22 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
             enterprisePlan: ent.features.tier >= 3,
           };
         }
+        if (keyScope.scope === 'desktop' && ent) {
+          // KTD7: the API-only set is closed to desktop principals. This is a
+          // scope verdict, not a billing one, so it carries no retry/upsell tag.
+          if (isApiOnlyPath(new URL(request.url).pathname)) return DENIED;
+          return {
+            isPremium: true,
+            userId: userKey.userId,
+            kind: 'desktop-key',
+            quotaExempt: false,
+            directLlmDailyLimit: resolveActiveDirectLlmLimit(ent),
+            enterprisePlan: ent.features.tier >= 3,
+          };
+        }
+        // A key beyond the owner's desktop cap is a scope verdict too (AE6):
+        // the subscription is fine, this key is just not one of the oldest.
+        if (keyScope.scope === 'denied' && keyScope.reason === 'over_cap') return DENIED;
         // Preserve main's billing-verification tag on confirmed denials (#5622).
         return denyFor(ent);
       }

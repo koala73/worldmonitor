@@ -7,6 +7,10 @@ import {
 // Plain JS with a .d.ts beside it, written for exactly this import (the same
 // pairing as shared/bootstrap-tier-keys.js); lint-boundaries allows shared/.
 import { admitsDesktopKeyPrincipal } from '../shared/desktop-key-access.js';
+import {
+  rateLimitHeaders,
+} from './_api-key-rate-limit.js';
+import { reserveDesktopKeyBudget, resolveDesktopKeyLimits } from './_desktop-key-meter.js';
 
 const USER_API_KEY_RE = /^wm_[a-f0-9]{40}$/;
 // Plan 2026-10-25-001 (KTD3, KTD8). Cache-entry version for the shared
@@ -22,6 +26,10 @@ const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_MAX = 600;
 const RATE_LIMIT_PREFIX = 'rl:bootstrap-user-api-key:';
 const RATE_LIMIT_REDIS_TIMEOUT_MS = 1_000;
+// Mirrors DESKTOP_KEY_LIMIT_ERROR in server/_shared/desktop-key-principal.ts
+// (this self-contained entry cannot import server/); the gateway and
+// bootstrap must deny a key beyond the owner's cap with one sentence.
+const DESKTOP_KEY_LIMIT_ERROR = 'Desktop key limit reached for this account';
 const USER_KEY_CACHE_TTL_SECONDS = 60;
 const USER_KEY_NEGATIVE_CACHE_TTL_SECONDS = 60;
 const USER_KEY_CACHE_PREFIX = 'user-api-key:';
@@ -87,7 +95,16 @@ function isCurrentUserKeyCacheEntry(value) {
   if (!Object.prototype.hasOwnProperty.call(value, 'v') || value.v !== USER_API_KEY_CACHE_VERSION) return false;
   if (!hasNonEmptyString(value, 'userId') || !hasNonEmptyString(value, 'keyId')) return false;
   if (typeof value.keyKind !== 'string' || !USER_API_KEY_KINDS.has(value.keyKind)) return false;
+  if (value.activeKeyRank !== undefined && !isActiveKeyRank(value.activeKeyRank)) return false;
   return hasValidCompanyMonitoringBinding(value);
+}
+
+// 0-based rank among the owner's active keys of both kinds, oldest first
+// (plan 2026-10-25-001 KTD5; computed by Convex validateKeyByHash). Optional
+// on the entry: absent means Convex did not say, and the desktop-scope
+// consumers fail closed on it. A rank is a non-negative integer, else dropped.
+function isActiveKeyRank(value) {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
 // Convex validateKeyByHash returns `id`, not `keyId`; map it so the gateway
@@ -112,6 +129,7 @@ function toCacheEntry(value) {
     keyId: value.id,
     ...(typeof value.name === 'string' ? { name: value.name } : {}),
     keyKind: value.keyKind === undefined ? 'api' : value.keyKind,
+    ...(isActiveKeyRank(value.activeKeyRank) ? { activeKeyRank: value.activeKeyRank } : {}),
     ...(value.scopes === undefined ? {} : { scopes: value.scopes }),
     ...(value.companyMonitoringAccountId === undefined
       ? {}
@@ -339,6 +357,7 @@ export async function validateBootstrapUserApiKeyPrincipal(key) {
     keyId: entry.keyId,
     keyKind: entry.keyKind,
     keyHash,
+    ...(entry.activeKeyRank === undefined ? {} : { activeKeyRank: entry.activeKeyRank }),
   };
 }
 
@@ -484,6 +503,75 @@ const DESKTOP_KEY_POLICY = Object.freeze({
 
 export async function validateBootstrapUserApiAccess(userId) {
   return validateBootstrapEntitlement(userId, API_ACCESS_POLICY);
+}
+
+// Which scope a validated wm_ principal gets on bootstrap (plan
+// 2026-10-25-001 KTD4/KTD5), mirroring resolveUserKeyScope in
+// server/_shared/desktop-key-principal.ts:
+//   - `api` key whose owner has current apiAccess → { scope: 'api' } (today).
+//   - `desktop` key → the desktop check decides.
+//   - `api` key whose owner lacks apiAccess → the desktop check decides, and
+//     only the owner's OLDEST active keys up to `maxDesktopKeys` qualify, by
+//     the rank Convex reports. Beyond the cap is a 403 with one sentence; an
+//     absent rank keeps today's API-access failure (fail closed).
+// Failures are the same objects the two entitlement checks return, so the
+// caller renders them as before.
+export async function resolveBootstrapUserKeyAccess(principal) {
+  if (principal.keyKind !== 'desktop') {
+    const apiResult = await validateBootstrapUserApiAccess(principal.userId);
+    if (apiResult.ok) return { ok: true, scope: 'api', entitlement: apiResult.entitlement };
+    const desktopResult = await validateBootstrapDesktopKeyAccess(principal.userId);
+    if (!desktopResult.ok) return apiResult;
+    const rank = principal.activeKeyRank;
+    if (typeof rank !== 'number' || !Number.isInteger(rank) || rank < 0) return apiResult;
+    const cap = desktopResult.entitlement?.features?.maxDesktopKeys;
+    if (typeof cap === 'number' && Number.isInteger(cap) && rank < cap) {
+      return { ok: true, scope: 'desktop', entitlement: desktopResult.entitlement };
+    }
+    return { ok: false, status: 403, error: DESKTOP_KEY_LIMIT_ERROR, reason: 'desktop-key-limit' };
+  }
+  const desktopResult = await validateBootstrapDesktopKeyAccess(principal.userId);
+  if (!desktopResult.ok) return desktopResult;
+  return { ok: true, scope: 'desktop', entitlement: desktopResult.entitlement };
+}
+
+// Per-account desktop-key meter on bootstrap (KTD6): the same owner-keyed
+// day counter and burst bucket the gateway charges, through this entry's own
+// Redis client. Over limit → 429 with Retry-After (seconds to UTC midnight
+// for the day, to the next minute for the burst); a Redis error → the
+// rate-limit-degraded 503 this module already emits for its IP limiter.
+export async function checkBootstrapDesktopKeyBudget(userId, entitlement) {
+  const limits = resolveDesktopKeyLimits(entitlement);
+  const budget = await reserveDesktopKeyBudget({
+    userId,
+    dailyLimit: limits.dailyLimit,
+    burstPerMinute: limits.burstPerMinute,
+    pipeline: (commands) => redisPipeline(commands, RATE_LIMIT_REDIS_TIMEOUT_MS),
+  });
+  if (budget.ok === null) return rateLimitUnavailable('desktop-key-meter');
+  if (budget.ok === false) {
+    const daily = budget.limitType === 'daily';
+    return {
+      ok: false,
+      status: 429,
+      error: daily ? 'Daily request limit reached' : 'Too many requests',
+      body: {
+        error: daily ? 'Daily request limit reached' : 'Too many requests',
+        plan: entitlement?.planKey,
+        limit: budget.limit,
+        limit_type: budget.limitType,
+        reset: new Date(budget.resetMs).toISOString(),
+      },
+      headers: noStoreHeaders(rateLimitHeaders({
+        limit: budget.limit,
+        remaining: 0,
+        resetMs: budget.resetMs,
+        retryAfterSec: budget.retryAfterSec,
+        windowSec: daily ? 86_400 : 60,
+      })),
+    };
+  }
+  return { ok: true };
 }
 
 // Desktop variant of the bootstrap entitlement check (U3; wired by U4). Same

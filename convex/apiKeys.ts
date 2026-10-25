@@ -1,6 +1,6 @@
 import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
-import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { requireUserId, resolveUserId } from "./lib/auth";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
 import { activeAccountForOwner } from "./companyMonitoring/_shared";
@@ -384,6 +384,7 @@ export const validateKeyByHash = internalQuery({
       scopes: key.scopes,
       companyMonitoringAccountId: key.companyMonitoringAccountId,
       keyKind: keyKindOf(key),
+      activeKeyRank: await activeKeyRankOf(ctx, key),
       // Consumed ONLY by the /api/internal-validate-api-key route to decide
       // whether scheduling touchKeyLastUsed is worthwhile; the route strips
       // it before responding, so the gateway cache blob is unchanged.
@@ -391,6 +392,34 @@ export const validateKeyByHash = internalQuery({
     };
   },
 });
+
+/**
+ * 0-based position of `key` among its owner's ACTIVE (non-revoked) keys of
+ * BOTH kinds, oldest first (plan 2026-10-25-001 KTD5 / R5).
+ *
+ * The edge needs this to apply "only the owner's oldest active keys up to
+ * `maxDesktopKeys` qualify" to a downgraded owner's generic keys, and it has
+ * no view of sibling rows. Both kinds count because `createDesktopKey` counts
+ * both for an owner without apiAccess: a desktop key the owner minted while
+ * on Pro occupies one of the same slots, so ranking generic keys among api
+ * rows alone would let the owner run `maxDesktopKeys` desktop keys PLUS
+ * `maxDesktopKeys` generic keys at desktop scope. Ties on `createdAt` break
+ * on the insertion order Convex recorded, so the rank is stable across reads.
+ */
+async function activeKeyRankOf(ctx: QueryCtx, key: Doc<"userApiKeys">): Promise<number> {
+  const siblings = await ctx.db
+    .query("userApiKeys")
+    .withIndex("by_userId", (q) => q.eq("userId", key.userId))
+    .collect();
+  const active = siblings
+    .filter((k) => !k.revokedAt)
+    .sort((a, b) => a.createdAt - b.createdAt || a._creationTime - b._creationTime);
+  const rank = active.findIndex((k) => k._id === key._id);
+  // `key` is active (checked above), so it is always found; the guard only
+  // keeps a malformed read from returning -1 to a consumer that compares
+  // against a cap with `<`.
+  return rank < 0 ? Number.MAX_SAFE_INTEGER : rank;
+}
 
 /**
  * Look up the owner of a key by its hash, regardless of revoked status.

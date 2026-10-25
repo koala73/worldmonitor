@@ -92,6 +92,14 @@ import {
   rateLimitHeaders,
   ENTERPRISE_API_RATE_LIMIT,
 } from './_shared/api-key-rate-limit';
+import { isApiOnlyPath } from './_shared/api-only-paths';
+import {
+  DESKTOP_KEY_API_ONLY_ERROR,
+  DESKTOP_KEY_LIMIT_ERROR,
+  resolveUserKeyScope,
+} from './_shared/desktop-key-principal';
+import { reserveDesktopKeyBudget, resolveDesktopKeyLimits } from './_shared/desktop-key-meter';
+import type { UserKeyPrincipal } from './_shared/user-api-key';
 import {
   DIRECT_LLM_DAILY_QUOTA_LIMIT,
   DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
@@ -1615,6 +1623,9 @@ export function createDomainGateway(
     // wm_ key is still an explicit authenticating credential and its owner must
     // pass the #4611 apiAccess gate.
     let isUserApiKey = false;
+    // The validated wm_ principal with its kind (plan 2026-10-25-001). Set
+    // together with isUserApiKey; the #4611 gate below reads the kind.
+    let userKeyPrincipal: UserKeyPrincipal | null = null;
     const wmKey = getHeaderApiKey(request);
     const dockerSelfHostSessionAuthorized =
       isDockerSelfHostCountryBrief &&
@@ -1645,15 +1656,21 @@ export function createDomainGateway(
         return validationGuardResponse;
       }
 
-      // Only destructure validateUserApiKey: several gateway unit tests mock this
-      // module with a partial surface. Requiring isUserApiKeyUnavailableError at
-      // import time breaks those mocks (vitest throws "No export is defined").
-      // Classify unavailability by the stable `code` field instead.
-      const { validateUserApiKey } = await import('./_shared/user-api-key');
+      // Only destructure validateUserApiKeyPrincipal: several gateway unit tests
+      // mock this module with a partial surface. Requiring
+      // isUserApiKeyUnavailableError at import time breaks those mocks (vitest
+      // throws "No export is defined"). Classify unavailability by the stable
+      // `code` field instead.
+      //
+      // The desktop-aware variant (KTD3): it returns `api` AND `desktop` keys
+      // with their kind, and the #4611 gate below decides what the kind may
+      // reach. The generic validator would answer 401 for every desktop key.
+      const { validateUserApiKeyPrincipal } = await import('./_shared/user-api-key');
       try {
-        const userKeyResult = await validateUserApiKey(wmKey);
+        const userKeyResult = await validateUserApiKeyPrincipal(wmKey);
         if (userKeyResult) {
           isUserApiKey = true;
+          userKeyPrincipal = userKeyResult;
           usage.isUserApiKey = true;
           usage.userApiKeyCustomerRef = userKeyResult.userId;
           keyCheck = { valid: true, required: true };
@@ -1832,17 +1849,27 @@ export function createDomainGateway(
     //     negative cache, ahead of any rate limit) for no revenue gain — public
     //     data is not the paid product — and would wrongly gate the
     //     intentionally-anonymous lead-capture forms.
+    //
+    // Kind routes before plan (plan 2026-10-25-001, KTD4/KTD5): a `desktop`
+    // key never enters the apiAccess branch. It — or a downgraded owner's
+    // `api` key within `maxDesktopKeys` — is admitted when the owner is
+    // covered and holds desktopKeyAccess (or apiAccess, the R8 upgrade case),
+    // then gets exactly the checks a signed-in Pro session gets below
+    // (checkEntitlementDetailed on the owner's tier, the legacy Pro bearer
+    // gate already satisfied by the key), the owner as rate-limit principal,
+    // the desktop meter instead of the #3199 REST meter, and a 403 on every
+    // path in the API-only set (KTD7). An `api` key whose owner has apiAccess
+    // keeps today's behaviour exactly.
     let userKeyEntitlement: CachedEntitlements | null | undefined;
-    if (isUserApiKey && sessionUserId) {
+    let isDesktopPrincipal = false;
+    if (isUserApiKey && sessionUserId && userKeyPrincipal) {
       userKeyEntitlement = await getEntitlements(sessionUserId);
       recordUsageEntitlement(userKeyEntitlement);
-      const apiAccessCovered = !!userKeyEntitlement &&
-        userKeyEntitlement.features.apiAccess &&
-        hasCurrentEntitlementCoverage(userKeyEntitlement);
+      const keyScope = resolveUserKeyScope(userKeyPrincipal, userKeyEntitlement);
       const billingDenial = denyForBillingVerification(
         userKeyEntitlement,
         corsHeaders,
-        apiAccessCovered,
+        keyScope.scope !== 'denied',
       );
       if (billingDenial) return billingDenial;
       // Key ownership does not prove paid access. Missing configuration and
@@ -1865,16 +1892,25 @@ export function createDomainGateway(
             },
           },
         );
-      } else if (
-        !userKeyEntitlement.features.apiAccess ||
-        !hasCurrentEntitlementCoverage(userKeyEntitlement)
-      ) {
+      } else if (keyScope.scope === 'denied') {
         emitRequest(403, 'tier_403', null);
         return createGatewayAuthErrorResponse(
           403,
-          'API access requires an active subscription',
+          keyScope.reason === 'over_cap'
+            ? DESKTOP_KEY_LIMIT_ERROR
+            : userKeyPrincipal.keyKind === 'desktop'
+              ? 'Pro subscription required'
+              : 'API access requires an active subscription',
           corsHeaders,
         );
+      } else if (keyScope.scope === 'desktop') {
+        if (isApiOnlyPath(pathname)) {
+          emitRequest(403, 'tier_403', null);
+          return createGatewayAuthErrorResponse(403, DESKTOP_KEY_API_ONLY_ERROR, corsHeaders);
+        }
+        // Pro-session treatment from here on, attributed to the owner.
+        isDesktopPrincipal = true;
+        rateLimitPrincipalUserId = sessionUserId;
       } else {
         // A validated user key plus active apiAccess is a trusted paid
         // principal even on routes without an endpoint tier policy.
@@ -2252,7 +2288,63 @@ export function createDomainGateway(
       // carry no entitlement and use hardcoded limits.
       let governedByApiKeyLayer = false;
       let rollbackDailyMeter: (() => Promise<void>) | undefined;
-      if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth)) {
+
+      // ── Per-account desktop-key meter (plan 2026-10-25-001, KTD6) ────────
+      // One counter per OWNER per UTC day plus a per-minute burst bucket, so
+      // two keys share one allowance and revoke-and-recreate cannot reset it.
+      // Replaces the #3199 REST meter for desktop principals (they are Pro
+      // subscribers, not API customers) and runs on every route, sub-requests
+      // included, like the account meters above. Fails CLOSED: a Redis error
+      // is the same rate-limit-degraded 503 the sub-request admission emits.
+      if (isDesktopPrincipal && sessionUserId) {
+        const limits = resolveDesktopKeyLimits(userKeyEntitlement);
+        const budget = await reserveDesktopKeyBudget({
+          userId: sessionUserId,
+          dailyLimit: limits.dailyLimit,
+          burstPerMinute: limits.burstPerMinute,
+          pipeline: (cmds) => runRedisPipeline(cmds),
+        });
+        if (budget.ok === null) {
+          emitRequest(503, 'rate_limit_degraded', null);
+          return new Response(JSON.stringify({ error: 'Rate-limit service temporarily unavailable' }), {
+            status: 503,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+              ...RATE_LIMIT_DEGRADED_HEADERS,
+              ...corsHeaders,
+            },
+          });
+        }
+        if (budget.ok === false) {
+          const daily = budget.limitType === 'daily';
+          emitRequest(429, daily ? 'rl_ceiling_429' : 'rl_min_429', null);
+          return new Response(JSON.stringify({
+            error: daily ? 'Daily request limit reached' : 'Too many requests',
+            plan: userKeyEntitlement?.planKey,
+            limit: budget.limit,
+            limit_type: budget.limitType,
+            reset: new Date(budget.resetMs).toISOString(),
+          }), {
+            status: 429,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+              ...rateLimitHeaders({
+                limit: budget.limit,
+                remaining: 0,
+                resetMs: budget.resetMs,
+                retryAfterSec: budget.retryAfterSec,
+                windowSec: daily ? 86_400 : 60,
+              }),
+              ...corsHeaders,
+            },
+          });
+        }
+        rollbackDailyMeter = budget.rollback;
+      }
+
+      if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth) && !isDesktopPrincipal) {
         const enforce = process.env.API_RATE_LIMIT_ENFORCE === 'true';
         let perMinute = 0;
         let allowance = -1;

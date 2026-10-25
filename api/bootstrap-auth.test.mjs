@@ -999,3 +999,275 @@ for (const [key, field] of Object.entries({ imfMacro: 'inflationPct', imfGrowth:
     });
   });
 }
+
+// ── Desktop keys (plan 2026-10-25-001 U4) ───────────────────────────────────
+// A desktop key, or a downgraded owner's api key within `maxDesktopKeys`, is
+// served what a signed-in Pro session gets, under one per-owner daily ceiling
+// plus a per-minute burst bucket (KTD4–KTD6). The Redis fake below is
+// stateful so the counter can be observed across requests and keys.
+
+const DESKTOP_KEY = 'wm_fedcba9876543210fedcba9876543210fedcba98';
+const DESKTOP_KEY_2 = 'wm_0123456789abcdef0123456789abcdef01234568';
+const DOWNGRADED_KEYS = [
+  'wm_1111111111111111111111111111111111111111',
+  'wm_2222222222222222222222222222222222222222',
+  'wm_3333333333333333333333333333333333333333',
+];
+
+async function sha256HexForTest(value) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function utcDateForTest(now = new Date()) {
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+}
+const desktopDayKey = (userId) => `rl:desktopkey:day:${userId}:${utcDateForTest()}`;
+const desktopMinuteKey = (userId) => `rl:desktopkey:min:${userId}:${Math.floor(Date.now() / 60_000)}`;
+
+const proDesktopEntitlement = (overrides = {}) => ({
+  planKey: 'pro_monthly',
+  validUntil: Date.now() + 86_400_000,
+  features: {
+    tier: 1,
+    apiAccess: false,
+    apiRateLimit: 60,
+    maxDashboards: 10,
+    prioritySupport: false,
+    exportFormats: [],
+    mcpAccess: true,
+    desktopKeyAccess: true,
+    maxDesktopKeys: 2,
+    planLimits: { desktopKeyRequestsPerDay: 7_500, desktopKeyBurstPerMinute: 120 },
+  },
+  ...overrides,
+});
+
+const apiStarterEntitlement = () => ({
+  ...activeApiEntitlement(),
+  features: {
+    ...activeApiEntitlement().features,
+    desktopKeyAccess: false,
+    maxDesktopKeys: 0,
+    planLimits: { desktopKeyRequestsPerDay: 0, desktopKeyBurstPerMinute: 0 },
+  },
+});
+
+async function withDesktopBootstrapAuth({ keys, entitlements, seed = {}, failDesktopCounter = false }, fn) {
+  const restoreEnv = snapshotEnv([
+    'CONVEX_SITE_URL',
+    'CONVEX_SERVER_SHARED_SECRET',
+    'UPSTASH_REDIS_REST_URL',
+    'UPSTASH_REDIS_REST_TOKEN',
+    'WM_SESSION_SECRET',
+    'WORLDMONITOR_VALID_KEYS',
+    'VERCEL_ENV',
+  ]);
+  const originalFetch = globalThis.fetch;
+  process.env.CONVEX_SITE_URL = 'https://convex.test';
+  process.env.CONVEX_SERVER_SHARED_SECRET = 'shared-secret';
+  process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
+  process.env.WM_SESSION_SECRET = 'test-secret-for-bootstrap-desktop-keys';
+  process.env.WORLDMONITOR_VALID_KEYS = ENTERPRISE_KEY;
+  delete process.env.VERCEL_ENV;
+
+  const rowsByHash = new Map();
+  for (const [key, row] of Object.entries(keys)) rowsByHash.set(await sha256HexForTest(key), row);
+  const redis = new Map(Object.entries(seed).map(([k, v]) => [k, String(v)]));
+
+  const run = (command) => {
+    const [verb, key, ...args] = command;
+    switch (String(verb).toUpperCase()) {
+      case 'GET': return { result: redis.get(key) ?? null };
+      case 'SET': redis.set(key, String(args[0])); return { result: 'OK' };
+      case 'DEL': return { result: redis.delete(key) ? 1 : 0 };
+      case 'INCR': { const next = Number(redis.get(key) ?? 0) + 1; redis.set(key, String(next)); return { result: next }; }
+      case 'DECR': { const next = Number(redis.get(key) ?? 0) - 1; redis.set(key, String(next)); return { result: next }; }
+      case 'EXPIRE': return { result: redis.has(key) ? 1 : 0 };
+      case 'TTL': return { result: 60 };
+      default: return { result: null };
+    }
+  };
+
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url.startsWith('https://upstash.test')) {
+      const commands = JSON.parse(String(init?.body || '[]'));
+      if (failDesktopCounter && commands.some((c) => String(c[1] ?? '').startsWith('rl:desktopkey:'))) {
+        return new Response(JSON.stringify({ error: 'redis unavailable' }), { status: 503 });
+      }
+      return new Response(JSON.stringify(commands.map(run)), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.endsWith('/api/internal-validate-api-key')) {
+      const { keyHash } = JSON.parse(String(init?.body || '{}'));
+      return new Response(JSON.stringify(rowsByHash.get(keyHash) ?? null), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.endsWith('/api/internal-entitlements')) {
+      const { userId } = JSON.parse(String(init?.body || '{}'));
+      const value = entitlements[userId];
+      if (value && value.__status) return new Response('{}', { status: value.__status });
+      return new Response(JSON.stringify(value ?? null), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return originalFetch(input, init);
+  };
+
+  try {
+    return await fn({ redis, rowsByHash, entitlements });
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+}
+
+const desktopRow = (userId, overrides = {}) => ({ id: `key_${userId}`, userId, name: 'laptop', keyKind: 'desktop', ...overrides });
+
+test('AE1 (bootstrap): a desktop key is served the bootstrap payload a signed-in Pro session gets', async () => {
+  await withDesktopBootstrapAuth({
+    keys: { [DESKTOP_KEY]: desktopRow('pro_owner') },
+    entitlements: { pro_owner: proDesktopEntitlement() },
+  }, async ({ redis }) => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }));
+    assert.equal(resp.status, 200, await resp.clone().text());
+    assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
+    assertNonSharedCacheHeaders(resp);
+    assert.equal(redis.get(desktopDayKey('pro_owner')), '1', 'the owner daily counter is charged once');
+  });
+});
+
+test('AE5 (bootstrap): an owner past the daily ceiling gets 429 with Retry-After at the next UTC midnight', async () => {
+  await withDesktopBootstrapAuth({
+    keys: { [DESKTOP_KEY]: desktopRow('pro_owner') },
+    entitlements: { pro_owner: proDesktopEntitlement() },
+    seed: { [desktopDayKey('pro_owner')]: 7_500 },
+  }, async ({ redis }) => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }));
+    assert.equal(resp.status, 429);
+    const body = await resp.json();
+    assert.equal(body.limit_type, 'daily');
+    assert.equal(body.limit, 7_500);
+    const retryAfter = Number(resp.headers.get('retry-after'));
+    const now = new Date();
+    const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+    const expected = Math.ceil((midnight - now.getTime()) / 1000);
+    assert.ok(Math.abs(retryAfter - expected) <= 2, `Retry-After ${retryAfter} vs ${expected}`);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    assert.equal(redis.get(desktopDayKey('pro_owner')), '7500', 'a rejected request is not charged');
+  });
+});
+
+test('AE5 (bootstrap): two desktop keys of one owner share the counter', async () => {
+  await withDesktopBootstrapAuth({
+    keys: { [DESKTOP_KEY]: desktopRow('pro_owner'), [DESKTOP_KEY_2]: desktopRow('pro_owner', { id: 'key_2' }) },
+    entitlements: { pro_owner: proDesktopEntitlement() },
+  }, async ({ redis }) => {
+    assert.equal((await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }))).status, 200);
+    assert.equal((await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY_2 }))).status, 200);
+    assert.equal(redis.get(desktopDayKey('pro_owner')), '2');
+  });
+});
+
+test('burst (bootstrap): the per-minute bucket rejects over the limit without spending the day', async () => {
+  await withDesktopBootstrapAuth({
+    keys: { [DESKTOP_KEY]: desktopRow('pro_owner') },
+    entitlements: { pro_owner: proDesktopEntitlement() },
+    seed: { [desktopMinuteKey('pro_owner')]: 120 },
+  }, async ({ redis }) => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }));
+    assert.equal(resp.status, 429);
+    const body = await resp.json();
+    assert.equal(body.limit_type, 'per_minute');
+    const retryAfter = Number(resp.headers.get('retry-after'));
+    assert.ok(retryAfter >= 1 && retryAfter <= 60);
+    assert.equal(redis.get(desktopDayKey('pro_owner')) ?? '0', '0');
+  });
+});
+
+test('Redis counter error (bootstrap): the rate-limit-degraded 503 with Retry-After', async () => {
+  await withDesktopBootstrapAuth({
+    keys: { [DESKTOP_KEY]: desktopRow('pro_owner') },
+    entitlements: { pro_owner: proDesktopEntitlement() },
+    failDesktopCounter: true,
+  }, async () => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }));
+    assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('x-ratelimit-mode'), 'degraded');
+    assert.equal(resp.headers.get('retry-after'), '5');
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+  });
+});
+
+test('AE4 (bootstrap): a lapsed owner gets the billing denial; renewal restores the same key', async () => {
+  await withDesktopBootstrapAuth({
+    keys: { [DESKTOP_KEY]: desktopRow('pro_owner') },
+    entitlements: {
+      pro_owner: proDesktopEntitlement({ validUntil: Date.now() - 1_000, billingStatus: 'subscription_lapsed' }),
+    },
+  }, async ({ redis, entitlements }) => {
+    const denied = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }));
+    assert.equal(denied.status, 403);
+    assert.deepEqual(await denied.json(), { error: 'Subscription lapsed', code: 'subscription_lapsed' });
+    assert.equal(denied.headers.get('x-billing-verification'), 'subscription_lapsed');
+    assert.equal(denied.headers.get('cache-control'), 'no-store');
+
+    entitlements.pro_owner = proDesktopEntitlement();
+    redis.delete('entitlements:test:pro_owner');
+    const restored = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }));
+    assert.equal(restored.status, 200);
+  });
+});
+
+test('AE6 (bootstrap): a downgraded owner keeps the two oldest api keys; the third is denied', async () => {
+  const keys = {};
+  DOWNGRADED_KEYS.forEach((key, rank) => {
+    keys[key] = { id: `key_${rank}`, userId: 'downgraded', name: `server-${rank}`, keyKind: 'api', activeKeyRank: rank };
+  });
+  await withDesktopBootstrapAuth({
+    keys,
+    entitlements: { downgraded: proDesktopEntitlement() },
+  }, async ({ redis }) => {
+    for (const key of DOWNGRADED_KEYS.slice(0, 2)) {
+      const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': key }));
+      assert.equal(resp.status, 200, await resp.clone().text());
+    }
+    const third = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DOWNGRADED_KEYS[2] }));
+    assert.equal(third.status, 403);
+    assert.match((await third.json()).error, /desktop key limit/i);
+    assert.equal(third.headers.get('cache-control'), 'no-store');
+    assert.equal(redis.get(desktopDayKey('downgraded')), '2', 'desktop meter charged for the admitted keys only');
+  });
+});
+
+test('AE7 (bootstrap): an API-plan owner\'s desktop key keeps Pro bootstrap access under the catalog ceiling', async () => {
+  await withDesktopBootstrapAuth({
+    keys: { [DESKTOP_KEY]: desktopRow('upgraded') },
+    entitlements: { upgraded: apiStarterEntitlement() },
+  }, async ({ redis }) => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }));
+    assert.equal(resp.status, 200, await resp.clone().text());
+    assert.equal(redis.get(desktopDayKey('upgraded')), '1');
+  });
+});
+
+test('desktop key (bootstrap): a free owner is denied with the Pro-required 403', async () => {
+  await withDesktopBootstrapAuth({
+    keys: { [DESKTOP_KEY]: desktopRow('free_owner') },
+    entitlements: { free_owner: { planKey: 'free', validUntil: 0, features: { tier: 0, apiAccess: false, desktopKeyAccess: false } } },
+  }, async () => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }));
+    assert.equal(resp.status, 403);
+    assert.equal((await resp.json()).error, 'Pro subscription required');
+  });
+});
+
+test('desktop key (bootstrap): an entitlement outage is the retryable 503', async () => {
+  await withDesktopBootstrapAuth({
+    keys: { [DESKTOP_KEY]: desktopRow('pro_owner') },
+    entitlements: { pro_owner: { __status: 503 } },
+  }, async () => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': DESKTOP_KEY }));
+    assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('retry-after'), '5');
+    assert.equal((await resp.json()).code, 'entitlement_verification_unavailable');
+  });
+});

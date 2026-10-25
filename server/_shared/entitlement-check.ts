@@ -88,6 +88,15 @@ export interface CachedEntitlements {
      */
     embedAccess?: boolean;
     /**
+     * Desktop-key issuance and admission (plan 2026-10-25-001). Mirrors the
+     * catalog field the Convex read-time merge puts on the wire; like
+     * `embedAccess`, `undefined` is **fail-CLOSED** — the shared predicate in
+     * `shared/desktop-key-access.js` reads it and treats absence as false.
+     */
+    desktopKeyAccess?: boolean;
+    /** Most active desktop keys one account may hold (R5); `0` without access. */
+    maxDesktopKeys?: number;
+    /**
      * Catalog plan limits, mirrored verbatim from `PlanFeatures.planLimits`
      * (convex/config/productCatalog.ts). Optional because legacy rows predate
      * it and because the Convex read path only merges what the catalog holds.
@@ -106,6 +115,13 @@ export interface CachedEntitlements {
       mcpCallsPerDay?: number | null | 'shared-api-budget';
       mcpBurstRequestsPerMinute?: number | null;
       dashboardAiCallsPerDay?: number | null;
+      /**
+       * Per-account desktop-key limits (KTD6). `0` on plans that sell no
+       * desktop keys; consumers fall back to the catalog constants for an
+       * owner admitted through `apiAccess` (R8), never to "unlimited".
+       */
+      desktopKeyRequestsPerDay?: number;
+      desktopKeyBurstPerMinute?: number;
     };
   };
   validUntil: number;

@@ -628,6 +628,21 @@ export async function validateProMcpAuthorization(
   return { ok: true };
 }
 
+/** Current apiAccess on an entitlement read: the flag AND unexpired coverage. */
+function hasCurrentApiAccess(ent: Awaited<ReturnType<McpHandlerDeps['getEntitlements']>>): boolean {
+  if (!ent || typeof ent !== 'object' || !ent.features || typeof ent.features !== 'object') return false;
+  const validUntil = Number((ent as { validUntil?: unknown }).validUntil ?? 0);
+  return (ent.features as { apiAccess?: unknown }).apiAccess === true
+    && Number.isFinite(validUntil)
+    && validUntil >= Date.now();
+}
+
+/** Owner's plan sells desktop keys (Pro, Pro Business): the KTD5 downgrade case. */
+function isOnDesktopKeyPlan(ent: Awaited<ReturnType<McpHandlerDeps['getEntitlements']>>): boolean {
+  if (!ent || typeof ent !== 'object' || !ent.features || typeof ent.features !== 'object') return false;
+  return (ent.features as { desktopKeyAccess?: unknown }).desktopKeyAccess === true;
+}
+
 /**
  * Shared mcpAccess entitlement gate for identity-resolved contexts (pro AND
  * user_key). Fail-closed per memory `entitlement-signal-server-outlier-sweep`.
@@ -656,6 +671,7 @@ async function checkMcpEntitlementGate(
   sentryStep: string,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
+  options: { requireApiAccess?: boolean } = {},
 ): Promise<McpPreCheckResult> {
   /**
    * Availability failure, not a billing verdict. Mirrors the retryable shape
@@ -703,6 +719,28 @@ async function checkMcpEntitlementGate(
   const gate = checkProMcpAccess(ent, Date.now(), {
     backendConfigured: isEntitlementBackendConfigured(),
   });
+  // Plan 2026-10-25-001 KTD5 / R4: MCP via a `wm_` key is an API-plan
+  // surface. The shared gate above still decides Pro/free/billing exactly as
+  // for OAuth, so the two doors cannot disagree about those; on top of it,
+  // a key whose owner is on a desktop-key plan (Pro, Pro Business) without
+  // current apiAccess — a downgraded API customer — is refused here. A free
+  // owner's key keeps the #6716 free-account allowance; the plan does not
+  // change that. Billing-verification states keep their retryable 503 below.
+  if (
+    options.requireApiAccess &&
+    gate?.kind !== 'billing_verification' &&
+    isOnDesktopKeyPlan(ent) &&
+    !hasCurrentApiAccess(ent)
+  ) {
+    return {
+      ok: false,
+      response: mcpStructuredDenialResponse('upgrade-required', resourceMetadataUrl, corsHeaders, id, {
+        code: -32002,
+        status: 403,
+        message: 'API access subscription required. MCP with an API key needs an active API plan; a desktop key or a Pro-only account cannot use it. Upgrade at https://worldmonitor.app/pricing.',
+      }),
+    };
+  }
   if (!gate) {
     return passed();
   }
@@ -780,7 +818,10 @@ export async function runUserKeyPreChecks(
     ) };
   }
 
-  const gate = await checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id);
+  const gate = await checkMcpEntitlementGate(
+    context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id,
+    { requireApiAccess: true },
+  );
   // The budget now passes through verbatim. KTD6 dropped it here so a `user_key`
   // caller fell back to the hardcoded 50/day while the same subscriber's OAuth
   // token would have resolved the catalog's 1,000 — the asymmetry the exception

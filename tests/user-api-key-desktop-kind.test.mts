@@ -256,6 +256,47 @@ describe('cache contract shared by both producers', () => {
   });
 });
 
+describe('activeKeyRank rides the shared entry (KTD5)', () => {
+  it('both producers carry a Convex rank through the entry and the principal, same version', async () => {
+    const viaTs = uniqueKey();
+    harness.validateQueue.push(convexRow({ id: 'key_r1', activeKeyRank: 2 }));
+    assert.equal((await validateUserApiKeyPrincipal(viaTs))?.activeKeyRank, 2);
+    const tsEntry = cached(await sha256Hex(viaTs)) as Record<string, unknown>;
+    assert.equal(tsEntry.activeKeyRank, 2);
+    assert.equal(tsEntry.v, 2, 'an optional field does not bump the entry version');
+    // The other producer reads the same entry warm.
+    const viaJsWarm = await validateBootstrapUserApiKeyPrincipal(viaTs);
+    assert.equal(viaJsWarm.ok && viaJsWarm.activeKeyRank, 2);
+
+    const viaJs = uniqueKey();
+    harness.validateQueue.push(convexRow({ id: 'key_r2', activeKeyRank: 0 }));
+    const js = await validateBootstrapUserApiKeyPrincipal(viaJs);
+    assert.equal(js.ok && js.activeKeyRank, 0);
+    assert.equal((cached(await sha256Hex(viaJs)) as Record<string, unknown>).activeKeyRank, 0);
+    assert.equal((await validateUserApiKeyPrincipal(viaJs))?.activeKeyRank, 0);
+    assert.equal(harness.validateCalls, 2);
+  });
+
+  it('a malformed rank from Convex is dropped, not trusted, and the key still validates', async () => {
+    for (const bad of [-1, 1.5, '2', null]) {
+      const key = uniqueKey();
+      harness.validateQueue.push(convexRow({ id: 'key_bad', activeKeyRank: bad }));
+      const principal = await validateUserApiKeyPrincipal(key);
+      assert.ok(principal, String(bad));
+      assert.equal('activeKeyRank' in principal, false, String(bad));
+    }
+  });
+
+  it('a current entry poisoned with a malformed rank is re-validated, never trusted', async () => {
+    const key = uniqueKey();
+    const keyHash = await sha256Hex(key);
+    harness.redis.set(`${CACHE_PREFIX}${keyHash}`, JSON.stringify({ v: 2, userId: 'user_owner', keyId: 'k', keyKind: 'api', activeKeyRank: 'zero' }));
+    harness.validateQueue.push(convexRow({ id: 'key_fresh', activeKeyRank: 1 }));
+    assert.equal((await validateUserApiKeyPrincipal(key))?.activeKeyRank, 1);
+    assert.equal(harness.validateCalls, 1);
+  });
+});
+
 describe('generic validators reject desktop keys (AE2)', () => {
   it('TypeScript validator rejects a desktop key from cold and caches the full entry', async () => {
     const key = uniqueKey();

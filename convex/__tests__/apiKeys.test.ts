@@ -394,6 +394,61 @@ describe("validateKeyByHash", () => {
     });
     expect(result).toBeNull();
   });
+
+  // Plan 2026-10-25-001 KTD5 / R5: the edge applies "oldest active keys up to
+  // maxDesktopKeys" to a downgraded owner's generic keys, so every validate
+  // response carries the key's 0-based rank among the owner's ACTIVE keys of
+  // both kinds, oldest first.
+  test("AE6: activeKeyRank orders the owner's active keys oldest-first and shifts after a revoke", async () => {
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    const asApiUser = t.withIdentity(API_USER);
+    const first = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(2));
+    await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(3));
+
+    const rank = async (n: number) =>
+      (await t.query(internal.apiKeys.validateKeyByHash, { keyHash: makeKeyArgs(n).keyHash }))?.activeKeyRank;
+    expect([await rank(1), await rank(2), await rank(3)]).toEqual([0, 1, 2]);
+
+    await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: first.id });
+    expect([await rank(2), await rank(3)]).toEqual([0, 1]);
+  });
+
+  test("activeKeyRank counts desktop and api keys in one order, per owner", async () => {
+    process.env.DESKTOP_KEYS_ENABLED = "true";
+    try {
+      const t = convexTest(schema, modules);
+      await seedProEntitlement(t, "user-pro");
+      await seedApiEntitlement(t, "user-api");
+      // Owner A: one generic row older than a desktop row (a downgraded API
+      // customer who later minted a desktop key), plus a revoked row that must
+      // not take a slot.
+      await t.run(async (ctx) => {
+        await ctx.db.insert("userApiKeys", {
+          userId: "user-pro", name: "revoked", keyPrefix: "wm_0000a", keyHash: "a".repeat(64),
+          createdAt: NOW - 5_000, revokedAt: NOW - 4_000,
+        });
+        await ctx.db.insert("userApiKeys", {
+          userId: "user-pro", name: "generic", keyPrefix: "wm_0000b", keyHash: "b".repeat(64),
+          createdAt: NOW - 3_000,
+        });
+      });
+      const desktop = await t.withIdentity(PRO_USER).mutation(api.apiKeys.createApiKey, desktopArgs(7));
+      // Owner B's keys never influence owner A's ranks.
+      await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(9));
+
+      const generic = await t.query(internal.apiKeys.validateKeyByHash, { keyHash: "b".repeat(64) });
+      const desk = await t.query(internal.apiKeys.validateKeyByHash, { keyHash: desktopArgs(7).keyHash });
+      const other = await t.query(internal.apiKeys.validateKeyByHash, { keyHash: makeKeyArgs(9).keyHash });
+      expect(generic).toMatchObject({ keyKind: "api", activeKeyRank: 0 });
+      expect(desk).toMatchObject({ keyKind: "desktop", activeKeyRank: 1 });
+      expect(other).toMatchObject({ keyKind: "api", activeKeyRank: 0 });
+      expect(desktop.keyKind).toBe("desktop");
+    } finally {
+      delete process.env.DESKTOP_KEYS_ENABLED;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -945,7 +1000,7 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
     const res = await validate(t, makeKeyArgs(1).keyHash);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["id", "keyKind", "name", "userId"]);
+    expect(Object.keys(body).sort()).toEqual(["activeKeyRank", "id", "keyKind", "name", "userId"]);
     expect(body.keyKind).toBe("api");
     await t.finishAllScheduledFunctions(vi.runAllTimers);
   });
@@ -961,7 +1016,7 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
     const desktop = await validate(t, makeKeyArgs(2).keyHash);
     const body = (await desktop.json()) as Record<string, unknown>;
     expect(body).toMatchObject({ userId: "user-pro", name: "test-key-2", keyKind: "desktop" });
-    expect(Object.keys(body).sort()).toEqual(["id", "keyKind", "name", "userId"]);
+    expect(Object.keys(body).sort()).toEqual(["activeKeyRank", "id", "keyKind", "name", "userId"]);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
   });
 });
