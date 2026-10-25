@@ -146,3 +146,43 @@ test('a page of future flights almost all cancelled is still a closure', async (
   assert.equal(alert.delayType, 'FLIGHT_DELAY_TYPE_CLOSURE');
   assert.equal(alert.totalFlights, 100);
 });
+
+test('a delay alert from a page of future flights carries no cancellations', async () => {
+  // get-airport-ops-summary rebuilds the cancellation rate from these fields.
+  const rows = [
+    ...Array.from({ length: 6 }, (_, i) => flight('active', -10 * 60_000, { delay: i === 0 ? 20 : null })),
+    ...Array.from({ length: 60 }, (_, i) => flight('cancelled', HOUR + i * 60_000)),
+    ...Array.from({ length: 34 }, (_, i) => flight('scheduled', HOUR + i * 60_000)),
+  ];
+  const alert = await classify(rows);
+  assert.ok(alert, 'the delay still raises an alert');
+  assert.equal(alert.cancelledFlights, 0);
+});
+
+test('a page of only codeshare rows is omitted, not normal', async () => {
+  const rows = Array.from({ length: 20 }, (_, i) => riyadhFlight('scheduled', -(i + 1) * 60_000, { codeshared: true }));
+  const result = await seedIntlDelays({
+    apiKey: 'fixture-key',
+    airports: [RUH],
+    logger: quietLogger,
+    fetchFn: async () => Response.json({ pagination: { limit: 100, offset: 0, count: rows.length, total: 20 }, data: rows }),
+  });
+  assert.equal(result.coverage[0].status, 'omitted');
+  assert.equal(result.coverage[0].flightCount, 0);
+});
+
+test('the time zone offset is taken at the departure, not at the wall clock read as UTC', async (t) => {
+  // Paris moves to summer time at 01:00 UTC on 2026-03-29. A 01:30 local
+  // departure is 00:30 UTC; the offset at 01:30 UTC would put it at 23:30.
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-03-29T00:00:00Z') });
+  const paris = (status, wall) => ({
+    flight_status: status,
+    flight: { codeshared: null },
+    departure: { timezone: 'Europe/Paris', scheduled: `2026-03-29T${wall}:00+00:00`, delay: null },
+  });
+  const rows = [
+    ...Array.from({ length: 30 }, () => paris('cancelled', '01:30')),
+    ...Array.from({ length: 70 }, () => paris('scheduled', '03:30')),
+  ];
+  assert.equal(await classify(rows), null);
+});

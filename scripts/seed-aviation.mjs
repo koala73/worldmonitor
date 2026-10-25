@@ -493,7 +493,9 @@ async function fetchAviationStackSingle(
       const authFailed = AVIATIONSTACK_AUTH_ERROR_CODES.has(json.error.code);
       return { iata, status: 'failed', alert: null, flightCount: 0, authFailed };
     }
-    const flights = Array.isArray(json?.data) ? json.data : [];
+    // A codeshare row repeats an operating flight under another airline's
+    // number, so only operating rows count.
+    const flights = (Array.isArray(json?.data) ? json.data : []).filter(f => !f?.flight?.codeshared);
     if (flights.length === 0) {
       logger.warn(`[Aviation] ${iata}: provider omitted hub (0 flight records)`);
       return { iata, status: 'omitted', alert: null, flightCount: 0 };
@@ -526,8 +528,13 @@ function departureMs(departure) {
         hour: 'numeric', minute: 'numeric', second: 'numeric',
       }));
     }
-    const p = Object.fromEntries(zoneFormats.get(zone).formatToParts(wall).map(({ type, value }) => [type, Number(value)]));
-    return wall - (Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - wall);
+    const offsetAt = (at) => {
+      const p = Object.fromEntries(zoneFormats.get(zone).formatToParts(at).map(({ type, value }) => [type, Number(value)]));
+      return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - at;
+    };
+    // The offset at the wall clock read as UTC can be the other side of a
+    // clock change, so take it again at the first estimate of the departure.
+    return wall - offsetAt(wall - offsetAt(wall));
   } catch {
     return wall;
   }
@@ -549,13 +556,10 @@ function aviationAggregateFlights(iata, flights) {
   // reported "179% delayed". Too few due flights → the whole page, which only
   // shows a closure: advance cancellations in the day's last hours are schedule
   // changes, and RUH read "67% flights cancelled" from one such page.
-  // A codeshare row repeats an operating flight under another airline's
-  // number, so only operating rows count.
   const now = Date.now();
   const page = { flights: 0, cancelled: 0, delayed: 0, totalDelay: 0 };
   const dueOnly = { flights: 0, cancelled: 0, delayed: 0, totalDelay: 0 };
   for (const f of flights) {
-    if (f.flight?.codeshared) continue;
     const status = f.flight_status || '';
     const scheduledAt = departureMs(f.departure);
     const isDue = DEPARTED_STATUSES.has(status) || (Number.isFinite(scheduledAt) && scheduledAt <= now);
@@ -572,10 +576,12 @@ function aviationAggregateFlights(iata, flights) {
 
   const fromDue = dueOnly.flights >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE;
   const sample = fromDue ? dueOnly : page;
-  const { flights: total, cancelled: cancelledCount, delayed, totalDelay } = sample;
-  if (total === 0) return null;
-  const cancelledPct = fromDue ? (cancelledCount / total) * 100 : 0;
-  const closed = cancelledCount / total >= 0.8 && total >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE;
+  const { flights: total, cancelled, delayed, totalDelay } = sample;
+  const closed = cancelled / total >= 0.8 && total >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE;
+  // get-airport-ops-summary rebuilds the cancellation rate from the alert, so
+  // cancellations that set no level here are not reported either.
+  const cancelledCount = fromDue || closed ? cancelled : 0;
+  const cancelledPct = (cancelledCount / total) * 100;
   const delayedPct = (delayed / total) * 100;
   const avgDelay = delayed > 0 ? Math.round(totalDelay / delayed) : 0;
 
