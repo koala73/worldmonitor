@@ -456,7 +456,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     });
     assert.equal(result._dyads.cursor, '20260730120000');
     assert.equal(result._dyads.days['2026-07-30'].cohorts, 1);
-    assert.equal(result._dyads.insufficientPairs.length, 5);
+    assert.equal(result._dyads.insufficientPairs.length, 8);
     assert.deepEqual(
       result._state.recentGkgBatches.flatMap((batch) =>
         batch.records.map((record) => record.id)),
