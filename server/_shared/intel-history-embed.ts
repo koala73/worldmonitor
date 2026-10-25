@@ -25,6 +25,7 @@ import {
 } from '../../scripts/lib/brief-dedup-consts.mjs';
 import { stripSourceSuffix } from '../../scripts/lib/brief-dedup-jaccard.mjs';
 import { getCachedJson, setCachedJson } from './redis';
+import { allowsProvider, type AiRoutingDecision } from './ai-routing-policy';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
 
@@ -99,6 +100,23 @@ function isUsableVector(value: unknown): value is number[] {
 }
 
 /**
+ * Query embeddings go to OpenRouter only (there is no other embeddings
+ * provider here). A caller whose AI routing policy excludes OpenRouter cannot
+ * use semantic search; there is no keyword index to fall back to, so the
+ * handler refuses with a policy error instead of sending the query text.
+ * Returns null when allowed, else the status and message to raise.
+ */
+export function queryEmbeddingDenial(decision: AiRoutingDecision): { status: number; message: string } | null {
+  if (decision.kind === 'unavailable') {
+    return { status: 503, message: 'AI routing policy could not be verified; retry shortly' };
+  }
+  if (!allowsProvider(decision, 'openrouter')) {
+    return { status: 403, message: "Semantic history search is not available under this account's AI routing policy" };
+  }
+  return null;
+}
+
+/**
  * Embed one free-text query with the model and dimensions the stored vectors
  * were produced under. Returns null on any failure — missing key, provider
  * error, timeout, or a vector the store would reject anyway.
@@ -165,11 +183,18 @@ export async function embedQueryText(text: string): Promise<number[] | null> {
     // Degrades to upstreamUnavailable rather than a 5xx, so the caller sees a
     // 200 with no records — report it, or a provider outage is indistinguishable
     // from an empty history in every dashboard we have.
+    // AbortSignal.timeout(EMBED_TIMEOUT_MS) surfaces as TimeoutError /
+    // AbortError when the embeddings provider is slow. Downgrade those to
+    // warning; keep unexpected throws at error. Same gate as the Convex
+    // read path (Sentry WORLDMONITOR-187).
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[intel-history] embeddings call failed: ${msg}`);
+    const errName = err instanceof Error ? err.name : '';
+    const isTransientTimeout = errName === 'AbortError' || errName === 'TimeoutError';
     captureSilentError(err, {
       tags: { surface: 'server', component: 'intel-history', stage: 'embed' },
       fingerprint: ['intel-history', 'embed-error'],
+      ...(isTransientTimeout ? { level: 'warning' } : {}),
     });
     return null;
   }

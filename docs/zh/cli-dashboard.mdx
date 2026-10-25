@@ -1,0 +1,263 @@
+---
+title: "终端仪表盘"
+description: "在终端中运行 World Monitor：实时世界地图、新闻、市场、冲突、军机、网络威胁、气候、预测市场与直播电视，支持鼠标与配色主题，无需 API 密钥。"
+---
+
+World Monitor 也可以在终端中以全屏仪表盘的形式运行。它与[命令行客户端](/zh/cli)一同包含在 [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm 包中，无需 API 密钥，显示的实时数据与[网页仪表盘](https://www.worldmonitor.app/dashboard)相同：世界地图、新闻排名、市场、冲突与不稳定性、军机与航运、网络威胁、气候灾害、预测市场、直播电视与网络摄像头，以及平台健康状况。
+
+<Frame caption="Overview：实时世界地图（地震、冲突、骚乱、灾害、火点、网络与断网标记）、AI 世界简报、热点新闻排名、市场行情与战区态势。">
+  <img src="/images/tui/overview.webp" alt="World Monitor 终端仪表盘的 Overview 视图" />
+</Frame>
+
+## 启动
+
+```sh
+npx worldmonitor            # run once without installing
+npm install -g worldmonitor # or install the `worldmonitor` command (alias `wm`)
+worldmonitor                # open the dashboard (same as `worldmonitor tui`)
+```
+
+在交互式终端中不带参数运行 `worldmonitor` 会打开仪表盘。在管道、脚本或 CI 中则会打印帮助信息，因此现有的自动化不受影响。按 `q` 退出，终端会恢复原状。
+
+<Frame caption="启动画面：仪表盘连接 API 并依次加载各数据层，随后显示第一个视图。按 Esc、Enter 或空格键可跳过。">
+  <img src="/images/tui/boot.webp" alt="显示 World Monitor 标志与加载进度的启动画面" />
+</Frame>
+
+### 运行要求
+
+- **Node.js 18 或更高版本。** 该包没有任何依赖。
+- **至少 80×24 的交互式终端。** 窗口越大，可并排显示的面板越多；160×45 或更大可获得本页所示的完整布局。
+- **支持真彩色与鼠标的终端**效果最佳，例如 Ghostty、kitty、WezTerm、iTerm2、Konsole、Alacritty 或 VS Code 终端。不报告真彩色支持的终端（包括 macOS 自带的“终端”）使用 256 色。
+- **包含盲文与制表符字符的字体**，用于绘制地图与面板边框。大多数现代终端字体都包含这些字符。
+- **可选：** 安装 [mpv](https://mpv.io) 与 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 以在终端中播放直播电视与网络摄像头。未安装时，直播流会在浏览器中打开。
+
+## 视图
+
+使用数字键、`Tab` / `Shift+Tab` 或点击标签切换视图。
+
+| 按键 | 视图 | 内容 |
+|---|---|---|
+| `1` | Overview | 带实时标记与雷达扫描的世界地图、AI 世界简报、热点新闻排名、市场行情、战区态势 |
+| `2` | Map | 可缩放的世界地图与自转地球仪：全部仪表盘图层、NASA 卫星影像、昼夜晨昏线、悬停高亮、信息卡片、搜索 |
+| `3` | Brief | AI 世界简报的交互页面：编号要点与其引用来源、相关实时新闻并排显示 |
+| `4` | News | 新闻板块、按重要性与威胁等级排序的标题、新闻详情面板 |
+| `5` | Markets | 指数、大宗商品、外汇、加密货币（含迷你走势图）、板块热力图、宏观信号、恐惧贪婪指数、ETF 资金流、稳定币、海湾市场 |
+| `6` | Conflict | 国家不稳定指数（CII）排名、UCDP 武装冲突事件、骚乱、战区态势、关联卡片 |
+| `7` | Air & Sea | 地图上的军机、机场延误、航运咽喉点、船舶密度、航运压力、运价指数 |
+| `8` | Cyber | 威胁指标、DDoS 协议与向量构成、服务状态、互联网中断、流量异常 |
+| `9` | Climate | 地震、自然灾害、疫情、气象预警、气候异常、地球体征 |
+| `0` | Predict | 按领域划分的预测市场与 AI 情景预测 |
+| `Alt+1` | Live | 直播新闻频道与网络摄像头，在终端或浏览器中播放 |
+| `Alt+2` | Intel | GDELT 主题、制裁压力、旅行建议、社交热度、美国政府支出、科技活动 |
+| `Alt+3` | System | 平台健康、各数据源新鲜度、主题与动画设置、播放器状态 |
+
+所有视图中的每一行都可以展开：`Enter`（或再次点击）打开可滚动的详情浮层显示完整记录；`o` 打开链接，`Esc` 关闭。
+
+### Map
+
+<Frame caption="Map：带默认图层的平面世界地图，上方是工具栏，右侧是图层面板。">
+  <img src="/images/tui/map.webp" alt="Map 视图：世界地图上的实时图层与图层面板" />
+</Frame>
+
+Map 视图直接用仪表盘自带的 50 m 国家几何数据绘制，从全球缩放到城市级别都不会丢失细节。
+
+| 按键 | 动作 |
+|---|---|
+| 拖拽、`←` `→` `↑` `↓`（`h` `j` `k` `l`） | 平移（按住 `Shift` 更快） |
+| 滚轮、`+` / `-` | 以光标为中心缩放 / 以画面中心缩放 |
+| `g` | 在平面地图与地球仪之间切换。地球仪空闲时缓慢自转，`p` 暂停 |
+| `s` | 开关卫星影像 |
+| `i` | 循环切换影像：NASA Blue Marble、最新每日 VIIRS 真彩色、Black Marble 夜间灯光 |
+| `d` | 开关昼夜晨昏线（夜侧变暗；开启影像时会叠加夜间灯光） |
+| `L` | 图层面板：先打开并聚焦，再次按下聚焦地图，第三次隐藏。`Space` 或点击切换图层，分组标题切换整组，`ALL` / `NONE` / `DEFAULT` 按钮 |
+| 悬停 | 高亮该要素所在的整个图层并淡化其余内容；卡片显示名称、坐标、光缆/管道/航线的两端以及相关信息。光标下没有要素时显示国家名称（开启相应叠加层时附带 CII 与制裁状态） |
+| 点击 | 固定该要素（再次点击查看详情）；`c` 或 `Esc` 取消固定 |
+| `Enter` | 查看固定或悬停要素的完整记录；浮层中按 `m` 将地图居中到它 |
+| `/` | 按名称搜索要素与国家；`Enter` 跳转并固定，`n` / `N` 在结果间切换 |
+| `z` | 复位视图 |
+
+图层：海底光缆与登陆点、管道（含运营商实时状态）、储能设施、能源中断、AI 数据中心、云区域、港口、机场与 FAA 延误、咽喉点与实时通行状态、贸易航线、燃料短缺、军事基地、核设施、伽马辐照装置、辐射监测、航天发射场、军机（更新间隔内沿航向航位推算）、根据轨道根数推算的侦察卫星（聚焦时显示地面轨迹）、情报热点与战区态势、冲突区域、UCDP 冲突事件、地震（近期强震脉动显示）、火点与热异常聚类、风暴与自然事件、GDACS 灾害预警、气象预警多边形、加拿大紧急预警与道路事件、气候异常、疫情、抗议与骚乱、互联网中断、BGP 异常、网络威胁基础设施、正面事件、船舶密度、AIS 异常、经济中心、交易所、金融中心、央行、大宗商品枢纽、海湾投资、矿山与关键矿产、科技总部、AI 实验室、创业中心，以及 CII 与制裁国家着色、经纬网、边界和国名叠加层。视图与图层选择会在多次运行间保存。
+
+影像无需密钥，从 NASA GIBS 按可见区域请求并以半格字符绘制；除此之外不会向其他服务发送任何数据。卫星轨道根数、军机与船舶快照使用与浏览器相同的匿名会话。
+
+### Brief
+
+<Frame caption="Brief：左侧是 AI 世界简报及其要点；右侧是所选要点背后的来源与相关报道。">
+  <img src="/images/tui/brief.webp" alt="Brief 视图：要点列表、引用来源与相关标题" />
+</Frame>
+
+Brief 视图把 AI 世界简报做成一个页面：左侧是简报段落与编号要点，右侧显示所选要点在谈论什么——先是它引用的来源（`[n]`），然后是实时新闻摘要中关键词相同的标题以及匹配的热点新闻。在要点上按 `Enter` 跳到右侧面板；在条目上按 `Enter` 展开，`o` 在浏览器中打开。
+
+### News
+
+<Frame caption="News：左侧为新闻板块，中间为按来源、重要性评分与时间排序的标题，右侧为所选新闻的评分、摘要与链接。">
+  <img src="/images/tui/news.webp" alt="News 视图：新闻板块、标题排名与新闻详情" />
+</Frame>
+
+`[` 和 `]` 切换板块。`Enter` 展开所选新闻，`o` 在浏览器中打开。
+
+### Markets
+
+<Frame caption="Markets：带迷你走势图的行情、加密货币、板块热力图、宏观信号、恐惧贪婪指数与 ETF 资金流。">
+  <img src="/images/tui/markets.webp" alt="Markets 视图：行情、迷你走势图与板块热力图" />
+</Frame>
+
+### Conflict
+
+<Frame caption="Conflict：国家不稳定指数排名、近期 UCDP 武装冲突事件、骚乱信号与关联卡片。">
+  <img src="/images/tui/conflict.webp" alt="Conflict 视图：CII 排名、UCDP 事件与骚乱" />
+</Frame>
+
+### Air & Sea
+
+<Frame caption="Air & Sea：地图上标出的实时军机（按高度排序），以及机场延误、咽喉要道状态、航运压力与运价指数。">
+  <img src="/images/tui/airsea.webp" alt="Air & Sea 视图：地图上的军机、机场延误与咽喉要道" />
+</Frame>
+
+军机与船舶数据仅在该视图打开时加载。所选军机会在地图上高亮显示。
+
+### Cyber
+
+<Frame caption="Cyber：威胁指标、DDoS 构成、服务状态与互联网中断。">
+  <img src="/images/tui/cyber.webp" alt="Cyber 视图：威胁指标、DDoS 构成与断网" />
+</Frame>
+
+### Climate
+
+<Frame caption="Climate：地震、自然灾害、气象预警与地球体征。">
+  <img src="/images/tui/climate.webp" alt="Climate 视图：地震、灾害与地球体征" />
+</Frame>
+
+### Predict
+
+<Frame caption="Predict：按领域分组的预测市场与 AI 情景预测。">
+  <img src="/images/tui/predict.webp" alt="Predict 视图：预测市场与情景预测" />
+</Frame>
+
+### Live
+
+<Frame caption="Live：仪表盘的新闻频道与网络摄像头，以及每个频道的直播源与本地播放器状态。">
+  <img src="/images/tui/live.webp" alt="Live 视图：新闻频道、网络摄像头与播放器控制" />
+</Frame>
+
+| 按键 | 操作 |
+|---|---|
+| `Enter` | 在终端内播放所选频道或摄像头 |
+| `w` | 在 mpv 窗口中播放 |
+| `b` | 在浏览器中打开 |
+| `s` | 尝试下一个直播源 |
+| `[` `]` | 切换地区 |
+
+每个频道优先使用电视台的 HLS 直播流，其次是 YouTube。在 Ghostty、kitty、WezTerm 和 Konsole 中，终端内视频通过 Kitty 图形协议以完整分辨率显示；在其他终端（包括 tmux 内）则使用彩色字符单元显示。在 mpv 中按 `q` 或 `Ctrl+C` 可停止播放并返回仪表盘。
+
+在 macOS 上可通过 `brew install mpv yt-dlp` 安装播放器，在 Linux 上使用系统包管理器安装。未安装 mpv 时，`Enter` 会在浏览器中打开直播流。
+
+### Intel
+
+<Frame caption="Intel：GDELT 主题、制裁压力、旅行建议与社交热度。">
+  <img src="/images/tui/intel.webp" alt="Intel 视图：GDELT 主题、制裁压力与旅行建议" />
+</Frame>
+
+### System
+
+<Frame caption="System：平台健康、每个数据源的新鲜度与刷新间隔、外观设置以及视频播放器状态。">
+  <img src="/images/tui/system.webp" alt="System 视图：平台健康与数据源新鲜度" />
+</Frame>
+
+可通过该视图检查某个数据源是否加载失败。`r` 立即刷新当前视图。
+
+## 操作
+
+所有操作都可以用键盘完成，标签、行和按钮也都可以点击，鼠标滚轮可滚动列表。随时按 `?` 查看按键说明。
+
+<Frame caption="帮助浮层（?）列出所有按键。">
+  <img src="/images/tui/help.webp" alt="列出键盘操作的帮助浮层" />
+</Frame>
+
+| 按键 | 操作 |
+|---|---|
+| `1`–`9`、`0`、`Alt+1`–`Alt+3` | 跳转到视图 |
+| `Tab` / `Shift+Tab` | 下一个 / 上一个视图 |
+| `←` `→` 或 `h` `l` | 在面板间移动 |
+| `↑` `↓` 或 `j` `k` | 在列表中移动 |
+| `PgUp` `PgDn`、`g` `G` | 翻页、第一项、最后一项 |
+| `Enter` | 将所选项展开为详情浮层（`Esc` 关闭，`↑` `↓` 滚动） |
+| `o` | 在浏览器中打开所选链接 |
+| `t` / `T` | 下一个主题 / 主题选择器 |
+| `a` | 开关动画 |
+| `r` | 立即刷新当前视图 |
+| `W` | 打开网页仪表盘 |
+| `?` | 帮助 |
+| `q` 或 `Ctrl+C` | 退出 |
+
+## 主题
+
+<Frame caption="配色主题：Neon Horizon（默认）、Matrix、Amber CRT、Red Alert、Glacier 与 Synthwave。">
+  <img src="/images/tui/themes.webp" alt="同一 Overview 视图在各配色主题下的效果" />
+</Frame>
+
+按 `t` 切换主题，或按 `T` 打开主题选择器。在选择器中移动时会实时预览主题；`Enter` 保留所选主题，`Esc` 恢复原来的主题。
+
+<Frame caption="主题选择器在整个仪表盘上预览高亮的主题。">
+  <img src="/images/tui/picker.webp" alt="预览 Matrix 主题的主题选择器浮层" />
+</Frame>
+
+主题、动画设置和最后打开的视图保存在 `$XDG_CONFIG_HOME/worldmonitor/tui.json`（通常为 `~/.config/worldmonitor/tui.json`）。该文件从不包含你的 API 密钥。
+
+## 选项
+
+| 参数 | 作用 |
+|---|---|
+| `--theme <id>` | 以指定主题启动：`neon`、`matrix`、`amber`、`redalert`、`ice`、`synthwave` |
+| `--no-anim` | 关闭动画（雷达扫描、滚动条、打字机式简报）。运行时按 `a` 切换 |
+| `--fps <n>` | 动画帧率，5–60（默认 20） |
+| `--base-url <url>` | 自托管部署的 API 地址 |
+| `--api-key <key>` | 使用你的 API 密钥代替匿名会话 |
+
+这些参数仅对终端仪表盘生效。`worldmonitor web` 有自己的参数，见[打开网页仪表盘](#打开网页仪表盘)。在其他所有命令中，`--theme`、`--url` 等参数会作为请求参数传给 API。
+
+| 环境变量 | 作用 |
+|---|---|
+| `WORLDMONITOR_API_KEY` | 代替匿名会话使用的 API 密钥 |
+| `WORLDMONITOR_BASE_URL` | API 地址，与其他 CLI 命令共用 |
+| `WORLDMONITOR_TUI_BASE_URL` | 仅用于仪表盘的 API 地址 |
+| `WM_TUI_COLOR` | 颜色检测有误时强制使用 `truecolor` 或 `256` 色 |
+| `WM_TUI_VO` | 强制指定 mpv 的终端视频输出，例如 `kitty` 或 `tct` |
+| `WM_TUI_FORCE` | 即使 stdin 或 stdout 不是终端也启动仪表盘 |
+
+## 数据与隐私
+
+仪表盘读取与网页仪表盘相同的公开端点：公开 bootstrap 数据层、新闻摘要、精简健康检查端点与版本端点。军机与船舶快照使用匿名的短期会话令牌，其生成方式与浏览器相同。设置了 `WORLDMONITOR_API_KEY` 或 `--api-key` 时会改为发送该密钥。
+
+数据在后台刷新：快速数据层每分钟一次，新闻与健康状况每 2 分钟一次，慢速数据层每 5 分钟一次。军机与船舶数据仅在 Air & Sea 视图打开时刷新。加载失败的数据源会等待一段时间后重试，System 视图会显示其错误。
+
+## 打开网页仪表盘
+
+```sh
+worldmonitor web
+```
+
+在浏览器中打开 [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard)。如果在 World Monitor 仓库的克隆目录中运行，则会启动本地开发服务器（`npm run dev`）并打开本地地址。
+
+| 参数 | 作用 |
+|---|---|
+| `--hosted` | 即使在仓库目录中也始终打开托管版仪表盘 |
+| `--port <n>` | 本地开发服务器端口（默认 5173） |
+| `--no-open` | 只打印地址，不打开浏览器 |
+| `--url <url>` | 打开此地址，而非托管版仪表盘。在仓库目录中需同时加上 `--hosted`，否则会启动本地开发服务器 |
+
+## 故障排除
+
+- **地图或边框显示为方框或问号。** 你的字体缺少盲文或制表符字符。请改用 JetBrains Mono、Fira Code、SF Mono、Menlo 或 Cascadia Code 等现代终端字体。
+- **颜色发灰或不正确。** 你的终端可能没有报告真彩色支持。设置 `COLORTERM=truecolor`；如果终端只支持 256 色，则设置 `WM_TUI_COLOR=256`。
+- **在 tmux 中鼠标无效。** 在 tmux 配置中加入 `set -g mouse on`。
+- **提示 “The dashboard needs an interactive terminal”。** stdin 或 stdout 是管道或文件。请直接在终端中运行 `worldmonitor tui`，或使用[脚本命令](/zh/cli)进行自动化。
+- **视频无法播放。** 查看 System 视图中的播放器部分。mpv 与 yt-dlp 必须位于 `PATH` 中，否则直播流会在浏览器中打开。
+- **某个视图为空。** 打开 System 视图查看哪个数据源失败以及何时重试。按 `r` 刷新当前视图。
+
+## 相关内容
+
+- **[命令行客户端](/zh/cli)**：用同一个 `worldmonitor` 命令脚本化调用简报、风险评分与 MCP 工具。
+- **[桌面应用](/zh/desktop-app)**：以原生应用形式运行完整的网页仪表盘。
+- **[SDK](/zh/sdks)**：Python、Ruby 与 Go 客户端。
+- **[MCP 服务器](/zh/mcp-overview)**：连接 AI 智能体。

@@ -1,6 +1,7 @@
 import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { iso2ToCountryName } from '@/utils/country-codes';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 
@@ -379,7 +380,7 @@ export class FuelShortagePanel extends Panel {
     return `
       <div class="fs-drawer">
         <button class="fs-drawer-close" aria-label="Close">✕</button>
-        <h3>${escapeHtml(s.country)} · ${escapeHtml(s.product)} ${severityChip(s.severity)}</h3>
+        <h3>${escapeHtml(iso2ToCountryName(s.country))} · ${escapeHtml(s.product)} ${severityChip(s.severity)}</h3>
         <div class="fs-kv">
           <div class="fs-kv-key">Description</div>  <div>${escapeHtml(s.shortDescription)}</div>
           <div class="fs-kv-key">First seen</div>   <div>${escapeHtml(s.firstSeen.slice(0, 10))}</div>

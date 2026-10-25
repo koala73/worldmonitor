@@ -216,11 +216,11 @@ export function dedupeSharedSchemaSubtrees(spec) {
 /**
  * Component-name prefix for the subtree hoist below. Compact on purpose: the
  * name is paid at every ref, exactly like the `E<status>` response names in
- * openapi-dedup-responses.mjs — `WMShared12` buys back ~19 bytes per site over
+ * openapi-dedup-responses.mjs — `WM12` buys back ~25 bytes per site over
  * a descriptive name, which is most of the yield on the 60-70 byte subtrees
  * this pass exists for.
  */
-export const SHARED_SUBTREE_COMPONENT_PREFIX = 'WMShared';
+export const SHARED_SUBTREE_COMPONENT_PREFIX = 'WM';
 
 /**
  * Collect every Schema Object node that an existing document-local `$ref`
@@ -268,7 +268,7 @@ function refPointerPathNodes(spec) {
  * document is longer than the subtree itself, so an inline-target ref would
  * cost more than the repetition it removes. This pass is the escape hatch for
  * exactly those groups: the subtree moves into `components.schemas` under a
- * compact `WMShared<N>` name and every site, including the first, becomes a
+ * compact `WM<N>` name and every site, including the first, becomes a
  * short ref.
  *
  * Naming follows the dedupeErrorResponses precedent: deterministic (first-seen
@@ -292,11 +292,16 @@ export function dedupeSharedSubtreeComponents(spec) {
   const parentOf = new Map();
   const groups = new Map();
 
-  // Same traversal and overlap bookkeeping as dedupeSharedSchemaSubtrees — the
-  // only difference is the replacement strategy (named component ref instead of
-  // ref-to-shortest-inline-copy) and therefore the profitability arithmetic.
+  // Same overlap bookkeeping as dedupeSharedSchemaSubtrees, with a named
+  // component ref instead of a ref-to-shortest-inline-copy. Unlike that pass,
+  // this one also groups $ref nodes: a repeated ref to a long component name,
+  // or a ref carrying a repeated sibling description, becomes a WM ref to
+  // the same content. That adds one resolution hop and is lossless; the
+  // contract test resolves the chains back. On 2026-10-15 these groups freed
+  // about 7 KB and kept the bundle under SCANNER_BUDGET_BYTES; skipping them
+  // put it about 4 KB over.
   const visit = (schema, parent, key) => {
-    if (!schema || typeof schema !== 'object' || Array.isArray(schema) || schema.$ref) return;
+    if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return;
     parentOf.set(schema, parent);
     const serialized = canonical(schema);
     const unitBytes = Buffer.byteLength(serialized, 'utf8');
@@ -313,7 +318,7 @@ export function dedupeSharedSubtreeComponents(spec) {
   };
   for (const [name, schema] of Object.entries(schemas)) visit(schema, schemas, name);
 
-  // Ref bytes for a name two ordinals wide: `WMShared99`. Selection only needs
+  // Ref bytes for a name two ordinals wide: `WM99`. Selection only needs
   // a stable estimate; the exact per-group saving is recomputed once the group
   // is picked and named.
   const estimatedRefBytes = Buffer.byteLength(

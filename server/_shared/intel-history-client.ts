@@ -18,6 +18,7 @@
 
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
+import { ValidationError } from '../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 const CONVEX_INTERNAL_SEARCH_PATH = '/api/internal-intel-search';
 const CONVEX_INTERNAL_TIMELINE_PATH = '/api/internal-intel-timeline';
@@ -190,7 +191,7 @@ function scopeBody(scope: IntelHistoryScope): Record<string, unknown> {
 async function readIntelHistory(
   path: string,
   payload: Record<string, unknown>,
-): Promise<{ records: IntelHistoryRecordView[]; partial: boolean } | null> {
+): Promise<{ records: IntelHistoryRecordView[]; partial: boolean; nextCursor?: string } | null> {
   const siteUrl = getConvexSiteUrl();
   const sharedSecret = getConvexSharedSecret();
   if (!siteUrl || !sharedSecret) return null;
@@ -207,10 +208,16 @@ async function readIntelHistory(
       signal: AbortSignal.timeout(CONVEX_TIMEOUT_MS),
     });
     if (!resp.ok) {
+      if (path === CONVEX_INTERNAL_TIMELINE_PATH && resp.status === 400) {
+        const error = await resp.json() as { error?: string };
+        if (error.error === 'INVALID_CURSOR') {
+          throw new ValidationError([{ field: 'cursor', description: 'Invalid cursor. Restart from the first page with unchanged filters.' }]);
+        }
+      }
       console.warn(`[intel-history] ${path} returned HTTP ${resp.status}`);
       return null;
     }
-    const body = (await resp.json()) as { records?: unknown; partial?: unknown };
+    const body = (await resp.json()) as { records?: unknown; partial?: unknown; nextCursor?: unknown };
     if (!Array.isArray(body?.records)) {
       console.warn(`[intel-history] ${path} returned no records array`);
       return null;
@@ -220,15 +227,26 @@ async function readIntelHistory(
         .filter((rec): rec is WireRecord => rec !== null && typeof rec === 'object')
         .map(toIntelHistoryRecord),
       partial: body.partial === true,
+      ...(typeof body.nextCursor === 'string' ? { nextCursor: body.nextCursor } : {}),
     };
   } catch (err) {
+    if (err instanceof ValidationError) throw err;
     // Same reasoning as the embed path: a Convex outage surfaces to the caller
     // as an empty 200, so it has to reach Sentry to be distinguishable.
+    // AbortSignal.timeout(CONVEX_TIMEOUT_MS) surfaces as TimeoutError /
+    // AbortError when Convex is slow. The read already fails open as
+    // upstreamUnavailable; downgrade the Sentry capture to warning so
+    // one-shot timeouts stay queryable without drowning real bugs
+    // (unexpected throws). Same gate as api/miit-news and
+    // api/notification-channels (Sentry WORLDMONITOR-187).
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[intel-history] ${path} failed: ${msg}`);
+    const errName = err instanceof Error ? err.name : '';
+    const isTransientTimeout = errName === 'AbortError' || errName === 'TimeoutError';
     captureSilentError(err, {
       tags: { surface: 'server', component: 'intel-history', stage: 'convex-read' },
       fingerprint: ['intel-history', 'convex-read-error', path],
+      ...(isTransientTimeout ? { level: 'warning' } : {}),
     });
     return null;
   }
@@ -251,8 +269,13 @@ export function intelHistorySearch(
  * enforces that and returns 400, because Convex answers an unscoped read with
  * a 500 that this layer could only report as an outage.
  */
-export function intelHistoryTimeline(
-  scope: IntelHistoryScope,
-): Promise<{ records: IntelHistoryRecordView[]; partial: boolean } | null> {
-  return readIntelHistory(CONVEX_INTERNAL_TIMELINE_PATH, scopeBody(scope));
+export async function intelHistoryTimeline(
+  scope: IntelHistoryScope & { cursor?: string },
+): Promise<{ records: IntelHistoryRecordView[]; partial: boolean; nextCursor: string } | null> {
+  const result = await readIntelHistory(CONVEX_INTERNAL_TIMELINE_PATH, {
+    ...scopeBody(scope), ...(scope.cursor ? { cursor: scope.cursor } : {}),
+  });
+  // An older Convex reader cannot prove that a bounded page exhausts history.
+  if (!result || typeof result.nextCursor !== 'string') return null;
+  return { ...result, nextCursor: result.nextCursor };
 }

@@ -17,6 +17,9 @@
           "path": "scripts/profile-news-hybrid-clustering-7782-dashboard.mjs"
         },
         {
+          "path": "src/services/desktop-sign-in-page.ts"
+        },
+        {
           "path": "src/services/runtime.ts"
         }
       ]
@@ -336,6 +339,20 @@
       ]
     },
     {
+      "host": "aljazeera.com",
+      "provider": "Al Jazeera",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Al Jazeera and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "amdlive-ch01-ctnd-com.akamaized.net",
       "provider": "amdlive-ch01-ctnd-com.akamaized.net",
       "kind": "feed",
@@ -429,6 +446,20 @@
       ]
     },
     {
+      "host": "api-nms.aim.faa.gov",
+      "provider": "api-nms.aim.faa.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit api-nms.aim.faa.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-notam-nms.mjs"
+        }
+      ]
+    },
+    {
       "host": "api.abuseipdb.com",
       "provider": "api.abuseipdb.com",
       "kind": "structured",
@@ -459,6 +490,9 @@
         },
         {
           "path": "scripts/seed-military-flights.mjs"
+        },
+        {
+          "path": "server/worldmonitor/aviation/v1/list-aircraft-emergencies.ts"
         },
         {
           "path": "src/components/MapPopup.ts"
@@ -493,6 +527,20 @@
       "references": [
         {
           "path": "scripts/seed-economy.mjs"
+        }
+      ]
+    },
+    {
+      "host": "api.anthropic.com",
+      "provider": "api.anthropic.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "server/_shared/llm-anthropic.ts"
         }
       ]
     },
@@ -562,6 +610,9 @@
       "attribution": "Excluded from the provider count: identity-control-plane request.",
       "status": "excluded",
       "references": [
+        {
+          "path": "api/_desktop-auth.ts"
+        },
         {
           "path": "api/user/passkey-offer.ts"
         },
@@ -712,6 +763,9 @@
         },
         {
           "path": "scripts/seed-fuel-prices.mjs"
+        },
+        {
+          "path": "scripts/seed-oil-trade-series.mjs"
         }
       ]
     },
@@ -897,9 +951,6 @@
       "references": [
         {
           "path": "scripts/lib/imd-cyclone-marine.mjs"
-        },
-        {
-          "path": "src/app/data-loader.ts"
         }
       ]
     },
@@ -914,6 +965,12 @@
       "references": [
         {
           "path": "scripts/_seed-utils.mjs"
+        },
+        {
+          "path": "scripts/backtest-capital-flow-episodes.mjs"
+        },
+        {
+          "path": "scripts/seed-capital-flows.mjs"
         },
         {
           "path": "scripts/seed-gold-cb-reserves.mjs"
@@ -969,15 +1026,10 @@
       "host": "api.opensanctions.org",
       "provider": "OpenSanctions",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "OpenSanctions terms; dataset-specific license varies by source",
       "attribution": "OpenSanctions; link to the matching entity/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "server/worldmonitor/sanctions/v1/lookup-entity.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "api.ossinsight.io",
@@ -1386,6 +1438,9 @@
           "path": "scripts/seed-bis-lbs.mjs"
         },
         {
+          "path": "scripts/seed-capital-flows.mjs"
+        },
+        {
           "path": "scripts/seed-education-attainment.mjs"
         },
         {
@@ -1490,6 +1545,9 @@
           "path": "scripts/seed-service-statuses.mjs"
         },
         {
+          "path": "scripts/shipping-webhook-worker.mjs"
+        },
+        {
           "path": "scripts/validate-rss-feeds.mjs"
         },
         {
@@ -1538,6 +1596,9 @@
       "attribution": "Credit X and preserve author and source links when the allowed use permits display.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "scripts/cross-strait-activity/japan-x.mjs"
+        },
         {
           "path": "scripts/lib/company-monitoring-x-provider.mjs"
         },
@@ -1813,6 +1874,20 @@
       ]
     },
     {
+      "host": "aws.amazon.com",
+      "provider": "aws.amazon.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
+        }
+      ]
+    },
+    {
       "host": "ayibopost.com",
       "provider": "AyiboPost",
       "kind": "feed",
@@ -1959,9 +2034,6 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs"
-        },
-        {
-          "path": "src/components/PizzIntIndicator.ts"
         }
       ]
     },
@@ -2348,6 +2420,20 @@
       ]
     },
     {
+      "host": "chatgpt.com",
+      "provider": "ChatGPT link",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: documentation/UI link",
+      "attribution": "Excluded from the provider count: UI link, not an ingested source.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "api/oauth/_client-metadata.js"
+        }
+      ]
+    },
+    {
       "host": "chathamhouse.org",
       "provider": "chathamhouse.org",
       "kind": "feed",
@@ -2406,6 +2492,20 @@
       "references": [
         {
           "path": "scripts/lib/tps-open-data.mjs"
+        }
+      ]
+    },
+    {
+      "host": "claude.ai",
+      "provider": "Claude link",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: documentation/UI link",
+      "attribution": "Excluded from the provider count: UI link, not an ingested source.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "api/oauth/_client-metadata.js"
         }
       ]
     },
@@ -2601,6 +2701,9 @@
           "path": "scripts/seed-comtrade-bilateral-hs4.mjs"
         },
         {
+          "path": "scripts/seed-oil-trade-series.mjs"
+        },
+        {
           "path": "scripts/seed-recovery-import-hhi.mjs"
         },
         {
@@ -2707,6 +2810,20 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "creativecommons.org",
+      "provider": "creativecommons.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         }
       ]
     },
@@ -2842,6 +2959,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/lib/yield-curves/oecd-lt.mjs"
+        },
+        {
           "path": "scripts/seed-ecb-fx-rates.mjs"
         },
         {
@@ -2910,6 +3030,9 @@
           "path": "scripts/benchmark-resilience-external.mjs"
         },
         {
+          "path": "scripts/seed-idmc-idu-displacement.mjs"
+        },
+        {
           "path": "scripts/seed-resilience-static.mjs"
         }
       ]
@@ -2957,6 +3080,21 @@
       ]
     },
     {
+      "host": "data.stats.gov.cn",
+      "provider": "data.stats.gov.cn",
+      "kind": "structured",
+      "observed": true,
+      "catalogActive": false,
+      "license": "NBS Terms of Service section III permits statistical data download and use, with NBS attribution (https://www.stats.gov.cn/english/nbs/200701/t20070104_59236.html; checked 2026-10-24). Saved-response extraction only; canonical publication remains blocked by missing source clocks. No authenticated download, application-code reuse or access bypass.",
+      "attribution": "Quoted from the website of the National Bureau of Statistics: www.stats.gov.cn. Retain the National Data source URL and exact indicator reference.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/china-macro/extract-nbs-national-data.mjs"
+        }
+      ]
+    },
+    {
       "host": "data.tps.ca",
       "provider": "Toronto Police Service Open Data",
       "kind": "structured",
@@ -2971,16 +3109,33 @@
       ]
     },
     {
+      "host": "data.trade.gov",
+      "provider": "International Trade Administration (US Consolidated Screening List)",
+      "kind": "structured",
+      "observed": true,
+      "license": "US government work. The ITA Data API terms of service (developer.trade.gov/terms-of-service) require the notice: This product uses the International Trade Administration's Data API but is not endorsed or certified by the International Trade Administration.",
+      "attribution": "This product uses the International Trade Administration's Data API but is not endorsed or certified by the International Trade Administration. Verify listings against the Federal Register and the issuing agency.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_csl-sanctions.mjs"
+        }
+      ]
+    },
+    {
       "host": "data.unhcr.org",
       "provider": "data.unhcr.org",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit data.unhcr.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
+      "license": "ODP footer states datasets are CC BY 4.0 (observed 2026-10-19).",
+      "attribution": "UNHCR Operational Data Portal; link the situation and CC BY 4.0. WorldMonitor normalizes and derives the view. No UNHCR endorsement.",
+      "status": "reviewed",
       "references": [
         {
           "path": "scripts/seed-cross-border-arrivals.mjs"
+        },
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         }
       ]
     },
@@ -3486,6 +3641,23 @@
       ]
     },
     {
+      "host": "economist.com",
+      "provider": "The Economist",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The Economist and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "ecs-api.wingbits.com",
       "provider": "wingbits.com",
       "kind": "structured",
@@ -3985,6 +4157,20 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "factchecktools.googleapis.com",
+      "provider": "factchecktools.googleapis.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit factchecktools.googleapis.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/_shared/fact-checks.ts"
         }
       ]
     },
@@ -5253,6 +5439,23 @@
       ]
     },
     {
+      "host": "independent.co.uk",
+      "provider": "The Independent",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The Independent and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "index.hu",
       "provider": "index.hu",
       "kind": "feed",
@@ -5518,6 +5721,23 @@
       ]
     },
     {
+      "host": "japantimes.co.jp",
+      "provider": "Japan Times",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Japan Times and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "japantoday.com",
       "provider": "japantoday.com",
       "kind": "feed",
@@ -5576,6 +5796,23 @@
       "references": [
         {
           "path": "api/mcp/constants.ts"
+        }
+      ]
+    },
+    {
+      "host": "jrj.sh.gov.cn",
+      "provider": "Shanghai Financial Portal",
+      "kind": "structured",
+      "observed": true,
+      "license": "Shanghai Financial Portal copyright statement section 2 (https://jrj.sh.gov.cn/BQSM/index.html), reviewed 2026-10-24. Numeric facts and publication metadata only; retain the credited underlying source. No article prose or third-party media redistribution.",
+      "attribution": "People’s Bank of China, republished by Shanghai Financial Portal. Link to the dated https://jrj.sh.gov.cn/SCGK194/ report.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/_china-macro-contract.mjs"
+        },
+        {
+          "path": "scripts/china-macro/source-contracts.mjs"
         }
       ]
     },
@@ -6022,6 +6259,20 @@
       "status": "excluded"
     },
     {
+      "host": "liveuamap.com",
+      "provider": "liveuamap.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
+        }
+      ]
+    },
+    {
       "host": "lnc-abc-news.tubi.video",
       "provider": "lnc-abc-news.tubi.video",
       "kind": "feed",
@@ -6066,7 +6317,7 @@
           "path": "server/worldmonitor/research/v1/list-tech-events.ts"
         },
         {
-          "path": "src/services/desktop-runtime.ts"
+          "path": "src/config/desktop-runtime.ts"
         },
         {
           "path": "src/services/wm-session.ts"
@@ -6202,12 +6453,15 @@
       "provider": "India Meteorological Department",
       "kind": "structured",
       "observed": true,
-      "license": "Official IMD visualization pages cited for attribution and source links, not scraped.",
+      "license": "Public IMD sea-area and coastal bulletin pages, parsed without an account or key. The RTI IMETD/R/E/25/00381 non-commercial-only terms recorded for the IMD API apply to these pages too. World Monitor public-display and redistribution rights are validated.",
       "attribution": "Data source: India Meteorological Department. Link the official marine/coastal bulletin page.",
       "status": "reviewed",
       "references": [
         {
           "path": "scripts/lib/imd-cyclone-marine.mjs"
+        },
+        {
+          "path": "src/app/data-loader.ts"
         }
       ]
     },
@@ -6236,6 +6490,20 @@
       "references": [
         {
           "path": "src/services/mcp-store.ts"
+        }
+      ]
+    },
+    {
+      "host": "me.liveuamap.com",
+      "provider": "me.liveuamap.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
         }
       ]
     },
@@ -6309,6 +6577,23 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit mexiconewsdaily.com and link to the original feed publisher.",
       "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "middleeasteye.net",
+      "provider": "Middle East Eye",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Middle East Eye and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts"
@@ -6704,6 +6989,23 @@
       ]
     },
     {
+      "host": "news.sky.com",
+      "provider": "Sky News",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Sky News and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "news.tuoitre.vn",
       "provider": "news.tuoitre.vn",
       "kind": "feed",
@@ -6916,6 +7218,23 @@
       ]
     },
     {
+      "host": "nytimes.com",
+      "provider": "The New York Times",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The New York Times and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "oauth.reddit.com",
       "provider": "oauth.reddit.com",
       "kind": "structured",
@@ -6971,6 +7290,20 @@
       "references": [
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "offnadir-delta.com",
+      "provider": "offnadir-delta.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
         }
       ]
     },
@@ -7481,6 +7814,9 @@
       "references": [
         {
           "path": "scripts/build-chokepoint-transit-snapshot.mjs"
+        },
+        {
+          "path": "scripts/seed-oil-trade-series.mjs"
         }
       ]
     },
@@ -8327,6 +8663,9 @@
           "path": "scripts/build-use-cases.mjs"
         },
         {
+          "path": "scripts/comparison-shortlist.mjs"
+        },
+        {
           "path": "scripts/crawlable-sources-page.mjs"
         }
       ]
@@ -8627,6 +8966,9 @@
           "path": "scripts/build-chokepoint-transit-snapshot.mjs"
         },
         {
+          "path": "scripts/seed-oil-trade-series.mjs"
+        },
+        {
           "path": "scripts/seed-portwatch-chokepoints-ref.mjs"
         },
         {
@@ -8824,6 +9166,9 @@
         },
         {
           "path": "scripts/seed-bis-lbs.mjs"
+        },
+        {
+          "path": "scripts/seed-capital-flows.mjs"
         },
         {
           "path": "server/worldmonitor/economic/v1/_bis-shared.ts"
@@ -9790,6 +10135,23 @@
       ]
     },
     {
+      "host": "timesofisrael.com",
+      "provider": "Times of Israel",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Times of Israel and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "tools.cdc.gov",
       "provider": "tools.cdc.gov",
       "kind": "structured",
@@ -10316,6 +10678,23 @@
       ]
     },
     {
+      "host": "washingtonpost.com",
+      "provider": "The Washington Post",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The Washington Post and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "web-api.tp.entsoe.eu",
       "provider": "ENTSO-E Transparency Platform",
       "kind": "structured",
@@ -10447,6 +10826,9 @@
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
+          "path": "scripts/ais-relay.cjs"
+        },
+        {
           "path": "server/worldmonitor/trade/v1/_tradestats-tariff.ts"
         },
         {
@@ -10541,6 +10923,9 @@
           "path": "scripts/cross-strait-activity/adapters.mjs"
         },
         {
+          "path": "scripts/cross-strait-activity/japan-x.mjs"
+        },
+        {
           "path": "scripts/eval-classify-labels.mjs"
         },
         {
@@ -10548,6 +10933,9 @@
         },
         {
           "path": "scripts/lib/company-monitoring-classifier-client.mjs"
+        },
+        {
+          "path": "scripts/lib/digest-email-html.mjs"
         },
         {
           "path": "scripts/lib/x-news-accounts.cjs"
@@ -10560,9 +10948,6 @@
         },
         {
           "path": "scripts/measure-mobile-mainthread.mjs"
-        },
-        {
-          "path": "scripts/measure-tools-list-compression.mjs"
         },
         {
           "path": "scripts/publish-mcp-registry.mjs"
@@ -10593,6 +10978,9 @@
         },
         {
           "path": "scripts/shared/notify-fields.cjs"
+        },
+        {
+          "path": "scripts/shipping-webhook-worker.mjs"
         },
         {
           "path": "scripts/validate-seed-migration.mjs"
@@ -10880,7 +11268,7 @@
     },
     {
       "host": "www.aljazeera.com",
-      "provider": "www.aljazeera.com",
+      "provider": "Al Jazeera",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
@@ -10974,6 +11362,20 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.applytosupply.digitalmarketplace.service.gov.uk",
+      "provider": "www.applytosupply.digitalmarketplace.service.gov.uk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
         }
       ]
     },
@@ -11282,6 +11684,23 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.cbp.gov",
+      "provider": "www.cbp.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "US government public-domain work unless otherwise noted. Copyright notice reviewed 2026-10-19 for the Nationwide Encounters CSV.",
+      "attribution": "Credit US Customs and Border Protection and link to the Nationwide Encounters source. Encounters are enforcement events, not unique people.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/border-route-sources.mjs"
+        },
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         }
       ]
     },
@@ -11845,12 +12264,15 @@
     {
       "host": "www.eia.gov",
       "provider": "www.eia.gov",
-      "kind": "feed",
+      "kind": "feed+structured",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.eia.gov and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "scripts/seed-oil-trade-series.mjs"
+        },
         {
           "path": "src/config/feeds.ts"
         }
@@ -11969,6 +12391,20 @@
       "references": [
         {
           "path": "src/services/story-share.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.factal.com",
+      "provider": "www.factal.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
         }
       ]
     },
@@ -12094,6 +12530,23 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.frontex.europa.eu",
+      "provider": "www.frontex.europa.eu",
+      "kind": "structured",
+      "observed": true,
+      "license": "Used with permission; repository owner confirmed reuse permission on 2026-10-20.",
+      "attribution": "Credit Frontex and link to https://www.frontex.europa.eu/what-we-do/monitoring-and-risk-analysis/migratory-map/. Counts are detections, not unique people. No endorsement implied.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/border-route-sources.mjs"
+        },
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         }
       ]
     },
@@ -12325,15 +12778,21 @@
       "provider": "www.gov.uk",
       "kind": "feed+structured",
       "observed": true,
-      "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit www.gov.uk and link to the original feed publisher.",
+      "license": "GOV.UK Open Government Licence v3.0 for Home Office small-boat arrival statistics; other publishers on this host retain their source terms.",
+      "attribution": "Credit the issuing department and original dataset. Home Office arrivals: Contains public sector information licensed under the Open Government Licence v3.0.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "scripts/lib/border-route-sources.mjs"
+        },
         {
           "path": "scripts/seed-fuel-prices.mjs"
         },
         {
           "path": "scripts/seed-security-advisories.mjs"
+        },
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         },
         {
           "path": "src/config/feeds.ts"
@@ -12634,6 +13093,9 @@
         },
         {
           "path": "scripts/seed-jodi-oil.mjs"
+        },
+        {
+          "path": "scripts/seed-oil-trade-series.mjs"
         }
       ]
     },
@@ -12789,6 +13251,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "scripts/comparison-shortlist.mjs"
+        },
+        {
           "path": "server/worldmonitor/leads/v1/register-interest.ts"
         },
         {
@@ -12852,6 +13317,23 @@
       "references": [
         {
           "path": "scripts/seed-fuel-prices.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.migracion.gob.pa",
+      "provider": "www.migracion.gob.pa",
+      "kind": "structured",
+      "observed": true,
+      "license": "Used with permission; repository owner confirmed reuse permission on 2026-10-20.",
+      "attribution": "Servicio Nacional de Migración, Panamá. https://www.migracion.gob.pa/estadisticas/. Figures are preliminary and subject to revision.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/border-route-sources.mjs"
+        },
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         }
       ]
     },
@@ -13019,6 +13501,23 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.nationalarchives.gov.uk",
+      "provider": "www.nationalarchives.gov.uk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/lib/border-route-sources.mjs"
+        },
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         }
       ]
     },
@@ -13309,9 +13808,6 @@
         },
         {
           "path": "scripts/seed-conflict-intel.mjs"
-        },
-        {
-          "path": "src/components/PizzIntIndicator.ts"
         }
       ]
     },
@@ -13953,6 +14449,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/check-submarine-cable-gaps.mjs"
+        },
+        {
           "path": "scripts/seed-submarine-cables.mjs"
         }
       ]
@@ -14482,6 +14981,20 @@
       ]
     },
     {
+      "host": "www.vendr.com",
+      "provider": "www.vendr.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.vercel-status.com",
       "provider": "www.vercel-status.com",
       "kind": "operational-status",
@@ -14701,6 +15214,9 @@
           "path": "api/ask.ts"
         },
         {
+          "path": "api/customer-portal.ts"
+        },
+        {
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
@@ -14743,6 +15259,9 @@
           "path": "scripts/check-live-video-sources.mjs"
         },
         {
+          "path": "scripts/comparison-shortlist.mjs"
+        },
+        {
           "path": "scripts/discover-content-corpus-pages.mjs"
         },
         {
@@ -14758,7 +15277,13 @@
           "path": "scripts/github-stars-snapshot.mjs"
         },
         {
+          "path": "scripts/lib/email-unsubscribe.cjs"
+        },
+        {
           "path": "scripts/lib/internal-links.mjs"
+        },
+        {
+          "path": "scripts/live-pages/common.mjs"
         },
         {
           "path": "scripts/mcp-proxy-live-smoke.mjs"
@@ -14777,6 +15302,9 @@
         },
         {
           "path": "scripts/seo-indexnow-submit.mjs"
+        },
+        {
+          "path": "scripts/syndication-candidates.mjs"
         },
         {
           "path": "scripts/verify-agent-readiness.mjs"
@@ -15036,6 +15564,12 @@
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
       "status": "excluded",
       "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
+        },
+        {
+          "path": "scripts/cross-strait-activity/japan-x.mjs"
+        },
         {
           "path": "server/worldmonitor/leads/v1/register-interest.ts"
         }

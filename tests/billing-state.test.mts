@@ -392,6 +392,26 @@ describe('getSubscriptionStatusTone (#7315)', () => {
     );
   });
 
+  it('active with a cancellation scheduled at period end is `ending`, not `active`', () => {
+    // Dodo keeps a portal-cancelled subscription `active` until the period
+    // ends. Painting it as a renewing plan told users their cancel failed.
+    assert.equal(
+      getSubscriptionStatusTone(sub({ status: 'active', cancelAtPeriodEnd: true }), NOW),
+      'ending',
+    );
+    assert.equal(
+      getSubscriptionStatusTone(sub({ status: 'active', cancelAtPeriodEnd: false }), NOW),
+      'active',
+    );
+  });
+
+  it('a scheduled cancellation still has working access', () => {
+    assert.equal(
+      deriveBillingUxState(sub({ status: 'active', cancelAtPeriodEnd: true }), ent(), NOW),
+      'active',
+    );
+  });
+
   it('boundary: cancelled with currentPeriodEnd exactly now is still covering', () => {
     assert.equal(
       getSubscriptionStatusTone(sub({ status: 'cancelled', currentPeriodEnd: NOW }), NOW),

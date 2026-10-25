@@ -7,6 +7,12 @@ public/blog/
 # filename carries a content hash) and a staleness class when someone changed
 # pro-test/src without rebuilding.
 public/pro/
+public/es/
+public/pt/
+public/ru/
+public/fr/
+public/de/
+public/ar/
 public/countries/
 public/country-instability-index/
 public/chokepoints/
@@ -18,6 +24,7 @@ public/use-cases/
 public/compare/
 public/sources/
 public/accuracy/
+public/monitor-the-situation/
 public/crawlable-corpus.json
 # Volatile inventory metrics are derived during install/build. Stable product
 # lifecycle, pricing, and catalog artifacts remain committed.

@@ -1029,6 +1029,12 @@
   padding: 6px 8px 2px;
 }
 
+.disp-movements-table th:first-child { width: 50%; }
+.disp-movements-table th:nth-child(2) { width: 30%; }
+.disp-movements-table th:nth-child(3) { width: 20%; }
+.disp-movements-table td { overflow-wrap: anywhere; }
+.disp-movements-table .disp-operation a { color: var(--accent); }
+
 /* ----------------------------------------------------------
    UCDP Events Panel
    ---------------------------------------------------------- */

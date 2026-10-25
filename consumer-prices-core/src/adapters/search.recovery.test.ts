@@ -4,7 +4,7 @@ import type { ExaProvider } from '../acquisition/exa.js';
 import type { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext, Target } from './types.js';
 import type { RetailerConfig } from '../config/types.js';
-import { loadRetailerConfig } from '../config/loader.js';
+import { loadBasketConfig, loadRetailerConfig } from '../config/loader.js';
 
 function makeConfig(overrides: Partial<RetailerConfig['searchConfig']> = {}): RetailerConfig {
   return {
@@ -80,6 +80,97 @@ function makeBrazilTarget(
 }
 
 describe('SearchAdapter recovery path', () => {
+  it.each([
+    { slug: 'noon_grocery_ae', url: 'https://www.noon.com/uae-en/cola/p/REPLAY/' },
+    { slug: 'lulu_ae', url: 'https://gcc.luluhypermarket.com/en-ae/cola-350-ml/p/REPLAY' },
+  ])('refuses a different drink for $slug without losing digit-prefixed identity', async ({ slug, url }) => {
+    const config = loadRetailerConfig(slug);
+    const response = {
+      data: { productName: 'Cola 350ml', price: 3.95, currency: 'AED', sizeText: '350ml' },
+      pageContent: 'Cola 350ml\nAED 3.95',
+    };
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url }]),
+      extract: vi.fn().mockResolvedValue(response),
+    } as unknown as ExaProvider;
+    const firecrawl = { extract: vi.fn().mockResolvedValue(response) } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const target = { id: 'digit-brand', url: config.baseUrl, category: 'beverage', metadata: {
+      canonicalName: '7up 330ml', domain: new URL(config.baseUrl).hostname,
+      currency: config.currencyCode, basketSlug: 'synthetic-drink-guard',
+      itemConstraints: { baseUnit: 'ml', minBaseQty: 300, maxBaseQty: 350 }, direct: false,
+    } };
+
+    const error = await adapter.fetchTarget(makeContext(config), target).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SearchTargetError);
+    const failures = (error as SearchTargetError).failures;
+    expect(failures.length).toBeGreaterThan(0);
+    expect(failures.every(({ reason }) => reason === 'title-mismatch')).toBe(true);
+  });
+
+  describe('AE tomato title replay', () => {
+    const item = loadBasketConfig('essentials_ae').items.find(({ id }) => id === 'tomatoes_1kg')!;
+    const fixtures = [
+      { slug: 'lulu_ae', productName: 'Tomato 1 kg', url: 'https://gcc.luluhypermarket.com/en-ae/tomato-1-kg/p/1962513' },
+      { slug: 'noon_grocery_ae', productName: 'Tomato', url: 'https://www.noon.com/uae-en/tomato/p/REPLAY/' },
+    ];
+
+    it.each(fixtures)('lets the retained $slug title reach structured validation', async ({ slug, productName, url }) => {
+      const config = loadRetailerConfig(slug);
+      const exa = { search: vi.fn().mockResolvedValue([{ url }]), extract: vi.fn().mockResolvedValue({
+        data: { productName, price: 3.95, currency: 'AED', sizeText: '1 kg', inStock: true },
+        pageContent: `${productName}\n1 kg\nAED 3.95`,
+      }) } as unknown as ExaProvider;
+      const firecrawl = { extract: vi.fn().mockResolvedValue({
+        data: { productName, price: 3.95, currency: 'AED', sizeText: '1 kg', inStock: true },
+        pageContent: `${productName}\n1 kg\nAED 3.95`,
+      }) } as unknown as FirecrawlProvider;
+      const adapter = new SearchAdapter(exa, firecrawl);
+      const context = makeContext(config);
+      const target = { id: item.id, url: config.baseUrl, category: item.category, metadata: {
+        canonicalName: item.canonicalName, domain: new URL(config.baseUrl).hostname,
+        currency: config.currencyCode, basketSlug: 'essentials-ae', itemConstraints: item, direct: false,
+      } };
+
+      const result = await adapter.fetchTarget(context, target);
+      const products = await adapter.parseListing(context, result);
+
+      expect(products).toHaveLength(1);
+      expect(products[0]?.rawTitle).toBe(productName);
+      expect(products[0]?.price).toBe(3.95);
+      expect(exa.extract).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { productName: 'Tomato', sizeText: '2 kg', reason: 'size-window-fail:2000g' },
+      { productName: 'Pomi Chopped Tomatoes 1 kg', sizeText: '1 kg', reason: 'negative-token:chopped' },
+    ])('keeps the strict refusal for $productName / $sizeText', async ({ productName, sizeText, reason }) => {
+      const config = loadRetailerConfig('noon_grocery_ae');
+      const exa = { search: vi.fn().mockResolvedValue([{ url: 'https://www.noon.com/uae-en/tomato/p/REPLAY/' }]), extract: vi.fn().mockResolvedValue({
+        data: { productName, sizeText, price: 3.95, currency: 'AED' },
+        pageContent: `${productName}\n${sizeText}\nAED 3.95`,
+      }) } as unknown as ExaProvider;
+      const firecrawl = { extract: vi.fn().mockResolvedValue({
+        data: { productName, sizeText, price: 3.95, currency: 'AED' },
+        pageContent: `${productName}\n${sizeText}\nAED 3.95`,
+      }) } as unknown as FirecrawlProvider;
+      const adapter = new SearchAdapter(exa, firecrawl);
+      const target = { id: item.id, url: config.baseUrl, category: item.category, metadata: {
+        canonicalName: item.canonicalName, domain: new URL(config.baseUrl).hostname,
+        currency: config.currencyCode, basketSlug: 'essentials-ae', itemConstraints: item, direct: false,
+      } };
+
+      const error = await adapter.fetchTarget(makeContext(config), target).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(SearchTargetError);
+      expect((error as SearchTargetError).failures).toEqual([
+        expect.objectContaining({ reason: 'validator-rejected', detail: expect.stringContaining(reason) }),
+      ]);
+      expect(exa.extract).not.toHaveBeenCalled();
+    });
+  });
+
   it('falls back to Exa when Firecrawl confuses quantity with price', async () => {
     const exa = {
       search: vi.fn().mockResolvedValue([{ url: 'https://coldstorage.com.sg/en/p/bread/i/1.html' }]),

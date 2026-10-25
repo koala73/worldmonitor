@@ -15,7 +15,10 @@ import {
   MIN_CORROBORATING_PUBLISHERS,
   countPublisherFamilies,
   publisherFamiliesFor,
+  publisherFamilyFor,
 } from './shared/publisher-families.js';
+// #9095: outlets outside the curated map that run the same copy count once.
+import { detectSyndication } from './shared/syndication.js';
 
 const require = createRequire(import.meta.url);
 const SOURCE_TIERS = require('./shared/source-tiers.json');
@@ -149,6 +152,7 @@ export function clusterItems(items) {
     const sources = [...new Set(group.map(i => normalizeSourceName(i.source)).filter(Boolean))]
       .sort((a, b) => sourceTierFor(a) - sourceTierFor(b) || a.localeCompare(b));
     const sourceTier = sourceTierForSources(sources);
+    const syndication = detectSyndication(group, item => publisherFamilyFor(normalizeSourceName(item.source)));
     const publishedTimes = group.map(getItemPubMs).filter(ms => ms > 0);
     const lastUpdatedMs = publishedTimes.length > 0 ? Math.max(...publishedTimes) : getItemPubMs(primary);
     const upstreamImportanceScore = group.reduce(
@@ -169,8 +173,12 @@ export function clusterItems(items) {
       sources,
       // #6428: how many PUBLISHERS `sources` actually represents. `sources`
       // stays the label list (it is what the UI credits and links); this is
-      // the number any corroboration claim is allowed to quote.
-      uniquePublisherCount: countPublisherFamilies(sources),
+      // the number any corroboration claim is allowed to quote. Families whose
+      // items carried the same copy count once (#9095).
+      uniquePublisherCount: syndication.publishers,
+      // The families after that merge, for the entity bucket; not published.
+      publisherFamilies: [...new Set(group.map(syndication.familyOf).filter(Boolean))].sort(),
+      ...(syndication.groups.length > 0 ? { sameCopy: syndication.groups.map(g => g.families) } : {}),
       lastUpdated: lastUpdatedMs > 0 ? new Date(lastUpdatedMs).toISOString() : primary.pubDate,
       memberTitles: group.map(i => i.title).filter(Boolean),
       sourceTier,
@@ -181,6 +189,17 @@ export function clusterItems(items) {
       threat: threatItem?.threat ? { ...threatItem.threat } : (primary.threat ? { ...primary.threat } : undefined),
     };
   });
+}
+
+/**
+ * Publishers in a cluster's own members: its same-copy-aware
+ * uniquePublisherCount when clusterItems built it, never more than its labels'
+ * families, so a cluster built elsewhere cannot claim more than its labels.
+ */
+function ownPublisherCount(cluster) {
+  const byLabel = countPublisherFamilies(cluster?.sources);
+  const merged = cluster?.uniquePublisherCount;
+  return Number.isFinite(merged) && merged >= 1 ? Math.min(merged, byLabel) : byLabel;
 }
 
 function countMatches(text, keywords) {
@@ -206,7 +225,7 @@ function countMatches(text, keywords) {
  */
 export function publisherFamilyCount(cluster) {
   return Math.max(
-    countPublisherFamilies(cluster?.sources),
+    ownPublisherCount(cluster),
     finiteNumber(cluster?.corroborationSourceCount, 0),
     finiteNumber(cluster?.corroborationCount, 0),
     1,
@@ -295,7 +314,7 @@ export function recencyWeight(cluster, nowMs = Date.now()) {
 export { MIN_CORROBORATING_PUBLISHERS };
 
 export function isBriefLeadEligible(cluster) {
-  return countPublisherFamilies(cluster?.sources) >= MIN_CORROBORATING_PUBLISHERS
+  return ownPublisherCount(cluster) >= MIN_CORROBORATING_PUBLISHERS
     || cluster?.entityCorroboration === true;
 }
 
@@ -337,7 +356,11 @@ export function computeEntityCorroboration(clusters, nowMs = Date.now()) {
       // #6428: publisher families, not labels — otherwise "Reuters World"
       // and "Reuters US" reporting the same bigram entity-corroborated each
       // other, and that flag is the second arm of isBriefLeadEligible.
-      for (const family of publisherFamiliesFor(cluster.sources)) {
+      // #9095: a same-copy pair inside one cluster is one family here too.
+      const families = Array.isArray(cluster.publisherFamilies)
+        ? cluster.publisherFamilies
+        : publisherFamiliesFor(cluster.sources);
+      for (const family of families) {
         bucket.sources.add(family);
       }
     }

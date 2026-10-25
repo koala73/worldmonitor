@@ -173,7 +173,7 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
     return lines.join('\n');
   }
 
-  function oilRowsWithChinaCode3(countryCount) {
+  function oilRowsWithChinaUnreported(countryCount) {
     const rows = [];
     for (let index = 0; index < countryCount; index++) {
       rows.push({
@@ -193,7 +193,9 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
         ENERGY_PRODUCT: product,
         FLOW_BREAKDOWN: 'TOTDEMO',
         UNIT_MEASURE: 'KBD',
-        OBS_VALUE: '3200',
+        // Unusable means a placeholder cell. Code 3 alone is "not assessed"
+        // and still carries a reported number.
+        OBS_VALUE: '-',
         ASSESSMENT_CODE: '3',
       });
     }
@@ -215,7 +217,7 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
 
   it('oil: publishes when China is unusable and refuses only below the country floor', () => {
     const publishable = oilModule.prepareOilPublish({
-      allRows: oilRowsWithChinaCode3(45),
+      allRows: oilRowsWithChinaUnreported(45),
       previousMeta: null,
       now: NOW,
     });
@@ -227,7 +229,7 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
     assert.equal(publishable.metaPayload.chinaRow.ok, false);
 
     const refused = oilModule.prepareOilPublish({
-      allRows: oilRowsWithChinaCode3(39),
+      allRows: oilRowsWithChinaUnreported(39),
       previousMeta: null,
       now: NOW,
     });
@@ -238,7 +240,7 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
 
   it('oil: records the content-age trio the replacement staleness alarm reads', () => {
     const { metaPayload } = oilModule.prepareOilPublish({
-      allRows: oilRowsWithChinaCode3(45),
+      allRows: oilRowsWithChinaUnreported(45),
       previousMeta: null,
       now: NOW,
     });
@@ -252,7 +254,7 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
     // 45 countries reach the file, but only 39 report a usable value. Before
     // #6395 an unusable China row was the incidental canary for this; the floor
     // itself has to catch it now.
-    const rows = oilRowsWithChinaCode3(39);
+    const rows = oilRowsWithChinaUnreported(39);
     for (let index = 0; index < 6; index++) {
       rows.push({
         REF_AREA: `E${String(index).padStart(2, '0')}`,
@@ -266,7 +268,7 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
     }
 
     const refused = oilModule.prepareOilPublish({ allRows: rows, previousMeta: null, now: NOW });
-    assert.equal(refused.parsedCount, 45, 'all 45 countries still parse');
+    assert.equal(refused.parsedCount, 39, 'placeholder-only countries carry no data month, so they never parse');
     assert.match(refused.refusalReason, /only 39 countries with usable measurements/);
     assert.equal(refused.countries.some((country) => country.iso2.startsWith('E')), false);
 

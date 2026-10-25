@@ -39,6 +39,9 @@ export interface SubscriptionInfo {
   displayName: string;
   status: 'active' | 'on_hold' | 'cancelled' | 'expired';
   currentPeriodEnd: number; // epoch ms, renewal date
+  // Cancelled in the Dodo portal but still `active` until currentPeriodEnd.
+  // Optional across a mixed frontend/backend deploy.
+  cancelAtPeriodEnd?: boolean;
   // #4771: verdict of the request-path renewal verification (#4770), null
   // when no verification episode is recorded. Drives the billing-aware
   // gating copy in billing-state.ts.

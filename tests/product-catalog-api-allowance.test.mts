@@ -21,8 +21,8 @@ describe('#3199 U1 — apiDailyAllowance per tier', () => {
     assert.equal(getEntitlementFeatures('api_business').apiDailyAllowance, 10000);
   });
 
-  it('Enterprise is unlimited (-1)', () => {
-    assert.equal(getEntitlementFeatures('enterprise').apiDailyAllowance, -1);
+  it('Enterprise has a finite 100,000/day fair-use ceiling, not -1', () => {
+    assert.equal(getEntitlementFeatures('enterprise').apiDailyAllowance, 100000);
   });
 
   it('Free and Pro have no API allowance (0 — they cannot mint wm_ keys)', () => {
@@ -71,7 +71,7 @@ describe('dashboard-AI allowance is separate from MCP', () => {
     assert.equal(getEntitlementFeatures('pro_business_monthly').planLimits?.dashboardAiCallsPerDay, 2500);
     assert.equal(getEntitlementFeatures('api_starter').planLimits?.dashboardAiCallsPerDay, 1000);
     assert.equal(getEntitlementFeatures('api_business').planLimits?.dashboardAiCallsPerDay, 10000);
-    assert.equal(getEntitlementFeatures('enterprise').planLimits?.dashboardAiCallsPerDay, null);
+    assert.equal(getEntitlementFeatures('enterprise').planLimits?.dashboardAiCallsPerDay, 25000);
   });
 
   it('does not change the existing MCP allowances', () => {

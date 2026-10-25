@@ -1,0 +1,72 @@
+---
+title: "Morning World-Risk Brief by Email"
+description: "Get a World Monitor world-risk summary by email every morning, or on Slack, Discord or Telegram. Every story links to its original report. Choose daily, twice-daily or weekly delivery."
+---
+
+World Monitor Pro can email you a world-risk summary at the hour you choose, 8 AM in your timezone by default. Every story in the summary links to the original news report it came from. The same digest can also go to Telegram, Slack and Discord, where each story is linked the same way.
+
+## What the digest contains
+
+Each digest covers the top-ranked stories published since your previous digest. The first digest covers the last 24 hours.
+
+- **AI executive summary (optional).** A short assessment of the period's main developments, written for your watchlist and interests. Email carries the full summary. Chat channels carry the lead paragraph. Turn it off with the "AI executive summary" switch.
+- **Stories grouped by severity.** Critical, then High, then Medium. The Critical section is never shortened. High and Medium sections show the top stories and a count of the rest.
+- **Each story line.** The headline, linked to the original report. Then the outlets that carried it, and a one-line description from the publisher's feed when one exists.
+- **Links onward.** A link to your full World Monitor Brief when it is ready, and to the live dashboard.
+
+How stories are selected, ranked and deduplicated is documented in [News Digest and Briefing Methodology](/methodology/news-digest-and-briefing).
+
+## Every story links to its original report
+
+The link on each headline is the article URL from the source feed. Only `http` and `https` links are used. A story with no usable article URL is shown as an unlinked headline instead of a broken link.
+
+| Channel | How each story is linked |
+| --- | --- |
+| Email | The headline is a link to the article. |
+| Telegram | The headline is a link to the article. Link previews are turned off so the message stays compact. |
+| Slack | The headline is a link to the article. Link unfurling is turned off. |
+| Discord | The headline is a masked link to the article. Embeds are suppressed. |
+| Webhook | The JSON payload carries each story's headline, severity, phase and outlets. It does not include the article URL. |
+
+Chat apps limit message length. A long Telegram or Discord digest is shortened before the limit, at the end of a line where possible, so a story link is not cut in half. Email has no such limit for normal digests. A very large email drops its lowest-priority stories and links to the full brief instead.
+
+## Cadence
+
+Choose a delivery mode in **Settings → Notifications → Delivery Mode** in the web app.
+
+| Mode | When it sends |
+| --- | --- |
+| Daily digest | Once a day, at the hour you pick. |
+| Twice daily | At the hour you pick and 12 hours later. An 8 AM setting also sends at 8 PM. |
+| Weekly digest | At the hour you pick, once at least six and a half days have passed since the previous weekly digest. |
+| Real-time | Individual alerts as events happen, instead of a digest. Real-time delivery is limited to Critical events. |
+
+The hour is read in the timezone you set on the same screen. A morning brief is a daily digest with the send hour set to the morning.
+
+**Sensitivity** sets which stories qualify: All events, High and critical, or Critical only. All events and High and critical are available only with a digest cadence.
+
+## Channels
+
+Connect channels in **Settings → Notifications → Channels**. The digest goes to each verified channel you have connected.
+
+- **Email** — sent to your verified account email.
+- **Telegram** — connect the World Monitor bot to a chat.
+- **Slack** — add an incoming webhook for a channel.
+- **Discord** — add a channel webhook.
+- **Webhook** — a signed JSON payload for your own systems. See [Notifications & Integrations](/api-notifications).
+
+Browser push receives real-time alerts only. It does not receive digests.
+
+## Requirements
+
+Digests and alert rules need a paid plan. See [pricing](/pricing). The Notifications settings are in the web app. The desktop app does not show them.
+
+## Set up a morning brief
+
+1. Sign in at [worldmonitor.app](https://www.worldmonitor.app) and open **Settings → Notifications**.
+2. Connect email or another channel.
+3. Set **Delivery Mode** to **Daily digest**.
+4. Set **Send at** to the morning hour you want, and set your **Timezone**.
+5. Choose a **Sensitivity**, and leave **AI executive summary** on if you want the written assessment.
+
+The next digest arrives at the chosen hour.

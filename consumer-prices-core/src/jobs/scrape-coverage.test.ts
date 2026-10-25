@@ -15,6 +15,18 @@ import {
 } from './scrape-coverage.js';
 
 describe('scrape coverage persistence and validator admission contracts', () => {
+  it('persists blocked-source attribution without counting a missing price or a provider outage', () => {
+    const tally = new FailureReasonTally();
+    tally.recordPageFailure([{ provider: 'firecrawl', reason: 'source-http-error', detail: 'HTTP 403' }]);
+    expect(tally.toJSON()).toEqual({ 'source-http-error': 1 });
+    expect(tally.total).toBe(1);
+    const statement = updateScrapeRunStatement({
+      runId: 'blocked-run', status: 'failed', pagesAttempted: 1, pagesSucceeded: 0,
+      errorsCount: tally.total, rejectedCount: 0, failureReasons: tally.toJSON(),
+    });
+    expect(statement.params[6]).toBe('{"source-http-error":1}');
+  });
+
   it('uses one admission policy for legacy, auto, and candidate matches', () => {
     expect(classifyMatchAdmission(undefined)).toEqual({
       score: 1,

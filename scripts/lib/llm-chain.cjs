@@ -22,7 +22,56 @@ function stripReasoningPreamble(text) {
   return trimmed;
 }
 
+// Direct Anthropic Messages API. Opt-in only: reached when a caller's
+// allowedProviders names it (a customer AI routing policy,
+// scripts/lib/ai-routing-policy.cjs), never by the default chain. Mirrors the
+// edge adapter (server/_shared/llm-anthropic.ts): current models reject
+// `temperature`, thinking tokens count against max_tokens (so the visible
+// budget gets headroom), and the refusal fallback stays on Anthropic models.
+const ANTHROPIC_DEFAULT_MODEL = 'claude-opus-5-5';
+const ANTHROPIC_THINKING_HEADROOM_TOKENS = 4_096;
+
+async function callAnthropic({ apiKey, model, systemPrompt, userPrompt, maxTokens, timeout }) {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const client = new Anthropic({ apiKey, maxRetries: 0, fetch: (...args) => globalThis.fetch(...args) });
+  const response = await client.messages.create({
+    model,
+    max_tokens: maxTokens + ANTHROPIC_THINKING_HEADROOM_TOKENS,
+    ...(systemPrompt ? { system: systemPrompt } : {}),
+    messages: [{ role: 'user', content: userPrompt }],
+    output_config: { effort: 'low' },
+    fallbacks: 'default',
+  }, { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' }, timeout });
+  const text = response.stop_reason === 'refusal'
+    ? ''
+    : (response.content ?? [])
+      .filter((block) => block.type === 'text' && typeof block.text === 'string')
+      .map((block) => block.text)
+      .join('')
+      .trim();
+  // With server-side fallback every billed attempt is in usage.iterations;
+  // the top-level counters cover only the attempt that answered.
+  const usageParts = Array.isArray(response.usage?.iterations) && response.usage.iterations.length > 0
+    ? response.usage.iterations
+    : [response.usage ?? {}];
+  const prompt = usageParts.reduce((sum, part) => sum + (part?.input_tokens ?? 0), 0);
+  const completion = usageParts.reduce((sum, part) => sum + (part?.output_tokens ?? 0), 0);
+  return {
+    text,
+    finishReason: response.stop_reason ?? null,
+    usage: { tokensTotal: prompt + completion, tokensPrompt: prompt, tokensCompletion: completion },
+  };
+}
+
 const LLM_PROVIDERS = [
+  {
+    name: 'anthropic',
+    envKey: 'ANTHROPIC_API_KEY',
+    optIn: true,
+    model: () => process.env.ANTHROPIC_MODEL || ANTHROPIC_DEFAULT_MODEL,
+    invoke: callAnthropic,
+    timeout: 25_000,
+  },
   {
     name: 'ollama',
     envKey: 'OLLAMA_API_URL',
@@ -80,7 +129,8 @@ const LLM_PROVIDERS = [
  * @param {number} [opts.maxTokens=500]
  * @param {number} [opts.temperature=0.3]
  * @param {number} [opts.timeoutMs] - Override per-provider timeout
- * @param {string[]} [opts.allowedProviders] - Optional exact provider allowlist
+ * @param {string[]} [opts.allowedProviders] - Optional exact provider allowlist,
+ *   tried in the order given. Opt-in providers (anthropic) run only when named here.
  * @param {string[]} [opts.skipProviders] - Optional provider denylist
  * @param {Record<string, string>} [opts.modelOverrides] - Per-provider model override, keyed by provider name
  * @param {string} [opts.stage] - llm_call telemetry surface tag (#4944 U5)
@@ -98,12 +148,18 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
   } = opts;
   const allowedSet = allowedProviders ? new Set(allowedProviders) : null;
   const skipSet = skipProviders ? new Set(skipProviders) : null;
+  // An allowlist is tried in its own order (a routing policy's order is its
+  // fallback order); unknown names are ignored, so an empty or unknown list
+  // reaches no provider.
+  const chain = allowedProviders
+    ? [...new Set(allowedProviders)].map((name) => LLM_PROVIDERS.find((p) => p.name === name)).filter(Boolean)
+    : LLM_PROVIDERS.filter((p) => !p.optIn);
 
   const promptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
   const events = [];
   let attemptIndex = 0;
 
-  for (const provider of LLM_PROVIDERS) {
+  for (const provider of chain) {
     if (allowedSet && !allowedSet.has(provider.name)) continue;
     if (skipSet?.has(provider.name)) continue;
     const envVal = process.env[provider.envKey];
@@ -127,6 +183,27 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     };
 
     try {
+      if (provider.invoke) {
+        const result = await provider.invoke({
+          apiKey: envVal, model, systemPrompt, userPrompt, maxTokens, timeout,
+        });
+        if (result.finishReason === 'max_tokens') {
+          console.warn(`[llm-chain] ${provider.name}: length-limited response, trying next provider`);
+          record(false, { ...result.usage, reason: 'length' });
+          continue;
+        }
+        if (!result.text) {
+          console.warn(`[llm-chain] ${provider.name}: empty response`);
+          record(false, { ...result.usage, reason: result.finishReason === 'refusal' ? 'refusal' : 'empty' });
+          continue;
+        }
+        const text = stripReasoningPreamble(result.text);
+        console.log(`[llm-chain] ${provider.name} OK (${text.length} chars)`);
+        record(true, result.usage);
+        void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
+        return text;
+      }
+
       const resp = await fetch(apiUrl, {
         method: 'POST',
         headers: provider.headers(envVal),
@@ -175,7 +252,9 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
       return text;
     } catch (err) {
       console.warn(`[llm-chain] ${provider.name} failed: ${err.message}`);
-      record(false, { reason: err?.name === 'TimeoutError' || err?.name === 'AbortError' ? 'timeout' : 'fetch_error' });
+      const status = typeof err?.status === 'number' ? err.status : null;
+      const timedOut = err?.name === 'TimeoutError' || err?.name === 'AbortError' || err?.name === 'APIConnectionTimeoutError';
+      record(false, { reason: status ? `http_${status}` : timedOut ? 'timeout' : 'fetch_error' });
     }
   }
 

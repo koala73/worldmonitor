@@ -383,7 +383,8 @@ describe('api/mcp/auth.ts — pre-check resolves the plan MCP daily limit (U3 / 
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('enterprise', null, 3) });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.deepEqual(res.budget, { allowance: 'mcp', limit: null }, 'null is the unlimited sentinel, not an absent value');
+    // A tier-3 budget also carries the high-usage-alarm flag; lower tiers never do.
+    assert.deepEqual(res.budget, { allowance: 'mcp', limit: null, enterprisePlan: true }, 'null is the unlimited sentinel, not an absent value');
   });
 
   it('pro context on a legacy row without planLimits falls back to the dedicated 50 default', async () => {
@@ -412,7 +413,7 @@ describe('api/mcp/auth.ts — pre-check resolves the plan MCP daily limit (U3 / 
     assert.deepEqual(viaUserKey.budget, { allowance: 'api', counter: 'api', limit: 10_000 });
   });
 
-  it('env_key passes with no limit at all (never metered by the daily counter)', async () => {
+  it('env_key passes with no entitlement budget (its ceiling is reserved per key in dispatch)', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('api_business', 10_000, 2) });
     const res = await authMod.runContextPreChecks(ENV_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);

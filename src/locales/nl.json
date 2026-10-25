@@ -35,6 +35,7 @@
     "github": "GitHub-trending",
     "ipo": "Beursgang & fusies van lege beursvennootschappen",
     "thinktanks": "Denktanks",
+    "science": "Wetenschap",
     "africa": "Afrika",
     "latam": "Latijns-Amerika",
     "asia": "Azië-Pacific",
@@ -313,7 +314,8 @@
       "alertTitle": {
         "configured": "Bureaubladinstellingen geconfigureerd",
         "needsKeys": "Configureer API-sleutels om functies te ontgrendelen",
-        "some": "Voor sommige functies zijn API-sleutels nodig"
+        "some": "Voor sommige functies zijn API-sleutels nodig",
+        "pro": "World Monitor Pro is actief"
       },
       "summary": {
         "desktop": "Desktop-modus",
@@ -343,8 +345,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "skipSetup": "Sla de configuratie over — een enkele World Monitor-licentie ontgrendelt alles. Meld u aan voor de wachtlijst voor vroege toegang.",
-      "reserveEarlyAccess": "Reserveer Vroege Toegang"
+      "proCloud": "Functies zonder lokale API-sleutel gebruiken World Monitor cloudgegevens.",
+      "skipSetupPro": "Sla de setup over: meld je aan met World Monitor Pro om cloudgegevens te gebruiken in plaats van je eigen API-sleutels.",
+      "getPro": "World Monitor Pro ophalen"
     },
     "countryIntel": {
       "identifying": "Land identificeren...",
@@ -590,7 +593,7 @@
         "tradeRoutes": "Handelsroutes",
         "gpsJamming": "Navigatieinterferentie",
         "dayNight": "Dag/Nacht",
-        "iranAttacks": "Iraanse aanvallen",
+        "iranAttacks": "Aanvallen in het Midden-Oosten",
         "ciiChoropleth": "Landinestabiliteit",
         "positiveEvents": "Positieve gebeurtenissen",
         "kindness": "Daden van goedheid",
@@ -600,7 +603,8 @@
         "radiationSpike": "Stralingspiek",
         "radiationElevated": "Verhoogde straling",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM-luchtruimbeperkingen"
       },
       "layersTitle": "Lagen",
       "layerSearch": "Lagen zoeken...",
@@ -639,7 +643,9 @@
         "sourceIomDtm": "Bron: IOM DTM",
         "sinceDate": "sinds {{date}}",
         "lastMonth": "vorige maand",
-        "sourceUnhcrOdp": "Bron: UNHCR Operational Data Portal"
+        "sourceUnhcrOdp": "Bron: UNHCR Operational Data Portal",
+        "displaced": "ontheemd",
+        "sourceIdmc": "Bron: IDMC"
       },
       "layerHelp": {
         "title": "Gids voor kaartlagen",
@@ -720,7 +726,8 @@
           "geoBoundaries": "Gedemilitariseerde zones, staakt-het-vuren-lijnen en betwiste grenzen",
           "ciiChoropleth": "Country Instability Index heatmap — landen ingekleurd naar score (groen=stabiel, rood=kritiek)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Tijdelijke vliegbeperkingen en beperkt, gevaar- en verboden luchtruim van FAA NOTAMs, nu van kracht of binnen 24 uur van start"
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"
@@ -752,7 +759,8 @@
       "sourceCoverageHint": "Toont {{covered}} van {{total}} ingeschakelde bronnen — dit paneel wisselt bij elke verversing van bron",
       "sortBy": "Sorteren op",
       "sortNewest": "Nieuwste",
-      "sortRelevance": "Relevantie"
+      "sortRelevance": "Relevantie",
+      "translationUnavailable": "Vertaling niet beschikbaar. Controleer de instellingen van je AI-provider en probeer het opnieuw."
     },
     "countryBrief": {
       "shareStory": "Deel verhaal",
@@ -775,7 +783,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · locatiegegevens:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "locatiegegevens:",
       "statusNormal": "NORMAAL",
       "statusNoData": "GEEN GEGEVENS",
       "statusNoBaseline": "GEEN REFERENTIE",
@@ -939,6 +948,8 @@
       "capacityPercent": "{{percent}}% capaciteit",
       "noCountryImpacts": "Er zijn geen landeneffecten gedetecteerd",
       "alternativeRoutes": "Alternatieve routes",
+      "sharesCutZone": "zelfde zeestraat",
+      "estimateNote": "Schatting: kabelcapaciteit en redundantie zijn benaderd, niet gemeten.",
       "countriesAffected": "Betrokken landen ({{count}})",
       "links": "koppelingen",
       "selectInfrastructureHint": "Selecteer infrastructuur om de cascade-impact te analyseren",
@@ -1098,7 +1109,21 @@
       "latestChange": "Laatste verandering",
       "accelerating": "Versnelt",
       "inDays": "in {{days}} dagen",
-      "crossBorderNote": "VN-Vluchtelingenagentschap Operational Data Portal: personen die grenzen overstaken in elke crisis, vanuit de meest recente landverslagen. Situaties overlappen, dus worden niet bij elkaar opgeteld."
+      "crossBorderNote": "VN-Vluchtelingenagentschap Operational Data Portal: personen die grenzen overstaken in elke crisis, vanuit de meest recente landverslagen. Situaties overlappen, dus worden niet bij elkaar opgeteld.",
+      "last7And30": "Laatste 7 / 30 dagen",
+      "staleReport": "Verouderd rapport",
+      "reported": "Aantal",
+      "period": "Periode",
+      "movementNote": "Elke rij behoudt de bron, rapportdatum en meeteenheid. Populaties, aankomsten en grenscontrole-incidenten zijn verschillende metingen. Bronnen kunnen overlappen; tel hun aantallen niet op. WorldMonitor leidt deze weergave af van de gekoppelde bronnen; dit houdt geen goedkeuring door de aanbieders in.",
+      "recent": "Recent",
+      "last30Days": "Laatste 30 dagen",
+      "newThisWeek": "Nieuw deze week",
+      "conflict": "Conflict",
+      "disaster": "Ramp",
+      "surge": "Toename",
+      "recentNote": "IDMC: mensen ontheemd binnen hun eigen land in de laatste 30 dagen. IDMC publiceert een cijfer gemiddeld drie weken na de ontheemding, dus recente weken worden later ingevuld. Nieuw deze week telt cijfers gepubliceerd in de afgelopen 7 dagen. Toename: ten minste 5.000 mensen en drie keer het maandelijkse gemiddelde van de voorgaande vijf maanden.",
+      "recentAsOf": "Gegevens per {{date}}.",
+      "recentMissing": "Geen gegevens dit keer van {{countries}}; hun bestanden konden niet worden geladen, wat niet nul verplaatsing betekent."
     },
     "populationExposure": {
       "totalAffected": "Totaal getroffen",
@@ -2556,6 +2581,7 @@
       "tier4OnlyHint": "Elk medium dat hierover bericht, is een tier-4-bron (aggregators en blogs). Dit beschrijft de verslaggeving, niet de nauwkeurigheid.",
       "rosterListed": "({{listed}} vermeld)",
       "rosterFeeds": "Feeds gezien: {{labels}}",
+      "rosterSameCopy": "Zelfde tekst, één keer geteld",
       "rosterLegend": "Tiers rangschikken bronnen; ze beoordelen deze bewering niet.",
       "tierDocsLink": "Hoe tiers worden toegekend",
       "tierChip": "T{{tier}}",
@@ -2645,7 +2671,9 @@
         "africa": "Afrika"
       },
       "scheduled": "Ingepland",
-      "estimated": "Geschat"
+      "estimated": "Geschat",
+      "normalOperations": "NORMALE OPERATIES",
+      "open": "OPEN"
     },
     "cyberThreat": {
       "title": "CYBERDREIGING"
@@ -3051,7 +3079,12 @@
       "position": "Positie",
       "ground": "Op de grond",
       "airborne": "In de lucht"
-    }
+    },
+    "upcomingForecast": "Komende verwachting",
+    "currentForecast": "Actuele verwachting",
+    "expiredForecast": "Verlopen verwachting",
+    "validFrom": "Geldig vanaf",
+    "validUntil": "Geldig tot"
   },
   "signals": {
     "context": {
@@ -3548,7 +3581,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Status van schatting en imputatie niet opgegeven"
     },
     "fiveFactorScorecard": {
       "title": "Vijffactoren-resiliëntiescorekaart",
@@ -3808,5 +3842,27 @@
       "description": "Bronnen over Iran, Israël, de Golf en Koerdische regio's inschakelen"
     },
     "unavailable": "Preset {{preset}} is niet beschikbaar met je huidige panelen"
+  },
+  "countryHistory": {
+    "title": "Dagelijkse landgeschiedenis",
+    "loading": "Daggeschiedenis laden…",
+    "window": "Periode",
+    "days": "{{days}} dagen",
+    "observed": "{{count}} momentopnamen in {{days}} dagen",
+    "legend": "CII (amber): hoger betekent meer instabiliteit. Veerkracht (groen): hoger betekent meer capaciteit. Punten markeren dagen met geselecteerde koppen.",
+    "chart": "Dagelijkse CII- en veerkrachtscores. Hiaten en formulewijzigingen onderbreken de lijnen.",
+    "selectDate": "{{date}}, {{count}} geselecteerde koppen",
+    "empty": "Geen dagelijkse momentopnamen in deze periode. Geschiedenis wordt opgebouwd na activering.",
+    "unavailable": "De geschiedenis is tijdelijk niet beschikbaar. Probeer opnieuw.",
+    "retry": "Opnieuw proberen",
+    "stale": "De laatste geslaagde dagelijkse vastlegging is meer dan 36 uur oud.",
+    "break": "Formulewijziging of waarnemingshiaat. Vergelijk alleen scores met dezelfde formule.",
+    "partial": "De nieuwsdekking was onvolledig bij de vastlegging.",
+    "resilience": "Veerkracht",
+    "ciiMissing": "CII niet beschikbaar",
+    "resilienceMissing": "Veerkracht niet beschikbaar",
+    "noEvents": "Voor deze datum zijn geen geselecteerde koppen vastgelegd. Dit bewijst niet dat er geen gebeurtenissen waren.",
+    "unlock90": "Ontgrendel 90 dagen met Pro",
+    "unlock365": "Ontgrendel 365 dagen met een API-abonnement"
   }
 }

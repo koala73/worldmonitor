@@ -50,6 +50,7 @@ interface DodoSubscriptionData {
   previous_billing_date?: string | number | Date;
   next_billing_date?: string | number | Date;
   cancelled_at?: string | number | Date;
+  cancel_at_next_billing_date?: boolean;
   metadata?: Record<string, string>;
   recurring_pre_tax_amount?: number;
   currency?: string;
@@ -509,6 +510,18 @@ export function isCoveringAt<T extends Pick<SubscriptionRow, "status" | "current
     s.status === "active" ||
     ((s.status === "on_hold" || s.status === "cancelled") && s.currentPeriodEnd > at)
   );
+}
+
+/**
+ * Whether the customer has cancelled but Dodo is keeping the subscription
+ * active until period end. A portal cancel arrives as `subscription.updated`
+ * with this flag; `subscription.cancelled` only lands at or after period end.
+ * Reads the stored Dodo payload, so rows written before this predicate
+ * existed answer correctly without a backfill.
+ */
+export function isCancellationScheduled(sub: { status: string; rawPayload?: unknown }): boolean {
+  const payload = sub.rawPayload as { cancel_at_next_billing_date?: unknown } | null | undefined;
+  return sub.status === "active" && payload?.cancel_at_next_billing_date === true;
 }
 
 /**
@@ -1314,6 +1327,17 @@ export async function handleSubscriptionActive(
       isLapsedAt(subscription, eventTimestamp),
     );
 
+  // Only the transition into a scheduled cancel opens a confirmation episode.
+  // Dodo re-sends the flag on every later update of the subscription.
+  const cancelScheduled = data.cancel_at_next_billing_date === true;
+  const enteringScheduledCancel =
+    cancelScheduled && !(existing !== null && isCancellationScheduled(existing));
+  const cancelScheduledAt = enteringScheduledCancel
+    ? eventTimestamp
+    : cancelScheduled
+      ? existing?.cancelScheduledAt
+      : undefined;
+
   if (existing) {
     await ctx.db.patch(existing._id, {
       userId,
@@ -1341,6 +1365,7 @@ export async function handleSubscriptionActive(
       // next status transition, so wiping them here is safe.
       cancelledAt: undefined,
       onHoldAt: undefined,
+      cancelScheduledAt,
     });
   } else {
     await ctx.db.insert("subscriptions", {
@@ -1359,6 +1384,7 @@ export async function handleSubscriptionActive(
       attributionSource: normalizeCheckoutAttributionSource(data.metadata?.wm_attribution),
       rawPayload: data,
       updatedAt: eventTimestamp,
+      cancelScheduledAt,
     });
 
     // Referral attribution on conversion (Phase 9 / Todo #223).
@@ -1409,6 +1435,18 @@ export async function handleSubscriptionActive(
   // Recompute from ALL subs on this userId — the event's sub may be a
   // duplicate or lower-tier than another active sub (multi-active-sub guard).
   await recomputeEntitlementFromAllSubs(ctx, userId, eventTimestamp);
+
+  if (enteringScheduledCancel && currentPeriodEnd > eventTimestamp && process.env.RESEND_API_KEY) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.subscriptionEmails.sendDunningEmail,
+      {
+        dodoSubscriptionId: data.subscription_id,
+        step: "cancellation_confirm",
+        episodeAt: eventTimestamp,
+      },
+    );
+  }
 
   // Upsert customer record so portal session creation can find dodoCustomerId
   const email = data.customer?.email ?? "";
@@ -1804,9 +1842,15 @@ export async function handleSubscriptionCancelled(
   // new episode (cancelled → active → cancelled) passes through a
   // non-cancelled status first, so enteringCancelled correctly re-anchors.
   const enteringCancelled = existing.status !== "cancelled";
-  const eventCancelledAt = data.cancelled_at
+  // A cancel that was scheduled through the portal already opened its
+  // confirmation episode. Reusing that anchor makes the ledger dedupe the
+  // confirmation below and in the daily retry scan.
+  const scheduledCancelAt = isCancellationScheduled(existing)
+    ? existing.cancelScheduledAt
+    : undefined;
+  const eventCancelledAt = scheduledCancelAt ?? (data.cancelled_at
     ? toEpochMs(data.cancelled_at, "cancelled_at", eventTimestamp)
-    : eventTimestamp;
+    : eventTimestamp);
   const cancelledAt = enteringCancelled
     ? eventCancelledAt
     : (existing.cancelledAt ?? eventCancelledAt);
@@ -2253,6 +2297,9 @@ export function classifyRefundAlert(input: {
   }
   if (input.subCancelledAt) {
     return { kind: "no-op", reason: "already-cancelled" };
+  }
+  if (isCancellationScheduled({ status: input.subStatus, rawPayload: input.subRawPayload })) {
+    return { kind: "no-op", reason: "cancel-scheduled" };
   }
   const subAmount = typeof input.subRawPayload?.recurring_pre_tax_amount === "number"
     ? input.subRawPayload.recurring_pre_tax_amount

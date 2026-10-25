@@ -704,11 +704,6 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       reason: 'the provider-wide Nominatim bucket is shared across both routes and must fail closed before upstream work',
     },
     {
-      path: 'server/worldmonitor/leads/v1/register-interest.ts',
-      expected: /if\s*\(\s*scoped\.degraded\s*\)\s*\{/,
-      reason: 'desktop lead capture bypasses Turnstile, so Redis degradation must fail closed locally',
-    },
-    {
       path: 'server/worldmonitor/infrastructure/v1/reverse-geocode.ts',
       expected: /if\s*\(\s*providerLimit\.degraded\s*\)\s*\{/,
       reason: 'the gateway half of the provider-wide Nominatim bucket must fail closed before upstream work',

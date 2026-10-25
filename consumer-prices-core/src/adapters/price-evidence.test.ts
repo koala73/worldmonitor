@@ -113,6 +113,62 @@ describe('priceEvidenceOnPage', () => {
     expect(priceEvidenceOnPage(49.79, 'now 49.79 AED')).toBe('verified');
   });
 
+  it.each(['Pack', 'Packs', 'Pint', 'Pints'])('does not verify a price from a contextual %s quantity', unit => {
+    expect(priceEvidenceOnPage(2, `Product 2 ${unit}`)).toBe('unverified');
+  });
+
+  it.each(['Pack', 'Packs', 'Pint', 'Pints'])('still verifies a separate price beside a %s quantity', unit => {
+    expect(priceEvidenceOnPage(2, `Product 2 ${unit}\n£2`)).toBe('verified');
+  });
+
+  it.each(['Pack', 'Packs', 'Pint', 'Pints'])('keeps markup-separated %s quantities out of integer and decimal prices', unit => {
+    for (const gap of [' ', '  ', '\n\n', '  \n', '\u00a0\u00a0']) {
+      const content = `Product 2${gap}${unit}`;
+      expect(priceEvidenceOnPage(2, content)).toBe('unverified');
+      expect(priceEvidenceOnPage(2, `${content}\n£2`)).toBe('verified');
+      expect(priceEvidenceOnPage(2.5, `${content}\n£1\n.50`)).toBe('unverified');
+      expect(priceEvidenceOnPage(2.5, `${content}\n£2\n.50`)).toBe('verified');
+    }
+  });
+
+  it.each(['Pack', 'Packs', 'Pint', 'Pints'])('recognizes Markdown %s quantities without donating price digits', unit => {
+    for (const quantity of [
+      `2 **${unit}**`, `2-${unit}`, `2 | ${unit}`, `2 _${unit}_`, `2 __${unit}__`,
+      `2\n\n${unit} Fresh`, `2\n\n${unit} Semi Skimmed`, `2\n\n-${unit}`, `2\n\n | ${unit}`,
+      `2\n\n _${unit}_`, `2\n\n __${unit}__`,
+    ]) {
+      const content = `Product ${quantity}`;
+      expect.soft(priceEvidenceOnPage(2, content)).toBe('unverified');
+      expect.soft(priceEvidenceOnPage(2.5, `${content}\n£1\n.50`)).toBe('unverified');
+      expect.soft(priceEvidenceOnPage(2, `${content}\n£2`)).toBe('verified');
+      expect.soft(priceEvidenceOnPage(2.5, `${content}\n£2\n.50`)).toBe('verified');
+    }
+  });
+
+  it('keeps genuine prices before a Pack size heading', () => {
+    expect(priceEvidenceOnPage(2, 'Milk 2 Pint\nPrice\n£2\n\nPack size\n2 Pint')).toBe('verified');
+    expect(priceEvidenceOnPage(12, 'Eggs 12 Pack\nPrice\nAED12\n\nPack size\n12 Pack')).toBe('verified');
+    expect(priceEvidenceOnPage(2.5, 'Milk 2 Pint\nPrice\n£2\n.50\n\nPack size\n2 Pint')).toBe('verified');
+  });
+
+  it('preserves heading boundaries without treating unit prefixes as quantities', () => {
+    for (const heading of ['Pack size', '**Pack size**', 'Pack **size**', '__Pack size__']) {
+      expect(priceEvidenceOnPage(2, `Milk 2 Pint\nPrice\n£2\n\n${heading}\n2 Pint`)).toBe('verified');
+      expect(priceEvidenceOnPage(2.5, `Milk 2 Pint\nPrice\n£2\n.50\n\n${heading}\n2 Pint`)).toBe('verified');
+    }
+    expect(priceEvidenceOnPage(2, 'Price £2\nPackage information')).toBe('verified');
+    expect(priceEvidenceOnPage(2, 'Price £2\nPintrest offer')).toBe('verified');
+  });
+
+  it('preserves price decisions across bounded provider whitespace without dropping page content', () => {
+    for (const chars of [4000, 8000, 16000, 30000]) {
+      const content = `Product 2${' '.repeat(chars - 10)}X`;
+      expect(priceEvidenceOnPage(2, content)).toBe('verified');
+      expect(priceEvidenceOnPage(2.5, content)).toBe('unverified');
+      expect(priceEvidenceOnPage(2.5, `${content}\n£2\n.50`)).toBe('verified');
+    }
+  });
+
   // Thousands groupings must stay separator-consistent: a comma-grouped whole
   // pairs with a dot decimal and vice versa. "1.234.56" / "1,234,56" are not
   // number renders in any supported locale and must not count as evidence.

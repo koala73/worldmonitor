@@ -74,6 +74,7 @@ vi.mock("../_shared/user-api-key", () => ({
 
 import { createDomainGateway } from "../gateway";
 import { hashKeySync } from "../_shared/usage-identity";
+import { OPERATOR_KEY_DAILY_CEILINGS } from "../_shared/high-usage-alarm";
 
 function makeGateway() {
   return createDomainGateway([
@@ -303,13 +304,16 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
     expect(checkRateLimit).toHaveBeenCalledTimes(1);
   });
 
-  test("enterprise unavailable burst retains IP fallback and unlimited daily policy", async () => {
+  test("enterprise unavailable burst retains IP fallback and reserves the operator daily ceiling", async () => {
     process.env.WORLDMONITOR_VALID_KEYS = "enterprise-browser-key";
     process.env.API_RATE_LIMIT_ENFORCE = "true";
     checkBurst.mockResolvedValue({ ok: null, reason: 'timeout' });
     expect((await makeGateway()(mixedEnterpriseRequest('wms_session'), ctx)).status).toBe(200);
     expect(checkBurst).toHaveBeenCalledWith(1000, hashKeySync('enterprise-browser-key'));
-    expect(reserveDailyMeter).not.toHaveBeenCalled();
+    expect(reserveDailyMeter).toHaveBeenCalledWith(expect.objectContaining({
+      userId: hashKeySync('enterprise-browser-key'),
+      allowance: OPERATOR_KEY_DAILY_CEILINGS.restRequests,
+    }));
     expect(checkRateLimit).toHaveBeenCalledWith(expect.any(Request), expect.any(Object));
   });
 

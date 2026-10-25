@@ -550,3 +550,54 @@ describe('_clustering.mjs', () => {
     });
   });
 });
+
+// #9095 follow-up: the brief-lead gate counts same-copy outlets once, like
+// every other publisher count. EuroNews and Africanews are both outside the
+// curated family map, so only their shared copy can join them.
+describe('_clustering.mjs same-copy syndication', () => {
+  const TITLE = 'Iran deal talks resume in Geneva as envoys trade new proposals';
+  const LEAD = 'Negotiators from Iran and three European capitals met in Geneva on Thursday to restart talks on a nuclear deal, officials said, with both sides exchanging written proposals on sanctions relief and enrichment limits for the first time in months.';
+  const nowMs = Date.now();
+  const at = new Date(nowMs - 3600000).toISOString();
+  const item = (source, snippet) => ({ title: TITLE, source, link: `http://${source.replace(/\s/g, '')}`, pubDate: at, snippet });
+
+  it('counts two outlets carrying the same copy as one publisher, and denies the brief lead', () => {
+    const [cluster, ...rest] = clusterItems([item('EuroNews', LEAD), item('Africanews', LEAD)]);
+    assert.equal(rest.length, 0, 'fixture must cluster or this asserts nothing');
+    assert.deepEqual(cluster.sources, ['EuroNews', 'Africanews'], 'both outlets stay credited');
+    assert.equal(cluster.uniquePublisherCount, 1);
+    assert.equal(cluster.sameCopy.length, 1);
+    assert.equal(publisherFamilyCount(cluster), 1);
+    assert.equal(isBriefLeadEligible(cluster), false);
+  });
+
+  it('keeps the same two outlets as two publishers when they wrote different copy', () => {
+    const [cluster] = clusterItems([item('EuroNews', LEAD), item('Africanews', '')]);
+    assert.equal(cluster.uniquePublisherCount, 2);
+    assert.equal('sameCopy' in cluster, false);
+    assert.equal(isBriefLeadEligible(cluster), true);
+  });
+
+  it('does not let a same-copy cluster entity-corroborate itself', () => {
+    const syndicated = clusterItems([item('EuroNews', LEAD), item('Africanews', LEAD)]);
+    computeEntityCorroboration(syndicated, nowMs);
+    assert.equal(syndicated[0].entityCorroboration, false);
+    assert.equal(syndicated[0].corroborationSourceCount, 0);
+
+    // Premise check: without the shared lead the same cluster does corroborate.
+    const independent = clusterItems([item('EuroNews', LEAD), item('Africanews', '')]);
+    computeEntityCorroboration(independent, nowMs);
+    assert.equal(independent[0].entityCorroboration, true);
+  });
+
+  it('never counts more publishers than the labels name, whatever the cluster claims', () => {
+    assert.equal(isBriefLeadEligible({ sources: ['EuroNews'], uniquePublisherCount: 5 }), false);
+    assert.equal(isBriefLeadEligible({ sources: ['EuroNews', 'BBC World'] }), true);
+  });
+
+  it('does not pick a same-copy cluster as the brief lead', () => {
+    const clusters = clusterItems([item('EuroNews', LEAD), item('Africanews', LEAD)]);
+    computeEntityCorroboration(clusters, nowMs);
+    assert.equal(pickBriefCluster(selectTopStories(clusters, 8)), null);
+  });
+});

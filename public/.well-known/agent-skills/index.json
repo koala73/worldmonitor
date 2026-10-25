@@ -7,14 +7,14 @@
       "type": "skill-md",
       "description": "Model oil or gas supply shock exposure for a country and chokepoint. Use when the user asks how an energy disruption could affect fuel supply, strategic cover, or product deficits.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/assess-energy-shock/SKILL.md",
-      "digest": "sha256:3f6091444376692dc11b7cb8ac25b1870e4d1f44c02391c0317d12bba40ca228"
+      "digest": "sha256:c5005d90e35a24dc1649dc6553b9613b631cb9c705b21d5cb6ae6f49a201e201"
     },
     {
       "name": "check-airport-delays",
       "type": "skill-md",
       "description": "Retrieve current airport delay and cancellation alerts worldwide — delay type, severity, average delay minutes, and affected-flight percentages per airport. Use when the user asks whether an airport is delayed, disrupted, or experiencing cancellations.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/check-airport-delays/SKILL.md",
-      "digest": "sha256:04057959beb677e917a5c3f72ff1cf316b25a76d635533685a82e154d2f8fbc9"
+      "digest": "sha256:f2eec5b726047f83addbb55a0862ab34fa9b16f8b4e1e2ea7531ba9c433bc977"
     },
     {
       "name": "check-chokepoint-status",
@@ -28,7 +28,7 @@
       "type": "skill-md",
       "description": "Retrieve composite country risk intelligence — Country Instability Index (CII), travel advisory level, and active sanctions exposure — for one country by ISO code. Use when the user asks how risky or unstable a country is right now.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/check-country-risk/SKILL.md",
-      "digest": "sha256:81973d76a4943fab52ced53b48dfab704e8ba1a53401a85b300d6d1f7280ed7f"
+      "digest": "sha256:91a97a67246c8e9f0fedb092b602aa43a9592a1f69ebb0e8a2369a1ec76c7340"
     },
     {
       "name": "check-forecast-signals",
@@ -56,7 +56,7 @@
       "type": "skill-md",
       "description": "Open the WorldMonitor country interface in a UI-capable MCP host. Use the text assessment endpoint for explicit text-only requests or clients without embedded UI.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/fetch-country-brief/SKILL.md",
-      "digest": "sha256:a5b9c7bb0059c4b7bf582870b1e62650fe1e1ab7ad3be893f4534894fa482aa9"
+      "digest": "sha256:cfb5b5d5a850912d0e999181c2970df7ad627e1ee24749fe9373ccf2444fbd93"
     },
     {
       "name": "fetch-news-digest",
@@ -70,7 +70,7 @@
       "type": "skill-md",
       "description": "Retrieve the composite country resilience score (0-100) and its domain/pillar breakdown for a single country. Use when the user asks how resilient a country is, or wants its numeric resilience score, trend, or per-domain breakdown.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/fetch-resilience-score/SKILL.md",
-      "digest": "sha256:6dec69fa8566b683ba272331c71bdcc41cd8eb30a51470f9e129cb4a37c9354a"
+      "digest": "sha256:93d88095fb1957f3bfc106968b5870912ab1a16d98a2ed835f90dfe22317cf53"
     },
     {
       "name": "get-market-quotes",
@@ -119,7 +119,7 @@
       "type": "skill-md",
       "description": "Retrieve detected internet outages (Cloudflare Radar) with country, cause, severity, and time bounds. Use when the user asks whether a country's internet is down, throttled, or experiencing a shutdown.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/monitor-internet-outages/SKILL.md",
-      "digest": "sha256:ae6b10e17a23f3b8c5fa650a6cbbb2a192deee714960dea95d86acf58ecf3ab2"
+      "digest": "sha256:c8a182334a91aeea01ee031284277d36bb379763873eb9b67ca98521be3f9050"
     },
     {
       "name": "monitor-supply-chain-stress",

@@ -45,6 +45,9 @@ Layers are organized into logical groups for efficient monitoring:
 | **Hotspots** | Intelligence hotspots with activity levels based on news correlation |
 | **Sanctions** | Countries under economic sanctions regimes |
 | **Protests** | Live social unrest events from ACLED and GDELT |
+| **Armed Conflict Events** | UCDP georeferenced events, coloured by violence type and sized by deaths. Refreshed every 6 hours. Off by default |
+| **Middle East Strikes** | Strike reports from Telegram channels, classified and geocoded, with a GDELT backstop that requires multi-source reporting. State-media claims from a belligerent appear only when an independent source corroborates them within 2 hours. Shown only on deployments built with `VITE_ENABLE_IRAN_ATTACKS=true` and served with `IRAN_EVENTS_ENABLED=true`; Pro-only on desktop |
+| **Cyber Threats** | Threat-intelligence indicators by country, with severity. Shown only on deployments built with `VITE_ENABLE_CYBER_LAYER=true`. Off by default |
 
 **Military & Strategic**
 | Layer | Description |
@@ -59,7 +62,7 @@ Layers are organized into logical groups for efficient monitoring:
 **Infrastructure**
 | Layer | Description |
 |-------|-------------|
-| **Undersea Cables** | 86 submarine cable routes worldwide |
+| **Undersea Cables** | 98 submarine cable routes worldwide |
 | **Pipelines** | 88 operating oil & gas pipelines across all continents |
 | **Internet Outages** | Network disruptions via Cloudflare Radar |
 | **AI Datacenters** | 313 AI compute clusters tracked from Epoch AI dataset |
@@ -69,8 +72,16 @@ Layers are organized into logical groups for efficient monitoring:
 |-------|-------------|
 | **Ships (AIS)** | Live vessel tracking via AIS with chokepoint monitoring and the strategic-port registry* |
 | **Delays** | FAA airport delay status and ground stops |
+| **Aircraft emergencies** | Aircraft squawking 7500 (unlawful interference), 7600 (radio failure), or 7700 (general emergency) on adsb.lol, polled every 60 seconds. A marker appears only when the last message is at most 120 seconds old and the position at most 90 seconds old; older reports stay in the list for up to 15 minutes after the last observation. An aircraft that stops reporting becomes "unknown", never "resolved". Receiver coverage is incomplete. Flat map only. Off by default |
+| **Live Tanker Positions** | Tankers near six major chokepoints, from AIS. Energy variant only; see [Energy Monitor](/overview#energy-monitor) |
 
 *\*AIS data via [AISStream.io](https://aisstream.io) uses terrestrial receivers with stronger coverage in European/Atlantic waters. Middle East, Asia, and open ocean coverage is limited. Satellite AIS providers (Spire, Kpler) offer global coverage but require commercial licenses.*
+
+**Canada**
+| Layer | Description |
+|-------|-------------|
+| **Canada Roads** | Road closures and incidents from Ontario, Alberta, and Manitoba 511, Toronto road restrictions, and DriveBC (Open511). Provinces whose API key is not configured keep their last good data. Off by default because the payload is large |
+| **Canada Alerts** | Public emergency alerts from Alberta Emergency Alert, B.C. Evacuation Orders, and SaskAlert, refreshed every 15 minutes. Polygons are drawn at their centroid. Ontario is not covered. On by default on desktop in the geopolitical variant |
 
 **Natural Events**
 | Layer | Description |
@@ -101,14 +112,14 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 |-------|---------|
 | **AI Strategic Posture** | Theater-level military aggregation with strike capability analysis |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
-| **Country Instability Index** | Real-time CII v8 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
+| **Country Instability Index** | Real-time CII v14 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 | **Intel Feed** | Curated defense and security news sources |
 | **Country Brief** | AI-generated country profiles with key indicators, risk factors, and recent developments |
 | **Aviation Intelligence** | 6-tab aviation panel (Ops, Flights, Airlines, Tracking, News, Prices) with NOTAM closure detection across the registered airport watchlist |
 | **Climate Anomalies** | Temperature and precipitation deviations across 15 zones using Open-Meteo ERA5 data against rolling baselines |
-| **Displacement Tracking** | UN OCHA HAPI refugee, asylum seeker, and IDP data with origin/host country perspectives |
+| **Displacement Tracking** | UNHCR refugee, asylum seeker, and IDP data by origin and host country, IDMC new internal displacement events, IOM DTM internal displacement by region, and source-dated cross-border movements (UNHCR portal, UK Home Office, US CBP, Frontex, Panama) |
 | **Gulf Economies** | Indices, currencies, and oil data for 6 GCC countries (Saudi, UAE, Qatar, Kuwait, Bahrain, Oman) |
 | **WTO Trade Policy** | Active trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers |
 | **Central Banks, BIS & IMF** | Policy-rate and institutional finance signals from central-bank and supranational finance institutions |
@@ -246,7 +257,7 @@ Two full-screen, keyboard-first workflows complement the map + panels experience
 
 Two complementary country-scoring surfaces:
 
-- **[Country Instability Index](/country-instability-index)** — a high-frequency CII v8 stress score with signed 24-hour movement deltas, blending unrest, conflict, security, and information signals for 31 Tier-1 countries.
+- **[Country Instability Index](/country-instability-index)** — a high-frequency CII v14 stress score with signed 24-hour movement deltas, blending unrest, conflict, security, and information signals for 31 Tier-1 countries.
 - **[Country Resilience Index](/methodology/country-resilience-index)** — a 0-100 resilience score for the 196-country public rankable universe built from 72 indicators across 21 active dimensions and 6 domains. Live API scores refresh every 6 hours. Crawlable country snapshots publish monthly with their capture date and revision note.
 
 CII and CRI answer different questions and are not interchangeable: CII is short-horizon stress; CRI is structural resilience plus live shock exposure.

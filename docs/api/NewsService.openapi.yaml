@@ -590,6 +590,593 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/list-label-changes:
+        get:
+            tags:
+                - NewsService
+            summary: ListLabelChanges
+            description: ListLabelChanges returns stories whose corroboration label moved between single-publisher and corroborated in the last seven days, with the publishers behind each change.
+            operationId: ListLabelChanges
+            security: []
+            parameters:
+                - name: story_id
+                  in: query
+                  description: Story identity hash (64 hex characters). Empty lists changes across all stories.
+                  required: false
+                  example: "example-id"
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: Maximum changes returned, newest first. 0 uses the default of 50; at most 200.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "changes":
+                                    - "at": 1767182400000
+                                      "credibilityScore": 72
+                                      "field": "corroboration"
+                                      "link": "https://example.com/news/synthetic-example"
+                                      "next": "corroborated"
+                                      "nextPublishers": 2
+                                      "previous": "single-publisher"
+                                      "previousPublishers": 1
+                                      "reason": "2 publisher families now carry this story (was 1)."
+                                      "sources":
+                                          - "name": "Example Wire (synthetic)"
+                                            "tier": 1
+                                          - "name": "Example Daily (synthetic)"
+                                            "tier": 2
+                                      "storyId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                                      "title": "Synthetic example story"
+                                      "trigger": "digest"
+                                "counts":
+                                    "at": 1767182400000
+                                    "corroborated": 64
+                                    "singlePublisher": 51
+                                    "stories": 120
+                                    "tier4Only": 3
+                                    "unknown": 2
+                                "retentionDays": 7
+                                "state": "ok"
+                            schema:
+                                $ref: '#/components/schemas/ListLabelChangesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/submit-error-report:
+        post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
+            tags:
+                - NewsService
+            summary: SubmitErrorReport
+            description: SubmitErrorReport stores a reader's report that a label or story is wrong, for an operator to review. No account required; rate-limited; never applied automatically.
+            operationId: SubmitErrorReport
+            security: []
+            requestBody:
+                content:
+                    application/json:
+                        example:
+                            "contact": "example"
+                            "message": "Example WorldMonitor observation."
+                            "storyId": "example-id"
+                            "url": "https://example.com/worldmonitor"
+                        schema:
+                            $ref: '#/components/schemas/SubmitErrorReportRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
+                    content:
+                        application/json:
+                            example:
+                                "reportId": "example-id"
+                                "status": "example"
+                            schema:
+                                $ref: '#/components/schemas/SubmitErrorReportResponse'
+                "400":
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/list-error-reports:
+        get:
+            tags:
+                - NewsService
+            summary: ListErrorReports
+            description: |-
+                ListErrorReports lists stored reports for review. Operators only.
+                 Requires the X-Trust-Review-Key header (the server's TRUST_REVIEW_SECRET), not an API key; without it the response is 401.
+            operationId: ListErrorReports
+            security:
+                - TrustReviewKey: []
+            parameters:
+                - name: status
+                  in: query
+                  description: pending (default) | reviewed.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "reports":
+                                    - "contact": "example"
+                                      "createdAt": 1717200000000
+                                      "id": "example-id"
+                                      "message": "Example WorldMonitor observation."
+                                      "publicNote": "example"
+                                "state": "example"
+                            schema:
+                                $ref: '#/components/schemas/ListErrorReportsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid X-Trust-Review-Key, or review is not configured on the server.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/review-error-report:
+        post:
+            tags:
+                - NewsService
+            summary: ReviewErrorReport
+            description: |-
+                ReviewErrorReport accepts or rejects a report. An accepted report's public note is added to the label log. Operators only.
+                 Requires the X-Trust-Review-Key header (the server's TRUST_REVIEW_SECRET), not an API key; without it the response is 401.
+            operationId: ReviewErrorReport
+            security:
+                - TrustReviewKey: []
+            requestBody:
+                content:
+                    application/json:
+                        example:
+                            "decision": "example"
+                            "publicNote": "example"
+                            "reportId": "example-id"
+                        schema:
+                            $ref: '#/components/schemas/ReviewErrorReportRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "report":
+                                    "contact": "example"
+                                    "createdAt": 1717200000000
+                                    "id": "example-id"
+                                    "message": "Example WorldMonitor observation."
+                                    "publicNote": "example"
+                            schema:
+                                $ref: '#/components/schemas/ReviewErrorReportResponse'
+                "400":
+                    description: Validation error or malformed JSON request body
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "401":
+                    description: Missing or invalid X-Trust-Review-Key, or review is not configured on the server.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/search-fact-checks:
+        get:
+            tags:
+                - NewsService
+            summary: SearchFactChecks
+            description: SearchFactChecks returns ratings that IFCN-verified fact-checkers published about claims similar to the one given, for citation with attribution.
+            operationId: SearchFactChecks
+            security: []
+            parameters:
+                - name: claim
+                  in: query
+                  description: The claim or headline, up to 300 characters.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "caveat": "Ratings are the fact-checkers' own, quoted with attribution from IFCN-verified signatories. WorldMonitor does not rate claims, and a rating never changes the coverage result above."
+                                "factChecks":
+                                    - "claimReviewed": "A synthetic example claim, similar to the claim checked"
+                                      "publisher": "Example Fact-Checker (synthetic)"
+                                      "rating": "Example rating"
+                                      "reviewedAt": "2026-01-15T12:00:00.000Z"
+                                      "site": "example.com"
+                                      "title": "Synthetic example fact-check"
+                                      "url": "https://example.com/fact-check/synthetic-example"
+                                "state": "ok"
+                            schema:
+                                $ref: '#/components/schemas/SearchFactChecksResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/search-claim-headlines:
+        get:
+            tags:
+                - NewsService
+            summary: SearchClaimHeadlines
+            description: SearchClaimHeadlines returns the fresh headlines from every configured feed that share a claim's words, so the /verify page and verify_claim can build its coverage card.
+            operationId: SearchClaimHeadlines
+            security: []
+            parameters:
+                - name: claim
+                  in: query
+                  description: The claim or headline, up to 300 characters. Empty returns only the counts.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "feedCached": 241
+                                "feedTotal": 241
+                                "headlines":
+                                    - "link": "https://example.com/news/synthetic-example"
+                                      "publishedAt": 1768478400000
+                                      "source": "Example Feed"
+                                      "title": "Synthetic example headline sharing the claim's words"
+                                "readAt": "2026-01-15T12:00:00.000Z"
+                                "searchedFeeds": 216
+                                "searchedHeadlines": 4140
+                                "state": "complete"
+                            schema:
+                                $ref: '#/components/schemas/SearchClaimHeadlinesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
     securitySchemes:
         WorldMonitorKey:
@@ -602,6 +1189,11 @@ components:
             in: header
             name: X-Api-Key
             description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+        TrustReviewKey:
+            type: apiKey
+            in: header
+            name: X-Trust-Review-Key
+            description: Operator review key (the server TRUST_REVIEW_SECRET). Required by the error-report review operations; a WorldMonitor API key does not authorize them.
     schemas:
         JmespathProjectionError:
             description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
@@ -1190,3 +1782,336 @@ components:
                     format: int64
                     description: 'Publisher publication time in Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: CountryHeadline is a dated article from a configured RSS feed, before dashboard category caps.
+        ListLabelChangesRequest:
+            type: object
+            properties:
+                storyId:
+                    type: string
+                    maxLength: 64
+                    description: Story identity hash (64 hex characters). Empty lists changes across all stories.
+                limit:
+                    type: integer
+                    maximum: 200
+                    minimum: 0
+                    format: int32
+                    description: Maximum changes returned, newest first. 0 uses the default of 50; at most 200.
+            description: ListLabelChangesRequest selects recent corroboration label changes, optionally for one story.
+        ListLabelChangesResponse:
+            type: object
+            properties:
+                changes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LabelChange'
+                state:
+                    type: string
+                    description: ok | unavailable. Unavailable means the log could not be read, not that it is empty.
+                retentionDays:
+                    type: integer
+                    format: int32
+                    description: Retention window in days.
+                counts:
+                    $ref: '#/components/schemas/LabelCounts'
+            description: ListLabelChangesResponse lists changes from the last seven days, newest first.
+        LabelChange:
+            type: object
+            properties:
+                storyId:
+                    type: string
+                    description: Story identity hash; empty for a correction that names no story.
+                field:
+                    type: string
+                    description: corroboration (a label moved) | correction (an accepted reader report).
+                previous:
+                    type: string
+                    description: 'Previous state: single-publisher | corroborated; empty for a correction.'
+                next:
+                    type: string
+                    description: 'New state: single-publisher | corroborated; empty for a correction.'
+                previousPublishers:
+                    type: integer
+                    format: int32
+                    description: Publisher families behind the previous label; 0 for a correction.
+                nextPublishers:
+                    type: integer
+                    format: int32
+                    description: Publisher families behind the new label; 0 for a correction.
+                at:
+                    type: integer
+                    format: int64
+                    description: 'Time the change was recorded, Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                trigger:
+                    type: string
+                    description: 'What recorded it: digest (automatic) | report (an accepted error report).'
+                reason:
+                    type: string
+                    description: Plain-language reason, in English.
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LabelChangePublisher'
+                title:
+                    type: string
+                    description: Story headline when the change was recorded.
+                link:
+                    type: string
+                    description: |-
+                        Representative article URL. Empty when it failed the publisher link gate,
+                         was revoked after the change was recorded, or the revocation set could not
+                         be read.
+                credibilityScore:
+                    type: integer
+                    format: int32
+                    description: Story CRED score 0-100 when the change was recorded; -1 when unknown.
+            description: |-
+                LabelChange records one story moving between single-publisher and corroborated
+                 coverage, or one correction a reviewer accepted from a reader report.
+        LabelChangePublisher:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Curated publisher name, or the feed label when no family is curated.
+                tier:
+                    type: integer
+                    format: int32
+                    description: Declared source tier 1-4; 0 when no feed label declares one.
+            description: LabelChangePublisher is one publisher family behind the new label.
+        LabelCounts:
+            type: object
+            properties:
+                at:
+                    type: integer
+                    format: int64
+                    description: 'When the digest counted, Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                stories:
+                    type: integer
+                    format: int32
+                    description: Stories counted.
+                corroborated:
+                    type: integer
+                    format: int32
+                    description: Two or more publisher families, not all tier 4.
+                singlePublisher:
+                    type: integer
+                    format: int32
+                    description: One publisher family.
+                tier4Only:
+                    type: integer
+                    format: int32
+                    description: Two or more families, every one a declared tier-4 outlet.
+                unknown:
+                    type: integer
+                    format: int32
+                    description: No evidence to judge.
+            description: LabelCounts is how many stories in the latest full English digest carry each label.
+        SubmitErrorReportRequest:
+            type: object
+            properties:
+                message:
+                    type: string
+                    maxLength: 2000
+                    minLength: 10
+                    description: What is wrong, in the reader's words.
+                storyId:
+                    type: string
+                    maxLength: 64
+                    description: Story identity hash the report concerns, when known (64 hex characters).
+                url:
+                    type: string
+                    maxLength: 2048
+                    description: Article or WorldMonitor URL the report concerns, when known.
+                contact:
+                    type: string
+                    maxLength: 320
+                    description: Optional email for a reply. Never published.
+                website:
+                    type: string
+                    description: 'Honeypot. Leave empty: a filled value is accepted and discarded.'
+            description: SubmitErrorReportRequest is a reader's report that a WorldMonitor label or story is wrong. Stored for review; never applied automatically.
+        SubmitErrorReportResponse:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: received | queue-full.
+                reportId:
+                    type: string
+                    description: Report id, empty unless received.
+            description: SubmitErrorReportResponse acknowledges a stored report.
+        ListErrorReportsRequest:
+            type: object
+            properties:
+                status:
+                    type: string
+                    maxLength: 16
+                    description: pending (default) | reviewed.
+            description: ListErrorReportsRequest selects reports for review. Requires the X-Trust-Review-Key header.
+        ListErrorReportsResponse:
+            type: object
+            properties:
+                reports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ErrorReport'
+                state:
+                    type: string
+                    description: ok | unavailable.
+            description: ListErrorReportsResponse lists reports, oldest pending first or newest reviewed first.
+        ErrorReport:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Report id.
+                status:
+                    type: string
+                    description: pending | accepted | rejected.
+                message:
+                    type: string
+                    description: Reader's message.
+                storyId:
+                    type: string
+                    description: Story identity hash, if given.
+                url:
+                    type: string
+                    description: URL, if given.
+                contact:
+                    type: string
+                    description: Reply email, if given.
+                createdAt:
+                    type: integer
+                    format: int64
+                    description: 'Submission time, Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                reviewedAt:
+                    type: integer
+                    format: int64
+                    description: 'Review time, Unix epoch milliseconds; 0 while pending.. Warning: Values > 2^53 may lose precision in JavaScript'
+                publicNote:
+                    type: string
+                    description: Operator's public note, published with an accepted report.
+            description: ErrorReport is one stored report as an operator sees it.
+        ReviewErrorReportRequest:
+            type: object
+            properties:
+                reportId:
+                    type: string
+                    maxLength: 64
+                    minLength: 1
+                    description: Report id.
+                decision:
+                    type: string
+                    maxLength: 16
+                    description: accept | reject.
+                publicNote:
+                    type: string
+                    maxLength: 500
+                    description: 'Public note. Required to accept: it is what the label log publishes.'
+            description: ReviewErrorReportRequest accepts or rejects one report. Requires the X-Trust-Review-Key header.
+        ReviewErrorReportResponse:
+            type: object
+            properties:
+                report:
+                    $ref: '#/components/schemas/ErrorReport'
+            description: ReviewErrorReportResponse returns the reviewed report.
+        SearchFactChecksRequest:
+            type: object
+            properties:
+                claim:
+                    type: string
+                    maxLength: 300
+                    description: The claim or headline, up to 300 characters.
+            description: SearchFactChecksRequest names the claim to look up published fact-checks for.
+        SearchFactChecksResponse:
+            type: object
+            properties:
+                factChecks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FactCheck'
+                state:
+                    type: string
+                    description: ok | unavailable | not-configured. Only ok means the search ran; an empty list is then no published fact-check found.
+                caveat:
+                    type: string
+                    description: Fixed reminder that ratings are the fact-checkers' own and never change the coverage result.
+            description: SearchFactChecksResponse lists published fact-checks of claims similar to the one searched.
+        FactCheck:
+            type: object
+            properties:
+                publisher:
+                    type: string
+                    description: The fact-checker's name as it publishes it.
+                site:
+                    type: string
+                    description: The IFCN-allowlisted domain the link belongs to.
+                rating:
+                    type: string
+                    description: The fact-checker's own rating, verbatim. WorldMonitor does not rate claims.
+                reviewedAt:
+                    type: string
+                    description: When the fact-check was published, ISO 8601.
+                url:
+                    type: string
+                    description: Link to the fact-check.
+                title:
+                    type: string
+                    description: The fact-check's headline; empty when the feed gives none.
+                claimReviewed:
+                    type: string
+                    description: 'The claim the fact-checker rated: similar to the claim searched, not necessarily the same.'
+            description: FactCheck is one rating an IFCN-verified fact-checker published about a similar claim, cited with attribution.
+        SearchClaimHeadlinesRequest:
+            type: object
+            properties:
+                claim:
+                    type: string
+                    maxLength: 300
+                    description: The claim or headline, up to 300 characters. Empty returns only the counts.
+            description: SearchClaimHeadlinesRequest names the claim to search fresh headlines for.
+        SearchClaimHeadlinesResponse:
+            type: object
+            properties:
+                headlines:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ClaimHeadline'
+                searchedHeadlines:
+                    type: integer
+                    format: int32
+                    description: Fresh headlines searched.
+                searchedFeeds:
+                    type: integer
+                    format: int32
+                    description: Feeds those headlines came from.
+                feedTotal:
+                    type: integer
+                    format: int32
+                    description: Configured full-variant English feeds.
+                feedCached:
+                    type: integer
+                    format: int32
+                    description: Feeds whose parsed cache was available.
+                state:
+                    type: string
+                    description: complete | partial | unavailable. Unavailable searched nothing.
+                readAt:
+                    type: string
+                    description: When the feed caches were read, ISO 8601.
+            description: SearchClaimHeadlinesResponse holds the headlines that share the claim's words, for building its coverage card.
+        ClaimHeadline:
+            type: object
+            properties:
+                source:
+                    type: string
+                    description: Registered feed name.
+                title:
+                    type: string
+                link:
+                    type: string
+                    description: Article URL; empty when the ingest gate removed it.
+                publishedAt:
+                    type: integer
+                    format: int64
+                    description: 'Publication time in Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: ClaimHeadline is one fresh headline from a configured feed.

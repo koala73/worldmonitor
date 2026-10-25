@@ -118,4 +118,20 @@ describe('marker pulse settle (#4669)', () => {
       'renderOverlays must arm the marker settle window',
     );
   });
+
+  it('low-end devices settle markers from the first render and stop page live pulses', () => {
+    const arm = mapSrc.match(/private armMarkerSettle\(\): void \{([\s\S]*?)\n  \}/);
+    assert.ok(arm, 'expected armMarkerSettle in Map.ts');
+    const body = arm[1];
+    const lowEnd = body.indexOf('if (this.lowEndDevice)');
+    assert.ok(lowEnd >= 0, 'armMarkerSettle must short-circuit on low-end devices');
+    assert.ok(
+      lowEnd < body.indexOf("classList.remove('markers-settled')"),
+      'the low-end branch must run before the settled class is cleared',
+    );
+    assert.match(body.slice(lowEnd), /classList\.add\('markers-settled'\);\s*return;/);
+    for (const sel of ['.panel-data-badge.live::before', '.live-media-shell-dot::before', '.panel-live-count::before']) {
+      assert.match(css, new RegExp(`\\.low-end-device ${escapeRegExp(sel)}`), `missing .low-end-device ${sel}`);
+    }
+  });
 });

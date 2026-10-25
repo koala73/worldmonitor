@@ -444,50 +444,50 @@ paths:
                                     "available": true
                                     "medianAgeYears":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "years"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                     "oldAgeDependencyRatioPercent":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "percent"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                     "totalDependencyRatioPercent":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "percent"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                     "workingAgePopulationPeople":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "people"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                 "available": true
                                 "countryCode": "US"
                                 "education":
                                     "available": true
                                     "researchersPerMillion":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "people per million"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                     "stemGraduatesSharePercent":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "percent"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                     "tertiaryEnrollmentGrossPercent":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "percent"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/GetDemographicsCapabilityResponse'
@@ -1534,7 +1534,7 @@ components:
             properties:
                 available:
                     type: boolean
-                    description: True only when value, year, source and unit passed the server contract.
+                    description: True when value, year, source and unit pass validation.
                 value:
                     type: number
                     format: double
@@ -1543,13 +1543,16 @@ components:
                     type: integer
                     minimum: 0
                     format: int32
-                    description: Observation year from the source, not the seed run year.
+                    description: Source year; not the seed year.
                 source:
                     type: string
-                    description: Provider or dataset attribution stored with the observation.
+                    description: Provider or dataset attribution.
                 unit:
                     type: string
-                    description: Human-readable unit such as "percent", "people", or "years".
+                    description: 'Unit: percent, people, or years.'
+                sourceStatus:
+                    type: string
+                    description: Provider or input status; absent is unknown.
             description: CapabilityObservation keeps a measured zero distinct from a missing value.
         DemographicsEducation:
             type: object

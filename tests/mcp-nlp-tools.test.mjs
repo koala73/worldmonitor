@@ -324,23 +324,23 @@ describe('#5697 NLP MCP tools', () => {
     assert.match(
       described?.description ?? '',
       /sourceNames/,
-      'uncompressed description must mention the attributed sourceNames field',
+      'describe_tool description must mention the attributed sourceNames field',
     );
     assert.match(
       described?.description ?? '',
       /title, source, link/,
-      'uncompressed description must describe the attributed sample headline shape',
+      'describe_tool description must describe the attributed sample headline shape',
     );
     const listedSpike = byName.get('get_keyword_spikes');
     assert.match(
       listedSpike?.description ?? '',
       /sourceNames/,
-      'tools/list compressed description must still name sourceNames',
+      'tools/list description must name sourceNames',
     );
     assert.match(
       listedSpike?.description ?? '',
       /title, source, link/,
-      'tools/list compressed description must still name the sample shape',
+      'tools/list description must name the sample shape',
     );
   });
 
@@ -517,11 +517,11 @@ describe('#5697 NLP MCP tools', () => {
 
     it('rejects missing and oversized text without reaching the route', async () => {
       const missing = await callTool('classify_event', {});
-      assert.match(missing.result.error, /text is required/);
-      assert.equal(missing.result.classification, null, 'error envelopes keep the required member present');
+      assert.equal(missing.body.error?.code, -32602);
+      assert.equal(missing.pipe.count, 0);
       const oversized = await callTool('classify_event', { text: 'x'.repeat(501) });
-      assert.match(oversized.result.error, /500-character limit/);
-      assert.equal(oversized.result.classification, null);
+      assert.equal(oversized.body.error?.code, -32602);
+      assert.equal(oversized.pipe.count, 0);
       assert.equal(requests.length, 0, 'validation failures must not fetch');
     });
 
@@ -602,13 +602,9 @@ describe('#5697 NLP MCP tools', () => {
 
     it('rejects oversized text and non-string text while honoring its own outputSchema', async () => {
       for (const args of [{ text: 'y'.repeat(2049) }, { text: 42 }]) {
-        const { result } = await callTool('extract_entities', args);
-        assert.ok(result.error, `expected a validation error for ${JSON.stringify(args)}`);
-        // outputSchema declares mode/entities/patternEntities required — a bare
-        // {error} envelope breaks schema-validating agent clients.
-        assert.equal(result.mode, 'text');
-        assert.deepEqual(result.entities, []);
-        assert.deepEqual(result.patternEntities, []);
+        const { body, pipe } = await callTool('extract_entities', args);
+        assert.equal(body.error?.code, -32602);
+        assert.equal(pipe.count, 0);
       }
       assert.equal(requests.length, 0);
     });
@@ -696,10 +692,9 @@ describe('#5697 NLP MCP tools', () => {
 
     it('rejects an unknown digest variant without fetching', async () => {
       const requestCount = requests.length;
-      const { result } = await callTool('extract_entities', { variant: 'finance' });
-      assert.equal(result.mode, 'headlines');
-      assert.equal(result.headlineCount, 0);
-      assert.match(result.error, /variant must be one of: full, tech/);
+      const { body, pipe } = await callTool('extract_entities', { variant: 'finance' });
+      assert.equal(body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
       assert.equal(requests.length, requestCount);
     });
 
@@ -779,7 +774,7 @@ describe('#5697 NLP MCP tools', () => {
       }, {});
     });
 
-    it('returns a corrective note when category is unknown', async () => {
+    it('rejects an unknown category before charging', async () => {
       await withDigestCategories({
         politics: {
           items: [
@@ -792,14 +787,10 @@ describe('#5697 NLP MCP tools', () => {
           ],
         },
       }, async () => {
-        const { result } = await callTool('extract_entities', { category: 'commodity' });
-        assert.equal(result.mode, 'headlines');
-        assert.equal(result.headlineCount, 0);
-        assert.equal(result.category, 'commodity');
-        assert.match(result.note, /Unknown digest category "commodity"/);
-        assert.match(result.note, /commodities/);
-        assert.match(result.note, /politics/);
-        assert.deepEqual(result.entities, []);
+        const { body, pipe } = await callTool('extract_entities', { category: 'commodity' });
+        assert.equal(body.error?.code, -32602);
+        assert.equal(body.error.data.violations[0].field, 'category');
+        assert.equal(pipe.count, 0);
       });
     });
   });
@@ -853,15 +844,37 @@ describe('#5697 NLP MCP tools', () => {
       });
     });
 
+    it('counts same copy under two mastheads once, matching the digest (#9095)', async () => {
+      const title = 'Zaporizhzhia airstrikes kill 17 as Russia intensifies attacks across Ukraine';
+      const snippet = 'Zaporizhzhia was hit by deadly Russian airstrikes on Saturday, 10 October, killing at least 17 people, including three children, Ukrainian officials said. Rescuers searched rubble for survivors as the city faced renewed strikes on residential areas.';
+      await withDigestCategories({
+        europe: {
+          items: [
+            { source: 'EuroNews', title, snippet, link: 'https://n/euronews', publishedAt: 1785405600000, corroborationCount: 1 },
+            { source: 'Africanews', title, snippet, link: 'https://n/africanews', publishedAt: 1785405700000, corroborationCount: 1 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'europe' });
+        const [cluster] = result.clusters;
+        assert.equal(cluster.memberCount, 2);
+        assert.equal(cluster.distinctSourceCount, 1);
+        assert.equal(cluster.corroboration.publishers, 1);
+        assert.equal(cluster.publishers.length, 1);
+      });
+    });
+
     it('stays inside the dispatcher budget at the maximum provenance-rich shape', async () => {
       // 25 clusters x 40 members fills MAX_CLUSTER_NEWS_ITEMS. Eight publisher
-      // families per cluster: Reuters with all twelve curated labels, past the
+      // families per cluster: Reuters with twelve curated labels, past the
       // wire's label cap, and seven uncurated families at the cap, whose
-      // labels differ only in case and so fold into one family each.
+      // labels differ only in case and so fold into one family each. Twelve,
+      // not every label: a new Reuters desk would push the fixture past the
+      // 1000-item cap and stop it being the maximum shape.
       const caseVariant = (base, variant) => [...base]
         .map((char, index) => (index < 6 && (variant >> index) & 1 ? char.toUpperCase() : char)).join('');
       const sources = [
-        ...PUBLISHER_FAMILIES.reuters.labels,
+        ...PUBLISHER_FAMILIES.reuters.labels.slice(0, 12),
         ...Array.from({ length: 7 }, (_, family) => Array.from(
           { length: 4 },
           (_, variant) => caseVariant(`source${family}-${'s'.repeat(5_000)}`, variant),
@@ -1002,10 +1015,9 @@ describe('#5697 NLP MCP tools', () => {
 
     it('rejects an unknown clustering variant without fetching', async () => {
       const requestCount = requests.length;
-      const { result } = await callTool('get_news_clusters', { variant: 'finance' });
-      assert.deepEqual(result.clusters, []);
-      assert.equal(result.headlineCount, 0);
-      assert.match(result.error, /variant must be one of: full, tech/);
+      const { body, pipe } = await callTool('get_news_clusters', { variant: 'finance' });
+      assert.equal(body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
       assert.equal(requests.length, requestCount);
     });
 
@@ -1054,7 +1066,7 @@ describe('#5697 NLP MCP tools', () => {
       });
     });
 
-    it('returns a corrective note when category is unknown', async () => {
+    it('rejects an unknown category before charging', async () => {
       await withDigestCategories({
         finance: {
           items: [
@@ -1062,13 +1074,10 @@ describe('#5697 NLP MCP tools', () => {
           ],
         },
       }, async () => {
-        const { result } = await callTool('get_news_clusters', { category: 'markets' });
-        assert.equal(result.headlineCount, 0);
-        assert.equal(result.totalClusters, 0);
-        assert.equal(result.category, 'markets');
-        assert.deepEqual(result.clusters, []);
-        assert.match(result.note, /Unknown digest category "markets"/);
-        assert.match(result.note, /finance/);
+        const { body, pipe } = await callTool('get_news_clusters', { category: 'markets' });
+        assert.equal(body.error?.code, -32602);
+        assert.equal(body.error.data.violations[0].field, 'category');
+        assert.equal(pipe.count, 0);
       });
     });
 
@@ -1384,15 +1393,12 @@ describe('#5697 NLP MCP tools', () => {
       assert.match(result.note, /accumulator unavailable or empty/);
     });
 
-    it('clamps malformed window/min_count/limit params to defaults', async () => {
+    it('rejects malformed window/min_count/limit params before charging', async () => {
       seedAccumulator();
-      const { result } = await callTool('get_keyword_spikes', { window_hours: 99.5, min_count: -3, limit: 'many' });
-      assert.equal(result.window_hours, 2, 'non-integer window falls back to the default');
-      // The cache key embeds the clamped minCount, so it proves the clamp
-      // applied rather than the raw -3 reaching the spike math.
-      assert.deepEqual([...upstashState.storedPayloads.keys()], ['intelligence:keyword-spikes:mcp:v3:2h:2'],
-        'out-of-range integer min_count clamps to the schema minimum (2); the raw -3 must never reach the spike math');
-      assert.ok(result.spikes.length <= 10, 'non-integer limit falls back to the default 10');
+      const { body, pipe } = await callTool('get_keyword_spikes', { window_hours: 99.5, min_count: -3, limit: 'many' });
+      assert.equal(body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
+      assert.deepEqual([...upstashState.storedPayloads.keys()], []);
     });
 
     it('fetches a separately bounded baseline cohort when the newest 800 rows are all recent', async () => {

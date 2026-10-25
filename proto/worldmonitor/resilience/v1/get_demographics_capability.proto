@@ -6,16 +6,18 @@ import "sebuf/http/annotations.proto";
 
 // CapabilityObservation keeps a measured zero distinct from a missing value.
 message CapabilityObservation {
-  // True only when value, year, source and unit passed the server contract.
+  // True when value, year, source and unit pass validation.
   bool available = 1;
   // Numeric observation. Read available first: zero is also the proto3 placeholder.
   double value = 2;
-  // Observation year from the source, not the seed run year.
+  // Source year; not the seed year.
   uint32 year = 3;
-  // Provider or dataset attribution stored with the observation.
+  // Provider or dataset attribution.
   string source = 4;
-  // Human-readable unit such as "percent", "people", or "years".
+  // Unit: percent, people, or years.
   string unit = 5;
+  // Provider or input status; absent is unknown.
+  optional string source_status = 6;
 }
 
 // Independent fetch-stage state. One failed stage must not hide healthy groups.

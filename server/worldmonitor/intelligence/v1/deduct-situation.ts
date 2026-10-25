@@ -7,6 +7,7 @@ import type {
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { sha256Hex } from './_shared';
 import { callLlmReasoning } from '../../../_shared/llm';
+import { aiRoutingCacheSuffix, resolveAiRouting, toLlmRoutingPolicy } from '../../../_shared/ai-routing-policy';
 // Issue #3724 (extension): prediction-market titles flow into the deduction
 // LLM's prompt. Use the semantic + structural sanitizer, not the lighter
 // sanitizeHeadline, so that a compromised market feed cannot inject
@@ -20,6 +21,7 @@ import { callLlmReasoning } from '../../../_shared/llm';
 import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import { buildDeductionPrompt, postProcessDeductionOutput } from './deduction-prompt';
 import { isCallerPremium } from '../../../_shared/premium-check';
+import { markUnservedLlmResponse } from '../../../_shared/response-headers';
 
 const PREDICTION_BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
 const MAX_PREDICTION_MARKETS = 7;
@@ -113,7 +115,10 @@ export async function deductSituation(
     const isPremium = await isCallerPremium(ctx.request);
     const framework = isPremium && typeof req.framework === 'string' ? req.framework.slice(0, MAX_FRAMEWORK_LEN) : '';
 
-    if (!query) return { analysis: '', model: '', provider: 'skipped' };
+    if (!query) {
+        markUnservedLlmResponse(ctx.request);
+        return { analysis: '', model: '', provider: 'skipped' };
+    }
 
     const [queryHash, frameworkHashFull, predictionBootstrap] = await Promise.all([
         sha256Hex(query.toLowerCase() + '|' + geoContext.toLowerCase()),
@@ -129,7 +134,11 @@ export async function deductSituation(
         : '';
 
     const predictionHash = predictionContext ? (await sha256Hex(predictionContext)).slice(0, 8) : '';
-    const cacheKey = `deduct:situation:v2:${queryHash.slice(0, 16)}${frameworkHash ? ':fw' + frameworkHash : ''}${predictionHash ? ':pm' + predictionHash : ''}`;
+    // The query and framework are the caller's own input: a restricted
+    // caller's answer comes only from their allowed providers and is cached
+    // apart from the shared entry.
+    const aiRouting = await resolveAiRouting(ctx.request);
+    const cacheKey = `deduct:situation:v2:${queryHash.slice(0, 16)}${frameworkHash ? ':fw' + frameworkHash : ''}${predictionHash ? ':pm' + predictionHash : ''}${aiRoutingCacheSuffix(aiRouting)}`;
 
     const { mode, systemPrompt, userPrompt } = buildDeductionPrompt({ query, geoContext, predictionContext });
 
@@ -144,9 +153,16 @@ export async function deductSituation(
                 ],
                 temperature: 0.3,
                 maxTokens: 1500,
+                // Since 2026-09-26 deepseek-v4-flash spends the full 1500
+                // tokens on hidden reasoning and returns empty content
+                // (finish_reason "length"); a budget large enough for both
+                // runs ~18s, past the model's 15s attempt cap. Reasoning off
+                // answers the same prompt in ~3-6s with ~700 tokens.
+                enableReasoning: false,
                 timeoutMs: DEDUCT_TIMEOUT_MS,
                 stage: 'deduct-situation',
                 systemAppend: framework || undefined,
+                routingPolicy: toLlmRoutingPolicy(aiRouting),
             });
 
             if (!result) return null;
@@ -161,6 +177,10 @@ export async function deductSituation(
     );
 
     if (!cached?.analysis) {
+        // The LLM budget expired or the provider failed: the caller receives
+        // no analysis, so the daily-quota slot the gateway reserved for this
+        // call is released (see markUnservedLlmResponse).
+        markUnservedLlmResponse(ctx.request);
         return { analysis: '', model: '', provider: 'error' };
     }
 

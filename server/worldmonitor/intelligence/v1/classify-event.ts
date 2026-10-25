@@ -6,9 +6,10 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { cachedFetchJson } from '../../../_shared/redis';
-import { markNoCacheResponse } from '../../../_shared/response-headers';
+import { markNoCacheResponse, markUnservedLlmResponse } from '../../../_shared/response-headers';
 import { CLASSIFY_VALID_CATEGORIES, CLASSIFY_VALID_LEVELS, UPSTREAM_TIMEOUT_MS, buildClassifyCacheKey, isValidClassifyHit } from './_shared';
 import { callLlm } from '../../../_shared/llm';
+import { aiRoutingCacheSuffix, resolveAiRouting, toLlmRoutingPolicy } from '../../../_shared/ai-routing-policy';
 
 // ========================================================================
 // Constants
@@ -47,9 +48,16 @@ export async function classifyEvent(
   // Input sanitization (M-14 fix): limit title length
   const MAX_TITLE_LEN = 500;
   const title = typeof req.title === 'string' ? req.title.slice(0, MAX_TITLE_LEN) : '';
-  if (!title) { markNoCacheResponse(ctx.request); return { classification: undefined }; }
+  if (!title) {
+    markNoCacheResponse(ctx.request);
+    markUnservedLlmResponse(ctx.request);
+    return { classification: undefined };
+  }
 
-  const cacheKey = await buildClassifyCacheKey(title);
+  // The relay's background classifier writes the shared keys from its own
+  // chain; a restricted caller gets a separate namespace (ai-routing-policy.ts).
+  const aiRouting = await resolveAiRouting(ctx.request);
+  const cacheKey = `${await buildClassifyCacheKey(title)}${aiRoutingCacheSuffix(aiRouting)}`;
 
   const systemPrompt = `You classify news headlines into threat level and category. Return ONLY valid JSON, no other text.
 
@@ -100,6 +108,7 @@ Return: {"level":"...","category":"..."}`;
           ],
           temperature: 0,
           modelOverrides: CLASSIFY_MODEL_OVERRIDES,
+          routingPolicy: toLlmRoutingPolicy(aiRouting),
           // Sized for the REASONING fallback, not the primary. DeepSeek answers
           // this two-field JSON in ~10 tokens (4,264 successful calls over the
           // 7 days to 2026-08-29: p50=10, p95=11, max=12), so the old ceiling of
@@ -158,6 +167,7 @@ Return: {"level":"...","category":"..."}`;
     );
   } catch {
     markNoCacheResponse(ctx.request);
+    markUnservedLlmResponse(ctx.request);
     return { classification: undefined };
   }
 
@@ -166,6 +176,7 @@ Return: {"level":"...","category":"..."}`;
   // replace, and the category is rendered by the dashboard.
   if (!cached?.level || !cached?.category || !isValidClassifyHit(cached)) {
     markNoCacheResponse(ctx.request);
+    markUnservedLlmResponse(ctx.request);
     return { classification: undefined };
   }
 

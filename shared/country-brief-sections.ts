@@ -30,6 +30,7 @@ export const BRIEF_SECTIONS = {
   tariffs: ['economy'],
   signals: ['security'],
   timeline: ['security'],
+  history: ['overview', 'security', 'resilience'],
   news: ['overview', 'security', 'sources'],
   military: ['security'],
   infrastructure: ['resources', 'security'],

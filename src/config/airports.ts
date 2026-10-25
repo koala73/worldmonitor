@@ -130,9 +130,9 @@ export const MONITORED_AIRPORTS: MonitoredAirport[] = [
   { iata: 'DAR', icao: 'HTDA', name: 'Julius Nyerere International', city: 'Dar es Salaam', country: 'Tanzania', lat: -6.8781, lon: 39.2026, region: 'africa' },
   { iata: 'MRU', icao: 'FIMP', name: 'Sir Seewoosagur Ramgoolam', city: 'Mauritius', country: 'Mauritius', lat: -20.4302, lon: 57.6836, region: 'africa' },
   // Libya / Sudan
-  { iata: 'TIP', icao: 'HLLT', name: 'Mitiga International', city: 'Tripoli', country: 'Libya', lat: 32.8951, lon: 13.2760, region: 'africa' },
+  { iata: 'MJI', icao: 'HLLM', name: 'Mitiga International', city: 'Tripoli', country: 'Libya', lat: 32.8951, lon: 13.2760, region: 'africa' },
   { iata: 'BEN', icao: 'HLLB', name: 'Benina International', city: 'Benghazi', country: 'Libya', lat: 32.0968, lon: 20.2695, region: 'africa' },
-  { iata: 'KRT', icao: 'HSSS', name: 'Khartoum International', city: 'Khartoum', country: 'Sudan', lat: 15.5895, lon: 32.5532, region: 'africa' },
+  { iata: 'KRT', icao: 'HSSK', name: 'Khartoum International', city: 'Khartoum', country: 'Sudan', lat: 15.5895, lon: 32.5532, region: 'africa' },
 ];
 
 // FAA-monitored airports (subset that works with FAA ASWS API)

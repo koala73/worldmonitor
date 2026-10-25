@@ -13,6 +13,21 @@ const schema = {
 };
 
 describe('FirecrawlProvider.extract', () => {
+  it('preserves the retailer HTTP status inside a successful provider response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: {
+        extract: { productName: 'Full Fat Fresh Milk 1L', price: null },
+        metadata: { statusCode: 403 },
+        markdown: '# 403 Forbidden',
+      },
+    }), { status: 200 })));
+
+    const result = await new FirecrawlProvider('test-key').extract('https://retailer.example/p/milk', schema);
+
+    expect(result).toMatchObject({ sourceStatusCode: 403, data: { price: null } });
+  });
+
   it('treats an unsuccessful HTTP-200 response as a provider error', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: false, error: 'extract quota exhausted' }), { status: 200 }),

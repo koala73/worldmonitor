@@ -398,11 +398,12 @@ export function accumulateHistory(newIndices, previousPayload) {
   const fallbackDate = new Date().toISOString().slice(0, 10);
   for (const idx of newIndices) {
     const prev = prevMap.get(idx.indexId);
+    const historyCap = idx.indexId === 'SCFI' || idx.indexId === 'CCFI' ? 56 : 24;
     const existingHistory = prev?.history ?? [];
     if (idx.history?.length > 0) { delete idx._observationDate; continue; }
     const hasObservationDate = Object.prototype.hasOwnProperty.call(idx, '_observationDate');
     if (hasObservationDate && typeof idx._observationDate !== 'string') {
-      idx.history = existingHistory.slice(-24);
+      idx.history = existingHistory.slice(-historyCap);
       delete idx._observationDate;
       continue;
     }
@@ -412,7 +413,7 @@ export function accumulateHistory(newIndices, previousPayload) {
     if (!last || last.date !== obsDate) {
       newHistory.push({ date: obsDate, value: idx.currentValue });
     }
-    idx.history = newHistory.slice(-24);
+    idx.history = newHistory.slice(-historyCap);
     delete idx._observationDate;
   }
   return newIndices;

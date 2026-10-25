@@ -10,6 +10,6 @@
     "test": "node --test index.test.mjs kv-shadow.test.mjs kv-serve.test.mjs"
   },
   "devDependencies": {
-    "wrangler": "3.114.17"
+    "wrangler": "4.150.0"
   }
 }

@@ -354,6 +354,31 @@ describe('a poisoned shared hooksPath self-heals at push time (#6104)', () => {
   });
 });
 
+describe('workflow documentation contracts before push', () => {
+  for (const path of ['.github/workflows/new-sdk.yml', '.github/workflows/new-sdk.yaml', 'ARCHITECTURE.md', 'scripts/docs-stats.mjs']) {
+    test(`checks documentation contracts when ${path} changes`, () => {
+      const fixture = makeFixture({ branchFiles: { [path]: 'changed\n' } });
+      const result = fixture.run();
+      assert.equal(result.status, 0, result.stdout);
+      assert.match(result.invocations, /== npm\n>run\n>docs:check\n/);
+    });
+  }
+
+  test('a failed documentation contract blocks the push and does not attest the tree', () => {
+    const fixture = makeFixture({ branchFiles: { '.github/workflows/new-sdk.yml': 'changed\n' } });
+    const result = fixture.run({ WM_PREPUSH_STUB_FAIL: 'npm run docs:check' });
+    assert.equal(result.status, 1, result.stdout);
+    assert.equal(fixture.cached(), null);
+  });
+
+  test('does not add the documentation check to unrelated SDK edits', () => {
+    const fixture = makeFixture({ branchFiles: { 'sdk/rust/src/lib.rs': 'changed\n' } });
+    const result = fixture.run();
+    assert.equal(result.status, 0, result.stdout);
+    assert.doesNotMatch(result.invocations, />docs:check\n/);
+  });
+});
+
 describe('a clean push runs the changed tests and attests the tree', () => {
   test('dispatches the changed test and caches HEAD^{tree}', () => {
     const fixture = makeFixture({ branchFiles: { 'tests/alpha.test.mjs': 'x\n' } });

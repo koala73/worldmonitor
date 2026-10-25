@@ -23,10 +23,10 @@ import {
   buildAiSearchText,
   isTrustworthyDate,
   mapLayerCoverageText,
-  publishedRankedCountries,
   resolveReconciledAt,
   writeAiSearch,
 } from '../scripts/build-ai-search.mjs';
+import { publishedRankedCountries } from '../scripts/build-crawlable-corpus.mjs';
 import { VERSION_HEADER_RE, withVersionHeader } from '../scripts/build-llms-full.mjs';
 import { SOURCE_DOMAINS } from '../scripts/crawlable-sources-page.mjs';
 import { validateVolatileInventoryClaims, withStatsRoot } from '../scripts/docs-stats.mjs';

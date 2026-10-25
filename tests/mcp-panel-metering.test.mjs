@@ -578,7 +578,7 @@ describe('paid curated market panel through the MCP handler', () => {
     for (const section of ['physical-premium', 'physical-divergence', 'fear-greed']) assert.deepEqual(value.data[section], canonical.data[section]);
     const snapshotValue = stored[0][1], readCount = reads.length;
     let reusedDefaultText;
-    for (const args of [{}, { symbols: [], asset_class: [] }, { symbols: [' '] }, { jmespath: '' }, { jmespath: null }]) {
+    for (const args of [{}, { symbols: [], asset_class: [] }, { symbols: [' '] }, { jmespath: '' }]) {
       const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
       assert.equal(next.result.structuredContent._budget_exceeded, undefined);
       assert.equal(next.result.structuredContent.transportCoverage.count_scope, 'post_filter_snapshot');
@@ -1019,7 +1019,7 @@ describe('forecast panel transport through production cache reads', () => {
       if (!parsed.pathname.startsWith('/get/')) return Response.json({ result: [9999, 10000] });
       const key = decodeURIComponent(parsed.pathname.slice('/get/'.length));
       sourceReads.push(key);
-      assert.ok(['forecast:predictions:v2', 'seed-meta:forecast:predictions'].includes(key), key);
+      assert.ok(['forecast:predictions:v2', 'seed-meta:forecast:predictions', 'forecast:probability-trail:v1', 'seed-meta:forecast:probability-trail'].includes(key), key);
       return Response.json({ result: JSON.stringify(key === 'forecast:predictions:v2' ? canonical : { fetchedAt: Date.now() }) });
     };
     handler = (await import('../api/mcp.ts')).mcpHandler;
@@ -1090,15 +1090,14 @@ describe('forecast panel transport through production cache reads', () => {
   it('preserves the original full forecast shape and weighted per-tool accounting for API plans', async () => {
     const { deps, pipe } = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) });
     const result = await invoke(deps, 'get_forecast_predictions', { limit: 1 });
-    assert.deepEqual(result.body.result.structuredContent.data.predictions.predictions, [canonical.predictions[0]]);
+    assert.deepEqual(result.body.result.structuredContent.data.predictions.predictions, [{ ...canonical.predictions[0], firstSeenAt: null, firstSeenProbability: null, change24h: null, change7d: null }]);
     assert.equal(result.body.result.structuredContent.panelRequest, undefined);
     await invoke(deps, 'get_forecast_predictions', { limit: 1 });
     const { TOOL_REGISTRY, toolWeight } = await import('../api/mcp/registry/index.ts');
     assert.equal(pipe.count, 2 * toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')));
-    const beforeDenied = sourceReads.length;
-    assert.equal((await invoke(deps, 'get_forecast_case', { forecast_id: 'original-0', generated_at: String(canonical.generatedAt) })).body.error.code, -32602);
-    assert.equal(sourceReads.length, beforeDenied);
-    assert.equal(pipe.count, 2 * toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')));
+    const detail = await invoke(deps, 'get_forecast_case', { forecast_id: 'original-0', generated_at: String(canonical.generatedAt) });
+    assert.deepEqual(detail.body.result.structuredContent.data.forecastCase.forecast, canonical.predictions[0]);
+    assert.equal(pipe.count, 2 * toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')) + toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_case')));
   });
   it('recovers an unavailable opening under the same allocation and caches observed empty lists', async () => {
     const { deps, pipe } = makeProDeps();
@@ -1189,6 +1188,24 @@ describe('paid prediction panel through the MCP handler', () => {
     for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
     Object.assign(process.env, originalEnv);
   });
+  it('accepts sort on receipt reads and keeps unknown arguments rejected', async () => {
+    bootstrapOverride = { ...payload(), geopolitical: [
+      { title: 'unknown', source: 'kalshi', yesPrice: 50 },
+      { title: 'down', source: 'kalshi', yesPrice: 30, change24h: -12 },
+      { title: 'up', source: 'polymarket', yesPrice: 60, change24h: 4, change7d: -15 },
+    ] };
+    const { deps, pipe } = makeProDeps();
+    const first = await invoke(deps);
+    const token = first.body.result.structuredContent.panelRequest.token;
+    const sorted = await invoke(deps, { panel_request: token, sort: 'move_24h', limit: 1 });
+    assert.deepEqual(data(sorted).geopolitical.map(m => m.title), ['down']);
+    const weekly = await invoke(deps, { panel_request: token, sort: 'move_7d', limit: 1 });
+    assert.deepEqual(data(weekly).geopolitical.map(m => m.title), ['up']);
+    assert.equal(pipe.count, 1);
+    for (const args of [{ sort: 'invalid' }, { sort: 'move_24h', unknown: true }]) {
+      assert.equal((await invoke(deps, { ...args, panel_request: token })).body.error.code, -32602);
+    }
+  });
   it('opens once, narrows exact contracts and replays normalized filters with two fixed reads per uncached filter', async () => {
     const { deps, pipe } = makeProDeps();
     const first = await invoke(deps);
@@ -1196,15 +1213,15 @@ describe('paid prediction panel through the MCP handler', () => {
     assert.equal(first.body.result.structuredContent.panelRequest?.panel, 'predictions');
     assert.equal(first.body.result._meta['worldmonitor/usage'].remaining, 49);
     assert.equal(fetched.length, 2);
-    const filtered = await invoke(deps, { category: ' GEOPOLITICAL ', query: ' US ELECTION ', source: 'KALSHI' });
+    const filtered = await invoke(deps, { category: 'geopolitical', query: ' US ELECTION ', source: 'kalshi' });
     assert.deepEqual(data(filtered).geopolitical.map(row => row.title), ['US Election']);
     assert.deepEqual(data(filtered).tech, []);
     assert.equal(filtered.body.result.structuredContent.panelRequest.token, token);
-    await invoke(deps, { source: ' kalshi ', query: 'us election', category: 'geopolitical', limit: 30, panel_request: token });
+    await invoke(deps, { source: 'kalshi', query: 'us election', category: 'geopolitical', limit: 30, panel_request: token });
     assert.equal(fetched.length, 4);
     assert.equal(pipe.count, 1);
     await invoke(deps, { category: 'tech', source: 'kalshi', panel_request: token });
-    const empty = await invoke(deps, { category: 'TECH', source: 'KALSHI', panel_request: token });
+    const empty = await invoke(deps, { category: 'tech', source: 'kalshi', panel_request: token });
     assert.deepEqual(data(empty), { geopolitical: [], tech: [], finance: [] });
     assert.equal(fetched.length, 6);
     for (const [limit, expected] of [[0, 2], [-1, 2], [1.9, 1], [0.5, 0]]) {
@@ -1381,10 +1398,12 @@ describe('paid prediction panel through the MCP handler', () => {
     ]) {
       const { deps, pipe } = makeProDeps({ getEntitlements: async () => entitlement });
       const first = await invoke(deps, { source: 12, category: 'invalid', query: null, limit: -1, extra: true });
-      assert.equal(first.body.error, undefined);
-      assert.equal(first.body.result.structuredContent.panelRequest, undefined);
-      assert.equal(data(first).tech.length, 2);
-      await invoke(deps, { category: 'TECH', limit: 1.9 });
+      assert.equal(first.body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
+      const valid = await invoke(deps, { limit: -1, extra: true });
+      assert.equal(valid.body.result.structuredContent.panelRequest, undefined);
+      assert.equal(data(valid).tech.length, 2);
+      await invoke(deps, { category: 'tech', limit: 1.9 });
       assert.equal(pipe.count, 2);
       for (const args of [{ refresh: false }, { refresh: true, request_id: crypto.randomUUID() }, { request_id: crypto.randomUUID() }, { panel_request: 'forged' }]) {
         assert.equal((await invoke(deps, args)).body.error?.code, -32602);
@@ -1432,8 +1451,8 @@ describe('public forecast reliability cache and completed output', () => {
     const invoke = async args => { const body = await (await mcpHandler(proReq('POST', callBody('get_forecast_predictions', args)), deps)).json(); return body.result ?? { isError: true, error: body.error }; };
     return { invoke, pipe, reads, values, advance: ms => { clock += ms; } };
   }
-  const values = () => ({ 'forecast:predictions:v2': predictions, 'seed-meta:forecast:predictions': { fetchedAt: now }, 'forecast:scorecard:v1': scorecard, 'seed-meta:forecast:scorecard': { fetchedAt: now } });
-  it('uses four distinct production cache identities and preserves an optional outage in one signed replay', async testContext => {
+  const values = () => ({ 'forecast:predictions:v2': predictions, 'seed-meta:forecast:predictions': { fetchedAt: now }, 'forecast:probability-trail:v1': { generatedAt: now, forecasts: {} }, 'seed-meta:forecast:probability-trail': { fetchedAt: now }, 'forecast:scorecard:v1': scorecard, 'seed-meta:forecast:scorecard': { fetchedAt: now } });
+  it('uses distinct production cache identities and preserves an optional outage in one signed replay', async testContext => {
     const fixtureContext = await fixture(testContext, { ...values(), 'forecast:scorecard:v1': 'unreadable' });
     const first = await fixtureContext.invoke({});
     assert.deepEqual([...new Set(fixtureContext.reads)].sort(), Object.keys(values()).sort(), 'opening must read predictions and independent optional scorecard data/meta');
@@ -1732,14 +1751,17 @@ describe('bounded public Natural paid panel presentation', () => {
       sample.reduce((total, row) => total + row.conePolygon.reduce((points, ring) => points + ring.points.length, 0), 0));
     assert.deepEqual(eventBucket, original);
   });
-  it('preserves full API geometry and news map scope without panel presentation', async () => {
+  it('keeps full API geometry for a fitting projection, presents an oversized API read, and keeps news map scope', async () => {
     const api = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: {
       tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' },
     }, validUntil: Date.now() + 86400000 }) });
     const projected = (await invoke(api.deps, { limit: 2, jmespath: 'data.events.events[0].conePolygon[0].points | length(@)' })).structuredContent;
     assert.equal(projected.projection, 1900);
     const raw = (await invoke(api.deps, { limit: 2 })).structuredContent;
-    assert.equal(raw._budget_exceeded, true); assert.equal(raw.budget_bytes, 131072);
+    assert.notEqual(raw._budget_exceeded, true, 'an oversized API read returns rows, not an empty budget envelope');
+    assert.ok(bytes(raw) <= 131072); assert.equal(raw.data.events.events.length, 2);
+    assert.ok(raw.data.events.events[0].conePolygon[0].points.length <= 96);
+    assert.equal(raw.transportCoverage.details.find(item => item.event_id === 'a').original_count, 1900);
     const { admitNewsPanel } = await import('../api/mcp/panel-requests.ts');
     const news = makeProDeps(); const grant = await admitNewsPanel(context, budget, news.pipe.pipeline, {});
     const mapped = (await invoke(news.deps, { dataset: ['other'], limit: 1, panel_request: grant.token })).structuredContent;

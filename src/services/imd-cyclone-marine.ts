@@ -39,7 +39,7 @@ const EMPTY: ImdMappedProducts = {
   portAlerts: [],
   marineBulletins: [],
   sourceName: 'India Meteorological Department',
-  sourceUrl: 'https://api.imd.gov.in/public/api_reference.html',
+  sourceUrl: 'https://mausam.imd.gov.in/responsive/marine_forecast.php',
 };
 
 function asDate(value: unknown, fallback: number): Date {

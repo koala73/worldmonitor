@@ -85,7 +85,7 @@ const HTTP_METHODS = new Set([
 
 const EXCLUDED_FROM_MCP_PARITY = new Map([
 
-  // === mutating (18) ===
+  // === mutating (20) ===
   ["GET /api/aviation/v1/list-airport-delays",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/infrastructure/v1/list-temporal-anomalies",
@@ -111,6 +111,10 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "mutating: writes to Convex (not server/_shared/redis) — lead registration write"],
   ["POST /api/leads/v1/submit-contact",
     "mutating: writes to Convex (not server/_shared/redis) — contact form write"],
+  ["POST /api/news/v1/submit-error-report",
+    "mutating: reader error report written to the #9093 review queue via runRedisPipeline"],
+  ["POST /api/news/v1/review-error-report",
+    "mutating: operator decision on a #9093 report, secret-gated; publishes to the label log"],
   ["POST /api/v2/shipping/webhooks",
     "mutating: webhook/registration write — POSTs persistent record"],
   ["POST /api/company-monitoring/v1/create-monitored-company",
@@ -160,8 +164,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "fetch-on-miss: paid-upstream — external feed fetch per request"],
   ["GET /api/maritime/v1/list-navigational-warnings",
     "fetch-on-miss: paid-upstream — external feed fetch per request"],
-  ["GET /api/displacement/v1/get-internal-displacement",
-    "deferred-to-future-tool: pure-read of the seeded IOM DTM snapshot (displacement:dtm:v1). Region-level IDP counts per operation would widen get_displacement_data's UNHCR country shape; add them to that tool in a follow-up instead of a second displacement tool."],
   ["GET /api/market/v1/get-price-history",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/market/v1/get-insider-transactions",
@@ -231,9 +233,15 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/economic/v1/get-fred-series-batch",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
 
-  // === deferred-to-future-tool (53) ===
+  // === deferred-to-future-tool (55) ===
+  ["GET /api/aviation/v1/list-aircraft-emergencies",
+    "deferred-to-future-tool: reported transponder observations belong in a future aircraft-signals tool with explicit reception and freshness limits. This change adds only the dashboard layer and details."],
   ["GET /api/news/v1/list-country-headlines",
     "deferred-to-future-tool: country snapshot capture reads existing full RSS caches; a future country_headlines tool can expose this uncapped country pool"],
+  ["GET /api/news/v1/list-error-reports",
+    "deferred-to-future-tool: operator review queue (#9093) is secret-gated and holds private reader contacts; no MCP surface by design"],
+  ["GET /api/news/v1/list-label-changes",
+    "deferred-to-future-tool: label history (#9093) is read by the /trust page; a future trust tool can expose recent label changes"],
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",
     "deferred-to-future-tool: handler reads parameterized consumer-prices:basket-series:<market>:<basket>:<range> key NOT in get_consumer_prices._coverageKeys — bundle into a future expanded_consumer_prices tool that exposes the basket-series time series"],
   ["GET /api/company-monitoring/v1/get-company-coverage",
@@ -323,8 +331,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: pure-read but no MCP tool exposes - yet — bundle into a future expanded-domain tool"],
   ["GET /api/supply-chain/v1/get-china-corridor-control-towers",
     "deferred-to-future-tool: pure-read corridor composition has no MCP supply-chain comparison tool yet — bundle into a future expanded-domain tool"],
-  ["GET /api/supply-chain/v1/get-shipping-rates",
-    "deferred-to-future-tool: pure-read but no MCP tool exposes supply_chain:shipping:v2 yet — bundle into a future expanded-domain tool"],
   ["GET /api/supply-chain/v1/list-vulnerability-rankings",
     "deferred-to-future-tool: issue #6449 deliberately exposes country and chokepoint MCP tools only; keep the global ranking RPC available to REST and UI clients until a bounded ranking-tool contract is approved"],
   ["GET /api/trade/v1/get-trade-barriers",

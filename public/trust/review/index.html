@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Report review · World Monitor</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { background: #0a0f0a; color: #e0e0e0; font: 14px/1.5 system-ui, sans-serif; margin: 0; }
+    main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 1.3rem; margin: 0 0 4px; }
+    .lede { color: #9a9a9a; margin: 0 0 20px; }
+    form.key { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    input, textarea, select { background: #111811; color: #e0e0e0; border: 1px solid #2a3a2a; border-radius: 4px; padding: 6px 8px; font: inherit; }
+    input[type=password] { flex: 1 1 260px; }
+    textarea { width: 100%; box-sizing: border-box; min-height: 56px; resize: vertical; }
+    button { background: #1a3a1a; color: #4ade80; border: 1px solid #2a5a2a; border-radius: 4px; padding: 6px 14px; cursor: pointer; font: inherit; }
+    button.reject { background: #2a1616; color: #f87171; border-color: #5a2a2a; }
+    button:disabled { opacity: .5; cursor: default; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+    .tabs button[aria-pressed=true] { background: #2a5a2a; color: #e0e0e0; }
+    #status { color: #9a9a9a; min-height: 1.5em; margin: 8px 0; }
+    #status.error { color: #f87171; }
+    ol { list-style: none; padding: 0; margin: 0; }
+    li.report { border: 1px solid #1f2a1f; border-radius: 6px; padding: 12px; margin-bottom: 12px; background: #0e140e; }
+    .meta { color: #9a9a9a; font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 6px; overflow-wrap: anywhere; }
+    .message { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 10px; }
+    .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .note-label { font-size: 12px; color: #9a9a9a; }
+    .badge { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 3px; background: #1f2a1f; }
+    .badge.accepted { color: #4ade80; } .badge.rejected { color: #f87171; }
+    a { color: #4ade80; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Error report review</h1>
+    <p class="lede">Reader reports are never applied automatically. Accepting one publishes only your public note to the <a href="/api/news/v1/list-label-changes">label log</a>; the reader's message and email stay private.</p>
+    <form class="key" id="key-form">
+      <label for="key" class="note-label" hidden>Review key</label>
+      <input type="password" id="key" autocomplete="off" placeholder="TRUST_REVIEW_SECRET" aria-label="Review key">
+      <button type="submit">Load reports</button>
+    </form>
+    <div class="tabs" role="group" aria-label="Report status">
+      <button type="button" data-status="pending" aria-pressed="true">Pending</button>
+      <button type="button" data-status="reviewed" aria-pressed="false">Reviewed</button>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+    <ol id="reports"></ol>
+  </main>
+  <script nonce="wm-static-bootstrap" src="/trust/review/review.js"></script>
+</body>
+</html>

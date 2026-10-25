@@ -9,6 +9,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import { cachedFetchJson } from '../../../_shared/redis';
 import {
   RESILIENCE_SCHEMA_V2_ENABLED,
@@ -79,7 +80,7 @@ interface ResponseBuildOptions {
 
 function normalizedCountryCode(value: unknown): string | null {
   const countryCode = String(value ?? '').trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(countryCode) ? countryCode : null;
+  return isAssignedCountryCode(countryCode) ? countryCode : null;
 }
 
 function toIsoTimestamp(value: number | null): string {
@@ -284,7 +285,7 @@ export function createGetResilienceIndicators(
     if (!countryCode) {
       throw new ValidationError([{
         field: 'countryCode',
-        description: 'countryCode must be a 2-letter ISO 3166-1 alpha-2 code',
+        description: 'countryCode must be an assigned ISO 3166-1 alpha-2 code, e.g. "IQ".',
       }]);
     }
 

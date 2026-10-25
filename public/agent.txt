@@ -21,7 +21,7 @@ global-intelligence data:
   prices (get_supply_chain_data, get_maritime_activity, get_energy_intelligence)
 - Live situational awareness — current world brief plus classified live
   signals (get_world_brief, get_news_intelligence)
-- Forecasting & prediction-market context (generate_forecasts,
+- Forecasting & prediction-market context (get_forecast_predictions,
   get_prediction_markets)
 
 ## When NOT to use it

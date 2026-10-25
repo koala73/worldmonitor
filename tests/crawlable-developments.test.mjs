@@ -395,6 +395,61 @@ describe('brief heading country identity', () => {
   });
 });
 
+describe('energy grounding in the actual corpus gate', () => {
+  const title = 'China to add AI, biopharma and solar tech to export control list - Nikkei Asia';
+  const situation = 'China plans to add AI, biopharma and solar tech to its export control list. [1]';
+  const energy = { id: 'E4', kind: 'energy', label: 'Net energy import dependency', value: '24%',
+    factText: 'China has a net energy import dependency of 24% (IEA, 2023).', asOf: '2023-12-31T00:00:00.000Z' };
+  const brief = (line, evidence = [energy]) => ({ sources: [{ title }], evidence,
+    text: `SITUATION NOW\n${situation}\nKEY RISKS\n${line}` });
+
+  it('rejects the retained cross-reference explanation through the corpus projection', () => {
+    const observed = "China's addition of AI, biopharma and solar tech to its export control list may affect global supply chains, given China has a net energy import dependency of 24%. [1][E4]";
+    assert.equal(briefCitationGroundingGap(brief(observed)), 'energy evidence must stand alone as its complete fact');
+  });
+
+  it('accepts standalone complete facts, whitespace and complete negative-exporter facts', () => {
+    const exporter = { ...energy, value: '-24%', factText: 'China has a net energy import dependency of -24% (IEA, 2023); a negative value means China is a net energy exporter.' };
+    for (const [item, text] of [[energy, energy.factText], [energy, energy.factText.replaceAll(' ', '  ')], [exporter, exporter.factText]]) {
+      assert.equal(briefCitationGroundingGap(brief(`${text} [${item.id}]`, [item])), null);
+    }
+  });
+
+  it('rejects alternate wording, ids, sections, companions and conservative-policy controls', () => {
+    const companion = { id: 'E5', kind: 'chokepoint', value: '', factText: 'The Taiwan Strait is a shipping chokepoint World Monitor tracks for China.' };
+    const bad = [
+      "China has a net energy import dependency of 24%, so its export control list may affect global supply chains. [1][E4]",
+      `${energy.factText} [1][E4]`,
+      `${energy.factText} [E4][E5]`,
+      'China has a net energy import dependency of 24%. [E4]',
+      energy.factText.replace('.', '!') + ' [E4]',
+    ];
+    for (const line of bad) {
+      for (const section of ['KEY RISKS', 'WATCH ITEMS', 'WHAT THIS MEANS FOR CHINA']) {
+        const input = brief(line, [energy, companion]);
+        input.text = input.text.replace('KEY RISKS', section);
+        assert.equal(briefCitationGroundingGap(input), 'energy evidence must stand alone as its complete fact', line);
+      }
+    }
+    assert.equal(briefCitationGroundingGap(brief(`${energy.factText} [1][E9]`, [{ ...energy, id: 'E9' }])), 'energy evidence must stand alone as its complete fact');
+    const incompleteExporter = { ...energy, value: '-24%', factText: 'China has a net energy import dependency of -24% (IEA, 2023); a negative value means China is a net energy exporter.' };
+    assert.equal(briefCitationGroundingGap(brief('China has a net energy import dependency of -24% (IEA, 2023). [E4]', [incompleteExporter])), 'energy evidence must stand alone as its complete fact');
+  });
+
+  it('keeps legacy format and unrelated evidence unchanged', () => {
+    assert.equal(briefCitationGroundingGap({ sources: [{ title }], text: `SITUATION NOW\n${situation}` }), null);
+    assert.equal(briefCitationGroundingGap({ sources: [{ title }], evidence: [], text: `SITUATION NOW\n${situation}` }), null);
+    const other = { id: 'E2', kind: 'resilience-dimension', value: '28 of 100', factText: "China's fiscal space scores 28 of 100 in the Country Resilience Index." };
+    assert.equal(briefCitationGroundingGap(brief(`${other.factText} [E2]`, [other, energy])), null);
+  });
+
+  it('normalizes non-energy numeric claims without any energy evidence', () => {
+    const other = { id: 'E2', kind: 'resilience-dimension', value: '28 of 100', factText: "China's fiscal space scores 28 of 100 in the Country Resilience Index." };
+    assert.equal(briefCitationGroundingGap(brief("China's fiscal space scores ２４ of １００ in the Country Resilience Index. [E2]", [other])), 'citations do not ground its numbers');
+    assert.equal(briefCitationGroundingGap(brief("China's fiscal space scores ２８ of １００ in the Country Resilience Index. [E2]", [other])), null);
+  });
+});
+
 describe('evidence-grounded briefs', () => {
   const sources = [
     { title: 'Egypt stands firm on Gaza ceasefire', source: 'Reuters', url: 'https://reuters.com/eg' },

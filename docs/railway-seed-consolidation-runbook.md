@@ -34,7 +34,7 @@ The normal deployment architecture is intentionally small:
 |---|---|---|
 | Merge safety | GitHub protected `main` | Require a PR, current-base checks with `strict=true`, administrator enforcement, zero required human approvals, and no bypass actors. |
 | Service selection | Railway's native watch paths, backed by `scripts/railway-services.json`, its closure audit, and the exact identity roster in `scripts/railway-native-autodeploy-fleet.json` | A source migration may change `source.checkSuites` only. It must not change watch paths, fleet identity, or another service field. |
-| Desired configuration sync | Main-only `Railway Registry Sync` workflow | Apply registry-managed watch paths, Dockerfile paths, and cron schedules from the exact merged checkout. Verify through the separate Viewer identity. |
+| Desired configuration sync | Main-only `Railway Registry Sync` workflow | Apply registry-managed watch paths, Dockerfile paths, and cron schedules from the current `main` revision. Verify through the separate Viewer identity. |
 | Deployment creation | Railway's native GitHub integration on explicit branch `main` | No GitHub Actions workflow dispatches, retries, leases, or repairs a normal deployment. |
 | Drift detection | One six-hourly, read-only Railway workflow after the monitor migration | Missing, detached, replaced, unexpected, unknown, failed, skipped, overdue, or contradictory state is red. The monitor has no mutation token, dispatch permission, retry, reviewer, or acceptance baseline. |
 | Recovery | Operator diagnosis followed by an explicit Railway action or batch rollback | Recovery is never automatic and never turns missing evidence green. Seed/ingestion freshness remains a separate acceptance surface. |
@@ -224,6 +224,25 @@ an unregistered repository service fails the run before source filtering. Edit
 the roster only with evidence for an intentional Railway inventory change; do
 not use it to acknowledge drift.
 
+The always-on `verification-desk` service (`1f732679-760d-467b-bc36-4be3f45bc586`,
+desk.worldmonitor.app) was created from a PR branch on 2026-10-10 and was never
+enrolled, so every health run from then on failed with
+`unexpected repository service(s): verification-desk`. PR #9083 enrolled it in
+the roster and registered it as a Dockerfile service
+(`demos/verification-desk/Dockerfile`, built from the repository root). Its
+watch paths are `demos/verification-desk/**`, the image's file inputs, and the
+exact WorldMonitor modules the desk imports. The closure audit in
+`tests/railway-watch-path-audit.test.mjs` fails when a new desk import is not
+watched.
+
+The always-on `shipping-webhook-worker` service
+(`a97fa619-a8f4-4244-9748-6c0f6c3eade3`) was provisioned on 2026-10-17 after
+#9236 merged it as a planned registry entry. It runs from the `scripts` root
+with `node shipping-webhook-worker.mjs`, and its three variables reference
+`ais-relay` (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
+`WORLDMONITOR_RELAY_KEY`), so a key rotation there carries over. The same
+change enrolled it in the roster and made its registry entry active.
+
 After linking the CLI to the `world-monitor` production environment, audit the
 live settings with:
 
@@ -258,10 +277,13 @@ list and can answer a matching commit with `No changes to watched files`.
 The `Railway Registry Sync` workflow
 (`.github/workflows/railway-registry-sync.yml`) owns this transition. It runs
 after a push to `main` changes the registry, fleet identity, audit, a shared
-Railway helper, the runner, or the workflow. The apply step uses the dedicated
-mutation token only after the checkout SHA is confirmed as the current `main`
-revision. This rejects a stale re-run before it can restore an older registry.
-The apply changes only registry-managed fields. The final step starts a fresh
+Railway helper, the runner, or the workflow. The job resolves the current `main`
+revision before checkout and applies that, not the pushed SHA. A run that main
+outpaced, or a re-run of an older attempt, therefore applies the newest
+registry: it can neither restore an older one nor skip a change when the next
+`main` commit leaves these paths alone (#9274). A re-run keeps its original
+workflow file, so an attempt created before #9274 still refuses a stale
+checkout; dispatch a new run for those. The apply changes only registry-managed fields. The final step starts a fresh
 read budget, uses the separate Viewer identity, and fails unless live Railway
 matches the repository. That read also reports `source.branch` and
 `source.checkSuites` drift, which the apply step never writes: a run that stays
@@ -1308,7 +1330,61 @@ Recovery is accepted only when:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
-| **Members** | GIE Gas Storage (daily), Gas Storage Countries (daily), JODI Gas (monthly), JODI Oil (monthly), OWID Energy Mix (monthly), IEA Oil Stocks (monthly) |
+| **Members** | GIE Gas Storage (daily), Gas Storage Countries (daily), JODI Gas (monthly), JODI Oil (monthly), Oil-Trade-Series (weekly), OWID Energy Mix (monthly), IEA Oil Stocks (monthly) |
+| **Required env** | `COMTRADE_API_KEYS` for the weekly Oil-Trade-Series Comtrade mirror lane. Without it, the other oil sources can publish while all mirrors report `unavailable`. |
+
+#### Activate the oil-trade mirror lane
+
+The October 21, 2026 MCP audit found all 24 exporter mirrors unavailable in the
+October 19 publication. Deployment `8715f5d0-26f4-4dc5-9ecd-c226cd9ac559`, from
+commit `0ec794835060fc2e7b24146683c183963886c385`, logged
+`Comtrade mirror unavailable: COMTRADE_API_KEYS not set` for every exporter at
+07:33 UTC on October 19. The production service still lacked that variable on
+October 21. This failure occurs before a Comtrade request, so these logs do not
+establish provider refusal or missing monthly filings.
+
+Configuration changes, deployment, and manual publication require separate
+operator authorization. After that authorization, use this procedure.
+
+1. Select project `29419572-0b0d-437f-8e71-4fa68daf514f`, production environment
+   `91a05726-0b83-4d44-a33e-6aec94e58780`, and service
+   `c989eee4-3336-46b7-b7cd-39700cd56a0f` in Railway.
+2. Configure `COMTRADE_API_KEYS` with one or more approved Comtrade API-key values
+   for this service. Separate multiple keys with commas. Use the secure variable
+   editor. Do not put keys in logs, commands, evidence files, or pull requests.
+   Coordinate the provider quota with the other Comtrade workers before activation.
+3. Apply the variable change and its deployment only after deployment approval.
+   Record the exact deployment ID and source SHA. Confirm that the deployment
+   receives the variable by name without printing its value.
+4. Use a trusted checkout whose Railway CLI context is linked to the project
+   above. Run `node scripts/audit-railway-watch-paths.mjs --environment production`.
+   Confirm that the energy bundle no longer reports the
+   missing prerequisite. Registry sync reports runtime prerequisites separately
+   from configuration drift. Its success alone does not prove source health.
+5. Let the daily 07:30 UTC bundle tick run the weekly Oil-Trade-Series section
+   when due. The section uses `seed-completion:energy:oil-trade-series` with a
+   seven-day interval. A restart does not override that interval. Any earlier
+   manual publication needs separate approval. Do not delete completion or
+   canonical keys to force a retry.
+6. For the first due run, inspect logs for the recorded deployment. Search for
+   `Oil-Trade-Series`, `Comtrade mirror unavailable`, and `FATAL`. Distinguish
+   missing configuration, HTTP refusal, rate limits, and successful empty data.
+   If requests fail, stop manual retries and investigate the reported cause.
+7. Read `energy:oil-trade-series:v1` and its seed metadata after publication.
+   Confirm a new publication clock, then check the mirror source status and
+   `lastObserved` for covered exporters such as SA and AE. Confirm that monthly
+   rows contain named buyer observations and the declared kg-to-kb/d conversion.
+   A successful empty source remains `not_reported` with null observations.
+8. Call `get_oil_trade_series` for SA with `window_months: 3`. Compare its mirror
+   observations, provenance, source clock, and unavailable list with the cache.
+   Record partial filing coverage and stale observations without turning them
+   into zeros. JP is outside this 24-exporter dataset.
+
+The operator who authorizes activation owns the first due weekly publication
+and its acceptance record. Keep the incident open if all mirrors remain
+unavailable. Overall cache freshness and the health production count do not prove
+mirror coverage. The four sources stay separate, and provider failure retains
+last-good observations with an unavailable source status.
 
 ### Bundle 8: seed-bundle-macro
 
@@ -1381,9 +1457,9 @@ Both snapshots must pass the same coverage check as the other catalogue entries.
 | **Initial source** | Reviewed PR #8543 commit `041f66dd06e00b97506bd8f01272d14f76aa215e` on `feat/government-yield-curves`. After merge, clear the commit pin and switch the source branch to `main`. |
 | **Replaces** | 0 services (new bundle, #8522) |
 | **Net savings** | n/a |
-| **Members** | Yield-Curve-JP (daily), Yield-Curve-CA (daily), Yield-Curve-DE (daily), Yield-Curve-GB (daily), Yield-Curve-AU (daily), Yield-Curve-CH (daily), Yield-Curve-NO (daily), Yield-Curve-SE (daily), OECD-LT-Rates (weekly) |
+| **Members** | Yield-Curve-JP (daily), Yield-Curve-CA (daily), Yield-Curve-DE (daily), Yield-Curve-GB (daily), Yield-Curve-AU (daily), Yield-Curve-CH (daily), Yield-Curve-NO (daily), Yield-Curve-SE (daily), OECD-LT-Rates (daily) |
 | **Required env** | Upstash Redis (shared). No upstream API keys — all nine sources are keyless official publishers. |
-| **Note** | Serves GetGovernmentYieldCurve (`/api/economic/v1/get-government-yield-curve`). Split from seed-bundle-macro because that bundle's 570s budget is already saturated by 22 sections. GB refreshes the 39 MB BoE archive on cold start and month rollover to recover missed month-end observations; other daily runs merge the ~370 KB current-month zip into accumulated history. SE paces its four SWEA requests (2s gaps plus Retry-After-honoring backoff) because the API throttles bursts with escalating 429s. Every market publishes per-year shards plus a `:latest` key; the OECD fallback is monthly and covers markets without a daily fitted curve. |
+| **Note** | Serves GetGovernmentYieldCurve (`/api/economic/v1/get-government-yield-curve`). Split from seed-bundle-macro because that bundle's 570s budget is already saturated by 22 sections. GB refreshes the 39 MB BoE archive on cold start and month rollover to recover missed month-end observations; other daily runs merge the ~370 KB current-month zip into accumulated history. SE paces its four SWEA requests (2s gaps plus Retry-After-honoring backoff) because the API throttles bursts with escalating 429s. Every market publishes per-year shards plus a `:latest` key; the OECD-LT fallback is monthly and covers markets without a daily fitted curve, serving EU members from the ECB IRS dataset (one CSV, published ~41 days after the period start) on top of FRED's OECD MEI history, and the other markets from FRED alone. Each market records the `source` of its latest print; health judges ECB-sourced markets at a 114-day content budget and FRED-sourced ones at 120 days (one skipped OECD release is normal, a second miss is STALE_CONTENT). |
 
 ---
 
@@ -1528,15 +1604,17 @@ entries.
 > These data seeds were added **after** the 2026-04-10 inventory above. The rows
 > marked **planned** are registry/documentation entries for services that are
 > not provisioned in production; they remain excluded from the live audit and
-> `--apply` until an explicit lifecycle activation. The four planned rows below
+> `--apply` until an explicit lifecycle activation. Four of the planned rows below
 > that read **planned — not provisioned** are repository-root
 > `nixpacks-root-repo` cron candidates (root directory `.`, start command
 > `node scripts/<file>`), so their eventual packaging can include valid imports
 > outside `scripts/`. Active rows must instead follow the
 > deploy mode and exact `watchPatterns` recorded in `scripts/railway-services.json`.
 > These rows are intentionally **not** part of the 100-service inventory count
-> above. The planned rows are registered with deploy mode
-> `nixpacks-root-repo`; active rows use their verified live mode.
+> above. Those four are registered with deploy mode `nixpacks-root-repo`. The
+> fifth, `seed-notam-nms`, imports only `scripts/` files, so it is registered
+> `nixpacks-root-scripts` with its exact `watchPatterns`, ready for activation.
+> Active rows use their verified live mode.
 >
 > **Cadence below is inferred from each seed's cache TTL** as a documentation
 > aid; confirm the live cron schedule and Service ID against the Railway
@@ -1571,10 +1649,11 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-hs2-chokepoint-exposure | `node scripts/seed-hs2-chokepoint-exposure.mjs` | periodic (TTL-extended) | HS2 chokepoint trade-exposure (derived) |
 | seed-service-statuses | `node scripts/seed-service-statuses.mjs` | **planned — not provisioned** | Service-status warm-ping; primary seeder is the AIS relay loop |
 | seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **`0 */6 * * *` (verified 2026-09-24)** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root service `11581ac4-24ea-4cfc-bf17-471e41305364` (Railpack, `rootDirectory` `scripts`), reads channel `/live` pages through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` |
-| seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD cyclone, port, coastal, and marine products; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
+| seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD sea-area and coastal marine bulletins from public pages; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
+| seed-notam-nms | `node seed-notam-nms.mjs` | **planned — not provisioned** (registry cron `*/5 * * * *`, health budget 20 min) | FAA NOTAM Management Service: one daily bulk load per classification, then delta pulls; writes `aviation:notam:airspace:v1` and the closures key `seed-aviation` merges. Needs `NOTAM_KEY`/`NOTAM_SECRET` for the production host; scripts-root Nixpacks once provisioned |
 
-Configure the IMD account credentials and the IP-bound production key before
-you activate this service. See [Configure the IMD Railway seeder](natural-disasters.mdx#configure-the-imd-railway-seeder).
+The IMD seeder reads public bulletin pages. It needs no IMD account, API key,
+or proxy. See [Configure the IMD Railway seeder](natural-disasters.mdx#configure-the-imd-railway-seeder).
 
 `seed-live-video-resolved` was provisioned on 2026-09-24 after #8596 merged.
 Its first deployment (`46c6d048-300c-4d7b-aa6c-6c04488d6cd2`, commit

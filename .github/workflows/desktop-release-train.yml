@@ -31,6 +31,7 @@ concurrency:
 
 jobs:
   prepare:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     steps:
       - name: Require the default branch

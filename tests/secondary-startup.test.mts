@@ -330,14 +330,16 @@ function installUmamiHarness(opts: { existingScript?: FakeUmamiScript } = {}): {
 describe('scheduleAfterFirstPaint', () => {
   it('runs the task via the load-event listener when readyState is not complete', () => {
     const loadHandlers: Array<() => void> = [];
+    const frames: Array<() => void> = [];
+    const idle: Array<() => void> = [];
     const fakeWindow = {
       requestAnimationFrame: (cb: () => void) => {
-        cb();
-        return 1;
+        frames.push(cb);
+        return frames.length;
       },
       requestIdleCallback: (cb: () => void) => {
-        cb();
-        return 1;
+        idle.push(cb);
+        return idle.length;
       },
       addEventListener: (type: string, cb: () => void) => {
         if (type === 'load') loadHandlers.push(cb);
@@ -356,7 +358,24 @@ describe('scheduleAfterFirstPaint', () => {
       assert.equal(ran, 0, 'task must not run before the load event fires');
       assert.equal(loadHandlers.length, 1, 'a load listener must be registered');
       loadHandlers[0]!();
-      assert.equal(ran, 1, 'task runs exactly once after load -> rAF -> idle');
+      assert.equal(ran, 0, 'load must leave a paint opportunity before the task');
+      assert.equal(idle.length, 0, 'idle work must wait for the animation frames');
+      assert.equal(frames.length, 1);
+      frames.shift()!();
+      assert.equal(ran, 0);
+      assert.equal(idle.length, 0, 'one animation frame must leave another paint opportunity');
+      assert.equal(frames.length, 1);
+      frames.shift()!();
+      assert.equal(ran, 0, 'the task must still wait for idle');
+      assert.equal(frames.length, 0);
+      assert.equal(idle.length, 1);
+      idle.shift()!();
+      assert.equal(ran, 1, 'task runs once after load, paint, and idle');
+      loadHandlers[0]!();
+      frames.shift()!();
+      frames.shift()!();
+      idle.shift()!();
+      assert.equal(ran, 1, 'repeated scheduling must not run the task twice');
     } finally {
       if (savedWindow) Object.defineProperty(globalThis, 'window', savedWindow);
       else delete (globalThis as { window?: unknown }).window;
@@ -366,6 +385,7 @@ describe('scheduleAfterFirstPaint', () => {
   });
 
   it('falls back to setTimeout when requestIdleCallback is absent', () => {
+    const timers: Array<() => void> = [];
     const fakeWindow = {
       requestAnimationFrame: (cb: () => void) => {
         cb();
@@ -382,8 +402,8 @@ describe('scheduleAfterFirstPaint', () => {
     Object.defineProperty(globalThis, 'setTimeout', {
       configurable: true,
       value: (cb: () => void) => {
-        cb();
-        return 1;
+        timers.push(cb);
+        return timers.length;
       },
     });
     try {
@@ -391,6 +411,9 @@ describe('scheduleAfterFirstPaint', () => {
       scheduleAfterFirstPaint(() => {
         ran += 1;
       });
+      assert.equal(ran, 0, 'the fallback must defer the task');
+      assert.equal(timers.length, 1);
+      timers.shift()!();
       assert.equal(ran, 1, 'task runs via the setTimeout fallback when rIC is missing');
     } finally {
       if (savedWindow) Object.defineProperty(globalThis, 'window', savedWindow);

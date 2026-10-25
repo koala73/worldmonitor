@@ -93,11 +93,89 @@ async function runWithExitTrap(fn) {
   }
 }
 
+test('persists receipt rewrite stamps when the retained forecast ledger exceeds 5 MiB', async () => {
+  const { MAX_SEEDED_VALUE_BYTES } = await import('../scripts/_seed-utils.mjs');
+  const { collectUnarchivedReceipts, markReceiptsArchived } = await import('../scripts/seed-forecast-resolutions.mjs');
+  const key = 'forecast:resolutions:v1';
+  const ledger = {
+    'forecast@1': {
+      status: 'resolved', outcome: 'VOID', resolvedAt: 1, receiptArchivedAt: 2,
+      evidence: { reason: 'resolver_envelope_bug', voidedAt: 3, original: 'x'.repeat(5 * 1024 * 1024) },
+    },
+  };
+  const stored = new Map();
+  const requestBytes = [];
+  globalThis.fetch = async (url, opts = {}) => {
+    const command = opts.body ? JSON.parse(opts.body) : null;
+    if (opts.body) requestBytes.push(Buffer.byteLength(opts.body));
+    if (String(url).includes('/get/')) return jsonResponse({ result: JSON.stringify(stored.get(key)) });
+    if (command?.[0] === 'SET' && !command[1].startsWith('seed-lock:')) stored.set(command[1], JSON.parse(command[2]));
+    if (String(url).endsWith('/pipeline')) return jsonResponse(command.map(() => ({ result: 1 })));
+    return jsonResponse({ result: 'OK' });
+  };
+  const { exitCode, threw } = await runWithExitTrap(() => runSeed('forecast', 'resolutions', key, async () => {
+    const queued = collectUnarchivedReceipts(ledger);
+    assert.equal(queued.length, 1);
+    markReceiptsArchived(ledger, [{ key: queued[0].key, objectKey: 'receipts/forecast.json', receiptHash: 'a'.repeat(64) }], 4);
+    return ledger;
+  }, {
+    maxPayloadBytes: MAX_SEEDED_VALUE_BYTES,
+    declareRecords: data => Object.keys(data).length,
+    sourceVersion: 'test-v1', schemaVersion: 1,
+  }));
+  assert.equal(threw, null, threw?.message);
+  assert.equal(exitCode, 0);
+  assert.deepEqual(stored.get(key).data, ledger);
+  assert.equal(stored.get(key).data['forecast@1'].receiptArchivedAt, 4);
+  assert.deepEqual(collectUnarchivedReceipts(stored.get(key).data), []);
+  assert.ok(requestBytes.every(bytes => bytes <= 10_000_000));
+});
+
 function metaSetAttempts(resource) {
   return calls.filter((c) =>
     Array.isArray(c.body) && c.body[0] === 'SET' && c.body[1] === `seed-meta:test:${resource}`,
   ).length;
 }
+
+test('forecast trail metadata failures preserve later dashboard and history publication', async () => {
+  const { FORECAST_EXTRA_KEYS } = await import('../scripts/seed-forecasts.mjs');
+  const trail = FORECAST_EXTRA_KEYS.find(key => key.key === 'forecast:probability-trail:v1');
+  const cases = ['http', 'command', 'transport'].flatMap(failure => [[failure, false], [failure, true]]);
+  for (const [failure, critical] of cases) {
+    const extra = critical ? { ...trail, metaCritical: true } : trail;
+    const events = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      const body = opts.body ? JSON.parse(opts.body) : null;
+      if (String(url).includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+      if (String(url).endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
+      if (body?.[0] === 'SET') {
+        events.push(body[1]);
+        if (body[1] === trail.metaKey) {
+          if (failure === 'http') return new Response('unavailable', { status: 503 });
+          if (failure === 'command') return jsonResponse({ error: 'ERR unavailable' });
+          throw abortError();
+        }
+      }
+      return jsonResponse({ result: 'OK' });
+    };
+    const { exitCode, threw } = await runWithExitTrap(() => runSeed('test', 'trail-failure', 'test:trail-failure:v1',
+      async () => ({ items: [1], probabilityTrail: { generatedAt: Date.now(), forecasts: { id: {} } } }), {
+        ttlSeconds: 3600, declareRecords: data => data.items.length, sourceVersion: 'test', schemaVersion: 1,
+        publishTransform: data => ({ items: data.items }),
+        extraKeys: [extra, { key: 'test:dashboard:v1', transform: data => ({ items: data.items }) }],
+        afterPublish: async () => { events.push('resolver-history'); },
+      }));
+    if (critical) {
+      assert.ok(threw, `${failure} remains fatal for an explicitly critical metadata key`);
+      assert.equal(events.includes('resolver-history'), false);
+    } else {
+      assert.equal(threw, null, failure);
+      assert.equal(exitCode, 0, failure);
+      assert.ok(events.includes('test:dashboard:v1'), failure);
+      assert.ok(events.includes('resolver-history'), failure);
+    }
+  }
+});
 
 test('successful bundled run writes the dedicated completion marker last', async () => {
   const originalFetchForCompletion = globalThis.fetch;
