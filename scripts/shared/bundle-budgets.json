@@ -101,7 +101,7 @@
   },
   "deferred": {
     "total": {
-      "raw": 1460759
+      "raw": 1461015
     },
     "chunks": {
       "App": {
@@ -142,6 +142,10 @@
       },
       "cross-domain-storage": {
         "raw": 533,
+        "files": 1
+      },
+      "desktop-cloud-access-hint": {
+        "raw": 256,
         "files": 1
       },
       "desktop-cloud-auth": {
