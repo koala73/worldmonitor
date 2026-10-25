@@ -4916,6 +4916,9 @@
           "path": "scripts/build-crawlable-corpus.mjs"
         },
         {
+          "path": "scripts/build-plane-alert-watchlist.mjs"
+        },
+        {
           "path": "scripts/generate-airline-codes.mjs"
         },
         {
@@ -8180,6 +8183,9 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs"
+        },
+        {
+          "path": "scripts/build-plane-alert-watchlist.mjs"
         },
         {
           "path": "scripts/fetch-country-boundary-overrides.mjs"
