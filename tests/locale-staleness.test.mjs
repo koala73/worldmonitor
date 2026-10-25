@@ -5,6 +5,7 @@ import {
   baselinePathFor,
   classifyKeys,
   copiedEnglishKeys,
+  copiedKeysStillOutstanding,
   expectedKeysForLocale,
   findPluralBases,
   flatten,
@@ -328,10 +329,38 @@ describe('baseline advance', () => {
   it('refuses when a requested English copy was not refreshed', () => {
     // classifyKeys calls a value that still equals its English source fresh, so
     // the missing/stale/orphan scan cannot see a copied-English batch that
-    // threw or omitted the key. The fill has to fail on that remainder itself.
+    // threw, omitted the key, or wrote the English back. The fill has to fail
+    // on that remainder itself.
     const verdict = mayAdvanceBaseline({ ...clean, copiedOutstanding: 4 });
     assert.equal(verdict.advance, false);
     assert.match(verdict.reason, /copied-English/);
+  });
+
+  it('keeps a requested copy outstanding when the written value is still English', () => {
+    const expected = { 'panels.science': 'Science' };
+    const stillEnglish = copiedKeysStillOutstanding(
+      ['panels.science'],
+      new Set(['panels.science']),
+      { 'panels.science': 'Science' },
+      expected,
+    );
+    assert.deepEqual(stillEnglish, ['panels.science']);
+
+    const translated = copiedKeysStillOutstanding(
+      ['panels.science'],
+      new Set(['panels.science']),
+      { 'panels.science': 'Наука' },
+      expected,
+    );
+    assert.deepEqual(translated, []);
+
+    const omitted = copiedKeysStillOutstanding(
+      ['panels.science'],
+      new Set(),
+      { 'panels.science': 'Наука' },
+      expected,
+    );
+    assert.deepEqual(omitted, ['panels.science']);
   });
 
   it('refuses when an existing baseline has lost entries', () => {

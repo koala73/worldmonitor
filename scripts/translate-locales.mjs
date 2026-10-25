@@ -328,6 +328,16 @@ export function copiedEnglishKeys(localeFlat, expected, locale) {
   return keys.sort();
 }
 
+// A requested copy is finished only when this run wrote a value that is no
+// longer the English source. validateTranslation accepts an unchanged reply,
+// and translateLocale then records the key as refreshed, so membership in
+// that set is not enough on its own. Kept tokens, placeholders, and command
+// examples never enter `requested`, so an unchanged reply here is not one of
+// those permitted leftovers.
+export function copiedKeysStillOutstanding(requested, refreshed, localeFlat, expected) {
+  return requested.filter(key => !refreshed.has(key) || localeFlat[key] === expected[key]);
+}
+
 export function expectedKeysForLocale(enFlat, pluralBases, categories) {
   const expected = {};
   const pluralEnKeys = new Set();
@@ -422,12 +432,12 @@ export function mayAdvanceBaseline({
   if (dryRun) return { advance: false, reason: 'dry run' };
   if (unresolved > 0) return { advance: false, reason: `${unresolved} key(s) still missing, stale or orphaned` };
   if (rejected > 0) return { advance: false, reason: `${rejected} translation(s) rejected` };
-  // Copied English is classified fresh, so a batch that throws or a reply that
-  // omits those keys never shows up as missing, stale, or orphaned. The run
-  // has to count the requested copies it did not write, or it exits 0 and
-  // advances the baseline over an unfinished fill.
+  // Copied English is classified fresh, so a batch that throws, a reply that
+  // omits those keys, or a reply that repeats the English never shows up as
+  // missing, stale, or orphaned. The run has to count that remainder, or it
+  // exits 0 and advances the baseline over an unfinished fill.
   if (copiedOutstanding > 0) {
-    return { advance: false, reason: `${copiedOutstanding} copied-English key(s) were requested and not refreshed` };
+    return { advance: false, reason: `${copiedOutstanding} copied-English key(s) were requested and are still the English source` };
   }
   // Untracked keys mean the run is about to declare translations correct against
   // English it never checked them against. That is legitimate exactly once per
@@ -835,9 +845,9 @@ async function main() {
       const expected = expectedKeysForLocale(enFlat, pluralBases, categories);
       const refreshed = refreshedByLocale.get(loc) ?? new Set();
       const requestedCopied = copiedRequestedByLocale.get(loc) ?? [];
-      const copiedLeft = requestedCopied.filter(key => !refreshed.has(key));
+      const copiedLeft = copiedKeysStillOutstanding(requestedCopied, refreshed, flat, expected);
       if (copiedLeft.length > 0) {
-        console.error(`[${loc}] ✗ ${copiedLeft.length} copied-English key(s) not refreshed (e.g. ${copiedLeft.slice(0, 3).join(', ')})`);
+        console.error(`[${loc}] ✗ ${copiedLeft.length} copied-English key(s) still equal the English source (e.g. ${copiedLeft.slice(0, 3).join(', ')})`);
         copiedOutstanding += copiedLeft.length;
       }
       const left = unresolvedAfterRun(
