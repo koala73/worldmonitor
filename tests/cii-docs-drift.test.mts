@@ -235,13 +235,17 @@ describe('CII docs drift guards', () => {
       'USA ↔ Russia',
       'Russia ↔ Ukraine',
       'USA ↔ China',
+      'China ↔ Taiwan',
       'USA ↔ Iran',
+      'Israel ↔ Iran',
+      'Iran ↔ GCC',
+      'Saudi Arabia ↔ Yemen',
     ]) {
       assert.match(gdeltSection, new RegExp(`\\|\\s*${pair}\\s*\\|`));
     }
     assert.doesNotMatch(
       gdeltSection,
-      /Israel ↔ Iran|China ↔ Taiwan|USA ↔ Venezuela/,
+      /USA ↔ Venezuela/,
       'strategic-risk tension table must omit unsupported or low-volume pairs',
     );
     assert.match(gdeltSection, /World Monitor tension scores computed independently from GDELT event exports/);
