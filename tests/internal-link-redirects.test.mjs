@@ -92,13 +92,12 @@ function middlewareBotRedirectShapes() {
   return { noiseKeys, utmPrefix: /^utm_/i, legacyRootKeys };
 }
 
-/** Variant dashboard hosts, re-derived from middleware VARIANT_HOST_MAP. */
 function variantHosts() {
-  const source = readRepo('middleware.ts');
-  const block = source.match(/const VARIANT_HOST_MAP: Record<string, string> = \{([\s\S]*?)\}/)?.[1];
-  assert.ok(block, 'VARIANT_HOST_MAP extraction from middleware.ts found nothing');
-  const hosts = [...block.matchAll(/'([a-z]+\.worldmonitor\.app)'/g)].map((match) => match[1]);
+  const hosts = vercelConfig.rewrites
+    .filter((rule) => rule.source === '/dashboard' && rule.has)
+    .map((rule) => rule.has.find((condition) => condition.type === 'host')?.value);
   assert.ok(hosts.length >= 5, `expected the variant hosts, got ${JSON.stringify(hosts)}`);
+  for (const host of hosts) assert.match(host, /^[a-z]+\.worldmonitor\.app$/);
   return hosts;
 }
 
@@ -112,7 +111,7 @@ const vercelConfig = JSON.parse(readRepo('vercel.json'));
  * to ride a real legal revision rather than an SEO pass. Only the
  * redirect-source rule is waived: an index-noise key or a bare variant host in
  * these documents still fails. Residual as of #8603: docs/terms.mdx links
- * https://www.worldmonitor.app/docs, a 307 to /docs/documentation.
+ * https://www.worldmonitor.app/docs, a 308 to /docs/documentation.
  *
  * The four English paths only. shared/legal.ts records a digest for exactly
  * those, and tests/legal-version.test.mts iterates the same keys, so the
@@ -230,21 +229,15 @@ function generatedRoutes(outDir) {
 }
 
 /**
- * Published documentation routes. Mintlify serves `/docs/<page>` only when the
- * page is BOTH a file on disk and listed in docs.json navigation, so the
- * intersection is the route set — a nav entry with no file 404s, and this repo
- * currently has three of those.
+ * Published documentation routes: every page file on disk that docs/.mintignore
+ * does not exclude, whether or not docs.json lists it. A nav entry with no file
+ * 404s (this repo has three), an ignored file is never built even when listed,
+ * and a file outside the nav is still served: on 2026-10-21 all six unlisted,
+ * unignored pages (cross-border-movements, country-history-operations and four
+ * more) answered 200 on www.worldmonitor.app, and sampled ignored pages
+ * answered 404. .mintignore holds only exact paths and `dir/` prefixes.
  */
 function docsRoutes() {
-  const config = JSON.parse(readRepo('docs/docs.json'));
-  const navPages = [];
-  const walk = (node) => {
-    if (typeof node === 'string') navPages.push(node);
-    else if (Array.isArray(node)) node.forEach(walk);
-    else if (node && typeof node === 'object') Object.values(node).forEach(walk);
-  };
-  walk(config.navigation);
-  assert.ok(navPages.length > 100, `docs.json navigation extraction found ${navPages.length} pages`);
   const files = new Set();
   const visit = (relative) => {
     for (const entry of readdirSync(join(repoRoot, 'docs', relative), { withFileTypes: true })) {
@@ -257,7 +250,14 @@ function docsRoutes() {
     }
   };
   visit('.');
-  return new Set(navPages.filter((page) => files.has(page)).map((page) => `/docs/${page}`));
+  const ignorePatterns = readRepo('docs/.mintignore').split('\n').map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
+  assert.ok(ignorePatterns.every((p) => !/[*?[\]!]/.test(p)), 'docs/.mintignore gained a glob; teach docsRoutes to match it');
+  const ignored = (file) => ignorePatterns.some((p) => (p.endsWith('/')
+    ? file.startsWith(p) // `architecture/` hides docs/architecture/*, not architecture.mdx
+    : [`${file}.md`, `${file}.mdx`].includes(p)));
+  assert.ok(files.size > 100, `docs page extraction found ${files.size} files`);
+  return new Set([...files].filter((file) => !ignored(file)).map((page) => `/docs/${page}`));
 }
 
 /** Astro blog routes: the index pages plus one route per post, author and glossary term. */
@@ -747,6 +747,8 @@ describe('internal links never redirect or 404 (#8603)', () => {
       ['/countries/norway', /slashless form of a slash-normalised corpus route/],
       ['/countries/not-a-country/', /resolves to no published route \(404\)/],
       ['/docs/not-a-page', /resolves to no published route \(404\)/],
+      ['/docs/roadmap-pro', /resolves to no published route \(404\)/],
+      ['/docs/architecture/pizzint-history', /resolves to no published route \(404\)/],
     ];
     for (const [href, expected] of cases) {
       const reasons = reasonFor(href);
@@ -768,6 +770,8 @@ describe('internal links never redirect or 404 (#8603)', () => {
       'https://tech.worldmonitor.app/?mode=agent',
       '/countries/norway/',
       '/docs/algorithms',
+      '/docs/cross-border-movements',
+      '/docs/architecture',
       '/docs/corrections',
       '/docs/api-reference/supplychainservice/listfuelshortages',
       '/blog/glossary/suez-canal/',

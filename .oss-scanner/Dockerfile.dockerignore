@@ -1,0 +1,20 @@
+# Used instead of the root .dockerignore when building .oss-scanner/Dockerfile.
+# The root file drops tests/, e2e/ and most Markdown for the slim self-hosting
+# image; the scanner needs them. Only build output, logs and local secrets
+# stay out, at any depth. .git stays in so the scan can read history.
+# The tracked .npmrc files hold only npm settings that npm ci needs.
+**/node_modules
+dist
+src-tauri/target
+src-tauri/sidecar/node/*
+!src-tauri/sidecar/node/.gitkeep
+.worktrees
+**/.env*
+!**/.env.example
+# Tracked; public build-time values that build:pro reads.
+!pro-test/.env.production
+**/*.key
+**/*.pem
+**/secrets
+**/*.log
+docker-compose.override.yml

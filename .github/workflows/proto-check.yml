@@ -21,6 +21,7 @@ env:
     scripts/_html-entities.mjs
     scripts/apply-openapi-filter-param-schemas.mjs
     scripts/generate-request-validation.mjs
+    scripts/harden-generated-server-errors.mjs
     scripts/generate-scorecard-edge-mirrors.mjs
     scripts/lib/main-module.mjs
     scripts/lib/openapi-codegen.mjs
@@ -51,13 +52,16 @@ env:
     scripts/shared/iso2-to-region.json
     server/_shared/api-key-rate-limit.ts
     server/_shared/auth-session.ts
+    server/_shared/bounded-jmespath.ts
     server/_shared/bounded-json.ts
     server/_shared/cache-contract.ts
     server/_shared/client-ip.ts
+    server/_shared/country-history-access.ts
     server/_shared/deprecation-policy.ts
     server/_shared/direct-llm-quota.ts
     server/_shared/entitlement-check.ts
     server/_shared/entitlement-coverage.ts
+    server/_shared/high-usage-alarm.ts
     server/_shared/idempotency.ts
     server/_shared/internal-auth.ts
     server/_shared/mcp-internal-hmac.ts
@@ -93,6 +97,7 @@ env:
     shared/decision-signal-provenance.ts
     shared/embed-access.ts
     shared/embed-panels.ts
+    shared/event-triggers.json
     shared/iso2-to-iso3.json
     shared/openapi-filter-param-contracts.json
     shared/source-provenance-declarations.ts

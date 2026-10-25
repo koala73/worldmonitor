@@ -27,6 +27,8 @@ const FINANCE_CATEGORY_TAGS = filterParamContracts.predictionMarketFinanceCatego
 interface BootstrapMarket {
   title: string;
   yesPrice: number;
+  change24h?: number;
+  change7d?: number;
   volume: number;
   url: string;
   endDate?: string;
@@ -81,6 +83,8 @@ function toProtoMarket(m: BootstrapMarket, category: string): PredictionMarket {
     id: m.url?.split('/').pop() || '',
     title: m.title,
     yesPrice: (m.yesPrice ?? 50) / 100,
+    ...(typeof m.change24h === 'number' && Number.isFinite(m.change24h) ? { yesPriceChange24h: m.change24h / 100 } : {}),
+    ...(typeof m.change7d === 'number' && Number.isFinite(m.change7d) ? { yesPriceChange7d: m.change7d / 100 } : {}),
     volume: m.volume ?? 0,
     url: (m.source === 'kalshi' ? m.displayUrl ?? m.url : m.url) ?? '',
     closesAt: m.endDate ? Date.parse(m.endDate) : 0,

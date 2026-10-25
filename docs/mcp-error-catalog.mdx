@@ -10,7 +10,7 @@ description: "Every error shape the World Monitor MCP server emits — JSON-RPC 
 
   - JSON-RPC envelope helpers           api/mcp/rpc.ts (rpcOk, rpcError)
   - Method gate (405 + Allow)           api/mcp/handler.ts (mcpHandler method check)
-  - Top-level dispatch / -32600/-32601  api/mcp/handler.ts (POST body parse and dispatch switch)
+  - Top-level dispatch / -32700/-32600/-32601  api/mcp/handler.ts (POST body parse and dispatch switch)
   - Body-size cap -32600 (HTTP 413)     api/mcp/bounded-body.ts (readBoundedRequestBody) + api/mcp/body-limits.ts (MAX_JSON_RPC_BODY_BYTES)
   - Auth -32001 / -32603 emitters       api/mcp/auth.ts (resolveAuthContext and entitlement checks)
   - Billing -32002 / -32603 denials     api/mcp/auth.ts (getMcpBillingVerificationDenial) + api/mcp/dispatch.ts (BillingDenialError re-emit)
@@ -39,9 +39,9 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 ## Quick orientation
 
 - **HTTP status** is the transport-layer answer. Most JSON-RPC replies — successes AND errors — come back as **HTTP 200**, per the JSON-RPC 2.0 convention. The handler only escalates the status when the failure is something a generic HTTP client must react to (auth, daily cap, service unavailable) and benefits from a `Retry-After` / `WWW-Authenticate` header.
-- **JSON-RPC `error.code`** is the application-layer answer. Ten codes are in use: `-32000`, `-32001`, `-32002`, `-32003`, `-32004`, `-32029`, `-32600`, `-32601`, `-32602`, `-32603`. `-32000` is a documented migration code for retired alias-host transport (HTTP 410 / `canonical_endpoint_required`), not a protocol bug. Any other code is a wire bug — file an issue.
+- **JSON-RPC `error.code`** is the application-layer answer. These codes are in use: `-32000`, `-32001`, `-32002`, `-32003`, `-32004`, `-32029`, `-32700`, `-32600`, `-32601`, `-32602`, `-32603`. Requests on MCP `2026-07-28` can also receive `-32020`, `-32022`, `-31002` and `-31029`; see [MCP 2026-07-28 requests](#mcp-2026-07-28-requests). `-32000` is a documented migration code for retired alias-host transport (HTTP 410 / `canonical_endpoint_required`).
 - **Soft-behavior envelopes** are the high-volume failure mode. `tools/call` succeeds at the JSON-RPC layer (HTTP 200, no `error` field), but the JSON sitting inside `result.content[0].text` carries a `_budget_exceeded` or `_jmespath_error` discriminator. Clients that only inspect the JSON-RPC envelope will silently treat these as successes — parse `result.content[0].text` and check for a leading `_` key before consuming the payload as data.
-- **Executed calls stay charged.** `_budget_exceeded`, `_jmespath_error`, and tool-execution errors (`-32603`) all happen after the tool has run, so they consume the Pro daily-quota slot. Only pre-dispatch failures such as daily-cap rejection or quota-reservation service failure avoid charging the slot.
+- **Executed calls stay charged.** `_budget_exceeded`, `_jmespath_error`, upstream failures, empty results, stored-contract errors and tool-execution errors (`-32603`) consume the daily allowance once execution starts. Before reserving free-account, Pro or API allowance, `tools/call` checks the tool's input schema and synchronous caller-input hooks, including country resolution, required scopes, option combinations and cursor syntax. Rejected arguments return `-32602` without spending allowance or opening a paid panel. Defaults remain optional; arguments are not coerced. Downstream validation discovered after execution starts remains charged.
 - **Every 401 sets `WWW-Authenticate`** with `realm="worldmonitor"` and a `resource_metadata` pointer at the protected-resource document for the route you called: `/.well-known/oauth-protected-resource/mcp` for `/mcp`, `/.well-known/oauth-protected-resource/api/mcp` for `/api/mcp`. RFC 9728-aware clients (Claude Desktop, MCP Inspector) bounce through the OAuth flow on this header without further intervention.
 
 ## JSON-RPC error codes
@@ -54,6 +54,7 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 | `-32003`  | Required data inputs unavailable — the tool's upstream seeds could not be read | **200**            | Retryable; `error.data` names the unavailable/failed inputs           |
 | `-32004`  | SSE replay cursor not found — the resumed stream expired or landed on another instance | **404**    | Re-issue the original POST instead of resuming                        |
 | `-32029`  | Rate-limited — per-minute throttle, plan-resolved daily cap, free-account allowance, OR anonymous free-tier ceiling | **200** (per-min) / **429** (daily, allowance, anon ceiling, downstream) | Honour `Retry-After`; for 200/per-min back off ~1s                    |
+| `-32700`  | Invalid JSON text | **200** | Fix the JSON encoder. The response has `id: null` because parsing failed. |
 | `-32600`  | Malformed JSON-RPC request envelope, OR a request body over the 256 KiB cap | **200** (malformed) / **400** / **406** (SSE replay) / **413** (over cap) | Fix the request encoder for the malformed cases; for **413**, shrink the payload |
 | `-32601`  | Method not found                                                       | **200**                   | Use a method advertised in the initialize result's `capabilities`     |
 | `-32602`  | Invalid params — missing/unknown tool, prompt, or resource URI         | **200**                   | Fix the params; consult `tools/list`, `prompts/list`, or `resources/list` |
@@ -102,7 +103,7 @@ Content-Type: application/json
 
 Fires from the `api/mcp/auth.ts` emission sites, always paired with HTTP **401** and a `WWW-Authenticate` header. Those sites collapse to four user-visible triggers, in order of how clients hit them:
 
-1. **No `Authorization` bearer AND no `X-WorldMonitor-Key`** — the client called a gated method on `/mcp` with no credentials. An unauthenticated `initialize` on the transport is one of them: it is the first response an interactive MCP client receives, and its `WWW-Authenticate` challenge is what starts the OAuth sign-in.
+1. **No `Authorization` bearer AND no `X-WorldMonitor-Key`** — the client called a gated method on `/mcp` with no credentials. An unauthenticated `initialize` on the transport is one of them: it is the first response an interactive MCP client receives, and its `WWW-Authenticate` challenge is what starts the OAuth sign-in. A default HTTP-library `User-Agent` (`python-httpx`, `python-requests`, `Python-urllib`, `node`, `undici`, `Go-http-client`, `hermes-agent`) is exempt on the legacy protocol versions: its `initialize` completes anonymously and the `401` arrives at its first gated call.
 2. **`Authorization: Bearer <token>` but `<token>` is invalid or expired** — the token didn't resolve to a context (revoked / TTL expired / never minted by `/api/oauth/token`).
 3. **`X-WorldMonitor-Key: <key>` but `<key>` isn't in the valid set** — the API key is wrong.
 4. **OAuth token resolves but the Pro MCP token row is missing or cross-bound** — the `mcpTokenId` no longer maps to the userId. Typically a revoke from Settings → Connected MCP clients.
@@ -178,15 +179,26 @@ Content-Type: application/json
     "data": {
       "reason": "upgrade-required",
       "nextStep": "The free allowance covers cached-data tools only. Call one of those, or subscribe to Pro at the upgrade URL for the full tool set.",
-      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel"
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
+      "recommendedPlan": "pro_monthly",
+      "checkoutTool": "start_upgrade"
     }
   }
 }
 ```
 
+**Checkout hint.** `upgrade-required` from `api/mcp/dispatch.ts`, `allowance-exhausted` and `quota-exceeded` (both under `-32029` below) gain `recommendedPlan` and `checkoutTool` when the caller holds a user-bound credential and a self-serve plan sits one step up. `recommendedPlan` maps free → `pro_monthly`, Pro → `pro_business_monthly` and API Starter → `api_business`. `checkoutTool` is `"start_upgrade"` and appears only for a free account, because only that caller can buy the plan through a new checkout: Pro → Pro Business needs Pro cancelled first, and API Starter → API Business is a prorated change in the billing portal, so a paid caller gets `recommendedPlan` alone. Pro Business, API Business, Enterprise, operator keys and anonymous callers get neither field. `message` and `upgradeUrl` are unchanged, so clients that cannot call tools keep the static link. The `upgrade-required` from the auth pre-check carries no hint, because that caller cannot reach any tool.
+
+**`start_upgrade` refusals.** The tool creates no checkout session in these cases. All are `-32002` inside **HTTP 200** with `data.reason` and `data.nextStep`:
+
+- `reason: "already-subscribed"` — the account already holds a plan in the same family. `data.subscription` gives `{planKey, displayName, status, currentPeriodEnd}`. Pro to Pro Business means cancelling Pro in the billing portal first; API Starter to API Business is a prorated change in the billing portal.
+- `reason: "payment-in-progress"` — a payment for the same tier group is still pending. Finish it in the browser, or call again later: this one clears on its own.
+
+An operator key calling `start_upgrade` also gets `-32002` at HTTP 200, with message `Starting an upgrade requires a user-bound credential.` and no `data`.
+
 One `-32002` emission is different: `resources/read` of `worldmonitor://account/mcp-allowance` with a credential that is not user-bound returns `-32002` with message `Account allowance status requires a user-bound credential.` inside **HTTP 200** and with no `data` payload — it is a plain JSON-RPC error, not an entitlement denial.
 
-**What to do.** Do not retry and do not re-run OAuth — both will reproduce the same denial. Surface the state to the user: the subscription must be renewed (worldmonitor.app → Pricing) before MCP access resumes. Renewal takes effect within seconds of the provider webhook; no re-authentication is needed afterwards. While the same subscription is still being *verified* (provider re-check in flight), the server instead returns a retryable `-32603` at HTTP 503 with `X-Billing-Verification: renewal_verification_pending|renewal_verification_failed` and a dynamic `Retry-After` — see `-32603` below.
+**What to do.** For an entitlement denial (HTTP 403, or the HTTP 200 forms with `reason: "upgrade-required"` or `"lapsed-subscription"`), do not retry and do not re-run OAuth — both will reproduce the same denial. The `start_upgrade` refusals above are the exception: `payment-in-progress` clears once the pending payment completes or lapses, so a later call can succeed. Surface the state to the user: the subscription must be renewed (worldmonitor.app → Pricing) before MCP access resumes. Renewal takes effect within seconds of the provider webhook; no re-authentication is needed afterwards. While the same subscription is still being *verified* (provider re-check in flight), the server instead returns a retryable `-32603` at HTTP 503 with `X-Billing-Verification: renewal_verification_pending|renewal_verification_failed` and a dynamic `Retry-After` — see `-32603` below.
 
 ### `-32003` — Required data inputs unavailable
 
@@ -219,7 +231,7 @@ A tool ran but the upstream seeds it needs could not be read (a Redis blip, or a
 
 All the rate-limit triggers share this code; the HTTP status disambiguates the per-minute case, and `error.data.reason` disambiguates the free allowance (`allowance-exhausted`) from the plan-resolved daily cap (`quota-exceeded`). The per-minute rejections carry no `data`.
 
-**Per-minute throttle — HTTP 200.** Sliding-window limiter keyed per legacy operator (`env_`) API key, per user (combined across a user's OAuth tokens AND dashboard `wm_…` keys — one shared budget, not stackable), or per IP for anonymous public discovery. The per-user threshold is plan-resolved from `planLimits.mcpBurstRequestsPerMinute`: **60 / minute** on Pro, Pro Business and API Starter, **300** on API Business, **1,000** on Enterprise. It falls back to 60 whenever that value is missing or is not a finite number of at least 1, so an unreadable entitlement lands on the lower ceiling rather than the higher one. Recognized data-free protocol methods and public resource reads use a separate fixed **192 requests/minute/user** bucket. It is shared across sessions and both credential doors. Validated paid MCP panel reads use separate **64 uncached requests/minute/panel** and **64 cached replays/minute/panel** buckets. Replaying server-cached observations does not spend the uncached-read burst or the admission's 64-execution work budget. Ordinary tool calls, unsupported methods, account status reads and data-bearing resource reads retain the plan account burst. The operator-key and anonymous-discovery limiters stay at a flat **60 / minute**. Credentialed requests are limited after auth. Credential-less public discovery methods (`initialize` on the machine-discovery aliases `/.well-known/mcp` and `/.well-known/mcp.json` only — on the transport it is challenged with `-32001` before any limiter — plus, on every path, `notifications/initialized`, `ping`, `tools/list`, `prompts/list`, `prompts/get`, `skills/list`, `skills/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`) and anonymous public-resource reads are served without auth but still pass through the anonymous discovery limiter. Credential-less data/quota methods, or metadata methods outside that public set, do **not** use anonymous discovery — they fail closed with `-32001` / HTTP 401. The one exception is the credential-free `get_sources` tool, which is served anonymously under its own 10 calls / minute / IP ceiling (described below). Comes back as a JSON-RPC error inside HTTP 200, carrying the `id` of the request that was denied. Fails OPEN on Upstash transient errors — single spikes in limiter-backend latency won't take the API down.
+**Per-minute throttle — HTTP 200.** Sliding-window limiter keyed per legacy operator (`env_`) API key, per user (combined across a user's OAuth tokens AND dashboard `wm_…` keys — one shared budget, not stackable), or per IP for anonymous public discovery. The per-user threshold is plan-resolved from `planLimits.mcpBurstRequestsPerMinute`: **60 / minute** on Pro, Pro Business and API Starter, **300** on API Business, **1,000** on Enterprise. It falls back to 60 whenever that value is missing or is not a finite number of at least 1, so an unreadable entitlement lands on the lower ceiling rather than the higher one. Recognized data-free protocol methods and public resource reads use a separate fixed **192 requests/minute/user** bucket. It is shared across sessions and both credential doors. Validated paid MCP panel reads use separate **64 uncached requests/minute/panel** and **64 cached replays/minute/panel** buckets. Replaying server-cached observations does not spend the uncached-read burst or the admission's 64-execution work budget. Ordinary tool calls, unsupported methods, account status reads and data-bearing resource reads retain the plan account burst. The operator-key and anonymous-discovery limiters stay at a flat **60 / minute**. Credentialed requests are limited after auth. Credential-less public discovery methods (`initialize` on the machine-discovery aliases `/.well-known/mcp` and `/.well-known/mcp.json` only — on the transport it is challenged with `-32001` before any limiter, except from a default HTTP-library `User-Agent` — plus, on every path, `notifications/initialized`, `ping`, `tools/list`, `prompts/list`, `prompts/get`, `skills/list`, `skills/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`) and anonymous public-resource reads are served without auth but still pass through the anonymous discovery limiter. Credential-less data/quota methods, or metadata methods outside that public set, do **not** use anonymous discovery — they fail closed with `-32001` / HTTP 401. The one exception is the credential-free `get_sources` tool, which is served anonymously under its own 10 calls / minute / IP ceiling (described below). Comes back as a JSON-RPC error inside HTTP 200, carrying the `id` of the request that was denied. Fails OPEN on Upstash transient errors — single spikes in limiter-backend latency won't take the API down.
 
 When the per-minute limiter rejects, the handler emits a durable `mcp.rate_limit_hit` telemetry event with an allowlisted identity shape. The plan-limit scanner uses that event for sustained-burst notices; it does not infer customer-facing MCP burst notices from raw Upstash limiter internals.
 
@@ -235,7 +247,7 @@ The `message` text identifies which limiter fired. The message distinguishes the
 
 `<limit>` in the per-user string is your own plan's burst, not a constant. It is **60** on Pro, Pro Business and API Starter, **300** on API Business, **1,000** on Enterprise, and **60** when the entitlement cannot be read. Parse the number out of the message if you want it, or read it from the [plans table](/mcp-overview#plans-&-limits). The other two strings are genuinely fixed at 60, because neither the legacy operator-key limiter nor the anonymous discovery limiter is plan-resolved.
 
-Every per-minute denial **from this server (`/mcp`)** echoes your JSON-RPC `id` exactly — string or number, `0` included — so it satisfies the MCP schema's `RequestId` union and your client can settle the pending request as a rate-limit error instead of failing response validation. Two cases have no `id` to echo and keep `"id": null`: the `GET /mcp` SSE replay channel, which carries no JSON-RPC body at all, and a **notification** (a request sent with no `id`, such as `notifications/initialized`) — a notification that is rate-limited gets the error envelope rather than its usual bodyless `202`, and by definition has no id to correlate.
+Every per-minute denial **from this server (`/mcp`)** echoes your JSON-RPC `id` exactly — string or number, `0` included — so it satisfies the MCP schema's `RequestId` union and your client can settle the pending request as a rate-limit error instead of failing response validation. The `GET /mcp` SSE replay channel carries no JSON-RPC body and keeps `"id": null`. Notifications omit `id` and use the 60/minute/IP discovery limiter, including when credentials are present. Accepted notifications receive an empty HTTP 202 acknowledgement. Rate-limited notifications receive an empty HTTP 429 response.
 
 The separate [docs MCP server](/agent-discovery) at `/api/docs-mcp` makes the same correlation guarantee for JSON-RPC POST requests. Its decision is to read the body through the shared 256 KiB cap and pre-parse the envelope before the unchanged 60/min/IP limiter. This spends bounded JSON parsing work on a request that the limiter may deny, but prevents an oversized body from reaching either parsing or the limiter. A denial echoes a finite numeric id or a string id of at most 256 UTF-8 bytes; a batch, notification, malformed/invalid id, GET, or DELETE has no safe single id and keeps `"id": null`.
 
@@ -258,7 +270,7 @@ Two further per-minute limiters surface the same code: pre-auth `wm_…`-key **v
 
 **Downstream endpoint limits — HTTP 429.** `search_flight_prices_by_date` preserves downstream HTTP 429 as `-32029` with message `Too many requests` and the original `Retry-After` header when present. This includes the Google Dates limit of 10 calls per minute. The MCP daily reservation remains charged.
 
-**Daily cap — HTTP 429 + `Retry-After`.** A hard daily cap is enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** (the auth-symmetric resources path) count. The cap is plan-resolved and identical on both the OAuth and `wm_…` doors: **Pro 50/day** and **Pro Business 250/day** on a dedicated counter at one unit per call, while **API Starter and API Business** spend the same allowance as their REST requests (1,000 and 10,000 units/day) at [a per-tool weight](/usage-rate-limits#mcp-calls-against-an-api-plan) of 1, 2, or 3. Enterprise can be unlimited. The message quotes the budget that actually rejected, so it will not always read 50. Legacy deployment-allowlisted operator keys are the only authenticated class outside the daily reservation path. **Exempt from the daily cap:** `describe_tool`, `get_sources`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`, `resources/read` of a **public** resource such as `worldmonitor://seed-meta/freshness`, and the authenticated status read `worldmonitor://account/mcp-allowance`. (These methods still count toward the authenticated per-minute limit, except anonymous `get_sources`, which uses its separate 10/minute/IP fail-closed limit.)
+**Daily cap — HTTP 429 + `Retry-After`.** A hard daily cap is enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** (the auth-symmetric resources path) count. The cap is plan-resolved and identical on both the OAuth and `wm_…` doors: **Pro 50/day** and **Pro Business 250/day** on a dedicated counter at one unit per call, while **API Starter and API Business** spend the same allowance as their REST requests (1,000 and 10,000 units/day) at [a per-tool weight](/usage-rate-limits#mcp-calls-against-an-api-plan) of 1, 2, or 3. Enterprise carries a fair-use ceiling of 25,000 units/day. The message quotes the budget that actually rejected, so it will not always read 50. Legacy deployment-allowlisted operator keys reserve on their own per-key counter with a ceiling of 10,000 units/day. **Exempt from the daily cap:** `describe_tool`, `get_sources`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`, `resources/read` of a **public** resource such as `worldmonitor://seed-meta/freshness`, and the authenticated status read `worldmonitor://account/mcp-allowance`. (These methods still count toward the authenticated per-minute limit, except anonymous `get_sources`, which uses its separate 10/minute/IP fail-closed limit.)
 
 ```json
 {
@@ -272,7 +284,8 @@ Two further per-minute limiters surface the same code: pre-auth `wm_…`-key **v
       "nextStep": "Wait for the next UTC day, or upgrade at the upgrade URL for a higher daily limit.",
       "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
       "limit": 50,
-      "sharedWithRestApi": false
+      "sharedWithRestApi": false,
+      "recommendedPlan": "pro_business_monthly"
     }
   }
 }
@@ -292,11 +305,17 @@ Two further per-minute limiters surface the same code: pre-auth `wm_…`-key **v
     "data": {
       "reason": "allowance-exhausted",
       "nextStep": "Wait until the next UTC day for another free allowance window, or upgrade to Pro for a higher daily limit.",
-      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel"
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
+      "recommendedPlan": "pro_monthly",
+      "checkoutTool": "start_upgrade"
     }
   }
 }
 ```
+
+`recommendedPlan` and `checkoutTool` follow the checkout hint rules under `-32002` above. `start_upgrade` spends no allowance, so it still works after this denial.
+
+**`start_upgrade` checkout limit — HTTP 429 + `Retry-After`.** The tool shares the per-account checkout limit with the pricing page. When it trips, the response is `-32029` with message `Checkout is temporarily rate limited. Retry shortly.` and `data: { reason: "checkout-rate-limited", retryAfterSeconds }`. Honour `Retry-After`.
 
 This is deliberately **not** `-32001` / 401. An exhausted quota is not an authentication failure, and answering it with the re-authenticate envelope sends RFC 9728-aware clients into a loop: OAuth succeeds, the retry 401s again, forever. Honour `Retry-After` or upgrade.
 
@@ -310,11 +329,17 @@ Content-Type: application/json
 
 Paid-plan customers also receive account notices and bounded-cadence email when sustained usage crosses a plan threshold. These notices never imply an automatic upgrade, automatic overage charge, or automatic move into API Business; support or checkout action is explicit.
 
+### `-32700` Parse error
+
+Invalid JSON text returns `-32700` with `id: null`. Valid JSON with an invalid request envelope returns `-32600` instead. This distinction follows the [JSON-RPC specification](https://www.jsonrpc.org/specification#error_object).
+
 ### `-32600` — Invalid request envelope
 
-Fires when the request body isn't valid JSON, isn't a JSON object, lacks a string `method` field, or carries an invalid `id` (a string `id` longer than 256 UTF-8 bytes is rejected with `Invalid request: invalid id`). The SSE-replay preconditions reuse the code at non-200 statuses: a replay `GET` without `Accept: text/event-stream` gets `-32600` at HTTP 406, and one without `Mcp-Session-Id` gets it at HTTP 400.
+Fires when the body cannot be read, isn't a JSON object, lacks `jsonrpc: "2.0"`, lacks a string `method`, or carries an invalid `id` or `params`. Request IDs must be strings or integers. Null, fractional, non-finite, boolean, and structured IDs are invalid and return `id: null`. A string `id` longer than 256 UTF-8 bytes is invalid. When present, `params` must be a non-null object, not an array or scalar. An invalid `params` envelope echoes a valid request ID. Valid notifications omit `id` and receive HTTP 202 with no response body when accepted. Invalid notification `params` return HTTP 400 with `-32600`. Omitted `params` and object `params` remain valid. These rules follow the [MCP base protocol](https://modelcontextprotocol.io/specification/2025-06-18/basic).
 
-The code is also reused at **HTTP 413** for a request body over the 256 KiB cap (`MAX_JSON_RPC_BODY_BYTES`). That case is **not** an encoder bug — a perfectly well-formed client hits it by sending an oversized `tools/call` argument, and because the body is rejected before parsing the server cannot echo your `id` (it is always `null`). Apart from the 413, this is strictly a client encoder bug that well-formed JSON-RPC clients will not see in production.
+The SSE-replay preconditions reuse this code. A replay `GET` without `Accept: text/event-stream` gets HTTP 406. A replay without `Mcp-Session-Id` gets HTTP 400. An invalid or unsupported `MCP-Protocol-Version` header gets HTTP 400 with `id: null` before the request is dispatched. The exception is a well-formed `initialize` request with a string `params.protocolVersion`, which negotiates the version from that field whatever the header says, because no version is agreed until `initialize` answers. Send the negotiated version on every later request.
+
+The code is also reused at **HTTP 413** for a request body over the 256 KiB cap (`MAX_JSON_RPC_BODY_BYTES`). That case is **not** an encoder bug — a perfectly well-formed client hits it by sending an oversized `tools/call` argument, and because the body is rejected before parsing the server cannot echo your `id` (it is always `null`).
 
 ```json
 {
@@ -324,7 +349,7 @@ The code is also reused at **HTTP 413** for a request body over the 256 KiB cap 
 }
 ```
 
-**What to do.** Check the HTTP status first. On **413**, shrink the request body below 256 KiB — trim the oversized `tools/call` argument, or page the work into smaller calls; do not retry the same payload. On **200/400/406**, audit the request encoder: the body must be a JSON object with a string `method` and (for any method besides `notifications/*`) an `id` field. If you see a non-413 `-32600` from a known-good client library, file an issue against this server — that case should never reach you.
+**What to do.** Check the HTTP status first. On **413**, shrink the request body below 256 KiB — trim the oversized `tools/call` argument, or page the work into smaller calls; do not retry the same payload. On **200/400/406**, audit the request encoder: the body must be a JSON object with `jsonrpc: "2.0"` and a string `method`. Requests have an `id`; notifications omit it. For an unsupported transport version, use the supported version returned by `initialize`. If you see a non-413 `-32600` from a known-good client library, file an issue against this server — that case should never reach you.
 
 ### `-32601` — Method not found
 
@@ -342,13 +367,16 @@ The `method` field was a string but didn't match any handler. Methods this serve
 
 ### `-32602` — Invalid params
 
-The most common error code, shared across `tools/call`, `prompts/get`, `resources/read`, and `logging/setLevel`. The main triggers:
+The most common error code, shared across list methods, `tools/call`, `prompts/get`, `resources/read`, and `logging/setLevel`. The main triggers:
 
 | Trigger                                                | Site                              | Example `message`                                                          |
 |--------------------------------------------------------|-----------------------------------|----------------------------------------------------------------------------|
 | `tools/call` with no/non-string `name`                 | `api/mcp/dispatch.ts` `dispatchToolsCall` param guard | `Invalid params: missing tool name`                         |
 | `tools/call` with `name` that isn't in the registry    | `api/mcp/dispatch.ts` `dispatchToolsCall` registry lookup | `Unknown tool: get_foo`                                  |
+| `tools/call` arguments fail the input schema or caller-input hook | `api/mcp/_validate-args.ts`, before allowance reservation | `Invalid params` — with `error.data.violations[]`, an array of `{field, description}` pairs |
 | `prompts/get` with no/non-string `name`                | `api/mcp/handler.ts` `prompts/get` switch branch       | `Invalid params: missing prompt name`                        |
+| `tools/list`, `prompts/list`, `resources/list`, or `resources/templates/list` with a non-string `cursor` | `api/mcp/handler.ts` list cursor guard | `Invalid params: cursor must be a string` |
+| `prompts/get` with null, array, or non-object `arguments`, or any non-string argument value | `api/mcp/prompts/index.ts` `buildPromptResponse` | `Invalid params: prompt arguments must be an object with string values` |
 | `prompts/get` with unknown name or missing required arg | `api/mcp/prompts/index.ts` `buildPromptResponse`       | `Unknown prompt: …` / `Missing required argument "iso2" for prompt "country-briefing"` |
 | `resources/read` with no/unknown/malformed `uri`       | `api/mcp/resources/index.ts` (`buildPublicResourceResponse` / `buildResourceResponse`) | `Invalid params: missing resource uri` / `Unknown resource uri "..."` |
 | `resources/read` of an unknown `ui://` widget resource | `api/mcp/ui/registry.ts`                               | `Unknown resource uri "ui://..."`                                          |
@@ -362,6 +390,10 @@ The most common error code, shared across `tools/call`, `prompts/get`, `resource
   "error": { "code": -32602, "message": "Unknown tool: get_marekt_data" }
 }
 ```
+
+On protocol `2025-11-25`, a `tools/call` whose arguments are rejected is not a JSON-RPC error. This covers the input schema or caller-input hook, downstream proto validation, alias argument checks, panel arguments rejected by a panel view, and tool-specific argument checks such as `start_upgrade`'s plan. Per [SEP-1303](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1303), a request sent with `MCP-Protocol-Version: 2025-11-25` gets a tool execution error that the model can read and correct. `result.isError` is `true`, and `result.content[0].text` is JSON holding the same message and data the `-32602` error would carry, for example `{"error": "Invalid params", "violations": […]}`. Requests on earlier versions, or without the header, keep the `-32602` shape. An unknown or missing tool name stays `-32602` on every version.
+
+List methods return the complete catalog without `nextCursor`. An absent cursor or any string cursor, including an unknown token, returns that same terminal list. Other cursor types return `-32602`. Prompt arguments can be omitted or supplied as an object containing only string values. This also applies to undeclared argument names. Values are not coerced to strings.
 
 **What to do.** Read the `message` — it always tells you what was missing or wrong. For tools, names are in `tools/list`. For prompts, names + argument schemas are in `prompts/list`. For resources, the concrete URIs are in `resources/list` and the parameterised URI templates are in `resources/templates/list`. For `logging/setLevel`, valid levels are the [RFC 5424 subset](https://www.rfc-editor.org/rfc/rfc5424#section-6.2.1) listed above.
 
@@ -415,29 +447,57 @@ Recovery for the first three is identical (honour `Retry-After: 5`). The billing
 
 **What to do.** For HTTP 200 tool errors: retry once after ~1 second; if a specific tool returns `-32603` consistently, check [status.worldmonitor.app](https://status.worldmonitor.app) for the relevant seeder. For HTTP 503: honour `Retry-After`. For the `resources/read` defensive case: file an issue — it indicates a dispatcher contract violation upstream of your call.
 
+### MCP 2026-07-28 requests
+
+These rules apply only while `MCP_PROTOCOL_2026_07_28=on`, and only to requests whose `params._meta` carries `io.modelcontextprotocol/protocolVersion`. Every other request keeps the codes above.
+
+| Code | HTTP | When |
+|------|------|------|
+| `-32602` | 400 | `_meta` is malformed: `io.modelcontextprotocol/protocolVersion` is not a string, or `io.modelcontextprotocol/clientCapabilities` is not an object. |
+| `-32022` | 400 | `UnsupportedProtocolVersion`: the `_meta` version is not `2026-07-28`. `error.data` is `{ "supported": [...], "requested": "..." }`, with every served version newest first. Retry with a listed version. |
+| `-32020` | 400 | `HeaderMismatch`: `MCP-Protocol-Version` or `Mcp-Method` is missing or differs from the body, or `Mcp-Name` is missing or differs from `params.name` / `params.uri` on `tools/call`, `prompts/get` and `resources/read`. A `=?base64?…?=` value is decoded before the comparison. |
+| `-32601` | 404 | A method the `2026-07-28` revision removed (`initialize`, `notifications/initialized`, `ping`, `logging/setLevel`) or an unknown method. Decided before authentication. Other client notifications, such as `notifications/cancelled`, are accepted with HTTP 202. |
+| `-32600` | 406 | `subscriptions/listen` without `text/event-stream` in `Accept`. |
+| `-32602` | 400 | `subscriptions/listen` whose `params.notifications` is not an object. |
+
+The `2026-07-28` revision reserves the codes from `-32020` to `-32099` for the specification and retires `-32002`, so two WorldMonitor codes change on these requests only:
+
+- `-32029` (rate limit, daily cap or allowance) is sent as `-31029`.
+- `-32002` (every terminal entitlement denial) is sent as `-31002`.
+
+The HTTP status, headers, `error.message` and `error.data` are identical to the `2025` responses. The instructions `server/discover` returns name the new codes.
+
+`/mcp` sends no change notifications, so `subscriptions/listen` acknowledges an empty filter and closes the stream at once with a completed result. Do not reconnect when it closes. The `ttlMs` and `cacheScope` hints on results tell the client how long it may reuse a result; the HTTP response itself stays `Cache-Control: no-store`.
+
 ## HTTP statuses
 
 Every status the MCP handler can return. Most JSON-RPC replies — including most errors — are HTTP 200 by convention; the table calls out the cases where the handler escalates.
 
 | Status | Body shape                | JSON-RPC code(s) | Cause                                                                 |
 |--------|---------------------------|------------------|-----------------------------------------------------------------------|
-| **200** | JSON-RPC envelope         | success OR `-32002` (allowance-resource read) / `-32003` / `-32029` / `-32600` / `-32601` / `-32602` / `-32603` | Any successful call, OR an application-layer error that doesn't merit a transport escalation. A plain browser-style `GET`/`HEAD` on canonical `/mcp` also returns 200 — a markdown server guide, not JSON-RPC. Canonical `/.well-known/mcp` and `/.well-known/mcp.json` return the JSON server card the same way. |
-| **202** | empty                     | n/a              | `notifications/initialized` — JSON-RPC notifications take no response body, per spec |
+| **200** | JSON-RPC envelope         | success OR `-32002` (allowance-resource read) / `-32003` / `-32029` / `-32700` / `-32600` / `-32601` / `-32602` / `-32603` | Any successful call, OR an application-layer error that doesn't merit a transport escalation. A plain browser-style `GET`/`HEAD` on canonical `/mcp` also returns 200 — a markdown server guide, not JSON-RPC. Canonical `/.well-known/mcp` and `/.well-known/mcp.json` return the JSON server card the same way. |
+| **202** | empty                     | n/a              | Accepted JSON-RPC notifications take no response body, per spec |
 | **204** | empty                     | n/a              | `OPTIONS` preflight on canonical `/mcp`, `/api/mcp`, the well-known aliases, and the listed production alias hosts |
-| **400** | JSON-RPC envelope         | `-32600`         | SSE replay `GET` missing a valid `Mcp-Session-Id` |
+| **400** | JSON-RPC envelope         | `-32600`         | Invalid notification `params`, invalid or unsupported `MCP-Protocol-Version` on any request except `initialize`, or SSE replay `GET` missing a valid `Mcp-Session-Id`. A `HEAD` response has no body. |
 | **401** | JSON-RPC envelope         | `-32001`         | Missing/invalid/expired credentials, or a revoked Pro MCP token, on canonical `/mcp` and `/api/mcp` (and well-known gated methods). `data.reason: "no-account"`; `WWW-Authenticate` header set. Alias-host transport is 410, not 401. |
-| **403** | JSON-RPC envelope         | `-32002`         | Terminal entitlement denial: `data.reason: "lapsed-subscription"` only when a provider-confirmed lapse lands during an in-flight Pro call (also sets `X-Billing-Verification: subscription_lapsed`), or `"upgrade-required"` when the free allowance calls a Pro-only tool or a non-free entitlement is inactive. A lapse already present at the pre-check is admitted onto the restricted free-account path instead. No `WWW-Authenticate` (re-auth cannot fix a denial already emitted). |
+| **403** | JSON-RPC envelope or plain text | `-32002` or n/a         | Invalid Origin returns plain text before auth or dispatch, with an empty body for `HEAD`. Otherwise, terminal entitlement denial: `data.reason: "lapsed-subscription"` only when a provider-confirmed lapse lands during an in-flight Pro call (also sets `X-Billing-Verification: subscription_lapsed`), or `"upgrade-required"` when the free allowance calls a Pro-only tool or a non-free entitlement is inactive. A lapse already present at the pre-check is admitted onto the restricted free-account path instead. No `WWW-Authenticate` (re-auth cannot fix a denial already emitted). |
 | **404** | JSON-RPC envelope         | `-32004`         | SSE replay cursor not found (stream expired or reconnect reached another instance). |
 | **405** | empty                     | n/a              | Request method outside `POST`/`GET`/`HEAD`/`OPTIONS`, or an SSE-flavoured `GET`/`HEAD` with no `Last-Event-ID` (no standalone server→client stream is offered). `Allow: POST, GET, HEAD, OPTIONS` header set. On listed production aliases the 405 also carries `Link: <https://worldmonitor.app/mcp>; rel="canonical"`. |
 | **406** | JSON-RPC envelope         | `-32600`         | SSE replay `GET` without `Accept: text/event-stream`. |
 | **410** | JSON-RPC envelope for POST-with-id and GET SSE/replay; empty for notifications missing own `id` and for HEAD | `-32000` | Listed production alias hosts retiring transport. `Link: <https://worldmonitor.app/mcp>; rel="canonical"`. POST is 410, not 308, because a 308 of POST became GET (#4938). |
 | **413** | JSON-RPC envelope         | `-32600`         | Request body exceeds the 256 KiB JSON-RPC cap (`MAX_JSON_RPC_BODY_BYTES`). Rejected before `JSON.parse`, so `id` is always `null`. Shrink the payload — usually an oversized `tools/call` argument — and retry. |
-| **429** | JSON-RPC envelope         | `-32029`         | Plan-resolved daily cap, free-account allowance, anonymous free-tier ceiling, downstream endpoint limit, or pre-auth key-validation flood. `Retry-After` set (seconds-until-UTC-midnight for the daily/allowance cases). (Per-minute throttle returns `-32029` inside HTTP 200 — see `-32029` above.) |
+| **429** | JSON-RPC envelope, or empty for a notification IP-limit denial | `-32029` or n/a | Plan-resolved daily cap, free-account allowance, anonymous free-tier ceiling, downstream endpoint limit, or pre-auth key-validation flood. `Retry-After` set (seconds-until-UTC-midnight for the daily/allowance cases). (Per-minute throttle returns `-32029` inside HTTP 200 — see `-32029` above.) |
 | **503** | JSON-RPC envelope         | `-32603`         | Auth service unavailable, `MCP_INTERNAL_HMAC_SECRET` misconfigured, rate-limit backend fail-closed, or quota-reservation Redis failure (`Retry-After: 5`); OR renewal verification pending/failed (`X-Billing-Verification` set, dynamic `Retry-After` 1-60s). |
 
-One HTTP status appears that isn't a JSON-RPC error:
+Transport denials can precede JSON-RPC parsing:
 
-- **405 with an empty body** comes from method-validation BEFORE JSON-RPC. The handler accepts `POST` (the JSON-RPC path), `GET` (the `Last-Event-ID` SSE replay channel, or — with no SSE `Accept` — the 200 markdown server guide), `HEAD` (same routing as GET: replay ack, guide headers, or a JSON 200 ack on non-`/mcp` pathnames used by uptime probes), and `OPTIONS` (CORS preflight). An SSE-flavoured `GET` with no `Last-Event-ID` returns 405 (no standalone stream is offered). Anything else gets 405 + `Allow: POST, GET, HEAD, OPTIONS`. On listed production aliases that 405 also carries `Link: <https://worldmonitor.app/mcp>; rel="canonical"`, and `OPTIONS` on those aliases is still 204. The endpoint enforces no `Origin` allowlist: it advertises wildcard CORS and authenticates by explicit `Authorization` / `X-WorldMonitor-Key` header, so browser-origin clients (any origin) are accepted.
+- **405 with an empty body** comes from method-validation BEFORE JSON-RPC. The handler accepts `POST` (the JSON-RPC path), `GET` (the `Last-Event-ID` SSE replay channel, or — with no SSE `Accept` — the 200 markdown server guide), `HEAD` (same routing as GET: replay ack, guide headers, or a JSON 200 ack on non-`/mcp` pathnames used by uptime probes), and `OPTIONS` (CORS preflight). An SSE-flavoured `GET` with no `Last-Event-ID` returns 405 (no standalone stream is offered). Anything else gets 405 + `Allow: POST, GET, HEAD, OPTIONS`. On listed production aliases that 405 also carries `Link: <https://worldmonitor.app/mcp>; rel="canonical"`, and valid `OPTIONS` on those aliases is still 204.
+
+Origin validation runs before this routing, including preflight and discovery. The public endpoint accepts a missing Origin, serialized HTTPS origins, and HTTP origins on `localhost`, `127.0.0.1`, or `[::1]` with optional ports. Opaque `null`, malformed values, credentials, paths, queries, fragments, multiple origins, and remote HTTP origins return HTTP 403 with `Cache-Control: no-store`. Clients must send the canonical serialized origin, without a trailing slash or an explicit default port.
+
+The [MCP 2025-06-18 transport specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports) requires Origin validation and HTTP 400 for unsupported transport versions. The header check uses the active supported versions, including the protocol-floor rollback setting. A missing header remains compatible with older clients. The `initialize` payload still negotiates unsupported requested versions to a supported version.
+
+Origin is not an authorization grant. This public HTTPS service accepts custom HTTPS clients without a domain allowlist. It uses explicit bearer tokens or API keys, has wildcard CORS, and does not use cookies for MCP authorization. Anonymous catalog and `get_sources` calls retain their limits; paid calls still require authorization. HTTP loopback origins support MCP Inspector. No-Origin native clients remain supported. This policy does not establish that an arbitrary HTTPS site is trusted, and is not a localhost-server DNS-rebinding policy. A private or locally hosted service needs its own host and origin restrictions.
 
 ## Soft-behavior envelopes
 
@@ -520,7 +580,7 @@ The JMESPath expression itself exceeds **1024 UTF-8 bytes** (`JMESPATH_MAX_EXPR_
 
 #### `invalid_expression`
 
-The expression parsed by the JMESPath engine threw — bad syntax, unclosed bracket, unknown function. The `details` after the kind token is the parser's error message verbatim.
+The JMESPath parser, evaluation guard, or evaluator rejected the expression. Causes include bad syntax, an unclosed bracket, an unknown function, or an unsafe expression. Details beginning with `Unsafe JMESPath:` identify an evaluation restriction. The guard runs before search and rejects `to_string()`, equality without a scalar literal operand, `join()` without a literal string separator, indirect expression references in `map()` / `sort_by()` / `min_by()` / `max_by()`, and expressions above the [complexity limits](/mcp-jmespath#quick-orientation). Use explicit `&expression` references for those functions.
 
 ```json
 {

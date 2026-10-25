@@ -24,6 +24,7 @@ concurrency:
 
 jobs:
   guard:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -50,7 +51,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    if: needs.guard.outputs.enabled == 'true'
+    if: ${{ (needs.guard.outputs.enabled == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:

@@ -157,6 +157,10 @@
       "name": "seed-cot"
     },
     {
+      "id": "d295b2c7-59ba-4748-9525-62292c5bc98c",
+      "name": "seed-country-history"
+    },
+    {
       "id": "fd27928b-0b9b-45d6-b056-92fa2f5d60a6",
       "name": "seed-cyber-threats"
     },
@@ -287,6 +291,10 @@
     {
       "id": "7119c932-05f5-4727-a54f-e4e2de2a907f",
       "name": "seed-natural-events"
+    },
+    {
+      "id": "4aa3db57-9388-4c69-a248-8a538e576454",
+      "name": "seed-notam-nms"
     },
     {
       "id": "96fabace-d56d-4854-8096-3f5bcfe0d88a",

@@ -461,7 +461,7 @@ The panel augments aircraft data with real-time naval vessel positions from AIS 
 | **Patrol** | PC, PG | Coastal defense |
 | **Auxiliary** | T-AO, AOR | Fleet support, logistics |
 
-**Data Accumulation Note**: AIS vessel data arrives via WebSocket stream and accumulates gradually. The panel automatically re-checks vessel counts at 30, 60, 90, and 120 seconds after initial load to capture late-arriving data.
+**Data Accumulation Note**: On first load, the vessel view waits up to 8 seconds for the first AIS snapshot, so AIS military contacts appear beside the USNI roster from the start instead of the roster alone. The panel renders after that step, so a slow relay can delay its first view by up to 8 seconds, never longer. AIS data keeps accumulating after that, and the panel re-checks vessel counts at 30, 60, 90, and 120 seconds after initial load to capture late-arriving data.
 
 ### Posture Levels
 

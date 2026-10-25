@@ -306,7 +306,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Status procjene i imputacije nije naveden"
     },
     "fiveFactorScorecard": {
       "title": "Petofaktorska ocjena otpornosti",
@@ -784,10 +785,9 @@
       "alertTitle": {
         "configured": "Desktop postavke konfigurisane",
         "needsKeys": "Konfiguriši API ključeve da otključaš funkcije",
-        "some": "Neke funkcije trebaju API ključeve"
+        "some": "Neke funkcije trebaju API ključeve",
+        "pro": "World Monitor Pro je aktivan"
       },
-      "reserveEarlyAccess": "Rezerviši Rani Pristup",
-      "skipSetup": "Preskoči postavljanje — jedna World Monitor licenca otključava sve. Pridruži se listi čekanja za rani pristup.",
       "summary": {
         "desktop": "Desktop režim",
         "web": "Web režim (samo čitanje, kredencijali upravljani serverom)",
@@ -815,7 +815,10 @@
         "NASA_FIRMS_API_KEY": "Sustav za upravljanje informacijama o požarima.",
         "OLLAMA_API_URL": "npr. http://127.0.0.1:11434 (Ollama) ili http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-kompatibilan endpoint.",
         "OLLAMA_MODEL": "npr. llama3.1:8b — tag modela za summarizaciju."
-      }
+      },
+      "proCloud": "Značajke bez lokalnog API ključa koriste World Monitor cloud podatke.",
+      "skipSetupPro": "Preskoči postavu: prijavite se s World Monitor Pro za korištenje cloud podataka umjesto svojih API ključeva.",
+      "getPro": "Uzmi World Monitor Pro"
     },
     "settingsWindow": {
       "shellTitle": "Postavke Svjetskog monitoringa",
@@ -1234,7 +1237,8 @@
       "skipToEnd": "Preskoči na kraj"
     },
     "pizzint": {
-      "indexSource": "Indeks: World Monitor · podaci o objektima:",
+      "indexSource": "Indeks: World Monitor",
+      "venueSource": "podaci o objektima:",
       "statusNormal": "NORMALNO",
       "statusNoData": "NEMA PODATAKA",
       "statusNoBaseline": "NEMA OSNOVE",
@@ -1245,6 +1249,16 @@
       "tensionsTitle": "Geopolitička napetost",
       "tensionsSource": "Napetosti: World Monitor na temelju događaja GDELT-a",
       "insufficientData": "Nedovoljno podataka",
+      "evidenceStrikes": "Prijavljeni napadi u 3 dana ({{countries}}): {{value}}",
+      "evidenceAirports": "Pogođene zračne luke: {{value}}",
+      "evidenceAirportClosed": "Zračna luka {{name}} zatvorena",
+      "evidenceAirportHalted": "{{name}}: većina letova otkazana",
+      "evidenceAirportRestricted": "{{name}}: letovi ograničeni",
+      "evidenceMilitaryAircraft": "Vojni zrakoplovi ({{country}}) u regiji: {{value}}",
+      "evidencePlaAircraft": "Kineski vojni zrakoplovi kod Tajvana: {{value}}",
+      "evidencePlaShips": "Kineski ratni brodovi kod Tajvana: {{value}}",
+      "evidenceSanctions": "Nove sankcije SAD-a ovaj tjedan ({{country}}): {{value}}",
+      "evidenceUsual": "(uobičajeno {{value}})",
       "pizzaUnavailable": "Aktivnost pizzerija nije dostupna",
       "source": "Izvor:",
       "statusClosed": "ZATVORENO",
@@ -1438,7 +1452,7 @@
         "commodityHubs": "Okna za Robu",
         "gulfInvestments": "Ulaganja Vijeća za saradnju Zaljeva",
         "tradeRoutes": "Trgovačke Rute",
-        "iranAttacks": "Iranski Napadi",
+        "iranAttacks": "Napadi na Bliskom istoku",
         "gpsJamming": "Smetnje navigaciji",
         "ciiChoropleth": "Nestabilnost države",
         "dayNight": "Dan/Noć",
@@ -1448,7 +1462,8 @@
         "speciesRecovery": "Oporavak vrsta",
         "renewableInstallations": "Čista energija",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM ograničenja zračnog prostora"
       },
       "tooltip": {
         "earthquake": "Zemljotres",
@@ -1480,7 +1495,9 @@
         "sourceIomDtm": "Izvor: IOM DTM",
         "sinceDate": "od {{date}}",
         "lastMonth": "prošli mjesec",
-        "sourceUnhcrOdp": "Izvor: UNHCR-ov portal operativnih podataka"
+        "sourceUnhcrOdp": "Izvor: UNHCR-ov portal operativnih podataka",
+        "displaced": "raseljeni",
+        "sourceIdmc": "Izvor: IDMC"
       },
       "layerHelp": {
         "title": "Vodič slojeva mape",
@@ -1561,7 +1578,8 @@
           "geoBoundaries": "Demilitarizirane zone, linije primirja i sporne granice",
           "ciiChoropleth": "Toplinska mapa indeksa nestabilnosti države — boje zemlje prema bodovima (zelena=stabilna, crvena=kritična)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Privremena ograničenja letenja i ograničeni, opasni i zabranjeni zračni prostor prema FAA NOTAM-ima, koji su trenutno na snazi ili počinju u roku od 24 sata"
         },
         "notes": {
           "timeAffects": "Utječe na: Zemljotresi, Vrijeme, Protesti, Prekidi"
@@ -1697,6 +1715,8 @@
       "capacityPercent": "{{percent}}% kapaciteta",
       "noCountryImpacts": "Nema otkrivenih utjecaja na zemlje",
       "alternativeRoutes": "Alternativne rute",
+      "sharesCutZone": "isti tjesnac",
+      "estimateNote": "Procjena: kapacitet i redundancija kabela su približni, nisu izmjereni.",
       "countriesAffected": "Zahvaćene zemlje ({{count}})",
       "links": "linkovi",
       "selectInfrastructureHint": "Odaberi infrastrukturu za analizu kaskadnog utjecaja",
@@ -1914,7 +1934,21 @@
       "latestChange": "Posljednja promjena",
       "accelerating": "Ubrzava se",
       "inDays": "u {{days}} dana",
-      "crossBorderNote": "UN Agencija za izbjeglice portal operacijskih podataka: osobe koje su prekrile granice u svakoj krizi, iz najnovijih izvještaja zemlje. Situacije se preklapaju, tako da se ne zbrajaju zajedno."
+      "crossBorderNote": "UN Agencija za izbjeglice portal operacijskih podataka: osobe koje su prekrile granice u svakoj krizi, iz najnovijih izvještaja zemlje. Situacije se preklapaju, tako da se ne zbrajaju zajedno.",
+      "last7And30": "Zadnjih 7 / 30 dana",
+      "staleReport": "Zastarjelo izvješće",
+      "reported": "Broj",
+      "period": "Razdoblje",
+      "movementNote": "Svaki redak zadržava svoj izvor, datum izvješća i mjeru. Broj prisutnih osoba, dolasci i događaji granične kontrole različite su mjere. Izvori se mogu preklapati; ne zbrajajte njihove brojeve. WorldMonitor izvodi ovaj prikaz iz povezanih izvora; to ne podrazumijeva odobrenje pružatelja.",
+      "recent": "Nedavno",
+      "last30Days": "Posljednjih 30 dana",
+      "newThisWeek": "Novo ovaj tjedan",
+      "conflict": "Konflikt",
+      "disaster": "Katastrofa",
+      "surge": "Skok",
+      "recentNote": "IDMC: ljudi raseljeni u svojoj zemlji u posljednjih 30 dana. IDMC objavljuje podatke prosječno tri tjedna nakon raseljavanja, pa se nedavni tjedni popunjavaju kasnije. Novo ovaj tjedan broji podatke objavljene u posljednjih 7 dana. Skok: najmanje 5.000 ljudi i tri puta veći od mjesečnog prosjeka prethodnih pet mjeseci.",
+      "recentAsOf": "Podaci od {{date}}.",
+      "recentMissing": "Nema podataka ovaj put od {{countries}}; njihove datoteke se nisu učitale, što ne znači nula premještanja."
     },
     "climate": {
       "noAnomalies": "Nisu detektirane značajne anomalije",
@@ -1941,7 +1975,8 @@
       "sourceCoverageHint": "Prikazano {{covered}} od {{total}} uključenih izvora — ova ploča izmjenjuje svoje izvore pri svakom osvježavanju",
       "sortBy": "Sortiraj po",
       "sortNewest": "Najnovije",
-      "sortRelevance": "Relevantnost"
+      "sortRelevance": "Relevantnost",
+      "translationUnavailable": "Prijevod nije dostupan. Provjerite postavke pružatelja AI usluge i pokušajte ponovno."
     },
     "export": {},
     "runtimeConfig": {},
@@ -3129,7 +3164,9 @@
         "apac": "Azija i Pacifik",
         "mena": "Bliski istok",
         "africa": "Afrika"
-      }
+      },
+      "normalOperations": "NORMALNO POSLOVANJE",
+      "open": "OTVORENO"
     },
     "aircraft": {
       "altitude": "Nadmorska visina",
@@ -3536,7 +3573,12 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "Venezuelanska Kriza",
       "yemen_houthis": "Jemen/Houthiji"
-    }
+    },
+    "upcomingForecast": "Nadolazeća prognoza",
+    "currentForecast": "Trenutačna prognoza",
+    "expiredForecast": "Istekla prognoza",
+    "validFrom": "Vrijedi od",
+    "validUntil": "Vrijedi do"
   },
   "signals": {
     "context": {
@@ -3841,5 +3883,27 @@
       "description": "Omogućite izvore o Iranu, Izraelu, Zaljevu i kurdskim regijama"
     },
     "unavailable": "Paket {{preset}} nije dostupan s vašim trenutačnim panelima"
+  },
+  "countryHistory": {
+    "title": "Dnevna povijest zemlje",
+    "loading": "Učitavanje dnevne povijesti…",
+    "window": "Razdoblje",
+    "days": "{{days}} dana",
+    "observed": "{{count}} snimki u {{days}} dana",
+    "legend": "CII (jantarno): više vrijednosti znače veću nestabilnost. Otpornost (zeleno): više vrijednosti znače veći kapacitet. Točke označavaju dane s odabranim naslovima.",
+    "chart": "Dnevne ocjene CII-ja i otpornosti. Praznine i promjene formule prekidaju crte.",
+    "selectDate": "{{date}}, {{count}} odabranih naslova",
+    "empty": "Nema dnevnih snimki u ovom razdoblju. Povijest se prikuplja nakon aktivacije.",
+    "unavailable": "Povijest je privremeno nedostupna. Pokušajte ponovno.",
+    "retry": "Pokušaj ponovno",
+    "stale": "Posljednja uspješna dnevna snimka starija je od 36 sati.",
+    "break": "Promjena formule ili praznina u opažanjima. Uspoređujte samo ocjene s istom formulom.",
+    "partial": "Pokrivenost vijestima bila je djelomična pri snimanju.",
+    "resilience": "Otpornost",
+    "ciiMissing": "CII nije dostupan",
+    "resilienceMissing": "Otpornost nije dostupna",
+    "noEvents": "Za ovaj datum nisu zabilježeni odabrani naslovi. To ne dokazuje da nije bilo događaja.",
+    "unlock90": "Otključajte 90 dana uz Pro",
+    "unlock365": "Otključajte 365 dana uz API paket"
   }
 }

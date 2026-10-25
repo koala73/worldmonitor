@@ -20,6 +20,8 @@ export interface BillingSubscriptionSnapshot {
   status: 'active' | 'on_hold' | 'cancelled' | 'expired';
   /** Epoch ms end of the currently-paid period. */
   currentPeriodEnd: number;
+  /** Cancelled, but the provider keeps the row `active` until currentPeriodEnd. */
+  cancelAtPeriodEnd?: boolean;
   /** Verdict of the request-path renewal verification (#4770), if any. */
   renewalVerificationState?: 'pending' | 'failed' | 'lapsed' | null;
 }
@@ -98,12 +100,12 @@ export function isSubscriptionCoveringAt(
  * widening a build error, so a new status has to be given a tone deliberately.
  */
 export function getSubscriptionStatusTone(
-  sub: Pick<BillingSubscriptionSnapshot, 'status' | 'currentPeriodEnd'>,
+  sub: Pick<BillingSubscriptionSnapshot, 'status' | 'currentPeriodEnd' | 'cancelAtPeriodEnd'>,
   at: number,
 ): BillingStatusTone {
   switch (sub.status) {
     case 'active':
-      return 'active';
+      return sub.cancelAtPeriodEnd ? 'ending' : 'active';
     case 'on_hold':
       return 'attention';
     case 'cancelled':

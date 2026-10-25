@@ -87,7 +87,7 @@ describe('free-tier roster', () => {
       const marker = tool._meta?.['worldmonitor/access'];
       const expected = internal._subscriptionOnly ? 'subscription' : internal._freeTier === true
         ? 'free'
-        : internal._execute === undefined || internal.name === 'describe_tool' || internal.name === 'get_mcp_allowance'
+        : internal._execute === undefined || internal.name === 'describe_tool' || internal.name === 'get_mcp_allowance' || internal.name === 'start_upgrade'
           ? 'free-account'
           : 'subscription';
       assert.equal(marker, expected, `${tool.name} must advertise ${expected} access`);

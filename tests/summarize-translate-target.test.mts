@@ -50,6 +50,21 @@ function translateRequest(variant: string) {
 }
 
 describe('summarize-article translate target language', () => {
+  for (const [mode, variant, errorType] of [
+    ['brief', 'full', 'AuthError'],
+    ['translate', 'unsupported', 'ValidationError'],
+  ] as const) {
+    it(`rejects ${mode}/${variant} before processing prompt inputs`, async () => {
+      const request = { ...translateRequest(variant), mode };
+      Object.defineProperty(request, 'headlines', {
+        get() { throw new Error('prompt intake must not run for a rejected request'); },
+      });
+      const response = await summarizeArticle(anonymousContext(), request);
+      assert.equal(response.status, 'SUMMARIZE_STATUS_ERROR');
+      assert.equal(response.errorType, errorType);
+    });
+  }
+
   it('rejects a free-form target before any provider call', async () => {
     const llmCalls: string[] = [];
     globalThis.fetch = async (input) => {

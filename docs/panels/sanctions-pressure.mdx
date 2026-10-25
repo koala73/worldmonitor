@@ -30,6 +30,8 @@ Panel id is `sanctions-pressure`; canonical component is `src/components/Sanctio
 - **OFAC Consolidated List**
 - **Global Affairs Canada SEMA / JVCFOA consolidated list** (`sema-ca`)
 
+Screening and the designation change feed also cover six export-control lists from the US Consolidated Screening List (International Trade Administration bulk download): the BIS Entity List (`CSL-EL`), Denied Persons List (`CSL-DPL`), Unverified List (`CSL-UVL`) and Military End User List (`CSL-MEU`), and the State Department's ITAR Debarred (`CSL-DTC`) and Nonproliferation Sanctions (`CSL-ACN`) lists. The CSL's Treasury rows are skipped because OFAC's own lists supply them, and Denied Persons orders whose end date has passed are dropped. CSL rows never count toward pressure scores or country counts, because export controls are not sanctions pressure. The lists carry no entity type, so their rows are typed `unspecified`. Change events for them carry the Federal Register citation (`notice`) and the list page (`url`). A failed CSL download degrades `seed-meta:sanctions:entities` with `CSL_INGEST_FAILED`; pressure health is unaffected.
+
 The seeder pulls each list independently, concatenates OFAC and SEMA (SEMA may attach onto OFAC only), and diffs against the previous snapshot to compute `newEntryCount`. SEMA `<Country>` is the regulation, not nationality, so it is stored on `programs` / the note rather than `countryCodes`.
 
 A SEMA row whose own identity fields are unusable (no regulation, a non-numeric item, an IMO that is not seven digits, or no name) is held back rather than repaired, and the rest of the list still publishes. The held-back row IDs and reasons appear under `sourceHealth["sema-ca"].quarantined` in `seed-meta:sanctions:pressure`. If more than 1% of rows are held back, or any row breaks the table's field or date contract, the whole SEMA source is rejected for that run.
@@ -45,4 +47,4 @@ OFAC publishes list updates on an irregular cadence (daily-to-weekly). The panel
 ## API reference
 
 - [Sanctions service](https://github.com/koala73/worldmonitor/blob/main/docs/api/SanctionsService.openapi.yaml) — sanctions pressure + entity search RPCs.
-- Related: `GET /api/sanctions/v1/lookup-sanction-entity?q=...` — fuzzy entity lookup against OpenSanctions (live) with OFAC local index as a fallback.
+- Related: `GET /api/sanctions/v1/lookup-sanction-entity?q=...` — name, up to 10 retained aliases per entity and exact IMO screening against the seeded OFAC SDN, OFAC Consolidated, Canada SEMA and US CSL export-control index. The response reports the source lists searched, `seeded` for a query outside 2–200 characters, or `unavailable` when no valid index records are available. It makes no live provider request. A match is a lead to confirm with the issuing agency, not legal advice.

@@ -47,7 +47,6 @@ function installRateLimitRedisFake(): void {
 const ISSUE_4609_GATED_ROUTES = [
   { method: 'GET', path: '/api/market/v1/get-insider-transactions' },
   { method: 'POST', path: '/api/forecast/v1/trigger-simulation' },
-  { method: 'GET', path: '/api/sanctions/v1/list-sanctions-pressure' },
   { method: 'POST', path: '/api/scenario/v1/run-scenario' },
   { method: 'GET', path: '/api/scenario/v1/get-scenario-status' },
   { method: 'GET', path: '/api/supply-chain/v1/get-country-chokepoint-index' },
@@ -347,6 +346,27 @@ describe('premium gateway API key enforcement', () => {
         headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
       }));
       assert.notEqual(res.status, 200, `wms_ MUST NOT unlock ${path} (got ${res.status})`);
+    }
+  });
+
+  it('serves the freed national-debt and sanctions-pressure routes to an anonymous wms_ session', async () => {
+    // Both seeds are already public through /api/bootstrap?tier=slow&public=1,
+    // so the gateway must not re-gate the RPCs behind Pro auth or a tier.
+    const freedPaths = [
+      '/api/economic/v1/get-national-debt',
+      '/api/sanctions/v1/list-sanctions-pressure',
+    ];
+    const handler = createDomainGateway(freedPaths.map((path) => ({
+      method: 'GET',
+      path,
+      handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    })));
+
+    for (const path of freedPaths) {
+      const res = await handler(new Request(`https://worldmonitor.app${path}`, {
+        headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+      }));
+      assert.equal(res.status, 200, `wms_ session must reach ${path} (got ${res.status})`);
     }
   });
 

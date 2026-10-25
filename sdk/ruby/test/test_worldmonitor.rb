@@ -177,3 +177,44 @@ class TestTrailingSlashes < Minitest::Test
     end
   end
 end
+
+class TestDefaultTransportRedirects < Minitest::Test
+  # Minimal one-request-per-connection HTTP server on 127.0.0.1.
+  def serve(&respond)
+    server = TCPServer.new("127.0.0.1", 0)
+    thread = Thread.new do
+      loop do
+        socket = server.accept
+        head = +""
+        head << socket.gets.to_s until head.end_with?("\r\n\r\n")
+        length = head[/^content-length:\s*(\d+)/i, 1].to_i
+        socket.read(length) if length.positive?
+        socket.write(respond.call(head))
+        socket.close
+      end
+    rescue IOError
+      nil
+    end
+    Minitest.after_run { server.close }
+    [thread, "http://127.0.0.1:#{server.addr[1]}"]
+  end
+
+  def test_redirects_are_not_followed
+    leaked = []
+    _, target = serve do |head|
+      leaked << head[/^x-worldmonitor-key:\s*(\S+)/i, 1]
+      "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n{}"
+    end
+    _, origin = serve do |head|
+      path = head[%r{\A\w+ (\S+)}, 1]
+      "HTTP/1.1 302 Found\r\nlocation: #{target}#{path}\r\ncontent-length: 0\r\n\r\n"
+    end
+    client = WorldMonitor::Client.new(api_key: "example-client-value", base_url: origin,
+                                      mcp_url: "#{origin}/mcp", env: {})
+    [-> { client.health }, -> { client.list_tools }].each do |call|
+      error = assert_raises(WorldMonitor::APIError) { call.call }
+      assert_equal 302, error.status
+    end
+    assert_empty leaked
+  end
+end

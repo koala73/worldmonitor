@@ -63,13 +63,14 @@ describe('Chokepoint closed paid admission', () => {
     Object.assign(process.env, originalEnv);
   });
   it('opens once and reuses normalized effective subset without more fixed source commands', async () => {
-    const bundle = makeProDeps(); const first = await invoke(bundle, { dataset: ['REF', 'chokepoint-baselines', 'bad'], limit: 1 });
+    const bundle = makeProDeps(); const first = await invoke(bundle, { dataset: ['ref', 'chokepoint-baselines'], limit: 1 });
     await invoke(bundle, { dataset: ['chokepoint-baselines', 'ref'], limit: 0 });
     assert.equal(bundle.pipe.count, 1); assert.equal(commands.length, 13);
     assert.equal(value(first).panelRequest.panel, 'chokepoints'); assert.equal(first.body.result._meta['worldmonitor/usage'].remaining, 49);
     const full = value(await invoke(bundle, { dataset: ['ref', 'chokepoint-baselines'], limit: 0, jmespath: '@' })); assert.equal(full.data['chokepoint-baselines'].chokepoints.length, 7);
     assert.equal(commands.length, 13);
-    await invoke(bundle, { dataset: 'ref', summary: true }); assert.equal(bundle.pipe.count, 1); assert.equal(commands.length, 26, 'changed subset may acquire all13 commands');
+    assert.equal((await invoke(bundle, { dataset: 'ref', summary: true })).body.error?.code, -32602);
+    assert.equal(bundle.pipe.count, 1); assert.equal(commands.length, 13, 'invalid arguments must not acquire sources');
     const original = JSON.parse(cache(bundle)[0][1]); assert.equal(original.value.data._countries.length, 174);
   });
   it('retains full-first filters, limit0, canonical map fallback and prose suppression', async () => {
@@ -81,7 +82,8 @@ describe('Chokepoint closed paid admission', () => {
     assert.equal(commands.length, 13);
     const fallback = value(await invoke(bundle, { chokepoint: 'absent', dataset: ['transit-summaries', 'chokepoint-baselines'], limit: 0 }));
     assert.equal(Object.keys(fallback.data['transit-summaries'].summaries).length, 13); assert.deepEqual(fallback.data['chokepoint-baselines'].chokepoints, []);
-    const all = value(await invoke(bundle, { dataset: ['bad'], limit: 0 })); assert.deepEqual(Object.keys(all.data), labels); assert.equal(all.data._countries.length, 174);
+    assert.equal((await invoke(bundle, { dataset: ['bad'], limit: 0 })).body.error?.code, -32602);
+    const all = value(await invoke(bundle, { limit: 0 })); assert.deepEqual(Object.keys(all.data), labels); assert.equal(all.data._countries.length, 174);
   });
   it('isolates healthy static subset from sparse AIS and refuses vacuous unknown-only completeness', async () => {
     const bundle = makeProDeps(); sources[keys[0]].summaries.suez.dataAvailable = false; sources[keys[0]].summaries.suez.todayTotal = null; sources[keys[6]].recordCount = 12;
@@ -89,8 +91,9 @@ describe('Chokepoint closed paid admission', () => {
     await invoke(bundle, { dataset: ['chokepoint-baselines'] }); await invoke(bundle, { dataset: ['chokepoint-baselines'] }); assert.equal(commands.length, 13);
     const partial = value(await invoke(bundle, { dataset: ['transit-summaries'] })); assert.equal(partial.data['transit-summaries'].summaries.suez.todayTotal, null);
     await invoke(bundle, { dataset: ['transit-summaries'] }); assert.equal(commands.length, 39); assert.equal(cache(bundle).length, 1);
-    await invoke(bundle, { dataset: ['bad'] }); await invoke(bundle, { dataset: ['bad'] }); assert.equal(commands.length, 65); assert.equal(bundle.pipe.count, 1);
-    sources = payload(); await invoke(bundle, { dataset: ['transit-summaries'] }); await invoke(bundle, { dataset: ['transit-summaries'] }); assert.equal(commands.length, 78);
+    for (let i = 0; i < 2; i++) assert.equal((await invoke(bundle, { dataset: ['bad'] })).body.error?.code, -32602);
+    assert.equal(commands.length, 39); assert.equal(bundle.pipe.count, 1);
+    sources = payload(); await invoke(bundle, { dataset: ['transit-summaries'] }); await invoke(bundle, { dataset: ['transit-summaries'] }); assert.equal(commands.length, 52);
   });
   it('uses each source own selected rows and preserves legitimate partial flow/unknown source', async () => {
     const bundle = makeProDeps(); sources[keys[5]] = Object.fromEntries(Object.entries(sources[keys[5]]).slice(0, 3)); sources[keys[11]].recordCount = 3;
@@ -138,7 +141,7 @@ describe('Chokepoint closed paid admission', () => {
   it('validates untruncated countries before default view cap and ages cached content after lookup', async () => {
     const bundle = makeProDeps(); sources[keys[8]].contentFreshness.criticalOldestObservedAt = now - 10 * 86400000 + 1500;
     assert.equal(value(await invoke(bundle, { dataset: ['_countries'] })).data._countries.length, 30);
-    assert.equal(value(await invoke(bundle, { dataset: '_countries', limit: 0 })).data._countries.length, 174); assert.equal(commands.length, 13);
+    assert.equal(value(await invoke(bundle, { dataset: ['_countries'], limit: 0 })).data._countries.length, 174); assert.equal(commands.length, 13);
     assert.equal(JSON.parse(cache(bundle)[0][1]).reuseUntil, start + 1500);
     now += 1500; sources = payload(); await invoke(bundle, { dataset: ['_countries'] }); assert.equal(commands.length, 26); assert.equal(bundle.pipe.count, 1);
     const short = makeProDeps(); sources = payload(); sources[keys[10]].fetchedAt = now - 14 * 86400000 + 999; await invoke(short, { dataset: ['ref'] }); assert.equal(cache(short).length, 0);

@@ -14,6 +14,7 @@
  */
 
 import { indexableLandingPassthroughPrefixes } from '../../shared/indexable-landing-locales';
+import { stripTrailingSlashes } from '../../shared/strip-trailing-slashes.js';
 
 export const AGENT_NOT_FOUND_STATUS = 404 as const;
 export const AGENT_NOT_FOUND_CONTENT_TYPE = 'text/markdown; charset=utf-8';
@@ -133,6 +134,7 @@ export function suggestNotFoundSection(path: string): NotFoundSection | null {
 // tests/agent-friendly-404.test.mts so a new vercel.json route cannot
 // silently 404.
 export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
+  '/CLERK-ROUTER',
   '/a2a',
   '/about',
   '/accuracy',
@@ -162,6 +164,8 @@ export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
   '/map-styles',
   '/mcp',
   '/mcp-grant',
+  '/monitor-the-situation',
+  '/desktop-sign-in',
   '/oauth',
   '/pricing',
   '/privacy',
@@ -171,6 +175,7 @@ export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
   '/research',
   '/research-assets',
   '/sandbox',
+  '/settings',
   '/sources',
   '/stocks',
   '/story',
@@ -192,7 +197,7 @@ export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
 function normalizePath(path: string): string {
   if (!path) return '/';
   const withSlash = path.startsWith('/') ? path : `/${path}`;
-  return withSlash.length > 1 ? withSlash.replace(/\/+$/, '') : withSlash;
+  return stripTrailingSlashes(withSlash);
 }
 
 function sanitizePathForMarkdown(path: string): string {

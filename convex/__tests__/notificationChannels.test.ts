@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import schema from "../schema";
+import { channelTypeValidator } from "../constants";
 import {
   deactivateChannel,
   deactivateChannelForUser,
@@ -25,6 +26,51 @@ const USER = {
   email: "pro-user@example.com",
   emailVerified: true,
 };
+
+describe("notificationChannels legacy alert-rule delivery validation", () => {
+  test.each(["all", "high"])("returns recovery guidance without saving realtime + %s", async sensitivity => {
+    process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
+    const t = convexTest(schema, modules);
+    const id = await t.run(ctx => ctx.db.insert("alertRules", {
+      userId: USER.subject,
+      variant: "full",
+      enabled: true,
+      eventTypes: [],
+      sensitivity: "critical",
+      channels: [],
+      digestMode: "realtime",
+      updatedAt: 1,
+    }));
+    const before = await t.run(ctx => ctx.db.get(id));
+    const save = (value: string) => t.fetch("/relay/notification-channels", {
+      method: "POST",
+      headers: { Authorization: "Bearer relay-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "set-alert-rules",
+        userId: USER.subject,
+        variant: "full",
+        enabled: false,
+        eventTypes: [],
+        sensitivity: value,
+        channels: [],
+      }),
+    });
+
+    const rejected = await save(sensitivity);
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toEqual({
+      error: "INCOMPATIBLE_DELIVERY",
+      message: "Real-time delivery is for Critical events only. "
+        + "To receive High or All events, choose a digest cadence (Daily, Twice daily, or Weekly).",
+    });
+    expect(await t.run(ctx => ctx.db.get(id))).toEqual(before);
+
+    const recovered = await save("critical");
+    expect(recovered.status).toBe(200);
+    expect(await recovered.json()).toEqual({ ok: true });
+    expect(await t.run(ctx => ctx.db.get(id))).toMatchObject({ enabled: false, sensitivity: "critical" });
+  });
+});
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -409,6 +455,46 @@ describe("notificationChannels — live delete/deactivate (ungated)", () => {
         .unique();
       expect(rule?.channels).toEqual(["teams"]);
     });
+  });
+
+  test("relay deactivate turns off a generic webhook whose endpoint is gone (#9264)", async () => {
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = "delivery-secret";
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("notificationChannels", {
+        userId: USER.subject,
+        channelType: "webhook",
+        webhookEnvelope: "v1:webhook-envelope",
+        verified: true,
+        linkedAt: Date.now(),
+      });
+    });
+
+    const response = await t.fetch("/relay/deactivate", {
+      method: "POST",
+      headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: USER.subject, channelType: "webhook" }),
+    });
+    expect(response.status).toBe(200);
+    expect(
+      await t.query(notificationChannelFns.getChannelsByUserId, { userId: USER.subject }),
+    ).toMatchObject([{ channelType: "webhook", verified: false }]);
+  });
+
+  test("relay deactivate accepts every channel type the schema stores, and nothing else", async () => {
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = "delivery-secret";
+    const t = convexTest(schema, modules);
+    const deactivate = (channelType: string) => t.fetch("/relay/deactivate", {
+      method: "POST",
+      headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: USER.subject, channelType }),
+    });
+    for (const { value } of channelTypeValidator.members) {
+      expect((await deactivate(value)).status, value).toBe(200);
+    }
+    for (const unknown of ["sms", "", "WEBHOOK", "__proto__"]) {
+      expect((await deactivate(unknown)).status, unknown).toBe(400);
+    }
   });
 
   test("deleteChannel and deactivateChannel are internal, not public", () => {

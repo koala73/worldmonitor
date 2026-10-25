@@ -52,3 +52,9 @@ Use `dry_run: false` only when you intentionally want the manual workflow path t
 | CLI tests fail | The package is not release-ready | Fix `cli/`, rerun tests locally, commit, and push a new release tag |
 
 After the workflow succeeds, confirm the new version appears on npm and that `npx worldmonitor --version` resolves to the published version.
+
+## Update the Homebrew formula
+
+Wait until npm serves the new version and its archive. A successful publish can remain in npm processing for several minutes.
+
+The [Homebrew submission formula](https://github.com/koala73/worldmonitor/blob/main/packaging/homebrew/worldmonitor.rb) pins the npm archive and its SHA-256 checksum. Follow the [formula verification steps](https://github.com/koala73/worldmonitor/blob/main/packaging/homebrew/README.md) before submitting an update to Homebrew. Homebrew acceptance is separate from npm publication.

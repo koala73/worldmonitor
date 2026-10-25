@@ -58,7 +58,7 @@ const def = (
 });
 
 export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
-  iranAttacks:              def('iranAttacks',              '&#127919;', 'iranAttacks',              'Iran Attacks', ['svg', 'deck', 'globe'], _desktop ? 'locked' : undefined),
+  iranAttacks:              def('iranAttacks',              '&#127919;', 'iranAttacks',              'Middle East Strikes', ['svg', 'deck', 'globe'], _desktop ? 'locked' : undefined),
   hotspots:                 def('hotspots',                 '&#127919;', 'intelHotspots',            'Intel Hotspots'),
   conflicts:                def('conflicts',                '&#9876;',   'conflictZones',            'Conflict Zones'),
 
@@ -261,16 +261,19 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     key: 'flights',
     coverage: 'curated',
     category: 'Aviation',
-    purpose: 'Highlights airport disruption, closures, NOTAM-derived airspace issues, and live aircraft positions when tracking is available.',
-    source: 'FAA ASWS, AviationStack, ICAO NOTAMs, adsb.lol (ODbL), Wingbits, legacy OpenSky service recovery, optional non-commercial airplanes.live/adsb.fi gap-fill, and the aviation service.',
-    freshness: 'Airport disruption seeds run on a 30-minute cadence; the aviation panel also refreshes operational views on a 5-minute polling cycle.',
-    confidence: 'Best for disruption triage; individual live aircraft coverage depends on ADS-B availability and configured providers.',
+    purpose: 'Highlights airport disruption and NOTAM closures, airspace NOTAMs in effect now or starting within 24 hours (temporary flight restrictions, restricted, danger and prohibited areas, military operating areas, airspace reservations and closures), and live aircraft positions when tracking is available.',
+    source: 'FAA ASWS, AviationStack, FAA NOTAM Management Service (NMS-API) and ICAO NOTAMs, adsb.lol (ODbL), Wingbits, legacy OpenSky service recovery, optional non-commercial airplanes.live/adsb.fi gap-fill, and the aviation service. Airspace NOTAMs are drawn as polygons where NMS supplies them, circles where the NOTAM gives a radius up to 250 NM, and markers otherwise.',
+    freshness: 'Airport disruption seeds run on a 30-minute cadence; airspace NOTAMs are seeded every 5 minutes from NMS change pulls with a daily full resync, against a 20-minute freshness budget; the aviation panel also refreshes operational views on a 5-minute polling cycle.',
+    confidence: 'Best for disruption triage; individual live aircraft coverage depends on ADS-B availability and configured providers. NOTAM text is authoritative as distributed by the FAA.',
     limitations: [
       'AviationStack-backed simulated demo data can appear when an API key is absent.',
       'Live aircraft positions can be delayed or absent where ADS-B coverage is weak or blocked.',
+      'Airspace NOTAM areas are drawn on the deck.gl map only; the SVG and globe maps show airport markers.',
+      'Most US TFRs describe their shape only in text, so they appear as a marker at the NOTAM position, not as the restricted shape.',
+      'Schedules inside a NOTAM\'s effective window (for example daily hours) are shown in the tooltip but not applied to visibility.',
     ],
-    related: ['Airline Intel panel', 'Aviation command bar', 'Country brief aviation signals'],
-    evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/services/aviation/index.ts', 'scripts/seed-aviation.mjs'],
+    related: ['Airline Intel panel', 'Aviation command bar', 'Country brief aviation signals', 'Aircraft emergencies', 'GPS jamming'],
+    evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/services/aviation/index.ts', 'scripts/seed-aviation.mjs', 'scripts/seed-notam-nms.mjs', 'src/services/notam-airspace.ts'],
   },
   aircraftEmergencies: {
     key: 'aircraftEmergencies', coverage: 'curated', category: 'Aviation',
@@ -302,7 +305,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     category: 'Maritime',
     purpose: 'Marks strategic waterways and chokepoints so disruption signals can be interpreted against fixed maritime geography.',
     source: 'WorldMonitor strategic-waterways registry with supply-chain chokepoint status overlays from AIS, NGA warnings, and PortWatch-derived feeds.',
-    freshness: 'Waterway locations are static; live chokepoint status is warm-pinged every 30 minutes and transit summaries refresh every 10 minutes when the relay/PortWatch path is healthy.',
+    freshness: 'Waterway locations are static; live chokepoint status is warm-pinged every 6 minutes and transit summaries refresh every 10 minutes when the relay/PortWatch path is healthy.',
     confidence: 'High for fixed geography; live disruption confidence depends on the companion AIS, NGA, and PortWatch feeds.',
     limitations: [
       'A visible chokepoint marker does not mean there is an active disruption.',
@@ -317,7 +320,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     category: 'Maritime',
     purpose: 'Draws major container, energy, and bulk routes through strategic chokepoints for disruption-path reasoning.',
     source: 'WorldMonitor trade-route registry plus supply-chain chokepoint status and transit summaries.',
-    freshness: 'Route geometry is static. Chokepoint status is warm-pinged every 30 minutes and transit summaries refresh every 10 minutes through supply-chain caches and relay paths.',
+    freshness: 'Route geometry is static. Chokepoint status is warm-pinged every 6 minutes and transit summaries refresh every 10 minutes through supply-chain caches and relay paths.',
     confidence: 'Good for route-level exposure context; not a ship-level routing feed.',
     limitations: [
       'Routes are modeled corridors and may not match a specific voyage plan.',
@@ -347,7 +350,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     category: 'News / Hotspots',
     purpose: 'Highlights monitored geopolitical hotspots and raises their level when related news and escalation signals converge.',
     source: 'WorldMonitor hotspot registry, RSS/GDELT news intelligence, hotspot escalation scoring, military activity, and country instability context.',
-    freshness: 'Hotspot locations are curated/static. News feeds are freshness-tracked separately; hotspot levels are recomputed when the dashboard news feeds refresh, around 20 minutes apart, while GDELT intelligence has longer seeded/cache budgets.',
+    freshness: 'Hotspot locations are curated/static. News feeds are freshness-tracked separately; hotspot levels are recomputed when the dashboard news feeds refresh, around 10 minutes apart, while GDELT intelligence has longer seeded/cache budgets.',
     confidence: 'Useful as a triage cue, not a citation-grade claim without opening the underlying news and country context.',
     limitations: [
       'News volume and keyword matching can overrepresent highly covered regions.',
@@ -629,6 +632,8 @@ export const LAYER_SYNONYMS: Record<string, Array<keyof MapLayers>> = {
   airplane: ['flights'],
   plane: ['flights'],
   notam: ['flights'],
+  tfr: ['flights'],
+  airspace: ['flights'],
   ship: ['ais', 'tradeRoutes'],
   vessel: ['ais'],
   maritime: ['ais', 'waterways', 'tradeRoutes'],

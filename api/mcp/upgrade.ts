@@ -7,6 +7,7 @@
  */
 
 import { MCP_UPGRADE_URL } from '../../shared/mcp-attribution';
+import { recommendedPlanFor, START_UPGRADE_TOOL } from './checkout';
 
 export {
   MCP_ATTRIBUTION_SOURCE,
@@ -32,6 +33,9 @@ export type McpStaticDenialReason =
 /** Machine-readable denial reasons agents can branch on. */
 export type McpDenialReason = McpStaticDenialReason | 'quota-exceeded';
 
+/** Denials an agent can answer by calling `start_upgrade` (#9144). */
+type McpUpgradeableReason = 'allowance-exhausted' | 'upgrade-required' | 'quota-exceeded';
+
 /**
  * A denial to build, carrying whatever that reason's copy and payload need.
  *
@@ -41,31 +45,61 @@ export type McpDenialReason = McpStaticDenialReason | 'quota-exceeded';
  * REST-driven, so "you have used your MCP quota" would be a lie). Modelling it
  * as a variant rather than optional fields on a flat object means a quota
  * denial without its limit cannot be built at all.
+ *
+ * `upgradeFrom` is the caller's current plan key (`'free'` on the free-account
+ * allowance). Set it only for a user-bound caller, who can call
+ * `start_upgrade`; the denial then names the plan to buy and the tool.
  */
 export type McpDenial =
-  | { reason: McpStaticDenialReason }
+  | { reason: McpStaticDenialReason; upgradeFrom?: string }
   | {
       reason: 'quota-exceeded';
       /** The daily limit the reservation ENFORCED, so copy and cap agree. */
       limit: number;
       /** True when REST requests spend this same budget. */
       sharedWithRestApi: boolean;
+      upgradeFrom?: string;
     };
 
 /**
- * The `error.data` block. The four static reasons emit exactly
- * `{reason, nextStep, upgradeUrl}`, unchanged; only `quota-exceeded` adds the
- * two numbers an agent would otherwise have to parse out of the message.
+ * `checkoutTool` appears only beside a plan `start_upgrade` can sell this
+ * caller. A paid caller's step up is in the same billing family (Pro → Pro
+ * Business, API Starter → API Business), which the checkout guard refuses while
+ * the current plan is active: those denials name the plan and leave the tool out.
+ */
+interface McpCheckoutHint {
+  recommendedPlan?: string;
+  checkoutTool?: typeof START_UPGRADE_TOOL;
+}
+
+/**
+ * The `error.data` block. Every reason carries `{reason, nextStep, upgradeUrl}`.
+ * `quota-exceeded` adds the two numbers an agent would otherwise have to parse
+ * out of the message, and the three upgradeable reasons add the checkout hint
+ * when the caller has a plan to move to.
  */
 export type McpStructuredDenial =
-  | { reason: McpStaticDenialReason; nextStep: string; upgradeUrl: string }
-  | {
+  | ({ reason: McpStaticDenialReason; nextStep: string; upgradeUrl: string } & McpCheckoutHint)
+  | ({
       reason: 'quota-exceeded';
       nextStep: string;
       upgradeUrl: string;
       limit: number;
       sharedWithRestApi: boolean;
-    };
+    } & McpCheckoutHint);
+
+const UPGRADEABLE_REASONS: ReadonlySet<McpDenial['reason']> = new Set<McpUpgradeableReason>([
+  'allowance-exhausted',
+  'upgrade-required',
+  'quota-exceeded',
+]);
+
+function checkoutHint(denial: McpDenial): McpCheckoutHint {
+  if (!UPGRADEABLE_REASONS.has(denial.reason) || denial.upgradeFrom === undefined) return {};
+  const recommendedPlan = recommendedPlanFor(denial.upgradeFrom);
+  if (recommendedPlan === undefined) return {};
+  return denial.upgradeFrom === 'free' ? { recommendedPlan, checkoutTool: START_UPGRADE_TOOL } : { recommendedPlan };
+}
 
 const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: string }> = {
   'no-account': {
@@ -128,6 +162,7 @@ export function buildMcpStructuredDenial(denial: McpDenial): {
         upgradeUrl: MCP_UPGRADE_URL,
         limit: denial.limit,
         sharedWithRestApi: denial.sharedWithRestApi,
+        ...checkoutHint(denial),
       },
     };
   }
@@ -138,6 +173,7 @@ export function buildMcpStructuredDenial(denial: McpDenial): {
       reason: denial.reason,
       nextStep: copy.nextStep,
       upgradeUrl: MCP_UPGRADE_URL,
+      ...checkoutHint(denial),
     },
   };
 }

@@ -252,7 +252,7 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
         `SELECT AVG(EXTRACT(EPOCH FROM (NOW() - last_successful_run_at)) / 60)::int AS avg_lag_min
          FROM data_source_health dsh
          JOIN retailers r ON r.id = dsh.retailer_id
-         WHERE r.market_code = $1`,
+         WHERE r.market_code = $1 AND r.active = true`,
         [marketCode],
       ),
     ]);

@@ -544,8 +544,11 @@ import { debugGetCells, getCellCount } from '@/services/geo-convergence';
 import { initMetaTags } from '@/services/meta-tags';
 import { installFetchFailureAttribution } from '@/services/fetch-failure-attribution';
 import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runtime';
+import { primeBootstrapFastTier } from '@/services/bootstrap-prefetch';
+import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { loadDesktopSecrets } from '@/services/runtime-config';
 import { applyStoredTheme } from '@/utils/theme-manager';
+import { applyDeviceTierClass } from '@/utils/device-tier';
 import { applyFont } from '@/services/font-settings';
 import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
 import { initAnalytics, trackContentHandoff } from '@/services/analytics';
@@ -554,6 +557,7 @@ import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
 import { installBetaConsoleToggle } from '@/bootstrap/beta-console-toggle';
 import { installSwUpdateHandler, readServiceWorkerContainer } from '@/bootstrap/sw-update';
+import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
 const chunkReloadStorageKey = installChunkReloadGuard(__BUILD_HASH__);
@@ -563,6 +567,18 @@ const chunkReloadStorageKey = installChunkReloadGuard(__BUILD_HASH__);
 // Convex user row (users.ensureRecord), which new API keys inherit.
 // Best-effort: blocked cookies mean "no attribution".
 captureAgentRefFromSearch(window.location.search, agentRefStorage());
+// First-touch channel (UTM, referrer host, landing page), stamped onto the
+// Dodo subscription at checkout. The visit is read now, before any URL
+// rewrite; the module itself loads off the main chunk (bundle budget).
+const acquisitionVisit = {
+  search: window.location.search,
+  pathname: window.location.pathname,
+  referrer: document.referrer,
+  now: Date.now(),
+};
+void import('../shared/acquisition-source')
+  .then((m) => { m.captureFirstTouchAcquisition(m.browserAcquisitionStorage(), acquisitionVisit); })
+  .catch(() => { /* no attribution */ });
 
 // Product analytics are secondary startup work; RUM starts once the trusted
 // dashboard entry executes so it can observe page-load vitals.
@@ -603,6 +619,7 @@ loadDesktopSecrets().catch(() => {});
 
 // Apply stored theme preference before app initialization (safety net for inline script)
 applyStoredTheme();
+applyDeviceTierClass(document.documentElement);
 applyFont();
 applyFontScale();
 window.addEventListener('storage', (event) => {
@@ -647,6 +664,8 @@ if (urlParams.get('settings') === '1') {
     }
   );
 } else {
+  // Start the first dashboard data now instead of after the App chunk loads.
+  primeBootstrapFastTier();
   installUtmInterceptor();
   let resolveBindings!: (bindings: WebMcpAppBindings) => void;
   let rejectBindings!: (error: unknown) => void;
@@ -693,8 +712,11 @@ if (urlParams.get('settings') === '1') {
 
 installBetaConsoleToggle(window);
 
-// Suppress native WKWebView context menu in Tauri — allows custom JS context menus
-if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
+// Suppress native WKWebView context menu in Tauri — allows custom JS context menus.
+// isDesktopRuntime(), not the raw bridge globals: a Tauri window can paint before
+// __TAURI_INTERNALS__ is attached, and the flag-forced desktop build has no
+// globals at all in a browser (#5912).
+if (isDesktopRuntime()) {
   document.addEventListener('contextmenu', (e) => {
     const target = e.target as HTMLElement;
     // Allow native menu on text inputs/textareas for copy/paste
@@ -707,7 +729,7 @@ if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
 // property exists but reading it throws SecurityError (WORLDMONITOR-Y5), which
 // at module scope aborts every top-level statement below. Read it once, safely.
 const swContainer = readServiceWorkerContainer();
-if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && swContainer) {
+if (!isDesktopRuntime() && swContainer) {
   installSwUpdateHandler({ version: __APP_VERSION__, swContainer });
 
   const SW_UPDATE_SUCCESS_INTERVAL_MS = 60 * 60 * 1000;
@@ -731,6 +753,15 @@ if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && swContaine
     } catch {}
   };
 
+  // Registration used to run here, at module evaluation. Workbox starts its
+  // precache wave the moment the SW installs, and on a slow mobile profile that
+  // wave (74 requests / 882 KB, all High priority) landed inside the paint
+  // window, taking ~4 s of bandwidth from the critical path (#5372). Defer the
+  // register() call to after load + idle so the same manifest is precached
+  // once the page has painted. Only WHEN changes: installSwUpdateHandler stays
+  // above so it still observes the early lifecycle, and the update-check chain
+  // below is unchanged.
+  const registerServiceWorker = (): void => {
   navigator.serviceWorker.register('/sw.js', { scope: '/' })
     .then((registration) => {
       console.log('[PWA] Service worker registered');
@@ -783,6 +814,9 @@ if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && swContaine
     .catch((err) => {
       console.warn('[PWA] Service worker registration failed:', err);
     });
+  };
+
+  scheduleAfterFirstPaint(registerServiceWorker);
 }
 
 // --- SW/Cache Nuke Template ---

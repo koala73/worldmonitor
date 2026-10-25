@@ -465,6 +465,166 @@ describe('approved NRCan transport', () => {
     );
   });
 
+  // NRCan moved behind Cloudflare on 2026-10-22 and every Railway run since gets
+  // a direct 403, while the same request from a non-datacenter IP gets 200.
+  const forbidden = async () => new Response('blocked', { status: 403 });
+  const proxyOk = (body = EMPTY_ATOM) => ({ ok: true, status: 200, buffer: Buffer.from(body), contentType: 'application/atom+xml' });
+
+  it('retries a direct 403 through the proxy and returns the Atom body', async () => {
+    const attempts = [];
+    const cache = new Map();
+    const xml = await fetchApprovedAtom(NRCAN_ATOM_URL, {
+      fetchFn: forbidden,
+      proxyAuth: 'user:pass@gate.example:7000',
+      proxyFetchFn: async (url, { attempt }) => { attempts.push({ url, attempt }); return proxyOk(); },
+      cache,
+    });
+    assert.equal(xml, EMPTY_ATOM);
+    assert.deepEqual(attempts, [{ url: NRCAN_ATOM_URL, attempt: 0 }]);
+    assert.ok(cache.has(nrcanAtomCacheKey(NRCAN_ATOM_URL)));
+  });
+
+  it('rotates to the next proxy exit when an exit is refused or drops', async () => {
+    const attempts = [];
+    const xml = await fetchApprovedAtom(NRCAN_ATOM_URL, {
+      fetchFn: forbidden,
+      proxyAuth: 'user:pass@gate.example:7000',
+      proxyFetchFn: async (_url, { attempt }) => {
+        attempts.push(attempt);
+        if (attempt === 0) return { ok: false, status: 403, buffer: Buffer.alloc(0), contentType: 'text/html' };
+        if (attempt === 1) throw new Error('proxy fetch timeout');
+        return proxyOk();
+      },
+    });
+    assert.equal(xml, EMPTY_ATOM);
+    assert.deepEqual(attempts, [0, 1, 2]);
+  });
+
+  it('keeps the direct 403 when no proxy is configured or every exit fails', async () => {
+    await assert.rejects(fetchApprovedAtom(NRCAN_ATOM_URL, { fetchFn: forbidden }), (err) => err.status === 403);
+    let calls = 0;
+    await assert.rejects(
+      fetchApprovedAtom(NRCAN_ATOM_URL, {
+        fetchFn: forbidden,
+        proxyAuth: 'user:pass@gate.example:7000',
+        proxyFetchFn: async () => { calls++; return { ok: false, status: 403, buffer: Buffer.alloc(0), contentType: '' }; },
+      }),
+      (err) => err.status === 403 && /direct HTTP 403; proxy HTTP 403/.test(err.message),
+    );
+    assert.equal(calls, 3);
+  });
+
+  it('only falls back on 403, never follows a proxied redirect, and caps proxied bytes', async () => {
+    let calls = 0;
+    await assert.rejects(
+      fetchApprovedAtom(NRCAN_ATOM_URL, {
+        fetchFn: async () => new Response('down', { status: 503 }),
+        proxyAuth: 'user:pass@gate.example:7000',
+        proxyFetchFn: async () => { calls++; return proxyOk(); },
+      }),
+      (err) => err.status === 503,
+    );
+    assert.equal(calls, 0, 'a 503 is not an IP block; the proxy budget stays unspent');
+
+    await assert.rejects(
+      fetchApprovedAtom(NRCAN_ATOM_URL, {
+        fetchFn: forbidden,
+        proxyAuth: 'user:pass@gate.example:7000',
+        proxyFetchFn: async () => ({ ok: false, status: 302, location: 'https://evil.example/feed', buffer: Buffer.alloc(0), contentType: '' }),
+      }),
+      (err) => err.status === 302,
+    );
+
+    let seenMax;
+    await assert.rejects(
+      fetchApprovedAtom(NRCAN_ATOM_URL, {
+        fetchFn: forbidden,
+        maxBytes: 10,
+        proxyAuth: 'user:pass@gate.example:7000',
+        proxyFetchFn: async (_url, { maxBytes }) => { seenMax = maxBytes; return proxyOk(); },
+      }),
+      /RESPONSE_TOO_LARGE/,
+    );
+    assert.equal(seenMax, 10, 'the transport is told the cap so it can stop reading');
+  });
+
+  const connectError = (status) => Object.assign(new Error(`Proxy CONNECT: HTTP/1.1 ${status}`), { status, proxyConnect: true });
+
+  it('rotates past a temporarily down exit but stops on a gateway auth or policy denial', async () => {
+    const attempts = [];
+    const xml = await fetchApprovedAtom(NRCAN_ATOM_URL, {
+      fetchFn: forbidden,
+      proxyAuth: 'user:pass@gate.example:7000',
+      proxyFetchFn: async (_url, { attempt }) => {
+        attempts.push(attempt);
+        if (attempt === 0) throw connectError(502);
+        return proxyOk();
+      },
+    });
+    assert.equal(xml, EMPTY_ATOM);
+    assert.deepEqual(attempts, [0, 1]);
+
+    let calls = 0;
+    await assert.rejects(
+      fetchApprovedAtom(NRCAN_ATOM_URL, {
+        fetchFn: forbidden,
+        proxyAuth: 'user:pass@gate.example:7000',
+        proxyFetchFn: async () => { calls++; throw connectError(407); },
+      }),
+      (err) => err.proxyConnect === true && err.status === 407,
+    );
+    assert.equal(calls, 1, 'no exit fixes rejected proxy credentials');
+  });
+
+  it('keeps withRetry semantics on proxy failures', async () => {
+    const proxied = (status, headers = {}) => fetchApprovedAtom(NRCAN_ATOM_URL, {
+      fetchFn: forbidden,
+      proxyAuth: 'user:pass@gate.example:7000',
+      proxyFetchFn: async () => ({ ok: false, status, headers, buffer: Buffer.alloc(0), contentType: '' }),
+    }).catch(err => err);
+
+    const missing = await proxied(404);
+    assert.equal(missing.status, 404);
+    assert.equal(missing.nonRetryable, true, 'every exit and every retry answers a 404 the same way');
+
+    const limited = await proxied(429, { 'retry-after': '1' });
+    assert.equal(limited.status, 429);
+    assert.notEqual(limited.nonRetryable, true);
+    assert.equal(limited.retryAfterMs, 1_000, 'the retry waits as long as the server asked');
+
+    // Same 2s budget as the direct leg: a hint that outlasts it is not worth sleeping on.
+    const lockedOut = await proxied(429, { 'retry-after': '30' });
+    assert.equal(lockedOut.nonRetryable, true);
+    assert.equal(lockedOut.retryAfterMs, 30_000);
+
+    const refused = await proxied(403);
+    assert.equal(refused.nonRetryable, true, 'all three exits refused; an immediate retry restarts at exit 0');
+
+    const dropped = await fetchApprovedAtom(NRCAN_ATOM_URL, {
+      fetchFn: forbidden,
+      proxyAuth: 'user:pass@gate.example:7000',
+      proxyFetchFn: async () => { throw new Error('proxy fetch timeout'); },
+    }).catch(err => err);
+    assert.match(dropped.message, /direct HTTP 403; proxy proxy fetch timeout/);
+    assert.notEqual(dropped.nonRetryable, true, 'dropped tunnels may recover on the retry');
+
+    const mixed = await fetchApprovedAtom(NRCAN_ATOM_URL, {
+      fetchFn: forbidden,
+      proxyAuth: 'user:pass@gate.example:7000',
+      proxyFetchFn: async (_url, { attempt }) => {
+        if (attempt === 0) throw new Error('proxy fetch timeout');
+        return { ok: false, status: 403, buffer: Buffer.alloc(0), contentType: '' };
+      },
+    }).catch(err => err);
+    assert.equal(mixed.status, 403);
+    assert.notEqual(mixed.nonRetryable, true, 'exit 0 never answered, so the retry may still reach it');
+  });
+
+  it('wires the seeder proxy into the NRCan fetch', () => {
+    const seederSrc = readFileSync(resolve(here, '../scripts/seed-earthquakes.mjs'), 'utf8');
+    assert.match(seederSrc, /fetchNrcanAtom\(\{[^}]*proxyAuth: resolveProxyForConnect\(\)/);
+  });
+
   it('does not bind fetch or target canada.ca in production code', () => {
     assert.doesNotMatch(parseModuleSrc, /fetch\.bind/);
     assert.doesNotMatch(parseModuleSrc, /www\.canada\.ca/);

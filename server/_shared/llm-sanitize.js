@@ -35,8 +35,9 @@ const INJECTION_PATTERNS = [
   /\[(?:INST|\/INST|SYS|\/SYS)\]/gi,
   /<\/?(system|user|assistant|prompt|context|instruction)\b[^>]*>/gi,
 
-  // Role override markers at line start
-  /(?:^|\n)\s*(?:#{1,4}\s*)?(?:\[|\()?\s*(?:system|human|gpt|claude|llm|model|prompt)\s*(?:\]|\))?\s*:/gim,
+  // Leading whitespace stays on its line. Later runs follow mandatory tokens
+  // so failed matches cannot repartition or repeatedly scan the same whitespace.
+  /(?:^|\n)[^\S\r\n]*(?:#{1,4}\s*)?(?:[\[(]\s*)?(?:system|human|gpt|claude|llm|model|prompt)\s*(?:[\])]\s*)?:/gim,
 
   // Explicit instruction-override phrases
   /ignore\s+(?:all\s+)?(?:previous|above|prior|earlier|the\s+above)\s+instructions?\b/gi,
@@ -50,7 +51,7 @@ const INJECTION_PATTERNS = [
   /^#{3,}\s/gm,
 ];
 
-const ROLE_PREFIX_RE = /^\s*(?:#{1,4}\s*)?(?:\[|\()?\s*(?:user|assistant|bot)\s*(?:\]|\))?\s*:\s*/i;
+const ROLE_PREFIX_RE = /^\s*(?:#{1,4}\s*)?(?:[\[(]\s*)?(?:user|assistant|bot)\s*(?:[\])]\s*)?:\s*/i;
 const ROLE_OVERRIDE_STRONG_RE = /\b(?:you\s+are\s+now|act\s+as|pretend\s+(?:to\s+be|you\s+are)|roleplay\s+as|simulate\s+(?:being\s+)?a|from\s+now\s+on|do\s+not\s+(?:follow|obey|adhere\s+to|comply\s+with))\b/i;
 const ROLE_OVERRIDE_COMMAND_RE = /\b(?:ignore|disregard|forget|bypass|override|overwrite|skip|reveal|output|print|display|show|repeat|recite|write\s+out)\b/i;
 const ROLE_OVERRIDE_FOLLOW_RE = /\b(?:follow|obey)\s+(?:all\s+)?(?:the\s+|my\s+|your\s+)?(?:instructions?|prompt|rules?|guidelines?|constraints?)\b/i;

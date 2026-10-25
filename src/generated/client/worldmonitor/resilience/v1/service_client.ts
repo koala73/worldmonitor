@@ -214,6 +214,7 @@ export interface CapabilityObservation {
   year: number;
   source: string;
   unit: string;
+  sourceStatus?: string;
 }
 
 export interface DemographicsEducation {

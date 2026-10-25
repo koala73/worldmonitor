@@ -695,9 +695,12 @@ describe('parseIssueDate', () => {
 // ========================================================================
 
 describe('processNgaSignals', () => {
+  // Fixture notices are dated March 2025; score them as of the next day so the stale-notice filter keeps them.
+  const NOW = Date.UTC(2025, 2, 16);
+
   it('returns empty signals for non-cable warnings', () => {
     const warnings = [{ text: 'MILITARY EXERCISE IN AREA', issueDate: '011200Z JAN 2025' }];
-    assert.deepEqual(processNgaSignals(warnings), []);
+    assert.deepEqual(processNgaSignals(warnings, NOW), []);
   });
 
   it('produces a signal for a cable-related warning with known cable name', () => {
@@ -705,7 +708,7 @@ describe('processNgaSignals', () => {
       text: 'CABLE OPERATIONS NEAR MAREA CABLE SYSTEM. VESSELS ADVISED TO KEEP CLEAR.',
       issueDate: '151430Z MAR 2025',
     }];
-    const signals = processNgaSignals(warnings);
+    const signals = processNgaSignals(warnings, NOW);
     assert.ok(signals.length >= 1);
     assert.equal(signals[0]!.cableId, 'marea');
   });
@@ -715,7 +718,7 @@ describe('processNgaSignals', () => {
       text: 'FAULT REPORTED ON SUBMARINE CABLE MAREA. REPAIR VESSEL EN ROUTE.',
       issueDate: '151430Z MAR 2025',
     }];
-    const signals = processNgaSignals(warnings);
+    const signals = processNgaSignals(warnings, NOW);
     const faultSignals = signals.filter((s) => s.kind === 'operator_fault');
     assert.ok(faultSignals.length >= 1);
     assert.equal(faultSignals[0]!.severity, 1.0);
@@ -726,7 +729,7 @@ describe('processNgaSignals', () => {
       text: 'CABLESHIP ILE DE BATZ CABLE OPERATIONS ON STATION NEAR MAREA CABLE SYSTEM.',
       issueDate: '151430Z MAR 2025',
     }];
-    const signals = processNgaSignals(warnings);
+    const signals = processNgaSignals(warnings, NOW);
     const repairSignals = signals.filter((s) => s.kind === 'repair_activity');
     assert.ok(repairSignals.length >= 1);
   });
@@ -736,7 +739,7 @@ describe('processNgaSignals', () => {
       text: 'SUBMARINE CABLE OPERATIONS IN UNSPECIFIED AREA',
       issueDate: '151430Z MAR 2025',
     }];
-    const signals = processNgaSignals(warnings);
+    const signals = processNgaSignals(warnings, NOW);
     assert.equal(signals.length, 0);
   });
 });

@@ -1743,15 +1743,17 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     }
   });
 
-  it('env-key resources/read on countries/de/risk does NOT touch the Pro quota path (env-key tier is its own quota)', async () => {
-    // env-key auth path uses X-WorldMonitor-Key. The dispatcher's INCR
-    // reservation only fires for context.kind === 'pro'. This test asserts
-    // the response succeeds AND no Pro pipeline activity was attempted.
+  it('env-key resources/read on countries/de/risk charges the operator key ceiling, never the Pro quota path', async () => {
+    // env-key auth path uses X-WorldMonitor-Key. Its daily reservation lands on
+    // the per-key `env_key:<hash>` counter, not on any Pro user's counter.
     const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
     const res = await mcpHandler(envKeyReq(readBody('worldmonitor://countries/de/risk')), deps);
     const body = await res.json();
     assert.equal(body.error, undefined, `env-key resources/read should succeed, got error: ${JSON.stringify(body.error)}`);
-    assert.equal(pipe.count, 0, 'env-key auth must NOT touch the Pro daily-quota counter');
+    assert.equal(pipe.count, 1, 'env-key auth charges one unit of its own daily ceiling');
+    const reservations = pipe.ops.flat().filter(cmd => cmd[0] === 'EVAL');
+    assert.equal(reservations.length, 1);
+    assert.match(String(reservations[0][3]), /mcp:pro-usage:env_key:/, 'env-key auth must NOT touch the Pro daily-quota counter');
   });
 
   it('resources/list does NOT increment the Pro quota counter (metadata-class, mirrors prompts/list)', async () => {

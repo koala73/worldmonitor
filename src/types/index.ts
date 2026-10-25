@@ -1132,6 +1132,16 @@ export interface GdeltTensionPair {
   trend: 'rising' | 'stable' | 'falling';
   changePercent: number;
   region: string;
+  // Non-news signals above their usual level (scripts/_tension-evidence.mjs).
+  evidence?: TensionEvidence[];
+}
+
+export interface TensionEvidence {
+  channel: string;
+  value: number;
+  baseline: number | null;
+  countries: string[];
+  airports: { name: string; status: string }[];
 }
 
 // NASA EONET Natural Events
@@ -1297,7 +1307,16 @@ export interface CascadeResult {
     id: string;
     name: string;
     capacityShare: number;
+    /** False when the alternative crosses a chokepoint that a cut cable also crosses. */
+    avoidsCutZone?: boolean;
   }[];
+  /** Every disrupted node when several were cut together (multi-cable / chokepoint cut). */
+  sources?: InfrastructureNode[];
+  /** Present when the result rests on estimated rather than measured inputs. */
+  dataQuality?: {
+    estimated: boolean;
+    note: string;
+  };
 }
 
 export type PortType = 'container' | 'oil' | 'lng' | 'naval' | 'mixed' | 'bulk';

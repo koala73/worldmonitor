@@ -53,7 +53,7 @@ import type { GpsJamHex } from '@/services/gps-interference';
 import { fetchImageryScenes } from '@/services/imagery';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
-import type { CrossBorderData, CrossBorderPoint, DisplacementFlow, InternalDisplacementData, InternalDisplacementRegion, InternalDisplacementRoute } from '@/services/displacement';
+import type { CrossBorderData, CrossBorderPoint, DisplacementEventPoint, DisplacementEventsData, DisplacementFlow, InternalDisplacementData, InternalDisplacementRegion, InternalDisplacementRoute } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
@@ -81,6 +81,7 @@ import { getCachedFuelShortageRegistry } from '@/shared/fuel-shortage-registry-s
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
+import { createIdleAwareFrameProvider } from '@/utils/idle-aware-frame-provider';
 import { isInputPending, scheduleYield } from '@/utils/after-paint';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { localizeMapLabels } from '@/utils/map-locale';
@@ -182,7 +183,11 @@ import { fetchWebcamImage } from '@/services/webcams';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { summarizeRenderTiming, formatRenderTiming } from '@/components/map/render-timing';
 import { DeferredHeavyCommit } from '@/components/map/deferred-layer-commit';
+import { createDeckLoopRecovery } from '@/components/map/deck-loop-recovery';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { ZoomHintGuard } from '@/components/map/zoom-hint-guard';
+import { NOTAM_AIRSPACE_COLORS, notamAirspaceTooltip } from '@/components/map/notam-airspace-style';
+import type { NotamAirspaceRestriction } from '@/services/notam-airspace';
 import { dispatchWebcamLayerClick, resolveWebcamStreamUrl, type WebcamLeafLike } from '@/components/map/webcam-click';
 import {
   type BBox,
@@ -264,6 +269,10 @@ const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; z
 };
 
 const VIEWPORT_MOVEMENT_EVENT_KEY = 'worldMonitorViewportGeneration';
+const DECK_IDLE_FRAME_INTERVAL_MS = 250;
+const DECK_ACTIVE_FRAME_WINDOW_MS = 300;
+// 'render' covers every map frame, including repaints deck itself requests.
+const DECK_FRAME_WAKE_EVENTS = ['render', 'movestart', 'mousemove', 'mousedown', 'wheel', 'touchstart', 'click', 'resize'] as const;
 
 type ViewportMovementEventData = {
   worldMonitorViewportGeneration?: unknown;
@@ -586,11 +595,26 @@ function installDeckInterleavedRaceFilter(): void {
   }, { capture: true });
 }
 
+/** Every stop is a real map freeze, and the console warning alone never reached us (#9653). */
+function reportDeckLoopStop(error: Error, recovery: 'restart' | 'svg-fallback'): void {
+  console.warn(`[DeckGLMap] deck.gl render loop stopped (${recovery}):`, error.message);
+  enqueueSentryCall((Sentry) => {
+    Sentry.captureException?.(error, { tags: { kind: 'deck_loop_stopped', surface: 'map', component: 'deckgl-loop', recovery } });
+  });
+}
+
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
 
   private container: HTMLElement;
   private deckOverlay: MapLibreOverlay | null = null;
+  // deck.gl's loop polls for layer changes on every display frame. Between
+  // map activity it polls on a slow timer instead, which removes most idle
+  // main-thread work; any map event or layer update wakes it back to vsync.
+  private readonly deckFrameProvider = createIdleAwareFrameProvider({
+    idleIntervalMs: DECK_IDLE_FRAME_INTERVAL_MS,
+    activeWindowMs: DECK_ACTIVE_FRAME_WINDOW_MS,
+  });
   private maplibreMap: maplibregl.Map | null = null;
   private state: DeckMapState;
   private popup: MapPopup;
@@ -626,6 +650,12 @@ export class DeckGLMap {
   private protests: SocialUnrestEvent[] = [];
   private militaryFlights: MilitaryFlight[] = [];
   private emergencyMarkers: import('../../shared/aircraft-emergencies').EmergencyMapMarker[] = [];
+  private notamAirspace: NotamAirspaceRestriction[] = [];
+  private notamAirspaceParts: {
+    polygons: { row: NotamAirspaceRestriction; ring: [number, number][] }[];
+    circles: NotamAirspaceRestriction[];
+    markers: NotamAirspaceRestriction[];
+  } = { polygons: [], circles: [], markers: [] };
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
   private activeFlightTrails = new Set<string>();
   private clearTrailsBtn: HTMLButtonElement | null = null;
@@ -649,6 +679,7 @@ export class DeckGLMap {
   private displacementFlows: DisplacementFlow[] = [];
   private internalDisplacement: InternalDisplacementData | null = null;
   private crossBorderArrivals: CrossBorderData | null = null;
+  private displacementEvents: DisplacementEventsData | null = null;
   private gpsJammingHexes: GpsJamHexWithPolygon[] = [];
   private gpsJammingLoadSeq = 0;
   private climateAnomalies: ClimateAnomaly[] = [];
@@ -820,6 +851,14 @@ export class DeckGLMap {
     schedule: (fn) => scheduleYield(fn),
     isAlive: () => !this.renderPaused && !this.webglLost && !!this.maplibreMap,
     onCommit: () => this.updateLayers(true),
+  });
+  private readonly deckLoopRecovery = createDeckLoopRecovery({
+    hasPendingFrame: () => this.deckFrameProvider.hasPendingFrame(),
+    isAlive: () => !this.destroyed && !this.webglLost && !!this.maplibreMap && !!this.deckOverlay,
+    restart: (error) => this.restartDeck(error),
+    giveUp: (error) => { reportDeckLoopStop(error, 'svg-fallback'); this.onFatalError?.(error); },
+    maxRestarts: 3,
+    windowMs: 60_000,
   });
   private destroyed = false;
   private usedFallbackStyle = false;
@@ -1318,27 +1357,10 @@ export class DeckGLMap {
 
     installDeckInterleavedRaceFilter();
 
-    this.deckOverlay = new MapLibreOverlay({
-      interleaved: true,
-      layers: this.buildLayers(true),
-      getTooltip: (info: PickingInfo) => this.getTooltip(info),
-      onClick: (info: PickingInfo) => this.handleClick(info),
-      pickingRadius: 10,
-      useDevicePixels: window.devicePixelRatio > 2 ? 2 : true,
-      onError: (error: Error) => {
-        console.warn('[DeckGLMap] Render error (non-fatal):', error.message);
-        if (error.message.includes('apt-groups-layer')) {
-          this.aptGroupsLayerFailed = true;
-        }
-        if (error.message.includes('satellite-imagery-layer')) {
-          this.satelliteImageryLayerFailed = true;
-          console.warn('[DeckGLMap] Satellite imagery layer failed (likely Intel GPU driver incompatibility) — rebuilding layer stack without it');
-          this.updateLayers();
-        }
-      },
-    });
-
+    this.deckOverlay = this.createDeckOverlay();
     this.maplibreMap.addControl(this.deckOverlay as unknown as maplibregl.IControl);
+    const wakeDeckFrames = () => this.deckFrameProvider.wake();
+    for (const event of DECK_FRAME_WAKE_EVENTS) this.maplibreMap.on(event, wakeDeckFrames);
 
     this.maplibreMap.on('movestart', () => {
       if (this.moveTimeoutId) {
@@ -1399,6 +1421,43 @@ export class DeckGLMap {
       this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
       this.onStateChange?.(this.getState());
     });
+  }
+
+  private createDeckOverlay(): MapLibreOverlay {
+    const overlayProps = {
+      interleaved: true,
+      // Forwarded by Deck.setProps to luma.gl's AnimationLoop.setProps.
+      animationFrameProvider: this.deckFrameProvider,
+      layers: this.buildLayers(true),
+      getTooltip: (info: PickingInfo) => this.getTooltip(info),
+      onClick: (info: PickingInfo) => this.handleClick(info),
+      pickingRadius: 10,
+      useDevicePixels: window.devicePixelRatio > 2 ? 2 : true,
+      onError: (error: Error) => {
+        console.warn('[DeckGLMap] Render error (non-fatal):', error.message);
+        if (error.message.includes('apt-groups-layer')) {
+          this.aptGroupsLayerFailed = true;
+        }
+        if (error.message.includes('satellite-imagery-layer')) {
+          this.satelliteImageryLayerFailed = true;
+          console.warn('[DeckGLMap] Satellite imagery layer failed (likely Intel GPU driver incompatibility) — rebuilding layer stack without it');
+          this.updateLayers();
+        }
+        this.deckLoopRecovery(error);
+      },
+    };
+    return new MapLibreOverlay(overlayProps);
+  }
+
+  private restartDeck(error: Error): void {
+    if (!this.maplibreMap) return;
+    reportDeckLoopStop(error, 'restart');
+    // A finalized deck.gl layer cannot join a new Deck.
+    this.layerCache.clear();
+    this.deckOverlay?.finalize();
+    this.deckOverlay = this.createDeckOverlay();
+    this.maplibreMap.addControl(this.deckOverlay as unknown as maplibregl.IControl);
+    this.render();
   }
 
   public setIsResizing(value: boolean): void {
@@ -1977,6 +2036,14 @@ export class DeckGLMap {
       this.layerCache.delete('day-night-layer');
     }
 
+    // FAA NMS airspace restrictions are area overlays (circles up to 250 NM):
+    // they sit above only the day/night background, so cables, pipelines,
+    // conflict zones and every marker inside a restricted area stay hoverable
+    // and clickable.
+    if (mapLayers.flights && this.notamAirspace.length > 0) {
+      layers.push(...this.createNotamAirspaceLayers());
+    }
+
     if (this.selectedChinaCorridorOverlay) {
       layers.push(...this.createChinaCorridorSelectionLayers(this.selectedChinaCorridorOverlay));
     }
@@ -2313,8 +2380,14 @@ export class DeckGLMap {
     if (mapLayers.displacement && this.displacementFlows.length > 0) {
       layers.push(this.createDisplacementArcsLayer());
     }
+    if (mapLayers.displacement && this.displacementEvents && this.displacementEvents.points.length > 0) {
+      layers.push(this.createDisplacementEventsLayer(this.displacementEvents.points));
+    }
     if (mapLayers.displacement && this.crossBorderArrivals && this.crossBorderArrivals.points.length > 0) {
       layers.push(this.createCrossBorderPointsLayer(this.crossBorderArrivals.points));
+    }
+    if (mapLayers.displacement && this.crossBorderArrivals?.deaths?.length) {
+      layers.push(this.createCrossBorderPointsLayer(this.crossBorderArrivals.deaths, true));
     }
     if (mapLayers.displacement && this.internalDisplacement) {
       if (this.internalDisplacement.routes.length > 0) layers.push(this.createInternalDisplacementRoutesLayer(this.internalDisplacement.routes));
@@ -3253,6 +3326,53 @@ export class DeckGLMap {
       radiusMaxPixels: 40,
       pickable: true,
     });
+  }
+
+  // Polygons where NMS ships them, radius circles (metres, so they scale with
+  // zoom) when the Q-line gives a radius, and fixed-size markers otherwise:
+  // most FDC TFRs describe their shape only in text.
+  private createNotamAirspaceLayers(): Layer[] {
+    const color = (row: NotamAirspaceRestriction, alpha: number): [number, number, number, number] => {
+      const [r, g, b] = NOTAM_AIRSPACE_COLORS[row.kind];
+      return [r, g, b, row.upcoming ? Math.round(alpha * 0.45) : alpha];
+    };
+    const { polygons, circles, markers } = this.notamAirspaceParts;
+    return [
+      new PolygonLayer<{ row: NotamAirspaceRestriction; ring: [number, number][] }>({
+        id: 'notam-airspace-polygons',
+        data: polygons,
+        getPolygon: (d) => d.ring,
+        getFillColor: (d) => color(d.row, 45),
+        getLineColor: (d) => color(d.row, 210),
+        lineWidthMinPixels: 1,
+        stroked: true,
+        pickable: true,
+      }),
+      new ScatterplotLayer<NotamAirspaceRestriction>({
+        id: 'notam-airspace-circles',
+        data: circles,
+        getPosition: (d) => d.center,
+        getRadius: (d) => (d.radiusNm ?? 0) * 1852,
+        getFillColor: (d) => color(d, 35),
+        getLineColor: (d) => color(d, 200),
+        stroked: true,
+        lineWidthMinPixels: 1,
+        radiusMinPixels: 3,
+        pickable: true,
+      }),
+      new ScatterplotLayer<NotamAirspaceRestriction>({
+        id: 'notam-airspace-markers',
+        data: markers,
+        getPosition: (d) => d.center,
+        getRadius: 5,
+        radiusUnits: 'pixels',
+        getFillColor: (d) => color(d, 200),
+        getLineColor: [17, 24, 39, 220],
+        stroked: true,
+        lineWidthMinPixels: 1,
+        pickable: true,
+      }),
+    ];
   }
 
   private createAircraftPositionsLayer(): IconLayer<PositionSample> {
@@ -5133,6 +5253,10 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)} (${text(obj.iata)})</strong><br/>${text(obj.severity)}: ${text(obj.reason)}</div>` };
       case 'notam-overlay-layer':
         return { html: `<div class="deckgl-tooltip"><strong style="color:#ff2828;">&#9888; NOTAM CLOSURE</strong><br/>${text(obj.name)} (${text(obj.iata)})<br/><span style="opacity:.7">${text((obj.reason || '').slice(0, 100))}</span></div>` };
+      case 'notam-airspace-polygons':
+      case 'notam-airspace-circles':
+      case 'notam-airspace-markers':
+        return { html: notamAirspaceTooltip((obj.row ?? obj) as NotamAirspaceRestriction, text) };
       case 'aircraft-positions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.icao24)}</strong><br/>${numericLabel(obj.altitudeFt)} ft · ${numericLabel(obj.groundSpeedKts)} kts · ${numericLabel(obj.trackDeg, 0)}°</div>` };
       case 'apt-groups-layer':
@@ -5157,13 +5281,18 @@ export class DeckGLMap {
       }
       case 'ais-disruptions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
+      case 'cross-border-deaths-layer':
       case 'cross-border-points-layer': {
         const change = obj.change !== null && obj.change !== 0
           ? `<br/>${obj.change > 0 ? '+' : ''}${numericLabel(obj.change)} ${t('components.deckgl.tooltip.sinceDate', { date: text(obj.changeSince) })}`
           : '';
-        const lastMonth = obj.lastMonth !== null ? `<br/>${numericLabel(obj.lastMonth)} ${t('components.deckgl.tooltip.lastMonth')}` : '';
+        const lastMonth = obj.period ? `<br/>${text(obj.period)}` : obj.lastMonth !== null ? `<br/>${numericLabel(obj.lastMonth)} ${t('components.deckgl.tooltip.lastMonth')}` : '';
         const accelerating = obj.accelerating ? `<br/><strong>${t('components.displacement.accelerating')}</strong>` : '';
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.country)}</strong><br/>${text(obj.label)}: ${numericLabel(obj.individuals)}${lastMonth}${change}${accelerating}<br/>${text(obj.situation)} · ${text(obj.date)}<br/>${t('components.deckgl.tooltip.sourceUnhcrOdp')}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.country)}</strong><br/>${text(obj.label)}: ${numericLabel(obj.individuals)}${lastMonth}${change}${accelerating}<br/>${text(obj.situation)} · ${text(obj.date)}<br/>${text(obj.source || t('components.deckgl.tooltip.sourceUnhcrOdp'))}${obj.measure ? ` · ${text(obj.measure)}` : ''}${obj.last30Days !== undefined ? ' · 30d' : ''}</div>` };
+      }
+      case 'displacement-events-layer': {
+        const kind = obj.conflict ? t('components.displacement.conflict') : text(obj.hazardType);
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.locationName || obj.countryName)}</strong><br/>${numericLabel(obj.figure)} ${t('components.deckgl.tooltip.displaced')} · ${kind}<br/>${text(obj.eventName)}<br/>${text(obj.displacementDate)}<br/>${t('components.deckgl.tooltip.sourceIdmc')}</div>` };
       }
       case 'internal-displacement-regions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}, ${text(obj.countryName)}</strong><br/>${numericLabel(obj.idps)} ${t('components.deckgl.tooltip.internallyDisplaced')}<br/>${text(obj.operation)} · ${text(obj.reportingDate)}<br/>${t('components.deckgl.tooltip.sourceIomDtm')}</div>` };
@@ -5314,9 +5443,18 @@ export class DeckGLMap {
     'resilience-choropleth-layer',
   ]);
 
+  // Hover-only NOTAM shapes (areas and their fallback markers): a click on one
+  // is a click on the country under it.
+  private static readonly AREA_OVERLAY_LAYER_IDS = new Set([
+    'notam-airspace-polygons',
+    'notam-airspace-circles',
+    'notam-airspace-markers',
+  ]);
+
   private handleClick(info: PickingInfo): void {
     const isChoropleth = info.layer?.id ? DeckGLMap.CHOROPLETH_LAYER_IDS.has(info.layer.id) : false;
-    if (!info.object || isChoropleth) {
+    const isAreaOverlay = info.layer?.id ? DeckGLMap.AREA_OVERLAY_LAYER_IDS.has(info.layer.id) : false;
+    if (!info.object || isChoropleth || isAreaOverlay) {
       if (info.coordinate && this.onCountryClick) {
         if (this.shouldSuppressCountryClickAfterDrag()) return;
         const [lon, lat] = info.coordinate as [number, number];
@@ -6156,6 +6294,7 @@ export class DeckGLMap {
       helpItem(label('shipTraffic'), 'transportShipping'),
       helpItem(label('tradeRoutes'), 'tradeRoutes'),
       helpItem(label('flightDelays'), 'transportDelays'),
+      helpItem(label('notamAirspace'), 'notamAirspace'),
     ])}
         ${helpSection('naturalEconomic', [
       helpItem(label('naturalEvents'), 'naturalEventsFull'),
@@ -6379,6 +6518,7 @@ export class DeckGLMap {
       const built = this.buildLayers(!deferred);
       jsBuild = performance.now() - buildStart;
       layerCount = built.length;
+      this.deckFrameProvider.wake();
       this.deckOverlay?.setProps({ layers: built });
     } catch { /* map may be mid-teardown (null.getProjection) */ }
     if (import.meta.env.DEV) {
@@ -6678,15 +6818,17 @@ export class DeckGLMap {
 
   // UNHCR people who crossed into each receiving country. Area scales with the
   // count; an accelerating country gets a thicker ring.
-  private createCrossBorderPointsLayer(points: CrossBorderPoint[]): ScatterplotLayer<CrossBorderPoint> {
+  private createCrossBorderPointsLayer(points: CrossBorderPoint[], deaths = false): ScatterplotLayer<CrossBorderPoint> {
     const light = getCurrentTheme() === 'light';
     const fill = (d: CrossBorderPoint): [number, number, number, number] => {
+      if (deaths) return [230, 70, 70, 180];
+      if (d.changePct !== undefined) return d.changePct >= 0 ? [240, 100, 60, 140] : [60, 180, 150, 140];
       if (d.kind === 'return') return light ? [30, 130, 80, 110] : [80, 210, 140, 100];
       if (d.kind === 'arrival') return light ? [20, 110, 170, 120] : [70, 180, 240, 110];
       return light ? [120, 60, 170, 110] : [180, 130, 255, 100];
     };
     return new ScatterplotLayer<CrossBorderPoint>({
-      id: 'cross-border-points-layer',
+      id: deaths ? 'cross-border-deaths-layer' : 'cross-border-points-layer',
       data: points,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: (d) => Math.sqrt(d.individuals) * 70,
@@ -6697,6 +6839,29 @@ export class DeckGLMap {
       getLineWidth: (d) => (d.accelerating ? 3 : 1),
       lineWidthUnits: 'pixels',
       stroked: true,
+      pickable: true,
+    });
+  }
+
+  // IDMC figures by location over the last 180 days: red for conflict, blue for
+  // disaster. Area scales with the figure; most are under 100 people.
+  private createDisplacementEventsLayer(points: DisplacementEventPoint[]): ScatterplotLayer<DisplacementEventPoint> {
+    const light = getCurrentTheme() === 'light';
+    return new ScatterplotLayer<DisplacementEventPoint>({
+      id: 'displacement-events-layer',
+      data: points,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => Math.sqrt(d.figure) * 60,
+      radiusMinPixels: 2,
+      radiusMaxPixels: 36,
+      getFillColor: (d) => d.conflict
+        ? (light ? [190, 30, 45, 110] : [255, 80, 90, 100])
+        : (light ? [30, 90, 180, 110] : [90, 160, 255, 100]),
+      getLineColor: (d) => d.conflict
+        ? (light ? [150, 20, 30, 200] : [255, 140, 150, 190])
+        : (light ? [20, 60, 140, 200] : [150, 200, 255, 190]),
+      stroked: true,
+      lineWidthMinPixels: 1,
       pickable: true,
     });
   }
@@ -7249,6 +7414,18 @@ export class DeckGLMap {
     this.render();
   }
 
+  public setNotamAirspace(restrictions: NotamAirspaceRestriction[]): void {
+    this.notamAirspace = restrictions;
+    // Split once per snapshot: stable data references let deck.gl skip
+    // rebuilding instance attributes on every pan/zoom layer update.
+    this.notamAirspaceParts = {
+      polygons: restrictions.flatMap((row) => (row.polygons ?? []).map((ring) => ({ row, ring }))),
+      circles: restrictions.filter((row) => !row.polygons?.length && row.radiusNm),
+      markers: restrictions.filter((row) => !row.polygons?.length && !row.radiusNm),
+    };
+    this.render();
+  }
+
   public toggleFlightTrail(hexCode: string): void {
     const key = hexCode.toLowerCase();
     if (this.activeFlightTrails.has(key)) {
@@ -7420,6 +7597,11 @@ export class DeckGLMap {
 
   public setCrossBorderArrivals(data: CrossBorderData): void {
     this.crossBorderArrivals = data;
+    this.render();
+  }
+
+  public setDisplacementEvents(data: DisplacementEventsData): void {
+    this.displacementEvents = data;
     this.render();
   }
 
@@ -8472,6 +8654,7 @@ export class DeckGLMap {
   public destroy(): void {
     this.destroyed = true;
     this.aircraftFetchSeq += 1;
+    this.deckFrameProvider.dispose();
     this.settleViewportMovement(false);
     this.stopTradeAnimation();
     this.activeFlightTrails.clear();

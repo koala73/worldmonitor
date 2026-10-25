@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installStaleBundleCheck } from '../src/bootstrap/stale-bundle-check.ts';
+import { _setFetchBeforeWindowPatchesForTests, installStaleBundleCheck } from '../src/bootstrap/stale-bundle-check.ts';
 import {
   _resetSentryDeferStateForTests,
   _setSentryLoaderForTests,
@@ -75,6 +75,8 @@ function makeEnv(initial: Partial<{ ok: boolean; status: number; body: string }>
   };
 }
 
+const USE_PRODUCTION_FETCH = Symbol('production-fetch');
+
 function install(
   env: FakeEnv,
   currentHash = 'sha-running-bundle',
@@ -82,11 +84,22 @@ function install(
   wedgeAfterDeferrals?: number,
   /** true leaves the module's own Sentry reporter in place instead of the recording fake. */
   useDefaultReporter = false,
+  fetchImpl?: typeof globalThis.fetch | typeof USE_PRODUCTION_FETCH,
 ) {
+  const injectedFetch = fetchImpl === USE_PRODUCTION_FETCH
+    ? undefined
+    : fetchImpl ?? (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+      env.fetchCalls.push({ url, init });
+      if (env.fetchGate) await env.fetchGate;
+      const { ok, status, body } = env.fetchResponse;
+      return new Response(body, { status, statusText: ok ? 'OK' : 'Error' });
+    });
   return installStaleBundleCheck({
     currentHash,
     minIntervalMs,
     ...(wedgeAfterDeferrals === undefined ? {} : { wedgeAfterDeferrals }),
+    fetch: injectedFetch,
     eventTarget: {
       addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
         if (type === 'focus') env.focusListeners.push(listener as EventListener);
@@ -134,13 +147,6 @@ function install(
     setInterval: (cb: () => void, _ms: number) => {
       env.intervalCallbacks.push(cb);
       return env.intervalCallbacks.length; // dummy handle
-    },
-    fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
-      env.fetchCalls.push({ url, init });
-      if (env.fetchGate) await env.fetchGate;
-      const { ok, status, body } = env.fetchResponse;
-      return new Response(body, { status, statusText: ok ? 'OK' : 'Error' });
     },
     reload: () => { env.reloadCalls++; },
     ...(useDefaultReporter ? {} : { reportDeferral: (report: DeferralReport) => { env.deferralReports.push(report); } }),
@@ -215,6 +221,21 @@ async function fireInterval(env: FakeEnv): Promise<void> {
   }
   await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function rejectionMessagesDuring(run: () => Promise<void>): Promise<string[]> {
+  const messages: string[] = [];
+  const onRejection = (reason: unknown) => {
+    messages.push(reason instanceof Error ? reason.message : String(reason));
+  };
+  process.on('unhandledRejection', onRejection);
+  try {
+    await run();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return messages;
+  } finally {
+    process.off('unhandledRejection', onRejection);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -664,5 +685,73 @@ describe('installStaleBundleCheck', () => {
     env.clock.tick(1_000);
     await fireFocus(env);
     assert.equal(env.reloadCalls, 1, 'and still reload over a hidden persistent overlay');
+  });
+
+  it('a rejected fetch from focus is not an unhandled rejection, and the next trigger reloads on a new hash', async () => {
+    let calls = 0;
+    const messages = await rejectionMessagesDuring(async () => {
+      install(env, 'sha-running-bundle', 60_000, undefined, false, async () => {
+        calls += 1;
+        if (calls === 1) throw new TypeError('Failed to fetch');
+        return new Response('sha-newer-deploy');
+      });
+      await fireFocus(env);
+      assert.equal(env.reloadCalls, 0, 'a network failure is not a hash mismatch');
+      env.clock.tick(60_001);
+      await fireFocus(env);
+    });
+    assert.deepEqual(messages, []);
+    assert.equal(calls, 2, 'the next focus after the dedupe window checks again');
+    assert.equal(env.reloadCalls, 1, 'a real hash change still reloads');
+  });
+
+  it('a rejected fetch from the interval is not an unhandled rejection, and the next tick checks again', async () => {
+    let calls = 0;
+    const messages = await rejectionMessagesDuring(async () => {
+      install(env, 'sha-running-bundle', 60_000, undefined, false, async () => {
+        calls += 1;
+        if (calls === 1) throw new DOMException('The operation was aborted', 'AbortError');
+        return new Response('sha-running-bundle');
+      });
+      await fireInterval(env);
+      assert.equal(env.reloadCalls, 0);
+      env.clock.tick(60_001);
+      await fireInterval(env);
+    });
+    assert.deepEqual(messages, []);
+    assert.equal(calls, 2, 'the next interval tick checks again');
+    assert.equal(env.reloadCalls, 0, 'a matching hash after an abort does not reload');
+  });
+
+  it('a one-sided then on the live fetch does not leave an unhandled rejection from focus or the interval', async () => {
+    const previousFetch = globalThis.fetch;
+    let calls = 0;
+    const previousSnapshot = _setFetchBeforeWindowPatchesForTests(async () => {
+      calls += 1;
+      if (calls === 1) throw new TypeError('Failed to fetch');
+      return new Response('sha-newer-deploy');
+    });
+    globalThis.fetch = (() => {
+      const rejected = Promise.reject(new TypeError('Failed to fetch'));
+      // Observes success only, then returns the original promise. The derived
+      // promise rejects with nobody waiting on it.
+      rejected.then(() => {});
+      return rejected;
+    }) as typeof globalThis.fetch;
+    try {
+      const messages = await rejectionMessagesDuring(async () => {
+        install(env, 'sha-running-bundle', 0, undefined, false, USE_PRODUCTION_FETCH);
+        await fireFocus(env);
+        assert.equal(env.reloadCalls, 0);
+        env.clock.tick(1);
+        await fireInterval(env);
+      });
+      assert.deepEqual(messages, []);
+      assert.equal(calls, 2, 'focus and the next interval both reach the pre-patch fetch');
+      assert.equal(env.reloadCalls, 1, 'a real hash change still reloads');
+    } finally {
+      globalThis.fetch = previousFetch;
+      _setFetchBeforeWindowPatchesForTests(previousSnapshot);
+    }
   });
 });

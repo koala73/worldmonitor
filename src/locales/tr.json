@@ -234,7 +234,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Tahmin ve eksik değer atama durumu belirtilmemiş"
     },
     "fiveFactorScorecard": {
       "title": "Beş Faktörlü Dayanıklılık Puan Kartı",
@@ -711,9 +712,9 @@
       "alertTitle": {
         "configured": "Masaustu ayarlari yapilandirildi",
         "needsKeys": "Ozellikleri etkinlestirmek icin API anahtarlarini yapilandiriniz",
-        "some": "Bazi ozellikler API anahtari gerektiriyor"
+        "some": "Bazi ozellikler API anahtari gerektiriyor",
+        "pro": "World Monitor Pro etkin"
       },
-      "skipSetup": "Kurulumu atlayın — tek bir World Monitor lisansı her şeyi açar. Erken erişim için bekleme listesine katılın.",
       "summary": {
         "desktop": "Masaustu modu",
         "web": "Web modu (salt okunur, sunucu tarafli kimlik bilgileri)",
@@ -742,7 +743,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "reserveEarlyAccess": "Erken Erişimi Rezerve Edin"
+      "proCloud": "Yerel API anahtarı olmayan özellikler World Monitor bulut verilerini kullanır.",
+      "skipSetupPro": "Kurulumu atlayın: Kendi API anahtarlarınız yerine bulut verilerini kullanmak için World Monitor Pro ile oturum açın.",
+      "getPro": "World Monitor Pro'yu edinin"
     },
     "settingsWindow": {
       "validating": "API anahtarlari dogrulaniyor...",
@@ -1084,7 +1087,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Endeks: World Monitor · mekân verileri:",
+      "indexSource": "Endeks: World Monitor",
+      "venueSource": "mekân verileri:",
       "statusNormal": "NORMAL",
       "statusNoData": "VERİ YOK",
       "statusNoBaseline": "REFERANS YOK",
@@ -1095,6 +1099,16 @@
       "tensionsTitle": "Jeopolitik Gerilimler",
       "tensionsSource": "Gerilimler: GDELT olaylarından World Monitor hesaplaması",
       "insufficientData": "Yetersiz veri",
+      "evidenceStrikes": "3 günde bildirilen saldırılar ({{countries}}): {{value}}",
+      "evidenceAirports": "Aksayan havalimanları: {{value}}",
+      "evidenceAirportClosed": "{{name}} havalimanı kapalı",
+      "evidenceAirportHalted": "{{name}}: uçuşların çoğu iptal",
+      "evidenceAirportRestricted": "{{name}}: uçuşlar kısıtlı",
+      "evidenceMilitaryAircraft": "Bölgedeki askeri uçaklar ({{country}}): {{value}}",
+      "evidencePlaAircraft": "Tayvan yakınında Çin askeri uçakları: {{value}}",
+      "evidencePlaShips": "Tayvan yakınında Çin donanma gemileri: {{value}}",
+      "evidenceSanctions": "Bu hafta yeni ABD yaptırımları ({{country}}): {{value}}",
+      "evidenceUsual": "(olağan {{value}})",
       "pizzaUnavailable": "Pizzacıların etkinlik verileri kullanılamıyor",
       "source": "Kaynak:",
       "statusClosed": "KAPALI",
@@ -1286,7 +1300,7 @@
         "commodityHubs": "Emtia Merkezleri",
         "gulfInvestments": "Körfez İşbirliği Konseyi Yatırımları",
         "tradeRoutes": "Ticaret Rotaları",
-        "iranAttacks": "İran Saldırıları",
+        "iranAttacks": "Orta Doğu Saldırıları",
         "gpsJamming": "Navigasyon müdahalesi",
         "ciiChoropleth": "Ülke istikrarsızlığı",
         "dayNight": "Gündüz/Gece",
@@ -1298,7 +1312,8 @@
         "radiationSpike": "Radyasyon artışı",
         "radiationElevated": "Yükseltilmiş radyasyon",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "NOTAM Hava Sahasına İlişkin Kısıtlamalar"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -1330,7 +1345,9 @@
         "sourceIomDtm": "Kaynak: IOM DTM",
         "sinceDate": "{{date}} tarihinden beri",
         "lastMonth": "geçen ay",
-        "sourceUnhcrOdp": "Kaynak: BMMYK Operasyonel Veri Portalı"
+        "sourceUnhcrOdp": "Kaynak: BMMYK Operasyonel Veri Portalı",
+        "displaced": "yerinden edilmiş",
+        "sourceIdmc": "Kaynak: IDMC"
       },
       "layerHelp": {
         "title": "Harita Katmanlari Rehberi",
@@ -1411,7 +1428,8 @@
           "geoBoundaries": "Silahsızlandırılmış bölgeler, ateşkes hatları ve tartışmalı sınırlar",
           "ciiChoropleth": "Ülke İstikrarsızlık Endeksi ısı haritası — ülkeleri puana göre renklendiriyor (yeşil=istikrarlı, kırmızı=kritik)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "FAA NOTAM'larından geçici uçuş kısıtlamaları ve sınırlı, tehlikeli ve yasaklı hava sahaları; şu anda yürürlükte olan veya 24 saat içinde başlayacak olanlar"
         },
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"
@@ -1546,6 +1564,8 @@
       "capacityPercent": "%{{percent}} kapasite",
       "noCountryImpacts": "Ulke etkisi tespit edilmedi",
       "alternativeRoutes": "Alternatif Rotalar",
+      "sharesCutZone": "aynı boğaz",
+      "estimateNote": "Tahmini: kablo kapasitesi ve yedeklilik ölçülmemiş, yaklaşık değerlerdir.",
       "countriesAffected": "Etkilenen Ulkeler ({{count}})",
       "links": "baglanti",
       "selectInfrastructureHint": "Domino etkisini analiz etmek icin altyapi secin",
@@ -1763,7 +1783,21 @@
       "latestChange": "Son değişim",
       "accelerating": "Hızlanıyor",
       "inDays": "{{days}} günde",
-      "crossBorderNote": "BM Mülteci Ajansı Operasyonel Veri Portalı: her krizde sınırları geçen insanlar, en son ülke raporlarından. Durumlar çakışabilir, bu nedenle toplanmaz."
+      "crossBorderNote": "BM Mülteci Ajansı Operasyonel Veri Portalı: her krizde sınırları geçen insanlar, en son ülke raporlarından. Durumlar çakışabilir, bu nedenle toplanmaz.",
+      "last7And30": "Son 7 / 30 gün",
+      "staleReport": "Güncelliğini yitirmiş rapor",
+      "reported": "Sayı",
+      "period": "Dönem",
+      "movementNote": "Her satır kaynağını, rapor tarihini ve ölçüsünü korur. Mevcut nüfus, varışlar ve sınır denetimi olayları farklı ölçülerdir. Kaynaklar örtüşebilir; sayılarını toplamayın. WorldMonitor bu görünümü bağlantılı kaynaklardan türetir; bu, sağlayıcıların onayını ima etmez.",
+      "recent": "Yakın dönem",
+      "last30Days": "Son 30 gün",
+      "newThisWeek": "Bu haftanın yenileri",
+      "conflict": "Çatışma",
+      "disaster": "Afet",
+      "surge": "Ani Artış",
+      "recentNote": "IDMC: son 30 gün içinde ülkeleri içinde yerinden edilmiş kişiler. IDMC, yerinden edilmeden ortalama üç hafta sonra bir rakam yayımlar; bu nedenle son haftalar geç dolmaktadır. Bu haftanın yenileri son 7 gün içinde yayımlanmış rakamları sayar. Ani Artış: en az 5.000 kişi ve önceki beş ayın aylık ortalamasının üç katı.",
+      "recentAsOf": "Veriler {{date}} tarihine aittir.",
+      "recentMissing": "Bu kez {{countries}} için veri yok; dosyaları yüklenemedi. Bu, yerinden edilme olmadığı anlamına gelmez."
     },
     "climate": {
       "noAnomalies": "Onemli anomali tespit edilmedi",
@@ -1790,7 +1824,8 @@
       "sourceCoverageHint": "Etkin {{total}} kaynaktan {{covered}} tanesi gösteriliyor — bu panel her yenilemede kaynaklarını sırayla çekiyor",
       "sortBy": "Sırala",
       "sortNewest": "En Yeni",
-      "sortRelevance": "İlgili"
+      "sortRelevance": "İlgili",
+      "translationUnavailable": "Çeviri kullanılamıyor. Yapay zekâ sağlayıcınızın ayarlarını kontrol edip tekrar deneyin."
     },
     "breakingNews": {
       "critical": "KRİTİK",
@@ -3031,7 +3066,9 @@
         "africa": "Afrika"
       },
       "scheduled": "Planl.",
-      "estimated": "Tah."
+      "estimated": "Tah.",
+      "normalOperations": "NORMAL İŞLETME",
+      "open": "AÇIK"
     },
     "aircraft": {
       "altitude": "Irtifa",
@@ -3436,7 +3473,12 @@
       "uae_ecsr": "BAE/ECSR",
       "venezuela_crisis": "Venezuela Krizi",
       "yemen_houthis": "Yemen/Husiler"
-    }
+    },
+    "upcomingForecast": "Yaklaşan tahmin",
+    "currentForecast": "Geçerli tahmin",
+    "expiredForecast": "Süresi dolmuş tahmin",
+    "validFrom": "Geçerlilik başlangıcı",
+    "validUntil": "Geçerlilik sonu"
   },
   "signals": {
     "context": {
@@ -3810,5 +3852,27 @@
       "description": "İran, İsrail, Körfez ve Kürt bölgelerine ilişkin kaynakları etkinleştirir"
     },
     "unavailable": "{{preset}} ön ayarı mevcut panellerinizle kullanılamıyor"
+  },
+  "countryHistory": {
+    "title": "Ülkenin günlük geçmişi",
+    "loading": "Günlük geçmiş yükleniyor…",
+    "window": "Dönem",
+    "days": "{{days}} gün",
+    "observed": "{{days}} günde {{count}} anlık görüntü",
+    "legend": "CII (kehribar): yüksek değer daha fazla istikrarsızlık demektir. Dayanıklılık (yeşil): yüksek değer daha fazla kapasite demektir. Noktalar seçili başlıkların bulunduğu günleri gösterir.",
+    "chart": "Günlük CII ve dayanıklılık puanları. Boşluklar ve formül değişiklikleri çizgileri keser.",
+    "selectDate": "{{date}}, {{count}} seçili başlık",
+    "empty": "Bu dönemde günlük anlık görüntü yok. Geçmiş, etkinleştirmeden sonra birikir.",
+    "unavailable": "Geçmiş geçici olarak kullanılamıyor. Tekrar deneyin.",
+    "retry": "Tekrar dene",
+    "stale": "Son başarılı günlük kayıt 36 saatten eski.",
+    "break": "Formül değişikliği veya gözlem boşluğu. Yalnızca aynı formülle hesaplanan puanları karşılaştırın.",
+    "partial": "Kayıt sırasında haber kapsamı kısmi düzeydeydi.",
+    "resilience": "Dayanıklılık",
+    "ciiMissing": "CII kullanılamıyor",
+    "resilienceMissing": "Dayanıklılık kullanılamıyor",
+    "noEvents": "Bu tarih için seçili başlık kaydedilmedi. Bu, hiç olay yaşanmadığını kanıtlamaz.",
+    "unlock90": "Pro ile 90 günlük geçmişi açın",
+    "unlock365": "API planıyla 365 günlük geçmişi açın"
   }
 }

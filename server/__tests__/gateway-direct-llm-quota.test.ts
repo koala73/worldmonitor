@@ -55,6 +55,7 @@ vi.mock("../_shared/usage", async (importOriginal) => {
 });
 
 import { createDomainGateway } from "../gateway";
+import { OPERATOR_KEY_DAILY_CEILINGS, operatorKeyQuotaPrincipal } from "../_shared/high-usage-alarm";
 import { getRequiredTier } from "../_shared/entitlement-check";
 import { createIntelligenceServiceRoutes } from "../../src/generated/server/worldmonitor/intelligence/v1/service_server";
 import { intelligenceHandler } from "../worldmonitor/intelligence/v1/handler";
@@ -517,6 +518,51 @@ describe("gateway direct LLM quota", () => {
     expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
       expect.objectContaining({ userId: "user_pro" }),
     );
+  });
+
+  test("operator key classify-event reserves on its per-key bucket at the operator ceiling", async () => {
+    // Operator keys used to bypass this reservation entirely (unbounded spend
+    // on a leaked key). They now share widget-agent's wm:<sha256> bucket.
+    const calls = { classify: 0, deduct: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue(null);
+    validateApiKey.mockResolvedValue({
+      valid: true, required: true, kind: "enterprise", credential: "operator-test-key",
+    });
+
+    const res = await makeGateway(calls)(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline`, {
+        headers: { "X-WorldMonitor-Key": "operator-test-key" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(calls.classify).toBe(1);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(expect.objectContaining({
+      userId: await operatorKeyQuotaPrincipal("operator-test-key"),
+      limit: OPERATOR_KEY_DAILY_CEILINGS.directLlmCalls,
+    }));
+  });
+
+  test("operator key is refused once its direct-LLM ceiling is spent", async () => {
+    const calls = { classify: 0, deduct: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue(null);
+    validateApiKey.mockResolvedValue({
+      valid: true, required: true, kind: "enterprise", credential: "operator-test-key",
+    });
+    reserveDirectLlmQuota.mockResolvedValue({
+      ok: false, reason: "cap-exceeded", floor: OPERATOR_KEY_DAILY_CEILINGS.directLlmCalls, retryAfterSec: 60,
+    });
+
+    const res = await makeGateway(calls)(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline`, {
+        headers: { "X-WorldMonitor-Key": "operator-test-key" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(429);
+    expect(calls.classify).toBe(0);
   });
 
   test("Pro bearer analyze-stock uses a principal-scoped endpoint bucket", async () => {
@@ -992,7 +1038,7 @@ describe("direct LLM quota release on unserved requests", () => {
   test.each([
     ["invalid syntax", "[[[", "invalid_expression"],
     ["invalid input type", "length(classification.confidence)", "invalid_expression"],
-    ["oversized output", `classification${" | [@,@,@,@,@,@,@,@]".repeat(5)}`, "projection_too_large"],
+    ["unsafe expansion", `classification${" | [@,@,@,@,@,@,@,@]".repeat(5)}`, "invalid_expression"],
   ])("a failed projection (%s) keeps completed model work charged", async (_name, expression, error) => {
     const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
     const res = await gateway(
@@ -1003,6 +1049,20 @@ describe("direct LLM quota release on unserved requests", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ _jmespath_error: expect.stringContaining(error) });
     expect(callLlm).toHaveBeenCalledTimes(1);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  test("an oversized projection keeps completed handler work charged", async () => {
+    const completedWork = vi.fn(async () => json({ answer: "x".repeat(256 * 1024) }));
+    const res = await stubGateway(completedWork)(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline&jmespath=answer`, { headers: { Authorization: "Bearer pro" } }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ _jmespath_error: expect.stringContaining("projection_too_large") });
+    expect(completedWork).toHaveBeenCalledTimes(1);
     expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
     expect(rollback).not.toHaveBeenCalled();
   });

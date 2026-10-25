@@ -5,17 +5,17 @@ metaTitle: "World Monitor vs Liveuamap for conflict maps | World Monitor"
 keywords: "Liveuamap evaluators, world monitor vs liveuamap, global intelligence tools"
 audience: "Liveuamap evaluators"
 pubDate: "2026-10-02"
-modifiedDate: "2026-10-16"
+modifiedDate: "2026-10-18"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
 ---
 
-This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 16, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
+This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 18, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
 
 ## TL;DR
 
-> For following conflict on a live map, Liveuamap is the better pick if you read one region and want the cheapest paid plan: it is a focused, curated news map with regional maps. Choose World Monitor when conflict is one part of the brief: one free map adds shipping, aviation, outages, hazards, cyber and markets, and paid plans add alert rules by country, event type and severity delivered to Slack, Discord, Telegram, email, browser push or a signed webhook, plus a REST API, SDKs and MCP.
+> For following conflict on a live map, Liveuamap is the better pick if you read one region and want the cheapest paid plan: it is a focused, curated news map with regional maps. Choose World Monitor when conflict is one part of the brief: one free map adds shipping, aviation, outages, hazards, cyber and markets, and paid plans add alert rules by country, event type and severity delivered to Slack, Microsoft Teams, Discord, Telegram, email, browser push or a signed webhook, plus a REST API, SDKs and MCP.
 
 ## The comparison at a glance
 
@@ -23,7 +23,7 @@ This guide is published by World Monitor. We compare public product documentatio
 | --- | --- | --- |
 | Main workflow | Cross-domain monitoring and alerts | Regional mapped conflict reporting |
 | Coverage | Conflict, protests, shipping, aviation, outages, hazards, cyber and markets | Conflict reports first, with protests and other topics |
-| Alerts | Rules by event type, severity and country to Slack, Discord, Telegram, email, browser push or signed webhook | Not described in the sources we checked |
+| Alerts | Rules by event type, severity and country to Slack, Microsoft Teams, Discord, Telegram, email, browser push or signed webhook | Not described in the sources we checked |
 | Sources | Tier, propaganda-risk and state-affiliation badges on news items; any outlet's labels via the free `get_sources` MCP tool | Follow each report's original link |
 | Developer access | REST API (API plan), Python, Go and Ruby SDKs, npm CLI, MCP with Pro | Paid API |
 | Price | Free map; [published paid prices](https://www.worldmonitor.app/pro#pricing) | Free map; the lowest paid prices in this set |
@@ -41,7 +41,7 @@ Liveuamap is a news and information service built around geolocated reports. Its
 
 World Monitor is better when the map is one part of a wider job. The [free map](https://www.worldmonitor.app/dashboard) needs no account and shows conflict alongside protests, shipping, aviation, infrastructure outages, hazards, cyber and markets. The [chokepoints page](https://www.worldmonitor.app/chokepoints) shows live ship transit counts at 13 maritime chokepoints, 7 of them measured against an EIA flow baseline.
 
-On the Pro plan, alert rules filter by event type, severity (all, high or critical) and country and deliver to Slack, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256. Delivery is real time or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Developers get a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server with Pro. Each outlet has an editorial tier and a propaganda-risk band: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme. The code is open source under [AGPL-3.0](https://github.com/koala73/worldmonitor).
+On the Pro plan, alert rules filter by event type, severity (all, high or critical) and country and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256. Delivery is real time or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Developers get a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server with Pro. Each outlet has an editorial tier and a propaganda-risk band: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme. The code is open source under [AGPL-3.0](https://github.com/koala73/worldmonitor).
 
 ## The limits that matter
 
@@ -50,7 +50,7 @@ Neither map is a verified inventory of every incident. World Monitor aggregates 
 ## Pick World Monitor when
 
 - **Your brief covers more than one conflict.** One map adds shipping, aviation, outages, hazards, cyber and markets.
-- **You need to be told when something happens.** Alert rules by country, event type and severity deliver to Slack, Discord, Telegram, email or browser push.
+- **You need to be told when something happens.** Alert rules by country, event type and severity deliver to Slack, Microsoft Teams, Discord, Telegram, email or browser push.
 - **You track shipping disruption.** Live transit counts at 13 maritime chokepoints sit on the same map.
 - **You build on the data.** The REST API, SDKs, npm CLI and MCP server expose the same feeds.
 - **You want to judge each outlet.** News items carry tier, propaganda-risk and state-affiliation badges where they apply, and the free `get_sources` MCP tool returns any outlet's labels.

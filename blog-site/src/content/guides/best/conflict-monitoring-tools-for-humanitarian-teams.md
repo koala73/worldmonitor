@@ -5,13 +5,13 @@ metaTitle: "Best conflict monitoring tools for humanitarian teams (2026) | World
 keywords: "Humanitarian teams, best conflict monitoring tools for humanitarian teams, NGO security monitoring, conflict alerts, global intelligence tools"
 audience: "Humanitarian teams"
 pubDate: "2026-10-02"
-modifiedDate: "2026-10-16"
+modifiedDate: "2026-10-18"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
 ---
 
-This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 16, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
+This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 18, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
 
 ## TL;DR
 
@@ -64,7 +64,7 @@ Choose Crisis24 Horizon if your organization needs traveler and staff visibility
 
 **Best for a shared external briefing with country alerts.**
 
-World Monitor puts conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets on one map. The core map is free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard), which suits teams without a budget line. On the paid Pro plan, alert rules filter by country, event type and severity (all, high or critical) and deliver to Slack, Discord, Telegram, email, browser push or an HMAC-SHA256 signed webhook. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Each outlet has an editorial tier and a propaganda-risk band: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme.
+World Monitor puts conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets on one map. The core map is free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard), which suits teams without a budget line. On the paid Pro plan, alert rules filter by country, event type and severity (all, high or critical) and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push or an HMAC-SHA256 signed webhook. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Each outlet has an editorial tier and a propaganda-risk band: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme.
 
 Alerts are scoped by country, not by a radius around a compound or route. World Monitor aggregates published reports, does not verify events on the ground, and offers no SLA, analyst desk or evacuation assistance. Do not treat an absent report as evidence that an area is safe.
 

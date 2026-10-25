@@ -923,6 +923,12 @@ export function isApiCallTarget(url: string, apiOrigin: string): boolean {
   return parsed.origin === apiOrigin && parsed.pathname.startsWith('/api/');
 }
 
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 function isCredentiallessPublicDataRequest(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
@@ -938,7 +944,7 @@ function isCredentiallessPublicDataRequest(
     return false;
   }
 
-  const pathname = parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/, '') : parsed.pathname;
+  const pathname = stripTrailingSlashes(parsed.pathname);
   const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
   if (isPublicSharedRpcRequest(parsed, method)) return true;
   if (pathname !== '/api/bootstrap' || method.toUpperCase() !== 'GET') return false;

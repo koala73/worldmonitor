@@ -142,6 +142,7 @@ if (process.env.MCP_SMOKE_PROXY_HOSTS !== undefined) {
 }
 
 const TIMEOUT_MS = 15_000;
+const TRANSPORT_RETRIES = 1;
 // The workflow job has a 12 minute hard limit. Keep the request walk within
 // ten minutes so normal failure handling can write its report and GitHub can
 // upload it before the job is terminated. A request is never started unless
@@ -217,13 +218,31 @@ const requestTimedFetch = createTimedFetch({
   onRecord: (record) => requests.push(record),
 });
 
-async function timedFetch(...args) {
+function assertRunBudgetFitsRequest() {
   const remainingMs = runDeadlineAt === null ? 0 : runDeadlineAt - Date.now();
   if (remainingMs < TIMEOUT_MS) {
     runBudgetError ??= new RunBudgetExhaustedError(remainingMs);
     throw runBudgetError;
   }
-  return requestTimedFetch(...args);
+}
+
+// A connection dropped before or during the response (`fetch failed`,
+// `terminated`) is retried once: on the shared GitHub runner egress these
+// blips red the scheduled run about weekly with production healthy. Every
+// attempt is still recorded in the report. A timeout is a HANG and an HTTP
+// status is an answer, so neither is retried.
+async function timedFetch(...args) {
+  for (let attempt = 1; ; attempt += 1) {
+    assertRunBudgetFitsRequest();
+    try {
+      return await requestTimedFetch(...args);
+    } catch (err) {
+      const record = requests.at(-1);
+      const retryable = record?.outcome === 'transport_error' && record.stage !== 'parse';
+      if (attempt > TRANSPORT_RETRIES || !retryable) throw err;
+      console.log(`  ↻ [${safeUrlLabel(args[0])}] retrying once after a transport error: ${formatSafeError(err)}`);
+    }
+  }
 }
 
 let nextId = 1;
@@ -513,6 +532,26 @@ async function walkHost(host) {
     throwIfRunBudgetExhausted(err);
     fail(host, 'oauth metadata', `not served: ${formatSafeError(err)}`);
     return;
+  }
+  // agent_auth.skill must equal <issuer>/auth.md and be served there without
+  // a redirect. On the apex that depends on the /auth.md exemption in the
+  // Cloudflare apex→www rule, which no in-process test can see.
+  checks += 1;
+  const skill = meta.agent_auth?.skill;
+  if (skill !== `${meta.issuer}/auth.md`) {
+    fail(host, 'agent_auth skill', `expected ${meta.issuer}/auth.md, got ${safeUrlLabel(skill)}`);
+  } else {
+    try {
+      const { res } = await timedFetch(skill, { headers: { Accept: 'text/markdown' } }, { group: 'canonical' });
+      if (res.status !== 200 || !/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
+        fail(host, 'agent_auth skill', `expected 200 markdown, got ${res.status} ${res.headers.get('content-type')} → ${safeUrlLabel(res.headers.get('location'))}`);
+      } else {
+        ok(host, 'agent_auth skill', '200 markdown on the issuer origin');
+      }
+    } catch (err) {
+      throwIfRunBudgetExhausted(err);
+      fail(host, 'agent_auth skill', `HANG/transport error: ${formatSafeError(err)}`);
+    }
   }
   for (const key of ['registration_endpoint', 'token_endpoint']) {
     checks += 1;

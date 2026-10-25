@@ -156,30 +156,30 @@
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": false,
       "selfServe": false,
-      "dashboardAiCallsPerDay": null,
+      "dashboardAiCallsPerDay": 25000,
       "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO, SCIM, Custom security and privacy settings, Fully white-labeled — with or without revenue sharing"
     }
   ],
   "heroProofStats": {
     "mapLayers": 58,
     "feeds": 469,
-    "providers": 770,
+    "providers": 775,
     "alertOrigins": 5
   },
   "depthProofStats": {
     "mapLayers": 58,
     "feeds": 469,
-    "providers": 770,
+    "providers": 775,
     "alertOrigins": 5,
     "chokepoints": 13,
     "instabilityCountries": 31,
     "resilienceRanked": 170,
-    "submarineCables": 86,
+    "submarineCables": 98,
     "pipelinesLng": 159,
     "aiDatacenters": 313,
     "hotspots": 29,
     "stockExchanges": 29,
-    "mcpTools": 94,
+    "mcpTools": 95,
     "commands": 621,
     "languages": 28
   },

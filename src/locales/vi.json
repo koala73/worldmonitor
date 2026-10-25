@@ -232,7 +232,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Chưa cung cấp trạng thái ước tính và điền giá trị thiếu"
     },
     "fiveFactorScorecard": {
       "title": "Bảng điểm khả năng phục hồi 5 yếu tố",
@@ -708,9 +709,9 @@
       "alertTitle": {
         "configured": "Đã cấu hình cài đặt desktop",
         "needsKeys": "Cấu hình khóa API để mở khóa tính năng",
-        "some": "Một số tính năng cần khóa API"
+        "some": "Một số tính năng cần khóa API",
+        "pro": "World Monitor Pro đang hoạt động"
       },
-      "skipSetup": "Bỏ qua cài đặt — một giấy phép World Monitor mở khóa tất cả. Tham gia danh sách chờ để truy cập sớm.",
       "summary": {
         "desktop": "Chế độ desktop",
         "web": "Chế độ web (chỉ đọc, thông tin xác thực do máy chủ quản lý)",
@@ -739,7 +740,9 @@
         "OLLAMA_API_URL": "Ví dụ: http://127.0.0.1:11434 (Ollama) hoặc http://127.0.0.1:1234/v1 (LM Studio) — endpoint tương thích OpenAI.",
         "OLLAMA_MODEL": "Ví dụ: llama3.1:8b — thẻ mô hình dùng để tóm tắt."
       },
-      "reserveEarlyAccess": "Đặt trước quyền truy cập sớm"
+      "proCloud": "Các tính năng không có khóa API cục bộ sử dụng dữ liệu đám mây World Monitor.",
+      "skipSetupPro": "Bỏ qua thiết lập: đăng nhập bằng World Monitor Pro để sử dụng dữ liệu đám mây thay vì khóa API của riêng bạn.",
+      "getPro": "Nhận World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Đang xác thực khóa API...",
@@ -1081,7 +1084,8 @@
       "skipToEnd": "Tới cuối"
     },
     "pizzint": {
-      "indexSource": "Chỉ số: World Monitor · dữ liệu địa điểm:",
+      "indexSource": "Chỉ số: World Monitor",
+      "venueSource": "dữ liệu địa điểm:",
       "statusNormal": "BÌNH THƯỜNG",
       "statusNoData": "KHÔNG CÓ DỮ LIỆU",
       "statusNoBaseline": "KHÔNG CÓ MỐC CHUẨN",
@@ -1092,6 +1096,16 @@
       "tensionsTitle": "Căng thẳng Địa chính trị",
       "tensionsSource": "Căng thẳng: World Monitor tính từ các sự kiện GDELT",
       "insufficientData": "Không đủ dữ liệu",
+      "evidenceStrikes": "Các cuộc tấn công được báo cáo trong 3 ngày ({{countries}}): {{value}}",
+      "evidenceAirports": "Sân bay bị gián đoạn: {{value}}",
+      "evidenceAirportClosed": "Sân bay {{name}} đóng cửa",
+      "evidenceAirportHalted": "{{name}}: hầu hết chuyến bay bị hủy",
+      "evidenceAirportRestricted": "{{name}}: chuyến bay bị hạn chế",
+      "evidenceMilitaryAircraft": "Máy bay quân sự ({{country}}) trong khu vực: {{value}}",
+      "evidencePlaAircraft": "Máy bay quân sự Trung Quốc gần Đài Loan: {{value}}",
+      "evidencePlaShips": "Tàu hải quân Trung Quốc gần Đài Loan: {{value}}",
+      "evidenceSanctions": "Lệnh trừng phạt mới của Mỹ tuần này ({{country}}): {{value}}",
+      "evidenceUsual": "(thường {{value}})",
       "pizzaUnavailable": "Không có dữ liệu hoạt động của các tiệm pizza",
       "source": "Nguồn:",
       "statusClosed": "ĐÓNG CỬA",
@@ -1283,7 +1297,7 @@
         "commodityHubs": "Trung tâm Hàng hóa",
         "gulfInvestments": "Đầu tư của Hội đồng Hợp tác Vùng Vịnh",
         "tradeRoutes": "Tuyến Thương mại",
-        "iranAttacks": "Tấn công Iran",
+        "iranAttacks": "Tấn công ở Trung Đông",
         "gpsJamming": "Gây nhiễu dẫn hướng",
         "ciiChoropleth": "Bất ổn định đất nước",
         "dayNight": "Ngày/Đêm",
@@ -1295,7 +1309,8 @@
         "radiationSpike": "Đột tăng bức xạ",
         "radiationElevated": "Bức xạ tăng cao",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Hạn chế không phận NOTAM"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -1327,7 +1342,9 @@
         "sourceIomDtm": "Nguồn: IOM DTM",
         "sinceDate": "kể từ {{date}}",
         "lastMonth": "tháng trước",
-        "sourceUnhcrOdp": "Nguồn: Cổng dữ liệu hoạt động của UNHCR"
+        "sourceUnhcrOdp": "Nguồn: Cổng dữ liệu hoạt động của UNHCR",
+        "displaced": "người phải rời bỏ nơi ở",
+        "sourceIdmc": "Nguồn: IDMC"
       },
       "layerHelp": {
         "title": "Hướng dẫn Lớp Bản đồ",
@@ -1408,7 +1425,8 @@
           "geoBoundaries": "Khu phi quân sự, đường ngừng bắn và ranh giới tranh chấp",
           "ciiChoropleth": "Bản đồ nhiệt Chỉ số Bất ổn định Đất nước — tô màu các quốc gia theo điểm số (xanh=ổn định, đỏ=tới hạn)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Hạn chế bay tạm thời và không phận bị hạn chế, nguy hiểm và bị cấm từ NOTAM của FAA, có hiệu lực ngay bây giờ hoặc bắt đầu trong vòng 24 giờ"
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"
@@ -1542,6 +1560,8 @@
       "capacityPercent": "{{percent}}% công suất",
       "noCountryImpacts": "Không phát hiện tác động quốc gia",
       "alternativeRoutes": "Tuyến Thay thế",
+      "sharesCutZone": "cùng eo biển",
+      "estimateNote": "Ước tính: dung lượng và khả năng dự phòng của cáp là giá trị gần đúng, không phải đo thực tế.",
       "countriesAffected": "Quốc gia bị Ảnh hưởng ({{count}})",
       "links": "liên kết",
       "selectInfrastructureHint": "Chọn hạ tầng để phân tích tác động chuỗi",
@@ -1759,7 +1779,21 @@
       "latestChange": "Thay đổi gần nhất",
       "accelerating": "Đang tăng tốc",
       "inDays": "trong {{days}} ngày",
-      "crossBorderNote": "Cổng thông tin Dữ liệu Hoạt động của Cơ quan Tị nạn Liên hợp quốc: những người đã vượt qua biên giới trong mỗi cuộc khủng hoảng, từ các báo cáo quốc gia mới nhất. Các tình huống trùng lặp, vì vậy chúng không được cộng lại với nhau."
+      "crossBorderNote": "Cổng thông tin Dữ liệu Hoạt động của Cơ quan Tị nạn Liên hợp quốc: những người đã vượt qua biên giới trong mỗi cuộc khủng hoảng, từ các báo cáo quốc gia mới nhất. Các tình huống trùng lặp, vì vậy chúng không được cộng lại với nhau.",
+      "last7And30": "7 / 30 ngày qua",
+      "staleReport": "Báo cáo đã cũ",
+      "reported": "Số lượng",
+      "period": "Kỳ",
+      "movementNote": "Mỗi hàng giữ nguyên nguồn, ngày báo cáo và chỉ số. Số dân tại một thời điểm, số người đến và số sự kiện kiểm soát biên giới là các chỉ số khác nhau. Các nguồn có thể trùng lặp; không cộng số liệu của chúng. WorldMonitor tạo chế độ xem này từ các nguồn được liên kết; điều này không hàm ý sự chứng thực của nhà cung cấp.",
+      "recent": "Gần đây",
+      "last30Days": "30 ngày qua",
+      "newThisWeek": "Mới trong tuần này",
+      "conflict": "Xung đột",
+      "disaster": "Thảm họa",
+      "surge": "Bùng phát",
+      "recentNote": "IDMC: những người phải rời bỏ nơi ở nhưng vẫn ở trong nước mình trong 30 ngày qua. IDMC công bố số liệu trung vị khoảng ba tuần sau khi người dân phải di dời, nên các tuần gần đây được cập nhật muộn. Mới trong tuần này đếm các số liệu được công bố trong 7 ngày qua. Bùng phát: ít nhất 5.000 người và gấp ba lần mức trung bình hằng tháng của năm tháng trước đó.",
+      "recentAsOf": "Dữ liệu tính đến {{date}}.",
+      "recentMissing": "Không có dữ liệu từ {{countries}} lần này; tệp của họ không tải được, điều này không có nghĩa là không có người di cư."
     },
     "climate": {
       "noAnomalies": "Không phát hiện bất thường đáng kể",
@@ -1786,7 +1820,8 @@
       "sourceCoverageHint": "Đang hiển thị {{covered}} trong {{total}} nguồn đã bật — bảng này luân phiên các nguồn của nó sau mỗi lần làm mới",
       "sortBy": "Sắp xếp theo",
       "sortNewest": "Mới nhất",
-      "sortRelevance": "Mức độ liên quan"
+      "sortRelevance": "Mức độ liên quan",
+      "translationUnavailable": "Không thể dịch. Hãy kiểm tra cài đặt nhà cung cấp AI và thử lại."
     },
     "breakingNews": {
       "critical": "NGHIÊM TRỌNG",
@@ -3011,7 +3046,9 @@
         "africa": "Châu Phi"
       },
       "scheduled": "Lịch",
-      "estimated": "Dự kiến"
+      "estimated": "Dự kiến",
+      "normalOperations": "HOẠT ĐỘNG BÌNH THƯỜNG",
+      "open": "MỞ CỬA"
     },
     "aircraft": {
       "altitude": "Độ cao",
@@ -3416,7 +3453,12 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "Khủng hoảng Venezuela",
       "yemen_houthis": "Yemen/Houthis"
-    }
+    },
+    "upcomingForecast": "Dự báo sắp tới",
+    "currentForecast": "Dự báo hiện hành",
+    "expiredForecast": "Dự báo hết hạn",
+    "validFrom": "Có hiệu lực từ",
+    "validUntil": "Có hiệu lực đến"
   },
   "signals": {
     "context": {
@@ -3790,5 +3832,27 @@
       "description": "Bật các nguồn về Iran, Israel, Vùng Vịnh và các khu vực người Kurd"
     },
     "unavailable": "Gói {{preset}} không khả dụng với các bảng hiện tại"
+  },
+  "countryHistory": {
+    "title": "Lịch sử hằng ngày của quốc gia",
+    "loading": "Đang tải lịch sử hằng ngày…",
+    "window": "Khoảng thời gian",
+    "days": "{{days}} ngày",
+    "observed": "{{count}} ảnh chụp trong {{days}} ngày",
+    "legend": "CII (hổ phách): cao hơn nghĩa là bất ổn hơn. Khả năng chống chịu (xanh lá): cao hơn nghĩa là năng lực lớn hơn. Các chấm đánh dấu ngày có tiêu đề được chọn.",
+    "chart": "Điểm CII và khả năng chống chịu hằng ngày. Khoảng trống và thay đổi công thức làm ngắt đường biểu diễn.",
+    "selectDate": "{{date}}, {{count}} tiêu đề được chọn",
+    "empty": "Không có ảnh chụp hằng ngày trong khoảng này. Lịch sử được tích lũy sau khi kích hoạt.",
+    "unavailable": "Lịch sử tạm thời không khả dụng. Vui lòng thử lại.",
+    "retry": "Thử lại",
+    "stale": "Lần ghi nhận hằng ngày thành công gần nhất đã hơn 36 giờ.",
+    "break": "Có thay đổi công thức hoặc khoảng trống quan sát. Chỉ so sánh điểm dùng cùng công thức.",
+    "partial": "Phạm vi tin tức chưa đầy đủ tại thời điểm ghi nhận.",
+    "resilience": "Khả năng chống chịu",
+    "ciiMissing": "CII không khả dụng",
+    "resilienceMissing": "Khả năng chống chịu không khả dụng",
+    "noEvents": "Không có tiêu đề được chọn nào được ghi nhận cho ngày này. Điều này không chứng minh rằng không có sự kiện xảy ra.",
+    "unlock90": "Mở khóa 90 ngày với Pro",
+    "unlock365": "Mở khóa 365 ngày với gói API"
   }
 }

@@ -22,7 +22,7 @@ import {
 } from './_clustering.mjs';
 import { MIN_CORROBORATING_PUBLISHERS } from './shared/publisher-families.js';
 import { isAcceptableDigest } from './shared/digest-acceptance.mjs';
-import { extractCountryCode } from './shared/geo-extract.mjs';
+import { extractStoryCountries } from './shared/geo-extract.mjs';
 import { buildChinaNewsCoverage } from './_china-news-coverage.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import {
@@ -1119,7 +1119,7 @@ async function fetchInsights() {
     const { category, threatLevel } = hasDigestThreat
       ? { category: story.threat.category ?? 'general', threatLevel: story.threat.level }
       : categorizeStory(story.primaryTitle);
-    const countryCode = extractCountryCode(story.primaryTitle) ?? null;
+    const { countryCode, countryCodes } = extractStoryCountries(story.primaryTitle);
     return {
       primaryTitle: story.primaryTitle,
       primarySource: story.primarySource,
@@ -1154,6 +1154,7 @@ async function fetchInsights() {
       category,
       threatLevel,
       countryCode,
+      countryCodes,
     };
   });
 

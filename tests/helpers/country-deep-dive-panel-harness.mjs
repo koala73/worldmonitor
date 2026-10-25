@@ -52,6 +52,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     unavailableReason: 'snapshot-unavailable',
   });
   const scorecardMode = JSON.stringify(options.scorecardMode ?? 'success');
+  const demographicsMode = JSON.stringify(options.demographicsMode ?? 'success');
   const tempDir = createTempDir('wm-country-deep-dive-');
   const outfile = join(tempDir, 'CountryDeepDivePanel.bundle.mjs');
   const resilienceWidgetStub = resilienceWidgetMode === 'import-reject'
@@ -269,6 +270,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['resilience-service-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
       const demographicsResponse = ${demographicsResponse};
+      const demographicsMode = ${demographicsMode};
       export async function getFoodStocks() {
         return { commodities: [], unavailable: true };
       }
@@ -277,6 +279,13 @@ async function loadCountryDeepDivePanel(options = {}) {
           countryCode: options.countryCode,
           hasSignal: options.signal instanceof AbortSignal,
         });
+        // Held open and deliberately not wired to the signal: models a read the
+        // panel supersedes without aborting it.
+        if (demographicsMode === 'deferred') {
+          return new Promise((resolve, reject) => {
+            state.demographicsPending.push({ countryCode: options.countryCode, resolve, reject });
+          });
+        }
         return { ...demographicsResponse, countryCode: options.countryCode };
       }
     `],
@@ -452,6 +461,7 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     sentryExceptions: [],
     sentryMessages: [],
     demographicsCalls: [],
+    demographicsPending: [],
     scorecardCalls: [],
     scorecardPending: [],
     costShockRequests: [],
@@ -542,6 +552,12 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     },
     getDemographicsCalls() {
       return state.demographicsCalls;
+    },
+    rejectDemographics(index, error = new Error('synthetic demographics failure')) {
+      state.demographicsPending[index]?.reject(error);
+    },
+    getPendingDemographics() {
+      return state.demographicsPending;
     },
     getScorecardCalls() {
       return state.scorecardCalls;

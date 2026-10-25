@@ -5,13 +5,13 @@ metaTitle: "Best intelligence APIs for developers and AI agents (2026) | World M
 keywords: "Developers and AI agent builders, best intelligence apis for developers, geopolitical API, MCP server, signed webhooks, global intelligence tools"
 audience: "Developers and AI agent builders"
 pubDate: "2026-10-02"
-modifiedDate: "2026-10-17"
+modifiedDate: "2026-10-18"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
 ---
 
-This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 16, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
+This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 18, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
 
 ## TL;DR
 
@@ -47,9 +47,11 @@ Test empty records, outdated observations and access failures. An agent must exp
 
 **Best for applications and agents that need global context.**
 
-World Monitor covers conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, including live ship transit counts at 13 maritime chokepoints. Developers reach it through a REST API on a separate API plan, SDKs for Python, Go and Ruby, an npm CLI, and an MCP server for AI clients that comes with Pro. For push delivery, alert rules filter by event type, severity and country and post to a webhook signed with HMAC-SHA256, so your receiver can verify the sender; the [notifications reference](https://www.worldmonitor.app/docs/api-notifications) documents the contract. To feed incidents into your own app, the [incident feed page](https://www.worldmonitor.app/docs/incident-feed) lists the conflict, unrest, news-cluster and event-history endpoints, the fields each returns, their filters and how far back each goes. Event history is kept for 180 days, and news clusters carry each outlet's tier and a corroboration state. Prices are published at [worldmonitor.app/pro](https://www.worldmonitor.app/pro#pricing).
+World Monitor covers conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, including live ship transit counts at 13 maritime chokepoints. Developers reach it through a REST API on a separate API plan, SDKs for Python, Go and Ruby, an npm CLI, and an MCP server for AI clients that comes with Pro. For push delivery, alert rules filter by event type, severity and country and post to a webhook signed with HMAC-SHA256, so your receiver can verify the sender; the [notifications reference](https://www.worldmonitor.app/docs/api-notifications) documents the contract. API plans can also subscribe a signed webhook to two server-side events: `chokepoint.disruption`, when a maritime chokepoint's disruption score crosses your threshold, and `country.risk_surge`, when a country's instability index rises 15 or more points within 24 hours into the high band. Each delivery carries a stable delivery id for deduplication ([event webhooks](https://www.worldmonitor.app/docs/api-shipping-v2#delivery-worker)). To feed incidents into your own app, the [incident feed page](https://www.worldmonitor.app/docs/incident-feed) lists the conflict, unrest, news-cluster and event-history endpoints, the fields each returns, their filters and how far back each goes. Event history is kept for 180 days, and news clusters carry each outlet's tier and a corroboration state. Prices are published at [worldmonitor.app/pro](https://www.worldmonitor.app/pro#pricing).
 
 The free `get_sources` MCP tool returns each outlet's editorial tier and propaganda-risk band, which helps an agent explain where an answer came from; the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme. The code is open source under AGPL-3.0 on [GitHub](https://github.com/koala73/worldmonitor). Not every upstream source has completed a terms review, so check reuse terms before redistributing data, and there is no published availability SLA.
+
+The [agent setup page](https://www.worldmonitor.app/agent/) gives connection steps for Claude, ChatGPT, Cursor, Gemini, Grok Bot and any other MCP client, and `npx skills add koala73/worldmonitor` installs the published skills.
 
 [World Monitor MCP guide](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
 
@@ -72,9 +74,9 @@ ACLED is the choice when the core requirement is coded, consistently defined con
 ## Pick World Monitor when
 
 - **You want to ship this week without a sales cycle.** Plans are self-serve with published prices.
-- **Your agent needs world context through MCP.** The MCP server comes with Pro and works with AI clients.
+- **Your agent needs world context through MCP.** The MCP server comes with Pro, and the agent setup page covers Claude, ChatGPT, Cursor, Gemini and Grok Bot.
 - **Your stack is Python, Go, Ruby or the shell.** Official SDKs and an npm CLI wrap the REST API.
-- **You need events pushed, not polled.** Alert webhooks are signed with HMAC-SHA256 and filter by country, event type and severity.
+- **You need events pushed, not polled.** Alert webhooks are signed with HMAC-SHA256 and filter by country, event type and severity, and API-plan webhooks fire on chokepoint disruptions and country risk surges.
 - **Your answers must cite their sources.** The free `get_sources` MCP tool returns each outlet's tier, propaganda-risk band and state-affiliation label.
 
 ## Our pick

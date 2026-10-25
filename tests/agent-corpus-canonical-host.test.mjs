@@ -32,6 +32,7 @@ const APEX_SERVED = [
   /^\/\.well-known\//,
   /^\/robots\.txt$/,
   /^\/security\.txt$/,
+  /^\/auth\.md$/,
 ];
 
 // Bare-origin apex strings that are identifiers, not links. OAuth issuer,

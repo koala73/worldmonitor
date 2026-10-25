@@ -236,7 +236,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Starea estimării și imputării nu este furnizată"
     },
     "fiveFactorScorecard": {
       "title": "Scor de reziliență pe cinci factori",
@@ -714,9 +715,9 @@
       "alertTitle": {
         "configured": "Setări desktop configurate",
         "needsKeys": "Configurați cheile API pentru a debloca funcțiile",
-        "some": "Unele funcții necesită chei API"
+        "some": "Unele funcții necesită chei API",
+        "pro": "World Monitor Pro este activ"
       },
-      "skipSetup": "Omiteți configurarea — o singură licență World Monitor deblochează totul. Alăturați-vă listei de așteptare pentru acces anticipat.",
       "summary": {
         "desktop": "Modul desktop",
         "web": "Mod web (numai citire, acreditări gestionate de server)",
@@ -745,7 +746,9 @@
         "OLLAMA_API_URL": "de ex. http://127.0.0.1:11434 (Ollama) sau http://127.0.0.1:1234/v1 (LM Studio) — punct final compatibil cu OpenAI.",
         "OLLAMA_MODEL": "de ex. llama3.1:8b — etichetă model de utilizat pentru rezumat."
       },
-      "reserveEarlyAccess": "Rezervați Accesul Timpuriu"
+      "proCloud": "Funcțiile fără o cheie API locală utilizează datele cloud World Monitor.",
+      "skipSetupPro": "Omiteți configurarea: conectați-vă cu World Monitor Pro pentru a utiliza datele cloud în loc de propriile chei API.",
+      "getPro": "Obțineți World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Se validează cheile API...",
@@ -1087,7 +1090,8 @@
       "skipToEnd": "Treci la final"
     },
     "pizzint": {
-      "indexSource": "Indice: World Monitor · date despre localuri:",
+      "indexSource": "Indice: World Monitor",
+      "venueSource": "date despre localuri:",
       "statusNormal": "NORMAL",
       "statusNoData": "FĂRĂ DATE",
       "statusNoBaseline": "FĂRĂ REFERINȚĂ",
@@ -1098,6 +1102,16 @@
       "tensionsTitle": "Tensiuni geopolitice",
       "tensionsSource": "Tensiuni: World Monitor pe baza evenimentelor GDELT",
       "insufficientData": "Date insuficiente",
+      "evidenceStrikes": "Atacuri raportate în 3 zile ({{countries}}): {{value}}",
+      "evidenceAirports": "Aeroporturi afectate: {{value}}",
+      "evidenceAirportClosed": "Aeroportul {{name}} închis",
+      "evidenceAirportHalted": "{{name}}: majoritatea zborurilor anulate",
+      "evidenceAirportRestricted": "{{name}}: zboruri restricționate",
+      "evidenceMilitaryAircraft": "Avioane militare ({{country}}) în regiune: {{value}}",
+      "evidencePlaAircraft": "Avioane militare chineze lângă Taiwan: {{value}}",
+      "evidencePlaShips": "Nave ale marinei chineze lângă Taiwan: {{value}}",
+      "evidenceSanctions": "Noi sancțiuni SUA săptămâna aceasta ({{country}}): {{value}}",
+      "evidenceUsual": "(de obicei {{value}})",
       "pizzaUnavailable": "Activitatea pizzeriilor nu este disponibilă",
       "source": "Sursa:",
       "statusClosed": "ÎNCHIS",
@@ -1289,7 +1303,7 @@
         "commodityHubs": "Hub-uri de mărfuri",
         "gulfInvestments": "Investiții Consiliului de Cooperare al Golfului",
         "tradeRoutes": "Rute comerciale",
-        "iranAttacks": "Atacurile Iranului",
+        "iranAttacks": "Atacuri în Orientul Mijlociu",
         "gpsJamming": "Interferență navigație",
         "ciiChoropleth": "Instabilitate țară",
         "dayNight": "Zi/Noapte",
@@ -1301,7 +1315,8 @@
         "radiationSpike": "Vârf de radiații",
         "radiationElevated": "Radiații ridicate",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Restricții de spațiu aerian NOTAM"
       },
       "tooltip": {
         "earthquake": "Cutremur",
@@ -1333,7 +1348,9 @@
         "sourceIomDtm": "Sursa: IOM DTM",
         "sinceDate": "din {{date}}",
         "lastMonth": "luna trecută",
-        "sourceUnhcrOdp": "Sursa: Portalul de date operaționale al UNHCR"
+        "sourceUnhcrOdp": "Sursa: Portalul de date operaționale al UNHCR",
+        "displaced": "strămutați",
+        "sourceIdmc": "Sursă: IDMC"
       },
       "layerHelp": {
         "title": "Ghid pentru straturi de hartă",
@@ -1414,7 +1431,8 @@
           "geoBoundaries": "Zone demilitarizate, linii de încetare a focului și granițe disputate",
           "ciiChoropleth": "Hartă termică a Indicelui de instabilitate la nivel de țară — colorează țările după scor (verde=stabil, roșu=critic)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Restricții temporare de zbor și spațiu aerian restricționat, de pericol și interzis din NOTAM-urile FAA, în vigoare acum sau începând în următoarele 24 de ore"
         },
         "notes": {
           "timeAffects": "Afectează: cutremure, vreme, proteste, întreruperi"
@@ -1550,6 +1568,8 @@
       "capacityPercent": "{{percent}}% capacitate",
       "noCountryImpacts": "Nu s-a detectat niciun impact asupra țării",
       "alternativeRoutes": "Trasee alternative",
+      "sharesCutZone": "aceeași strâmtoare",
+      "estimateNote": "Estimare: capacitatea și redundanța cablurilor sunt aproximate, nu măsurate.",
       "countriesAffected": "Țări afectate ({{count}})",
       "links": "link-uri",
       "selectInfrastructureHint": "Selectați infrastructura pentru a analiza impactul în cascadă",
@@ -1767,7 +1787,21 @@
       "latestChange": "Ultima modificare",
       "accelerating": "În accelerare",
       "inDays": "în {{days}} zile",
-      "crossBorderNote": "Portalul de date operaționale al Agenției ONU pentru Refugiați: persoanele care au traversat granițe în fiecare criză, din cele mai recente rapoarte ale țărilor. Situațiile se suprapun, deci nu sunt adăugate împreună."
+      "crossBorderNote": "Portalul de date operaționale al Agenției ONU pentru Refugiați: persoanele care au traversat granițe în fiecare criză, din cele mai recente rapoarte ale țărilor. Situațiile se suprapun, deci nu sunt adăugate împreună.",
+      "last7And30": "Ultimele 7 / 30 de zile",
+      "staleReport": "Raport învechit",
+      "reported": "Număr",
+      "period": "Perioadă",
+      "movementNote": "Fiecare rând păstrează sursa, data raportului și măsura. Populațiile, sosirile și evenimentele de control la frontieră sunt măsuri diferite. Sursele se pot suprapune; nu adunați numerele lor. WorldMonitor derivă această vizualizare din sursele indicate; aceasta nu implică susținerea furnizorilor.",
+      "recent": "Recent",
+      "last30Days": "Ultimele 30 de zile",
+      "newThisWeek": "Nou această săptămână",
+      "conflict": "Conflict",
+      "disaster": "Dezastru",
+      "surge": "Creștere bruscă",
+      "recentNote": "IDMC: persoane strămutate în interiorul țării lor în ultimele 30 de zile. IDMC publică o cifră într-o medie de trei săptămâni după strămutare, deci săptămânile recente se completează mai târziu. Nou această săptămână numără cifrele publicate în ultimele 7 zile. Creștere bruscă: cel puțin 5.000 de persoane și de trei ori media lunară din precedentele cinci luni.",
+      "recentAsOf": "Date de {{date}}.",
+      "recentMissing": "Fără date în acest moment de la {{countries}}; fișierele lor nu s-au încărcat, ceea ce nu înseamnă deplasare zero."
     },
     "climate": {
       "noAnomalies": "Nu au fost detectate anomalii semnificative",
@@ -1794,7 +1828,8 @@
       "sourceCoverageHint": "Se afișează {{covered}} din {{total}} surse active — acest panou își rotește sursele la fiecare reîmprospătare",
       "sortBy": "Sortează după",
       "sortNewest": "Cel mai recent",
-      "sortRelevance": "Relevanță"
+      "sortRelevance": "Relevanță",
+      "translationUnavailable": "Traducerea nu este disponibilă. Verificați setările furnizorului de IA și încercați din nou."
     },
     "breakingNews": {
       "critical": "CRITIC",
@@ -3051,7 +3086,9 @@
         "africa": "Africa"
       },
       "scheduled": "Programat",
-      "estimated": "Est"
+      "estimated": "Est",
+      "normalOperations": "OPERAȚIUNI NORMALE",
+      "open": "DESCHIS"
     },
     "aircraft": {
       "altitude": "Altitudine",
@@ -3456,7 +3493,12 @@
       "uae_ecsr": "EAU/ECSR",
       "venezuela_crisis": "Criza din Venezuela",
       "yemen_houthis": "Yemen/Houthi"
-    }
+    },
+    "upcomingForecast": "Prognoză viitoare",
+    "currentForecast": "Prognoză actuală",
+    "expiredForecast": "Prognoză expirată",
+    "validFrom": "Valabilă de la",
+    "validUntil": "Valabilă până la"
   },
   "signals": {
     "context": {
@@ -3830,5 +3872,27 @@
       "description": "Activează sursele despre Iran, Israel, Golf și regiunile kurde"
     },
     "unavailable": "Presetul {{preset}} nu este disponibil cu panourile actuale"
+  },
+  "countryHistory": {
+    "title": "Istoricul zilnic al țării",
+    "loading": "Se încarcă istoricul zilnic…",
+    "window": "Perioadă",
+    "days": "{{days}} zile",
+    "observed": "{{count}} instantanee în {{days}} zile",
+    "legend": "CII (chihlimbar): valorile mai mari indică mai multă instabilitate. Reziliență (verde): valorile mai mari indică o capacitate mai mare. Punctele marchează zilele cu titluri selectate.",
+    "chart": "Scoruri zilnice de CII și reziliență. Lacunele și schimbările de formulă întrerup liniile.",
+    "selectDate": "{{date}}, {{count}} titluri selectate",
+    "empty": "Nu există instantanee zilnice în această perioadă. Istoricul se acumulează după activare.",
+    "unavailable": "Istoricul este temporar indisponibil. Încercați din nou.",
+    "retry": "Reîncercați",
+    "stale": "Ultima captură zilnică reușită este mai veche de 36 de ore.",
+    "break": "Schimbare de formulă sau lacună de observație. Comparați doar scoruri cu aceeași formulă.",
+    "partial": "Acoperirea știrilor era parțială la momentul capturii.",
+    "resilience": "Reziliență",
+    "ciiMissing": "CII indisponibil",
+    "resilienceMissing": "Reziliență indisponibilă",
+    "noEvents": "Nu au fost capturate titluri selectate pentru această dată. Acest lucru nu dovedește absența evenimentelor.",
+    "unlock90": "Deblocați 90 de zile cu Pro",
+    "unlock365": "Deblocați 365 de zile cu un plan API"
   }
 }

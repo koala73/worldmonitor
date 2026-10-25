@@ -96,6 +96,7 @@ export type PlanLimitDimension =
 
 export type PlanFeatures = {
   tier: number;
+  historyDays: number;
   maxDashboards: number;
   apiAccess: boolean;
   apiRateLimit: number;
@@ -206,6 +207,7 @@ export interface CatalogEntry {
 
 const FREE_FEATURES: PlanFeatures = {
   tier: 0,
+  historyDays: 7,
   maxDashboards: 3,
   apiAccess: false,
   apiRateLimit: 0,
@@ -234,6 +236,7 @@ const FREE_FEATURES: PlanFeatures = {
 
 const PRO_FEATURES: PlanFeatures = {
   tier: 1,
+  historyDays: 90,
   maxDashboards: 10,
   apiAccess: false,
   apiRateLimit: 0,
@@ -265,6 +268,7 @@ const PRO_FEATURES: PlanFeatures = {
  */
 const PRO_BUSINESS_FEATURES: PlanFeatures = {
   tier: 1,
+  historyDays: 90,
   maxDashboards: 25,
   apiAccess: false,
   apiRateLimit: 0,
@@ -285,6 +289,7 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
 
 const API_STARTER_FEATURES: PlanFeatures = {
   tier: 2,
+  historyDays: 365,
   maxDashboards: 25,
   apiAccess: true,
   apiRateLimit: 60,
@@ -305,6 +310,7 @@ const API_STARTER_FEATURES: PlanFeatures = {
 
 const API_BUSINESS_FEATURES: PlanFeatures = {
   tier: 2,
+  historyDays: 365,
   maxDashboards: 100,
   apiAccess: true,
   apiRateLimit: 300,
@@ -324,17 +330,25 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   dataExport: true,
 };
 
+// Enterprise is sold as "Unlimited API requests" under fair use. The daily
+// numbers below are circuit breakers against a leaked key, not plan limits:
+// every one is at least 2.5× the largest self-serve plan, and the high-usage
+// alarm (server/_shared/high-usage-alarm.ts) pages at a quarter of each. An
+// unknown Dodo product also resolves here (FALLBACK_PLAN_KEY in
+// payments/subscriptionHelpers.ts), so "unlimited" was reachable without a
+// sales contract. Pinned by tests/high-usage-alarm.test.mts.
 const ENTERPRISE_FEATURES: PlanFeatures = {
   tier: 3,
+  historyDays: 365,
   maxDashboards: -1,
   apiAccess: true,
   apiRateLimit: 1000,
-  apiDailyAllowance: -1,
+  apiDailyAllowance: 100_000,
   planLimits: {
-    apiRequestsPerDay: null,
+    apiRequestsPerDay: 100_000,
     apiBurstRequestsPerMinute: 1000,
-    mcpCallsPerDay: null,
-    dashboardAiCallsPerDay: null,
+    mcpCallsPerDay: 25_000,
+    dashboardAiCallsPerDay: 25_000,
     mcpBurstRequestsPerMinute: 1000,
   },
   prioritySupport: true,

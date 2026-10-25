@@ -15,8 +15,8 @@ import {
 import { isDebugBearRumScriptFrame } from '../src/bootstrap/debugbear-rum.ts';
 import { isIosLikeUserAgent } from '../src/bootstrap/platform-ua.ts';
 import { isolateNonProductionSentryEvent } from '../shared/sentry-build-metadata.ts';
-import { sanitizeSentryTelemetry } from '../shared/sentry-privacy.ts';
 import { buildCheckoutReportTags } from '../src/services/checkout-sentry-policy.ts';
+import { scrubSentryCredentials } from '../shared/sensitive-url-params.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -55,7 +55,7 @@ assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/boot
 // eslint-disable-next-line no-new-func
 const rawBeforeSend = new Function(
   'event', 'isDebugBearRumScriptFrame', 'isIosLikeUserAgent', 'navigator',
-  'isolateNonProductionSentryEvent', 'environment', 'sanitizeSentryTelemetry',
+  'isolateNonProductionSentryEvent', 'environment', 'scrubSentryCredentials',
   `${tpMatch[0]}\n${fnBody}`,
 );
 
@@ -82,7 +82,7 @@ const IOS_NAVIGATOR = { userAgent: IOS_GOOGLE_APP_UA, maxTouchPoints: 5 };
 const IPADOS_NAVIGATOR = { userAgent: MAC_DESKTOP_UA, maxTouchPoints: 5 };
 
 function beforeSend(event, navigatorStub = DESKTOP_NAVIGATOR, environment = 'production') {
-  return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub, isolateNonProductionSentryEvent, environment, sanitizeSentryTelemetry);
+  return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub, isolateNonProductionSentryEvent, environment, scrubSentryCredentials);
 }
 
 // Extract the `ignoreErrors` array literal so tests can assert which messages
@@ -150,6 +150,12 @@ function walkTsFiles(dir) {
 }
 
 // ─── ignoreErrors message matches ────────────────────────────────────────
+
+describe('default PII collection', () => {
+  it('collects IP and default PII only on production hosts', () => {
+    assert.match(mainSrc, /sendDefaultPii: environment === 'production',/);
+  });
+});
 
 describe('ignoreErrors filters', () => {
   it('suppresses Clerk SDK UI chunk load failure', () => {
@@ -781,7 +787,7 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       assert.equal(event.exception.values[0].stacktrace?.frames?.length ?? 0, 0);
       event.tags = { kind: 'panel_call_rejected', panel: 'insights', method: 'updateInsights', dispatch };
       assert.equal(isIgnored('signal timed out'), false);
-      assert.deepEqual(beforeSend(event), event);
+      assert.equal(beforeSend(event), event);
     });
   }
 
@@ -834,7 +840,7 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       assert.equal(event.exception.values[0].stacktrace?.frames?.length ?? 0, 0);
       event.tags = { kind };
       assert.equal(isIgnored('signal timed out'), false);
-      assert.deepEqual(beforeSend(event), event);
+      assert.equal(beforeSend(event), event);
     });
   }
 
@@ -867,7 +873,7 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       );
       const event = makeEvent(message, name, []);
       event.tags = { ...CHECKOUT_REPORT_TAGS };
-      assert.deepEqual(beforeSend(event), event);
+      assert.equal(beforeSend(event), event);
     });
 
     it(`still suppresses ${label} with no first-party report`, () => {
@@ -2206,7 +2212,7 @@ describe('bare "Failed to fetch" is decided by host, not stack shape (WORLDMONIT
     // Owned: the one verdict that changed.
     const owned = makeEvent('Load failed (api.worldmonitor.app)', 'TypeError', []);
     owned.tags = { ...CHECKOUT_REPORT_TAGS };
-    assert.deepEqual(beforeSend(owned), owned);
+    assert.equal(beforeSend(owned), owned);
   });
 
   // ── The shape that hid a P0 ────────────────────────────────────────────────
@@ -2891,3 +2897,28 @@ describe('document-URL-only explicit Error (WORLDMONITOR-134)', () => {
       'an inline HTML script now throws — a document-attributed Error may be ours; re-derive the WORLDMONITOR-134 gate');
   });
 });
+
+// #9653: DeckGLMap reports a deck.gl render-loop stop only after confirming the
+// map froze. Those errors come from deck/maplibre frames, which the vendor-stack
+// rules drop, so the report claims itself with a kind tag.
+describe('confirmed deck.gl loop-stop reports', () => {
+  const shapes = [
+    ['TypeError with only map-chunk frames', makeEvent("Cannot read properties of undefined (reading 'getViewport')", 'TypeError', [
+      { filename: '/assets/deck-stack-x1y2z3.js', lineno: 1, function: 'Deck._onRenderFrame' },
+      { filename: '/assets/maplibre-AbC123.js', lineno: 2, function: 'Map._render' },
+    ])],
+    ['interleaved null-id race', makeEvent("Cannot read properties of null (reading 'id')", 'TypeError', [
+      { filename: '/assets/deck-stack-x1y2z3.js', lineno: 1, function: 'drawLayer' },
+    ])],
+  ];
+  for (const [label, event] of shapes) {
+    it(`drops an unclaimed ${label}`, () => {
+      assert.equal(beforeSend(structuredClone(event)), null);
+    });
+    it(`delivers a claimed ${label}`, () => {
+      const claimed = { ...structuredClone(event), tags: { kind: 'deck_loop_stopped', component: 'deckgl-loop' } };
+      assert.notEqual(beforeSend(claimed), null);
+    });
+  }
+});
+

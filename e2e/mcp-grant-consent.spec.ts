@@ -56,18 +56,48 @@ const HOSTILE_REDIRECTS: ReadonlyArray<[label: string, redirect: string]> = [
  */
 async function stubClerkModule(
   page: Page,
-  opts: { trackSignIn?: boolean } = {},
+  opts: { trackSignIn?: boolean; signedOut?: boolean } = {},
 ): Promise<void> {
   const openSignInBody = opts.trackSignIn ? 'window.__openSignInCalled = true;' : '';
+  // Signed-out mode models the real Clerk modal as a `.cl-modalBackdrop` node:
+  // openSignIn() mounts it, a dismissal removes it, and a completed sign-in sets
+  // the user and emits. `isClerkSignInOpen` reads the same DOM the production
+  // predicate in src/services/clerk.ts reads.
+  const initialUser = opts.signedOut ? 'null' : "{ email: 'e2e@worldmonitor.app' }";
   await page.route('**/services/clerk*', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/javascript',
       body: `
+        let user = ${initialUser};
+        window.__openSignInCount = 0;
+        window.__dismissClerkSignIn = () => {
+          document.querySelector('.cl-modalBackdrop')?.remove();
+        };
+        window.__signOutClerk = () => {
+          user = null;
+          window.__emitClerkSubscription?.();
+        };
+        window.__completeClerkSignIn = () => {
+          user = { email: 'e2e@worldmonitor.app' };
+          document.querySelector('.cl-modalBackdrop')?.remove();
+          window.__emitClerkSubscription?.();
+        };
         export async function initClerk() {}
-        export function getClerkToken() { return Promise.resolve('stub-jwt-token'); }
-        export function getCurrentClerkUser() { return { email: 'e2e@worldmonitor.app' }; }
-        export function openSignIn() { ${openSignInBody} }
+        export function getClerkToken() { return Promise.resolve(user ? 'stub-jwt-token' : null); }
+        export function getCurrentClerkUser() { return user; }
+        export function isClerkSignInOpen() {
+          return Boolean(document.querySelector('.cl-modalBackdrop'));
+        }
+        export function openSignIn() {
+          ${openSignInBody}
+          window.__openSignInCount += 1;
+          if (!document.querySelector('.cl-modalBackdrop')) {
+            const backdrop = document.createElement('div');
+            backdrop.className = 'cl-modalBackdrop';
+            document.body.appendChild(backdrop);
+          }
+        }
         export function subscribeClerk(cb) {
           window.__emitClerkSubscription = cb;
           cb();
@@ -77,6 +107,20 @@ async function stubClerkModule(
         }
       `,
     });
+  });
+}
+
+/**
+ * Dismiss the stubbed Clerk modal the way a person does: some time after it
+ * mounted. The page notices the modal by polling its presence every 200 ms
+ * (SIGN_IN_DISMISS_POLL_MS); a removal inside the first poll would look like a
+ * modal that never opened, which no human click can produce.
+ */
+async function dismissClerkSignIn(page: Page): Promise<void> {
+  await page.waitForFunction(() => Boolean(document.querySelector('.cl-modalBackdrop')));
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    (window as unknown as { __dismissClerkSignIn: () => void }).__dismissClerkSignIn();
   });
 }
 
@@ -722,6 +766,125 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#authorizeBtn')).toBeEnabled();
   });
 
+  // Observed 2026-10-19: a passkey prompt was interrupted, the Clerk modal
+  // closed with the sign-in attempt at needs_first_factor and no session, and
+  // the page sat on "Loading authorization request…" forever. A dismissed modal
+  // must hand the page back: Sign in button, a short reason, no spinner.
+  test('dismissing the sign-in modal without a session shows a sign-in action, not a spinner', async ({
+    page,
+  }) => {
+    await stubClerkModule(page, { signedOut: true });
+    await stubContextSuccess(page);
+
+    await page.goto(GRANT_PAGE);
+    await dismissClerkSignIn(page);
+
+    await expect(page.locator('#signInView')).toBeVisible();
+    await expect(page.locator('#signInBtn')).toBeVisible();
+    await expect(page.locator('#signInBtn')).toBeEnabled();
+    await expect(page.locator('#signInMessage')).toHaveText(
+      'Sign-in was cancelled. Try again or use your email code.',
+    );
+    await expect(page.locator('#loading')).toBeHidden();
+    await expect(page.locator('#consent')).toBeHidden();
+    await expect(page.locator('#errorView')).toBeHidden();
+
+    // The button reopens the modal, and a real completion proceeds to consent.
+    const opensBefore = await page.evaluate(
+      () => (window as unknown as { __openSignInCount: number }).__openSignInCount,
+    );
+    await page.locator('#signInBtn').click();
+    await page.waitForFunction(() => Boolean(document.querySelector('.cl-modalBackdrop')));
+    expect(
+      await page.evaluate(() => (window as unknown as { __openSignInCount: number }).__openSignInCount),
+    ).toBe(opensBefore + 1);
+
+    await page.evaluate(() => {
+      (window as unknown as { __completeClerkSignIn: () => void }).__completeClerkSignIn();
+    });
+    await expect(page.locator('#consent')).toBeVisible();
+    await expect(page.locator('#clientName')).toHaveText('Claude Desktop');
+    await expect(page.locator('#authorizeBtn')).toBeEnabled();
+    await expect(page.locator('#signInView')).toBeHidden();
+    await expect(page.locator('#loading')).toBeHidden();
+  });
+
+  test('a completed sign-in proceeds to consent without flashing the cancelled message', async ({
+    page,
+  }) => {
+    await stubClerkModule(page, { signedOut: true });
+    await stubContextSuccess(page);
+
+    await page.goto(GRANT_PAGE);
+    await page.waitForFunction(() => Boolean(document.querySelector('.cl-modalBackdrop')));
+
+    // Record whether the cancelled message is EVER shown. Clerk closes the modal
+    // and activates the session as two separate steps, so a watcher that reads
+    // "modal gone + no user" in between would misreport a success as a cancel.
+    await page.evaluate(() => {
+      const w = window as unknown as { __cancelShown: boolean };
+      w.__cancelShown = false;
+      new MutationObserver(() => {
+        const view = document.getElementById('signInMessage');
+        if (view && !view.hidden && view.textContent) w.__cancelShown = true;
+      }).observe(document.body, { subtree: true, attributes: true, childList: true, characterData: true });
+    });
+
+    // Modal closes first; the session lands a beat later.
+    await dismissClerkSignIn(page);
+    await page.waitForTimeout(150);
+    await page.evaluate(() => {
+      (window as unknown as { __completeClerkSignIn: () => void }).__completeClerkSignIn();
+    });
+
+    await expect(page.locator('#consent')).toBeVisible();
+    await expect(page.locator('#authorizeBtn')).toBeEnabled();
+    await expect(page.locator('#signInView')).toBeHidden();
+    await expect(page.locator('#loading')).toBeHidden();
+    expect(
+      await page.evaluate(() => (window as unknown as { __cancelShown: boolean }).__cancelShown),
+    ).toBe(false);
+  });
+
+  test('a sign-out while the context loads keeps the sign-in view, not a late consent card', async ({
+    page,
+  }) => {
+    await stubClerkModule(page);
+    let releaseContext: () => void = () => {};
+    const held = new Promise<void>((resolve) => { releaseContext = resolve; });
+    let contextRequests = 0;
+    await page.route('**/api/internal/mcp-grant-context*', async (route) => {
+      contextRequests += 1;
+      await held;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ client_name: 'Claude Desktop', redirect_host: 'api.worldmonitor.app' }),
+      });
+    });
+
+    await page.goto(GRANT_PAGE);
+    await expect.poll(() => contextRequests).toBeGreaterThan(0);
+
+    // Signed out mid-load: the page prompts sign-in. The held response that
+    // arrives afterwards belongs to the old session and must not paint consent
+    // over the sign-in view, or a later dismissal has nothing to return to.
+    await page.evaluate(() => {
+      (window as unknown as { __signOutClerk: () => void }).__signOutClerk();
+    });
+    await expect(page.locator('#signInView')).toBeVisible();
+    releaseContext();
+    await page.waitForTimeout(300);
+    await expect(page.locator('#consent')).toBeHidden();
+    await expect(page.locator('#signInView')).toBeVisible();
+
+    await dismissClerkSignIn(page);
+    await expect(page.locator('#signInMessage')).toHaveText(
+      'Sign-in was cancelled. Try again or use your email code.',
+    );
+    await expect(page.locator('#signInBtn')).toBeVisible();
+  });
+
   test('401 from context triggers sign-in (consent never renders)', async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as { __openSignInCalled: boolean }).__openSignInCalled = false;
@@ -743,5 +906,36 @@ test.describe('MCP grant consent page (#5654)', () => {
     // only mean anything once the assertion above proves the page's JS ran.
     await expect(page.locator('#consent')).toBeHidden();
     await expect(page.locator('#errorView')).toBeHidden();
+
+    // The re-prompt must not strand the page on the spinner either: dismissing
+    // that modal hands back the same sign-in action as a first-load dismissal.
+    await dismissClerkSignIn(page);
+    await expect(page.locator('#signInBtn')).toBeVisible();
+    await expect(page.locator('#signInMessage')).toHaveText(
+      'Sign-in was cancelled. Try again or use your email code.',
+    );
+    await expect(page.locator('#loading')).toBeHidden();
+
+    // Clerk can clear the stale user and emit a signed-out update after the
+    // dismissal. That must not reopen the modal over the user's choice or wipe
+    // the reason they were shown.
+    const opensBefore = await page.evaluate(
+      () => (window as unknown as { __openSignInCount: number }).__openSignInCount,
+    );
+    await page.evaluate(() => {
+      (window as unknown as { __signOutClerk: () => void }).__signOutClerk();
+    });
+    await page.evaluate(
+      () => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+    );
+    expect(
+      await page.evaluate(() => (window as unknown as { __openSignInCount: number }).__openSignInCount),
+    ).toBe(opensBefore);
+    await expect(page.locator('.cl-modalBackdrop')).toHaveCount(0);
+    await expect(page.locator('#signInMessage')).toHaveText(
+      'Sign-in was cancelled. Try again or use your email code.',
+    );
   });
 });

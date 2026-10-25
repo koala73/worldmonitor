@@ -49,7 +49,8 @@ export interface CountryDeepDiveSignalItem {
   type: 'MILITARY' | 'PROTEST' | 'CYBER' | 'DISASTER' | 'OUTAGE' | 'OTHER';
   severity: ThreatLevel;
   description: string;
-  timestamp: Date;
+  timestamp: Date | null;
+  source?: string;
 }
 
 export interface CountryDeepDiveSignalDetails {
@@ -233,7 +234,10 @@ export interface CountryBriefPanel {
   updateScore?(score: CountryScore | null, signals: CountrySignalCounts): void;
   isFallbackBrief?(): boolean;
   updateSignals?(signals: CountrySignalCounts, notes?: readonly string[]): void;
+  getSignalCounts?(): CountrySignalCounts | null;
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
+  updateQualifiedCountrySignals?(value: import('../../shared/country-signal-observations').QualifiedCountrySignals): void;
+  clearQualifiedCountrySignals?(): void;
   updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary | null): void;
   updateDefenseIndustrialBase?(data: GetDefenseIndustrialBaseResponse | null): void;
   syncCountryPremiumSectionsAccess?(hasAccess: boolean): void;

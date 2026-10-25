@@ -31,9 +31,9 @@ Before diving into the per-tool reference, two affordances make discovery cheape
 
 MCP coverage is intentionally curated. Some OpenAPI operations are REST-only because they mutate state, pass through LLM cost, fetch paid/high-cardinality upstreams on cache miss, or need manual cache-key mapping. The [API coverage section](/mcp-overview#api-coverage) names the enforced categories and links the current follow-up trackers.
 
-### `describe_tool` — full uncompressed definition on demand
+### `describe_tool` — one tool's definition on demand
 
-Since v1.5.0, `tools/list` returns each tool's `description` truncated to the first sentence (≤120 UTF-8 bytes). That keeps the per-session input-token cost low when the LLM only needs to scan names — and the same `tools/list` entry now ships an `outputSchema` (v1.6.0) so the model can author a [JMESPath projection](/mcp-jmespath) on the first call. When the compressed description is ambiguous, call `describe_tool` for the long form:
+Since v1.34.0, `tools/list` ships each tool's complete `description` (every registered description fits a 1,024-byte per-tool budget, enforced in CI) together with its `inputSchema` and `outputSchema` (v1.6.0), so the model can choose a tool and author a [JMESPath projection](/mcp-jmespath) from the listing alone. `describe_tool` returns that same definition for one tool, for re-reading a single entry without re-listing the whole catalog:
 
 ```json
 {
@@ -44,7 +44,7 @@ Since v1.5.0, `tools/list` returns each tool's `description` truncated to the fi
 }
 ```
 
-Response — identical shape to a `tools/list` entry, with the full uncompressed `description` and the full `inputSchema.properties` text. Every entry also carries `_meta["worldmonitor/access"]` (the tier marker: `free`, `free-account`, or `subscription`) and `_meta["worldmonitor/weight"]` (what one call costs in [budget units](/usage-rate-limits#mcp-calls-against-an-api-plan): 1, 2, or 3), and UI-bearing tools add `_meta.ui.resourceUri`:
+Response — identical to that tool's `tools/list` entry: the same `description` and the same `inputSchema.properties` text. Every entry also carries `_meta["worldmonitor/access"]` (the tier marker: `free`, `free-account`, or `subscription`) and `_meta["worldmonitor/weight"]` (what one call costs in [budget units](/usage-rate-limits#mcp-calls-against-an-api-plan): 1, 2, or 3), and UI-bearing tools add `_meta.ui.resourceUri`:
 
 ```json
 {
@@ -54,7 +54,7 @@ Response — identical shape to a `tools/list` entry, with the full uncompressed
     "content": [
       {
         "type": "text",
-        "text": "{\"name\":\"get_chokepoint_status\",\"description\":\"Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.\",\"inputSchema\":{ /* full properties with full descriptions */ },\"outputSchema\":{ /* … */ },\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false},\"_meta\":{ /* … */ }}"
+        "text": "{\"name\":\"get_chokepoint_status\",\"description\":\"Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, a port-country coverage index, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.\",\"inputSchema\":{ /* full properties with full descriptions */ },\"outputSchema\":{ /* … */ },\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false},\"_meta\":{ /* … */ }}"
       }
     ],
     "structuredContent": { "name": "get_chokepoint_status", "description": "…", "inputSchema": {}, "outputSchema": {}, "annotations": {}, "_meta": {} }
@@ -62,9 +62,9 @@ Response — identical shape to a `tools/list` entry, with the full uncompressed
 }
 ```
 
-`describe_tool` is **exempt from the Pro daily quota** (per-minute rate limit still applies). The exemption is intentional — counting metadata lookups against the 50/day cap would discourage exploration, defeating the compression. Two common workflows:
+`describe_tool` is **exempt from the Pro daily quota** (per-minute rate limit still applies). The exemption is intentional — counting metadata lookups against the 50/day cap would discourage exploration. Two common workflows:
 
-- **Compressed entry is ambiguous about behaviour or argument semantics.** Call `describe_tool` to see the full long-form description plus every property's full description.
+- **Re-reading one tool mid-session.** Call `describe_tool` to get a single tool's definition back into context without paying for the whole `tools/list` catalog again.
 - **First-time JMESPath authoring against an unfamiliar response.** Call `describe_tool` to read the `outputSchema` (see next section) without paying a quota slot for a real `tools/call`.
 
 `describe_tool` returns two soft-error envelopes inside the normal `content[0].text`:
@@ -112,6 +112,7 @@ Worked example — the `outputSchema` documented shape (its `anyOf[0]`) for `get
   "properties": {
     "countryCode": { "type": "string" },
     "countryName": { "type": "string" },
+    "ciiHistory": { "type": "object", "description": "Optional UTC daily history, added only with history_days." },
     "cii": {
       "type": ["object", "null"],
       "description": "Absent when the country is not tracked, and always absent when upstreamUnavailable is true.",
@@ -160,6 +161,12 @@ A typed-parsing sketch in TypeScript using the schema for compile-time hints:
 type CountryRisk = {
   countryCode: string;
   countryName: string;
+  ciiHistory?: {
+    methodologyVersion: string; requestedDays: number; returnedDays: number; stale: boolean;
+    points: Array<{ date: string; combinedScore: number; components: { ciiContribution: number; geoConvergence: number; militaryActivity: number; newsActivity: number } }>;
+    change: { fromDate: string; fromScore: number; toDate: string; toScore: number; delta: number } | null;
+    versionBreaks: Array<{ date: string; from: string; to: string }>;
+  };
   // The four component names are historical misnomers: ciiContribution is
   // domestic unrest, geoConvergence is armed conflict, militaryActivity is
   // security/mobility, newsActivity is the information environment.
@@ -458,7 +465,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_eu_industrial_production`
 
-Eurostat monthly industrial production index (sts_inpr_m, NACE B-D industry excl. construction, SCA, base 2021=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, month label, and a 12-month sparkline series. Leading indicator of real-economy activity used by the "Real economy pulse" sparkline.
+Return the Eurostat monthly industrial production index (sts_inpr_m: NACE B-D industry excluding construction, seasonally and calendar adjusted, 2021=100) for the 27 EU members plus the EA20 and EU27_2020 aggregates. Each country entry has the latest value, prior value, month label and a 12-month series. Monthly data; the seed is flagged stale after 5 days. Covers the EU industrial index only; no other production or GDP measures. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. countries uses Eurostat geo codes (ISO alpha-2 except EL for Greece); limit caps the country map when no filter is given (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -487,22 +494,24 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
-### `get_tariff_trends`
+### `get_price_and_debt_indicators`
 
-Global trade and pricing indicators: US MFN applied tariff trend (all-products average; for another reporter, a partner or a product group use get_tariff_averages), Big Mac index, FAO Food Price Index, and per-country national debt levels.
+Return the seeded price and debt indicator bundle: the Economist Big Mac index by country, the FAO Food Price Index and per-country national debt levels. Each sub-dataset has its own staleness budget (Big Mac a week, FAO and debt 60 days). No tariff rates: a dataset value of tariffs is rejected with a validation error. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects bigmac, fao-ffpi or national-debt; country narrows Big Mac and debt rows (alpha-2, alpha-3 or name); limit caps each list (default 30, 0 for no cap).
+
+Formerly `get_tariff_trends`. A call to that old name with only the tariffs dataset runs `get_tariff_averages` and returns the US MFN series. Any other dataset on the old name still returns this bundle. This bundle has carried no tariff series since #9301. The US MFN series is Pro data. Call `get_tariff_averages` with reporter `840` and no partner or product group. `dataset: ["tariffs"]` on this tool returns Invalid params.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | `array<string: tariffs / bigmac / fao-ffpi / national-debt>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
+| `dataset` | `array<string: bigmac / fao-ffpi / national-debt>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
 | `country` | string | Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
-| `limit` | number | Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). Tariff datapoints keep the most recent years; coverageStartYear/coverageEndYear describe the full seeded window. |
+| `limit` | number | Cap each list dataset (BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/economic/v1/get-fao-food-price-index`, `GET /api/economic/v1/get-national-debt`, `GET /api/economic/v1/list-bigmac-prices`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** per sub-dataset — tariffs **7 h**, BigMac **7 d**, FAO FFPI and national debt **60 d** each. The single `stale` flag ORs all four checks: it flips as soon as any one sub-dataset exceeds its own budget, tariffs in practice being the tightest.
+- **Freshness budget:** per sub-dataset — BigMac **7 d**, FAO FFPI and national debt **60 d** each. The single `stale` flag ORs all three checks: it flips as soon as any one sub-dataset exceeds its own budget.
 
 <CodeGroup>
 
@@ -513,7 +522,44 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_tariff_trends","arguments":{}}
+    "params":{"name":"get_price_and_debt_indicators","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_capital_flows`
+
+Return where money enters and leaves about 230 economies, and between any two, from official statistics. IMF balance of payments: gross inflows and outflows split into FDI, portfolio and other investment, quarterly or annual by country, with derived Forbes-Warnock states (surge or stop for inflows, flight or retrenchment for outflows) and z-scores. Per country and per pair: BIS cross-border bank deposits and lending, IMF portfolio holdings and IMF direct-investment positions. People changing residence are not a BOP flow. Sources lag 1-3 quarters (FDI ~2 years); stale after 10 days or when the newest BOP quarter is over a year old. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. country (max 10) returns full views; counterpart adds both directions of each pair, each leg marked reported, not_itemized or not_published. Without country, a ranking of countries that have the sort metric (default outflow_z; annual-only series have none) capped by limit (default 30, 0 for no cap).
+
+Works for any economy and any pair: pass several `country` values to compare, add `counterpart` for bilateral detail, or omit `country` to rank the economies that have the chosen `sort` metric (the default `outflow_z` leaves out annual-only series, which have no z-score). Episode labels follow Forbes and Warnock (2012) and are derived from the reported flows. See [Capital Flows methodology](/methodology/capital-flows) for every view, leg and status.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | `array<string>` | Countries to return in full: ISO 3166-1 alpha-2 (e.g. "GB"), alpha-3 ("ARE") or English names. Omit to get the cross-country ranking. |
+| `include_series` | boolean | With country, also return the period-by-period BOP flows (12 quarters or 6 years). Default false. |
+| `counterpart` | string | With country, a partner country (alpha-2, alpha-3 or name). Returns pairs[]: deposits each side's non-banks hold in the other's banks and bank lending each way (stock, 4-quarter flow, 8 quarters of history), each side's holdings of the other's securities, and direct investment each way with both sides' figures, plus the counterpart's own view. |
+| `sort` | `string: outflow_z / inflow_z / outflows_pct_gdp / inflows_pct_gdp / net_usd_bn / bank_deposits_abroad_flow_4q / foreign_portfolio_change_pct` | Ranking field when country is omitted. outflow_z / inflow_z rank the latest Forbes-Warnock z-score; *_pct_gdp rank trailing gross flows as a share of GDP; net_usd_bn ranks inflows minus outflows; bank_deposits_abroad_flow_4q ranks the 4-quarter change in non-bank deposits held in foreign banks; foreign_portfolio_change_pct ranks the year-on-year change in foreign holdings of the country's securities. Default outflow_z. |
+| `ascending` | boolean | Sort ascending instead of descending. Default false. |
+| `limit` | number | Cap the ranking to this many countries (default 30, pass 0 for no cap). Ignored with country. |
+
+- **API endpoints:** `GET /api/economic/v1/get-capital-flows`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from Redis.
+- **Freshness budget:** **10 d** since the last weekly seed, plus a content-age check: `stale` flips when the newest IMF BOP quarter is more than 12 months old.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_capital_flows","arguments":{"country":["DE"],"counterpart":"JP"}}
   }'
 ```
 
@@ -554,7 +600,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_averages`
 
-Average tariff one country applies, by year. With no partner and no product group it returns the WTO MFN average over all products (`TP_A_0010`) for any reporter, not only the US series in `get_tariff_trends`. With a partner other than World, or a product group, it returns the effectively applied average from UNCTAD TRAINS via World Bank WITS:
+Average tariff a country applies by year: schedule rates through 2023, no Section 301/232 duties. With no partner and no product group it returns the WTO MFN average over all products (`TP_A_0010`) for any reporter, the United States (`840`) included. With a partner other than World, or a product group, it returns the effectively applied average from UNCTAD TRAINS via World Bank WITS:
 
 - `tariffRate` is the simple average (`AHS-SMPL-AVRG`), counting preferences the partner qualifies for.
 - `weightedRate` is the import-weighted average (`AHS-WGHTD-AVRG`).
@@ -571,6 +617,8 @@ Series run from about 1990 to 2023 for most reporters. US preferences are report
 | `years` | integer | Years to return, newest kept (0–30). 0 or omitted means the route default (10). |
 
 **Response distinctions:** `indicatorCode`, `partnerCountry` and `productSector` on each datapoint say which series answered. `TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer (WITS has no such series). `TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`; retry later.
+
+**Coverage:** every answer except an upstream outage carries a `coverage` object, added by the MCP server. An outage (`upstreamUnavailable: true`) answers nothing, so it carries none. `dataset` names the dataset consulted; check `unavailableReason` before trusting the rates. It is `WTO_MFN` with no partner other than World and no product group, else `WITS_TRAINS`. `rateBasis` is `SCHEDULE`, `includesUnilateralDuties` is `false`, and `excludedDutyTypes` lists `SECTION_301`, `SECTION_232`, `IEEPA`, `ANTI_DUMPING` and `COUNTERVAILING`. `latestYear` is `coverageEndYear`, else the newest datapoint year, and is absent when no year answered. When the reporter is the United States, `seeAlso` names `get_us_import_duty` and says why.
 
 - **API endpoint:** `GET /api/trade/v1/get-tariff-trends`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -593,7 +641,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_bilateral_tariff`
 
-Tariff one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. `appliedRate` is what the partner pays: the best preferential rate it qualifies for, else MFN. `basis` says which. `mfnRate`, `preferentialRate` and the per-agreement `groupPreferences` are reported separately. `mfnAveRate` is an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (`filingReporter` `918`).
+Tariff on one HS6 product between two countries: schedule rate through 2023, no Section 301/232 duties. The rate one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. `appliedRate` is what the partner pays: the best preferential rate it qualifies for, else MFN. `basis` says which. `mfnRate`, `preferentialRate` and the per-agreement `groupPreferences` are reported separately. `mfnAveRate` is an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (`filingReporter` `918`).
 
 Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties are not included. TRAINS has no US preferences after 2021 and no US data after 2023, so for the US use `get_us_import_duty`.
 
@@ -607,6 +655,8 @@ Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties 
 | `year` | integer | Tariff year. 0 or omitted means the latest year with data. |
 
 **Response distinctions:** `BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer. `BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`.
+
+**Coverage:** every answer except an upstream outage carries a `coverage` object, added by the MCP server. An outage (`upstreamUnavailable: true`) answers nothing, so it carries none. `dataset` names the dataset consulted; check `unavailableReason` before trusting the rates. It is always `WITS_TRAINS`. `rateBasis` is `SCHEDULE`, `includesUnilateralDuties` is `false`, and `excludedDutyTypes` lists `SECTION_301`, `SECTION_232`, `IEEPA`, `ANTI_DUMPING` and `COUNTERVAILING`. `latestYear` is the year that answered, and is absent on a `NOT_COVERED` answer. When the reporter is the United States, `seeAlso` names `get_us_import_duty` and says why.
 
 - **API endpoint:** `GET /api/trade/v1/get-bilateral-tariff`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -629,7 +679,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_us_import_duty`
 
-Current US duty on one product from one country. For each 8-digit line under `hs_code` it returns the live USITC Harmonized Tariff Schedule rates and a `basis` (`MFN`, `PREFERENTIAL` with `preferenceProgram`, or `COLUMN_2`). It also returns the chapter 99 Section 301 and 232 duties in force, each with a `status`:
+Current US duty on one product from one country: live HTS rates plus any Section 301 and 232 duties in force. For each 8-digit line under `hs_code` it returns the live USITC Harmonized Tariff Schedule rates and a `basis` (`MFN`, `PREFERENTIAL` with `preferenceProgram`, or `COLUMN_2`). It also returns the chapter 99 Section 301 and 232 duties in force, each with a `status`:
 
 - `APPLIES`
 - `CONDITIONAL`, with a `condition` saying what decides it
@@ -644,6 +694,8 @@ Current US duty on one product from one country. For each 8-digit line under `hs
 |------|------|-------------|
 | `hs_code` | string | HTS code of 6, 8 or 10 digits (required), e.g. `870380` or `8703.80.00`. Dots are ignored. |
 | `partner` | string | Country of origin (required). 3-digit code, ISO alpha-2 or alpha-3, or English name. |
+
+**Coverage:** every answer except an upstream outage carries a `coverage` object, added by the MCP server. An outage (`upstreamUnavailable: true`) answers nothing, so it carries none. `dataset` names the dataset consulted; check `unavailableReason` before trusting the rates. It is `USITC_HTS` and `rateBasis` is `CURRENT_DUTY`. `includesUnilateralDuties` is `true` only when `additionalDutiesLoaded` is `true`, and `excludedDutyTypes` then lists `IEEPA`, `ANTI_DUMPING` and `COUNTERVAILING`. Otherwise the answer is base rates only: `includesUnilateralDuties` is `false` and `excludedDutyTypes` also lists `SECTION_301` and `SECTION_232`. `asOf` is the HTS release that answered.
 
 - **API endpoint:** `GET /api/trade/v1/get-us-import-duty`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -909,7 +961,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_commodity_geo`
 
-Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide.
+A curated, static list of 71 major mine sites with coordinates, country, mineral, operator, status (producing, development, exploration) and, where recorded, annual output and a production-rank label. Minerals: gold, silver, copper, lithium, cobalt, rare earths, nickel, platinum, palladium, iron ore and uranium. It answers where a mineral is mined and who operates a mine; it has no national output totals, market shares, refining or prices. `mineral` is an exact, case-sensitive match ("Gold", "Rare Earths"); `country` is a case-insensitive substring.
 
 **Parameters:**
 
@@ -939,7 +991,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_prediction_markets`
 
-Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. API allowances retain per-tool billing.
+Return seeded prediction-market contracts from multiple venues with current probabilities, grouped into three buckets: geopolitical (including elections), tech (AI, crypto, science) and finance (economics, plus the untagged fallback for non-geopolitical records). Flagged stale when the seed is older than 90 minutes. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. query matches titles case-insensitively; limit caps each bucket (default 30, 0 for no cap). Dedicated paid connections reuse one panel allocation across openings and filters; refresh with a request_id starts a new one and the same ID retries it. API allowances retain per-tool billing. change24h/change7d are percentage-point moves (7d: Polymarket only); sort=move_24h|move_7d ranks by absolute move.
 
 **Parameters (tool-specific):**
 
@@ -948,11 +1000,13 @@ Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), fin
 | `category` | string: geopolitical / tech / finance | Restrict to one market category bucket. Omit for all three. Finance also owns untagged non-geopolitical records. |
 | `query` | string | Keep only markets whose title contains this text (case-insensitive). |
 | `source` | string: kalshi / polymarket | Filter to one prediction-market source. Kalshi currently provides no classifier tags, so source=kalshi with category=tech returns no records. |
+| `sort` | string: rank / move_24h / move_7d | Order each bucket by seed rank or absolute 24h/7d move before limiting. Missing moves go last. |
 | `limit` | number | Cap each category bucket to at most this many markets (default 30, pass 0 for no cap). |
 | `panel_request` | string | Paid prediction panel receipt. Reuse for internal curated reads without another daily allocation. |
 | `refresh` | boolean | Paid panel only. Start a new allocation with request_id; retry the same ID to reuse it. |
 | `request_id` | string | Paid refresh identifier. Required when refresh is true. |
 
+- **Price moves:** Optional `change24h` and `change7d` are percentage-point changes on the `yesPrice` 0–100 scale. Missing upstream values are absent; zero means no change. Kalshi supplies only 24h changes. REST returns `yesPriceChange24h` and `yesPriceChange7d` on the 0–1 probability scale.
 - **API endpoints:** `GET /api/prediction/v1/list-prediction-markets`
 - **Access:** `free-account`. Any signed-in account can call this tool. Free accounts spend their daily free allowance. API plans retain weighted per-tool billing. Accepts the universal `summary` argument.
 - **Paid panel accounting:** Pro and Pro Business spend one allocation for an opening. Canonical filters and repeated opens share the prediction admission within five minutes. The returned `panelRequest.token` authorizes curated prediction reads until expiry. Local category expansion reads loaded data without another tool call. Each admission permits at most 64 uncached tool executions, with separate 64-per-minute uncached and cached-replay limits. Those executions are not individual Redis commands.
@@ -1055,19 +1109,7 @@ The response retains source fields and optional enrichment. Prices are USD per t
 
 ### `get_internet_activity`
 
-Read seeded Cloudflare Radar traffic anomalies or global DDoS summaries. Missing caches return an error; valid empty snapshots retain empty lists.
-
-| Name | Type | Description |
-|------|------|-------------|
-| `dataset` | string: traffic / ddos | Required. Select one dataset. |
-| `country` | string | Traffic only. Optional ISO code or country name. Rejected for global DDoS summaries. |
-| `limit` | integer | Cap each list independently. Default 30; range 1 through 100. |
-
-The result is `{dataset, data, truncated}`. Traffic `totalCount` remains global before filtering; it is not the number of selected matches or shown rows. Traffic dates are epoch milliseconds and `endDate: 0` means ongoing. Global DDoS protocol/vector percentages and target locations retain `dateRangeStart` and `dateRangeEnd`. `truncated: true` means at least one list was capped. Loading a snapshot does not establish its source freshness.
-
-- **API endpoints:** `GET /api/infrastructure/v1/list-internet-traffic-anomalies`, `GET /api/infrastructure/v1/list-internet-ddos-attacks`.
-- **Access:** subscription. One signed downstream GET uses the standard API allowance weight of 2; a dedicated MCP allowance charges one call. Billing denial and retry/backoff contracts remain active.
-- **Output budget:** 128 KiB. The tool is read-only.
+Retired. Cloudflare Radar traffic anomalies and the global DDoS summary are the `traffic` and `ddos` datasets of [`get_infrastructure_status`](#get_infrastructure_status), now read from the seeded cache at weight 1 and open to signed-in free accounts. Calls to the old name still work: they run `get_infrastructure_status` with that dataset (both when `dataset` is omitted) and return a `deprecation` notice. The response is the cache envelope rather than `{dataset, data, truncated}`, and `limit` follows the replacement tool (default 30, 0 for no cap). A dataset the old tool never served is rejected.
 
 ### `get_macro_history`
 
@@ -1090,20 +1132,22 @@ Dates use Unix milliseconds. Interest rates and yields use percentages. CPI inde
 
 ### `get_energy_intelligence`
 
-Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies.
+Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), national gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies, and dated histories of EU aggregate gas storage, US natural-gas storage and US commercial crude inventories.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable>` | Restrict the response to one or more energy sub-datasets. Omit for the full bundle. |
+| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable / eu-gas-storage / nat-gas-storage / crude-inventories>` | Restrict the response to one or more energy sub-datasets. Omit for the full bundle. |
 | `country` | string | Filter the country-keyed datasets (Ember electricity mix, gas storage, fuel shortages, energy disruptions, fossil-share) to one ISO 3166-1 alpha-2 code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
-| `limit` | number | Cap each list-bearing energy slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history/regions) to at most this many items (default 30, pass 0 for no cap). |
+| `limit` | integer | Cap each list-bearing energy slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history/regions, newest-first storage and inventory histories) to at most this many items (default 30, pass 0 for no cap). |
 
-- **API endpoints:** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`
+- **API endpoints:** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`, `GET /api/economic/v1/get-eu-gas-storage`, `GET /api/economic/v1/get-nat-gas-storage`, `GET /api/economic/v1/get-crude-inventories`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** per slice — most daily-seeded slices (electricity prices, Ember, gas storage, fuel shortages) allow **48 h** and EIA petroleum **72 h**; slower registries (disruptions, renewable/fossil shares, crisis policies) allow 7 d to ~400 d. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget.
+- **Freshness budget:** per slice — most daily-seeded slices (electricity prices, Ember, gas storage, EU aggregate gas storage, fuel shortages) allow **48 h** and EIA petroleum **72 h**; weekly US gas and crude inventories allow **14 d**; slower registries (disruptions, renewable/fossil shares, crisis policies) allow 7 d to ~400 d. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget, even when `dataset` selects a subset.
+
+The storage histories keep their own units: EU gas in TWh (`gasTwh`), US gas in billion cubic feet (`storBcf`), US commercial crude in million barrels (`stocksMb`). `eia-petroleum` stays in thousand barrels. Each history is newest first and carries its observation date; a null dataset or weekly change means unavailable, not zero. For example, `{"dataset":["eu-gas-storage","nat-gas-storage"],"limit":5}` compares the latest gas-storage reports.
 
 <CodeGroup>
 
@@ -1122,24 +1166,33 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_energy_storage`
 
-EU aggregate gas storage and US natural-gas storage and commercial crude inventories from seeded GIE AGSI+ and EIA observations. These are dated reports, not live quotes.
+Retired. Its EU gas storage, US natural-gas storage and US crude inventory histories are the `eu-gas-storage`, `nat-gas-storage` and `crude-inventories` datasets of [`get_energy_intelligence`](#get_energy_intelligence), with the same fields and units. Calls to the old name still work: they run `get_energy_intelligence` with those datasets (all three when `dataset` is omitted) and return a `deprecation` notice that names the replacement. A dataset the old tool never served is rejected.
+
+### `get_oil_trade_series`
+
+Monthly oil supply and export series for 24 major exporting countries over the last 24 complete months, with a comparison of the last N complete months against the N before and against the same months a year earlier. It answers questions such as "UAE oil exports, last 6 months vs the 6 before".
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | `array<string: eu-gas-storage / nat-gas-storage / crude-inventories>` | Select EU gas storage, US natural gas storage, or US crude inventories. Omit for all three. |
-| `limit` | integer | Maximum observations per history, newest first. Default 30; 0 returns all available seeded observations. |
+| `country` | `array<string>` | Countries as ISO alpha-2, alpha-3 or English names (e.g. ["AE"], ["Saudi Arabia"]). Selected countries include their monthly rows. Omit for every covered country, comparison only. Unresolved inputs return Invalid params; a resolvable country outside the 24 covered returns no row. |
+| `window_months` | integer | Months per comparison window, ending at the last complete month (default 6: the last 6 complete months vs the 6 before, plus the same 6 months a year earlier). |
 
-The response uses the standard `cached_at`, `stale`, and `data` envelope. EU storage includes fill percentage, daily change, a consumption-days heuristic, and history in TWh. US gas history uses billion cubic feet. US crude history uses million barrels. Each history retains its observation date. A null dataset or weekly change means unavailable, not zero.
+The response uses the standard `cached_at`, `stale`, and `data` envelope. Its sources are reported side by side and never blended or summed:
 
-- **API endpoints:** `GET /api/economic/v1/get-eu-gas-storage`, `GET /api/economic/v1/get-nat-gas-storage`, `GET /api/economic/v1/get-crude-inventories`
+- **production:** EIA Short-Term Energy Outlook crude oil and liquid fuels supply. Current to the last complete month; the two newest months are marked `provisional` because EIA revises them.
+- **jodi:** the country's own JODI-Oil filing of crude and total product exports. Values JODI has not assessed (assessment code 3) are reported values. The UAE has filed only placeholders since 2019, so its status is `not_reported`.
+- **mirror:** UN Comtrade imports from the country as declared by each buyer, converted at 7.33 bbl/t (crude) and 7.6 bbl/t (products). Buyers file one to four months late and some file no monthly partner data. Each country keeps its largest buyers by volume over the last 12 complete months as named `reporters`; smaller buyers are summed in `otherKbd`. Window comparisons use only named buyers that filed throughout the earlier window, and drop a recent month a buyer has not filed yet rather than the buyer. The buyers used are listed in `basis.reporters`, and in `basis.yoyReporters` for the year-ago comparison.
+- **ais:** IMF PortWatch AIS-derived tanker export tonnes across the country's ports. This index undercounts real exports and is not an export total.
+
+Each source carries `status` (`ok`, `stale`, `not_reported` or `unavailable`) and `lastObserved`, the newest month with an actual value. When a source fails on a run, it keeps the months from the previous publish with status `unavailable` and `carriedForward: true`. A month a source does not cover is null, never zero. Window averages are day-weighted over covered months; `monthsCovered` and `complete` say how much of each window a source covers. `yoyPct` compares `currentForYoy` with `yearAgo`; for mirror metrics `currentForYoy` can differ from `current` because the year-ago buyer basis can differ.
+
+- **API endpoints:** none. The seeded cache is read directly.
 - **Access:** `free-account`. Authentication and the existing daily allowance apply. Pro calls spend the daily quota. This tool only reads seeded caches and accepts the universal `summary` and `jmespath` arguments.
-- **Freshness budget:** 48 hours for daily EU storage and 14 days for weekly US observations.
+- **Freshness budget:** 14 days for the weekly seed, plus a content-age check on the newest EIA month.
 
-The envelope checks every source even when selecting a subset. A missing timestamp makes `cached_at` null and `stale` true. A missing source remains null; if every source is missing the call returns a tool error.
-
-For example, call `get_energy_storage` with `{"dataset":["eu-gas-storage","nat-gas-storage"],"limit":5}` to compare the latest available gas-storage reports.
+For example, call `get_oil_trade_series` with `{"country":["AE"],"window_months":6}` to compare UAE production, buyer-declared imports and tanker loadings for the last six complete months against the six before.
 
 ## Geopolitical & security
 
@@ -1157,8 +1210,14 @@ Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, a
 | `panel_request` | string | Paid conflict panel receipt for bounded internal filtered reads without another daily allocation. |
 | `refresh` | boolean | Request one new paid conflict panel allocation. Requires request_id and no panel_request. |
 | `request_id` | string | Retry identity for an explicit paid refresh. Reuse the ID to avoid another allocation. |
+| `bbox` | object | Keep events inside this box. sw_lon > ne_lon crosses the antimeridian. Not combinable with lat/lon/radius_km. |
+| `lat` | number | Centre latitude for radius_km; requires lon and radius_km. |
+| `lon` | number | Centre longitude for radius_km; requires lat and radius_km. |
+| `radius_km` | number | Keep events within this great-circle distance of lat/lon (max 2000). |
+| `since_days` | integer | Keep events dated within the last N days. |
 
 - **API endpoints:** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
+- **Area and age filters:** `bbox` takes `sw_lat`, `sw_lon`, `ne_lat` and `ne_lon` (all required). Pass either `bbox` or all three of `lat`, `lon` and `radius_km`; mixing them or passing part of the radius returns Invalid params before any allowance is spent. The filters apply to UCDP, Iran and unrest events after `country` and `min_fatalities` and before `limit`; country risk scores are not geolocated and are returned unfiltered. An event without valid coordinates (or, with `since_days`, without a date) is dropped, and `data.geo_filter.excluded` counts those rows per list so an empty result is not mistaken for no nearby events. When `since_days` reaches further back than a list's oldest dated row, `data.geo_filter.oldest_held` gives that row's time in epoch milliseconds, so a wide window is not mistaken for full coverage. Without these arguments the response has no `geo_filter` key.
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Paid panel accounting:** Pro and Pro Business spend one allocation for an opening. Canonical filters and repeated opens share the Conflict Events admission within five minutes. Each admission permits up to 64 uncached tool executions, with separate 64-per-minute uncached and successful cached-replay limits. Each execution reads five fixed Redis keys, or six with Iran enabled; these reads do not each spend an allocation.
 - **Reuse and refresh:** Successful filtered originals replay before summary or JMESPath presentation. Explicit refresh with a new UUID spends one new allocation; the same UUID retries it. An authorized receipt read queries current usage without reserving another unit. Unknown counters preserve data and omit the numeric notice. Paid calls reject unknown arguments and non-finite numeric filters before reservation. Ordinary API and free calls retain existing filter coercion and reject paid receipts or refresh controls.
@@ -1251,11 +1310,14 @@ curl -s https://worldmonitor.app/mcp \
 
 Structured risk intelligence for a specific country: the Composite Instability Index at `cii.combinedScore` (0-100), its four contributing components under `cii.components` (domestic unrest, armed conflict, security and mobility, and the information environment), the government travel-advisory level, and OFAC sanctions exposure as `sanctionsActive` plus `sanctionsCount`. Fast Redis read - no LLM. Check `upstreamUnavailable` before interpreting a low score: when it is true, at least one required upstream read failed and the zeroed risk fields mean UNKNOWN, not calm. Use for quantitative risk screening or to answer "how risky is X right now?"
 
+Optional `history_days` adds `ciiHistory` with up to 90 UTC daily closes. The latest successful build replaces the current day's point. History starts at activation, without backfill. `points` contains only the current methodology and keeps gaps. `change` is null with fewer than two points; otherwise it names the actual dates and scores used. `versionBreaks` reports methodology changes within the requested window. `stale: true` means history is missing, unreadable or more than 30 minutes old. This option is MCP-only and keeps the tool's weight at 2.
+
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
 | `country_code` | string | **yes** | ISO2, ISO3 or English country name, e.g. "RU", "RUS", "Russia" |
+| `history_days` | integer | no | UTC calendar window, 1-90 days including today; omitted calls make no history read |
 | `panel_request` | string | no | Server-issued same-country receipt for authorized paid reads |
 | `refresh` | boolean | no | Paid-only new country allocation; requires a UUID and no receipt |
 | `request_id` | string (UUID) | no | Required for refresh; the same UUID retries that allocation |
@@ -1278,6 +1340,23 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `get_country_history`
+
+Daily country snapshots with optional CII and resilience scores, their source versions and observation times, and up to five linked headlines per date. The archive starts at activation without backfill. Missing dates and scores remain absent; formula changes and observation gaps break chart continuity. No headline does not prove that no event occurred.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | Assigned ISO alpha-2 country code, such as `US` or `FR` |
+| `days` | integer | no | 1–365 UTC days including today; defaults to 7 and is clamped to the verified account limit |
+
+- **API endpoints:** `GET /api/intelligence/v1/get-country-history`
+- **Access:** `subscription` — Pro 90 days, API and Enterprise 365 days. Anonymous/free REST callers can read seven days; the MCP subscription requirement still applies.
+- **Kind:** RPC tool with an 8-second downstream timeout. Use `jmespath` to trim output; no `summary` argument.
+
+Read `upstreamUnavailable` before interpreting an empty response. `stale` means the archive is unavailable or the last successful daily capture is over 36 hours old. `allowedDays`, `effectiveDays` and `returnedDays` distinguish the account limit, the requested window after clamping, and actual observations. Large outputs retain score dates and reduce selected headlines first, marked `events_reduced_for_output_budget`.
 
 ### `get_country_coverage`
 
@@ -1667,7 +1746,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_cyber_threats`
 
-Active cyber threat intelligence: malware IOCs (URLhaus, Feodotracker), CISA known exploited vulnerabilities, and active command-and-control infrastructure.
+Return the seeded cyber-threat snapshot: malware indicators of compromise (URLhaus, Feodo Tracker), CISA Known Exploited Vulnerabilities and active command-and-control infrastructure, each with type, severity, country when known, and first-seen time. Flagged stale after 4 hours. Indicator feeds only; no incident narratives or attribution analysis. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. threat_type is a case-insensitive substring (malware, vulnerability, c2); min_severity keeps known severities at or above a level; country drops threats without a country; limit caps the list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -1700,21 +1779,25 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_sanctions_data`
 
-OFAC SDN sanctioned entities list and sanctions pressure scores by country. Useful for compliance screening and geopolitical pressure analysis.
+Screen OFAC SDN, OFAC Consolidated, Canada SEMA and six US Consolidated Screening List export-control lists (BIS Entity, Denied Persons, Unverified, Military End User; State ITAR debarred, nonproliferation), or read country pressure and designation changes. Pressure counts OFAC and SEMA only; CSL rows have et unspecified, and their events carry notice (Federal Register citation) and url. screen matches names, up to 10 aliases and exact IMO IDs, returning score/matched_on/matched_text; query filters primary names. changes_since_days (1-90) selects history only, paged by changes_cursor, max 100 events/page. Gaps include held diffs above 5% removals; history keeps 90 days/10,000 events (truncatedBefore marks cap loss). Seeded every 6 hours, stale after 12 hours; no live fetch. Subscription required, weight 1. Matches are leads to confirm with the issuing agency, not legal advice.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
 | `country` | string | Filter sanctioned entities and pressure scores to one ISO 3166-1 alpha-2 country code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
-| `entity_type` | string | Filter to one entity type (case-insensitive substring, e.g. "vessel", "aircraft", "person", "entity"). |
+| `entity_type` | string | Filter to one entity type (case-insensitive substring, e.g. "vessel", "aircraft", "individual", "entity"; CSL rows are "unspecified"). |
 | `query` | string | Keep only sanctioned entities whose name contains this text (case-insensitive). |
-| `limit` | number | Cap the entity list and recent pressure entries to at most this many items (default 30, pass 0 for no cap). |
+| `screen` | string | Screen a name, alias or IMO identifier against the seeded lists (2-200 characters). Omit changes_since_days for entity screening. |
+| `min_score` | number | Minimum screening score from 0 to 100 (default 70); applies only with screen. |
+| `changes_since_days` | integer | Select history only for the last 1-90 days. Country, entity_type and query filter events; gaps remain visible on every page. |
+| `changes_cursor` | string | Continue from changes.nextCursor with the same filters. Restart if the seeded history changed. |
+| `limit` | number | List cap, default 30; 0 removes the cap except in history mode, where pages contain at most 100 events and may be smaller to fit the response budget. |
 
 - **API endpoints:** `GET /api/sanctions/v1/list-sanctions-pressure`, `GET /api/sanctions/v1/lookup-sanction-entity`
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Access:** `subscription` — Pro/API subscription required. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **1 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** up to **12 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
 <CodeGroup>
 
@@ -1725,27 +1808,31 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_sanctions_data","arguments":{}}
+    "params":{"name":"get_sanctions_data","arguments":{"screen":"Northern Star","min_score":70}}
   }'
 ```
 
 </CodeGroup>
 
+Changes retain up to 90 days and 10,000 events, returned newest observation first. `at` is the observation time in milliseconds; `effectiveAt` is the source effective-time string, or `"0"` when unknown. Program-set changes emit `amended` with `prevPr`. `gaps` marks retained or unavailable sources, missing valid baselines and diffs held because more than 5% of prior rows disappeared. A gap is not proof of no changes. `truncatedBefore` marks history lost to the event cap, including that boundary timestamp. Without `changes_since_days`, the `changes` slot is omitted.
+
+History requests return only `changes`, using its own cache read and freshness check. The time window is anchored to `changes.fetchedAt`. Continue with `changes_cursor: changes.nextCursor` until the cursor is empty, keeping the same filters; `matchingEvents` is the full filtered count. If a new seed replaces the history, restart without a cursor. Every page preserves the window’s coverage gaps. Missing or invalid history stays unavailable while current screening and pressure can continue to refresh.
+
 ### `get_social_velocity`
 
-Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals.
+The 30 posts from r/worldnews and r/geopolitics with the highest `velocityScore` (log of score × upvote ratio × a 6-hour recency decay), with score, upvote ratio, comment count and the permalink as `url`. The relay refreshes it about every 3 hours and the envelope flags it stale after 9 hours, the same budget as `/api/health`. Posts are unverified user submissions: the tool measures public attention, not events.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `subreddit` | string | Filter to one subreddit (e.g. "worldnews", "geopolitics"). |
+| `subreddit` | string | Keep one subreddit: "worldnews" or "geopolitics". |
 | `limit` | number | Cap the post list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-social-velocity`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** up to **9 h** before `stale: true` is flagged (the relay refreshes about every 3 h; same budget as `/api/health`).
 
 <CodeGroup>
 
@@ -1991,11 +2078,14 @@ curl -s https://worldmonitor.app/mcp \
 
 Cross-domain alert digest: every threshold trip across seven domains (country instability, military surges, cable health, ongoing outages, temporal anomalies, thermal escalation, shipping stress) using each producer's own severity vocabulary — no invented thresholds. Quiet domains and unavailable caches are listed separately so silence is never mistaken for calm.
 
+The weekly view adds `weekly.cii_movers` with up to five risers and five fallers across the 31 CII countries. Each row compares the latest point with the last point on or before the requested start day and reports its actual `fromDate`. Changes within ±1 point are excluded. Endpoints must share the current methodology; countries without comparable history appear in `insufficient_history`. `as_of` is the latest eligible source time. Missing history appears as `cii_history` in `data.unavailable`, and history older than 30 minutes makes the response stale. History accrues from activation, so the first seven-day ranking needs at least seven days of observations.
+
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
 | `view` | string: today / weekly | today lists current threshold trips (default); weekly adds trend context. |
+| `movers_days` | integer | Weekly CII comparison window, 7-90 days, default 7; rejected with the today view |
 
 - **API endpoints:** none (MCP-only derived analysis).
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -2085,7 +2175,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_military_posture`
 
-Theater posture assessment and military risk scores. Reflects aggregated military positioning and escalation signals across global theaters.
+Return the seeded theater posture assessment: for each global theater (Iran, Taiwan, Baltic, Korea and others) a posture level, military risk score and the aggregated positioning and escalation signals behind it. Flagged stale after 2 hours; theater-level summaries only, no individual aircraft or vessel tracks. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. theater is a case-insensitive id substring, posture_level filters one level exactly, limit caps the list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2117,7 +2207,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_chokepoint_status`
 
-Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.
+Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, port-country coverage index, plus static reference data (chokepoint geometry, canonical chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.
 
 **Parameters (tool-specific):**
 
@@ -2126,11 +2216,11 @@ Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min ca
 | `panel_request` | string | Signed owner-bound chokepoint reader token from a paid opening. Covers only this tool and its existing filters; cannot be combined with refresh. |
 | `refresh` | boolean | Paid allowance only: explicitly request a new panel allocation. Supply a request_id UUID. |
 | `request_id` | string | UUID for an explicit paid refresh; retry the same UUID to reuse that allocation. |
-| `chokepoint` | string | Filter to one chokepoint — matches by case-insensitive substring across the differing identifiers used by each dataset (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz"). |
+| `chokepoint` | string | Filter to one chokepoint — matches by case-insensitive substring in transit-summaries, chokepoint_transits, chokepoint-baselines and chokepoint-flows (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz"). ref and _countries are not filtered by it. |
 | `dataset` | `array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
-| `limit` | number | Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped — use the `chokepoint` filter instead. |
+| `limit` | number | Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped; the `chokepoint` filter narrows all of them except ref. |
 
-- **API endpoints:** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
+- **API endpoints:** `GET /api/supply-chain/v1/get-chokepoint-status`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget (per slice):** `stale: true` flags when ANY contributing slice exceeds its individual budget — **30 min** for live transit summaries (relay), **36 h** for PortWatch port activity, **12 h** for chokepoint flows, **14 d** for the PortWatch chokepoint reference, and up to **~400 d** for the static chokepoint registry / geographic baselines. The bundle's `cached_at` reflects the oldest contributing seed; `stale: true` doesn't mean ALL the data is old.
@@ -2202,7 +2292,7 @@ Returns the highest-scoring country and commodity dependencies for one maritime 
 
 ### `get_positive_events`
 
-Positive geopolitical events: diplomatic agreements, humanitarian aid, development milestones, and peace initiatives worldwide.
+Return the seeded map of positive-news locations: each entry is a place (name, latitude, longitude) with the count of positive-toned GDELT bulk reports that mention it, a category classified from report keywords (science-health, nature-wildlife, climate-wins, innovation-tech, humanity-kindness, culture-community) and the timestamp of the latest report. Location buckets, not individual stories: there are no titles, article text or source URLs, and a bucket needs at least 3 reports before it appears. Seeded from the GDELT bulk feed and flagged stale after 1 h. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. category selects one of the six buckets; limit caps the list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2356,7 +2446,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_aviation_status`
 
-Airport delays, NOTAM airspace closures, and tracked military aircraft. Covers FAA delay data and active airspace restrictions.
+Return the seeded airport disruption snapshot: one alert row per monitored airport (about 85 major airports worldwide) with iata, name, country and severity, built from AviationStack delay aggregates for international hubs, FAA ASWS delays for US airports and FAA NMS and ICAO NOTAM closures. Seeded about every 30 minutes and flagged stale after 90. The snapshot holds every monitored airport, so most rows are severity "normal" unless disrupted_only=true, and the default limit of 30 returns only part of it (0 for the whole list). Airport-level status only; no fares, schedules or flight tracks. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country is a case-insensitive name substring, iata selects one airport, limit caps the list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2419,15 +2509,16 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_maritime_activity`
 
-Live vessel traffic and maritime disruptions for a country's waters. Returns AIS density zones (ships-per-day, intensity score), dark ship events, and chokepoint congestion from AIS tracking.
+Return country-scoped maritime activity. view=traffic (default) returns live AIS density_zones (intensity, ships_per_day, delta_pct), disruptions (dark-ship events and chokepoint congestion), snapshot_at and bounding_box, filtered to the country box with a 3-degree pad. A missing traffic bounding box returns an error. view=ports returns port activity with a 25-result cap, including 30-day tanker calls, import/export tanker deadweight tonnage and change against the prior 30 days; trend_delta_pct is null when prior calls are zero or unknown. PortWatch port data is scheduled, can lag real time, and returns available=false for uncovered or expired data. fetched_at is the retrieval time. Requires a paid plan; one downstream fetch for either view, weight 2 on API plans. country_code accepts alpha-2, alpha-3 or an English name. Read-only.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
 | `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code (e.g. "AE", "SA", "JP", "EG") |
+| `view` | `traffic / ports` | no | Defaults to `traffic`; `ports` returns scheduled tanker activity by port. |
 
-- **API endpoints:** `GET /api/maritime/v1/get-vessel-snapshot`
+- **API endpoints:** `GET /api/maritime/v1/get-vessel-snapshot`, `GET /api/intelligence/v1/get-country-port-activity`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **8.0s**.
 
@@ -2440,7 +2531,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_maritime_activity","arguments":{"country_code":"US"}}
+    "params":{"name":"get_maritime_activity","arguments":{"country_code":"NL","view":"ports"}}
   }'
 ```
 
@@ -2448,21 +2539,23 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_supply_chain_data`
 
-Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral trade data. Tracks global supply chain pressure and trade disruptions.
+Return seeded supply-chain pressure and trade data: freight-rate indices, the NY Fed GSCPI, a BDRY and carrier-equity shipping-stress proxy, monthly customs revenue and UN COMTRADE flows. Freight includes FRED levels and history, plus SSE change percentages, direction and z-scores against stored prior observations, with at least 12 baseline points. SSE raw levels and Baltic indices are excluded. GSCPI is monthly, in standard deviations, and subject to revision. Customs revenue is stale after 2 days; freight after 7 hours; GSCPI after 2 days. Requires a paid plan; no live fetch, weight 1 on API plans. dataset selects shipping_stress, customs-revenue, flows, freight-rates or gscpi; commodity and reporter filter flows. limit caps lists, with newest GSCPI months kept chronological (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | `array<string: shipping_stress / customs-revenue / flows>` | Restrict the response to one or more sub-datasets (dry-bulk shipping stress / customs revenue / COMTRADE flows). Omit for all. |
+| `dataset` | `array<string: shipping_stress / customs-revenue / flows / freight-rates / gscpi>` | Restrict the response to one or more sub-datasets (equity shipping-stress proxy, customs revenue, COMTRADE flows, freight rates, GSCPI). Omit for all. |
 | `commodity` | string | Filter COMTRADE flows to one commodity — matches the HS code exactly or the commodity description by substring (e.g. "2709" or "crude"). |
 | `reporter` | string | Filter COMTRADE flows to one reporter by numeric reporter code or reporter name (e.g. "156" or "China"). |
-| `limit` | number | Cap each list dataset (carriers, months, flows) to at most this many items (default 30, pass 0 for no cap). |
+| `limit` | number | Cap each list dataset (carriers, months, flows, freight indices and GSCPI observations) to at most this many items (default 30, pass 0 for no cap). |
 
-- **API endpoints:** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`
-- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **API endpoints:** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`, `GET /api/supply-chain/v1/get-shipping-rates`
+- **Access:** `subscription`. Requires a Pro subscription because the bundle includes Pro-only COMTRADE flows. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **2 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** freight **7 h**, GSCPI and customs revenue **2 d**.
+
+`freight-rates.indices[]` includes source, frequency, observation date, period movement and baseline statistics. The z-score uses the mean and population standard deviation of stored history excluding the latest point. It is null with fewer than 12 baseline points or zero variance. Weekly SSE history retains up to 56 points as future observations accumulate; it cannot be backfilled. `gscpi.series.observations` keeps the newest `limit` months in chronological order. GSCPI is attributed to the Federal Reserve Bank of New York, and values are subject to revision.
 
 <CodeGroup>
 
@@ -2473,7 +2566,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_supply_chain_data","arguments":{}}
+    "params":{"name":"get_supply_chain_data","arguments":{"dataset":["freight-rates","gscpi"],"limit":12}}
   }'
 ```
 
@@ -2481,20 +2574,23 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_infrastructure_status`
 
-Internet infrastructure health: Cloudflare Radar outages and service status for major cloud providers and internet services.
+Seeded Cloudflare Radar Internet snapshot in three datasets: `outages` (national and regional outages with start time, severity and cause, plus cloud and Internet service status), `traffic` (traffic anomalies) and `ddos` (the global DDoS protocol, vector and target-country summary). Physical infrastructure is not covered.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `country` | string | Filter to one country by name (case-insensitive substring). |
+| `dataset` | `array<string: outages / traffic / ddos>` | Restrict the response to outages, traffic anomalies or the DDoS summary. Omit for all three. |
+| `country` | string | Filter outages and traffic anomalies to one country. Pass an ISO 3166-1 alpha-2 code (e.g. "IQ"), an alpha-3 code ("IRQ"), or an English country name ("Iraq"). Unresolved inputs return Invalid params. DDoS summaries are global, so a DDoS-only call with country returns Invalid params. |
 | `severity` | string | Filter to one outage severity (case-insensitive substring). |
-| `limit` | number | Cap the outage list to at most this many items (default 30, pass 0 for no cap). |
+| `limit` | integer | Cap each list (outages, anomalies, DDoS protocols, vectors and target countries) to at most this many items (default 30, pass 0 for no cap). |
 
-- **API endpoints:** `GET /api/infrastructure/v1/list-internet-outages`
+Traffic anomalies carry epoch-millisecond `startDate` and `endDate`; `endDate: 0` means ongoing. `totalCount` is the global anomaly count before the country filter and the limit, not the number of rows shown. The DDoS summary keeps `dateRangeStart` and `dateRangeEnd`. A valid empty list means no recorded rows; a missing cache surfaces as a null dataset.
+
+- **API endpoints:** `GET /api/infrastructure/v1/list-internet-outages`, `GET /api/infrastructure/v1/list-internet-traffic-anomalies`, `GET /api/infrastructure/v1/list-internet-ddos-attacks`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** **30 min** for outages and **60 min** for traffic anomalies and DDoS. The single `stale` flag ORs every check.
 
 <CodeGroup>
 
@@ -2505,7 +2601,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_infrastructure_status","arguments":{}}
+    "params":{"name":"get_infrastructure_status","arguments":{"dataset":["traffic"],"country":"IR"}}
   }'
 ```
 
@@ -2549,7 +2645,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `search_flight_prices_by_date`
 
-Cheapest Google Flights fare for each departure date between two airports, across a range of at most 31 days (one results-page search per date). Each row has the date, the return date for round trips (departure plus trip_duration), and the lowest total USD price for all passengers. A date with no itineraries is omitted. degraded with an error means some or all dates failed, and the list holds only the dates that answered. Airports are IATA codes.
+Return the cheapest Google Flights fare for each departure date between two airports across a range of at most 31 days (one results-page search per date, so a long range is slow). Each row has the date, the return date for round trips (departure plus trip_duration) and the lowest total USD price for all passengers; a date with no itineraries is omitted. degraded with an error means some or all dates failed and the list holds only the dates that answered. Prices change minute to minute. Requires a paid plan; one live search request, weight 2 on API plans, up to 25 s. Airports are IATA codes; is_round_trip needs trip_duration; passengers is 1-9. Read-only.
 
 **Parameters:**
 
@@ -2588,7 +2684,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_climate_data`
 
-Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), climate-relevant disaster alerts (ReliefWeb/GDACS/FIRMS), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.
+Return the seeded climate bundle: temperature and precipitation anomalies against 30-year WMO normals, climate-relevant disaster alerts (ReliefWeb, GDACS, FIRMS), the NOAA Mauna Loa CO2 trend, OpenAQ/WAQI PM2.5 station readings, NSIDC/NOAA Arctic sea-ice extent and ocean-heat indicators, active weather alerts and climate news. Freshness follows each source seed time and budget (anomalies 9 h, CO2 3 days, sea ice 2 days), plus producer content-age limits for anomalies and news. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the disaster and air-quality lists, limit caps each list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2601,7 +2697,7 @@ Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normal
 - **API endpoints:** `GET /api/climate/v1/get-co2-monitoring`, `GET /api/climate/v1/get-ocean-ice-data`, `GET /api/climate/v1/list-air-quality-data`, `GET /api/climate/v1/list-climate-anomalies`, `GET /api/climate/v1/list-climate-disasters`, `GET /api/climate/v1/list-climate-news`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** per slice — weather alerts **45 min**, climate news intelligence **90 min**, anomalies **2 h**, air quality **3 h**, ocean/ice **24 h**, CO2 monitoring **48 h**. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget.
+- **Freshness budget:** per slice — weather alerts **45 min**, climate news intelligence **90 min**, anomalies **9 h**, disasters **12 h**, air quality **3 h**, ocean/ice **48 h**, CO2 monitoring **72 h**. These seed budgets match `/api/health`. Anomalies and climate news also honor their producer content-age limits, currently **14 days** and **7 days**. The single `stale` flag ORs every check, so an expired seed, failed refresh, missing metadata, or expired content clock marks the bundle stale. `cached_at` is the oldest contributing seed time, not a shared expiry deadline. `dataset` narrows the returned data after the bundle freshness check.
 
 <CodeGroup>
 
@@ -2664,8 +2760,14 @@ Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires
 | `min_magnitude` | number | Drop earthquakes and natural events below this magnitude. |
 | `active_only` | boolean | Keep only natural events that are still active (not closed). |
 | `limit` | number | Cap each hazard list to at most this many items (default 30, pass 0 for no cap). |
+| `bbox` | object | Keep events inside this box. sw_lon > ne_lon crosses the antimeridian. Not combinable with lat/lon/radius_km. |
+| `lat` | number | Centre latitude for radius_km; requires lon and radius_km. |
+| `lon` | number | Centre longitude for radius_km; requires lat and radius_km. |
+| `radius_km` | number | Keep events within this great-circle distance of lat/lon (max 2000). |
+| `since_days` | integer | Keep events dated within the last N days. |
 
 - **API endpoints:** `GET /api/natural/v1/list-natural-events`, `GET /api/seismology/v1/list-earthquakes`, `GET /api/wildfire/v1/list-fire-detections`
+- **Area and age filters:** `bbox` takes `sw_lat`, `sw_lon`, `ne_lat` and `ne_lon` (all required). Pass either `bbox` or all three of `lat`, `lon` and `radius_km`; mixing them or passing part of the radius returns Invalid params before any allowance is spent. The filters apply to earthquakes, fire detections and natural events, including the regional `events.westernPacific.events` and `events.hkoWarnings.warnings` lists, after `min_magnitude` and `active_only` and before `limit`. A row without valid coordinates (or, with `since_days`, without a date) is dropped, and `data.geo_filter.excluded` counts those rows per dataset so an empty result is not mistaken for no nearby events. When `since_days` reaches further back than a list's oldest dated row, `data.geo_filter.oldest_held` gives that row's time in epoch milliseconds, so a wide window is not mistaken for full coverage. Without these arguments the response has no `geo_filter` key.
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
@@ -2691,7 +2793,7 @@ Each uncached execution reads three fixed data keys and the existing seismology 
 
 ### `get_radiation_data`
 
-Radiation observation levels from global monitoring stations. Flags anomalous readings that may indicate nuclear incidents.
+Return the seeded radiation monitoring snapshot: gamma dose-rate readings from public monitoring stations worldwide with station, country, value, unit, time and a severity flag (normal, elevated, spike) that marks anomalous readings. Flagged stale after 30 minutes. Station observations only; an elevated reading is a flag for review, not a confirmed nuclear incident. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country is a case-insensitive name substring; anomalous_only drops normal readings; limit caps the list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2723,7 +2825,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_research_signals`
 
-Tech and research event signals: emerging technology events bootstrap data from curated research feeds.
+Return the seeded technology and research event list: upcoming and recent conferences, earnings dates, IPOs and other tech events from curated feeds such as Techmeme and dev.events, each with type, source, date and link. Flagged stale after 8 hours. Calendar-style event signals only; no papers, patents or funding data. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. type selects conference, earnings, ipo or other; source filters one feed; limit caps the list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2809,19 +2911,27 @@ Call `get_cross_border_arrivals({})` for the full public snapshot. `summary: tru
 
 ### `get_displacement_data`
 
-Refugee and IDP counts by country (UNHCR annual data).
+Defaults to UNHCR annual displacement statistics for one reporting year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows. Until UNHCR publishes the current year, the annual snapshot holds the prior year; `summary.year` names it.
+
+Use `view: "movements"` for source-dated UNHCR operational reports, UK daily arrivals, CBP monthly encounters, Frontex monthly detections and Panama monthly Darién arrivals. Each row keeps its source, measure, report date, license and transformation notice. Encounter and detection counts are events, not unique people. Sources can overlap; do not add their counts. Source status distinguishes missing, partial and stale data; absent windows do not mean zero. Retain the attribution rider when projecting results. No provider endorsement is implied.
+
+Use `view: "events"` for IDMC Internal Displacement Updates in `iduEvents`: per-country people displaced inside their country in the last 30 days (split into conflict and disaster), `newlyReported7d` (figures IDMC published in the last 7 days, whatever the displacement date), a `surge` flag (at least 5,000 people and three times the monthly mean of the 150 days before), and the located IDMC figures from the last 180 days, newest first, at most 100 per call. IDMC publishes a figure a median of three weeks after the displacement, so the latest weeks are incomplete.
+
+Use `view: "regions"` for IOM Displacement Tracking Matrix (DTM) data in `dtmRegions`: the latest survey round of each DTM operation from the last 18 months, largest first, with its total internally displaced people, the split by cause, the count per first-level region (with an OCHA P-code and a point where one is known) and up to 30 region-to-region routes. Operations in one country can overlap (a countrywide operation and a provincial one), so do not add their totals. Rounds are monthly at best.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `countries` | `array<string>` | Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all. Unresolved inputs return Invalid params. |
-| `limit` | number | Cap the per-country and top-flow lists to at most this many items (default 30, pass 0 for no cap). |
+| `view` | string: annual / movements / events / regions | Default annual. movements returns source-dated operational movement reports. events returns IDMC internal displacement in iduEvents. regions returns IOM DTM operations in dtmRegions. |
+| `route` | string | Exact route or situation ID in the movements view. |
+| `countries` | `array<string>` | Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches per-country totals, origin/asylum flows, IDMC rows and DTM operations. Omit for all. Unresolved names and alpha-3 codes return Invalid params; an unknown two-letter code matches nothing. |
+| `limit` | number | Cap the per-country, top-flow, IDMC and DTM operation lists to at most this many items (default 30, pass 0 for no cap; IDMC events stay capped at 100). |
 
-- **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`
+- **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`, `GET /api/displacement/v1/get-cross-border-movements`, `GET /api/displacement/v1/get-internal-displacement`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **2.5 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** annual data is stale after **2.5 d**. Movement feeds have a 48-hour fetch budget, plus independent report-age budgets: 45 days for ODP, 3 days for UK arrivals and 75 days for CBP, Frontex and Panama monthly reports. Sources proven never activated do not stale the aggregate; unreadable activation markers fail closed. Check each row and source status. IDMC events and DTM regions are stale after **2 d**; DTM regions are also stale when the newest round is over 90 days old.
 
 <CodeGroup>
 
@@ -2876,7 +2986,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `analyze_situation`
 
-AI geopolitical situation analysis (DeductionPanel). Provide a query and optional geo-political context; returns an LLM-powered analytical deduction with confidence and supporting signals.
+Run an LLM analytical deduction on a free-text geopolitical question and return `{analysis, confidence, signals, provider, model}`: a narrative assessment with a confidence level and the supporting signals the model cited. Each call generates fresh text (non-deterministic, up to 25 s) from the query, optional context and optional framework; it does not read a cached brief or a fixed country dataset. An empty provider result returns a source-unavailable error rather than empty text. Requires a paid plan; one live LLM request, weight 2 on API plans. Read-only; nothing is stored.
 
 **Parameters:**
 
@@ -2905,36 +3015,6 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
-### `generate_forecasts`
-
-Current AI geopolitical and economic forecasts with probabilities, scenarios, signals, and per-forecast case files, filterable by domain and region. An oversized response omits the case files and reports the omitted count in transportCoverage; a domain or region filter that fits returns them.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|------|------|---------:|-------------|
-| `domain` | string | no | Forecast domain: one of "conflict", "market", "supply_chain", "political", "military", "cyber", "infrastructure". Omit for all domains. |
-| `region` | string | no | Geographic region filter, e.g. "Middle East", "Europe", "Asia Pacific", or empty for global |
-
-- **API endpoints:** no public OpenAPI row; runtime proxies `POST /api/forecast/v1/get-forecasts` (the OpenAPI spec only declares `GET` on that path, which is covered by `get_forecast_predictions` — this tool's POST variant reads the same published forecasts).
-- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
-- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"generate_forecasts","arguments":{}}
-  }'
-```
-
-</CodeGroup>
-
 ### `get_forecast_predictions`
 
 AI-generated geopolitical and economic forecasts from WorldMonitor's predictive models. Covers upcoming risk events and probability assessments.
@@ -2946,9 +3026,12 @@ AI-generated geopolitical and economic forecasts from WorldMonitor's predictive 
 | `domain` | string | Filter to one forecast domain (exact, case-insensitive): conflict, market, supply_chain, political, military, cyber, infrastructure. |
 | `region` | string | Filter to one region/theater (case-insensitive substring). |
 | `limit` | number | Paid interactive panel: integers 1–30, default 30. Ordinary API readers may use 0 for no cap. |
+| `include_history` | boolean | Attach up to 120 probability points per forecast, up to 30 days. Caps rows at 10. Omitted in panel openings. |
 | `refresh` | boolean | Request a new paid panel snapshot; requires a fresh request_id. |
 | `request_id` | string | Unique idempotency identifier for an explicit refresh. |
 | `panel_request` | string | Signed forecast panel receipt for a bounded internal list replay. |
+
+Rows also carry `firstSeenAt` (ISO time), `firstSeenProbability`, `change24h` and `change7d` (absolute probability changes). Missing or short trails return null. A region change starts a new segment; the first seed backfills only the retained history, so firstSeenAt can postdate the original publication. History points are `[isoTime, probability]` and can have sampling gaps.
 
 - **API endpoints:** `GET /api/forecast/v1/get-forecasts`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
@@ -3007,7 +3090,18 @@ Read the latest original simulation theater summaries. Dedicated MCP plans read 
 
 Forecast resolution scorecard with calibration, Brier/log score, domain and generation-origin breakdowns, and pending/judged resolution counts.
 
-**Parameters (tool-specific):** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `view` | string: summary / archive | Summary by default, or resolved forecast archive. |
+| `domain` | string | Exact forecast domain for archive rows. |
+| `outcome` | string: YES / NO / VOID | Archive outcome filter. |
+| `forecast_id` | string | Exact family ID; includes its trajectories. |
+| `before` | number / string | Exclusive resolvedAt timestamp in milliseconds, or the nextBefore continuation from the previous page. |
+| `limit` | integer | Maximum archive rows, default 25; output budget may shorten a page. |
+
+Archive responses carry `underAudit` from the stored scorecard, `archive.stale` from the archive seed-meta (36-hour budget), and `nextBefore` (null at the end). Summary responses retain their original shape. Trajectories appear only with `forecast_id`; missing trajectories are not reconstructed from other subjects. Rows use the public receipt whitelist, with no raw ledger, judge rationale, news archive items or metric paths. Most historical resolutions may be VOID. The archive does not establish forecast skill.
 
 - **API endpoints:** `GET /api/forecast/v1/get-forecast-scorecard`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
@@ -3075,15 +3169,32 @@ Reads the existing allowance snapshot for the current verified account. Use this
 - **API sharing:** `sharedWithRestApi` reports whether the counter includes REST requests. Shadow-mode API counters retain the sold API ceiling. Account totals do not identify individual callers.
 - **API endpoints:** none. The tool and account resource use one shared enforcement-counter reader. Responses are `no-store`.
 
+### `start_upgrade`
+
+Creates a personal checkout link for a paid plan, bound to the signed-in account. Call it after a denial whose `error.data` carries `checkoutTool: "start_upgrade"`, passing that denial's `recommendedPlan`. Only free accounts get `checkoutTool`; a paid caller's denial names `recommendedPlan` alone, because moving up within the same plan family goes through the billing portal. The user opens the link and pays in a browser; the tool never charges and the agent never handles payment details.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `plan` | string | yes | One of `pro_monthly`, `pro_annual`, `pro_business_monthly`, `pro_business_annual`, `api_starter`, `api_starter_annual`, `api_business`, `api_business_annual`. Any other value returns `-32602` with the accepted list in `error.data.plans`. |
+
+**Response:** `{ checkoutUrl, plan, nextStep }`. Each call creates a new checkout session. The tool takes no `jmespath` projection (`-32602`): the session exists before a projection would run, so a projection could drop the only copy of `checkoutUrl`.
+
+- **Access:** `free-account`. Requires user-bound OAuth or `wm_…` credentials. Anonymous callers get the usual `-32001` `no-account` denial; operator keys get `-32002`.
+- **Quota:** spends no daily allowance and no free-account call, so it works after the allowance is exhausted. The per-minute limit still applies.
+- **Checkout path:** the same one the pricing page uses, so the per-account checkout limit and the existing-subscription and pending-payment guards apply. An account that already holds a plan in the same family gets `-32002` with `error.data.reason: "already-subscribed"`; Pro to Pro Business means cancelling Pro first, and API Starter to API Business is a prorated change in the billing portal. A payment pending for under 15 minutes returns `reason: "payment-in-progress"`. The checkout limit, 5 sessions per account per 10 minutes and shared with the pricing page, returns `-32029` at HTTP 429 with `Retry-After`.
+- **Terms of Service:** creating a session records the account's acceptance of the Terms, as the pricing page does. The [Terms](/terms) count an MCP request as acceptance.
+- **After payment:** once the payment webhook lands, the next `get_mcp_allowance` call reports the paid plan's limit. No re-authorization is needed.
+- **API endpoints:** none. Responses are `no-store`.
+
 ### `describe_tool`
 
-Returns the full uncompressed definition of any other tool by name. Use when the compressed `tools/list` entry is ambiguous about behaviour or argument semantics — since v1.5.0, `tools/list` returns each tool's `description` truncated to the first sentence (≤120 UTF-8 bytes); `describe_tool` returns the full long-form text plus the same `inputSchema` (every property's full description).
+Returns the complete definition of any other tool by name — the same `description`, `inputSchema` (every property's description), `outputSchema`, `annotations` and `_meta` that its `tools/list` entry carries. Since v1.34.0 `tools/list` ships every description whole under a 1,024-byte per-tool budget, so this is a single-tool re-read rather than the only route to the full text (from v1.5.0 to v1.33.0 the listing was truncated to the first sentence, ≤120 bytes).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `tool_name` | string | **yes** | Exact tool name from `tools/list` (e.g. `"get_market_data"`). |
 
-**Response shape:** identical to a single `tools/list` entry — `{ name, description, inputSchema, outputSchema, annotations, _meta }` — with the full uncompressed `description` and the same `inputSchema.properties` (including injected `summary` for cache tools and `jmespath` for every tool). `_meta` always carries the `worldmonitor/access` tier marker and the `worldmonitor/weight` per-call cost, plus `ui.resourceUri` on UI-bearing tools.
+**Response shape:** identical to a single `tools/list` entry — `{ name, description, inputSchema, outputSchema, annotations, _meta }` — with the same `description` and the same `inputSchema.properties` (including injected `summary` for cache tools and `jmespath` for every tool). `_meta` always carries the `worldmonitor/access` tier marker and the `worldmonitor/weight` per-call cost, plus `ui.resourceUri` on UI-bearing tools.
 
 **Soft errors** (HTTP 200, returned inside the normal `content[0].text` envelope — NOT JSON-RPC errors):
 

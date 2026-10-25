@@ -3,6 +3,7 @@ import { BRIEF_TOPICS } from './country-brief-sections';
 import { panelReceiptSchema } from './panel-admission';
 import { resolveCountryCode } from './country-code-resolve';
 import { RAW_SIGNAL_PATH } from './country-raw-signals';
+import { COUNTRY_SIGNAL_PATH, COUNTRY_SIGNAL_WIRE_FAMILIES } from './country-signal-observations';
 
 const signalCountryNames = new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' });
 // Intl includes named organizations, statistical regions and test locales as well as countries/territories.
@@ -27,12 +28,13 @@ const countryDirectControls = {
 export const countryBriefDirectViewSchema = z.object({
   ...countryDirectControls, framework: z.unknown().optional(), allow_stale: z.unknown().optional(),
 }).strict().refine(value => !value.refresh || value.request_id !== undefined);
-export const countryRiskDirectViewSchema = z.object(countryDirectControls).strict()
+const historyDays = z.number().int().min(1).max(90).optional();
+export const countryRiskDirectViewSchema = z.object({ ...countryDirectControls, history_days: historyDays }).strict()
   .refine(value => !value.refresh || value.request_id !== undefined);
 const countryBriefDirectReadSchema = z.object({
   country_code: z.string().min(2).max(100), framework: z.unknown().optional(), allow_stale: z.unknown().optional(),
 }).strict();
-const countryRiskDirectReadSchema = z.object({ country_code: z.string().min(2).max(100) }).strict();
+const countryRiskDirectReadSchema = z.object({ country_code: z.string().min(2).max(100), history_days: historyDays }).strict();
 
 export function normalizeCountryDirectRead(name: 'get_country_brief' | 'get_country_risk', args: Record<string, unknown>): Record<string, unknown> | null {
   const parsed = (name === 'get_country_brief' ? countryBriefDirectReadSchema : countryRiskDirectReadSchema).safeParse(args);
@@ -42,7 +44,9 @@ export function normalizeCountryDirectRead(name: 'get_country_brief' | 'get_coun
   const original = parsed.data as { framework?: unknown; allow_stale?: unknown };
   let framework = '';
   try { if (name === 'get_country_brief') framework = String(original.framework ?? '').slice(0, 2000); } catch { return null; }
-  return { country_code: country, ...(framework ? { framework } : {}), ...(original.allow_stale === true ? { allow_stale: true } : {}) };
+  return { country_code: country, ...(framework ? { framework } : {}), ...(original.allow_stale === true ? { allow_stale: true } : {}),
+    ...('history_days' in parsed.data && parsed.data.history_days !== undefined ? { history_days: parsed.data.history_days } : {}),
+  };
 }
 
 const activityBoundsSchema = {
@@ -53,6 +57,7 @@ const activityBoundsSchema = {
 };
 
 export const COUNTRY_READERS = {
+  countrySignals: { path: COUNTRY_SIGNAL_PATH, args: z.object({ country_code: signalCountryCode, family: z.enum(COUNTRY_SIGNAL_WIRE_FAMILIES), window_index: z.coerce.number().int().min(0).max(1).default(0), cursor: z.string().max(200).default('') }).strict().refine(value => value.family === 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE' || value.window_index === 0 && value.cursor === '') },
   signalsRaw: { path: RAW_SIGNAL_PATH, args: z.object({ country_code: signalCountryCode }).strict() },
   flights: { path: '/api/military/v1/list-military-flights', args: z.object({ ...activityBoundsSchema, page_size: z.coerce.number().int().min(100).max(100).default(100), operator: z.literal('MILITARY_OPERATOR_UNSPECIFIED').default('MILITARY_OPERATOR_UNSPECIFIED'), aircraft_type: z.literal('MILITARY_AIRCRAFT_TYPE_UNSPECIFIED').default('MILITARY_AIRCRAFT_TYPE_UNSPECIFIED'), cursor: z.string().max(200).default('') }).strict() },
   vessels: { path: '/api/maritime/v1/get-vessel-snapshot', args: z.object({ ne_lat: z.coerce.number().pipe(z.literal(0)).default(0), ne_lon: z.coerce.number().pipe(z.literal(0)).default(0), sw_lat: z.coerce.number().pipe(z.literal(0)).default(0), sw_lon: z.coerce.number().pipe(z.literal(0)).default(0), include_candidates: z.literal('true').default('true') }).strict() },

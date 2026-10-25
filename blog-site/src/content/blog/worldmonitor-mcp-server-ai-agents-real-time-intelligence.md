@@ -34,7 +34,7 @@ It speaks streamable HTTP (JSON-RPC 2.0), handles OAuth automatically on first c
 | `get_conflict_events` | Active conflict and unrest events with coordinates |
 | `get_market_data` | Equities, commodities, crypto, FX, fear-greed composite |
 | `analyze_situation` | Ad-hoc geopolitical deduction from a query, with confidence and supporting signals |
-| `generate_forecasts` | Fresh probability estimates for developing situations |
+| `get_forecast_predictions` | Published probability forecasts for developing situations, with case files |
 
 The rest cover sanctions, cyber threats, energy intelligence, displacement, natural disasters, aviation status, prediction markets, supply chains, and more. Your agent can call `describe_tool` to pull the full definition of any tool. That call is quota-exempt, so exploration is free.
 

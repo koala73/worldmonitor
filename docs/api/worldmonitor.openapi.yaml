@@ -6402,7 +6402,7 @@ paths:
                 - DisplacementService
             summary: GetDisplacementSummary
             description: |-
-                GetDisplacementSummary retrieves global refugee and IDP statistics from UNHCR.
+                Global refugee and IDP statistics from UNHCR.
                  Empty/absent summary with fetched_at=0 or data_available=false means the
                  snapshot is unavailable/degraded, not that global displacement is zero.
             operationId: GetDisplacementSummary
@@ -6712,12 +6712,148 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/displacement/v1/get-cross-border-movements:
+        get:
+            tags:
+                - DisplacementService
+            summary: GetCrossBorderMovements
+            description: 200 describes unprojected movements; jmespath returns any JSON (array/scalar/null), with {data, _attribution} if attributed.
+            operationId: GetCrossBorderMovements
+            parameters:
+                - name: country_code
+                  in: query
+                  description: Two letters; no ISO assignment check.
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
+                    pattern: '^[A-Za-z]{2}$'
+                - name: route
+                  in: query
+                  description: Exact route or situation ID.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                    maxLength: 120
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "dataAvailable": true
+                                "movements":
+                                    - "asOf": "example"
+                                      "changePct": 1.5
+                                      "count": 1
+                                      "countryCode": "US"
+                                      "id": "example-id"
+                                "sources":
+                                    - "contentAt": 1717200000000
+                                      "fetchedAt": 1717200000000
+                                      "id": "example-id"
+                                      "maxContentAgeMin": 1
+                                      "name": "WorldMonitor Analyst"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_displacement_v1_GetCrossBorderMovementsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/displacement/v1/get-population-exposure:
         get:
             tags:
                 - DisplacementService
             summary: GetPopulationExposure
-            description: GetPopulationExposure returns country population data or estimates population within a radius.
+            description: Country population or estimated population within a radius.
             operationId: GetPopulationExposure
             parameters:
                 - name: mode
@@ -7474,7 +7610,7 @@ paths:
                                       "comparisonValue": 1.5
                                       "contextOnly": true
                                       "direction": "example"
-                                "latestObservationDate": "40.7128"
+                                "latestObservationDate": "2026-01-15"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_economic_v1_GetChinaMacroSnapshotResponse'
                 "400":
@@ -8584,12 +8720,8 @@ paths:
             tags:
                 - EconomicService
             summary: GetNationalDebt
-            description: GetNationalDebt retrieves national debt clock data for all countries. PRO-gated. Requires an active Pro subscription.
+            description: GetNationalDebt retrieves national debt clock data for all countries.
             operationId: GetNationalDebt
-            security:
-                - WorldMonitorKey: []
-                - ApiKeyHeader: []
-                - BearerAuth: []
             parameters:
                 - name: jmespath
                   in: query
@@ -8630,7 +8762,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: Pro subscription required.
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -9107,7 +9239,7 @@ paths:
                     content:
                         application/json:
                             example:
-                                "latestPeriod": "40.7128"
+                                "latestPeriod": "daily"
                                 "weeks":
                                     - "period": "daily"
                                       "stocksMb": 1.5
@@ -9219,7 +9351,7 @@ paths:
                     content:
                         application/json:
                             example:
-                                "latestPeriod": "40.7128"
+                                "latestPeriod": "daily"
                                 "weeks":
                                     - "period": "daily"
                                       "storBcf": 1.5
@@ -9808,7 +9940,7 @@ paths:
                                     - "date": "2026-01-15"
                                       "value": 1.5
                                 "label": "example"
-                                "latestDate": "40.7128"
+                                "latestDate": "2026-01-15"
                                 "latestValue": 1.5
                                 "seededAt": "2026-01-15T12:00:00Z"
                             schema:
@@ -11122,6 +11254,257 @@ paths:
                                 "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_economic_v1_GetUsInterestRatesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-capital-flows:
+        get:
+            tags:
+                - EconomicService
+            summary: GetCapitalFlows
+            description: 'GetCapitalFlows returns where money enters and leaves about 230 economies, and between any two, from official statistics. Per country: IMF balance-of-payments gross inflows and outflows by FDI, portfolio and other investment (quarterly where reported, annual otherwise) with derived Forbes and Warnock surge, stop, flight and retrenchment states; BIS cross-border deposits and borrowing of non-bank residents; IMF portfolio holdings of the country''s securities; and IMF direct-investment positions. With country and counterpart: both directions of the pair across bank deposits and lending (with eight quarters of adjusted flows), portfolio holdings and direct investment (with both sides'' figures), each leg marked reported, not_itemized or not_published. A person changing residence is not a balance-of-payments flow, so wealth migration does not appear.'
+            operationId: GetCapitalFlows
+            parameters:
+                - name: country
+                  in: query
+                  description: Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned (and the counterpart, if given).
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
+                - name: include_series
+                  in: query
+                  description: When true, include each returned country's period-by-period BOP series. Defaults to false.
+                  required: false
+                  example: true
+                  schema:
+                    type: boolean
+                - name: counterpart
+                  in: query
+                  description: Optional ISO 3166-1 alpha-2 partner. With country, the response adds pair (both directions) and the counterpart's own view. Ignored without country, and when equal to country.
+                  required: false
+                  example: "DE"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "countries":
+                                    - "bank":
+                                        "householdDepositsAbroad":
+                                            "flow4qUsdBn": 1.5
+                                            "stockUsdBn": 1.5
+                                        "latestPeriod": "2026-Q1"
+                                        "nonBankBorrowingFromAbroad":
+                                            "flow4qUsdBn": 1.5
+                                            "stockUsdBn": 1.5
+                                        "nonBankDepositsAbroad":
+                                            "flow4qUsdBn": 1.5
+                                            "stockUsdBn": 1.5
+                                        "publishesBilateral": true
+                                      "bop":
+                                          "episodes":
+                                              "flight":
+                                                  - "end": "2026-Q1"
+                                                    "peakPeriod": "2026-Q1"
+                                                    "peakZ": 1.5
+                                                    "quarters": 1
+                                                    "start": "2026-Q1"
+                                              "retrenchment":
+                                                  - "end": "2026-Q1"
+                                                    "peakPeriod": "2026-Q1"
+                                                    "peakZ": 1.5
+                                                    "quarters": 1
+                                                    "start": "2026-Q1"
+                                              "stop":
+                                                  - "end": "2026-Q1"
+                                                    "peakPeriod": "2026-Q1"
+                                                    "peakZ": 1.5
+                                                    "quarters": 1
+                                                    "start": "2026-Q1"
+                                              "surge":
+                                                  - "end": "2026-Q1"
+                                                    "peakPeriod": "2026-Q1"
+                                                    "peakZ": 1.5
+                                                    "quarters": 1
+                                                    "start": "2026-Q1"
+                                          "frequency": "example"
+                                          "latestPeriod": "2026-Q1"
+                                          "series":
+                                              - "errorsOmissions": 1.5
+                                                "inflows":
+                                                    "fdi": 1.5
+                                                    "other": 1.5
+                                                    "portfolio": 1.5
+                                                    "total": 1
+                                                "outflows":
+                                                    "fdi": 1.5
+                                                    "other": 1.5
+                                                    "portfolio": 1.5
+                                                    "total": 1
+                                                "period": "2026-Q1"
+                                          "state":
+                                              "inflow": "example"
+                                              "inflowZ": 1.5
+                                              "outflow": "example"
+                                              "outflowZ": 1.5
+                                      "country": "US"
+                                      "fdi":
+                                          "inwardUsdBn": 1.5
+                                          "outwardUsdBn": 1.5
+                                          "topDestinations":
+                                              - "country": "US"
+                                                "flow4qUsdBn": 1.5
+                                                "stockUsdBn": 1.5
+                                          "topInvestors":
+                                              - "country": "US"
+                                                "flow4qUsdBn": 1.5
+                                                "stockUsdBn": 1.5
+                                          "year": 1
+                                      "gdpUsdBn": 1.5
+                                "latest":
+                                    "bisQuarter": "2026-Q1"
+                                    "bopQuarter": "2026-Q1"
+                                    "bopYear": "example"
+                                    "fdiYear": 1
+                                    "pipYear": 1
+                                "method":
+                                    "exampleKey": "example"
+                                "pair":
+                                    "aBorrowingFromB":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "instrument": "example"
+                                    "aDepositsInB":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "instrument": "example"
+                                    "aFdiInB":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "instrument": "example"
+                                    "aHoldingsOfB":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "instrument": "example"
+                                    "bBorrowingFromA":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "instrument": "example"
+                                "seededAt": 1717200000000
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_economic_v1_GetCapitalFlowsResponse'
                 "400":
                     description: Validation error
                     content:
@@ -13102,6 +13485,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "fetchedAt": 1717200000000
                                 "outages":
                                     - "categories":
                                         - "example"
@@ -14505,6 +14889,159 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/intelligence/v1/get-country-signal-observations:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountrySignalObservations
+            description: Read one bounded country-qualified observation family or eligible flight page for the country panel, with source clocks and coverage.
+            operationId: GetCountrySignalObservations
+            parameters:
+                - name: country_code
+                  in: query
+                  description: Uppercase ISO 3166-1 alpha-2 country code.
+                  required: true
+                  "schema":
+                      "pattern": "^[A-Z]{2}$"
+                      "type": "string"
+                  example: "US"
+                - name: family
+                  in: query
+                  description: Fixed source family or eligible flight page; unspecified is rejected.
+                  required: true
+                  example: "COUNTRY_SIGNAL_FAMILY_OUTAGES"
+                  schema:
+                    type: string
+                    enum:
+                        - 'COUNTRY_SIGNAL_FAMILY_OUTAGES'
+                        - 'COUNTRY_SIGNAL_FAMILY_UNREST'
+                        - 'COUNTRY_SIGNAL_FAMILY_FIRES'
+                        - 'COUNTRY_SIGNAL_FAMILY_RADIATION'
+                        - 'COUNTRY_SIGNAL_FAMILY_SANCTIONS'
+                        - 'COUNTRY_SIGNAL_FAMILY_CONFLICT'
+                        - 'COUNTRY_SIGNAL_FAMILY_POSTURE'
+                        - 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE'
+                - name: window_index
+                  in: query
+                  description: Country-derived flight viewport index, 0 or 1. Other families require 0.
+                  required: false
+                  "schema":
+                      "format": "int32"
+                      "maximum": 1
+                      "minimum": 0
+                      "type": "integer"
+                  example: 0
+                - name: cursor
+                  in: query
+                  description: Prior eligible flight page cursor. Other families require an empty cursor.
+                  required: false
+                  "schema":
+                      "maxLength": 200
+                      "type": "string"
+                  example: ""
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "countryCode": "US"
+                                "family": "COUNTRY_SIGNAL_FAMILY_OUTAGES"
+                                "outcomeJson": "{\"countryCode\":\"US\",\"family\":\"outages\",\"state\":\"unavailable\",\"observations\":[],\"snapshotAt\":null,\"retrievedAt\":\"2026-10-18T12:00:00.000Z\",\"computedAt\":null,\"observationWindow\":null,\"scope\":\"Country-qualified observations\",\"attribution\":\"Cloudflare Radar\",\"partial\":true,\"sampleBeforeCountryFilter\":false,\"reason\":\"Synthetic unavailable-source example.\",\"matchedRows\":null,\"sampledRows\":null,\"omittedRows\":null}"
+                                "windowIndex": 0
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_intelligence_v1_GetCountrySignalObservationsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-risk-scores:
         get:
             tags:
@@ -14677,9 +15214,17 @@ paths:
                                     - "changePercent": 42.5
                                       "countries":
                                           - "US"
+                                      "evidence":
+                                          - "airports":
+                                              - "name": "WorldMonitor Analyst"
+                                                "status": "example"
+                                            "baseline": 1.5
+                                            "channel": "example"
+                                            "countries":
+                                                - "US"
+                                            "observedAt": 1717200000000
                                       "id": "example-id"
                                       "label": "example"
-                                      "region": "example"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_intelligence_v1_GetPizzintStatusResponse'
                 "400":
@@ -14844,6 +15389,150 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/intelligence/v1/get-country-history:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryHistory
+            description: Daily country snapshots with source versions, gaps and tier-limited depth.
+            operationId: GetCountryHistory
+            security:
+                - {}
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: country
+                  in: query
+                  description: Assigned ISO alpha-2 country code.
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+                    pattern: '^[A-Z]{2}$'
+                - name: days
+                  in: query
+                  description: |-
+                    UTC days including today; 0 defaults to 7.
+                     Verified limits: free 7, Pro 90, API/Enterprise 365.
+                  required: false
+                  example: 7
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "allowedDays": 7
+                                "country": "US"
+                                "effectiveDays": 7
+                                "fetchedAt": 1717200000000
+                                "points":
+                                    - "capturedAt": 1717200000000
+                                      "cii":
+                                          "observedAt": 1717200000000
+                                          "score": 42.5
+                                          "version": "example"
+                                      "ciiVersionBreak": true
+                                      "date": "2026-01-15"
+                                      "keySignals":
+                                          - "example"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_intelligence_v1_GetCountryHistoryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Invalid supplied credentials. Omit credentials for seven-day access.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -18944,6 +19633,15 @@ paths:
                   schema:
                     type: integer
                     format: int32
+                - name: cursor
+                  in: query
+                  description: |-
+                    Opaque next_cursor from the preceding response. Omit for the first page.
+                     Keep domain, country, from and to unchanged between pages.
+                  required: false
+                  example: "next-page-token"
+                  schema:
+                    type: string
                 - name: jmespath
                   in: query
                   description: |-
@@ -18958,6 +19656,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "nextCursor": "next-page-token"
                                 "partial": true
                                 "records":
                                     - "category": "cs.AI"
@@ -23045,53 +23744,32 @@ paths:
                         application/json:
                             example:
                                 "cbReserves":
-                                    "asOfMonth": "example"
+                                    "asOfMonth": "2026-09"
+                                    "indicator": "IRFCLDT1_IRFCL56_USD"
                                     "topBuyers12m":
-                                        - "deltaTonnes12m": 1.5
-                                          "iso3": "USA"
-                                          "name": "WorldMonitor Analyst"
+                                        []
                                     "topHolders":
                                         - "iso3": "USA"
-                                          "name": "WorldMonitor Analyst"
-                                          "pctOfReserves": 1.5
-                                          "tonnes": 1.5
+                                          "name": "United States"
+                                          "pctOfReserves": 50
+                                          "tonnes": 0
                                     "topSellers12m":
-                                        - "deltaTonnes12m": 1.5
-                                          "iso3": "USA"
-                                          "name": "WorldMonitor Analyst"
-                                    "totalTonnes": 1
-                                "cot":
-                                    "managedMoney":
-                                        "longPositions": "1717200000000"
-                                        "netPct": 1.5
-                                        "oiSharePct": 1.5
-                                        "shortPositions": "1717200000000"
-                                        "wowNetDelta": "1717200000000"
-                                    "nextReleaseDate": "2026-01-15"
-                                    "openInterest": "1717200000000"
-                                    "producerSwap":
-                                        "longPositions": "1717200000000"
-                                        "netPct": 1.5
-                                        "oiSharePct": 1.5
-                                        "shortPositions": "1717200000000"
-                                        "wowNetDelta": "1717200000000"
-                                    "reportDate": "2026-01-15"
+                                        []
+                                    "totalTonnes": 0
+                                    "valueIsOunces": false
                                 "crossCurrencyPrices":
-                                    - "currency": "USD"
-                                      "flag": "example"
-                                      "price": 75.25
+                                    []
                                 "drivers":
-                                    - "changePct": 1.5
-                                      "correlation30d": 1.5
-                                      "label": "example"
-                                      "symbol": "AAPL"
-                                      "value": 1.5
-                                "etfFlows":
-                                    "asOfDate": "2026-01-15"
-                                    "aumUsd": 1.5
-                                    "changeM1Pct": 1.5
-                                    "changeM1Tonnes": 1.5
-                                    "changeW1Pct": 1.5
+                                    []
+                                "goldChangePct": 0
+                                "goldPrice": 3200
+                                "goldSparkline":
+                                    []
+                                "palladiumPrice": 0
+                                "platinumPrice": 0
+                                "silverPrice": 0
+                                "unavailable": false
+                                "updatedAt": "2026-09-30T00:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_market_v1_GetGoldIntelligenceResponse'
                 "400":
@@ -27547,50 +28225,50 @@ paths:
                                     "available": true
                                     "medianAgeYears":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "years"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                     "oldAgeDependencyRatioPercent":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "percent"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                     "totalDependencyRatioPercent":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "percent"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                     "workingAgePopulationPeople":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "people"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                 "available": true
                                 "countryCode": "US"
                                 "education":
                                     "available": true
                                     "researchersPerMillion":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "people per million"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                     "stemGraduatesSharePercent":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "percent"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                     "tertiaryEnrollmentGrossPercent":
                                         "available": true
-                                        "source": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "percent"
                                         "value": 1.5
-                                        "year": 1
+                                        "year": 2024
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_resilience_v1_GetDemographicsCapabilityResponse'
@@ -28050,12 +28728,8 @@ paths:
             tags:
                 - SanctionsService
             summary: ListSanctionsPressure
-            description: ListSanctionsPressure retrieves normalized OFAC designation summaries and recent additions. PRO-gated. Requires entitlement tier >= 1.
+            description: ListSanctionsPressure retrieves normalized OFAC designation summaries and recent additions.
             operationId: ListSanctionsPressure
-            security:
-                - WorldMonitorKey: []
-                - ApiKeyHeader: []
-                - BearerAuth: []
             parameters:
                 - name: max_items
                   in: query
@@ -28113,7 +28787,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: PRO entitlement access denied.
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -28186,12 +28860,15 @@ paths:
             tags:
                 - SanctionsService
             summary: LookupSanctionEntity
-            description: LookupSanctionEntity searches the OFAC entity index by name, vessel, or aircraft.
+            description: |-
+                LookupSanctionEntity screens the seeded OFAC SDN, OFAC Consolidated, Canada SEMA and US
+                 Consolidated Screening List export-control lists by name, up to 10 retained aliases per
+                 entity, or an exact IMO identifier.
             operationId: LookupSanctionEntity
             parameters:
                 - name: q
                   in: query
-                  description: Search text for a sanctioned person, organization, vessel, or aircraft.
+                  description: Search a name, up to 10 retained aliases per entity, or an exact IMO identifier (2-200 characters).
                   required: false
                   example: "example"
                   schema:
@@ -29610,7 +30287,8 @@ paths:
                                       "callbackUrl": "https://example.com/worldmonitor-webhook"
                                       "chokepointIds":
                                           - "suez"
-                                      "createdAt": "2026-01-15T12:00:00Z"
+                                      "countries":
+                                          - "US"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_shipping_v2_ListWebhooksResponse'
                 "400":
@@ -29712,7 +30390,7 @@ paths:
                 - ShippingV2Service
             summary: RegisterWebhook
             description: |-
-                RegisterWebhook subscribes a callback URL to chokepoint disruption alerts.
+                RegisterWebhook subscribes a callback URL to one event type.
                  Returns the subscriberId and the raw HMAC secret — the secret is never
                  returned again except via rotate-secret. PRO-gated. Requires an active Pro subscription.
             operationId: RegisterWebhook
@@ -29728,6 +30406,8 @@ paths:
                             "callbackUrl": "https://example.com/worldmonitor-webhook"
                             "chokepointIds":
                                 - "suez"
+                            "eventType": "chokepoint.disruption"
+                            "minLiveSignal": 1
                         schema:
                             $ref: '#/components/schemas/worldmonitor_shipping_v2_RegisterWebhookRequest'
                 required: true
@@ -32429,7 +33109,7 @@ paths:
                                                 "sourceType": "all"
                                                 "title": "example"
                                                 "url": "https://example.com/worldmonitor"
-                                          "firstRegulatorConfirmation": "40.7128"
+                                          "firstRegulatorConfirmation": "example"
                                           "lastEvidenceUpdate": "2026-01-15"
                                       "firstSeen": "example"
                                       "id": "example-id"
@@ -32564,7 +33244,7 @@ paths:
                                               "sourceType": "all"
                                               "title": "example"
                                               "url": "https://example.com/worldmonitor"
-                                        "firstRegulatorConfirmation": "40.7128"
+                                        "firstRegulatorConfirmation": "example"
                                         "lastEvidenceUpdate": "2026-01-15"
                                     "firstSeen": "example"
                                     "id": "example-id"
@@ -32824,7 +33504,7 @@ paths:
                         application/json:
                             example:
                                 "generatedAt": "2026-07-25T12:00:00.000Z"
-                                "payloadJson": "{\"generatedAt\":\"2026-07-25T12:00:00.000Z\",\"corridors\":[{\"id\":\"china-yangtze-river-delta\",\"name\":\"Yangtze River Delta\",\"description\":\"Reviewed coastal logistics corridor joining Shanghai, Jiangsu, and Zhejiang gateways.\",\"boundary\":[{\"lat\":28.4,\"lon\":118.2},{\"lat\":28.4,\"lon\":123.2},{\"lat\":33.4,\"lon\":123.2},{\"lat\":33.4,\"lon\":118.2},{\"lat\":28.4,\"lon\":118.2}],\"nodes\":[{\"id\":\"china-node:yrd-port-shanghai\",\"name\":\"Shanghai\",\"type\":\"port\",\"lat\":31.1918,\"lon\":121.6442,\"sourceOwner\":\"IMF PortWatch\",\"sourceSelector\":{\"family\":\"port\",\"id\":\"port1188\"}}],\"availability\":\"partial\",\"conditions\":[{\"family\":\"port\",\"providerId\":\"portwatch\",\"availability\":\"available\",\"reason\":null,\"sourceSignals\":[{\"id\":\"signal:portwatch:port1188:2026-07-25T11:00:00.000Z\",\"family\":\"port\",\"selectorId\":\"port1188\",\"availability\":\"available\",\"publisher\":{\"id\":\"publisher:imf-portwatch\",\"name\":\"IMF PortWatch\",\"type\":\"official\"},\"sourceUrl\":\"https://portwatch.imf.org/\",\"sourceScope\":\"node\",\"observationTime\":\"2026-07-25T11:00:00.000Z\",\"observationTimePrecision\":\"instant\",\"releaseTime\":null,\"releaseTimePrecision\":\"unknown\",\"retrievalTime\":\"2026-07-25T11:05:00.000Z\",\"retrievalTimePrecision\":\"instant\",\"revision\":null,\"transportFreshness\":\"fresh\",\"contentFreshness\":\"current\",\"summary\":\"PortWatch activity observation available for Shanghai.\",\"metrics\":{\"tankerCalls30d\":14}}],\"provenance\":{\"contractVersion\":\"decision-signal-provenance/v1\",\"signalId\":\"signal:corridor-condition:china-yangtze-river-delta:port:2026-07-25T11:00:00.000Z\",\"familyId\":\"composed_corridor_condition\",\"claims\":{\"publisher\":{\"status\":\"known\",\"value\":{\"id\":\"publisher:worldmonitor-derived\",\"name\":\"WorldMonitor derived output\",\"type\":\"derived_output\",\"registryReference\":null}},\"observation_time\":{\"status\":\"known\",\"value\":{\"role\":\"observation\",\"value\":\"2026-07-25T11:00:00.000Z\",\"precision\":\"instant\"}},\"source_url\":{\"status\":\"not_applicable\",\"reason\":\"The corridor condition links source URLs through its input signals.\"},\"original_reference\":{\"status\":\"not_applicable\",\"reason\":\"The corridor condition is composed from multiple source records.\"},\"original_language\":{\"status\":\"not_applicable\",\"reason\":\"The deterministic composition has no original-language text.\"},\"translation\":{\"status\":\"not_applicable\",\"reason\":\"The deterministic composition has no translated source text.\"},\"effective_time\":{\"status\":\"known\",\"value\":{\"role\":\"effective\",\"value\":\"2026-07-25T11:00:00.000Z\",\"precision\":\"instant\"}},\"publication_time\":{\"status\":\"not_applicable\",\"reason\":\"The computed condition is not a publisher release.\"},\"retrieval_time\":{\"status\":\"known\",\"value\":{\"role\":\"retrieval\",\"value\":\"2026-07-25T11:05:00.000Z\",\"precision\":\"instant\"}},\"revision\":{\"status\":\"known\",\"value\":{\"vintageId\":\"china-yangtze-river-delta:port:2026-07-25T11:00:00.000Z\",\"sequence\":1,\"state\":\"original\"}},\"supersession\":{\"status\":\"known\",\"value\":{\"state\":\"current\"}},\"extraction_confidence\":{\"status\":\"not_applicable\",\"reason\":\"Each input signal owns its extraction confidence.\"},\"classification_confidence\":{\"status\":\"known\",\"value\":{\"score\":1,\"method\":\"exact-reviewed-selector/v1\"}},\"corroboration\":{\"status\":\"known\",\"value\":{\"state\":\"single_source\",\"sourceSignalIds\":[\"signal:portwatch:port1188:2026-07-25T11:00:00.000Z\"]}},\"transport_freshness\":{\"status\":\"known\",\"value\":{\"state\":\"fresh\",\"assessedAt\":\"2026-07-25T12:00:00.000Z\",\"lastSuccessAt\":\"2026-07-25T11:05:00.000Z\"}},\"content_freshness\":{\"status\":\"known\",\"value\":{\"state\":\"current\",\"assessedAt\":\"2026-07-25T12:00:00.000Z\",\"contentAsOf\":\"2026-07-25T11:00:00.000Z\"}},\"derivation\":{\"status\":\"known\",\"value\":{\"methodId\":\"worldmonitor:china-corridor-condition\",\"methodVersion\":\"1\",\"computedAt\":\"2026-07-25T12:00:00.000Z\",\"inputSignalIds\":[\"signal:portwatch:port1188:2026-07-25T11:00:00.000Z\"]}}}}},{\"family\":\"aviation\",\"providerId\":\"provider:aviation\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"hazard\",\"providerId\":\"provider:hazard\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"power_energy\",\"providerId\":\"provider:power_energy\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"strategic_industry\",\"providerId\":\"provider:strategic_industry\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"trade\",\"providerId\":\"provider:trade\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null}]},{\"id\":\"china-greater-bay-area\",\"name\":\"Greater Bay Area\",\"description\":\"Reviewed Pearl River Delta corridor connecting Guangdong, Hong Kong, and Macao-facing port, airport, and industrial gateways.\",\"boundary\":[{\"lat\":20.5,\"lon\":111.5},{\"lat\":20.5,\"lon\":115.8},{\"lat\":24.8,\"lon\":115.8},{\"lat\":24.8,\"lon\":111.5},{\"lat\":20.5,\"lon\":111.5}],\"nodes\":[{\"id\":\"china-node:gba-port-shekou\",\"name\":\"Shekou Shenzhen\",\"type\":\"port\",\"lat\":22.47,\"lon\":113.9,\"sourceOwner\":\"IMF PortWatch\",\"sourceSelector\":{\"family\":\"port\",\"id\":\"port1189\"}}],\"availability\":\"partial\",\"conditions\":[{\"family\":\"port\",\"providerId\":\"portwatch\",\"availability\":\"available\",\"reason\":null,\"sourceSignals\":[{\"id\":\"signal:portwatch:port1189:2026-07-25T11:00:00.000Z\",\"family\":\"port\",\"selectorId\":\"port1189\",\"availability\":\"available\",\"publisher\":{\"id\":\"publisher:imf-portwatch\",\"name\":\"IMF PortWatch\",\"type\":\"official\"},\"sourceUrl\":\"https://portwatch.imf.org/\",\"sourceScope\":\"node\",\"observationTime\":\"2026-07-25T11:00:00.000Z\",\"observationTimePrecision\":\"instant\",\"releaseTime\":null,\"releaseTimePrecision\":\"unknown\",\"retrievalTime\":\"2026-07-25T11:05:00.000Z\",\"retrievalTimePrecision\":\"instant\",\"revision\":null,\"transportFreshness\":\"fresh\",\"contentFreshness\":\"current\",\"summary\":\"PortWatch activity observation available for Shekou Shenzhen.\",\"metrics\":{\"tankerCalls30d\":14}}],\"provenance\":{\"contractVersion\":\"decision-signal-provenance/v1\",\"signalId\":\"signal:corridor-condition:china-greater-bay-area:port:2026-07-25T11:00:00.000Z\",\"familyId\":\"composed_corridor_condition\",\"claims\":{\"publisher\":{\"status\":\"known\",\"value\":{\"id\":\"publisher:worldmonitor-derived\",\"name\":\"WorldMonitor derived output\",\"type\":\"derived_output\",\"registryReference\":null}},\"observation_time\":{\"status\":\"known\",\"value\":{\"role\":\"observation\",\"value\":\"2026-07-25T11:00:00.000Z\",\"precision\":\"instant\"}},\"source_url\":{\"status\":\"not_applicable\",\"reason\":\"The corridor condition links source URLs through its input signals.\"},\"original_reference\":{\"status\":\"not_applicable\",\"reason\":\"The corridor condition is composed from multiple source records.\"},\"original_language\":{\"status\":\"not_applicable\",\"reason\":\"The deterministic composition has no original-language text.\"},\"translation\":{\"status\":\"not_applicable\",\"reason\":\"The deterministic composition has no translated source text.\"},\"effective_time\":{\"status\":\"known\",\"value\":{\"role\":\"effective\",\"value\":\"2026-07-25T11:00:00.000Z\",\"precision\":\"instant\"}},\"publication_time\":{\"status\":\"not_applicable\",\"reason\":\"The computed condition is not a publisher release.\"},\"retrieval_time\":{\"status\":\"known\",\"value\":{\"role\":\"retrieval\",\"value\":\"2026-07-25T11:05:00.000Z\",\"precision\":\"instant\"}},\"revision\":{\"status\":\"known\",\"value\":{\"vintageId\":\"china-greater-bay-area:port:2026-07-25T11:00:00.000Z\",\"sequence\":1,\"state\":\"original\"}},\"supersession\":{\"status\":\"known\",\"value\":{\"state\":\"current\"}},\"extraction_confidence\":{\"status\":\"not_applicable\",\"reason\":\"Each input signal owns its extraction confidence.\"},\"classification_confidence\":{\"status\":\"known\",\"value\":{\"score\":1,\"method\":\"exact-reviewed-selector/v1\"}},\"corroboration\":{\"status\":\"known\",\"value\":{\"state\":\"single_source\",\"sourceSignalIds\":[\"signal:portwatch:port1189:2026-07-25T11:00:00.000Z\"]}},\"transport_freshness\":{\"status\":\"known\",\"value\":{\"state\":\"fresh\",\"assessedAt\":\"2026-07-25T12:00:00.000Z\",\"lastSuccessAt\":\"2026-07-25T11:05:00.000Z\"}},\"content_freshness\":{\"status\":\"known\",\"value\":{\"state\":\"current\",\"assessedAt\":\"2026-07-25T12:00:00.000Z\",\"contentAsOf\":\"2026-07-25T11:00:00.000Z\"}},\"derivation\":{\"status\":\"known\",\"value\":{\"methodId\":\"worldmonitor:china-corridor-condition\",\"methodVersion\":\"1\",\"computedAt\":\"2026-07-25T12:00:00.000Z\",\"inputSignalIds\":[\"signal:portwatch:port1189:2026-07-25T11:00:00.000Z\"]}}}}},{\"family\":\"aviation\",\"providerId\":\"provider:aviation\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"hazard\",\"providerId\":\"provider:hazard\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"power_energy\",\"providerId\":\"provider:power_energy\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"strategic_industry\",\"providerId\":\"provider:strategic_industry\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"trade\",\"providerId\":\"provider:trade\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null}]},{\"id\":\"china-bohai-rim\",\"name\":\"Bohai Rim\",\"description\":\"Reviewed northern maritime-industrial corridor spanning Beijing-Tianjin, Hebei, Shandong, Liaoning, and their major gateways.\",\"boundary\":[{\"lat\":35.5,\"lon\":116},{\"lat\":35.5,\"lon\":123.5},{\"lat\":42.2,\"lon\":123.5},{\"lat\":42.2,\"lon\":116},{\"lat\":35.5,\"lon\":116}],\"nodes\":[{\"id\":\"china-node:bohai-port-qingdao\",\"name\":\"Qingdao\",\"type\":\"port\",\"lat\":36.07,\"lon\":120.32,\"sourceOwner\":\"IMF PortWatch\",\"sourceSelector\":{\"family\":\"port\",\"id\":\"port1069\"}}],\"availability\":\"partial\",\"conditions\":[{\"family\":\"port\",\"providerId\":\"portwatch\",\"availability\":\"available\",\"reason\":null,\"sourceSignals\":[{\"id\":\"signal:portwatch:port1069:2026-07-25T11:00:00.000Z\",\"family\":\"port\",\"selectorId\":\"port1069\",\"availability\":\"available\",\"publisher\":{\"id\":\"publisher:imf-portwatch\",\"name\":\"IMF PortWatch\",\"type\":\"official\"},\"sourceUrl\":\"https://portwatch.imf.org/\",\"sourceScope\":\"node\",\"observationTime\":\"2026-07-25T11:00:00.000Z\",\"observationTimePrecision\":\"instant\",\"releaseTime\":null,\"releaseTimePrecision\":\"unknown\",\"retrievalTime\":\"2026-07-25T11:05:00.000Z\",\"retrievalTimePrecision\":\"instant\",\"revision\":null,\"transportFreshness\":\"fresh\",\"contentFreshness\":\"current\",\"summary\":\"PortWatch activity observation available for Qingdao.\",\"metrics\":{\"tankerCalls30d\":14}}],\"provenance\":{\"contractVersion\":\"decision-signal-provenance/v1\",\"signalId\":\"signal:corridor-condition:china-bohai-rim:port:2026-07-25T11:00:00.000Z\",\"familyId\":\"composed_corridor_condition\",\"claims\":{\"publisher\":{\"status\":\"known\",\"value\":{\"id\":\"publisher:worldmonitor-derived\",\"name\":\"WorldMonitor derived output\",\"type\":\"derived_output\",\"registryReference\":null}},\"observation_time\":{\"status\":\"known\",\"value\":{\"role\":\"observation\",\"value\":\"2026-07-25T11:00:00.000Z\",\"precision\":\"instant\"}},\"source_url\":{\"status\":\"not_applicable\",\"reason\":\"The corridor condition links source URLs through its input signals.\"},\"original_reference\":{\"status\":\"not_applicable\",\"reason\":\"The corridor condition is composed from multiple source records.\"},\"original_language\":{\"status\":\"not_applicable\",\"reason\":\"The deterministic composition has no original-language text.\"},\"translation\":{\"status\":\"not_applicable\",\"reason\":\"The deterministic composition has no translated source text.\"},\"effective_time\":{\"status\":\"known\",\"value\":{\"role\":\"effective\",\"value\":\"2026-07-25T11:00:00.000Z\",\"precision\":\"instant\"}},\"publication_time\":{\"status\":\"not_applicable\",\"reason\":\"The computed condition is not a publisher release.\"},\"retrieval_time\":{\"status\":\"known\",\"value\":{\"role\":\"retrieval\",\"value\":\"2026-07-25T11:05:00.000Z\",\"precision\":\"instant\"}},\"revision\":{\"status\":\"known\",\"value\":{\"vintageId\":\"china-bohai-rim:port:2026-07-25T11:00:00.000Z\",\"sequence\":1,\"state\":\"original\"}},\"supersession\":{\"status\":\"known\",\"value\":{\"state\":\"current\"}},\"extraction_confidence\":{\"status\":\"not_applicable\",\"reason\":\"Each input signal owns its extraction confidence.\"},\"classification_confidence\":{\"status\":\"known\",\"value\":{\"score\":1,\"method\":\"exact-reviewed-selector/v1\"}},\"corroboration\":{\"status\":\"known\",\"value\":{\"state\":\"single_source\",\"sourceSignalIds\":[\"signal:portwatch:port1069:2026-07-25T11:00:00.000Z\"]}},\"transport_freshness\":{\"status\":\"known\",\"value\":{\"state\":\"fresh\",\"assessedAt\":\"2026-07-25T12:00:00.000Z\",\"lastSuccessAt\":\"2026-07-25T11:05:00.000Z\"}},\"content_freshness\":{\"status\":\"known\",\"value\":{\"state\":\"current\",\"assessedAt\":\"2026-07-25T12:00:00.000Z\",\"contentAsOf\":\"2026-07-25T11:00:00.000Z\"}},\"derivation\":{\"status\":\"known\",\"value\":{\"methodId\":\"worldmonitor:china-corridor-condition\",\"methodVersion\":\"1\",\"computedAt\":\"2026-07-25T12:00:00.000Z\",\"inputSignalIds\":[\"signal:portwatch:port1069:2026-07-25T11:00:00.000Z\"]}}}}},{\"family\":\"aviation\",\"providerId\":\"provider:aviation\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"hazard\",\"providerId\":\"provider:hazard\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"power_energy\",\"providerId\":\"provider:power_energy\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"strategic_industry\",\"providerId\":\"provider:strategic_industry\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"trade\",\"providerId\":\"provider:trade\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null}]},{\"id\":\"china-western-land-sea-corridor\",\"name\":\"Western Land-Sea Corridor\",\"description\":\"Reviewed western corridor linking inland manufacturing hubs, Xinjiang land crossings, and Guangxi gateways to regional and maritime routes.\",\"boundary\":[{\"lat\":20.4,\"lon\":106.2},{\"lat\":20.4,\"lon\":110.4},{\"lat\":32.5,\"lon\":110.4},{\"lat\":47,\"lon\":91},{\"lat\":47,\"lon\":78.5},{\"lat\":41,\"lon\":78.5},{\"lat\":27,\"lon\":99.7},{\"lat\":22,\"lon\":105.8},{\"lat\":20.4,\"lon\":106.2}],\"nodes\":[{\"id\":\"china-node:western-port-qinzhou\",\"name\":\"Qinzhou\",\"type\":\"port\",\"lat\":21.6788,\"lon\":108.6383,\"sourceOwner\":\"IMF PortWatch\",\"sourceSelector\":{\"family\":\"port\",\"id\":\"port1071\"}}],\"availability\":\"partial\",\"conditions\":[{\"family\":\"port\",\"providerId\":\"portwatch\",\"availability\":\"available\",\"reason\":null,\"sourceSignals\":[{\"id\":\"signal:portwatch:port1071:2026-07-25T11:00:00.000Z\",\"family\":\"port\",\"selectorId\":\"port1071\",\"availability\":\"available\",\"publisher\":{\"id\":\"publisher:imf-portwatch\",\"name\":\"IMF PortWatch\",\"type\":\"official\"},\"sourceUrl\":\"https://portwatch.imf.org/\",\"sourceScope\":\"node\",\"observationTime\":\"2026-07-25T11:00:00.000Z\",\"observationTimePrecision\":\"instant\",\"releaseTime\":null,\"releaseTimePrecision\":\"unknown\",\"retrievalTime\":\"2026-07-25T11:05:00.000Z\",\"retrievalTimePrecision\":\"instant\",\"revision\":null,\"transportFreshness\":\"fresh\",\"contentFreshness\":\"current\",\"summary\":\"PortWatch activity observation available for Qinzhou.\",\"metrics\":{\"tankerCalls30d\":14}}],\"provenance\":{\"contractVersion\":\"decision-signal-provenance/v1\",\"signalId\":\"signal:corridor-condition:china-western-land-sea-corridor:port:2026-07-25T11:00:00.000Z\",\"familyId\":\"composed_corridor_condition\",\"claims\":{\"publisher\":{\"status\":\"known\",\"value\":{\"id\":\"publisher:worldmonitor-derived\",\"name\":\"WorldMonitor derived output\",\"type\":\"derived_output\",\"registryReference\":null}},\"observation_time\":{\"status\":\"known\",\"value\":{\"role\":\"observation\",\"value\":\"2026-07-25T11:00:00.000Z\",\"precision\":\"instant\"}},\"source_url\":{\"status\":\"not_applicable\",\"reason\":\"The corridor condition links source URLs through its input signals.\"},\"original_reference\":{\"status\":\"not_applicable\",\"reason\":\"The corridor condition is composed from multiple source records.\"},\"original_language\":{\"status\":\"not_applicable\",\"reason\":\"The deterministic composition has no original-language text.\"},\"translation\":{\"status\":\"not_applicable\",\"reason\":\"The deterministic composition has no translated source text.\"},\"effective_time\":{\"status\":\"known\",\"value\":{\"role\":\"effective\",\"value\":\"2026-07-25T11:00:00.000Z\",\"precision\":\"instant\"}},\"publication_time\":{\"status\":\"not_applicable\",\"reason\":\"The computed condition is not a publisher release.\"},\"retrieval_time\":{\"status\":\"known\",\"value\":{\"role\":\"retrieval\",\"value\":\"2026-07-25T11:05:00.000Z\",\"precision\":\"instant\"}},\"revision\":{\"status\":\"known\",\"value\":{\"vintageId\":\"china-western-land-sea-corridor:port:2026-07-25T11:00:00.000Z\",\"sequence\":1,\"state\":\"original\"}},\"supersession\":{\"status\":\"known\",\"value\":{\"state\":\"current\"}},\"extraction_confidence\":{\"status\":\"not_applicable\",\"reason\":\"Each input signal owns its extraction confidence.\"},\"classification_confidence\":{\"status\":\"known\",\"value\":{\"score\":1,\"method\":\"exact-reviewed-selector/v1\"}},\"corroboration\":{\"status\":\"known\",\"value\":{\"state\":\"single_source\",\"sourceSignalIds\":[\"signal:portwatch:port1071:2026-07-25T11:00:00.000Z\"]}},\"transport_freshness\":{\"status\":\"known\",\"value\":{\"state\":\"fresh\",\"assessedAt\":\"2026-07-25T12:00:00.000Z\",\"lastSuccessAt\":\"2026-07-25T11:05:00.000Z\"}},\"content_freshness\":{\"status\":\"known\",\"value\":{\"state\":\"current\",\"assessedAt\":\"2026-07-25T12:00:00.000Z\",\"contentAsOf\":\"2026-07-25T11:00:00.000Z\"}},\"derivation\":{\"status\":\"known\",\"value\":{\"methodId\":\"worldmonitor:china-corridor-condition\",\"methodVersion\":\"1\",\"computedAt\":\"2026-07-25T12:00:00.000Z\",\"inputSignalIds\":[\"signal:portwatch:port1071:2026-07-25T11:00:00.000Z\"]}}}}},{\"family\":\"aviation\",\"providerId\":\"provider:aviation\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"hazard\",\"providerId\":\"provider:hazard\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"power_energy\",\"providerId\":\"provider:power_energy\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"strategic_industry\",\"providerId\":\"provider:strategic_industry\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"trade\",\"providerId\":\"provider:trade\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null}]}]}"
+                                "payloadJson": "{\"generatedAt\":\"2026-07-25T12:00:00.000Z\",\"corridors\":[{\"id\":\"china-yangtze-river-delta\",\"name\":\"Yangtze River Delta\",\"description\":\"Reviewed coastal logistics corridor joining Shanghai, Jiangsu, and Zhejiang gateways.\",\"boundary\":[{\"lat\":28.4,\"lon\":118.2},{\"lat\":28.4,\"lon\":123.2},{\"lat\":33.4,\"lon\":123.2},{\"lat\":33.4,\"lon\":118.2},{\"lat\":28.4,\"lon\":118.2}],\"nodes\":[{\"id\":\"china-node:yrd-port-shanghai\",\"name\":\"Shanghai\",\"type\":\"port\",\"lat\":31.1918,\"lon\":121.6442,\"sourceOwner\":\"IMF PortWatch\",\"sourceSelector\":{\"family\":\"port\",\"id\":\"port1188\"}}],\"availability\":\"partial\",\"conditions\":[{\"family\":\"port\",\"providerId\":\"portwatch\",\"availability\":\"available\",\"reason\":null,\"sourceSignals\":[{\"id\":\"signal:portwatch:port1188:2026-07-25T11:00:00.000Z\",\"family\":\"port\",\"selectorId\":\"port1188\",\"availability\":\"available\",\"publisher\":{\"id\":\"publisher:imf-portwatch\",\"name\":\"IMF PortWatch\",\"type\":\"official\"},\"sourceUrl\":\"https://portwatch.imf.org/\",\"sourceScope\":\"node\",\"observationTime\":\"2026-07-25T11:00:00.000Z\",\"observationTimePrecision\":\"instant\",\"releaseTime\":null,\"releaseTimePrecision\":\"unknown\",\"retrievalTime\":\"2026-07-25T11:05:00.000Z\",\"retrievalTimePrecision\":\"instant\",\"revision\":null,\"transportFreshness\":\"fresh\",\"contentFreshness\":\"current\",\"summary\":\"PortWatch activity observation available for Shanghai.\",\"metrics\":{\"tankerCalls30d\":14}}],\"provenance\":{\"contractVersion\":\"decision-signal-provenance/v1\",\"signalId\":\"signal:corridor-condition:china-yangtze-river-delta:port:2026-07-25T11:00:00.000Z\",\"familyId\":\"composed_corridor_condition\",\"claims\":{\"publisher\":{\"status\":\"known\",\"value\":{\"id\":\"publisher:worldmonitor-derived\",\"name\":\"WorldMonitor derived output\",\"type\":\"derived_output\",\"registryReference\":null}},\"observation_time\":{\"status\":\"known\",\"value\":{\"role\":\"observation\",\"value\":\"2026-07-25T11:00:00.000Z\",\"precision\":\"instant\"}},\"source_url\":{\"status\":\"not_applicable\",\"reason\":\"The corridor condition links source URLs through its input signals.\"},\"original_reference\":{\"status\":\"not_applicable\",\"reason\":\"The corridor condition is composed from multiple source records.\"},\"original_language\":{\"status\":\"not_applicable\",\"reason\":\"The deterministic composition has no original-language text.\"},\"translation\":{\"status\":\"not_applicable\",\"reason\":\"The deterministic composition has no translated source text.\"},\"effective_time\":{\"status\":\"known\",\"value\":{\"role\":\"effective\",\"value\":\"2026-07-25T11:00:00.000Z\",\"precision\":\"instant\"}},\"publication_time\":{\"status\":\"not_applicable\",\"reason\":\"The computed condition is not a publisher release.\"},\"retrieval_time\":{\"status\":\"known\",\"value\":{\"role\":\"retrieval\",\"value\":\"2026-07-25T11:05:00.000Z\",\"precision\":\"instant\"}},\"revision\":{\"status\":\"known\",\"value\":{\"vintageId\":\"china-yangtze-river-delta:port:2026-07-25T11:00:00.000Z\",\"sequence\":1,\"state\":\"original\"}},\"supersession\":{\"status\":\"known\",\"value\":{\"state\":\"current\"}},\"extraction_confidence\":{\"status\":\"not_applicable\",\"reason\":\"Each input signal owns its extraction confidence.\"},\"classification_confidence\":{\"status\":\"known\",\"value\":{\"score\":1,\"method\":\"exact-reviewed-selector/v1\"}},\"corroboration\":{\"status\":\"known\",\"value\":{\"state\":\"single_source\",\"sourceSignalIds\":[\"signal:portwatch:port1188:2026-07-25T11:00:00.000Z\"]}},\"transport_freshness\":{\"status\":\"known\",\"value\":{\"state\":\"fresh\",\"assessedAt\":\"2026-07-25T12:00:00.000Z\",\"lastSuccessAt\":\"2026-07-25T11:05:00.000Z\"}},\"content_freshness\":{\"status\":\"known\",\"value\":{\"state\":\"current\",\"assessedAt\":\"2026-07-25T12:00:00.000Z\",\"contentAsOf\":\"2026-07-25T11:00:00.000Z\"}},\"derivation\":{\"status\":\"known\",\"value\":{\"methodId\":\"worldmonitor:china-corridor-condition\",\"methodVersion\":\"1\",\"computedAt\":\"2026-07-25T12:00:00.000Z\",\"inputSignalIds\":[\"signal:portwatch:port1188:2026-07-25T11:00:00.000Z\"]}}}}},{\"family\":\"aviation\",\"providerId\":\"provider:aviation\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"hazard\",\"providerId\":\"provider:hazard\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"power_energy\",\"providerId\":\"provider:power_energy\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"strategic_industry\",\"providerId\":\"provider:strategic_industry\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"trade\",\"providerId\":\"provider:trade\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null}]},{\"id\":\"china-greater-bay-area\",\"name\":\"Greater Bay Area\",\"description\":\"Reviewed Pearl River Delta corridor connecting Guangdong, Hong Kong, and Macao-facing port, airport, and industrial gateways.\",\"boundary\":[{\"lat\":20.5,\"lon\":111.5},{\"lat\":20.5,\"lon\":115.8},{\"lat\":24.8,\"lon\":115.8},{\"lat\":24.8,\"lon\":111.5},{\"lat\":20.5,\"lon\":111.5}],\"nodes\":[{\"id\":\"china-node:gba-port-shekou\",\"name\":\"Shekou Shenzhen\",\"type\":\"port\",\"lat\":22.47,\"lon\":113.9,\"sourceOwner\":\"IMF PortWatch\",\"sourceSelector\":{\"family\":\"port\",\"id\":\"port1189\"}}],\"availability\":\"partial\",\"conditions\":[{\"family\":\"port\",\"providerId\":\"portwatch\",\"availability\":\"available\",\"reason\":null,\"sourceSignals\":[{\"id\":\"signal:portwatch:port1189:2026-07-25T11:00:00.000Z\",\"family\":\"port\",\"selectorId\":\"port1189\",\"availability\":\"available\",\"publisher\":{\"id\":\"publisher:imf-portwatch\",\"name\":\"IMF PortWatch\",\"type\":\"official\"},\"sourceUrl\":\"https://portwatch.imf.org/\",\"sourceScope\":\"node\",\"observationTime\":\"2026-07-25T11:00:00.000Z\",\"observationTimePrecision\":\"instant\",\"releaseTime\":null,\"releaseTimePrecision\":\"unknown\",\"retrievalTime\":\"2026-07-25T11:05:00.000Z\",\"retrievalTimePrecision\":\"instant\",\"revision\":null,\"transportFreshness\":\"fresh\",\"contentFreshness\":\"current\",\"summary\":\"PortWatch activity observation available for Shekou Shenzhen.\",\"metrics\":{\"tankerCalls30d\":14}}],\"provenance\":{\"contractVersion\":\"decision-signal-provenance/v1\",\"signalId\":\"signal:corridor-condition:china-greater-bay-area:port:2026-07-25T11:00:00.000Z\",\"familyId\":\"composed_corridor_condition\",\"claims\":{\"publisher\":{\"status\":\"known\",\"value\":{\"id\":\"publisher:worldmonitor-derived\",\"name\":\"WorldMonitor derived output\",\"type\":\"derived_output\",\"registryReference\":null}},\"observation_time\":{\"status\":\"known\",\"value\":{\"role\":\"observation\",\"value\":\"2026-07-25T11:00:00.000Z\",\"precision\":\"instant\"}},\"source_url\":{\"status\":\"not_applicable\",\"reason\":\"The corridor condition links source URLs through its input signals.\"},\"original_reference\":{\"status\":\"not_applicable\",\"reason\":\"The corridor condition is composed from multiple source records.\"},\"original_language\":{\"status\":\"not_applicable\",\"reason\":\"The deterministic composition has no original-language text.\"},\"translation\":{\"status\":\"not_applicable\",\"reason\":\"The deterministic composition has no translated source text.\"},\"effective_time\":{\"status\":\"known\",\"value\":{\"role\":\"effective\",\"value\":\"2026-07-25T11:00:00.000Z\",\"precision\":\"instant\"}},\"publication_time\":{\"status\":\"not_applicable\",\"reason\":\"The computed condition is not a publisher release.\"},\"retrieval_time\":{\"status\":\"known\",\"value\":{\"role\":\"retrieval\",\"value\":\"2026-07-25T11:05:00.000Z\",\"precision\":\"instant\"}},\"revision\":{\"status\":\"known\",\"value\":{\"vintageId\":\"china-greater-bay-area:port:2026-07-25T11:00:00.000Z\",\"sequence\":1,\"state\":\"original\"}},\"supersession\":{\"status\":\"known\",\"value\":{\"state\":\"current\"}},\"extraction_confidence\":{\"status\":\"not_applicable\",\"reason\":\"Each input signal owns its extraction confidence.\"},\"classification_confidence\":{\"status\":\"known\",\"value\":{\"score\":1,\"method\":\"exact-reviewed-selector/v1\"}},\"corroboration\":{\"status\":\"known\",\"value\":{\"state\":\"single_source\",\"sourceSignalIds\":[\"signal:portwatch:port1189:2026-07-25T11:00:00.000Z\"]}},\"transport_freshness\":{\"status\":\"known\",\"value\":{\"state\":\"fresh\",\"assessedAt\":\"2026-07-25T12:00:00.000Z\",\"lastSuccessAt\":\"2026-07-25T11:05:00.000Z\"}},\"content_freshness\":{\"status\":\"known\",\"value\":{\"state\":\"current\",\"assessedAt\":\"2026-07-25T12:00:00.000Z\",\"contentAsOf\":\"2026-07-25T11:00:00.000Z\"}},\"derivation\":{\"status\":\"known\",\"value\":{\"methodId\":\"worldmonitor:china-corridor-condition\",\"methodVersion\":\"1\",\"computedAt\":\"2026-07-25T12:00:00.000Z\",\"inputSignalIds\":[\"signal:portwatch:port1189:2026-07-25T11:00:00.000Z\"]}}}}},{\"family\":\"aviation\",\"providerId\":\"provider:aviation\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"hazard\",\"providerId\":\"provider:hazard\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"power_energy\",\"providerId\":\"provider:power_energy\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"strategic_industry\",\"providerId\":\"provider:strategic_industry\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"trade\",\"providerId\":\"provider:trade\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null}]},{\"id\":\"china-bohai-rim\",\"name\":\"Bohai Rim\",\"description\":\"Reviewed northern maritime-industrial corridor spanning Beijing-Tianjin, Hebei, Shandong, Liaoning, and their major gateways.\",\"boundary\":[{\"lat\":35.5,\"lon\":116},{\"lat\":35.5,\"lon\":123.5},{\"lat\":42.2,\"lon\":123.5},{\"lat\":42.2,\"lon\":116},{\"lat\":35.5,\"lon\":116}],\"nodes\":[{\"id\":\"china-node:bohai-port-qingdao\",\"name\":\"Qingdao\",\"type\":\"port\",\"lat\":36.07,\"lon\":120.32,\"sourceOwner\":\"IMF PortWatch\",\"sourceSelector\":{\"family\":\"port\",\"id\":\"port1069\"}}],\"availability\":\"unavailable\",\"conditions\":[{\"family\":\"port\",\"providerId\":\"provider:port\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"aviation\",\"providerId\":\"provider:aviation\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"hazard\",\"providerId\":\"provider:hazard\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"power_energy\",\"providerId\":\"provider:power_energy\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"strategic_industry\",\"providerId\":\"provider:strategic_industry\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"trade\",\"providerId\":\"provider:trade\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null}]},{\"id\":\"china-western-land-sea-corridor\",\"name\":\"Western Land-Sea Corridor\",\"description\":\"Reviewed western corridor linking inland manufacturing hubs, Xinjiang land crossings, and Guangxi gateways to regional and maritime routes.\",\"boundary\":[{\"lat\":20.4,\"lon\":106.2},{\"lat\":20.4,\"lon\":110.4},{\"lat\":32.5,\"lon\":110.4},{\"lat\":47,\"lon\":91},{\"lat\":47,\"lon\":78.5},{\"lat\":41,\"lon\":78.5},{\"lat\":27,\"lon\":99.7},{\"lat\":22,\"lon\":105.8},{\"lat\":20.4,\"lon\":106.2}],\"nodes\":[{\"id\":\"china-node:western-port-qinzhou\",\"name\":\"Qinzhou\",\"type\":\"port\",\"lat\":21.6788,\"lon\":108.6383,\"sourceOwner\":\"IMF PortWatch\",\"sourceSelector\":{\"family\":\"port\",\"id\":\"port1071\"}}],\"availability\":\"unavailable\",\"conditions\":[{\"family\":\"port\",\"providerId\":\"provider:port\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"aviation\",\"providerId\":\"provider:aviation\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"hazard\",\"providerId\":\"provider:hazard\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"power_energy\",\"providerId\":\"provider:power_energy\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"strategic_industry\",\"providerId\":\"provider:strategic_industry\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null},{\"family\":\"trade\",\"providerId\":\"provider:trade\",\"availability\":\"unavailable\",\"reason\":\"No reviewed source observation is available in this example.\",\"sourceSignals\":[],\"provenance\":null}]}]}"
                                 "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_supply_chain_v1_GetChinaCorridorControlTowersResponse'
@@ -35412,33 +36092,24 @@ webhooks:
             description: |-
                 WorldMonitor POSTs this event to the `callbackUrl` you register via
                 RegisterWebhook when a subscribed chokepoint's disruption score is at or
-                above your `alertThreshold`, once per crossing, including one already
-                in progress at first evaluation. It re-arms below the threshold unless a
-                score input missing since the last delivery could explain the drop.
-                Failures retry every 5 minutes with the same `X-WM-Delivery-Id` while
-                the score holds; 5 failed ticks deactivate the webhook. Full rules at
+                above your `alertThreshold` (and its live signals above `minLiveSignal`
+                when set), once per crossing, including one already in progress at
+                first evaluation. It re-arms below the threshold unless a score input
+                missing since the last delivery could explain the drop. Failures retry
+                every 5 minutes with the same `X-WM-Delivery-Id` while the score holds;
+                5 failed ticks deactivate the webhook. Full rules at
                 https://www.worldmonitor.app/docs/api-shipping-v2#delivery-worker.
-                Every delivery is signed so you can confirm it genuinely came from
-                WorldMonitor.
 
-                Verification: the `X-WM-Signature` header is
-                `sha256=<hex>`, where `<hex>` is the lowercase hex HMAC-SHA256 of the
-                exact raw request body, keyed by the `secret` returned when you
-                registered the webhook. To verify, recompute
-                `sha256=` + hex(HMAC_SHA256(key=secret, message=rawRequestBody)) over
-                the bytes exactly as received (do not re-serialize the JSON) and
-                compare against `X-WM-Signature` in constant time. Use the
-                `secret` string verbatim as the HMAC key — do not hex-decode it.
-                Reject the delivery if the signatures differ.
-
-                A verifiable signed sample (fixed secret + exact raw body +
-                resulting signature) is published at
-                https://www.worldmonitor.app/.well-known/webhook-sample.json so you
-                can confirm your HMAC verification end-to-end before registering.
-
-                Respond with any 2xx to acknowledge receipt; a non-2xx response or a
-                timeout marks the delivery failed. `X-WM-Delivery-Id` uniquely
-                identifies each delivery for idempotent processing.
+                Verify `X-WM-Signature-V2` in constant time against
+                `sha256=` + hex(HMAC-SHA256(key=secret,
+                message=timestamp.deliveryId.event.rawRequestBody)). Use the exact
+                header strings and raw body bytes. Use `secret` verbatim;
+                do not hex-decode it or re-serialize JSON. Reject missing or malformed
+                headers and timestamps more than 300 seconds in the past or future.
+                Require V2; never fall back to the legacy body-only signature.
+                Atomically dedupe verified delivery ids for the subscription lifetime.
+                Retries keep the id but refresh the timestamp and signature.
+                Respond with any 2xx to acknowledge receipt.
             operationId: ChokepointDisruptionWebhook
             security: []
             parameters:
@@ -35446,19 +36117,37 @@ webhooks:
                   in: header
                   required: true
                   description: |-
-                      HMAC-SHA256 signature of the raw request body, keyed by the
-                      subscription `secret`, formatted as `sha256=<lowercase-hex>`.
+                      Legacy body-only HMAC-SHA256. No replay protection. Migrate to V2.
                   schema:
                       type: string
                       pattern: ^sha256=[0-9a-f]{64}$
                       example: sha256=2b8c0d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c
+                - name: X-WM-Signature-V2
+                  in: header
+                  required: true
+                  description: HMAC-SHA256(secret, timestamp.deliveryId.event.rawRequestBody).
+                  schema:
+                      type: string
+                      pattern: ^sha256=[0-9a-f]{64}$
+                - name: X-WM-Timestamp
+                  in: header
+                  required: true
+                  description: Send time in Unix seconds. Accept within 300 seconds of the receiver clock.
+                  schema:
+                      type: string
+                      pattern: ^[0-9]+$
                 - name: X-WM-Event
                   in: header
                   required: true
-                  description: Event type. Currently always `chokepoint.disruption`.
+                  description: |-
+                      Always `chokepoint.disruption` for this body. The other events
+                      (`country.risk_surge`, `news.breaking`, `market.move`, `natural.hazard`) send the
+                      same headers and signature with the payloads documented at
+                      https://www.worldmonitor.app/docs/api-shipping-v2#delivery-format.
                   schema:
                       type: string
-                      example: chokepoint.disruption
+                      enum:
+                          - chokepoint.disruption
                 - name: X-WM-Delivery-Id
                   in: header
                   required: true
@@ -35506,11 +36195,11 @@ webhooks:
                                         - navigational_warning
                                         - transit_drop
                                         - score_threshold
-                                    description: First matching rule, checked in order - AIS disruptions, then navigational warnings, then a transit drop; `score_threshold` when none matches.
+                                    description: First matching rule in this order; `score_threshold` when none matches.
                                 details:
                                     type: object
                                     additionalProperties: true
-                                    description: Chokepoint name, status, warning and AIS counts, congestion, war-risk tier, week-over-week transit change, previous score and feed time.
+                                    description: Name, status, warning and AIS counts, congestion, war-risk tier, transit change, previous score, feed time.
                         example:
                             "subscriberId": "wh_1a2b3c4d5e6f7a8b9c0d1e2f"
                             "chokepointId": "suez"
@@ -35518,8 +36207,6 @@ webhooks:
                             "alertThreshold": 50
                             "triggeredAt": "2026-07-04T12:34:56Z"
                             "reason": "navigational_warning"
-                            "details":
-                                "name": "Suez Canal"
             responses:
                 "2XX":
                     description: |-
@@ -42352,6 +43039,114 @@ components:
                 destinationLocation:
                     $ref: '#/components/schemas/worldmonitor_core_v1_GeoCoordinates'
             description: IDPs in one region who fled another region.
+        worldmonitor_displacement_v1_GetCrossBorderMovementsRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Za-z]{2}$
+                    description: Two letters; no ISO assignment check.
+                route:
+                    type: string
+                    maxLength: 120
+                    description: Exact route or situation ID.
+        worldmonitor_displacement_v1_GetCrossBorderMovementsResponse:
+            type: object
+            properties:
+                movements:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_displacement_v1_CrossBorderMovement'
+                    maxItems: 5000
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_displacement_v1_CrossBorderSourceStatus'
+                    maxItems: 5
+                dataAvailable:
+                    type: boolean
+        worldmonitor_displacement_v1_CrossBorderMovement:
+            type: object
+            properties:
+                id:
+                    type: string
+                route:
+                    type: string
+                name:
+                    type: string
+                kind:
+                    type: string
+                    description: arrival/outflow/return/encounter/death; encounters are not unique people.
+                measure:
+                    type: string
+                    description: stock, monthly, daily, or incident.
+                countryCode:
+                    type: string
+                originCode:
+                    type: string
+                asOf:
+                    type: string
+                period:
+                    type: string
+                count:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                last7Days:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                last30Days:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                changePct:
+                    type: number
+                    format: double
+                surge:
+                    type: boolean
+                stale:
+                    type: boolean
+                source:
+                    type: string
+                sourceUrl:
+                    type: string
+                license:
+                    type: string
+                licenseUrl:
+                    type: string
+                location:
+                    $ref: '#/components/schemas/worldmonitor_core_v1_GeoCoordinates'
+                notice:
+                    type: string
+                stockChange:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                stockChangeSince:
+                    type: string
+            description: Dated report. Do not sum measures.
+        worldmonitor_displacement_v1_CrossBorderSourceStatus:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                status:
+                    type: string
+                    description: ok, partial, stale, or unavailable.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                contentAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                maxContentAgeMin:
+                    type: integer
+                    format: int32
         worldmonitor_displacement_v1_GetPopulationExposureRequest:
             type: object
             properties:
@@ -44638,6 +45433,442 @@ components:
                     format: double
                     description: Percent per year. 4.25 means 4.25 percent.
             description: One published US interest rate. Percent per year. Zero is a real print.
+        worldmonitor_economic_v1_GetCapitalFlowsRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    maxLength: 2
+                    description: Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned (and the counterpart, if given).
+                includeSeries:
+                    type: boolean
+                    description: When true, include each returned country's period-by-period BOP series. Defaults to false.
+                counterpart:
+                    type: string
+                    maxLength: 2
+                    description: Optional ISO 3166-1 alpha-2 partner. With country, the response adds pair (both directions) and the counterpart's own view. Ignored without country, and when equal to country.
+            description: GetCapitalFlowsRequest selects countries, an optional counterpart, and detail.
+        worldmonitor_economic_v1_GetCapitalFlowsResponse:
+            type: object
+            properties:
+                countries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCountry'
+                latest:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowLatest'
+                seededAt:
+                    type: integer
+                    format: int64
+                    description: 'When the dataset was built, Unix epoch milliseconds. 0 when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                unavailable:
+                    type: boolean
+                    description: True when the seeded dataset is unavailable. An empty country list is not zero flow.
+                sources:
+                    type: array
+                    items:
+                        type: string
+                        description: Source URLs.
+                method:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: 'Short method notes keyed by view: bop, episodes, bank, portfolio, fdi, pairs, caveat.'
+                pair:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPair'
+            description: GetCapitalFlowsResponse is cross-country capital-flow data from IMF and BIS official statistics. Amounts are USD billions.
+        worldmonitor_economic_v1_GetCapitalFlowsResponse_MethodEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: string
+        worldmonitor_economic_v1_CapitalFlowCountry:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 code.
+                iso3:
+                    type: string
+                    description: ISO 3166-1 alpha-3 code.
+                gdpUsdBn:
+                    type: number
+                    format: double
+                    description: GDP used for percent-of-GDP figures, USD billions (World Bank, current US dollars).
+                gdpYear:
+                    type: integer
+                    format: int32
+                    description: Year of that GDP figure.
+                bop:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowBop'
+                bank:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowBank'
+                portfolio:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPortfolio'
+                fdi:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowFdi'
+            description: CapitalFlowCountry carries every capital-flow view for one country. A view is absent when its source publishes nothing for the country.
+        worldmonitor_economic_v1_CapitalFlowBop:
+            type: object
+            properties:
+                frequency:
+                    type: string
+                    description: quarterly when a current quarterly series exists, otherwise annual. Annual series carry no state and no episodes.
+                latestPeriod:
+                    type: string
+                    description: 'Latest period in the series: YYYY-Qn or YYYY.'
+                state:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowState'
+                episodes:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowEpisodes'
+                totals:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowTotals'
+                series:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPeriod'
+            description: CapitalFlowBop is the IMF balance-of-payments view of one country.
+        worldmonitor_economic_v1_CapitalFlowState:
+            type: object
+            properties:
+                inflow:
+                    type: string
+                    description: surge or stop when an inflow episode is open at the latest quarter; empty otherwise.
+                outflow:
+                    type: string
+                    description: flight or retrenchment when an outflow episode is open at the latest quarter; empty otherwise.
+                inflowZ:
+                    type: number
+                    format: double
+                    description: 'Inflow z-score at the latest quarter: the change in four-quarter inflows against its trailing 20-quarter mean, in standard deviations. Beyond plus or minus 2 is an episode-level move.'
+                outflowZ:
+                    type: number
+                    format: double
+                    description: Outflow z-score at the latest quarter, on the same basis.
+            description: CapitalFlowState is the episode classification at the latest quarter both sides report. Derived, not published by the source.
+        worldmonitor_economic_v1_CapitalFlowEpisodes:
+            type: object
+            properties:
+                surge:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowEpisode'
+                stop:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowEpisode'
+                flight:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowEpisode'
+                retrenchment:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowEpisode'
+            description: CapitalFlowEpisodes lists the episodes that ended within the last ten years, oldest first, by type.
+        worldmonitor_economic_v1_CapitalFlowEpisode:
+            type: object
+            properties:
+                start:
+                    type: string
+                    description: 'First quarter of the episode, YYYY-Qn: the first quarter the change in four-quarter flows moved more than one standard deviation from its trailing mean.'
+                end:
+                    type: string
+                    description: Last quarter of the episode, YYYY-Qn. Equals the series' latest quarter while the episode is still open.
+                quarters:
+                    type: integer
+                    format: int32
+                    description: Number of quarters in the episode; always at least 2.
+                peakZ:
+                    type: number
+                    format: double
+                    description: Largest absolute z-score reached during the episode; always at least 2.
+                peakPeriod:
+                    type: string
+                    description: Quarter of the peak z-score, YYYY-Qn.
+            description: CapitalFlowEpisode is one Forbes and Warnock (2012) episode on a quarterly series. Derived from reported flows, not published by the source.
+        worldmonitor_economic_v1_CapitalFlowTotals:
+            type: object
+            properties:
+                inflowsUsdBn:
+                    type: number
+                    format: double
+                    description: Gross inflows over the window. Absent when any quarter in it is incomplete or the quarters are not consecutive.
+                outflowsUsdBn:
+                    type: number
+                    format: double
+                    description: Gross outflows over the window, on the same basis.
+                netUsdBn:
+                    type: number
+                    format: double
+                    description: Inflows minus outflows. Positive means the country took in more than it sent out.
+                inflowsPctGdp:
+                    type: number
+                    format: double
+                    description: Gross inflows as a percent of GDP.
+                outflowsPctGdp:
+                    type: number
+                    format: double
+                    description: Gross outflows as a percent of GDP.
+                inflowsYoyPct:
+                    type: number
+                    format: double
+                    description: Year-on-year change in gross inflows, percent. Annual series only, and only when the prior year is reported.
+                outflowsYoyPct:
+                    type: number
+                    format: double
+                    description: Year-on-year change in gross outflows, percent, on the same basis.
+            description: CapitalFlowTotals summarizes gross flows over the trailing four quarters (quarterly series) or the latest year (annual series). USD billions unless the name ends in Pct or PctGdp.
+        worldmonitor_economic_v1_CapitalFlowPeriod:
+            type: object
+            properties:
+                period:
+                    type: string
+                    description: 'Period label: YYYY-Qn for quarterly series, YYYY for annual series.'
+                inflows:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowComponents'
+                outflows:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowComponents'
+                errorsOmissions:
+                    type: number
+                    format: double
+                    description: Net errors and omissions, USD billions. Persistent negative values can indicate outflows the official categories do not record.
+            description: CapitalFlowPeriod is one period of gross balance-of-payments financial-account flows.
+        worldmonitor_economic_v1_CapitalFlowComponents:
+            type: object
+            properties:
+                fdi:
+                    type: number
+                    format: double
+                    description: 'Direct investment: lasting-interest stakes of 10% or more, including reinvested earnings and intercompany debt.'
+                portfolio:
+                    type: number
+                    format: double
+                    description: 'Portfolio investment: equity and debt securities that are not direct investment.'
+                other:
+                    type: number
+                    format: double
+                    description: 'Other investment: loans, deposits, currency, trade credit and other accounts.'
+                total:
+                    type: number
+                    format: double
+                    description: Sum of the three categories. Set only when all three are reported for the period; a partial sum would read as a collapse.
+            description: CapitalFlowComponents splits one side of the financial account by functional category, in USD billions. A component is absent when the source does not report it for the period.
+        worldmonitor_economic_v1_CapitalFlowBank:
+            type: object
+            properties:
+                latestPeriod:
+                    type: string
+                    description: Latest quarter, YYYY-Qn.
+                nonBankDepositsAbroad:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPosition'
+                householdDepositsAbroad:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPosition'
+                nonBankBorrowingFromAbroad:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPosition'
+                topBankLocations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
+                publishesBilateral:
+                    type: boolean
+                    description: True when the country's own banks publish a by-counterparty breakdown to the BIS. Some reporting systems publish aggregates only.
+                topDepositorOrigins:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
+            description: CapitalFlowBank is the BIS locational banking view of one country's residents.
+        worldmonitor_economic_v1_CapitalFlowPosition:
+            type: object
+            properties:
+                stockUsdBn:
+                    type: number
+                    format: double
+                    description: Outstanding amount at the latest quarter.
+                flow4qUsdBn:
+                    type: number
+                    format: double
+                    description: 'Sum of the last four FX- and break-adjusted quarterly changes: money moved, net of exchange-rate effects and reporting breaks. Positive means the position grew.'
+            description: CapitalFlowPosition is a cross-border bank position from BIS locational banking statistics, in USD billions.
+        worldmonitor_economic_v1_CapitalFlowCounterparty:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 code of the partner.
+                stockUsdBn:
+                    type: number
+                    format: double
+                    description: Outstanding amount.
+                flow4qUsdBn:
+                    type: number
+                    format: double
+                    description: Four-quarter adjusted flow. Bank lists only.
+            description: CapitalFlowCounterparty is one partner country in a ranked bilateral list, in USD billions.
+        worldmonitor_economic_v1_CapitalFlowPortfolio:
+            type: object
+            properties:
+                year:
+                    type: integer
+                    format: int32
+                    description: 'Reference year: the newest year at least 80% as well reported as the year before.'
+                foreignHoldingsUsdBn:
+                    type: number
+                    format: double
+                    description: Securities issued by residents of this country held by every reporting economy.
+                foreignHoldingsPrevYearUsdBn:
+                    type: number
+                    format: double
+                    description: The same reporters' holdings a year earlier, so the change is like for like.
+                changePct:
+                    type: number
+                    format: double
+                    description: Change between the two, percent. Mixes new money with price and exchange-rate moves.
+                reporterCount:
+                    type: integer
+                    format: int32
+                    description: Number of reporting economies holding the country's securities.
+                topHolders:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
+                holdingsAbroadUsdBn:
+                    type: number
+                    format: double
+                    description: The country's own holdings of foreign securities, when it reports them.
+                topDestinations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
+            description: CapitalFlowPortfolio is the IMF portfolio-positions view of one country, from mirror data, in USD billions.
+        worldmonitor_economic_v1_CapitalFlowFdi:
+            type: object
+            properties:
+                year:
+                    type: integer
+                    format: int32
+                    description: 'Reference year: the newest year at least 80% as well reported as the year before.'
+                inwardUsdBn:
+                    type: number
+                    format: double
+                    description: Direct investment in the country by all counterparts.
+                topInvestors:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
+                outwardUsdBn:
+                    type: number
+                    format: double
+                    description: The country's direct investment abroad.
+                topDestinations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
+            description: CapitalFlowFdi is the IMF direct-investment positions view of one country, as the country itself reports them, by immediate counterpart, in USD billions. Conduit economies carry large pass-through positions.
+        worldmonitor_economic_v1_CapitalFlowLatest:
+            type: object
+            properties:
+                bopQuarter:
+                    type: string
+                    description: Quarter most quarterly balance-of-payments reporters have reached, YYYY-Qn.
+                bopYear:
+                    type: string
+                    description: Year most annual-only reporters have reached.
+                bisQuarter:
+                    type: string
+                    description: Latest BIS banking quarter, YYYY-Qn.
+                pipYear:
+                    type: integer
+                    format: int32
+                    description: Portfolio-positions reference year.
+                fdiYear:
+                    type: integer
+                    format: int32
+                    description: Direct-investment positions reference year.
+            description: CapitalFlowLatest names the newest period of each source.
+        worldmonitor_economic_v1_CapitalFlowPair:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 code of a, the requested country.
+                counterpart:
+                    type: string
+                    description: ISO 3166-1 alpha-2 code of b, the counterpart.
+                bankPeriod:
+                    type: string
+                    description: BIS quarter of the bank legs, YYYY-Qn. Portfolio and FDI legs carry their own years below.
+                portfolioYear:
+                    type: integer
+                    format: int32
+                    description: IMF portfolio-positions year of the holding legs.
+                aDepositsInB:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                bDepositsInA:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                aBorrowingFromB:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                bBorrowingFromA:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                aHoldingsOfB:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                bHoldingsOfA:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                aFdiInB:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                bFdiInA:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                fdiYear:
+                    type: integer
+                    format: int32
+                    description: IMF direct-investment positions year of the FDI legs.
+            description: CapitalFlowPair carries a country (a) and a counterpart (b) in both directions across bank, portfolio and direct-investment channels.
+        worldmonitor_economic_v1_CapitalFlowPairLeg:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: 'reported: the reporting side published a current figure. not_itemized: the reporting side publishes bilateral data but has no current figure for this partner (zero, small, confidential, or a series that stopped); unknown, not zero. not_published: the reporting side publishes no bilateral breakdown.'
+                stockUsdBn:
+                    type: number
+                    format: double
+                    description: Outstanding position at the leg's reference period.
+                flow4qUsdBn:
+                    type: number
+                    format: double
+                    description: 'Bank legs: sum of the last four FX- and break-adjusted quarterly changes.'
+                prevYearUsdBn:
+                    type: number
+                    format: double
+                    description: 'Portfolio legs: the same holding a year earlier.'
+                basis:
+                    type: string
+                    description: 'FDI legs: investor when stockUsdBn is the investor''s outward figure, host when only the host''s inward figure exists. Empty for other legs.'
+                counterpartReportUsdBn:
+                    type: number
+                    format: double
+                    description: 'FDI legs: the other side''s figure for the same position. The two sides'' reports often differ.'
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairPoint'
+                instrument:
+                    type: string
+                    description: 'Bank legs: loans_deposits (BIS instrument G) normally; all_instruments (instrument A, which adds debt securities) for a reporting system that publishes no loans-and-deposits breakdown. Empty for other legs.'
+            description: CapitalFlowPairLeg is one direction of a bilateral position, in USD billions.
+        worldmonitor_economic_v1_CapitalFlowPairPoint:
+            type: object
+            properties:
+                period:
+                    type: string
+                    description: Quarter, YYYY-Qn.
+                usdBn:
+                    type: number
+                    format: double
+                    description: Adjusted flow in the quarter, USD billions. Positive means the position grew.
+            description: CapitalFlowPairPoint is one quarterly adjusted bank flow.
         worldmonitor_economic_v1_GetWorldCpiMonthlyRequest:
             type: object
             properties:
@@ -46141,6 +47372,12 @@ components:
                         $ref: '#/components/schemas/worldmonitor_infrastructure_v1_InternetOutage'
                 pagination:
                     $ref: '#/components/schemas/worldmonitor_core_v1_PaginationResponse'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        When the seeder last fetched the outage list from Cloudflare Radar, Unix
+                         epoch milliseconds. A retained payload keeps its original time; 0 when unknown. Warning: Values > 2^53 may lose precision in JavaScript
             description: ListInternetOutagesResponse contains internet outages matching the request.
         worldmonitor_infrastructure_v1_InternetOutage:
             type: object
@@ -46671,6 +47908,274 @@ components:
                     format: float
                     description: Longitude of the affected location.
             description: TrafficAnomaly represents an anomalous traffic pattern detected by Cloudflare Radar.
+        worldmonitor_intelligence_v1_GetCountrySignalObservationsRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: Uppercase ISO 3166-1 alpha-2 country code.
+                family:
+                    type: string
+                    enum:
+                        - COUNTRY_SIGNAL_FAMILY_UNSPECIFIED
+                        - COUNTRY_SIGNAL_FAMILY_OUTAGES
+                        - COUNTRY_SIGNAL_FAMILY_UNREST
+                        - COUNTRY_SIGNAL_FAMILY_FIRES
+                        - COUNTRY_SIGNAL_FAMILY_RADIATION
+                        - COUNTRY_SIGNAL_FAMILY_SANCTIONS
+                        - COUNTRY_SIGNAL_FAMILY_CONFLICT
+                        - COUNTRY_SIGNAL_FAMILY_POSTURE
+                        - COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE
+                    description: Fixed country observation profiles; callers cannot select sources or viewports.
+                windowIndex:
+                    type: integer
+                    maximum: 1
+                    minimum: 0
+                    format: int32
+                    description: Country-derived flight viewport index, 0 or 1. Other families require 0.
+                cursor:
+                    type: string
+                    maxLength: 200
+                    description: Prior eligible flight page cursor. Other families require an empty cursor.
+            required:
+                - countryCode
+                - family
+        worldmonitor_intelligence_v1_GetCountrySignalObservationsResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                family:
+                    type: string
+                    enum:
+                        - COUNTRY_SIGNAL_FAMILY_UNSPECIFIED
+                        - COUNTRY_SIGNAL_FAMILY_OUTAGES
+                        - COUNTRY_SIGNAL_FAMILY_UNREST
+                        - COUNTRY_SIGNAL_FAMILY_FIRES
+                        - COUNTRY_SIGNAL_FAMILY_RADIATION
+                        - COUNTRY_SIGNAL_FAMILY_SANCTIONS
+                        - COUNTRY_SIGNAL_FAMILY_CONFLICT
+                        - COUNTRY_SIGNAL_FAMILY_POSTURE
+                        - COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE
+                    description: Fixed country observation profiles; callers cannot select sources or viewports.
+                outcomeJson:
+                    type: string
+                flightPage:
+                    $ref: '#/components/schemas/worldmonitor_military_v1_ListMilitaryFlightsResponse'
+                windowIndex:
+                    type: integer
+                    format: int32
+            description: |-
+                Nullable clocks and coverage live in the validated bounded outcome JSON.
+                 Flight pages retain the original typed provider-attributed flight DTO.
+        worldmonitor_military_v1_ListMilitaryFlightsResponse:
+            type: object
+            properties:
+                flights:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_military_v1_MilitaryFlight'
+                clusters:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_military_v1_MilitaryFlightCluster'
+                pagination:
+                    $ref: '#/components/schemas/worldmonitor_core_v1_PaginationResponse'
+            description: ListMilitaryFlightsResponse contains military flights and clusters.
+        worldmonitor_military_v1_MilitaryFlight:
+            type: object
+            properties:
+                id:
+                    type: string
+                    minLength: 1
+                    description: Unique flight identifier.
+                callsign:
+                    type: string
+                    description: Aircraft callsign.
+                hexCode:
+                    type: string
+                    description: ICAO 24-bit hex address, uppercase.
+                registration:
+                    type: string
+                    description: Aircraft registration number.
+                aircraftType:
+                    type: string
+                    enum:
+                        - MILITARY_AIRCRAFT_TYPE_UNSPECIFIED
+                        - MILITARY_AIRCRAFT_TYPE_FIGHTER
+                        - MILITARY_AIRCRAFT_TYPE_BOMBER
+                        - MILITARY_AIRCRAFT_TYPE_TRANSPORT
+                        - MILITARY_AIRCRAFT_TYPE_TANKER
+                        - MILITARY_AIRCRAFT_TYPE_AWACS
+                        - MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE
+                        - MILITARY_AIRCRAFT_TYPE_HELICOPTER
+                        - MILITARY_AIRCRAFT_TYPE_DRONE
+                        - MILITARY_AIRCRAFT_TYPE_PATROL
+                        - MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS
+                        - MILITARY_AIRCRAFT_TYPE_VIP
+                        - MILITARY_AIRCRAFT_TYPE_UNKNOWN
+                    description: MilitaryAircraftType represents the classification of a military aircraft.
+                aircraftModel:
+                    type: string
+                    description: Specific aircraft model (e.g., "F-35A", "C-17A").
+                operator:
+                    type: string
+                    enum:
+                        - MILITARY_OPERATOR_UNSPECIFIED
+                        - MILITARY_OPERATOR_USAF
+                        - MILITARY_OPERATOR_USN
+                        - MILITARY_OPERATOR_USMC
+                        - MILITARY_OPERATOR_USA
+                        - MILITARY_OPERATOR_RAF
+                        - MILITARY_OPERATOR_RN
+                        - MILITARY_OPERATOR_FAF
+                        - MILITARY_OPERATOR_GAF
+                        - MILITARY_OPERATOR_PLAAF
+                        - MILITARY_OPERATOR_PLAN
+                        - MILITARY_OPERATOR_VKS
+                        - MILITARY_OPERATOR_IAF
+                        - MILITARY_OPERATOR_NATO
+                        - MILITARY_OPERATOR_OTHER
+                    description: MilitaryOperator represents the military branch or force operating an asset.
+                operatorCountry:
+                    type: string
+                    description: Country operating the aircraft (ISO 3166-1 alpha-2).
+                location:
+                    $ref: '#/components/schemas/worldmonitor_core_v1_GeoCoordinates'
+                altitude:
+                    type: number
+                    format: double
+                    description: Altitude in feet.
+                heading:
+                    type: number
+                    format: double
+                    description: Heading in degrees.
+                speed:
+                    type: number
+                    format: double
+                    description: Speed in knots.
+                verticalRate:
+                    type: number
+                    format: double
+                    description: Vertical rate in feet per minute.
+                onGround:
+                    type: boolean
+                    description: Whether the aircraft is on the ground.
+                squawk:
+                    type: string
+                    description: Transponder squawk code.
+                origin:
+                    type: string
+                    description: ICAO code of the origin airport.
+                destination:
+                    type: string
+                    description: ICAO code of the destination airport.
+                lastSeenAt:
+                    type: integer
+                    format: int64
+                    description: 'Last seen time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                firstSeenAt:
+                    type: integer
+                    format: int64
+                    description: 'First seen time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                confidence:
+                    type: string
+                    enum:
+                        - MILITARY_CONFIDENCE_UNSPECIFIED
+                        - MILITARY_CONFIDENCE_LOW
+                        - MILITARY_CONFIDENCE_MEDIUM
+                        - MILITARY_CONFIDENCE_HIGH
+                    description: MilitaryConfidence represents confidence in asset identification.
+                isInteresting:
+                    type: boolean
+                    description: Whether flagged for unusual activity.
+                note:
+                    type: string
+                    description: Analyst note.
+                enrichment:
+                    $ref: '#/components/schemas/worldmonitor_military_v1_FlightEnrichment'
+                source:
+                    type: string
+                    description: Provider that supplied this observation (for example, "adsb.lol" or "wingbits").
+            required:
+                - id
+            description: MilitaryFlight represents a tracked military aircraft from the configured ADS-B providers.
+        worldmonitor_military_v1_FlightEnrichment:
+            type: object
+            properties:
+                manufacturer:
+                    type: string
+                    description: Aircraft manufacturer.
+                owner:
+                    type: string
+                    description: Registered owner.
+                operatorName:
+                    type: string
+                    description: Operator name.
+                typeCode:
+                    type: string
+                    description: ICAO type code.
+                builtYear:
+                    type: string
+                    description: Year the aircraft was built.
+                confirmedMilitary:
+                    type: boolean
+                    description: Whether confirmed as military.
+                militaryBranch:
+                    type: string
+                    description: Military branch designation.
+            description: FlightEnrichment contains additional data from Wingbits aircraft database.
+        worldmonitor_military_v1_MilitaryFlightCluster:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique cluster identifier.
+                name:
+                    type: string
+                    description: Descriptive name of the cluster.
+                location:
+                    $ref: '#/components/schemas/worldmonitor_core_v1_GeoCoordinates'
+                flightCount:
+                    type: integer
+                    format: int32
+                    description: Number of flights in the cluster.
+                flights:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_military_v1_MilitaryFlight'
+                dominantOperator:
+                    type: string
+                    enum:
+                        - MILITARY_OPERATOR_UNSPECIFIED
+                        - MILITARY_OPERATOR_USAF
+                        - MILITARY_OPERATOR_USN
+                        - MILITARY_OPERATOR_USMC
+                        - MILITARY_OPERATOR_USA
+                        - MILITARY_OPERATOR_RAF
+                        - MILITARY_OPERATOR_RN
+                        - MILITARY_OPERATOR_FAF
+                        - MILITARY_OPERATOR_GAF
+                        - MILITARY_OPERATOR_PLAAF
+                        - MILITARY_OPERATOR_PLAN
+                        - MILITARY_OPERATOR_VKS
+                        - MILITARY_OPERATOR_IAF
+                        - MILITARY_OPERATOR_NATO
+                        - MILITARY_OPERATOR_OTHER
+                    description: MilitaryOperator represents the military branch or force operating an asset.
+                activityType:
+                    type: string
+                    enum:
+                        - MILITARY_ACTIVITY_TYPE_UNSPECIFIED
+                        - MILITARY_ACTIVITY_TYPE_EXERCISE
+                        - MILITARY_ACTIVITY_TYPE_PATROL
+                        - MILITARY_ACTIVITY_TYPE_TRANSPORT
+                        - MILITARY_ACTIVITY_TYPE_DEPLOYMENT
+                        - MILITARY_ACTIVITY_TYPE_TRANSIT
+                        - MILITARY_ACTIVITY_TYPE_UNKNOWN
+                    description: MilitaryActivityType represents the assessed type of military activity.
+            description: MilitaryFlightCluster represents a geographic cluster of military flights.
         worldmonitor_intelligence_v1_GetRiskScoresRequest:
             type: object
             properties:
@@ -46790,7 +48295,7 @@ components:
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: Armed-conflict contribution from ACLED events, fatalities, civilian violence, strikes, and OREF alerts (0-100).
+                    description: Armed-conflict contribution from ACLED events, fatalities, civilian violence, GDELT conflict coverage, and OREF alerts (0-100).
                 militaryActivity:
                     type: number
                     maximum: 100
@@ -46992,7 +48497,49 @@ components:
                 region:
                     type: string
                     description: Geographic region.
+                evidence:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_TensionEvidence'
             description: GdeltTensionPair represents a bilateral tension score between two countries from GDELT.
+        worldmonitor_intelligence_v1_TensionEvidence:
+            type: object
+            properties:
+                channel:
+                    type: string
+                    description: strikes, airports, military_aircraft, pla_aircraft, pla_ships or sanctions.
+                value:
+                    type: number
+                    format: double
+                    description: Current count over the channel's window.
+                baseline:
+                    type: number
+                    format: double
+                    description: Usual count over the same window, when there is enough history.
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: ISO 3166-1 alpha-2 codes the signal names.
+                airports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_TensionEvidenceAirport'
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Source update time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: TensionEvidence is one non-news signal for a tension pair.
+        worldmonitor_intelligence_v1_TensionEvidenceAirport:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Airport city.
+                status:
+                    type: string
+                    description: closed, halted or restricted.
+            description: TensionEvidenceAirport is one disrupted airport.
         worldmonitor_intelligence_v1_ClassifyEventRequest:
             type: object
             properties:
@@ -47052,6 +48599,103 @@ components:
                         type: string
                         description: Related entities identified.
             description: EventClassification represents an AI-generated classification of a real-world event.
+        worldmonitor_intelligence_v1_GetCountryHistoryRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: Assigned ISO alpha-2 country code.
+                days:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: |-
+                        UTC days including today; 0 defaults to 7.
+                         Verified limits: free 7, Pro 90, API/Enterprise 365.
+            required:
+                - country
+        worldmonitor_intelligence_v1_GetCountryHistoryResponse:
+            type: object
+            properties:
+                country:
+                    type: string
+                requestedDays:
+                    type: integer
+                    format: int32
+                allowedDays:
+                    type: integer
+                    format: int32
+                effectiveDays:
+                    type: integer
+                    format: int32
+                returnedDays:
+                    type: integer
+                    format: int32
+                points:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_CountryHistoryPoint'
+                upstreamUnavailable:
+                    type: boolean
+                    description: True on failed reads or before activation.
+                stale:
+                    type: boolean
+                    description: True if unavailable or over 36 hours since publication.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        worldmonitor_intelligence_v1_CountryHistoryPoint:
+            type: object
+            properties:
+                date:
+                    type: string
+                capturedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                cii:
+                    $ref: '#/components/schemas/worldmonitor_intelligence_v1_CountryHistoryScore'
+                resilience:
+                    $ref: '#/components/schemas/worldmonitor_intelligence_v1_CountryHistoryScore'
+                topEvents:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_CountryHistoryEvent'
+                keySignals:
+                    type: array
+                    items:
+                        type: string
+                ciiVersionBreak:
+                    type: boolean
+                    description: Do not join trends across missing dates, absent scores or formula changes.
+                resilienceVersionBreak:
+                    type: boolean
+        worldmonitor_intelligence_v1_CountryHistoryScore:
+            type: object
+            properties:
+                score:
+                    type: number
+                    format: double
+                version:
+                    type: string
+                    description: Source formula/cache identity.
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        worldmonitor_intelligence_v1_CountryHistoryEvent:
+            type: object
+            properties:
+                title:
+                    type: string
+                link:
+                    type: string
+                source:
+                    type: string
+                category:
+                    type: string
         worldmonitor_intelligence_v1_GetCountryRiskRequest:
             type: object
             properties:
@@ -49031,6 +50675,10 @@ components:
                     format: double
                 anomalySignal:
                     type: boolean
+                prevTankerCalls30d:
+                    type: integer
+                    format: int32
+                    description: Absent on older cached payloads. Zero means no calls in the prior window.
         worldmonitor_intelligence_v1_GetChinaDecisionSignalsRequest:
             type: object
         worldmonitor_intelligence_v1_GetChinaDecisionSignalsResponse:
@@ -49839,6 +51487,12 @@ components:
                         Maximum events to return. Defaults to 50 server-side when omitted or
                          <= 0; the handler caps it at 200, the TIMELINE_MAX_LIMIT the Convex
                          query clamps to (convex/intelHistory.ts).
+                cursor:
+                    type: string
+                    maxLength: 4096
+                    description: |-
+                        Opaque next_cursor from the preceding response. Omit for the first page.
+                         Keep domain, country, from and to unchanged between pages.
             description: |-
                 GetIntelTimelineRequest asks for stored historical intelligence events in
                  reverse-chronological order. Unlike SearchIntelHistory this is a pure
@@ -49856,7 +51510,9 @@ components:
                         $ref: '#/components/schemas/worldmonitor_intelligence_v1_IntelHistoryRecord'
                 partial:
                     type: boolean
-                    description: True when the bounded post-filter candidate window may omit older events.
+                    description: |-
+                        True when more history may remain after this bounded page. Continue with
+                         next_cursor, including when records is empty.
                 upstreamUnavailable:
                     type: boolean
                     description: |-
@@ -49864,6 +51520,11 @@ components:
                          flag out of the body and switches the response to Cache-Control:
                          no-store, so a transient outage is never pinned as a false-empty timeline
                          for the tier's full TTL.
+                nextCursor:
+                    type: string
+                    description: |-
+                        Continue with this cursor, even when records is empty. Empty means the
+                         scoped archive is exhausted. Also empty when upstream_unavailable is true.
             description: GetIntelTimelineResponse returns the scoped history newest-first.
         worldmonitor_intelligence_v1_GetSimilarEventsRequest:
             type: object
@@ -52359,6 +54020,7 @@ components:
                 totalTonnes:
                     type: number
                     format: double
+                    description: Measured only when value_is_ounces is true; otherwise a legacy zero placeholder.
                 topHolders:
                     type: array
                     items:
@@ -52371,6 +54033,14 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_market_v1_GoldCbMover'
+                indicator:
+                    type: string
+                    description: IMF IRFCL indicator used by the reserve snapshot.
+                valueIsOunces:
+                    type: boolean
+                    description: |-
+                        True for ounce-based measurements. False for the USD fallback, where
+                         tonnes are placeholders and physical movers are unavailable. Absent if unknown.
         worldmonitor_market_v1_GoldCbHolder:
             type: object
             properties:
@@ -52381,6 +54051,7 @@ components:
                 tonnes:
                     type: number
                     format: double
+                    description: Measured only when value_is_ounces is true; otherwise a legacy zero placeholder.
                 pctOfReserves:
                     type: number
                     format: double
@@ -52554,213 +54225,6 @@ components:
                         - MILITARY_AIRCRAFT_TYPE_UNKNOWN
                     description: MilitaryAircraftType represents the classification of a military aircraft.
             description: ListMilitaryFlightsRequest specifies filters for retrieving military flight data.
-        worldmonitor_military_v1_ListMilitaryFlightsResponse:
-            type: object
-            properties:
-                flights:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/worldmonitor_military_v1_MilitaryFlight'
-                clusters:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/worldmonitor_military_v1_MilitaryFlightCluster'
-                pagination:
-                    $ref: '#/components/schemas/worldmonitor_core_v1_PaginationResponse'
-            description: ListMilitaryFlightsResponse contains military flights and clusters.
-        worldmonitor_military_v1_MilitaryFlight:
-            type: object
-            properties:
-                id:
-                    type: string
-                    minLength: 1
-                    description: Unique flight identifier.
-                callsign:
-                    type: string
-                    description: Aircraft callsign.
-                hexCode:
-                    type: string
-                    description: ICAO 24-bit hex address, uppercase.
-                registration:
-                    type: string
-                    description: Aircraft registration number.
-                aircraftType:
-                    type: string
-                    enum:
-                        - MILITARY_AIRCRAFT_TYPE_UNSPECIFIED
-                        - MILITARY_AIRCRAFT_TYPE_FIGHTER
-                        - MILITARY_AIRCRAFT_TYPE_BOMBER
-                        - MILITARY_AIRCRAFT_TYPE_TRANSPORT
-                        - MILITARY_AIRCRAFT_TYPE_TANKER
-                        - MILITARY_AIRCRAFT_TYPE_AWACS
-                        - MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE
-                        - MILITARY_AIRCRAFT_TYPE_HELICOPTER
-                        - MILITARY_AIRCRAFT_TYPE_DRONE
-                        - MILITARY_AIRCRAFT_TYPE_PATROL
-                        - MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS
-                        - MILITARY_AIRCRAFT_TYPE_VIP
-                        - MILITARY_AIRCRAFT_TYPE_UNKNOWN
-                    description: MilitaryAircraftType represents the classification of a military aircraft.
-                aircraftModel:
-                    type: string
-                    description: Specific aircraft model (e.g., "F-35A", "C-17A").
-                operator:
-                    type: string
-                    enum:
-                        - MILITARY_OPERATOR_UNSPECIFIED
-                        - MILITARY_OPERATOR_USAF
-                        - MILITARY_OPERATOR_USN
-                        - MILITARY_OPERATOR_USMC
-                        - MILITARY_OPERATOR_USA
-                        - MILITARY_OPERATOR_RAF
-                        - MILITARY_OPERATOR_RN
-                        - MILITARY_OPERATOR_FAF
-                        - MILITARY_OPERATOR_GAF
-                        - MILITARY_OPERATOR_PLAAF
-                        - MILITARY_OPERATOR_PLAN
-                        - MILITARY_OPERATOR_VKS
-                        - MILITARY_OPERATOR_IAF
-                        - MILITARY_OPERATOR_NATO
-                        - MILITARY_OPERATOR_OTHER
-                    description: MilitaryOperator represents the military branch or force operating an asset.
-                operatorCountry:
-                    type: string
-                    description: Country operating the aircraft (ISO 3166-1 alpha-2).
-                location:
-                    $ref: '#/components/schemas/worldmonitor_core_v1_GeoCoordinates'
-                altitude:
-                    type: number
-                    format: double
-                    description: Altitude in feet.
-                heading:
-                    type: number
-                    format: double
-                    description: Heading in degrees.
-                speed:
-                    type: number
-                    format: double
-                    description: Speed in knots.
-                verticalRate:
-                    type: number
-                    format: double
-                    description: Vertical rate in feet per minute.
-                onGround:
-                    type: boolean
-                    description: Whether the aircraft is on the ground.
-                squawk:
-                    type: string
-                    description: Transponder squawk code.
-                origin:
-                    type: string
-                    description: ICAO code of the origin airport.
-                destination:
-                    type: string
-                    description: ICAO code of the destination airport.
-                lastSeenAt:
-                    type: integer
-                    format: int64
-                    description: 'Last seen time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-                firstSeenAt:
-                    type: integer
-                    format: int64
-                    description: 'First seen time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-                confidence:
-                    type: string
-                    enum:
-                        - MILITARY_CONFIDENCE_UNSPECIFIED
-                        - MILITARY_CONFIDENCE_LOW
-                        - MILITARY_CONFIDENCE_MEDIUM
-                        - MILITARY_CONFIDENCE_HIGH
-                    description: MilitaryConfidence represents confidence in asset identification.
-                isInteresting:
-                    type: boolean
-                    description: Whether flagged for unusual activity.
-                note:
-                    type: string
-                    description: Analyst note.
-                enrichment:
-                    $ref: '#/components/schemas/worldmonitor_military_v1_FlightEnrichment'
-                source:
-                    type: string
-                    description: Provider that supplied this observation (for example, "adsb.lol" or "wingbits").
-            required:
-                - id
-            description: MilitaryFlight represents a tracked military aircraft from the configured ADS-B providers.
-        worldmonitor_military_v1_FlightEnrichment:
-            type: object
-            properties:
-                manufacturer:
-                    type: string
-                    description: Aircraft manufacturer.
-                owner:
-                    type: string
-                    description: Registered owner.
-                operatorName:
-                    type: string
-                    description: Operator name.
-                typeCode:
-                    type: string
-                    description: ICAO type code.
-                builtYear:
-                    type: string
-                    description: Year the aircraft was built.
-                confirmedMilitary:
-                    type: boolean
-                    description: Whether confirmed as military.
-                militaryBranch:
-                    type: string
-                    description: Military branch designation.
-            description: FlightEnrichment contains additional data from Wingbits aircraft database.
-        worldmonitor_military_v1_MilitaryFlightCluster:
-            type: object
-            properties:
-                id:
-                    type: string
-                    description: Unique cluster identifier.
-                name:
-                    type: string
-                    description: Descriptive name of the cluster.
-                location:
-                    $ref: '#/components/schemas/worldmonitor_core_v1_GeoCoordinates'
-                flightCount:
-                    type: integer
-                    format: int32
-                    description: Number of flights in the cluster.
-                flights:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/worldmonitor_military_v1_MilitaryFlight'
-                dominantOperator:
-                    type: string
-                    enum:
-                        - MILITARY_OPERATOR_UNSPECIFIED
-                        - MILITARY_OPERATOR_USAF
-                        - MILITARY_OPERATOR_USN
-                        - MILITARY_OPERATOR_USMC
-                        - MILITARY_OPERATOR_USA
-                        - MILITARY_OPERATOR_RAF
-                        - MILITARY_OPERATOR_RN
-                        - MILITARY_OPERATOR_FAF
-                        - MILITARY_OPERATOR_GAF
-                        - MILITARY_OPERATOR_PLAAF
-                        - MILITARY_OPERATOR_PLAN
-                        - MILITARY_OPERATOR_VKS
-                        - MILITARY_OPERATOR_IAF
-                        - MILITARY_OPERATOR_NATO
-                        - MILITARY_OPERATOR_OTHER
-                    description: MilitaryOperator represents the military branch or force operating an asset.
-                activityType:
-                    type: string
-                    enum:
-                        - MILITARY_ACTIVITY_TYPE_UNSPECIFIED
-                        - MILITARY_ACTIVITY_TYPE_EXERCISE
-                        - MILITARY_ACTIVITY_TYPE_PATROL
-                        - MILITARY_ACTIVITY_TYPE_TRANSPORT
-                        - MILITARY_ACTIVITY_TYPE_DEPLOYMENT
-                        - MILITARY_ACTIVITY_TYPE_TRANSIT
-                        - MILITARY_ACTIVITY_TYPE_UNKNOWN
-                    description: MilitaryActivityType represents the assessed type of military activity.
-            description: MilitaryFlightCluster represents a geographic cluster of military flights.
         worldmonitor_military_v1_GetTheaterPostureRequest:
             type: object
             properties:
@@ -54504,6 +55968,18 @@ components:
                         - MARKET_SOURCE_POLYMARKET
                         - MARKET_SOURCE_KALSHI
                     description: Source platform for prediction market data.
+                yesPriceChange24h:
+                    type: number
+                    maximum: 1
+                    minimum: -1
+                    format: double
+                    description: Upstream 24-hour Yes price change on the probability scale. Absent if unavailable.
+                yesPriceChange7d:
+                    type: number
+                    maximum: 1
+                    minimum: -1
+                    format: double
+                    description: Upstream 7-day Yes price change on the probability scale. Polymarket only.
             required:
                 - id
             description: PredictionMarket represents a prediction market contract.
@@ -55561,7 +57037,7 @@ components:
             properties:
                 available:
                     type: boolean
-                    description: True only when value, year, source and unit passed the server contract.
+                    description: True when value, year, source and unit pass validation.
                 value:
                     type: number
                     format: double
@@ -55570,13 +57046,16 @@ components:
                     type: integer
                     minimum: 0
                     format: int32
-                    description: Observation year from the source, not the seed run year.
+                    description: Source year; not the seed year.
                 source:
                     type: string
-                    description: Provider or dataset attribution stored with the observation.
+                    description: Provider or dataset attribution.
                 unit:
                     type: string
-                    description: Human-readable unit such as "percent", "people", or "years".
+                    description: 'Unit: percent, people, or years.'
+                sourceStatus:
+                    type: string
+                    description: Provider or input status; absent is unknown.
             description: CapabilityObservation keeps a measured zero distinct from a missing value.
         worldmonitor_resilience_v1_DemographicsEducation:
             type: object
@@ -55994,12 +57473,12 @@ components:
             properties:
                 q:
                     type: string
-                    description: Search text for a sanctioned person, organization, vessel, or aircraft.
+                    description: Search a name, up to 10 retained aliases per entity, or an exact IMO identifier (2-200 characters).
                 maxResults:
                     type: integer
                     format: int32
                     description: Maximum number of matching sanctioned entities to return.
-            description: LookupSanctionEntityRequest searches the OFAC entity index by name, vessel, or aircraft.
+            description: LookupSanctionEntityRequest screens the seeded OFAC SDN, OFAC Consolidated, Canada SEMA and US CSL index.
         worldmonitor_sanctions_v1_LookupSanctionEntityResponse:
             type: object
             properties:
@@ -56012,7 +57491,12 @@ components:
                     format: int32
                 source:
                     type: string
-            description: LookupSanctionEntityResponse contains matched entities from OFAC + OpenSanctions.
+                    description: |-
+                        Comma-separated lists searched; "seeded" when q is rejected before lookup;
+                         "unavailable" when no valid index records are available.
+            description: |-
+                LookupSanctionEntityResponse contains seeded matches ranked by token-set Jaro-Winkler score.
+                 A match is a lead to confirm with the issuing agency, not legal advice.
         worldmonitor_sanctions_v1_SanctionEntityMatch:
             type: object
             properties:
@@ -56931,18 +58415,85 @@ components:
                     maximum: 100
                     minimum: 0
                     format: int32
-                    description: |-
-                        Disruption-score threshold for delivery, 0-100. Default 50.
-                         proto3 `optional` so the handler can distinguish "partner explicitly sent
-                         0 (deliver every alert)" from "partner omitted the field (apply default
-                         50)". Without `optional`, both serialise to the proto3 scalar default of
-                         0 and the handler can't tell them apart — flagged in #3242 review.
+                    description: Disruption-score threshold for delivery, 0-100. Default 50; an explicit 0 delivers every alert.
+                eventType:
+                    type: string
+                    maxLength: 64
+                    description: A shared/event-triggers.json key; `chokepoint.disruption` when omitted.
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: '`country.risk_surge` scope: monitored ISO2 codes; empty = all.'
+                minLiveSignal:
+                    type: integer
+                    maximum: 40
+                    minimum: 0
+                    format: int32
+                    description: '`chokepoint.disruption` live-signal floor; 0 = score only.'
+                scope:
+                    $ref: '#/components/schemas/worldmonitor_shipping_v2_WebhookScope'
             required:
                 - callbackUrl
             description: |-
-                RegisterWebhookRequest creates a new chokepoint-disruption webhook
-                 subscription. Wire shape is byte-compatible with the pre-migration
-                 legacy POST body.
+                RegisterWebhookRequest subscribes to one eventType (default
+                 chokepoint.disruption). Wire shape is byte-compatible with the legacy
+                 POST body.
+        worldmonitor_shipping_v2_WebhookScope:
+            type: object
+            properties:
+                keywords:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking: whole-word terms, any-of, 1-20.'
+                categories:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking: classifier categories.'
+                importanceFloor:
+                    type: integer
+                    format: int32
+                    description: 'news.breaking: importanceScore floor, 0-100 (default 69).'
+                severityFloor:
+                    type: string
+                    description: 'news.breaking: `critical` or `high` (default high).'
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking, natural.hazard: ISO2 codes; unplaced events never match.'
+                hazardTypes:
+                    type: array
+                    items:
+                        type: string
+                        description: 'natural.hazard: event categories.'
+                minMagnitude:
+                    type: number
+                    format: double
+                    description: 'natural.hazard: earthquake magnitude floor, 4.5-9.5 (default 5.5).'
+                minAlertLevel:
+                    type: string
+                    description: 'natural.hazard: GDACS `Orange` or `Red` (default Orange).'
+                assetClasses:
+                    type: array
+                    items:
+                        type: string
+                        description: 'market.move: `equity`, `commodity`, `crypto`.'
+                symbols:
+                    type: array
+                    items:
+                        type: string
+                        description: 'market.move: quote symbols, 1-50.'
+                minAbsPct:
+                    type: number
+                    format: double
+                    description: 'market.move: |changePct| floor, 5-100 (default 10).'
+                direction:
+                    type: string
+                    description: 'market.move: `up`, `down` or `any` (default any).'
+            description: Per-event filters for occurrence events. Each key applies to the events named in its comment; the handler validates against shared/event-triggers.json and stores the defaults.
         worldmonitor_shipping_v2_RegisterWebhookResponse:
             type: object
             properties:
@@ -56989,6 +58540,18 @@ components:
                     description: ISO-8601 timestamp of registration.
                 active:
                     type: boolean
+                eventType:
+                    type: string
+                    description: As registered; see RegisterWebhookRequest.
+                countries:
+                    type: array
+                    items:
+                        type: string
+                minLiveSignal:
+                    type: integer
+                    format: int32
+                scope:
+                    $ref: '#/components/schemas/worldmonitor_shipping_v2_WebhookScope'
             description: |-
                 Single webhook record in the list response. `secret` is intentionally
                  omitted; use rotate-secret to obtain a new one.
@@ -57162,12 +58725,12 @@ components:
                     type: boolean
                     description: |-
                         True when the NGA navigational-warning source returned a valid response,
-                         including a valid empty list. Missing legacy values fail closed.
+                         empty list included; a missing value fails closed.
                 aisSnapshotAvailable:
                     type: boolean
                     description: |-
-                        True when the AIS snapshot source returned a valid response. This owns
-                         both ais_disruptions and congestion_level. Missing legacy values fail closed.
+                        True when the AIS snapshot source returned a valid response; owns
+                         ais_disruptions and congestion_level. A missing value fails closed.
         worldmonitor_supply_chain_v1_DirectionalDwt:
             type: object
             properties:
@@ -57216,21 +58779,34 @@ components:
                 dataAvailable:
                     type: boolean
                     description: |-
-                        False when the upstream portwatch source did not return history for this
-                         chokepoint in the current cycle — wow_change_pct and history are then
-                         zero-state fill, not genuine readings. Client should render a "transit
-                         data unavailable" indicator and skip chart rendering.
-
-                         This says nothing about today_* — those come from the relay's in-memory
-                         AIS window, a separate source. Read today_counts_available for those.
+                        False when PortWatch returned no history this cycle; wow_change_pct,
+                         history and official_*/baseline_* are then zero-state fill.
                 todayCountsAvailable:
                     type: boolean
                     description: |-
-                        False when the relay's 24h AIS window held no crossings for this
-                         chokepoint, so today_total/tanker/cargo/other are unsupplied rather than
-                         a measured zero (#7457). The fields stay 0 to keep the int32 contract;
-                         clients must withhold the count when this is false instead of publishing
-                         the 0. True means the counts are a real measurement.
+                        False when the relay's 24h AIS window held no crossings; today_* are then
+                         unsupplied, not a measured zero.
+                officialLatestDate:
+                    type: string
+                    description: |-
+                        IMF PortWatch latest published day, YYYY-MM-DD (~4-day lag); empty means
+                         withhold official_latest_total and official_avg_7d (absent below 7 days).
+                officialLatestTotal:
+                    type: integer
+                    format: int32
+                officialAvg7d:
+                    type: number
+                    format: double
+                baselineAvgDaily:
+                    type: number
+                    format: double
+                    description: |-
+                        Mean daily transits, 12 months ending a year before the seed; 0 means
+                         withhold. baseline_from/to: YYYY-MM-DD bounds, inclusive.
+                baselineFrom:
+                    type: string
+                baselineTo:
+                    type: string
         worldmonitor_supply_chain_v1_TransitDayCount:
             type: object
             properties:

@@ -202,3 +202,24 @@ export function routeGrantContextDenial(
   if (mintPhase !== 'idle') return 'preserve_consent';
   return retriesRemaining > 0 ? 'retry' : 'show_retry';
 }
+
+/** The client fields of a `/api/internal/mcp-grant-context` 200 response. */
+export interface GrantClientContext {
+  client_name: string;
+  redirect_host: string;
+  /** CIMD clients only: the host that published the client metadata document. */
+  client_host?: string;
+  /** CIMD clients only: this authorization goes to a localhost callback. */
+  localhost_redirect?: boolean;
+}
+
+/**
+ * #9244: what the consent card adds for a CIMD client. A DCR context carries
+ * neither field, so it renders exactly as before.
+ */
+export function grantClientDisplay(ctx: GrantClientContext): { clientIdHost: string | null; showLocalhostWarning: boolean } {
+  return {
+    clientIdHost: typeof ctx.client_host === 'string' && ctx.client_host ? ctx.client_host : null,
+    showLocalhostWarning: ctx.localhost_redirect === true,
+  };
+}

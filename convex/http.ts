@@ -1,7 +1,9 @@
 import { anyApi, httpRouter } from "convex/server";
+import type { Infer } from "convex/values";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
+import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import {
   CHECKOUT_RATE_LIMITED,
@@ -11,8 +13,9 @@ import {
 import { webhookHandler } from "./payments/webhookHandlers";
 import { resendWebhookHandler } from "./resendWebhookHandler";
 import { clerkWebhookHandler } from "./accountDeletion/clerkWebhook";
-import { USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
+import { channelTypeValidator, USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
+import { normalizeAcquisitionSource } from "../shared/acquisition-source";
 import { verifyDunningPortalToken } from "./lib/identitySigning";
 import { buildUnsubscribeUrl, EMAIL_UNSUBSCRIBE_PATH, verifyUnsubscribeToken } from "./lib/emailUnsubscribe";
 import {
@@ -20,6 +23,10 @@ import {
   INTEL_HISTORY_MAX_APPEND_RECORDS,
   INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS,
 } from "./intelHistory";
+import {
+  isInvalidCursorPage,
+  isInvalidPaginationCursorError,
+} from "./paginationCursor";
 
 // App-serving hosts only, aligned with api/_cors.js and server/cors.ts.
 const APP_ORIGIN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
@@ -79,23 +86,6 @@ export async function userPrefsOptionsHttpHandler(
   return new Response(null, { status: 204, headers });
 }
 
-async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.generateKey(
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const [sigA, sigB] = await Promise.all([
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(a)),
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(b)),
-  ]);
-  const aArr = new Uint8Array(sigA);
-  const bArr = new Uint8Array(sigB);
-  let diff = 0;
-  for (let i = 0; i < aArr.length; i++) diff |= aArr[i]! ^ bArr[i]!;
-  return diff === 0;
-}
 
 const tenantRelaySecrets = {
   gateway: "CONVEX_TENANT_RELAY_SECRET",
@@ -401,6 +391,44 @@ export async function internalEntitlementsHttpHandler(
     });
 }
 
+export async function internalAiRoutingPolicyHttpHandler(
+  ctx: ActionCtx,
+  request: Request,
+): Promise<Response> {
+  const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+  const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+  if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+    return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  const body = await parseJsonObjectBody<{ userId?: unknown }>(request);
+  if (!body) return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+  if (typeof body.userId !== "string" || body.userId.length === 0 || body.userId.length > 256) {
+    return Response.json({ error: "MISSING_USER_ID" }, { status: 400 });
+  }
+  const policy = await ctx.runQuery(internal.entitlements.getAiRoutingPolicyByUserId, { userId: body.userId });
+  return Response.json({ policy }, { status: 200 });
+}
+
+/**
+ * Railway delivery jobs (notification relay, digest seeder) read a user's AI
+ * routing policy before an LLM call that carries that user's data
+ * (scripts/lib/ai-routing-policy.cjs). Delivery-scoped relay secret only.
+ */
+export async function relayAiRoutingPolicyHttpHandler(
+  ctx: ActionCtx,
+  request: Request,
+): Promise<Response> {
+  const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+  if (unauthorized) return unauthorized;
+  const body = await parseJsonObjectBody<{ userId?: unknown }>(request);
+  if (!body) return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+  if (typeof body.userId !== "string" || body.userId.length === 0 || body.userId.length > 256) {
+    return Response.json({ error: "MISSING_USER_ID" }, { status: 400 });
+  }
+  const policy = await ctx.runQuery(internal.entitlements.getAiRoutingPolicyByUserId, { userId: body.userId });
+  return Response.json({ policy }, { status: 200 });
+}
+
 const http = httpRouter();
 
 // Only the edge contact handler may write leads after its public abuse checks.
@@ -454,6 +482,12 @@ http.route({
   path: "/api/internal-entitlements",
   method: "POST",
   handler: httpAction(internalEntitlementsHttpHandler),
+});
+
+http.route({
+  path: "/api/internal-ai-routing-policy",
+  method: "POST",
+  handler: httpAction(internalAiRoutingPolicyHttpHandler),
 });
 
 http.route({
@@ -733,6 +767,13 @@ http.route({
   }),
 });
 
+// Every type the schema stores, read from the validator so a new channel
+// type cannot be left out of the deactivate route (#9264).
+const CHANNEL_TYPES: ReadonlySet<string> = new Set(channelTypeValidator.members.map((member) => member.value));
+function isChannelType(value: unknown): value is Infer<typeof channelTypeValidator> {
+  return typeof value === "string" && CHANNEL_TYPES.has(value);
+}
+
 http.route({
   path: "/relay/deactivate",
   method: "POST",
@@ -750,7 +791,7 @@ http.route({
 
     if (
       typeof body.userId !== "string" || !body.userId ||
-      (body.channelType !== "telegram" && body.channelType !== "slack" && body.channelType !== "email" && body.channelType !== "discord" && body.channelType !== "teams" && body.channelType !== "web_push")
+      !isChannelType(body.channelType)
     ) {
       return new Response(JSON.stringify({ error: "MISSING_FIELDS" }), {
         status: 400,
@@ -1141,13 +1182,23 @@ http.route({
         } catch (err: unknown) {
           // normalizeTickers/normalizeCountries throw ConvexError with a
           // structured code (TICKERS_LIMIT_EXCEEDED / COUNTRIES_LIMIT_EXCEEDED)
-          // when a caller exceeds the 50-entry cap. Surface those as a 400 with
+          // when a caller exceeds the 50-entry cap. assertCompatibleDeliveryMode
+          // throws INCOMPATIBLE_DELIVERY when the legacy set-alert-rules path
+          // tries to keep (realtime, high|all). Surface those as a 400 with
           // the machine-readable code — matching the set-notification-config
           // path below — instead of letting them fall to the outer catch as a
           // generic 500, which the client can't route on.
+          // See Sentry WORLDMONITOR-143 (prod setAlertRulesForUser via this action).
           const code = extractConvexErrorCode(err);
           if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
             return new Response(JSON.stringify({ error: code }), { status: 400, headers: { "Content-Type": "application/json" } });
+          }
+          if (code === "INCOMPATIBLE_DELIVERY") {
+            const parsed = parseConvexErrorData(err);
+            const message = (parsed && typeof parsed === "object")
+              ? (parsed as { message?: string }).message ?? ""
+              : "";
+            return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
           throw err;
         }
@@ -1298,6 +1349,12 @@ http.route({
 // `alertRules.getByEnabled` (GHSA-r649-4cqj-w93h) behind the shared secret so
 // the cross-tenant scan is never reachable anonymously. `?enabled=false`
 // selects the disabled set; defaults to enabled=true (all the relay ever asks).
+http.route({
+  path: "/relay/ai-routing-policy",
+  method: "POST",
+  handler: httpAction(relayAiRoutingPolicyHttpHandler),
+});
+
 http.route({
   path: "/relay/enabled-rules",
   method: "GET",
@@ -1741,7 +1798,7 @@ http.route({
       });
     }
 
-    const body = await parseJsonObjectBody<{ tokenId?: unknown }>(request);
+    const body = await parseJsonObjectBody<{ tokenId?: unknown; recordUsage?: unknown }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -1762,7 +1819,7 @@ http.route({
         { tokenId: body.tokenId },
       );
 
-      if (result && touchIsDue(result.lastUsedAt)) {
+      if (result && body.recordUsage !== false && touchIsDue(result.lastUsedAt)) {
         try {
           await ctx.scheduler.runAfter(
             touchDelayMs(),
@@ -1902,6 +1959,7 @@ http.route({
       discountCode?: string;
       referralCode?: string;
       attributionSource?: string;
+      acquisition?: unknown;
       bypassPendingGuard?: boolean;
     }>(request);
     if (!body) {
@@ -1930,6 +1988,7 @@ http.route({
           discountCode: body.discountCode,
           referralCode: body.referralCode,
           attributionSource: body.attributionSource,
+          acquisition: normalizeAcquisitionSource(body.acquisition) ?? undefined,
           bypassPendingGuard: body.bypassPendingGuard,
         },
       );
@@ -2353,8 +2412,25 @@ http.route({
   path: "/relay/intel-history",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    if (await intelRelayUnauthorized(request)) {
-      return intelJson({ error: "UNAUTHORIZED" }, 401);
+    const startedAt = Date.now();
+    const phase = (name: string, status?: number) => {
+      console.info(JSON.stringify({
+        event: "intel_history_phase",
+        phase: name,
+        elapsedMs: Math.max(0, Date.now() - startedAt),
+        ...(status === undefined ? {} : { status }),
+      }));
+    };
+    const respond = (body: unknown, status: number) => {
+      const response = intelJson(body, status);
+      phase("response_ready", status);
+      return response;
+    };
+    phase("handler_enter");
+    const unauthorized = await intelRelayUnauthorized(request);
+    phase("auth_complete");
+    if (unauthorized) {
+      return respond({ error: "UNAUTHORIZED" }, 401);
     }
 
     const body = await parseJsonObjectBody<{
@@ -2363,8 +2439,9 @@ http.route({
       runId?: unknown;
       records?: unknown;
     }>(request);
+    phase("body_complete");
     if (!body) {
-      return intelJson({ error: "INVALID_JSON" }, 400);
+      return respond({ error: "INVALID_JSON" }, 400);
     }
 
     const missing: string[] = [];
@@ -2379,13 +2456,13 @@ http.route({
       }
     }
     if (missing.length > 0) {
-      return intelJson({ error: "MISSING_FIELDS", required: missing }, 400);
+      return respond({ error: "MISSING_FIELDS", required: missing }, 400);
     }
     if (!Array.isArray(body.records) || body.records.length === 0) {
-      return intelJson({ error: "MISSING_FIELDS", required: ["records"] }, 400);
+      return respond({ error: "MISSING_FIELDS", required: ["records"] }, 400);
     }
     if (body.records.length > INTEL_HISTORY_MAX_APPEND_RECORDS) {
-      return intelJson(
+      return respond(
         {
           error: "TOO_MANY_RECORDS",
           max: INTEL_HISTORY_MAX_APPEND_RECORDS,
@@ -2401,7 +2478,7 @@ http.route({
     for (let i = 0; i < body.records.length; i++) {
       const validated = validateIntelHistoryRecord(body.records[i]);
       if (!validated.ok) {
-        return intelJson(
+        return respond(
           { error: "INVALID_RECORD", index: i, reason: validated.reason },
           400,
         );
@@ -2409,17 +2486,21 @@ http.route({
       records.push(validated.record);
     }
 
+    phase("validation_complete");
     try {
+      phase("mutation_started");
       const result = await ctx.runMutation(internal.intelHistory.append, {
         domain: body.domain as string,
         resource: body.resource as string,
         runId: body.runId as string,
         records,
       });
-      return intelJson(result, 200);
+      phase("mutation_complete");
+      return respond(result, 200);
     } catch (err) {
+      phase("mutation_failed");
       const msg = err instanceof Error ? err.message : "intel history append failed";
-      return intelJson({ error: msg }, 500);
+      return respond({ error: msg }, 500);
     }
   }),
 });
@@ -2636,11 +2717,23 @@ http.route({
         400,
       );
     }
+    const cursor = body.cursor;
+    if (cursor !== undefined && (typeof cursor !== "string" || cursor.length > 4096)) {
+      return intelJson({ error: "INVALID_CURSOR" }, 400);
+    }
 
     try {
-      const result = await ctx.runQuery(internal.intelHistory.timeline, parsed.scope);
+      const result = await ctx.runQuery(internal.intelHistory.timeline, {
+        ...parsed.scope, ...(typeof cursor === "string" && cursor ? { cursor } : {}),
+      });
+      if (isInvalidCursorPage(result)) {
+        return intelJson({ error: "INVALID_CURSOR" }, 400);
+      }
       return intelJson(result, 200);
     } catch (err) {
+      if (isInvalidPaginationCursorError(err)) {
+        return intelJson({ error: "INVALID_CURSOR" }, 400);
+      }
       const msg = err instanceof Error ? err.message : "intel history timeline failed";
       return intelJson({ error: msg }, 500);
     }

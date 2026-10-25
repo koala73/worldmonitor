@@ -119,7 +119,7 @@ async function loadMinimalPanel() {
       }
     `],
     ['runtime-stub', `export function isDesktopRuntime() { return false; }`],
-    ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }`],
+    ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }\nexport function hasTauriInvokeBridge() { return false; }`],
     ['analytics-stub', `export function trackLayoutCustomized(kind) { (globalThis.__layoutCustomizedCalls ??= []).push(kind); }`],
     ['ai-flow-settings-stub', `export function getAiFlowSettings() { return { badgeAnimation: false }; }`],
     ['runtime-config-stub', `export function getSecretState() { return { present: true }; }`],

@@ -839,6 +839,11 @@ ${provenanceRows}
         <blockquote><p>${escapeHtml(`${report.author.name}, “${report.title}”, version ${report.version}, published ${report.datePublished}. ${canonical} — underlying transit data: IMF PortWatch (portwatch.imf.org).`)}</p></blockquote>
         <p>The canonical URL is stable, editions are append-only, and corrections bump the version and modified date rather than silently rewriting figures.</p>`);
         break;
+      case 'current-pointer':
+        // AI answers quote the direct answer on its own, so its age and the
+        // live page sit beside it rather than at the foot of the report.
+        parts.push(`        <p>This answer covers IMF PortWatch data through ${escapeHtml(focus.observationEnd)}. For today's transit count and disruption score, see the ${trackedLink(`/chokepoints/${chokepointSlug}/`, `live ${escapeHtml(focus.portwatchName)} status page`, 'chokepoint-page', escapeHtml)}.</p>`);
+        break;
       case 'live-handoff': {
         const dashboardUrl = absoluteUrl(baseUrl, `/dashboard?chokepoint=${report.focusChokepointId}`);
         parts.push(`        <p>This report is a dated snapshot. For the current picture: the ${trackedLink(`/chokepoints/${chokepointSlug}/`, 'live Strait of Hormuz status page', 'chokepoint-page', escapeHtml)} shows today's disruption pulse, and the ${trackedLink(dashboardUrl, 'World Monitor dashboard', 'dashboard', escapeHtml)} adds map layers, alerts, and vessel context around it.</p>

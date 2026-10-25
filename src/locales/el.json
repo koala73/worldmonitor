@@ -234,7 +234,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Δεν παρέχεται κατάσταση εκτίμησης και συμπλήρωσης τιμών"
     },
     "fiveFactorScorecard": {
       "title": "Σκορκαρντ Ανθεκτικότητας Πέντε Παράγοντων",
@@ -711,9 +712,9 @@
       "alertTitle": {
         "configured": "Ρυθμίσεις desktop διαμορφώθηκαν",
         "needsKeys": "Ρυθμίστε API keys για ξεκλείδωμα λειτουργιών",
-        "some": "Ορισμένες λειτουργίες χρειάζονται API keys"
+        "some": "Ορισμένες λειτουργίες χρειάζονται API keys",
+        "pro": "Το World Monitor Pro είναι ενεργό"
       },
-      "skipSetup": "Παραλείψτε τη ρύθμιση — μία μόνο άδεια World Monitor ξεκλειδώνει τα πάντα. Γραφτείτε στη λίστα αναμονής για πρώιμη πρόσβαση.",
       "summary": {
         "desktop": "Λειτουργία desktop",
         "web": "Λειτουργία web (μόνο ανάγνωση, διαχειριζόμενα διαπιστευτήρια)",
@@ -742,7 +743,9 @@
         "OLLAMA_API_URL": "π.χ. http://127.0.0.1:11434 (Ollama) ή http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-συμβατό endpoint.",
         "OLLAMA_MODEL": "π.χ. llama3.1:8b — ετικέτα μοντέλου για περίληψη."
       },
-      "reserveEarlyAccess": "Κρατήστε Πρόωρη Πρόσβαση"
+      "proCloud": "Τα χαρακτηριστικά χωρίς τοπικό κλειδί API χρησιμοποιούν δεδομένα από το cloud του World Monitor.",
+      "skipSetupPro": "Παραλείψτε την ρύθμιση: συνδεθείτε με το World Monitor Pro για να χρησιμοποιήσετε δεδομένα από το cloud αντί για τα δικά σας κλειδιά API.",
+      "getPro": "Αποκτήστε το World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Επικύρωση API keys...",
@@ -1084,7 +1087,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "Δείκτης: World Monitor · δεδομένα καταστημάτων:",
+      "indexSource": "Δείκτης: World Monitor",
+      "venueSource": "δεδομένα καταστημάτων:",
       "statusNormal": "ΚΑΝΟΝΙΚΟ",
       "statusNoData": "ΧΩΡΙΣ ΔΕΔΟΜΕΝΑ",
       "statusNoBaseline": "ΧΩΡΙΣ ΒΑΣΗ",
@@ -1095,6 +1099,16 @@
       "tensionsTitle": "Γεωπολιτικές Εντάσεις",
       "tensionsSource": "Εντάσεις: World Monitor με βάση συμβάντα GDELT",
       "insufficientData": "Ανεπαρκή δεδομένα",
+      "evidenceStrikes": "Αναφερθέντα πλήγματα σε 3 ημέρες ({{countries}}): {{value}}",
+      "evidenceAirports": "Αεροδρόμια με διαταραχές: {{value}}",
+      "evidenceAirportClosed": "Το αεροδρόμιο {{name}} έκλεισε",
+      "evidenceAirportHalted": "{{name}}: ακυρώθηκαν οι περισσότερες πτήσεις",
+      "evidenceAirportRestricted": "{{name}}: περιορισμοί πτήσεων",
+      "evidenceMilitaryAircraft": "Στρατιωτικά αεροσκάφη ({{country}}) στην περιοχή: {{value}}",
+      "evidencePlaAircraft": "Κινεζικά στρατιωτικά αεροσκάφη κοντά στην Ταϊβάν: {{value}}",
+      "evidencePlaShips": "Κινεζικά πολεμικά πλοία κοντά στην Ταϊβάν: {{value}}",
+      "evidenceSanctions": "Νέες κυρώσεις ΗΠΑ αυτή την εβδομάδα ({{country}}): {{value}}",
+      "evidenceUsual": "(συνήθως {{value}})",
       "pizzaUnavailable": "Η δραστηριότητα των πιτσαριών δεν είναι διαθέσιμη",
       "source": "Πηγή:",
       "statusClosed": "ΚΛΕΙΣΤΟ",
@@ -1286,7 +1300,7 @@
         "commodityHubs": "Κέντρα Εμπορευμάτων",
         "gulfInvestments": "Επενδύσεις Συμβουλίου Συνεργασίας του Κόλπου",
         "tradeRoutes": "Εμπορικές Διαδρομές",
-        "iranAttacks": "Επιθέσεις Ιράν",
+        "iranAttacks": "Πλήγματα στη Μέση Ανατολή",
         "gpsJamming": "Παρεμβολή πλοήγησης",
         "ciiChoropleth": "Ασταθμότητα χώρας",
         "dayNight": "Ημέρα/Νύχτα",
@@ -1298,7 +1312,8 @@
         "radiationSpike": "Αιχμή ραδιενέργειας",
         "radiationElevated": "Αυξημένη ραδιενέργεια",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Περιορισμοί Εναέριου Χώρου NOTAM"
       },
       "tooltip": {
         "earthquake": "Σεισμός",
@@ -1330,7 +1345,9 @@
         "sourceIomDtm": "Πηγή: IOM DTM",
         "sinceDate": "από {{date}}",
         "lastMonth": "τον προηγούμενο μήνα",
-        "sourceUnhcrOdp": "Πηγή: Πύλη Επιχειρησιακών Δεδομένων της Ύπατης Αρμοστείας"
+        "sourceUnhcrOdp": "Πηγή: Πύλη Επιχειρησιακών Δεδομένων της Ύπατης Αρμοστείας",
+        "displaced": "εκτοπισμένοι",
+        "sourceIdmc": "Πηγή: IDMC"
       },
       "layerHelp": {
         "title": "Οδηγός Επιπέδων Χάρτη",
@@ -1411,7 +1428,8 @@
           "geoBoundaries": "Αποστρατικοποιημένες ζώνες, γραμμές εκεχειρίας και αμφισβητούμενα σύνορα",
           "ciiChoropleth": "Θερμικός χάρτης Country Instability Index — χρώματα χώρες κατά βαθμό (πράσινο=σταθερή, κόκκινο=κρίσιμη)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Προσωρινοί περιορισμοί πτήσης και περιορισμένος, επικίνδυνος και απαγορευμένος εναέριος χώρος από FAA NOTAMs, σε ισχύ τώρα ή ξεκινώντας εντός 24 ωρών"
         },
         "notes": {
           "timeAffects": "Επηρεάζει: Σεισμούς, Καιρό, Διαμαρτυρίες, Διακοπές"
@@ -1546,6 +1564,8 @@
       "capacityPercent": "{{percent}}% χωρητικότητα",
       "noCountryImpacts": "Δεν ανιχνεύθηκαν επιπτώσεις σε χώρες",
       "alternativeRoutes": "Εναλλακτικές Διαδρομές",
+      "sharesCutZone": "ίδιο στενό",
+      "estimateNote": "Εκτίμηση: η χωρητικότητα και η εφεδρεία των καλωδίων είναι προσεγγιστικές, όχι μετρημένες.",
       "countriesAffected": "Χώρες που Επηρεάζονται ({{count}})",
       "links": "σύνδεσμοι",
       "selectInfrastructureHint": "Επιλέξτε υποδομή για ανάλυση αλυσιδωτής επίπτωσης",
@@ -1763,7 +1783,21 @@
       "latestChange": "Τελευταία μεταβολή",
       "accelerating": "Επιταχύνεται",
       "inDays": "σε {{days}} ημέρες",
-      "crossBorderNote": "Πύλη λειτουργικών δεδομένων του Γραφείου ΟΗΕ για τους Πρόσφυγες: άτομα που διέσχισαν σύνορα σε κάθε κρίση, από τις τελευταίες εκθέσεις χωρών. Οι καταστάσεις επικαλύπτονται, οπότε δεν προστίθενται."
+      "crossBorderNote": "Πύλη λειτουργικών δεδομένων του Γραφείου ΟΗΕ για τους Πρόσφυγες: άτομα που διέσχισαν σύνορα σε κάθε κρίση, από τις τελευταίες εκθέσεις χωρών. Οι καταστάσεις επικαλύπτονται, οπότε δεν προστίθενται.",
+      "last7And30": "Τελευταίες 7 / 30 ημέρες",
+      "staleReport": "Παρωχημένη αναφορά",
+      "reported": "Πλήθος",
+      "period": "Περίοδος",
+      "movementNote": "Κάθε γραμμή διατηρεί την πηγή, την ημερομηνία αναφοράς και το μέτρο της. Οι πληθυσμοί, οι αφίξεις και τα περιστατικά συνοριακού ελέγχου είναι διαφορετικά μέτρα. Οι πηγές ενδέχεται να αλληλεπικαλύπτονται· μην αθροίζετε τα πλήθη τους. Το WorldMonitor παράγει αυτή την προβολή από τις συνδεδεμένες πηγές· δεν υπονοείται έγκριση από τους παρόχους.",
+      "recent": "Πρόσφατα",
+      "last30Days": "Τελευταίες 30 ημέρες",
+      "newThisWeek": "Νέα αυτήν την εβδομάδα",
+      "conflict": "Σύγκρουση",
+      "disaster": "Καταστροφή",
+      "surge": "Αιχμή",
+      "recentNote": "IDMC: άνθρωποι εκτοπισμένοι εντός της χώρας τους τις τελευταίες 30 ημέρες. Το IDMC δημοσιεύει ένα στοιχείο κατά μέσο όρο τρεις εβδομάδες μετά τον εκτοπισμό, επομένως οι πρόσφατες εβδομάδες συμπληρώνονται αργά. Τα νέα αυτήν την εβδομάδα μετρούν στοιχεία που δημοσιεύθηκαν τις τελευταίες 7 ημέρες. Αιχμή: τουλάχιστον 5.000 άνθρωποι και τρεις φορές ο μηνιαίος μέσος όρος των προηγούμενων πέντε μηνών.",
+      "recentAsOf": "Δεδομένα κατά {{date}}.",
+      "recentMissing": "Χωρίς δεδομένα αυτή τη φορά από {{countries}}· τα αρχεία τους δεν φορτώθηκαν, που δεν σημαίνει μηδενική μετακίνηση."
     },
     "climate": {
       "noAnomalies": "Δεν ανιχνεύθηκαν σημαντικές ανωμαλίες",
@@ -1790,7 +1824,8 @@
       "sourceCoverageHint": "Εμφανίζονται {{covered}} από {{total}} ενεργές πηγές — αυτός ο πίνακας εναλλάσσει τις πηγές του σε κάθε ανανέωση",
       "sortBy": "Ταξινόμηση κατά",
       "sortNewest": "Πιο πρόσφατα",
-      "sortRelevance": "Σχετικότητα"
+      "sortRelevance": "Σχετικότητα",
+      "translationUnavailable": "Η μετάφραση δεν είναι διαθέσιμη. Ελέγξτε τις ρυθμίσεις του παρόχου AI και δοκιμάστε ξανά."
     },
     "breakingNews": {
       "critical": "ΚΡΙΣΙΜΟ",
@@ -3031,7 +3066,9 @@
         "africa": "Αφρική"
       },
       "scheduled": "Προγρ.",
-      "estimated": "Εκτ."
+      "estimated": "Εκτ.",
+      "normalOperations": "ΚΑΝΟΝΙΚΗ ΛΕΙΤΟΥΡΓΙΑ",
+      "open": "ΑΝΟΙΚΤΟ"
     },
     "aircraft": {
       "altitude": "Υψόμετρο",
@@ -3436,7 +3473,12 @@
       "uae_ecsr": "ΗΑΕ/ECSR",
       "venezuela_crisis": "Κρίση Βενεζουέλας",
       "yemen_houthis": "Υεμένη/Χούθι"
-    }
+    },
+    "upcomingForecast": "Επερχόμενη πρόγνωση",
+    "currentForecast": "Τρέχουσα πρόγνωση",
+    "expiredForecast": "Ληγμένη πρόγνωση",
+    "validFrom": "Ισχύει από",
+    "validUntil": "Ισχύει έως"
   },
   "signals": {
     "context": {
@@ -3810,5 +3852,27 @@
       "description": "Ενεργοποίηση πηγών για το Ιράν, το Ισραήλ, τον Κόλπο και τις κουρδικές περιοχές"
     },
     "unavailable": "Η προρύθμιση {{preset}} δεν είναι διαθέσιμη με τα τρέχοντα πάνελ"
+  },
+  "countryHistory": {
+    "title": "Ημερήσιο ιστορικό χώρας",
+    "loading": "Φόρτωση ημερήσιου ιστορικού…",
+    "window": "Περίοδος",
+    "days": "{{days}} ημέρες",
+    "observed": "{{count}} στιγμιότυπα σε {{days}} ημέρες",
+    "legend": "CII (κεχριμπαρί): υψηλότερες τιμές σημαίνουν περισσότερη αστάθεια. Ανθεκτικότητα (πράσινο): υψηλότερες τιμές σημαίνουν μεγαλύτερη ικανότητα. Οι κουκκίδες δείχνουν ημέρες με επιλεγμένους τίτλους.",
+    "chart": "Ημερήσιες βαθμολογίες CII και ανθεκτικότητας. Τα κενά και οι αλλαγές τύπου διακόπτουν τις γραμμές.",
+    "selectDate": "{{date}}, {{count}} επιλεγμένοι τίτλοι",
+    "empty": "Δεν υπάρχουν ημερήσια στιγμιότυπα σε αυτή την περίοδο. Το ιστορικό συγκεντρώνεται μετά την ενεργοποίηση.",
+    "unavailable": "Το ιστορικό δεν είναι προσωρινά διαθέσιμο. Δοκιμάστε ξανά.",
+    "retry": "Δοκιμή ξανά",
+    "stale": "Η τελευταία επιτυχής ημερήσια καταγραφή έγινε πριν από περισσότερες από 36 ώρες.",
+    "break": "Αλλαγή τύπου ή κενό παρατήρησης. Συγκρίνετε μόνο βαθμολογίες με τον ίδιο τύπο.",
+    "partial": "Η ειδησεογραφική κάλυψη ήταν μερική κατά την καταγραφή.",
+    "resilience": "Ανθεκτικότητα",
+    "ciiMissing": "CII μη διαθέσιμο",
+    "resilienceMissing": "Ανθεκτικότητα μη διαθέσιμη",
+    "noEvents": "Δεν καταγράφηκαν επιλεγμένοι τίτλοι για αυτή την ημερομηνία. Αυτό δεν αποδεικνύει απουσία γεγονότων.",
+    "unlock90": "Ξεκλειδώστε 90 ημέρες με Pro",
+    "unlock365": "Ξεκλειδώστε 365 ημέρες με πρόγραμμα API"
   }
 }

@@ -394,6 +394,18 @@ test('GTA Update records permission but stays inactive pending activation gates'
   assert.equal(rawManifestActiveEntries(manifest).some((row) => row.host === 'gtaupdate.com'), false);
 });
 
+test('NBS saved-response extraction records permission without live catalog activation', () => {
+  const manifest = loadManifest(rootDir);
+  const entry = manifest.entries.find((row) => row.host === 'data.stats.gov.cn');
+  assert.ok(entry, 'the NBS extractor must retain its attribution record');
+  assert.equal(entry.observed, true);
+  assert.equal(entry.status, 'reviewed');
+  assert.match(entry.license, /NBS Terms of Service section III/);
+  assert.equal(entry.catalogActive, false);
+  assert.equal(activeSourceAttributionEntries(manifest).some((row) => row.host === entry.host), false);
+  assert.equal(rawManifestActiveEntries(manifest).some((row) => row.host === entry.host), false);
+});
+
 test('TPS MCI records the exact OGL-Ontario licence before reviewed', () => {
   const inventory = scanUpstreamHosts(rootDir);
   const manifest = loadManifest(rootDir);

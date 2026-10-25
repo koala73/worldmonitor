@@ -3,7 +3,7 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { getDefaultAutoSelectFamily, getDefaultAutoSelectFamilyAttemptTimeout, isIP } from 'node:net';
-import { Agent } from 'undici';
+import { Agent, Dispatcher1Wrapper } from 'undici';
 import { withSourceRequestDiagnostics } from './natural/source-request-diagnostics.mjs';
 
 import {
@@ -176,7 +176,8 @@ function sourceFailureDetails(error) {
 
 function isDualFamilyConnectFailure(error) {
   try {
-    const aggregate = error?.cause;
+    const cause = error?.cause;
+    const aggregate = cause?.code === 'UND_ERR_CONNECT_TIMEOUT' ? cause.cause : cause;
     if (!(error instanceof TypeError) || !(aggregate instanceof AggregateError)
       || aggregate.code !== 'ETIMEDOUT' || aggregate.errors.length !== 2) return false;
     const [ipv4, ipv6] = aggregate.errors;
@@ -241,7 +242,7 @@ async function fetchEventSourceJson(source, url, fetchFn, noContentValue) {
       const res = await fetchFn(url, {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
         signal,
-        ...(dispatcher ? { dispatcher } : {}),
+        ...(dispatcher ? { dispatcher: new Dispatcher1Wrapper(dispatcher) } : {}),
       });
       headersReceivedAt = performance.now();
       if (headerTimer) clearTimeout(headerTimer);
@@ -494,6 +495,10 @@ export async function fetchGdacs(fetchFn = globalThis.fetch, { previousSources =
       magnitudeUnit: '',
       sourceUrl: props.url?.report || '',
       sourceName: 'GDACS',
+      // Orange or Red (Green is dropped above); natural.hazard webhook scopes
+      // filter on it (shipping-webhook-worker.mjs). Redis-only: the RPC proto
+      // does not carry it.
+      alertLevel: props.alertlevel,
       closed: props.eventtype === 'VO' && (props.iscurrent === false || props.iscurrent === 'false'),
       ...tcFields,
       forecastTrack: [],

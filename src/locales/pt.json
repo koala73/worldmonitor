@@ -315,7 +315,8 @@
       "alertTitle": {
         "configured": "Configurações da área de trabalho configuradas",
         "needsKeys": "Configure chaves de API para desbloquear recursos",
-        "some": "Alguns recursos precisam de chaves de API"
+        "some": "Alguns recursos precisam de chaves de API",
+        "pro": "World Monitor Pro está ativo"
       },
       "summary": {
         "desktop": "Modo área de trabalho",
@@ -345,8 +346,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "skipSetup": "Pule a configuração — uma única licença World Monitor desbloqueia tudo. Junte-se à lista de espera para acesso antecipado.",
-      "reserveEarlyAccess": "Reserve seu Acesso Antecipado"
+      "proCloud": "Recursos sem uma chave de API local usam dados da nuvem do World Monitor.",
+      "skipSetupPro": "Pule a configuração: faça login com World Monitor Pro para usar dados da nuvem em vez de suas próprias chaves de API.",
+      "getPro": "Obter World Monitor Pro"
     },
     "countryIntel": {
       "identifying": "Identificando país...",
@@ -592,7 +594,7 @@
         "tradeRoutes": "Rotas Comerciais",
         "gpsJamming": "Interferência de navegação",
         "dayNight": "Dia/Noite",
-        "iranAttacks": "Ataques iranianos",
+        "iranAttacks": "Ataques no Oriente Médio",
         "ciiChoropleth": "Instabilidade do país",
         "positiveEvents": "Eventos positivos",
         "kindness": "Atos de bondade",
@@ -602,7 +604,8 @@
         "radiationSpike": "Pico de radiação",
         "radiationElevated": "Radiação elevada",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Restrições de Espaço Aéreo NOTAM"
       },
       "layersTitle": "Camadas",
       "layerSearch": "Pesquisar camadas...",
@@ -641,7 +644,9 @@
         "sourceIomDtm": "Fonte: IOM DTM",
         "sinceDate": "desde {{date}}",
         "lastMonth": "no mês passado",
-        "sourceUnhcrOdp": "Fonte: Portal de Dados Operacionais do ACNUR"
+        "sourceUnhcrOdp": "Fonte: Portal de Dados Operacionais do ACNUR",
+        "displaced": "deslocados",
+        "sourceIdmc": "Fonte: IDMC"
       },
       "layerHelp": {
         "title": "Guia de camadas de mapa",
@@ -722,7 +727,8 @@
           "geoBoundaries": "Zonas desmilitarizadas, linhas de cessar-fogo e fronteiras disputadas",
           "ciiChoropleth": "Mapa de calor do Índice de Instabilidade do País — colore os países por pontuação (verde=estável, vermelho=crítico)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Restrições temporárias de voo e espaço aéreo restrito, perigoso e proibido dos NOTAMs da FAA, em vigência agora ou começando nas próximas 24 horas"
         },
         "notes": {
           "timeAffects": "Afeta: terremotos, clima, protestos, interrupções"
@@ -754,7 +760,8 @@
       "sourceCoverageHint": "A mostrar {{covered}} de {{total}} fontes ativas — este painel alterna entre as suas fontes a cada atualização",
       "sortBy": "Ordenar por",
       "sortNewest": "Mais recente",
-      "sortRelevance": "Relevância"
+      "sortRelevance": "Relevância",
+      "translationUnavailable": "Tradução indisponível. Verifique as configurações do seu provedor de IA e tente novamente."
     },
     "countryBrief": {
       "shareStory": "Compartilhar história",
@@ -777,7 +784,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Índice: World Monitor · dados dos locais:",
+      "indexSource": "Índice: World Monitor",
+      "venueSource": "dados dos locais:",
       "statusNormal": "NORMAL",
       "statusNoData": "SEM DADOS",
       "statusNoBaseline": "SEM REFERÊNCIA",
@@ -786,6 +794,16 @@
       "tensionsTitle": "Tensões Geopolíticas",
       "tensionsSource": "Tensões: World Monitor com base em eventos do GDELT",
       "insufficientData": "Dados insuficientes",
+      "evidenceStrikes": "Ataques relatados em 3 dias ({{countries}}): {{value}}",
+      "evidenceAirports": "Aeroportos afetados: {{value}}",
+      "evidenceAirportClosed": "Aeroporto de {{name}} fechado",
+      "evidenceAirportHalted": "{{name}}: maioria dos voos cancelada",
+      "evidenceAirportRestricted": "{{name}}: voos restritos",
+      "evidenceMilitaryAircraft": "Aeronaves militares ({{country}}) na região: {{value}}",
+      "evidencePlaAircraft": "Aeronaves militares chinesas perto de Taiwan: {{value}}",
+      "evidencePlaShips": "Navios da marinha chinesa perto de Taiwan: {{value}}",
+      "evidenceSanctions": "Novas sanções dos EUA esta semana ({{country}}): {{value}}",
+      "evidenceUsual": "(habitual {{value}})",
       "pizzaUnavailable": "Atividade das pizzarias indisponível",
       "source": "Fonte:",
       "defcon": "DEFCON{{level}}",
@@ -941,6 +959,8 @@
       "capacityPercent": "{{percent}}% capacidade",
       "noCountryImpacts": "Nenhum impacto no país detectado",
       "alternativeRoutes": "Rotas Alternativas",
+      "sharesCutZone": "mesmo estreito",
+      "estimateNote": "Estimativa: a capacidade e a redundância dos cabos são aproximadas, não medidas.",
       "countriesAffected": "Países afetados ({{count}})",
       "links": "links",
       "selectInfrastructureHint": "Selecione a infraestrutura para analisar o impacto em cascata",
@@ -1100,7 +1120,21 @@
       "latestChange": "Última variação",
       "accelerating": "Acelerando",
       "inDays": "em {{days}} dias",
-      "crossBorderNote": "Portal de Dados Operacionais da Agência da ONU para Refugiados: pessoas que cruzaram fronteiras em cada crise, a partir dos últimos relatórios de país. As situações se sobrepõem, portanto não são somadas."
+      "crossBorderNote": "Portal de Dados Operacionais da Agência da ONU para Refugiados: pessoas que cruzaram fronteiras em cada crise, a partir dos últimos relatórios de país. As situações se sobrepõem, portanto não são somadas.",
+      "last7And30": "Últimos 7 / 30 dias",
+      "staleReport": "Relatório desatualizado",
+      "reported": "Quantidade",
+      "period": "Período",
+      "movementNote": "Cada linha mantém a sua fonte, data do relatório e medida. Os totais populacionais, as chegadas e os eventos de controlo fronteiriço são medidas distintas. As fontes podem sobrepor-se; não some as suas contagens. O WorldMonitor produz esta vista a partir das fontes ligadas; isto não implica o apoio dos fornecedores.",
+      "recent": "Recente",
+      "last30Days": "Últimos 30 dias",
+      "newThisWeek": "Novo esta semana",
+      "conflict": "Conflito",
+      "disaster": "Desastre",
+      "surge": "Pico",
+      "recentNote": "IDMC: pessoas deslocadas dentro de seu país nos últimos 30 dias. O IDMC publica um número mediano de três semanas após o deslocamento, portanto semanas recentes são preenchidas tardiamente. Novo esta semana conta números publicados nos últimos 7 dias. Pico: pelo menos 5.000 pessoas e três vezes a média mensal dos cinco meses anteriores.",
+      "recentAsOf": "Dados de {{date}}.",
+      "recentMissing": "Sem dados desta vez de {{countries}}; seus arquivos falharam ao carregar, o que não significa deslocamento zero."
     },
     "populationExposure": {
       "totalAffected": "Total afetado",
@@ -2665,7 +2699,9 @@
         "africa": "África"
       },
       "scheduled": "Prog",
-      "estimated": "Est"
+      "estimated": "Est",
+      "normalOperations": "OPERAÇÕES NORMAIS",
+      "open": "ABERTO"
     },
     "cyberThreat": {
       "title": "CIBERAMEAÇA"
@@ -3071,7 +3107,12 @@
       "position": "Posição",
       "ground": "No solo",
       "airborne": "Em voo"
-    }
+    },
+    "upcomingForecast": "Previsão futura",
+    "currentForecast": "Previsão vigente",
+    "expiredForecast": "Previsão expirada",
+    "validFrom": "Válida a partir de",
+    "validUntil": "Válida até"
   },
   "signals": {
     "context": {
@@ -3570,7 +3611,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Estado de estimativa e imputação não informado"
     },
     "fiveFactorScorecard": {
       "title": "Placar de Resiliência de Cinco Fatores",
@@ -3830,5 +3872,27 @@
       "description": "Ativar fontes sobre Irã, Israel, Golfo e regiões curdas"
     },
     "unavailable": "A predefinição {{preset}} não está disponível com os painéis atuais"
+  },
+  "countryHistory": {
+    "title": "Histórico diário do país",
+    "loading": "Carregando histórico diário…",
+    "window": "Período",
+    "days": "{{days}} dias",
+    "observed": "{{count}} registros em {{days}} dias",
+    "legend": "CII (âmbar): valores maiores indicam mais instabilidade. Resiliência (verde): valores maiores indicam mais capacidade. Os pontos marcam dias com manchetes selecionadas.",
+    "chart": "Pontuações diárias de CII e resiliência. Lacunas e mudanças de fórmula interrompem as linhas.",
+    "selectDate": "{{date}}, {{count}} manchetes selecionadas",
+    "empty": "Nenhum registro diário neste período. O histórico se acumula após a ativação.",
+    "unavailable": "O histórico está temporariamente indisponível. Tente novamente.",
+    "retry": "Tentar novamente",
+    "stale": "A última captura diária bem-sucedida ocorreu há mais de 36 horas.",
+    "break": "Mudança de fórmula ou lacuna de observação. Compare apenas pontuações calculadas com a mesma fórmula.",
+    "partial": "A cobertura de notícias era parcial no momento da captura.",
+    "resilience": "Resiliência",
+    "ciiMissing": "CII indisponível",
+    "resilienceMissing": "Resiliência indisponível",
+    "noEvents": "Nenhuma manchete selecionada foi capturada nesta data. Isso não prova que não ocorreram eventos.",
+    "unlock90": "Desbloqueie 90 dias com Pro",
+    "unlock365": "Desbloqueie 365 dias com um plano API"
   }
 }

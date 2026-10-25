@@ -303,7 +303,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "وضعیت برآورد و جایگذاری مقادیر گمشده ارائه نشده است"
     },
     "fiveFactorScorecard": {
       "title": "کارت امتیازدهی تاب‌آوری پنج‌عاملی",
@@ -780,10 +781,9 @@
       "alertTitle": {
         "configured": "Desktop settings configured",
         "needsKeys": "Configure API keys to unlock features",
-        "some": "Some features need API keys"
+        "some": "Some features need API keys",
+        "pro": "World Monitor Pro فعال است"
       },
-      "reserveEarlyAccess": "Reserve Your Early Access",
-      "skipSetup": "Skip the setup — a single World Monitor license unlocks everything. Join the waitlist for early access.",
       "summary": {
         "desktop": "Desktop mode",
         "web": "Web mode (read-only, server-managed credentials)",
@@ -811,7 +811,10 @@
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      }
+      },
+      "proCloud": "ویژگی‌هایی که کلید API محلی ندارند از داده‌های ابری World Monitor استفاده می‌کنند.",
+      "skipSetupPro": "از راه‌اندازی صرف‌نظر کنید: برای استفاده از داده‌های ابری به جای کلیدهای API خود، با World Monitor Pro وارد شوید.",
+      "getPro": "دریافت World Monitor Pro"
     },
     "settingsWindow": {
       "shellTitle": "World Monitor Settings",
@@ -1226,7 +1229,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "شاخص: World Monitor · داده‌های مکان‌ها:",
+      "indexSource": "شاخص: World Monitor",
+      "venueSource": "داده‌های مکان‌ها:",
       "statusNormal": "عادی",
       "statusNoData": "بدون داده",
       "statusNoBaseline": "بدون مبنا",
@@ -1237,6 +1241,16 @@
       "tensionsTitle": "Geopolitical Tensions",
       "tensionsSource": "تنش‌ها: World Monitor بر اساس رویدادهای GDELT",
       "insufficientData": "داده‌های ناکافی",
+      "evidenceStrikes": "حملات گزارش‌شده در ۳ روز ({{countries}}): {{value}}",
+      "evidenceAirports": "فرودگاه‌های مختل: {{value}}",
+      "evidenceAirportClosed": "فرودگاه {{name}} بسته است",
+      "evidenceAirportHalted": "{{name}}: بیشتر پروازها لغو شد",
+      "evidenceAirportRestricted": "{{name}}: پروازها محدود شده",
+      "evidenceMilitaryAircraft": "هواپیماهای نظامی ({{country}}) در منطقه: {{value}}",
+      "evidencePlaAircraft": "هواپیماهای نظامی چین در نزدیکی تایوان: {{value}}",
+      "evidencePlaShips": "کشتی‌های نیروی دریایی چین در نزدیکی تایوان: {{value}}",
+      "evidenceSanctions": "تحریم‌های جدید آمریکا در این هفته ({{country}}): {{value}}",
+      "evidenceUsual": "(معمول {{value}})",
       "pizzaUnavailable": "اطلاعات فعالیت پیتزافروشی‌ها در دسترس نیست",
       "source": "Source:",
       "statusClosed": "CLOSED",
@@ -1430,7 +1444,7 @@
         "commodityHubs": "Commodity Hubs",
         "gulfInvestments": "سرمایه‌گذاری‌های شورای همکاری خلیج فارس",
         "tradeRoutes": "Trade Routes",
-        "iranAttacks": "Iran Attacks",
+        "iranAttacks": "حملات خاورمیانه",
         "gpsJamming": "تداخل ناوبری",
         "ciiChoropleth": "بی‌ثباتی کشور",
         "dayNight": "Day/Night",
@@ -1440,7 +1454,8 @@
         "speciesRecovery": "Species Recovery",
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "محدودیت‌های فضای هوایی NOTAM"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1472,7 +1487,9 @@
         "sourceIomDtm": "منبع: IOM DTM",
         "sinceDate": "از {{date}}",
         "lastMonth": "ماه گذشته",
-        "sourceUnhcrOdp": "منبع: درگاه داده‌های عملیاتی کمیساریای پناهندگان"
+        "sourceUnhcrOdp": "منبع: درگاه داده‌های عملیاتی کمیساریای پناهندگان",
+        "displaced": "آواره",
+        "sourceIdmc": "منبع: IDMC"
       },
       "layerHelp": {
         "title": "Map Layers Guide",
@@ -1553,7 +1570,8 @@
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
           "ciiChoropleth": "نقشه حرارتی شاخص بی‌ثباتی کشور — رنگ‌بندی کشورها بر اساس امتیاز (سبز=پایدار، قرمز=حیاتی)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "محدودیت‌های پروازی موقت و فضای هوایی محدود، خطرناک و ممنوع از NOTAM‌های FAA که در حال اجرا هستند یا در طی ۲۴ ساعت آینده شروع می‌شوند"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
@@ -1688,6 +1706,8 @@
       "capacityPercent": "{{percent}}% capacity",
       "noCountryImpacts": "No country impacts detected",
       "alternativeRoutes": "Alternative Routes",
+      "sharesCutZone": "همان تنگه",
+      "estimateNote": "برآورد: ظرفیت و افزونگی کابل‌ها تقریبی است، نه اندازه‌گیری‌شده.",
       "countriesAffected": "Countries Affected ({{count}})",
       "links": "links",
       "selectInfrastructureHint": "Select infrastructure to analyze cascade impact",
@@ -1905,7 +1925,21 @@
       "latestChange": "آخرین تغییر",
       "accelerating": "در حال شتاب",
       "inDays": "در {{days}} روز",
-      "crossBorderNote": "درگاه داده‌های عملیاتی کمیسری سازمان ملل برای پناهندگان: افرادی که در هر بحران از مرزها عبور کردند، از آخرین گزارش‌های کشوری. موقعیت‌ها همپوشانی دارند، بنابراین آن‌ها جمع نمی‌شوند."
+      "crossBorderNote": "درگاه داده‌های عملیاتی کمیسری سازمان ملل برای پناهندگان: افرادی که در هر بحران از مرزها عبور کردند، از آخرین گزارش‌های کشوری. موقعیت‌ها همپوشانی دارند، بنابراین آن‌ها جمع نمی‌شوند.",
+      "last7And30": "۷ / ۳۰ روز گذشته",
+      "staleReport": "گزارش قدیمی",
+      "reported": "تعداد",
+      "period": "دوره",
+      "movementNote": "هر ردیف منبع، تاریخ گزارش و نوع سنجش خود را حفظ می‌کند. جمعیت موجود، ورودها و رویدادهای کنترل مرزی معیارهای متفاوتی هستند. منابع ممکن است هم‌پوشانی داشته باشند؛ اعداد آن‌ها را جمع نکنید. WorldMonitor این نما را از منابع پیوندشده استخراج می‌کند؛ این به معنی تأیید ارائه‌دهندگان نیست.",
+      "recent": "اخیر",
+      "last30Days": "۳۰ روز اخیر",
+      "newThisWeek": "جدید این هفته",
+      "conflict": "تنازع",
+      "disaster": "بلایا",
+      "surge": "افزایش ناگهانی",
+      "recentNote": "IDMC: افرادی که در کشور خود آواره شده‌اند در ۳۰ روز اخیر. IDMC میانگین سه هفته پس از آوارگی آمار را منتشر می‌کند، بنابراین هفته‌های اخیر با تاخیر پر می‌شوند. جدید این هفته تعداد آماری است که در ۷ روز گذشته منتشر شده است. افزایش ناگهانی: حداقل ۵,۰۰۰ نفر و سه برابر میانگین ماهانه پنج ماه قبل.",
+      "recentAsOf": "داده‌ها تا {{date}}.",
+      "recentMissing": "این‌بار داده‌ای از {{countries}} دریافت نشد؛ بارگذاری پرونده‌های آن‌ها ناموفق بود، که به معنای صفر جابجایی نیست."
     },
     "climate": {
       "noAnomalies": "No significant anomalies detected",
@@ -1932,7 +1966,8 @@
       "sourceCoverageHint": "نمایش {{covered}} از {{total}} منبع فعال — این پنل در هر بازخوانی منابع خود را به نوبت می‌خواند",
       "sortBy": "Sort by",
       "sortNewest": "Newest",
-      "sortRelevance": "Relevance"
+      "sortRelevance": "Relevance",
+      "translationUnavailable": "ترجمه در دسترس نیست. تنظیمات ارائه‌دهنده هوش مصنوعی را بررسی کنید و دوباره تلاش کنید."
     },
     "mobileNav": {
       "panelCategories": "دسته‌بندی پنل‌ها"
@@ -3100,7 +3135,9 @@
         "apac": "Asia-Pacific",
         "mena": "Middle East",
         "africa": "Africa"
-      }
+      },
+      "normalOperations": "عملیات عادی",
+      "open": "باز"
     },
     "aircraft": {
       "altitude": "Altitude",
@@ -3505,7 +3542,12 @@
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "Venezuela Crisis",
       "yemen_houthis": "Yemen/Houthis"
-    }
+    },
+    "upcomingForecast": "پیش‌بینی آتی",
+    "currentForecast": "پیش‌بینی معتبر فعلی",
+    "expiredForecast": "پیش‌بینی منقضی‌شده",
+    "validFrom": "معتبر از",
+    "validUntil": "معتبر تا"
   },
   "signals": {
     "context": {
@@ -3810,5 +3852,27 @@
       "description": "منابع ایران، اسرائیل، خلیج و مناطق کردنشین را فعال کنید"
     },
     "unavailable": "پیش‌تنظیم {{preset}} با پنل‌های فعلی شما در دسترس نیست"
+  },
+  "countryHistory": {
+    "title": "تاریخچهٔ روزانهٔ کشور",
+    "loading": "در حال بارگیری تاریخچهٔ روزانه…",
+    "window": "بازه",
+    "days": "{{days}} روز",
+    "observed": "{{count}} تصویر در {{days}} روز",
+    "legend": "CII (کهربایی): مقدار بالاتر یعنی بی‌ثباتی بیشتر. تاب‌آوری (سبز): مقدار بالاتر یعنی ظرفیت بیشتر. نقطه‌ها روزهای دارای تیترهای منتخب را نشان می‌دهند.",
+    "chart": "امتیازهای روزانهٔ CII و تاب‌آوری. شکاف‌ها و تغییر فرمول، خط‌ها را قطع می‌کنند.",
+    "selectDate": "{{date}}، {{count}} تیتر منتخب",
+    "empty": "در این بازه تصویر روزانه‌ای وجود ندارد. تاریخچه پس از فعال‌سازی جمع می‌شود.",
+    "unavailable": "تاریخچه موقتاً در دسترس نیست. دوباره تلاش کنید.",
+    "retry": "تلاش دوباره",
+    "stale": "از آخرین ثبت روزانهٔ موفق بیش از ۳۶ ساعت گذشته است.",
+    "break": "تغییر فرمول یا شکاف در مشاهده. فقط امتیازهای دارای فرمول یکسان را مقایسه کنید.",
+    "partial": "پوشش خبری هنگام ثبت ناقص بود.",
+    "resilience": "تاب‌آوری",
+    "ciiMissing": "CII در دسترس نیست",
+    "resilienceMissing": "تاب‌آوری در دسترس نیست",
+    "noEvents": "برای این تاریخ تیتر منتخبی ثبت نشده است. این به معنای رخ ندادن رویداد نیست.",
+    "unlock90": "۹۰ روز را با Pro باز کنید",
+    "unlock365": "۳۶۵ روز را با طرح API باز کنید"
   }
 }

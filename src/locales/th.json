@@ -232,7 +232,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "ไม่ได้ระบุสถานะการประมาณค่าและการแทนค่าที่ขาดหาย"
     },
     "fiveFactorScorecard": {
       "title": "คะแนนความยืดหยุ่น 5 ปัจจัย",
@@ -708,9 +709,9 @@
       "alertTitle": {
         "configured": "ตั้งค่าเดสก์ท็อปแล้ว",
         "needsKeys": "กรุณาตั้งค่า API key เพื่อปลดล็อกฟีเจอร์",
-        "some": "บางฟีเจอร์ต้องการ API key"
+        "some": "บางฟีเจอร์ต้องการ API key",
+        "pro": "World Monitor Pro ทำงานอยู่"
       },
-      "skipSetup": "ข้ามการตั้งค่า — ใบอนุญาต World Monitor ใบเดียวปลดล็อกทุกอย่าง เข้าร่วมรายชื่อรอเพื่อรับการเข้าถึงก่อน",
       "summary": {
         "desktop": "โหมดเดสก์ท็อป",
         "web": "โหมดเว็บ (อ่านอย่างเดียว, ข้อมูลรับรองจากเซิร์ฟเวอร์)",
@@ -739,7 +740,9 @@
         "OLLAMA_API_URL": "เช่น http://127.0.0.1:11434 (Ollama) หรือ http://127.0.0.1:1234/v1 (LM Studio) — จุดปลายทางที่เข้ากันได้กับ OpenAI",
         "OLLAMA_MODEL": "เช่น llama3.1:8b — แท็กโมเดลที่ใช้สำหรับการสรุป"
       },
-      "reserveEarlyAccess": "จองสิทธิ์เข้าถึงก่อน"
+      "proCloud": "ฟีเจอร์ที่ไม่มี API key ในเครื่องจะใช้ข้อมูล World Monitor cloud",
+      "skipSetupPro": "ข้ามการตั้งค่า: ลงชื่อเข้าใช้ World Monitor Pro เพื่อใช้ cloud data แทน API key ของคุณเอง",
+      "getPro": "รับ World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "กำลังตรวจสอบ API key...",
@@ -1081,7 +1084,8 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
-      "indexSource": "ดัชนี: World Monitor · ข้อมูลสถานที่:",
+      "indexSource": "ดัชนี: World Monitor",
+      "venueSource": "ข้อมูลสถานที่:",
       "statusNormal": "ปกติ",
       "statusNoData": "ไม่มีข้อมูล",
       "statusNoBaseline": "ไม่มีค่าฐาน",
@@ -1092,6 +1096,16 @@
       "tensionsTitle": "ความตึงเครียดภูมิรัฐศาสตร์",
       "tensionsSource": "ความตึงเครียด: World Monitor คำนวณจากเหตุการณ์ของ GDELT",
       "insufficientData": "ข้อมูลไม่เพียงพอ",
+      "evidenceStrikes": "การโจมตีที่มีรายงานใน 3 วัน ({{countries}}): {{value}}",
+      "evidenceAirports": "สนามบินที่ได้รับผลกระทบ: {{value}}",
+      "evidenceAirportClosed": "สนามบิน{{name}}ปิด",
+      "evidenceAirportHalted": "{{name}}: เที่ยวบินส่วนใหญ่ถูกยกเลิก",
+      "evidenceAirportRestricted": "{{name}}: เที่ยวบินถูกจำกัด",
+      "evidenceMilitaryAircraft": "อากาศยานทหาร ({{country}}) ในภูมิภาค: {{value}}",
+      "evidencePlaAircraft": "อากาศยานทหารจีนใกล้ไต้หวัน: {{value}}",
+      "evidencePlaShips": "เรือรบจีนใกล้ไต้หวัน: {{value}}",
+      "evidenceSanctions": "มาตรการคว่ำบาตรใหม่ของสหรัฐฯ สัปดาห์นี้ ({{country}}): {{value}}",
+      "evidenceUsual": "(ปกติ {{value}})",
       "pizzaUnavailable": "ไม่มีข้อมูลกิจกรรมของร้านพิซซ่า",
       "source": "แหล่งที่มา:",
       "statusClosed": "ปิด",
@@ -1283,7 +1297,7 @@
         "commodityHubs": "ศูนย์กลางสินค้าโภคภัณฑ์",
         "gulfInvestments": "การลงทุนของสภาความร่วมมือของประเทศในอ่าวเปอร์เซีย",
         "tradeRoutes": "เส้นทางการค้า",
-        "iranAttacks": "การโจมตีอิหร่าน",
+        "iranAttacks": "การโจมตีในตะวันออกกลาง",
         "gpsJamming": "การรบกวนการนำทาง",
         "ciiChoropleth": "ความไม่เสถียรของประเทศ",
         "dayNight": "กลางวัน/กลางคืน",
@@ -1295,7 +1309,8 @@
         "radiationSpike": "การเพิ่มขึ้นของรังสี",
         "radiationElevated": "รังสีสูงขึ้น",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "ข้อจำกัดเขตอากาศ NOTAM"
       },
       "tooltip": {
         "earthquake": "แผ่นดินไหว",
@@ -1327,7 +1342,9 @@
         "sourceIomDtm": "แหล่งที่มา: IOM DTM",
         "sinceDate": "ตั้งแต่ {{date}}",
         "lastMonth": "เดือนที่แล้ว",
-        "sourceUnhcrOdp": "แหล่งที่มา: พอร์ทัลข้อมูลปฏิบัติการของ UNHCR"
+        "sourceUnhcrOdp": "แหล่งที่มา: พอร์ทัลข้อมูลปฏิบัติการของ UNHCR",
+        "displaced": "ผู้อพยพ",
+        "sourceIdmc": "แหล่งที่มา: IDMC"
       },
       "layerHelp": {
         "title": "คู่มือเลเยอร์แผนที่",
@@ -1408,7 +1425,8 @@
           "geoBoundaries": "เขตปลอดทหาร แนวหยุดยิง และพรมแดนที่เป็นข้อพิพาท",
           "ciiChoropleth": "แผนความร้อน Country Instability Index — แสดงสีประเทศตามคะแนน (เขียว=เสถียร แดง=วิกฤต)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "การจำกัดการบินชั่วคราวและเขตอากาศที่จำกัด อันตราย และห้ามบินจาก FAA NOTAMs ที่มีผลบังคับใช้ในขณะนี้หรือเริ่มต้นภายใน 24 ชั่วโมง"
         },
         "notes": {
           "timeAffects": "ส่งผลต่อ: แผ่นดินไหว, สภาพอากาศ, การประท้วง, การหยุดชะงัก"
@@ -1542,6 +1560,8 @@
       "capacityPercent": "ความจุ {{percent}}%",
       "noCountryImpacts": "ไม่พบผลกระทบต่อประเทศ",
       "alternativeRoutes": "เส้นทางทางเลือก",
+      "sharesCutZone": "ช่องแคบเดียวกัน",
+      "estimateNote": "ค่าประมาณ: ความจุและความซ้ำซ้อนของสายเคเบิลเป็นค่าประมาณ ไม่ได้วัดจริง",
       "countriesAffected": "ประเทศที่ได้รับผลกระทบ ({{count}})",
       "links": "ลิงก์",
       "selectInfrastructureHint": "เลือกโครงสร้างพื้นฐานเพื่อวิเคราะห์ผลกระทบลูกโซ่",
@@ -1759,7 +1779,21 @@
       "latestChange": "การเปลี่ยนแปลงล่าสุด",
       "accelerating": "กำลังเร่งตัว",
       "inDays": "ใน {{days}} วัน",
-      "crossBorderNote": "สำนักงานข้อมูลปฏิบัติการของสำนักงานอาณเมืองสหประชาชาติ: คนที่ข้ามพรมแดนในแต่ละวิกฤตจากรายงานประเทศล่าสุด สถานการณ์ทับซ้อนกัน ดังนั้นจึงไม่รวมกัน"
+      "crossBorderNote": "สำนักงานข้อมูลปฏิบัติการของสำนักงานอาณเมืองสหประชาชาติ: คนที่ข้ามพรมแดนในแต่ละวิกฤตจากรายงานประเทศล่าสุด สถานการณ์ทับซ้อนกัน ดังนั้นจึงไม่รวมกัน",
+      "last7And30": "7 / 30 วันที่ผ่านมา",
+      "staleReport": "รายงานล้าสมัย",
+      "reported": "จำนวน",
+      "period": "ช่วงเวลา",
+      "movementNote": "แต่ละแถวคงแหล่งข้อมูล วันที่รายงาน และตัวชี้วัดไว้ จำนวนประชากร ณ เวลาหนึ่ง จำนวนผู้เดินทางมาถึง และเหตุการณ์ตรวจคนเข้าเมืองเป็นคนละตัวชี้วัด ข้อมูลจากหลายแหล่งอาจซ้ำกัน จึงไม่ควรรวมจำนวนเข้าด้วยกัน WorldMonitor สร้างมุมมองนี้จากแหล่งข้อมูลที่เชื่อมโยงไว้ ซึ่งไม่ได้หมายถึงการรับรองจากผู้ให้ข้อมูล",
+      "recent": "ล่าสุด",
+      "last30Days": "30 วันที่ผ่านมา",
+      "newThisWeek": "ใหม่สัปดาห์นี้",
+      "conflict": "ความขัดแย้ง",
+      "disaster": "ภัยพิบัติ",
+      "surge": "พุ่งสูง",
+      "recentNote": "IDMC: ผู้พลัดถิ่นภายในประเทศในช่วง 30 วันที่ผ่านมา IDMC เผยแพร่ตัวเลขโดยมัธยฐานประมาณสามสัปดาห์หลังการพลัดถิ่น ข้อมูลของสัปดาห์ล่าสุดจึงครบช้ากว่า ใหม่สัปดาห์นี้นับตัวเลขที่เผยแพร่ในช่วง 7 วันที่ผ่านมา พุ่งสูง: อย่างน้อย 5,000 คน และสามเท่าของค่าเฉลี่ยรายเดือนในห้าเดือนก่อนหน้า",
+      "recentAsOf": "ข้อมูล ณ วันที่ {{date}}",
+      "recentMissing": "ไม่มีข้อมูลในครั้งนี้จาก {{countries}} ไฟล์ของพวกเขาล้มเหลวในการโหลด ซึ่งไม่ได้หมายถึงการแস่งตัวเป็นศูนย์"
     },
     "climate": {
       "noAnomalies": "ไม่พบความผิดปกติที่สำคัญ",
@@ -1786,7 +1820,8 @@
       "sourceCoverageHint": "แสดง {{covered}} จาก {{total}} แหล่งข่าวที่เปิดใช้งาน — แผงนี้จะสลับแหล่งข่าวที่ดึงในทุกครั้งที่รีเฟรช",
       "sortBy": "เรียงลำดับตาม",
       "sortNewest": "ล่าสุด",
-      "sortRelevance": "ความเกี่ยวข้อง"
+      "sortRelevance": "ความเกี่ยวข้อง",
+      "translationUnavailable": "ไม่สามารถแปลได้ โปรดตรวจสอบการตั้งค่าผู้ให้บริการ AI แล้วลองอีกครั้ง"
     },
     "breakingNews": {
       "critical": "วิกฤต",
@@ -3011,7 +3046,9 @@
         "africa": "แอฟริกา"
       },
       "scheduled": "ตามกำหนด",
-      "estimated": "คาดการณ์"
+      "estimated": "คาดการณ์",
+      "normalOperations": "การบินปกติ",
+      "open": "เปิด"
     },
     "aircraft": {
       "altitude": "ระดับความสูง",
@@ -3416,7 +3453,12 @@
       "uae_ecsr": "สหรัฐอาหรับเอมิเรตส์/ECSR",
       "venezuela_crisis": "วิกฤตเวเนซุเอลา",
       "yemen_houthis": "เยเมน/ฮูตี"
-    }
+    },
+    "upcomingForecast": "พยากรณ์ล่วงหน้า",
+    "currentForecast": "พยากรณ์ที่มีผลในขณะนี้",
+    "expiredForecast": "พยากรณ์ที่หมดอายุ",
+    "validFrom": "มีผลตั้งแต่",
+    "validUntil": "มีผลถึง"
   },
   "signals": {
     "context": {
@@ -3790,5 +3832,27 @@
       "description": "เปิดใช้แหล่งข่าวจากอิหร่าน อิสราเอล อ่าวอาหรับ และภูมิภาคเคิร์ด"
     },
     "unavailable": "พรีเซ็ต {{preset}} ไม่พร้อมใช้งานกับแผงปัจจุบันของคุณ"
+  },
+  "countryHistory": {
+    "title": "ประวัติรายวันของประเทศ",
+    "loading": "กำลังโหลดประวัติรายวัน…",
+    "window": "ช่วงเวลา",
+    "days": "{{days}} วัน",
+    "observed": "{{count}} บันทึกใน {{days}} วัน",
+    "legend": "CII (สีอำพัน): ค่ายิ่งสูงยิ่งไม่มั่นคง ความยืดหยุ่น (สีเขียว): ค่ายิ่งสูงยิ่งมีขีดความสามารถ จุดแสดงวันที่มีพาดหัวข่าวที่เลือก",
+    "chart": "คะแนน CII และความยืดหยุ่นรายวัน ช่องว่างของข้อมูลและการเปลี่ยนสูตรทำให้เส้นขาด",
+    "selectDate": "{{date}} พาดหัวข่าวที่เลือก {{count}} รายการ",
+    "empty": "ไม่มีบันทึกรายวันในช่วงนี้ ประวัติจะสะสมหลังเปิดใช้งาน",
+    "unavailable": "ประวัติไม่พร้อมใช้งานชั่วคราว โปรดลองอีกครั้ง",
+    "retry": "ลองอีกครั้ง",
+    "stale": "บันทึกรายวันล่าสุดที่สำเร็จผ่านมาเกิน 36 ชั่วโมงแล้ว",
+    "break": "มีการเปลี่ยนสูตรหรือช่องว่างในการสังเกต เปรียบเทียบเฉพาะคะแนนที่ใช้สูตรเดียวกัน",
+    "partial": "การครอบคลุมข่าวไม่ครบถ้วนขณะบันทึก",
+    "resilience": "ความยืดหยุ่น",
+    "ciiMissing": "CII ไม่พร้อมใช้งาน",
+    "resilienceMissing": "ความยืดหยุ่นไม่พร้อมใช้งาน",
+    "noEvents": "ไม่มีพาดหัวข่าวที่เลือกบันทึกไว้ในวันนี้ ไม่ได้พิสูจน์ว่าไม่มีเหตุการณ์เกิดขึ้น",
+    "unlock90": "ปลดล็อก 90 วันด้วย Pro",
+    "unlock365": "ปลดล็อก 365 วันด้วยแผน API"
   }
 }

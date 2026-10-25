@@ -30,6 +30,7 @@ import type { AcquisitionProviderName, SearchOptions, SearchResult } from '../ac
 
 /** Packaging/container words that are not product identity tokens. */
 const PACKAGING_WORDS = new Set(['pack', 'box', 'bag', 'container', 'bottle', 'can', 'jar', 'tin', 'set', 'kit', 'bundle']);
+const SIZE_LIKE = /^\d+(?:\.\d+)?[a-z]+$/;
 
 /**
  * Token overlap: ≥40% of canonical name identity words (>2 chars, non-packaging) must appear
@@ -54,7 +55,7 @@ export function isTitlePlausible(canonicalName: string, productName: string | un
   const tokens = canonicalName
     .toLowerCase()
     .split(/\W+/)
-    .filter((w) => w.length > 2 && !PACKAGING_WORDS.has(w));
+    .filter((w) => w.length > 2 && !PACKAGING_WORDS.has(w) && !(SIZE_LIKE.test(w) && parseSize(w)));
   if (tokens.length === 0) return true;
   const extracted = productName.toLowerCase();
   const matches = tokens.filter((w) => {
@@ -221,6 +222,7 @@ export type ExtractionProviderName = Extract<AcquisitionProviderName, 'firecrawl
 export type ExtractionFailureReason =
   | 'provider-error'
   | 'provider-cooldown'
+  | 'source-http-error'
   | 'missing-price'
   | 'price-evidence-missing'
   | 'title-mismatch'
@@ -504,6 +506,10 @@ export class SearchAdapter implements RetailerAdapter {
             `  [search:provider-cooldown] ${ctx.config.slug}: ${provider === 'firecrawl' ? 'Firecrawl' : 'Exa'} extraction recovered — cooldown closed after a successful probe`,
           );
         }
+        if (result.sourceStatusCode != null && result.sourceStatusCode >= 400) {
+          failures.push({ provider, reason: 'source-http-error', detail: `HTTP ${result.sourceStatusCode}` });
+          continue;
+        }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         failures.push({ provider, reason: 'provider-error', detail });
@@ -617,6 +623,7 @@ export class SearchAdapter implements RetailerAdapter {
         productName: data.productName,
         sizeText: data.sizeText,
         item: validationConstraints,
+        marketCode: ctx.config.marketCode,
       });
 
       if (strictMode && !validator.ok) {
@@ -992,6 +999,9 @@ export class SearchAdapter implements RetailerAdapter {
         rawTitle: extracted.productName,
         rawBrand: null,
         rawSizeText: extracted.sizeText ?? null,
+        normalizedSize: itemConstraints
+          ? parseSize(extracted.sizeText, { baseUnit: itemConstraints.baseUnit, marketCode: ctx.config.marketCode }) ?? undefined
+          : undefined,
         imageUrl: null,
         categoryText: itemCategory,
         retailerSku: null,

@@ -3,7 +3,7 @@ title: "命令行客户端"
 description: "使用官方 worldmonitor npm CLI 直接从 shell 脚本化调用国家简报、风险评分、监视列表与已注册 MCP 工具，无需编写任何自定义 API 集成代码即可完成自动化，非常适合运维脚本、CI/CD 流水线、本地情报工作流与临时数据分析。"
 ---
 
-[`worldmonitor`](https://www.npmjs.com/package/worldmonitor) 是 World Monitor 全球情报 API 的官方命令行客户端。它是对 [MCP 服务器](/zh/mcp-overview)（推荐的智能体接口）的一层轻薄、**无依赖**封装，并带有 REST 备用通道，因此你无需编写一行 HTTP 底层代码，即可从 shell 脚本或智能体拉取简报、风险评分以及冲突/网络/市场/新闻数据源。它以 ESM 形式发布，运行于 **Node 18+**。
+[`worldmonitor`](https://www.npmjs.com/package/worldmonitor) 是 World Monitor 全球情报 API 的官方命令行客户端。不带参数运行时，它会打开完整的[**终端仪表盘**](/zh/cli-dashboard)，显示与网页仪表盘相同的实时数据，支持鼠标与配色主题，无需 API 密钥。它是对 [MCP 服务器](/zh/mcp-overview)（推荐的智能体接口）的一层轻薄、**无依赖**封装，并带有 REST 备用通道，因此你无需编写一行 HTTP 底层代码，即可从 shell 脚本或智能体拉取简报、风险评分以及冲突/网络/市场/新闻数据源。它以 ESM 形式发布，运行于 **Node 18+**。
 
 源码位于主仓库的 [`cli/`](https://github.com/koala73/worldmonitor/tree/main/cli)，并在每个 `cli-v*` 发布标签上发布到 npm。
 维护者在发布新的 npm 版本时可遵循 [CLI 发布手册](/zh/releasing-cli)。
@@ -16,6 +16,21 @@ npm install -g worldmonitor    # installs the `worldmonitor` command (alias: `wm
 # or run ad-hoc without installing:
 npx worldmonitor tools
 ```
+
+## 终端仪表盘
+
+```sh
+worldmonitor          # 打开终端仪表盘（等同于 worldmonitor tui）
+worldmonitor web      # 打开网页仪表盘
+```
+
+<Frame caption="终端仪表盘的 Overview 视图。">
+  <img src="/images/tui/overview.webp" alt="World Monitor 终端仪表盘的 Overview 视图" />
+</Frame>
+
+在交互式终端中运行 `worldmonitor` 会打开全屏仪表盘，显示与网页版相同的实时数据：可缩放的世界地图与地球仪（全部图层与卫星影像）、带来源的 AI 简报、新闻、市场、冲突、军机与航运、网络威胁、气候、预测市场、直播电视与平台健康状况。它无需 API 密钥，支持鼠标与配色主题。在管道或脚本中，不带命令的 `worldmonitor` 会打印帮助信息，因此自动化不受影响。
+
+所有视图、按键、主题、选项与直播视频设置见 **[终端仪表盘](/zh/cli-dashboard)**。
 
 ## 首次调用——无需密钥
 
@@ -108,6 +123,8 @@ worldmonitor list cyber                   # list documented REST operations from
 | `--base-url <url>` | REST 基础地址（默认 `https://api.worldmonitor.app`） |
 | `--args <json>` | 工具调用的有类型参数对象 |
 | `--timeout <ms>` | 请求超时（默认 `30000`） |
+| `--theme <id>`、`--no-anim`、`--fps <n>` | 仅用于终端仪表盘（[选项](/zh/cli-dashboard#选项)）；其他命令会将其传给 API |
+| `--hosted`、`--port <n>`、`--no-open`、`--url <url>` | 仅用于 `web` 命令；其他命令会将其传给 API |
 | `--raw` | 原样打印响应体 |
 | `--compact` | 打印单行 JSON |
 | `-h, --help` · `-v, --version` | 帮助/版本 |

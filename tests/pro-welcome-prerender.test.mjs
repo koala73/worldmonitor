@@ -336,7 +336,7 @@ test('welcome JSON-LD author is visibly credited in the rendered page', { skip }
   assert.equal(application.author?.['@id'], `${CANONICAL_ORIGIN}blog/authors/elie-habib/#person`);
   assert.match(
     welcomeRoot().content,
-    new RegExp(`<a href="${CANONICAL_ORIGIN}blog/authors/elie-habib/"[^>]*>${application.author.name}</a>`),
+    new RegExp(`<a href="/blog/authors/elie-habib/"[^>]*>${application.author.name}</a>`),
   );
 });
 
@@ -365,12 +365,24 @@ test('built welcome root hides no SSR content and links every primary reference 
     '/crises/',
     '/tools/',
     '/blog/',
-    'https://www.worldmonitor.app/docs/documentation',
+    '/docs/documentation',
     '/pro#pricing',
     'https://github.com/koala73/worldmonitor',
   ]) {
     assert.ok(anchorHrefs.has(href), `visible welcome content should contain an <a href="${href}">`);
   }
+  // One spelling per destination: the page only renders on www, and mixing
+  // `/blog/` with `https://www.worldmonitor.app/blog/` reads to audits as one
+  // link text pointing at two targets.
+  const absoluteSameSite = [...anchorHrefs].filter((href) => href.startsWith(CANONICAL_ORIGIN));
+  assert.deepEqual(absoluteSameSite, [], 'same-site welcome links should be root-relative');
+});
+
+test('built welcome page exposes a banner landmark and names every footer link', { skip }, () => {
+  const { content: rootContent } = welcomeRoot();
+  assert.match(rootContent, /<header><nav data-wm-nav="primary"/, 'the fixed nav should sit in a <header> banner landmark');
+  assert.match(rootContent, /href="https:\/\/x\.com\/worldmonitorai"[^>]*>X \(Twitter\)<\/a>/);
+  assert.doesNotMatch(rootContent, />X<\/a>/, 'a bare "X" link text is not descriptive');
 });
 
 test('built welcome page prerenders task routes and agent discovery links', { skip }, () => {
@@ -431,7 +443,7 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
     // #8603: the bare api host root is a 308 to the www homepage, so the card
     // now links the API reference itself, and its displayed string tracks the
     // destination — see the display assertion below.
-    /href="https:\/\/www\.worldmonitor\.app\/docs\/api-reference"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-api"/,
+    /href="\/docs\/api-reference"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-api"/,
     /href="\/\?mode=agent"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-view"/,
   ];
   for (const linkPattern of agentLinks) {
@@ -443,14 +455,14 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
   for (const [href, display] of [
     ['/llms.txt', '/llms.txt'],
     ['https://worldmonitor.app/mcp', 'worldmonitor.app/mcp'],
-    ['https://www.worldmonitor.app/docs/api-reference', 'worldmonitor.app/docs/api-reference'],
+    ['/docs/api-reference', '/docs/api-reference'],
     ['/?mode=agent', '/?mode=agent'],
   ]) {
     const escapeRe = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // Two bounds, both load-bearing. `[^>]*>` forces the match past the end
     // of the opening tag, because an absolute href CONTAINS its own display
-    // string (https://www.worldmonitor.app/docs/api-reference contains
-    // worldmonitor.app/docs/api-reference) and without it this passed
+    // string (https://worldmonitor.app/mcp contains worldmonitor.app/mcp)
+    // and without it this passed
     // vacuously against the very attribute it exists to compare. Refusing to
     // cross the closing tag keeps it inside the one card, so it cannot pass on
     // a neighbouring card's display string either.

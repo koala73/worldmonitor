@@ -3,6 +3,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 
 import {
   preserveMilitaryPublicationTtls,
+  publishStaleFlightSnapshot,
   redisDel,
   redisGet,
   redisSet,
@@ -145,4 +146,49 @@ test('publish-failure preservation extends every military publication key at its
   assert.equal(ttlByKey.get('military:surges:v1'), 900);
   assert.equal(ttlByKey.get('military:surges:history:v1'), 604800);
   assert.equal(ttlByKey.get('seed-meta:military-surges'), 86400);
+});
+
+function staleRedisStub(existing, { getFails = false } = {}) {
+  const sets = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes('/get/')) {
+      if (getFails) return new Response(JSON.stringify({ error: 'ERR injected read failure' }), { status: 200 });
+      return new Response(JSON.stringify({ result: existing == null ? null : JSON.stringify(existing) }), { status: 200 });
+    }
+    sets.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+  };
+  return sets;
+}
+
+const regionalPayload = { flights: [{ id: 'EU1' }], fetchedAt: 2, coverage: 'regional' };
+const globalPayload = { flights: [{ id: 'G2' }], fetchedAt: 2, coverage: 'global' };
+const priorGlobal = { flights: [{ id: 'G1' }], fetchedAt: 1, coverage: 'global' };
+
+test('a regional fallback tick keeps the global last-good stale snapshot', async () => {
+  // 2026-10-19: one adsb.lol "fetch failed" tick overwrote the stale key with a
+  // Wingbits-only regional payload, so country flight pages outside Europe and
+  // East Asia lost their fallback and answered HTTP 500.
+  const sets = staleRedisStub(priorGlobal);
+  assert.equal(await publishStaleFlightSnapshot('https://redis.test', 'test-token', regionalPayload), 'kept');
+  assert.deepEqual(sets, []);
+});
+
+test('stale snapshot is replaced by a global payload or when no global snapshot exists', async () => {
+  for (const [existing, payload] of [
+    [priorGlobal, globalPayload],
+    [{ ...priorGlobal, coverage: 'regional' }, regionalPayload],
+    [{ flights: [{ id: 'old' }], fetchedAt: 1 }, regionalPayload],
+    [null, regionalPayload],
+  ]) {
+    const sets = staleRedisStub(existing);
+    assert.equal(await publishStaleFlightSnapshot('https://redis.test', 'test-token', payload), 'written');
+    assert.deepEqual(sets, [['SET', 'military:flights:stale:v1', JSON.stringify(payload), 'EX', 86400]]);
+  }
+});
+
+test('an unreadable stale snapshot does not block publishing a regional payload', async () => {
+  const sets = staleRedisStub(null, { getFails: true });
+  assert.equal(await publishStaleFlightSnapshot('https://redis.test', 'test-token', regionalPayload), 'written');
+  assert.equal(sets.length, 1);
 });

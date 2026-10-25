@@ -236,7 +236,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Stato di stima e imputazione non fornito"
     },
     "fiveFactorScorecard": {
       "title": "Scorecard di resilienza a cinque fattori",
@@ -714,9 +715,9 @@
       "alertTitle": {
         "configured": "Impostazioni del desktop configurate",
         "needsKeys": "Configura le chiavi API per sbloccare funzionalità",
-        "some": "Alcune funzionalità richiedono chiavi API"
+        "some": "Alcune funzionalità richiedono chiavi API",
+        "pro": "World Monitor Pro è attivo"
       },
-      "skipSetup": "Salta la configurazione — una singola licenza World Monitor sblocca tutto. Iscriviti alla lista d'attesa per l'accesso anticipato.",
       "summary": {
         "desktop": "Modalità desktop",
         "web": "Modalità Web (credenziali di sola lettura, gestite dal server)",
@@ -745,7 +746,9 @@
         "OLLAMA_API_URL": "es. http://127.0.0.1:11434 (Ollama) o http://127.0.0.1:1234/v1 (LM Studio) — endpoint compatibile OpenAI.",
         "OLLAMA_MODEL": "es. llama3.1:8b — tag modello da usare per la sintesi."
       },
-      "reserveEarlyAccess": "Prenota l'accesso anticipato"
+      "proCloud": "Le funzioni senza una chiave API locale utilizzano i dati cloud di World Monitor.",
+      "skipSetupPro": "Salta la configurazione: accedi con World Monitor Pro per utilizzare i dati cloud invece delle tue chiavi API.",
+      "getPro": "Ottieni World Monitor Pro"
     },
     "countryIntel": {
       "identifying": "Identificazione del paese...",
@@ -1131,7 +1134,7 @@
         "commodityHubs": "Hub delle materie prime",
         "gulfInvestments": "Investimenti del Consiglio di cooperazione del Golfo",
         "tradeRoutes": "Rotte Commerciali",
-        "iranAttacks": "Attacchi dell'Iran",
+        "iranAttacks": "Attacchi in Medio Oriente",
         "gpsJamming": "Interferenza di navigazione",
         "dayNight": "Giorno/Notte",
         "ciiChoropleth": "Instabilità del paese",
@@ -1143,7 +1146,8 @@
         "radiationSpike": "Picco di radiazione",
         "radiationElevated": "Radiazione elevata",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "notamAirspace": "Restrizioni Spazio Aereo NOTAM"
       },
       "layersTitle": "Livelli",
       "layerSearch": "Cerca livelli...",
@@ -1182,7 +1186,9 @@
         "sourceIomDtm": "Fonte: IOM DTM",
         "sinceDate": "dal {{date}}",
         "lastMonth": "il mese scorso",
-        "sourceUnhcrOdp": "Fonte: Portale dei dati operativi dell'UNHCR"
+        "sourceUnhcrOdp": "Fonte: Portale dei dati operativi dell'UNHCR",
+        "displaced": "sfollati",
+        "sourceIdmc": "Fonte: IDMC"
       },
       "layerHelp": {
         "title": "Guida ai livelli della mappa",
@@ -1263,7 +1269,8 @@
           "geoBoundaries": "Zone demilitarizzate, linee di cessate il fuoco e confini contestati",
           "ciiChoropleth": "Mappa di calore dell'Indice di instabilità del paese — colora i paesi in base al punteggio (verde=stabile, rosso=critico)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "notamAirspace": "Restrizioni di volo temporanee e spazio aereo ristretto, pericoloso e proibito dai NOTAM della FAA, in vigore ora o a partire entro 24 ore"
         },
         "notes": {
           "timeAffects": "Effetti: terremoti, condizioni meteorologiche, proteste, interruzioni"
@@ -1295,7 +1302,8 @@
       "sourceCoverageHint": "Mostra {{covered}} di {{total}} fonti attive — questo pannello ruota tra le sue fonti a ogni aggiornamento",
       "sortBy": "Ordina per",
       "sortNewest": "Più recenti",
-      "sortRelevance": "Rilevanza"
+      "sortRelevance": "Rilevanza",
+      "translationUnavailable": "Traduzione non disponibile. Controlla le impostazioni del provider IA e riprova."
     },
     "countryBrief": {
       "shareStory": "Condividi la storia",
@@ -1318,7 +1326,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Indice: World Monitor · dati dei locali:",
+      "indexSource": "Indice: World Monitor",
+      "venueSource": "dati dei locali:",
       "statusNormal": "NORMALE",
       "statusNoData": "NESSUN DATO",
       "statusNoBaseline": "NESSUN RIFERIMENTO",
@@ -1327,6 +1336,16 @@
       "tensionsTitle": "Tensioni geopolitiche",
       "tensionsSource": "Tensioni: World Monitor dai dati sugli eventi GDELT",
       "insufficientData": "Dati insufficienti",
+      "evidenceStrikes": "Attacchi segnalati in 3 giorni ({{countries}}): {{value}}",
+      "evidenceAirports": "Aeroporti con disagi: {{value}}",
+      "evidenceAirportClosed": "Aeroporto di {{name}} chiuso",
+      "evidenceAirportHalted": "{{name}}: cancellata la maggior parte dei voli",
+      "evidenceAirportRestricted": "{{name}}: voli limitati",
+      "evidenceMilitaryAircraft": "Aerei militari ({{country}}) nella regione: {{value}}",
+      "evidencePlaAircraft": "Aerei militari cinesi vicino a Taiwan: {{value}}",
+      "evidencePlaShips": "Navi della marina cinese vicino a Taiwan: {{value}}",
+      "evidenceSanctions": "Nuove sanzioni USA questa settimana ({{country}}): {{value}}",
+      "evidenceUsual": "(di solito {{value}})",
       "pizzaUnavailable": "Attività delle pizzerie non disponibile",
       "source": "Fonte:",
       "defcon": "DEFCON {{level}}",
@@ -1492,6 +1511,8 @@
       "capacityPercent": "{{percent}}% capacità",
       "noCountryImpacts": "Nessun impatto sui paesi rilevato",
       "alternativeRoutes": "Rotte alternative",
+      "sharesCutZone": "stesso stretto",
+      "estimateNote": "Stima: capacità e ridondanza dei cavi sono approssimate, non misurate.",
       "countriesAffected": "Paesi interessati ({{count}})",
       "links": "collegamenti",
       "selectInfrastructureHint": "Seleziona un’infrastruttura per analizzare l’impatto a cascata",
@@ -1627,7 +1648,21 @@
       "latestChange": "Ultima variazione",
       "accelerating": "In accelerazione",
       "inDays": "in {{days}} giorni",
-      "crossBorderNote": "Portale dati operativi dell'Agenzia ONU per i rifugiati: persone che hanno attraversato i confini in ogni crisi, dagli ultimi rapporti dei paesi. Le situazioni si sovrappongono, quindi non vengono sommate insieme."
+      "crossBorderNote": "Portale dati operativi dell'Agenzia ONU per i rifugiati: persone che hanno attraversato i confini in ogni crisi, dagli ultimi rapporti dei paesi. Le situazioni si sovrappongono, quindi non vengono sommate insieme.",
+      "last7And30": "Ultimi 7 / 30 giorni",
+      "staleReport": "Rapporto obsoleto",
+      "reported": "Numero",
+      "period": "Periodo",
+      "movementNote": "Ogni riga conserva la fonte, la data del rapporto e la misura. Le consistenze, gli arrivi e gli eventi di controllo alla frontiera sono misure diverse. Le fonti possono sovrapporsi; non sommare i loro conteggi. WorldMonitor ricava questa vista dalle fonti collegate; ciò non implica il sostegno dei fornitori.",
+      "recent": "Recenti",
+      "last30Days": "Ultimi 30 giorni",
+      "newThisWeek": "Nuovi questa settimana",
+      "conflict": "Conflitto",
+      "disaster": "Disastro",
+      "surge": "Picco",
+      "recentNote": "IDMC: persone sfollate all'interno del proprio paese negli ultimi 30 giorni. IDMC pubblica una cifra in media tre settimane dopo lo sfollamento, quindi le settimane recenti si riempiono in ritardo. Nuovi questa settimana conta le cifre pubblicate negli ultimi 7 giorni. Picco: almeno 5.000 persone e tre volte la media mensile dei cinque mesi precedenti.",
+      "recentAsOf": "Dati al {{date}}.",
+      "recentMissing": "Nessun dato in questo momento da {{countries}}; i loro file non si sono caricati, il che non significa zero sfollati."
     },
     "populationExposure": {
       "totalAffected": "Totale esposto",
@@ -3050,7 +3085,9 @@
         "africa": "Africa"
       },
       "scheduled": "Pianificato",
-      "estimated": "Stimato"
+      "estimated": "Stimato",
+      "normalOperations": "OPERAZIONI NORMALI",
+      "open": "APERTO"
     },
     "cyberThreat": {
       "title": "MINACCIA INFORMATICA"
@@ -3456,7 +3493,12 @@
       "position": "Posizione",
       "ground": "A terra",
       "airborne": "In volo"
-    }
+    },
+    "upcomingForecast": "Previsione futura",
+    "currentForecast": "Previsione attuale",
+    "expiredForecast": "Previsione scaduta",
+    "validFrom": "Valida dal",
+    "validUntil": "Valida fino al"
   },
   "signals": {
     "context": {
@@ -3830,5 +3872,27 @@
       "description": "Attiva le fonti su Iran, Israele, Golfo e regioni curde"
     },
     "unavailable": "Il preset {{preset}} non è disponibile con i pannelli attuali"
+  },
+  "countryHistory": {
+    "title": "Storico giornaliero del paese",
+    "loading": "Caricamento dello storico…",
+    "window": "Periodo",
+    "days": "{{days}} giorni",
+    "observed": "{{count}} istantanee in {{days}} giorni",
+    "legend": "CII (ambra): valori più alti indicano maggiore instabilità. Resilienza (verde): valori più alti indicano maggiore capacità. I punti indicano i giorni con titoli selezionati.",
+    "chart": "Punteggi giornalieri di CII e resilienza. Lacune e cambi di formula interrompono le linee.",
+    "selectDate": "{{date}}, {{count}} titoli selezionati",
+    "empty": "Nessuna istantanea giornaliera in questo periodo. Lo storico si accumula dopo l’attivazione.",
+    "unavailable": "Lo storico è temporaneamente non disponibile. Riprova.",
+    "retry": "Riprova",
+    "stale": "L’ultima acquisizione giornaliera riuscita risale a oltre 36 ore fa.",
+    "break": "Cambio di formula o lacuna di osservazione. Confronta solo punteggi calcolati con la stessa formula.",
+    "partial": "La copertura delle notizie era parziale al momento dell’acquisizione.",
+    "resilience": "Resilienza",
+    "ciiMissing": "CII non disponibile",
+    "resilienceMissing": "Resilienza non disponibile",
+    "noEvents": "Nessun titolo selezionato acquisito per questa data. Ciò non dimostra l’assenza di eventi.",
+    "unlock90": "Sblocca 90 giorni con Pro",
+    "unlock365": "Sblocca 365 giorni con un piano API"
   }
 }

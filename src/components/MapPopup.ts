@@ -3,6 +3,8 @@ import type { TradeRouteSegment } from '@/config/trade-routes';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import type { WeatherAlert } from '@/services/weather';
+import type { CrossBorderPoint } from '@/services/displacement';
+import { renderCrossBorderDetails } from './cross-border-marker';
 import type { RadiationObservation } from '@/services/radiation';
 import { UNDERSEA_CABLES } from '@/config/geo-map';
 import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech-geo';
@@ -108,7 +110,7 @@ function fmtDelayMin(min: number | undefined): string {
 /** A news marker's popup: its title and, when known, the cluster's corroboration (#9213). */
 type NewsPopupData = Pick<NewsLocationMarker, 'title' | 'corroboration'>;
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news' | 'crossBorder';
 
 interface TechEventPopupData {
   id: string;
@@ -237,7 +239,7 @@ interface DatacenterClusterData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData | CrossBorderPoint;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -834,6 +836,9 @@ export class MapPopup {
         return this.renderGpsJammingPopup(data.data as GpsJammingPopupData);
       case 'news':
         return this.renderNewsPopup(data.data as NewsPopupData);
+      case 'crossBorder':
+        return `<div class="popup-header"><span class="popup-title">${t('components.displacement.crossBorder')}</span><button class="popup-close" aria-label="${t('common.close')}">×</button></div>`
+          + `<div class="popup-body">${renderCrossBorderDetails(data.data as CrossBorderPoint)}</div>`;
       case 'radiation':
         return this.renderRadiationPopup(data.data as RadiationObservation);
       default:
@@ -1121,7 +1126,7 @@ export class MapPopup {
     ` : '';
 
     return `
-      <div class="popup-header hotspot">
+      <div class="popup-header hotspot-popup">
         <span class="popup-title">${escapeHtml(hotspot.name.toUpperCase())}</span>
         <span class="popup-badge ${severityClass}">${severityLabel}</span>
         <button class="popup-close" aria-label="Close">×</button>
@@ -1451,6 +1456,17 @@ export class MapPopup {
   private renderWeatherPopup(alert: WeatherAlert): string {
     const severityClass = escapeHtml(alert.severity.toLowerCase());
     const expiresIn = this.getTimeUntil(alert.expires);
+    const onset = new Date(alert.onset).getTime();
+    const expiry = new Date(alert.expires).getTime();
+    const marine = alert.productKind === 'sea-area-bulletin' || alert.productKind === 'coastal-bulletin';
+    let validity = '';
+    if (marine && Number.isFinite(onset) && Number.isFinite(expiry) && expiry > onset) {
+      const now = Date.now();
+      const state = now < onset ? 'upcomingForecast' : now < expiry ? 'currentForecast' : 'expiredForecast';
+      const start = new Date(onset).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+      const end = new Date(expiry).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+      validity = `<p class="popup-description"><strong>${t(`popups.${state}`)}</strong><br>${t('popups.validFrom')}: ${start}<br>${t('popups.validUntil')}: ${end}</p>`;
+    }
 
     return `
       <div class="popup-header weather ${severityClass}">
@@ -1460,6 +1476,7 @@ export class MapPopup {
       </div>
       <div class="popup-body">
         <p class="popup-headline">${escapeHtml(alert.headline)}</p>
+        ${validity}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.area')}</span>
@@ -1771,9 +1788,13 @@ export class MapPopup {
       'closure': t('popups.flight.closure'),
     };
     // #3707: when severity is 'unknown' we have no delay-type signal either.
+    // A normal row carries delayType 'general', which would title it "delays
+    // reported". A NOTAM-sourced normal row knows only that the airport is open.
     const delayTypeLabel = delay.severity === 'unknown'
       ? 'Coverage unavailable'
-      : (delayTypeLabels[delay.delayType] || t('popups.flight.delays'));
+      : delay.severity === 'normal'
+        ? (delay.source === 'notam' ? t('popups.flight.open') : t('popups.flight.normalOperations'))
+        : (delayTypeLabels[delay.delayType] || t('popups.flight.delays'));
     const icon = delay.severity === 'unknown'
       ? '❔'
       : delay.delayType === 'closure' ? '🚫'

@@ -3762,6 +3762,10 @@ body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-container
   min-height: 0 !important;
 }
 
+body.live-news-fullscreen-active .map-popup {
+  z-index: 10001;
+}
+
 /* Hide map overlays and sibling panels behind fullscreen panel (#829, #859) */
 body.live-news-fullscreen-active .layer-toggles,
 body.live-news-fullscreen-active .map-legend {
@@ -4780,7 +4784,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   display: block;
 }
 
-.item-title:hover {
+a.item-title:hover {
   color: var(--accent);
 }
 
@@ -5033,7 +5037,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 }
 
 .velocity-badge.spike {
-  background: rgba(var(--semantic-critical), 0.2);
+  background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
   color: var(--red);
   animation: pulse-velocity 1.5s infinite;
 }
@@ -5079,7 +5083,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 }
 
 .deviation-indicator.spike {
-  background: rgba(var(--semantic-critical), 0.2);
+  background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
   color: var(--red);
   animation: pulse-alert 1s infinite;
 }
@@ -6561,7 +6565,7 @@ body.playback-mode .status-dot {
 
 /* Conflict zones */
 .conflict-zone {
-  fill: rgba(var(--semantic-critical), 0.2);
+  fill: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
   stroke: var(--red);
   stroke-width: 1;
   stroke-dasharray: 4, 2;
@@ -9455,7 +9459,7 @@ a.prediction-link:hover {
   background: rgba(255, 68, 68, 0.06);
 }
 
-.popup-header.hotspot {
+.popup-header.hotspot-popup {
   background: rgba(68, 255, 136, 0.06);
 }
 
@@ -9478,7 +9482,7 @@ a.prediction-link:hover {
   white-space: nowrap;
 }
 
-.popup-header.hotspot .popup-title {
+.popup-header.hotspot-popup .popup-title {
   color: var(--green);
 }
 
@@ -14527,7 +14531,11 @@ a.prediction-link:hover {
   background: var(--bg);
   border: 1px solid var(--overlay-heavy);
   border-radius: 12px;
-  overflow: hidden;
+  /* Evidence lines can make the panel taller than a short window, and the
+     page itself does not scroll. */
+  max-height: calc(100vh - 72px);
+  overflow-x: hidden;
+  overflow-y: auto;
   box-shadow: 0 8px 32px var(--shadow-color);
 }
 
@@ -14693,6 +14701,14 @@ a.prediction-link:hover {
 
 .pizzint-tension-trend.stable {
   color: var(--text-dim);
+}
+
+.pizzint-tension-evidence {
+  padding: 0 0 4px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.35;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
 }
 
 .pizzint-footer {
@@ -16334,6 +16350,19 @@ a.prediction-link:hover {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--green);
   font-weight: bold;
+}
+
+.cascade-redundancy-zone {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--yellow, #e0b000);
+  margin-right: 6px;
+}
+
+.cascade-estimate-note {
+  margin-top: 8px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim, #888);
+  font-style: italic;
 }
 
 /* Strategic Risk Panel */
@@ -21536,7 +21565,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .posture-critical {
-  background: rgba(var(--semantic-critical), 0.2);
+  background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
   color: var(--semantic-critical);
 }
 
@@ -21708,7 +21737,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .posture-strike {
-  background: rgba(var(--semantic-critical), 0.2);
+  background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
   color: var(--semantic-critical);
   padding: 2px 8px;
   border-radius: 3px;
@@ -28496,6 +28525,15 @@ body.map-width-resizing {
   animation: none;
 }
 
+/* Low-end devices (src/utils/device-tier.ts): the page-level live indicators
+   pulse forever, even while their panel is off-screen. Map markers on these
+   devices are settled from the first render by MapComponent. */
+.low-end-device .panel-data-badge.live::before,
+.low-end-device .live-media-shell-dot::before,
+.low-end-device .panel-live-count::before {
+  animation: none;
+}
+
 /* ── Accessibility: motion & focus visibility (#6573) ─────────────────── */
 
 /* Honor the OS-level reduced-motion preference globally. Individual guards
@@ -28584,6 +28622,21 @@ body.map-width-resizing {
 }
 .stock-research-chart {
   margin: 12px 0 20px;
+}
+/* The chart renders at the room's width when opened; this cap covers a later
+   resize or rotation by scaling it via its viewBox. */
+.stock-research-chart .terminal-chart {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.stock-research-provenance {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--text-dim, #9a9589);
+}
+.stock-research-provenance[data-analysis-provenance="rules-fallback"] {
+  color: var(--semantic-warning, #d9a441);
 }
 .stock-research-news {
   padding-left: 18px;
