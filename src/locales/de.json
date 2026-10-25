@@ -849,6 +849,10 @@
           "title": "Benötigen Sie einen API-Schlüssel?",
           "description": "Eine Schritt-für-Schritt-Anleitung finden Sie unter worldmonitor.app/docs/api-keys. Manuelle API-Schlüssel erfordern einen API Starter- oder API Business-Tarif.",
           "submitBtn": "API-Tarife ansehen"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "shellTitle": "World Monitor – Einstellungen",

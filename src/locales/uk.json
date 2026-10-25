@@ -853,6 +853,10 @@
           "title": "Потребуєте ключ API?",
           "description": "Див. worldmonitor.app/docs/api-keys для покрокової інструкції. Ручні ключі API вимагають плану API Starter або API Business.",
           "submitBtn": "Переглянути плани API"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "table": {

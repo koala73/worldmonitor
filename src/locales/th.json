@@ -769,6 +769,10 @@
           "title": "ต้องการคีย์ API หรือไม่?",
           "description": "ดูคำแนะนำทีละขั้นตอนได้ที่ worldmonitor.app/docs/api-keys คีย์ API แบบกำหนดเองต้องใช้แผน API Starter หรือ API Business",
           "submitBtn": "ดูแผน API"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "table": {

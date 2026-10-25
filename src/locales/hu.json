@@ -847,6 +847,10 @@
           "title": "API-kulcsra van szüksége?",
           "description": "A részletes útmutatóért keresse fel a worldmonitor.app/docs/api-keys oldalt. A kézi API-kulcsokhoz API Starter vagy API Business csomag szükséges.",
           "submitBtn": "API-csomagok megtekintése"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "table": {

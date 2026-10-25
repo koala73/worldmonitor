@@ -772,6 +772,10 @@
           "title": "API anahtarına mı ihtiyacınız var?",
           "description": "Adım adım yardım için worldmonitor.app/docs/api-keys adresine bakın. Manuel API anahtarları için API Starter veya API Business planı gerekir.",
           "submitBtn": "API planlarını görüntüle"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "table": {

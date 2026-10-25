@@ -769,6 +769,10 @@
           "title": "需要 API 金鑰？",
           "description": "請造訪 worldmonitor.app/docs/api-keys 檢視分步說明。手動 API 金鑰需要 API Starter 或 API Business 方案。",
           "submitBtn": "檢視 API 方案"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "table": {

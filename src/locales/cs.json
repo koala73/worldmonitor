@@ -778,6 +778,10 @@
           "title": "Potřebujete API klíč?",
           "description": "Podrobný návod najdete na worldmonitor.app/docs/api-keys. Ruční API klíče vyžadují tarif API Starter nebo API Business.",
           "submitBtn": "Zobrazit tarify API"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "table": {

@@ -769,6 +769,10 @@
           "title": "API 키가 필요하신가요?",
           "description": "단계별 안내는 worldmonitor.app/docs/api-keys에서 확인하세요. 수동 API 키에는 API Starter 또는 API Business 요금제가 필요합니다.",
           "submitBtn": "API 요금제 보기"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "table": {

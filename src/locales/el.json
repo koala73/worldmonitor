@@ -772,6 +772,10 @@
           "title": "Χρειάζεστε κλειδί API;",
           "description": "Δείτε το worldmonitor.app/docs/api-keys για οδηγίες βήμα προς βήμα. Τα μη αυτόματα κλειδιά API απαιτούν πρόγραμμα API Starter ή API Business.",
           "submitBtn": "Προβολή προγραμμάτων API"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "table": {

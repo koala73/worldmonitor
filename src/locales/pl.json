@@ -855,6 +855,10 @@
           "description": "Instrukcje krok po kroku znajdziesz na worldmonitor.app/docs/api-keys. Ręczne klucze API wymagają planu API Starter lub API Business.",
           "submitBtn": "Zobacz plany API",
           "title": "Potrzebujesz klucza API?"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "shellTitle": "Ustawienia World Monitor",

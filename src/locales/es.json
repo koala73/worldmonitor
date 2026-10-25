@@ -852,6 +852,10 @@
           "title": "¿Necesita una clave API?",
           "description": "Consulte worldmonitor.app/docs/api-keys para obtener instrucciones paso a paso. Las claves API manuales requieren un plan API Starter o API Business.",
           "submitBtn": "Ver planes API"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "shellTitle": "Configuración de World Monitor",

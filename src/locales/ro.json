@@ -775,6 +775,10 @@
           "title": "Aveți nevoie de o cheie API?",
           "description": "Consultați worldmonitor.app/docs/api-keys pentru instrucțiuni pas cu pas. Cheile API manuale necesită un plan API Starter sau API Business.",
           "submitBtn": "Vedeți planurile API"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "table": {

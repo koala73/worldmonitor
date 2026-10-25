@@ -791,6 +791,10 @@
           "title": "هل تحتاج إلى مفتاح API؟",
           "description": "راجع worldmonitor.app/docs/api-keys للحصول على إرشادات خطوة بخطوة. تتطلب مفاتيح API اليدوية خطة API Starter أو API Business.",
           "submitBtn": "عرض خطط API"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "shellTitle": "إعدادات مراقب العالم",

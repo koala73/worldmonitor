@@ -769,6 +769,10 @@
           "title": "APIキーが必要ですか？",
           "description": "手順についてはworldmonitor.app/docs/api-keysをご覧ください。手動APIキーにはAPI StarterまたはAPI Businessプランが必要です。",
           "submitBtn": "APIプランを見る"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "table": {

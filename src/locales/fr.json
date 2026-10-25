@@ -782,6 +782,10 @@
           "title": "Besoin d'une clé API ?",
           "description": "Consultez worldmonitor.app/docs/api-keys pour obtenir des instructions détaillées. Les clés API manuelles nécessitent un forfait API Starter ou API Business.",
           "submitBtn": "Voir les forfaits API"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "shellTitle": "Paramètres de World Monitor",

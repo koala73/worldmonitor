@@ -769,6 +769,10 @@
           "title": "Bạn cần khóa API?",
           "description": "Xem worldmonitor.app/docs/api-keys để được hướng dẫn từng bước. Khóa API thủ công yêu cầu gói API Starter hoặc API Business.",
           "submitBtn": "Xem các gói API"
+        },
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
         }
       },
       "table": {
