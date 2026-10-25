@@ -646,14 +646,19 @@ function hasCurrentApiAccess(ent: Awaited<ReturnType<McpHandlerDeps['getEntitlem
  * legacy entry stayed warm. Every merged row carries the flag, so only a
  * legacy cache entry or a row from a backend predating the catalog change
  * lands here with it absent, and neither is evidence of an API plan — the
- * same `undefined === false` posture `mcpAccess` has in this file. Tier 0
+ * same fail-closed posture `mcpAccess` has in this file. Tier 0
  * is excluded so the #6716 free-account allowance is untouched.
  */
 function lacksProvenApiPlan(ent: Awaited<ReturnType<McpHandlerDeps['getEntitlements']>>): boolean {
   if (!ent || typeof ent !== 'object' || !ent.features || typeof ent.features !== 'object') return false;
   const validUntil = Number((ent as { validUntil?: unknown }).validUntil ?? 0);
   if (!(ent.features.tier >= 1) || !Number.isFinite(validUntil) || validUntil < Date.now()) return false;
-  return (ent.features as { desktopKeyAccess?: unknown }).desktopKeyAccess !== false;
+  const features = ent.features as { desktopKeyAccess?: unknown; apiAccess?: unknown };
+  if (features.desktopKeyAccess === true) return true;
+  // A legacy entry (flag absent) is a desktop-key plan when it explicitly
+  // says it is not an API plan; `apiAccess` is a required catalog boolean,
+  // so every real Pro row written before the flag carries `apiAccess: false`.
+  return features.desktopKeyAccess === undefined && features.apiAccess === false;
 }
 
 /**
