@@ -1,5 +1,9 @@
 name: Install root dependencies
 description: Restore the exact Node 24 dependency tree or install it, then prepare repository inventory.
+inputs:
+  npm-cache:
+    description: Restore and save the npm download cache on a node_modules miss. Pass 'false' when setup-node already restores it for another npm install in the job.
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -9,6 +13,18 @@ runs:
       with:
         path: node_modules
         key: node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'package.json', '.npmrc', 'vendor/braces/**', 'vendor/stream-json/**') }}
+    # The npm download cache matters only when npm ci runs. Restoring it in
+    # setup-node cost every job 4-12s (583 MB) on runs that then hit the
+    # node_modules cache above, so callers that install nothing else leave
+    # setup-node's cache off and get the download cache here, on a miss.
+    - name: Restore the npm download cache on a dependency miss
+      if: steps.node-modules.outputs.cache-hit != 'true' && inputs.npm-cache == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      id: npm-cache
+      with:
+        path: ~/.npm
+        key: npm-cache-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: npm-cache-v1-${{ runner.os }}-${{ runner.arch }}-
     - name: Install root dependencies on cache miss
       if: steps.node-modules.outputs.cache-hit != 'true'
       shell: bash
@@ -19,6 +35,12 @@ runs:
       with:
         path: node_modules
         key: ${{ steps.node-modules.outputs.cache-primary-key }}
+    - name: Save the npm download cache
+      if: steps.node-modules.outputs.cache-hit != 'true' && inputs.npm-cache == 'true' && steps.npm-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ~/.npm
+        key: ${{ steps.npm-cache.outputs.cache-primary-key }}
     - name: Regenerate inventory on cache hit
       if: steps.node-modules.outputs.cache-hit == 'true'
       shell: bash

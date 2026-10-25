@@ -50,6 +50,63 @@ describe('China macro production registration', () => {
     }
   });
 
+  it('keeps SAFE bank FX settlement launch-ready until SAFE publishes the next month', () => {
+    // SAFE "银行结售汇" release dates from www.safe.gov.cn/safe/sjjd/ (2022-12 is
+    // not listed there). A month-end observation must stay usable until the
+    // following month's release is picked up by the next daily bundle tick
+    // (railway-services.json runs seed-bundle-macro at 08:00 and 09:00 UTC).
+    const releases: Array<[string, string]> = [
+      ['2022-01', '2022-02-18'], ['2022-02', '2022-03-18'], ['2022-03', '2022-04-22'], ['2022-04', '2022-05-17'],
+      ['2022-05', '2022-06-15'], ['2022-06', '2022-07-22'], ['2022-07', '2022-08-15'], ['2022-08', '2022-09-15'],
+      ['2022-09', '2022-10-28'], ['2022-10', '2022-11-15'], ['2022-11', '2022-12-15'], ['2023-01', '2023-02-15'],
+      ['2023-02', '2023-03-15'], ['2023-03', '2023-04-21'], ['2023-04', '2023-05-15'], ['2023-05', '2023-06-15'],
+      ['2023-06', '2023-07-21'], ['2023-07', '2023-08-15'], ['2023-08', '2023-09-15'], ['2023-09', '2023-10-20'],
+      ['2023-10', '2023-11-15'], ['2023-11', '2023-12-15'], ['2023-12', '2024-01-15'], ['2024-01', '2024-02-23'],
+      ['2024-02', '2024-03-15'], ['2024-03', '2024-04-18'], ['2024-04', '2024-05-17'], ['2024-05', '2024-06-17'],
+      ['2024-06', '2024-07-19'], ['2024-07', '2024-08-15'], ['2024-08', '2024-09-18'], ['2024-09', '2024-10-22'],
+      ['2024-10', '2024-11-15'], ['2024-11', '2024-12-16'], ['2024-12', '2025-01-14'], ['2025-01', '2025-02-18'],
+      ['2025-02', '2025-03-17'], ['2025-03', '2025-04-22'], ['2025-04', '2025-05-19'], ['2025-05', '2025-06-17'],
+      ['2025-06', '2025-07-22'], ['2025-07', '2025-08-15'], ['2025-08', '2025-09-19'], ['2025-09', '2025-10-22'],
+      ['2025-10', '2025-11-17'], ['2025-11', '2025-12-19'], ['2025-12', '2026-01-15'], ['2026-01', '2026-02-13'],
+      ['2026-02', '2026-03-16'], ['2026-03', '2026-04-15'], ['2026-04', '2026-05-18'], ['2026-05', '2026-06-15'],
+      ['2026-06', '2026-07-17'], ['2026-07', '2026-08-17'], ['2026-08', '2026-09-15'], ['2026-09', '2026-10-20'],
+    ];
+    const releasedOn = new Map(releases);
+    const nextMonth = (period: string) => {
+      const [year, month] = period.split('-').map(Number);
+      return month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, '0')}`;
+    };
+    const nextDailyTickMs = 24 * 60 * 60 * 1000;
+    let checked = 0;
+    for (const [period] of releases) {
+      const successorRelease = releasedOn.get(nextMonth(period));
+      if (!successorRelease) continue;
+      const pickedUpBy = Date.parse(`${successorRelease}T23:59:59Z`) + nextDailyTickMs;
+      for (const isStale of [isChinaMacroObservationStale, railwayContract.isChinaMacroObservationStale]) {
+        assert.equal(
+          isStale('safe_bank_fx_settlement', period, pickedUpBy),
+          false,
+          `${period} went stale before SAFE published ${nextMonth(period)} on ${successorRelease}`,
+        );
+      }
+      checked += 1;
+    }
+    assert.ok(checked >= 50);
+
+    assert.equal(
+      isChinaMacroObservationStale('safe_bank_fx_settlement', '2026-08', Date.parse('2026-10-20T08:03:59Z')),
+      false,
+      'the 2026-10-20 production run rejected August settlement hours before SAFE published September',
+    );
+    const augustEnd = chinaMacroObservationDateMs('2026-08');
+    assert.ok(augustEnd);
+    assert.equal(
+      isChinaMacroObservationStale('safe_bank_fx_settlement', '2026-08', augustEnd + 61 * 86_400_000),
+      true,
+      'a skipped SAFE release must still go stale',
+    );
+  });
+
   it('schedules both seeders in the Railway macro bundle', () => {
     const source = read('scripts/seed-bundle-macro.mjs');
     assert.match(
@@ -95,7 +152,7 @@ describe('China macro production registration', () => {
       'transport freshness must be recorded after fetch and before canonical validation',
     );
     assert.match(seed, /afterPublish:\s*async \(data\) => recordChinaMacroCompletedRun\(data\)/);
-    assert.match(seed, /afterPreservedValidationSkip:\s*async \(data\) => recordChinaMacroCompletedRun\(data\)/);
+    assert.doesNotMatch(seed, /afterPreservedValidationSkip/, 'a rejected publish must not stamp the completion meta');
     const bundle = read('scripts/seed-bundle-macro.mjs');
     assert.match(bundle, /China-Macro[\s\S]*timeoutMs:\s*240_000/);
     assert.ok(150_000 < 210_000);

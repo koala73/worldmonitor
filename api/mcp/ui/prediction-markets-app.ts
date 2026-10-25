@@ -57,7 +57,7 @@ const RENDER = `
       if (!m || typeof m !== "object") return;
       var mkt = el("div", "mkt");
       var head = el("div", "mkt-head");
-      var href = httpUrl(m.url);
+      var href = httpUrl(m.source === "kalshi" ? m.displayUrl ?? m.url : m.url);
       var title = el(href ? "a" : "span", "mkt-title", collapseWs(m.title) || "Market");
       if (href) { title.href = href; title.target = "_blank"; title.rel = "noopener noreferrer"; }
       head.appendChild(title);

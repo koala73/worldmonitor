@@ -1,6 +1,8 @@
 import { writeFile } from 'node:fs/promises';
 import { expect, type Page, type TestInfo } from '@playwright/test';
 
+import { installWebMcpExecuteTool } from './webmcp-execute';
+
 type ToolStartMark = {
   detail?: {
     targetCancellationSupported?: boolean;
@@ -36,13 +38,13 @@ async function installReadinessRecorder(page: Page): Promise<void> {
 async function installColdStartCancellationProbe(
   page: Page,
   toolName: string,
-  input: string,
+  input: Record<string, unknown>,
 ): Promise<void> {
-  await page.addInitScript(({ inputJson, name }) => {
+  await page.addInitScript(({ input: toolInput, name }) => {
     type ExecutableModelContext = WebMCP.ModelContext & {
       executeTool(
         tool: WebMCP.RegisteredTool,
-        input: string,
+        input: Record<string, unknown>,
         options?: { signal?: AbortSignal },
       ): Promise<unknown>;
     };
@@ -121,7 +123,7 @@ async function installColdStartCancellationProbe(
         target.__wmWebMcpCancellationController = controller;
         const invokedBeforeUiReady = !isUiReady();
         const terminal = withTimeout(
-          provider.executeTool(tool, inputJson, { signal: controller.signal }),
+          window.__wmExecuteWebMcpTool(provider, tool, toolInput, { signal: controller.signal }),
           30_000,
           'executeTool()',
         ).then(
@@ -155,7 +157,7 @@ async function installColdStartCancellationProbe(
       }
     };
     void discoverAndInvoke();
-  }, { inputJson: input, name: toolName });
+  }, { input, name: toolName });
 }
 
 async function readToolStartMark(page: Page, toolName: string): Promise<ToolStartMark | null> {
@@ -193,8 +195,9 @@ export async function runWebMcpCancellationScenario(
     pageErrors.push({ name: error.name, message: error.message.slice(0, 500) });
   });
   const cancelTool = productionSmoke ? 'get_dashboard_context' : 'set_map_view';
-  const cancelInput = productionSmoke ? '{}' : JSON.stringify({ view: 'eu', zoom: 4 });
+  const cancelInput = productionSmoke ? {} : { view: 'eu', zoom: 4 };
   await installReadinessRecorder(page);
+  await installWebMcpExecuteTool(page);
   await installColdStartCancellationProbe(page, cancelTool, cancelInput);
   await page.addInitScript(() => {
     const rejectionLog: Array<{ name: string; message: string }> = [];
@@ -283,13 +286,13 @@ export async function runWebMcpCancellationScenario(
     await expect.poll(async () => {
       afterMap = await page.evaluate(async () => {
         type ExecutableModelContext = WebMCP.ModelContext & {
-          executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+          executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
         };
         const provider = document.modelContext as ExecutableModelContext;
         const contextTool = (await provider.getTools())
           .find((tool) => tool.name === 'get_dashboard_context');
         if (!contextTool) throw new Error('get_dashboard_context was not discovered.');
-        const raw = await provider.executeTool(contextTool, '{}');
+        const raw = await window.__wmExecuteWebMcpTool(provider, contextTool, {});
         const context = (typeof raw === 'string' ? JSON.parse(raw) : raw) as {
           map?: { view?: string; zoom?: number };
         };

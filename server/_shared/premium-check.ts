@@ -1,9 +1,9 @@
-import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage.js';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from '../../api/_crypto.js';
-import { validateBearerToken } from '../auth-session';
+import { validateBearerToken } from '../auth-session.js';
 import {
   classifyBillingVerification,
   getEntitlements,
@@ -11,17 +11,32 @@ import {
   unverifiableEntitlementDenial,
   type BillingVerificationDenial,
   type BillingVerificationInput,
-} from './entitlement-check';
+} from './entitlement-check.js';
 import {
   INTERNAL_MCP_VERIFIED_HEADER,
   TRUSTED_USER_ID_HEADER,
   getInternalMcpVerifiedNonce,
-} from './mcp-internal-hmac';
-import { validateUserApiKey } from './user-api-key';
+} from './mcp-internal-hmac.js';
+import { validateUserApiKey } from './user-api-key.js';
 import {
   DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
   resolveActiveDirectLlmLimit,
-} from './direct-llm-quota';
+} from './direct-llm-quota.js';
+import { OPERATOR_KEY_DAILY_CEILINGS, operatorKeyQuotaPrincipal } from './high-usage-alarm.js';
+import { hashKeySync } from './usage-identity.js';
+
+/** Operator keys are premium but metered per key against a circuit breaker. */
+async function operatorKeyIdentity(key: string): Promise<PremiumCallerIdentity> {
+  return {
+    isPremium: true,
+    userId: null,
+    kind: 'enterprise',
+    quotaExempt: false,
+    quotaUserId: await operatorKeyQuotaPrincipal(key),
+    alarmPrincipal: hashKeySync(key),
+    directLlmDailyLimit: OPERATOR_KEY_DAILY_CEILINGS.directLlmCalls,
+  };
+}
 
 export type PremiumCallerIdentity =
   | { isPremium: true; userId: string; kind: 'internal-mcp'; quotaExempt: true }
@@ -40,8 +55,28 @@ export type PremiumCallerIdentity =
        * source it from `resolveActiveDirectLlmLimit`.
        */
       directLlmDailyLimit: number | null;
+      /**
+       * True for a catalog Enterprise (tier 3) row, whose daily limits are
+       * circuit breakers that should page before they trip. REQUIRED for the
+       * same reason as `directLlmDailyLimit`.
+       */
+      enterprisePlan: boolean;
     }
-  | { isPremium: true; userId: null; kind: 'enterprise'; quotaExempt: true }
+  | {
+      isPremium: true;
+      userId: null;
+      kind: 'enterprise';
+      quotaExempt: false;
+      /**
+       * Operator keys carry no account, so their direct-LLM spend is metered
+       * per key under this principal (`operatorKeyQuotaPrincipal`) — never the
+       * raw key — against a circuit-breaker ceiling.
+       */
+      quotaUserId: string;
+      /** Principal for logs and alarms: the gateway's `hashKeySync` of the key. */
+      alarmPrincipal: string;
+      directLlmDailyLimit: number;
+    }
   | {
     isPremium: false;
     userId: null;
@@ -287,7 +322,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
       .split(',').map((k) => k.trim()).filter(Boolean);
     if (await timingSafeIncludes(wmKey, validKeys)) {
-      return { isPremium: true, userId: null, kind: 'enterprise', quotaExempt: true };
+      return operatorKeyIdentity(wmKey);
     }
 
     // Check user-owned API keys (wm_ prefix) via Convex lookup.
@@ -306,6 +341,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
             kind: 'user-api-key',
             quotaExempt: false,
             directLlmDailyLimit: resolveActiveDirectLlmLimit(ent),
+            enterprisePlan: ent.features.tier >= 3,
           };
         }
         // Preserve main's billing-verification tag on confirmed denials (#5622).
@@ -324,11 +360,16 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
     }
   }
 
-  const keyCheck = (await validateApiKey(request, {})) as { valid: boolean; required: boolean };
+  const keyCheck = (await validateApiKey(request, {})) as {
+    valid: boolean;
+    required: boolean;
+    credential?: string;
+  };
   // Only treat as premium when an explicit API key was validated (required: true).
   // Trusted-origin short-circuits (required: false) do NOT imply PRO entitlement.
-  if (keyCheck.valid && keyCheck.required) {
-    return { isPremium: true, userId: null, kind: 'enterprise', quotaExempt: true };
+  // Every valid `required: true` result is an operator key and names it.
+  if (keyCheck.valid && keyCheck.required && keyCheck.credential) {
+    return operatorKeyIdentity(keyCheck.credential);
   }
 
   const authHeader = request.headers.get('Authorization');
@@ -360,6 +401,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
         kind: 'bearer',
         quotaExempt: false,
         directLlmDailyLimit: DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
+        enterprisePlan: false,
       };
     }
     // Clerk role isn't 'pro' — check Dodo entitlement tier as second signal.
@@ -373,6 +415,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
           kind: 'bearer',
           quotaExempt: false,
           directLlmDailyLimit: resolveActiveDirectLlmLimit(ent),
+          enterprisePlan: ent.features.tier >= 3,
         };
       }
       return denyFor(ent);

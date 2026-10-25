@@ -5,6 +5,7 @@ import { effectiveWelcomeContentLanguage, initI18n } from './i18n';
 import { initSentry } from './sentry';
 import { initDebugBearRum } from './debugbear-rum';
 import { clearWelcomeRoot, prepareWelcomeRoot } from './welcome-root';
+import { captureFirstTouchAcquisitionFromPage } from '../../shared/acquisition-source';
 import './index.css';
 
 const WELCOME_HYDRATION_IDLE_TIMEOUT_MS = 2500;
@@ -27,6 +28,7 @@ function scheduleWelcomeHydration(hydrate: () => void) {
 
 initSentry();
 initDebugBearRum();
+captureFirstTouchAcquisitionFromPage();
 
 initI18n({ metaPrefix: 'welcome.meta' }).then(() => {
   const mount = prepareWelcomeRoot(

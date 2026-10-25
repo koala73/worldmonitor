@@ -260,16 +260,22 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
   const hash = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
   const cacheKey = `${key}:data:${hash}`;
   const cacheBudget = name === 'open_news_dashboard' ? 1048576 : MAX_CACHED_BYTES;
+  const ephemeralCountrySignals = name === 'get_country_brief_section' && args.section === 'countrySignals';
   let cached: unknown;
   try {
     const results = await pipeline([['GET', key], ['GET', cacheKey]], 5_000, true);
     if (!results || results.length !== 2 || results.some(item => item.error) || results[0]?.result !== String(scope.expires)) throw new Error('Missing paid admission');
     const raw = results[1]?.result;
-    if (typeof raw === 'string' && encoder.encode(raw).length <= cacheBudget) {
+    if (!ephemeralCountrySignals && typeof raw === 'string' && encoder.encode(raw).length <= cacheBudget) {
       let parsed: unknown;
       try { parsed = JSON.parse(raw); } catch (error) { if (name !== 'get_natural_disasters' && name !== 'get_news_intelligence' && name !== 'get_chokepoint_status' && name !== 'get_world_brief' && name !== 'get_country_brief' && name !== 'get_country_risk') throw error; }
-      if (name === 'get_country_brief' || name === 'get_country_risk') {
-        if (isCountryDirectOriginalReusable(name, parsed, scope.panel, Date.now())) cached = parsed;
+      if (name === 'get_country_risk' && args.history_days !== undefined) {
+        if (parsed && typeof parsed === 'object' && 'value' in parsed && 'reuseUntil' in parsed
+          && typeof parsed.reuseUntil === 'number' && Number.isFinite(parsed.reuseUntil)
+          && parsed.reuseUntil > Date.now() && parsed.reuseUntil <= scope.expires
+          && isCountryDirectOriginalReusable(name, parsed.value, scope.panel, Date.now(), args.history_days as number)) cached = parsed.value;
+      } else if (name === 'get_country_brief' || name === 'get_country_risk') {
+        if (isCountryDirectOriginalReusable(name, parsed, scope.panel, Date.now(), args.history_days as number | undefined)) cached = parsed;
       } else if (name === 'get_world_brief') {
         cached = readWorldBriefCache(parsed, Date.now(), scope.expires);
       } else if (name === 'get_chokepoint_status') {
@@ -334,9 +340,10 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
       if (remaining < 1) return;
       try { await pipeline([['SET', cacheKey, raw, 'EX', remaining]], 5_000, true); } catch { /* Optional reuse must not turn a valid read into an error. */ }
     },
-    save: async (value: unknown) => {
+    save: async (value: unknown, sourceReuseUntil?: number | null) => {
+      if (ephemeralCountrySignals) return;
       if (name === 'get_world_brief' || name === 'get_natural_disasters' || name === 'get_news_intelligence' || name === 'get_chokepoint_status') return;
-      if ((name === 'get_country_brief' || name === 'get_country_risk') && !isCountryDirectOriginalReusable(name, value, scope.panel, Date.now())) return;
+      if ((name === 'get_country_brief' || name === 'get_country_risk') && !isCountryDirectOriginalReusable(name, value, scope.panel, Date.now(), args.history_days as number | undefined)) return;
       if (scope.panel === 'conflicts' && !isConflictPanelSnapshotCacheable(value)) return;
       if (scope.panel === 'predictions' && (!value || typeof value !== 'object' || Array.isArray(value))) return;
       if (name === 'get_forecast_theaters') {
@@ -392,9 +399,17 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
         if ('value' in value && value.value && typeof value.value === 'object' && 'upstreamUnavailable' in value.value && value.value.upstreamUnavailable === true) return;
         if ('value' in value && value.value && typeof value.value === 'object' && 'missing' in value.value && Array.isArray(value.value.missing) && value.value.missing.length) return;
       }
-      const raw = JSON.stringify(value);
-      if (!raw || encoder.encode(raw).length > cacheBudget) return;
+      let saved = value;
       let cacheTtl = ttl;
+      if (name === 'get_country_risk' && args.history_days !== undefined) {
+        if (typeof sourceReuseUntil !== 'number' || !Number.isFinite(sourceReuseUntil)) return;
+        const reuseUntil = Math.min(scope.expires, sourceReuseUntil);
+        cacheTtl = Math.floor((reuseUntil - Date.now()) / 1000);
+        if (cacheTtl < 1) return;
+        saved = { value, reuseUntil };
+      }
+      const raw = JSON.stringify(saved);
+      if (!raw || encoder.encode(raw).length > cacheBudget) return;
       if (scope.panel === 'conflicts') {
         const savedAt = Date.now();
         const reuseUntil = conflictPanelReuseUntil(value, savedAt);

@@ -8,10 +8,16 @@ import type { ToolDef } from '../types';
 
 import { NEWS_DASHBOARD_UI_URI } from '../ui/news-dashboard-app';
 
+function newsDashboardView(params: Record<string, unknown>) {
+  const parsedView = parseNewsDashboardRequest(params);
+  if (!parsedView.success) throw new RpcValidationError('open_news_dashboard', [{ field: 'view', description: 'Invalid news view arguments; map center requires both latitude and longitude.' }]);
+  return parsedView.data.view;
+}
+
 export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   name: 'open_news_dashboard',
   title: 'WorldMonitor news and maps',
-  description: 'Open WorldMonitor with its news panels and interactive map. On dedicated paid MCP plans, one dashboard request includes bounded map snapshot loads; default opens reuse its loaded news for at least five minutes. Explicit refresh starts one new request. API plans retain per-tool billing. Returns the full feed digest with publication dates, source provenance, coordinates and coverage. Empty arguments open the dashboard. View arguments configure the rendered instance; requestedView confirms requested settings, not an already-open map’s applied state.',
+  description: 'Open the embedded WorldMonitor news and map dashboard and return the full feed digest (categories with items, publication dates, source provenance, coordinates, feedStatuses, coverage) plus requestedView. The view arguments (query, source, category, country, time_range, renderer, map_layers, map center and zoom) configure the rendered instance; requestedView echoes what was requested, not an already-open map\'s applied state, and empty arguments open the default dashboard. Requires a paid plan; weight 2 on API plans. On dedicated paid plans one dashboard request covers the news load and bounded map snapshot loads, repeat opens reuse it for at least five minutes, and refresh with request_id starts one new request. Read-only; up to 1 MB of digest.',
   _uiResourceUri: NEWS_DASHBOARD_UI_URI,
   _openaiEntrypoints: [{ type: 'global' }, { type: 'thread' }],
   _outputBudgetBytes: 1048576,
@@ -30,10 +36,9 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
     required: ['categories'],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  _validateArgs: newsDashboardView,
   _execute: async (params, base, context, execution) => {
-    const parsedView = parseNewsDashboardRequest(params);
-    if (!parsedView.success) throw new RpcValidationError('open_news_dashboard', [{ field: 'view', description: 'Invalid news view arguments; map center requires both latitude and longitude.' }]);
-    const requestedView = parsedView.data.view;
+    const requestedView = newsDashboardView(params);
     const url = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
     const headers = await buildAuthHeaders(context, 'GET', url, null);
     const response = await fetchMcpDownstream(url, {
@@ -45,22 +50,23 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   },
 }, {
   name: 'analyze_news_headlines',
-  description: 'Summarize selected headlines or translate one headline into the target language specified by lang. Requires the same authenticated access as the dashboard service. Supply article snippets as bodies to ground summaries.',
+  title: 'Summarize or translate headlines',
+  description: 'Summarize up to 8 supplied headlines (mode brief, the default) or translate exactly one headline (mode translate) with the dashboard\'s LLM route, returning {summary, provider, model, tokens, fallback} or an error with errorType. The text is generated per call from the headlines and optional bodies (article snippets, up to 400 characters each, that ground the summary); nothing is fetched from WorldMonitor\'s own feeds. lang is the target language code for a translation and the output language for a brief (default en); geoContext adds a short framing hint. Requires a paid plan; one live LLM request, weight 2 on API plans, up to 25 s. Read-only.',
   _outputBudgetBytes: 32768,
   _apiPaths: ['POST /api/news/v1/summarize-article'],
   inputSchema: {
     type: 'object',
     properties: {
-      headlines: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'string', maxLength: 4000 } },
-      bodies: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 400 } },
-      mode: { type: 'string', enum: ['brief', 'translate'] },
-      lang: { type: 'string', maxLength: 16 },
-      geoContext: { type: 'string', maxLength: 100 },
+      headlines: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'string', maxLength: 4000 }, description: 'Headlines to work on: 1-8 for a brief, exactly 1 for a translation. Each up to 4000 characters.' },
+      bodies: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 400 }, description: 'Optional article snippets, index-aligned with headlines (up to 400 characters each), that ground the brief. Ignored for translation.' },
+      mode: { type: 'string', enum: ['brief', 'translate'], description: 'brief (default) summarizes the headlines; translate renders one headline in lang.' },
+      lang: { type: 'string', maxLength: 16, description: 'BCP 47 language code: the target language for translate and the output language for brief (default en).' },
+      geoContext: { type: 'string', maxLength: 100, description: 'Optional short geographic or topical framing passed to the model with the headlines.' },
     },
     required: ['headlines'],
     oneOf: [
-      { required: ['mode'], properties: { mode: { const: 'translate' }, headlines: { type: 'array', maxItems: 1 } } },
-      { properties: { mode: { const: 'brief' } } },
+      { required: ['mode'], properties: { mode: { const: 'translate', description: 'Translation mode: lang is the target language.' }, headlines: { type: 'array', maxItems: 1, description: 'Exactly one headline to translate.' } } },
+      { properties: { mode: { const: 'brief', description: 'Brief mode (the default when mode is omitted): summarize the headlines.' } } },
     ],
   },
   outputSchema: {

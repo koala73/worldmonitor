@@ -162,6 +162,16 @@ export const FINAL_TIER_DECODED_BYTE_CEILINGS = Object.freeze({
   slow: 1_482_865,
 });
 
+export const SSE_HISTORY_BUDGET_CAPTURE = Object.freeze({
+  capturedAt: '2026-10-18',
+  basis: 'Producer fixture with two SSE indices; public FAST recapture returned HTTP 403.',
+  baselinePoints: 24,
+  expandedPoints: 56,
+  baselineBytes: 2_453,
+  expandedBytes: 4_885,
+  growthBytes: 2_432,
+});
+
 export const BOOTSTRAP_PAYLOAD_BUDGET_MANIFEST = Object.freeze({
   version: 1,
   capturedAt: PRODUCTION_CAPTURE.capturedAt,
@@ -172,7 +182,12 @@ export const BOOTSTRAP_PAYLOAD_BUDGET_MANIFEST = Object.freeze({
       minimumCapturedKeyCount: CAPTURED_BASE_TIER_KEYS.fast.length,
       materialGrowthRatio: 0.05,
       materialGrowthFloorBytes: 2_048,
-      reviewedExceptions: Object.freeze({}),
+      reviewedExceptions: Object.freeze({
+        shippingRates: Object.freeze({
+          ceilingBytes: CAPTURED_KEY_DECODED_BYTES.shippingRates + SSE_HISTORY_BUDGET_CAPTURE.growthBytes,
+          rationale: 'Owner approved 56 weekly SSE history points for #9351. The producer fixture measures 2,432 extra bytes; the frozen production capture and total tier ceiling stay unchanged.',
+        }),
+      }),
     }),
     slow: Object.freeze({
       preChangeCeilingBytes: PRODUCTION_CAPTURE.tiers.slow.decodedBytes,

@@ -131,6 +131,44 @@ export function digestWindowStartMs(lastSentAt, nowMs, defaultLookbackMs) {
  * @param {((cand: { rule: object; lastSentAt: number | null; due: boolean }, stories: unknown[]) => Promise<unknown> | unknown)} [tryCompose]
  * @returns {Promise<{ winner: { rule: object; lastSentAt: number | null; due: boolean }; stories: unknown[]; composeResult?: unknown } | null>}
  */
+/**
+ * Memo key for one cron run's buildDigest results: (variant, lang,
+ * sensitivity, windowStart). Many users share a variant/lang, so memoizing
+ * saves ZRANGE + HGETALL round-trips across the per-user loop.
+ *
+ * Sensitivity is part of the key because buildDigest filters by
+ * rule.sensitivity BEFORE dedup: without it a stricter user inherits a
+ * looser populator's pool (the earlier populator decides which severity
+ * tiers enter the pool). The missing-sensitivity default MUST equal
+ * buildDigest's own default ('high'), so an omitted sensitivity shares a
+ * pool with an explicit 'high' and never with 'critical'.
+ *
+ * windowStart is derived per candidate from lastSentAt with the send loop's
+ * formula (digestWindowStartMs), so the canonical brief lead and the
+ * email/Slack body read the same cadence window.
+ */
+export function digestMemoKey(rule, windowStart) {
+  return `${rule?.variant ?? 'full'}:${rule?.lang ?? 'en'}:${rule?.sensitivity ?? 'high'}:${windowStart}`;
+}
+
+/**
+ * Build the memoized digestFor(cand) the cron hands to the compose flow.
+ * Scoped to one run; Redis stays authoritative across runs.
+ * @param {(rule: object, windowStart: number) => Promise<unknown[] | null | undefined>} buildDigest
+ * @param {{ nowMs: number, lookbackMs: number }} window
+ */
+export function createDigestMemo(buildDigest, { nowMs, lookbackMs }) {
+  const cache = new Map();
+  return async function digestFor(cand) {
+    const windowStart = digestWindowStartMs(cand.lastSentAt, nowMs, lookbackMs);
+    const key = digestMemoKey(cand.rule, windowStart);
+    if (cache.has(key)) return cache.get(key);
+    const stories = (await buildDigest(cand.rule, windowStart)) ?? [];
+    cache.set(key, stories);
+    return stories;
+  };
+}
+
 export async function pickWinningCandidateWithPool(annotated, digestFor, log, userId, tryCompose) {
   if (!Array.isArray(annotated) || annotated.length === 0) return null;
   const sortedDue = annotated.filter((a) => a.due).sort((a, b) => compareRules(a.rule, b.rule));

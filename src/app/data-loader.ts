@@ -3,6 +3,7 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall, invokePanelMethod } from '@/app/pending-panel-data';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import { runHydrationTier, type HydrationTask } from '@/app/hydration-scheduler';
+import { ViewportHydrationLedger, type LoadAllDataTrigger } from '@/app/viewport-hydration-ledger';
 import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
@@ -23,6 +24,7 @@ import {
   isPanelInVariantDefaults,
 } from '@/config';
 import { resolveNewsCategories, enabledNewsCategoryKeys, type ResolvedCategory } from '@/config/feed-resolution';
+import { variantShipsOrUserEnabled } from './panel-data-gate';
 import {
   countRepresentedSources,
   mergeRotatedNewsItems,
@@ -46,6 +48,7 @@ import {
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { withTimeout } from '@/utils/with-timeout';
+import { assessCorroboration, evidenceFromCluster } from '@/utils/corroboration-flag';
 import { fetchPredictionCandidates, reprioritizeMarketsForRegion as reprioritizePredictionMarketsForRegion } from '@/services/prediction';
 import {
   fetchEarthquakes,
@@ -122,7 +125,7 @@ import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
 import { fetchConflictEvents, fetchUcdpEvents, fetchIranEvents } from '@/services/conflict';
-import { fetchCrossBorderArrivals, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
+import { fetchCrossBorderArrivals, fetchDisplacementEvents, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
@@ -272,6 +275,8 @@ const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no fetch, even the
 // CII/risk-scoring path. Set VITE_ENABLE_IRAN_ATTACKS=true to restore. Mirrors CYBER_LAYER_ENABLED.
 const IRAN_ATTACKS_ENABLED = import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
+// Variants whose preset layout carries the trade and supply-chain panels.
+const TRADE_SURFACE_VARIANTS = ['full', 'finance', 'commodity', 'energy'] as const;
 
 export interface DataLoaderCallbacks {
   renderCriticalBanner: (postures: TheaterPostureSummary[]) => void;
@@ -464,6 +469,8 @@ export class DataLoaderManager implements AppModule {
   private loadAllDataPromise: Promise<void> | null = null;
   private loadAllDataRerunRequested = false;
   private loadAllDataQueuedForceAll = false;
+  private loadAllDataQueuedFullPass = false;
+  private readonly viewportHydration = new ViewportHydrationLedger();
   private xIntelAbortController: AbortController | null = null;
   // True once a live X fetch has rendered. Gates whether a later transport
   // failure may blank the panel (it may not) or must surface an error (it must,
@@ -935,19 +942,25 @@ export class DataLoaderManager implements AppModule {
     return panel?.isNearViewport?.(marginPx) ?? false;
   }
 
-  private isAnyPanelNearViewport(panelIds: string[], marginPx = 400): boolean {
-    return panelIds.some((panelId) => this.isPanelNearViewport(panelId, marginPx));
+  private hydratesPanel(panelId: string, owningVariants: readonly string[]): boolean {
+    return variantShipsOrUserEnabled({
+      variant: SITE_VARIANT,
+      owningVariants,
+      panelEnabled: this.ctx.panelSettings?.[panelId]?.enabled === true,
+    });
   }
 
-  async loadAllData(forceAll = false): Promise<void> {
+  async loadAllData(forceAll = false, trigger: LoadAllDataTrigger = 'full'): Promise<void> {
     if (this.loadAllDataPromise) {
       this.loadAllDataRerunRequested = true;
       this.loadAllDataQueuedForceAll = this.loadAllDataQueuedForceAll || forceAll;
+      this.loadAllDataQueuedFullPass = this.loadAllDataQueuedFullPass || trigger === 'full';
       return this.loadAllDataPromise;
     }
 
     this.loadAllDataRerunRequested = true;
     this.loadAllDataQueuedForceAll = forceAll;
+    this.loadAllDataQueuedFullPass = trigger === 'full';
     this.loadAllDataPromise = this.drainLoadAllDataQueue();
     return this.loadAllDataPromise;
   }
@@ -956,28 +969,31 @@ export class DataLoaderManager implements AppModule {
     try {
       while (this.loadAllDataRerunRequested && !this.ctx.isDestroyed) {
         const forceAll = this.loadAllDataQueuedForceAll;
+        const trigger: LoadAllDataTrigger = this.loadAllDataQueuedFullPass ? 'full' : 'viewport';
         this.loadAllDataRerunRequested = false;
         this.loadAllDataQueuedForceAll = false;
+        this.loadAllDataQueuedFullPass = false;
         // Opt-in only (no-op unless __wmLcpDebug is installed), so this costs
         // one property read on the ordinary path. The start/end pair is the
         // only direct witness that a fan-out actually ran and drained: request
         // counters cannot distinguish a repeat pass from a service retry
         // (#7045 U5 review, #7212).
-        markLcpDebug('wm:data:load-all-start', { forceAll });
+        markLcpDebug('wm:data:load-all-start', { forceAll, trigger });
         try {
-          await this.runLoadAllData(forceAll);
+          await this.runLoadAllData(forceAll, trigger);
         } finally {
-          markLcpDebug('wm:data:load-all-end', { forceAll });
+          markLcpDebug('wm:data:load-all-end', { forceAll, trigger });
         }
       }
     } finally {
       this.loadAllDataPromise = null;
       this.loadAllDataRerunRequested = false;
       this.loadAllDataQueuedForceAll = false;
+      this.loadAllDataQueuedFullPass = false;
     }
   }
 
-  private async runLoadAllData(forceAll: boolean): Promise<void> {
+  private async runLoadAllData(forceAll: boolean, trigger: LoadAllDataTrigger = 'full'): Promise<void> {
     const runGuarded = async (name: string, fn: () => Promise<void>): Promise<void> => {
       if (this.ctx.isDestroyed || this.ctx.inFlight.has(name)) return;
       this.ctx.inFlight.add(name);
@@ -990,8 +1006,28 @@ export class DataLoaderManager implements AppModule {
       }
     };
 
-    const shouldLoad = (id: string): boolean => forceAll || this.isPanelNearViewport(id);
-    const shouldLoadAny = (ids: string[]): boolean => forceAll || this.isAnyPanelNearViewport(ids);
+    // A viewport pass (scroll, panel mount) loads only panels no earlier pass
+    // has loaded; refreshing loaded panels is the refresh scheduler's job.
+    // Every layout read happens here, before any loader writes DOM (#4487).
+    const viewportOnly = trigger === 'viewport' && !forceAll;
+    this.viewportHydration.beginPass(hasPremiumAccess());
+    const panelIds = Object.keys(this.ctx.panels);
+    let unserved: Set<string> | null = null;
+    if (viewportOnly) {
+      unserved = this.viewportHydration.collectUnserved(this.ctx.panels, (id) => this.isPanelNearViewport(id));
+      if (unserved.size === 0) return;
+      this.viewportHydration.markServed(this.ctx.panels, unserved);
+    } else {
+      this.viewportHydration.markServed(this.ctx.panels, forceAll ? panelIds : panelIds.filter((id) => this.isPanelNearViewport(id)));
+    }
+    const shouldLoad = (id: string): boolean => forceAll || (unserved ? unserved.has(id) : this.isPanelNearViewport(id));
+    const shouldLoadAny = (ids: string[]): boolean => ids.some(shouldLoad);
+    // Work tied to no single panel runs on full passes, on the first viewport
+    // pass, and when one of its panels first enters range.
+    const runOncePerViewport = (key: string, ids: readonly string[] = []): boolean => {
+      const first = this.viewportHydration.claim(key);
+      return !viewportOnly || first || ids.some((id) => unserved!.has(id));
+    };
 
     const tasks: HydrationTask[] = [];
     if (this.shouldHydrateNews(forceAll)) {
@@ -1022,7 +1058,8 @@ export class DataLoaderManager implements AppModule {
         tasks.push({ name: 'forecasts', task: () => runGuarded('forecasts', () => this.loadForecasts()) });
         tasks.push({ name: 'simulation-outcome', task: () => runGuarded('simulation-outcome', () => this.loadSimulationOutcome()) });
       }
-      if (SITE_VARIANT === 'full') tasks.push({ name: 'pizzint', task: () => runGuarded('pizzint', () => this.loadPizzInt()) });
+      // The PizzINT header indicator belongs to no panel; its refresh is scheduled.
+      if (SITE_VARIANT === 'full' && (this.viewportHydration.claim('pizzint') || !viewportOnly)) tasks.push({ name: 'pizzint', task: () => runGuarded('pizzint', () => this.loadPizzInt()) });
       if (shouldLoad('economic')) {
         tasks.push({ name: 'fred', task: () => runGuarded('fred', () => this.loadFredData()) });
         tasks.push({ name: 'spending', task: () => runGuarded('spending', () => this.loadGovernmentSpending()) });
@@ -1037,19 +1074,18 @@ export class DataLoaderManager implements AppModule {
       }
 
       // Trade policy + supply-chain data (FULL, FINANCE, COMMODITY, ENERGY variants use supply-chain surface)
-      if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
-        if (shouldLoad('trade-policy')) {
-          tasks.push({ name: 'tradePolicy', task: () => runGuarded('tradePolicy', () => this.loadTradePolicy()) });
-        }
-        if (shouldLoad('supply-chain')) {
-          tasks.push({ name: 'supplyChain', task: () => runGuarded('supplyChain', () => this.loadSupplyChain()) });
-        }
-        if (shouldLoad('china-corridors')) {
-          tasks.push({ name: 'chinaCorridors', task: () => runGuarded('chinaCorridors', () => this.loadChinaCorridors({ skipIfPopulated: true })) });
-        }
-        if (shouldLoad('china-activity-nowcast')) {
-          tasks.push({ name: 'chinaActivityNowcast', task: () => runGuarded('chinaActivityNowcast', () => this.loadChinaActivityNowcast({ skipIfPopulated: true })) });
-        }
+      const loadTradePanel = (id: string): boolean => this.hydratesPanel(id, TRADE_SURFACE_VARIANTS) && shouldLoad(id);
+      if (loadTradePanel('trade-policy')) {
+        tasks.push({ name: 'tradePolicy', task: () => runGuarded('tradePolicy', () => this.loadTradePolicy()) });
+      }
+      if (loadTradePanel('supply-chain')) {
+        tasks.push({ name: 'supplyChain', task: () => runGuarded('supplyChain', () => this.loadSupplyChain()) });
+      }
+      if (loadTradePanel('china-corridors')) {
+        tasks.push({ name: 'chinaCorridors', task: () => runGuarded('chinaCorridors', () => this.loadChinaCorridors({ skipIfPopulated: true })) });
+      }
+      if (loadTradePanel('china-activity-nowcast')) {
+        tasks.push({ name: 'chinaActivityNowcast', task: () => runGuarded('chinaActivityNowcast', () => this.loadChinaActivityNowcast({ skipIfPopulated: true })) });
       }
     }
 
@@ -1112,7 +1148,7 @@ export class DataLoaderManager implements AppModule {
       });
     }
 
-    if (SITE_VARIANT === 'full') {
+    if (SITE_VARIANT === 'full' && runOncePerViewport('cii-refresh', ['cii', 'strategic-risk'])) {
       try {
         const cached = await fetchCachedRiskScores().catch(() => null);
         if (cached && cached.cii.length > 0) {
@@ -1125,7 +1161,7 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'intelligence', task: () => runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
     }
 
-    if (SITE_VARIANT === 'full' && (shouldLoad('satellite-fires') || this.ctx.mapLayers.natural)) {
+    if (this.hydratesPanel('satellite-fires', ['full']) && (shouldLoad('satellite-fires') || this.ctx.mapLayers.natural)) {
       // Lock under the map-layer key ('fires') so a hydration load and a
       // loadDataForLayer('fires') toggle one-flight each other instead of
       // double-fetching (loadFirmsData has no internal guard). `name` stays
@@ -1190,13 +1226,14 @@ export class DataLoaderManager implements AppModule {
 
     this.updateSearchIndex();
 
-    if (hasPremiumAccess()) {
+    if (hasPremiumAccess() && runOncePerViewport('premium-briefs', ['daily-market-brief', 'market-implications'])) {
       await Promise.allSettled([
         this.loadDailyMarketBrief(),
         this.loadMarketImplications(),
       ]);
     }
 
+    if (!runOncePerViewport('temporal-baseline', ['cii', 'strategic-risk', 'strategic-posture'])) return;
     const bootstrapTemporal = consumeServerAnomalies();
     if (bootstrapTemporal.anomalies.length > 0 || bootstrapTemporal.trackedTypes.length > 0) {
       await runSignalAggregator(this.ctx.statusPanel, 'bootstrap temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes));
@@ -1988,8 +2025,18 @@ export class DataLoaderManager implements AppModule {
    */
   private shouldHydrateNews(forceAll: boolean): boolean {
     if (forceAll || this.loadedNewsSignature === null) return true;
-    const current = newsWorkListSignature(this.resolveEnabledNewsCategories(), this.ctx.disabledSources);
+    const current = newsWorkListSignature(
+      this.newsWorkList(this.resolveEnabledNewsCategories(), this.hydratesPanel('intel', ['full'])),
+      this.ctx.disabledSources,
+    );
     return current !== this.loadedNewsSignature;
+  }
+
+  // Intel loads beside the categories, so it joins the work-list signature:
+  // otherwise adding the Intel Feed panel outside the full variant would not
+  // re-arm the news load until the next scheduled tick.
+  private newsWorkList(categories: readonly { key: string }[], loadsIntel: boolean): readonly { key: string }[] {
+    return loadsIntel ? [...categories, { key: 'intel-sources' }] : categories;
   }
 
   /**
@@ -2118,6 +2165,7 @@ export class DataLoaderManager implements AppModule {
     const disabledAtLoadStart = new Set(this.ctx.disabledSources);
 
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
+    const loadsIntel = this.hydratesPanel('intel', ['full']);
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
     const categoryServedStale = new Map<string, boolean>();
     let intelServedStale = false;
@@ -2141,7 +2189,7 @@ export class DataLoaderManager implements AppModule {
             servedStale => categoryServedStale.set(key, servedStale),
           )
         ),
-        loadIntel: SITE_VARIANT === 'full'
+        loadIntel: loadsIntel
           ? (selection, allowDigestPendingFallback, options) => (
             this.loadIntelNews(
               selection,
@@ -2181,7 +2229,7 @@ export class DataLoaderManager implements AppModule {
       collectedNews.push(...items);
     }
 
-    if (SITE_VARIANT === 'full') {
+    if (loadsIntel) {
       collectedNews.push(...intelItems);
     }
 
@@ -2216,7 +2264,7 @@ export class DataLoaderManager implements AppModule {
     const anyItemsCollected = collectedNews.length > 0;
     const noCategoriesToLoad = categories.length === 0;
     const landed = digestCovered || anyItemsCollected || noCategoriesToLoad;
-    if (landed) this.loadedNewsSignature = newsWorkListSignature(categories, disabledAtLoadStart);
+    if (landed) this.loadedNewsSignature = newsWorkListSignature(this.newsWorkList(categories, loadsIntel), disabledAtLoadStart);
     this.ctx.initialLoadComplete = true;
 
     this.ctx.map?.updateHotspotActivity(this.ctx.allNews);
@@ -2264,6 +2312,8 @@ export class DataLoaderManager implements AppModule {
           title: c.primaryTitle,
           threatLevel: c.threat?.level ?? 'info',
           timestamp: c.lastUpdated,
+          // #9213: the verdict the News panel shows for this cluster.
+          corroboration: assessCorroboration(evidenceFromCluster(c)),
         }));
       if (geoLocated.length > 0 || landed) {
         this.ctx.map?.setNewsLocations(geoLocated);
@@ -3164,7 +3214,7 @@ export class DataLoaderManager implements AppModule {
         portAlerts: [],
         marineBulletins: [],
         sourceName: 'India Meteorological Department',
-        sourceUrl: 'https://api.imd.gov.in/public/api_reference.html',
+        sourceUrl: 'https://mausam.imd.gov.in/responsive/marine_forecast.php',
       };
     }
   }
@@ -3610,6 +3660,19 @@ export class DataLoaderManager implements AppModule {
           }
         } catch (error) {
           console.error('[Intelligence] UNHCR cross-border fetch failed:', error);
+        }
+      })());
+      // About 2.5 MB of IDMC events (250 KB gzipped), so it waits for the same switch.
+      tasks.push((async () => {
+        try {
+          const events = await fetchDisplacementEvents();
+          if (events.points.length === 0 && events.countries.length === 0) return;
+          this.callPanel('displacement', 'setEventsData', events);
+          if (this.ctx.mapLayers.displacement) {
+            this.ctx.map?.setDisplacementEvents(events);
+          }
+        } catch (error) {
+          console.error('[Intelligence] IDMC displacement events fetch failed:', error);
         }
       })());
     }

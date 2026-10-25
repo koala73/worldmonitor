@@ -43,8 +43,8 @@ test('seed-health CII risk score freshness mirrors api/health riskScores', () =>
   );
   assert.match(
     health,
-    /riskScores:\s*\{\s*key:\s*'seed-meta:intelligence:risk-scores',\s*maxStaleMin:\s*30,\s*minRecordCount:\s*3\s*\}/,
-    'api/health.js riskScores must degrade partial realtime signal-density coverage via minRecordCount=3',
+    /riskScores:\s*\{\s*key:\s*'seed-meta:intelligence:risk-scores',\s*maxStaleMin:\s*30,\s*minRecordCount:\s*2\s*\}/,
+    'api/health.js riskScores must degrade partial realtime signal-density coverage via minRecordCount=2 (conflict + news since CII v14)',
   );
   assert.match(
     health,

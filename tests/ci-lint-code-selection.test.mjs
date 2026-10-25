@@ -100,6 +100,7 @@ test('doc-anchors runs for every repository input that can change rendered ancho
   for (const file of [
     'scripts/check-doc-anchors.mjs',
     'scripts/_html-entities.mjs',
+    'scripts/mint-export-preload.mjs',
     '.github/workflows/lint-code.yml',
   ]) {
     assert.equal(classify([file]).docs, 'true', file);
@@ -172,5 +173,5 @@ test('doc-anchors is gated by the docs classifier', () => {
   assert.equal(diffStep.shell, 'bash');
   assert.match(diffStep.run, /^\s*set -euo pipefail$/m);
   assert.equal(workflow.jobs['doc-anchors'].needs, 'changes');
-  assert.equal(workflow.jobs['doc-anchors'].if, "needs.changes.outputs.docs == 'true'");
+  assert.equal(workflow.jobs['doc-anchors'].if, "${{ (needs.changes.outputs.docs == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}");
 });

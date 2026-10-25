@@ -31,6 +31,7 @@ DEPLOYMENT-PLAN.md
 TAURI_VALIDATION_REPORT.md
 analytics-collector-operations.md
 api-plan-enforcement-runbook.md
+as-of-convention.md
 climate-variant-full.md
 desktop-parity-matrix.md
 fear-greed-index-2.0-brief.md
@@ -38,6 +39,8 @@ harness-engineering-roadmap.md
 health-variant-full.md
 local-backend-audit.md
 market-data-cadence-audit.md
+methodology/cii-change-brief.md
+methodology/cii-input-register.md
 methodology/cohort-sanity-release-gate.md
 methodology/country-resilience-index/golden-baseline.md
 methodology/country-resilience-index/reference-edition/2026/README.md

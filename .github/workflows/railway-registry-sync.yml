@@ -1,9 +1,14 @@
 name: Railway Registry Sync
 
 # The repository registry is the desired production configuration. This job
-# applies that state from the exact merged main checkout, then verifies it with
-# a separate Viewer identity. The six-hourly health workflow still detects
+# applies that state from the current main revision, then verifies it with a
+# separate Viewer identity. The six-hourly health workflow still detects
 # out-of-band dashboard edits.
+#
+# The pushed SHA only triggers the run. Applying it would let a stale run
+# restore an older registry, and refusing it drops the change whenever the next
+# main commit does not touch these paths (#9274). Resolving main first and
+# checking that revision out gives every run the newest desired state.
 
 on:
   push:
@@ -36,26 +41,27 @@ jobs:
       name: ingestion-acceptance-production
       deployment: false
     steps:
-      - id: checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-
-      - id: admit-current-main
-        name: Admit only the current main revision
+      - id: resolve-current-main
+        name: Resolve the current main revision
         run: |
-          current_main_sha="$(git ls-remote --exit-code origin refs/heads/main | awk 'NR == 1 { print $1 }' || true)"
+          current_main_sha="$(git ls-remote --exit-code "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" refs/heads/main | awk 'NR == 1 { print $1 }' || true)"
           if [[ ! "$current_main_sha" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Could not resolve the current main revision"
             exit 1
           fi
           if [[ "$GITHUB_SHA" != "$current_main_sha" ]]; then
-            echo "::error::Refusing stale registry sync: checkout=$GITHUB_SHA current-main=$current_main_sha"
-            exit 1
+            echo "::notice::Main moved after this run was triggered; syncing current main $current_main_sha instead of $GITHUB_SHA"
           fi
+          echo "sha=$current_main_sha" >> "$GITHUB_OUTPUT"
+
+      - id: checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ steps.resolve-current-main.outputs.sha }}
+          persist-credentials: false
 
       - id: setup-node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
 
@@ -74,7 +80,7 @@ jobs:
         if: >-
           always()
           && steps.checkout.outcome == 'success'
-          && steps.admit-current-main.outcome == 'success'
+          && steps.resolve-current-main.outcome == 'success'
           && steps.setup-node.outcome == 'success'
           && steps.install-railway.outcome == 'success'
         run: echo "RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
@@ -83,7 +89,7 @@ jobs:
         if: >-
           always()
           && steps.checkout.outcome == 'success'
-          && steps.admit-current-main.outcome == 'success'
+          && steps.resolve-current-main.outcome == 'success'
           && steps.setup-node.outcome == 'success'
           && steps.install-railway.outcome == 'success'
           && steps.start-viewer-budget.outcome == 'success'
@@ -100,11 +106,11 @@ jobs:
             echo
             echo 'Use the failed step and its drift list to choose the repair:'
             echo
-            echo '- **Stale revision:** run the workflow from the current `main`; never re-run an older workflow attempt.'
             echo '- **Registry-managed drift:** fix the registry or the reconciler, then run the current `main` workflow.'
             echo '- **Source branch or check-suite drift:** repair the named Railway service setting; the registry patch cannot write these fields.'
             echo '- **Runtime prerequisites:** missing source credentials are listed separately and do not fail registry sync. The ingestion monitor reports source health.'
             echo '- **CLI or observation failure:** restore Railway access, then run the current `main` workflow.'
             echo
+            echo 'Every run, including a re-run of an older attempt, applies the current `main` revision.'
             echo 'Do not run a local production `--apply` from a stale checkout.'
           } >> "$GITHUB_STEP_SUMMARY"

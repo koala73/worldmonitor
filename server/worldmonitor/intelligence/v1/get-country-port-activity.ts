@@ -17,6 +17,7 @@ interface SeederPort {
   lat?: number | null;
   lon?: number | null;
   tankerCalls30d?: number | null;
+  prevTankerCalls30d?: number | null;
   trendDelta?: number | null;
   importTankerDwt30d?: number | null;
   exportTankerDwt30d?: number | null;
@@ -91,6 +92,8 @@ export async function getCountryPortActivity(
       lat: typeof p.lat === 'number' ? p.lat : 0,
       lon: typeof p.lon === 'number' ? p.lon : 0,
       tankerCalls30d: calls30d,
+      prevTankerCalls30d: typeof p.prevTankerCalls30d === 'number' && Number.isFinite(p.prevTankerCalls30d)
+        && p.prevTankerCalls30d >= 0 ? Math.round(p.prevTankerCalls30d) : undefined,
       trendDeltaPct: typeof p.trendDelta === 'number' ? p.trendDelta : 0,
       importTankerDwt: typeof p.importTankerDwt30d === 'number' ? p.importTankerDwt30d : 0,
       exportTankerDwt: typeof p.exportTankerDwt30d === 'number' ? p.exportTankerDwt30d : 0,

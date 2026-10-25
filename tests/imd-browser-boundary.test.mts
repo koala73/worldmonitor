@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, before, beforeEach, test } from 'node:test';
 import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
-import { assembleImdSnapshot, parseImdProductPayload } from '../scripts/lib/imd-cyclone-marine.mjs';
+import { IMD_BULLETIN_PRODUCT_IDS, IMD_PRODUCTS, assembleImdSnapshot, parseImdBulletinHtml } from '../scripts/lib/imd-cyclone-marine.mjs';
 
 let source: string;
 let app: typeof import('../src/services/imd-cyclone-marine') & { bootstrap: typeof import('../src/services/bootstrap').__testing__ };
@@ -119,14 +119,14 @@ test('main mapper field handling is preserved: unsafe values and extra keys are 
   assert.equal(result.coverageState, 'ok', 'field sanitizing is not a record rejection');
 });
 
-test('real producer fixtures preserve cyclone tracks, cone, wind radii, marine fields and attribution', () => {
-  const products = Object.fromEntries([
-    ['cycloneTrack', 'imd-cyclone-track.json'], ['cycloneCou', 'imd-cyclone-cou.json'],
-    ['cycloneWind', 'imd-cyclone-wind.json'], ['portWarning', 'imd-port-warning.json'],
-    ['seaBulletin', 'imd-sea-bulletin.json'], ['coastalBulletin', 'imd-coastal-bulletin.json'],
-  ].map(([key, file]) => [key, { status: 'ok', records: parseImdProductPayload(key, JSON.parse(readFileSync(new URL(`./fixtures/${file}`, import.meta.url), 'utf8'))) }]));
-  const raw = assembleImdSnapshot({ productResults: products, now });
+test('real producer fixtures preserve marine bulletin fields and attribution', () => {
+  const pageResults = Object.fromEntries(IMD_BULLETIN_PRODUCT_IDS.map((id) => [id, Object.fromEntries(IMD_PRODUCTS[id].pages.map((page) => [
+    page.key,
+    { status: 'parsed', bulletin: parseImdBulletinHtml(readFileSync(new URL(`./fixtures/imd/${id}-${page.key}.html`, import.meta.url), 'utf8'), id) },
+  ]))]));
+  const raw = assembleImdSnapshot({ pageResults, now: Date.parse('2026-10-16T11:00:00Z') });
   const mapped = app.mapImdSnapshot(raw);
+  assert.equal(raw.marineBulletins.length, 32);
   assert.equal(mapped.coverageState, raw.coverageState);
   for (const key of ['cycloneEvents', 'portAlerts', 'marineBulletins'] as const) {
     assert.equal(mapped[key].length, raw[key].length);

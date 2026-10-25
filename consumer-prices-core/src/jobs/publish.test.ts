@@ -32,7 +32,7 @@ const coverage = {
   failedPages: 4,
   completionRatio: 0.6667,
   rejectedCount: 3,
-  failureReasons: { 'missing-price': 2, 'provider-error': 1 },
+  failureReasons: { 'missing-price': 2, 'provider-error': 1, 'source-http-error': 1 },
   status: 'partial',
   minimumCompletionRatio: 0.5,
   retailers: [{ slug: 'retailer-a', name: 'Retailer A', coverageStatus: 'partial', rejectedCount: 3 }],
@@ -71,7 +71,7 @@ describe('consumer-price coverage publication', () => {
       failedPages: 4,
       completionRatio: 0.6667,
       rejectedCount: 3,
-      failureReasons: { 'missing-price': 2, 'provider-error': 1 },
+      failureReasons: { 'missing-price': 2, 'provider-error': 1, 'source-http-error': 1 },
     });
     expect(JSON.parse(coverageMeta[2]).coverage.retailers).toEqual(coverage.retailers);
   });

@@ -27,6 +27,17 @@ export function cdata(s) {
   return `<![CDATA[${cleaned.split(']]>').join(']]]]><![CDATA[>')}]]>`;
 }
 
+function postLink(href) {
+  try {
+    const url = new URL(href, 'https://www.fwdstart.me');
+    if (url.origin !== 'https://www.fwdstart.me' || url.username || url.password
+      || !/^\/p\/[A-Za-z0-9_-]+$/.test(url.pathname)) return null;
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
 /** Fetch the archive page and extract post items. Throws on upstream failure. */
 async function scrapeArchiveItems() {
   const response = await fetch('https://www.fwdstart.me/archive', {
@@ -53,8 +64,8 @@ async function scrapeArchiveItems() {
     const urlMatch = block.match(/href="(\/p\/[^"]+)"/);
     if (!urlMatch) continue;
 
-    const url = `https://www.fwdstart.me${urlMatch[1]}`;
-    if (seenUrls.has(url)) continue;
+    const url = postLink(urlMatch[1]);
+    if (!url || seenUrls.has(url)) continue;
     seenUrls.add(url);
 
     // Extract title from alt attribute
@@ -99,7 +110,13 @@ export default async function handler(req, ctx) {
     let items = null;
     try {
       const cached = await readRawJsonFromUpstash(CACHE_KEY);
-      if (Array.isArray(cached) && cached.length > 0) items = cached;
+      if (Array.isArray(cached)) {
+        const validItems = cached.flatMap(item => {
+          const link = postLink(item?.link);
+          return link ? [{ ...item, link }] : [];
+        });
+        if (validItems.length > 0) items = validItems;
+      }
     } catch {
       // fall through to the live scrape
     }
@@ -122,8 +139,8 @@ export default async function handler(req, ctx) {
     const rssItems = items.slice(0, 30).map(item => `
     <item>
       <title>${cdata(item.title)}</title>
-      <link>${item.link}</link>
-      <guid>${item.link}</guid>
+      <link>${cdata(item.link)}</link>
+      <guid>${cdata(item.link)}</guid>
       <pubDate>${new Date(item.date).toUTCString()}</pubDate>
       <description>${cdata(item.description)}</description>
       <source url="https://www.fwdstart.me">FwdStart Newsletter</source>

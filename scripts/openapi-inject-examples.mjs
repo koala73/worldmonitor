@@ -22,6 +22,7 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sortRec, serialize, eq, normalizeKey } from './lib/openapi-codegen.mjs';
+import { EMERGENCY_CODES } from '../shared/aircraft-emergencies.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -184,6 +185,13 @@ const GDELT_TOPIC_EXAMPLE_ID = (() => {
 // IS informative in that state.
 function isCuratedOmission(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+  // RegisterWebhook: the request example depicts the default
+  // chokepoint.disruption subscription, and the handler rejects `countries` on
+  // that event, so the field would make the sample un-runnable.
+  if (key === 'countries' && where.includes('registerwebhook')) return true;
+  // Same for `scope`: it belongs to occurrence events only, and the handler
+  // rejects any scope on a chokepoint.disruption subscription.
+  if (key === 'scope' && where.includes('registerwebhook')) return true;
   // GetTradeFlows / GetTariffTrends: a 200 carrying rows always has
   // unavailableReason at the UNSPECIFIED zero value. The generic enum picker
   // skips the zero value and so paired rows with INVALID_REQUEST — a response
@@ -211,6 +219,13 @@ function isCuratedOmission(key, context = {}) {
 function overrideStringExample(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   if (key === 'jmespath') return 'keys(@)';
+  // Shipping v2 webhooks: eventType is a registry key (shared/event-triggers.json)
+  // and countries holds monitored ISO2 codes; the heuristic's "all" / "example"
+  // are rejected by registerWebhook.
+  if (where.includes('registerwebhook') || where.includes('listwebhooks') || where.includes('/api/v2/shipping/webhooks')) {
+    if (key === 'eventtype') return 'chokepoint.disruption';
+    if (key === 'countries') return 'US';
+  }
   // IOM DTM keys countries by ISO3; the generic ISO2 'US' fails the pattern.
   if (key === 'countrycode' && (where.includes('getinternaldisplacement') || where.includes('get-internal-displacement'))) {
     return 'SDN';
@@ -675,6 +690,9 @@ function stringExample(name, schema = {}, context = {}) {
   if (description.includes('iata')) return constrainedString(key.includes('destination') || key.includes('arrival') ? 'LHR' : 'JFK', schema);
   if (description.includes('iso 4217') || key.includes('currency')) return constrainedString('USD', schema);
   if (description.includes('iso 639') || key === 'lang' || key.includes('locale')) return constrainedString('en', schema);
+  // A partner country must differ from the primary country example (US), or
+  // the sample request describes a self-pair that returns no pair.
+  if (key === 'counterpart' && description.includes('iso 3166')) return constrainedString('DE', schema);
   if (description.includes('iso 3166') || key.includes('marketcode')) return constrainedString('US', schema);
   if (description.includes('wto member code')) return constrainedString(key.includes('partner') ? '156' : '840', schema);
   if (description.includes('world bank indicator code')) return constrainedString('NY.GDP.MKTP.CD', schema);
@@ -687,7 +705,8 @@ function stringExample(name, schema = {}, context = {}) {
   if (key.includes('iso2') || key.includes('country') || key.includes('countrycode')) return constrainedString('US', schema);
   if (key === 'members' || key === 'includedmembers') return constrainedString('US', schema);
   if (key.includes('bbox')) return constrainedString('-74.10,40.60,-73.70,40.90', schema);
-  if (key.includes('lat')) return constrainedString('40.7128', schema);
+  // Word-shaped, as in the numeric picker: `latestPeriod` is not a latitude.
+  if (key === 'lat' || key.endsWith('lat') || key.includes('latitude')) return constrainedString('40.7128', schema);
   if (key.includes('lng') || key.includes('lon')) return constrainedString('-74.0060', schema);
   if (key.includes('date') || key.endsWith('day')) return constrainedString('2026-01-15', schema);
   if (key.includes('time') || key.endsWith('at')) return constrainedString('2026-01-15T12:00:00Z', schema);
@@ -696,6 +715,11 @@ function stringExample(name, schema = {}, context = {}) {
   if (key.includes('language')) return constrainedString('typescript', schema);
   if (key.includes('category')) return constrainedString('cs.AI', schema);
   if (key.includes('feedtype')) return constrainedString('top', schema);
+  // GetCapitalFlows: periods, episode bounds and source quarters are YYYY-Qn.
+  if ((where.includes('getcapitalflows') || where.includes('get-capital-flows'))
+    && (key.includes('period') || key.includes('quarter') || key === 'start' || key === 'end')) {
+    return constrainedString('2026-Q1', schema);
+  }
   if (key.includes('period')) return constrainedString('daily', schema);
   if (key.includes('cargotype')) return constrainedString('container', schema);
   if (key.includes('commoditytype')) return constrainedString('oil', schema);
@@ -833,6 +857,30 @@ function getPriceHistoryExample() {
   };
 }
 
+function getGoldIntelligenceExample() {
+  return {
+    goldPrice: 3200,
+    goldChangePct: 0,
+    goldSparkline: [],
+    silverPrice: 0,
+    platinumPrice: 0,
+    palladiumPrice: 0,
+    crossCurrencyPrices: [],
+    drivers: [],
+    updatedAt: '2026-09-30T00:00:00Z',
+    unavailable: false,
+    cbReserves: {
+      asOfMonth: '2026-09',
+      indicator: 'IRFCLDT1_IRFCL56_USD',
+      valueIsOunces: false,
+      totalTonnes: 0,
+      topHolders: [{ iso3: 'USA', name: 'United States', tonnes: 0, pctOfReserves: 50 }],
+      topBuyers12m: [],
+      topSellers12m: [],
+    },
+  };
+}
+
 // One real DTM operation, trimmed to one region and one route.
 function getInternalDisplacementExample() {
   const kassala = { latitude: 15.66, longitude: 35.87 };
@@ -914,6 +962,82 @@ function getYoutubeLiveStreamInfoExample() {
   };
 }
 
+// SearchClaimHeadlines returns one of three states; the generic builder would
+// publish state "example". The headline is synthetic.
+function getSearchClaimHeadlinesExample() {
+  return {
+    headlines: [{
+      source: 'Example Feed',
+      title: 'Synthetic example headline sharing the claim\'s words',
+      link: 'https://example.com/news/synthetic-example',
+      publishedAt: 1768478400000,
+    }],
+    searchedHeadlines: 4140,
+    searchedFeeds: 216,
+    feedTotal: 241,
+    feedCached: 241,
+    state: 'complete',
+    readAt: '2026-01-15T12:00:00.000Z',
+  };
+}
+
+// SearchFactChecks (#9094) returns a fixed caveat and one of three states; the
+// generic builder published a timestamp caveat and state "example". The
+// fact-check is synthetic: no real fact-checker, rating or article is cited.
+// tests/fact-checks.test.mts holds the caveat to FACT_CHECK_CAVEAT.
+function getSearchFactChecksExample() {
+  return {
+    factChecks: [{
+      publisher: 'Example Fact-Checker (synthetic)',
+      site: 'example.com',
+      rating: 'Example rating',
+      reviewedAt: '2026-01-15T12:00:00.000Z',
+      url: 'https://example.com/fact-check/synthetic-example',
+      title: 'Synthetic example fact-check',
+      claimReviewed: 'A synthetic example claim, similar to the claim checked',
+    }],
+    state: 'ok',
+    caveat: 'Ratings are the fact-checkers\' own, quoted with attribution from IFCN-verified signatories. WorldMonitor does not rate claims, and a rating never changes the coverage result above.',
+  };
+}
+
+// A synthetic story moving from one publisher to two, with counts whose parts
+// add up to the total (the reader drops counts that do not). The generic
+// builder filled state and field with "example" and gave counts that summed
+// to 77 stories under stories: 1.
+function getListLabelChangesExample() {
+  return {
+    changes: [{
+      storyId: 'a'.repeat(64),
+      field: 'corroboration',
+      previous: 'single-publisher',
+      next: 'corroborated',
+      previousPublishers: 1,
+      nextPublishers: 2,
+      at: 1767182400000,
+      trigger: 'digest',
+      reason: '2 publisher families now carry this story (was 1).',
+      sources: [
+        { name: 'Example Wire (synthetic)', tier: 1 },
+        { name: 'Example Daily (synthetic)', tier: 2 },
+      ],
+      title: 'Synthetic example story',
+      link: 'https://example.com/news/synthetic-example',
+      credibilityScore: 72,
+    }],
+    state: 'ok',
+    retentionDays: 7,
+    counts: {
+      at: 1767182400000,
+      stories: 120,
+      corroborated: 64,
+      singlePublisher: 51,
+      tier4Only: 3,
+      unknown: 2,
+    },
+  };
+}
+
 // The served US <- Mexico passenger-car answer captured from WITS
 // (tests/fixtures/wits-trains/), trimmed to one group preference. The served
 // UNSPECIFIED unavailableReason is left out, as for GetTariffTrends: the
@@ -978,6 +1102,27 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
+  if (depth === 0 && context.operationId === 'GetCountrySignalObservations'
+    && context.exampleSurface === 'response') {
+    return {
+      countryCode: 'US', family: 'COUNTRY_SIGNAL_FAMILY_OUTAGES', windowIndex: 0,
+      outcomeJson: JSON.stringify({ countryCode: 'US', family: 'outages', state: 'unavailable', observations: [],
+        snapshotAt: null, retrievedAt: '2026-10-18T12:00:00.000Z', computedAt: null,
+        observationWindow: null, scope: 'Country-qualified observations', attribution: 'Cloudflare Radar',
+        partial: true, sampleBeforeCountryFilter: false, reason: 'Synthetic unavailable-source example.',
+        matchedRows: null, sampledRows: null, omittedRows: null }),
+    };
+  }
+  if (depth === 0 && context.operationId === 'ListAircraftEmergencies'
+    && String(context.name ?? '').endsWith('Response')) {
+    return {
+      feeds: EMERGENCY_CODES.map(squawk => ({
+        source: 'adsb.lol', squawk, status: 'available', fetchedAt: 1717200000000, message: 'Synthetic example.',
+      })),
+      observations: [{ address: 'a00001', squawk: '7500', source: 'adsb.lol', observedAt: 0,
+        callsign: 'SYNTHETIC', militaryFlag: 'unknown', description: 'Synthetic example. No observed incident.' }],
+    };
+  }
   if (
     depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getgivingsummary'
@@ -1029,6 +1174,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   }
   if (
     depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getgoldintelligence'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getGoldIntelligenceExample();
+  }
+  if (
+    depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getshippingrates'
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
@@ -1040,6 +1192,27 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getYoutubeLiveStreamInfoExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'searchfactchecks'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getSearchFactChecksExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'searchclaimheadlines'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getSearchClaimHeadlinesExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'listlabelchanges'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getListLabelChangesExample();
   }
   const ref = original.$ref;
   if (ref) {
@@ -1054,6 +1227,17 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
         unit: 'percent',
         source: 'World Bank',
         indicatorCode: 'IT.NET.USER.ZS',
+      };
+    }
+    if (resolvedName === 'CapabilityObservation') {
+      const field = context.name ?? '';
+      return {
+        available: true,
+        value: 1.5,
+        year: 2024,
+        source: 'Example dataset',
+        unit: field.endsWith('Years') ? 'years' : field.endsWith('People') ? 'people'
+          : field === 'researchersPerMillion' ? 'people per million' : 'percent',
       };
     }
     if (resolvedName === 'GetFiveFactorScorecardResponse' || resolvedName === 'GetBlocScorecardResponse') {
@@ -1240,6 +1424,19 @@ function injectDisplacementYearContract(spec) {
 
 function injectSpecExamples(spec) {
   let changed = injectDisplacementYearContract(spec);
+  const countrySignals = spec.paths?.['/api/intelligence/v1/get-country-signal-observations']?.get;
+  const countrySignalFields = spec.components?.schemas?.GetCountrySignalObservationsRequest?.properties;
+  for (const parameter of countrySignals?.parameters ?? []) {
+    const property = { country_code: 'countryCode', window_index: 'windowIndex', cursor: 'cursor' }[parameter.name];
+    if (property && countrySignalFields?.[property]) {
+      const schema = clone(countrySignalFields[property]);
+      delete schema.description;
+      delete schema.example;
+      delete schema.examples;
+      if (!eq(parameter.schema, schema)) changed = true;
+      parameter.schema = schema;
+    }
+  }
   const runId = spec.components?.schemas?.GetSimulationOutcomeRequest?.properties?.runId;
   const runIdParameter = spec.paths?.['/api/forecast/v1/get-simulation-outcome']?.get?.parameters
     ?.find((item) => item?.in === 'query' && item.name === 'runId');
@@ -1269,7 +1466,9 @@ function injectSpecExamples(spec) {
           // and clobbering it would fight that injector. That injector owns
           // header-param examples.
           if (param.in === 'header') continue;
-          const example = exampleForSchema(param.schema, spec, {
+          const example = context.operationId === 'GetCountrySignalObservations' && param.name === 'window_index' ? 0
+            : context.operationId === 'GetCountrySignalObservations' && param.name === 'cursor' ? ''
+            : exampleForSchema(param.schema, spec, {
             ...context,
             name: param.name,
             description: param.description,
@@ -1570,6 +1769,12 @@ function patchYamlExamples(raw, spec, label) {
   if (runIdParameter) {
     const loc = findOperation(lines, runIdPath, 'get', label);
     replaceParamSchema(lines, loc.start, loc.end, 'runId', runIdParameter.schema);
+  }
+  const countrySignalsPath = '/api/intelligence/v1/get-country-signal-observations';
+  for (const parameter of spec.paths?.[countrySignalsPath]?.get?.parameters ?? []) {
+    if (!['country_code', 'window_index', 'cursor'].includes(parameter.name)) continue;
+    const loc = findOperation(lines, countrySignalsPath, 'get', label);
+    replaceParamSchema(lines, loc.start, loc.end, parameter.name, parameter.schema);
   }
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
     for (const [method, op] of Object.entries(ops ?? {})) {

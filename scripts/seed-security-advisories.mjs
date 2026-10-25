@@ -59,12 +59,28 @@ export function parseUsLevel(title) {
   return { '4': 'do-not-travel', '3': 'reconsider', '2': 'caution', '1': 'normal' }[m[1]] || 'info';
 }
 
+// Smartraveller publishes each destination's overall advice twice inside
+// <ta:warnings>: as a label (<dc:description>) and as <ta:level>N/5</ta:level>.
+// The five-point scale counts "No travel advice" as 1/5, so the four advice
+// levels are 2/5..5/5 (checked against the live feed 2026-10-23: 2/5 "Exercise
+// normal safety precautions" ... 5/5 "Do not travel"). The label is read first
+// because it names the level outright. A bare number names no scale, so it
+// falls through to the item text rather than being guessed.
+const AU_ADVICE_LABELS = [
+  ['do not travel', 'do-not-travel'],
+  ['reconsider your need to travel', 'reconsider'],
+  ['exercise a high degree of caution', 'caution'],
+  ['exercise normal safety precautions', 'normal'],
+];
+const AU_FIVE_POINT_LEVELS = { '5': 'do-not-travel', '4': 'reconsider', '3': 'caution', '2': 'normal' };
+
 export function parseAuLevel(item) {
-  const advisoryLevel = String(item.advisoryLevel || '').trim();
-  if (/^4(?:\/5)?$/.test(advisoryLevel)) return 'do-not-travel';
-  if (/^3(?:\/5)?$/.test(advisoryLevel)) return 'reconsider';
-  if (/^2(?:\/5)?$/.test(advisoryLevel)) return 'caution';
-  if (/^1(?:\/5)?$/.test(advisoryLevel)) return 'normal';
+  const label = String(item.advisoryLabel || '').trim().toLowerCase();
+  for (const [text, level] of AU_ADVICE_LABELS) {
+    if (label === text) return level;
+  }
+  const fivePoint = String(item.advisoryLevel || '').trim().match(/^([1-5])\/5$/);
+  if (fivePoint) return AU_FIVE_POINT_LEVELS[fivePoint[1]] || 'info';
 
   const l = `${item.title || ''} ${item.description || ''}`.toLowerCase();
   if (l.includes('do not travel')) return 'do-not-travel';
@@ -93,8 +109,11 @@ const BY_COUNTRY_NAME = Object.fromEntries(
 function extractCountry(title, feed) {
   if (feed.targetCountry) return feed.targetCountry;
   if (feed.sourceCountry === 'EU' || feed.sourceCountry === 'INT') return undefined;
+  // Apostrophes are deleted, not spaced: the country keys spell
+  // "democratic peoples republic of korea", and a space left "republic of
+  // korea" (KR) as the longest match for Smartraveller's North Korea title.
   const normalized = title.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
-    .replace(/['.(),/-]/g, ' ').replace(/\s+/g, ' ');
+    .replace(/['\u2019]/g, '').replace(/[.(),/-]/g, ' ').replace(/\s+/g, ' ');
   for (const [name, code] of SORTED_COUNTRY_ENTRIES) {
     if (normalized.includes(name)) return code;
   }
@@ -126,7 +145,9 @@ export function parseRssItems(xml) {
     const description = stripHtml((block.match(/<description[^>]*>([\s\S]*?)<\/description>/i) || [])[1] || '');
     const pubDate = stripHtml((block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i) || [])[1] || '');
     const advisoryLevel = stripHtml((block.match(/<ta:level[^>]*>([\s\S]*?)<\/ta:level>/i) || [])[1] || '');
-    items.push({ title, link, description, pubDate, advisoryLevel });
+    const warnings = (block.match(/<ta:warnings[^>]*>([\s\S]*?)<\/ta:warnings>/i) || [])[1] || '';
+    const advisoryLabel = stripHtml((warnings.match(/<dc:description>([\s\S]*?)<\/dc:description>/i) || [])[1] || '');
+    items.push({ title, link, description, pubDate, advisoryLevel, advisoryLabel });
   }
   return items;
 }
@@ -224,6 +245,18 @@ export async function fetchFeed(feed, doFetch = fetch) {
   }
 }
 
+// Smartraveller stamps every item in Canberra time ("20 Oct 2026 23:00:00
+// AEDT"), and Date does not know those zone names. Unparseable dates used to
+// throw from toISOString() and drop the whole feed; they now fall back to the
+// fetch time, the same as an item with no date.
+const ZONE_OFFSETS = { AEST: '+1000', AEDT: '+1100' };
+
+function toIsoDate(pubDate) {
+  const normalized = String(pubDate || '').trim().replace(/\b(AEST|AEDT)$/, (zone) => ZONE_OFFSETS[zone]);
+  const parsed = normalized ? new Date(normalized) : null;
+  return parsed && Number.isFinite(parsed.getTime()) ? parsed.toISOString() : new Date().toISOString();
+}
+
 /**
  * Normalise one feed's raw items into advisory records.
  *
@@ -237,7 +270,7 @@ export function mapFeedItems(items, feed) {
     .map(item => ({
       title: item.title,
       link: item.link,
-      pubDate: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
+      pubDate: toIsoDate(item.pubDate),
       source: feed.name,
       sourceCountry: feed.sourceCountry,
       level: parseLevel(item, feed.levelParser),
@@ -276,13 +309,64 @@ export function buildByCountryMap(advisories) {
   return map;
 }
 
+// Pre-publish diagnostics carried on the fetched report. advisoryPublishTransform
+// strips them from both stored keys; advisoryAfterPublish copies them onto
+// seed-meta, where api/health.js reads sourceState and errorCode.
+export const ADVISORY_SOURCE_HEALTH_FIELD = '_sourceHealth';
+
+// A travel register (a feed with a levelParser) is missing when it contributed
+// no levelled country: an HTTP failure, an empty body, and a format change that
+// leaves every item at 'info' all look the same to byCountry. The seed still
+// publishes while the other register clears MIN_ADVISORY_COUNTRY_COVERAGE, so
+// this is what keeps a one-register index from reading as healthy.
+function summarizeSourceHealth(feeds, itemsByFeed) {
+  const missingRegisters = [];
+  const emptyFeeds = [];
+  feeds.forEach((feed, i) => {
+    const items = itemsByFeed[i];
+    if (items.length === 0) emptyFeeds.push(feed.name);
+    if (feed.levelParser && !items.some((a) => a.country && a.level && a.level !== 'info')) {
+      missingRegisters.push(feed.sourceCountry);
+    }
+  });
+  return { missingRegisters: [...new Set(missingRegisters)].sort(), emptyFeeds };
+}
+
+export function advisoryPublishTransform(data) {
+  const { [ADVISORY_SOURCE_HEALTH_FIELD]: _diagnostics, ...published } = data || {};
+  return published;
+}
+
+export async function advisoryAfterPublish(data) {
+  const { missingRegisters = [], emptyFeeds = [] } = data?.[ADVISORY_SOURCE_HEALTH_FIELD] || {};
+  if (missingRegisters.length === 0) {
+    // Explicit undefineds: a validation skip merges the previous seed-meta's
+    // diagnostics under this patch, so a recovery must clear the old failure.
+    return { freshnessMetaPatch: { sourceState: 'ok', errorCode: undefined, failedSources: undefined, emptyFeeds } };
+  }
+  return {
+    freshnessMetaPatch: {
+      sourceState: 'degraded',
+      errorCode: `ADVISORY_REGISTER_MISSING_${missingRegisters.join('_')}`,
+      failedSources: missingRegisters,
+      emptyFeeds,
+    },
+  };
+}
+
 export async function fetchAll({ feeds = ADVISORY_FEEDS, doFetch = fetch } = {}) {
   const results = await Promise.allSettled(feeds.map((feed) => fetchFeed(feed, doFetch)));
   const all = [];
+  const itemsByFeed = [];
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
+    itemsByFeed.push(r.status === 'fulfilled' ? r.value : []);
     if (r.status === 'fulfilled') all.push(...r.value);
     else console.warn(`  Feed ${feeds[i]?.name || i} failed: ${r.reason?.message || r.reason}`);
+  }
+  const sourceHealth = summarizeSourceHealth(feeds, itemsByFeed);
+  if (sourceHealth.missingRegisters.length > 0) {
+    console.warn(`  Travel registers with no levelled country: ${sourceHealth.missingRegisters.join(', ')}`);
   }
 
   const seen = new Set();
@@ -301,7 +385,13 @@ export async function fetchAll({ feeds = ADVISORY_FEEDS, doFetch = fetch } = {})
   // size is a payload concern.
   const byCountry = buildByCountryMap(deduped);
   const advisories = capPerSource(deduped, PER_SOURCE_DISPLAY_LIMIT);
-  const report = { byCountry, byCountryName: BY_COUNTRY_NAME, advisories, fetchedAt: new Date().toISOString() };
+  const report = {
+    byCountry,
+    byCountryName: BY_COUNTRY_NAME,
+    advisories,
+    fetchedAt: new Date().toISOString(),
+    [ADVISORY_SOURCE_HEALTH_FIELD]: sourceHealth,
+  };
 
   console.log(`  ${advisories.length} advisories stored (${deduped.length} fetched), ${Object.keys(byCountry).length} countries with levels`);
 
@@ -339,7 +429,13 @@ if (isMain) {
     ttlSeconds: TTL,
     recordCount: (d) => d?.advisories?.length || 0,
     sourceVersion: 'rss-feeds',
-    extraKeys: [{ key: BOOTSTRAP_KEY, transform: (d) => d, ttl: TTL, declareRecords }],
+    publishTransform: advisoryPublishTransform,
+    afterPublish: advisoryAfterPublish,
+    // A rejected report (no register cleared the coverage floor) skips the
+    // publish; this replaces the previous run's sourceState instead of
+    // carrying it forward onto the mirrored seed-meta.
+    afterValidationSkip: advisoryAfterPublish,
+    extraKeys: [{ key: BOOTSTRAP_KEY, transform: advisoryPublishTransform, ttl: TTL, declareRecords }],
 
     declareRecords,
     schemaVersion: 1,

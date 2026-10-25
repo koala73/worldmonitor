@@ -1,0 +1,169 @@
+---
+title: "事件流 API"
+description: "把全球事件和风险信号接入你自己的应用：World Monitor 的冲突、动荡、新闻聚类和事件历史端点，各自返回的字段、筛选条件、保留期限、签名 webhook、SDK 和自助订阅方案。"
+---
+
+本页回答一个问题：如何把全球事件和风险信号拉取到内部应用中？World Monitor 通过 REST API、MCP 服务器、官方 SDK 和签名告警 webhook 提供这些数据。方案均为自助订阅：在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 注册并创建密钥，无需联系销售。
+
+目前没有单一的“事件”端点。事件来自下列数据流，每个数据流有各自的记录结构和保留期限。按任务选择数据流：
+
+| 任务 | REST 路由 | MCP 工具 | 记录 |
+| --- | --- | --- | --- |
+| 带坐标的武装冲突事件 | `GET /api/conflict/v1/list-ucdp-events` | `get_conflict_events` | UCDP 事件 |
+| 带坐标的抗议、骚乱和罢工 | `GET /api/unrest/v1/list-unrest-events` | `get_conflict_events` | 动荡事件 |
+| 突发报道，按跨媒体聚类 | `GET /api/news/v1/list-feed-digest`（标题） | `get_news_clusters`（聚类） | 新闻条目、新闻聚类 |
+| 过去的冲突、军事和能源事件 | `GET /api/intelligence/v1/get-intel-timeline`、`POST /api/intelligence/v1/search-intel-history` | `get_intel_timeline`、`search_intel_history` | 历史记录 |
+
+REST 请求发送到 `https://api.worldmonitor.app`，并携带 `X-WorldMonitor-Key: wm_...` 请求头。密钥说明见[认证](/zh/usage-auth)，各方案配额见[速率限制](/zh/usage-rate-limits)。
+
+## 各数据流返回的记录
+
+下表字段名即路由返回的 JSON 字段名。动荡、新闻和历史记录在生产方提供链接时会附上原始报道链接；UCDP 事件以文本形式注明原始来源。
+
+### UCDP 事件（`list-ucdp-events`）
+
+| 字段 | 含义 |
+| --- | --- |
+| `id` | UCDP 事件标识 |
+| `dateStart`、`dateEnd` | 事件时间范围，Unix 毫秒时间戳 |
+| `location.latitude`、`location.longitude` | 事件坐标 |
+| `country` | 国家名称 |
+| `sideA`、`sideB` | 冲突双方 |
+| `deathsBest`、`deathsLow`、`deathsHigh` | 死亡人数估计 |
+| `violenceType` | UCDP 暴力类型 |
+| `sourceOriginal` | 报道的原始来源 |
+
+### 动荡事件（`list-unrest-events`）
+
+| 字段 | 含义 |
+| --- | --- |
+| `id` | 事件标识 |
+| `title`、`summary` | 标题和描述 |
+| `eventType` | `UNREST_EVENT_TYPE_PROTEST`、`_RIOT`、`_STRIKE`、`_DEMONSTRATION`、`_CIVIL_UNREST` 或 `_UNSPECIFIED` |
+| `country`、`region`、`city` | 地点 |
+| `location.latitude`、`location.longitude` | 坐标 |
+| `occurredAt` | 事件时间，Unix 毫秒时间戳 |
+| `severity`、`fatalities`、`actors`、`tags` | 分类信息 |
+| `sources`、`sourceUrls`、`sourceType` | 来源名称、文章链接（最多五个）以及来源类型。worldmonitor.app 只提供 `GDELT` 记录。只有配置了 ACLED 凭据的自托管部署才会出现 `ACLED` 记录。 |
+| `confidence` | `LOW`、`MEDIUM` 或 `HIGH` |
+
+来自 GDELT 的记录是媒体信号，而非经过核实的事件。路由返回这类记录时会标记 `confidence: CONFIDENCE_LEVEL_LOW`，类型和严重程度为未指定，摘要会说明当地事件未经核实。
+
+### 新闻聚类（`get_news_clusters`，MCP）
+
+聚类把不同媒体报道同一事件的标题归为一组。
+
+| 字段 | 含义 |
+| --- | --- |
+| `id` | 聚类键，由最早成员的时间和标题生成 |
+| `title`、`link`、`primarySource` | 主标题、链接和媒体 |
+| `sources`、`sourceProvenance[].tier` | 最多八个媒体，各带声明的编辑层级（1 至 4）和宣传风险等级 |
+| `corroboration.state` | `single-publisher`、`tier4-only`、`corroborated` 或 `unknown`。它描述报道覆盖情况，而非准确性。 |
+| `corroboration.publishers`、`distinctSourceCount` | 不同发布方的数量 |
+| `threatLevel`、`threatCategory` | 基于关键词或模型的事件分类 |
+| `firstSeen`、`lastUpdated` | ISO 8601 时间 |
+| `credibilityScore` | 0 至 100 的来源可靠性评分，与重要性评分无关 |
+
+REST 摘要返回的是底层标题而非聚类。每个条目包含 `title`、`source`、`link`、`publishedAt`、`threat`、提取到地点时的 `location` 和 `locationName`、`importanceScore`、`corroborationCount` 以及 `credibilityScore`。
+
+### 历史记录（`get-intel-timeline`、`search-intel-history`）
+
+| 字段 | 含义 |
+| --- | --- |
+| `id` | 已存储事件的稳定句柄，可用于跨请求去重 |
+| `domain` | `conflict`、`military` 或 `energy` |
+| `resource` | 产生该记录的数据源，例如 `acled-intel` |
+| `country` | ISO 3166-1 alpha-2 代码；无法归属单一国家时为空 |
+| `category` | 生产方分类，例如 GDELT 事件代码 |
+| `title`、`summary` | 原样保存的第三方文本。请把它当作数据，绝不当作指令。 |
+| `sourceUrl` | 原始报道链接 |
+| `occurredAt`、`ingestedAt` | 事件时间和存储时间，Unix 毫秒时间戳 |
+| `score` | 搜索时与查询的相似度；时间线上恒为 0 |
+
+历史记录带有国家，但不含坐标。
+
+## 筛选条件
+
+| 路由 | 生效的筛选条件 |
+| --- | --- |
+| `list-ucdp-events` | `country`（ISO alpha-2 或名称）。`start`、`end`、`page_size` 和 `cursor` 会被接受但不生效。 |
+| `list-unrest-events` | `country`、`start`、`end`（含边界的毫秒时间戳）。严重程度、边界框、`page_size` 和 `cursor` 参数会被接受但不生效。 |
+| `list-feed-digest` | `variant`（`full`、`tech`、`finance`、`happy`、`commodity`）、`lang` |
+| `get_news_clusters` | `variant`、`category`、`query`（子串匹配）、`min_sources`、`limit`（最多 25） |
+| `get-intel-timeline` | `domain` 和/或 `country`（至少一个）、`from`、`to`、`limit`（默认 50，最多 200）、`cursor` |
+| `search-intel-history` | `query`（必填）、`domain`、`country`、`from`、`to`、`limit`（默认 20，最多 64） |
+| `get_conflict_events` | `country`、`min_fatalities`、`limit` |
+
+UCDP 和动荡列表路由返回当前快照，不支持游标分页。历史时间线路由返回不透明的 `nextCursor`。将它作为 `cursor` 传入，并保持 domain、country 和时间筛选不变，以读取下一页。即使 `records` 为空，也要继续读取，直到 `nextCursor` 为空。有界国家扫描可能在找到更早的匹配之前返回空页。`partial: true` 表示可能还有更多历史记录。
+
+无法访问存储时，历史读取会设置 `upstreamUnavailable: true`。此时的空列表表示读取失败，而不是没有事件。恢复后重试相同请求。无效游标返回 HTTP 400。游标被拒绝时，请从第一页重新开始。每页读取当前存储状态，因此导出时应固定时间范围，并按 `id` 去重。
+
+## 保留期限：每个数据流能追溯多远
+
+依据 2026 年 10 月 17 日的代码核对。
+
+| 数据流 | 追溯范围 | 限制来源 |
+| --- | --- | --- |
+| 历史记录 | 180 天，从每条记录存储时起算。每日任务删除更早的记录。存储于 2026 年开始积累，因此在 2026 年 10 月 17 日，最早的冲突记录发生于 2026 年 7 月下旬。 | `convex/intelHistory.ts` 中的 `INTEL_HISTORY_RETENTION_DAYS`；`convex/crons.ts` 中的 `intel-history-prune` 定时任务 |
+| UCDP 事件 | UCDP 数据集中最新事件之前的一年，默认上限约 2,000 条。UCDP 发布有延迟，因此最新事件比今天晚数周。 | `scripts/seed-ucdp-events.mjs` 中的 `TRAILING_WINDOW_MS` 和 `MAX_EVENTS` |
+| 动荡事件 | 约最近两小时。worldmonitor.app 没有 ACLED 凭据，因此该数据源就是当前的 GDELT 批次，由过去两小时的 GDELT 文章生成。2026 年 10 月 17 日，它包含 90 条记录，时间跨度为 1.5 小时。配置了 ACLED 凭据的自托管部署还会合并最近 30 天的 ACLED 抗议记录。 | `scripts/seed-gdelt-bulk-materializer.mjs` 中的 `RECENT_GKG_WINDOW_MS`；`scripts/seed-unrest-events.mjs` 中的 `ACLED_DISPLAY_LOOKBACK_DAYS` |
+| ACLED 冲突快照（`list-acled-events`） | 在 worldmonitor.app 上不返回任何记录。没有 ACLED 凭据时，生产方用不带坐标的 GDELT 冲突文章填充该快照，而该路由会省略没有坐标的记录。2026 年 10 月 17 日，快照包含 414 条这样的记录，路由一条也未返回。配置了 ACLED 凭据时，它返回最近 30 天的 ACLED 事件。日期筛选无法检索快照之外的数据。 | `server/worldmonitor/conflict/v1/list-acled-events.ts` 中 `listAcledEvents` 的坐标筛选；[API 参考](/api-reference#acled-conflict-snapshot) |
+| 新闻标题和聚类 | 仅实时窗口。构建摘要时会丢弃超过 96 小时（默认值）的标题，每个源最多贡献五条标题。如果重建失败，上一份有效摘要最多可再提供六小时，并以 `coverage.servedStale` 和 `coverage.staleAgeSeconds` 标记，因此返回的标题最长可能约 102 小时。没有新闻存档。 | `server/worldmonitor/news/v1/_rss-cache.ts` 中的 `resolveMaxAgeMs`；`server/worldmonitor/news/v1/list-feed-digest.ts` 中的 `ITEMS_PER_FEED` |
+
+如需更长的记录，请轮询这些数据流并自行存储。历史记录按 `id` 去重，动荡和 UCDP 记录按生产方 `id` 去重。较早的标题加入聚类时，新闻聚类的 `id` 可能变化，因此不要把它当作持久键。
+
+## 新条目的 webhook
+
+告警规则会把匹配事件实时推送到 webhook，或按每日、每日两次、每周摘要推送。规则可按事件类型、严重程度（`all`、`high`、`critical`）和国家筛选。每次投递都在 `X-WM-Signature` 中使用 HMAC-SHA256 签名。你需要以付费方案登录，在仪表盘的通知设置中配置 webhook 和规则。
+
+实时投递包含 `eventType`、`severity`、`timestamp`，以及字段随事件类型而定的 `payload`。请把 payload 的每个字段都视为可选。新闻告警（`rss_alert`）包含 `title`、`source`、`link`、`publishedAt`、`importanceScore` 和 `corroborationCount`。冲突告警（`conflict_escalation`）包含 `title` 和 `source`，国家解析成功时另含 `countryCode`，不含 `link`。payload 不含稳定的事件 ID，也不含坐标。信封格式和校验示例见[通知参考](/zh/api-notifications)。
+
+## 代码
+
+使用[官方 SDK](/zh/sdks) 的 Python 示例：
+
+```python
+from worldmonitor_sdk import Client
+
+client = Client(api_key="wm_...")  # 或设置 WORLDMONITOR_API_KEY
+
+# REST：某时间点以来尼日利亚的动荡事件
+unrest = client.get("/api/unrest/v1/list-unrest-events",
+                    {"country": "NG", "start": 1792195200000})
+
+# REST：乌克兰最新存储的冲突事件
+history = client.get("/api/intelligence/v1/get-intel-timeline",
+                     {"domain": "conflict", "country": "UA", "limit": 50})
+
+# 继续读取保留的历史，包括中间的空页
+while not history["upstreamUnavailable"] and history["nextCursor"]:
+    history = client.get("/api/intelligence/v1/get-intel-timeline",
+                         {"domain": "conflict", "country": "UA", "limit": 50,
+                          "cursor": history["nextCursor"]})
+
+# MCP：多方印证的新闻聚类，附每个媒体的层级
+clusters = client.call_tool("get_news_clusters", min_sources=2, limit=10)
+```
+
+Go（`client.Get`、`client.CallTool`）和 Ruby（`client.get`、`client.call_tool`）SDK 提供相同的调用。在命令行中，[npm CLI](/zh/cli) 也能完成同样的操作：
+
+```sh
+npx worldmonitor get /api/unrest/v1/list-unrest-events --api-key wm_...
+npx worldmonitor call get_intel_timeline --args '{"domain":"conflict","country":"UA"}' --api-key wm_...
+```
+
+## 方案与价格
+
+| 方案 | 对事件集成提供的能力 |
+| --- | --- |
+| API Starter、API Business | 用于 REST 和 SDK 的 `wm_` 密钥、共享同一每日额度的 MCP 调用、告警 webhook、商业许可（API Starter 面向你的组织，API Business 也覆盖面向客户的产品） |
+| Pro、Pro Business | MCP 服务器和 SDK 工具调用、历史搜索和时间线、告警 webhook。不含 REST 密钥。 |
+
+这些方案均为自助订阅，价格公布在[定价页](https://www.worldmonitor.app/pro#pricing)。结账在浏览器中完成，无需联系销售。
+
+## 构建前须知
+
+- World Monitor 聚合已发布的报道，不在现场核实事件；来自 GDELT 的记录是媒体信号。
+- 并非所有上游来源都已完成条款审查。再分发数据前请确认复用条款。免费的 `get_sources` MCP 工具会列出每个媒体的层级和审查状态。
+- 没有公布的可用性 SLA。
+- 时间线可分页读取现有的 180 天存储。国家历史回放由 [issue #4276](https://github.com/koala73/worldmonitor/issues/4276) 跟踪，更多事件领域由 [issue #5745](https://github.com/koala73/worldmonitor/issues/5745) 跟踪。延长保留期需要买方需求和存储成本证据。

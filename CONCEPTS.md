@@ -20,9 +20,13 @@ A companion cache key holding a *view* of a dataset sized to what the dashboard 
 
 A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss. What a reader answers on a miss is the reader's own choice — a short-TTL computed fallback where one is derivable, or an explicit unavailable where the key is required and a fabricated empty would be read as data — but no reader repopulates the key; only the owning seeder's next cycle restores it. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. On the read side, seed-owned keys must bypass the deployment key prefix (`raw = true`), because the owning seeder writes bare keys — and the `seed-meta:` name prefix is not the ownership test, since a `seed-meta:`-named key can still be route-stamped and app-owned. See also: Bootstrap Tier, On-Demand Key, Read Outcome, Deployment Key Prefix, Seed-Meta Record.
 
+### Last-Good Snapshot
+
+The long-lived companion a seeder publishes beside its short-lived live key — conventionally the `:stale:` key — which readers fall back to when the live key is missing or does not cover the request. It exists to survive the producer's degraded ticks, so the same asymmetry as the Last-Good Digest applies: a tick whose payload covers less than the snapshot already held (one source instead of several, regional instead of global) may still become the live key, but must not replace a wider last-good snapshot, or the fallback is lost at exactly the moment it is needed. A wider snapshot that is kept is not re-extended, so it still ages out on its own retention window. See also: Seed-Owned Key, Last-Good Digest.
+
 ### Seed-Meta Record
 
-The small freshness record a seeder writes beside a data key after each publish — when it ran and how many records it published — under a namespace of its own, so that health can grade staleness without reading the payload. It vouches only for the key it was written for: a canonical key's record says nothing about a sibling per-item key, and a reader whose key has no record in the health table is unmonitored however fresh the canonical one is. The record and the payload it describes must live at distinct keys; if a producer names the data key as the record's location, the record overwrites the payload on every run while every consumer of the record still reports fresh — the payload is erased, not stale, and no freshness alarm can fire. See also: Seed-Owned Key, Content-Age Contract, Activation Marker.
+The small freshness record a seeder writes beside a data key after each publish — when it ran and how many records it published — under a namespace of its own, so that health can grade staleness without reading the payload. It vouches only for the key it was written for: a canonical key's record says nothing about a sibling per-item key, and a reader whose key has no record in the health table is unmonitored however fresh the canonical one is. A failed run can also write a record, with a current timestamp and an error mark, while the last good payload keeps serving; its timestamp then dates the attempt, not the data, so every reader that grades freshness must treat an error record as stale regardless of age. The record and the payload it describes must live at distinct keys; if a producer names the data key as the record's location, the record overwrites the payload on every run while every consumer of the record still reports fresh — the payload is erased, not stale, and no freshness alarm can fire. See also: Seed-Owned Key, Content-Age Contract, Activation Marker.
 
 ### Deployment Key Prefix
 
@@ -35,6 +39,12 @@ The freshness clock a seeder declares over the *observation dates inside* the pa
 Two rules follow from what the contract reduces to. It reports a single newest timestamp, so a payload assembled from *several independently-failing sources* must derive one clock per source and report the **oldest** of them; reducing all their dates together takes the newest, and the still-living source then hides the dead one indefinitely — an alarm that can only fire when every source dies at once. And an undatable payload must report nothing rather than a default, because "we cannot date this" and "this is stale" warrant the same response, while a fabricated recent date warrants none.
 
 Sizing the budget belongs to the source's own publication calendar, measured rather than assumed: the widest gap the source routinely takes — a holiday cluster, a non-working period, a weekend either side — plus room for one missed run. A budget guessed generously enough to never false-alarm has usually also stopped detecting the freeze it exists for. See also: Seed-Owned Key, Activation Marker, Content Clock, Superseded Failure.
+
+### Source Release
+
+The publication and update dates an upstream attaches to the dataset a value came from, kept per indicator and distinct from the value's observation period, the time it was fetched or seeded, and any named edition.
+
+Publication marks when the dataset was formally issued; the update date moves with later revisions, so an unchanged publication date does not mean unchanged data. A release is known only when the upstream supplied it in the same response as the values. An absent, malformed or ambiguous date stays unknown and is shown as not supplied, never filled from fetch or seed time. A date does not identify an edition, so a named edition needs an edition-specific source rather than a date match. See also: Content-Age Contract, Reference Period.
 
 ### Activation Marker
 
@@ -94,7 +104,7 @@ Two rules make a shadow comparable rather than merely reassuring. The candidate 
 
 ### Alert Rule
 
-A per-user notification subscription that decides which published events reach that user's channels. A rule combines a sensitivity floor, a delivery mode (realtime or a digest cadence), and optional scopes — countries and tickers. Rules are fan-out targets: one published event is tested against every enabled rule independently. See also: Country Scope, Event Attribution.
+A per-user notification subscription that decides which published events reach that user's channels. A rule combines a sensitivity floor, a delivery mode (realtime or a digest cadence), and optional scopes — countries, tickers, and chokepoints (which narrow only chokepoint disruption alerts). Rules are fan-out targets: one published event is tested against every enabled rule independently. See also: Country Scope, Event Attribution.
 
 ### Country Scope
 
@@ -115,6 +125,18 @@ The dispatcher must not encode an origin in a Click Target. The product is serve
 Detaching a path from its origin is where this turns dangerous. A target can be first-party by host and still carry an authority-shaped path that resolves straight back off-origin — onto the dashboard tab, the exact outcome the rule exists to prevent — and the laundering spellings collapse together, because a URL parser normalizes a backslash to a slash. Each half therefore re-resolves and compares origins rather than inspecting the string's shape, and each emits the re-resolved path rather than the string it validated.
 
 Scheme is a separate axis, and its ordering is load-bearing: the scheme must be rejected *before* any origin comparison, because a blob URL reports its inner origin and would otherwise satisfy a same-origin test that the opaque schemes fail. Enforcement is asymmetric: the dispatcher refuses to put a target that is not plain https, or that carries embedded credentials, into the *push* payload, and the client independently refuses to act on one, so neither of those layers depends on the other being correct — but the text channels still render the raw target in their message body, where it is equally clickable and unchecked. A scheme guard on the push path is therefore not a guarantee about the target as a whole. See also: Alert Rule, Event Attribution, Variant Host.
+
+### Threshold Event
+
+A push event the webhook worker produces by re-evaluating a condition against a feed every tick (chokepoint disruption, country risk surge). The unit of delivery is a crossing: the worker keeps the crossing pending, under one delivery id, while the condition holds and a send has not succeeded, and re-arms by hysteresis once it subsides. Nothing is queued; a crossing that re-arms before it is delivered is simply gone, and the next crossing gets a new id. Its scope fields are top-level registration fields. See also: Occurrence Event, Event Id.
+
+### Occurrence Event
+
+A push event that happened once and has no condition to re-check (a breaking headline, a large market move, a natural hazard). The worker drains a copy of the producer's stream (for natural hazards, diffs the seeded feeds against the ids it has already seen, so a first read only records them), matches each occurrence against every subscription's stored `scope`, and gives each subscription one delivery id per Event Id, from the first copy that matches that subscription's scope: the per-subscriber state remembers the Event Id as pending (with the body as first built, resent unchanged on retry) until it is delivered, then as a day-long tombstone so a replayed or republished copy is a no-op. Delivery stays at-least-once. A pending delivery older than the event's retry window is dropped, not delivered late, and leaves the same tombstone. Per-subscription hour and day caps count every event sent in the bucket, retries included; new events over a cap are dropped and counted rather than queued or batched. Its scope fields travel in the registration body's `scope` object, validated against the event's registry `inputSchema`. See also: Threshold Event, Event Id, Alert Rule.
+
+### Event Id
+
+The producer-side identity of an Occurrence Event, carried in every delivery beside the per-subscription delivery id. It is derived from what makes two copies the same event, not from the message that carried them: a story's canonical link (so the five site-variant copies and a reworded headline collapse), a market move's coalesce key per UTC day (so the relay's hourly republish of a sustained move is one event), a hazard feed's own record id (a hurricane advisory number stripped, so a new advisory is the same storm). Two subscriptions on the same event receive the same Event Id under different delivery ids, which is what lets a receiver dedupe across subscriptions. A title hash is the fallback only when a story carries no link. See also: Occurrence Event.
 
 ## Product Analytics Collection
 
@@ -190,6 +212,12 @@ An element that browser and RUM layout-shift attribution names because its *posi
 
 The element that *causes* a layout shift by changing its own footprint — growing, shrinking, materializing (insertion), or disappearing (removal). Movers are not reported by shift-attribution APIs; naming one requires diffing element geometry across the shift itself (a cached top/height baseline compared at shift delivery). The victim/mover distinction is load-bearing for all layout-stability work in this project: two shipped fixes aimed at victims had null field effect before mover instrumentation named the true mechanism. See also: Shift Victim, Deferred-Shell Contract.
 
+### Critical CSS Mirror
+
+A hand-maintained inline style rule that copies, for the first viewport only, the geometry the full stylesheet will give an element. It exists because the marketing pages defer their stylesheet off the first paint. Until the sheet arrives the page paints from the mirrors alone, and any geometry they resolve differently from the sheet shifts at the swap.
+
+Two rules govern mirrors. A mirror matches what the element finally computes to once the sheet has loaded, including any earlier unlayered override that already wins over the stylesheet, not what its source classes ask for. Where a mirror sits in the cascade decides what it can break: an unlayered mirror outranks every stylesheet layer for the whole session, so it silently beats responsive and hover variants after the sheet loads, while a mirror placed in the stylesheet's own utilities layer gives way to the sheet's identical rules. Mirrors are also why prerendered first-viewport markup is not free. Every class it introduces needs a mirror or becomes a Shift Mover at the swap. See also: Shift Mover, Shift Victim.
+
 ### Split Layout
 
 The dashboard mode where the map becomes a resizable column beside the panel grid, replacing the **stacked layout** (a full-width map band above the grid). One shared threshold, defined once in code and mirrored by CSS media queries whose literals are pinned by an alignment test, gates the switch for web and desktop alike — the two platforms previously used different thresholds, and their drift shipped a panel-loss bug. Mode-conditional state (which element owns the dashboard scroll, which storage key holds the saved map height) flips with the mode, so anything encoding a viewport-to-behavior expectation — e2e viewport tables included — is part of the threshold's blast radius. *Avoid: ultrawide (the legacy name that survives in code identifiers predating the unified threshold).* See also: Bottom Zone.
@@ -236,7 +264,7 @@ The error-reporting SDK's habit of writing the stack captured at a fetch *call s
 
 ### Ownership Tag
 
-A tag the project's own capture call sites attach to a Sentry event to assert that first-party code caught the failure and chose to report it. It exists because frame provenance cannot always answer that question: a rejection minted at a browser boundary — an `AbortSignal.timeout` deadline, a bare abort — carries a header-only stack and reaches a suppression gate with zero frames, indistinguishable from extension noise no matter which owned function caught it. The tag restores the distinction that the missing stack destroyed. Its safety rests on a scope invariant rather than a census: only first-party capture payloads set it, never the SDK, an extension, or an injected script, so *presence* is the test and a named list of values is the same treadmill a name-shaped frame gate is. The traps are twofold. Presence means presence — a truthiness check reads an empty tag as absent and silently re-suppresses. And the tag is worthless against any suppression layer that runs before the gate reading it: an `ignoreErrors` entry is applied as an SDK event processor during event preparation, is blind to tags and frames alike, and therefore cannot be overridden by ownership at all — a message suppressed there has to move layers before any tag can rescue it. See also: Trampoline Frame, Vacuous Guard.
+A tag the project's own capture call sites attach to a Sentry event to assert that first-party code caught the failure and chose to report it. It exists because frame provenance cannot always answer that question: a rejection minted at a browser boundary — an `AbortSignal.timeout` deadline, a bare abort — carries a header-only stack and reaches a suppression gate with zero frames, indistinguishable from extension noise no matter which owned function caught it. The tag restores the distinction that the missing stack destroyed. Its safety rests on a scope invariant rather than a census: only first-party capture payloads set it, never the SDK, an extension, or an injected script, so *presence* is the test and a named list of values is the same treadmill a name-shaped frame gate is. The traps are twofold. Presence means presence — a truthiness check reads an empty tag as absent and silently re-suppresses. And the tag is worthless against any suppression layer that runs before the gate reading it: an `ignoreErrors` entry is applied as an SDK event processor during event preparation, is blind to tags and frames alike, and therefore cannot be overridden by ownership at all — a message suppressed there has to move layers before any tag can rescue it. One value is stronger than presence: when the capture site has already confirmed the failure is real, such as a map render loop observed to have stopped, its tag value exempts the event from every suppression rule, because those rules guess ownership from stack shape and the confirmed report's stack is vendor code by nature. See also: Trampoline Frame, Vacuous Guard.
 
 ### Two-Verifier Seam
 
@@ -386,6 +414,14 @@ A rolling, per-country index of GDELT GKG articles the bulk materializer keeps a
 
 The indexed country pages that carry no dated development in a given weekly capture. Its size is a property of the grounding pool — how many countries the week's digest and the Country Article Index actually name — not of whether the enrichment ran, and it is recorded as a count in the capture's coverage rather than gated to zero, because no article pool names every country every week. A capture whose freeze attempted the index — whatever the index answered — is held to a higher coverage floor at build time than one frozen before the index existed, so a tail the size of the digest-only era cannot ship as a green build, and a gate that relaxed when the index failed would be no gate. A measured-but-lower week can still publish through an operator override on the weekly workflow rather than by editing the floor. See also: Recent Developments, Brief Grounding, Country Article Index.
 
+## Comparison Pages
+
+### Comparison Page
+
+A generated, crawlable page that sets World Monitor beside named competitors on a shared set of matrix columns (price, update latency, domains, signup, REST API, MCP server, licence, sources, archive), with prose on where each competitor wins. Competitor cells are claims about another company's product, so each one must trace to a source a reader can open; when no source states a value the cell says it is not published or unverified rather than guessing, and an MCP cell reads unverified unless the product is on a test allowlist, which should only be extended once public documentation for the server exists.
+
+One vendor appears in several comparison pages at once — the hub matrix, its head-to-head page, alternatives and topic pages, and narrative prose — and nothing reconciles them automatically, so a correction to one vendor's facts is only complete when every page that names it agrees.
+
 ## Source Catalog
 
 ### Catalog Provider
@@ -448,7 +484,7 @@ Every first-party host describes itself as its own issuer, but a sign-in can fin
 
 The refusal the MCP transport gives an opening handshake that carries no credentials: an authentication error that names where to sign in and echoes the request's identifier, sent before anything else is served.
 
-Hosted connectors classify a server by how this first request is answered. One that succeeds is recorded as needing no sign-in, and a refusal that arrives later, mid-session, leaves the connector with no authorization server to send the user to, so its sign-in control never works. Only the handshake is challenged. Stateless callers that never send one keep their credential-free catalog reads and the free tool, and the machine-discovery aliases still accept an anonymous handshake for scanners. A refusal without the request's identifier is as harmful as none, because a strict client cannot match it to the pending request and waits out its timeout. See also: Credential Class, Streamable HTTP Transport, MCP Server Card.
+Hosted connectors classify a server by how this first request is answered. One that succeeds is recorded as needing no sign-in, and a refusal that arrives later, mid-session, leaves the connector with no authorization server to send the user to, so its sign-in control never works. On the older protocol versions only the handshake is challenged, plus the plain discovery request an MCP client sends to find out whether sign-in is needed. The newest version has no handshake, so there every anonymous request is challenged except the free tool and static app-shell reads. Stateless callers that never send a handshake keep their credential-free catalog reads and the free tool, and the machine-discovery aliases still accept an anonymous handshake for scanners. Scripts that identify only as a generic HTTP library are exempt on the older protocol versions: they rarely sign in and retried the handshake instead, so they meet the challenge at their first gated call. A refusal without the request's identifier is as harmful as none, because a strict client cannot match it to the pending request and waits out its timeout. See also: Credential Class, Streamable HTTP Transport, MCP Server Card.
 
 ### MCP Proxy
 
@@ -472,7 +508,7 @@ One of the product-variant subdomains (`tech`, `finance`, `commodity`, `happy`, 
 
 ### Anonymous Session
 
-The short-lived, server-signed identity that authorizes a key-less browser to read our public API surface, held in an HttpOnly cookie the client cannot inspect — it can only track the expiry and ask for a new one. It is not a user identity: it is freely mintable by anyone, is not bound to an account, and is deliberately refused by tier-gated routes, so a valid anonymous session and an authorized one are different questions. Clerk bearer tokens and user API keys take precedence wherever both are present. A server-side caller whose requests are steered by untrusted input, such as the widget agent's model-chosen data reads, holds one too, sent as a key header instead of a cookie, precisely because it carries no more than anonymous authority.
+The short-lived, server-signed identity that authorizes a key-less browser to read our public API surface, held in an HttpOnly cookie the client cannot inspect — it can only track the expiry and ask for a new one. It is not a user identity: it is freely mintable by anyone, is not bound to an account, and is deliberately refused by tier-gated routes, so a valid anonymous session and an authorized one are different questions. Clerk bearer tokens and user API keys take precedence wherever both are present. A server-side caller whose requests are steered by untrusted input, such as the widget agent's model-chosen data reads, holds one too, sent as a key header instead of a cookie, precisely because it carries no more than anonymous authority. The desktop's local API holds one on behalf of every cloud request that has no key, signed in or not, because the gateway refuses a request that carries no credential at all; a signed-out desktop therefore sees exactly what an anonymous browser sees.
 
 Because the cookie is opaque to JavaScript, the client can only infer its health from responses, and that inference is the fragile part. A rejection observed on one route is evidence about *that route*, not about the session. For a caller that can read the response body, the API says which: an invalid session is refused as such, while a route that needs more than anonymous authority answers with a Pro-authentication refusal that says nothing about the session. See also: Session Blackout, Entitlement.
 
@@ -1026,7 +1062,7 @@ The explicit state a derived reading reports when its reference window has not y
 
 A 0-100 reading of current pressure on a maritime chokepoint, published as a green/yellow/red badge. It is a risk signal and never an operational declaration: a waterway with a high score has not been reported closed, and one with a low score has not been certified open. The score sums a configured Threat Baseline with observed navigational-warning and AIS-congestion evidence and a Transit Anomaly bonus, then caps.
 
-The baseline term is what makes the score legible in a crisis and illegible without it: a waterway in an active conflict can carry a red score while every observed input reads calm, because the standing geopolitical weight alone clears the top band. A page that publishes the observed inputs without the baseline shows a reader numbers that cannot produce the score they are looking at. See also: Score Input, Context Metric, Threat Baseline.
+The baseline term is what makes the score legible in a crisis and illegible without it: a waterway in an active conflict can carry a red score while every observed input reads calm, because the standing geopolitical weight alone clears the top band. A page that publishes the observed inputs without the baseline shows a reader numbers that cannot produce the score they are looking at. The same term means an alert cannot trigger on the score alone: a waterway whose baseline already clears the red band never crosses it, so disruption alerts trigger on the live evidence above the baseline. See also: Score Input, Context Metric, Threat Baseline.
 
 ### Threat Baseline
 
@@ -1121,6 +1157,16 @@ Vessel snapshots outlive a deploy, so correcting a classifier reaches new reader
 The independent second model call that compares a web-sourced widget draft with everything the agent read before the widget reaches the user. It judges whether the data is the right dataset for the current or requested period, and lists displayed values the sources do not support. A widget becomes web-sourced the moment a web search returns results; one built only from our own data never gets the check.
 
 A first draft fails open: if the check cannot run or errors, the draft is served unverified. Once a draft has been rejected, the check fails closed: the model gets one repair, and only a repair that passes a second check is served. A rejected repair, or a recheck that fails or runs out of time, ends the request with an error. A throwaway web search therefore changes what the user gets, not only what the request costs. See also: Anonymous Session.
+
+## National Debt Clock
+
+### Period-End Anchor
+
+The moment at which the debt clock shows exactly the IMF figure for a country: the instant just after the end of the reporting period that figure measures. IMF WEO gross debt is a stock at the end of a period, so the figure already includes that period's deficit. The clock reaches the figure at the anchor instead of starting from it, which keeps the period's deficit from being counted twice.
+
+The period is a calendar year by default. For economies that report government finance on a fiscal year, it is the verified fiscal year, and WEO labels it either by the calendar year it ends in or by the one it starts in. Month ranges alone do not decide which label applies, so the label has to come from the IMF's own stated mapping. A blended calendar year, such as Singapore's mix of two fiscal years, has no fiscal anchor and stays on the calendar default.
+
+Before the anchor the clock counts up to the figure. A country in surplus is the exception: its clock stays flat rather than ticking. After the anchor, the clock runs on the next period's projected deficit, because the closed period's deficit no longer describes current borrowing. That switch needs both the next period's deficit and its GDP; if either is missing, the clock keeps the closed period's rate. A direct official reading with its own record date, such as US Treasury debt to the penny, replaces both the figure and the anchor. See also: Reference Period, Content-Age Contract.
 
 ## Flagged ambiguities
 

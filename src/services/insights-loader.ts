@@ -11,14 +11,16 @@ export interface ServerInsightStory {
   sourceCount: number;
   /**
    * Distinct PUBLISHERS behind the cluster (#6428). Written by
-   * scripts/seed-insights.mjs via countPublisherFamilies, so nine BBC feed
-   * labels count once. Optional only because a payload cached before the
+   * scripts/seed-insights.mjs from publisher families, so nine BBC feed
+   * labels count once, and so do outlets that carried the same copy (#9095). Optional only because a payload cached before the
    * field existed would not carry it; consumers must fail closed rather than
    * fall back to sourceCount, which counts articles.
    */
   uniqueSourceCount?: number;
   /** Feed labels in the cluster, deduped. Absent on a payload cached before the seeder wrote it. */
   sources?: string[];
+  /** Publisher families in `sources` whose items carried the same copy (#9095); each group is one publisher. */
+  sameCopy?: string[][];
   corroborationCount?: number;
   importanceScore: number;
   /** 0-100 source reliability, distinct from importanceScore. Absent on pre-rollout cache. */

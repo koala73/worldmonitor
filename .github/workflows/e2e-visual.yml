@@ -3,6 +3,7 @@ name: E2E Visual
 # Intentionally NOT named "Test". Deploy-gate aggregates every job of Test /
 # Typecheck / Lint Code / Security Audit / Stacked Merge Guard into the required `gate` check.
 # Visual goldens and the chrome gallery are evidence, not a merge blocker.
+# No push trigger: main gets one nightly run instead of one per merge.
 
 on:
   pull_request:
@@ -18,8 +19,6 @@ on:
       - '.github/workflows/e2e-visual.yml'
       - '.github/workflows/publish-e2e-screenshots.yml'
       - 'scripts/playwright-screenshot-gallery.mjs'
-  push:
-    branches: [main]
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
@@ -44,16 +43,14 @@ concurrency:
 jobs:
   visual-goldens:
     name: visual-goldens
-    # Skip ordinary main pushes. Goldens stay on map-touching PRs, nightly,
-    # and manual dispatch so SwiftShader flake cannot sit on the hot path.
     if: >-
-      github.event_name != 'push' &&
-      (github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'visual-goldens')
+      (github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'visual-goldens') &&
+      (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -96,12 +93,12 @@ jobs:
 
   chrome-gallery:
     name: chrome-gallery
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'chrome' }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'chrome') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: 'npm'

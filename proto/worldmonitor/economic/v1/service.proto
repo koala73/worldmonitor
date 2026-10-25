@@ -37,6 +37,7 @@ import "worldmonitor/economic/v1/get_us_cpi_monthly.proto";
 import "worldmonitor/economic/v1/get_us_treasury_par_yield_curve.proto";
 import "worldmonitor/economic/v1/get_us_interest_rates.proto";
 import "worldmonitor/economic/v1/get_world_cpi_monthly.proto";
+import "worldmonitor/economic/v1/get_capital_flows.proto";
 import "worldmonitor/economic/v1/get_government_yield_curve.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
@@ -208,6 +209,11 @@ service EconomicService {
   // GetUsInterestRates returns the effective federal funds rate, target range, H.15 Treasury yields, and SOFR. history=false is the latest point of each series. history=true is the full history. This is not the Treasury par curve.
   rpc GetUsInterestRates(GetUsInterestRatesRequest) returns (GetUsInterestRatesResponse) {
     option (sebuf.http.config) = {path: "/get-us-interest-rates", method: HTTP_METHOD_GET};
+  }
+
+  // GetCapitalFlows returns where money enters and leaves about 230 economies, and between any two, from official statistics. Per country: IMF balance-of-payments gross inflows and outflows by FDI, portfolio and other investment (quarterly where reported, annual otherwise) with derived Forbes and Warnock surge, stop, flight and retrenchment states; BIS cross-border deposits and borrowing of non-bank residents; IMF portfolio holdings of the country's securities; and IMF direct-investment positions. With country and counterpart: both directions of the pair across bank deposits and lending (with eight quarters of adjusted flows), portfolio holdings and direct investment (with both sides' figures), each leg marked reported, not_itemized or not_published. A person changing residence is not a balance-of-payments flow, so wealth migration does not appear.
+  rpc GetCapitalFlows(GetCapitalFlowsRequest) returns (GetCapitalFlowsResponse) {
+    option (sebuf.http.config) = {path: "/get-capital-flows", method: HTTP_METHOD_GET};
   }
 
   // GetWorldCpiMonthly returns one national CPI series per country, worldwide. The per-country source is chosen by precedence (national overlay, then HICP for Europe, then IMF, then OECD) with a staleness fall-through, so each row carries its source, frequency and index base. Month-over-month and year-over-year changes are computed from that index; levels are not comparable across sources. history=false is the latest period per country. history=true is the stored 10-year window.

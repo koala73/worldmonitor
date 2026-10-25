@@ -50,9 +50,28 @@ const {
 } = require('./lib/llm-model-policy.cjs');
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { SAUDI_CIVIL_DEFENSE, MAX_POST_CHARS, publishSaudiCivilDefenseAlerts } = require('./lib/saudi-civil-defense-alerts.cjs');
+const { publishChokepointDisruptionAlerts } = require('./lib/chokepoint-disruption-alerts.cjs');
+// Loaded defensively: the gazetteer validates its data files at require time,
+// and a bad regenerated data file must disable only this feed, not the relay.
+let middleEastStrikes = null;
+try {
+  middleEastStrikes = require('./lib/middle-east-strikes.cjs');
+} catch (e) {
+  console.error('[MiddleEastStrikes] Module failed to load — strike feed disabled:', e?.message || e);
+}
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle, xPollSlot } = require('./lib/x-poll-cycle.cjs');
 const { createGuardedLookup, SSRF_BLOCKED_ERROR_CODE } = require('./lib/notification-webhook-ssrf.cjs');
+// API fan-out of rss_alert / market_alert queue messages to the Shipping v2
+// webhook worker (news.breaking, market.move in shared/event-triggers.json).
+const {
+  API_FANOUT_EVENT_TYPES,
+  API_FANOUT_LIST_CAP,
+  API_FANOUT_LIST_KEY,
+  API_FANOUT_LIST_TTL_SECONDS,
+  API_FANOUT_TEE_SCRIPT,
+  occurrenceEventIdFor,
+} = require('./lib/occurrence-events.cjs');
 const {
   createXPostBudget,
   DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
@@ -96,11 +115,12 @@ const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = requi
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
 // Same implementation the RPC handler scores with — see the module header for
 // why it lives in shared/ rather than beside the other scoring helpers.
-const { detectTrafficAnomaly } = require('../shared/chokepoint-traffic-anomaly.js');
+const { detectTrafficAnomaly, summarizePortwatchHistory } = require('../shared/chokepoint-traffic-anomaly.js');
 const { CHOKEPOINT_THREAT_LEVELS } = require('../shared/chokepoint-threat-levels.js');
 const { classifyVesselType } = require('../shared/ais-vessel-type.js');
 const { readTransitWindow } = require('../shared/chokepoint-transit-window.js');
-const { createTransitTracker } = require('../shared/chokepoint-transit-tracker.js');
+const { createDurableTransitTracker } = require('../shared/chokepoint-transit-store.js');
+const { CHOKEPOINT_TRANSIT_GATES } = require('../shared/chokepoint-transit-gates.js');
 const { CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel } = require('../shared/corridor-risk.js');
 // AIS upstream reconnect policy: failure classification (transport | auth |
 // rate-limit), the throttle ceiling escalation, and the silence verdict. Pure and
@@ -867,6 +887,34 @@ function nwsVtec(p) {
   return vtec;
 }
 
+/**
+ * Second copy of a queued rss_alert / market_alert message for API-key webhook
+ * subscribers. The notification relay RPOPs wm:events:queue destructively, so
+ * the Shipping v2 worker drains its own list (wm:events:api:v1). One Lua round
+ * trip pushes, caps and expires it; a failure here never touches the queue
+ * publish that already succeeded, it only loses the event for API tenants.
+ */
+function teeApiFanout(eventType, msg) {
+  if (!UPSTASH_ENABLED) return;
+  upstashEval(API_FANOUT_TEE_SCRIPT, [API_FANOUT_LIST_KEY], [msg, API_FANOUT_LIST_CAP, API_FANOUT_LIST_TTL_SECONDS])
+    .then((result) => {
+      if (Number(result) !== 1) console.warn(`[Notify] API fan-out tee did not confirm (${eventType})`);
+    })
+    .catch((e) => console.warn(`[Notify] API fan-out tee failed (${eventType}):`, e?.message || e));
+}
+
+/** Quote fields the market.move webhook payload carries; the title stays the human line. */
+function marketMoveFields(assetClass, q) {
+  return {
+    assetClass,
+    symbol: String(q.symbol || q.name || '').toUpperCase(),
+    name: String(q.name || q.symbol || ''),
+    price: Number.isFinite(q.price) ? q.price : null,
+    changePct: q.change,
+    direction: q.change < 0 ? 'down' : 'up',
+  };
+}
+
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
@@ -887,23 +935,37 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
       fallbackTtlSeconds: dedupTtl,
       emitTelemetry: recordNotificationDedupSetNxError,
     });
+    // Returns true once the event is queued or was already queued; callers
+    // that keep their own edge state retry on false.
     if (!dedupDecision.shouldPublish) {
-      if (!dedupDecision.isDuplicate) return;
+      if (!dedupDecision.isDuplicate) return false;
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
-      return;
+      return true;
     }
-    const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
+    const publishedAt = Date.now();
+    const fanout = API_FANOUT_EVENT_TYPES.has(eventType);
+    // Stable per-story / per-move id for API subscribers (occurrence-events.cjs).
+    // The relay ignores it; it rides along in the queue message unchanged.
+    if (fanout && payload && typeof payload === 'object' && !payload.eventId) {
+      const eventId = occurrenceEventIdFor(eventType, payload, publishedAt);
+      if (eventId) payload = { ...payload, eventId };
+    }
+    const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt });
     const ok = await upstashLpush('wm:events:queue', msg);
     if (ok) {
+      if (fanout) teeApiFanout(eventType, msg);
       console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
+      return true;
     } else {
       // Rollback the dedup key so the next poll cycle can retry — avoids silent
       // suppression for the full dedupTtl when a transient LPUSH fails.
       console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
       upstashDel(dedupKey).catch(() => {});
+      return false;
     }
   } catch (e) {
     console.warn(`[Notify] publishNotificationEvent error (${eventType}):`, e?.message || e);
+    return false;
   }
 }
 
@@ -1160,6 +1222,7 @@ const telegramState = {
   cursorByHandle: Object.create(null),
   items: [],
   lastPollAt: 0,
+  lastSuccessfulPollAt: 0,
   lastError: null,
   startedAt: Date.now(),
 };
@@ -2080,6 +2143,9 @@ async function pollTelegramOnce() {
         if (!msg.message) { mediaSkipped++; continue; }
         const item = normalizeTelegramMessage(msg, channel);
         newItems.push(item);
+        // The 200-item feed buffer turns over in ~90 minutes; strike candidates
+        // are captured here so none age out before the 10-minute extractor runs.
+        noteMiddleEastStrikeItem(item);
         if (!telegramState.cursorByHandle[handle] || msg.id > telegramState.cursorByHandle[handle]) {
           telegramState.cursorByHandle[handle] = msg.id;
         }
@@ -2127,6 +2193,10 @@ async function pollTelegramOnce() {
   }
 
   telegramState.lastPollAt = Date.now();
+  // lastPollAt advances on every cycle, including one that a FLOOD_WAIT or a
+  // dead session ended with zero channels read. Freshness consumers (the
+  // Middle East strike feed's seed-meta gate) need the last cycle that read data.
+  if (channelsPolled > 0) telegramState.lastSuccessfulPollAt = telegramState.lastPollAt;
   const elapsed = ((Date.now() - pollStart) / 1000).toFixed(1);
   console.log(`[Relay] Telegram poll: ${channelsPolled}/${channels.length} channels, ${newItems.length} new msgs, ${telegramState.items.length} total, ${channelsFailed} errors, ${mediaSkipped} media-only skipped (${elapsed}s)`);
 
@@ -3595,6 +3665,7 @@ async function seedMarketQuotes() {
         title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Equity Market',
         coalesceKey: marketAlertCoalesceKey('equity', q.symbol, dir, severity),
+        ...marketMoveFields('equity', q),
       },
       severity,
       variant: undefined,
@@ -3658,6 +3729,7 @@ async function seedCommodityQuotes() {
         title: `${q.name || q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Commodity Market',
         coalesceKey: marketAlertCoalesceKey('commodity', q.symbol || q.name, dir, severity),
+        ...marketMoveFields('commodity', q),
       },
       severity,
       variant: undefined,
@@ -4000,6 +4072,7 @@ async function seedCryptoQuotes() {
         title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Crypto Market',
         coalesceKey: marketAlertCoalesceKey('crypto', q.symbol || q.name, dir, severity),
+        ...marketMoveFields('crypto', q),
       },
       severity,
       variant: undefined,
@@ -4641,7 +4714,9 @@ const CLASSIFY_CACHE_TTL = 86400;
 const CLASSIFY_SKIP_TTL = 1800;
 const CLASSIFY_BATCH_SIZE = 50;
 const CLASSIFY_VARIANTS = ['full', 'tech', 'finance', 'happy', 'commodity'];
-const CLASSIFY_VARIANT_STAGGER_MS = 3 * 60 * 1000;
+// Zero under RELAY_TEST_MODE so the /__test/seed-classify seam runs a full
+// five-variant cycle in milliseconds instead of twelve minutes.
+const CLASSIFY_VARIANT_STAGGER_MS = RELAY_TEST_MODE ? 0 : 3 * 60 * 1000;
 
 // Relay gates — active only when RELAY_GATES_READY=1 (see Appendix E of docs/internal/news-alerts-enhancements-from-trendradar.md).
 // When the flag is set the relay becomes the sole authoritative source of rss_alert events and
@@ -4828,7 +4903,14 @@ Focus: geopolitical events, conflicts, disasters, diplomacy.
 Classify by real-world event severity, not headline sentiment.`;
 
 const NEWS_THREAT_SUMMARY_KEY = 'news:threat:summary:v1';
-const NEWS_THREAT_SUMMARY_TTL = 1200; // 20 min — aligns with relay cadence
+// The cycle publishes only at its end, about 12 minutes after it starts (four
+// 3-minute variant staggers), and a restart discards the cycle in flight. So
+// the first write after a restart lands at least 27 minutes after the last
+// one; on 2026-10-21 three deploys in 40 minutes left a 48-minute gap, and the
+// old 20-minute TTL expired the key twice. Two hours outlasts that, and stays
+// above the 60-minute health budget (api/health.js SEED_META.newsThreatSummary)
+// so health reads STALE_SEED before the payload can vanish.
+const NEWS_THREAT_SUMMARY_TTL = 2 * 60 * 60;
 
 // Country name → ISO2 for threat summary geo-attribution (inline to avoid ESM import)
 const THREAT_COUNTRY_NAME_TO_ISO2 = {
@@ -4874,6 +4956,7 @@ const THREAT_COUNTRY_NAME_TO_ISO2 = {
   'tel aviv':'IL','gaza':'PS','damascus':'SY','sanaa':'YE','houthi':'YE',
   'kremlin':'RU','pentagon':'US','nato':'','irgc':'IR','hezbollah':'LB',
   'hamas':'PS','taliban':'AF','riyadh':'SA','ankara':'TR',
+  'saudi':'SA','houthis':'YE',
 };
 // Sort by name length desc so longer multi-word names match first (used for tie-breaking same position)
 const THREAT_COUNTRY_NAME_ENTRIES = Object.entries(THREAT_COUNTRY_NAME_TO_ISO2)
@@ -4903,6 +4986,62 @@ function matchCountryNamesInText(text) {
   }
   return [];
 }
+
+// City and region names -> ISO2 (scripts/build-news-places.mjs), longest phrase first.
+const NEWS_PLACES = require('./shared/news-places.json');
+const NEWS_PLACE_MAX_WORDS = 4;
+// Mirrors stripPublisherSuffix in scripts/shared/geo-extract.mjs.
+const THREAT_PUBLISHER_CREDIT_WORDS = /\b(?:post|times|news|journal|herald|tribune|guardian|telegraph|gazette|press|reuters|bloomberg|jazeera|bbc|cnn|nbc|cbs|npr|afp|tv|television|radio|daily|weekly|observer|independent|monitor|chronicle|express|mail|standard|insider|magazine|media|network|wire|agency|today|online)\b|\.(?:com|org|net|gov)\b/i;
+const THREAT_CREDIT_TAIL_CHARS = 120;
+// Every country a lowercased, diacritic-free text names. Place phrases resolve first and are
+// blanked, so "new mexico" is US, not MX; country names are then blanked as they match, so
+// "sudan" cannot also fire inside "south sudan".
+function countriesNamedInText(lower) {
+  const tokens = [...lower.matchAll(/[a-z]+/g)];
+  const found = [];
+  let rest = lower;
+  for (let i = 0; i < tokens.length; i++) {
+    for (let n = Math.min(NEWS_PLACE_MAX_WORDS, tokens.length - i); n >= 1; n--) {
+      const iso2 = NEWS_PLACES[tokens.slice(i, i + n).map((t) => t[0]).join(' ')];
+      if (!iso2) continue;
+      if (!found.includes(iso2)) found.push(iso2);
+      const end = tokens[i + n - 1].index + tokens[i + n - 1][0].length;
+      rest = rest.slice(0, tokens[i].index) + ' '.repeat(end - tokens[i].index) + rest.slice(end);
+      i += n - 1;
+      break;
+    }
+  }
+  for (const { iso2, regex } of THREAT_COUNTRY_NAME_ENTRIES) {
+    if (!regex.test(rest)) continue;
+    if (!found.includes(iso2)) found.push(iso2);
+    rest = rest.replace(new RegExp(regex.source, 'gi'), (m) => ' '.repeat(m.length));
+  }
+  return found;
+}
+
+// The threat summary feeds CII's information score, where a headline that names no
+// attack target still says something about every country it mentions: "Saudi Arabia
+// intercepts missile near Red Sea oil hub" has no target and used to count for nobody.
+// Alert routing keeps the strict single-country rule above.
+function threatSummaryCountries(text) {
+  const affected = matchCountryNamesInText(text);
+  if (affected.length > 0) return affected;
+  // Uppercase US/UK are the countries; lowercase "us" stays the pronoun.
+  let lower = text.replace(/\bU\.S\.(?:A\.)?/g, 'United States ').replace(/\bU\.K\./g, 'United Kingdom ')
+    .replace(/\bUS\b/g, 'United States').replace(/\bUK\b/g, 'United Kingdom')
+    .normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  // Drop a trailing " - The Washington Post" credit so the outlet's country is not counted.
+  const tailStart = Math.max(0, lower.length - THREAT_CREDIT_TAIL_CHARS);
+  const credit = /\s[-–—|]\s+([^-–—|]+)$/.exec(lower.slice(tailStart));
+  if (credit) {
+    const tail = credit[1].trim();
+    const isCredit = tail.split(/\s+/).length <= 6
+      && (THREAT_PUBLISHER_CREDIT_WORDS.test(tail) || countriesNamedInText(tail).length === 0);
+    if (isCredit) lower = lower.slice(0, tailStart + credit.index);
+  }
+  return countriesNamedInText(lower);
+}
+
 
 // v5 (2026-04-28): bumped from v4 in lockstep with
 // server/worldmonitor/intelligence/v1/_shared.ts and
@@ -4975,18 +5114,20 @@ const CLASSIFY_LLM_PROVIDERS = [
   },
 ];
 
-function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBody, timeout, maxTextChars = 200) {
+// options.systemPrompt / options.maxTokensPerItem let another index-aligned
+// classifier (the Middle East strike extractor) reuse this provider chain.
+function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBody, timeout, maxTextChars = 200, options = {}) {
   return new Promise((resolve) => {
     const sanitized = titles.map((t) => t.replace(/[\n\r]/g, ' ').replace(/\|/g, '/').slice(0, maxTextChars).trim());
     const prompt = sanitized.map((t, i) => `${i}|${t}`).join('\n');
     const bodyStr = JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: CLASSIFY_SYSTEM_PROMPT },
+        { role: 'system', content: options.systemPrompt || CLASSIFY_SYSTEM_PROMPT },
         { role: 'user', content: prompt },
       ],
       temperature: 0,
-      max_tokens: titles.length * 40,
+      max_tokens: titles.length * (options.maxTokensPerItem || 40),
       ...extraBody,
     });
 
@@ -5020,7 +5161,7 @@ function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBo
   });
 }
 
-async function classifyFetchLlm(titles, maxTextChars = 200) {
+async function classifyFetchLlm(titles, maxTextChars = 200, options = {}) {
   for (const provider of CLASSIFY_LLM_PROVIDERS) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
@@ -5029,11 +5170,11 @@ async function classifyFetchLlm(titles, maxTextChars = 200) {
     const model = typeof provider.model === 'function' ? provider.model() : provider.model;
     const headers = provider.headers(envVal);
 
-    const result = await classifyFetchLlmSingle(titles, envVal, apiUrl, model, headers, provider.extraBody || {}, provider.timeout, maxTextChars);
+    const result = await classifyFetchLlmSingle(titles, envVal, apiUrl, model, headers, provider.extraBody || {}, provider.timeout, maxTextChars, options);
     if (result) {
       return result;
     }
-    console.warn(`[Classify] ${provider.name} failed, trying next provider...`);
+    console.warn(`[${options.label || 'Classify'}] ${provider.name} failed, trying next provider...`);
   }
   return null;
 }
@@ -5079,11 +5220,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
         console.warn(formatClassifyDigestFetchFailure(resp.statusCode, RELAY_API_KEY));
         return { total: 0, classified: 0, skipped: 0, fetchFailed: true };
       }
-      const body = await new Promise((resolve) => {
-        let d = '';
-        resp.on('data', (c) => { d += c; });
-        resp.on('end', () => resolve(d));
-      });
+      let body = '';
+      resp.setEncoding('utf8');
+      for await (const chunk of resp) body += chunk;
       digest = JSON.parse(body);
       break;
     } catch (e) {
@@ -5105,8 +5244,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // #7084: stale RSS titles already had their alert pass when served fresh.
   // Exclude only those digest-derived candidates; fresh X candidates remain
   // eligible because they are an independent input to the combined pass.
-  if (isStaleDigestReplay(digest)) {
-    console.log(`[Classify] digest is a stale replay (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping digest-derived candidates for ${variant}`);
+  // The digest API answers 200 with `coverage.state: 'unavailable'` and no
+  // categories when it has no digest to serve; that is no news, not quiet news.
+  const staleReplay = isStaleDigestReplay(digest) || digest?.coverage?.state === 'unavailable';
+  if (staleReplay) {
+    console.log(`[Classify] digest is a stale replay or unavailable (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping digest-derived candidates for ${variant}`);
   }
 
   // Map of title → item metadata; recency gate: skip articles older than 6h.
@@ -5121,7 +5263,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     RECENCY_GATE_MS,
   );
   const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS);
-  if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0 };
+  if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0, staleReplay };
 
   const titleArr = [...allTitles.keys()];
   const cacheKeys = titleArr.map((t) => classifyCacheKey(t));
@@ -5131,6 +5273,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // byCountry accumulates threat counts while title+level are in scope
   const byCountry = {};
   const emptyLevel = () => ({ critical: 0, high: 0, medium: 0, low: 0, info: 0 });
+  // Country-naming titles with no usable label (a cached `_skip`, an unreadable
+  // entry, or one the LLM skipped below), so an empty byCountry cannot be read
+  // as a quiet cycle. A title that names no country cannot change byCountry.
+  let unlabelled = 0;
+  const countUnlabelled = (title) => { if (threatSummaryCountries(title).length > 0) unlabelled++; };
 
   for (let i = 0; i < titleArr.length; i++) {
     const hit = cached[i];
@@ -5140,18 +5287,18 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
     // Attribute cached hits while we still have the title
     let parsed = hit;
-    if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { continue; } }
+    if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { countUnlabelled(titleArr[i]); continue; } }
     const level = parsed?.level;
-    if (!CLASSIFY_VALID_LEVELS.includes(level)) continue;
+    if (!CLASSIFY_VALID_LEVELS.includes(level)) { countUnlabelled(titleArr[i]); continue; }
     if (seenTitles.has(titleArr[i])) continue;
     seenTitles.add(titleArr[i]);
-    for (const code of matchCountryNamesInText(titleArr[i])) {
+    for (const code of threatSummaryCountries(titleArr[i])) {
       if (!byCountry[code]) byCountry[code] = emptyLevel();
       byCountry[code][level]++;
     }
   }
 
-  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry };
+  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry, staleReplay, unlabelled };
 
   let classified = 0;
   let skipped = 0;
@@ -5165,6 +5312,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       for (const title of chunk) {
         await upstashSet(classifyCacheKey(title), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
         skipped++;
+        countUnlabelled(title);
       }
       continue;
     }
@@ -5185,7 +5333,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       // Attribute newly classified title to country stats (global dedup via seenTitles)
       if (!seenTitles.has(chunk[idx])) {
         seenTitles.add(chunk[idx]);
-        for (const code of matchCountryNamesInText(chunk[idx])) {
+        for (const code of threatSummaryCountries(chunk[idx])) {
           if (!byCountry[code]) byCountry[code] = emptyLevel();
           byCountry[code][level]++;
         }
@@ -5237,6 +5385,12 @@ async function seedClassifyForVariant(variant, seenTitles) {
             publishedAt: meta.publishedAt,
             importanceScore,
             corroborationCount: meta.corroborationCount ?? 1,
+            // Read by API webhook subscribers (news.breaking scope). Plural on
+            // purpose: the relay scopes rules on payload.countryCode and keeps
+            // rss_alert permissive-unattributed, so a singular field here would
+            // start silencing country-scoped Slack rules.
+            category,
+            countryCodes: matchCountryNamesInText(chunk[idx]),
           },
           severity: level,
           variant,
@@ -5248,6 +5402,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       if (!classifiedSet.has(i)) {
         await upstashSet(classifyCacheKey(chunk[i]), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
         skipped++;
+        countUnlabelled(chunk[i]);
       }
     }
 
@@ -5261,7 +5416,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
   if (shadow.asked > 0) {
     console.log(`[Classify] Jev shadow ${variant}: asked ${shadow.asked}, answered ${shadow.answered}, agreed ${shadow.agreed}, alert flips ${shadow.alertFlips}`);
   }
-  return { total: titleArr.length, classified, skipped, byCountry };
+  return { total: titleArr.length, classified, skipped, byCountry, staleReplay, unlabelled };
 }
 
 async function seedClassify() {
@@ -5300,6 +5455,9 @@ async function seedClassify() {
     let totalSkipped = 0;
     let fetchOk = 0;
     let fetchFailed = 0;
+    let staleReplays = 0;
+    let unlabelled = 0;
+    let variantErrors = 0;
     const mergedByCountry = {};
     const seenTitles = new Set();
     for (let v = 0; v < CLASSIFY_VARIANTS.length; v++) {
@@ -5308,6 +5466,8 @@ async function seedClassify() {
         const stats = await seedClassifyForVariant(CLASSIFY_VARIANTS[v], seenTitles);
         if (stats.fetchFailed) fetchFailed += 1;
         else fetchOk += 1;
+        if (stats.staleReplay) staleReplays += 1;
+        unlabelled += stats.unlabelled || 0;
         totalClassified += stats.classified;
         totalSkipped += stats.skipped;
         console.log(`[Classify] ${CLASSIFY_VARIANTS[v]}: ${stats.total} titles, ${stats.classified} classified, ${stats.skipped} skipped`);
@@ -5318,6 +5478,7 @@ async function seedClassify() {
           }
         }
       } catch (e) {
+        variantErrors += 1;
         console.warn(`[Classify] ${CLASSIFY_VARIANTS[v]} error:`, e?.message || e);
       }
     }
@@ -5327,10 +5488,25 @@ async function seedClassify() {
       return;
     }
 
-    await upstashSet('seed-meta:news:threat-summary', { fetchedAt: Date.now(), recordCount: Object.keys(mergedByCountry).length }, 604800);
-    if (Object.keys(mergedByCountry).length > 0) {
-      await envelopeWrite(NEWS_THREAT_SUMMARY_KEY, { byCountry: mergedByCountry, generatedAt: Date.now() }, NEWS_THREAT_SUMMARY_TTL, { recordCount: Object.keys(mergedByCountry).length, sourceVersion: 'news-threat-summary' });
-      console.log(`[Classify] Threat summary written for ${Object.keys(mergedByCountry).length} countries`);
+    // Written on every cycle that reached a digest, including one where no
+    // headline named a country (`byCountry: {}`): the CII reads an empty summary
+    // as a quiet input and a missing one as a dead input. An empty result is
+    // quiet only when every headline was fetched fresh and labelled: after a
+    // failed digest fetch, a variant that threw, a stale or unavailable digest
+    // (headlines skipped above) or country-naming titles the LLM could not
+    // label, the countries it would have named are unknown, so the last summary stays and its seed-meta ages. seed-meta advances only
+    // after the payload lands, so health never vouches for a missing key.
+    const threatCountryCount = Object.keys(mergedByCountry).length;
+    const threatSummaryAt = Date.now();
+    const threatSummaryDegraded = threatCountryCount === 0 && (fetchFailed > 0 || variantErrors > 0 || staleReplays > 0 || unlabelled > 0);
+    const threatSummaryWritten = !threatSummaryDegraded && await envelopeWrite(NEWS_THREAT_SUMMARY_KEY, { byCountry: mergedByCountry, generatedAt: threatSummaryAt }, NEWS_THREAT_SUMMARY_TTL, { fetchedAt: threatSummaryAt, recordCount: threatCountryCount, zeroOk: true, sourceVersion: 'news-threat-summary' });
+    if (threatSummaryWritten) {
+      await upstashSet('seed-meta:news:threat-summary', { fetchedAt: threatSummaryAt, recordCount: threatCountryCount }, 604800);
+      console.log(`[Classify] Threat summary written for ${threatCountryCount} countries`);
+    } else if (threatSummaryDegraded) {
+      console.warn(`[Classify] No country matches from a degraded cycle (${fetchFailed} digest fetch failure(s), ${variantErrors} variant error(s), ${staleReplays} stale replay(s), ${unlabelled} unlabelled title(s)) — keeping the last threat summary`);
+    } else {
+      console.warn('[Classify] Threat summary write failed — seed-meta:news:threat-summary not advanced');
     }
 
     await upstashSet('seed-meta:classify', { fetchedAt: Date.now(), recordCount: totalClassified }, 604800);
@@ -5350,6 +5526,173 @@ async function startClassifySeedLoop() {
   const activeProviders = CLASSIFY_LLM_PROVIDERS.filter((p) => !!process.env[p.envKey]).map((p) => p.name);
   console.log(`[Classify] Seed loop starting (interval ${CLASSIFY_SEED_INTERVAL_MS / 1000 / 60}min, providers:${activeProviders.length ? activeProviders.join(',') : 'none'})`);
   startBootSeedLoop('Classify', 'seed-meta:classify', CLASSIFY_SEED_INTERVAL_MS, seedClassify, (e) => console.warn('[Classify] Initial seed error:', e?.message || e), (e) => console.warn('[Classify] Seed error:', e?.message || e));
+}
+
+// ─────────────────────────────────────────────────────────────
+// Middle East strike feed — Telegram + GDELT -> conflict:iran-events:v1
+// (logic and tests: scripts/lib/middle-east-strikes.cjs). Replaces the manual
+// LiveUAMap dump. Off unless IRAN_EVENTS_ENABLED=true, the same switch every
+// reader of the key honours (api/health.js, api/bootstrap.js, ...).
+// ─────────────────────────────────────────────────────────────
+const MIDDLE_EAST_STRIKES_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
+const MIDDLE_EAST_STRIKES_INTERVAL_MS = 10 * 60 * 1000;
+// Canonical outlives the 72h window it carries; health's 45-minute seed-meta
+// budget (api/health.js SEED_META.iranEvents) is what alarms on a dead loop.
+const MIDDLE_EAST_STRIKES_CANONICAL_TTL_S = 72 * 3600;
+const MIDDLE_EAST_STRIKES_STORE_TTL_S = 4 * 24 * 3600;
+const MIDDLE_EAST_STRIKES_META_TTL_S = 7 * 24 * 3600;
+// The 30-day strike-pressure tally (CII v12) outlives its window by 5 days, so
+// a relay outage shorter than that loses no history.
+const MIDDLE_EAST_STRIKE_PRESSURE_TTL_S = 35 * 24 * 3600;
+const MIDDLE_EAST_STRIKES_PENDING_MAX = 1000;
+const MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS = 12 * 3600 * 1000;
+const MIDDLE_EAST_STRIKES_DONE_MAX = 5000;
+const middleEastStrikePending = new Map();
+// Posts already classified (strike or not): the feed buffer re-offers them
+// every cycle for ~90 minutes, and each re-offer would cost a cache read.
+const middleEastStrikeDone = new Set();
+const MIDDLE_EAST_STRIKES_MAX_MISSES = 3;
+const middleEastStrikeMisses = new Map();
+let middleEastStrikesInFlight = false;
+let middleEastGdeltBulkPromise = null;
+
+function noteMiddleEastStrikeItem(item) {
+  if (!MIDDLE_EAST_STRIKES_ENABLED || !middleEastStrikes || !item?.id || middleEastStrikePending.has(item.id) || middleEastStrikeDone.has(item.id)) return;
+  if (!middleEastStrikes.prefilterStrikeText(item.text)) return;
+  middleEastStrikePending.set(item.id, item);
+  while (middleEastStrikePending.size > MIDDLE_EAST_STRIKES_PENDING_MAX) {
+    const evicted = middleEastStrikePending.keys().next().value;
+    middleEastStrikePending.delete(evicted);
+    middleEastStrikeMisses.delete(evicted);
+  }
+}
+
+async function loadMiddleEastStrikeGdelt(processed) {
+  // Lazy and caught: a missing module degrades to a Telegram-only cycle
+  // instead of an unhandled rejection at relay start.
+  middleEastGdeltBulkPromise ??= import('./_conflict-gdelt-bulk.mjs');
+  let bulk;
+  try {
+    bulk = await middleEastGdeltBulkPromise;
+  } catch (e) {
+    middleEastGdeltBulkPromise = null; // a cached rejection would disable GDELT until restart
+    console.warn('[MiddleEastStrikes] GDELT module failed to load:', e?.message || e);
+    return { candidates: [], processed, errors: [String(e?.message || e)], fetched: 0 };
+  }
+  try {
+    return await middleEastStrikes.fetchGdeltStrikeCandidates({ bulk, processed });
+  } catch (e) {
+    console.warn('[MiddleEastStrikes] GDELT backstop unavailable:', e?.message || e);
+    return { candidates: [], processed, errors: [String(e?.message || e)], fetched: 0 };
+  }
+}
+
+async function seedMiddleEastStrikes() {
+  if (middleEastStrikesInFlight) return;
+  middleEastStrikesInFlight = true;
+  const t0 = Date.now();
+  try {
+    for (const item of telegramState.items) noteMiddleEastStrikeItem(item);
+    for (const [id, item] of middleEastStrikePending) {
+      const ts = Date.parse(item.ts);
+      if (!Number.isFinite(ts) || t0 - ts > MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS) { middleEastStrikePending.delete(id); middleEastStrikeMisses.delete(id); }
+    }
+    const pendingItems = [...middleEastStrikePending.values()];
+    const { status, doneIds, result, pressureStatus } = await middleEastStrikes.publishStrikeCycle({
+      now: t0,
+      pendingItems,
+      readStore: async () => {
+        let ok = true;
+        const value = await upstashGet(middleEastStrikes.STORE_KEY, () => { ok = false; });
+        return { ok, value };
+      },
+      writeStore: (store) => upstashSet(middleEastStrikes.STORE_KEY, store, MIDDLE_EAST_STRIKES_STORE_TTL_S),
+      writeCanonical: (payload, recordCount) => envelopeWrite(middleEastStrikes.CANONICAL_KEY, payload, MIDDLE_EAST_STRIKES_CANONICAL_TTL_S, {
+        recordCount,
+        sourceVersion: middleEastStrikes.SOURCE_VERSION,
+        zeroOk: true,
+      }),
+      writeSeedMeta: (meta) => upstashSet(middleEastStrikes.SEED_META_KEY, meta, MIDDLE_EAST_STRIKES_META_TTL_S),
+      readCache: (key) => upstashGet(key),
+      writeCache: (key, value, ttl) => upstashSet(key, value, ttl),
+      classify: (texts) => classifyFetchLlm(texts, middleEastStrikes.CLASSIFY_MAX_TEXT_CHARS, {
+        systemPrompt: middleEastStrikes.STRIKE_CLASSIFIER_PROMPT,
+        maxTokensPerItem: 60,
+        label: 'MiddleEastStrikes',
+      }),
+      loadGdelt: loadMiddleEastStrikeGdelt,
+      telegramPolledAt: telegramState.lastSuccessfulPollAt,
+      readPressure: async () => {
+        let ok = true;
+        const value = await upstashGet(middleEastStrikes.PRESSURE_KEY, () => { ok = false; });
+        return { ok, value };
+      },
+      writePressure: (pressure) => upstashSet(middleEastStrikes.PRESSURE_KEY, pressure, MIDDLE_EAST_STRIKE_PRESSURE_TTL_S),
+      writePressureMeta: async (meta) => {
+        if (!await upstashSet(middleEastStrikes.PRESSURE_SEED_META_KEY, meta, MIDDLE_EAST_STRIKES_META_TTL_S)) return false;
+        // Durable, no TTL: health reads the key as pending until the first
+        // healthy tally publish and strict afterwards (api/health.js ACTIVATION_MARKERS).
+        await upstashEval("return redis.call('SET', KEYS[1], ARGV[1])", [middleEastStrikes.PRESSURE_ACTIVATION_KEY], [String(t0)]);
+        return true;
+      },
+    });
+    for (const id of doneIds) {
+      middleEastStrikePending.delete(id);
+      middleEastStrikeMisses.delete(id);
+      middleEastStrikeDone.add(id);
+    }
+    // A post the classifier keeps answering around (it answers the batch but
+    // never this index) is dropped after a few cycles, so one poison post
+    // cannot hold the feed unhealthy. A dead provider chain is not counted:
+    // those posts wait for the classifier to come back.
+    if (result && !result.classifierFailed) {
+      for (const item of result.pending) {
+        const misses = (middleEastStrikeMisses.get(item.id) || 0) + 1;
+        if (misses < MIDDLE_EAST_STRIKES_MAX_MISSES) {
+          middleEastStrikeMisses.set(item.id, misses);
+          continue;
+        }
+        console.warn(`[MiddleEastStrikes] Dropping ${item.id}: unclassified after ${misses} answered cycles`);
+        middleEastStrikePending.delete(item.id);
+        middleEastStrikeMisses.delete(item.id);
+        middleEastStrikeDone.add(item.id);
+      }
+    }
+    while (middleEastStrikeDone.size > MIDDLE_EAST_STRIKES_DONE_MAX) {
+      middleEastStrikeDone.delete(middleEastStrikeDone.values().next().value);
+    }
+    if (!result) {
+      console.warn(`[MiddleEastStrikes] ${status} — cycle skipped, seed-meta not advanced`);
+      return;
+    }
+    const s = result.stats;
+    const summary = `${s.events} events, ${s.prefiltered} posts (${s.cacheHits} cached, ${s.classified} classified, ${s.retry} retry), ${s.gdeltCandidates} GDELT clusters from ${s.gdeltExportsFetched} exports, ${s.storeCandidates} stored, telegramLive=${s.telegramLive}, pressure=${pressureStatus}`;
+    if (status === 'ok') console.log(`[MiddleEastStrikes] ${summary} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    else console.warn(`[MiddleEastStrikes] ${status} — seed-meta not advanced; ${summary}`);
+  } catch (e) {
+    console.warn('[MiddleEastStrikes] Seed error:', e?.message || e);
+  } finally {
+    middleEastStrikesInFlight = false;
+  }
+}
+
+function startMiddleEastStrikesLoop() {
+  if (!MIDDLE_EAST_STRIKES_ENABLED) {
+    console.log('[MiddleEastStrikes] Disabled (IRAN_EVENTS_ENABLED is not true)');
+    return;
+  }
+  if (!middleEastStrikes) {
+    console.error('[MiddleEastStrikes] Disabled (module failed to load; see the startup error) — health will report STALE');
+    return;
+  }
+  if (!UPSTASH_ENABLED) {
+    console.log('[MiddleEastStrikes] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[MiddleEastStrikes] Loop starting (interval ${MIDDLE_EAST_STRIKES_INTERVAL_MS / 60000}min)`);
+  startBootSeedLoop('MiddleEastStrikes', middleEastStrikes.SEED_META_KEY, MIDDLE_EAST_STRIKES_INTERVAL_MS, seedMiddleEastStrikes,
+    (e) => console.warn('[MiddleEastStrikes] Initial seed error:', e?.message || e),
+    (e) => console.warn('[MiddleEastStrikes] Seed error:', e?.message || e));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -6146,9 +6489,13 @@ function startCiiWarmPingLoop() {
 // Chokepoint Status Warm-Ping — keeps supply_chain:chokepoints:v4
 // fresh so health.js does not report STALE_SEED. The RPC handler
 // (get-chokepoint-status.ts) writes seed-meta on every live fetch.
-// Interval matches health.js maxStaleMin (60 min) with a 2× margin.
+// The handler reads only Redis, so a tick costs one function call. Each tick
+// also runs the disruption-alert check, which has its own 12 h cooldown.
 // ─────────────────────────────────────────────────────────────
-const CHOKEPOINT_WARM_PING_INTERVAL_MS = 30 * 60 * 1000; // 30 min
+// One minute past the 300 s status-key TTL: the boot tick writes the key a few
+// seconds after the interval starts, so a 5-minute tick could land just before
+// expiry and re-read the cached reading on every other tick.
+const CHOKEPOINT_WARM_PING_INTERVAL_MS = 6 * 60 * 1000;
 const CHOKEPOINT_RPC_URL = 'https://api.worldmonitor.app/api/supply-chain/v1/get-chokepoint-status';
 
 async function seedChokepointWarmPing() {
@@ -6168,6 +6515,17 @@ async function seedChokepointWarmPing() {
     console.log(`[Chokepoints] Warm-ping OK: ${count} chokepoints`);
     // seed-meta is written by the RPC handler when it fetches fresh data;
     // no direct write needed here.
+    // The status key has a 5-min TTL, shorter than the tick, so the alert
+    // check reads the response, not Redis.
+    const alerts = await publishChokepointDisruptionAlerts(data, {
+      now: Date.now,
+      readState: upstashGet,
+      writeState: upstashSet,
+      publish: publishNotificationEvent,
+      log: (message) => console.warn(message),
+    });
+    if (alerts === null) console.warn('[Chokepoints] Disruption alert state unreadable; skipped this tick');
+    else if (alerts.published || alerts.failed || !alerts.stateWritten) console.log(`[Chokepoints] Disruption alerts: published=${alerts.published} failed=${alerts.failed}${alerts.stateWritten ? '' : ' stateWritten=false'}`);
   } catch (e) {
     console.warn('[Chokepoints] Warm-ping error:', e?.message || e);
   }
@@ -9347,20 +9705,21 @@ const CHOKEPOINTS = [
 const chokepointCrossings = new Map();
 const TRANSIT_COOLDOWN_MS = 30 * 60 * 1000;
 const TRANSIT_WINDOW_MS = 24 * 60 * 60 * 1000;
-const MIN_DWELL_MS = 5 * 60 * 1000;
-// How long zone membership outlives a vessel's last report inside the zone.
-// It must exceed DENSITY_WINDOW: the vessel table drops a vessel after 30
-// silent minutes, and an exit reported after that gap is still an exit.
-const TRANSIT_MAX_EXIT_GAP_MS = 6 * 60 * 60 * 1000;
+// How long a gate sighting waits for the opposite gate. It covers the slowest
+// gate-to-gate passage (about 180 nm at Malacca and the Cape) and must exceed
+// DENSITY_WINDOW: the vessel table drops a vessel after 30 silent minutes.
+const TRANSIT_MAX_GATE_GAP_MS = 18 * 60 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_KEY = 'supply_chain:chokepoint_transits:v1';
 const CHOKEPOINT_TRANSIT_TTL = 3600; // 1h — 6x interval; survives ~5 consecutive missed pings
-const transitTracker = createTransitTracker({
-  zones: CHOKEPOINTS,
-  minDwellMs: MIN_DWELL_MS,
+const transitTracker = createDurableTransitTracker({
+  gates: CHOKEPOINT_TRANSIT_GATES,
+  maxTransitMs: TRANSIT_MAX_GATE_GAP_MS,
   cooldownMs: TRANSIT_COOLDOWN_MS,
-  maxExitGapMs: TRANSIT_MAX_EXIT_GAP_MS,
-  crossings: chokepointCrossings,
+  evaluate: upstashEval,
 });
+setInterval(() => {
+  transitTracker.flush(Date.now()).catch(error => console.warn('[Transit] Gate persistence failed:', error.message));
+}, 10_000).unref?.();
 
 // Dark-ship (AIS gap) count envelope — the trusted producer behind the
 // temporal anomalies `ais_gaps` count source (#7574). Written on its own
@@ -10056,10 +10415,12 @@ setInterval(() => {
 
 async function seedChokepointTransits() {
   const now = Date.now();
+  const unavailable = await transitTracker.flush(now);
+  if (unavailable.size) console.warn(`[Transit] Capacity-limited waterways: ${[...unavailable].join(', ')}`);
   const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
   const transits = {};
   for (const cp of CHOKEPOINTS) {
-    const recent = window.get(cp.name) || [];
+    const recent = unavailable.has(cp.name) ? [] : window.get(cp.name) || [];
     // An empty observed window cannot establish zero traffic.
     transits[cp.name] = {
       tanker: recent.filter(c => c.type === 'tanker').length,
@@ -10163,6 +10524,8 @@ async function seedTransitSummaries() {
 
   const now = Date.now();
   const summaries = {};
+  const unavailable = await transitTracker.flush(now);
+  if (unavailable.size) console.warn(`[Transit] Capacity-limited waterways: ${[...unavailable].join(', ')}`);
   const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
   // Iterate the canonical chokepoint ID set rather than whatever pw happens to
   // carry today. If seed-portwatch dropped 3 of 13 (flaky ArcGIS), those 3
@@ -10187,12 +10550,16 @@ async function seedTransitSummaries() {
     const threatLevel = CHOKEPOINT_THREAT_LEVELS[cpId] || 'normal';
     const history = cpData?.history ?? [];
     const anomaly = detectTrafficAnomaly(history, threatLevel);
+    // The official IMF PortWatch figures: latest published day, trailing
+    // 7-day mean, and the seeder's year-earlier baseline. Null when PortWatch
+    // has nothing for this chokepoint -- never a zero-fill.
+    const official = summarizePortwatchHistory(history, cpData?.baseline);
 
     // Get relay transit counts for this chokepoint
     let relayTransit = null;
     for (const [relayName, canonicalId] of Object.entries(RELAY_NAME_TO_ID)) {
       if (canonicalId === cpId) {
-        const recent = window.get(relayName) || [];
+        const recent = unavailable.has(relayName) ? [] : window.get(relayName) || [];
         if (recent.length > 0) {
           relayTransit = {
             tanker: recent.filter(c => c.type === 'tanker').length,
@@ -10219,6 +10586,12 @@ async function seedTransitSummaries() {
       todayCargo: relayTransit?.cargo ?? null,
       todayOther: relayTransit?.other ?? null,
       wowChangePct: cpData?.wowChangePct ?? 0,
+      officialLatestDate: official.latestDate,
+      officialLatestTotal: official.latestTotal,
+      officialAvg7d: official.avg7d,
+      baselineAvgDaily: official.baselineAvgDaily,
+      baselineFrom: official.baselineFrom,
+      baselineTo: official.baselineTo,
       riskLevel: cr?.riskLevel ?? '',
       incidentCount7d: cr?.incidentCount7d ?? 0,
       disruptionPct: cr?.disruptionPct ?? 0,
@@ -11222,6 +11595,57 @@ async function handleOpenSkyRequest(req, res, PORT) {
   }
 }
 
+async function handleWitsRequest(req, res) {
+  const responseHeaders = {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+    'CDN-Cache-Control': 'no-store',
+  };
+  if (req.method !== 'GET') {
+    return safeEnd(res, 405, { ...responseHeaders, Allow: 'GET' }, JSON.stringify({ error: 'Method not allowed' }));
+  }
+
+  const params = new URL(req.url, 'http://localhost').searchParams;
+  const upstreamPath = params.get('path') || '';
+  const rows = /^\/API\/V1\/SDMX\/V21\/datasource\/TRN\/reporter\/\d{3}\/partner\/(all|000)\/product\/\d{6}\/year\/(\d{1,4})\/datatype\/(reported|aveestimated)$/.exec(upstreamPath);
+  const validRows = rows && Number(rows[2]) >= 1 && Number(rows[2]) <= 2100
+    && (rows[3] === 'reported' ? rows[1] === 'all' : rows[1] === '000');
+  const validMetadata = /^\/API\/V1\/wits\/datasource\/trn\/(dataavailability\/country\/\d{3}\/year\/all|country\/all)$/.test(upstreamPath);
+  if (params.size !== 1 || (!validRows && !validMetadata)) {
+    return safeEnd(res, 400, responseHeaders, JSON.stringify({ error: 'Invalid WITS path' }));
+  }
+
+  try {
+    const upstreamUrl = new URL('https://wits.worldbank.org');
+    upstreamUrl.pathname = upstreamPath;
+    const upstream = await fetch(upstreamUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        Accept: 'application/xml,text/xml;q=0.9,*/*;q=0.1',
+      },
+      redirect: 'error',
+      signal: AbortSignal.timeout(9000),
+    });
+    const chunks = [];
+    let size = 0;
+    if (upstream.body) {
+      for await (const chunk of upstream.body) {
+        size += chunk.length;
+        if (size > 4 * 1024 * 1024) throw new Error('WITS response too large');
+        chunks.push(chunk);
+      }
+    }
+    return safeEnd(res, upstream.status, {
+      ...responseHeaders,
+      'Content-Type': upstream.headers.get('content-type') || 'application/xml',
+    }, Buffer.concat(chunks));
+  } catch (error) {
+    const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+    return safeEnd(res, timedOut ? 504 : 502, responseHeaders,
+      JSON.stringify({ error: timedOut ? 'WITS request timed out' : 'WITS request failed' }));
+  }
+}
+
 // ── World Bank proxy (World Bank blocks Vercel edge IPs with 403) ──
 const worldbankCache = new Map(); // key: query string → { data, timestamp }
 const WORLDBANK_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — data rarely changes
@@ -12126,7 +12550,7 @@ const server = http.createServer(async (req, res) => {
   // prevention (rate limiting), not data protection. Cloudflare WAF provides edge-level protection.
   const isPublicRoute = pathname === '/health' || pathname === '/' || isRssRoute || pathname.startsWith('/widget-agent');
   if (!isPublicRoute) {
-    const authorized = pathname === '/status'
+    const authorized = pathname === '/status' || pathname === '/wits'
       ? Boolean(RELAY_SHARED_SECRET) && isAuthorizedRequest(req)
       : isAuthorizedRequest(req);
     if (!authorized) {
@@ -12368,6 +12792,14 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     }, JSON.stringify(getRelayRollingMetrics()));
+  } else if (pathname === '/__test/seed-classify' && RELAY_TEST_MODE) {
+    // Test-only seam, same contract as /__test/seed-theater-posture: run one
+    // classify cycle on request.
+    await seedClassify();
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    }, JSON.stringify({ ok: true }));
   } else if (pathname === '/__test/seed-theater-posture' && RELAY_TEST_MODE) {
     // Test-only seam: background seed loops are disabled in RELAY_TEST_MODE,
     // so tests trigger a single theater-posture cycle explicitly.
@@ -12829,6 +13261,11 @@ const server = http.createServer(async (req, res) => {
             'Accept': 'application/rss+xml, application/xml, text/xml, */*',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
+            // Smartraveller's Akamai edge never answers a request without
+            // Accept-Encoding (the relay logged `read ETIMEDOUT` on every miss).
+            // gzip only: the body handler below decodes gzip and deflate, and
+            // gzip is the one every server that compresses supports.
+            'Accept-Encoding': 'gzip',
             ...conditionalHeaders,
           },
           timeout: 15000,
@@ -13046,6 +13483,8 @@ const server = http.createServer(async (req, res) => {
     handleOpenSkyRequest(req, res, PORT);
   } else if (pathname.startsWith('/worldbank')) {
     handleWorldBankRequest(req, res);
+  } else if (pathname === '/wits') {
+    return handleWitsRequest(req, res);
   } else if (pathname.startsWith('/polymarket')) {
     handlePolymarketRequest(req, res);
   } else if (pathname === '/yahoo-chart') {
@@ -13071,31 +13510,56 @@ const server = http.createServer(async (req, res) => {
 });
 
 // ─── Google Flights ───────────────────────────────────────────────────────────
+//
+// The FlightsFrontendService RPCs (GetShoppingResults, GetCalendarGraph) now
+// require a per-request BotGuard token and answer RPC status 13 without one.
+// The server-rendered results page still embeds the shopping payload those
+// RPCs returned, as its `ds:1` AF_initDataCallback block, so both routes read
+// that page. Filters travel in the page's `tfs` parameter.
 
-const GF_SHOPPING_URL = 'https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetShoppingResults';
-const GF_CALENDAR_URL = 'https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetCalendarGraph';
+const GF_PAGE_URL = 'https://www.google.com/travel/flights/search';
 const GF_HEADERS = {
-  'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Accept': '*/*',
+  'Accept': 'text/html,application/xhtml+xml',
   'Accept-Language': 'en-US,en;q=0.9',
-  'Origin': 'https://www.google.com',
-  'Referer': 'https://www.google.com/flights',
+  // Pre-accepted consent: without it an EU-routed request gets the consent page.
+  'Cookie': 'CONSENT=YES+',
 };
 
 let gfGlobal429Until = 0;
 const GF_429_COOLDOWN_MS = Number(process.env.GF_429_COOLDOWN_MS) || 120 * 1000;
-const gfNegativeCache = new Map();
-const GF_NEGATIVE_CACHE_TTL = 60 * 1000;
-const GF_NEGATIVE_CACHE_MAX = 64;
+const GF_PAGE_TIMEOUT_MS = 12_000;
+// One results page per day. 31 days at six pages in flight measured ~7s from
+// the relay; the deadline keeps a slow provider inside the edge's 30s wait.
+const GF_DATES_MAX_DAYS = 31;
+const GF_DATES_CONCURRENCY = 6;
+const GF_DATES_DEADLINE_MS = 20_000;
+// Pages in flight across every search, so concurrent date searches cannot
+// burst Google into a 429 that cools the route down for all callers.
+const GF_PAGE_SLOTS = 8;
+let gfPagesInFlight = 0;
+const gfPageWaiters = [];
 
-/**
- * Encode a Google Flights filter structure for use in f.req POST body.
- * Mirrors fli's FlightSearchFilters.encode() / DateSearchFilters.encode().
- */
-function encodeGfFilters(filters) {
-  const jsonStr = JSON.stringify(filters);
-  return encodeURIComponent(JSON.stringify([null, jsonStr]));
+async function withGfPageSlot(signal, run) {
+  while (gfPagesInFlight >= GF_PAGE_SLOTS) {
+    signal.throwIfAborted();
+    await new Promise((resolve, reject) => {
+      const onAbort = () => {
+        gfPageWaiters.splice(gfPageWaiters.indexOf(wake), 1);
+        reject(signal.reason);
+      };
+      const wake = () => { signal.removeEventListener('abort', onAbort); resolve(); };
+      gfPageWaiters.push(wake);
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+  gfPagesInFlight++;
+  try {
+    return await run();
+  } finally {
+    gfPagesInFlight--;
+    gfPageWaiters.shift()?.();
+  }
 }
 
 function gfCabinClass(cabin) {
@@ -13107,22 +13571,13 @@ function gfCabinClass(cabin) {
   }
 }
 
+// `tfs` takes the stop count itself; null leaves stops unfiltered.
 function gfMaxStops(stops) {
   switch ((stops || '').toUpperCase()) {
-    case 'NON_STOP': case '0': return 1;
-    case 'ONE_STOP': case '1': return 2;
-    case 'TWO_PLUS_STOPS': case '2': return 3;
-    default: return 0;
-  }
-}
-
-function gfSortBy(sort) {
-  switch ((sort || '').toUpperCase()) {
-    case 'CHEAPEST': case 'PRICE': return 2;
-    case 'DEPARTURE_TIME': case 'DEPARTURE': return 3;
-    case 'ARRIVAL_TIME': case 'ARRIVAL': return 4;
-    case 'DURATION': return 5;
-    default: return 0;
+    case 'NON_STOP': case '0': return 0;
+    case 'ONE_STOP': case '1': return 1;
+    case 'TWO_PLUS_STOPS': case '2': return 2;
+    default: return null;
   }
 }
 
@@ -13134,216 +13589,194 @@ function gfParseAirlines(raw) {
   return arr.map(s => s.trim().toUpperCase()).filter(Boolean);
 }
 
+function gfVarint(n) {
+  const out = [];
+  while (n > 127) { out.push((n & 127) | 128); n >>>= 7; }
+  out.push(n);
+  return out;
+}
+const gfInt = (field, n) => [...gfVarint(field << 3), ...gfVarint(n)];
+const gfBytes = (field, bytes) => [...gfVarint((field << 3) | 2), ...gfVarint(bytes.length), ...bytes];
+const gfString = (field, s) => gfBytes(field, [...Buffer.from(s, 'utf8')]);
+
 /**
- * Build the nested filter array for GetShoppingResults.
- * Mirrors FlightSearchFilters.format() from fli/models/google_flights/flights.py.
+ * Build the results-page URL. `tfs` is a base64url protobuf with the field
+ * numbers decoded by the fast-flights project: 3 = one leg per direction
+ * (2 date, 5 max stops, 6 airline, 13/14 origin/destination airport),
+ * 8 = one entry per adult, 9 = cabin, 19 = trip type (1 round, 2 one-way).
  */
-function buildFlightFilters(params) {
-  const { origin, destination, departureDate, returnDate, cabinClass, maxStops,
-    departureWindow, airlines, sortBy, passengers } = params;
-
-  const isRoundTrip = !!(returnDate && returnDate.length === 10);
+function buildGfSearchUrl(params) {
+  const { origin, destination, departureDate, returnDate, cabinClass, maxStops, airlines, passengers } = params;
+  const roundTrip = /^\d{4}-\d{2}-\d{2}$/.test(returnDate || '');
   const adults = Math.max(1, Math.min(parseInt(passengers, 10) || 1, 9));
-
-  let timeFilters = null;
-  if (departureWindow) {
-    const parts = departureWindow.split('-');
-    if (parts.length === 2) {
-      const h0 = parseInt(parts[0], 10);
-      const h1 = parseInt(parts[1], 10);
-      if (!Number.isNaN(h0) && !Number.isNaN(h1)) timeFilters = [h0, h1, null, null];
-    }
-  }
-
-  const airlinesFilter = Array.isArray(airlines) && airlines.length > 0
-    ? airlines.slice().sort()
-    : null;
-
-  const makeSegment = (dep, arr, date) => [
-    [[[dep, 0]]],        // departure airports
-    [[[arr, 0]]],        // arrival airports
-    timeFilters,         // time restrictions [earliestDep, latestDep, earliestArr, latestArr]
-    gfMaxStops(maxStops), // stops
-    airlinesFilter,      // airlines
-    null,                // placeholder
-    date,                // travel date YYYY-MM-DD
-    null,                // max duration
-    null,                // selected flight (for round-trip return search)
-    null,                // layover airports
-    null, null, null,    // placeholders
-    null,                // emissions
-    3,                   // constant
-  ];
-
-  const segments = [makeSegment(origin, destination, departureDate)];
-  if (isRoundTrip) segments.push(makeSegment(destination, origin, returnDate));
-
-  return [
-    [],
-    [
-      null, null,
-      isRoundTrip ? 1 : 2,    // trip type: 1=round, 2=one-way
-      null, [],
-      gfCabinClass(cabinClass),
-      [adults, 0, 0, 0],       // passengers [adults, children, infants_on_lap, infants_in_seat]
-      null,                    // price limit
-      null, null, null, null, null,
-      segments,
-      null, null, null, 1,
-    ],
-    gfSortBy(sortBy),
-    0, 0, 2,
-  ];
+  const stops = gfMaxStops(maxStops);
+  const codes = Array.isArray(airlines) ? airlines.slice().sort() : [];
+  const leg = (date, from, to) => gfBytes(3, [
+    ...gfString(2, date),
+    ...(stops === null ? [] : gfInt(5, stops)),
+    ...codes.flatMap(code => gfString(6, code)),
+    ...gfBytes(13, gfString(2, from)),
+    ...gfBytes(14, gfString(2, to)),
+  ]);
+  const bytes = [...leg(departureDate, origin, destination)];
+  if (roundTrip) bytes.push(...leg(returnDate, destination, origin));
+  for (let i = 0; i < adults; i++) bytes.push(...gfInt(8, 1));
+  bytes.push(...gfInt(9, gfCabinClass(cabinClass)), ...gfInt(19, roundTrip ? 1 : 2));
+  return `${GF_PAGE_URL}?tfs=${Buffer.from(bytes).toString('base64url')}&hl=en&gl=us&curr=USD`;
 }
 
 /**
- * Build the nested filter array for GetCalendarGraph.
- * Mirrors DateSearchFilters.format() from fli/models/google_flights/dates.py.
+ * Read the shopping payload from a results page. A page without the block is
+ * a challenge or an unrecognized page, never an empty result.
  */
-function buildDateFilters(params) {
-  const { origin, destination, startDate, endDate, tripDuration, isRoundTrip,
-    cabinClass, maxStops, departureWindow, airlines, passengers } = params;
-
-  const roundTrip = isRoundTrip === 'true' || isRoundTrip === true;
-  const adults = Math.max(1, Math.min(parseInt(passengers, 10) || 1, 9));
-  const duration = parseInt(tripDuration, 10) || 0;
-
-  let timeFilters = null;
-  if (departureWindow) {
-    const parts = departureWindow.split('-');
-    if (parts.length === 2) {
-      const h0 = parseInt(parts[0], 10);
-      const h1 = parseInt(parts[1], 10);
-      if (!Number.isNaN(h0) && !Number.isNaN(h1)) timeFilters = [h0, h1, null, null];
-    }
+function readGfPayload(html) {
+  const marker = /AF_initDataCallback\(\{key: 'ds:1',(?: hash: '[^']*',)?\s*data:/.exec(html);
+  if (!marker) throw new Error('Google Flights returned a page without flight results');
+  const start = marker.index + marker[0].length;
+  const close = html.indexOf('</script>', start);
+  const block = html.slice(start, close < 0 ? undefined : close);
+  // A rejected search (a past date, an unknown airport) carries an ErrorResponse
+  // in place of the payload: `data:[…], errorHasStatus: true,});`.
+  if (/,\s*errorHasStatus:\s*true/.test(block)) throw new Error('Google Flights rejected the search');
+  const end = block.lastIndexOf(', sideChannel:');
+  let data;
+  try {
+    data = JSON.parse(block.slice(0, end));
+  } catch {
+    throw new Error('Google Flights returned an unreadable results page');
   }
-
-  const airlinesFilter = Array.isArray(airlines) && airlines.length > 0
-    ? airlines.slice().sort()
-    : null;
-
-  const makeSegment = (dep, arr, date) => [
-    [[[dep, 0]]],
-    [[[arr, 0]]],
-    timeFilters,
-    gfMaxStops(maxStops),
-    airlinesFilter,
-    null,
-    date,
-    null, null, null, null, null, null, null,
-    3,
-  ];
-
-  const segments = [makeSegment(origin, destination, startDate)];
-  if (roundTrip && duration > 0) {
-    const retDate = new Date(startDate);
-    retDate.setDate(retDate.getDate() + duration);
-    const retDateStr = retDate.toISOString().slice(0, 10);
-    segments.push(makeSegment(destination, origin, retDateStr));
-  }
-
-  const durationExtra = roundTrip && duration > 0 ? [null, [duration, duration]] : [];
-
-  return [
-    null,
-    [
-      null, null,
-      roundTrip ? 1 : 2,
-      null, [],
-      gfCabinClass(cabinClass),
-      [adults, 0, 0, 0],
-      null,
-      null, null, null, null, null,
-      segments,
-      null, null, null, 1,
-    ],
-    [startDate, endDate],
-    ...durationExtra,
-  ];
+  if (!Array.isArray(data)) throw new Error('Google Flights returned an unrecognized payload');
+  return data;
 }
 
 /**
- * Parse a Google Flights GetShoppingResults response.
+ * Parse the flight rows of a results page.
  * Mirrors SearchFlights._parse_flights_data() from fli/search/flights.py.
  */
-function parseGfFlights(text) {
-  try {
-    const stripped = text.replace(/^\)\]\}'/, '');
-    const outer = JSON.parse(stripped);
-    const inner = outer?.[0]?.[2];
-    if (!inner) return [];
-
-    const data = JSON.parse(inner);
-    const items = [];
-    for (const idx of [2, 3]) {
-      if (Array.isArray(data[idx]) && Array.isArray(data[idx][0])) {
-        items.push(...data[idx][0]);
-      }
+function parseGfFlights(html) {
+  const data = readGfPayload(html);
+  const items = [];
+  for (const idx of [2, 3]) {
+    if (Array.isArray(data?.[idx]) && Array.isArray(data[idx][0])) {
+      items.push(...data[idx][0]);
     }
+  }
 
-    const pad2 = n => String(n || 0).padStart(2, '0');
-    const toIso = (dateArr, timeArr) => {
-      if (!Array.isArray(dateArr) || !Array.isArray(timeArr)) return '';
-      return `${dateArr[0]}-${pad2(dateArr[1])}-${pad2(dateArr[2])}T${pad2(timeArr[0])}:${pad2(timeArr[1])}`;
-    };
+  const pad2 = n => String(n || 0).padStart(2, '0');
+  const toIso = (dateArr, timeArr) => {
+    if (!Array.isArray(dateArr) || !Array.isArray(timeArr)) return '';
+    return `${dateArr[0]}-${pad2(dateArr[1])}-${pad2(dateArr[2])}T${pad2(timeArr[0])}:${pad2(timeArr[1])}`;
+  };
 
-    return items.map(item => {
-      try {
-        const fd = item[0];
-        const pd = item[1];
-        const priceArr = pd?.[0];
-        const price = Array.isArray(priceArr) ? (priceArr[priceArr.length - 1] ?? 0) : 0;
-        const legs = (fd[2] || []).map(fl => ({
-          airlineCode: fl[22]?.[0] ?? '',
-          flightNumber: String(fl[22]?.[1] ?? ''),
-          departureAirport: fl[3] ?? '',
-          arrivalAirport: fl[6] ?? '',
-          departureDatetime: toIso(fl[20], fl[8]),
-          arrivalDatetime: toIso(fl[21], fl[10]),
-          durationMinutes: fl[11] ?? 0,
-        }));
-        return { legs, price, durationMinutes: fd[9] ?? 0, stops: Math.max(0, (fd[2]?.length ?? 1) - 1) };
-      } catch { return null; }
-    }).filter(Boolean);
-  } catch { return []; }
+  const flights = items.map(item => {
+    try {
+      const fd = item[0];
+      const pd = item[1];
+      if (!Array.isArray(fd?.[2]) || fd[2].length === 0) return null;
+      const priceArr = pd?.[0];
+      const price = Array.isArray(priceArr) ? (priceArr[priceArr.length - 1] ?? 0) : 0;
+      const legs = fd[2].map(fl => ({
+        airlineCode: fl[22]?.[0] ?? '',
+        flightNumber: String(fl[22]?.[1] ?? ''),
+        departureAirport: fl[3] ?? '',
+        arrivalAirport: fl[6] ?? '',
+        departureDatetime: toIso(fl[20], fl[8]),
+        arrivalDatetime: toIso(fl[21], fl[10]),
+        durationMinutes: fl[11] ?? 0,
+      }));
+      return { legs, price, durationMinutes: fd[9] ?? 0, stops: Math.max(0, (fd[2]?.length ?? 1) - 1) };
+    } catch { return null; }
+  }).filter(Boolean);
+  if (items.length > 0 && flights.length === 0) {
+    throw new Error('Google Flights returned flight rows in an unrecognized shape');
+  }
+  return flights;
+}
+
+// The page has no departure-time filter or sort control in `tfs`; apply both
+// here. A round-trip page lists only the outbound legs, so the window filters
+// the outbound departure; the return journey is chosen on a later page.
+function gfDepartureWindow(window) {
+  const parts = String(window || '').split('-').map(n => parseInt(n, 10));
+  return parts.length === 2 && parts.every(Number.isInteger) ? parts : null;
+}
+
+function gfSortKey(sortBy) {
+  switch ((sortBy || '').toUpperCase()) {
+    case 'CHEAPEST': case 'PRICE': return f => f.price;
+    case 'DEPARTURE_TIME': case 'DEPARTURE': return f => f.legs[0]?.departureDatetime;
+    case 'ARRIVAL_TIME': case 'ARRIVAL': return f => f.legs.at(-1)?.arrivalDatetime;
+    case 'DURATION': return f => f.durationMinutes;
+    default: return null;
+  }
+}
+
+function selectGfFlights(flights, { departureWindow, sortBy }) {
+  const range = gfDepartureWindow(departureWindow);
+  const hour = f => parseInt(f.legs[0]?.departureDatetime.slice(11, 13), 10);
+  let rows = range ? flights.filter(f => hour(f) >= range[0] && hour(f) < range[1]) : flights.slice();
+  const key = gfSortKey(sortBy);
+  if (key) rows = rows.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+  return rows;
 }
 
 /**
- * Parse a Google Flights GetCalendarGraph response.
- * Mirrors SearchDates._search_chunk() from fli/search/dates.py.
+ * Fetch and parse one results page. Throws `Google Flights returned …` for
+ * provider failures and arms the global cooldown on 429.
  */
-function parseGfDates(text, isRoundTrip) {
+async function fetchGfFlights(params, signal) {
+  const { gfResp, html } = await withGfPageSlot(signal, async () => {
+    const gfResp = await fetch(buildGfSearchUrl(params), { headers: GF_HEADERS, signal });
+    return { gfResp, html: gfResp.ok ? await gfResp.text() : '' };
+  });
+  if (gfResp.status === 429) {
+    gfGlobal429Until = Date.now() + GF_429_COOLDOWN_MS;
+    console.warn(`[Google Flights] 429 — global cooldown ${GF_429_COOLDOWN_MS / 1000}s`);
+    incrementRelayMetric('googleFlights429');
+    recordRelayOutcome('googleFlights', 'throttle');
+    throw new Error(`Google Flights returned ${gfResp.status}`);
+  }
+  if (gfResp.status === 401 || gfResp.status === 403) {
+    recordRelayOutcome('googleFlights', 'authRejection');
+    throw new Error(`Google Flights returned ${gfResp.status}`);
+  }
+  if (!gfResp.ok) {
+    recordRelayOutcome('googleFlights', 'terminalFailure');
+    throw new Error(`Google Flights returned ${gfResp.status}`);
+  }
   try {
-    const stripped = text.replace(/^\)\]\}'/, '');
-    const outer = JSON.parse(stripped);
-    const inner = outer?.[0]?.[2];
-    if (!inner) return null;
+    return parseGfFlights(html);
+  } catch (err) {
+    recordRelayOutcome('googleFlights', 'terminalFailure');
+    throw err;
+  }
+}
 
-    const data = JSON.parse(inner);
-    const items = data[data.length - 1];
-    if (!Array.isArray(items)) return null;
+function recordGfFailure(err) {
+  const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError' || err?.message?.includes('timed out');
+  if (isTimeout) {
+    recordRelayOutcome('googleFlights', 'timeout');
+  } else if (!err?.message?.startsWith('Google Flights')) {
+    recordRelayOutcome('googleFlights', 'terminalFailure');
+  }
+}
 
-    const isCalendarDate = value => {
-      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-      const time = Date.parse(`${value}T00:00:00Z`);
-      return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
-    };
-    const roundTrip = isRoundTrip === 'true' || isRoundTrip === true;
-    const dates = [];
-    for (const item of items) {
-      try {
-        if (!Array.isArray(item) || item.length < 3) return null;
-        if (!Array.isArray(item[2]) || !Array.isArray(item[2][0]) || item[2][0].length < 2) return null;
-        const date = item[0];
-        const returnDate = item[1];
-        if (!isCalendarDate(date) || (roundTrip && !isCalendarDate(returnDate))) return null;
-        const price = Number(item[2][0][1]);
-        if (!Number.isFinite(price) || price <= 0) return null;
-        dates.push({ date, returnDate: roundTrip ? returnDate : '', price });
-      } catch { return null; }
-    }
-    return dates;
-  } catch { return null; }
+function sendGfFailure(res, err, label, emptyKey) {
+  console.error(`[Google Flights] ${label} error:`, err?.message || err);
+  const retryAfter = Math.max(0, Math.ceil((gfGlobal429Until - Date.now()) / 1000));
+  res.writeHead(502, {
+    'Content-Type': 'application/json',
+    ...(retryAfter > 0 ? { 'Retry-After': String(retryAfter) } : {}),
+  });
+  res.end(JSON.stringify({ error: err?.message || 'search failed', [emptyKey]: [] }));
+}
+
+function sendGfCooldown(res, emptyKey, extra) {
+  incrementRelayMetric('googleFlights429');
+  recordRelayOutcome('googleFlights', 'throttle');
+  const retryAfter = Math.max(1, Math.ceil((gfGlobal429Until - Date.now()) / 1000));
+  res.writeHead(200, { 'Content-Type': 'application/json', 'Retry-After': String(retryAfter) });
+  res.end(JSON.stringify({ [emptyKey]: [], ...extra, cooldown: true }));
 }
 
 async function handleGoogleFlightsSearch(req, res) {
@@ -13360,73 +13793,31 @@ async function handleGoogleFlightsSearch(req, res) {
     }
     incrementRelayMetric('googleFlightsRequests');
 
-    const filters = buildFlightFilters({
-      origin, destination,
-      departureDate,
-      returnDate: url.searchParams.get('return_date') || '',
-      cabinClass: url.searchParams.get('cabin_class') || '',
-      maxStops: url.searchParams.get('max_stops') || '',
-      departureWindow: url.searchParams.get('departure_window') || '',
-      airlines: gfParseAirlines(url.searchParams.getAll('airlines')),
-      sortBy: url.searchParams.get('sort_by') || '',
-      passengers: url.searchParams.get('passengers') || '1',
-    });
-
-    const body = `f.req=${encodeGfFilters(filters)}`;
-
-    // Global 429 cooldown: block upstream fetches during cooldown
     if (Date.now() < gfGlobal429Until) {
-      incrementRelayMetric('googleFlights429');
-      recordRelayOutcome('googleFlights', 'throttle');
-      const flights = [];
-      const retryAfter = Math.max(1, Math.ceil((gfGlobal429Until - Date.now()) / 1000));
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Retry-After': String(retryAfter) });
-      res.end(JSON.stringify({ flights, cooldown: true }));
+      sendGfCooldown(res, 'flights', {});
       return;
     }
 
-    const gfResp = await fetch(GF_SHOPPING_URL, {
-      method: 'POST',
-      headers: GF_HEADERS,
-      body,
-      signal: AbortSignal.timeout(15_000),
+    const params = {
+      origin, destination, departureDate,
+      returnDate: url.searchParams.get('return_date') || '',
+      cabinClass: url.searchParams.get('cabin_class') || '',
+      maxStops: url.searchParams.get('max_stops') || '',
+      airlines: gfParseAirlines(url.searchParams.getAll('airlines')),
+      passengers: url.searchParams.get('passengers') || '1',
+    };
+    const flights = selectGfFlights(await fetchGfFlights(params, AbortSignal.timeout(GF_PAGE_TIMEOUT_MS)), {
+      departureWindow: url.searchParams.get('departure_window') || '',
+      sortBy: url.searchParams.get('sort_by') || '',
     });
-    if (gfResp.status === 429) {
-      gfGlobal429Until = Date.now() + GF_429_COOLDOWN_MS;
-      console.warn(`[Google Flights] 429 — global cooldown ${GF_429_COOLDOWN_MS / 1000}s`);
-      incrementRelayMetric('googleFlights429');
-      recordRelayOutcome('googleFlights', 'throttle');
-      throw new Error(`Google Flights returned ${gfResp.status}`);
-    }
-    if (gfResp.status === 401 || gfResp.status === 403) {
-      recordRelayOutcome('googleFlights', 'authRejection');
-      throw new Error(`Google Flights returned ${gfResp.status}`);
-    }
-    if (!gfResp.ok) {
-      recordRelayOutcome('googleFlights', 'terminalFailure');
-      throw new Error(`Google Flights returned ${gfResp.status}`);
-    }
-    const text = await gfResp.text();
-    const flights = parseGfFlights(text);
     recordRelayOutcome('googleFlights', 'success');
     incrementRelayMetric('googleFlightsServed');
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ flights }));
   } catch (err) {
-    const isTimeout = err?.name === 'TimeoutError' || err?.message?.includes('timed out');
-    if (isTimeout) {
-      recordRelayOutcome('googleFlights', 'timeout');
-    } else if (!err?.message?.startsWith('Google Flights returned')) {
-      recordRelayOutcome('googleFlights', 'terminalFailure');
-    }
-    console.error('[Google Flights] search error:', err?.message || err);
-    const retryAfter = Math.max(0, Math.ceil((gfGlobal429Until - Date.now()) / 1000));
-    res.writeHead(502, {
-      'Content-Type': 'application/json',
-      ...(retryAfter > 0 ? { 'Retry-After': String(retryAfter) } : {}),
-    });
-    res.end(JSON.stringify({ error: err?.message || 'search failed', flights: [] }));
+    recordGfFailure(err);
+    sendGfFailure(res, err, 'search', 'flights');
   }
 }
 
@@ -13444,148 +13835,87 @@ async function handleGoogleFlightsDates(req, res) {
       return;
     }
 
-    const isRoundTrip = url.searchParams.get('is_round_trip') || 'false';
-    const tripDuration = url.searchParams.get('trip_duration') || '0';
-    if ((isRoundTrip === 'true') && (parseInt(tripDuration, 10) || 0) <= 0) {
+    const roundTrip = url.searchParams.get('is_round_trip') === 'true';
+    const tripDuration = parseInt(url.searchParams.get('trip_duration') || '0', 10) || 0;
+    if (roundTrip && tripDuration <= 0) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'trip_duration is required for round-trip date searches' }));
       return;
     }
 
-    const params = {
-      origin, destination, startDate, endDate, isRoundTrip,
-      tripDuration,
+    const first = Date.parse(`${startDate}T00:00:00Z`);
+    const last = Date.parse(`${endDate}T00:00:00Z`);
+    const totalDays = Math.round((last - first) / 86_400_000) + 1;
+    if (!Number.isFinite(totalDays) || totalDays < 1 || totalDays > GF_DATES_MAX_DAYS) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `date range must contain 1 to ${GF_DATES_MAX_DAYS} days` }));
+      return;
+    }
+
+    if (Date.now() < gfGlobal429Until) {
+      incrementRelayMetric('googleFlightsRequests');
+      sendGfCooldown(res, 'dates', { partial: false });
+      return;
+    }
+
+    const isoDay = time => new Date(time).toISOString().slice(0, 10);
+    const filters = {
       cabinClass: url.searchParams.get('cabin_class') || '',
       maxStops: url.searchParams.get('max_stops') || '',
-      departureWindow: url.searchParams.get('departure_window') || '',
       airlines: gfParseAirlines(url.searchParams.getAll('airlines')),
       passengers: url.searchParams.get('passengers') || '1',
     };
-
-    // Chunk date ranges > 61 days (Google's calendar API limit)
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const totalDays = Math.ceil((end - start) / 86_400_000) + 1;
-    const MAX_CHUNK = 61;
-    const MAX_DATE_CHUNKS = 6;
-    const allDates = [];
-    let hasPartialFailure = false;
+    const departureWindow = url.searchParams.get('departure_window') || '';
+    const days = Array.from({ length: totalDays }, (_, i) => first + i * 86_400_000);
+    const deadline = AbortSignal.timeout(GF_DATES_DEADLINE_MS);
+    const results = new Array(days.length).fill(null);
+    let next = 0;
+    let firstFailure = '';
     let hasCooldown = false;
 
-    if (totalDays <= MAX_CHUNK) {
-      incrementRelayMetric('googleFlightsRequests');
-      if (Date.now() < gfGlobal429Until) {
-        incrementRelayMetric('googleFlights429');
-        recordRelayOutcome('googleFlights', 'throttle');
-        const retryAfter = Math.max(1, Math.ceil((gfGlobal429Until - Date.now()) / 1000));
-        res.writeHead(200, { 'Content-Type': 'application/json', 'Retry-After': String(retryAfter) });
-        res.end(JSON.stringify({ dates: [], partial: false, cooldown: true }));
-        return;
-      }
-      const filters = buildDateFilters(params);
-      const body = `f.req=${encodeGfFilters(filters)}`;
-      const gfResp = await fetch(GF_CALENDAR_URL, { method: 'POST', headers: GF_HEADERS, body, signal: AbortSignal.timeout(20_000) });
-      if (gfResp.status === 429) {
-        gfGlobal429Until = Date.now() + GF_429_COOLDOWN_MS;
-        console.warn(`[Google Flights] dates 429 — global cooldown ${GF_429_COOLDOWN_MS / 1000}s`);
-        incrementRelayMetric('googleFlights429');
-        recordRelayOutcome('googleFlights', 'throttle');
-        throw new Error(`Google Flights returned ${gfResp.status}`);
-      }
-      if (gfResp.status === 401 || gfResp.status === 403) {
-        recordRelayOutcome('googleFlights', 'authRejection');
-        throw new Error(`Google Flights returned ${gfResp.status}`);
-      }
-      if (!gfResp.ok) {
-        recordRelayOutcome('googleFlights', 'terminalFailure');
-        throw new Error(`Google Flights returned ${gfResp.status}`);
-      }
-      const text = await gfResp.text();
-      const dates = parseGfDates(text, isRoundTrip);
-      if (dates === null) {
-        recordRelayOutcome('googleFlights', 'terminalFailure');
-        throw new Error('Google Flights returned an invalid calendar response');
-      }
-      allDates.push(...dates);
-      recordRelayOutcome('googleFlights', 'success');
-      incrementRelayMetric('googleFlightsServed');
-    } else {
-      const chunks = [];
-      for (let day = start.getTime(); day <= end.getTime() && chunks.length < MAX_DATE_CHUNKS; day += MAX_CHUNK * 86_400_000) {
-        chunks.push({
-          ...params,
-          startDate: new Date(day).toISOString().slice(0, 10),
-          endDate: new Date(Math.min(day + (MAX_CHUNK - 1) * 86_400_000, end.getTime())).toISOString().slice(0, 10),
-        });
-      }
-      if (totalDays > MAX_CHUNK * MAX_DATE_CHUNKS) hasPartialFailure = true;
-
-      // At most six concurrent 20s fetches fit within the RPC's 30s wait.
-      const results = await Promise.all(chunks.map(async (chunk) => {
+    const worker = async () => {
+      while (next < days.length) {
+        const index = next++;
+        if (deadline.aborted) { firstFailure ||= 'Google Flights date search ran out of time'; return; }
+        if (Date.now() < gfGlobal429Until) { hasCooldown = true; return; }
+        const date = isoDay(days[index]);
+        const returnDate = roundTrip ? isoDay(days[index] + tripDuration * 86_400_000) : '';
         incrementRelayMetric('googleFlightsRequests');
-        if (Date.now() < gfGlobal429Until) {
-          incrementRelayMetric('googleFlights429');
-          recordRelayOutcome('googleFlights', 'throttle');
-          hasCooldown = true;
-          hasPartialFailure = true;
-          return [];
-        }
         try {
-          const body = `f.req=${encodeGfFilters(buildDateFilters(chunk))}`;
-          const gfResp = await fetch(GF_CALENDAR_URL, { method: 'POST', headers: GF_HEADERS, body, signal: AbortSignal.timeout(20_000) });
-          if (gfResp.status === 429) {
-            gfGlobal429Until = Date.now() + GF_429_COOLDOWN_MS;
-            console.warn(`[Google Flights] chunk 429 — global cooldown ${GF_429_COOLDOWN_MS / 1000}s`);
-            incrementRelayMetric('googleFlights429');
-            recordRelayOutcome('googleFlights', 'throttle');
-            hasCooldown = true;
-          } else if (gfResp.status === 401 || gfResp.status === 403) {
-            recordRelayOutcome('googleFlights', 'authRejection');
-          } else if (gfResp.ok) {
-            const text = await gfResp.text();
-            const dates = parseGfDates(text, isRoundTrip);
-            if (dates === null) {
-              recordRelayOutcome('googleFlights', 'terminalFailure');
-              console.warn(`[Google Flights] dates chunk ${chunk.startDate} returned an invalid calendar response`);
-            } else {
-              recordRelayOutcome('googleFlights', 'success');
-              incrementRelayMetric('googleFlightsServed');
-              return dates;
-            }
-          } else {
-            recordRelayOutcome('googleFlights', 'terminalFailure');
-            console.warn(`[Google Flights] dates chunk ${chunk.startDate} failed: ${gfResp.status}`);
-          }
+          const signal = AbortSignal.any([deadline, AbortSignal.timeout(GF_PAGE_TIMEOUT_MS)]);
+          const flights = selectGfFlights(
+            await fetchGfFlights({ origin, destination, departureDate: date, returnDate, ...filters }, signal),
+            { departureWindow },
+          );
+          recordRelayOutcome('googleFlights', 'success');
+          incrementRelayMetric('googleFlightsServed');
+          const prices = flights.map(f => f.price).filter(price => Number.isFinite(price) && price > 0);
+          results[index] = prices.length ? [{ date, returnDate, price: Math.min(...prices) }] : [];
         } catch (err) {
-          recordRelayOutcome('googleFlights', classifyUpstreamOutcome({ error: err }));
+          if (err?.message === 'Google Flights returned 429') hasCooldown = true;
+          else recordGfFailure(err);
+          firstFailure ||= err?.message || 'date search failed';
         }
-        hasPartialFailure = true;
-        return [];
-      }));
-      for (const dates of results) allDates.push(...dates);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(GF_DATES_CONCURRENCY, days.length) }, worker));
+
+    const answered = results.filter(Boolean);
+    // Every day failed outright (each already counted): report the first reason like a single search.
+    if (answered.length === 0 && !hasCooldown) {
+      sendGfFailure(res, new Error(firstFailure || 'date search failed'), 'dates', 'dates');
+      return;
     }
-
-    const sortByPrice = url.searchParams.get('sort_by_price') === 'true';
-    if (sortByPrice) allDates.sort((a, b) => a.price - b.price);
-
-    if (hasPartialFailure && allDates.length > 0) recordRelayOutcome('googleFlights', 'fallback');
+    const dates = answered.flat();
+    const partial = answered.length < days.length;
+    if (url.searchParams.get('sort_by_price') === 'true') dates.sort((a, b) => a.price - b.price);
+    if (partial && dates.length > 0) recordRelayOutcome('googleFlights', 'fallback');
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ dates: allDates, partial: hasPartialFailure, cooldown: hasCooldown }));
+    res.end(JSON.stringify({ dates, partial, cooldown: hasCooldown }));
   } catch (err) {
-    const isTimeout = err?.name === 'TimeoutError' || err?.message?.includes('timed out');
-    if (isTimeout) {
-      recordRelayOutcome('googleFlights', 'timeout');
-    } else if (!err?.message?.startsWith('Google Flights returned')) {
-      recordRelayOutcome('googleFlights', 'terminalFailure');
-    }
-    console.error('[Google Flights] dates error:', err?.message || err);
-    const retryAfter = Math.max(0, Math.ceil((gfGlobal429Until - Date.now()) / 1000));
-    res.writeHead(502, {
-      'Content-Type': 'application/json',
-      ...(retryAfter > 0 ? { 'Retry-After': String(retryAfter) } : {}),
-    });
-    res.end(JSON.stringify({ error: err?.message || 'search failed', dates: [] }));
+    recordGfFailure(err);
+    sendGfFailure(res, err, 'dates', 'dates');
   }
 }
 
@@ -15177,6 +15507,7 @@ server.listen(PORT, () => {
   startChokepointWarmPingLoop();
   startCableHealthWarmPingLoop();
   startClassifySeedLoop();
+  startMiddleEastStrikesLoop();
   startServiceStatusesSeedLoop();
   startTheaterPostureSeedLoop();
 
@@ -15277,6 +15608,7 @@ async function gracefulShutdown(signal) {
     // already silent, and the process is about to exit regardless.
     try { upstreamSocket.terminate(); } catch {}
   }
+  await transitTracker.flush(Date.now()).catch(error => console.warn('[Transit] Shutdown gate flush failed:', error.message));
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 12_000);
 }

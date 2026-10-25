@@ -76,20 +76,92 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 
 ### `POST /api/v2/shipping/webhooks`
 
-Registers a webhook for chokepoint disruption alerts. Returns `200 OK`.
+Registers a webhook for one push event. Returns `200 OK`.
 
-**Request**:
+The events, their thresholds, cooldowns, payload schemas and id rules are defined once in the event registry, [`shared/event-triggers.json`](https://github.com/koala73/worldmonitor/blob/main/shared/event-triggers.json). The [Zapier integration](https://github.com/koala73/worldmonitor/tree/main/integrations/zapier) reads the same file for its instant triggers.
+
+| `eventType` | Kind | Fires when | Scope fields |
+| --- | --- | --- | --- |
+| `chokepoint.disruption` (default) | threshold | A subscribed chokepoint's `disruptionScore` reaches `alertThreshold` and, when `minLiveSignal` is set, its live signals sit at least that many points above the chokepoint's standing threat level | `chokepointIds`, `alertThreshold`, `minLiveSignal` |
+| `country.risk_surge` | threshold | A monitored country's Country Instability Index rises 15 or more points within 24 hours into the high band (70 or more), once per surge per country with a 24-hour cooldown | `countries` |
+| `news.breaking` | occurrence | WorldMonitor's news relay classifies a headline as critical or high and it clears the subscription's importance floor, severity floor, keywords, categories and countries; once per story link | `scope.keywords`, `scope.categories`, `scope.countries`, `scope.importanceFloor`, `scope.severityFloor` |
+| `market.move` | occurrence | A tracked equity, commodity or crypto quote moves at least `minAbsPct` percent on the day; once per symbol, direction and severity band per UTC day | `scope.assetClasses`, `scope.symbols`, `scope.minAbsPct`, `scope.direction` |
+| `natural.hazard` | occurrence | WorldMonitor first sees an earthquake (USGS, Earthquakes Canada) or a storm, wildfire, flood, volcano or other natural event (NASA EONET, GDACS, National Hurricane Center, western-Pacific cyclones) that clears the subscription's hazard types, magnitude, alert level and countries; once per hazard | `scope.hazardTypes`, `scope.minMagnitude`, `scope.minAlertLevel`, `scope.countries` |
+
+Threshold events re-evaluate a condition every 5 minutes and deliver one crossing once. Occurrence events are fire-once: each event carries an `eventId`, and a subscription gets one `X-WM-Delivery-Id` per `eventId`; delivery is still at-least-once, so a retry can repeat it. See [Occurrence events](#occurrence-events).
+
+**Request** (chokepoint alerts):
 ```json
 {
   "callbackUrl": "https://hooks.example.com/shipping-alerts",
   "chokepointIds": ["hormuz_strait", "suez", "bab_el_mandeb"],
-  "alertThreshold": 60
+  "alertThreshold": 60,
+  "minLiveSignal": 15
+}
+```
+
+**Request** (country risk surges):
+```json
+{
+  "callbackUrl": "https://hooks.example.com/risk-alerts",
+  "eventType": "country.risk_surge",
+  "countries": ["IR", "UA", "TW"]
+}
+```
+
+**Request** (breaking news):
+```json
+{
+  "callbackUrl": "https://hooks.example.com/news",
+  "eventType": "news.breaking",
+  "scope": {
+    "keywords": ["hormuz", "strait of hormuz"],
+    "categories": ["conflict", "military"],
+    "countries": ["IR"],
+    "importanceFloor": 69,
+    "severityFloor": "high"
+  }
+}
+```
+
+**Request** (large market moves):
+```json
+{
+  "callbackUrl": "https://hooks.example.com/markets",
+  "eventType": "market.move",
+  "scope": {
+    "assetClasses": ["equity", "commodity"],
+    "symbols": ["VIX", "GC=F"],
+    "minAbsPct": 10,
+    "direction": "any"
+  }
+}
+```
+
+**Request** (natural hazards):
+```json
+{
+  "callbackUrl": "https://hooks.example.com/hazards",
+  "eventType": "natural.hazard",
+  "scope": {
+    "hazardTypes": ["earthquakes", "severeStorms"],
+    "minMagnitude": 6,
+    "minAlertLevel": "Orange",
+    "countries": ["JP", "PH", "TW"]
+  }
 }
 ```
 
 - `callbackUrl` — required, HTTPS only, must not resolve to a private/loopback address (SSRF guard at registration).
+- `eventType` — optional. `chokepoint.disruption` when omitted, so every body written before event types existed keeps its meaning. Unknown values return `400`.
 - `chokepointIds` — optional. Omitting or passing an empty array subscribes to **all** registered chokepoints. Unknown IDs return `400`.
 - `alertThreshold` — numeric 0-100 (default `50`). Values outside that range return a `400` validation response with description `alertThreshold must be between 0 and 100`.
+- `minLiveSignal` — optional, 0-40 (default `0`), `chokepoint.disruption` only. The score must also exceed the chokepoint's standing threat level (war zone 70, critical 40, high 30, elevated 15, normal 0) by at least this many points before a delivery fires. Without it a war-zone chokepoint that stands at 70 fires once at registration against a threshold of 50 and never again. `15` is what the in-app `chokepoint_disruption` alert rule uses and what the Zapier trigger sends by default.
+- `countries` — optional, `country.risk_surge` only: ISO 3166-1 alpha-2 codes among the monitored countries (the `countries` map in the registry). Empty subscribes to all of them; an unmonitored code or a `countries` list on another event returns `400`.
+- `scope` — occurrence events only; every key is optional and the defaults below are stored on the record at registration. A key the event does not define (`symbols` on `news.breaking`), any `scope` on a threshold event, an unknown enum value or an out-of-range number returns `400` naming the field as `scope.<key>`.
+  - `news.breaking`: `keywords` (1-20 terms, 2-64 characters, matched as whole words, case-insensitive, any-of; stored lower-cased), `categories` (any of `conflict`, `protest`, `disaster`, `diplomatic`, `economic`, `terrorism`, `cyber`, `health`, `environmental`, `military`, `crime`, `infrastructure`, `tech`, `general`), `countries` (ISO 3166-1 alpha-2, any country; a headline the relay could not attribute to a country never matches a country scope), `importanceFloor` (0-100, default `69`), `severityFloor` (`critical` or `high`, default `high`, which is every headline the relay queues).
+  - `market.move`: `assetClasses` (any of `equity`, `commodity`, `crypto`), `symbols` (1-50, stored upper-cased, as WorldMonitor lists them), `minAbsPct` (5-100, default `10`; the relay only publishes moves of 5 percent or more, 10 for crypto, so lower values change nothing), `direction` (`up`, `down` or `any`, default `any`).
+  - `natural.hazard`: `hazardTypes` (any of `earthquakes`, `severeStorms`, `floods`, `volcanoes`, `wildfires`, `drought`, `landslides`, `dustHaze`, `snow`, `tempExtremes`, `seaLakeIce`, `waterColor`, `manmade`; empty accepts every type), `minMagnitude` (4.5-9.5, default `5.5`; earthquakes only), `minAlertLevel` (`Orange` or `Red`, default `Orange`; GDACS events only, see [Occurrence events](#occurrence-events)), `countries` (ISO 3166-1 alpha-2, any country; a hazard placed in no country, such as a mid-ocean quake, never matches a country scope).
 
 **Response (`200`)**:
 ```json
@@ -101,9 +173,9 @@ Registers a webhook for chokepoint disruption alerts. Returns `200 OK`.
 
 - `subscriberId` — `wh_` prefix + 24 hex chars (12 random bytes).
 - `secret` — raw 64-char lowercase hex (32 random bytes). There is no `whsec_` prefix. Persist it — the server never returns it again except on rotation.
-- **TTL**: 30 days on both the subscriber record and the per-owner index set. Only **re-registration** refreshes both, via a non-transactional pipeline (`SET` record with `EX`, `SADD` + `EXPIRE` on the owner index). `rotate-secret` and `reactivate` refresh the record's TTL only — they do not touch the owner-index set's expiry, so the owner index can expire independently if a caller only ever rotates or reactivates within a 30-day window. Re-register to keep both alive.
+- **TTL**: 30 days on both the subscriber record and the per-owner index set. Registration writes both with a non-transactional pipeline (`SET` record with `EX`, `SADD` + `EXPIRE` on the owner index, `SADD` on the global delivery index). `rotate-secret` and `reactivate` rewrite the same keys in one transaction, so they also refresh both TTLs. Delivery bookkeeping keeps the record's existing TTL, so a webhook that only receives deliveries still expires 30 days after its last registration, rotation, or reactivation.
 - Registration and listing each scan one owner-index page and check at most 100 subscriber records for expiry. Confirmed expired members are removed only if the record is still absent. Scan progress resumes on later calls. Redis may return more than 100 IDs in a scan page; listing still enumerates the full index. Redis read or cleanup failures return 503 and preserve ambiguous members.
-- Registration returns `503` if any of the three writes cannot be confirmed. Partial records or index entries can remain; a retry can create another registration. No rollback is guaranteed.
+- Registration returns `503` if any of its writes cannot be confirmed. Partial records or index entries can remain; a retry can create another registration. No rollback is guaranteed.
 - Ownership is tracked via SHA-256 of the caller's API key (never secret — stored as `ownerTag`).
 
 Auth: `X-WorldMonitor-Key` (forceKey: true) + PRO. Returns `401` / `403` otherwise.
@@ -121,25 +193,50 @@ Lists the caller's registered webhooks (filtered by the SHA-256 owner tag of the
       "chokepointIds": ["hormuz_strait", "suez"],
       "alertThreshold": 60,
       "createdAt": "2026-04-19T12:00:00Z",
-      "active": true
+      "active": true,
+      "eventType": "chokepoint.disruption",
+      "countries": [],
+      "minLiveSignal": 15
+    },
+    {
+      "subscriberId": "wh_...",
+      "callbackUrl": "https://hooks.example.com/news",
+      "chokepointIds": ["hormuz_strait", "suez", "..."],
+      "alertThreshold": 50,
+      "createdAt": "2026-10-18T09:00:00Z",
+      "active": true,
+      "eventType": "news.breaking",
+      "countries": [],
+      "minLiveSignal": 0,
+      "scope": { "keywords": ["hormuz", "strait of hormuz"], "categories": ["conflict", "military"], "countries": ["IR"], "importanceFloor": 69, "severityFloor": "high" }
     }
   ]
 }
 ```
 
-The `secret` is intentionally omitted from list and status responses.
+The `secret` is intentionally omitted from list and status responses. Records registered before event types existed report `eventType: "chokepoint.disruption"`, `countries: []` and `minLiveSignal: 0`. `scope` appears only on occurrence-event records, as stored (defaults applied); `chokepointIds` and `alertThreshold` on those records are the registration defaults and are not used.
 
 <Note>
-The three `{subscriberId}` sub-routes below are hand-written edge handlers, not generated gateway RPCs: they do not appear in the published OpenAPI spec (`ShippingV2Service`) or in generated clients, and their `403` message uses the literal `PRO subscription required` (all-caps), unlike the gateway routes' `Pro subscription required`.
+The `{subscriberId}` sub-routes below are hand-written edge handlers, not generated gateway RPCs: they do not appear in the published OpenAPI spec (`ShippingV2Service`) or in generated clients, and their `403` message uses the literal `PRO subscription required` (all-caps), unlike the gateway routes' `Pro subscription required`.
 </Note>
 
 ### `GET /api/v2/shipping/webhooks/{subscriberId}`
 
-Status read for a single webhook. Returns the same record shape as in `GET /webhooks` (no `secret`). `404` if unknown, `403` if owned by a different API key.
+Status read for a single webhook. Returns the same record shape as in `GET /webhooks` (no `secret`) plus the delivery counters `failureCount`, `lastDeliveryAt`, and `lastDeliveryStatus` described under [Delivery worker](#delivery-worker). `404` if unknown, `403` if owned by a different API key.
+
+### `DELETE /api/v2/shipping/webhooks/{subscriberId}`
+
+Unsubscribes. Removes the record, its entries in the owner and delivery indexes, and the worker's per-entity delivery state in one compare-and-delete, so a later registration with the same scope starts armed. Zapier calls this when a Zap is turned off.
+
+```json
+{ "subscriberId": "wh_...", "deleted": true, "deletedAt": "2026-10-17T12:05:00Z" }
+```
+
+`404` if unknown or already removed (a second delete is a no-op), `403` if owned by a different API key, `409` if the record changed between the owner check and the delete (retry).
 
 ### `POST /api/v2/shipping/webhooks/{subscriberId}/rotate-secret`
 
-Generates and returns a **new** secret. The record's `secret` is replaced in place; the old secret stops validating immediately.
+Generates and returns a **new** secret. The record's `secret` is replaced in place. Deliveries started after the rotation are signed with the new secret; one already in flight when you rotate can still carry the old signature.
 
 ```json
 { "subscriberId": "wh_...", "secret": "new-64-char-hex", "rotatedAt": "2026-04-19T12:05:00Z" }
@@ -147,18 +244,73 @@ Generates and returns a **new** secret. The record's `secret` is replaced in pla
 
 ### `POST /api/v2/shipping/webhooks/{subscriberId}/reactivate`
 
-Flips `active: true` on the record (use after investigating and fixing a delivery failure that caused deactivation).
+Flips `active: true` on the record and resets `failureCount` to 0 (use after investigating and fixing the delivery failures that caused deactivation).
 
 ```json
 { "subscriberId": "wh_...", "active": true }
 ```
+
+### Delivery worker
+
+A worker evaluates every active webhook every 5 minutes. `chokepoint.disruption` webhooks are compared with the chokepoint status feed (the same data as `get-chokepoint-status`); `country.risk_surge` webhooks with the Country Instability Index feed (the same data as `get-risk-scores`, refreshed every 8 minutes). When one feed is unreadable for a tick, webhooks on the other event still run.
+
+For a `chokepoint.disruption` webhook, each subscribed chokepoint's `disruptionScore` is compared with the webhook's `alertThreshold`:
+
+- A delivery fires when `disruptionScore >= alertThreshold` and, with `minLiveSignal` set, when `disruptionScore` minus the chokepoint's standing threat level is at least `minLiveSignal`. Each upward crossing produces one delivery. Without `minLiveSignal` the chokepoint re-arms when its score drops below the threshold. With it, the chokepoint re-arms only when its score drops 10 points below the threshold or its live signal falls under 5 points (or under `minLiveSignal`, if that is lower), and it refires at most once per 12 hours. One navigational warning moves the score by 5 points, so a warning count that wobbles does not refire the alert. These are the in-app `chokepoint_disruption` rule's floors.
+- The score adds up to 15 points from navigational warnings, up to 15 from AIS, and 10 for a transit anomaly, and a missing input scores 0. After a delivery, the chokepoint re-arms only when the score (or live signal) plus the maximum of every input that was present at the delivery but is missing now is still below its re-arm floor. An input outage alone therefore does not re-arm it, and the input's recovery does not fire the same disruption again.
+- A chokepoint that already meets the threshold (and, with `minLiveSignal` set, the live floor) when the worker first evaluates a webhook produces one delivery.
+
+For a `country.risk_surge` webhook, each country in scope is evaluated on the feed's own 24-hour movement (`dynamicScore`, delivered as `delta24h`):
+
+- A delivery fires when `delta24h >= 15` and `combinedScore >= 70` (the high band), once per surge: the country then stays quiet until its 24-hour movement falls under 5 points, and a country is reported at most once per 24 hours even when it re-arms sooner. A high but flat index (Russia at 90 with no movement) is standing risk, not a surge, and never fires. A reading whose `staticBaseline` differs from the previous evaluation is a baseline or methodology edit, not an event: it disarms the country until the movement settles. A reading with no usable 24-hour movement (the feed reports `TREND_DIRECTION_UNSPECIFIED` when it has no prior snapshot) leaves the country's state as it was.
+- `previousScore` in the delivery is `score - delta24h`, the index about 24 hours earlier.
+- The thresholds were chosen on a 90-day backtest of 6-hourly archived scores (24 countries) checked against wire reports: at a floor of 50, 48 fires gave 17 clear escalations, 17 minor incidents and 14 non-events, every clear escalation in a country already in the high band; the floor of 70 keeps 15 of those 17 and drops a third of the non-events, and the baseline guard removes the static re-levellings. Expect about 0.7 fires a day across all monitored countries, concentrated in countries with an active index (Iran, Ukraine, Russia in the backtest window); countries whose index sits flat (Yemen at 70, Saudi Arabia at 50 in the window) do not surge even during real escalations, so narrow the scope with `countries` where that matters. Changing the thresholds means editing the registry; the worker and this page are pinned to it by tests.
+
+For both threshold events:
+
+- Delivery is at-least-once. A failed delivery stays armed and is retried on the next tick while the event condition holds. A retry keeps the original `X-WM-Delivery-Id` and `triggeredAt`; the score fields carry the current values. A crossing that re-arms before it is delivered is dropped, and the next crossing gets a new id.
+- A failure is a non-2xx response, no response within 15 seconds (DNS resolution included), or a callback URL that resolves to a private or reserved address. A webhook's deliveries stop for the tick at its first failure and the rest wait for the next tick, so `failureCount` counts consecutive failed ticks. After 5 (about 25 minutes of failures) the worker sets `active: false` and stops delivering to that webhook. A successful delivery resets the count. `reactivate` resumes delivery.
+- The worker re-reads the webhook before each send and stops for the tick if it changed, for example after `rotate-secret` or `reactivate`. The next tick sends the remaining crossings with the new record.
+
+`GET /api/v2/shipping/webhooks/{subscriberId}` reports the delivery counters:
+
+| Field | Meaning |
+| --- | --- |
+| `failureCount` | Consecutive ticks whose delivery failed. `0` before the first delivery and after any success. |
+| `lastDeliveryAt` | ISO-8601 time of the last delivery attempt, or `null` before the first. |
+| `lastDeliveryStatus` | HTTP status of the last attempt, or `null` when there was no attempt or no HTTP response (timeout, refused callback URL, network error). |
+
+The `reason` field names the strongest signal behind the score. The first matching row wins:
+
+| `reason` | Condition |
+| --- | --- |
+| `ais_congestion_spike` | `aisDisruptions > 0` |
+| `navigational_warning` | `activeWarnings > 0` |
+| `transit_drop` | Today's transit counts are available and `wowChangePct <= -25` |
+| `score_threshold` | None of the above |
+
+`details` carries `name`, `status`, `activeWarnings`, `aisDisruptions`, `congestionLevel`, `warRiskTier`, `wowChangePct` (`null` when today's transit counts are unavailable), `previousScore` (the score at the previous evaluation, `null` on the first), and `scoresFetchedAt` (when the chokepoint feed was computed).
+
+### Occurrence events
+
+`news.breaking`, `market.move` and `natural.hazard` are not conditions the worker re-checks; they are things that happened once. The same worker drains, every 5 minutes, a copy of the news relay's `rss_alert` and `market_alert` messages (the relay tees them onto a second list as it queues them for in-app alerts), reads the earthquake and natural-event feeds (the same data as `list-earthquakes` and `list-natural-events`) for hazards it has not seen before, and matches each event against every subscription's stored `scope`.
+
+- **One event, one delivery.** Every body carries an `eventId`. For `news.breaking` it is `rss_` + 32 hex of the story's canonical link (host and path, no query or fragment), so the same story reaching the relay through several site feeds, or under a reworded headline, is one event; a headline with no link hashes its normalized title instead. For `market.move` it is `mkt_` + 32 hex of the relay's coalesce key (`market:<assetClass>:<symbol>:<surge|decline>:<severity>`) per UTC day: the relay republishes a sustained move every hour, you receive it once a day per symbol, direction and severity band, and a move that escalates into the critical band is a second event. For `natural.hazard` it is `eq:` + the earthquake feed's id (a USGS event id, or `nrcan:` + the Earthquakes Canada id) or `nat:` + the natural-event id (`EONET_<n>`, `gdacs-<type>-<id>`, a western-Pacific `cyclone:` id), with `:red` appended to a GDACS event at Red; National Hurricane Center ids embed the advisory number, so a storm is keyed on its basin and storm number (`nat:nhc-AL09`) and a new advisory is not a new hazard. A subscription gets one `X-WM-Delivery-Id` per `eventId`, taken from the first copy that matches its `scope`: a later copy (a bigger move in the same band, a reworded headline) still reaches a subscription the earlier copies did not match, and never reaches one that already has the event. Delivery is at-least-once: if the worker stops after your endpoint accepted a POST but before it recorded the success, the next tick resends it under the same `X-WM-Delivery-Id`, so make processing idempotent on that id. Two subscriptions on the same event receive the same `eventId` under different `X-WM-Delivery-Id`s, which is the key to dedupe across Zaps or receivers.
+- **Retry and expiry.** A failed delivery (non-2xx, timeout, refused callback) is retried every 5 minutes under the same `X-WM-Delivery-Id` and body, with the same `failureCount` ceiling as threshold events (5 consecutive failed ticks deactivate the webhook). A delivery still pending two hours after it was first queued (a day for `natural.hazard`) is dropped and never sent, and a later copy of that event does not restart it. A deactivated webhook keeps its pending deliveries: reactivated within that window, it retries them on the next tick under their original ids; older ones are dropped.
+- **Caps.** Each subscription receives at most 20 events an hour and 100 a day per event type (30 and 150 for `natural.hazard`, so an aftershock swarm fits; UTC buckets), retries included: a pending retry carried into a new hour takes one of that hour's slots and waits, still pending, while the hour is full. New events over the cap are dropped and counted on the server, not queued or batched. Narrow the scope (keywords, categories, countries, symbols, hazard types, a higher `importanceFloor`, `minAbsPct` or `minMagnitude`) rather than relying on the cap. Measured on 2026-10-18, the relay queues about 135 distinct headlines a day (16 critical) and a handful of distinct market moves; over the previous 30 days the hazard feeds carried about 1 earthquake a day at magnitude 5.5 or more (21 at 4.5 or more) and about 1.4 new EONET events a day, most of them US wildfires, some of them prescribed burns.
+- **New hazards.** A hazard is new the first time its id appears in either feed, when its event time is within the last 24 hours (earthquakes) or 72 hours (other hazards) and the agency has not closed it; an older or closed id is recorded as seen without a delivery. A GDACS event is new whenever WorldMonitor first sees it at Orange or Red, however long ago GDACS opened it (an event that starts Green is not stored until it escalates). An escalation from Orange to Red is a second event (`eventId` ending in `:red`), delivered to Orange and Red scopes alike; a Red event that falls back to Orange is not new. Hong Kong Observatory warning signals are not hazards here: their id names the signal, not the storm, which arrives through the cyclone feeds. Neither are prescribed burns: EONET wildfires titled "Prescribed Fire … RX" are planned burns and are skipped. The first time the worker ever reads a feed it records every current id and delivers nothing, so a subscription receives hazards that appear after it, never a backlog. It remembers that it has read the feed for good, so a quiet feed whose seen ids have aged out (NHC off-season) still delivers its next hazard; if the record of seen ids is lost, hazards still inside their new window may be delivered once more. Another agency's copy of a hazard already seen is not new: an earthquake within 120 seconds, 150 km and 0.6 magnitude of a seen one that came from the other agency or has left the feed (an Earthquakes Canada quake that USGS later reports, or a USGS id change; two quakes the feed still lists side by side are both delivered), or a storm whose name matches a seen storm (the same hurricane from the National Hurricane Center, EONET and GDACS). A quake whose magnitude is revised across your `minMagnitude` after it was first seen is not delivered.
+- **Hazard scope.** `minMagnitude` applies to earthquakes only. `minAlertLevel` applies to GDACS events only: WorldMonitor stores Orange and Red GDACS events, so `Orange` accepts all of them and `Red` only those GDACS marked Red; western-Pacific cyclones carry no level and pass `Orange` only. `countryCodes` holds the country the agency's text names (the USGS place, the GDACS or EONET title), else the smallest country bounding box that contains the point (France and the United States use boxes around their territories, since their published boxes span open ocean), else nothing; a box can name a coastal country for an offshore point; a country scope is strict and never receives a hazard placed in no country. Earthquake rows of the natural-event feed (GDACS) are skipped because the earthquake feed carries the same quakes.
+- **Severity and floors.** Only headlines the relay classified `critical` or `high` exist on this stream; `severityFloor: "critical"` keeps the critical band only. `importanceScore` is the relay's score (the critical band starts at 82); the default floor of 69 is the watchlist-story floor. `countryCodes` is what the relay attributed from the headline text (often empty); a country scope is strict and never receives unattributed headlines. `category` is `null` for alert paths with no classifier category (Saudi Civil Defense posts).
+- **Signing.** Occurrence deliveries go through the same sender as threshold events, so they carry the same headers and signatures; verify them as described in [Verifying deliveries](#verifying-deliveries), then dedupe on `X-WM-Delivery-Id` (one subscription) or `eventId` (across subscriptions).
 
 ### Delivery format
 
 ```
 POST <callbackUrl>
 Content-Type: application/json
-X-WM-Signature: sha256=<HMAC-SHA256(body, secret)>
+X-WM-Signature: sha256=<legacy HMAC-SHA256(body, secret)>
+X-WM-Signature-V2: sha256=<HMAC-SHA256(timestamp.deliveryId.event.body, secret)>
+X-WM-Timestamp: <Unix seconds>
 X-WM-Delivery-Id: whd_<32 lowercase hex chars>
 X-WM-Event: chokepoint.disruption
 
@@ -173,34 +325,151 @@ X-WM-Event: chokepoint.disruption
 }
 ```
 
-The delivery worker re-resolves `callbackUrl` before each send and re-checks against `PRIVATE_HOSTNAME_PATTERNS` to mitigate DNS rebinding. Delivery is at-least-once — consumers must handle duplicates via `X-WM-Delivery-Id`.
+A `country.risk_surge` delivery carries `X-WM-Event: country.risk_surge` and this body (`reason` is always `risk_surge`):
+
+```json
+{
+  "subscriberId": "wh_...",
+  "countryCode": "IR",
+  "countryName": "Iran",
+  "score": 84,
+  "previousScore": 60,
+  "delta24h": 24,
+  "trend": "TREND_DIRECTION_RISING",
+  "advisoryLevel": "do-not-travel",
+  "triggeredAt": "2026-10-01T04:49:00Z",
+  "reason": "risk_surge",
+  "details": {
+    "riseThreshold": 15,
+    "floor": 70,
+    "staticBaseline": 50,
+    "components": { "newsActivity": 24, "ciiContribution": 0, "geoConvergence": 10, "militaryActivity": 50 },
+    "methodologyVersion": "v12",
+    "computedAt": 1790830140000,
+    "scoresFetchedAt": "2026-10-01T04:49:00Z"
+  }
+}
+```
+
+A `news.breaking` delivery carries `X-WM-Event: news.breaking` and this body (`reason` is always `breaking_news`; every field is present, nullable ones as `null`, lists empty when unknown):
+
+```json
+{
+  "subscriberId": "wh_...",
+  "eventId": "rss_17e006d328288631614def2e44e5a1c7",
+  "title": "Iran’s Guards Say Two Tankers Hit Mines In Strait Of Hormuz",
+  "source": "RFE/RL",
+  "link": "https://www.rferl.org/a/iran-guards-tankers-mines-hormuz/33560001.html",
+  "publishedAt": "2026-10-17T18:31:00Z",
+  "severity": "critical",
+  "importanceScore": 88,
+  "corroborationCount": 3,
+  "category": "conflict",
+  "countryCodes": ["IR"],
+  "variant": "full",
+  "matchedKeywords": ["hormuz"],
+  "triggeredAt": "2026-10-17T18:45:16Z",
+  "reason": "breaking_news"
+}
+```
+
+A `market.move` delivery carries `X-WM-Event: market.move` and this body (`reason` is always `large_move`; `changePct` is unrounded, `price` is `null` when the feed carried none):
+
+```json
+{
+  "subscriberId": "wh_...",
+  "eventId": "mkt_a8ba149319c17693b70869797fdaa17f",
+  "assetClass": "equity",
+  "symbol": "VIX",
+  "name": "CBOE Volatility Index",
+  "price": 28.41,
+  "changePct": 21.3,
+  "direction": "up",
+  "severity": "critical",
+  "source": "Equity Market",
+  "publishedAt": "2026-10-17T17:46:47Z",
+  "triggeredAt": "2026-10-17T17:50:02Z",
+  "reason": "large_move"
+}
+```
+
+A `natural.hazard` delivery carries `X-WM-Event: natural.hazard` and this body (`reason` is always `new_hazard`; every field is present: `magnitude`, `depthKm` and `nearTestSite` are `null` except for earthquakes, `alertLevel` except for GDACS events, `stormName`, `stormCategory` and `windKt` except for storms that report them):
+
+```json
+{
+  "subscriberId": "wh_...",
+  "eventId": "eq:us6000u2mq",
+  "hazardType": "earthquakes",
+  "title": "M6.9 - 76 km NE of Ozernovskiy, Russia",
+  "source": "usgs",
+  "sourceUrl": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000u2mq",
+  "lat": 51.98,
+  "lon": 157.27,
+  "countryCodes": ["RU"],
+  "occurredAt": "2026-10-16T03:35:31.925Z",
+  "magnitude": 6.9,
+  "depthKm": 135,
+  "nearTestSite": false,
+  "alertLevel": null,
+  "stormName": null,
+  "stormCategory": null,
+  "windKt": null,
+  "triggeredAt": "2026-10-16T03:40:02Z",
+  "reason": "new_hazard"
+}
+```
+
+`source` is `usgs`, `nrcan`, `eonet`, `gdacs` or `nhc` (a western-Pacific cyclone names the agency it was built from). `occurredAt` is the earthquake's origin time, or the agency's event or latest-observation time for other hazards. `nearTestSite` is `true` within the monitoring radius of a nuclear test site.
+
+All events share the headers and the signature scheme below. The [OpenAPI spec](https://www.worldmonitor.app/openapi.json) carries the delivery contract once under `webhooks` (`chokepoint.disruption`) and names the other events in the `X-WM-Event` header's description; this page and the event registry hold their payload schemas.
+
+The delivery worker re-resolves `callbackUrl` before each send, refuses private, loopback, link-local, and reserved addresses, and connects only to the vetted address to mitigate DNS rebinding. Delivery is at-least-once. Verify the V2 signature and timestamp before you dedupe on `X-WM-Delivery-Id`.
 
 ### Verifying deliveries
 
-Every delivery is signed so you can confirm it genuinely came from WorldMonitor. `X-WM-Signature` is `sha256=<hex>`, where `<hex>` is the lowercase-hex **HMAC-SHA256 of the exact raw request body**, keyed by the `secret` returned at registration.
+Every delivery includes `X-WM-Signature-V2` and `X-WM-Timestamp`. The timestamp is the send time in Unix seconds. The V2 signature is `sha256=<hex>`, where `<hex>` is the lowercase-hex HMAC-SHA256 of `${timestamp}.${deliveryId}.${event}.${rawBody}`, keyed by the subscription `secret`.
 
-To verify: recompute `sha256=` + `hex(HMAC_SHA256(key=secret, message=rawBody))` over the bytes **exactly as received** (do not re-serialize the JSON), and compare against `X-WM-Signature` in constant time. Use the `secret` string **verbatim** as the HMAC key — do not hex-decode it. Reject the delivery if the signatures differ.
+Use the header values and the raw body bytes exactly as received. Do not re-serialize the JSON. Use the `secret` string verbatim as the HMAC key. Do not hex-decode it.
+
+Reject missing or malformed headers and timestamps more than **300 seconds** in the past or future. Compare the V2 signature in constant time. After verification, use the delivery ID as an idempotency key in your processing transaction. Ignore IDs you have already processed. Retain these IDs for the subscription lifetime so retries cannot repeat an action. Each retry keeps its delivery ID but gets a fresh timestamp and signature.
 
 ```js
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-// rawBody: the exact request body bytes; header: the X-WM-Signature value;
-// secret: the value returned by RegisterWebhook (used verbatim as the key).
-function verifyWorldMonitorWebhook(rawBody, header, secret) {
-  const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
-  const a = Buffer.from(header ?? '');
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+// headers uses lowercase names, as in Node's incoming request headers.
+function verifyWorldMonitorWebhook(rawBody, headers, secret, nowMs = Date.now()) {
+  const timestamp = headers['x-wm-timestamp'];
+  const deliveryId = headers['x-wm-delivery-id'];
+  const event = headers['x-wm-event'];
+  const signature = headers['x-wm-signature-v2'];
+  if (typeof timestamp !== 'string' || !/^\d+$/.test(timestamp)) return false;
+  if (typeof deliveryId !== 'string' || !/^whd_[0-9a-f]{32}$/.test(deliveryId)) return false;
+  if (typeof event !== 'string' || !/^[a-z0-9_]+(?:\.[a-z0-9_]+)*$/.test(event)) return false;
+  if (typeof signature !== 'string' || !/^sha256=[0-9a-f]{64}$/.test(signature)) return false;
+  const seconds = Number(timestamp);
+  if (!Number.isSafeInteger(seconds) || Math.abs(Math.floor(nowMs / 1000) - seconds) > 300) return false;
+  const expected = 'sha256=' + createHmac('sha256', secret)
+    .update(`${timestamp}.${deliveryId}.${event}.`)
+    .update(rawBody)
+    .digest('hex');
+  return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 ```
 
-The signature contract is also published machine-readably as the `chokepoint.disruption` entry under `webhooks` in the [OpenAPI spec](https://www.worldmonitor.app/openapi.json).
+The verifier authenticates the request. Process only the event you subscribed to, and commit its action and processed delivery ID together.
+
+#### Migrate from the legacy signature
+
+`X-WM-Signature` remains available with its original body-only HMAC during migration. Existing subscriptions keep their secrets. Update receivers to require `X-WM-Signature-V2` and `X-WM-Timestamp`. Do not fall back to the legacy header when V2 verification fails or V2 headers are missing. The legacy signature does not protect the timestamp, event, or delivery ID and cannot prevent this replay attack. Removal of the legacy header requires a separate announced change.
+
+The [OpenAPI spec](https://www.worldmonitor.app/openapi.json) also describes these headers under `webhooks`.
 
 #### Test your verification against a signed sample
 
-A ready-to-verify sample delivery is published at [`/.well-known/webhook-sample.json`](https://www.worldmonitor.app/.well-known/webhook-sample.json). It carries a fixed sample `secret`, the exact raw `body` string, and the resulting `signature`. Recompute `sha256=` + `hex(HMAC_SHA256(key=secret, message=body))` over the exact bytes of `body` and confirm it equals `signature` — if it matches, your verification will accept real deliveries. (The sample `secret` is a fixture; each live subscription gets its own `secret` from RegisterWebhook.)
+[`/.well-known/webhook-sample.json`](https://www.worldmonitor.app/.well-known/webhook-sample.json) contains a fixed sample `secret`, the exact raw `body`, both signatures, and the signed headers. The sample timestamp is fixed. Use that timestamp as the test clock; a live receiver must reject the old sample at the current time.
 
 ```js
 const s = await (await fetch('https://www.worldmonitor.app/.well-known/webhook-sample.json')).json();
-verifyWorldMonitorWebhook(s.body, s.signature, s.secret); // → true
+const headers = Object.fromEntries(Object.entries(s.headers).map(([name, value]) => [name.toLowerCase(), value]));
+verifyWorldMonitorWebhook(Buffer.from(s.body), headers, s.secret, Number(headers['x-wm-timestamp']) * 1000); // true
 ```

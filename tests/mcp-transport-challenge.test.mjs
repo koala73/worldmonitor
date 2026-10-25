@@ -69,6 +69,37 @@ describe('an unauthenticated initialize on the transport is challenged', () => {
     const res = await post('https://worldmonitor.app/mcp', rpc('initialize', INIT_PARAMS));
     assert.match(res.headers.get('content-type') ?? '', /application\/json/);
   });
+
+  // Production, 2026-10-17 to 10-24: of the IPs whose anonymous initialize got
+  // the 401, python-httpx signed in 1 of 254, node 2 of 195, Go-http-client 0 of
+  // 102, undici 3 of 45. Those clients retried the handshake forever instead
+  // (about 245,000 401s), while Claude-User signed in 34 of 34 and Grok 11 of 69.
+  it('lets a generic HTTP-library client complete the handshake anonymously', async () => {
+    for (const ua of ['python-httpx/0.28.1', 'python-httpx2/2.12.0', 'node', 'undici', 'Go-http-client/2.0',
+      'python-requests/2.32.3', 'Python-urllib/3.12', 'hermes-agent/0.21.3 (worldmonitor-mcp)']) {
+      const res = await post('https://worldmonitor.app/mcp', rpc('initialize', INIT_PARAMS),
+        { 'User-Agent': ua, Accept: 'application/json' });
+      assert.equal(res.status, 200, ua);
+      assert.equal((await res.json()).result.protocolVersion, '2025-06-18', ua);
+    }
+  });
+
+  it('keeps challenging connectors, CLIs and unknown clients that sign in', async () => {
+    for (const ua of ['Claude-User', 'Cursor/1.0', 'grok-connectors-manager', 'openai-mcp/1.0.0 (ChatGPT)',
+      'claude-code/2.1.308 (cli)', 'codex-mcp-client/0.163.0', 'node-fetch/1.0', 'nodejs-agent/2', 'WorldMonitor-MCP-Smoke/1',
+      // A named product after a library token is a connector, not a default.
+      'node Cursor/1.0', 'python-httpx/0.28.1 Cursor/1.0', 'undici/6.0 (x) grok-connectors-manager']) {
+      const res = await post('https://worldmonitor.app/mcp', rpc('initialize', INIT_PARAMS), { 'User-Agent': ua });
+      assert.equal(res.status, 401, ua);
+    }
+  });
+
+  it('still challenges a generic client at the first paid tool call', async () => {
+    const res = await post('https://worldmonitor.app/mcp',
+      rpc('tools/call', { name: 'get_market_data', arguments: {} }), { 'User-Agent': 'python-httpx/0.28.1' });
+    assert.equal(res.status, 401);
+    assert.match(res.headers.get('www-authenticate') ?? '', /resource_metadata=/);
+  });
 });
 
 const PRODUCT_MCP_ALIASES = [
@@ -94,7 +125,7 @@ describe('product MCP host aliases are migration-only', () => {
           const res = await request(`https://${host}${path}?caller-controlled=1`, { method, headers: { Accept: 'text/html' } });
           assert.equal(res.status, 308, `${host}${path} ${method}`);
           assert.equal(res.headers.get('location'), expected);
-          assert.equal(res.headers.get('vary'), 'Accept, Last-Event-ID');
+          assert.equal(res.headers.get('vary'), 'Accept, Last-Event-ID, Origin, MCP-Protocol-Version');
           assert.equal(res.headers.get('cache-control'), 'no-store');
           assert.equal(res.headers.get('access-control-allow-origin'), '*');
         }
@@ -164,11 +195,18 @@ describe('product MCP host aliases are migration-only', () => {
       }
     }
 
-    for (const id of ['', null]) {
+    for (const id of ['', 'alias-id']) {
       const res = await post(`https://${'api'}.worldmonitor.app/api/mcp`, rpc('initialize', INIT_PARAMS, id));
       assert.equal(res.status, 410);
       const body = await res.json();
       assert.equal(body.id, id);
+    }
+
+    for (const id of [null, 1.25]) {
+      const res = await post('https://api.worldmonitor.app/api/mcp', rpc('initialize', INIT_PARAMS, id));
+      const body = await res.json();
+      assert.equal(body.id, null);
+      assert.equal(body.error.code, -32600);
     }
 
     for (const host of PRODUCT_MCP_ALIASES) {
@@ -202,7 +240,7 @@ describe('product MCP host aliases are migration-only', () => {
     });
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.equal(body.error.code, -32600);
+    assert.equal(body.error.code, -32700);
 
     const invalidId = await post(`https://${'api'}.worldmonitor.app/api/mcp`, { jsonrpc: '2.0', id: {}, method: 'initialize' });
     assert.equal(invalidId.status, 200);
@@ -246,6 +284,11 @@ describe('product MCP host aliases are migration-only', () => {
     assert.equal(mcpReasonFor('migration', 308), 'canonical_endpoint_required');
     assert.equal(mcpReasonFor('migration', 410), 'canonical_endpoint_required');
     assert.equal(mcpReasonFor('migration', 405), 'canonical_endpoint_required');
+  });
+
+  it('classifies an unsupported MCP-Protocol-Version as its own reason, not a malformed request', async () => {
+    const { mcpReasonFor } = await import('../api/mcp/usage.ts');
+    assert.equal(mcpReasonFor('protocol_version', 400), 'unsupported_protocol_version');
   });
 
   it('emits bounded migration events for alias redirects and rejections', async () => {

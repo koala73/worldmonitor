@@ -4,8 +4,10 @@ import { readFileSync } from 'node:fs';
 import { HMAC_SECRET, makeProDeps, proReq, callBody } from './helpers/mcp-pro-deps.mjs';
 import { admitNewsPanel, authorizePanelRead } from '../api/mcp/panel-requests.ts';
 import { dailyCounterKey } from '../server/_shared/pro-mcp-token.ts';
+import { Ratelimit } from '@upstash/ratelimit';
 
 const originalFetch = globalThis.fetch, OriginalDate = Date, originalEnv = { ...process.env };
+const originalSlidingWindow = Ratelimit.slidingWindow;
 const context = { kind: 'pro', userId: 'user_pro_xyz', mcpTokenId: 'k57mcptokenid' };
 const start = Date.UTC(2026, 9, 5, 10, 1, 0, 250), budget = { allowance: 'mcp', limit: 50 };
 const requestId = '550E8400-E29B-41D4-A716-446655440000';
@@ -41,6 +43,7 @@ describe('direct country paid original reuse', () => {
     handler = (await import('../api/mcp.ts')).mcpHandler;
   });
   afterEach(() => {
+    Ratelimit.slidingWindow = originalSlidingWindow;
     globalThis.fetch = originalFetch; globalThis.Date = OriginalDate;
     for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
     Object.assign(process.env, originalEnv);
@@ -80,8 +83,55 @@ describe('direct country paid original reuse', () => {
     for (const framework of [prefix + 'A', prefix + 'B', ' Custom ', 42]) await invoke(bundle, 'get_country_brief', { country_code: 'US', framework });
     for (const allow_stale of [false, 'true', true, true]) await invoke(bundle, 'get_country_brief', { country_code: 'US', allow_stale });
     const posts = calls.filter(x => x.method === 'POST');
-    assert.equal(bundle.pipe.count, 1); assert.deepEqual(posts.map(x => x.body.framework), [prefix, ' Custom ', '42', '', '']);
+    assert.equal(bundle.pipe.count, 1); assert.deepEqual(posts.map(x => x.body.framework), [prefix, ' Custom ', '', '']);
+    for (const args of [{ framework: 42 }, { allow_stale: 'true' }]) {
+      assert.equal((await invoke(bundle, 'get_country_brief', { country_code: 'US', ...args })).body.error?.code, -32602);
+    }
+    assert.equal(bundle.pipe.count, 1);
     assert.ok(posts.every(x => !('force' in x.body) && !('refresh' in x.body)));
+  });
+  it('reuses country risk only for the same history depth and never drops requested history', async () => {
+    const slidingWindow = Ratelimit.slidingWindow;
+    Ratelimit.slidingWindow = () => () => ({ async limit() { return { success: true, limit: 60, remaining: 59, reset: now + 60000, pending: Promise.resolve() }; } });
+    const bundle = makeProDeps(), gatewayFetch = globalThis.fetch;
+    Object.assign(process.env, { UPSTASH_REDIS_REST_URL: 'https://history.test', UPSTASH_REDIS_REST_TOKEN: 'fixture' });
+    let historyReads = 0;
+    let historyTime = now;
+    globalThis.fetch = async (input, options) => {
+      if (new URL(String(input)).origin !== 'https://history.test') return gatewayFetch(input, options);
+      historyReads++;
+      const point = { d: new Date(historyTime).toISOString().slice(0, 10), v: 'fixture-v1', s: 17, u: 1, c: 2, m: 3, n: 4, t: historyTime };
+      return Response.json([{ result: [JSON.stringify(point)] }]);
+    };
+    const bare = value(await invoke(bundle, 'get_country_risk', { country_code: 'US' }));
+    assert.equal(bare.ciiHistory, undefined);
+    for (const history_days of [7, 30, 7, 30]) {
+      const read = value(await invoke(bundle, 'get_country_risk', { country_code: 'USA', history_days, panel_request: bare.panelRequest.token }));
+      assert.equal(read.ciiHistory.requestedDays, history_days);
+    }
+    assert.equal(historyReads, 2);
+    assert.equal(calls.length, 3);
+    assert.equal(bundle.pipe.count, 1);
+    const [historyKey] = cache(bundle).find(([, raw]) => { const saved = JSON.parse(raw); return (saved.value ?? saved).ciiHistory?.requestedDays === 30; });
+    for (const invalid of [undefined, { requestedDays: 30, stale: false }]) {
+      bundle.pipe.store.set(historyKey, JSON.stringify({ ...risk, ciiHistory: invalid }));
+      const recovered = value(await invoke(bundle, 'get_country_risk', { country_code: 'US', history_days: 30 }));
+      assert.equal(recovered.ciiHistory.requestedDays, 30);
+      assert.equal(recovered.ciiHistory.points.length, 1);
+    }
+    assert.equal(historyReads, 4);
+    historyTime = now - 29 * 60000;
+    bundle.pipe.store.delete(historyKey);
+    assert.equal(value(await invoke(bundle, 'get_country_risk', { country_code: 'US', history_days: 30 })).ciiHistory.stale, false);
+    now += 2 * 60000;
+    assert.equal(value(await invoke(bundle, 'get_country_risk', { country_code: 'US', history_days: 30 })).ciiHistory.stale, true);
+    assert.equal(historyReads, 6, 'reuse must stop at the history source deadline');
+    historyTime = now;
+    assert.equal(value(await invoke(bundle, 'get_country_risk', { country_code: 'US', history_days: 30 })).ciiHistory.stale, false);
+    await invoke(bundle, 'get_country_risk', { country_code: 'US', history_days: 30 });
+    assert.equal(historyReads, 7, 'fresh source recovery is reusable under the original paid admission');
+    assert.equal(bundle.pipe.count, 1);
+    Ratelimit.slidingWindow = slidingWindow;
   });
   for (const [label, mutate] of [
     ['empty assessment', () => { brief.brief = ''; }], ['missing coverage', () => { delete digest.coverage; }],
@@ -191,12 +241,14 @@ describe('direct country paid original reuse', () => {
         const result = await invoke(bundle, name, args, request);
         if (plan === 'operator') {
           assert.equal(result.response.status, 200);
-          assert.equal(result.body.result.isError, undefined);
-          assert.equal(bundle.pipe.count, 0);
+          if (typeof args.framework === 'number' && name === 'get_country_brief') assert.equal(result.body.error?.code, -32602);
+          else assert.equal(result.body.result.isError, undefined);
+          // Operator keys pay one unit of their own daily ceiling per call and never a panel admission.
+          assert.ok(bundle.pipe.ops.flat().filter(cmd => cmd[0] === 'EVAL').every(cmd => String(cmd[3]).includes('mcp:pro-usage:env_key:')));
         }
         rows.push({ plan, name, args, status: result.response.status, body: result.body, count: bundle.pipe.count });
       }
     }
-    assert.equal(JSON.stringify(rows), readFileSync(new URL('./fixtures/mcp-country-direct-api-free-parent.json', import.meta.url), 'utf8'));
+    assert.deepEqual(rows, JSON.parse(readFileSync(new URL('./fixtures/mcp-country-direct-api-free-parent.json', import.meta.url), 'utf8')));
   });
 });

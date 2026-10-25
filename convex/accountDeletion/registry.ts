@@ -82,9 +82,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "Delete referrer-owned credits; anonymize referee email on surviving credits",
   },
   { target: "entitlements", action: "delete", notes: "Access, not invoices" },
+  { target: "aiRoutingPolicies", action: "delete", notes: "Per-account AI provider restriction; the edge cache entry expires in 60 s" },
   { target: "apiUsageRollups", action: "delete", notes: "Usage windows" },
   { target: "apiPlanLimitNotices", action: "delete", notes: "Plan-limit notices" },
   { target: "checkoutAdmissions", action: "delete", notes: "Checkout admission counters" },
+  { target: "checkoutSessionEvents", action: "delete", notes: "Checkout funnel session log" },
   {
     target: "proActivationPresentations",
     action: "delete",
@@ -141,6 +143,16 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     target: "emailSuppressions",
     action: "retain",
     notes: "Bounce/complaint (and other) suppressions stay so we do not re-mail",
+  },
+  {
+    target: "emailSoftBounces",
+    action: "skip",
+    notes: "No userId index; keyed by email, cleared on delivery or suppression and pruned after the 30-day window",
+  },
+  {
+    target: "emailSoftBounceResets",
+    action: "skip",
+    notes: "No userId index; keyed by email, removed on suppression and pruned after the 30-day window",
   },
   {
     target: "companyMonitoringAccounts",

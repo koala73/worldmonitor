@@ -1,0 +1,4892 @@
+{
+ "data": {
+  "earthquakes": {
+   "earthquakes": [
+    {
+     "id": "us6000u30x",
+     "place": "88 km SSW of Uyuni, Bolivia",
+     "magnitude": 4.6,
+     "depthKm": 189.462,
+     "location": {
+      "latitude": -21.1752,
+      "longitude": -67.2144
+     },
+     "occurredAt": 1792255965164,
+     "sourceUrl": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000u30x",
+     "source": "usgs"
+    },
+    {
+     "id": "us6000u309",
+     "place": "86 km SW of Brisas Barra de Suchiate, Mexico",
+     "magnitude": 5.2,
+     "depthKm": 10,
+     "location": {
+      "latitude": 14.0469,
+      "longitude": -92.8552
+     },
+     "occurredAt": 1792245574575,
+     "sourceUrl": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000u309",
+     "source": "usgs"
+    },
+    {
+     "id": "us6000u2zb",
+     "place": "51 km N of Pante Makasar, Timor Leste",
+     "magnitude": 4.6,
+     "depthKm": 90.844,
+     "location": {
+      "latitude": -8.7339,
+      "longitude": 124.3423
+     },
+     "occurredAt": 1792228060745,
+     "sourceUrl": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000u2zb",
+     "source": "usgs"
+    },
+    {
+     "id": "us6000u2z9",
+     "place": "110 km NE of Norsup, Vanuatu",
+     "magnitude": 4.8,
+     "depthKm": 10,
+     "location": {
+      "latitude": -15.5117,
+      "longitude": 168.2516
+     },
+     "occurredAt": 1792227591583,
+     "sourceUrl": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000u2z9",
+     "source": "usgs"
+    }
+   ]
+  },
+  "outages": {
+   "outages": [
+    {
+     "id": "cf-1721",
+     "title": "Internet disruption in Namibia",
+     "link": "https://x.com/CloudflareRadar/status/2111030130885677404",
+     "description": "A NamPower substation fault caused a power outage and a significant drop in Internet traffic across central, coastal and southern Namibia.",
+     "detectedAt": 1792020600000,
+     "country": "Namibia",
+     "region": "",
+     "location": {
+      "latitude": -22.96,
+      "longitude": 18.49
+     },
+     "severity": "OUTAGE_SEVERITY_TOTAL",
+     "categories": [
+      "Cloudflare Radar",
+      "POWER OUTAGE",
+      "NATIONWIDE",
+      "TELECOM-NAMIBIA"
+     ],
+     "cause": "POWER_OUTAGE",
+     "outageType": "NATIONWIDE",
+     "endedAt": 1792021500000
+    },
+    {
+     "id": "cf-1720",
+     "title": "Internet disruption in Uruguay",
+     "link": "https://x.com/CloudflareRadar/status/2110310890503372955",
+     "description": "Fiber optic cuts on ANTEL's (AS6057) national backbone caused a near-total loss of its HTTP request traffic in eastern Uruguay.",
+     "detectedAt": 1791918000000,
+     "country": "Uruguay",
+     "region": "",
+     "location": {
+      "latitude": -32.52,
+      "longitude": -55.77
+     },
+     "severity": "OUTAGE_SEVERITY_MAJOR",
+     "categories": [
+      "Cloudflare Radar",
+      "CABLE CUT",
+      "REGIONAL",
+      "ANTEL"
+     ],
+     "cause": "CABLE_CUT",
+     "outageType": "REGIONAL",
+     "endedAt": 1791936000000
+    },
+    {
+     "id": "cf-1687",
+     "title": "Internet disruption in Iraq",
+     "link": "https://radar.cloudflare.com/outage-center",
+     "description": "Exam shutdown",
+     "detectedAt": 1791600300000,
+     "country": "Iraq",
+     "region": "",
+     "location": {
+      "latitude": 33.22,
+      "longitude": 43.68
+     },
+     "severity": "OUTAGE_SEVERITY_MAJOR",
+     "categories": [
+      "Cloudflare Radar",
+      "GOVERNMENT DIRECTED",
+      "REGIONAL",
+      "Earthlink-DMCC-IQ"
+     ],
+     "cause": "GOVERNMENT_DIRECTED",
+     "outageType": "REGIONAL",
+     "endedAt": 1791603900000
+    },
+    {
+     "id": "cf-1686",
+     "title": "Internet disruption in Panama",
+     "link": "https://x.com/CloudflareRadar/status/2108654882206990551",
+     "description": "A magnitude 7.7 earthquake caused a significant drop in Internet traffic across Panama",
+     "detectedAt": 1791568800000,
+     "country": "Panama",
+     "region": "",
+     "location": {
+      "latitude": 8.54,
+      "longitude": -80.78
+     },
+     "severity": "OUTAGE_SEVERITY_TOTAL",
+     "categories": [
+      "Cloudflare Radar",
+      "NATURAL DISASTER",
+      "NATIONWIDE"
+     ],
+     "cause": "NATURAL_DISASTER",
+     "outageType": "NATIONWIDE",
+     "endedAt": 1791604800000
+    }
+   ]
+  },
+  "serviceStatuses": [
+   {
+    "id": "aws",
+    "name": "AWS",
+    "url": "https://health.aws.amazon.com/health/status",
+    "status": "SERVICE_OPERATIONAL_STATUS_OPERATIONAL",
+    "description": "Status page reachable",
+    "checkedAt": 1792263471169,
+    "latencyMs": 867
+   },
+   {
+    "id": "azure",
+    "name": "Azure",
+    "url": "https://azure.status.microsoft/en-us/status/feed/",
+    "status": "SERVICE_OPERATIONAL_STATUS_OPERATIONAL",
+    "description": "No recent incidents",
+    "checkedAt": 1792263471172,
+    "latencyMs": 700
+   },
+   {
+    "id": "gcp",
+    "name": "Google Cloud",
+    "url": "https://status.cloud.google.com/incidents.json",
+    "status": "SERVICE_OPERATIONAL_STATUS_OPERATIONAL",
+    "description": "All services operational",
+    "checkedAt": 1792263471177,
+    "latencyMs": 614
+   },
+   {
+    "id": "cloudflare",
+    "name": "Cloudflare",
+    "url": "https://www.cloudflarestatus.com/api/v2/status.json",
+    "status": "SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE",
+    "description": "Partial System Outage",
+    "checkedAt": 1792263471182,
+    "latencyMs": 1574
+   }
+  ],
+  "ddosAttacks": {
+   "protocol": [
+    {
+     "label": "UDP",
+     "percentage": 79.042195
+    },
+    {
+     "label": "TCP",
+     "percentage": 20.550006
+    },
+    {
+     "label": "GRE",
+     "percentage": 0.304195
+    },
+    {
+     "label": "ICMP",
+     "percentage": 0.082126
+    }
+   ],
+   "vector": [
+    {
+     "label": "Mirai (UDP) Flood",
+     "percentage": 44.376035
+    },
+    {
+     "label": "UDP Flood",
+     "percentage": 21.126444
+    },
+    {
+     "label": "Mirai (TCP) Flood",
+     "percentage": 7.423416
+    },
+    {
+     "label": "SYN Flood",
+     "percentage": 6.567658
+    }
+   ],
+   "dateRangeStart": "2026-10-10T19:00:00Z",
+   "dateRangeEnd": "2026-10-17T19:00:00Z",
+   "topTargetLocations": []
+  },
+  "trafficAnomalies": {
+   "anomalies": [
+    {
+     "uuid": "dab6e412-2ef2-49c0-9615-926b01690ad8",
+     "type": "AS",
+     "status": "UNVERIFIED",
+     "startDate": 1792238400000,
+     "endDate": 1792238400000,
+     "asn": "15964",
+     "asnName": "CAMNET-AS",
+     "locationCode": "",
+     "locationName": "",
+     "latitude": 7.37,
+     "longitude": 12.35
+    },
+    {
+     "uuid": "9fef66f0-881c-4410-83c8-2b40e9d36c6f",
+     "type": "AS",
+     "status": "UNVERIFIED",
+     "startDate": 1792193400000,
+     "endDate": 1792232100000,
+     "asn": "9924",
+     "asnName": "TFN-TW",
+     "locationCode": "",
+     "locationName": "",
+     "latitude": 23.7,
+     "longitude": 120.96
+    },
+    {
+     "uuid": "b5cd33b4-e182-4b93-89aa-a3b9a6ef7d2e",
+     "type": "LOCATION",
+     "status": "VERIFIED",
+     "startDate": 1792153800000,
+     "endDate": 1792156500000,
+     "asn": "",
+     "asnName": "",
+     "locationCode": "CG",
+     "locationName": "Congo",
+     "latitude": -0.23,
+     "longitude": 15.83
+    },
+    {
+     "uuid": "411a3aff-c3b5-422e-a54f-dd199051668c",
+     "type": "LOCATION",
+     "status": "VERIFIED",
+     "startDate": 1792094400000,
+     "endDate": 1792110600000,
+     "asn": "",
+     "asnName": "",
+     "locationCode": "VI",
+     "locationName": "Virgin Islands, U.S.",
+     "latitude": 0,
+     "longitude": 0
+    }
+   ],
+   "totalCount": 22
+  },
+  "marketQuotes": {
+   "quotes": [
+    {
+     "symbol": "^GSPC",
+     "name": "S&P 500",
+     "display": "SPX",
+     "price": 7659.44,
+     "change": -1.0927084759157444,
+     "sparkline": [
+      7756.84,
+      7752.49,
+      7753.13,
+      7751.26,
+      7749.85,
+      7745.88,
+      7749.57,
+      7743.7,
+      7740.14,
+      7742.29,
+      7738.77,
+      7738.75,
+      7742.01,
+      7742.44,
+      7748.56,
+      7748.36,
+      7746.27,
+      7748.04,
+      7744.08,
+      7748.26,
+      7745.98,
+      7737.94,
+      7740.15,
+      7740.91,
+      7742.05,
+      7744.03,
+      7738.09,
+      7738.82,
+      7739.88,
+      7740.26,
+      7739.21,
+      7745.35,
+      7742.1,
+      7740.85,
+      7740.41,
+      7738.95,
+      7736.8,
+      7734.67,
+      7738.42,
+      7737.08
+     ]
+    },
+    {
+     "symbol": "^DJI",
+     "name": "Dow Jones",
+     "display": "DOW",
+     "price": 52002.4,
+     "change": -0.33596728104150936,
+     "sparkline": [
+      52355.16,
+      52320.52,
+      52347.42,
+      52371.09
+     ]
+    },
+    {
+     "symbol": "^IXIC",
+     "name": "NASDAQ Composite",
+     "display": "COMP",
+     "price": 26140.033,
+     "change": -2.14499106709181,
+     "sparkline": [
+      26661.41,
+      26655.15,
+      26654.88,
+      26648.62
+     ]
+    },
+    {
+     "symbol": "AAPL",
+     "name": "Apple",
+     "display": "AAPL",
+     "price": 343.46,
+     "change": 0.4269,
+     "sparkline": []
+    }
+   ],
+   "finnhubSkipped": false,
+   "skipReason": "",
+   "rateLimited": false,
+   "asOf": "2026-10-17T03:57:00.326Z"
+  },
+  "commodityQuotes": {
+   "quotes": [
+    {
+     "symbol": "^VIX",
+     "name": "^VIX",
+     "display": "^VIX",
+     "price": 19.99,
+     "change": 21.45,
+     "sparkline": [
+      16.02,
+      16.01,
+      16.01,
+      16.02
+     ]
+    },
+    {
+     "symbol": "GC=F",
+     "name": "GC=F",
+     "display": "GC=F",
+     "price": 4181.1,
+     "change": 0.26,
+     "sparkline": [
+      4204.3,
+      4202.4,
+      4203.7,
+      4204.6
+     ]
+    },
+    {
+     "symbol": "SI=F",
+     "name": "SI=F",
+     "display": "SI=F",
+     "price": 57.305,
+     "change": 0.26,
+     "sparkline": [
+      58.065,
+      58.02,
+      58.05,
+      58.065
+     ]
+    },
+    {
+     "symbol": "HG=F",
+     "name": "HG=F",
+     "display": "HG=F",
+     "price": 6.5735,
+     "change": 0.26,
+     "sparkline": [
+      6.641,
+      6.638,
+      6.6395,
+      6.6405
+     ]
+    }
+   ]
+  },
+  "macroSignals": {
+   "timestamp": "2026-10-17T19:15:07.176Z",
+   "verdict": "BUY",
+   "bullishCount": 4,
+   "totalCount": 7,
+   "signals": {
+    "liquidity": {
+     "status": "NORMAL",
+     "value": 1.15,
+     "sparkline": [
+      153.85499572753906,
+      153.47799682617188,
+      153.572998046875,
+      154.48199462890625
+     ]
+    },
+    "flowStructure": {
+     "status": "PASSIVE GAP",
+     "btcReturn5": -0.42,
+     "qqqReturn5": -5.52
+    },
+    "macroRegime": {
+     "status": "DEFENSIVE",
+     "qqqRoc20": -1.61,
+     "xlpRoc20": 5.82
+    },
+    "technicalTrend": {
+     "status": "NEUTRAL",
+     "btcPrice": 81417.609375,
+     "sma50": 81324,
+     "sma200": 72426,
+     "vwap30d": 83619,
+     "mayerMultiple": 1.12,
+     "sparkline": [
+      80901.4609375,
+      81233.6796875,
+      81142.609375,
+      86602.9140625
+     ]
+    },
+    "hashRate": {
+     "status": "GROWING",
+     "change30d": 12.7
+    },
+    "priceMomentum": {
+     "status": "STRONG"
+    },
+    "fearGreed": {
+     "status": "Greed",
+     "value": 55,
+     "history": [
+      {
+       "value": 56,
+       "date": "2026-09-18"
+      },
+      {
+       "value": 71,
+       "date": "2026-09-19"
+      },
+      {
+       "value": 71,
+       "date": "2026-09-20"
+      },
+      {
+       "value": 70,
+       "date": "2026-09-21"
+      }
+     ]
+    }
+   },
+   "meta": {
+    "qqqSparkline": [
+     718.9600219726562,
+     718.3599853515625,
+     716.3099975585938,
+     708.6900024414062
+    ]
+   },
+   "unavailable": false
+  },
+  "chokepoints": {
+   "chokepoints": [
+    {
+     "id": "suez",
+     "name": "Suez Canal",
+     "lat": 30.45,
+     "lon": 32.35,
+     "disruptionScore": 35,
+     "status": "yellow",
+     "activeWarnings": 1,
+     "aisDisruptions": 0,
+     "congestionLevel": "normal",
+     "navigationalWarningsAvailable": true,
+     "aisSnapshotAvailable": true,
+     "affectedRoutes": [
+      "China-Europe (Suez)",
+      "Gulf-Europe Oil",
+      "Qatar LNG-Europe"
+     ],
+     "description": "JWC Listed Area \u2014 adjacent to active Red Sea conflict and Iran-Israel war spillover; Threat baseline last reviewed > 120 days ago \u2014 review recommended",
+     "directions": [
+      "northbound",
+      "southbound"
+     ],
+     "directionalDwt": [],
+     "transitSummary": {
+      "todayTotal": 0,
+      "todayTanker": 0,
+      "todayCargo": 0,
+      "todayOther": 0,
+      "todayCountsAvailable": false,
+      "wowChangePct": -3.3,
+      "history": [],
+      "riskLevel": "critical",
+      "incidentCount7d": 21,
+      "disruptionPct": 100,
+      "riskSummary": "",
+      "riskReportAction": "",
+      "dataAvailable": true
+     },
+     "flowEstimate": {
+      "currentMbd": 7,
+      "baselineMbd": 7.6,
+      "flowRatio": 0.921,
+      "disrupted": false,
+      "source": "portwatch-dwt",
+      "hazardAlertLevel": "",
+      "hazardAlertName": ""
+     },
+     "warRiskTier": "WAR_RISK_TIER_HIGH"
+    },
+    {
+     "id": "malacca_strait",
+     "name": "Strait of Malacca",
+     "lat": 2.5,
+     "lon": 101.5,
+     "disruptionScore": 20,
+     "status": "yellow",
+     "activeWarnings": 1,
+     "aisDisruptions": 1,
+     "congestionLevel": "high",
+     "navigationalWarningsAvailable": true,
+     "aisSnapshotAvailable": true,
+     "affectedRoutes": [
+      "China-Middle East Oil",
+      "China-Europe (via Suez)",
+      "Japan-Middle East Oil"
+     ],
+     "description": "No active disruptions; Threat baseline last reviewed > 120 days ago \u2014 review recommended",
+     "directions": [
+      "northbound",
+      "southbound"
+     ],
+     "directionalDwt": [],
+     "transitSummary": {
+      "todayTotal": 2,
+      "todayTanker": 0,
+      "todayCargo": 0,
+      "todayOther": 2,
+      "todayCountsAvailable": true,
+      "wowChangePct": 3,
+      "history": [],
+      "riskLevel": "",
+      "incidentCount7d": 0,
+      "disruptionPct": 0,
+      "riskSummary": "",
+      "riskReportAction": "",
+      "dataAvailable": true
+     },
+     "flowEstimate": {
+      "currentMbd": 17.2,
+      "baselineMbd": 17.2,
+      "flowRatio": 0.999,
+      "disrupted": false,
+      "source": "portwatch-dwt",
+      "hazardAlertLevel": "",
+      "hazardAlertName": ""
+     },
+     "warRiskTier": "WAR_RISK_TIER_NORMAL"
+    },
+    {
+     "id": "hormuz_strait",
+     "name": "Strait of Hormuz",
+     "lat": 26.56,
+     "lon": 56.25,
+     "disruptionScore": 85,
+     "status": "red",
+     "activeWarnings": 0,
+     "aisDisruptions": 1,
+     "congestionLevel": "high",
+     "navigationalWarningsAvailable": true,
+     "aisSnapshotAvailable": true,
+     "affectedRoutes": [
+      "Gulf Oil Exports",
+      "Qatar LNG",
+      "Iran Exports"
+     ],
+     "description": "Active conflict \u2014 Iran-Israel war; Iranian naval blockade risk and mines reported in Persian Gulf; Threat baseline last reviewed > 120 days ago \u2014 review recommended",
+     "directions": [
+      "eastbound",
+      "westbound"
+     ],
+     "directionalDwt": [],
+     "transitSummary": {
+      "todayTotal": 16,
+      "todayTanker": 3,
+      "todayCargo": 2,
+      "todayOther": 11,
+      "todayCountsAvailable": true,
+      "wowChangePct": 52.6,
+      "history": [],
+      "riskLevel": "critical",
+      "incidentCount7d": 544,
+      "disruptionPct": 100,
+      "riskSummary": "",
+      "riskReportAction": "",
+      "dataAvailable": true
+     },
+     "flowEstimate": {
+      "currentMbd": 12.9,
+      "baselineMbd": 21,
+      "flowRatio": 0.616,
+      "disrupted": true,
+      "source": "portwatch-dwt",
+      "hazardAlertLevel": "RED",
+      "hazardAlertName": "HORMUZ-26"
+     },
+     "warRiskTier": "WAR_RISK_TIER_WAR_ZONE"
+    },
+    {
+     "id": "bab_el_mandeb",
+     "name": "Bab el-Mandeb",
+     "lat": 12.58,
+     "lon": 43.33,
+     "disruptionScore": 40,
+     "status": "yellow",
+     "activeWarnings": 0,
+     "aisDisruptions": 0,
+     "congestionLevel": "normal",
+     "navigationalWarningsAvailable": true,
+     "aisSnapshotAvailable": true,
+     "affectedRoutes": [
+      "Suez-Indian Ocean",
+      "Gulf-Europe Oil",
+      "Red Sea Transit"
+     ],
+     "description": "JWC Listed Area \u2014 active Houthi attacks on commercial shipping; Threat baseline last reviewed > 120 days ago \u2014 review recommended",
+     "directions": [
+      "northbound",
+      "southbound"
+     ],
+     "directionalDwt": [],
+     "transitSummary": {
+      "todayTotal": 0,
+      "todayTanker": 0,
+      "todayCargo": 0,
+      "todayOther": 0,
+      "todayCountsAvailable": false,
+      "wowChangePct": -4.3,
+      "history": [],
+      "riskLevel": "critical",
+      "incidentCount7d": 353,
+      "disruptionPct": 100,
+      "riskSummary": "",
+      "riskReportAction": "",
+      "dataAvailable": true
+     },
+     "flowEstimate": {
+      "currentMbd": 5.8,
+      "baselineMbd": 6.2,
+      "flowRatio": 0.941,
+      "disrupted": false,
+      "source": "portwatch-dwt",
+      "hazardAlertLevel": "",
+      "hazardAlertName": ""
+     },
+     "warRiskTier": "WAR_RISK_TIER_CRITICAL"
+    }
+   ],
+   "fetchedAt": "2026-10-17T19:22:21.463Z",
+   "upstreamUnavailable": false
+  },
+  "riskScores": {
+   "ciiScores": [
+    {
+     "region": "RU",
+     "staticBaseline": 35,
+     "dynamicScore": -1,
+     "combinedScore": 81,
+     "trend": "TREND_DIRECTION_STABLE",
+     "components": {
+      "newsActivity": 8,
+      "ciiContribution": 0,
+      "geoConvergence": 0,
+      "militaryActivity": 65
+     },
+     "computedAt": 1792264736235,
+     "eventMultiplier": 2,
+     "methodologyVersion": "v8",
+     "advisoryLevel": "do-not-travel",
+     "advisoryProvenance": "live"
+    },
+    {
+     "region": "SY",
+     "staticBaseline": 50,
+     "dynamicScore": 1,
+     "combinedScore": 80,
+     "trend": "TREND_DIRECTION_STABLE",
+     "components": {
+      "newsActivity": 0,
+      "ciiContribution": 0,
+      "geoConvergence": 0,
+      "militaryActivity": 35
+     },
+     "computedAt": 1792264736235,
+     "eventMultiplier": 0.7,
+     "methodologyVersion": "v8",
+     "advisoryLevel": "do-not-travel",
+     "advisoryProvenance": "live"
+    },
+    {
+     "region": "UA",
+     "staticBaseline": 50,
+     "dynamicScore": 2,
+     "combinedScore": 72,
+     "trend": "TREND_DIRECTION_RISING",
+     "components": {
+      "newsActivity": 1,
+      "ciiContribution": 0,
+      "geoConvergence": 0,
+      "militaryActivity": 35
+     },
+     "computedAt": 1792264736235,
+     "eventMultiplier": 0.8,
+     "methodologyVersion": "v8",
+     "advisoryLevel": "do-not-travel",
+     "advisoryProvenance": "live"
+    },
+    {
+     "region": "PK",
+     "staticBaseline": 35,
+     "dynamicScore": 0,
+     "combinedScore": 70,
+     "trend": "TREND_DIRECTION_STABLE",
+     "components": {
+      "newsActivity": 0,
+      "ciiContribution": 0,
+      "geoConvergence": 0,
+      "militaryActivity": 35
+     },
+     "computedAt": 1792264736235,
+     "eventMultiplier": 1.5,
+     "methodologyVersion": "v8",
+     "advisoryLevel": "reconsider",
+     "advisoryProvenance": "live"
+    }
+   ],
+   "strategicRisks": [
+    {
+     "region": "global",
+     "level": "SEVERITY_LEVEL_MEDIUM",
+     "score": 68,
+     "factors": [
+      "RU",
+      "SY",
+      "UA",
+      "PK"
+     ],
+     "trend": "TREND_DIRECTION_UNSPECIFIED"
+    }
+   ],
+   "degraded": false,
+   "stale": false
+  },
+  "insights": {
+   "worldBrief": "Meanwhile, Trump waived sanctions on Russia, drawing backlash [5][8].",
+   "briefStoryLines": [
+    {
+     "n": 1,
+     "text": "Israeli settlers attack European diplomats, beat French mayor [1]"
+    },
+    {
+     "n": 2,
+     "text": "Looting, blazes, and clashes occurred in France amid nationwide protests, Dawn reported. [2]"
+    },
+    {
+     "n": 3,
+     "text": "Protesters clashed with police in Belgium as demonstrations turned violent across Europe, EuroNews said. [3]"
+    },
+    {
+     "n": 4,
+     "text": "400 arrestert i voldsomme protester i Frankrike [4]"
+    }
+   ],
+   "sourceAgeRange": {
+    "newestMs": 1792261510000,
+    "oldestMs": 1792202795000
+   },
+   "worldBriefSources": [
+    {
+     "title": "Israeli settlers attack European diplomats, beat French mayor",
+     "source": "Vanguard Nigeria",
+     "url": "https://www.vanguardngr.com/2026/10/israeli-settlers-attack-european-diplomats-beat-french-mayor/",
+     "publishedAt": "2026-10-17T18:25:10.000Z"
+    },
+    {
+     "title": "Looting, blazes and clashes in France amid nationwide protests",
+     "source": "Dawn",
+     "url": "https://www.dawn.com/news/2037825/looting-blazes-and-clashes-in-france-amid-nationwide-protests",
+     "publishedAt": "2026-10-17T17:51:29.000Z"
+    },
+    {
+     "title": "Protesters clash with police in Belgium as demonstrations turn violent across Europe",
+     "source": "EuroNews",
+     "url": "https://www.euronews.com/2026/10/17/protesters-clash-with-police-in-belgium-as-demonstrations-turn-violent-across-europe",
+     "publishedAt": "2026-10-17T17:29:24.000Z"
+    },
+    {
+     "title": "400 arrestert i voldsomme protester i Frankrike",
+     "source": "NRK",
+     "url": "https://www.nrk.no/nyheter/400-arrestert-i-voldsomme-protester-i-frankrike-1.18057667",
+     "publishedAt": "2026-10-17T18:15:01.000Z"
+    }
+   ],
+   "briefProvider": "openrouter",
+   "briefModel": "deepseek/deepseek-v4-flash",
+   "status": "ok",
+   "topStories": [
+    {
+     "primaryTitle": "Israeli settlers attack European diplomats, beat French mayor",
+     "primarySource": "Vanguard Nigeria",
+     "primaryLink": "https://www.vanguardngr.com/2026/10/israeli-settlers-attack-european-diplomats-beat-french-mayor/",
+     "pubDate": 1792261510000,
+     "sourceCount": 2,
+     "uniqueSourceCount": 2,
+     "sources": [
+      "Le Monde",
+      "Vanguard Nigeria"
+     ],
+     "corroborationCount": 10,
+     "lastUpdated": "2026-10-17T18:25:10.000Z",
+     "memberTitles": [
+      "Israeli settlers attack European diplomatic cars in West Bank and beat French mayor, say witnesses",
+      "Israeli settlers attack European diplomats, beat French mayor"
+     ],
+     "sourceTier": 2,
+     "upstreamImportanceScore": 84,
+     "entityCorroboration": false,
+     "corroborationSourceCount": 0,
+     "importanceScore": 444.8,
+     "effectiveImportanceScore": 419.1933736666667,
+     "credibilityScore": 60,
+     "velocity": {
+      "level": "normal",
+      "sourcesPerHour": 0
+     },
+     "isAlert": false,
+     "category": "conflict",
+     "threatLevel": "medium",
+     "countryCode": "IL"
+    },
+    {
+     "primaryTitle": "Looting, blazes and clashes in France amid nationwide protests",
+     "primarySource": "Dawn",
+     "primaryLink": "https://www.dawn.com/news/2037825/looting-blazes-and-clashes-in-france-amid-nationwide-protests",
+     "pubDate": 1792259489000,
+     "sourceCount": 1,
+     "uniqueSourceCount": 1,
+     "sources": [
+      "Dawn"
+     ],
+     "corroborationCount": 1,
+     "lastUpdated": "2026-10-17T17:51:29.000Z",
+     "memberTitles": [
+      "Looting, blazes and clashes in France amid nationwide protests"
+     ],
+     "sourceTier": 2,
+     "upstreamImportanceScore": 69,
+     "entityCorroboration": false,
+     "corroborationSourceCount": 0,
+     "importanceScore": 448.8,
+     "effectiveImportanceScore": 407.2161399166667,
+     "credibilityScore": 44,
+     "velocity": {
+      "level": "normal",
+      "sourcesPerHour": 0
+     },
+     "isAlert": true,
+     "category": "protest",
+     "threatLevel": "high",
+     "countryCode": "FR"
+    },
+    {
+     "primaryTitle": "Protesters clash with police in Belgium as demonstrations turn violent across Europe",
+     "primarySource": "EuroNews",
+     "primaryLink": "https://www.euronews.com/2026/10/17/protesters-clash-with-police-in-belgium-as-demonstrations-turn-violent-across-europe",
+     "pubDate": 1792258164000,
+     "sourceCount": 1,
+     "uniqueSourceCount": 1,
+     "sources": [
+      "EuroNews"
+     ],
+     "corroborationCount": 1,
+     "lastUpdated": "2026-10-17T17:29:24.000Z",
+     "memberTitles": [
+      "Protesters clash with police in Belgium as demonstrations turn violent across Europe"
+     ],
+     "sourceTier": 2,
+     "upstreamImportanceScore": 69,
+     "entityCorroboration": false,
+     "corroborationSourceCount": 0,
+     "importanceScore": 448.8,
+     "effectiveImportanceScore": 396.89218158333335,
+     "credibilityScore": 77,
+     "velocity": {
+      "level": "normal",
+      "sourcesPerHour": 0
+     },
+     "isAlert": true,
+     "category": "protest",
+     "threatLevel": "high",
+     "countryCode": "BE"
+    },
+    {
+     "primaryTitle": "400 arrestert i voldsomme protester i Frankrike",
+     "primarySource": "NRK",
+     "primaryLink": "https://www.nrk.no/nyheter/400-arrestert-i-voldsomme-protester-i-frankrike-1.18057667",
+     "pubDate": 1792260901000,
+     "sourceCount": 1,
+     "uniqueSourceCount": 1,
+     "sources": [
+      "NRK"
+     ],
+     "corroborationCount": 1,
+     "lastUpdated": "2026-10-17T18:15:01.000Z",
+     "memberTitles": [
+      "400 arrestert i voldsomme protester i Frankrike"
+     ],
+     "sourceTier": 1,
+     "upstreamImportanceScore": 74,
+     "entityCorroboration": false,
+     "corroborationSourceCount": 0,
+     "importanceScore": 403.8,
+     "effectiveImportanceScore": 376.2843529375,
+     "credibilityScore": 59,
+     "velocity": {
+      "level": "normal",
+      "sourcesPerHour": 0
+     },
+     "isAlert": true,
+     "category": "protest",
+     "threatLevel": "high",
+     "countryCode": null
+    }
+   ],
+   "generatedAt": "2026-10-17T19:20:32.282Z",
+   "clusterCount": 277,
+   "multiSourceCount": 6,
+   "fastMovingCount": 0,
+   "importanceSignals": {
+    "llmDrivenRanked": 8,
+    "keywordFallbackRanked": 0,
+    "diplomacyHits": 6,
+    "corroborationHits": 0,
+    "clusterSizeP50": 1,
+    "clusterSizeP90": 1
+   },
+   "provenance": {
+    "storiesConsidered": 306,
+    "sourcesConsidered": 132,
+    "selectionDrops": {
+     "admissibility": 108,
+     "sourceCap": 0,
+     "overflow": 161
+    }
+   }
+  },
+  "predictions": {
+   "geopolitical": [
+    {
+     "title": "Iran leadership change by December 31?",
+     "yesPrice": 11.5,
+     "volume": 27533759.60849602,
+     "url": "https://polymarket.com/event/iran-leadership-change-by",
+     "endDate": "2027-01-01T04:59:00Z",
+     "tags": [
+      "politics",
+      "iran",
+      "iranian-leadership-regime",
+      "geopolitics"
+     ],
+     "source": "polymarket",
+     "regions": [
+      "mena"
+     ]
+    },
+    {
+     "title": "Strait of Hormuz traffic returns to normal by December 31?",
+     "yesPrice": 11.5,
+     "volume": 14999313.510952001,
+     "url": "https://polymarket.com/event/strait-of-hormuz-traffic-returns-to-normal-by-december-31",
+     "endDate": "2027-01-01T04:59:00Z",
+     "tags": [
+      "politics",
+      "ships",
+      "geopolitics",
+      "economy"
+     ],
+     "source": "polymarket",
+     "regions": []
+    },
+    {
+     "title": "US strike on Cuba by December 31?",
+     "yesPrice": 11.5,
+     "volume": 7590427.273185001,
+     "url": "https://polymarket.com/event/us-strike-on-cuba-by",
+     "endDate": "2027-01-01T04:59:00Z",
+     "tags": [
+      "cuba",
+      "venezuela",
+      "geopolitics"
+     ],
+     "source": "polymarket",
+     "regions": [
+      "america"
+     ]
+    },
+    {
+     "title": "US-Iran Final Nuclear Deal by December 31, 2026?",
+     "yesPrice": 12.5,
+     "volume": 20026370.100087997,
+     "url": "https://polymarket.com/event/us-iran-final-nuclear-deal-by-20260621201254412",
+     "endDate": "2027-01-01T04:59:00Z",
+     "tags": [
+      "iran",
+      "us-iran",
+      "peace-deal",
+      "geopolitics"
+     ],
+     "source": "polymarket",
+     "regions": [
+      "america",
+      "mena"
+     ]
+    }
+   ],
+   "tech": [
+    {
+     "title": "Predict.fun FDV above $300M one day after launch?",
+     "yesPrice": 87.5,
+     "volume": 7045106.922109999,
+     "url": "https://polymarket.com/event/predictfun-fdv-above-one-day-after-launch",
+     "endDate": "2028-01-01T05:00:00Z",
+     "tags": [
+      "crypto",
+      "fdv",
+      "pre-market",
+      "predictptfun"
+     ],
+     "source": "polymarket",
+     "regions": []
+    },
+    {
+     "title": "Will Pump.fun perform an airdrop by December 31, 2026",
+     "yesPrice": 10,
+     "volume": 2792872.1786160003,
+     "url": "https://polymarket.com/event/pumpfun-airdop-by",
+     "endDate": "2027-01-01T05:00:00Z",
+     "tags": [
+      "airdrops",
+      "crypto",
+      "pre-market",
+      "pumpptfun"
+     ],
+     "source": "polymarket",
+     "regions": []
+    },
+    {
+     "title": "Will Indiana enact a data center moratorium by December 31, 2027?",
+     "yesPrice": 12.5,
+     "volume": 6022901.170205996,
+     "url": "https://polymarket.com/event/indiana-enacts-data-center-moratorium-by-20260929",
+     "endDate": "2028-01-01T04:59:00Z",
+     "tags": [
+      "ai",
+      "tech",
+      "states",
+      "compute"
+     ],
+     "source": "polymarket",
+     "regions": []
+    },
+    {
+     "title": "Will MegaETH perform an airdrop by December 31, 2026?",
+     "yesPrice": 11.5,
+     "volume": 2649196.947285997,
+     "url": "https://polymarket.com/event/megaeth-airdrop-by",
+     "endDate": "2027-01-01T05:00:00Z",
+     "tags": [
+      "airdrops",
+      "crypto",
+      "megaeth",
+      "pre-market"
+     ],
+     "source": "polymarket",
+     "regions": []
+    }
+   ],
+   "finance": [
+    {
+     "title": "2028 Democratic presidential nominee: Gavin Newsom",
+     "yesPrice": 13,
+     "volume": 10790545.35,
+     "url": "https://kalshi.com/markets/KXPRESNOMD-28-GN",
+     "displayUrl": "https://kalshi.com/markets/kxpresnomd",
+     "endDate": "2028-11-07T15:00:00Z",
+     "tags": [],
+     "source": "kalshi",
+     "regions": []
+    },
+    {
+     "title": "Will there be no change in Fed interest rates after the October 2026 meeting?",
+     "yesPrice": 86.5,
+     "volume": 44926319.02041899,
+     "url": "https://polymarket.com/event/fed-decision-in-october-20260617190323537",
+     "endDate": "2026-10-29T03:59:00Z",
+     "tags": [
+      "fed",
+      "fomc",
+      "trump",
+      "economy"
+     ],
+     "source": "polymarket",
+     "regions": []
+    },
+    {
+     "title": "Will the upper bound of the target federal funds rate be \u2265 4.5% at the end of 2026?",
+     "yesPrice": 13.1,
+     "volume": 7078634.8643930005,
+     "url": "https://polymarket.com/event/what-will-the-fed-rate-be-at-the-end-of-2026",
+     "endDate": "2027-01-01T04:59:00Z",
+     "tags": [
+      "fed-rates",
+      "economic-policy",
+      "trump",
+      "fed"
+     ],
+     "source": "polymarket",
+     "regions": []
+    },
+    {
+     "title": "Will Samuel Alito announce his retirement by December 31, 2026?",
+     "yesPrice": 12.5,
+     "volume": 4306456.386793002,
+     "url": "https://polymarket.com/event/will-samuel-alito-announce-his-retirement-by",
+     "endDate": "2027-01-01T04:59:00Z",
+     "tags": [
+      "politics",
+      "supreme-court",
+      "courts",
+      "alito"
+     ],
+     "source": "polymarket",
+     "regions": []
+    }
+   ],
+   "fetchedAt": 1792264891273
+  },
+  "theaterPosture": {
+   "theaters": [
+    {
+     "theater": "iran-theater",
+     "postureLevel": "normal",
+     "activeFlights": 4,
+     "trackedVessels": 1,
+     "activeOperations": [
+      "naval_presence"
+     ],
+     "assessedAt": 1792265155953
+    },
+    {
+     "theater": "taiwan-theater",
+     "postureLevel": "elevated",
+     "activeFlights": 11,
+     "trackedVessels": 0,
+     "activeOperations": [],
+     "assessedAt": 1792265155954
+    },
+    {
+     "theater": "baltic-theater",
+     "postureLevel": "normal",
+     "activeFlights": 2,
+     "trackedVessels": 15,
+     "activeOperations": [
+      "naval_presence"
+     ],
+     "assessedAt": 1792265155954
+    },
+    {
+     "theater": "blacksea-theater",
+     "postureLevel": "elevated",
+     "activeFlights": 5,
+     "trackedVessels": 0,
+     "activeOperations": [],
+     "assessedAt": 1792265155954
+    }
+   ],
+   "provider": "wingbits"
+  },
+  "gdeltIntel": {
+   "topics": [
+    {
+     "id": "military",
+     "articles": [
+      {
+       "title": "Slovakia Refuses to Participate in the New \u20ac70 Billion Loan to Ukraine",
+       "url": "http://www.bgnes.com/politics/slovakia-refuses-to-participate-in-the-new-70-billion-loan-to-ukraine",
+       "source": "bgnes.com",
+       "date": "20261017T191500Z",
+       "image": "https://www.bgnes.com/static/images/news/2026/10/17/23680/21721.webp",
+       "language": "English",
+       "tone": -0.675675675675676
+      },
+      {
+       "title": "Protesters clash with police across France",
+       "url": "http://www.bgnes.com/society/protesters-clash-with-police-across-france",
+       "source": "bgnes.com",
+       "date": "20261017T191500Z",
+       "image": "https://www.bgnes.com/static/images/news/2026/10/17/23673/21714.webp",
+       "language": "English",
+       "tone": -8.88888888888889
+      },
+      {
+       "title": "Small boat approaches, opens fire on LNG tanker off Yemen's coast, says UK maritime agency",
+       "url": "http://www.greekherald.com/news/279381224/small-boat-approaches-opens-fire-on-lng-tanker-off-yemen-coast-says-uk-maritime-agency",
+       "source": "greekherald.com",
+       "date": "20261017T191500Z",
+       "image": "https://chitra-api.kreatio.com/api/v1/wps/02b6769/2d615556-af54-4894-9c4f-4bc2fca8a2e8/0/ANI-20261017150120-600x315.jpg",
+       "language": "English",
+       "tone": -0.919117647058824
+      },
+      {
+       "title": "EU summit ends with mounting bills, unresolved divisions",
+       "url": "http://www.greekherald.com/news/279381408/eu-summit-ends-with-mounting-bills-unresolved-divisions",
+       "source": "greekherald.com",
+       "date": "20261017T191500Z",
+       "image": "https://chitra-api.kreatio.com/api/v1/wps/71ed449/2a45c96a-7f77-4f5c-a62a-496974f979ef/0/CbsbeeE000039-20261018-PRMFN0A001-600x315.jpg",
+       "language": "English",
+       "tone": -4.30622009569378
+      }
+     ],
+     "fetchedAt": "2026-10-17T19:15:00.000Z"
+    },
+    {
+     "id": "cyber",
+     "articles": [
+      {
+       "title": "Keralam: CBI arrests key accused in international cyber fraud and ATM card smuggling case",
+       "url": "http://www.indiagazette.com/news/279381097/keralam-cbi-arrests-key-accused-in-international-cyber-fraud-and-atm-card-smuggling-case",
+       "source": "indiagazette.com",
+       "date": "20261017T191500Z",
+       "image": "https://chitra-api.kreatio.com/api/v1/wps/724bbe6/35342405-1e1f-47ad-85f3-9f44ebcba737/0/ANI-20261017130237-600x315.jpg",
+       "language": "English",
+       "tone": -9.50704225352113
+      },
+      {
+       "title": "Mother murdered over drug money in Sunamganj",
+       "url": "https://banglamirrornews.com/2026/10/17/213398/",
+       "source": "banglamirrornews.com",
+       "date": "20261017T191500Z",
+       "image": "https://banglamirrornews.com/files/uploads/2026/10/effr4.jpg",
+       "language": "English",
+       "tone": -6.47773279352227
+      },
+      {
+       "title": "Winona Man Convicted of Wisconsin Homicide",
+       "url": "https://quickcountry.com/ixp/669/p/winona-man-convicted-wisconsin-murder/",
+       "source": "quickcountry.com",
+       "date": "20261017T191500Z",
+       "image": "https://townsquare.media/site/669/files/2026/10/attachment-jacob-klaver.jpg?&q=75&format=natural",
+       "language": "English",
+       "tone": -7.94701986754967
+      },
+      {
+       "title": "Fake Garba passes for 25 events advertised online; Gujarat Police books Instagram user",
+       "url": "https://www.prokerala.com/news/articles/a1825820.html",
+       "source": "prokerala.com",
+       "date": "20261017T191500Z",
+       "image": "",
+       "language": "English",
+       "tone": -7.12830957230143
+      }
+     ],
+     "fetchedAt": "2026-10-17T19:15:00.000Z"
+    },
+    {
+     "id": "nuclear",
+     "articles": [
+      {
+       "title": "World faces space war 'within five years'",
+       "url": "https://www.nzherald.co.nz/world/world-faces-space-war-within-five-years/SLY5SHXBBVF6XG42LYG2RNQXM4/",
+       "source": "nzherald.co.nz",
+       "date": "20261017T191500Z",
+       "image": "https://www.nzherald.co.nz/resizer/v2/CQBKSK3C4BF4NFC53FU4ZBZR5I.jpg?auth=3322589d42f9b5b4d5217daca00299cc4d5de81c2a930e3f2ee88a25d13c2411&quality=70&smart=true",
+       "language": "English",
+       "tone": -3.85572139303483
+      },
+      {
+       "title": "Targeted News Service",
+       "url": "https://targetednews.com/pr_disp.php?pr_id=9789885",
+       "source": "targetednews.com",
+       "date": "20261017T190000Z",
+       "image": "",
+       "language": "English",
+       "tone": -3.125
+      },
+      {
+       "title": "Iran's IRGC says 2nd supertanker explodes after hitting mine in Hormuz Strait",
+       "url": "https://ianslive.in/irans-irgc-says-2nd-supertanker-explodes-after-hitting-mine-in-hormuz-strait--20261017223154",
+       "source": "ianslive.in",
+       "date": "20261017T184500Z",
+       "image": "https://d2lnbwhcsmj8tp.cloudfront.net/ianslive_watermark/20260530003.jpg",
+       "language": "English",
+       "tone": -5.8968058968059
+      },
+      {
+       "title": "WW3 panic as Putin puppet issues chilling threat to wipe out UK - 'Sink the damn islands!'",
+       "url": "https://www.aol.co.uk/articles/ww3-panic-putin-puppet-issues-170900000.html",
+       "source": "aol.co.uk",
+       "date": "20261017T184500Z",
+       "image": "https://hermes.media.transform.aol.com/d89d683bb24f0f3a948ff9c95a1d4682e8073a21/w_1200,c_scale,f_auto,q_auto/https://hermes.media.static.aol.com/media/2026/10/17/66432a4f-8ca7-3e01-a7ac-8b4c0ec3c51d/8efc9641-e269-4dc5-b4a5-f7805af1fdae.jpg",
+       "language": "English",
+       "tone": -7.75193798449612
+      }
+     ],
+     "fetchedAt": "2026-10-17T19:15:00.000Z"
+    },
+    {
+     "id": "sanctions",
+     "articles": [
+      {
+       "title": "EU summit ends with mounting bills, unresolved divisions",
+       "url": "http://www.greekherald.com/news/279381408/eu-summit-ends-with-mounting-bills-unresolved-divisions",
+       "source": "greekherald.com",
+       "date": "20261017T191500Z",
+       "image": "https://chitra-api.kreatio.com/api/v1/wps/71ed449/2a45c96a-7f77-4f5c-a62a-496974f979ef/0/CbsbeeE000039-20261018-PRMFN0A001-600x315.jpg",
+       "language": "English",
+       "tone": -4.30622009569378
+      },
+      {
+       "title": "US-India trade deal won't be signed without preferential treatment: Former diplomat Veena Sikri",
+       "url": "http://www.greekherald.com/news/279381447/us-india-trade-deal-wont-be-signed-without-preferential-treatment-former-diplomat-veena-sikri",
+       "source": "greekherald.com",
+       "date": "20261017T191500Z",
+       "image": "https://chitra-api.kreatio.com/api/v1/wps/d5c913f/175d10b3-ca7b-4fc2-846e-799c6acb7bdf/0/ANI-20261017170640-600x315.jpg",
+       "language": "English",
+       "tone": 2.07956600361664
+      },
+      {
+       "title": "Trump's decision to waive Russian sanctions outrages Congress, but no quick counter seen",
+       "url": "http://www.hngnews.com/nation_world/trumps-decision-to-waive-russian-sanctions-outrages-congress-but-no-quick-counter-seen/article_4754ffc7-df8a-5398-9057-a6b467091ca6.html",
+       "source": "hngnews.com",
+       "date": "20261017T191500Z",
+       "image": "https://bloximages.newyork1.vip.townnews.com/hngnews.com/content/tncms/assets/v3/editorial/4/75/475d8b59-86e0-5d4f-bf71-afb837753998/6ad392175b89f.image.jpg?crop=1763%2C926%2C0%2C124",
+       "language": "English",
+       "tone": -4.74747474747475
+      },
+      {
+       "title": "Trump's Russian oil tariff waiver offers India relief, but experts warn of renewed US pressure",
+       "url": "http://www.indiagazette.com/news/279381338/trump-russian-oil-tariff-waiver-offers-india-relief-but-experts-warn-of-renewed-us-pressure",
+       "source": "indiagazette.com",
+       "date": "20261017T191500Z",
+       "image": "https://chitra-api.kreatio.com/api/v1/wps/d3f8b6b/ac73eaba-e97e-4399-960c-627e35b4e73e/0/ANI-20261017153012-600x315.jpg",
+       "language": "English",
+       "tone": -1.35275754422477
+      }
+     ],
+     "fetchedAt": "2026-10-17T19:15:00.000Z"
+    }
+   ],
+   "fetchedAt": "2026-10-17T19:17:08.483Z"
+  },
+  "weatherAlerts": {
+   "alerts": [
+    {
+     "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.055e621cf1da043247c479ddca8241afb4380bd2.002.1",
+     "event": "Typhoon Warning",
+     "severity": "Extreme",
+     "headline": "Typhoon Warning issued October 18 at 4:40AM ChST by NWS Tiyan GU",
+     "description": "Updated for compact wind radii, reducing winds for Rota and Guam.\n\n...TYPHOON CHAMPI NOW A DANGEROUS CATEGORY 4 MOVING WEST INTO GUAM\nCOASTAL WATERS...\n\n.NEW INFORMATION...\nNone.\n\n.AREAS AFFECTED...\nThis local statement provides information and recommended actions for\npeople on Guam and on Rota, Tinian and Saipan in the Northern\nMarianas.\n\n.Watches/Warnings...\nA Typhoon Warning continues for Guam and Rota.\n\nA Tropical Storm Warning and a Typhoon Watch continues for Tinian\nand Saipan.\n\nA Flood Wa",
+     "areaDesc": "Rota",
+     "onset": "2026-10-18T04:40:00+10:00",
+     "expires": "2026-10-18T12:45:00+10:00",
+     "coordinates": [],
+     "countryCode": "US",
+     "source": "nws",
+     "vtec": "/O.CON.PGUM.TY.W.4029.000000T0000Z-000000T0000Z/"
+    },
+    {
+     "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.055e621cf1da043247c479ddca8241afb4380bd2.001.1",
+     "event": "Typhoon Warning",
+     "severity": "Extreme",
+     "headline": "Typhoon Warning issued October 18 at 4:40AM ChST by NWS Tiyan GU",
+     "description": "Updated for compact wind radii, reducing winds for Rota and Guam.\n\n...TYPHOON CHAMPI NOW A DANGEROUS CATEGORY 4 MOVING WEST INTO GUAM\nCOASTAL WATERS...\n\n.NEW INFORMATION...\nNone.\n\n.AREAS AFFECTED...\nThis local statement provides information and recommended actions for\npeople on Guam and on Rota, Tinian and Saipan in the Northern\nMarianas.\n\n.Watches/Warnings...\nA Typhoon Warning continues for Guam and Rota.\n\nA Tropical Storm Warning and a Typhoon Watch continues for Tinian\nand Saipan.\n\nA Flood Wa",
+     "areaDesc": "Guam",
+     "onset": "2026-10-18T04:40:00+10:00",
+     "expires": "2026-10-18T12:45:00+10:00",
+     "coordinates": [],
+     "countryCode": "US",
+     "source": "nws",
+     "vtec": "/O.CON.PGUM.TY.W.4029.000000T0000Z-000000T0000Z/"
+    },
+    {
+     "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.8468c9e23c65373970e3f8d8cf2cb7ea132e662b.001.1",
+     "event": "Extreme Wind Warning",
+     "severity": "Extreme",
+     "headline": "Extreme Wind Warning issued October 18 at 3:26AM ChST until October 18 at 5:30AM ChST by NWS Tiyan GU",
+     "description": "EWWGUM\n\nThe National Weather Service in Tiyan Guam has issued a\n\n* Extreme Wind Warning for...\nSouthern Guam in Guam...\n\n* Until 530 AM ChST.\n\n* At 326 AM ChST, Andersen AFB Doppler radar indicated extreme\nwinds, associated with the northern eyewall of Typhoon Champi,\nwere moving onshore from Talofofo southward, moving west at 15\nmph. THIS IS AN EXTREMELY DANGEROUS AND LIFE-THREATENING SITUATION!\n\n* Locations impacted include...\nTalofofo, Inarajan, Merizo, Santa Rita, and Umatac.",
+     "areaDesc": "Guam, GU",
+     "onset": "2026-10-18T03:52:00+10:00",
+     "expires": "2026-10-18T05:30:00+10:00",
+     "coordinates": [
+      [
+       144.67,
+       13.26
+      ],
+      [
+       144.66,
+       13.31
+      ],
+      [
+       144.64,
+       13.34
+      ],
+      [
+       144.66,
+       13.39
+      ]
+     ],
+     "centroid": [
+      144.6911111111111,
+      13.295555555555556
+     ],
+     "countryCode": "US",
+     "source": "nws",
+     "vtec": "/O.NEW.PGUM.EW.W.0013.261017T1752Z-261017T1930Z/"
+    },
+    {
+     "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.a9f4b231049ab76a71294bc08232e608b3a70e05.001.1",
+     "event": "Typhoon Warning",
+     "severity": "Extreme",
+     "headline": "Typhoon Warning issued October 17 at 10:39PM ChST by NWS Tiyan GU",
+     "description": "* WHAT...Typhoon conditions, including winds of 64 knots or more\nare expected.\n\n* WHERE...Guam and Rota Coastal Waters.\n\n* WHEN...Damaging winds are occurring in eastern waters, and will\nbegin later tonight in western waters. Onset of destructive winds\nafter midnight with typhoon force winds early Sunday morning.\nDamaging winds will continue into at least Sunday night, especially\nif Champi slows down.\n\n* IMPACTS...Destructive to typhoon force winds will produce\ndangerous to deadly seas that coul",
+     "areaDesc": "Guam Coastal Waters; Rota Coastal Waters",
+     "onset": "2026-10-17T22:39:00+10:00",
+     "expires": "2026-10-18T12:45:00+10:00",
+     "coordinates": [],
+     "countryCode": "US",
+     "source": "nws",
+     "vtec": "/O.CON.PGUM.TY.W.4029.000000T0000Z-000000T0000Z/"
+    }
+   ]
+  },
+  "spending": {
+   "awards": [
+    {
+     "id": "DEAC5207NA27344",
+     "recipientName": "LAWRENCE LIVERMORE NATIONAL SECURITY, LLC",
+     "amount": 41607031193.88,
+     "agency": "Department of Energy",
+     "description": "TAS::89 0240::TAS THIS PERFORMANCE-BASED MANAGEMENT CONTRACT (PBMC) IS FOR THE MANAGEMENT AND OPERATION OF THE LAWRENCE LIVERMORE NATIONAL LABORATORY (LLNL). THE CONTRACTOR SHALL, IN ACCORDANCE WITH T",
+     "startDate": "2007-05-09",
+     "awardType": "other"
+    },
+    {
+     "id": "DENA0002839",
+     "recipientName": "HONEYWELL FEDERAL MANUFACTURING & TECHNOLOGIES, LLC",
+     "amount": 17732163524.12,
+     "agency": "Department of Energy",
+     "description": "IGF::CL,CT::IGF MANAGEMENT AND OPERATION OF THE NATIONAL SECURITY CAMPUS -- CONTRACT NO. DE-NA0002839",
+     "startDate": "2015-07-09",
+     "awardType": "other"
+    },
+    {
+     "id": "DEAC0206CH11357",
+     "recipientName": "UCHICAGO ARGONNE, LLC",
+     "amount": 17695775611.67,
+     "agency": "Department of Energy",
+     "description": "PERFORMANCE-BASED CONTRACT FOR MANAGEMENT AND OPERATION OF ARGONNE NATIONAL LABORATORY",
+     "startDate": "2006-07-31",
+     "awardType": "other"
+    },
+    {
+     "id": "DENA0003624",
+     "recipientName": "MISSION SUPPORT & TEST SERVICES LLC",
+     "amount": 7708654017.32,
+     "agency": "Department of Energy",
+     "description": "IGF::CL,CT::IGF CONTRACT AWARD DE-NA0003624 TO THE MISSION SUPPORT AND TEST SERVICES LLC (MSTS) FOR THE MANAGEMENT AND OPERATION OF THE DEPARTMENT OF ENERGY NATIONAL NUCLEAR SECURITY ADMINISTRATION'S ",
+     "startDate": "2017-08-01",
+     "awardType": "other"
+    }
+   ],
+   "totalAmount": 95634190765.82997,
+   "periodStart": "2026-10-10",
+   "periodEnd": "2026-10-17",
+   "fetchedAt": 1792261861882
+  },
+  "shippingRates": {
+   "indices": [
+    {
+     "indexId": "PCU483111483111",
+     "name": "Deep Sea Freight Producer Price Index",
+     "currentValue": 534.796,
+     "previousValue": 532.736,
+     "changePct": 0.386683085055273,
+     "unit": "index",
+     "history": [
+      {
+       "date": "2024-10-01",
+       "value": 409.49
+      },
+      {
+       "date": "2024-11-01",
+       "value": 396.571
+      },
+      {
+       "date": "2024-12-01",
+       "value": 394.191
+      },
+      {
+       "date": "2025-01-01",
+       "value": 428.44
+      }
+     ],
+     "spikeAlert": true
+    },
+    {
+     "indexId": "TSIFRGHT",
+     "name": "Freight Transportation Services Index",
+     "currentValue": 135.7,
+     "previousValue": 136.6,
+     "changePct": -0.6588579795022004,
+     "unit": "index",
+     "history": [
+      {
+       "date": "2024-08-01",
+       "value": 138.8
+      },
+      {
+       "date": "2024-09-01",
+       "value": 137.3
+      },
+      {
+       "date": "2024-10-01",
+       "value": 138.3
+      },
+      {
+       "date": "2024-11-01",
+       "value": 137.1
+      }
+     ],
+     "spikeAlert": false
+    },
+    {
+     "indexId": "SCFI",
+     "name": "SCFI - Shanghai Container Freight",
+     "currentValue": 3679.579,
+     "previousValue": 3664.1088,
+     "changePct": 0.4222,
+     "periodChangePct": 0.4222,
+     "periodChangeBasis": "publisher_reported",
+     "priorPeriodValue": 3664.1088,
+     "priorPeriodDate": "2026-10-09",
+     "unit": "index",
+     "history": [
+      {
+       "date": "2026-07-31",
+       "value": 3205.9675
+      },
+      {
+       "date": "2026-08-07",
+       "value": 3276.1393
+      },
+      {
+       "date": "2026-08-14",
+       "value": 3355.2422
+      },
+      {
+       "date": "2026-08-21",
+       "value": 3409.631
+      }
+     ],
+     "spikeAlert": false
+    },
+    {
+     "indexId": "CCFI",
+     "name": "CCFI - China Container Freight",
+     "currentValue": 1922.64,
+     "previousValue": 1912.38,
+     "changePct": 0.5365,
+     "periodChangePct": 0.5365,
+     "periodChangeBasis": "publisher_reported",
+     "priorPeriodValue": 1912.38,
+     "priorPeriodDate": "2026-10-09",
+     "unit": "index",
+     "history": [
+      {
+       "date": "2026-07-31",
+       "value": 1857.04
+      },
+      {
+       "date": "2026-08-07",
+       "value": 1839.61
+      },
+      {
+       "date": "2026-08-14",
+       "value": 1846.96
+      },
+      {
+       "date": "2026-08-21",
+       "value": 1821.65
+      }
+     ],
+     "spikeAlert": false
+    }
+   ],
+   "fetchedAt": "2026-10-17T18:07:37.261Z",
+   "upstreamUnavailable": false
+  },
+  "shippingStress": {
+   "carriers": [
+    {
+     "symbol": "BDRY",
+     "name": "Breakwave Dry Bulk ETF",
+     "carrierType": "etf",
+     "price": 12.55,
+     "changePct": 2.45,
+     "sparkline": [
+      12.57,
+      12.51,
+      12.51,
+      12.57
+     ]
+    },
+    {
+     "symbol": "ZIM",
+     "name": "ZIM Integrated Shipping",
+     "carrierType": "carrier",
+     "price": 29.21,
+     "changePct": -1.12,
+     "sparkline": [
+      29.735,
+      29.77,
+      29.725,
+      29.72
+     ]
+    },
+    {
+     "symbol": "MATX",
+     "name": "Matson Inc",
+     "carrierType": "carrier",
+     "price": 234.99,
+     "changePct": -0.79,
+     "sparkline": [
+      240,
+      240,
+      240.32,
+      240.61
+     ]
+    },
+    {
+     "symbol": "SBLK",
+     "name": "Star Bulk Carriers",
+     "carrierType": "carrier",
+     "price": 27.79,
+     "changePct": -0.68,
+     "sparkline": [
+      28.2784,
+      28.02,
+      28.085,
+      28.059
+     ]
+    }
+   ],
+   "stressScore": 41,
+   "stressLevel": "moderate",
+   "fetchedAt": 1792264532262
+  },
+  "socialVelocity": {
+   "posts": [
+    {
+     "id": "1x8dp89",
+     "title": "Zelenskyy Says Starlink Speed Restrictions Look Deliberate",
+     "subreddit": "worldnews",
+     "url": "https://reddit.com/r/worldnews/comments/1x8dp89/zelenskyy_says_starlink_speed_restrictions_look/",
+     "score": 659,
+     "upvoteRatio": 0.9824304538799414,
+     "numComments": 25,
+     "velocityScore": 573.3,
+     "createdAt": 1792252565000
+    },
+    {
+     "id": "1x8cmz0",
+     "title": "Israeli settlers attack European delegation convoy in West Bank, beat French mayor",
+     "subreddit": "worldnews",
+     "url": "https://reddit.com/r/worldnews/comments/1x8cmz0/israeli_settlers_attack_european_delegation/",
+     "score": 674,
+     "upvoteRatio": 0.9201995012468828,
+     "numComments": 67,
+     "velocityScore": 476.5,
+     "createdAt": 1792249909000
+    },
+    {
+     "id": "1x8a9m9",
+     "title": "Bank of England governor walks out of IMF summit in protest against Russia | Andrew Bailey",
+     "subreddit": "worldnews",
+     "url": "https://reddit.com/r/worldnews/comments/1x8a9m9/bank_of_england_governor_walks_out_of_imf_summit/",
+     "score": 1333,
+     "upvoteRatio": 0.9882611885546588,
+     "numComments": 26,
+     "velocityScore": 424,
+     "createdAt": 1792243699000
+    },
+    {
+     "id": "1x88igv",
+     "title": "Zelensky Calls Trump\u2019s Sanctions Waiver a Mistake",
+     "subreddit": "worldnews",
+     "url": "https://reddit.com/r/worldnews/comments/1x88igv/zelensky_calls_trumps_sanctions_waiver_a_mistake/",
+     "score": 1955,
+     "upvoteRatio": 0.9864729458917836,
+     "numComments": 51,
+     "velocityScore": 350.1,
+     "createdAt": 1792238482000
+    }
+   ],
+   "fetchedAt": 1792254875378
+  },
+  "temporalAnomalies": {
+   "anomalies": [
+    {
+     "type": "military_flights",
+     "region": "global",
+     "currentCount": 18,
+     "expectedCount": 64,
+     "zScore": 2.22,
+     "severity": "high",
+     "multiplier": 0.28,
+     "message": "Military flights 0.3x normal for Saturday (October) \u2014 18 vs baseline 64"
+    }
+   ],
+   "trackedTypes": [
+    "news",
+    "satellite_fires",
+    "military_flights",
+    "vessels"
+   ],
+   "computedAt": "2026-10-17T19:15:07.905Z"
+  },
+  "sectors": {
+   "sectors": [
+    {
+     "symbol": "XLK",
+     "name": "XLK",
+     "change": -3.0234
+    },
+    {
+     "symbol": "XLF",
+     "name": "XLF",
+     "change": 0.4523
+    },
+    {
+     "symbol": "XLE",
+     "name": "XLE",
+     "change": 2.524
+    },
+    {
+     "symbol": "XLV",
+     "name": "XLV",
+     "change": -0.2709
+    }
+   ],
+   "valuations": {
+    "XLK": {
+     "trailingPE": 30.042723,
+     "forwardPE": null,
+     "beta": null,
+     "ytdReturn": 0.318753,
+     "threeYearReturn": 0.3173689,
+     "fiveYearReturn": 0.2028344
+    },
+    "XLF": {
+     "trailingPE": 15.822455,
+     "forwardPE": null,
+     "beta": null,
+     "ytdReturn": 0.0213921,
+     "threeYearReturn": 0.2034402,
+     "fiveYearReturn": 0.08787599
+    },
+    "XLE": {
+     "trailingPE": 19.440485,
+     "forwardPE": null,
+     "beta": null,
+     "ytdReturn": 0.5181756,
+     "threeYearReturn": 0.1775297,
+     "fiveYearReturn": 0.2255583
+    },
+    "XLV": {
+     "trailingPE": 31.509632,
+     "forwardPE": null,
+     "beta": null,
+     "ytdReturn": 0.15875301,
+     "threeYearReturn": 0.12674691,
+     "fiveYearReturn": 0.0846886
+    },
+    "XLY": {
+     "trailingPE": 24.802715,
+     "forwardPE": null,
+     "beta": null,
+     "ytdReturn": -0.044382703,
+     "threeYearReturn": 0.13507089,
+     "fiveYearReturn": 0.045816597
+    },
+    "XLI": {
+     "trailingPE": 27.562704,
+     "forwardPE": null,
+     "beta": null,
+     "ytdReturn": 0.0908951,
+     "threeYearReturn": 0.198162,
+     "fiveYearReturn": 0.1194712
+    },
+    "XLP": {
+     "trailingPE": 26.002975,
+     "forwardPE": null,
+     "beta": null,
+     "ytdReturn": 0.1374096,
+     "threeYearReturn": 0.1206355,
+     "fiveYearReturn": 0.0691276
+    },
+    "XLU": {
+     "trailingPE": 19.116308,
+     "forwardPE": null,
+     "beta": null,
+     "ytdReturn": -0.0040574,
+     "threeYearReturn": 0.1536763,
+     "fiveYearReturn": 0.08052459
+    },
+    "XLB": {
+     "trailingPE": 23.728842,
+     "forwardPE": null,
+     "beta": null,
+     "ytdReturn": 0.1291283,
+     "threeYearReturn": 0.1130616,
+     "fiveYearReturn": 0.058151003
+    },
+    "XLRE": {
+     "trailingPE": 30.096079,
+     "forwardPE": null,
+     "beta": null,
+     "ytdReturn": 0.0654603,
+     "threeYearReturn": 0.1063513,
+     "fiveYearReturn": 0.014894299
+    },
+    "XLC": {
+     "trailingPE": 16.186172,
+     "forwardPE": null,
+     "beta": null,
+     "ytdReturn": -0.0362339,
+     "threeYearReturn": 0.2016123,
+     "fiveYearReturn": 0.0809409
+    },
+    "SMH": {
+     "trailingPE": 28.838007,
+     "forwardPE": null,
+     "beta": null,
+     "ytdReturn": 0.551773,
+     "threeYearReturn": 0.5628013,
+     "fiveYearReturn": 0.3441019
+    }
+   },
+   "valuationCoverage": {
+    "valuationCount": 12,
+    "expectedValuationCount": 12,
+    "sourceStatus": "ok",
+    "source": "yahoo_v7_quote_authenticated_direct",
+    "fetchedAt": 1792264928066,
+    "stale": false,
+    "valuationDiagnostics": [
+     {
+      "symbol": "XLK",
+      "outcomes": [
+       {
+        "route": "v7Quote",
+        "transport": "direct",
+        "attempts": 1,
+        "status": 200,
+        "responseClass": "success",
+        "missingFields": [
+         "forwardPE"
+        ]
+       }
+      ]
+     },
+     {
+      "symbol": "XLF",
+      "outcomes": [
+       {
+        "route": "v7Quote",
+        "transport": "direct",
+        "attempts": 1,
+        "status": 200,
+        "responseClass": "success",
+        "missingFields": [
+         "forwardPE"
+        ]
+       }
+      ]
+     },
+     {
+      "symbol": "XLE",
+      "outcomes": [
+       {
+        "route": "v7Quote",
+        "transport": "direct",
+        "attempts": 1,
+        "status": 200,
+        "responseClass": "success",
+        "missingFields": [
+         "forwardPE"
+        ]
+       }
+      ]
+     },
+     {
+      "symbol": "XLV",
+      "outcomes": [
+       {
+        "route": "v7Quote",
+        "transport": "direct",
+        "attempts": 1,
+        "status": 200,
+        "responseClass": "success",
+        "missingFields": [
+         "forwardPE"
+        ]
+       }
+      ]
+     }
+    ],
+    "lastGood": {
+     "fetchedAt": 1792247437159,
+     "stale": true,
+     "symbols": [
+      "SMH",
+      "XLB",
+      "XLC",
+      "XLE"
+     ]
+    }
+   }
+  },
+  "etfFlows": {
+   "timestamp": "2026-10-17T19:22:13.510Z",
+   "summary": {
+    "etfCount": 10,
+    "totalVolume": 55059800,
+    "totalEstFlow": -257619158,
+    "netDirection": "NET OUTFLOW",
+    "inflowCount": 0,
+    "outflowCount": 10
+   },
+   "etfs": [
+    {
+     "ticker": "IBIT",
+     "issuer": "BlackRock",
+     "price": 46.15,
+     "priceChange": -0.94,
+     "volume": 45430300,
+     "avgVolume": 32348225,
+     "volumeRatio": 1.4,
+     "direction": "outflow",
+     "estFlow": -209660841
+    },
+    {
+     "ticker": "FBTC",
+     "issuer": "Fidelity",
+     "price": 70.85,
+     "priceChange": -0.98,
+     "volume": 3016700,
+     "avgVolume": 2376150,
+     "volumeRatio": 1.27,
+     "direction": "outflow",
+     "estFlow": -21373319
+    },
+    {
+     "ticker": "ARKB",
+     "issuer": "ARK/21Shares",
+     "price": 27,
+     "priceChange": -0.99,
+     "volume": 2189400,
+     "avgVolume": 1007175,
+     "volumeRatio": 2.17,
+     "direction": "outflow",
+     "estFlow": -5911380
+    },
+    {
+     "ticker": "BITB",
+     "issuer": "Bitwise",
+     "price": 44.2,
+     "priceChange": -1.03,
+     "volume": 1244100,
+     "avgVolume": 624175,
+     "volumeRatio": 1.99,
+     "direction": "outflow",
+     "estFlow": -5498922
+    }
+   ],
+   "rateLimited": false
+  },
+  "wildfires": {
+   "fireDetections": [
+    {
+     "id": "59.35418-101.965-2026-10-17-540",
+     "location": {
+      "latitude": 59.35418,
+      "longitude": 101.965
+     },
+     "brightness": 367,
+     "frp": 293.23,
+     "confidence": "FIRE_CONFIDENCE_HIGH",
+     "satellite": "N20",
+     "detectedAt": 1792215600000,
+     "region": "Russia",
+     "dayNight": "D",
+     "possibleExplosion": false,
+     "source": "firms",
+     "kind": "active",
+     "emergency": true
+    },
+    {
+     "id": "61.34904-112.80733-2026-10-17-302",
+     "location": {
+      "latitude": 61.34904,
+      "longitude": 112.80733
+     },
+     "brightness": 367,
+     "frp": 143.55,
+     "confidence": "FIRE_CONFIDENCE_HIGH",
+     "satellite": "N21",
+     "detectedAt": 1792206120000,
+     "region": "Russia",
+     "dayNight": "D",
+     "possibleExplosion": false,
+     "source": "firms",
+     "kind": "active",
+     "emergency": true
+    },
+    {
+     "id": "61.34776-112.8084-2026-10-17-340",
+     "location": {
+      "latitude": 61.34776,
+      "longitude": 112.8084
+     },
+     "brightness": 367,
+     "frp": 72.37,
+     "confidence": "FIRE_CONFIDENCE_HIGH",
+     "satellite": "N",
+     "detectedAt": 1792208400000,
+     "region": "Russia",
+     "dayNight": "D",
+     "possibleExplosion": false,
+     "source": "firms",
+     "kind": "active",
+     "emergency": true
+    },
+    {
+     "id": "31.03123-47.28587-2026-10-16-2318",
+     "location": {
+      "latitude": 31.03123,
+      "longitude": 47.28587
+     },
+     "brightness": 367,
+     "frp": 70.86,
+     "confidence": "FIRE_CONFIDENCE_HIGH",
+     "satellite": "N20",
+     "detectedAt": 1792192680000,
+     "region": "Iran",
+     "dayNight": "N",
+     "possibleExplosion": false,
+     "source": "firms",
+     "kind": "active",
+     "emergency": true
+    }
+   ],
+   "pagination": {
+    "nextCursor": "",
+    "totalCount": 5882
+   }
+  },
+  "climateAnomalies": {
+   "anomalies": [
+    {
+     "zone": "Ukraine",
+     "location": {
+      "latitude": 48.4,
+      "longitude": 31.2
+     },
+     "tempDelta": 2.2,
+     "precipDelta": 0.2,
+     "severity": "ANOMALY_SEVERITY_NORMAL",
+     "type": "ANOMALY_TYPE_WARM",
+     "period": "2026-10-11 to 2026-10-17"
+    },
+    {
+     "zone": "Europe",
+     "location": {
+      "latitude": 51,
+      "longitude": 10
+     },
+     "tempDelta": 0.6,
+     "precipDelta": -0.8,
+     "severity": "ANOMALY_SEVERITY_NORMAL",
+     "type": "ANOMALY_TYPE_WARM",
+     "period": "2026-10-11 to 2026-10-17"
+    },
+    {
+     "zone": "East Asia",
+     "location": {
+      "latitude": 39,
+      "longitude": 127
+     },
+     "tempDelta": 3,
+     "precipDelta": 3.1,
+     "severity": "ANOMALY_SEVERITY_MODERATE",
+     "type": "ANOMALY_TYPE_WARM",
+     "period": "2026-10-11 to 2026-10-17"
+    },
+    {
+     "zone": "Middle East",
+     "location": {
+      "latitude": 33,
+      "longitude": 44
+     },
+     "tempDelta": 4.3,
+     "precipDelta": 0.3,
+     "severity": "ANOMALY_SEVERITY_MODERATE",
+     "type": "ANOMALY_TYPE_WARM",
+     "period": "2026-10-11 to 2026-10-17"
+    }
+   ]
+  },
+  "climateDisasters": {
+   "disasters": [
+    {
+     "id": "gdacs-VO-1000152",
+     "type": "volcano",
+     "name": "Eruption  Kanlaon",
+     "country": "Philippines",
+     "countryCode": "PH",
+     "lat": 10.412,
+     "lng": 123.132,
+     "severity": "orange",
+     "startedAt": 1791611880000,
+     "status": "past",
+     "affectedPopulation": 0,
+     "source": "GDACS",
+     "sourceUrl": "https://www.gdacs.org/report.aspx?eventid=1000152&episodeid=1&eventtype=VO"
+    },
+    {
+     "id": "gdacs-VO-1000151",
+     "type": "volcano",
+     "name": "Eruption  Taal",
+     "country": "Philippines",
+     "countryCode": "PH",
+     "lat": 14.0106,
+     "lng": 120.9975,
+     "severity": "orange",
+     "startedAt": 1791455340000,
+     "status": "past",
+     "affectedPopulation": 0,
+     "source": "GDACS",
+     "sourceUrl": "https://www.gdacs.org/report.aspx?eventid=1000151&episodeid=1&eventtype=VO"
+    },
+    {
+     "id": "gdacs-TC-1001335",
+     "type": "cyclone",
+     "name": "Tropical Cyclone SIMON-26",
+     "country": "Mexico",
+     "countryCode": "MX",
+     "lat": 21.5,
+     "lng": -110.3,
+     "severity": "orange",
+     "startedAt": 1791385200000,
+     "status": "alert",
+     "affectedPopulation": 0,
+     "source": "GDACS",
+     "sourceUrl": "https://www.gdacs.org/report.aspx?eventid=1001335&episodeid=38&eventtype=TC"
+    },
+    {
+     "id": "reliefweb-FL-2026-000181-NER",
+     "type": "flood",
+     "name": "Niger: Floods - Sep 2026",
+     "country": "Niger",
+     "countryCode": "NE",
+     "lat": 17.4,
+     "lng": 9.36,
+     "severity": "medium",
+     "startedAt": 1788220800000,
+     "status": "ongoing",
+     "affectedPopulation": 0,
+     "source": "ReliefWeb",
+     "sourceUrl": "https://reliefweb.int/taxonomy/term/52692"
+    }
+   ]
+  },
+  "co2Monitoring": {
+   "monitoring": {
+    "currentPpm": 427.01,
+    "yearAgoPpm": 424.7,
+    "annualGrowthRate": 2.83,
+    "preIndustrialBaseline": 280,
+    "monthlyAverage": 426.07,
+    "trend12m": [
+     {
+      "month": "2025-10",
+      "ppm": 424.87,
+      "anomaly": 2.49
+     },
+     {
+      "month": "2025-11",
+      "ppm": 426.46,
+      "anomaly": 2.61
+     },
+     {
+      "month": "2025-12",
+      "ppm": 427.49,
+      "anomaly": 2.09
+     },
+     {
+      "month": "2026-01",
+      "ppm": 428.62,
+      "anomaly": 1.97
+     }
+    ],
+    "methanePpb": 1934.57,
+    "nitrousOxidePpb": 339.86,
+    "measuredAt": "1791849600000",
+    "station": "Mauna Loa, Hawaii"
+   }
+  },
+  "oceanIce": {
+   "arctic_extent_mkm2": 6.73,
+   "arctic_extent_anomaly_mkm2": -1.77,
+   "arctic_trend": "below_average",
+   "ice_trend_12m": [
+    {
+     "month": "2025-11",
+     "extent_mkm2": 9.63,
+     "anomaly_mkm2": -2.19
+    },
+    {
+     "month": "2025-12",
+     "extent_mkm2": 12.39,
+     "anomaly_mkm2": -1.32
+    },
+    {
+     "month": "2026-01",
+     "extent_mkm2": 13.72,
+     "anomaly_mkm2": -1.24
+    },
+    {
+     "month": "2026-02",
+     "extent_mkm2": 14.12,
+     "anomaly_mkm2": -1.43
+    }
+   ],
+   "sea_level_mm_above_1993": 113.2,
+   "sea_level_annual_rise_mm": 4.4,
+   "ohc_0_700m_zj": 228.45,
+   "sst_anomaly_c": 0.61,
+   "measured_at": 1792108800000
+  },
+  "naturalEvents": {
+   "events": [
+    {
+     "id": "nhc-EP21-17A",
+     "title": "Hurricane Trudy",
+     "description": "Hurricane Trudy, Max wind 80 kt, Pressure 979 mb",
+     "category": "severeStorms",
+     "categoryTitle": "Tropical Cyclone",
+     "lat": 17.000000000299906,
+     "lon": -104.30000000009983,
+     "date": 1792260000000,
+     "magnitude": 80,
+     "magnitudeUnit": "kt",
+     "sourceUrl": "https://www.nhc.noaa.gov/",
+     "sourceName": "NHC",
+     "closed": false,
+     "stormId": "nhc-EP21-17A",
+     "stormName": "Hurricane Trudy",
+     "basin": "EP",
+     "stormCategory": 1,
+     "classification": "Hurricane",
+     "windKt": 80,
+     "pressureMb": 979,
+     "movementDir": 325,
+     "movementSpeedKt": 9,
+     "forecastTrack": [
+      {
+       "lat": 17.699999999800298,
+       "lon": -104.7999999999999,
+       "hour": 12,
+       "windKt": 90,
+       "category": 2
+      },
+      {
+       "lat": 19.099999999700344,
+       "lon": -105.69999999999987,
+       "hour": 24,
+       "windKt": 90,
+       "category": 2
+      },
+      {
+       "lat": 20.10000000039986,
+       "lon": -106.40000000039959,
+       "hour": 36,
+       "windKt": 85,
+       "category": 2
+      },
+      {
+       "lat": 20.70000000010009,
+       "lon": -107.00000000009982,
+       "hour": 48,
+       "windKt": 65,
+       "category": 1
+      }
+     ],
+     "conePolygon": [
+      {
+       "points": [
+        {
+         "lon": -104.382,
+         "lat": 16.7483
+        },
+        {
+         "lon": -104.0871,
+         "lat": 16.8324
+        },
+        {
+         "lon": -104.0569,
+         "lat": 17.1349
+        },
+        {
+         "lon": -105.6628,
+         "lat": 20.5042
+        }
+       ]
+      }
+     ],
+     "pastTrack": [
+      {
+       "lat": 7.600000000199998,
+       "lon": -88.00000000029968,
+       "windKt": 15,
+       "timestamp": 2026101106
+      },
+      {
+       "lat": 7.399999999700356,
+       "lon": -89.19999999970014,
+       "windKt": 15,
+       "timestamp": 2026101112
+      },
+      {
+       "lat": 7.200000000100033,
+       "lon": -90.39999999999992,
+       "windKt": 15,
+       "timestamp": 2026101118
+      },
+      {
+       "lat": 7.299999999900194,
+       "lon": -91.39999999980006,
+       "windKt": 25,
+       "timestamp": 2026101200
+      }
+     ]
+    },
+    {
+     "id": "gdacs-VO-1000152",
+     "title": "\ud83d\udfe0 Eruption  Kanlaon",
+     "description": "Eruption  Kanlaon",
+     "category": "volcanoes",
+     "categoryTitle": "Eruption  Kanlaon",
+     "lat": 10.412,
+     "lon": 123.132,
+     "date": 1791611880000,
+     "magnitude": 0,
+     "magnitudeUnit": "",
+     "sourceUrl": "https://www.gdacs.org/report.aspx?eventid=1000152&episodeid=1&eventtype=VO",
+     "sourceName": "GDACS",
+     "closed": true,
+     "forecastTrack": [],
+     "conePolygon": [],
+     "pastTrack": []
+    },
+    {
+     "id": "gdacs-VO-1000151",
+     "title": "\ud83d\udfe0 Eruption  Taal",
+     "description": "Eruption  Taal",
+     "category": "volcanoes",
+     "categoryTitle": "Eruption  Taal",
+     "lat": 14.0106,
+     "lon": 120.9975,
+     "date": 1791455340000,
+     "magnitude": 0,
+     "magnitudeUnit": "",
+     "sourceUrl": "https://www.gdacs.org/report.aspx?eventid=1000151&episodeid=1&eventtype=VO",
+     "sourceName": "GDACS",
+     "closed": true,
+     "forecastTrack": [],
+     "conePolygon": [],
+     "pastTrack": []
+    },
+    {
+     "id": "gdacs-TC-1001335",
+     "title": "\ud83d\udfe0 Tropical Cyclone SIMON-26",
+     "description": "Tropical Cyclone SIMON-26 - Tropical Depression (maximum wind speed of 250 km/h)",
+     "category": "severeStorms",
+     "categoryTitle": "Tropical Cyclone SIMON-26",
+     "lat": 21.5,
+     "lon": -110.3,
+     "date": 1791385200000,
+     "magnitude": 0,
+     "magnitudeUnit": "",
+     "sourceUrl": "https://www.gdacs.org/report.aspx?eventid=1001335&episodeid=38&eventtype=TC",
+     "sourceName": "GDACS",
+     "closed": false,
+     "stormId": "gdacs-TC-1001335",
+     "stormName": "SIMON-26",
+     "windKt": 135,
+     "stormCategory": 4,
+     "classification": "Category 4",
+     "forecastTrack": [],
+     "conePolygon": [],
+     "pastTrack": []
+    }
+   ],
+   "fetchedAt": 1792263644491,
+   "westernPacific": {
+    "events": [
+     {
+      "id": "cyclone:wp:2026:gdacs:gdacs-tc-1001338",
+      "title": "Category 1 CHAMPI-26",
+      "description": "CHAMPI-26 \u00b7 1 agency observation",
+      "category": "severeStorms",
+      "categoryTitle": "Tropical Cyclone",
+      "lat": 12.6,
+      "lon": 146.1,
+      "date": 1791979200000,
+      "magnitude": 64,
+      "magnitudeUnit": "kt",
+      "sourceUrl": "https://www.gdacs.org/report.aspx?eventid=1001338&episodeid=13&eventtype=TC",
+      "sourceName": "GDACS",
+      "closed": false,
+      "stormId": "wp:2026:gdacs:gdacs-tc-1001338",
+      "stormName": "CHAMPI-26",
+      "basin": "WP",
+      "classification": "Category 1",
+      "windKt": 64,
+      "pressureMb": null,
+      "canonicalId": "wp:2026:gdacs:gdacs-tc-1001338",
+      "matchingConfidence": "single-source",
+      "canonicalAliases": [
+       "champi26"
+      ],
+      "agencyObservations": [
+       {
+        "agency": "GDACS",
+        "agencyId": "gdacs-TC-1001338",
+        "observedAt": 1791979200000,
+        "lat": 12.6,
+        "lon": 146.1,
+        "windKt": 64,
+        "pressureMb": null,
+        "classification": "Category 1",
+        "status": "active",
+        "sourceName": "GDACS",
+        "sourceUrl": "https://www.gdacs.org/report.aspx?eventid=1001338&episodeid=13&eventtype=TC"
+       }
+      ],
+      "forecastTrack": [],
+      "conePolygon": [],
+      "pastTrack": []
+     }
+    ],
+    "evaluatedAt": "2026-10-17T19:00:44.491Z",
+    "latestObservationAt": 1791979200000,
+    "dataAvailable": true,
+    "sourceDecisions": [
+     {
+      "source": "JMA RSMC Tokyo",
+      "host": "www.jma.go.jp",
+      "status": "blocked",
+      "reason": "EXPERIMENTAL_CAP_NOT_OPERATIONAL",
+      "optional": false,
+      "requestCount": 0,
+      "checkedAt": "2026-10-17T19:00:44.491Z"
+     },
+     {
+      "source": "JTWC",
+      "host": "www.metoc.navy.mil",
+      "status": "blocked",
+      "reason": "NOT_ENABLED_PENDING_RAILWAY_PREFLIGHT",
+      "optional": true,
+      "requestCount": 0,
+      "checkedAt": "2026-10-17T19:00:44.491Z"
+     },
+     {
+      "source": "HKO warning summary",
+      "host": "data.weather.gov.hk",
+      "status": "accepted",
+      "reason": "OK",
+      "optional": false,
+      "requestCount": 1,
+      "checkedAt": "2026-10-17T19:00:44.491Z"
+     }
+    ]
+   },
+   "hkoWarnings": {
+    "evaluatedAt": "2026-10-17T19:00:44.491Z",
+    "latestObservationAt": 1792263644491,
+    "dataAvailable": true,
+    "warnings": [],
+    "sourceDecisions": [
+     {
+      "source": "HKO warning summary",
+      "host": "data.weather.gov.hk",
+      "status": "accepted",
+      "reason": "OK",
+      "optional": false,
+      "requestCount": 1,
+      "checkedAt": "2026-10-17T19:00:44.491Z"
+     }
+    ]
+   }
+  },
+  "cryptoQuotes": {
+   "quotes": [
+    {
+     "name": "Bitcoin",
+     "symbol": "BTC",
+     "price": 81450,
+     "change": 0.12077,
+     "sparkline": [
+      82336.72255617275,
+      82308.82928743072,
+      82012.69918474372,
+      82350.6277249649
+     ]
+    },
+    {
+     "name": "Ethereum",
+     "symbol": "ETH",
+     "price": 2414.14,
+     "change": 0.08338,
+     "sparkline": [
+      2449.0541701613374,
+      2451.19989268422,
+      2451.3556587107414,
+      2459.2626150419533
+     ]
+    },
+    {
+     "name": "BNB",
+     "symbol": "BNB",
+     "price": 714.68,
+     "change": -0.91216,
+     "sparkline": [
+      733.5669442367847,
+      732.35948211664,
+      729.8948298713157,
+      730.9215910747366
+     ]
+    },
+    {
+     "name": "Solana",
+     "symbol": "SOL",
+     "price": 103.89,
+     "change": 0.69165,
+     "sparkline": [
+      105.87551350364635,
+      105.91909861558756,
+      105.53507985524777,
+      105.95785404808703
+     ]
+    }
+   ]
+  },
+  "defiTokens": {
+   "tokens": [
+    {
+     "name": "Aave",
+     "symbol": "AAVE",
+     "price": 152.46,
+     "change24h": -2.10298,
+     "change7d": -10.5566
+    },
+    {
+     "name": "Uniswap",
+     "symbol": "UNI",
+     "price": 7.15,
+     "change24h": -1.66743,
+     "change7d": -5.3061
+    },
+    {
+     "name": "Jupiter",
+     "symbol": "JUP",
+     "price": 0.29489,
+     "change24h": -1.6023,
+     "change7d": -18.6181
+    },
+    {
+     "name": "Pendle",
+     "symbol": "PENDLE",
+     "price": 2.06,
+     "change24h": -1.90254,
+     "change7d": -4.4257
+    }
+   ]
+  },
+  "gulfQuotes": {
+   "quotes": [
+    {
+     "symbol": "^TASI.SR",
+     "name": "Tadawul All Share",
+     "country": "Saudi Arabia",
+     "flag": "\ud83c\uddf8\ud83c\udde6",
+     "type": "index",
+     "price": 10106.54,
+     "change": -0.32,
+     "sparkline": [
+      10120.66,
+      10126.44,
+      10131.21,
+      10131.6
+     ]
+    },
+    {
+     "symbol": "DFMGI.AE",
+     "name": "Dubai Financial Market",
+     "country": "UAE",
+     "flag": "\ud83c\udde6\ud83c\uddea",
+     "type": "index",
+     "price": 5867.31,
+     "change": 0.63,
+     "sparkline": [
+      5846.52,
+      5843.59,
+      5848.14,
+      5850.73
+     ]
+    },
+    {
+     "symbol": "UAE",
+     "name": "Abu Dhabi (iShares)",
+     "country": "UAE",
+     "flag": "\ud83c\udde6\ud83c\uddea",
+     "type": "index",
+     "price": 19.52,
+     "change": -0.2,
+     "sparkline": [
+      19.6,
+      19.6143,
+      19.585,
+      19.615
+     ]
+    },
+    {
+     "symbol": "QAT",
+     "name": "Qatar (iShares)",
+     "country": "Qatar",
+     "flag": "\ud83c\uddf6\ud83c\udde6",
+     "type": "index",
+     "price": 15.6004,
+     "change": -0.07,
+     "sparkline": [
+      15.68,
+      15.68,
+      15.66,
+      15.68
+     ]
+    }
+   ],
+   "rateLimited": false
+  },
+  "stablecoinMarkets": {
+   "timestamp": "2026-10-17T19:22:13.827Z",
+   "summary": {
+    "totalMarketCap": 265558589687,
+    "totalVolume24h": 39177848510,
+    "coinCount": 5,
+    "depeggedCount": 0,
+    "healthStatus": "HEALTHY"
+   },
+   "stablecoins": [
+    {
+     "id": "tether",
+     "symbol": "USDT",
+     "name": "Tether",
+     "price": 0.999048,
+     "deviation": 0.095,
+     "pegStatus": "ON PEG",
+     "marketCap": 183488081278,
+     "volume24h": 29678880586,
+     "change24h": -0.00426,
+     "change7d": -0.0096,
+     "image": "https://coin-images.coingecko.com/coins/images/325/large/Tether.png?1696501661"
+    },
+    {
+     "id": "usd-coin",
+     "symbol": "USDC",
+     "name": "USDC",
+     "price": 0.999775,
+     "deviation": 0.023,
+     "pegStatus": "ON PEG",
+     "marketCap": 72531936017,
+     "volume24h": 9214799588,
+     "change24h": -0.00397,
+     "change7d": 0.0014,
+     "image": "https://coin-images.coingecko.com/coins/images/6319/large/USDC.png?1769615602"
+    },
+    {
+     "id": "ethena-usde",
+     "symbol": "USDE",
+     "name": "Ethena USDe",
+     "price": 0.999355,
+     "deviation": 0.065,
+     "pegStatus": "ON PEG",
+     "marketCap": 4682728927,
+     "volume24h": 31941058,
+     "change24h": 0.00188,
+     "change7d": 0.0014,
+     "image": "https://coin-images.coingecko.com/coins/images/33613/large/usde.png?1733810059"
+    },
+    {
+     "id": "dai",
+     "symbol": "DAI",
+     "name": "Dai",
+     "price": 1,
+     "deviation": 0,
+     "pegStatus": "ON PEG",
+     "marketCap": 4540775527,
+     "volume24h": 209511837,
+     "change24h": -0.02779,
+     "change7d": 0.0056,
+     "image": "https://coin-images.coingecko.com/coins/images/9956/large/Badge_Dai.png?1696509996"
+    }
+   ]
+  },
+  "unrestEvents": {
+   "events": [
+    {
+     "id": "gdelt-bulk-28.67-77.22-1792263600000",
+     "title": "Delhi, Delhi, India (27 reports)",
+     "summary": "Unverified media signal. This location is mentioned in unrest-related articles; a local event is not verified.",
+     "eventType": "UNREST_EVENT_TYPE_UNSPECIFIED",
+     "city": "Delhi",
+     "country": "India",
+     "region": "",
+     "location": {
+      "latitude": 28.6667,
+      "longitude": 77.2167
+     },
+     "occurredAt": 1792263600000,
+     "severity": "SEVERITY_LEVEL_UNSPECIFIED",
+     "fatalities": 0,
+     "sources": [
+      "GDELT"
+     ],
+     "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+     "tags": [],
+     "actors": [],
+     "confidence": "CONFIDENCE_LEVEL_LOW",
+     "sourceUrls": [
+      "https://www.rediff.com/news/report/lehra-do-tiranga-protest-delhi-police-files-multiple-firs/20261017.htm",
+      "https://www.newslaundry.com/2026/10/17/cjp-founder-abhijeet-dipke-released-on-bail-told-to-sign-a-one-year-peace-bond",
+      "https://timesofindia.indiatimes.com/india/taking-away-right-to-vote-protest-uddhav-backs-oppositions-regime-change-call-against-government/articleshow/135017025.cms",
+      "https://www.thehindu.com/news/national/breach-of-peace-a-ploy-to-make-detentions-says-plea-in-sc/article71597177.ece"
+     ],
+     "tone": -9.2896174863388
+    },
+    {
+     "id": "gdelt-bulk-28.60-77.20-1792263600000",
+     "title": "New Delhi, Delhi, India (23 reports)",
+     "summary": "Unverified media signal. This location is mentioned in unrest-related articles; a local event is not verified.",
+     "eventType": "UNREST_EVENT_TYPE_UNSPECIFIED",
+     "city": "New Delhi",
+     "country": "India",
+     "region": "",
+     "location": {
+      "latitude": 28.6,
+      "longitude": 77.2
+     },
+     "occurredAt": 1792263600000,
+     "severity": "SEVERITY_LEVEL_UNSPECIFIED",
+     "fatalities": 0,
+     "sources": [
+      "GDELT"
+     ],
+     "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+     "tags": [],
+     "actors": [],
+     "confidence": "CONFIDENCE_LEVEL_LOW",
+     "sourceUrls": [
+      "https://www.rediff.com/news/report/lehra-do-tiranga-protest-delhi-police-files-multiple-firs/20261017.htm",
+      "https://www.newslaundry.com/2026/10/17/cjp-founder-abhijeet-dipke-released-on-bail-told-to-sign-a-one-year-peace-bond",
+      "https://timesofindia.indiatimes.com/india/taking-away-right-to-vote-protest-uddhav-backs-oppositions-regime-change-call-against-government/articleshow/135017025.cms",
+      "https://www.rediff.com/news/report/abhijeet-dipke-granted-conditional-bail-asked-to-sign-peace-bond/20261017.htm"
+     ],
+     "tone": -9.2896174863388
+    },
+    {
+     "id": "gdelt-bulk-48.11--1.67-1792263600000",
+     "title": "Rennes, Bretagne, France (107 reports)",
+     "summary": "Unverified media signal. This location is mentioned in unrest-related articles; a local event is not verified.",
+     "eventType": "UNREST_EVENT_TYPE_UNSPECIFIED",
+     "city": "Rennes",
+     "country": "France",
+     "region": "",
+     "location": {
+      "latitude": 48.112,
+      "longitude": -1.67429
+     },
+     "occurredAt": 1792263600000,
+     "severity": "SEVERITY_LEVEL_UNSPECIFIED",
+     "fatalities": 0,
+     "sources": [
+      "GDELT"
+     ],
+     "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+     "tags": [],
+     "actors": [],
+     "confidence": "CONFIDENCE_LEVEL_LOW",
+     "sourceUrls": [
+      "https://www.whqr.org/2026-10-17/scuffles-and-fires-break-out-as-protesters-rally-across-france-joining-students",
+      "https://www.news-gazette.com/news/nation-world/clashes-and-fires-break-out-as-protesters-rally-across-france-joining-students/article_c3c4220f-f947-50e6-a15b-b125cda2c100.html",
+      "https://www.dailyadvertiser.com.au/story/9370340/clashes-erupt-on-french-streets-yellow-vests-return/",
+      "https://timesofindia.indiatimes.com/world/europe/cars-torched-shops-looted-violence-protests-erupt-across-france-over-270-arrested/articleshow/135017051.cms"
+     ],
+     "tone": -9.54356846473029
+    },
+    {
+     "id": "gdelt-bulk--20.87-55.47-1792263600000",
+     "title": "Saint-Denis, Reunion (General), Reunion (89 reports)",
+     "summary": "Unverified media signal. This location is mentioned in unrest-related articles; a local event is not verified.",
+     "eventType": "UNREST_EVENT_TYPE_UNSPECIFIED",
+     "city": "Saint-Denis",
+     "country": "Reunion",
+     "region": "",
+     "location": {
+      "latitude": -20.8667,
+      "longitude": 55.4667
+     },
+     "occurredAt": 1792263600000,
+     "severity": "SEVERITY_LEVEL_UNSPECIFIED",
+     "fatalities": 0,
+     "sources": [
+      "GDELT"
+     ],
+     "sourceType": "UNREST_SOURCE_TYPE_GDELT",
+     "tags": [],
+     "actors": [],
+     "confidence": "CONFIDENCE_LEVEL_LOW",
+     "sourceUrls": [
+      "https://www.whqr.org/2026-10-17/scuffles-and-fires-break-out-as-protesters-rally-across-france-joining-students",
+      "https://www.capeandislands.org/2026-10-17/scuffles-and-fires-break-out-as-protesters-rally-across-france-joining-students",
+      "https://www.wuft.org/2026-10-17/scuffles-and-fires-break-out-as-protesters-rally-across-france-joining-students",
+      "https://www.wrvo.org/2026-10-17/scuffles-and-fires-break-out-as-protesters-rally-across-france-joining-students"
+     ],
+     "tone": -9.16398713826367
+    }
+   ],
+   "clusters": [],
+   "pagination": {
+    "gdeltFetchedAt": 1792263656367
+   }
+  },
+  "ucdpEvents": {
+   "events": [
+    {
+     "id": "639089",
+     "dateStart": 1788134400000,
+     "dateEnd": 1788134400000,
+     "location": {
+      "latitude": 25.182627,
+      "longitude": 93.766334
+     },
+     "country": "India",
+     "sideA": "NSCN-IM",
+     "sideB": "Civilians",
+     "deathsBest": 3,
+     "deathsLow": 2,
+     "deathsHigh": 3,
+     "violenceType": "UCDP_VIOLENCE_TYPE_ONE_SIDED",
+     "sourceOriginal": "officials , Committee on Tribal Unity (COTU) , The Twilang Area Kuki Civil Society Organisations Working Committee"
+    },
+    {
+     "id": "639146",
+     "dateStart": 1788134400000,
+     "dateEnd": 1788134400000,
+     "location": {
+      "latitude": -0.682222,
+      "longitude": 29.386667
+     },
+     "country": "DR Congo (Zaire)",
+     "sideA": "FDLR-FOCA",
+     "sideB": "Civilians",
+     "deathsBest": 4,
+     "deathsLow": 0,
+     "deathsHigh": 4,
+     "violenceType": "UCDP_VIOLENCE_TYPE_ONE_SIDED",
+     "sourceOriginal": "M23"
+    },
+    {
+     "id": "639250",
+     "dateStart": 1788134400000,
+     "dateEnd": 1788134400000,
+     "location": {
+      "latitude": 32.599208,
+      "longitude": 70.851187
+     },
+     "country": "Pakistan",
+     "sideA": "Government of Pakistan",
+     "sideB": "TTP",
+     "deathsBest": 1,
+     "deathsLow": 1,
+     "deathsHigh": 1,
+     "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+     "sourceOriginal": "Frontier Files."
+    },
+    {
+     "id": "639253",
+     "dateStart": 1788134400000,
+     "dateEnd": 1788134400000,
+     "location": {
+      "latitude": 33.178622,
+      "longitude": 70.976533
+     },
+     "country": "Pakistan",
+     "sideA": "Government of Pakistan",
+     "sideB": "TTP",
+     "deathsBest": 1,
+     "deathsLow": 1,
+     "deathsHigh": 1,
+     "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+     "sourceOriginal": "Karak District Police Officer\u2019s (DPO) spokesperson Shaukat Khan"
+    }
+   ],
+   "fetchedAt": 1792249477471,
+   "version": "26.1",
+   "candidateVersion": "26.0.8",
+   "totalRaw": 7774,
+   "filteredCount": 4248,
+   "classifications": {
+    "India": {
+     "location": "India",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "UPF",
+     "sideB": "Civilians"
+    },
+    "DR Congo (Zaire)": {
+     "location": "DR Congo (Zaire)",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "IS",
+     "sideB": "Civilians"
+    },
+    "Pakistan": {
+     "location": "Pakistan",
+     "intensity": "war",
+     "year": 2026,
+     "sideA": "Government of Pakistan",
+     "sideB": "TTP"
+    },
+    "Yemen (North Yemen)": {
+     "location": "Yemen (North Yemen)",
+     "intensity": "war",
+     "year": 2026,
+     "sideA": "Government of Yemen (North Yemen)",
+     "sideB": "Forces of the Presidential Leadership Council"
+    },
+    "Israel": {
+     "location": "Israel",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "Government of Israel",
+     "sideB": "Hamas"
+    },
+    "Brazil": {
+     "location": "Brazil",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "XXX140",
+     "sideB": "XXX140"
+    },
+    "Sudan": {
+     "location": "Sudan",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "Government of Sudan",
+     "sideB": "SFA"
+    },
+    "Afghanistan": {
+     "location": "Afghanistan",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "Government of Afghanistan",
+     "sideB": "IS"
+    },
+    "Mali": {
+     "location": "Mali",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "Government of Mali",
+     "sideB": "JNIM"
+    },
+    "Burkina Faso": {
+     "location": "Burkina Faso",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "Government of Burkina Faso",
+     "sideB": "Civilians"
+    },
+    "Iran": {
+     "location": "Iran",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "Government of Iran",
+     "sideB": "Jaish al-Adl"
+    },
+    "Mexico": {
+     "location": "Mexico",
+     "intensity": "war",
+     "year": 2026,
+     "sideA": "XXX70",
+     "sideB": "XXX70"
+    },
+    "Ukraine": {
+     "location": "Ukraine",
+     "intensity": "war",
+     "year": 2026,
+     "sideA": "Government of Russia (Soviet Union)",
+     "sideB": "Government of Ukraine"
+    },
+    "Russia (Soviet Union)": {
+     "location": "Russia (Soviet Union)",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "Government of Russia (Soviet Union)",
+     "sideB": "Government of Ukraine"
+    },
+    "Colombia": {
+     "location": "Colombia",
+     "intensity": "war",
+     "year": 2026,
+     "sideA": "Government of Colombia",
+     "sideB": "EMBF"
+    },
+    "Nigeria": {
+     "location": "Nigeria",
+     "intensity": "war",
+     "year": 2026,
+     "sideA": "Government of Nigeria",
+     "sideB": "IS"
+    },
+    "Venezuela": {
+     "location": "Venezuela",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "XXX100",
+     "sideB": "XXX100"
+    },
+    "Somalia": {
+     "location": "Somalia",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "Government of Somalia",
+     "sideB": "Forces of Laftagareen"
+    },
+    "Syria": {
+     "location": "Syria",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "Saraya Ansar al-Sunna",
+     "sideB": "Civilians"
+    },
+    "Myanmar (Burma)": {
+     "location": "Myanmar (Burma)",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "Government of Myanmar (Burma)",
+     "sideB": "ULA"
+    },
+    "France": {
+     "location": "France",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "XXX220",
+     "sideB": "XXX220"
+    },
+    "Niger": {
+     "location": "Niger",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "Government of Niger",
+     "sideB": "IS"
+    },
+    "Ethiopia": {
+     "location": "Ethiopia",
+     "intensity": "war",
+     "year": 2026,
+     "sideA": "Anuak",
+     "sideB": "Nuer"
+    },
+    "Cameroon": {
+     "location": "Cameroon",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "IS",
+     "sideB": "Civilians"
+    },
+    "Philippines": {
+     "location": "Philippines",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "Government of Philippines",
+     "sideB": "IS"
+    },
+    "Uganda": {
+     "location": "Uganda",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "Government of Uganda",
+     "sideB": "Civilians"
+    },
+    "Bangladesh": {
+     "location": "Bangladesh",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "ARA",
+     "sideB": "RSO"
+    },
+    "Lebanon": {
+     "location": "Lebanon",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "Government of Israel",
+     "sideB": "Hezbollah"
+    },
+    "Iraq": {
+     "location": "Iraq",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "XXX645",
+     "sideB": "XXX645"
+    },
+    "South Sudan": {
+     "location": "South Sudan",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "XXX626",
+     "sideB": "XXX626"
+    },
+    "Indonesia": {
+     "location": "Indonesia",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "OPM",
+     "sideB": "Civilians"
+    },
+    "Kenya": {
+     "location": "Kenya",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "Government of Kenya",
+     "sideB": "Al-Shabaab"
+    },
+    "South Africa": {
+     "location": "South Africa",
+     "intensity": "minor",
+     "year": 2026,
+     "sideA": "XXX560",
+     "sideB": "XXX560"
+    },
+    "Burundi": {
+     "location": "Burundi",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "Government of Burundi",
+     "sideB": "Civilians"
+    },
+    "Haiti": {
+     "location": "Haiti",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "Viv Ansanm",
+     "sideB": "Civilians"
+    },
+    "United States of America": {
+     "location": "United States of America",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "XXX2",
+     "sideB": "XXX2"
+    },
+    "Chad": {
+     "location": "Chad",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "XXX483",
+     "sideB": "XXX483"
+    },
+    "Central African Republic": {
+     "location": "Central African Republic",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "Government of Central African Republic",
+     "sideB": "CPC-F"
+    },
+    "Guatemala": {
+     "location": "Guatemala",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "M18",
+     "sideB": "MS-13"
+    },
+    "Spain": {
+     "location": "Spain",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "XXX230",
+     "sideB": "XXX230"
+    },
+    "Chile": {
+     "location": "Chile",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "XXX155",
+     "sideB": "Civilians"
+    },
+    "Zambia": {
+     "location": "Zambia",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "Government of Zambia",
+     "sideB": "Civilians"
+    },
+    "Ghana": {
+     "location": "Ghana",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "Bikpangib (Konkomba)",
+     "sideB": "Binamob (Konkomba)"
+    },
+    "Tajikistan": {
+     "location": "Tajikistan",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "Government of Afghanistan",
+     "sideB": "Forces of Juma Khan Fateh"
+    },
+    "Mozambique": {
+     "location": "Mozambique",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "Government of Mozambique",
+     "sideB": "IS"
+    },
+    "Libya": {
+     "location": "Libya",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "XXX620",
+     "sideB": "XXX620"
+    },
+    "Sri Lanka": {
+     "location": "Sri Lanka",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "XXX780",
+     "sideB": "XXX780"
+    },
+    "Thailand": {
+     "location": "Thailand",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "Government of Cambodia (Kampuchea)",
+     "sideB": "Government of Thailand"
+    },
+    "Ivory Coast": {
+     "location": "Ivory Coast",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "XXX437",
+     "sideB": "XXX437"
+    },
+    "Papua New Guinea": {
+     "location": "Papua New Guinea",
+     "intensity": "none",
+     "year": 2026,
+     "sideA": "Waipilini",
+     "sideB": "Baiyer Kaiagon"
+    },
+    "Costa Rica": {
+     "location": "Costa Rica",
+     "intensity": "none",
+     "year": 2025,
+     "sideA": "Forces of Tony Pe\u00f1a",
+     "sideB": "Los Hondure\u00f1os"
+    },
+    "Turkey": {
+     "location": "Turkey",
+     "intensity": "none",
+     "year": 2025,
+     "sideA": "Government of Turkey",
+     "sideB": "IS"
+    },
+    "Tanzania": {
+     "location": "Tanzania",
+     "intensity": "none",
+     "year": 2025,
+     "sideA": "Government of Tanzania",
+     "sideB": "Civilians"
+    },
+    "Argentina": {
+     "location": "Argentina",
+     "intensity": "none",
+     "year": 2025,
+     "sideA": "Los Monos",
+     "sideB": "Civilians"
+    },
+    "Ecuador": {
+     "location": "Ecuador",
+     "intensity": "none",
+     "year": 2025,
+     "sideA": "Los Choneros",
+     "sideB": "Los Lobos"
+    }
+   },
+   "aggregates": {
+    "UCDP_VIOLENCE_TYPE_STATE_BASED": {
+     "count": 1445,
+     "totalDeaths": 10945
+    },
+    "UCDP_VIOLENCE_TYPE_NON_STATE": {
+     "count": 542,
+     "totalDeaths": 1115
+    },
+    "UCDP_VIOLENCE_TYPE_ONE_SIDED": {
+     "count": 319,
+     "totalDeaths": 1086
+    }
+   },
+   "totalEvents": 2306
+  },
+  "techEvents": {
+   "success": true,
+   "count": 130,
+   "conferenceCount": 120,
+   "mappableCount": 0,
+   "lastUpdated": "2026-10-17T16:01:46.682Z",
+   "events": [
+    {
+     "id": "tFxamRECVYR3GaKxog19rg@techmeme.com",
+     "title": "LA Tech Week",
+     "type": "conference",
+     "location": "Los Angeles",
+     "startDate": "2026-10-12",
+     "endDate": "2026-10-19",
+     "url": "https://www.techmeme.com/r2/www.tech-week.com_-uhGXsgo2.htm?ca",
+     "source": "techmeme",
+     "description": ""
+    },
+    {
+     "id": "bHrZ6AAqxwKj0hob5SafJw@techmeme.com",
+     "title": "MIT AI Conference",
+     "type": "conference",
+     "location": "Mountain View, CA",
+     "startDate": "2026-10-17",
+     "endDate": "2026-10-18",
+     "url": "https://www.techmeme.com/r2/www.mitaiconference.org_-vurmHQvm.",
+     "source": "techmeme",
+     "description": ""
+    },
+    {
+     "id": "xrLCsllrAm4JOsRCVWajzZQ@techmeme.com",
+     "title": "Money20/20 USA",
+     "type": "conference",
+     "location": "Las Vegas",
+     "startDate": "2026-10-18",
+     "endDate": "2026-10-22",
+     "url": "https://www.techmeme.com/r2/us.money2020.com_-Pz7uc4gf.htm?cal",
+     "source": "techmeme",
+     "description": ""
+    },
+    {
+     "id": "FmXd94xRP7UbyyrzBPhxSg@techmeme.com",
+     "title": "Cloudflare Connect 2026: The Agentic Conference",
+     "type": "conference",
+     "location": "San Francisco",
+     "startDate": "2026-10-19",
+     "endDate": "2026-10-22",
+     "url": "https://www.techmeme.com/r2/www.techmeme.com_cfc26e.htm-RfNBqp",
+     "source": "techmeme",
+     "description": ""
+    }
+   ],
+   "error": ""
+  },
+  "securityAdvisories": {
+   "advisories": [
+    {
+     "title": "Saudi Arabia",
+     "link": "https://www.gov.uk/foreign-travel-advice/saudi-arabia",
+     "pubDate": "2026-10-17T16:25:35.000Z",
+     "source": "UK FCDO",
+     "sourceCountry": "UK",
+     "level": "info",
+     "country": "SA"
+    },
+    {
+     "title": "Demonstration Alert: \u201cMega March for Water\u201d in Guadalajara on October 18 at 11:00 a.m.",
+     "link": "https://mx.usembassy.gov/demonstration-alert-mega-march-for-water-in-guadalajara-on-october-18-at-1100-a-m/",
+     "pubDate": "2026-10-16T16:36:40.000Z",
+     "source": "US Embassy Mexico",
+     "sourceCountry": "US",
+     "level": "info",
+     "country": "MX"
+    },
+    {
+     "title": "Ethiopia",
+     "link": "https://www.gov.uk/foreign-travel-advice/ethiopia",
+     "pubDate": "2026-10-16T16:03:39.000Z",
+     "source": "UK FCDO",
+     "sourceCountry": "UK",
+     "level": "info",
+     "country": "ET"
+    },
+    {
+     "title": "Mexico",
+     "link": "https://www.gov.uk/foreign-travel-advice/mexico",
+     "pubDate": "2026-10-16T15:29:42.000Z",
+     "source": "UK FCDO",
+     "sourceCountry": "UK",
+     "level": "info",
+     "country": "MX"
+    },
+    {
+     "title": "Nigeria",
+     "link": "https://www.gov.uk/foreign-travel-advice/nigeria",
+     "pubDate": "2026-10-16T14:52:35.000Z",
+     "source": "UK FCDO",
+     "sourceCountry": "UK",
+     "level": "info",
+     "country": "NG"
+    },
+    {
+     "title": "Communicable disease threats report, 10 - 16 October, week 42",
+     "link": "https://www.ecdc.europa.eu/en/publications-data/communicable-disease-threats-report-10-16-october-week-42",
+     "pubDate": "2026-10-16T14:01:27.000Z",
+     "source": "ECDC Threats Report",
+     "sourceCountry": "EU",
+     "level": "info",
+     "country": ""
+    }
+   ],
+   "fetchedAt": "2026-10-17T19:02:46.362Z"
+  },
+  "sanctionsPressure": {
+   "fetchedAt": "1792260288517",
+   "datasetDate": "1792022400000",
+   "totalCount": 25761,
+   "sdnCount": 19643,
+   "consolidatedCount": 1058,
+   "semaCount": 5703,
+   "newEntryCount": 0,
+   "vesselCount": 1958,
+   "aircraftCount": 342,
+   "countries": [
+    {
+     "countryCode": "XX",
+     "countryName": "Unknown",
+     "entryCount": 8486,
+     "newEntryCount": 0,
+     "vesselCount": 1958,
+     "aircraftCount": 341
+    },
+    {
+     "countryCode": "RU",
+     "countryName": "Russia",
+     "entryCount": 5939,
+     "newEntryCount": 0,
+     "vesselCount": 0,
+     "aircraftCount": 0
+    },
+    {
+     "countryCode": "IR",
+     "countryName": "Iran",
+     "entryCount": 1710,
+     "newEntryCount": 0,
+     "vesselCount": 0,
+     "aircraftCount": 0
+    },
+    {
+     "countryCode": "CN",
+     "countryName": "China",
+     "entryCount": 1396,
+     "newEntryCount": 0,
+     "vesselCount": 0,
+     "aircraftCount": 0
+    }
+   ],
+   "programs": [
+    {
+     "program": "RUSSIA-EO14024",
+     "entryCount": 6802,
+     "newEntryCount": 0
+    },
+    {
+     "program": "SEMA",
+     "entryCount": 5553,
+     "newEntryCount": 0
+    },
+    {
+     "program": "SDGT",
+     "entryCount": 3375,
+     "newEntryCount": 0
+    },
+    {
+     "program": "IFSR",
+     "entryCount": 1620,
+     "newEntryCount": 0
+    }
+   ],
+   "entries": [
+    {
+     "id": "SDN:58997",
+     "name": "BANCO INTERNACIONAL DE COMERCIO S.A.",
+     "entityType": "SANCTIONS_ENTITY_TYPE_ENTITY",
+     "countryCodes": [
+      "CU"
+     ],
+     "countryNames": [
+      "Cuba"
+     ],
+     "programs": [
+      "CUBA-EO14404"
+     ],
+     "sourceLists": [
+      "SDN"
+     ],
+     "effectiveAt": "1792022400000",
+     "isNew": false,
+     "note": ""
+    },
+    {
+     "id": "SDN:58934",
+     "name": "Elitesphere Trading Co., Limited",
+     "entityType": "SANCTIONS_ENTITY_TYPE_ENTITY",
+     "countryCodes": [
+      "CN"
+     ],
+     "countryNames": [
+      "China"
+     ],
+     "programs": [
+      "IRAN-EO13902"
+     ],
+     "sourceLists": [
+      "SDN"
+     ],
+     "effectiveAt": "1792022400000",
+     "isNew": false,
+     "note": ""
+    },
+    {
+     "id": "SDN:58946",
+     "name": "\u0627\u0644\u0647\u06cc\u0627\u0631 \u0641\u0631\u0632\u0627\u062f",
+     "entityType": "SANCTIONS_ENTITY_TYPE_INDIVIDUAL",
+     "countryCodes": [
+      "IR"
+     ],
+     "countryNames": [
+      "Iran"
+     ],
+     "programs": [
+      "IRAN-EO13902"
+     ],
+     "sourceLists": [
+      "SDN"
+     ],
+     "effectiveAt": "1792022400000",
+     "isNew": false,
+     "note": ""
+    },
+    {
+     "id": "SDN:58953",
+     "name": "\u0628\u0627\u0646\u06a9 \u0628\u06cc\u0646 \u0627\u0644\u0645\u0644\u0644\u06cc \u062c\u0632\u06cc\u0631\u0647",
+     "entityType": "SANCTIONS_ENTITY_TYPE_ENTITY",
+     "countryCodes": [
+      "IR"
+     ],
+     "countryNames": [
+      "Iran"
+     ],
+     "programs": [
+      "IRAN-EO13902"
+     ],
+     "sourceLists": [
+      "SDN"
+     ],
+     "effectiveAt": "1792022400000",
+     "isNew": false,
+     "note": ""
+    }
+   ],
+   "_state": {
+    "schemaVersion": 1,
+    "sourceVersion": "ofac-sls-advanced-xml+sema-ca-json-v4",
+    "population": "top-12-first-iso2-display-v1",
+    "cohort": {
+     "computationAt": "1792260288517",
+     "datasetDate": "1792022400000",
+     "totalCount": 25761,
+     "newEntryCount": 0
+    },
+    "comparison": {
+     "kind": "id-set-difference",
+     "from": "1792238636468",
+     "to": "1792260288517"
+    },
+    "sourceHealth": {
+     "SDN": {
+      "status": "ok",
+      "lastAttemptAt": 1792260288517,
+      "lastSuccessAt": 1792260288517,
+      "retainedUntil": 1792433088517,
+      "publishedAt": 1792022400000,
+      "recordCount": 19643,
+      "errorCode": null,
+      "quarantinedCount": 0
+     },
+     "CONSOLIDATED": {
+      "status": "ok",
+      "lastAttemptAt": 1792260288517,
+      "lastSuccessAt": 1792260288517,
+      "retainedUntil": 1792433088517,
+      "publishedAt": 1789344000000,
+      "recordCount": 1058,
+      "errorCode": null,
+      "quarantinedCount": 0
+     },
+     "sema-ca": {
+      "status": "ok",
+      "lastAttemptAt": 1792260288517,
+      "lastSuccessAt": 1792260288517,
+      "retainedUntil": 1792433088517,
+      "publishedAt": 1790035200000,
+      "recordCount": 5703,
+      "errorCode": null,
+      "quarantinedCount": 5
+     }
+    }
+   }
+  },
+  "fearGreedIndex": {
+   "timestamp": "2026-10-17T18:02:11.395Z",
+   "composite": {
+    "score": 56.8,
+    "label": "Neutral",
+    "previous": 56.8
+   },
+   "categories": {
+    "sentiment": {
+     "score": 34,
+     "weight": 0.1,
+     "contribution": 3.4,
+     "inputs": {
+      "cnnFearGreed": 18,
+      "aaiBull": 38.7,
+      "aaiBear": 41.6,
+      "cryptoFg": 55
+     },
+     "degraded": false
+    },
+    "volatility": {
+     "score": 67,
+     "weight": 0.1,
+     "contribution": 6.7,
+     "inputs": {
+      "vix": 19.99,
+      "vix9d": 20.12,
+      "vix3m": 20.5,
+      "termStructure": "contango"
+     }
+    },
+    "positioning": {
+     "score": 50,
+     "weight": 0.15,
+     "contribution": 7.5,
+     "inputs": {
+      "skew": 168.59
+     }
+    },
+    "trend": {
+     "score": 55,
+     "weight": 0.1,
+     "contribution": 5.5,
+     "inputs": {
+      "spxPrice": 7659.43994140625,
+      "sma20": 7739.241552734375,
+      "sma50": 7706.41623046875,
+      "sma200": 7271.435812988281,
+      "aboveMaCount": 1
+     }
+    },
+    "breadth": {
+     "score": 45,
+     "weight": 0.1,
+     "contribution": 4.5,
+     "inputs": {
+      "pctAbove200d": 51.8,
+      "rspSpyRatio": -1.4254509366241894,
+      "advDecRatio": null
+     },
+     "degraded": false
+    },
+    "momentum": {
+     "score": 66,
+     "weight": 0.1,
+     "contribution": 6.6,
+     "inputs": {
+      "spxRoc20d": 0.11685434162799818,
+      "sectorRsiAvg": 62
+     }
+    },
+    "liquidity": {
+     "score": 63,
+     "weight": 0.15,
+     "contribution": 9.5,
+     "inputs": {
+      "m2Yoy": 7.232502159092986,
+      "fedBsMom": 0.13475039383103773,
+      "sofr": 3.89
+     }
+    },
+    "credit": {
+     "score": 68,
+     "weight": 0.1,
+     "contribution": 6.8,
+     "inputs": {
+      "hySpread": 3.23,
+      "igSpread": 0.84,
+      "hyTrend30d": "widening"
+     }
+    },
+    "macro": {
+     "score": 66,
+     "weight": 0.05,
+     "contribution": 3.3,
+     "inputs": {
+      "fedRate": 3.75,
+      "t10y2y": 0.35,
+      "unrate": 4.2
+     }
+    },
+    "crossAsset": {
+     "score": 60,
+     "weight": 0.05,
+     "contribution": 3,
+     "inputs": {
+      "goldReturn30d": -6.876795712333106,
+      "tltReturn30d": -2.461309431677503,
+      "spyReturn30d": -1.2830274233898926,
+      "dxyChange30d": 2.86868316958649
+     }
+    }
+   },
+   "headerMetrics": {
+    "cnnFearGreed": {
+     "value": 18,
+     "label": "Extreme Fear"
+    },
+    "aaiBear": {
+     "value": 42,
+     "context": "41.6%"
+    },
+    "aaiBull": {
+     "value": 39,
+     "context": "38.7%"
+    },
+    "putCall": null,
+    "vix": {
+     "value": 19.99
+    },
+    "hySpread": {
+     "value": 3.23
+    },
+    "pctAbove200d": {
+     "value": 51.8
+    },
+    "yield10y": {
+     "value": 5.1
+    },
+    "fedRate": {
+     "value": "3.75%"
+    },
+    "fsi": {
+     "value": 1.487,
+     "label": "Moderate Stress",
+     "hygPrice": 76.86,
+     "tltPrice": 80.05
+    }
+   },
+   "sectorPerformance": [
+    {
+     "symbol": "XLK",
+     "name": "Technology",
+     "change1d": -3.02
+    },
+    {
+     "symbol": "XLF",
+     "name": "Financials",
+     "change1d": 0.45
+    },
+    {
+     "symbol": "XLE",
+     "name": "Energy",
+     "change1d": 2.52
+    },
+    {
+     "symbol": "XLV",
+     "name": "Health Care",
+     "change1d": -0.27
+    }
+   ],
+   "unavailable": false
+  },
+  "economicStress": {
+   "compositeScore": 11.7,
+   "label": "Low",
+   "components": [
+    {
+     "id": "T10Y2Y",
+     "label": "Yield Curve",
+     "rawValue": 0.35,
+     "score": 7.500000000000001,
+     "weight": 0.2
+    },
+    {
+     "id": "T10Y3M",
+     "label": "Bank Spread",
+     "rawValue": 0.83,
+     "score": 0,
+     "weight": 0.15
+    },
+    {
+     "id": "VIXCLS",
+     "label": "Volatility",
+     "rawValue": 16.46,
+     "score": 2.2461538461538475,
+     "weight": 0.2
+    },
+    {
+     "id": "STLFSI4",
+     "label": "Financial Stress",
+     "rawValue": -0.7206,
+     "score": 4.656666666666666,
+     "weight": 0.2
+    }
+   ],
+   "seededAt": "2026-10-17T19:00:33.128Z",
+   "unavailable": false
+  },
+  "diseaseOutbreaks": {
+   "outbreaks": [
+    {
+     "id": "thinkglobalhealth-idmcy2-1792008000000",
+     "disease": "Measles",
+     "location": "Pennsylvania",
+     "countryCode": "US",
+     "alertLevel": "alert",
+     "summary": "Pennsylvania's Department of Health recorded a sixth death in its ongoing measles outbreak as cases reach 1,222.",
+     "sourceUrl": "https://www.pa.gov/agencies/health/diseases-conditions/infectious-disease/measles",
+     "publishedAt": 1792008000000,
+     "sourceName": "ThinkGlobalHealth",
+     "lat": 40.93009949,
+     "lng": -77.4756012,
+     "cases": 1222
+    },
+    {
+     "id": "thinkglobalhealth-q73te8-1791921600000",
+     "disease": "Measles",
+     "location": "Mexico",
+     "countryCode": "MX",
+     "alertLevel": "watch",
+     "summary": "Mexico has recorded 13,687 measles cases in 2026, more than double the country's count for 2025.",
+     "sourceUrl": "https://www.gob.mx/salud/documentos/informe-diario-del-brote-de-sarampion-en-mexico-2026",
+     "publishedAt": 1791921600000,
+     "sourceName": "ThinkGlobalHealth",
+     "lat": 23.95046043,
+     "lng": -102.5328903,
+     "cases": 13687
+    },
+    {
+     "id": "thinkglobalhealth-hbq1rk-1791748800000",
+     "disease": "Polio",
+     "location": "Pakistan",
+     "countryCode": "PK",
+     "alertLevel": "watch",
+     "summary": "Pakistan reported one polio case this week, bringing the country's total to five for 2026.",
+     "sourceUrl": "https://polioeradication.org/about-polio/polio-this-week",
+     "publishedAt": 1791748800000,
+     "sourceName": "ThinkGlobalHealth",
+     "lat": 29.97,
+     "lng": 69.39,
+     "cases": 5
+    },
+    {
+     "id": "thinkglobalhealth-ntc06m-1791748800000",
+     "disease": "Polio",
+     "location": "Democratic Republic of Congo",
+     "countryCode": "CG",
+     "alertLevel": "watch",
+     "summary": "The Democratic Republic of Congo reported six polio cases this week, bringing the country's total to 64 for 2026.",
+     "sourceUrl": "https://polioeradication.org/about-polio/polio-this-week",
+     "publishedAt": 1791748800000,
+     "sourceName": "ThinkGlobalHealth",
+     "lat": 6.43,
+     "lng": 18.28,
+     "cases": 64
+    }
+   ],
+   "fetchedAt": 1792238786923,
+   "alertLevelMethodologyVersion": "v1"
+  },
+  "radiationWatch": {
+   "observations": [
+    {
+     "id": "epa:CA:SAN%20FRANCISCO:1792260000000",
+     "source": "RADIATION_SOURCE_EPA_RADNET",
+     "locationName": "San Francisco",
+     "country": "United States",
+     "location": {
+      "latitude": 37.7749,
+      "longitude": -122.4194
+     },
+     "value": 38,
+     "unit": "nSv/h",
+     "observedAt": 1792260000000,
+     "freshness": "RADIATION_FRESHNESS_LIVE",
+     "baselineValue": 32.8,
+     "delta": 5.3,
+     "zScore": 2.08,
+     "severity": "RADIATION_SEVERITY_ELEVATED",
+     "contributingSources": [
+      "RADIATION_SOURCE_EPA_RADNET"
+     ],
+     "confidence": "RADIATION_CONFIDENCE_MEDIUM",
+     "corroborated": false,
+     "conflictingSources": false,
+     "convertedFromCpm": false,
+     "sourceCount": 1
+    },
+    {
+     "id": "epa:NY:ALBANY:1792262820000",
+     "source": "RADIATION_SOURCE_EPA_RADNET",
+     "locationName": "Albany",
+     "country": "United States",
+     "location": {
+      "latitude": 42.6526,
+      "longitude": -73.7562
+     },
+     "value": 45,
+     "unit": "nSv/h",
+     "observedAt": 1792262820000,
+     "freshness": "RADIATION_FRESHNESS_LIVE",
+     "baselineValue": 48.9,
+     "delta": -3.9,
+     "zScore": -1.2,
+     "severity": "RADIATION_SEVERITY_NORMAL",
+     "contributingSources": [
+      "RADIATION_SOURCE_EPA_RADNET"
+     ],
+     "confidence": "RADIATION_CONFIDENCE_MEDIUM",
+     "corroborated": false,
+     "conflictingSources": false,
+     "convertedFromCpm": false,
+     "sourceCount": 1
+    },
+    {
+     "id": "epa:TX:HOUSTON:1792262760000",
+     "source": "RADIATION_SOURCE_EPA_RADNET",
+     "locationName": "Houston",
+     "country": "United States",
+     "location": {
+      "latitude": 29.7604,
+      "longitude": -95.3698
+     },
+     "value": 40,
+     "unit": "nSv/h",
+     "observedAt": 1792262760000,
+     "freshness": "RADIATION_FRESHNESS_LIVE",
+     "baselineValue": 38.7,
+     "delta": 1.3,
+     "zScore": 1.14,
+     "severity": "RADIATION_SEVERITY_NORMAL",
+     "contributingSources": [
+      "RADIATION_SOURCE_EPA_RADNET"
+     ],
+     "confidence": "RADIATION_CONFIDENCE_MEDIUM",
+     "corroborated": false,
+     "conflictingSources": false,
+     "convertedFromCpm": false,
+     "sourceCount": 1
+    },
+    {
+     "id": "epa:WA:SEATTLE:1792262580000",
+     "source": "RADIATION_SOURCE_EPA_RADNET",
+     "locationName": "Seattle",
+     "country": "United States",
+     "location": {
+      "latitude": 47.6062,
+      "longitude": -122.3321
+     },
+     "value": 25,
+     "unit": "nSv/h",
+     "observedAt": 1792262580000,
+     "freshness": "RADIATION_FRESHNESS_LIVE",
+     "baselineValue": 27.9,
+     "delta": -2.9,
+     "zScore": -2.51,
+     "severity": "RADIATION_SEVERITY_NORMAL",
+     "contributingSources": [
+      "RADIATION_SOURCE_EPA_RADNET"
+     ],
+     "confidence": "RADIATION_CONFIDENCE_MEDIUM",
+     "corroborated": false,
+     "conflictingSources": false,
+     "convertedFromCpm": false,
+     "sourceCount": 1
+    }
+   ],
+   "fetchedAt": 1792264588505,
+   "epaCount": 10,
+   "safecastCount": 1,
+   "anomalyCount": 1,
+   "elevatedCount": 1,
+   "spikeCount": 0,
+   "corroboratedCount": 0,
+   "lowConfidenceCount": 2,
+   "conflictingCount": 0,
+   "convertedFromCpmCount": 1
+  },
+  "crossSourceSignals": {
+   "signals": [
+    {
+     "id": "composite:eastern-europe",
+     "type": "CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION",
+     "theater": "Eastern Europe",
+     "summary": "Composite escalation in Eastern Europe: 4 signal categories co-firing (thermal spike, thermal spike, gps jamming, unrest surge ...)",
+     "severity": "CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL",
+     "severityScore": 14.606333333333332,
+     "detectedAt": 1792264242891,
+     "contributingTypes": [
+      "thermal spike",
+      "gps jamming",
+      "unrest surge",
+      "forecast deterioration"
+     ],
+     "signalCount": 5
+    },
+    {
+     "id": "composite:global",
+     "type": "CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION",
+     "theater": "Global",
+     "summary": "Composite escalation in Global: 3 signal categories co-firing (cyber escalation, shipping disruption, media tone deterioration)",
+     "severity": "CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL",
+     "severityScore": 9.874003333333334,
+     "detectedAt": 1792264242891,
+     "contributingTypes": [
+      "cyber escalation",
+      "shipping disruption",
+      "media tone deterioration"
+     ],
+     "signalCount": 3
+    },
+    {
+     "id": "thermal:ir:31-5-49-0:2026101718",
+     "type": "CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE",
+     "theater": "Middle East",
+     "summary": "Thermal spike detected: Iran \u2014 z-score 14.0",
+     "severity": "CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL",
+     "severityScore": 9,
+     "detectedAt": 1792233360000,
+     "contributingTypes": [],
+     "signalCount": 0
+    },
+    {
+     "id": "thermal:ir:27-0-49-5:2026101718",
+     "type": "CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE",
+     "theater": "Middle East",
+     "summary": "Thermal spike detected: Iran \u2014 z-score 3.3",
+     "severity": "CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL",
+     "severityScore": 9,
+     "detectedAt": 1792233240000,
+     "contributingTypes": [],
+     "signalCount": 0
+    }
+   ],
+   "evaluatedAt": 1792264242891,
+   "compositeCount": 2
+  },
+  "cyberThreats": {
+   "threats": [
+    {
+     "id": "c2intel:43.136.92.170",
+     "type": "CYBER_THREAT_TYPE_C2_SERVER",
+     "source": "CYBER_THREAT_SOURCE_C2INTEL",
+     "indicator": "43.136.92.170",
+     "indicatorType": "CYBER_THREAT_INDICATOR_TYPE_IP",
+     "location": {
+      "latitude": 23.1167,
+      "longitude": 113.25
+     },
+     "country": "CN",
+     "severity": "CRITICALITY_LEVEL_HIGH",
+     "malwareFamily": "Cobaltstrike",
+     "tags": [
+      "c2",
+      "cobaltstrike"
+     ],
+     "firstSeenAt": 1792245639249,
+     "lastSeenAt": 0
+    },
+    {
+     "id": "c2intel:45.130.147.87",
+     "type": "CYBER_THREAT_TYPE_C2_SERVER",
+     "source": "CYBER_THREAT_SOURCE_C2INTEL",
+     "indicator": "45.130.147.87",
+     "indicatorType": "CYBER_THREAT_INDICATOR_TYPE_IP",
+     "location": {
+      "latitude": 55.0226,
+      "longitude": 82.9317
+     },
+     "country": "RU",
+     "severity": "CRITICALITY_LEVEL_HIGH",
+     "malwareFamily": "Cobaltstrike",
+     "tags": [
+      "c2",
+      "cobaltstrike"
+     ],
+     "firstSeenAt": 1792245639249,
+     "lastSeenAt": 0
+    },
+    {
+     "id": "c2intel:117.72.220.70",
+     "type": "CYBER_THREAT_TYPE_C2_SERVER",
+     "source": "CYBER_THREAT_SOURCE_C2INTEL",
+     "indicator": "117.72.220.70",
+     "indicatorType": "CYBER_THREAT_INDICATOR_TYPE_IP",
+     "location": {
+      "latitude": 39.1422,
+      "longitude": 117.1767
+     },
+     "country": "CN",
+     "severity": "CRITICALITY_LEVEL_HIGH",
+     "malwareFamily": "Cobaltstrike",
+     "tags": [
+      "c2",
+      "cobaltstrike"
+     ],
+     "firstSeenAt": 1792209801324,
+     "lastSeenAt": 0
+    },
+    {
+     "id": "c2intel:192.227.171.206",
+     "type": "CYBER_THREAT_TYPE_C2_SERVER",
+     "source": "CYBER_THREAT_SOURCE_C2INTEL",
+     "indicator": "192.227.171.206",
+     "indicatorType": "CYBER_THREAT_INDICATOR_TYPE_IP",
+     "location": {
+      "latitude": 42.8865,
+      "longitude": -78.8784
+     },
+     "country": "US",
+     "severity": "CRITICALITY_LEVEL_HIGH",
+     "malwareFamily": "Cobaltstrike",
+     "tags": [
+      "c2",
+      "cobaltstrike"
+     ],
+     "firstSeenAt": 1792209801324,
+     "lastSeenAt": 0
+    }
+   ]
+  },
+  "forecasts": {
+   "detailStripped": 7,
+   "generatedAt": 1792263834945,
+   "predictions": [
+    {
+     "cascades": [],
+     "confidence": 0.75,
+     "createdAt": 1792263846371,
+     "demotedBySimulation": false,
+     "domain": "market",
+     "feedSummary": "Red Sea maritime disruption state is carrying energy repricing pressure through energy supply shock backed by 4 transmission path(s) and 8 urgent critical signal(s).",
+     "feedSummaryShort": "Red Sea maritime disruption state is carrying energy repricing pressure through energy supply shock backed by 4 transmission path(s) and 8 urgent critical signal(s).",
+     "generationOrigin": "state_derived",
+     "hasCaseFile": true,
+     "id": "fc-market-3f4aec15",
+     "perspectives": {
+      "contrarian": "The absence of directly matched Red Sea headlines and the 75% confidence ceiling act as counter-evidence that could stall repricing, as actors may treat the current signals as noise rather than a durable trend, pushing the forecast toward 63%.",
+      "regional": "For Red Sea actors, the US financial chokehold on $25 billion in Iranian oil exports and the Hormuz mine strike create a dual pressure point that forces commodity traders and large importers to rebalance positions if the probability path moves away from 71%.",
+      "strategic": "The 70% pressure and 77% state confirmation on energy supply shock, combined with 8 urgent critical signals, indicate a structurally reinforced repricing path that is stable but primed for escalation if headline confirmation materializes."
+     },
+     "priorProbability": 0.678,
+     "probability": 0.71,
+     "region": "Red Sea",
+     "resolution": {
+      "baselineValue": 99.02,
+      "deadline": 1794855834945,
+      "kind": "hard",
+      "metricKey": "market:commodities-bootstrap:v1|price(symbol==CL=F)",
+      "operator": "crosses",
+      "sourceFeed": "market:commodities-bootstrap:v1",
+      "threshold": 108.92,
+      "window": "within-horizon"
+     },
+     "scenario": "Red Sea maritime disruption will drive energy repricing over the next 30 days, as 8 urgent critical signals reinforce energy supply shock pressure at 70% and state confirmation at 77%, with the US blocking $25 billion in Iranian oil exports and an IRGC tanker hitting a mine near Hormuz.",
+     "scenarioShort": "Red Sea maritime disruption will drive energy repricing over the next 30 days, as 8 urgent critical signals reinforce energy supply shock pressure at 70% and state confirmation at 77%, with the US blocking $25 billion...",
+     "signals": [
+      {
+       "type": "energy_supply_shock",
+       "value": "Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 70% pressure and 77% state confirmation",
+       "weight": 0.42
+      },
+      {
+       "type": "state_unit",
+       "value": "Red Sea maritime disruption state combines 1 clustered situations and 1 linked forecasts into one canonical state path.",
+       "weight": 0.26
+      },
+      {
+       "type": "market_transmission",
+       "value": "The strongest transmission path runs through energy supply shock across 1 edge(s) toward Energy.",
+       "weight": 0.24
+      },
+      {
+       "type": "critical_news_signal",
+       "value": "8 urgent critical signals are reinforcing Energy pressure for Red Sea maritime disruption state.",
+       "weight": 0.2
+      }
+     ],
+     "simPathConfidence": 0.35,
+     "simulationAdjustment": 0.049,
+     "stateDerivedBackfill": false,
+     "timeHorizon": "30d",
+     "title": "Energy repricing risk from Red Sea maritime disruption state",
+     "trend": "stable",
+     "updatedAt": 1792263846371
+    },
+    {
+     "cascades": [
+      {
+       "domain": "market",
+       "effect": "supply shortage pricing",
+       "probability": 0.23
+      }
+     ],
+     "confidence": 0.75,
+     "createdAt": 1792263846371,
+     "demotedBySimulation": false,
+     "domain": "supply_chain",
+     "feedSummary": "Red Sea maritime disruption state (market) is carrying freight disruption through shipping cost shock backed by 4 transmission path(s) and 8 urgent critical signal(s).",
+     "feedSummaryShort": "Red Sea maritime disruption state (market) is carrying freight disruption through shipping cost shock backed by 4 transmission path(s) and 8 urgent critical signal(s).",
+     "generationOrigin": "state_derived",
+     "hasCaseFile": true,
+     "id": "fc-supply_chain-79b806af",
+     "perspectives": {
+      "contrarian": "The absence of directly matched headlines serves as counter-evidence that could reverse the path, as actors may treat the 64% freight pressure as unconfirmed noise, pushing the forecast toward 47% unless new hard signals emerge.",
+      "regional": "For Red Sea shipping operators and port authorities, the lack of directly matched headlines creates uncertainty, forcing them to adjust routing and contingency plans around Red Sea while waiting for clearer signals over the 7-day horizon.",
+      "strategic": "The 64% freight pressure and 77% state confirmation on shipping cost shock, reinforced by 8 urgent critical signals, indicate a moderate disruption path that is stable but vulnerable to headline-driven escalation or headline-absence-driven stabilization."
+     },
+     "priorProbability": 0.541,
+     "probability": 0.575,
+     "region": "Red Sea",
+     "resolution": {
+      "deadline": 1792868634945,
+      "kind": "hard",
+      "metricKey": "supply_chain:chokepoints:v4|riskScore(route==Bab el-Mandeb)",
+      "operator": ">=",
+      "sourceFeed": "supply_chain:chokepoints:v4",
+      "threshold": 50,
+      "window": "at-deadline"
+     },
+     "scenario": "Supply chain disruption from Red Sea maritime disruption will impact freight and shipping flows over the next 7 days, driven by 64% freight pressure and 77% state confirmation, with 8 urgent critical signals reinforcing shipping cost shock.",
+     "scenarioShort": "Supply chain disruption from Red Sea maritime disruption will impact freight and shipping flows over the next 7 days, driven by 64% freight pressure and 77% state confirmation, with 8 urgent critical signals...",
+     "signals": [
+      {
+       "type": "shipping_cost_shock",
+       "value": "Red Sea maritime disruption state (market) is disrupting freight and shipping flows through shipping cost shock, with 64% freight pressure and 77% state confirmation",
+       "weight": 0.42
+      },
+      {
+       "type": "state_unit",
+       "value": "Red Sea maritime disruption state (market) combines 1 clustered situations and 1 linked forecasts into one canonical state path.",
+       "weight": 0.26
+      },
+      {
+       "type": "market_transmission",
+       "value": "The strongest transmission path runs through shipping cost shock across 1 edge(s) toward Freight.",
+       "weight": 0.24
+      },
+      {
+       "type": "critical_news_signal",
+       "value": "8 urgent critical signals are reinforcing Freight pressure for Red Sea maritime disruption state (market).",
+       "weight": 0.2
+      }
+     ],
+     "simPathConfidence": 0.65,
+     "simulationAdjustment": -0.029,
+     "stateDerivedBackfill": false,
+     "timeHorizon": "7d",
+     "title": "Supply chain disruption risk from Red Sea maritime disruption state (market)",
+     "trend": "stable",
+     "updatedAt": 1792263846371
+    },
+    {
+     "cascades": [
+      {
+       "domain": "conflict",
+       "effect": "graph: linked via Iran",
+       "probability": 0.09
+      },
+      {
+       "domain": "conflict",
+       "effect": "graph: linked via Israel",
+       "probability": 0.09
+      },
+      {
+       "domain": "conflict",
+       "effect": "graph: linked via Iraq",
+       "probability": 0.09
+      }
+     ],
+     "confidence": 0.583,
+     "createdAt": 1792263846088,
+     "demotedBySimulation": false,
+     "domain": "market",
+     "feedSummary": "The base case stays near 64% as commodity traders, policy officials, and large importers absorb the current evidence mix without a decisive break toward either shock or relief, given 58% confidence.",
+     "feedSummaryShort": "The base case stays near 64% as commodity traders, policy officials, and large importers absorb the current evidence mix without a decisive break toward either shock or relief, given 58% confidence.",
+     "generationOrigin": "legacy_detector",
+     "hasCaseFile": true,
+     "id": "fc-market-3b03eb86",
+     "perspectives": {
+      "contrarian": "The 58% confidence level and lack of directly matched Middle East reporting act as counter-evidence that could stall oil price impact, as actors may treat the critical risk as unconfirmed, pushing the forecast toward 52%.",
+      "regional": "For Middle East actors, the IRGC tanker mine strike and discussions of alternative routes create a dual pressure point that forces commodity traders and large importers to rebalance positions if the probability path moves away from 60%.",
+      "strategic": "Critical Strait of Hormuz risk with 0.8 oil sensitivity, combined with headlines on mine strikes and alternative routes, indicates a structurally reinforced oil price impact path that is stable but primed for escalation if risk persists another cycle."
+     },
+     "priorProbability": 0.6,
+     "probability": 0.6,
+     "region": "Middle East",
+     "resolution": {
+      "baselineValue": 99.02,
+      "deadline": 1794855834945,
+      "kind": "hard",
+      "metricKey": "market:commodities-bootstrap:v1|price(symbol==CL=F)",
+      "operator": "crosses",
+      "sourceFeed": "market:commodities-bootstrap:v1",
+      "threshold": 108.92,
+      "window": "within-horizon"
+     },
+     "scenario": "Oil price impact from Strait of Hormuz disruption will materialize over the next 30 days, as critical risk persists with oil sensitivity at 0.8, supported by headlines on alternative routes and an IRGC tanker hitting a mine in Hormuz.",
+     "scenarioShort": "Oil price impact from Strait of Hormuz disruption will materialize over the next 30 days, as critical risk persists with oil sensitivity at 0.8, supported by headlines on alternative routes and an IRGC tanker hitting...",
+     "signals": [
+      {
+       "type": "chokepoint",
+       "value": "Strait of Hormuz risk: critical",
+       "weight": 0.5
+      },
+      {
+       "type": "commodity",
+       "value": "Oil sensitivity: 0.8",
+       "weight": 0.3
+      },
+      {
+       "type": "news_corroboration",
+       "value": "4 headline(s) mention Middle East or linked entities",
+       "weight": 0.15
+      }
+     ],
+     "simPathConfidence": 0.35,
+     "simulationAdjustment": 0.049,
+     "stateDerivedBackfill": false,
+     "timeHorizon": "30d",
+     "title": "Oil price impact from Strait of Hormuz disruption",
+     "trend": "stable",
+     "updatedAt": 1792263846088
+    },
+    {
+     "cascades": [
+      {
+       "domain": "political",
+       "effect": "conflict-driven instability",
+       "probability": 0.297
+      },
+      {
+       "domain": "market",
+       "effect": "graph: linked via Black Sea",
+       "probability": 0.128
+      }
+     ],
+     "confidence": 0.417,
+     "createdAt": 1792263846093,
+     "demotedBySimulation": false,
+     "domain": "conflict",
+     "feedSummary": "The base case stays near 88% as regional command authorities, security forces, and external power brokers absorb the current evidence mix without a decisive break toward either shock or relief, given 42% confidence.",
+     "feedSummaryShort": "The base case stays near 88% as regional command authorities, security forces, and external power brokers absorb the current evidence mix without a decisive break toward either shock or relief, given 42% confidence.",
+     "generationOrigin": "legacy_detector",
+     "hasCaseFile": true,
+     "id": "fc-conflict-8956d4d6",
+     "perspectives": {
+      "contrarian": "The 42% confidence level and thin source diversity act as counter-evidence that could stall conflict escalation, as actors may treat the 485",
+      "regional": "For Ukraine actors, the drone war creeping into Volyn Oblast on the NATO border and cutting power to 370,000 creates a direct pressure point that forces regional command authorities and external power brokers to reposition attention and resources.",
+      "strategic": "485 UCDP conflict events and headlines on 1,950 daily casualties and drone strikes near the NATO border indicate a structurally reinforced conflict path that is stable but primed for escalation if verified event counts increase."
+     },
+     "priorProbability": 0.85,
+     "probability": 0.85,
+     "region": "Ukraine",
+     "resolution": {
+      "deadline": 1794855834945,
+      "kind": "judged",
+      "question": "Within the 30d horizon, did Ukraine experience a materially escalated level of armed conflict versus its recent baseline, consistent with \"Active armed conflict: Ukraine\"?"
+     },
+     "scenario": "Active armed conflict in Ukraine will continue over the next 30 days, driven by 485 UCDP conflict events and 7 headlines reporting 1,950 daily casualties and drone strikes creeping toward the NATO border.",
+     "scenarioShort": "Active armed conflict in Ukraine will continue over the next 30 days, driven by 485 UCDP conflict events and 7 headlines reporting 1,950 daily casualties and drone strikes creeping toward the NATO border.",
+     "signals": [
+      {
+       "type": "ucdp",
+       "value": "485 UCDP conflict events",
+       "weight": 0.5
+      },
+      {
+       "type": "news_corroboration",
+       "value": "7 headline(s) mention Ukraine or linked entities",
+       "weight": 0.15
+      }
+     ],
+     "simPathConfidence": 0,
+     "simulationAdjustment": 0,
+     "stateDerivedBackfill": false,
+     "timeHorizon": "30d",
+     "title": "Active armed conflict: Ukraine",
+     "trend": "stable",
+     "updatedAt": 1792263846093
+    }
+   ]
+  },
+  "correlationCards": {
+   "military": [
+    {
+     "id": "military:45.7,14.5",
+     "domain": "military",
+     "title": "Military flight cluster \u2014 NATO/UK",
+     "score": 22,
+     "signals": [
+      {
+       "type": "military_flight",
+       "source": "signal-aggregator",
+       "severity": 55,
+       "lat": 42.323959,
+       "lon": 14.596835,
+       "country": "NATO",
+       "timestamp": 1792264547226,
+       "label": "nato unknown LGL87KR"
+      },
+      {
+       "type": "military_flight",
+       "source": "signal-aggregator",
+       "severity": 55,
+       "lat": 43.484538,
+       "lon": 8.937509,
+       "country": "NATO",
+       "timestamp": 1792264547867,
+       "label": "nato unknown LGL204"
+      },
+      {
+       "type": "military_flight",
+       "source": "signal-aggregator",
+       "severity": 55,
+       "lat": 44.102966,
+       "lon": 16.658276,
+       "country": "NATO",
+       "timestamp": 1792264547539,
+       "label": "nato unknown LRQ494D"
+      },
+      {
+       "type": "military_flight",
+       "source": "signal-aggregator",
+       "severity": 55,
+       "lat": 50.095061,
+       "lon": 14.275249,
+       "country": "UK",
+       "timestamp": 1792264546824,
+       "label": "raf unknown RRR6234"
+      }
+     ],
+     "location": {
+      "lat": 45.6725694,
+      "lon": 14.48123961474419,
+      "label": "45.7,14.5"
+     },
+     "countries": [
+      "NATO",
+      "UK",
+      "USA"
+     ],
+     "trend": "stable",
+     "timestamp": 1792264865264
+    },
+    {
+     "id": "military:42.6,-2.0",
+     "domain": "military",
+     "title": "Military flight cluster \u2014 NATO",
+     "score": 22,
+     "signals": [
+      {
+       "type": "military_flight",
+       "source": "signal-aggregator",
+       "severity": 55,
+       "lat": 43.399767,
+       "lon": 0.895778,
+       "country": "NATO",
+       "timestamp": 1792264548443,
+       "label": "nato unknown JFA36P"
+      },
+      {
+       "type": "military_flight",
+       "source": "signal-aggregator",
+       "severity": 55,
+       "lat": 41.513809,
+       "lon": -3.874803,
+       "country": "NATO",
+       "timestamp": 1792264548353,
+       "label": "nato unknown LGL7C"
+      },
+      {
+       "type": "military_flight",
+       "source": "signal-aggregator",
+       "severity": 55,
+       "lat": 42.507431,
+       "lon": -2.535969,
+       "country": "NATO",
+       "timestamp": 1792264547139,
+       "label": "nato unknown LGL2G"
+      },
+      {
+       "type": "military_flight",
+       "source": "signal-aggregator",
+       "severity": 55,
+       "lat": 42.896211,
+       "lon": -2.480229,
+       "country": "NATO",
+       "timestamp": 1792264548143,
+       "label": "nato unknown LGL998"
+      }
+     ],
+     "location": {
+      "lat": 42.5793045,
+      "lon": -1.9990264604243915,
+      "label": "42.6,-2.0"
+     },
+     "countries": [
+      "NATO"
+     ],
+     "trend": "stable",
+     "timestamp": 1792264865264
+    },
+    {
+     "id": "military:49.6,3.8",
+     "domain": "military",
+     "title": "Military flight cluster \u2014 NATO/UK",
+     "score": 22,
+     "signals": [
+      {
+       "type": "military_flight",
+       "source": "signal-aggregator",
+       "severity": 55,
+       "lat": 49.047019,
+       "lon": 3.023336,
+       "country": "NATO",
+       "timestamp": 1792264547643,
+       "label": "nato unknown LGL8022"
+      },
+      {
+       "type": "military_flight",
+       "source": "signal-aggregator",
+       "severity": 55,
+       "lat": 48.592026,
+       "lon": 7.722332,
+       "country": "NATO",
+       "timestamp": 1792264547278,
+       "label": "nato unknown LRQ498H"
+      },
+      {
+       "type": "military_flight",
+       "source": "signal-aggregator",
+       "severity": 55,
+       "lat": 49.477813,
+       "lon": 5.977231,
+       "country": "NATO",
+       "timestamp": 1792264547410,
+       "label": "nato unknown LGL142"
+      },
+      {
+       "type": "military_flight",
+       "source": "signal-aggregator",
+       "severity": 55,
+       "lat": 51.255112,
+       "lon": -1.447226,
+       "country": "UK",
+       "timestamp": 1792264547990,
+       "label": "raf unknown RRR4203"
+      }
+     ],
+     "location": {
+      "lat": 49.592992499999994,
+      "lon": 3.819896975385114,
+      "label": "49.6,3.8"
+     },
+     "countries": [
+      "NATO",
+      "UK"
+     ],
+     "trend": "stable",
+     "timestamp": 1792264865264
+    }
+   ],
+   "escalation": [],
+   "economic": [],
+   "disaster": [
+    {
+     "id": "disaster:52.2,158.7",
+     "domain": "disaster",
+     "title": "Disaster cascade: M6.9 seismic \u2014 186 km SSE of Vilyuchinsk, Russia",
+     "score": 50,
+     "signals": [
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 54.400000000000006,
+       "lat": 51.4073,
+       "lon": 159.5232,
+       "timestamp": 1792163327528,
+       "label": "M4.7 \u2014 186 km SSE of Vilyuchinsk, Russia"
+      },
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 91.80000000000001,
+       "lat": 51.9848,
+       "lon": 157.2701,
+       "timestamp": 1792121731925,
+       "label": "M6.9 \u2014 76 km NE of Ozernovskiy, Russia"
+      },
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 57.800000000000004,
+       "lat": 51.3801,
+       "lon": 159.8474,
+       "timestamp": 1792076392905,
+       "label": "M4.9 \u2014 198 km SSE of Vilyuchinsk, Russia"
+      },
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 51,
+       "lat": 54.0004,
+       "lon": 158.1848,
+       "timestamp": 1792020059714,
+       "label": "M4.5 \u2014 82 km SSW of Mil\u2019kovo, Russia"
+      }
+     ],
+     "location": {
+      "lat": 52.19315,
+      "lon": 158.70638863602474,
+      "label": "52.2,158.7"
+     },
+     "countries": [],
+     "trend": "stable",
+     "timestamp": 1792264865268
+    },
+    {
+     "id": "disaster:-17.3,-175.6",
+     "domain": "disaster",
+     "title": "Disaster cascade: M5.9 seismic \u2014 196 km SSE of Alo, Wallis and Futuna",
+     "score": 41,
+     "signals": [
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 56.099999999999994,
+       "lat": -16.0441,
+       "lon": -177.7283,
+       "timestamp": 1792210745244,
+       "label": "M4.8 \u2014 196 km SSE of Alo, Wallis and Futuna"
+      },
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 51,
+       "lat": -23.6209,
+       "lon": -179.7966,
+       "timestamp": 1792185997613,
+       "label": "M4.5 \u2014 south of the Fiji Islands"
+      },
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 52.699999999999996,
+       "lat": -18.4686,
+       "lon": -175.4291,
+       "timestamp": 1792163194084,
+       "label": "M4.6 \u2014 153 km W of Neiafu, Tonga"
+      },
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 62.900000000000006,
+       "lat": -15.0429,
+       "lon": -173.4439,
+       "timestamp": 1792070971862,
+       "label": "M5.2 \u2014 107 km NNE of Hihifo, Tonga"
+      }
+     ],
+     "location": {
+      "lat": -17.28687142857143,
+      "lon": -175.62203362971266,
+      "label": "-17.3,-175.6"
+     },
+     "countries": [],
+     "trend": "stable",
+     "timestamp": 1792264865268
+    },
+    {
+     "id": "disaster:1.1,-85.3",
+     "domain": "disaster",
+     "title": "Disaster cascade: M5.4 seismic \u2014 off the coast of Ecuador",
+     "score": 36,
+     "signals": [
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 62.900000000000006,
+       "lat": 1.2955,
+       "lon": -85.2725,
+       "timestamp": 1792179250597,
+       "label": "M5.2 \u2014 off the coast of Ecuador"
+      },
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 66.30000000000001,
+       "lat": 0.9022,
+       "lon": -85.3587,
+       "timestamp": 1792063003668,
+       "label": "M5.4 \u2014 off the coast of Ecuador"
+      }
+     ],
+     "location": {
+      "lat": 1.09885,
+      "lon": -85.31559999999999,
+      "label": "1.1,-85.3"
+     },
+     "countries": [],
+     "trend": "stable",
+     "timestamp": 1792264865268
+    },
+    {
+     "id": "disaster:14.2,-92.7",
+     "domain": "disaster",
+     "title": "Disaster cascade: M5.2 seismic \u2014 86 km SW of Brisas Barra de Suchiate, Mexico",
+     "score": 35,
+     "signals": [
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 62.900000000000006,
+       "lat": 14.0469,
+       "lon": -92.8552,
+       "timestamp": 1792245574575,
+       "label": "M5.2 \u2014 86 km SW of Brisas Barra de Suchiate, Mexico"
+      },
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 57.800000000000004,
+       "lat": 14.0576,
+       "lon": -93.2479,
+       "timestamp": 1792198980020,
+       "label": "M4.9 \u2014 115 km SW of Puerto Madero, Mexico"
+      },
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 56.099999999999994,
+       "lat": 15.2777,
+       "lon": -92.7881,
+       "timestamp": 1792150784878,
+       "label": "M4.8 \u2014 7 km WSW of Soconusco, Mexico"
+      },
+      {
+       "type": "earthquake",
+       "source": "usgs",
+       "severity": 54.400000000000006,
+       "lat": 13.934,
+       "lon": -92.8623,
+       "timestamp": 1792125760890,
+       "label": "M4.7 \u2014 95 km SW of Brisas Barra de Suchiate, Mexico"
+      }
+     ],
+     "location": {
+      "lat": 14.243500000000001,
+      "lon": -92.71426570681106,
+      "label": "14.2,-92.7"
+     },
+     "countries": [],
+     "trend": "stable",
+     "timestamp": 1792264865268
+    }
+   ],
+   "computedAt": 1792264865263
+  },
+  "liveVideoResolved": {
+   "resolvedAt": "2026-10-17T18:04:06.232Z",
+   "channels": {
+    "UCIALMKvObZNtJ6AmdCLP7Lg": {
+     "videoId": "QB5BNdBFujE",
+     "resolvedAt": "2026-10-17T18:04:06.232Z"
+    }
+   }
+  }
+ },
+ "missing": []
+}

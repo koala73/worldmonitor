@@ -240,3 +240,77 @@ test.describe('panel drag reorder semantics', () => {
     expect(await page.evaluate(() => localStorage.getItem('panel-order'))).toBe(storedBefore);
   });
 });
+
+test.describe('monitor panel reload', () => {
+  async function loadMonitorDashboard(page: Page, order: string[], variant: 'full' | 'happy' = 'full'): Promise<void> {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.route('**/api/**', route => route.fulfill({ json: {} }));
+    await page.goto('/tests/runtime-harness.html');
+    await page.evaluate(async ({ panelOrder, variant }) => {
+      const { ALL_PANELS } = await import('/src/config/panels.ts');
+      localStorage.clear();
+      localStorage.setItem('worldmonitor-variant', variant);
+      localStorage.setItem('worldmonitor-happy-panel-fix-v1', 'done');
+      localStorage.setItem('wm-layer-warning-dismissed', 'true');
+      localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
+      localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+      localStorage.setItem('worldmonitor-panel-order-v1.9', 'done');
+      localStorage.setItem('worldmonitor-layout-reset-v2.5', 'done');
+      localStorage.setItem('worldmonitor-panels', JSON.stringify(Object.fromEntries(
+        Object.entries(ALL_PANELS).map(([key, config]) => [key, {
+          ...config, enabled: panelOrder.includes(key),
+        }]),
+      )));
+      localStorage.setItem('panel-order', JSON.stringify(panelOrder));
+      localStorage.setItem('worldmonitor-monitors', JSON.stringify([
+        { id: 'strait', keywords: ['taiwan', 'strait'], color: '#ff0000' },
+        { id: 'shipping', keywords: ['shipping'], color: '#00ff00' },
+      ]));
+    }, { panelOrder: order, variant });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
+  }
+
+  test('restores saved keyword tags after a deferred mount and reload', async ({ page }, testInfo) => {
+    await loadMonitorDashboard(page, ['live-news', 'live-webcams', 'monitors']);
+    const panel = page.locator('.panel[data-panel="monitors"]');
+    await expect(async () => { await panel.scrollIntoViewIfNeeded(); }).toPass();
+    await expect(panel.locator('.monitor-input')).toBeVisible();
+    await expect(panel.locator('.monitor-tag')).toHaveText(['taiwan, strait×', 'shipping×']);
+
+    await panel.locator('.monitor-input').fill('energy');
+    await panel.locator('.monitor-add-btn').click();
+    await expect(panel.locator('.monitor-tag')).toHaveCount(3);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(async () => { await panel.scrollIntoViewIfNeeded(); }).toPass();
+    await expect(panel.locator('.monitor-tag')).toHaveText(['taiwan, strait×', 'shipping×', 'energy×']);
+    await panel.locator('.monitor-tag').last().locator('.monitor-tag-remove').click();
+    await expect(panel.locator('.monitor-tag')).toHaveCount(2);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-monitors')!)))
+      .toHaveLength(2);
+    await panel.screenshot({ path: testInfo.outputPath('monitor-tags-after-reload.png') });
+  });
+
+  test('keeps My Monitors in its saved position after refresh', async ({ page }, testInfo) => {
+    const order = ['monitors', 'live-news', 'live-webcams'];
+    await loadMonitorDashboard(page, order);
+    const visibleOrder = () => page.locator('#panelsGrid > .panel[data-panel]:not(.hidden)')
+      .evaluateAll(elements => elements.map(element => (element as HTMLElement).dataset.panel));
+    await expect.poll(visibleOrder).toEqual(order);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect.poll(visibleOrder).toEqual(order);
+    expect(await storedPanelOrder(page)).toEqual(order);
+    await page.screenshot({ path: testInfo.outputPath('monitor-position-after-reload.png') });
+  });
+
+  test('excludes My Monitors from saved Happy layouts after refresh', async ({ page }) => {
+    await loadMonitorDashboard(page, ['monitors', 'positive-feed'], 'happy');
+    const panels = page.locator('#panelsGrid > .panel[data-panel]:not(.hidden)');
+    const visibleOrder = () => panels.evaluateAll(elements => elements.map(element => (element as HTMLElement).dataset.panel));
+    await expect.poll(visibleOrder).toEqual(['positive-feed']);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-panels')!).monitors.enabled))
+      .toBe(true);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect.poll(visibleOrder).toEqual(['positive-feed']);
+  });
+});

@@ -4,6 +4,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      codeql:
+        patterns: ["github/codeql-action/*"]
 
   - package-ecosystem: "docker"
     directory: "/"
@@ -34,6 +37,24 @@ updates:
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
 
+  - package-ecosystem: "docker"
+    directory: "/demos/verification-desk"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # Hold the Node base image at the current LTS major (24). See PR #4709.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "docker"
+    directory: "/.oss-scanner"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # Hold the Node base image at the current LTS major (24). See PR #4709.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
   # Every npm manifest in the repo. Without this block Dependabot raises alerts
   # but can never open a fix PR for them, which is how 69 open advisories
   # accumulated while `security-audit.yml` stayed green — the gate only blocks on
@@ -49,6 +70,7 @@ updates:
       - "/blog-site"
       - "/consumer-prices-core"
       - "/docker/umami/runtime"
+      - "/integrations/zapier"
       - "/pro-test"
       - "/scripts"
       - "/workers/api-cors-preflight"
@@ -58,7 +80,7 @@ updates:
     # Security updates only, on purpose. open-pull-requests-limit caps VERSION
     # updates exclusively — security-update PRs are drawn from a separate
     # internal budget and never consume this one — so 0 switches off routine
-    # weekly bumps across eight directories while leaving advisory fixes, and
+    # weekly bumps across nine directories while leaving advisory fixes, and
     # the grouping below (which does apply to them), fully intact. Raising this
     # above 0 is how you would later opt into routine version bumps; do that
     # deliberately, with an `ignore` rule for semver-major, rather than by
@@ -83,6 +105,16 @@ updates:
     schedule:
       interval: "weekly"
     # Same reasoning as the npm entry above: security updates only.
+    open-pull-requests-limit: 0
+    groups:
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: "cargo"
+    directory: "/sdk/rust"
+    schedule:
+      interval: "weekly"
     open-pull-requests-limit: 0
     groups:
       cargo-security:

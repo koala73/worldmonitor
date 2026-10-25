@@ -211,6 +211,9 @@ export function tghNormalizeItem(rec) {
     desc: rec.summary ? rec.summary.slice(0, 300) : '',
     publishedMs,
     sourceName: 'ThinkGlobalHealth',
+    // One TGH article covers several countries under one link, so the id
+    // hashes the row's place and disease too.
+    _idSeed: [rec.sourceUrl, rec.disease, rec.country, rec.placeName, rec.lat, rec.lng].join('|'),
     _country: rec.country || '',
     _disease: rec.disease || '',
     _location: cityName,
@@ -323,7 +326,7 @@ export function mapItem(item) {
       ? (extractCountryCodeFull(item._country) || extractCountryCodeFull(location || item.title))
       : extractCountryCodeFull(location || `${item.title} ${item.desc}`);
   return {
-    id: `${item.sourceName.toLowerCase()}-${stableHash(item.link || item.title)}-${item.publishedMs}`,
+    id: `${item.sourceName.toLowerCase()}-${stableHash(item._idSeed || item.link || item.title)}-${item._publishedAtIsSynthetic ? 'undated' : item.publishedMs}`,
     disease,
     location,
     countryCode,

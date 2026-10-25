@@ -131,4 +131,30 @@ describe('parseSize', () => {
     const up = unitPrice(10, size);
     expect(up).toBeCloseTo(0.01); // 10 AED per 1000g = 0.01 per g
   });
+
+  it('normalizes explicit count packs only with count-item context', () => {
+    const size = parseSize('12 Pack', { baseUnit: 'ct', marketCode: 'ae' });
+    expect(size).toMatchObject({ packCount: 1, baseQuantity: 12, baseUnit: 'ct', rawText: '12 Pack' });
+    expect(unitPrice(16.25, size!)).toBeCloseTo(16.25 / 12);
+    expect(parseSize('12 Pack')).toBeNull();
+    expect(parseSize('12 Pack', { baseUnit: 'g', marketCode: 'ae' })).toBeNull();
+  });
+
+  it('normalizes a GB volume pint without choosing a unit for other markets', () => {
+    const size = parseSize('2 Pint', { baseUnit: 'ml', marketCode: 'gb' });
+    expect(size).toMatchObject({ packCount: 1, baseUnit: 'ml', rawText: '2 Pint' });
+    expect(size?.baseQuantity).toBeCloseTo(1136.5225);
+    expect(unitPrice(1.2, size!)).toBeCloseTo(1.2 / 1136.5225);
+    expect(parseSize('2 Pint')).toBeNull();
+    expect(parseSize('2 Pint', { baseUnit: 'ml', marketCode: 'us' })).toBeNull();
+    expect(parseSize('2 Pint', { baseUnit: 'g', marketCode: 'gb' })).toBeNull();
+  });
+
+  it.each(['0 Pack', '-12 Pack', '1.5 Pack', '9007199254740992 Pack', '2x6 Pack', '12 Packs', '12 PACKS', 'case of 12 Pack', 'Each'])('declines ambiguous or invalid count label %s', raw => {
+    expect(parseSize(raw, { baseUnit: 'ct', marketCode: 'ae' })).toBeNull();
+  });
+
+  it.each(['0 Pint', '-2 Pint', '2x2 Pint', '2 Pint or 1L', 'case of 2 Pint'])('declines ambiguous or invalid pint label %s', raw => {
+    expect(parseSize(raw, { baseUnit: 'ml', marketCode: 'gb' })).toBeNull();
+  });
 });

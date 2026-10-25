@@ -5,8 +5,10 @@
 // with the server modules as the implicit source of truth. Nothing at runtime detects
 // when the two copies diverge. Tests CAN cross the boundary, so this asserts parity.
 //
-// Covers the two exact-match tables (TIER1 country set, country bounding boxes). The
-// seed's COUNTRY_KEYWORDS and MMSI MID tables are intentionally trimmed subsets and are
+// Covers the TIER1 country set. Coordinates are no longer re-embedded: since CII v11
+// both sides import the real-border module scripts/shared/cii-country-borders.mjs,
+// which Railway packages with the seed (rootDirectory: scripts). The seed's
+// COUNTRY_KEYWORDS and MMSI MID tables are intentionally trimmed subsets and are
 // not asserted here — behavioural tests in seed-military-cii.test.mts cover those.
 
 import { test } from 'node:test';
@@ -14,14 +16,10 @@ import assert from 'node:assert/strict';
 
 import {
   TIER1_COUNTRIES as SEED_TIER1,
-  COUNTRY_BBOX as SEED_BBOX,
   geoToCountry as seedGeoToCountry,
 } from '../scripts/seed-military-cii.mjs';
 import { TIER1_COUNTRIES as SERVER_TIER1 } from '../server/worldmonitor/intelligence/v1/_shared.ts';
-import {
-  COUNTRY_BBOX as SERVER_BBOX,
-  geoToCountry as serverGeoToCountry,
-} from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
+import { geoToCountry as serverGeoToCountry } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
 
 test('seed TIER1_COUNTRIES matches the server source of truth exactly', () => {
   assert.deepEqual(
@@ -32,22 +30,22 @@ test('seed TIER1_COUNTRIES matches the server source of truth exactly', () => {
   );
 });
 
-test('seed COUNTRY_BBOX matches the server source of truth exactly', () => {
-  assert.deepEqual(
-    SEED_BBOX,
-    SERVER_BBOX,
-    'scripts/seed-military-cii.mjs COUNTRY_BBOX has drifted from get-risk-scores.ts — '
-      + 'the seed would attribute flights/vessels to stale country boundaries',
+test('seed and server place coordinates with the same border function', () => {
+  assert.equal(
+    seedGeoToCountry,
+    serverGeoToCountry,
+    'scripts/seed-military-cii.mjs must import geoToCountry from scripts/shared/cii-country-borders.mjs, '
+      + 'not re-embed a copy that can drift from the CII scorer',
   );
 });
 
-test('seed geoToCountry agrees with server geoToCountry and the intended border heuristic', () => {
+test('seed geoToCountry agrees with server geoToCountry on real border cases', () => {
   const PROBES: Array<{ name: string; lat: number; lon: number; expected: string | null }> = [
     { name: 'San Diego, US side of US/MX border', lat: 32.7157, lon: -117.1611, expected: 'US' },
     { name: 'Tijuana, MX side of US/MX border', lat: 32.5149, lon: -117.0382, expected: 'MX' },
-    { name: 'El Paso, US side of US/MX border', lat: 31.7619, lon: -106.4850, expected: 'US' },
+    { name: 'northeast El Paso, US side of US/MX border', lat: 31.8600, lon: -106.4400, expected: 'US' },
     { name: 'Ciudad Juarez, MX side of US/MX border', lat: 31.6904, lon: -106.4245, expected: 'MX' },
-    { name: 'Brownsville, US side of Rio Grande', lat: 25.9017, lon: -97.4975, expected: 'US' },
+    { name: 'north Brownsville, US side of Rio Grande', lat: 25.9500, lon: -97.5000, expected: 'US' },
     { name: 'Nuevo Laredo, MX side of Rio Grande', lat: 27.4763, lon: -99.5164, expected: 'MX' },
     { name: 'Piedras Negras, MX side of Rio Grande', lat: 28.6916, lon: -100.5409, expected: 'MX' },
     { name: 'Ciudad Acuna, MX side of Rio Grande', lat: 29.3232, lon: -100.9522, expected: 'MX' },
@@ -90,13 +88,14 @@ test('seed geoToCountry agrees with server geoToCountry and the intended border 
     { name: 'Mohe, China side of high-latitude CN/RU overlap', lat: 52.9721, lon: 122.5386, expected: 'CN' },
     { name: 'Harbin, China side of CN/RU overlap', lat: 45.8038, lon: 126.5350, expected: 'CN' },
     { name: 'Yuzhno-Sakhalinsk, Russia side of RU/JP overlap', lat: 46.9591, lon: 142.7380, expected: 'RU' },
-    { name: 'southern Sakhalin inside JP bbox, Russia side of RU/JP overlap', lat: 45.4500, lon: 142.0500, expected: 'RU' },
+    { name: 'Korsakov, southern Sakhalin, Russia', lat: 46.6300, lon: 142.7800, expected: 'RU' },
     { name: 'north Hokkaido, Japan side of RU/JP overlap', lat: 44.3500, lon: 142.4600, expected: 'JP' },
     { name: 'Wakkanai, Japan side of RU/JP overlap', lat: 45.4150, lon: 141.6730, expected: 'JP' },
     { name: 'Sapporo, Japan side of RU/JP overlap', lat: 43.0618, lon: 141.3545, expected: 'JP' },
-    { name: 'Jericho-area coordinate, tighter IL bbox survives Jordan gap', lat: 31.8560, lon: 35.4590, expected: 'IL' },
-    { name: 'southern Syria coordinate, SY bbox survives Jordan gap', lat: 32.4500, lon: 36.1000, expected: 'SY' },
-    { name: 'Amman, non-Tier-1 Jordan gap', lat: 31.9539, lon: 35.9106, expected: null },
+    { name: 'Jericho (West Bank) counts toward the Israel row', lat: 31.8560, lon: 35.4590, expected: 'IL' },
+    { name: 'Daraa, Syria next to the Jordan border', lat: 32.6200, lon: 36.1000, expected: 'SY' },
+    { name: 'northern Jordan, not Tier-1', lat: 32.4500, lon: 36.1000, expected: null },
+    { name: 'Amman, Jordan is not Tier-1', lat: 31.9539, lon: 35.9106, expected: null },
     { name: 'open Pacific', lat: 0.0, lon: -150.0, expected: null },
   ];
   for (const { name, lat, lon, expected } of PROBES) {
@@ -110,7 +109,7 @@ test('seed geoToCountry agrees with server geoToCountry and the intended border 
     assert.equal(
       seedResult,
       expected,
-      `${name}: expected heuristic-correct ${expected}, both returned ${seedResult}`,
+      `${name}: expected ${expected}, both returned ${seedResult}`,
     );
   }
 });

@@ -32,6 +32,8 @@ import { getCachedJson } from '../_shared/redis';
 import { validateUserApiKey } from '../_shared/user-api-key';
 import { getTheaterPosture } from '../worldmonitor/military/v1/get-theater-posture';
 import { createMilitaryServiceRoutes, type MilitaryServiceHandler } from '../../src/generated/server/worldmonitor/military/v1/service_server';
+import { getCountrySignalObservations } from '../worldmonitor/intelligence/v1/get-country-signal-observations';
+import { createIntelligenceServiceRoutes, type IntelligenceServiceHandler } from '../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import { issueSessionToken } from '../../api/_session.js';
 import { INTERNAL_MCP_VERIFIED_HEADER, buildInternalMcpHeaders, signInternalMcpRequest } from '../_shared/mcp-internal-hmac';
 
@@ -90,4 +92,34 @@ test('signed MCP remains restricted and forged markers cannot grant authority', 
   expect(response.status).toBe(200);
   expect(await response.json()).toMatchObject({ theaters: [] });
   expect((await read({ [INTERNAL_MCP_VERIFIED_HEADER]: 'forged' })).status).toBe(401);
+});
+
+const countryPath = '/api/intelligence/v1/get-country-signal-observations';
+const countryUrl = `https://worldmonitor.app${countryPath}?country_code=IR&family=COUNTRY_SIGNAL_FAMILY_POSTURE`;
+const countryGateway = createDomainGateway(createIntelligenceServiceRoutes({ getCountrySignalObservations } as IntelligenceServiceHandler).filter(route => route.path === countryPath));
+const readCountry = (headers: HeadersInit = {}) => countryGateway(new Request(countryUrl, { headers }), { waitUntil: () => {} });
+
+test.each([{}, { 'x-user-id': 'invented', 'x-pro-user': 'true' }, { [INTERNAL_MCP_VERIFIED_HEADER]: 'forged' }])('country projection rejects unverified authority before source IO: %j', async headers => {
+  const response = await readCountry(headers);
+  expect(response.status).toBe(401);
+  expect(getCachedJson).not.toHaveBeenCalled();
+});
+
+test.each(['header', 'cookie'])('country projection preserves qualified observations for an ordinary %s session', async kind => {
+  vi.mocked(getCachedJson).mockResolvedValue({ provider: 'adsb.lol', theaters: [{ theater: 'iran-theater', postureLevel: 'critical', activeFlights: 10, assessedAt: 1792324800000 }] });
+  const { token } = await issueSessionToken();
+  const response = await readCountry(kind === 'header' ? { 'X-WorldMonitor-Key': token } : { Cookie: `wm-session=${token}` });
+  expect(response.status).toBe(200);
+  expect(response.headers.get('Cache-Control')).toBe('no-store');
+  const outcome = JSON.parse((await response.json()).outcomeJson);
+  expect(outcome).toMatchObject({ countryCode: 'IR', family: 'posture', state: 'observed' });
+  expect(outcome.observations).toMatchObject([{ title: '10 military aircraft in iran-theater', source: 'adsb.lol', severity: 'high' }]);
+});
+
+test('signed paid MCP still cannot expose unqualified provider data through the country projection', async () => {
+  const signed = await signInternalMcpRequest({ method: 'GET', url: countryUrl, userId: 'paid-account', secret: process.env.MCP_INTERNAL_HMAC_SECRET! });
+  const response = await readCountry(buildInternalMcpHeaders(signed));
+  expect(response.status).toBe(200);
+  expect(JSON.parse((await response.json()).outcomeJson)).toMatchObject({ state: 'locked', observations: [] });
+  expect(getCachedJson).toHaveBeenCalled();
 });

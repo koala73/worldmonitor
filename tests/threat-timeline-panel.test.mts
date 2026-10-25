@@ -192,7 +192,7 @@ async function loadThreatTimelinePanelHarness() {
       export function isDesktopRuntime() { return false; }
       export function toApiUrl(path) { return path; }
     `],
-    ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }`],
+    ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }\nexport function hasTauriInvokeBridge() { return false; }`],
     ['analytics-stub', `export function trackLayoutCustomized() {}`],
     ['ai-flow-settings-stub', `export function getAiFlowSettings() { return { badgeAnimation: false }; }`],
     ['runtime-config-stub', `export function getSecretState() { return { present: true }; }`],

@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import { listAviationNews } from '../server/worldmonitor/aviation/v1/list-aviation-news.ts';
-import { ApiError, createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
+import { createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
 import { aviationHandler } from '../server/worldmonitor/aviation/v1/handler.ts';
 import { createDomainGateway, serverOptions } from '../server/gateway.ts';
 import { __resetRateLimitForTest } from '../server/_shared/rate-limit.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { readLimiterRequest } from './helpers/upstash-limiter-wire.mjs';
 import { issueSessionToken } from '../api/_session.js';
+import { validationFailure } from './helpers/validation-failure.mts';
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 const PATH = '/api/aviation/v1/list-aviation-news';
@@ -49,7 +50,7 @@ const read = (entities: string[], windowHours = 24, maxItems = 20) => listAviati
 
 test('rejects oversized entities and too many entities before discovery I/O', async () => {
   for (const entities of [['x'.repeat(129)], Array.from({length:11}, (_, i) => `airline${i}`)]) {
-    await assert.rejects(read(entities), (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+    await assert.rejects(read(entities), validationFailure('entities'));
     assert.equal(calls.length, 0);
   }
 });

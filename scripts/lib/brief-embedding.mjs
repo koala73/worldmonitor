@@ -15,8 +15,8 @@
  *     14-day TTL, JSON array of 512 numbers.
  *   - Deterministic: same input → same output vectors (cache hits)
  *     or same OpenRouter call (cache misses).
- *   - `deps` is for tests — prod callers pass nothing and get the
- *     real fetch / Upstash / AbortSignal wired in.
+ *   - `deps` accepts an optional usage observer and test transports.
+ *     Defaults use the real fetch / Upstash / AbortSignal.
  */
 
 import { createHash } from 'node:crypto';
@@ -143,7 +143,7 @@ async function cacheGetBatched(uniqueKeys, pipelineImpl, deadline = Infinity, no
  * EmbeddingTimeoutError on abort/timeout, EmbeddingProviderError on
  * any other upstream failure. NEVER returns a partial result.
  */
-async function callEmbeddingsApi({ fetchImpl, apiKey, missingTitles, timeoutMs }) {
+async function callEmbeddingsApi({ fetchImpl, apiKey, missingTitles, timeoutMs, usage }) {
   // Negative / zero remaining-budget means the deadline is already past.
   // Bail to the orchestrator's all-or-nothing fallback rather than open a
   // doomed HTTP connection that blows the wall-clock cap by the floor.
@@ -151,6 +151,10 @@ async function callEmbeddingsApi({ fetchImpl, apiKey, missingTitles, timeoutMs }
     throw new EmbeddingTimeoutError();
   }
   let resp;
+  usage.providerRequests += 1;
+  usage.providerInputs += missingTitles.length;
+  usage.unknownCostRequests += 1;
+  usage.unknownTokenRequests += 1;
   try {
     resp = await fetchImpl(OPENROUTER_EMBEDDINGS_URL, {
       method: 'POST',
@@ -192,6 +196,14 @@ async function callEmbeddingsApi({ fetchImpl, apiKey, missingTitles, timeoutMs }
       { cause: err },
     );
   }
+  if (typeof body?.usage?.cost === 'number' && Number.isFinite(body.usage.cost) && body.usage.cost >= 0) {
+    usage.knownCostUsd += body.usage.cost;
+    usage.unknownCostRequests -= 1;
+  }
+  if (Number.isSafeInteger(body?.usage?.prompt_tokens) && body.usage.prompt_tokens >= 0) {
+    usage.knownPromptTokens += body.usage.prompt_tokens;
+    usage.unknownTokenRequests -= 1;
+  }
   const data = Array.isArray(body?.data) ? body.data : null;
   if (!data || data.length !== missingTitles.length) {
     throw new EmbeddingProviderError(
@@ -223,6 +235,7 @@ async function callEmbeddingsApi({ fetchImpl, apiKey, missingTitles, timeoutMs }
  * @param {(commands: Array<unknown[]>) => Promise<Array<{result: unknown}> | null>} [deps.redisPipeline]
  * @param {() => number} [deps.now]
  * @param {number} [deps.wallClockMs]
+ * @param {(usage: object) => void} [deps.onUsage] synchronous, best-effort observer
  * @param {string} [deps._apiKey]  OPENROUTER_API_KEY override (tests only;
  *   prefixed to discourage accidental spread from user-controlled objects)
  * @returns {Promise<number[][]>}  one 512-dim vector per input, in order
@@ -233,6 +246,29 @@ async function callEmbeddingsApi({ fetchImpl, apiKey, missingTitles, timeoutMs }
  * collapse the entire run to Jaccard on any failure.
  */
 export async function embedBatch(normalizedTitles, deps = {}) {
+  const usage = {
+    inputTexts: Array.isArray(normalizedTitles) ? normalizedTitles.length : 0,
+    uniqueTexts: 0,
+    cacheHitTexts: 0,
+    providerInputs: 0,
+    providerRequests: 0,
+    knownCostUsd: 0,
+    unknownCostRequests: 0,
+    knownPromptTokens: 0,
+    unknownTokenRequests: 0,
+  };
+  try {
+    return await embedBatchWithUsage(normalizedTitles, deps, usage);
+  } finally {
+    try {
+      deps.onUsage?.({ ...usage });
+    } catch {
+      // Accounting must not replace the embedding result or its original error.
+    }
+  }
+}
+
+async function embedBatchWithUsage(normalizedTitles, deps, usage) {
   if (!Array.isArray(normalizedTitles)) {
     throw new EmbeddingProviderError('embedBatch: normalizedTitles must be an array');
   }
@@ -259,8 +295,10 @@ export async function embedBatch(normalizedTitles, deps = {}) {
   // Deduped cache-key table. Same normalised title → same cache cell.
   const keyByIndex = normalizedTitles.map((t) => cacheKeyFor(t));
   const uniqueKeys = [...new Set(keyByIndex)];
+  usage.uniqueTexts = uniqueKeys.length;
 
   const vectorByKey = await cacheGetBatched(uniqueKeys, pipelineImpl, deadline, nowImpl);
+  usage.cacheHitTexts = vectorByKey.size;
   if (nowImpl() > deadline) throw new EmbeddingTimeoutError();
 
   // Build the miss list, preserving the first normalised title we
@@ -279,6 +317,7 @@ export async function embedBatch(normalizedTitles, deps = {}) {
       apiKey,
       missingTitles,
       timeoutMs: deadline - nowImpl(),
+      usage,
     });
     const cacheWrites = [];
     for (let i = 0; i < freshVectors.length; i++) {

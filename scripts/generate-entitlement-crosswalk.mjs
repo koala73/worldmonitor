@@ -30,7 +30,7 @@ const add = (source, id, detail) => rules.push({ rule: `${source}:${id}`, source
 // 1. productCatalog — every (plan × gating field) pair
 {
   const s = R('convex/config/productCatalog.ts');
-  const FIELDS = ['tier','maxDashboards','apiRateLimit','prioritySupport','mcpAccess','dataExport','apiAccess','embedAccess','apiRequestsPerDay','apiBurstRequestsPerMinute','mcpCallsPerDay','mcpBurstRequestsPerMinute','apiDailyAllowance','exportFormats'];
+  const FIELDS = ['tier','maxDashboards','apiRateLimit','prioritySupport','mcpAccess','dataExport','apiAccess','embedAccess','apiRequestsPerDay','apiBurstRequestsPerMinute','mcpCallsPerDay','mcpBurstRequestsPerMinute','apiDailyAllowance','exportFormats','historyDays'];
   for (const m of s.matchAll(/const (FREE|PRO|PRO_BUSINESS|API_STARTER|API_BUSINESS|ENTERPRISE)_FEATURES[^=]*=\s*\{([\s\S]*?)\n\};/g)) {
     const [, plan, body] = m;
     for (const f of FIELDS) {
@@ -106,6 +106,7 @@ for (const ln of out.split('\n')) {
 const MAP = [
   // ---- catalog: the tier axis itself is not a capability
   [/^catalog:\w+\.tier$/,                    { exclude: 'tier axis, not a capability' }],
+  [/^catalog:\w+\.historyDays$/,             { cap: 'intel.country_history', note: 'daily archive retention window' }],
   [/^catalog:\w+\.exportFormats$/,           { cap: 'export.data', note: 'format allowlist' }],
   [/^catalog:\w+\.dataExport$/,              { cap: 'export.data' }],
   [/^catalog:\w+\.apiAccess$/,               { cap: 'api.keys' }],
@@ -206,6 +207,7 @@ const MAP = [
 ];
 
 const SITE_MAP = [
+  [/^server\/_shared\/country-history-access\.ts$/, { cap: 'intel.country_history', note: 'verified 7/90/365-day retention ceiling', preds: ['tier'] }],
   [/^src\/components\/TelegramIntelPanel\.ts$/, { cap: 'intel.telegram', note: 'desktop access lifecycle; free web feed remains available', preds: ['hasPremiumAccess'] }],
   // --- capabilities the hand-built ledger never found ---
   [/convex\/companyMonitoring\//,             { cap: 'monitoring.company', note: 'requires planKey!==free && tier>0' , preds: ['tier'] }],
@@ -316,7 +318,7 @@ const SITE_BASELINE = {
   "api/notification-channels.ts::tier": 1,
   "api/v2/shipping/webhooks/[subscriberId].ts::resolvePremiumCallerIdentity": 1,
   "api/v2/shipping/webhooks/[subscriberId]/[action].ts::resolvePremiumCallerIdentity": 1,
-  "api/widget-agent.ts::tier": 1,
+  "api/widget-agent.ts::tier": 2,
   "convex/alertRules.ts::tier": 1,
   "convex/apiKeys.ts::apiAccess": 1,
   "convex/apiPlanLimitUsage.ts::apiAccess": 1,
@@ -332,28 +334,27 @@ const SITE_BASELINE = {
   "convex/mcpProTokens.ts::tier": 1,
   "convex/notificationChannels.ts::tier": 1,
   "convex/payments/billing.ts::tier": 1,
+  "server/_shared/country-history-access.ts::tier": 1,
   "server/_shared/direct-llm-quota.ts::tier": 1,
   "server/_shared/embed-entitlement.ts::embedAccess": 2,
   "server/_shared/embed-session.ts::embedAccess": 2,
   "server/_shared/entitlement-check.ts::apiAccess": 1,
-  "server/_shared/entitlement-check.ts::tier": 1,
+  "server/_shared/entitlement-check.ts::tier": 2,
   "server/_shared/premium-check.ts::apiAccess": 1,
   "server/_shared/premium-check.ts::isCallerPremium": 1,
   "server/_shared/premium-check.ts::resolvePremiumCallerIdentity": 3,
-  "server/_shared/premium-check.ts::tier": 2,
+  "server/_shared/premium-check.ts::tier": 4,
   "server/_shared/pro-entitlement.ts::tier": 1,
   "server/_shared/pro-mcp-gate.ts::mcpAccess": 2,
   "server/_shared/pro-mcp-gate.ts::tier": 1,
   "server/gateway.ts::apiAccess": 3,
   "server/gateway.ts::embedAccess": 1,
   "server/gateway.ts::tier": 5,
-  "server/worldmonitor/economic/v1/get-national-debt.ts::isCallerPremium": 1,
   "server/worldmonitor/intelligence/v1/deduct-situation.ts::isCallerPremium": 1,
   "server/worldmonitor/intelligence/v1/get-country-intel-brief.ts::isCallerPremium": 1,
   "server/worldmonitor/military/v1/list-military-bases.ts::tier": 1,
   "server/worldmonitor/news/v1/summarize-article.ts::requiresPremium": 2,
   "server/worldmonitor/news/v1/summarize-article.ts::resolvePremiumCallerIdentity": 1,
-  "server/worldmonitor/sanctions/v1/list-sanctions-pressure.ts::isCallerPremium": 1,
   "server/worldmonitor/supply-chain/v1/get-bypass-options.ts::isCallerPremium": 1,
   "server/worldmonitor/supply-chain/v1/get-country-chokepoint-index.ts::isCallerPremium": 1,
   "server/worldmonitor/supply-chain/v1/get-country-cost-shock.ts::isCallerPremium": 1,

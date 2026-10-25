@@ -44,6 +44,24 @@ export function parseYesPrice(market) {
   return null;
 }
 
+function parseProbabilityValue(raw, minimum) {
+  if (typeof raw !== 'number' && typeof raw !== 'string') return null;
+  if (typeof raw === 'string' && raw.trim() === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= minimum && value <= 1 ? value : null;
+}
+
+export function parsePolymarketChange(market, field) {
+  const change = parseProbabilityValue(market?.[field], -1);
+  return change === null ? null : +(change * 100).toFixed(10);
+}
+
+export function parseKalshiChange24h(market) {
+  const current = parseProbabilityValue(market?.last_price_dollars, 0);
+  const previous = parseProbabilityValue(market?.previous_price_dollars, 0);
+  return current === null || previous === null ? null : +((current - previous) * 100).toFixed(10);
+}
+
 export function parsePredictionMarketVolume(market) {
   const value = Number(market?.volumeNum ?? market?.volume);
   return Number.isFinite(value) && value >= 0 ? value : 0;

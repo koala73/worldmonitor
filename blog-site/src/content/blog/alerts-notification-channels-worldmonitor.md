@@ -1,25 +1,26 @@
 ---
-title: "Six Ways WorldMonitor Reaches You When the World Changes"
-description: "Telegram, Slack, Discord, email, webhooks, and web push — WorldMonitor's alert rules deliver scoped intelligence with digest modes and quiet hours, no code required."
-metaTitle: "Intelligence Alerts: 6 Notification Channels | WorldMonitor"
-keywords: "geopolitical alerts app, telegram news alerts, discord intelligence alerts, web push breaking news, alert fatigue quiet hours, intelligence notifications"
+title: "Seven Ways WorldMonitor Reaches You When the World Changes"
+description: "Telegram, Slack, Discord, Teams, email, webhooks, and web push: WorldMonitor alert rules deliver scoped intelligence with digests and quiet hours."
+metaTitle: "Intelligence Alerts: 7 Notification Channels | WorldMonitor"
+keywords: "geopolitical alerts app, telegram news alerts, discord intelligence alerts, microsoft teams alerts, web push breaking news, alert fatigue quiet hours, intelligence notifications"
 audience: "Analysts, ops and security teams, traders, journalists, anyone who can't watch a dashboard all day"
 heroImage: "/blog/images/blog/alerts-notification-channels-worldmonitor.jpg"
 pubDate: "2026-07-21"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-10-17"
 ---
 
 A dashboard you have to watch is a part-time job. The whole point of monitoring infrastructure is inverted attention: you ignore the world safely because the system knows what you care about and interrupts you only when it happens.
 
 WorldMonitor's alert system is built for that inversion — no code, no webhook glue, unless you want it.
 
-## Six channels, your choice
+## Seven channels, your choice
 
-Alert rules can deliver to **six channel types**:
+Alert rules can deliver to **seven channel types**:
 
 - **Telegram** — the de facto channel of the OSINT world.
 - **Slack** — for teams that live there; webhook credentials are stored encrypted.
 - **Discord** — where trading groups and research communities actually are.
+- **Microsoft Teams** — alert cards in a Teams channel, posted through a Workflows webhook you create in Teams; the URL is stored encrypted and must be a Microsoft webhook address.
 - **Email** — for the paper trail and the people who check nothing else.
 - **Webhook** — the escape hatch into your own systems: ticketing, SIEM, home automation, anything with a URL.
 - **Web push** — browser-native notifications with no third-party account at all.
@@ -50,7 +51,7 @@ Developers who want full control still have it — the API path with your own sc
 
 ## Limits
 
-Delivery depends on the receiving platform's own reliability and rate limits — Telegram, Slack, and Discord each have their own weather. Web push requires a browser that supports it and permission you can revoke anytime. And no alert system substitutes for judgment about what deserves a rule: start with fewer rules at higher sensitivity, and widen only when you find yourself checking the dashboard for things it should have told you.
+Delivery depends on the receiving platform's own reliability and rate limits — Telegram, Slack, Discord, and Teams each have their own weather. Teams delivery may stop if the person who created the workflow leaves your organization and no other owner remains, or if the workflow's Teams connection belonged to that person. Add a second owner and keep its connections valid ([Microsoft: share a cloud flow](https://learn.microsoft.com/en-us/power-automate/create-team-flows)). Web push requires a browser that supports it and permission you can revoke anytime. And no alert system substitutes for judgment about what deserves a rule: start with fewer rules at higher sensitivity, and widen only when you find yourself checking the dashboard for things it should have told you.
 
 ## Sources and implementation references
 
@@ -60,7 +61,7 @@ Delivery behavior follows the destination's own transport contract. See the offi
 
 **Do I need to write code to set up alerts?**
 
-No. Rules, scoping, digest modes, quiet hours, and all six channels are configured in the product. Code is only for the webhook channel's receiving end — or for developers who prefer the raw API.
+No. Rules, scoping, digest modes, quiet hours, and all seven channels are configured in the product. Code is only for the webhook channel's receiving end — or for developers who prefer the raw API.
 
 **Can I limit alerts to specific countries?**
 

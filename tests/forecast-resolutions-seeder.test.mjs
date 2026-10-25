@@ -54,6 +54,8 @@ import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard } from '../s
 import { __setForecastLlmCallOverrideForTests, __setRedisStoreForTests, buildHistorySnapshot, buildPublishedForecastPayload, runExtractionGate, runExtractionGateShadow } from '../scripts/seed-forecasts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, HORIZON_MS, PROJECTION_HORIZONS, UNREST_COUNT_SOURCE_FEED, applyExtractionGate, attachResolutionSpecs, chokepointHardContract, evaluateExtractionShadow, horizonSampleToleranceMs, scoredHorizonKeys } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeeds } from '../scripts/_forecast-resolution-eval.mjs';
+import { buildProbabilityTrail } from '../scripts/_forecast-probability-trail.mjs';
+import { buildPublicForecastArchive } from '../scripts/_forecast-scorecard.mjs';
 import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from '../scripts/_gps-maritime-regions.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -127,6 +129,19 @@ function opened(history) {
 }
 
 describe('processResolutionCycle', () => {
+  it('copies a probability trajectory through real hard resolution into the public archive', () => {
+    const initial = snapshot(T0, [forecast()]);
+    const current = snapshot(T0 + DAY_MS, [forecast({ probability: 0.8 })]);
+    const probabilityTrail = buildProbabilityTrail(null, current, [initial]);
+    const result = processResolutionCycle(...opened([initial]), {
+      'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: HORMUZ_YES_SCORE }] },
+    }, T0 + DAY_MS, { probabilityTrail });
+    const archive = buildPublicForecastArchive(result.ledger, T0 + DAY_MS);
+    assert.equal(archive.rows[0].outcome, 'YES');
+    assert.equal(archive.rows[0].trajectory.length, 2);
+    assert.equal(archive.rows[0].probability, 0.62);
+    assert.equal(archive.rows[0].sourceFeed, 'chokepoints');
+  });
   describe('open-window calibration stays paired with the first emission (#8990)', () => {
     const FEEDS = { 'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 40 }] } };
     const KEY = `fc-hormuz@${T0 + DAY_MS}`;

@@ -34,6 +34,7 @@ import {
 import { PHYSICAL_DIVERGENCE_CONTRACT } from '../shared/physical-divergence-contract.js';
 import { jsonResponse } from '../api/_json-response.js';
 import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
+import { THREAT_CATEGORIES } from '../shared/jev-classify.js';
 
 const VALID_KEY = 'wm_test_key_output_schema';
 const originalEnv = { ...process.env };
@@ -85,6 +86,25 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       if (!(k in originalEnv)) delete process.env[k];
     });
     Object.assign(process.env, originalEnv);
+  });
+
+  it('accepts old coverage headlines and full classification while constraining the new nested field', () => {
+    const tool = mod.__testing__.TOOL_REGISTRY.find(item => item.name === 'get_country_coverage');
+    const check = new Ajv2020({ strict: false }).compile(tool.outputSchema);
+    const headline = { title: 'Controlled article', source: 'Publisher', url: 'https://example.org/a', publishedAt: '2026-10-17T00:00:00Z', publishedAtMs: 1792195200000 };
+    const response = { countryCode: 'NO', countryName: 'Norway', windowHours: 168, generatedAt: '2026-10-17T00:00:00Z', headlines: [headline], events: [], sources: [], degraded: false, containment: 'bbox' };
+    assert.equal(check(response), true, JSON.stringify(check.errors));
+    const categories = ['conflict', 'protest', 'disaster', 'diplomatic', 'economic', 'terrorism', 'cyber', 'health', 'environmental', 'military', 'crime', 'infrastructure', 'tech', 'general'];
+    assert.deepEqual(categories, THREAT_CATEGORIES);
+    const levels = ['THREAT_LEVEL_UNSPECIFIED', 'THREAT_LEVEL_LOW', 'THREAT_LEVEL_MEDIUM', 'THREAT_LEVEL_HIGH', 'THREAT_LEVEL_CRITICAL'];
+    const threat = { level: 'THREAT_LEVEL_HIGH', category: 'conflict', confidence: 0.8, source: 'keyword' };
+    const withThreat = value => ({ ...response, headlines: [{ ...headline, threat: value }] });
+    for (const category of categories) for (const level of levels) {
+      assert.equal(check(withThreat({ ...threat, category, level })), true, JSON.stringify(check.errors));
+    }
+    for (const value of [null, {}, { ...threat, level: 'FUTURE' }, { ...threat, category: 'invented' }, { ...threat, confidence: -0.1 }, { ...threat, confidence: 1.1 }, { ...threat, source: 'invented' }]) {
+      assert.equal(check(withThreat(value)), false, JSON.stringify(value));
+    }
   });
 
   // --------------------------------------------------------------------
@@ -436,7 +456,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // rather than silently skipped, so the count can only go down. Each is the
   // same defect class -- schema key never written by the producer:
   const KNOWN_PHANTOM_ROW_FIELDS = new Set([
-    // Serves `locationName` (+ latitude/longitude) -- scripts/seed-iran-events.mjs.
+    // Serves `locationName` (+ latitude/longitude) -- scripts/lib/middle-east-strikes.cjs (ais-relay).
     'get_conflict_events.data.iran-events.events[].country',
     'get_conflict_events.data.iran-events.events[].location',
     // Serves staticBaseline/dynamicScore/combinedScore, never a flat `score`.
@@ -623,14 +643,12 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // Tools that reshape inside `_execute` are deliberately out of scope — the
   // gateway response is not what they return.
   // --------------------------------------------------------------------
-  // `generate_forecasts` is verbatim too but declares `_apiPaths: []`, so it
-  // has no OpenAPI operation to check against and cannot be listed here.
   const VERBATIM_PASSTHROUGH_TOOLS = [
+    'get_country_history',
     'analyze_news_headlines',
     'analyze_situation',
     'get_chokepoint_dependencies',
     'get_country_coverage',
-    'get_country_risk',
     'get_defense_industrial_base',
     'get_demographics_capability',
     'get_food_stocks',
@@ -638,9 +656,6 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     'get_mineral_production',
     'get_resilience_indicators',
     'get_similar_events',
-    'get_bilateral_tariff',
-    'get_tariff_averages',
-    'get_us_import_duty',
     'list_five_factor_scorecards',
     'get_supply_vulnerabilities',
     'search_flight_prices_by_date',
@@ -658,16 +673,6 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     ['analyze_situation', {
       why: 'DeductSituationResponse is {analysis, model, provider}',
       names: ['deduction', 'confidence', 'signals', 'framework', 'generatedAt'],
-      types: [],
-    }],
-    ['search_flights', {
-      why: 'SearchGoogleFlightsResponse carries degraded/error/flights',
-      names: ['search_metadata', 'flights[].currency', 'flights[].airline', 'flights[].total_duration', 'flights[].segments'],
-      types: [],
-    }],
-    ['search_flight_prices_by_date', {
-      why: 'SearchGoogleDatesResponse carries dates/degraded/error',
-      names: ['prices', 'search_metadata'],
       types: [],
     }],
   ]);
@@ -875,7 +880,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       .filter(t => typeof t._execute === 'function'
         && RETURNS_RESPONSE_VERBATIM.test(t._execute.toString())
         // A tool with no single declared OpenAPI operation has no contract to
-        // check against; `generate_forecasts` declares `_apiPaths: []`.
+        // check against.
         && (t._apiPaths ?? []).length === 1)
       .map(t => t.name)
       .sort();
@@ -911,12 +916,18 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   const SPREAD_PASSTHROUGH_TOOLS = new Map([
     ['open_news_dashboard', { adds: ['requestedView', 'panelRequest'] }],
     ['get_country_brief', { adds: ['digestCoverage', 'groundingStories', 'sources[].sourceProvenance'] }],
+    ['get_country_risk', { adds: ['ciiHistory'] }],
+    // The live tariff tools add what answered and where it stops (buildCoverage).
+    ['get_bilateral_tariff', { adds: ['coverage'] }],
+    ['get_tariff_averages', { adds: ['coverage'] }],
+    ['get_us_import_duty', { adds: ['coverage'] }],
   ]);
 
   for (const [toolName, { adds }] of SPREAD_PASSTHROUGH_TOOLS) {
     it(`${toolName} declares only fields its OpenAPI response carries, plus its own additions`, () => {
       const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === toolName);
       assert.ok(tool, `tool ${toolName} not found in registry`);
+      assert.equal(typeof tool._execute, 'function', `${toolName} must be an RPC tool with an _execute to spread its response`);
       assert.equal(
         (tool._apiPaths ?? []).length, 1,
         `${toolName} must declare exactly one _apiPaths entry to be checked against a single OpenAPI operation`,
@@ -927,6 +938,14 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       const wire = wireResponseProperties(entry);
       assert.ok(wire, `${toolName}: OpenAPI operation declares no resolvable 200 JSON response schema`);
       assert.deepEqual(wire.unresolved, [], `${toolName}: OpenAPI response has unresolvable $refs`);
+
+      // The same outage-discriminator check the verbatim loop runs: moving a
+      // tool here must not drop it.
+      assert.deepEqual(
+        undeclaredSafetyFlags(tool.outputSchema, wire.properties), [],
+        `${toolName}'s response carries a degraded-state flag its outputSchema never declares. An agent cannot ` +
+          'distinguish "no data" from "everything is fine" without it.',
+      );
 
       const drift = declaredButNotOnWire(tool.outputSchema, wire.properties)
         .filter(name => !adds.includes(name));
@@ -951,6 +970,40 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       );
     });
   }
+
+  // The spread map is hand-written too, so deleting an entry silently drops
+  // that tool's wire-parity checks. Derive the tail-position spread form
+  // (`return { ...body, ... }` or `return { ...await response.json(), ... }`)
+  // from the same `_execute.toString()` source the verbatim derivation reads,
+  // and require each candidate to be enrolled. This is containment, not
+  // equality: get_country_brief spreads mid-function and is enrolled by hand.
+  const RETURNS_RESPONSE_SPREAD = /return\s*\{\s*\.\.\.(?:body|await\s+response\.json\(\))[\s\S]*?\}\s*;?\s*\}\s*$/;
+
+  it('SPREAD_PASSTHROUGH_TOOLS enrolls every RPC tool that returns the gateway response by spread', () => {
+    const candidates = mod.__testing__.TOOL_REGISTRY
+      .filter(t => typeof t._execute === 'function'
+        && (t._apiPaths ?? []).length === 1
+        && RETURNS_RESPONSE_SPREAD.test(t._execute.toString()))
+      .map(t => t.name)
+      .sort();
+
+    // Floor: if the regex stops matching, the set collapses and the
+    // containment check below passes vacuously.
+    for (const name of ['get_bilateral_tariff', 'get_tariff_averages', 'get_us_import_duty']) {
+      assert.ok(
+        candidates.includes(name),
+        `${name} was not derived as a spread-passthrough tool — the detection regex has stopped matching. ` +
+          `Fix the regex; derived: ${JSON.stringify(candidates)}`,
+      );
+    }
+    for (const name of candidates) {
+      assert.ok(
+        SPREAD_PASSTHROUGH_TOOLS.has(name),
+        `${name} returns its gateway response by spread but is not in SPREAD_PASSTHROUGH_TOOLS, so its declared ` +
+          'outputSchema is never checked against the OpenAPI response — enroll it with the keys _execute adds.',
+      );
+    }
+  });
 
   // Positive control: the assertion above is an "expect nothing" check over a
   // population, which stays green if the comparison itself is broken. Prove it

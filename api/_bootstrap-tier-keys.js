@@ -55,7 +55,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   renewableEnergy: 'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
   theaterPosture: 'theater_posture:sebuf:stale:v1',
-  riskScores: 'risk:scores:sebuf:stale:v8',
+  riskScores: 'risk:scores:sebuf:stale:v14',
   naturalEvents: 'natural:events:v1',
   flightDelays: 'aviation:delays-bootstrap:v2',
   insights: 'news:insights:v1',
@@ -73,8 +73,10 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   temporalAnomalies: 'temporal:anomalies:v1',
   weatherAlerts: 'weather:alerts:v1',
   imdCycloneMarine: 'weather:imd-cyclone-marine:v1',
+  notamAirspace: 'aviation:notam:airspace:v1',
   liveVideoResolved: 'live-video:resolved:v1',
   crossBorderArrivals: 'displacement:cross-border:v1',
+  idmcIduDisplacement: 'displacement:idmc-idu:v1',
   canadaRoads: 'infra:ontario-511:v1',
   albertaRoads: 'infra:alberta-511:v1',
   manitobaRoads: 'infra:manitoba-511:v1',
@@ -241,15 +243,21 @@ const ON_DEMAND_KEY_NAMES = new Set([
   // and natural layers fetch this key only when those layers are on, so it
   // never rides a payload every visitor downloads.
   'imdCycloneMarine',
+  // FAA NMS airspace restrictions (TFRs, restricted/danger/prohibited areas),
+  // ~1.5 MB. On-demand: fetched only when the NOTAM airspace layer is on.
+  'notamAirspace',
   // The video each catalog YouTube channel has live now (#8545), fetched by the
   // live video players at play intent and only for slots that list a channel.
   // The get-bootstrap-data RPC also serves any registered key by name, so the
   // payload stays minimal: channel id to video id and timestamps, no titles,
   // enforced by validateResolvedPayload in scripts/seed-live-video-resolved.mjs.
   'liveVideoResolved',
-  // UNHCR Operational Data Portal cross-border movements (#9023), read by the
-  // displacement panel and map layer only when they are open.
+  // Legacy ODP bootstrap/widget contract. The dashboard uses the source-dated
+  // movement RPC; retain this on-demand key until legacy clients migrate.
   'crossBorderArrivals',
+  // IDMC internal displacement events (#9014), about 2.5 MB, read by the
+  // displacement panel and map layer only when they are open.
+  'idmcIduDisplacement',
 ]);
 
 /**

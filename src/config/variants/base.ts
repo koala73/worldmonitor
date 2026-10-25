@@ -10,14 +10,14 @@ export { IDLE_PAUSE_MS } from '../idle';
 
 // Refresh intervals (ms) - shared across all variants
 export const REFRESH_INTERVALS = {
-  feeds: 20 * 60 * 1000,
+  feeds: 10 * 60 * 1000,
   markets: 12 * 60 * 1000,
   crypto: 12 * 60 * 1000,
   predictions: 15 * 60 * 1000,
   forecasts: 30 * 60 * 1000,
   ais: 15 * 60 * 1000,
   pizzint: 10 * 60 * 1000,
-  natural: 60 * 60 * 1000,
+  natural: 10 * 60 * 1000, // USGS refreshes every 5 min upstream; an hourly poll hid new quakes for up to 2 h
   weather: 10 * 60 * 1000,
   canadaRoads: 10 * 60 * 1000,
   canadaAlerts: 10 * 60 * 1000,
@@ -74,7 +74,7 @@ export const REFRESH_INTERVALS = {
   fuelShortages: 60 * 60 * 1000, // active shortage alerts can change intra-day
   energyDisruptions: 60 * 60 * 1000, // disruption log is low-volume but needs intra-day freshness
   energyRiskOverview: 15 * 60 * 1000, // mixed market + supply-chain overview; refresh more often than the underlying weekly registries
-  chokepointStrip: 90 * 60 * 1000, // matches chokepoint client cache TTL / freshness budget
+  chokepointStrip: 10 * 60 * 1000, // the status refreshes every 6 min; the 5-min client cache never answers a poll
   macroTiles: 30 * 60 * 1000,
   fsi: 30 * 60 * 1000,
   yieldCurve: 30 * 60 * 1000,

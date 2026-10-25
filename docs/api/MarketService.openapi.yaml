@@ -3169,53 +3169,32 @@ paths:
                         application/json:
                             example:
                                 "cbReserves":
-                                    "asOfMonth": "example"
+                                    "asOfMonth": "2026-09"
+                                    "indicator": "IRFCLDT1_IRFCL56_USD"
                                     "topBuyers12m":
-                                        - "deltaTonnes12m": 1.5
-                                          "iso3": "USA"
-                                          "name": "WorldMonitor Analyst"
+                                        []
                                     "topHolders":
                                         - "iso3": "USA"
-                                          "name": "WorldMonitor Analyst"
-                                          "pctOfReserves": 1.5
-                                          "tonnes": 1.5
+                                          "name": "United States"
+                                          "pctOfReserves": 50
+                                          "tonnes": 0
                                     "topSellers12m":
-                                        - "deltaTonnes12m": 1.5
-                                          "iso3": "USA"
-                                          "name": "WorldMonitor Analyst"
-                                    "totalTonnes": 1
-                                "cot":
-                                    "managedMoney":
-                                        "longPositions": "1717200000000"
-                                        "netPct": 1.5
-                                        "oiSharePct": 1.5
-                                        "shortPositions": "1717200000000"
-                                        "wowNetDelta": "1717200000000"
-                                    "nextReleaseDate": "2026-01-15"
-                                    "openInterest": "1717200000000"
-                                    "producerSwap":
-                                        "longPositions": "1717200000000"
-                                        "netPct": 1.5
-                                        "oiSharePct": 1.5
-                                        "shortPositions": "1717200000000"
-                                        "wowNetDelta": "1717200000000"
-                                    "reportDate": "2026-01-15"
+                                        []
+                                    "totalTonnes": 0
+                                    "valueIsOunces": false
                                 "crossCurrencyPrices":
-                                    - "currency": "USD"
-                                      "flag": "example"
-                                      "price": 75.25
+                                    []
                                 "drivers":
-                                    - "changePct": 1.5
-                                      "correlation30d": 1.5
-                                      "label": "example"
-                                      "symbol": "AAPL"
-                                      "value": 1.5
-                                "etfFlows":
-                                    "asOfDate": "2026-01-15"
-                                    "aumUsd": 1.5
-                                    "changeM1Pct": 1.5
-                                    "changeM1Tonnes": 1.5
-                                    "changeW1Pct": 1.5
+                                    []
+                                "goldChangePct": 0
+                                "goldPrice": 3200
+                                "goldSparkline":
+                                    []
+                                "palladiumPrice": 0
+                                "platinumPrice": 0
+                                "silverPrice": 0
+                                "unavailable": false
+                                "updatedAt": "2026-09-30T00:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/GetGoldIntelligenceResponse'
                 "400":
@@ -5631,6 +5610,7 @@ components:
                 totalTonnes:
                     type: number
                     format: double
+                    description: Measured only when value_is_ounces is true; otherwise a legacy zero placeholder.
                 topHolders:
                     type: array
                     items:
@@ -5643,6 +5623,14 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/GoldCbMover'
+                indicator:
+                    type: string
+                    description: IMF IRFCL indicator used by the reserve snapshot.
+                valueIsOunces:
+                    type: boolean
+                    description: |-
+                        True for ounce-based measurements. False for the USD fallback, where
+                         tonnes are placeholders and physical movers are unavailable. Absent if unknown.
         GoldCbHolder:
             type: object
             properties:
@@ -5653,6 +5641,7 @@ components:
                 tonnes:
                     type: number
                     format: double
+                    description: Measured only when value_is_ounces is true; otherwise a legacy zero placeholder.
                 pctOfReserves:
                     type: number
                     format: double

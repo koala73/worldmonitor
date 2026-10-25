@@ -4,8 +4,10 @@ import Module, { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import notify, { __setNotifyDepsForTests } from '../api/notify.ts';
+import { DIGEST_EMAIL_MAX_HTML_BYTES, renderDigestEmailHtml } from '../scripts/lib/digest-email-html.mjs';
 
 const require = createRequire(import.meta.url);
+const { appendUnsubscribeText, injectUnsubscribeFooterHtml, listUnsubscribeHeaders, unsubscribeUrlFor } = require('../scripts/lib/email-unsubscribe.cjs');
 const originalFetch = globalThis.fetch;
 const savedEnv = { ...process.env };
 afterEach(() => {
@@ -92,38 +94,59 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
 }
 
 for (const proof of ['legacy', 'unverified', 'verified'] as const) {
-  test(`digest main enforces email ownership: ${proof}`, async () => {
+  test(`digest main sends only owned email within the final HTML cap: ${proof}`, async () => {
     // Execute the production orchestration function without starting the cron.
     // Mock story/provider dependencies, not the channel selection or send loop.
     const source = readFileSync(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url), 'utf8');
     const main = source.slice(source.indexOf('async function main() {'), source.lastIndexOf('\nmain().catch'));
+    const sendStart = source.indexOf('async function sendEmail(');
+    const sendEmail = source.slice(sendStart, source.indexOf('\n}\n', sendStart) + 2);
     const metadata: any[] = [];
     let channelReads = 0;
     let sends = 0;
-    const run = runInNewContext(`${main}\nmain`, {
-      Date, Map, Set, AbortSignal, process: { env: {} }, console: { log() {}, warn() {} },
+    const unsubscribeUrl = `https://convex.test/email/unsubscribe?t=${'x'.repeat(4000)}`;
+    const stories = Array.from({ length: 120 }, (_, i) => ({
+      severity: 'critical', phase: 'developing', title: `Synthetic alert ${i}`, description: 'Synthetic details. '.repeat(15),
+      link: `https://example.com/${i}`, sources: ['Synthetic wire'],
+    }));
+    const fillFooter = (html: string) => injectUnsubscribeFooterHtml(html, unsubscribeUrl, 'Unsubscribe from the daily brief');
+    const unreserved = renderDigestEmailHtml({ stories, nowMs: Date.now() });
+    assert.ok(Buffer.byteLength(fillFooter(unreserved.html)) > DIGEST_EMAIL_MAX_HTML_BYTES, 'fixture exceeds the cap without footer reservation');
+    const run = runInNewContext(`${sendEmail}\n${main}\nmain`, {
+      Date, Map, Set, AbortSignal, Buffer, process: { env: {} }, console: { log() {}, warn() {} },
+      DIGEST_EMAIL_MAX_HTML_BYTES, injectUnsubscribeFooterHtml, unsubscribeUrlFor,
+      appendUnsubscribeText, listUnsubscribeHeaders, resend: {}, RESEND_FROM: 'brief@example.com',
       CONVEX_SITE_URL: 'https://convex.test', RELAY_SECRET: 'fake', DIGEST_LOOKBACK_MS: 86400000,
       scanAndEnqueueWatchlistStoryEvents: async () => {},
       fetch: async (url: string) => {
         if (url.endsWith('/relay/digest-rules')) return Response.json([{ userId: 'owner', variant: 'full', channels: ['email'] }]);
         assert.ok(url.endsWith('/relay/channels'));
         channelReads++;
-        return Response.json([{ channelType: 'email', email: 'owner@example.com', verified: proof !== 'unverified', ...(proof === 'legacy' ? {} : { emailOwnership: 'verified_account' }) }]);
+        return Response.json([{ channelType: 'email', email: 'owner@example.com', unsubscribeUrls: { brief: unsubscribeUrl }, verified: proof !== 'unverified', ...(proof === 'legacy' ? {} : { emailOwnership: 'verified_account' }) }]);
       },
       parseDigestOnlyUser: () => ({ kind: 'unset' }),
       composeBriefsForRun: async () => ({ briefByUser: new Map(), composeSuccess: 0, composeFailed: 0 }),
       readCooldownConfig: () => ({ invalidRaw: null, mode: 'off' }),
       getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,
-      digestWindowStartMs: () => 0, buildDigest: async () => [{ title: 'Synthetic alert' }],
+      digestWindowStartMs: () => 0, buildDigest: async () => stories,
       shouldExitOnBriefFailures: () => false,
       AI_DIGEST_ENABLED: false,
       buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
-      formatDigest: () => 'Synthetic digest', formatDigestHtml: () => '<p>Synthetic digest</p>',
-      buildChannelBodies: (text: string) => ({ text }),
-      injectEmailSummary: (html: string) => html, injectBriefCta: (html: string) => html,
+      formatDigest: () => 'Synthetic digest',
+      renderDigestEmailHtml,
+      buildChannelBodies: (lists: { plain: string }) => ({ text: lists.plain }),
       subjectForBrief: () => 'Synthetic digest', issueSlotInTz: () => 'slot',
       emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',
-      sendEmail: async (email: string) => { assert.equal(email, 'owner@example.com'); sends++; return true; },
+      sendResendEmail: async (_client: unknown, message: { to: string; html: string; text: string }) => {
+        assert.equal(message.to, 'owner@example.com');
+        assert.ok(message.text.startsWith('Synthetic digest'), 'plain-text part carries the plain story list');
+        const deliveredHtml = message.html;
+        assert.ok(Buffer.byteLength(deliveredHtml) <= DIGEST_EMAIL_MAX_HTML_BYTES);
+        assert.ok(deliveredHtml.includes(`href="${unsubscribeUrl}"`));
+        assert.ok(!deliveredHtml.includes('<!--wm-unsubscribe-slot-->'));
+        sends++;
+        return { ok: true };
+      },
       writeDigestLastRunMeta: async (meta: unknown) => { metadata.push(meta); },
     });
     await run();

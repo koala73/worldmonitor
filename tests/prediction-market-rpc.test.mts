@@ -23,6 +23,22 @@ afterEach(() => {
 });
 
 describe('listPredictionMarkets legacy bootstrap compatibility', () => {
+  it('converts optional moves to the REST probability scale and omits unknown values', async () => {
+    const rows = [
+      { title: 'moves', yesPrice: 69, volume: 30000, url: 'https://example.test/moves', change24h: 1, change7d: -4 },
+      { title: 'zero', yesPrice: 50, volume: 20000, url: 'https://example.test/zero', change24h: 0 },
+      { title: 'unknown', yesPrice: 40, volume: 10000, url: 'https://example.test/unknown' },
+    ];
+    globalThis.fetch = async () => Response.json({ result: JSON.stringify({ geopolitical: rows, tech: [], finance: [], fetchedAt: 123 }) });
+    const response = await listPredictionMarkets({} as never, { category: '', query: '', pageSize: 10, cursor: '' });
+    const serialized = JSON.parse(JSON.stringify(response));
+    assert.equal(serialized.markets[0].yesPriceChange24h, 0.01);
+    assert.equal(serialized.markets[0].yesPriceChange7d, -0.04);
+    assert.equal(serialized.markets[1].yesPriceChange24h, 0);
+    assert.equal('yesPriceChange7d' in serialized.markets[1], false);
+    assert.equal('yesPriceChange24h' in serialized.markets[2], false);
+    assert.equal('yesPriceChange7d' in serialized.markets[2], false);
+  });
   it('suppresses an explicitly unavailable display destination while retaining the contract ID', async () => {
     const row = { title: 'China meeting', yesPrice: 70, volume: 30000, source: 'kalshi', url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: '' };
     globalThis.fetch = async () => Response.json({ result: JSON.stringify({ countries: { CN: [row] }, fetchedAt: 789 }) });

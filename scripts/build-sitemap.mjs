@@ -8,6 +8,10 @@ import {
   CONTENT_CORPUS_PREFIXES,
   discoverContentCorpusPages,
 } from './discover-content-corpus-pages.mjs';
+import {
+  INDEXABLE_LANDING_LOCALES,
+  landingHreflangCluster,
+} from '../shared/indexable-landing-locales.ts';
 
 export const SITE_ORIGIN = 'https://www.worldmonitor.app';
 
@@ -45,11 +49,12 @@ const DASHBOARD_MATERIAL_SOURCES = [
   'src/styles',
 ];
 
-const route = (loc, family, materialSources) => ({
+const route = (loc, family, materialSources, declaredLastmodSource = null) => ({
   loc,
   family,
   owner: 'root',
   materialSources,
+  ...(declaredLastmodSource ? { declaredLastmodSource } : {}),
 });
 
 /**
@@ -63,16 +68,36 @@ const route = (loc, family, materialSources) => ({
  * latest Git commit date is the route's lastmod; build/deploy time is never an
  * input. In build contexts without complete Git history, the committed
  * generated sitemap is the deterministic fallback.
+ *
+ * The landing routes are the exception: their page already declares its date
+ * (`<meta name="lastmod">` and the #software dateModified, both written from
+ * the published pulse capture by `npm run teasers:welcome`, #7654). A Git date
+ * over the same sources moved on every generated-stat commit between pulse
+ * freezes, so the sitemap and the page's own structured data disagreed. The
+ * sitemap reads the declared date instead, the way corpus pages already do.
  */
+const LANDING_DECLARED_LASTMOD_SOURCE = 'pro-test/welcome.html';
+const LANDING_MATERIAL_SOURCES = [
+  'pro-test/welcome.html',
+  'pro-test/src/WelcomeApp.tsx',
+  'pro-test/src/welcome',
+  'pro-test/src/index.css',
+  'pro-test/src/generated',
+  'pro-test/src/locales',
+  'pro-test/src/welcome-document.ts',
+  'pro-test/src/welcome-prerender.tsx',
+  'pro-test/prerender.mjs',
+  'src/config/products.ts',
+  'shared/indexable-landing-locales.ts',
+];
+
 export const STATIC_ROUTE_MANIFEST = Object.freeze([
-  route(`${SITE_ORIGIN}/`, 'landing', [
-    'pro-test/welcome.html',
-    'pro-test/src/WelcomeApp.tsx',
-    'pro-test/src/welcome',
-    'pro-test/src/index.css',
-    'pro-test/src/generated',
-    'src/config/products.ts',
-  ]),
+  ...INDEXABLE_LANDING_LOCALES.map((locale) => route(
+    `${SITE_ORIGIN}${locale.canonicalPath}`,
+    'landing',
+    LANDING_MATERIAL_SOURCES,
+    LANDING_DECLARED_LASTMOD_SOURCE,
+  )),
   route(`${SITE_ORIGIN}/dashboard`, 'dashboard', [
     ...DASHBOARD_MATERIAL_SOURCES,
     'src/config/variants/full.ts',
@@ -91,6 +116,9 @@ export const STATIC_ROUTE_MANIFEST = Object.freeze([
     'api/mcp.ts',
     'api/mcp',
     'public/mcp-server.md',
+  ]),
+  route(`${SITE_ORIGIN}/agent/`, 'agent', [
+    'public/agent/index.html',
   ]),
   route('https://tech.worldmonitor.app/dashboard', 'dashboard-variant', [
     ...DASHBOARD_MATERIAL_SOURCES,
@@ -244,6 +272,15 @@ function hasCompleteGitHistory(repoRoot) {
   }
 }
 
+export function readDeclaredLastmod(repoRoot, sourcePath) {
+  const html = readFileSync(join(repoRoot, sourcePath), 'utf8');
+  const dates = [...html.matchAll(/<meta name="lastmod" content="([^"]*)"/g)].map((match) => match[1]);
+  if (dates.length !== 1 || !isIsoDate(dates[0])) {
+    throw new Error(`${sourcePath} must declare exactly one YYYY-MM-DD lastmod meta; found ${JSON.stringify(dates)}`);
+  }
+  return dates[0];
+}
+
 function assertMaterialSourcesExist(repoRoot, manifestEntry) {
   for (const sourcePath of manifestEntry.materialSources) {
     if (!existsSync(join(repoRoot, sourcePath))) {
@@ -337,16 +374,21 @@ export function buildSitemapEntries({
     repoRoot,
     existingSitemapSource,
   }),
+  resolveDeclaredLastmod = (manifestEntry) => readDeclaredLastmod(repoRoot, manifestEntry.declaredLastmodSource),
   requireCompleteCorpus = true,
   today = TODAY,
 } = {}) {
+  const landingAlternates = landingHreflangCluster();
   const entries = STATIC_ROUTE_MANIFEST.map((manifestEntry) => {
     assertMaterialSourcesExist(repoRoot, manifestEntry);
     return {
       loc: manifestEntry.loc,
-      lastmod: resolveMaterialLastmod(manifestEntry),
+      lastmod: manifestEntry.declaredLastmodSource
+        ? resolveDeclaredLastmod(manifestEntry)
+        : resolveMaterialLastmod(manifestEntry),
       family: manifestEntry.family,
       owner: manifestEntry.owner,
+      ...(manifestEntry.family === 'landing' ? { alternates: landingAlternates } : {}),
     };
   });
 
@@ -383,9 +425,13 @@ export function buildSitemapEntries({
 }
 
 export function generateSitemapXml(entries) {
+  const hasXhtml = entries.some((entry) => Array.isArray(entry.alternates) && entry.alternates.length > 0);
+  const urlset = hasXhtml
+    ? '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">'
+    : '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
   const lines = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    urlset,
     '  <!-- Generated by npm run build:sitemap. Do not edit by hand. -->',
   ];
 
@@ -393,6 +439,13 @@ export function generateSitemapXml(entries) {
     lines.push('  <url>');
     lines.push(`    <loc>${escapeXml(entry.loc)}</loc>`);
     lines.push(`    <lastmod>${entry.lastmod}</lastmod>`);
+    if (Array.isArray(entry.alternates)) {
+      for (const alternate of entry.alternates) {
+        lines.push(
+          `    <xhtml:link rel="alternate" hreflang="${escapeXml(alternate.hreflang)}" href="${escapeXml(alternate.href)}"/>`,
+        );
+      }
+    }
     lines.push('  </url>');
   }
 

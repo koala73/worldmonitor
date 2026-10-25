@@ -20,6 +20,7 @@
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from './_cors.js';
 import { appendDeprecationPolicyLinkToRecord, DEPRECATION_POLICY_LINK } from '../server/_shared/deprecation-policy';
+import { declaredHtmlCanonical, pageCanonicalUrl } from '../shared/page-canonical.js';
 
 export const MD_TWIN_LOOP_HEADER = 'x-wm-md-twin';
 const MAX_TWIN_CHARS = 512_000;
@@ -312,6 +313,33 @@ async function readSiblingBody(response: Response): Promise<string> {
   return new TextDecoder().decode(body);
 }
 
+/**
+ * The canonical the sibling HTML page declares for itself. The twin repeats it
+ * verbatim (via pageCanonicalUrl) instead of guessing from the fetched path:
+ * static directory pages answer 200 at both /x and /x/, so the path alone
+ * cannot say which one the page names. Best-effort: any failure falls back to
+ * the page's own URL.
+ */
+async function fetchDeclaredCanonical(
+  siblingUrl: URL,
+  outbound: Headers,
+  signal: AbortSignal,
+  fetchImpl: typeof fetch,
+): Promise<string | null> {
+  try {
+    const headers = new Headers(outbound);
+    headers.set('accept', 'text/html');
+    const res = await fetchImpl(siblingUrl, { method: 'GET', headers, redirect: 'manual', signal });
+    if (!res.ok || !/html/i.test(res.headers.get('content-type') ?? '')) {
+      void res.body?.cancel().catch(() => {});
+      return null;
+    }
+    return declaredHtmlCanonical(await readSiblingBody(res));
+  } catch {
+    return null;
+  }
+}
+
 function forwardedResponseHeaders(response: Response): Record<string, string> {
   const headers: Record<string, string> = {};
   for (const name of FORWARDED_RESPONSE_HEADERS) {
@@ -433,16 +461,22 @@ export async function buildMarkdownTwinResponse(
   // An /api/ sibling gets none at all. Those endpoints are not canonical web
   // pages, and many need their query to mean anything, so the query-less form
   // would name a different, degenerate resource than the one served.
-  const canonical =
-    isFailure || siblingUrl.pathname.startsWith('/api/')
-      ? null
-      : `${siblingUrl.origin}${siblingUrl.pathname}`;
+  const servesCanonicalPage = !isFailure && !siblingUrl.pathname.startsWith('/api/');
   const responseHeaders: Record<string, string> = {
     ...(isFailure ? NOT_A_DOCUMENT : {}),
     ...forwardedResponseHeaders(siblingRes),
   };
 
+  const resolveCanonical = async (body: string | null, contentType: string): Promise<string | null> => {
+    if (!servesCanonicalPage) return null;
+    const declared = body !== null && /html/i.test(contentType)
+      ? declaredHtmlCanonical(body)
+      : await fetchDeclaredCanonical(siblingUrl, outbound, deadline, fetchImpl);
+    return pageCanonicalUrl(siblingUrl, declared);
+  };
+
   if (req.method === 'HEAD') {
+    const canonical = await resolveCanonical(null, '');
     return new Response(null, {
       status: siblingStatus,
       headers: markdownHeaders(canonical, responseHeaders),
@@ -450,6 +484,7 @@ export async function buildMarkdownTwinResponse(
   }
 
   if (siblingStatus === 304) {
+    const canonical = await resolveCanonical(null, '');
     return new Response(null, {
       status: siblingStatus,
       headers: markdownHeaders(canonical, responseHeaders),
@@ -457,9 +492,10 @@ export async function buildMarkdownTwinResponse(
   }
 
   let markdown: string;
+  let raw: string;
+  const contentType = siblingRes.headers.get('content-type') ?? '';
   try {
-    const contentType = siblingRes.headers.get('content-type') ?? '';
-    const raw = await readSiblingBody(siblingRes);
+    raw = await readSiblingBody(siblingRes);
 
     if (/markdown|text\/plain/i.test(contentType) && (/^# /m.test(raw) || FRONT_MATTER.test(raw))) {
       markdown = raw.slice(0, MAX_TWIN_CHARS);
@@ -481,6 +517,7 @@ export async function buildMarkdownTwinResponse(
     });
   }
 
+  const canonical = await resolveCanonical(raw, contentType);
   return new Response(withMarkdownMetadata(markdown, canonical, heading), {
     status: siblingStatus,
     headers: markdownHeaders(canonical, responseHeaders),

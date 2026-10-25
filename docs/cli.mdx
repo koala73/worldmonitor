@@ -3,7 +3,7 @@ title: "Command-Line Client"
 description: "Script country briefs, risk scores, and registered MCP tools from your shell with the official worldmonitor npm CLI — no API integration to write."
 ---
 
-[`worldmonitor`](https://www.npmjs.com/package/worldmonitor) is the official command-line client for the World Monitor global-intelligence API. It's a thin, **dependency-free** wrapper over the [MCP server](/mcp-overview) (the recommended agent surface) with a REST escape hatch, so you can pull briefs, risk scores, and conflict / cyber / market / news feeds from a shell script or an agent without writing a single line of HTTP plumbing. It ships as ESM and runs on **Node 18+**.
+[`worldmonitor`](https://www.npmjs.com/package/worldmonitor) is the official command-line client for the World Monitor global-intelligence platform. Run it with no arguments and it opens a full [**terminal dashboard**](/cli-dashboard) with the same live data as the web dashboard, mouse support and colour themes, and no API key required. Its scripting commands are a thin, **dependency-free** wrapper over the [MCP server](/mcp-overview) (the recommended agent surface) with a REST escape hatch, so you can pull briefs, risk scores, and conflict / cyber / market / news feeds from a shell script or an agent without writing a single line of HTTP plumbing. It ships as ESM and runs on **Node 18+**.
 
 The source lives in [`cli/`](https://github.com/koala73/worldmonitor/tree/main/cli) in the main repository and is published to npm on every `cli-v*` release tag.
 Maintainers can follow the [CLI release runbook](/releasing-cli) when cutting a new npm version.
@@ -16,6 +16,21 @@ npm install -g worldmonitor    # installs the `worldmonitor` command (alias: `wm
 # or run ad-hoc without installing:
 npx worldmonitor tools
 ```
+
+## Terminal dashboard
+
+```sh
+worldmonitor          # open the terminal dashboard (alias: worldmonitor tui)
+worldmonitor web      # open the web dashboard
+```
+
+<Frame caption="The terminal dashboard's Overview view.">
+  <img src="/images/tui/overview.webp" alt="World Monitor terminal dashboard, Overview view" />
+</Frame>
+
+Run `worldmonitor` in an interactive terminal and it opens a full-screen dashboard with the same live data as the web app: a zoomable world map and globe with every layer and satellite imagery, the AI brief with its sources, news, markets, conflict, military flights and shipping, cyber, climate, prediction markets, live TV and platform health. It needs no API key and supports the mouse and colour themes. In a pipe or script, `worldmonitor` with no command prints help, so automation is unaffected.
+
+See **[Terminal Dashboard](/cli-dashboard)** for every view, key, theme, option and live-video setting.
 
 ## First call — no key needed
 
@@ -108,6 +123,8 @@ worldmonitor list cyber                   # list documented REST operations from
 | `--base-url <url>` | REST base (default `https://api.worldmonitor.app`) |
 | `--args <json>` | Typed arguments object for a tool call |
 | `--timeout <ms>` | Request timeout (default `30000`) |
+| `--theme <id>`, `--no-anim`, `--fps <n>` | Terminal dashboard only ([options](/cli-dashboard#options)); other commands pass them to the API |
+| `--hosted`, `--port <n>`, `--no-open`, `--url <url>` | `web` command only; other commands pass them to the API |
 | `--raw` | Print the response body verbatim |
 | `--compact` | Print single-line JSON |
 | `-h, --help` · `-v, --version` | Help / version |

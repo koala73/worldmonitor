@@ -16,7 +16,7 @@
 // Indicators + Country Facts tiles from the same SDMX 3.0 fetcher already
 // used by seed-imf-macro.mjs.
 
-import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator, imfSdmxFetchIndicatorWithRelease } from './_seed-utils.mjs';
 // Sprint 4 IMF/WEO cohort content-age helper — see header for forecast-year semantics.
 import { imfWeoContentMeta, IMF_WEO_MAX_CONTENT_AGE_MIN, maxIntegerYear } from './_imf-weo-content-age-helpers.mjs';
 
@@ -103,6 +103,10 @@ export function buildGrowthCountries(perIndicator) {
       investmentPct:      inv?.value ?? null,
       savingsPct:         sav?.value ?? null,
       savingsInvestmentGap: savInvGap,
+      periods: {
+        realGdpGrowthPct: growth?.year ?? null,
+        gdpPerCapitaUsd: gdpPc?.year ?? null,
+      },
       year: growth?.year ?? gdpPc?.year ?? realGdpV?.year ?? pppPc?.year ?? pppGdpV?.year ?? inv?.year ?? sav?.year ?? null,
       // Codex PR #3604 P2 — see seed-imf-external.mjs for the full
       // rationale. `latestYear` = max forecast year across all this
@@ -124,8 +128,8 @@ export async function fetchImfGrowth() {
     investmentPct,
     savingsPct,
   ] = await Promise.all([
-    imfSdmxFetchIndicator('NGDP_RPCH', { years }),
-    imfSdmxFetchIndicator('NGDPDPC', { years }),
+    imfSdmxFetchIndicatorWithRelease('NGDP_RPCH', { years }),
+    imfSdmxFetchIndicatorWithRelease('NGDPDPC', { years }),
     imfSdmxFetchIndicator('NGDP_R', { years }),
     imfSdmxFetchIndicator('PPPPC', { years }),
     imfSdmxFetchIndicator('PPPGDP', { years }),
@@ -134,16 +138,20 @@ export async function fetchImfGrowth() {
   ]);
 
   const countries = buildGrowthCountries({
-    realGdpGrowth,
-    nominalGdpPerCapita,
+    realGdpGrowth: realGdpGrowth.values,
+    nominalGdpPerCapita: nominalGdpPerCapita.values,
     realGdp,
     pppPerCapita,
     pppGdp,
     investmentPct,
     savingsPct,
   });
+  const releases = {
+    realGdpGrowthPct: realGdpGrowth.release,
+    gdpPerCapitaUsd: nominalGdpPerCapita.release,
+  };
 
-  return { countries, seededAt: new Date().toISOString() };
+  return { countries, releases, seededAt: new Date().toISOString() };
 }
 
 // IMF WEO growth indicators report ~210 countries. Require >=190 to reject

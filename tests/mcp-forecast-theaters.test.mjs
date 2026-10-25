@@ -61,7 +61,7 @@ describe('original forecast theater signed transport', () => {
   it('fails closed before fetching for missing or widened scope and tampered receipts', async t => {
     const f = await fixture(t);
     for (const args of [{}, { panel_request: f.token, run_id: completed.runId }, { panel_request: f.token, summary: true },
-      { panel_request: f.token, jmespath: '*' }, { panel_request: f.token.slice(0, -1) + 'z' }]) {
+      { panel_request: f.token, jmespath: '*', run_id: completed.runId }, { panel_request: f.token.slice(0, -1) + 'z' }]) {
       const reply = await f.invoke('get_forecast_theaters', args);
       assert.equal(reply.error?.code, -32602, JSON.stringify(reply));
     }
@@ -141,7 +141,7 @@ describe('original forecast theater signed transport', () => {
   it('advertises a subscription reader with no run selector, UI opening or producer API', () => {
     const tool = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_theaters');
     assert.equal(toolAccess(tool), 'subscription');
-    assert.deepEqual(tool.inputSchema.required, ['panel_request']);
+    assert.deepEqual(tool.inputSchema.required, []);
     assert.deepEqual(Object.keys(tool.inputSchema.properties), ['panel_request']);
     assert.deepEqual(tool._apiPaths, ['GET /api/forecast/v1/get-simulation-outcome']);
     assert.equal(tool._uiResourceUri, undefined);

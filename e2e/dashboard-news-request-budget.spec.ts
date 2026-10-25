@@ -37,10 +37,22 @@ import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-l
 const DIGEST_GLOB = '**/api/news/v1/list-feed-digest*';
 const RSS_PROXY_GLOB = '**/api/rss-proxy*';
 
-// Time to let a SECOND news load land if one is coming. Production saw the two
-// digest requests 1.2 s apart; the local dev server is faster, so this is a wide
-// margin over the interval being guarded.
-const SECOND_LOAD_SETTLE_MS = 8_000;
+// A SECOND news load comes from one of two places. The bootstrap fan-out runs its
+// own loadAllData(), and App sets `data-wm-initial-data-ready` only after that
+// fan-out resolves (both the normal and the slow-tier-timeout path), so waiting on
+// the flag covers it at any runner speed: with the #5376 gate removed, the second
+// digest fired before the flag in every test here. After the flag, the hydration
+// triggers (an immediate primeVisiblePanelData(), rAF / requestIdleCallback with a
+// 300 ms timeout, IntersectionObserver) get this quiet window. Production saw the
+// two digest requests 1.2 s apart; that interval sits inside the fan-out.
+const POST_FANOUT_QUIET_MS = 1_500;
+
+async function settleAfterInitialFanout(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => document.documentElement.dataset.wmInitialDataReady === 'true',
+  );
+  await page.waitForTimeout(POST_FANOUT_QUIET_MS);
+}
 
 // src/app/data-loader.ts `perFeedFallbackCategoryFeedLimit`. Every per-feed
 // fallback is capped at this many feeds per category, custom categories included.
@@ -344,7 +356,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     // The news load is not viewport-gated, so nothing needs scrolling to
     // provoke the second load — the bootstrap fan-out and the hydration
     // trigger both fire on their own during this window.
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     expect(
       log.rssProxyUrls,
@@ -396,7 +408,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     } finally {
       lossWatch.dispose();
     }
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     const feeds = distinctProxiedFeeds(log.rssProxyUrls);
 
@@ -644,7 +656,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     expect(
       log.digestUrls.length,
@@ -693,7 +705,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     expect(
       log.digestUrls.some((url) => new URL(url).searchParams.get('lang') === 'fr'),
@@ -739,7 +751,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     } finally {
       lossWatch.dispose();
     }
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     const panel = page.locator(`[data-panel="${EMPTY_CATEGORY_PANEL}"]`);
     await panel.scrollIntoViewIfNeeded();
@@ -780,7 +792,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     } finally {
       lossWatch.dispose();
     }
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     // Attempt 1 was served 503, so that load rendered every category empty. A
     // second attempt is the whole point: it is served 200 and the dashboard
@@ -796,7 +808,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     // work-list, so the gate stops the retries rather than looping every trigger.
     const afterRecovery = log.digestUrls.length;
     await fireHydrationTrigger(page);
-    await page.waitForTimeout(3_000);
+    await page.waitForTimeout(POST_FANOUT_QUIET_MS);
     expect(
       log.digestUrls.length,
       `once a load has landed, further triggers must not re-fetch the digest ` +

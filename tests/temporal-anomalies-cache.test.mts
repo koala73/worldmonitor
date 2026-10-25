@@ -20,6 +20,7 @@ import {
 } from '../server/worldmonitor/infrastructure/v1/_shared.ts';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
 import { listTemporalAnomalies } from '../server/worldmonitor/infrastructure/v1/list-temporal-anomalies.ts';
+import { summarizeWildfireDetections, WILDFIRE_FIRES_SUMMARY_KEY } from '../scripts/shared/wildfire-fires-summary.mjs';
 
 /**
  * Drive the handler against a counting Redis stub.
@@ -126,11 +127,26 @@ function liveNews(now = Date.now(), ageMs = 10 * 60_000) {
   };
 }
 
-function liveFires(now = Date.now(), ageMs = 15 * 60_000, totalCount = 5) {
+/**
+ * The route reads `wildfire:fires-summary:v1`, the projection seed-fire-detections
+ * derives from the canonical payload (#9509). Fixtures stay in canonical shape and
+ * go through the real summarizer, so a shape drift in either fails here.
+ */
+function firesSummary(canonical: unknown, nowMs = Date.now()) {
+  const summary = summarizeWildfireDetections(canonical, { nowMs });
+  assert.ok(summary, 'fixture must summarize');
+  return summary;
+}
+
+function canonicalLiveFires(now = Date.now(), ageMs = 15 * 60_000, totalCount = 5) {
   return {
     fireDetections: [{ id: 'fire-1', source: 'firms', detectedAt: now - ageMs }],
     pagination: { nextCursor: '', totalCount },
   };
+}
+
+function liveFires(now = Date.now(), ageMs = 15 * 60_000, totalCount = 5) {
+  return firesSummary(canonicalLiveFires(now, ageMs, totalCount), now);
 }
 
 function frozenNews(now = Date.now(), ageMs = 72 * HOUR_MS) {
@@ -143,7 +159,7 @@ function frozenFires(now = Date.now(), ageMs = 72 * HOUR_MS, totalCount = 5) {
 
 /** Canonical wildfire merge when FIRMS is down and CWFIS/BC still publish. */
 function canadaOnlyDegradedFires(now = Date.now()) {
-  return {
+  return firesSummary({
     fireDetections: [
       { id: 'cwfis-1', source: 'cwfis', detectedAt: now - 30 * 60_000 },
       { id: 'bc-1', source: 'bc', detectedAt: now - 20 * 60_000 },
@@ -152,15 +168,15 @@ function canadaOnlyDegradedFires(now = Date.now()) {
     _firmsErrorCode: 'FIRMS_SOURCE_FAILED',
     _cwfisState: 'ok',
     _bcState: 'ok',
-  };
+  }, now);
 }
 
 /** FIRMS rows present, but none carry a usable `detectedAt`. */
 function undatableFires(totalCount = 5) {
-  return {
+  return firesSummary({
     fireDetections: [{ id: 'fire-1', source: 'firms' }],
     pagination: { nextCursor: '', totalCount },
-  };
+  });
 }
 
 function seedMetaStamp(calls: { method: string; key: string; value?: unknown }[]) {
@@ -386,13 +402,75 @@ describe('temporal anomalies cache freshness', () => {
     assert.equal(stamp?.recordCount, 1, 'one source read must stamp recordCount 1');
   });
 
+  it('reads the fires summary on a rebuild and leaves the 2 MB canonical key untouched (#9509)', async () => {
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': liveNews(now),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(now, 15 * 60_000, 42),
+      'wildfire:fires:v1': canonicalLiveFires(now, 15 * 60_000, 42),
+      ...altSourcesLiveRedis(now),
+    });
+    const getKeys = calls.filter((c) => c.method === 'GET').map((c) => c.key);
+    assert.ok(getKeys.includes(WILDFIRE_FIRES_SUMMARY_KEY));
+    assert.ok(!getKeys.includes('wildfire:fires:v1'), 'the canonical key stays off the hot path while the summary exists');
+    assert.equal(seedMetaStamp(calls)?.recordCount, Object.keys(COUNT_SOURCE_KEYS).length);
+  });
+
+  it('recomputes the fires summary from the canonical key only while the summary is absent', async () => {
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': liveNews(now, 10 * 60_000),
+      'wildfire:fires:v1': canonicalLiveFires(now, 25 * 60_000, 42),
+      [baselineKeyFor('satellite_fires', new Date(now))]: dueBaseline(),
+      ...altSourcesLiveRedis(now),
+    });
+    const getKeys = calls.filter((c) => c.method === 'GET').map((c) => c.key);
+    assert.ok(getKeys.includes(WILDFIRE_FIRES_SUMMARY_KEY));
+    assert.ok(getKeys.includes('wildfire:fires:v1'), 'the fallback read happens on a summary miss');
+    const stamp = seedMetaStamp(calls);
+    assert.equal(stamp?.recordCount, Object.keys(COUNT_SOURCE_KEYS).length, 'the fallback feeds the rebuild as a read source');
+    assert.equal((stamp?.value as { newestItemAt?: number }).newestItemAt, now - 25 * 60_000, 'the fallback clocks off FIRMS like the summary would');
+    const published = calls.find((c) => c.method === 'POST' && c.key === 'temporal:anomalies:v1');
+    const fires = (published?.value as { anomalies: Array<{ type: string; currentCount: number }> }).anomalies.find((a) => a.type === 'satellite_fires');
+    assert.equal(fires?.currentCount, 42, 'the fallback counts the pre-cap total');
+  });
+
+  it('treats a canonical payload that cannot be summarized as undatable, not absent', async () => {
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': liveNews(now),
+      'wildfire:fires:v1': { fires: [] },
+      ...altSourcesLiveRedis(now),
+    });
+    const stamp = seedMetaStamp(calls);
+    assert.equal(stamp?.recordCount, Object.keys(COUNT_SOURCE_KEYS).length, 'the unusable source is still a read source, not a miss');
+    assert.equal((stamp?.value as { newestItemAt?: number | null }).newestItemAt, null, 'an unusable canonical payload fails the content clock closed');
+  });
+
+  it('treats a malformed summary as undatable instead of masking it with the canonical fallback', async () => {
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': liveNews(now),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: { fireDetections: [] },
+      'wildfire:fires:v1': canonicalLiveFires(now),
+      ...altSourcesLiveRedis(now),
+    });
+    const getKeys = calls.filter((c) => c.method === 'GET').map((c) => c.key);
+    assert.ok(!getKeys.includes('wildfire:fires:v1'), 'a present summary is never second-guessed by the canonical key');
+    assert.equal((seedMetaStamp(calls)?.value as { newestItemAt?: number | null }).newestItemAt, null, 'an unparsable summary fails the content clock closed');
+  });
+
   it('stamps full coverage when all five count sources are present', async () => {
     // Positive control: the assertion above must not pass merely because the
     // stamp is always 0.
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(),
-      'wildfire:fires:v1': liveFires(),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(),
       'military:flights:v1': liveFlights(),
       'theater-posture:sebuf:v1': redisValueFor('vessels', livePosture()),
       'maritime:ais-gaps:v1': redisValueFor('ais_gaps', liveGaps()),
@@ -497,7 +575,7 @@ describe('temporal anomalies cache freshness', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(),
-      'wildfire:fires:v1': liveFires(),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(),
       ...Object.fromEntries(
         ['news', 'satellite_fires'].map((t) => [
           makeBaselineKeyV2(t, 'global', new Date().getUTCDay(), new Date().getUTCMonth() + 1),
@@ -532,7 +610,7 @@ describe('temporal anomalies cache freshness', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(),
-      'wildfire:fires:v1': liveFires(),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(),
       ...Object.fromEntries(
         ['news', 'satellite_fires'].map((t) => [
           makeBaselineKeyV2(t, 'global', new Date().getUTCDay(), new Date().getUTCMonth() + 1),
@@ -558,7 +636,7 @@ describe('temporal anomalies cache freshness', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(),
-      'wildfire:fires:v1': liveFires(),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(),
       ...Object.fromEntries(
         ['news', 'satellite_fires'].map((t) => [
           makeBaselineKeyV2(t, 'global', new Date().getUTCDay(), new Date().getUTCMonth() + 1),
@@ -623,7 +701,7 @@ describe('temporal anomalies cache freshness', () => {
         // Vercel env-prefix scheme — so the rows exist ONLY under the bare
         // names. A prefixed read can never hit them.
         'news:insights:v1': liveNews(),
-        'wildfire:fires:v1': liveFires(),
+        [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(),
         ...altSourcesLiveRedis(),
       },
       { vercelEnv: 'preview', vercelSha: 'deadbeefcafebabe' },
@@ -698,8 +776,8 @@ describe('temporal anomalies cache freshness', () => {
     globalThis.fetch = (async (input: unknown, init: { method?: string } = {}) => {
       if (init.method === 'POST') return Response.json({ result: 'OK' }); // lock + every write
       const key = decodeURIComponent(new URL(String(input)).pathname.replace('/get/', ''));
-      const value = key === 'wildfire:fires:v1'
-        ? firesPayload
+      const value = key === WILDFIRE_FIRES_SUMMARY_KEY
+        ? firesSummary(firesPayload)
         : key.startsWith('baseline:v2:satellite_fires:global:')
           ? baseline
           : null; // no cached snapshot, no news payload
@@ -809,13 +887,13 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
           { id: 'new', pubDate: new Date(NOW - 30 * 60_000).toISOString() },
         ],
       },
-      satellite_fires: {
+      satellite_fires: firesSummary({
         fireDetections: [
           { id: 'f-old', source: 'firms', detectedAt: NOW - 50 * 60_000 },
           { id: 'f-new', source: 'firms', detectedAt: NOW - 20 * 60_000 },
         ],
         pagination: { nextCursor: '', totalCount: 2 },
-      },
+      }, NOW),
       ...altSourcesLive(NOW),
     }, NOW);
 
@@ -843,7 +921,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     const newsAge = 12 * 60_000;
     const meta = temporalAnomaliesContentMeta({
       news: liveNews(NOW, newsAge),
-      satellite_fires: { fireDetections: [], pagination: { totalCount: 0 } },
+      satellite_fires: firesSummary({ fireDetections: [], pagination: { totalCount: 0 } }, NOW),
       ...altSourcesLive(NOW),
     }, NOW);
 
@@ -876,12 +954,12 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     const agencyAt = NOW - 10 * 24 * HOUR_MS;
     const meta = temporalAnomaliesContentMeta({
       news: liveNews(NOW, 8 * 60_000),
-      satellite_fires: {
+      satellite_fires: firesSummary({
         fireDetections: [
           { id: 'cwfis-1', source: 'cwfis', detectedAt: agencyAt },
           { id: 'firms-1', source: 'firms', detectedAt: firmsAt },
         ],
-      },
+      }, NOW),
       ...altSourcesLive(NOW),
     }, NOW);
 
@@ -907,11 +985,11 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
   it('fails closed on declared partial FIRMS coverage even when surviving rows are live', () => {
     const meta = temporalAnomaliesContentMeta({
       news: liveNews(NOW, 12 * 60_000),
-      satellite_fires: {
-        ...liveFires(NOW, 15 * 60_000),
+      satellite_fires: firesSummary({
+        ...canonicalLiveFires(NOW, 15 * 60_000),
         _firmsState: 'ok',
         _firmsPartial: true,
-      },
+      }, NOW),
       ...altSourcesLive(NOW),
     }, NOW);
 
@@ -931,14 +1009,14 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     // fresh clock while worldwide satellite coverage was gone.
     const meta = temporalAnomaliesContentMeta({
       news: liveNews(NOW, 12 * 60_000),
-      satellite_fires: {
+      satellite_fires: firesSummary({
         fireDetections: [
           { id: 'cwfis-1', source: 'cwfis', detectedAt: NOW - 30 * 60_000 },
           { id: 'bc-1', source: 'bc-wildfire', detectedAt: NOW - 20 * 60_000 },
         ],
         _firmsState: 'ok',
         _firmsCount: 0,
-      },
+      }, NOW),
       ...altSourcesLive(NOW),
     }, NOW);
 
@@ -953,11 +1031,11 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     const newsAge = 12 * 60_000;
     const meta = temporalAnomaliesContentMeta({
       news: liveNews(NOW, newsAge),
-      satellite_fires: {
+      satellite_fires: firesSummary({
         fireDetections: [
           { id: 'cwfis-1', source: 'cwfis', detectedAt: NOW - 30 * 60_000 },
         ],
-      },
+      }, NOW),
       ...altSourcesLive(NOW),
     }, NOW);
 
@@ -976,7 +1054,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
         ],
       },
       // Present empty FIRMS window still skips; this isolates the news skew rule.
-      satellite_fires: { fireDetections: [], pagination: { totalCount: 0 } },
+      satellite_fires: firesSummary({ fireDetections: [], pagination: { totalCount: 0 } }, NOW),
       ...altSourcesLive(NOW),
     }, NOW);
 
@@ -1015,7 +1093,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
 
   it('readable-only clock reports no-signal when every readable source skips', () => {
     const readable = temporalAnomaliesReadableContentMeta({
-      satellite_fires: { fireDetections: [], pagination: { totalCount: 0 } },
+      satellite_fires: firesSummary({ fireDetections: [], pagination: { totalCount: 0 } }, NOW),
     }, NOW);
 
     assert.equal(readable.status, 'no-signal', 'an empty FIRMS window teaches us nothing');
@@ -1163,7 +1241,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const payload = compactWildfireDashboardPayload(merged, WILDFIRE_CANONICAL_DETECTION_LIMIT);
     const { calls } = await runWithRedisStub({
       'news:insights:v1': liveNews(now),
-      'wildfire:fires:v1': payload,
+      [WILDFIRE_FIRES_SUMMARY_KEY]: firesSummary(payload, now),
       ...altSourcesLiveRedis(now),
     });
     const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
@@ -1180,7 +1258,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': frozenNews(now, frozenAge),
-      'wildfire:fires:v1': liveFires(now, 12 * 60_000),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(now, 12 * 60_000),
       ...altSourcesLiveRedis(now),
     });
 
@@ -1209,7 +1287,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': frozenNews(now, frozenAge),
-      'wildfire:fires:v1': liveFires(now, 12 * 60_000),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(now, 12 * 60_000),
       ...altSourcesLiveRedis(now),
     });
 
@@ -1236,11 +1314,11 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(now, 20 * 60_000),
-      'wildfire:fires:v1': {
-        ...liveFires(now, 25 * 60_000),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: firesSummary({
+        ...canonicalLiveFires(now, 25 * 60_000),
         _firmsState: 'ok',
         _firmsPartial: true,
-      },
+      }, now),
       ...altSourcesLiveRedis(now),
     });
 
@@ -1264,7 +1342,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(now, 20 * 60_000),
-      'wildfire:fires:v1': liveFires(now, 25 * 60_000),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(now, 25 * 60_000),
       ...altSourcesLiveRedis(now),
     });
 
@@ -1285,7 +1363,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(now, 12 * 60_000),
-      'wildfire:fires:v1': canadaOnlyDegradedFires(now),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: canadaOnlyDegradedFires(now),
       ...altSourcesLiveRedis(now),
     });
 
@@ -1315,7 +1393,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': { topStories: [{ id: 'a' }] },
-      'wildfire:fires:v1': liveFires(),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(),
       ...altSourcesLiveRedis(now),
     });
 
@@ -1390,7 +1468,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(now),
-      'wildfire:fires:v1': undatableFires(),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: undatableFires(),
       ...altSourcesLiveRedis(now),
     });
 
@@ -1417,7 +1495,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(now, 20 * 60_000),
-      'wildfire:fires:v1': liveFires(now, 25 * 60_000),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(now, 25 * 60_000),
       'seed-meta:temporal:anomalies': {
         fetchedAt: now - 20 * 60_000,
         recordCount: 2,
@@ -1447,7 +1525,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const priorOldest = now - 73 * HOUR_MS;
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
-      'wildfire:fires:v1': liveFires(now, 25 * 60_000),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(now, 25 * 60_000),
       'seed-meta:temporal:anomalies': {
         fetchedAt: now - 20 * 60_000,
         recordCount: 2,
@@ -1485,7 +1563,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const now = Date.now();
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
-      'wildfire:fires:v1': liveFires(now, 25 * 60_000),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(now, 25 * 60_000),
       // No seed-meta:temporal:anomalies entry. This is a cold start, so no
       // last-known-good content clock may be carried over the read error.
     }, { failedGetKeys: ['news:insights:v1'] });
@@ -1518,7 +1596,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(now, 20 * 60_000),
-      'wildfire:fires:v1': canadaOnlyDegradedFires(now),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: canadaOnlyDegradedFires(now),
       'seed-meta:temporal:anomalies': {
         fetchedAt: now - 20 * 60_000,
         recordCount: 2,
@@ -1547,7 +1625,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': frozenNews(now, 72 * HOUR_MS),
-      'wildfire:fires:v1': liveFires(now, 12 * 60_000),
+      [WILDFIRE_FIRES_SUMMARY_KEY]: liveFires(now, 12 * 60_000),
       ...altSourcesLiveRedis(now),
     });
 

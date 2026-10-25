@@ -22,9 +22,11 @@ import {
 } from '../../../_shared/premium-check';
 import {
   markRetryableResponse,
+  markUnservedLlmResponse,
   setResponseHeader,
 } from '../../../_shared/response-headers';
-import { stripThinkingTags } from '../../../_shared/llm';
+import { callLlm, isDefaultChainProvider, resolveProviderChain, stripThinkingTags } from '../../../_shared/llm';
+import { aiRoutingCacheSuffix, resolveAiRouting, toLlmRoutingPolicy } from '../../../_shared/ai-routing-policy';
 import { buildLlmCallEvent, deliverUsageEvents } from '../../../_shared/usage';
 import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 
@@ -83,9 +85,80 @@ export async function summarizeArticle(
 ): Promise<SummarizeArticleResponse> {
   const premiumIdentity = await resolvePremiumCallerIdentity(ctx.request);
   const isPremium = premiumIdentity.isPremium;
-  const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
+  const { provider: requestedProvider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
+  // A restricted caller is served by their whole policy chain, in order,
+  // whatever provider the client fallback chain named; the default chain is
+  // never reached (ai-routing-policy.ts). An unrestricted caller may name only
+  // a default-chain provider: opt-in providers (anthropic) are reachable
+  // through a policy, never on a request's say-so.
+  // Translate mode is free, so the gateway may not have resolved a Clerk
+  // session; the identity this handler resolved covers that case.
+  const aiRouting = await resolveAiRouting(ctx.request, premiumIdentity.userId);
+  const routingPolicy = toLlmRoutingPolicy(aiRouting);
+  const policyChain = routingPolicy ? resolveProviderChain({ routingPolicy }) : null;
+  const provider = policyChain
+    ? (policyChain.find((name) => getProviderCredentials(name) !== null) ?? policyChain[0] ?? '')
+    : requestedProvider;
+  // Only a policy chain or a default-chain name may resolve credentials; any
+  // other client-named provider is reported as unknown (#8885).
+  const providerIsSelectable = policyChain !== null || isDefaultChainProvider(provider);
   const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
   const requiresPremium = mode !== 'translate';
+  // Every empty-summary envelope below (denied, skipped, rejected, failed)
+  // serves no LLM output; the gateway reserved a daily-quota slot for this
+  // call and releases it on this marker. The served and cached paths do not
+  // go through here and stay charged.
+  const unserved = (payload: SummarizeArticleResponse): SummarizeArticleResponse => {
+    markUnservedLlmResponse(ctx.request);
+    return payload;
+  };
+
+  if (requiresPremium && !isPremium) {
+    const billingDenial = premiumIdentity.billingDenial;
+    if (billingDenial) {
+      if (billingDenial.retryable) {
+        markRetryableResponse(ctx.request);
+        setResponseHeader(ctx.request, 'Retry-After', String(billingDenial.retryAfterSeconds));
+        setResponseHeader(ctx.request, 'X-Billing-Verification', billingDenial.code);
+      }
+      return unserved({
+        summary: '',
+        model: '',
+        provider,
+        tokens: 0,
+        fallback: true,
+        error: billingDenial.message,
+        errorType: getPremiumRpcBillingErrorType(billingDenial),
+        status: 'SUMMARIZE_STATUS_ERROR',
+        statusDetail: billingDenial.code,
+      });
+    }
+    return unserved({
+      summary: '',
+      model: '',
+      provider: provider,
+      tokens: 0,
+      fallback: true,
+      error: 'Pro subscription required',
+      errorType: 'AuthError',
+      status: 'SUMMARIZE_STATUS_ERROR',
+      statusDetail: 'Pro subscription required',
+    });
+  }
+
+  if (mode === 'translate' && !TRANSLATE_TARGET_LANGUAGES.has(variant)) {
+    return unserved({
+      summary: '',
+      model: '',
+      provider,
+      tokens: 0,
+      fallback: false,
+      error: 'Unsupported translation language',
+      errorType: 'ValidationError',
+      status: 'SUMMARIZE_STATUS_ERROR',
+      statusDetail: 'Unsupported translation language',
+    });
+  }
 
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
@@ -127,62 +200,17 @@ export async function summarizeArticle(
     typeof p.b === 'string' ? sanitizeForPrompt(p.b.slice(0, MAX_BODY_LEN)) : '',
   );
 
-  if (requiresPremium && !isPremium) {
-    const billingDenial = premiumIdentity.billingDenial;
-    if (billingDenial) {
-      if (billingDenial.retryable) {
-        markRetryableResponse(ctx.request);
-        setResponseHeader(ctx.request, 'Retry-After', String(billingDenial.retryAfterSeconds));
-        setResponseHeader(ctx.request, 'X-Billing-Verification', billingDenial.code);
-      }
-      return {
-        summary: '',
-        model: '',
-        provider,
-        tokens: 0,
-        fallback: true,
-        error: billingDenial.message,
-        errorType: getPremiumRpcBillingErrorType(billingDenial),
-        status: 'SUMMARIZE_STATUS_ERROR',
-        statusDetail: billingDenial.code,
-      };
-    }
-    return {
-      summary: '',
-      model: '',
-      provider: provider,
-      tokens: 0,
-      fallback: true,
-      error: 'Pro subscription required',
-      errorType: 'AuthError',
-      status: 'SUMMARIZE_STATUS_ERROR',
-      statusDetail: 'Pro subscription required',
-    };
-  }
-
-  if (mode === 'translate' && !TRANSLATE_TARGET_LANGUAGES.has(variant)) {
-    return {
-      summary: '',
-      model: '',
-      provider,
-      tokens: 0,
-      fallback: false,
-      error: 'Unsupported translation language',
-      errorType: 'ValidationError',
-      status: 'SUMMARIZE_STATUS_ERROR',
-      statusDetail: 'Unsupported translation language',
-    };
-  }
-
   // Provider credential check
   const skipReasons: Record<string, string> = {
     ollama: 'OLLAMA_API_URL not configured',
     openrouter: 'OPENROUTER_API_KEY not configured',
+    anthropic: 'ANTHROPIC_API_KEY not configured',
+    '': 'No AI provider is available for this request',
   };
 
-  const credentials = getProviderCredentials(provider);
+  const credentials = providerIsSelectable ? getProviderCredentials(provider) : null;
   if (!credentials) {
-    return {
+    return unserved({
       summary: '',
       model: '',
       provider: provider,
@@ -191,15 +219,15 @@ export async function summarizeArticle(
       error: '',
       errorType: '',
       status: 'SUMMARIZE_STATUS_SKIPPED',
-      statusDetail: skipReasons[provider] || `Unknown provider: ${provider}`,
-    };
+      statusDetail: (providerIsSelectable && skipReasons[provider]) || `Unknown provider: ${provider}`,
+    });
   }
 
   const { apiUrl, model, headers: providerHeaders, extraBody } = credentials;
 
   // Request validation
   if (!headlines || !Array.isArray(headlines) || headlines.length === 0) {
-    return {
+    return unserved({
       summary: '',
       model: '',
       provider: provider,
@@ -209,19 +237,20 @@ export async function summarizeArticle(
       errorType: 'ValidationError',
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: 'Headlines array required',
-    };
+    });
   }
 
   try {
-    const cacheKey = await getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined, bodies);
+    const cacheKey = `${await getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined, bodies)}${aiRoutingCacheSuffix(aiRouting)}`;
 
     // Single atomic call — source tracking happens inside cachedFetchJsonWithMeta,
     // eliminating the TOCTOU race between a separate getCachedJson and cachedFetchJson.
-    const { data: result, source } = await cachedFetchJsonWithMeta<{ summary: string; model: string; tokens: number }>(
+    const { data: result, source } = await cachedFetchJsonWithMeta<{ summary: string; model: string; tokens: number; provider?: string }>(
       cacheKey,
       CACHE_TTL_SECONDS,
       async () => {
-        if (!(await isProviderAvailable(apiUrl))) return null;
+        // callLlm runs its own reachability and model-health gates per provider.
+        if (!routingPolicy && !(await isProviderAvailable(apiUrl))) return null;
         // Full injection sanitization applied at prompt-build time only.
         // Headlines are re-sanitized here (not at cache-key time) so that
         // the cache key stays aligned with the browser while the actual
@@ -295,6 +324,29 @@ export async function summarizeArticle(
           ? `${systemPrompt}\n\n---\n\n${sanitizedAppend}`
           : systemPrompt;
 
+        const rejectsSummary = (text: string): boolean => ['brief', 'analysis'].includes(mode)
+          && (text.length < 20 || hasReasoningPreamble(text));
+
+        if (routingPolicy) {
+          // callLlm walks the policy chain with fallback, speaks the Anthropic
+          // Messages API, and owns telemetry and model health; the
+          // OpenAI-format fetch below serves unrestricted callers only.
+          const result = await callLlm({
+            messages: [
+              { role: 'system', content: effectiveSystemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            maxTokens: 100,
+            timeoutMs: 25_000,
+            routingPolicy,
+            stage: 'summarize-article',
+            validate: (text) => !rejectsSummary(text),
+          });
+          return result
+            ? { summary: result.content, model: result.model, tokens: result.tokens, provider: result.provider }
+            : null;
+        }
+
         const llmStartMs = Date.now();
         const llmPromptChars = effectiveSystemPrompt.length + userPrompt.length;
         const response = await fetch(apiUrl, {
@@ -354,7 +406,7 @@ export async function summarizeArticle(
         // This cache key is intentionally provider-independent so a successful
         // summary can be reused across the client fallback chain. Provider-
         // local failures and in-flight work must not suppress another provider.
-        shouldFetch: () => isModelUsable(apiUrl, model),
+        shouldFetch: () => routingPolicy !== null || isModelUsable(apiUrl, model),
         cacheFailures: false,
         inflightKey: `${cacheKey}:${provider}:${model}`,
       },
@@ -365,7 +417,7 @@ export async function summarizeArticle(
       return {
         summary: result.summary,
         model: result.model || model,
-        provider: isCached ? 'cache' : provider,
+        provider: isCached ? 'cache' : (result.provider || provider),
         tokens: isCached ? 0 : (result.tokens || 0),
         fallback: false,
         error: '',
@@ -375,7 +427,7 @@ export async function summarizeArticle(
       };
     }
 
-    return {
+    return unserved({
       summary: '',
       model: '',
       provider: provider,
@@ -385,13 +437,13 @@ export async function summarizeArticle(
       errorType: '',
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: 'Empty response',
-    };
+    });
 
   } catch (err: unknown) {
     // sentry-coverage-ok Provider failures return SUMMARIZE_STATUS_ERROR for the client fallback chain.
     const error = err instanceof Error ? err : new Error(String(err));
     console.error(`[SummarizeArticle:${provider}] Error:`, error.name, error.message);
-    return {
+    return unserved({
       summary: '',
       model: '',
       provider: provider,
@@ -403,6 +455,6 @@ export async function summarizeArticle(
       errorType: error.name,
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: error.name,
-    };
+    });
   }
 }

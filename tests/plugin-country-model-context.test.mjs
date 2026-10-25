@@ -6,16 +6,26 @@ import ts from 'typescript';
 import { Window } from 'happy-dom';
 
 const source = readFileSync(new URL('../src/plugin-country-main.ts', import.meta.url), 'utf8');
+const downloadExports = {};
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/utils/country-text-download.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, { exports: downloadExports, TextEncoder });
+const sectionErrors = {};
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/services/country-brief-error.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, { exports: sectionErrors });
 const file = ts.createSourceFile('plugin-country-main.ts', source, ts.ScriptTarget.Latest, true);
 const mount = file.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'mountPlugin');
 assert.ok(mount?.body);
-const functions = ['request', 'snapshot', 'scheduleContext'];
+const functions = ['request', 'snapshot', 'scheduleContext', 'contextTarget', 'renderConnection', 'publishContext', 'clearDeniedRawSignals', 'open', 'start'];
 const selected = mount.body.statements.filter(node => ts.isFunctionDeclaration(node) && functions.includes(node.name?.text));
-assert.equal(selected.length, 3);
+for (const name of ['request', 'snapshot', 'scheduleContext']) assert.ok(selected.some(node => node.name.text === name));
 const send = mount.body.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(item => item.name.getText(file) === 'send'));
 assert.ok(send);
 const helpers = file.statements.slice(0, file.statements.indexOf(mount)).filter(node => !ts.isImportDeclaration(node) && !ts.isExpressionStatement(node)).map(node => node.getText(file));
-const program = ts.transpileModule([...helpers, send.getText(file), ...selected.map(node => node.getText(file)), 'this.api = { snapshot, scheduleContext, request, boundedChinaContext };'].join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+const diagnosticNames = ['connection', 'contextGeneration', 'contextClosed', 'contextStatus', 'negotiationState', 'initialization'];
+const diagnosticDeclarations = mount.body.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(item => diagnosticNames.includes(item.name.getText(file))));
+const listener = mount.body.statements.find(node => ts.isExpressionStatement(node) && node.getText(file).startsWith("window.addEventListener('message'"));
+const receiver = listener.expression.arguments[1].body.statements.slice(0, 3).map(node => node.getText(file)).join('\n');
+const observer = mount.body.statements.filter(node => node.getText(file).startsWith('const mutation =') || node.getText(file).startsWith('mutation.observe(') || node.getText(file).startsWith('panel.onClose(') || node.getText(file).startsWith("window.addEventListener('pagehide'"));
+const startupFailure = mount.body.statements.find(node => node.getText(file).startsWith('void start().catch')).expression.expression.arguments[0].getText(file);
+const program = ts.transpileModule([...helpers, send.getText(file), ...diagnosticDeclarations.map(node => node.getText(file)), ...selected.map(node => node.getText(file)), ...observer.map(node => node.getText(file)), `this.api = { snapshot, scheduleContext, request, boundedChinaContext, start, open, receive(event) { ${receiver} }, startupFailure: ${startupFailure} };`].join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
 const groups = [{"id":"macro","title":"Macro Signals","state":"PARTIAL","line":538,"signals":[{"label":"Industrial Value Added (YoY)","value":"5.2 %","observedAt":"2026-08","publishedAt":"2026-09-16T02:00:00.000Z","sourceAsCaptured":"National Bureau of Statistics of China · official government","sourceUrlAsCaptured":"stats.gov.cn/english/PressRelease/202609/t20260917_1965348.html"},{"label":"Fixed-Asset Investment (YoY)","value":"-7.2 %","observedAt":"2026-08","publishedAt":"2026-09-16T02:00:00.000Z","sourceAsCaptured":"National Bureau of Statistics of China · official government","sourceUrlAsCaptured":"stats.gov.cn/english/PressRelease/202609/t20260916_1965343.html"},{"label":"Real Estate Development Investment (YoY)","value":"-19.9 %","observedAt":"2026-08","publishedAt":"2026-09-16T02:00:00.000Z","sourceAsCaptured":"National Bureau of Statistics of China · official government","sourceUrlAsCaptured":"stats.gov.cn/english/PressRelease/202609/t20260916_1965342.html"},{"label":"Foreign-Exchange Reserves","value":"34383 USD 100 million","observedAt":"2026-08","publishedAt":"2026-09-07","sourceAsCaptured":"State Administration of Foreign Exchange · official government","sourceUrlAsCaptured":"safe.gov.cn/safe/2026/0907/27859.html"}],"reasonAsCaptured":"7 signals failed the launch/provenance boundary."},{"id":"policy-enforcement","title":"Policy & Enforcement","state":"PARTIAL","line":571,"signals":[{"label":"市场监管总局关于发布《国家统一推行自愿性认证制度管理办法（试行）》的公告","value":"SAMR · final_rule · unknown","publishedAt":"2026-09-30","translationState":"not translated","sourceAsCaptured":"State Administration for Market Regulation · official government","sourceUrlAsCaptured":"samr.gov.cn/zw/zfxxgk/fdzdgknr/rzjgs/art/2026/art_c739f36a509440eeb44dd56513f5aeef.html"},{"label":"商务部办公厅关于做好2027年度汽车和摩托车出口许可申报工作的通知","value":"MOFCOM · announcement_guidance · announced","publishedAt":"2026-09-30","translationState":"not translated","sourceAsCaptured":"Ministry of Commerce · official government","sourceUrlAsCaptured":"mofcom.gov.cn/zcfb/zc/art/2026/art_c7ac10d2deaa489dbf6346461785c65c.html"},{"label":"四部门关于开展2026年度享受增值税加计抵减政策的集成电路企业清单制定工作的通知","value":"MIIT · announcement_guidance · announced","publishedAt":"2026-09-30","translationState":"not translated","sourceAsCaptured":"Ministry of Industry and Information Technology · official government","sourceUrlAsCaptured":"miit.gov.cn/zwgk/zcwj/wjfb/tz/art/2026/art_7d2e760b4be94217b8f55caec840b30d.html"},{"label":"市场监管总局关于发布《饼干生产许可审查细则（2026版）》的公告","value":"SAMR · announcement_guidance · announced","publishedAt":"2026-09-29","effectiveAt":"2027-01-01","translationState":"not translated","sourceAsCaptured":"State Administration for Market Regulation · official government","sourceUrlAsCaptured":"samr.gov.cn/zw/zfxxgk/fdzdgknr/spscs/art/2026/art_b8afbb7e06e048aebb9f93f50737565f.html"}],"reasonAsCaptured":null},{"id":"cross-strait-activity","title":"Cross-Strait Activity","state":"AVAILABLE","line":604,"signals":[{"label":"taiwan-mnd activity","value":"plaAircraftSorties: 0 · planShips: 8 · officialShips: 8","observedAt":"2026-10-05T22:00:00.000Z","publishedAt":"2026-10-06","translationState":"not translated","sourceAsCaptured":"Taiwan Ministry of National Defense · official government","sourceUrlAsCaptured":"mnd.gov.tw/en/News/PLAAct/87922"},{"label":"taiwan-mnd activity","value":"plaAircraftSorties: 0 · planShips: 8 · officialShips: 9","observedAt":"2026-10-04T22:00:00.000Z","publishedAt":"2026-10-05","translationState":"not translated","sourceAsCaptured":"Taiwan Ministry of National Defense · official government","sourceUrlAsCaptured":"mnd.gov.tw/en/News/PLAAct/87913"},{"label":"taiwan-mnd activity","value":"plaAircraftSorties: 0 · planShips: 7 · officialShips: 8","observedAt":"2026-10-03T22:00:00.000Z","publishedAt":"2026-10-04","translationState":"not translated","sourceAsCaptured":"Taiwan Ministry of National Defense · official government","sourceUrlAsCaptured":"mnd.gov.tw/en/News/PLAAct/87905"},{"label":"taiwan-mnd activity","value":"plaAircraftSorties: 5 · planShips: 6 · officialShips: 7 · adizEntries: 2","observedAt":"2026-10-02T22:00:00.000Z","publishedAt":"2026-10-03","translationState":"not translated","sourceAsCaptured":"Taiwan Ministry of National Defense · official government","sourceUrlAsCaptured":"mnd.gov.tw/en/News/PLAAct/87903"}],"reasonAsCaptured":null},{"id":"corporate-disclosures","title":"Corporate Disclosures","state":"UNAVAILABLE","line":640,"signals":[],"reasonAsCaptured":"healthy_quiet_window: Healthy exchange queries contained no qualifying disclosure events."},{"id":"corridor-conditions","title":"Corridor Conditions","state":"PARTIAL","line":645,"signals":[{"label":"Yangtze River Delta · port","value":"partial","observedAt":"2026-09-30T00:02:51.316Z","effectiveAt":"2026-09-30T00:02:51.316Z","sourceAsCaptured":"WorldMonitor derived output · derived output"},{"label":"Yangtze River Delta · aviation","value":"available","observedAt":"2026-10-06T16:32:29.855Z","effectiveAt":"2026-10-06T16:32:29.855Z","sourceAsCaptured":"WorldMonitor derived output · derived output"},{"label":"Yangtze River Delta · hazard","value":"available","observedAt":"2026-10-06T16:32:04.270Z","effectiveAt":"2026-10-06T16:32:04.270Z","sourceAsCaptured":"WorldMonitor derived output · derived output"},{"label":"Yangtze River Delta · power_energy","value":"available","observedAt":"2026-05","effectiveAt":"2026-05","sourceAsCaptured":"WorldMonitor derived output · derived output"}],"reasonAsCaptured":null},{"id":"activity-nowcast","title":"Activity Nowcast","state":"AVAILABLE","line":669,"signals":[{"label":"Official activity versus independent proxies","value":"mixed_signals · medium confidence","observedAt":"2026-10-06T16:18:32.279Z","effectiveAt":"2026-10-06T16:18:32.279Z","sourceAsCaptured":"WorldMonitor China Activity Nowcast · derived output"}],"reasonAsCaptured":null}];
 const ids = groups.map(group => group.id);
 const windows = [];
@@ -25,6 +35,10 @@ function harness({ country = 'CN', visible = true, capability = true } = {}) {
   const win = new Window({ url: 'https://worldmonitor.app/' });
   windows.push(win);
   const doc = win.document;
+  const chrome = doc.createElement('main');
+  chrome.id = 'countryRoot';
+  chrome.innerHTML = '<form id="countryControls"><input name="country"></form><div id="countryStatus"></div><button id="deep-dive-close"></button>';
+  doc.body.append(chrome);
   const root = doc.createElement('div');
   root.id = 'country-deep-dive-panel';
   root.innerHTML = '<div class="cdp-shell" data-brief-topic="all"><article data-brief-section="china" data-brief-coverage="partial"><h3>China Country Snapshot</h3><div class="cdp-card-body"><div class="cdp-china-summary-grid"></div></div></article></div>';
@@ -75,27 +89,49 @@ function harness({ country = 'CN', visible = true, capability = true } = {}) {
   const timers = new Map();
   let timerId = 0;
   const context = vm.createContext({
-    window: win, document: doc, TextEncoder, URL, console,
+    window: win, document: doc, TextEncoder, URL, console, AbortController, crypto,
+    MutationObserver: win.MutationObserver, ResizeObserver: class { observe() {} disconnect() {} },
     modelContextRoot: root, translate: key => key.split('.').at(-1),
-    panel: { getCode: () => state.country, getName: () => state.name, isVisible: () => state.visible, getAtlasSelection: () => state.atlas, getSignalCounts: () => null },
+    status: doc.getElementById('countryStatus'), input: doc.querySelector('input'),
+    panel: { getCode: () => state.country, getName: () => state.name, isVisible: () => state.visible, getAtlasSelection: () => state.atlas, getSignalCounts: () => null, getQualifiedCountrySignals: () => null, clearQualifiedCountrySignals() {}, onClose: callback => { state.close = callback; }, hide: () => { state.visible = false; } },
+    ready: true, toolsAvailable: false, linksAvailable: false, queuedView: undefined, openRequest: undefined,
+    admissions: new Map(), assessments: new Map(), assessmentTimes: new Map(), coverages: new Map(),
+    source: { clearLoadedData() {} }, controller: { dispose() {} }, timeline: undefined, signalSlots: undefined,
+    countryViewSchema: { parse: value => value }, panelAdmissionSchema: { safeParse: () => ({ success: false }) },
+    resolveCountryCode: value => value, getCountryNameByCode: value => value,
+    call: () => new Promise(() => {}), initI18n: async () => {},
     admission: undefined, signalCoverage: null, revision: 7, modelContextRevision: 7, nextId: 123, pending: new Map(), modelContext: capability, contextTimer: undefined,
     CHINA_DECISION_SIGNAL_GROUP_IDS: ids,
     CHINA_DECISION_SIGNAL_GROUP_MANIFEST: ids.map(groupId => ({ groupId })),
     CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP: 4,
     BRIEF_TOPICS: { all: 'All', overview: 'Overview' },
     COUNTRY_EXPORT_REQUEST_BYTES: 65536, CountryDownloadRequestError: Error,
+    hostSupportsCountryDownload: downloadExports.hostSupportsCountryDownload,
+    CountrySectionError: sectionErrors.CountrySectionError,
     briefSectionState: ({ body }) => body.querySelector('.cdp-pro-locked, [data-brief-state="locked"]') ? 'locked' : body.querySelector('.cdp-loading-inline') ? 'loading' : body.querySelector('[data-brief-state="unavailable"]') ? 'unavailable' : 'ready',
-    setTimeout: (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay }); return id; },
+    setTimeout: (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay, requestId: delay === 30000 ? context.nextId - 1 : undefined }); return id; },
     clearTimeout: id => timers.delete(id),
   });
   vm.runInContext(program, context);
   function publish() {
+    const before = messages.length;
     context.api.scheduleContext();
     for (const [id, timer] of [...timers]) if (timer.delay === 200) { timers.delete(id); timer.fn(); }
-    const message = messages.at(-1);
+    const message = messages.slice(before).findLast(item => item.method === 'ui/update-model-context');
     return message ? { message, snapshot: JSON.parse(message.params.content[0].text), bytes: new TextEncoder().encode(JSON.stringify(message)).length } : null;
   }
-  return { win, doc, root, state, messages, context, publish };
+  const drain = async () => { await Promise.resolve(); await new Promise(resolve => setImmediate(resolve)); };
+  const receive = (id, result = {}, error, sender = win.parent) => context.api.receive({ source: sender, data: { jsonrpc: '2.0', id, ...(error ? { error } : { result }) } });
+  async function initialize(result = { protocolVersion: '2026-01-26', hostCapabilities: { downloadFile: {}, updateModelContext: {} } }) {
+    const started = context.api.start();
+    await drain();
+    const message = messages.findLast(item => item.method === 'ui/initialize');
+    receive(message.id, result);
+    await started;
+    return message;
+  }
+  const expire = id => { const timer = [...timers.entries()].find(([, item]) => item.delay === 30000 && item.requestId === id); assert.ok(timer, 'Existing request deadline'); timers.delete(timer[0]); timer[1].fn(); };
+  return { win, doc, root, state, messages, context, publish, timers, drain, receive, initialize, expire, details: () => doc.getElementById('countryConnection'), teardown: () => win.dispatchEvent(new win.Event('pagehide')) };
 }
 
 
@@ -539,7 +575,7 @@ test('ill-formed Unicode is explicitly omitted and valid scalar boundaries remai
 test('the final request guard rejects an oversized actual CN context envelope before postMessage', async () => {
   const view = harness();
   const before = view.messages.length;
-  await assert.rejects(view.context.api.request('ui/update-model-context', { content: [{ type: 'text', text: JSON.stringify({ countryCode: 'CN', china: { groups: [] }, hostile: '中'.repeat(40000) }) }] }));
+  await assert.rejects(view.context.api.request('ui/update-model-context', { content: [{ type: 'text', text: JSON.stringify({ countryCode: 'CN', china: { groups: [] }, hostile: '中'.repeat(40000) }) }] }), error => error.kind === 'local-limit');
   assert.equal(view.messages.length, before);
 });
 
@@ -560,4 +596,266 @@ test('commodity complete caveats respect the exact added RPC boundary without a 
   assert.equal(details.caveatsTextOriginalByteCount, 6257);
   assert.equal(details.caveatsText.length, 6254);
   assert.equal(details.caveatsTextTruncated, true);
+});
+
+test('connection disclosure reports only negotiated public fields and the unchanged download guard', async () => {
+  const values = [
+    { protocolVersion: '2026-01-26', hostCapabilities: { downloadFile: {}, updateModelContext: {} } },
+    { protocolVersion: '2025-11-21', hostCapabilities: { downloadFile: {} } },
+    { protocolVersion: '<private-protocol>', hostCapabilities: { downloadFile: true } },
+    { hostCapabilities: {} }, { protocolVersion: '2026-01-26' },
+    { protocolVersion: '2026-01-26', hostCapabilities: null },
+    ...[null, [], true, 'yes'].map(downloadFile => ({ protocolVersion: '2026-01-26', hostCapabilities: { downloadFile } })),
+  ];
+  for (const initialized of values) {
+    const view = harness();
+    assert.match(view.details()?.textContent ?? '', /negotiation pending/i);
+    await view.initialize({ ...initialized, secret: 'PRIVATE_INIT_SENTINEL' });
+    const text = view.details().textContent;
+    assert.match(text, downloadExports.hostSupportsCountryDownload(initialized) ? /Download request allowed/ : /Download request unavailable/);
+    if (initialized.protocolVersion === '2025-11-21') assert.match(text, /2025-11-21/);
+    if (!('protocolVersion' in initialized)) assert.match(text, /protocol not supplied/i);
+    if (initialized.protocolVersion === '<private-protocol>') assert.match(text, /protocol malformed/i);
+    assert.equal(/PRIVATE_INIT_SENTINEL|private-protocol/.test(text), false);
+    assert.equal(view.root.contains(view.details()), false);
+    assert.equal(view.messages.filter(item => item.method === 'ui/download-file').length, 0);
+  }
+});
+
+test('context diagnostics distinguish waiting, ACK, RPC rejection, timeout and malformed result', async () => {
+  for (const outcome of ['ack', 'rpc', 'timeout', 'malformed']) {
+    const view = harness();
+    await view.initialize();
+    view.root.querySelector('.cdp-shell').dataset.briefTopic = 'resources';
+    await view.drain();
+    const sent = view.publish().message;
+    assert.match(view.details().textContent, /CN.*resources.*revision 7.*waiting/i);
+    if (outcome === 'rpc') view.receive(sent.id, undefined, { code: -32000, message: 'PRIVATE_ERROR_SENTINEL' });
+    else if (outcome === 'timeout') view.expire(sent.id);
+    else view.receive(sent.id, outcome === 'malformed' ? null : { privateField: 'PRIVATE_RESULT_SENTINEL' });
+    await view.drain();
+    assert.match(view.details().textContent, outcome === 'ack' ? /Host acknowledged.*Model use is not confirmed/ : outcome === 'rpc' ? /Host rejected/ : outcome === 'timeout' ? /within 30 seconds/ : /unconfirmed/i);
+    assert.equal(/PRIVATE_ERROR_SENTINEL|PRIVATE_RESULT_SENTINEL/.test(view.details().textContent), false);
+    assert.equal(view.context.pending.size, 0);
+    assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, 1);
+  }
+});
+
+test('failed negotiation and malformed initialization remain distinct from an absent capability', async () => {
+  for (const result of [null, [], true, 'private']) {
+    const view = harness();
+    const started = view.context.api.start().catch(view.context.api.startupFailure);
+    await view.drain();
+    view.receive(view.messages.find(item => item.method === 'ui/initialize').id, result);
+    await started;
+    assert.match(view.details().textContent, /protocol malformed/i);
+    assert.match(view.details().textContent, /Host capabilities malformed/);
+    assert.equal(view.details().textContent.includes('private'), false);
+  }
+  const view = harness();
+  const started = view.context.api.start().catch(view.context.api.startupFailure);
+  await view.drain();
+  view.expire(view.messages.find(item => item.method === 'ui/initialize').id);
+  await started;
+  assert.match(view.details().textContent, /negotiation unconfirmed/i);
+  assert.match(view.details().textContent, /capability not established/i);
+});
+
+test('diagnostics preserve the existing context Boolean gate for unusual capability values', async () => {
+  for (const capability of [undefined, null, false, 0, {}, true, [], 'yes']) {
+    const view = harness();
+    await view.initialize({ protocolVersion: '2026-01-26', hostCapabilities: { updateModelContext: capability } });
+    view.publish();
+    assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, Number(Boolean(capability)));
+  }
+});
+
+test('older same-revision outcomes cannot override a newer topic or its debounce window', async () => {
+  for (const outcome of ['ack', 'rpc', 'timeout']) {
+    const view = harness(); await view.initialize();
+    const first = view.publish().message;
+    view.root.querySelector('.cdp-shell').dataset.briefTopic = 'resources';
+    await view.drain();
+    const scheduled = view.details().textContent;
+    assert.match(scheduled, /resources.*scheduled/i);
+    if (outcome === 'timeout') view.expire(first.id);
+    else view.receive(first.id, {}, outcome === 'rpc' ? { code: -32000, message: 'old' } : undefined);
+    await view.drain();
+    assert.equal(view.details().textContent, scheduled);
+    const second = view.publish().message;
+    view.receive(second.id); await view.drain();
+    assert.match(view.details().textContent, /resources.*revision 7.*Host acknowledged/i);
+    view.receive(first.id); await view.drain();
+    assert.match(view.details().textContent, /resources.*Host acknowledged/i);
+  }
+});
+
+test('actual open revision invalidates old outcomes during deferred admission including same-country refresh', async () => {
+  for (const country of ['CA', 'CN']) for (const outcome of ['ack', 'rpc', 'timeout']) {
+    const view = harness(); await view.initialize();
+    const old = view.publish().message;
+    void view.context.api.open({ country_code: country, refresh: true, topic: 'resources' });
+    assert.equal(view.context.revision, 8);
+    const pendingAdmission = view.details().textContent;
+    assert.match(pendingAdmission, /superseded/i);
+    assert.equal(/scheduled|waiting|acknowledged/i.test(pendingAdmission), false);
+    if (outcome === 'timeout') view.expire(old.id);
+    else view.receive(old.id, {}, outcome === 'rpc' ? { code: -32000, message: 'old' } : undefined);
+    await view.drain();
+    assert.equal(view.details().textContent, pendingAdmission);
+    assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, 1);
+  }
+});
+
+test('diagnostic invalidation preserves a queued context send during admission', async () => {
+  const view = harness(); await view.initialize();
+  view.context.api.scheduleContext();
+  void view.context.api.open({ country_code: 'CA', refresh: true });
+  const superseded = view.details().textContent;
+  const timer = [...view.timers.entries()].find(([, item]) => item.delay === 200);
+  view.timers.delete(timer[0]); timer[1].fn();
+  const sent = view.messages.findLast(item => item.method === 'ui/update-model-context');
+  assert.ok(sent, 'Existing debounce still sends');
+  assert.equal(view.details().textContent, superseded);
+  view.receive(sent.id); await view.drain();
+  assert.equal(view.details().textContent, superseded);
+});
+
+test('failed admissions finish the current pending status without another context request', async () => {
+  for (const country of ['CA', 'CN']) for (const failure of ['unavailable', 'locked', 'receipt', 'mismatch']) {
+    const view = harness(); await view.initialize();
+    const sent = view.publish().message; view.receive(sent.id); await view.drain();
+    const error = new sectionErrors.CountrySectionError(failure === 'locked' ? 'locked' : 'unavailable', 'PRIVATE_ADMISSION_FAILURE');
+    view.context.call = failure === 'receipt' || failure === 'mismatch'
+      ? async () => ({ panelRequest: {} }) : async () => { throw error; };
+    view.context.panelAdmissionSchema.parse = () => {
+      if (failure === 'receipt') throw error;
+      return { countryCode: 'US', expiresAt: '2099-01-01T00:00:00Z' };
+    };
+    await assert.rejects(view.context.api.open({ country_code: country, refresh: true, topic: 'resources' }));
+    assert.match(view.details().textContent, /unconfirmed/i);
+    assert.doesNotMatch(view.details().textContent, /change is pending|PRIVATE_ADMISSION_FAILURE|Host acknowledged/i);
+    assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, 1);
+    assert.equal([...view.timers.values()].filter(item => item.delay === 200).length, 0);
+    assert.equal(view.context.pending.size, 0);
+  }
+});
+
+test('locked same-country refresh clears loaded signals and preserves the cleanup context update', async () => {
+  const view = harness({ country: 'CA' }); await view.initialize();
+  const prior = view.publish().message; view.receive(prior.id); await view.drain();
+  const raw = { privateSignal: 'PRIVATE_DENIED_SIGNAL' };
+  const base = [{ label: 'Public base signal' }];
+  const notes = ['Public military note'];
+  const receipt = { countryCode: 'CA', expiresAt: '2099-01-01T00:00:00Z' };
+  view.context.signalSlots = { countryCode: 'CA', base, military: undefined, militaryNotes: notes, raw };
+  view.context.signalCoverage = { loaded: true };
+  view.context.admission = receipt;
+  view.context.admissions.set('CA', receipt);
+  view.context.hydratedAt = Date.now();
+  let cleared = 0;
+  let usageUpdates = 0;
+  let rendered;
+  view.context.source.clearLoadedData = () => { cleared++; };
+  view.context.showUsage = () => { usageUpdates++; };
+  view.context.hasCountryGeometry = () => false;
+  view.context.composeCountrySignals = (signals, country, name, military, militaryNotes, admittedRaw) => {
+    assert.equal(country, 'CA');
+    assert.equal(admittedRaw, null);
+    return { signals, notes: militaryNotes };
+  };
+  view.context.panel.updateSignals = (signals, signalNotes) => { rendered = { signals, notes: signalNotes }; };
+  const error = new sectionErrors.CountrySectionError('locked', 'PRIVATE_ADMISSION_FAILURE');
+  view.context.call = async () => { throw error; };
+  await assert.rejects(view.context.api.open({ country_code: 'CA', refresh: true }), failure => failure === error);
+  assert.equal(cleared, 1);
+  assert.equal(usageUpdates, 1);
+  assert.equal(view.context.signalSlots.raw, null);
+  assert.equal(view.context.signalCoverage, null);
+  assert.equal(view.context.admissions.has('CA'), false);
+  assert.equal(view.context.admission, undefined);
+  assert.equal(view.context.hydratedAt, 0);
+  assert.deepEqual(rendered, { signals: base, notes });
+  assert.match(view.details().textContent, /scheduled/i);
+  assert.doesNotMatch(view.details().textContent, /unconfirmed|change is pending|PRIVATE_/i);
+  assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, 1);
+  const queued = [...view.timers.entries()].filter(([, timer]) => timer.delay === 200);
+  assert.equal(queued.length, 1);
+  view.timers.delete(queued[0][0]); queued[0][1].fn();
+  const sent = view.messages.findLast(item => item.method === 'ui/update-model-context');
+  assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, 2);
+  view.receive(sent.id); await view.drain();
+  assert.match(view.details().textContent, /Host acknowledged/i);
+});
+
+test('an older failed admission cannot overwrite a newer intent or pagehide', async () => {
+  for (const newer of ['open', 'context', 'pagehide']) {
+    const view = harness(); await view.initialize();
+    let reject;
+    view.context.call = () => new Promise((_, failed) => { reject = failed; });
+    const first = view.context.api.open({ country_code: 'CA', refresh: true });
+    const rejectFirst = reject;
+    if (newer === 'open') void view.context.api.open({ country_code: 'US', refresh: true });
+    else if (newer === 'context') view.context.api.scheduleContext();
+    else view.teardown();
+    const current = view.details().textContent;
+    rejectFirst(new Error('PRIVATE_OLD_ADMISSION_FAILURE'));
+    await assert.rejects(first);
+    assert.equal(view.details().textContent, current);
+    assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, 0);
+  }
+});
+
+test('actual preparation and serialization failures are unconfirmed with no invented request deadline', async () => {
+  for (const failure of ['snapshot', 'serialization']) {
+    const view = harness({ country: failure === 'serialization' ? 'CA' : 'CN' }); await view.initialize();
+    if (failure === 'snapshot') view.context.panel.getSignalCounts = () => { throw new Error('China model context exceeds the local size limit.'); };
+    else { const cyclic = {}; cyclic.self = cyclic; view.state.atlas = cyclic; }
+    view.publish(); await view.drain();
+    assert.match(view.details().textContent, /unconfirmed/i);
+    assert.equal(/local size limit|acknowledged|waiting/i.test(view.details().textContent), false);
+    assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, 0);
+    assert.equal(view.context.pending.size, 0);
+    assert.equal([...view.timers.values()].filter(item => item.delay === 30000).length, 0);
+  }
+});
+
+test('diagnostic DOM is outside actual observation and context extraction while panel mutations still publish', async () => {
+  const view = harness(); await view.initialize();
+  const before = JSON.stringify(view.context.api.snapshot());
+  const sent = view.publish().message;
+  view.receive(sent.id); await view.drain();
+  view.details().open = true;
+  await view.drain();
+  assert.equal([...view.timers.values()].filter(item => item.delay === 200).length, 0);
+  assert.equal(JSON.stringify(view.context.api.snapshot()), before);
+  assert.equal(JSON.stringify(sent).includes('Connection details'), false);
+  view.root.querySelector('.cdp-shell').dataset.briefTopic = 'overview';
+  await view.drain();
+  const debounce = [...view.timers.entries()].filter(([, item]) => item.delay === 200);
+  assert.equal(debounce.length, 1);
+  view.timers.delete(debounce[0][0]); debounce[0][1].fn();
+  assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, 2);
+});
+
+test('unsupported context, foreign replies, close and pagehide keep existing send boundaries', async () => {
+  const unsupported = harness(); await unsupported.initialize({ protocolVersion: '2026-01-26', hostCapabilities: {} });
+  unsupported.publish();
+  assert.match(unsupported.details().textContent, /context updates unsupported/i);
+  assert.equal(unsupported.messages.filter(item => item.method === 'ui/update-model-context').length, 0);
+  const view = harness(); await view.initialize();
+  const sent = view.publish().message;
+  view.receive(sent.id, {}, undefined, {}); view.receive(sent.id + 999);
+  await view.drain(); assert.match(view.details().textContent, /waiting/i);
+  view.state.visible = false; view.state.close();
+  view.receive(sent.id); await view.drain(); assert.match(view.details().textContent, /scheduled/i);
+  const closed = view.publish().message;
+  view.receive(closed.id); await view.drain(); assert.match(view.details().textContent, /Closed view.*Host acknowledged/i);
+  const waiting = view.publish().message;
+  view.context.api.scheduleContext(); view.teardown();
+  const text = view.details().textContent;
+  view.receive(waiting.id); await view.drain(); view.context.api.scheduleContext();
+  assert.equal(view.context.pending.size, 0);
+  assert.equal([...view.timers.values()].filter(item => item.delay === 200 || item.delay === 30000).length, 0);
+  assert.equal(view.details().textContent, text);
 });

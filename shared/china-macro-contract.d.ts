@@ -16,6 +16,20 @@ export const CHINA_MACRO_SERIES_CONTRACT: Readonly<Record<string, Readonly<{
   sourcePathPrefix: string;
 }>>>;
 export const CHINA_MACRO_SERIES_IDS: readonly string[];
+export const CHINA_MACRO_M2_REPUBLICATION: Readonly<{
+  publisherId: string;
+  publisherName: string;
+  registrySourceName: string;
+  source: string;
+  sourceHost: string;
+  sourcePathPrefix: string;
+}>;
+export function chinaMacroSourceBinding(seriesId: string, sourceUrl: string, value: unknown): Readonly<{
+  publisherId: string;
+  source: string;
+  sourceHost: string;
+  sourcePathPrefix: string;
+}> | undefined;
 
 export function chinaMacroObservationDateMs(value: unknown): number | null;
 export function isChinaMacroObservationStale(

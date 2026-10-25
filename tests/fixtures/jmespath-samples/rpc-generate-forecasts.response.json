@@ -1,0 +1,2336 @@
+{
+  "forecasts": [
+    {
+      "cascades": [],
+      "caseFile": {
+        "actorLenses": [
+          "Commodity traders: Price whether stress in Red Sea becomes durable over the 30d. Rebalance positions if the probability path moves away from 71%.",
+          "Policy officials: Price whether stress in Red Sea becomes durable over the 30d. Rebalance positions if the probability path moves away from 71%.",
+          "Large importers: Price whether stress in Red Sea becomes durable over the 30d. Rebalance positions if the probability path moves away from 71%."
+        ],
+        "actors": [
+          {
+            "category": "market",
+            "constraints": [
+              "Action remains bounded by the current 75% confidence level."
+            ],
+            "id": "fc-market-3f4aec15:commodity_traders",
+            "influenceScore": 0.84,
+            "likelyActions": [
+              "Rebalance positions if the probability path moves away from 71%.",
+              "More directly matched reporting on Red Sea would improve confidence in the current path."
+            ],
+            "name": "Commodity traders",
+            "objectives": [
+              "Price whether stress in Red Sea becomes durable over the 30d.",
+              "Protect against repricing if Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation intensifies."
+            ],
+            "role": "Commodity traders is a primary market actor for the market path in Red Sea."
+          },
+          {
+            "category": "state",
+            "constraints": [
+              "Action remains bounded by the current 75% confidence level."
+            ],
+            "id": "fc-market-3f4aec15:policy_officials",
+            "influenceScore": 0.72,
+            "likelyActions": [
+              "Rebalance positions if the probability path moves away from 71%.",
+              "More directly matched reporting on Red Sea would improve confidence in the current path."
+            ],
+            "name": "Policy officials",
+            "objectives": [
+              "Price whether stress in Red Sea becomes durable over the 30d.",
+              "Protect against repricing if Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation intensifies."
+            ],
+            "role": "Policy officials is a primary state actor for the market path in Red Sea."
+          },
+          {
+            "category": "commercial",
+            "constraints": [
+              "Action remains bounded by the current 75% confidence level."
+            ],
+            "id": "fc-market-3f4aec15:large_importers",
+            "influenceScore": 0.68,
+            "likelyActions": [
+              "Rebalance positions if the probability path moves away from 71%.",
+              "More directly matched reporting on Red Sea would improve confidence in the current path."
+            ],
+            "name": "Large importers",
+            "objectives": [
+              "Price whether stress in Red Sea becomes durable over the 30d.",
+              "Protect against repricing if Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation intensifies."
+            ],
+            "role": "Large importers is a primary commercial actor for the market path in Red Sea."
+          },
+          {
+            "category": "commercial",
+            "constraints": [
+              "Action remains bounded by the current 75% confidence level."
+            ],
+            "id": "fc-market-3f4aec15:regional_producers",
+            "influenceScore": 0.62,
+            "likelyActions": [
+              "Rebalance positions if the probability path moves away from 71%.",
+              "More directly matched reporting on Red Sea would improve confidence in the current path."
+            ],
+            "name": "Regional producers",
+            "objectives": [
+              "Price whether stress in Red Sea becomes durable over the 30d.",
+              "Protect against repricing if Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation intensifies."
+            ],
+            "role": "Regional producers is a primary commercial actor for the market path in Red Sea."
+          }
+        ],
+        "baseCase": "The base case stays near 74% as actors absorb the current evidence mix without a decisive break toward either shock or relief, given the stable 71% probability and 75% confidence.",
+        "branches": [
+          {
+            "kind": "base",
+            "outcome": "Actors absorb the current evidence mix without a decisive break toward either shock or relief.",
+            "projectedProbability": 0.739,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Rebalance positions if the probability path moves away from 71%.",
+                  "Rebalance positions if the probability path moves away from 71%."
+                ],
+                "developments": [
+                  "Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.01,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "More directly matched reporting on Red Sea would improve confidence in the current path.",
+                  "More directly matched reporting on Red Sea would improve confidence in the current path."
+                ],
+                "developments": [
+                  "Actors adapt to whether more directly matched reporting on red sea would improve confidence in the current path."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.01,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Action remains bounded by the current 75% confidence level.",
+                  "Action remains bounded by the current 75% confidence level."
+                ],
+                "developments": [
+                  "The path settles near the current balance of pressure and restraint."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.01,
+                "round": 3
+              }
+            ],
+            "summary": "Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation. For now, the base case stays near 74% over the 30d.",
+            "title": "Base Branch"
+          },
+          {
+            "kind": "escalatory",
+            "outcome": "Actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+            "projectedProbability": 0.864,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Rebalance positions if the probability path moves away from 71%.",
+                  "Rebalance positions if the probability path moves away from 71%."
+                ],
+                "developments": [
+                  "Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.052,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "More directly matched reporting on Red Sea would improve confidence in the current path.",
+                  "More directly matched reporting on Red Sea would improve confidence in the current path."
+                ],
+                "developments": [
+                  "More directly matched reporting on Red Sea would improve confidence in the current path."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.052,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Action remains bounded by the current 75% confidence level.",
+                  "Action remains bounded by the current 75% confidence level."
+                ],
+                "developments": [
+                  "The path settles near the current balance of pressure and restraint."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.052,
+                "round": 3
+              }
+            ],
+            "summary": "More directly matched reporting on Red Sea would improve confidence in the current path. If that threshold breaks, the path can move above the current 71% baseline.",
+            "title": "Escalatory Branch"
+          },
+          {
+            "kind": "contrarian",
+            "outcome": "Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+            "projectedProbability": 0.629,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Rebalance positions if the probability path moves away from 71%.",
+                  "Rebalance positions if the probability path moves away from 71%."
+                ],
+                "developments": [
+                  "The current 75% confidence level keeps this path from becoming fully settled."
+                ],
+                "focus": "Constraint absorption",
+                "probabilityShift": -0.027,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "More directly matched reporting on Red Sea would improve confidence in the current path.",
+                  "More directly matched reporting on Red Sea would improve confidence in the current path."
+                ],
+                "developments": [
+                  "Actors slow the path if the current 75% confidence level keeps this path from becoming fully settled."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": -0.027,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Action remains bounded by the current 75% confidence level.",
+                  "Action remains bounded by the current 75% confidence level."
+                ],
+                "developments": [
+                  "The path cools if counter-pressure remains stronger than fresh escalation evidence."
+                ],
+                "focus": "System effect",
+                "probabilityShift": -0.027,
+                "round": 3
+              }
+            ],
+            "summary": "The current 75% confidence level still leaves room for reversal. If that restraint persists, the forecast can move below the current 71% baseline.",
+            "title": "Contrarian Branch"
+          }
+        ],
+        "changeItems": [
+          "New signal: Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation"
+        ],
+        "changeSummary": "Probability is holding near 71% versus 71% in the prior run. New signal: Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation",
+        "contrarianCase": "If the current 75% confidence level persists as a restraint, the forecast can move below 71% to 63%, as actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+        "counterEvidence": [],
+        "escalatoryCase": "If more directly matched reporting on Red Sea appears, the path can move above the 71% baseline to 86%, as actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+        "supportingEvidence": [
+          {
+            "summary": "Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation",
+            "type": "energy_supply_shock",
+            "weight": 0.42
+          },
+          {
+            "summary": "Red Sea maritime disruption state combines 1 clustered situations and 1 linked forecasts into one canonical state path.",
+            "type": "state_unit",
+            "weight": 0.26
+          },
+          {
+            "summary": "The strongest transmission path runs through energy supply shock across 1 edge(s) toward Energy.",
+            "type": "market_transmission",
+            "weight": 0.24
+          },
+          {
+            "summary": "7 urgent critical signals are reinforcing Energy pressure for Red Sea maritime disruption state.",
+            "type": "critical_news_signal",
+            "weight": 0.2
+          }
+        ],
+        "triggers": [
+          "More directly matched reporting on Red Sea would improve confidence in the current path."
+        ],
+        "worldState": {
+          "activePressures": [
+            "Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation",
+            "Red Sea maritime disruption state combines 1 clustered situations and 1 linked forecasts into one canonical state path.",
+            "The strongest transmission path runs through energy supply shock across 1 edge(s) toward Energy."
+          ],
+          "keyUnknowns": [
+            "More directly matched reporting on Red Sea would improve confidence in the current path.",
+            "Action remains bounded by the current 75% confidence level."
+          ],
+          "stabilizers": [],
+          "summary": "Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation is setting the current stable baseline in Red Sea, with the forecast sitting near 71% over the 30d."
+        }
+      },
+      "confidence": 0.75,
+      "createdAt": 1792163072087,
+      "demotedBySimulation": false,
+      "domain": "market",
+      "feedSummary": "Red Sea maritime disruption state is carrying energy repricing pressure through energy supply shock backed by 4 transmission path(s) and 7 urgent critical signal(s).",
+      "feedSummaryShort": "Red Sea maritime disruption state is carrying energy repricing pressure through energy supply shock backed by 4 transmission path(s) and 7 urgent critical signal(s).",
+      "generationOrigin": "state_derived",
+      "id": "fc-market-3f4aec15",
+      "perspectives": {
+        "contrarian": "The absence of directly matched reporting on Red Sea—only 1 headline mentioning Red Sea or linked entities—limits confidence, and the 75% confidence level leaves room for reversal if no new hard signals emerge.",
+        "regional": "For Red Sea actors like commodity traders, policy officials, and large importers, the 71% probability and stable trend mean they will rebalance positions if the path deviates, with the headline on alternative routes for Hormuz disruption adding regional context.",
+        "strategic": "The 74% energy supply shock pressure and 78% state confirmation indicate a durable stress state, with the strongest transmission path running through energy supply shock toward Energy, signaling sustained repricing risk."
+      },
+      "priorProbability": 0.713,
+      "probability": 0.709,
+      "region": "Red Sea",
+      "resolution": {
+        "baselineValue": 95.69,
+        "deadline": 1794755059491,
+        "kind": "hard",
+        "metricKey": "market:commodities-bootstrap:v1|price(symbol==CL=F)",
+        "operator": "crosses",
+        "sourceFeed": "market:commodities-bootstrap:v1",
+        "threshold": 105.26,
+        "window": "within-horizon"
+      },
+      "scenario": "Red Sea maritime disruption will sustain energy repricing pressure over the next 30 days, driven by 74% energy supply shock pressure and 78% state confirmation, with 7 urgent critical signals reinforcing the path.",
+      "scenarioShort": "Red Sea maritime disruption will sustain energy repricing pressure over the next 30 days, driven by 74% energy supply shock pressure and 78% state confirmation, with 7 urgent critical signals reinforcing the path.",
+      "signals": [
+        {
+          "type": "energy_supply_shock",
+          "value": "Red Sea maritime disruption state is feeding energy repricing through energy supply shock, with 74% pressure and 78% state confirmation",
+          "weight": 0.42
+        },
+        {
+          "type": "state_unit",
+          "value": "Red Sea maritime disruption state combines 1 clustered situations and 1 linked forecasts into one canonical state path.",
+          "weight": 0.26
+        },
+        {
+          "type": "market_transmission",
+          "value": "The strongest transmission path runs through energy supply shock across 1 edge(s) toward Energy.",
+          "weight": 0.24
+        },
+        {
+          "type": "critical_news_signal",
+          "value": "7 urgent critical signals are reinforcing Energy pressure for Red Sea maritime disruption state.",
+          "weight": 0.2
+        },
+        {
+          "type": "news_corroboration",
+          "value": "1 headline(s) mention Red Sea or linked entities",
+          "weight": 0.15
+        }
+      ],
+      "simPathConfidence": 0,
+      "simulationAdjustment": 0,
+      "stateDerivedBackfill": false,
+      "timeHorizon": "30d",
+      "title": "Energy repricing risk from Red Sea maritime disruption state",
+      "trend": "stable",
+      "updatedAt": 1792163072087
+    },
+    {
+      "cascades": [
+        {
+          "domain": "political",
+          "effect": "conflict-driven instability",
+          "probability": 0.238
+        },
+        {
+          "domain": "market",
+          "effect": "graph: linked via Black Sea",
+          "probability": 0.102
+        }
+      ],
+      "caseFile": {
+        "actorLenses": [
+          "Regional command authority: Prevent the Russia situation from moving beyond the current stable path. Reposition attention and resources around Russia over the next 7d.",
+          "Security forces: Prevent the Russia situation from moving beyond the current stable path. Reposition attention and resources around Russia over the next 7d.",
+          "External power broker: Prevent the Russia situation from moving beyond the current stable path. Reposition attention and resources around Russia over the next 7d."
+        ],
+        "actors": [
+          {
+            "category": "state",
+            "constraints": [
+              "Action remains bounded by the current 58% confidence level."
+            ],
+            "id": "fc-conflict-7efe81b6:state_command",
+            "influenceScore": 0.88,
+            "likelyActions": [
+              "Reposition attention and resources around Russia over the next 7d.",
+              "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical)."
+            ],
+            "name": "Regional command authority",
+            "objectives": [
+              "Prevent the Russia situation from moving beyond the current stable path.",
+              "Preserve decision freedom if Russia CII 90 (critical) hardens into a broader escalation signal."
+            ],
+            "role": "Regional command authority is a primary state actor for the conflict path in Russia."
+          },
+          {
+            "category": "security",
+            "constraints": [
+              "Action remains bounded by the current 58% confidence level."
+            ],
+            "id": "fc-conflict-7efe81b6:security_forces",
+            "influenceScore": 0.82,
+            "likelyActions": [
+              "Reposition attention and resources around Russia over the next 7d.",
+              "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical)."
+            ],
+            "name": "Security forces",
+            "objectives": [
+              "Prevent the Russia situation from moving beyond the current stable path.",
+              "Preserve decision freedom if Russia CII 90 (critical) hardens into a broader escalation signal."
+            ],
+            "role": "Security forces is a primary security actor for the conflict path in Russia."
+          },
+          {
+            "category": "external",
+            "constraints": [
+              "Action remains bounded by the current 58% confidence level."
+            ],
+            "id": "fc-conflict-7efe81b6:external_power",
+            "influenceScore": 0.74,
+            "likelyActions": [
+              "Reposition attention and resources around Russia over the next 7d.",
+              "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical)."
+            ],
+            "name": "External power broker",
+            "objectives": [
+              "Prevent the Russia situation from moving beyond the current stable path.",
+              "Preserve decision freedom if Russia CII 90 (critical) hardens into a broader escalation signal."
+            ],
+            "role": "External power broker is a primary external actor for the conflict path in Russia."
+          },
+          {
+            "category": "market",
+            "constraints": [
+              "Action remains bounded by the current 58% confidence level."
+            ],
+            "id": "fc-conflict-7efe81b6:energy_market",
+            "influenceScore": 0.58,
+            "likelyActions": [
+              "Reposition attention and resources around Russia over the next 7d.",
+              "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical)."
+            ],
+            "name": "Energy market participants",
+            "objectives": [
+              "Prevent the Russia situation from moving beyond the current stable path.",
+              "Preserve decision freedom if Russia CII 90 (critical) hardens into a broader escalation signal."
+            ],
+            "role": "Energy market participants is a primary market actor for the conflict path in Russia."
+          }
+        ],
+        "baseCase": "The base case stays near 72% as actors absorb the current evidence mix without a decisive break toward either shock or relief, given the stable 68% probability and 58% confidence.",
+        "branches": [
+          {
+            "kind": "base",
+            "outcome": "Actors absorb the current evidence mix without a decisive break toward either shock or relief.",
+            "projectedProbability": 0.72,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Reposition attention and resources around Russia over the next 7d.",
+                  "Reposition attention and resources around Russia over the next 7d."
+                ],
+                "developments": [
+                  "Russia CII 90 (critical)"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.013,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical).",
+                  "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical)."
+                ],
+                "developments": [
+                  "Actors adapt to whether watch for another deterioration in russia risk indicators beyond russia cii 90 (critical)."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.013,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Action remains bounded by the current 58% confidence level.",
+                  "Action remains bounded by the current 58% confidence level."
+                ],
+                "developments": [
+                  "The path settles near the current balance of pressure and restraint."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.013,
+                "round": 3
+              }
+            ],
+            "summary": "Russia CII 90 (critical). For now, the base case stays near 72% over the 7d.",
+            "title": "Base Branch"
+          },
+          {
+            "kind": "escalatory",
+            "outcome": "Actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+            "projectedProbability": 0.9,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Reposition attention and resources around Russia over the next 7d.",
+                  "Reposition attention and resources around Russia over the next 7d."
+                ],
+                "developments": [
+                  "Russia CII 90 (critical)"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.073,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical).",
+                  "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical)."
+                ],
+                "developments": [
+                  "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical)."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.073,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Action remains bounded by the current 58% confidence level.",
+                  "Action remains bounded by the current 58% confidence level."
+                ],
+                "developments": [
+                  "Spillover becomes visible in political and market."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.073,
+                "round": 3
+              }
+            ],
+            "summary": "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical). If that threshold breaks, the path can move above the current 68% baseline.",
+            "title": "Escalatory Branch"
+          },
+          {
+            "kind": "contrarian",
+            "outcome": "Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+            "projectedProbability": 0.6,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Reposition attention and resources around Russia over the next 7d.",
+                  "Reposition attention and resources around Russia over the next 7d."
+                ],
+                "developments": [
+                  "The current 58% confidence level keeps this path from becoming fully settled."
+                ],
+                "focus": "Constraint absorption",
+                "probabilityShift": -0.027,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical).",
+                  "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical)."
+                ],
+                "developments": [
+                  "Actors slow the path if the current 58% confidence level keeps this path from becoming fully settled."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": -0.027,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Action remains bounded by the current 58% confidence level.",
+                  "Action remains bounded by the current 58% confidence level."
+                ],
+                "developments": [
+                  "The path cools if counter-pressure remains stronger than fresh escalation evidence."
+                ],
+                "focus": "System effect",
+                "probabilityShift": -0.027,
+                "round": 3
+              }
+            ],
+            "summary": "The current 58% confidence level still leaves room for reversal. If that restraint persists, the forecast can move below the current 68% baseline.",
+            "title": "Contrarian Branch"
+          }
+        ],
+        "changeItems": [
+          "New signal: Russia CII 90 (critical)",
+          "New signal: 9 headline(s) mention Russia or linked entities"
+        ],
+        "changeSummary": "Probability is holding near 68% versus 67% in the prior run. New signal: Russia CII 90 (critical)",
+        "contrarianCase": "If the current 58% confidence level persists as a restraint, the forecast can move below 68% to 60%, as actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+        "counterEvidence": [],
+        "escalatoryCase": "If another deterioration in Russia risk indicators beyond CII 90 occurs, the path can move above 68% to 90%, as actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+        "supportingEvidence": [
+          {
+            "summary": "Russia CII 90 (critical)",
+            "type": "cii",
+            "weight": 0.4
+          },
+          {
+            "summary": "35 UCDP events",
+            "type": "ucdp",
+            "weight": 0.2
+          },
+          {
+            "summary": "9 headline(s) mention Russia or linked entities",
+            "type": "news_corroboration",
+            "weight": 0.15
+          },
+          {
+            "summary": "20 Bangladeshis killed in Russia-Ukraine war after 21 days of training - Dhaka Tribune",
+            "type": "headline",
+            "weight": 0.15
+          }
+        ],
+        "triggers": [
+          "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical).",
+          "A sustained increase in verified conflict-event counts would confirm the escalation path in Russia.",
+          "More directly matched reporting on Russia would improve confidence in the current path."
+        ],
+        "worldState": {
+          "activePressures": [
+            "Russia CII 90 (critical)",
+            "35 UCDP events",
+            "9 headline(s) mention Russia or linked entities"
+          ],
+          "keyUnknowns": [
+            "Watch for another deterioration in Russia risk indicators beyond Russia CII 90 (critical).",
+            "A sustained increase in verified conflict-event counts would confirm the escalation path in Russia.",
+            "Action remains bounded by the current 58% confidence level."
+          ],
+          "stabilizers": [],
+          "summary": "Russia CII 90 (critical) is setting the current stable baseline in Russia, with the forecast sitting near 68% over the 7d."
+        }
+      },
+      "confidence": 0.583,
+      "createdAt": 1792163071833,
+      "demotedBySimulation": false,
+      "domain": "conflict",
+      "feedSummary": "The base case stays near 72% as actors absorb the current evidence mix without a decisive break toward either shock or relief, given the stable 68% probability and 58% confidence.",
+      "feedSummaryShort": "The base case stays near 72% as actors absorb the current evidence mix without a decisive break toward either shock or relief, given the stable 68% probability and 58% confidence.",
+      "generationOrigin": "legacy_detector",
+      "id": "fc-conflict-7efe81b6",
+      "perspectives": {
+        "contrarian": "The 58% confidence level is relatively low, and the key unknown of whether verified conflict-event counts increase leaves room for reversal, especially if containment efforts by external power brokers succeed.",
+        "regional": "For regional actors like the regional command authority, security forces, and external power brokers, the 68% probability and stable trend mean they will reposition attention and resources around Russia over the next 7 days, with headlines on Bangladeshi casualties and drone strikes adding pressure.",
+        "strategic": "The critical Russia CII of 90 and 35 UCDP events signal high conflict intensity, with cascades into political instability (24%) and market disruption via Black Sea (10%), indicating a multi-domain risk profile."
+      },
+      "priorProbability": 0.668,
+      "probability": 0.68,
+      "region": "Russia",
+      "resolution": {
+        "deadline": 1792767859491,
+        "kind": "judged",
+        "question": "Within the 7d horizon, did Russia experience a materially escalated level of armed conflict versus its recent baseline, consistent with \"Escalation risk: Russia\"?"
+      },
+      "scenario": "Russia escalation risk will remain elevated at 68% over the next 7 days, anchored by a critical Russia CII of 90 and 35 UCDP conflict events, with 9 headlines reinforcing the conflict path.",
+      "scenarioShort": "Russia escalation risk will remain elevated at 68% over the next 7 days, anchored by a critical Russia CII of 90 and 35 UCDP conflict events, with 9 headlines reinforcing the conflict path.",
+      "signals": [
+        {
+          "type": "cii",
+          "value": "Russia CII 90 (critical)",
+          "weight": 0.4
+        },
+        {
+          "type": "ucdp",
+          "value": "35 UCDP events",
+          "weight": 0.2
+        },
+        {
+          "type": "news_corroboration",
+          "value": "9 headline(s) mention Russia or linked entities",
+          "weight": 0.15
+        }
+      ],
+      "simPathConfidence": 0,
+      "simulationAdjustment": 0,
+      "stateDerivedBackfill": false,
+      "timeHorizon": "7d",
+      "title": "Escalation risk: Russia",
+      "trend": "stable",
+      "updatedAt": 1792163071833
+    },
+    {
+      "cascades": [
+        {
+          "domain": "market",
+          "effect": "supply shortage pricing",
+          "probability": 0.234
+        }
+      ],
+      "caseFile": {
+        "actorLenses": [
+          "Shipping operators: Keep critical flows through Red Sea functioning over the 7d. Adjust routing and contingency plans around Red Sea.",
+          "Port authorities: Keep critical flows through Red Sea functioning over the 7d. Adjust routing and contingency plans around Red Sea.",
+          "Major cargo owners: Keep critical flows through Red Sea functioning over the 7d. Adjust routing and contingency plans around Red Sea."
+        ],
+        "actors": [
+          {
+            "category": "commercial",
+            "constraints": [
+              "Public reporting directly tied to Red Sea is still thin."
+            ],
+            "id": "fc-supply_chain-f9aa1ae9:shipping_operators",
+            "influenceScore": 0.84,
+            "likelyActions": [
+              "Adjust routing and contingency plans around Red Sea.",
+              "Monitor spillover into market."
+            ],
+            "name": "Shipping operators",
+            "objectives": [
+              "Keep critical flows through Red Sea functioning over the 7d.",
+              "Reduce exposure if Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation persists into the next cycle."
+            ],
+            "role": "Shipping operators is a primary commercial actor for the supply_chain path in Red Sea."
+          },
+          {
+            "category": "infrastructure",
+            "constraints": [
+              "Public reporting directly tied to Red Sea is still thin."
+            ],
+            "id": "fc-supply_chain-f9aa1ae9:port_authorities",
+            "influenceScore": 0.71,
+            "likelyActions": [
+              "Adjust routing and contingency plans around Red Sea.",
+              "Monitor spillover into market."
+            ],
+            "name": "Port authorities",
+            "objectives": [
+              "Keep critical flows through Red Sea functioning over the 7d.",
+              "Reduce exposure if Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation persists into the next cycle."
+            ],
+            "role": "Port authorities is a primary infrastructure actor for the supply_chain path in Red Sea."
+          },
+          {
+            "category": "commercial",
+            "constraints": [
+              "Public reporting directly tied to Red Sea is still thin."
+            ],
+            "id": "fc-supply_chain-f9aa1ae9:cargo_owners",
+            "influenceScore": 0.67,
+            "likelyActions": [
+              "Adjust routing and contingency plans around Red Sea.",
+              "Monitor spillover into market."
+            ],
+            "name": "Major cargo owners",
+            "objectives": [
+              "Keep critical flows through Red Sea functioning over the 7d.",
+              "Reduce exposure if Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation persists into the next cycle."
+            ],
+            "role": "Major cargo owners is a primary commercial actor for the supply_chain path in Red Sea."
+          },
+          {
+            "category": "market",
+            "constraints": [
+              "Public reporting directly tied to Red Sea is still thin."
+            ],
+            "id": "fc-supply_chain-f9aa1ae9:marine_insurers",
+            "influenceScore": 0.54,
+            "likelyActions": [
+              "Adjust routing and contingency plans around Red Sea.",
+              "Monitor spillover into market."
+            ],
+            "name": "Marine insurers",
+            "objectives": [
+              "Keep critical flows through Red Sea functioning over the 7d.",
+              "Reduce exposure if Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation persists into the next cycle."
+            ],
+            "role": "Marine insurers is a primary market actor for the supply_chain path in Red Sea."
+          }
+        ],
+        "baseCase": "The base case stays near 61% as actors absorb the current evidence mix without a decisive break toward either shock or relief, given the stable 58% probability and 75% confidence.",
+        "branches": [
+          {
+            "kind": "base",
+            "outcome": "Actors absorb the current evidence mix without a decisive break toward either shock or relief.",
+            "projectedProbability": 0.614,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Adjust routing and contingency plans around Red Sea.",
+                  "Adjust routing and contingency plans around Red Sea."
+                ],
+                "developments": [
+                  "Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.01,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Monitor spillover into market.",
+                  "Monitor spillover into market."
+                ],
+                "developments": [
+                  "Actors adapt to whether the next supply_chain update in red sea becomes the key threshold."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.01,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Public reporting directly tied to Red Sea is still thin.",
+                  "Public reporting directly tied to Red Sea is still thin."
+                ],
+                "developments": [
+                  "The path settles near the current balance of pressure and restraint."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.01,
+                "round": 3
+              }
+            ],
+            "summary": "Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation. For now, the base case stays near 61% over the 7d.",
+            "title": "Base Branch"
+          },
+          {
+            "kind": "escalatory",
+            "outcome": "Actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+            "projectedProbability": 0.754,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Adjust routing and contingency plans around Red Sea.",
+                  "Adjust routing and contingency plans around Red Sea."
+                ],
+                "developments": [
+                  "Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.057,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Monitor spillover into market.",
+                  "Monitor spillover into market."
+                ],
+                "developments": [
+                  "The next supply_chain update in Red Sea becomes the key threshold."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.057,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Public reporting directly tied to Red Sea is still thin.",
+                  "Public reporting directly tied to Red Sea is still thin."
+                ],
+                "developments": [
+                  "Spillover becomes visible in market."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.057,
+                "round": 3
+              }
+            ],
+            "summary": "The next evidence cycle in Red Sea becomes decisive. If that threshold breaks, the path can move above the current 58% baseline.",
+            "title": "Escalatory Branch"
+          },
+          {
+            "kind": "contrarian",
+            "outcome": "Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+            "projectedProbability": 0.479,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Adjust routing and contingency plans around Red Sea.",
+                  "Adjust routing and contingency plans around Red Sea."
+                ],
+                "developments": [
+                  "No directly matched headlines are currently attached to Red Sea."
+                ],
+                "focus": "Constraint absorption",
+                "probabilityShift": -0.035,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Monitor spillover into market.",
+                  "Monitor spillover into market."
+                ],
+                "developments": [
+                  "Actors slow the path if no directly matched headlines are currently attached to red sea."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": -0.035,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Public reporting directly tied to Red Sea is still thin.",
+                  "Public reporting directly tied to Red Sea is still thin."
+                ],
+                "developments": [
+                  "The path cools if counter-pressure remains stronger than fresh escalation evidence."
+                ],
+                "focus": "System effect",
+                "probabilityShift": -0.035,
+                "round": 3
+              }
+            ],
+            "summary": "No directly matched headlines are currently attached to Red Sea. If that restraint persists, the forecast can move below the current 58% baseline.",
+            "title": "Contrarian Branch"
+          }
+        ],
+        "changeItems": [
+          "New signal: Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation"
+        ],
+        "changeSummary": "Probability is holding near 58% versus 59% in the prior run. New signal: Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation",
+        "contrarianCase": "If the absence of directly matched headlines on Red Sea persists, the forecast can move below 58% to 48%, as actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+        "counterEvidence": [
+          {
+            "summary": "No directly matched headlines are currently attached to Red Sea.",
+            "type": "coverage_gap",
+            "weight": 0.2
+          }
+        ],
+        "escalatoryCase": "If the next evidence cycle in Red Sea becomes decisive, the path can move above 58% to 75%, as actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+        "supportingEvidence": [
+          {
+            "summary": "Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation",
+            "type": "shipping_cost_shock",
+            "weight": 0.42
+          },
+          {
+            "summary": "Red Sea maritime disruption state (market) combines 1 clustered situations and 1 linked forecasts into one canonical state path.",
+            "type": "state_unit",
+            "weight": 0.26
+          },
+          {
+            "summary": "The strongest transmission path runs through energy supply shock across 1 edge(s) toward Energy.",
+            "type": "market_transmission",
+            "weight": 0.24
+          },
+          {
+            "summary": "7 urgent critical signals are reinforcing Energy pressure for Red Sea maritime disruption state (market).",
+            "type": "critical_news_signal",
+            "weight": 0.2
+          }
+        ],
+        "triggers": [],
+        "worldState": {
+          "activePressures": [
+            "Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation",
+            "Red Sea maritime disruption state (market) combines 1 clustered situations and 1 linked forecasts into one canonical state path.",
+            "The strongest transmission path runs through energy supply shock across 1 edge(s) toward Energy."
+          ],
+          "keyUnknowns": [
+            "Public reporting directly tied to Red Sea is still thin.",
+            "Whether directly matched reporting on Red Sea appears in the next run."
+          ],
+          "stabilizers": [
+            "No directly matched headlines are currently attached to Red Sea."
+          ],
+          "summary": "Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation is setting the current stable baseline in Red Sea, with the forecast sitting near 58% over the 7d."
+        }
+      },
+      "confidence": 0.75,
+      "createdAt": 1792163072088,
+      "demotedBySimulation": false,
+      "domain": "supply_chain",
+      "feedSummary": "Red Sea maritime disruption state (market) is carrying maritime energy-flow disruption through energy supply shock backed by 4 transmission path(s) and 7 urgent critical signal(s).",
+      "feedSummaryShort": "Red Sea maritime disruption state (market) is carrying maritime energy-flow disruption through energy supply shock backed by 4 transmission path(s) and 7 urgent critical signal(s).",
+      "generationOrigin": "state_derived",
+      "id": "fc-supply_chain-f9aa1ae9",
+      "perspectives": {
+        "contrarian": "The counter-evidence of no directly matched headlines on Red Sea limits confidence, and the 75% confidence level leaves room for reversal if public reporting remains thin, allowing actors to prioritize containment.",
+        "regional": "For Red Sea actors like shipping operators, port authorities, and major cargo owners, the 58% probability and stable trend mean they will adjust routing and contingency plans, with the headline on alternative routes for Hormuz disruption providing regional context.",
+        "strategic": "The 74% energy pressure and 78% state confirmation indicate strong underlying stress, but the lack of directly matched headlines acts as a stabilizer, with the strongest transmission path running through energy supply shock toward Energy."
+      },
+      "priorProbability": 0.588,
+      "probability": 0.584,
+      "region": "Red Sea",
+      "resolution": {
+        "baselineValue": 95.69,
+        "deadline": 1792767859491,
+        "kind": "hard",
+        "metricKey": "market:commodities-bootstrap:v1|price(symbol==CL=F)",
+        "operator": "crosses",
+        "sourceFeed": "market:commodities-bootstrap:v1",
+        "threshold": 105.26,
+        "window": "within-horizon"
+      },
+      "scenario": "Maritime energy flow disruption from Red Sea disruption will persist at 58% over the next 7 days, constrained by 74% energy pressure and 78% state confirmation, with 7 urgent critical signals reinforcing the supply chain path.",
+      "scenarioShort": "Maritime energy flow disruption from Red Sea disruption will persist at 58% over the next 7 days, constrained by 74% energy pressure and 78% state confirmation, with 7 urgent critical signals reinforcing the supply...",
+      "signals": [
+        {
+          "type": "shipping_cost_shock",
+          "value": "Red Sea maritime disruption state (market) is constraining maritime energy flows through energy supply shock, with 74% energy pressure and 78% state confirmation",
+          "weight": 0.42
+        },
+        {
+          "type": "state_unit",
+          "value": "Red Sea maritime disruption state (market) combines 1 clustered situations and 1 linked forecasts into one canonical state path.",
+          "weight": 0.26
+        },
+        {
+          "type": "market_transmission",
+          "value": "The strongest transmission path runs through energy supply shock across 1 edge(s) toward Energy.",
+          "weight": 0.24
+        },
+        {
+          "type": "critical_news_signal",
+          "value": "7 urgent critical signals are reinforcing Energy pressure for Red Sea maritime disruption state (market).",
+          "weight": 0.2
+        }
+      ],
+      "simPathConfidence": 0.35,
+      "simulationAdjustment": -0.071,
+      "stateDerivedBackfill": false,
+      "timeHorizon": "7d",
+      "title": "Maritime energy flow disruption from Red Sea maritime disruption state (market)",
+      "trend": "stable",
+      "updatedAt": 1792163072088
+    },
+    {
+      "cascades": [
+        {
+          "domain": "conflict",
+          "effect": "graph: linked via Iran",
+          "probability": 0.09
+        },
+        {
+          "domain": "conflict",
+          "effect": "graph: linked via Israel",
+          "probability": 0.09
+        },
+        {
+          "domain": "conflict",
+          "effect": "graph: linked via Iraq",
+          "probability": 0.09
+        }
+      ],
+      "caseFile": {
+        "actorLenses": [
+          "Commodity traders: Price whether stress in Middle East becomes durable over the 30d. Rebalance positions if the probability path moves away from 60%.",
+          "Policy officials: Price whether stress in Middle East becomes durable over the 30d. Rebalance positions if the probability path moves away from 60%.",
+          "Large importers: Price whether stress in Middle East becomes durable over the 30d. Rebalance positions if the probability path moves away from 60%."
+        ],
+        "actors": [
+          {
+            "category": "market",
+            "constraints": [
+              "Action remains bounded by the current 58% confidence level."
+            ],
+            "id": "fc-market-3b03eb86:commodity_traders",
+            "influenceScore": 0.84,
+            "likelyActions": [
+              "Rebalance positions if the probability path moves away from 60%.",
+              "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk."
+            ],
+            "name": "Commodity traders",
+            "objectives": [
+              "Price whether stress in Middle East becomes durable over the 30d.",
+              "Protect against repricing if Strait of Hormuz risk: critical intensifies."
+            ],
+            "role": "Commodity traders is a primary market actor for the market path in Middle East."
+          },
+          {
+            "category": "state",
+            "constraints": [
+              "Action remains bounded by the current 58% confidence level."
+            ],
+            "id": "fc-market-3b03eb86:policy_officials",
+            "influenceScore": 0.72,
+            "likelyActions": [
+              "Rebalance positions if the probability path moves away from 60%.",
+              "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk."
+            ],
+            "name": "Policy officials",
+            "objectives": [
+              "Price whether stress in Middle East becomes durable over the 30d.",
+              "Protect against repricing if Strait of Hormuz risk: critical intensifies."
+            ],
+            "role": "Policy officials is a primary state actor for the market path in Middle East."
+          },
+          {
+            "category": "commercial",
+            "constraints": [
+              "Action remains bounded by the current 58% confidence level."
+            ],
+            "id": "fc-market-3b03eb86:large_importers",
+            "influenceScore": 0.68,
+            "likelyActions": [
+              "Rebalance positions if the probability path moves away from 60%.",
+              "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk."
+            ],
+            "name": "Large importers",
+            "objectives": [
+              "Price whether stress in Middle East becomes durable over the 30d.",
+              "Protect against repricing if Strait of Hormuz risk: critical intensifies."
+            ],
+            "role": "Large importers is a primary commercial actor for the market path in Middle East."
+          },
+          {
+            "category": "commercial",
+            "constraints": [
+              "Action remains bounded by the current 58% confidence level."
+            ],
+            "id": "fc-market-3b03eb86:regional_producers",
+            "influenceScore": 0.62,
+            "likelyActions": [
+              "Rebalance positions if the probability path moves away from 60%.",
+              "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk."
+            ],
+            "name": "Regional producers",
+            "objectives": [
+              "Price whether stress in Middle East becomes durable over the 30d.",
+              "Protect against repricing if Strait of Hormuz risk: critical intensifies."
+            ],
+            "role": "Regional producers is a primary commercial actor for the market path in Middle East."
+          }
+        ],
+        "baseCase": "The base case stays near 64% as actors absorb the current evidence mix without a decisive break toward either shock or relief, given the stable 60% probability and 58% confidence.",
+        "branches": [
+          {
+            "kind": "base",
+            "outcome": "Actors absorb the current evidence mix without a decisive break toward either shock or relief.",
+            "projectedProbability": 0.64,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Rebalance positions if the probability path moves away from 60%.",
+                  "Rebalance positions if the probability path moves away from 60%."
+                ],
+                "developments": [
+                  "Strait of Hormuz risk: critical"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.013,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk.",
+                  "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk."
+                ],
+                "developments": [
+                  "Actors adapt to whether strait of hormuz risk: critical persisting for another cycle would deepen downstream disruption risk."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.013,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Action remains bounded by the current 58% confidence level.",
+                  "Action remains bounded by the current 58% confidence level."
+                ],
+                "developments": [
+                  "The path settles near the current balance of pressure and restraint."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.013,
+                "round": 3
+              }
+            ],
+            "summary": "Strait of Hormuz risk: critical. For now, the base case stays near 64% over the 30d.",
+            "title": "Base Branch"
+          },
+          {
+            "kind": "escalatory",
+            "outcome": "Actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+            "projectedProbability": 0.82,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Rebalance positions if the probability path moves away from 60%.",
+                  "Rebalance positions if the probability path moves away from 60%."
+                ],
+                "developments": [
+                  "Strait of Hormuz risk: critical"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.073,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk.",
+                  "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk."
+                ],
+                "developments": [
+                  "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.073,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Action remains bounded by the current 58% confidence level.",
+                  "Action remains bounded by the current 58% confidence level."
+                ],
+                "developments": [
+                  "Spillover becomes visible in conflict and conflict."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.073,
+                "round": 3
+              }
+            ],
+            "summary": "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk. If that threshold breaks, the path can move above the current 60% baseline.",
+            "title": "Escalatory Branch"
+          },
+          {
+            "kind": "contrarian",
+            "outcome": "Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+            "projectedProbability": 0.52,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Rebalance positions if the probability path moves away from 60%.",
+                  "Rebalance positions if the probability path moves away from 60%."
+                ],
+                "developments": [
+                  "The current 58% confidence level keeps this path from becoming fully settled."
+                ],
+                "focus": "Constraint absorption",
+                "probabilityShift": -0.027,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk.",
+                  "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk."
+                ],
+                "developments": [
+                  "Actors slow the path if the current 58% confidence level keeps this path from becoming fully settled."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": -0.027,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Action remains bounded by the current 58% confidence level.",
+                  "Action remains bounded by the current 58% confidence level."
+                ],
+                "developments": [
+                  "The path cools if counter-pressure remains stronger than fresh escalation evidence."
+                ],
+                "focus": "System effect",
+                "probabilityShift": -0.027,
+                "round": 3
+              }
+            ],
+            "summary": "The current 58% confidence level still leaves room for reversal. If that restraint persists, the forecast can move below the current 60% baseline.",
+            "title": "Contrarian Branch"
+          }
+        ],
+        "changeItems": [
+          "Evidence mix is broadly unchanged from the prior snapshot."
+        ],
+        "changeSummary": "Probability is holding near 60% versus 60% in the prior run. Evidence mix is broadly unchanged from the prior snapshot.",
+        "contrarianCase": "If the current 58% confidence level persists as a restraint, the forecast can move below 60% to 52%, as actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+        "counterEvidence": [],
+        "escalatoryCase": "If Strait of Hormuz risk: critical persists for another cycle, the path can move above 60% to 82%, as actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+        "supportingEvidence": [
+          {
+            "summary": "Strait of Hormuz risk: critical",
+            "type": "chokepoint",
+            "weight": 0.5
+          },
+          {
+            "summary": "Oil sensitivity: 0.8",
+            "type": "commodity",
+            "weight": 0.3
+          },
+          {
+            "summary": "1 headline(s) mention Middle East or linked entities",
+            "type": "news_corroboration",
+            "weight": 0.15
+          },
+          {
+            "summary": "Alternative Routes for Middle East Oil and Gas Due to Hormuz Disruption - EnergyNow.com",
+            "type": "headline",
+            "weight": 0.15
+          }
+        ],
+        "triggers": [
+          "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk.",
+          "More directly matched reporting on Middle East would improve confidence in the current path."
+        ],
+        "worldState": {
+          "activePressures": [
+            "Strait of Hormuz risk: critical",
+            "Oil sensitivity: 0.8",
+            "1 headline(s) mention Middle East or linked entities"
+          ],
+          "keyUnknowns": [
+            "Strait of Hormuz risk: critical persisting for another cycle would deepen downstream disruption risk.",
+            "More directly matched reporting on Middle East would improve confidence in the current path.",
+            "Action remains bounded by the current 58% confidence level."
+          ],
+          "stabilizers": [],
+          "summary": "Strait of Hormuz risk: critical is setting the current stable baseline in Middle East, with the forecast sitting near 60% over the 30d."
+        }
+      },
+      "confidence": 0.583,
+      "createdAt": 1792163071835,
+      "demotedBySimulation": false,
+      "domain": "market",
+      "feedSummary": "The base case stays near 64% as actors absorb the current evidence mix without a decisive break toward either shock or relief, given the stable 60% probability and 58% confidence.",
+      "feedSummaryShort": "The base case stays near 64% as actors absorb the current evidence mix without a decisive break toward either shock or relief, given the stable 60% probability and 58% confidence.",
+      "generationOrigin": "legacy_detector",
+      "id": "fc-market-3b03eb86",
+      "perspectives": {
+        "contrarian": "The 58% confidence level is relatively low, and the key unknown of whether Strait of Hormuz risk persists leaves room for reversal, especially if alternative routes mitigate disruption risk as suggested by the EnergyNow.com headline.",
+        "regional": "For Middle East actors like commodity traders, policy officials, and large importers, the 60% probability and stable trend mean they will rebalance positions if the path deviates, with the headline on alternative routes for Hormuz disruption adding regional context.",
+        "strategic": "The critical Strait of Hormuz risk and oil sensitivity of 0.8 signal high vulnerability to disruption, with cascades into conflict via Iran (9%), Israel (9%), Iraq (9%), and Syria (9%), indicating multi-regional spillover risk."
+      },
+      "priorProbability": 0.6,
+      "probability": 0.6,
+      "region": "Middle East",
+      "resolution": {
+        "baselineValue": 95.69,
+        "deadline": 1794755059491,
+        "kind": "hard",
+        "metricKey": "market:commodities-bootstrap:v1|price(symbol==CL=F)",
+        "operator": "crosses",
+        "sourceFeed": "market:commodities-bootstrap:v1",
+        "threshold": 105.26,
+        "window": "within-horizon"
+      },
+      "scenario": "Oil price impact from Strait of Hormuz disruption will remain at 60% over the next 30 days, driven by critical Strait of Hormuz risk and oil sensitivity of 0.8, with cascades into conflict via Iran, Israel, Iraq, and Syria.",
+      "scenarioShort": "Oil price impact from Strait of Hormuz disruption will remain at 60% over the next 30 days, driven by critical Strait of Hormuz risk and oil sensitivity of 0.8, with cascades into conflict via Iran, Israel, Iraq, and...",
+      "signals": [
+        {
+          "type": "chokepoint",
+          "value": "Strait of Hormuz risk: critical",
+          "weight": 0.5
+        },
+        {
+          "type": "commodity",
+          "value": "Oil sensitivity: 0.8",
+          "weight": 0.3
+        },
+        {
+          "type": "news_corroboration",
+          "value": "1 headline(s) mention Middle East or linked entities",
+          "weight": 0.15
+        }
+      ],
+      "simPathConfidence": 0.5,
+      "simulationAdjustment": 0.07,
+      "stateDerivedBackfill": false,
+      "timeHorizon": "30d",
+      "title": "Oil price impact from Strait of Hormuz disruption",
+      "trend": "stable",
+      "updatedAt": 1792163071835
+    },
+    {
+      "cascades": [
+        {
+          "domain": "political",
+          "effect": "conflict-driven instability",
+          "probability": 0.297
+        },
+        {
+          "domain": "cyber",
+          "effect": "graph: adversary via Russia",
+          "probability": 0.404
+        },
+        {
+          "domain": "market",
+          "effect": "graph: linked via Black Sea",
+          "probability": 0.128
+        }
+      ],
+      "caseFile": {
+        "actorLenses": [
+          "Regional command authority: Prevent the Ukraine situation from moving beyond the current stable path. Reposition attention and resources around Ukraine over the next 30d.",
+          "Security forces: Prevent the Ukraine situation from moving beyond the current stable path. Reposition attention and resources around Ukraine over the next 30d.",
+          "External power broker: Prevent the Ukraine situation from moving beyond the current stable path. Reposition attention and resources around Ukraine over the next 30d."
+        ],
+        "actors": [
+          {
+            "category": "state",
+            "constraints": [
+              "Action remains bounded by the current 42% confidence level."
+            ],
+            "id": "fc-conflict-8956d4d6:state_command",
+            "influenceScore": 0.88,
+            "likelyActions": [
+              "Reposition attention and resources around Ukraine over the next 30d.",
+              "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine."
+            ],
+            "name": "Regional command authority",
+            "objectives": [
+              "Prevent the Ukraine situation from moving beyond the current stable path.",
+              "Preserve decision freedom if 485 UCDP conflict events hardens into a broader escalation signal."
+            ],
+            "role": "Regional command authority is a primary state actor for the conflict path in Ukraine."
+          },
+          {
+            "category": "security",
+            "constraints": [
+              "Action remains bounded by the current 42% confidence level."
+            ],
+            "id": "fc-conflict-8956d4d6:security_forces",
+            "influenceScore": 0.82,
+            "likelyActions": [
+              "Reposition attention and resources around Ukraine over the next 30d.",
+              "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine."
+            ],
+            "name": "Security forces",
+            "objectives": [
+              "Prevent the Ukraine situation from moving beyond the current stable path.",
+              "Preserve decision freedom if 485 UCDP conflict events hardens into a broader escalation signal."
+            ],
+            "role": "Security forces is a primary security actor for the conflict path in Ukraine."
+          },
+          {
+            "category": "external",
+            "constraints": [
+              "Action remains bounded by the current 42% confidence level."
+            ],
+            "id": "fc-conflict-8956d4d6:external_power",
+            "influenceScore": 0.74,
+            "likelyActions": [
+              "Reposition attention and resources around Ukraine over the next 30d.",
+              "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine."
+            ],
+            "name": "External power broker",
+            "objectives": [
+              "Prevent the Ukraine situation from moving beyond the current stable path.",
+              "Preserve decision freedom if 485 UCDP conflict events hardens into a broader escalation signal."
+            ],
+            "role": "External power broker is a primary external actor for the conflict path in Ukraine."
+          },
+          {
+            "category": "market",
+            "constraints": [
+              "Action remains bounded by the current 42% confidence level."
+            ],
+            "id": "fc-conflict-8956d4d6:energy_market",
+            "influenceScore": 0.58,
+            "likelyActions": [
+              "Reposition attention and resources around Ukraine over the next 30d.",
+              "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine."
+            ],
+            "name": "Energy market participants",
+            "objectives": [
+              "Prevent the Ukraine situation from moving beyond the current stable path.",
+              "Preserve decision freedom if 485 UCDP conflict events hardens into a broader escalation signal."
+            ],
+            "role": "Energy market participants is a primary market actor for the conflict path in Ukraine."
+          }
+        ],
+        "baseCase": "485 UCDP conflict events. For now, the base case stays near 88% over the 30d. Actors absorb the current evidence mix without a decisive break toward either shock or relief. This remains part of iran conflict situation across 13 related forecasts.",
+        "branches": [
+          {
+            "kind": "base",
+            "outcome": "Actors absorb the current evidence mix without a decisive break toward either shock or relief.",
+            "projectedProbability": 0.88,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Reposition attention and resources around Ukraine over the next 30d.",
+                  "Reposition attention and resources around Ukraine over the next 30d."
+                ],
+                "developments": [
+                  "485 UCDP conflict events"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.01,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine.",
+                  "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine."
+                ],
+                "developments": [
+                  "Actors adapt to whether a sustained increase in verified conflict-event counts would confirm the escalation path in ukraine."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.01,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Action remains bounded by the current 42% confidence level.",
+                  "Action remains bounded by the current 42% confidence level."
+                ],
+                "developments": [
+                  "The path settles near the current balance of pressure and restraint."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.01,
+                "round": 3
+              }
+            ],
+            "summary": "485 UCDP conflict events. For now, the base case stays near 88% over the 30d.",
+            "title": "Base Branch"
+          },
+          {
+            "kind": "escalatory",
+            "outcome": "Actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+            "projectedProbability": 1,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Reposition attention and resources around Ukraine over the next 30d.",
+                  "Reposition attention and resources around Ukraine over the next 30d."
+                ],
+                "developments": [
+                  "485 UCDP conflict events"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.073,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine.",
+                  "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine."
+                ],
+                "developments": [
+                  "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.073,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Action remains bounded by the current 42% confidence level.",
+                  "Action remains bounded by the current 42% confidence level."
+                ],
+                "developments": [
+                  "Spillover becomes visible in political and cyber."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.073,
+                "round": 3
+              }
+            ],
+            "summary": "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine. If that threshold breaks, the path can move above the current 85% baseline.",
+            "title": "Escalatory Branch"
+          },
+          {
+            "kind": "contrarian",
+            "outcome": "Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+            "projectedProbability": 0.745,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Reposition attention and resources around Ukraine over the next 30d.",
+                  "Reposition attention and resources around Ukraine over the next 30d."
+                ],
+                "developments": [
+                  "Confidence is only 42%, implying thin source diversity or mixed calibration."
+                ],
+                "focus": "Constraint absorption",
+                "probabilityShift": -0.035,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine.",
+                  "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine."
+                ],
+                "developments": [
+                  "Actors slow the path if confidence is only 42%, implying thin source diversity or mixed calibration."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": -0.035,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Action remains bounded by the current 42% confidence level.",
+                  "Action remains bounded by the current 42% confidence level."
+                ],
+                "developments": [
+                  "The path cools if counter-pressure remains stronger than fresh escalation evidence."
+                ],
+                "focus": "System effect",
+                "probabilityShift": -0.035,
+                "round": 3
+              }
+            ],
+            "summary": "Confidence is only 42%, implying thin source diversity or mixed calibration. If that restraint persists, the forecast can move below the current 85% baseline.",
+            "title": "Contrarian Branch"
+          }
+        ],
+        "changeItems": [
+          "New signal: 9 headline(s) mention Ukraine or linked entities",
+          "New reporting: Ukraine says it destroyed six Russian military jets in missile strike on airfield - Al Arabiya English"
+        ],
+        "changeSummary": "Probability is holding near 85% versus 85% in the prior run. New signal: 9 headline(s) mention Ukraine or linked entities",
+        "contrarianCase": "Confidence is only 42%, implying thin source diversity or mixed calibration. If that restraint persists, the forecast can move below the current 85% baseline. Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+        "counterEvidence": [
+          {
+            "summary": "Confidence is only 42%, implying thin source diversity or mixed calibration.",
+            "type": "confidence",
+            "weight": 0.25
+          }
+        ],
+        "escalatoryCase": "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine. If that threshold breaks, the path can move above the current 85% baseline. Actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+        "supportingEvidence": [
+          {
+            "summary": "485 UCDP conflict events",
+            "type": "ucdp",
+            "weight": 0.5
+          },
+          {
+            "summary": "9 headline(s) mention Ukraine or linked entities",
+            "type": "news_corroboration",
+            "weight": 0.15
+          },
+          {
+            "summary": "20 Bangladeshis killed in Russia-Ukraine war after 21 days of training - Dhaka Tribune",
+            "type": "headline",
+            "weight": 0.15
+          },
+          {
+            "summary": "Russia proposes building data centers in coal pits after drone strikes - The New Voice of Ukraine",
+            "type": "headline",
+            "weight": 0.15
+          }
+        ],
+        "triggers": [
+          "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine.",
+          "More directly matched reporting on Ukraine would improve confidence in the current path."
+        ],
+        "worldState": {
+          "activePressures": [
+            "485 UCDP conflict events",
+            "9 headline(s) mention Ukraine or linked entities",
+            "20 Bangladeshis killed in Russia-Ukraine war after 21 days of training - Dhaka Tribune"
+          ],
+          "keyUnknowns": [
+            "A sustained increase in verified conflict-event counts would confirm the escalation path in Ukraine.",
+            "More directly matched reporting on Ukraine would improve confidence in the current path.",
+            "Action remains bounded by the current 42% confidence level."
+          ],
+          "stabilizers": [
+            "Confidence is only 42%, implying thin source diversity or mixed calibration."
+          ],
+          "summary": "485 UCDP conflict events is setting the current stable baseline in Ukraine, with the forecast sitting near 85% over the 30d."
+        }
+      },
+      "confidence": 0.417,
+      "createdAt": 1792163071839,
+      "demotedBySimulation": false,
+      "domain": "conflict",
+      "feedSummary": "Active armed conflict in Ukraine will continue at 85% over the next 30 days, driven by 485 UCDP conflict events and 9 headlines, with cascades into political instability (30%) and cyber threats",
+      "feedSummaryShort": "Active armed conflict in Ukraine will continue at 85% over the next 30 days, driven by 485 UCDP conflict events and 9 headlines, with cascades into political instability (30%) and cyber threats",
+      "generationOrigin": "legacy_detector",
+      "id": "fc-conflict-8956d4d6",
+      "perspectives": {
+        "contrarian": "Confidence is only 42%, implying thin source diversity or mixed calibration. If that restraint persists, the forecast can move below the current 85% baseline. Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+        "regional": "For actors in Ukraine, the practical implication is continued sensitivity to short-term triggers over the 30d, especially if the current stable trend persists.",
+        "strategic": "485 UCDP conflict events is setting the strategic baseline, and the current 85% probability implies a live but not settled risk path."
+      },
+      "priorProbability": 0.85,
+      "probability": 0.85,
+      "region": "Ukraine",
+      "resolution": {
+        "deadline": 1794755059491,
+        "kind": "judged",
+        "question": "Within the 30d horizon, did Ukraine experience a materially escalated level of armed conflict versus its recent baseline, consistent with \"Active armed conflict: Ukraine\"?"
+      },
+      "scenario": "Active armed conflict in Ukraine will continue at 85% over the next 30 days, driven by 485 UCDP conflict events and 9 headlines, with cascades into political instability (30%) and cyber threats",
+      "scenarioShort": "Active armed conflict in Ukraine will continue at 85% over the next 30 days, driven by 485 UCDP conflict events and 9 headlines, with cascades into political instability (30%) and cyber threats",
+      "signals": [
+        {
+          "type": "ucdp",
+          "value": "485 UCDP conflict events",
+          "weight": 0.5
+        },
+        {
+          "type": "news_corroboration",
+          "value": "9 headline(s) mention Ukraine or linked entities",
+          "weight": 0.15
+        }
+      ],
+      "simPathConfidence": 0,
+      "simulationAdjustment": 0,
+      "stateDerivedBackfill": false,
+      "timeHorizon": "30d",
+      "title": "Active armed conflict: Ukraine",
+      "trend": "stable",
+      "updatedAt": 1792163071839
+    },
+    {
+      "cascades": [
+        {
+          "domain": "market",
+          "effect": "supply shortage pricing",
+          "probability": 0.232
+        },
+        {
+          "domain": "conflict",
+          "effect": "graph: linked via Yemen",
+          "probability": 0.087
+        },
+        {
+          "domain": "conflict",
+          "effect": "graph: linked via Iran",
+          "probability": 0.087
+        }
+      ],
+      "caseFile": {
+        "actorLenses": [
+          "Shipping operators: Keep critical flows through Red Sea functioning over the 7d. Adjust routing and contingency plans around Red Sea.",
+          "Port authorities: Keep critical flows through Red Sea functioning over the 7d. Adjust routing and contingency plans around Red Sea.",
+          "Major cargo owners: Keep critical flows through Red Sea functioning over the 7d. Adjust routing and contingency plans around Red Sea."
+        ],
+        "actors": [
+          {
+            "category": "commercial",
+            "constraints": [
+              "Public reporting directly tied to Red Sea is still thin."
+            ],
+            "id": "fc-supply_chain-3d410811:shipping_operators",
+            "influenceScore": 0.84,
+            "likelyActions": [
+              "Adjust routing and contingency plans around Red Sea.",
+              "Wider GPS interference across adjacent zones would increase the chance of spillover effects."
+            ],
+            "name": "Shipping operators",
+            "objectives": [
+              "Keep critical flows through Red Sea functioning over the 7d.",
+              "Reduce exposure if 7 jamming hexes in Red Sea persists into the next cycle."
+            ],
+            "role": "Shipping operators is a primary commercial actor for the supply_chain path in Red Sea."
+          },
+          {
+            "category": "infrastructure",
+            "constraints": [
+              "Public reporting directly tied to Red Sea is still thin."
+            ],
+            "id": "fc-supply_chain-3d410811:port_authorities",
+            "influenceScore": 0.71,
+            "likelyActions": [
+              "Adjust routing and contingency plans around Red Sea.",
+              "Wider GPS interference across adjacent zones would increase the chance of spillover effects."
+            ],
+            "name": "Port authorities",
+            "objectives": [
+              "Keep critical flows through Red Sea functioning over the 7d.",
+              "Reduce exposure if 7 jamming hexes in Red Sea persists into the next cycle."
+            ],
+            "role": "Port authorities is a primary infrastructure actor for the supply_chain path in Red Sea."
+          },
+          {
+            "category": "commercial",
+            "constraints": [
+              "Public reporting directly tied to Red Sea is still thin."
+            ],
+            "id": "fc-supply_chain-3d410811:cargo_owners",
+            "influenceScore": 0.67,
+            "likelyActions": [
+              "Adjust routing and contingency plans around Red Sea.",
+              "Wider GPS interference across adjacent zones would increase the chance of spillover effects."
+            ],
+            "name": "Major cargo owners",
+            "objectives": [
+              "Keep critical flows through Red Sea functioning over the 7d.",
+              "Reduce exposure if 7 jamming hexes in Red Sea persists into the next cycle."
+            ],
+            "role": "Major cargo owners is a primary commercial actor for the supply_chain path in Red Sea."
+          },
+          {
+            "category": "market",
+            "constraints": [
+              "Public reporting directly tied to Red Sea is still thin."
+            ],
+            "id": "fc-supply_chain-3d410811:marine_insurers",
+            "influenceScore": 0.54,
+            "likelyActions": [
+              "Adjust routing and contingency plans around Red Sea.",
+              "Wider GPS interference across adjacent zones would increase the chance of spillover effects."
+            ],
+            "name": "Marine insurers",
+            "objectives": [
+              "Keep critical flows through Red Sea functioning over the 7d.",
+              "Reduce exposure if 7 jamming hexes in Red Sea persists into the next cycle."
+            ],
+            "role": "Marine insurers is a primary market actor for the supply_chain path in Red Sea."
+          }
+        ],
+        "baseCase": "With 7 jamming hexes in the Red Sea and no directly matched headlines, the baseline holds near 60% over 7 days. Shipping operators, port authorities, and major cargo owners adjust routing and contingency plans, absorbing the current evidence mix without a decisive break.",
+        "branches": [
+          {
+            "kind": "base",
+            "outcome": "Actors absorb the current evidence mix without a decisive break toward either shock or relief.",
+            "projectedProbability": 0.6,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Adjust routing and contingency plans around Red Sea.",
+                  "Adjust routing and contingency plans around Red Sea."
+                ],
+                "developments": [
+                  "7 jamming hexes in Red Sea"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.007,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Wider GPS interference across adjacent zones would increase the chance of spillover effects.",
+                  "Wider GPS interference across adjacent zones would increase the chance of spillover effects."
+                ],
+                "developments": [
+                  "Actors adapt to whether wider gps interference across adjacent zones would increase the chance of spillover effects."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.007,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Public reporting directly tied to Red Sea is still thin.",
+                  "Public reporting directly tied to Red Sea is still thin."
+                ],
+                "developments": [
+                  "The path settles near the current balance of pressure and restraint."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.007,
+                "round": 3
+              }
+            ],
+            "summary": "7 jamming hexes in Red Sea. For now, the base case stays near 60% over the 7d.",
+            "title": "Base Branch"
+          },
+          {
+            "kind": "escalatory",
+            "outcome": "Actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+            "projectedProbability": 0.795,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Adjust routing and contingency plans around Red Sea.",
+                  "Adjust routing and contingency plans around Red Sea."
+                ],
+                "developments": [
+                  "7 jamming hexes in Red Sea"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.072,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Wider GPS interference across adjacent zones would increase the chance of spillover effects.",
+                  "Wider GPS interference across adjacent zones would increase the chance of spillover effects."
+                ],
+                "developments": [
+                  "Wider GPS interference across adjacent zones would increase the chance of spillover effects."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.072,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Public reporting directly tied to Red Sea is still thin.",
+                  "Public reporting directly tied to Red Sea is still thin."
+                ],
+                "developments": [
+                  "Spillover becomes visible in market and conflict."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.072,
+                "round": 3
+              }
+            ],
+            "summary": "Wider GPS interference across adjacent zones would increase the chance of spillover effects. If that threshold breaks, the path can move above the current 58% baseline.",
+            "title": "Escalatory Branch"
+          },
+          {
+            "kind": "contrarian",
+            "outcome": "Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+            "projectedProbability": 0.45,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Adjust routing and contingency plans around Red Sea.",
+                  "Adjust routing and contingency plans around Red Sea."
+                ],
+                "developments": [
+                  "No directly matched headlines are currently attached to Red Sea."
+                ],
+                "focus": "Constraint absorption",
+                "probabilityShift": -0.043,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Wider GPS interference across adjacent zones would increase the chance of spillover effects.",
+                  "Wider GPS interference across adjacent zones would increase the chance of spillover effects."
+                ],
+                "developments": [
+                  "Actors slow the path if no directly matched headlines are currently attached to red sea."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": -0.043,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Public reporting directly tied to Red Sea is still thin.",
+                  "Public reporting directly tied to Red Sea is still thin."
+                ],
+                "developments": [
+                  "The path cools if counter-pressure remains stronger than fresh escalation evidence."
+                ],
+                "focus": "System effect",
+                "probabilityShift": -0.043,
+                "round": 3
+              }
+            ],
+            "summary": "No directly matched headlines are currently attached to Red Sea. If that restraint persists, the forecast can move below the current 58% baseline.",
+            "title": "Contrarian Branch"
+          }
+        ],
+        "changeItems": [
+          "Evidence mix is broadly unchanged from the prior snapshot."
+        ],
+        "changeSummary": "Probability is holding near 58% versus 58% in the prior run. Evidence mix is broadly unchanged from the prior snapshot.",
+        "contrarianCase": "If no directly matched headlines appear and confidence remains at 25%, the forecast can drop below 45%. Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+        "counterEvidence": [
+          {
+            "summary": "No directly matched headlines are currently attached to Red Sea.",
+            "type": "coverage_gap",
+            "weight": 0.2
+          },
+          {
+            "summary": "Confidence is only 25%, implying thin source diversity or mixed calibration.",
+            "type": "confidence",
+            "weight": 0.25
+          }
+        ],
+        "escalatoryCase": "Wider GPS interference across adjacent zones would increase spillover effects, pushing probability above 80%. If cross-domain pressure appears—such as supply shortage pricing (23%) or conflict links via Yemen (9%)—actors treat escalation as self-reinforcing.",
+        "supportingEvidence": [
+          {
+            "summary": "7 jamming hexes in Red Sea",
+            "type": "gps_jamming",
+            "weight": 0.5
+          },
+          {
+            "summary": "Potential spillover into market via supply shortage pricing (23%).",
+            "type": "cascade",
+            "weight": 0.232
+          },
+          {
+            "summary": "Potential spillover into conflict via graph: linked via Yemen (9%).",
+            "type": "cascade",
+            "weight": 0.087
+          }
+        ],
+        "triggers": [
+          "Wider GPS interference across adjacent zones would increase the chance of spillover effects."
+        ],
+        "worldState": {
+          "activePressures": [
+            "7 jamming hexes in Red Sea",
+            "Potential spillover into market via supply shortage pricing (23%).",
+            "Potential spillover into conflict via graph: linked via Yemen (9%)."
+          ],
+          "keyUnknowns": [
+            "Wider GPS interference across adjacent zones would increase the chance of spillover effects.",
+            "Public reporting directly tied to Red Sea is still thin.",
+            "Whether directly matched reporting on Red Sea appears in the next run."
+          ],
+          "stabilizers": [
+            "No directly matched headlines are currently attached to Red Sea.",
+            "Confidence is only 25%, implying thin source diversity or mixed calibration."
+          ],
+          "summary": "7 jamming hexes in Red Sea is setting the current stable baseline in Red Sea, with the forecast sitting near 58% over the 7d."
+        }
+      },
+      "confidence": 0.25,
+      "createdAt": 1792163071841,
+      "demotedBySimulation": false,
+      "domain": "supply_chain",
+      "feedSummary": "GPS interference in the Red Sea shipping zone persists at current levels, causing minor routing adjustments but no major supply disruption.",
+      "feedSummaryShort": "GPS interference in the Red Sea shipping zone persists at current levels, causing minor routing adjustments but no major supply disruption.",
+      "generationOrigin": "legacy_detector",
+      "id": "fc-supply_chain-3d410811",
+      "perspectives": {
+        "contrarian": "If no directly matched headlines appear and confidence remains at 25%, the forecast can drop below 45%. Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+        "regional": "For actors in Red Sea, the practical implication is continued sensitivity to short-term triggers over the 7d, especially if the current stable trend persists.",
+        "strategic": "7 jamming hexes in Red Sea is setting the strategic baseline, and the current 58% probability implies a live but not settled risk path."
+      },
+      "priorProbability": 0.58,
+      "probability": 0.58,
+      "region": "Red Sea",
+      "resolution": {
+        "deadline": 1792767859491,
+        "kind": "hard",
+        "metricKey": "intelligence:gpsjam:v2|hexCount(region==Red Sea)",
+        "operator": ">=",
+        "sourceFeed": "intelligence:gpsjam:v2",
+        "threshold": 3,
+        "window": "at-deadline"
+      },
+      "scenario": "GPS interference in the Red Sea shipping zone persists at current levels, causing minor routing adjustments but no major supply disruption.",
+      "scenarioShort": "GPS interference in the Red Sea shipping zone persists at current levels, causing minor routing adjustments but no major supply disruption.",
+      "scoredHorizons": [
+        "h24",
+        "d30"
+      ],
+      "signals": [
+        {
+          "type": "gps_jamming",
+          "value": "7 jamming hexes in Red Sea",
+          "weight": 0.5
+        }
+      ],
+      "simPathConfidence": 0.15,
+      "simulationAdjustment": -0.099,
+      "stateDerivedBackfill": false,
+      "timeHorizon": "7d",
+      "title": "GPS interference in Red Sea shipping zone",
+      "trend": "stable",
+      "updatedAt": 1792163071841
+    },
+    {
+      "cascades": [
+        {
+          "domain": "market",
+          "effect": "supply shortage pricing",
+          "probability": 0.21
+        }
+      ],
+      "caseFile": {
+        "actorLenses": [
+          "Shipping operators: Keep critical flows through Strait of Hormuz functioning over the 7d. Adjust routing and contingency plans around Strait of Hormuz.",
+          "Port authorities: Keep critical flows through Strait of Hormuz functioning over the 7d. Adjust routing and contingency plans around Strait of Hormuz.",
+          "Major cargo owners: Keep critical flows through Strait of Hormuz functioning over the 7d. Adjust routing and contingency plans around Strait of Hormuz."
+        ],
+        "actors": [
+          {
+            "category": "commercial",
+            "constraints": [
+              "Public reporting directly tied to Strait of Hormuz is still thin."
+            ],
+            "id": "fc-supply_chain-e4c82377:shipping_operators",
+            "influenceScore": 0.84,
+            "likelyActions": [
+              "Adjust routing and contingency plans around Strait of Hormuz.",
+              "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk."
+            ],
+            "name": "Shipping operators",
+            "objectives": [
+              "Keep critical flows through Strait of Hormuz functioning over the 7d.",
+              "Reduce exposure if Strait of Hormuz disruption detected persists into the next cycle."
+            ],
+            "role": "Shipping operators is a primary commercial actor for the supply_chain path in Strait of Hormuz."
+          },
+          {
+            "category": "infrastructure",
+            "constraints": [
+              "Public reporting directly tied to Strait of Hormuz is still thin."
+            ],
+            "id": "fc-supply_chain-e4c82377:port_authorities",
+            "influenceScore": 0.71,
+            "likelyActions": [
+              "Adjust routing and contingency plans around Strait of Hormuz.",
+              "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk."
+            ],
+            "name": "Port authorities",
+            "objectives": [
+              "Keep critical flows through Strait of Hormuz functioning over the 7d.",
+              "Reduce exposure if Strait of Hormuz disruption detected persists into the next cycle."
+            ],
+            "role": "Port authorities is a primary infrastructure actor for the supply_chain path in Strait of Hormuz."
+          },
+          {
+            "category": "commercial",
+            "constraints": [
+              "Public reporting directly tied to Strait of Hormuz is still thin."
+            ],
+            "id": "fc-supply_chain-e4c82377:cargo_owners",
+            "influenceScore": 0.67,
+            "likelyActions": [
+              "Adjust routing and contingency plans around Strait of Hormuz.",
+              "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk."
+            ],
+            "name": "Major cargo owners",
+            "objectives": [
+              "Keep critical flows through Strait of Hormuz functioning over the 7d.",
+              "Reduce exposure if Strait of Hormuz disruption detected persists into the next cycle."
+            ],
+            "role": "Major cargo owners is a primary commercial actor for the supply_chain path in Strait of Hormuz."
+          },
+          {
+            "category": "market",
+            "constraints": [
+              "Public reporting directly tied to Strait of Hormuz is still thin."
+            ],
+            "id": "fc-supply_chain-e4c82377:marine_insurers",
+            "influenceScore": 0.54,
+            "likelyActions": [
+              "Adjust routing and contingency plans around Strait of Hormuz.",
+              "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk."
+            ],
+            "name": "Marine insurers",
+            "objectives": [
+              "Keep critical flows through Strait of Hormuz functioning over the 7d.",
+              "Reduce exposure if Strait of Hormuz disruption detected persists into the next cycle."
+            ],
+            "role": "Marine insurers is a primary market actor for the supply_chain path in Strait of Hormuz."
+          }
+        ],
+        "baseCase": "Strait of Hormuz disruption detected. For now, the base case stays near 54% over the 7d. Actors absorb the current evidence mix without a decisive break toward either shock or relief.",
+        "branches": [
+          {
+            "kind": "base",
+            "outcome": "Actors absorb the current evidence mix without a decisive break toward either shock or relief.",
+            "projectedProbability": 0.535,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Adjust routing and contingency plans around Strait of Hormuz.",
+                  "Adjust routing and contingency plans around Strait of Hormuz."
+                ],
+                "developments": [
+                  "Strait of Hormuz disruption detected"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.003,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk.",
+                  "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk."
+                ],
+                "developments": [
+                  "Actors adapt to whether strait of hormuz disruption detected persisting for another cycle would deepen downstream disruption risk."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.003,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Public reporting directly tied to Strait of Hormuz is still thin.",
+                  "Public reporting directly tied to Strait of Hormuz is still thin."
+                ],
+                "developments": [
+                  "The path settles near the current balance of pressure and restraint."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.003,
+                "round": 3
+              }
+            ],
+            "summary": "Strait of Hormuz disruption detected. For now, the base case stays near 54% over the 7d.",
+            "title": "Base Branch"
+          },
+          {
+            "kind": "escalatory",
+            "outcome": "Actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+            "projectedProbability": 0.68,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Adjust routing and contingency plans around Strait of Hormuz.",
+                  "Adjust routing and contingency plans around Strait of Hormuz."
+                ],
+                "developments": [
+                  "Strait of Hormuz disruption detected"
+                ],
+                "focus": "Signal absorption",
+                "probabilityShift": 0.052,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk.",
+                  "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk."
+                ],
+                "developments": [
+                  "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": 0.052,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Public reporting directly tied to Strait of Hormuz is still thin.",
+                  "Public reporting directly tied to Strait of Hormuz is still thin."
+                ],
+                "developments": [
+                  "Spillover becomes visible in market."
+                ],
+                "focus": "System effect",
+                "probabilityShift": 0.052,
+                "round": 3
+              }
+            ],
+            "summary": "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk. If that threshold breaks, the path can move above the current 53% baseline.",
+            "title": "Escalatory Branch"
+          },
+          {
+            "kind": "contrarian",
+            "outcome": "Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+            "projectedProbability": 0.395,
+            "rounds": [
+              {
+                "actorMoves": [
+                  "Adjust routing and contingency plans around Strait of Hormuz.",
+                  "Adjust routing and contingency plans around Strait of Hormuz."
+                ],
+                "developments": [
+                  "No directly matched headlines are currently attached to Strait of Hormuz."
+                ],
+                "focus": "Constraint absorption",
+                "probabilityShift": -0.043,
+                "round": 1
+              },
+              {
+                "actorMoves": [
+                  "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk.",
+                  "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk."
+                ],
+                "developments": [
+                  "Actors slow the path if no directly matched headlines are currently attached to strait of hormuz."
+                ],
+                "focus": "Actor response",
+                "probabilityShift": -0.043,
+                "round": 2
+              },
+              {
+                "actorMoves": [
+                  "Public reporting directly tied to Strait of Hormuz is still thin.",
+                  "Public reporting directly tied to Strait of Hormuz is still thin."
+                ],
+                "developments": [
+                  "The path cools if counter-pressure remains stronger than fresh escalation evidence."
+                ],
+                "focus": "System effect",
+                "probabilityShift": -0.043,
+                "round": 3
+              }
+            ],
+            "summary": "No directly matched headlines are currently attached to Strait of Hormuz. If that restraint persists, the forecast can move below the current 53% baseline.",
+            "title": "Contrarian Branch"
+          }
+        ],
+        "changeItems": [
+          "Evidence mix is broadly unchanged from the prior snapshot."
+        ],
+        "changeSummary": "Probability is holding near 53% versus 53% in the prior run. Evidence mix is broadly unchanged from the prior snapshot.",
+        "contrarianCase": "No directly matched headlines are currently attached to Strait of Hormuz. If that restraint persists, the forecast can move below the current 53% baseline. Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+        "counterEvidence": [
+          {
+            "summary": "No directly matched headlines are currently attached to Strait of Hormuz.",
+            "type": "coverage_gap",
+            "weight": 0.2
+          },
+          {
+            "summary": "Confidence is only 25%, implying thin source diversity or mixed calibration.",
+            "type": "confidence",
+            "weight": 0.25
+          }
+        ],
+        "escalatoryCase": "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk. If that threshold breaks, the path can move above the current 53% baseline. Actors treat escalation as increasingly self-reinforcing, especially if cross-domain pressure appears.",
+        "supportingEvidence": [
+          {
+            "summary": "Strait of Hormuz disruption detected",
+            "type": "chokepoint",
+            "weight": 0.5
+          },
+          {
+            "summary": "Potential spillover into market via supply shortage pricing (21%).",
+            "type": "cascade",
+            "weight": 0.21
+          }
+        ],
+        "triggers": [
+          "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk."
+        ],
+        "worldState": {
+          "activePressures": [
+            "Strait of Hormuz disruption detected",
+            "Potential spillover into market via supply shortage pricing (21%).",
+            "Spillover pressure into market via supply shortage pricing."
+          ],
+          "keyUnknowns": [
+            "Strait of Hormuz disruption detected persisting for another cycle would deepen downstream disruption risk.",
+            "Public reporting directly tied to Strait of Hormuz is still thin.",
+            "Whether directly matched reporting on Strait of Hormuz appears in the next run."
+          ],
+          "stabilizers": [
+            "No directly matched headlines are currently attached to Strait of Hormuz.",
+            "Confidence is only 25%, implying thin source diversity or mixed calibration."
+          ],
+          "summary": "Strait of Hormuz disruption detected is setting the current stable baseline in Strait of Hormuz, with the forecast sitting near 53% over the 7d."
+        }
+      },
+      "confidence": 0.25,
+      "createdAt": 1792163071837,
+      "demotedBySimulation": false,
+      "domain": "supply_chain",
+      "feedSummary": "Strait of Hormuz disruption detected. For now, the base case stays near 54% over the 7d. Actors absorb the current evidence mix without a decisive break toward either shock or relief.",
+      "feedSummaryShort": "Strait of Hormuz disruption detected. For now, the base case stays near 54% over the 7d. Actors absorb the current evidence mix without a decisive break toward either shock or relief.",
+      "generationOrigin": "legacy_detector",
+      "id": "fc-supply_chain-e4c82377",
+      "perspectives": {
+        "contrarian": "No directly matched headlines are currently attached to Strait of Hormuz. If that restraint persists, the forecast can move below the current 53% baseline. Actors prioritize containment and the system drifts toward stabilization unless new hard signals emerge.",
+        "regional": "For actors in Strait of Hormuz, the practical implication is continued sensitivity to short-term triggers over the 7d, especially if the current stable trend persists.",
+        "strategic": "Strait of Hormuz disruption detected is setting the strategic baseline, and the current 53% probability implies a live but not settled risk path."
+      },
+      "priorProbability": 0.525,
+      "probability": 0.525,
+      "region": "Strait of Hormuz",
+      "resolution": {
+        "deadline": 1792767859491,
+        "kind": "hard",
+        "metricKey": "supply_chain:chokepoints:v4|riskScore(route==Strait of Hormuz)",
+        "operator": ">",
+        "sourceFeed": "supply_chain:chokepoints:v4",
+        "threshold": 70,
+        "window": "at-deadline"
+      },
+      "scenario": "Strait of Hormuz disruption detected. For now, the base case stays near 54% over the 7d. Actors absorb the current evidence mix without a decisive break toward either shock or relief.",
+      "scenarioShort": "Strait of Hormuz disruption detected. For now, the base case stays near 54% over the 7d. Actors absorb the current evidence mix without a decisive break toward either shock or relief.",
+      "scoredHorizons": [
+        "h24",
+        "d30"
+      ],
+      "signals": [
+        {
+          "type": "chokepoint",
+          "value": "Strait of Hormuz disruption detected",
+          "weight": 0.5
+        }
+      ],
+      "simPathConfidence": 0,
+      "simulationAdjustment": 0,
+      "stateDerivedBackfill": false,
+      "timeHorizon": "7d",
+      "title": "Supply chain disruption: Strait of Hormuz",
+      "trend": "stable",
+      "updatedAt": 1792163071837
+    }
+  ],
+  "generatedAt": 1792163059491,
+  "degraded": false,
+  "stale": false,
+  "error": ""
+}

@@ -285,6 +285,22 @@ group per fenced atomic transaction; an oversized group is deferred so readers
 never observe a partial alias cohort. A short Redis lease and an in-transaction
 token check prevent an older delayed digest from overwriting a newer cohort.
 
+Families come from a curated map, so an outlet the map does not list counts as
+its own publisher. Same-copy detection closes that gap from the content: inside
+one story, two items whose title and lead are near-identical (word three-gram
+containment of at least 0.85, with at least 12 lead words that are not the
+headline's) are one copy, and their families count once. It only lowers the
+count. It never merges two curated families, and a headline without a real lead
+never merges, because two outlets can write the same short headline
+independently. Words are compared in any script that separates them with
+spaces; Chinese, Japanese and Thai text is not compared, so those counts stay as
+curated. A merged group is listed under its curated publisher when it has one,
+and the outlets show as "Same copy, counted once" in the publisher list. The
+World Brief applies the same count: a story carried only as one copy cannot
+lead the brief or count as corroborated in Top Stories, including through
+entity corroboration. `npm run syndication:candidates` lists the groups found in the
+live digest for review; nothing is added to the curated map automatically.
+
 `sourceCount` is not stored in the story-track hash for current rows.
 Distinct feed names are written to `story:sources:v1:{titleHash}` with
 `SADD`; consumers that need the real source count must read the set and count
@@ -381,7 +397,9 @@ to `0`, which means no floor. Positive values drop clusters whose representative
 
 The digest pool caps at `30` clusters before channel formatting. Severity
 formatters cap high stories at `15`, medium stories at `10`, and do not cap
-critical stories. The rendered brief uses `MAX_STORIES_PER_USER`, default `12`
+critical stories by count. The email channel caps its email HTML at `90,000`
+bytes, below Gmail's ~102KB clipping point: over that size it drops the
+lowest-priority story cards and links to the full brief. The rendered brief uses `MAX_STORIES_PER_USER`, default `12`
 and tunable by `DIGEST_MAX_STORIES_PER_USER`. The brief also caps each
 source/category pair at `2` stories to reduce editorial clutter.
 

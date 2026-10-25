@@ -5,6 +5,7 @@ import { loadEnvFile, runSeed, getRedisCredentials } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
 import { regionForCountry } from './shared/geography.js';
+import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import { physicalDivergenceStaleReason } from './shared/physical-divergence-staleness.js';
 import { METHODOLOGY_VERSION as PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION } from './lib/physical-divergence.mjs';
 
@@ -33,6 +34,8 @@ const SOURCE_KEYS = [
   'infra:outages:v1',
   'wildfire:fires:v1',
   `displacement:summary:v1:${new Date().getFullYear()}`,
+  'displacement:border-uk:v1',
+  'displacement:idmc-idu:v1',
   'forecast:predictions:v2',
   'gdelt:intel:tone:military',
   'gdelt:intel:tone:nuclear',
@@ -59,6 +62,8 @@ const SOURCE_MAX_AGE_MIN = Object.freeze({
   'radiation:observations:v1': 30,
   'infra:outages:v1': 30,
   'wildfire:fires:v1': 360,
+  'displacement:border-uk:v1': 2880,
+  'displacement:idmc-idu:v1': 2880,
   'forecast:predictions:v2': 90,
   'weather:alerts:v1': 45,
   'market:physical-divergence:v1': 2160,
@@ -695,22 +700,47 @@ function extractWildfireEscalation(d) {
   return signals.slice(0, 2);
 }
 
-// Intentionally silent, and documented as such rather than "fixed".
-//
-// This extractor was written against a `crises[]` array carrying
-// `newDisplacements` and `trend`. displacement:summary:v1:<year> has never
-// published that shape: the writer emits an annual UNHCR *stock* —
-// `summary.countries[]` with code/name/refugees/idps/totalDisplaced
-// (seed-displacement-summary.mjs:175) — and carries no flow, delta or trend
-// field anywhere in the payload.
-//
-// So this is not a field-name mismatch that a rename fixes. A surge is a flow,
-// and choosing a totalDisplaced cutoff to stand in for one would be inventing a
-// calibration rather than repairing a read — the opposite of what the rest of
-// this change does. It stays silent until the signal is either sourced from a
-// flow series or redefined as a stock-level signal. See #5870.
-function extractDisplacementSurge() {
-  return [];
+// Only the daily arrival series has a complete weekly baseline. Annual stocks
+// and monthly encounters cannot stand in for newly arriving people.
+function extractDisplacementSurge(d) {
+  const routes = d['displacement:border-uk:v1']?.routes;
+  if (!Array.isArray(routes)) return [];
+  return routes.flatMap(route => {
+    const detectedAt = Date.parse(route.asOf);
+    if (route.kind !== 'arrival' || route.surge !== true || !Number.isFinite(detectedAt)
+      || detectedAt > Date.now() || Date.now() - detectedAt > 3 * 86400000
+      || !(route.last7Days >= 1000) || !/^[A-Z]{2}$/.test(route.countryCode)) return [];
+    return [{ id: `displacement:${route.id}`, type: 'CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE',
+      theater: weatherTheaterForCountry(route.countryCode), severity: scoreTier(BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE),
+      severityScore: BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE,
+      summary: `${route.name}: ${route.last7Days.toLocaleString('en-US')} arrivals in seven days, source-confirmed arrival surge (UK Home Office)`,
+      detectedAt, contributingTypes: [], signalCount: 0 }];
+  });
+}
+
+// IDMC Internal Displacement Updates (seed-idmc-idu-displacement.mjs): the
+// seeder flags a country whose last 30 days reach 5,000 people and three times
+// its monthly mean of the 150 days before. IDMC publishes a median of three
+// weeks after the displacement, so detectedAt is the latest displacement date,
+// not the read time, and the summary says so.
+const IDU_SURGE_LIMIT = 5;
+function extractInternalDisplacementSurge(d) {
+  const countries = d['displacement:idmc-idu:v1']?.countries;
+  if (!Array.isArray(countries)) return [];
+  return countries.flatMap(c => {
+    const iso2 = iso3ToIso2[c?.countryCode];
+    const detectedAt = Date.parse(`${c?.latestDisplacementDate}T00:00:00Z`);
+    if (c?.surge !== true || !iso2 || !Number.isFinite(detectedAt) || detectedAt > Date.now()
+      || !(safeNum(c.displaced30d) >= 5000)) return [];
+    const multiple = safeNum(c.baselineMonthly) > 0 ? ` (${(c.displaced30d / c.baselineMonthly).toFixed(1)}x its monthly average)` : '';
+    return [{ id: `displacement-idu:${c.countryCode}`, type: 'CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE',
+      theater: weatherTheaterForCountry(iso2), severity: scoreTier(BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE),
+      severityScore: BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE,
+      summary: `${c.countryName || c.countryCode}: ${Math.round(c.displaced30d).toLocaleString('en-US')} people displaced inside the country in 30 days${multiple}, latest ${c.latestDisplacementDate} (IDMC, published with a lag of weeks)`,
+      detectedAt, contributingTypes: [], signalCount: 0, displaced30d: safeNum(c.displaced30d) }];
+  }).sort((a, b) => b.displaced30d - a.displaced30d || a.id.localeCompare(b.id))
+    .slice(0, IDU_SURGE_LIMIT)
+    .map(({ displaced30d: _, ...signal }) => signal);
 }
 
 function extractForecastDeterioration(d) {
@@ -1042,6 +1072,7 @@ const EXTRACTORS = Object.freeze([
   extractInfrastructureOutage,
   extractWildfireEscalation,
   extractDisplacementSurge,
+  extractInternalDisplacementSurge,
   extractForecastDeterioration,
   extractMarketStress,
   extractWeatherExtreme,
@@ -1196,6 +1227,7 @@ export {
   extractCyberEscalation,
   extractDisplacementSurge,
   extractEarthquakeSignificant,
+  extractInternalDisplacementSurge,
   extractForecastDeterioration,
   extractGpsJamming,
   extractInfrastructureOutage,

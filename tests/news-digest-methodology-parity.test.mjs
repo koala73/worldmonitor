@@ -100,6 +100,10 @@ const seedDigestSrc = readFileSync(
   resolve(repoRoot, 'scripts/seed-digest-notifications.mjs'),
   'utf8',
 );
+const digestEmailHtmlSrc = readFileSync(
+  resolve(repoRoot, 'scripts/lib/digest-email-html.mjs'),
+  'utf8',
+);
 const latestBriefApiSrc = readFileSync(
   resolve(repoRoot, 'api/latest-brief.ts'),
   'utf8',
@@ -494,7 +498,7 @@ describe('news digest methodology parity', () => {
     const rows = extractFeedInventoryRows(feedsSrc);
     assert.equal(
       rows.length,
-      66,
+      67,
       'server news feed inventory row count changed; update _feeds.ts, docs/data-sources.mdx, and this assertion together',
     );
     for (const row of rows) {
@@ -774,8 +778,10 @@ describe('news digest methodology parity', () => {
     const itemsPerFeed = extractNumericConst(digestSrc, 'ITEMS_PER_FEED');
     const maxItemsPerCategory = extractNumericConst(digestSrc, 'MAX_ITEMS_PER_CATEGORY');
     const digestMaxItems = extractNumericConst(seedDigestSrc, 'DIGEST_MAX_ITEMS');
-    const digestHighLimit = extractNumericConst(seedDigestSrc, 'DIGEST_HIGH_LIMIT');
-    const digestMediumLimit = extractNumericConst(seedDigestSrc, 'DIGEST_MEDIUM_LIMIT');
+    const digestHighLimit = extractNumericConst(digestEmailHtmlSrc, 'DIGEST_HIGH_LIMIT');
+    const digestMediumLimit = extractNumericConst(digestEmailHtmlSrc, 'DIGEST_MEDIUM_LIMIT');
+    const digestCriticalLimit = extractNumericConst(digestEmailHtmlSrc, 'DIGEST_CRITICAL_LIMIT');
+    const digestEmailMaxBytes = extractNumericConst(digestEmailHtmlSrc, 'DIGEST_EMAIL_MAX_HTML_BYTES');
 
     assertDocMatches(new RegExp(`reads at most\\s+\`${itemsPerFeed}\`\\s+items per feed`), 'ITEMS_PER_FEED');
     assertDocMatches(
@@ -785,6 +791,11 @@ describe('news digest methodology parity', () => {
     assertDocMatches(new RegExp(`caps at\\s+\`${digestMaxItems}\`\\s+clusters`), 'DIGEST_MAX_ITEMS');
     assertDocMatches(new RegExp(`high stories at\\s+\`${digestHighLimit}\``), 'DIGEST_HIGH_LIMIT');
     assertDocMatches(new RegExp(`medium stories at\\s+\`${digestMediumLimit}\``), 'DIGEST_MEDIUM_LIMIT');
+    assert.equal(digestCriticalLimit, Infinity, 'docs say critical stories are not capped by count');
+    assertDocMatches(
+      new RegExp(`email HTML at\\s+\`${digestEmailMaxBytes.toLocaleString('en-US')}\`\\s+bytes`),
+      'DIGEST_EMAIL_MAX_HTML_BYTES',
+    );
 
     const readMaxStoriesBody = extractFunctionBody(briefComposeSrc, 'readMaxStoriesPerUser');
     assert.ok(

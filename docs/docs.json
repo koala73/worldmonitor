@@ -127,6 +127,7 @@
                   "methodology/five-factor-scorecard",
                   "methodology/demographics-capability",
                   "methodology/food-stocks",
+                  "methodology/capital-flows",
                   "methodology/defense-industrial-base",
                   "methodology/mineral-production",
                   "methodology/supply-vulnerability",
@@ -136,6 +137,7 @@
                   "methodology/shortages",
                   "methodology/disruptions",
                   "methodology/cii-risk-scores",
+                  "methodology/country-history",
                   "methodology/disease-alert-level",
                   "methodology/thermal-escalation",
                   "methodology/physical-divergence-index",
@@ -149,6 +151,7 @@
                 "group": "Workflows",
                 "pages": [
                   "embed-live-map",
+                  "morning-world-risk-brief",
                   "route-explorer",
                   "scenario-engine"
                 ]
@@ -234,6 +237,7 @@
                   "agent-skills",
                   "mcp-quickstart",
                   "cli",
+                  "cli-dashboard",
                   "sdks",
                   "mcp-overview",
                   "webmcp",
@@ -249,6 +253,7 @@
                 "group": "HTTP API",
                 "pages": [
                   "api-platform",
+                  "incident-feed",
                   "api-brief",
                   "api-commerce",
                   "api-scenarios",
@@ -606,6 +611,7 @@
                   "zh/methodology/five-factor-scorecard",
                   "zh/methodology/demographics-capability",
                   "zh/methodology/food-stocks",
+                  "zh/methodology/capital-flows",
                   "zh/methodology/defense-industrial-base",
                   "zh/methodology/mineral-production",
                   "zh/methodology/supply-vulnerability",
@@ -615,6 +621,7 @@
                   "zh/methodology/shortages",
                   "zh/methodology/disruptions",
                   "zh/methodology/cii-risk-scores",
+                  "zh/methodology/country-history",
                   "zh/methodology/disease-alert-level",
                   "zh/methodology/thermal-escalation",
                   "zh/methodology/physical-divergence-index",
@@ -628,6 +635,7 @@
                 "group": "工作流",
                 "pages": [
                   "zh/embed-live-map",
+                  "zh/morning-world-risk-brief",
                   "zh/route-explorer",
                   "zh/scenario-engine"
                 ]
@@ -713,6 +721,7 @@
                   "zh/agent-skills",
                   "zh/mcp-quickstart",
                   "zh/cli",
+                  "zh/cli-dashboard",
                   "zh/sdks",
                   "zh/mcp-overview",
                   "zh/webmcp",
@@ -728,6 +737,7 @@
                 "group": "HTTP API",
                 "pages": [
                   "zh/api-platform",
+                  "zh/incident-feed",
                   "zh/api-brief",
                   "zh/api-commerce",
                   "zh/api-scenarios",

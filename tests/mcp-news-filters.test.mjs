@@ -299,3 +299,20 @@ describe('get_news_intelligence publisher roster (#6419 step 3)', () => {
     );
   });
 });
+
+describe('get_news_intelligence country filter matches any country a headline names', () => {
+  it('keeps a story whose primary country differs from the filter', () => {
+    const data = envelope([
+      story({ primaryTitle: 'Iran-backed Houthis warn of long conflict after Riyadh airport attack', countryCode: 'IR', countryCodes: ['IR', 'YE', 'SA'] }),
+      story({ primaryTitle: 'Putin proposes summit', countryCode: 'RU', countryCodes: ['RU'] }),
+    ]);
+    newsTool._postFilter(data, { country: 'SA' });
+    assert.deepEqual(data.insights.topStories.map((s) => s.countryCode), ['IR']);
+  });
+
+  it('still matches snapshots that carry only countryCode', () => {
+    const data = envelope([story({ countryCode: 'SA' }), story({ countryCode: 'QA' })]);
+    newsTool._postFilter(data, { country: 'SA' });
+    assert.deepEqual(data.insights.topStories.map((s) => s.countryCode), ['SA']);
+  });
+});

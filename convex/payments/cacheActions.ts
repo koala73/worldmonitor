@@ -11,7 +11,7 @@
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
-import { SHARED_API_BUDGET } from "../config/productCatalog";
+import { entitlementFeaturesValidator } from "../lib/entitlementFeaturesValidator";
 
 // 15 min — short enough that subscription expiry is reflected promptly
 const ENTITLEMENT_CACHE_TTL_SECONDS = 900;
@@ -28,6 +28,11 @@ function getEntitlementKey(userId: string): string {
   return `entitlements:${envPrefix}:${userId}`;
 }
 
+/** Edge AI routing policy cache key; same env namespace as the entitlement key. */
+function getAiRoutingPolicyKey(userId: string): string {
+  return getEntitlementKey(userId).replace(/^entitlements:/, 'ai-routing:');
+}
+
 /**
  * Writes a user's entitlements to Redis via Upstash REST API.
  *
@@ -41,39 +46,7 @@ export const syncEntitlementCache = internalAction({
   args: {
     userId: v.string(),
     planKey: v.string(),
-    features: v.object({
-      tier: v.number(),
-      maxDashboards: v.number(),
-      apiAccess: v.boolean(),
-      apiRateLimit: v.number(),
-      planLimits: v.optional(v.object({
-        apiRequestsPerDay: v.union(v.number(), v.null()),
-        apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
-        // `SHARED_API_BUDGET` = the plan has no MCP allowance of its own; its
-        // MCP calls charge `apiRequestsPerDay`. Imported rather than retyped for
-        // the same reason as the entitlements schema: a rename that left a stale
-        // literal here would typecheck and then reject the cache sync at runtime.
-        mcpCallsPerDay: v.union(v.number(), v.null(), v.literal(SHARED_API_BUDGET)),
-        // Optional so cache sync remains compatible with legacy rows/jobs that
-        // predate the dashboard-AI dimension.
-        dashboardAiCallsPerDay: v.optional(v.union(v.number(), v.null())),
-        mcpBurstRequestsPerMinute: v.union(v.number(), v.null()),
-      })),
-      prioritySupport: v.boolean(),
-      exportFormats: v.array(v.string()),
-      // Optional — legacy entitlement rows pre-dating plan 2026-05-10-001
-      // do not carry mcpAccess. Schema validator must accept their reads.
-      mcpAccess: v.optional(v.boolean()),
-      // Optional — per-account daily REST allowance (#3199). Catalog-sourced
-      // writes set it; legacy rows omit it (rate-limit consumer fail-opens).
-      apiDailyAllowance: v.optional(v.number()),
-      // Optional — data-export entitlement (plan 2026-07-25-001). Catalog
-      // writes set it; legacy rows omit it (export gate fail-opens at tier 2+).
-      dataExport: v.optional(v.boolean()),
-      // Optional — partner-embed entitlement. Catalog writes set it; legacy
-      // rows omit it and embed-key issuance treats that case as fail-closed.
-      embedAccess: v.optional(v.boolean()),
-    }),
+    features: entitlementFeaturesValidator,
     validUntil: v.number(),
   },
   handler: async (_ctx, args) => {
@@ -202,6 +175,41 @@ export const deleteEntitlementCache = internalAction({
       // page via Convex auto-Sentry.
       console.warn(
         "[cacheActions] Redis cache delete failed:",
+        err instanceof Error ? err.message : String(err),
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+});
+
+/**
+ * Deletes the edge's cached AI routing policy lookup for a user
+ * (server/_shared/ai-routing-policy.ts) so a policy change applies at once
+ * rather than after the 60 s cache TTL.
+ */
+export const deleteAiRoutingPolicyCache = internalAction({
+  args: { userId: v.string() },
+  handler: async (_ctx, args) => {
+    const url = process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+    if (!url || !token) return;
+    const key = getAiRoutingPolicyKey(args.userId);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REDIS_FETCH_TIMEOUT_MS);
+    try {
+      const resp = await fetch(`${url}/del/${encodeURIComponent(key)}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      });
+      if (!resp.ok) {
+        console.warn(`[cacheActions] Redis DEL failed: HTTP ${resp.status} for key ${key}`);
+      }
+    } catch (err) {
+      // sentry-coverage-ok — the edge entry self-expires within 60 s.
+      console.warn(
+        "[cacheActions] AI routing cache delete failed:",
         err instanceof Error ? err.message : String(err),
       );
     } finally {

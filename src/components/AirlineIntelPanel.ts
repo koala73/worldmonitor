@@ -262,7 +262,11 @@ export class AirlineIntelPanel extends Panel {
             return;
         }
         const daysDiff = (new Date(end).getTime() - new Date(start).getTime()) / 86400000;
-        if (errEl) errEl.textContent = daysDiff > 90 ? 'Range exceeds 90 days — results may be incomplete' : '';
+        if (daysDiff > 30) {
+            if (errEl) errEl.textContent = 'Choose a range of at most 31 days';
+            return;
+        }
+        if (errEl) errEl.textContent = '';
         this.pricesOrigin = origin;
         this.pricesDest = dest;
         this.datesStart = start;

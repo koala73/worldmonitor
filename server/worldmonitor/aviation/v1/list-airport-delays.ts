@@ -15,6 +15,7 @@ import {
   toProtoRegion,
   toProtoSource,
   buildNotamAlert,
+  buildNotamOpenAlert,
   loadNotamClosures,
   mergeNotamWithExistingAlert,
   isValidAirportDelayAlert,
@@ -22,7 +23,7 @@ import {
 } from './_shared';
 import { readCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
-import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
 
@@ -40,17 +41,20 @@ export async function listAirportDelays(
 ): Promise<ListAirportDelaysResponse> {
   const seenParams = new Set<string>();
   for (const [key, value] of new URL(ctx.request.url).searchParams) {
-    if (!ALLOWED_QUERY_PARAMS.has(key)) throw new ApiError(400, `Unsupported airport delay parameter: ${key}`, '');
-    if (seenParams.has(key)) throw new ApiError(400, `Duplicate airport delay parameter: ${key}`, '');
+    if (!ALLOWED_QUERY_PARAMS.has(key)) throw new ValidationError([{ field: key, description: `Unsupported airport delay parameter: ${key}` }]);
+    if (seenParams.has(key)) throw new ValidationError([{ field: key, description: `Duplicate airport delay parameter: ${key}` }]);
     seenParams.add(key);
-    if (key === 'page_size' && value !== '0') throw new ApiError(400, 'Airport delay page_size must be 0', '');
-    if (key === 'rpc' && value !== 'list-airport-delays') throw new ApiError(400, 'Invalid airport delay route', '');
+    if (key === 'page_size' && value !== '0') throw new ValidationError([{ field: 'page_size', description: 'Airport delay page_size must be 0' }]);
+    if (key === 'rpc' && value !== 'list-airport-delays') throw new ValidationError([{ field: 'rpc', description: 'Invalid airport delay route' }]);
   }
-  if ((req.pageSize ?? 0) !== 0 || req.cursor
-    || (req.region && req.region !== 'AIRPORT_REGION_UNSPECIFIED')
-    || (req.minSeverity && req.minSeverity !== 'FLIGHT_DELAY_SEVERITY_UNSPECIFIED')) {
-    throw new ApiError(400, 'Airport delay filters are not supported', '');
-  }
+  const filters = {
+    page_size: (req.pageSize ?? 0) !== 0,
+    cursor: Boolean(req.cursor),
+    region: Boolean(req.region && req.region !== 'AIRPORT_REGION_UNSPECIFIED'),
+    min_severity: Boolean(req.minSeverity && req.minSeverity !== 'FLIGHT_DELAY_SEVERITY_UNSPECIFIED'),
+  };
+  const filter = Object.keys(filters).find(name => filters[name as keyof typeof filters]);
+  if (filter) throw new ValidationError([{ field: filter, description: 'Airport delay filters are not supported' }]);
   // 1. FAA (US) — seed-only read
   // faaSourceCovered = the seed cache hit AND returned a valid alerts array.
   // A miss/parse-error means we have no telemetry for any FAA airport this
@@ -166,6 +170,7 @@ export async function listAirportDelays(
   //     active NOTAM) → emit an UNKNOWN row so consumers don't render the
   //     airport as "healthy" when we actually have no telemetry. See #3707.
   const alertedIatas = new Set(allAlerts.map(a => a.iata));
+  const notamCoveredIcaos = new Set(notamResult?.coveredIcaos ?? []);
   for (const airport of MONITORED_AIRPORTS) {
     if (alertedIatas.has(airport.iata)) continue;
 
@@ -193,6 +198,8 @@ export async function listAirportDelays(
         source: toProtoSource(isFaaCovered ? 'faa' : 'aviationstack'),
         updatedAt: Date.now(),
       });
+    } else if (notamCoveredIcaos.has(airport.icao)) {
+      allAlerts.push(buildNotamOpenAlert(airport));
     } else {
       allAlerts.push({
         id: `unknown-${airport.iata}`,

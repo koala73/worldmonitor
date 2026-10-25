@@ -158,7 +158,7 @@ describe('App.destroy lifecycle cleanup contract', () => {
     assert.match(handler, /this\.visiblePanelPrimeRaf = window\.requestAnimationFrame\(/);
     assert.match(handler, /this\.visiblePanelPrimeRaf = null;/);
     assert.match(handler, /void this\.primeVisiblePanelData\(\);/);
-    assert.match(handler, /void this\.dataLoader\.loadAllData\(\);/);
+    assert.match(handler, /void this\.dataLoader\.loadAllData\(false, trigger\);/);
 
     const body = appDestroyBody();
     assert.match(

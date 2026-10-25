@@ -1,9 +1,9 @@
 ---
 title: "制裁压力"
-description: "制裁压力面板整合美国财政部 OFAC SDN 名单与欧盟 Consolidated List 制裁指定数据，以国家级压力评分直观呈现全球制裁强度分布，并附最新新增条目、被指定船舶与航空器计数以及按制裁项目细分的走势，用于追踪出口管制、金融限制与二级制裁的动态演进。"
+description: "制裁压力面板整合美国财政部 OFAC SDN、OFAC Consolidated 名单与加拿大 SEMA/JVCFOA 制裁指定数据，以国家级压力评分直观呈现全球制裁强度分布，并附最新新增条目、被指定船舶与航空器计数以及按制裁项目细分的走势，用于追踪出口管制、金融限制与二级制裁的动态演进。"
 ---
 
-**Sanctions Pressure** 面板（内部 id `sanctions-pressure`）将 OFAC SDN 和 Consolidated 制裁列表转化为可操作的概览：哪些国家目前承受最大的指定压力、哪些项目在驱动它、以及自上次更新以来有什么变化。
+**Sanctions Pressure** 面板（内部 id `sanctions-pressure`）将 OFAC SDN、OFAC Consolidated 和加拿大 SEMA/JVCFOA 制裁列表转化为可操作的概览：哪些国家目前承受最大的指定压力、哪些项目在驱动它、以及自上次更新以来有什么变化。
 
 ## 面板显示内容
 
@@ -28,8 +28,11 @@ description: "制裁压力面板整合美国财政部 OFAC SDN 名单与欧盟 C
 
 - **OFAC Specially Designated Nationals (SDN) list**
 - **OFAC Consolidated List**
+- **加拿大外交部 SEMA / JVCFOA 综合名单**（`sema-ca`）
 
-种子器拉取两者，标准化国家归属，统计船舶和航空器，并与前一个快照比较以计算 `newEntryCount`。
+筛查和指定变更记录还覆盖美国综合筛查清单（CSL，国际贸易管理局批量下载）中的六个出口管制清单：BIS 实体清单（`CSL-EL`）、拒绝人员清单（`CSL-DPL`）、未核实清单（`CSL-UVL`）、军事最终用户清单（`CSL-MEU`），以及国务院 ITAR 禁止清单（`CSL-DTC`）和防扩散制裁清单（`CSL-ACN`）。CSL 中的财政部条目会被跳过，因为 OFAC 自身的名单已经提供；终止日期已过的拒绝令也会被剔除。CSL 条目不计入压力评分或国家计数，因为出口管制不属于制裁压力。这些清单没有实体类型，因此条目类型为 `unspecified`。其变更事件带有《联邦公报》引用（`notice`）和清单页面（`url`）。CSL 下载失败时，`seed-meta:sanctions:entities` 会以 `CSL_INGEST_FAILED` 降级；压力健康状态不受影响。
+
+种子器独立拉取各名单并合并记录，标准化国家归属，统计船舶和航空器，并与前一个快照比较以计算 `newEntryCount`。
 
 ## 刷新频率
 
@@ -42,4 +45,4 @@ OFAC 以不规律频率（每日到每周）发布列表更新。面板读取最
 ## API 参考
 
 - [Sanctions service](https://github.com/koala73/worldmonitor/blob/main/docs/api/SanctionsService.openapi.yaml) — 制裁压力 + 实体搜索 RPC。
-- 相关：`GET /api/sanctions/v1/lookup-sanction-entity?q=...` — 对 OpenSanctions（实时）的模糊实体查询，OFAC 本地索引作为回退。
+- 相关：`GET /api/sanctions/v1/lookup-sanction-entity?q=...` — 在已缓存的 OFAC SDN、OFAC Consolidated、加拿大 SEMA 和美国 CSL 出口管制索引中按名称、每个实体最多 10 个保留别名或精确 IMO 编号筛选。响应列出搜索的数据来源；查询长度不在 2–200 个字符内时返回 `seeded`，无有效索引记录时返回 `unavailable`。不会实时请求外部提供方。匹配结果是需向发布机构核实的线索，不构成法律建议。

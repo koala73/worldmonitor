@@ -1,7 +1,9 @@
 import { anyApi, httpRouter } from "convex/server";
+import type { Infer } from "convex/values";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
+import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import {
   CHECKOUT_RATE_LIMITED,
@@ -11,13 +13,20 @@ import {
 import { webhookHandler } from "./payments/webhookHandlers";
 import { resendWebhookHandler } from "./resendWebhookHandler";
 import { clerkWebhookHandler } from "./accountDeletion/clerkWebhook";
-import { USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
+import { channelTypeValidator, USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
+import { normalizeAcquisitionSource } from "../shared/acquisition-source";
+import { verifyDunningPortalToken } from "./lib/identitySigning";
+import { buildUnsubscribeUrl, EMAIL_UNSUBSCRIBE_PATH, verifyUnsubscribeToken } from "./lib/emailUnsubscribe";
 import {
   INTEL_HISTORY_EMBED_DIMS,
   INTEL_HISTORY_MAX_APPEND_RECORDS,
   INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS,
 } from "./intelHistory";
+import {
+  isInvalidCursorPage,
+  isInvalidPaginationCursorError,
+} from "./paginationCursor";
 
 // App-serving hosts only, aligned with api/_cors.js and server/cors.ts.
 const APP_ORIGIN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
@@ -77,23 +86,6 @@ export async function userPrefsOptionsHttpHandler(
   return new Response(null, { status: 204, headers });
 }
 
-async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.generateKey(
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const [sigA, sigB] = await Promise.all([
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(a)),
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(b)),
-  ]);
-  const aArr = new Uint8Array(sigA);
-  const bArr = new Uint8Array(sigB);
-  let diff = 0;
-  for (let i = 0; i < aArr.length; i++) diff |= aArr[i]! ^ bArr[i]!;
-  return diff === 0;
-}
 
 const tenantRelaySecrets = {
   gateway: "CONVEX_TENANT_RELAY_SECRET",
@@ -399,6 +391,44 @@ export async function internalEntitlementsHttpHandler(
     });
 }
 
+export async function internalAiRoutingPolicyHttpHandler(
+  ctx: ActionCtx,
+  request: Request,
+): Promise<Response> {
+  const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+  const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+  if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+    return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  const body = await parseJsonObjectBody<{ userId?: unknown }>(request);
+  if (!body) return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+  if (typeof body.userId !== "string" || body.userId.length === 0 || body.userId.length > 256) {
+    return Response.json({ error: "MISSING_USER_ID" }, { status: 400 });
+  }
+  const policy = await ctx.runQuery(internal.entitlements.getAiRoutingPolicyByUserId, { userId: body.userId });
+  return Response.json({ policy }, { status: 200 });
+}
+
+/**
+ * Railway delivery jobs (notification relay, digest seeder) read a user's AI
+ * routing policy before an LLM call that carries that user's data
+ * (scripts/lib/ai-routing-policy.cjs). Delivery-scoped relay secret only.
+ */
+export async function relayAiRoutingPolicyHttpHandler(
+  ctx: ActionCtx,
+  request: Request,
+): Promise<Response> {
+  const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+  if (unauthorized) return unauthorized;
+  const body = await parseJsonObjectBody<{ userId?: unknown }>(request);
+  if (!body) return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+  if (typeof body.userId !== "string" || body.userId.length === 0 || body.userId.length > 256) {
+    return Response.json({ error: "MISSING_USER_ID" }, { status: 400 });
+  }
+  const policy = await ctx.runQuery(internal.entitlements.getAiRoutingPolicyByUserId, { userId: body.userId });
+  return Response.json({ policy }, { status: 200 });
+}
+
 const http = httpRouter();
 
 // Only the edge contact handler may write leads after its public abuse checks.
@@ -452,6 +482,12 @@ http.route({
   path: "/api/internal-entitlements",
   method: "POST",
   handler: httpAction(internalEntitlementsHttpHandler),
+});
+
+http.route({
+  path: "/api/internal-ai-routing-policy",
+  method: "POST",
+  handler: httpAction(internalAiRoutingPolicyHttpHandler),
 });
 
 http.route({
@@ -731,6 +767,13 @@ http.route({
   }),
 });
 
+// Every type the schema stores, read from the validator so a new channel
+// type cannot be left out of the deactivate route (#9264).
+const CHANNEL_TYPES: ReadonlySet<string> = new Set(channelTypeValidator.members.map((member) => member.value));
+function isChannelType(value: unknown): value is Infer<typeof channelTypeValidator> {
+  return typeof value === "string" && CHANNEL_TYPES.has(value);
+}
+
 http.route({
   path: "/relay/deactivate",
   method: "POST",
@@ -748,7 +791,7 @@ http.route({
 
     if (
       typeof body.userId !== "string" || !body.userId ||
-      (body.channelType !== "telegram" && body.channelType !== "slack" && body.channelType !== "email" && body.channelType !== "discord" && body.channelType !== "web_push")
+      !isChannelType(body.channelType)
     ) {
       return new Response(JSON.stringify({ error: "MISSING_FIELDS" }), {
         status: 400,
@@ -765,6 +808,100 @@ http.route({
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// One-click email unsubscribe (RFC 8058) for the daily brief, alert emails and
+// winback. GET renders a confirm page and never changes state, because link
+// scanners and mail-security proxies prefetch GETs. POST unsubscribes without
+// a login: mail clients send `List-Unsubscribe=One-Click` to the header URL,
+// and the confirm page's form posts to the same URL. Token format and signing
+// live in lib/emailUnsubscribe.ts; the state change in emailUnsubscribe.ts.
+// ---------------------------------------------------------------------------
+
+const UNSUBSCRIBE_LIST_COPY = {
+  brief: { name: "the World Monitor daily brief", done: "You will no longer get the daily brief by email." },
+  alerts: { name: "World Monitor alert emails", done: "You will no longer get real-time alerts by email." },
+  marketing: { name: "World Monitor product emails", done: "You will no longer get product and win-back emails. Account and billing notices still arrive." },
+} as const;
+
+function unsubscribePage(status: number, title: string, bodyHtml: string): Response {
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title></head>
+<body style="margin:0;background:#0a0a0a;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<div style="max-width:520px;margin:64px auto;padding:32px;background:#111;border:1px solid #1f1f1f;">
+<p style="font-size:13px;font-weight:800;letter-spacing:1px;color:#4ade80;margin:0 0 16px;">WORLD MONITOR</p>
+<h1 style="font-size:20px;color:#fff;margin:0 0 12px;">${title}</h1>
+${bodyHtml}
+<p style="font-size:12px;color:#777;line-height:1.5;margin:24px 0 0;">Manage daily brief and alert emails in <a href="https://www.worldmonitor.app/dashboard?settings=notifications" style="color:#4ade80;">Notification settings</a>. For product emails, <a href="mailto:support@worldmonitor.app?subject=Unsubscribe%20from%20product%20emails" style="color:#4ade80;">email support to unsubscribe</a>.</p>
+</div></body></html>`;
+  return new Response(html, {
+    status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      // The URL carries the signed token.
+      "Referrer-Policy": "no-referrer",
+      "X-Robots-Tag": "noindex",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    },
+  });
+}
+
+function invalidUnsubscribeLink(): Response {
+  return unsubscribePage(
+    400,
+    "This unsubscribe link is not valid",
+    `<p style="font-size:14px;color:#aaa;line-height:1.5;margin:0;">The link may be incomplete. Open the latest email again, or use the options below.</p>`,
+  );
+}
+
+async function readUnsubscribeToken(request: Request): Promise<string | null> {
+  const fromQuery = new URL(request.url).searchParams.get("t");
+  if (fromQuery) return fromQuery;
+  // The confirm form posts the token as a field as well as in the URL.
+  const contentType = request.headers.get("Content-Type") ?? "";
+  if (contentType.includes("application/x-www-form-urlencoded")) {
+    const text = await request.text().catch(() => "");
+    return new URLSearchParams(text.slice(0, 4096)).get("t");
+  }
+  return null;
+}
+
+http.route({
+  path: EMAIL_UNSUBSCRIBE_PATH,
+  method: "GET",
+  handler: httpAction(async (_ctx, request) => {
+    const token = new URL(request.url).searchParams.get("t");
+    const verified = await verifyUnsubscribeToken(token);
+    if (!verified || !token) return invalidUnsubscribeLink();
+    const copy = UNSUBSCRIBE_LIST_COPY[verified.list];
+    const action = `${EMAIL_UNSUBSCRIBE_PATH}?t=${encodeURIComponent(token)}`;
+    return unsubscribePage(
+      200,
+      `Unsubscribe from ${copy.name}?`,
+      `<form method="post" action="${action}" style="margin:0;">
+<input type="hidden" name="t" value="${token.replace(/[^A-Za-z0-9._-]/g, "")}">
+<button type="submit" style="background:#4ade80;color:#0a0a0a;border:0;padding:12px 28px;font-weight:800;font-size:13px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">Unsubscribe</button>
+</form>`,
+    );
+  }),
+});
+
+http.route({
+  path: EMAIL_UNSUBSCRIBE_PATH,
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const verified = await verifyUnsubscribeToken(await readUnsubscribeToken(request));
+    if (!verified) return invalidUnsubscribeLink();
+    await ctx.runMutation(internal.emailUnsubscribe.applyUnsubscribe, verified);
+    const copy = UNSUBSCRIBE_LIST_COPY[verified.list];
+    console.log(`[email-unsubscribe] one-click unsubscribe applied (list=${verified.list})`);
+    return unsubscribePage(
+      200,
+      "You are unsubscribed",
+      `<p style="font-size:14px;color:#aaa;line-height:1.5;margin:0;">${copy.done}</p>`,
+    );
   }),
 });
 
@@ -798,13 +935,25 @@ http.route({
     // Delivery workers send alert and digest mail to whatever this returns.
     // Drop email channels whose address bounced, complained or was suppressed
     // by an operator, so those sends stop like every other Resend sender.
+    // Email channels also carry pre-signed one-click unsubscribe URLs
+    // (RFC 8058) so the workers never need the signing secret; both are null
+    // when EMAIL_UNSUBSCRIBE_SECRET is unset.
     const deliverable = [];
+    let unsubscribeUrls: { brief: string | null; alerts: string | null } | null = null;
     for (const channel of channels) {
       if (channel.channelType === "email" && typeof channel.email === "string" && channel.email
         && await ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
           email: channel.email,
           purpose: "transactional",
         })) {
+        continue;
+      }
+      if (channel.channelType === "email") {
+        unsubscribeUrls ??= {
+          brief: await buildUnsubscribeUrl(body.userId, "brief"),
+          alerts: await buildUnsubscribeUrl(body.userId, "alerts"),
+        };
+        deliverable.push({ ...channel, unsubscribeUrls });
         continue;
       }
       deliverable.push(channel);
@@ -860,6 +1009,7 @@ http.route({
       aiDigestEnabled?: boolean;
       countries?: string[];
       tickers?: string[];
+      chokepoints?: string[];
       scheduleWelcome?: boolean;
     }>(request);
     if (!body) {
@@ -919,7 +1069,7 @@ http.route({
           : undefined;
         const setResult = await ctx.runMutation((internal as any).notificationChannels.setChannelForUser, {
           userId,
-          channelType: body.channelType as "telegram" | "slack" | "email" | "webhook",
+          channelType: body.channelType as "telegram" | "slack" | "email" | "teams" | "webhook",
           chatId: body.chatId,
           webhookEnvelope: body.webhookEnvelope,
           email: body.email,
@@ -987,7 +1137,7 @@ http.route({
         }
         await ctx.runMutation((internal as any).notificationChannels.deleteChannelForUser, {
           userId,
-          channelType: body.channelType as "telegram" | "slack" | "email" | "discord",
+          channelType: body.channelType as "telegram" | "slack" | "email" | "discord" | "teams",
         });
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -1001,7 +1151,8 @@ http.route({
           !Array.isArray(body.channels) ||
           (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) ||
           (body.countries !== undefined && !Array.isArray(body.countries)) ||
-          (body.tickers !== undefined && !Array.isArray(body.tickers))
+          (body.tickers !== undefined && !Array.isArray(body.tickers)) ||
+          (body.chokepoints !== undefined && !Array.isArray(body.chokepoints))
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
@@ -1025,17 +1176,29 @@ http.route({
             countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
             // Watchlist ticker-scope (#4922 U3); mutation re-validates + normalizes.
             tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
+            // Chokepoint-scope (#9217); mutation re-validates + normalizes.
+            chokepoints: Array.isArray(body.chokepoints) ? (body.chokepoints as string[]) : undefined,
           });
         } catch (err: unknown) {
           // normalizeTickers/normalizeCountries throw ConvexError with a
           // structured code (TICKERS_LIMIT_EXCEEDED / COUNTRIES_LIMIT_EXCEEDED)
-          // when a caller exceeds the 50-entry cap. Surface those as a 400 with
+          // when a caller exceeds the 50-entry cap. assertCompatibleDeliveryMode
+          // throws INCOMPATIBLE_DELIVERY when the legacy set-alert-rules path
+          // tries to keep (realtime, high|all). Surface those as a 400 with
           // the machine-readable code — matching the set-notification-config
           // path below — instead of letting them fall to the outer catch as a
           // generic 500, which the client can't route on.
+          // See Sentry WORLDMONITOR-143 (prod setAlertRulesForUser via this action).
           const code = extractConvexErrorCode(err);
-          if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED") {
+          if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
             return new Response(JSON.stringify({ error: code }), { status: 400, headers: { "Content-Type": "application/json" } });
+          }
+          if (code === "INCOMPATIBLE_DELIVERY") {
+            const parsed = parseConvexErrorData(err);
+            const message = (parsed && typeof parsed === "object")
+              ? (parsed as { message?: string }).message ?? ""
+              : "";
+            return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
           throw err;
         }
@@ -1105,6 +1268,9 @@ http.route({
         if (body.tickers !== undefined && !Array.isArray(body.tickers)) {
           return new Response(JSON.stringify({ error: "TICKERS_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        if (body.chokepoints !== undefined && !Array.isArray(body.chokepoints)) {
+          return new Response(JSON.stringify({ error: "CHOKEPOINTS_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
         try {
           await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
             userId,
@@ -1112,13 +1278,14 @@ http.route({
             enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
             eventTypes: Array.isArray(body.eventTypes) ? (body.eventTypes as string[]) : undefined,
             sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
-            channels: Array.isArray(body.channels) ? (body.channels as Array<"telegram" | "slack" | "email" | "discord" | "webhook" | "web_push">) : undefined,
+            channels: Array.isArray(body.channels) ? (body.channels as Array<"telegram" | "slack" | "email" | "discord" | "teams" | "webhook" | "web_push">) : undefined,
             aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
             digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly" | undefined,
             digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
             digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
             countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
             tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
+            chokepoints: Array.isArray(body.chokepoints) ? (body.chokepoints as string[]) : undefined,
           });
         } catch (err: unknown) {
           // Translate structured ConvexError codes into machine-readable HTTP
@@ -1136,7 +1303,7 @@ http.route({
           const message = (parsed && typeof parsed === "object")
             ? (parsed as { message?: string }).message ?? ""
             : "";
-          if (code === "INCOMPATIBLE_DELIVERY" || code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED") {
+          if (code === "INCOMPATIBLE_DELIVERY" || code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
             return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
           if (code === "PRO_REQUIRED") {
@@ -1182,6 +1349,12 @@ http.route({
 // `alertRules.getByEnabled` (GHSA-r649-4cqj-w93h) behind the shared secret so
 // the cross-tenant scan is never reachable anonymously. `?enabled=false`
 // selects the disabled set; defaults to enabled=true (all the relay ever asks).
+http.route({
+  path: "/relay/ai-routing-policy",
+  method: "POST",
+  handler: httpAction(relayAiRoutingPolicyHttpHandler),
+});
+
 http.route({
   path: "/relay/enabled-rules",
   method: "GET",
@@ -1368,6 +1541,19 @@ function touchIsDue(lastUsedAt: unknown): boolean {
   return typeof lastUsedAt !== "number" || lastUsedAt <= Date.now() - TOUCH_DEBOUNCE_MS;
 }
 
+// The gate cannot stop a burst: every parallel validation that lands before
+// the first touch commits still sees a stale lastUsedAt, and touches scheduled
+// for the same instant conflict N-1 times (560 OCC conflicts in 72h across
+// userApiKeys + mcpProTokens, Convex Insights 2026-10). A random delay makes
+// the rest start after the first commits, read it, and no-op, except a touch
+// that lands within its ~20ms run: about (N-1) x 20ms / 30s per burst. On a
+// local backend, herds of 5 went from 4 conflicts each to 0.
+const TOUCH_SPREAD_MS = 30_000;
+
+function touchDelayMs(): number {
+  return Math.floor(Math.random() * TOUCH_SPREAD_MS);
+}
+
 // Service-to-service: validate a user API key by its SHA-256 hash.
 // Called by the Vercel edge gateway to look up user-owned keys.
 http.route({
@@ -1405,7 +1591,7 @@ http.route({
 
     if (result && touchIsDue(result.lastUsedAt)) {
       try {
-        await ctx.scheduler.runAfter(0, (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
+        await ctx.scheduler.runAfter(touchDelayMs(), (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
       } catch (err) {
         // sentry-coverage-ok: re-throwing here would 500 the gateway, which coerces to null
         // and stamps a 60s negative-cache sentinel for a valid key. lastUsedAt is best-effort telemetry.
@@ -1507,7 +1693,7 @@ http.route({
 
     if (result && touchIsDue(result.lastUsedAt)) {
       try {
-        await ctx.scheduler.runAfter(0, (internal as any).embedKeys.touchKeyLastUsed, { keyId: result.id });
+        await ctx.scheduler.runAfter(touchDelayMs(), (internal as any).embedKeys.touchKeyLastUsed, { keyId: result.id });
       } catch (err) {
         // sentry-coverage-ok: re-throwing here would 500 the edge validator, which
         // coerces to null and stamps a negative-cache sentinel for a valid key.
@@ -1612,7 +1798,7 @@ http.route({
       });
     }
 
-    const body = await parseJsonObjectBody<{ tokenId?: unknown }>(request);
+    const body = await parseJsonObjectBody<{ tokenId?: unknown; recordUsage?: unknown }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -1633,10 +1819,10 @@ http.route({
         { tokenId: body.tokenId },
       );
 
-      if (result && touchIsDue(result.lastUsedAt)) {
+      if (result && body.recordUsage !== false && touchIsDue(result.lastUsedAt)) {
         try {
           await ctx.scheduler.runAfter(
-            0,
+            touchDelayMs(),
             (internal as any).mcpProTokens.touchProMcpTokenLastUsed,
             { tokenId: body.tokenId },
           );
@@ -1773,6 +1959,7 @@ http.route({
       discountCode?: string;
       referralCode?: string;
       attributionSource?: string;
+      acquisition?: unknown;
       bypassPendingGuard?: boolean;
     }>(request);
     if (!body) {
@@ -1801,6 +1988,7 @@ http.route({
           discountCode: body.discountCode,
           referralCode: body.referralCode,
           attributionSource: body.attributionSource,
+          acquisition: normalizeAcquisitionSource(body.acquisition) ?? undefined,
           bypassPendingGuard: body.bypassPendingGuard,
         },
       );
@@ -1861,9 +2049,6 @@ http.route({
   }),
 });
 
-// Service-to-service: Vercel edge gateway creates Dodo customer portal sessions.
-// Authenticated via CONVEX_TENANT_RELAY_SECRET; edge endpoint validates Clerk JWT
-// and forwards the verified userId.
 http.route({
   path: "/relay/customer-portal",
   method: "POST",
@@ -1871,7 +2056,7 @@ http.route({
     const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
     if (unauthorized) return unauthorized;
 
-    const body = await parseJsonObjectBody<{ userId?: string }>(request);
+    const body = await parseJsonObjectBody<{ userId?: string; portalToken?: string }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -1879,7 +2064,29 @@ http.route({
       });
     }
 
-    if (!body.userId) {
+    let userId = typeof body.userId === "string" ? body.userId : "";
+    if (typeof body.portalToken === "string" && body.portalToken.length > 0) {
+      // A token never falls back to body.userId. It mints only while the
+      // signed user still has an open hold, so recovery or cancellation
+      // revokes every outstanding email link.
+      const rejectToken = (reason: "invalid_or_expired" | "no_open_hold") => {
+        console.log(JSON.stringify({ event: "dunning_portal_token_rejected", reason }));
+        return new Response(JSON.stringify({ error: "INVALID_PORTAL_TOKEN" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      };
+      const tokenUserId = await verifyDunningPortalToken(body.portalToken, Date.now());
+      if (!tokenUserId) return rejectToken("invalid_or_expired");
+      const hasOpenHold = await ctx.runQuery(
+        internal.payments.subscriptionEmails.hasOpenDunningHold,
+        { userId: tokenUserId },
+      );
+      if (!hasOpenHold) return rejectToken("no_open_hold");
+      userId = tokenUserId;
+    }
+
+    if (!userId) {
       return new Response(
         JSON.stringify({ error: "MISSING_FIELDS", required: ["userId"] }),
         { status: 400, headers: { "Content-Type": "application/json" } },
@@ -1889,7 +2096,7 @@ http.route({
     try {
       const result = await ctx.runAction(
         internal.payments.billing.internalGetCustomerPortalUrl,
-        { userId: body.userId },
+        { userId },
       );
       return new Response(JSON.stringify(result), {
         status: 200,
@@ -2205,8 +2412,25 @@ http.route({
   path: "/relay/intel-history",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    if (await intelRelayUnauthorized(request)) {
-      return intelJson({ error: "UNAUTHORIZED" }, 401);
+    const startedAt = Date.now();
+    const phase = (name: string, status?: number) => {
+      console.info(JSON.stringify({
+        event: "intel_history_phase",
+        phase: name,
+        elapsedMs: Math.max(0, Date.now() - startedAt),
+        ...(status === undefined ? {} : { status }),
+      }));
+    };
+    const respond = (body: unknown, status: number) => {
+      const response = intelJson(body, status);
+      phase("response_ready", status);
+      return response;
+    };
+    phase("handler_enter");
+    const unauthorized = await intelRelayUnauthorized(request);
+    phase("auth_complete");
+    if (unauthorized) {
+      return respond({ error: "UNAUTHORIZED" }, 401);
     }
 
     const body = await parseJsonObjectBody<{
@@ -2215,8 +2439,9 @@ http.route({
       runId?: unknown;
       records?: unknown;
     }>(request);
+    phase("body_complete");
     if (!body) {
-      return intelJson({ error: "INVALID_JSON" }, 400);
+      return respond({ error: "INVALID_JSON" }, 400);
     }
 
     const missing: string[] = [];
@@ -2231,13 +2456,13 @@ http.route({
       }
     }
     if (missing.length > 0) {
-      return intelJson({ error: "MISSING_FIELDS", required: missing }, 400);
+      return respond({ error: "MISSING_FIELDS", required: missing }, 400);
     }
     if (!Array.isArray(body.records) || body.records.length === 0) {
-      return intelJson({ error: "MISSING_FIELDS", required: ["records"] }, 400);
+      return respond({ error: "MISSING_FIELDS", required: ["records"] }, 400);
     }
     if (body.records.length > INTEL_HISTORY_MAX_APPEND_RECORDS) {
-      return intelJson(
+      return respond(
         {
           error: "TOO_MANY_RECORDS",
           max: INTEL_HISTORY_MAX_APPEND_RECORDS,
@@ -2253,7 +2478,7 @@ http.route({
     for (let i = 0; i < body.records.length; i++) {
       const validated = validateIntelHistoryRecord(body.records[i]);
       if (!validated.ok) {
-        return intelJson(
+        return respond(
           { error: "INVALID_RECORD", index: i, reason: validated.reason },
           400,
         );
@@ -2261,17 +2486,21 @@ http.route({
       records.push(validated.record);
     }
 
+    phase("validation_complete");
     try {
+      phase("mutation_started");
       const result = await ctx.runMutation(internal.intelHistory.append, {
         domain: body.domain as string,
         resource: body.resource as string,
         runId: body.runId as string,
         records,
       });
-      return intelJson(result, 200);
+      phase("mutation_complete");
+      return respond(result, 200);
     } catch (err) {
+      phase("mutation_failed");
       const msg = err instanceof Error ? err.message : "intel history append failed";
-      return intelJson({ error: msg }, 500);
+      return respond({ error: msg }, 500);
     }
   }),
 });
@@ -2488,11 +2717,23 @@ http.route({
         400,
       );
     }
+    const cursor = body.cursor;
+    if (cursor !== undefined && (typeof cursor !== "string" || cursor.length > 4096)) {
+      return intelJson({ error: "INVALID_CURSOR" }, 400);
+    }
 
     try {
-      const result = await ctx.runQuery(internal.intelHistory.timeline, parsed.scope);
+      const result = await ctx.runQuery(internal.intelHistory.timeline, {
+        ...parsed.scope, ...(typeof cursor === "string" && cursor ? { cursor } : {}),
+      });
+      if (isInvalidCursorPage(result)) {
+        return intelJson({ error: "INVALID_CURSOR" }, 400);
+      }
       return intelJson(result, 200);
     } catch (err) {
+      if (isInvalidPaginationCursorError(err)) {
+        return intelJson({ error: "INVALID_CURSOR" }, 400);
+      }
       const msg = err instanceof Error ? err.message : "intel history timeline failed";
       return intelJson({ error: msg }, 500);
     }
