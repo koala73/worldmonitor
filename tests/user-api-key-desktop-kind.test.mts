@@ -53,6 +53,7 @@ interface Harness {
   validateCalls: number;
   entitlementCalls: number;
   deletes: string[];
+  gets: string[];
   validateQueue: ConvexAnswer[];
   entitlementQueue: ConvexAnswer[];
 }
@@ -105,6 +106,7 @@ function runCommand(command: unknown[]): { result: unknown } {
   const [verb, key, ...rest] = command as [string, string, ...string[]];
   switch (verb.toUpperCase()) {
     case 'GET':
+      harness.gets.push(key);
       return { result: harness.redis.get(key) ?? null };
     case 'SET':
       harness.redis.set(key, String(rest[0]));
@@ -123,6 +125,7 @@ function installHarness(): Harness {
     validateCalls: 0,
     entitlementCalls: 0,
     deletes: [],
+    gets: [],
     validateQueue: [],
     entitlementQueue: [],
   };
@@ -235,6 +238,18 @@ describe('cache contract shared by both producers', () => {
     assert.deepEqual(jsEntry, { v: jsEntry.v, userId: 'user_owner', keyId: 'key_js', name: 'laptop', keyKind: 'api' });
     assert.equal(typeof tsEntry.v, 'number');
     assert.equal(tsEntry.v, jsEntry.v);
+  });
+
+  it('a warm current entry costs the TypeScript validator one Redis read', async () => {
+    const key = uniqueKey();
+    harness.validateQueue.push(convexRow());
+    assert.ok(await validateUserApiKeyPrincipal(key));
+    const entryKey = `${CACHE_PREFIX}${await sha256Hex(key)}`;
+    harness.gets = [];
+
+    assert.ok(await validateUserApiKeyPrincipal(key));
+    assert.equal(harness.validateCalls, 1);
+    assert.deepEqual(harness.gets.filter((k) => k.endsWith(entryKey)), [entryKey]);
   });
 
   it('keyId is set whichever producer filled the cache', async () => {

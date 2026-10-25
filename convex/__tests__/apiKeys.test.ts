@@ -486,6 +486,39 @@ describe("validateKeyByHash", () => {
       delete process.env.DESKTOP_KEYS_ENABLED;
     }
   });
+
+  test("Company Monitoring keys take no desktop slot or rank for a downgraded owner", async () => {
+    process.env.DESKTOP_KEYS_ENABLED = "true";
+    try {
+      const t = convexTest(schema, modules);
+      await seedProEntitlement(t, "user-pro");
+      // Two scoped keys left over from an API plan. Every desktop-aware
+      // validator rejects them, so they must not use up the Pro allowance.
+      await t.run(async (ctx) => {
+        for (const [i, c] of ["c", "d"].entries()) {
+          await ctx.db.insert("userApiKeys", {
+            userId: "user-pro", name: `scoped-${c}`, keyPrefix: `wm_0000${c}`, keyHash: c.repeat(64),
+            scopes: ["company_monitoring:read"], companyMonitoringAccountId: "acct-1",
+            createdAt: NOW - 5_000 + i,
+          });
+        }
+        await ctx.db.insert("userApiKeys", {
+          userId: "user-pro", name: "generic", keyPrefix: "wm_0000e", keyHash: "e".repeat(64),
+          createdAt: NOW - 3_000,
+        });
+      });
+
+      const generic = await t.query(internal.apiKeys.validateKeyByHash, { keyHash: "e".repeat(64) });
+      expect(generic).toMatchObject({ keyKind: "api", activeKeyRank: 0 });
+      // Pro cap is 2: the generic key holds one slot, so one desktop key fits.
+      await t.withIdentity(PRO_USER).mutation(api.apiKeys.createApiKey, desktopArgs(1));
+      await expect(
+        t.withIdentity(PRO_USER).mutation(api.apiKeys.createApiKey, desktopArgs(2)),
+      ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+    } finally {
+      delete process.env.DESKTOP_KEYS_ENABLED;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

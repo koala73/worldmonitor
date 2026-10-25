@@ -255,12 +255,8 @@ async function createDesktopKey(
   // their generic keys working at desktop scope, up to the same cap, so those
   // count toward it too. Unlike the API path this never revokes to make room.
   const ownerHasApiAccess = merged.features.apiAccess === true;
-  const existing = await ctx.db
-    .query("userApiKeys")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .collect();
-  const counted = existing.filter(
-    (k) => !k.revokedAt && (keyKindOf(k) === "desktop" || !ownerHasApiAccess),
+  const counted = (await activeDesktopSlotKeys(ctx, userId)).filter(
+    (k) => keyKindOf(k) === "desktop" || !ownerHasApiAccess,
   ).length;
   if (counted >= (merged.features.maxDesktopKeys ?? 0)) {
     throw new ConvexError("DESKTOP_KEY_LIMIT_REACHED");
@@ -435,7 +431,7 @@ export const validateKeyByHash = internalQuery({
 });
 
 /**
- * 0-based position of `key` among its owner's ACTIVE (non-revoked) keys of
+ * 0-based position of `key` among its owner's ACTIVE, unscoped keys of
  * BOTH kinds, oldest first (plan 2026-10-25-001 KTD5 / R5).
  *
  * The edge needs this to apply "only the owner's oldest active keys up to
@@ -448,18 +444,28 @@ export const validateKeyByHash = internalQuery({
  * on the insertion order Convex recorded, so the rank is stable across reads.
  */
 async function activeKeyRankOf(ctx: QueryCtx, key: Doc<"userApiKeys">): Promise<number> {
-  const siblings = await ctx.db
-    .query("userApiKeys")
-    .withIndex("by_userId", (q) => q.eq("userId", key.userId))
-    .collect();
-  const active = siblings
-    .filter((k) => !k.revokedAt)
+  const active = (await activeDesktopSlotKeys(ctx, key.userId))
     .sort((a, b) => a.createdAt - b.createdAt || a._creationTime - b._creationTime);
   const rank = active.findIndex((k) => k._id === key._id);
-  // `key` is active (checked above), so it is always found; the guard only
-  // keeps a malformed read from returning -1 to a consumer that compares
-  // against a cap with `<`.
+  // A Company Monitoring key holds no slot, so it is not found; nor is a
+  // malformed read. Either way the edge must never see -1 below a cap.
   return rank < 0 ? Number.MAX_SAFE_INTEGER : rank;
+}
+
+/**
+ * The owner's active keys that can hold a desktop slot. Company Monitoring
+ * keys are excluded: every desktop-aware validator rejects a scoped key, so
+ * counting one would spend an allowance it can never use.
+ */
+async function activeDesktopSlotKeys(
+  ctx: QueryCtx,
+  userId: string,
+): Promise<Doc<"userApiKeys">[]> {
+  const active = await ctx.db
+    .query("userApiKeys")
+    .withIndex("by_userId_revokedAt", (q) => q.eq("userId", userId).eq("revokedAt", undefined))
+    .collect();
+  return active.filter((k) => !k.companyMonitoringAccountId && !(k.scopes && k.scopes.length > 0));
 }
 
 /**

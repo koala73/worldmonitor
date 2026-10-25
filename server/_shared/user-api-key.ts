@@ -289,7 +289,10 @@ async function loadUserKeyEntry(keyHash: string): Promise<UserKeyCacheEntry | nu
   const cacheKey = `${CACHE_KEY_PREFIX}${keyHash}`;
 
   const pre = await readCachedJson(cacheKey);
-  if (pre.status === 'hit' && isPlainObject(pre.value) && !isCurrentUserKeyCacheEntry(pre.value)) {
+  if (pre.status === 'hit' && isPlainObject(pre.value)) {
+    // A warm current hit is the answer; reading it again through
+    // `cachedFetchJson` would cost every key check a second Redis trip.
+    if (isCurrentUserKeyCacheEntry(pre.value)) return pre.value;
     return revalidateUserKey(cacheKey, keyHash);
   }
 
