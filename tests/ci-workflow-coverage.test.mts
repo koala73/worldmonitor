@@ -321,6 +321,7 @@ const REQUIRED_DESKTOP_CONFIG_INPUTS = [
   'scripts/sync-desktop-version.mjs',
   'scripts/check-desktop-build-env.mjs',
   'scripts/check-rust-security-floors.mjs',
+  'scripts/download-node.sh',
 ] as const;
 
 const REQUIRED_DESKTOP_RUST_INPUTS = [
