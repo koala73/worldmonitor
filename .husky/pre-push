@@ -1096,6 +1096,15 @@ else
   echo "  Skipped (no pro-test/, product catalog, or product-config generator changes in branch)."
 fi
 
+echo "Running derived-file freshness check..."
+# Stale generated files (product facts, llms, AI search, catalogs, …) were over
+# half of CI test failures. Regenerate them here so the fix is one commit.
+if ! node scripts/generate-derived.mjs --check; then
+  node scripts/generate-derived.mjs || exit 1
+  echo "ERROR: derived files were stale and are now regenerated. Review and commit them, then push again."
+  exit 1
+fi
+
 echo "Running version sync check..."
 npm run version:check || exit 1
 

@@ -505,6 +505,10 @@ make install-plugins   # Install sebuf protoc-gen plugins (requires Go)
 
 The pinned sebuf version is set by `SEBUF_VERSION` in the `Makefile` (currently **v0.11.1**). All three plugins — `protoc-gen-ts-client`, `protoc-gen-ts-server`, `protoc-gen-openapiv3` — must be installed from the same sebuf release. If you see codegen drift after pulling, rerun `make install-plugins` to resync.
 
+### Derived Files
+
+Product facts, `llms.txt`, the AI search briefing, source attribution, catalogs, locales, legal digests and notices are committed outputs of generators in `scripts/`. Run `npm run generate` after changing anything they read; it runs each generator's `--check` and rewrites only what is stale, in dependency order. `npm run generate:check` reports without writing. The pre-push hook regenerates stale files and stops the push so you can commit them, and the always-on `docs-stats` CI job runs the check. Proto output is separate (`make generate`, below). App translations, internal links, the sitemap and docs page dates are not covered; see the header of `scripts/generate-derived.mjs`.
+
 ### Generated Artifacts in Pull Requests
 
 `make generate` writes generated files under `src/generated/` and `docs/api/`, plus the seven scorecard Edge mirrors named by `scripts/generate-scorecard-edge-mirrors.mjs`. These files remain committed to the repository, but they must never be edited by hand.
