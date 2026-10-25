@@ -32,18 +32,12 @@ async function classify(rows) {
   return result.alerts[0] ?? null;
 }
 
-test('a page of future flights with some pre-cancellations is not an airport closure', async () => {
+test('a page of future flights with some pre-cancellations is not a disruption', async () => {
   const rows = [
     ...Array.from({ length: 79 }, (_, i) => flight('scheduled', HOUR + i * 5 * 60_000)),
     ...Array.from({ length: 21 }, (_, i) => flight('cancelled', 2 * HOUR + i * 5 * 60_000)),
   ];
-  const alert = await classify(rows);
-  assert.ok(alert, '21% of the page is cancelled, which is still a disruption');
-  assert.notEqual(alert.delayType, 'FLIGHT_DELAY_TYPE_CLOSURE');
-  assert.notEqual(alert.severity, 'FLIGHT_DELAY_SEVERITY_SEVERE');
-  assert.equal(alert.reason, '21% flights cancelled');
-  assert.equal(alert.cancelledFlights, 21);
-  assert.equal(alert.totalFlights, 100);
+  assert.equal(await classify(rows), null);
 });
 
 test('flights already due and all cancelled are still a closure', async () => {
@@ -94,4 +88,61 @@ test('a departed flight counts as due even when its schedule is later than now',
   assert.equal(alert.totalFlights, 12);
   assert.equal(alert.delayedFlightsPct, 50);
   assert.equal(alert.avgDelayMinutes, 20);
+});
+
+// AviationStack writes departure times as the airport's local wall clock with a
+// "+00:00" suffix. Riyadh is UTC+3 all year.
+function riyadhFlight(status, offsetMs, { codeshared = false, ...extra } = {}) {
+  const wall = new Date(Date.now() + offsetMs + 3 * HOUR).toISOString().replace(/\.\d{3}Z$/, '+00:00');
+  return {
+    flight_status: status,
+    flight: { codeshared: codeshared ? { airline_iata: 'SV', flight_iata: 'SV1' } : null },
+    departure: { timezone: 'Asia/Riyadh', scheduled: wall, delay: null, ...extra },
+  };
+}
+
+test('departure times are read in the airport time zone', async () => {
+  const rows = [
+    ...Array.from({ length: 30 }, (_, i) => riyadhFlight('cancelled', -(i + 1) * 2 * 60_000)),
+    ...Array.from({ length: 70 }, (_, i) => riyadhFlight('scheduled', (i + 1) * 2 * 60_000)),
+  ];
+  // Read as UTC, every row is still three hours away and none is due.
+  const alert = await classify(rows);
+  assert.equal(alert.delayType, 'FLIGHT_DELAY_TYPE_CLOSURE');
+  assert.equal(alert.totalFlights, 30);
+});
+
+test('a codeshare row is the same departure, counted once', async () => {
+  const rows = [
+    ...Array.from({ length: 20 }, (_, i) => riyadhFlight('landed', -(i + 1) * 60_000)),
+    ...Array.from({ length: 20 }, (_, i) => riyadhFlight('cancelled', -(i + 1) * 60_000)),
+    ...Array.from({ length: 40 }, (_, i) => riyadhFlight('cancelled', -(i + 1) * 60_000, { codeshared: true })),
+  ];
+  const alert = await classify(rows);
+  assert.equal(alert.reason, '50% flights cancelled');
+  assert.equal(alert.cancelledFlights, 20);
+  assert.equal(alert.totalFlights, 40);
+});
+
+test('advance cancellations late in the day are not most flights cancelled', async () => {
+  // Live 2026-10-25 17:59 UTC: the page was RUH's last 100 of 621 departures,
+  // 20:40 to 23:55 local. 6 were due, 67 cancelled, 46 of those codeshares.
+  const rows = [
+    ...Array.from({ length: 6 }, () => riyadhFlight('active', -10 * 60_000)),
+    ...Array.from({ length: 21 }, (_, i) => riyadhFlight('cancelled', HOUR + i * 5 * 60_000)),
+    ...Array.from({ length: 46 }, (_, i) => riyadhFlight('cancelled', HOUR + i * 4 * 60_000, { codeshared: true })),
+    ...Array.from({ length: 15 }, (_, i) => riyadhFlight('scheduled', HOUR + i * 9 * 60_000)),
+    ...Array.from({ length: 12 }, (_, i) => riyadhFlight('scheduled', HOUR + i * 9 * 60_000, { codeshared: true })),
+  ];
+  assert.equal(await classify(rows), null);
+});
+
+test('a page of future flights almost all cancelled is still a closure', async () => {
+  const rows = [
+    ...Array.from({ length: 90 }, (_, i) => flight('cancelled', HOUR + i * 60_000)),
+    ...Array.from({ length: 10 }, (_, i) => flight('scheduled', HOUR + i * 60_000)),
+  ];
+  const alert = await classify(rows);
+  assert.equal(alert.delayType, 'FLIGHT_DELAY_TYPE_CLOSURE');
+  assert.equal(alert.totalFlights, 100);
 });
