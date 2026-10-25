@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   baselinePathFor,
   classifyKeys,
+  copiedEnglishKeys,
   expectedKeysForLocale,
   findPluralBases,
   flatten,
@@ -336,5 +337,59 @@ describe('baseline advance', () => {
 
   it('never advances on a dry run', () => {
     assert.equal(mayAdvanceBaseline({ ...clean, dryRun: true }).advance, false);
+  });
+});
+
+describe('copied English left in place by the freshness pass', () => {
+  // A value that still equals its English source is classified fresh: the key
+  // exists and the English it was "translated" from has not changed. Ukrainian
+  // and the leftover German and Russian sentences sit in that bucket, so a
+  // normal pass never sends them. The selector is what a fill pass uses.
+  const expected = {
+    'shell.offlineTitle': "You're Offline",
+    'widgets.proBadge': 'PRO',
+    'panels.science': 'Science',
+    'countryBrief.foodStocks': 'Food stocks',
+    'header.live': 'LIVE',
+    'alerts.active_few': '{{count}} active alerts',
+    'modals.settingsWindow.worldMonitor.apiKey.placeholder': 'wm_xxxxxxxxxxxxxxxxxxxxxxxx',
+    'commands.tips.mapExample': 'iran',
+  };
+
+  it('selects an unchanged English sentence and skips a real translation and a kept token', () => {
+    const locale = {
+      'shell.offlineTitle': "You're Offline",
+      'widgets.proBadge': 'PRO',
+      'panels.science': 'Наука',
+      'countryBrief.foodStocks': 'Food stocks',
+      'header.live': 'LIVE',
+      'alerts.active_few': '{{count}} active alerts',
+      'modals.settingsWindow.worldMonitor.apiKey.placeholder': 'wm_xxxxxxxxxxxxxxxxxxxxxxxx',
+      'commands.tips.mapExample': 'iran',
+    };
+
+    assert.deepEqual(copiedEnglishKeys(locale, expected, 'uk'), [
+      'alerts.active_few',
+      'countryBrief.foodStocks',
+      'header.live',
+      'shell.offlineTitle',
+    ]);
+  });
+
+  it('selects German prose that is still English and leaves a kept token', () => {
+    const locale = {
+      'shell.offlineTitle': "You're Offline",
+      'widgets.proBadge': 'PRO',
+      'panels.science': 'Wissenschaft',
+      'countryBrief.foodStocks': 'Food stocks',
+      'header.live': 'LIVE',
+      'alerts.active_few': '{{count}} aktive Meldungen',
+    };
+
+    assert.deepEqual(copiedEnglishKeys(locale, expected, 'de'), [
+      'countryBrief.foodStocks',
+      'header.live',
+      'shell.offlineTitle',
+    ]);
   });
 });

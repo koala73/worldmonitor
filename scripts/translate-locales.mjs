@@ -169,7 +169,7 @@ Rules:
 9. This is an OSINT / geopolitics / markets dashboard. The strings are labels torn out of that context, so the everyday reading of a word is usually the wrong one. Translate these terms in the sense given here:
 ${DOMAIN_GLOSSARY}
 10. Product, brand and dataset names stay untranslated: Product Hunt, Techmeme, Big Mac Index, Smartraveller, GDELT, Polymarket, Hyperliquid, OpenSky, Cloudflare Radar, World Monitor. The same holds for the app's own component names a translation cannot rename: sidecar, widget, panel, dashboard, feed.
-
+${langName === 'Ukrainian' ? '11. Write Ukrainian (українська), never Russian. Use і, ї, є, and ґ where Ukrainian spelling requires them. Do not use Russian ы, э, or ъ.\n' : ''}${langName === 'Russian' ? '11. Write Russian. Do not use the Ukrainian letters і, ї, є, or ґ.\n' : ''}${langName === 'German' ? '11. Write German. Keep a word unchanged when it is already the normal German UI term.\n' : ''}
 Input (key<TAB>english):
 ${items}
 
@@ -275,6 +275,57 @@ export function findPluralBases(enFlat) {
 // either the missing-keys batch or the post-write coverage scan.
 function isPrivateKey(k) {
   return k.split('.').some(seg => seg.startsWith('_'));
+}
+
+// Tokens the translator is told to leave in English. A stored value that is
+// only these tokens is not a missed translation. Anything else that still
+// equals the English source is copied UI copy, and the freshness classifier
+// will not resend it: the key exists and the English source has not changed.
+const KEPT_ENGLISH_TOKENS = new Set([
+  'pro', 'ai', 'osint', 'gps', 'nato', 'gdp', 'ok', 'url', 'api', 'rss', 'json',
+  'mcp', 'cii', 'ads-b', 'ais', 'html', 'css', 'pdf', 'csv', 'xml', 'utc', 'etf',
+  'ipo', 'ceo', 'usd', 'eur', 'gbp', 'btc', 'eth', 'chart.js', 'world monitor',
+  'widget', 'panel', 'dashboard', 'feed', 'sidecar',
+]);
+
+function englishCopyBody(value) {
+  return value
+    .replace(/\{\{[^}]+\}\}/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/&[a-z]+;/g, ' ')
+    .trim();
+}
+
+function isCopiedEnglishValue(value) {
+  const body = englishCopyBody(value);
+  if (!body || /x{4,}/i.test(body)) return false;
+  const words = (body.match(/[A-Za-z][A-Za-z'’-]*[A-Za-z]/g) || []).map(word => word.toLowerCase());
+  if (words.length === 0) return false;
+  const whole = body.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (KEPT_ENGLISH_TOKENS.has(whole)) return false;
+  return words.some(word => !KEPT_ENGLISH_TOKENS.has(word));
+}
+
+// Keys whose stored value is still the English source and the text is
+// user-facing copy. `locale` names the catalogue being filled; the keep list
+// does not vary by language, but callers must say which catalogue they mean
+// so a fill pass cannot be pointed at "every locale" by accident.
+export function copiedEnglishKeys(localeFlat, expected, locale) {
+  if (typeof locale !== 'string' || locale.length === 0) {
+    throw new TypeError('copiedEnglishKeys requires a locale code');
+  }
+  const keys = [];
+  for (const [key, en] of Object.entries(expected)) {
+    if (isPrivateKey(key)) continue;
+    // Command-palette examples are the literal text a user can type
+    // ("brief china", "UAE528"). Mature catalogues leave them in English.
+    if (key.startsWith('commands.tips.') && key.endsWith('Example')) continue;
+    if (localeFlat[key] !== en) continue;
+    if (!isCopiedEnglishValue(en)) continue;
+    keys.push(key);
+  }
+  return keys.sort();
 }
 
 export function expectedKeysForLocale(enFlat, pluralBases, categories) {
@@ -613,8 +664,13 @@ async function main() {
   const dryRun = args.has('--dry-run');
   const proTest = args.has('--pro-test');
   const adoptBaseline = args.has('--adopt-baseline');
+  const fillCopiedEnglish = args.has('--fill-copied-english');
   const onlyArg = [...args].find(a => a.startsWith('--only='));
   const onlyLocales = onlyArg ? onlyArg.slice('--only='.length).split(',') : null;
+  if (fillCopiedEnglish && !onlyLocales) {
+    console.error('--fill-copied-english requires --only=<locales> so it cannot rewrite every catalogue.');
+    process.exit(1);
+  }
   const ROOT = localesRootFor(proTest);
 
   // An unknown locale in --only would otherwise be skipped with a note and the
@@ -703,13 +759,17 @@ async function main() {
       }
     }
     // Stale keys are sent alongside missing ones; setNested overwrites the
-    // rotted value in place.
-    const toTranslate = [...missing, ...stale];
+    // rotted value in place. Copied English is a third bucket: the value
+    // exists and matches the English source, so classifyKeys calls it fresh
+    // and a normal pass never resends it. --fill-copied-english sends those
+    // user-facing copies for the locales named by --only.
+    const copied = fillCopiedEnglish ? copiedEnglishKeys(flat, expected, loc) : [];
+    const toTranslate = [...new Set([...missing, ...stale, ...copied])];
     if (toTranslate.length === 0) {
       console.log(`[${loc}] ✓ complete and fresh (CLDR categories: ${categories.join('/')})`);
       continue;
     }
-    console.log(`[${loc}] ${missing.length} missing + ${stale.length} stale keys (${LANG_NAMES[loc]}, CLDR: ${categories.join('/')})`);
+    console.log(`[${loc}] ${missing.length} missing + ${stale.length} stale + ${copied.length} copied-English keys (${LANG_NAMES[loc]}, CLDR: ${categories.join('/')})`);
     if (stale.length > 0) {
       console.log(`[${loc}]   stale e.g. ${stale.slice(0, 3).join(', ')}`);
     }
