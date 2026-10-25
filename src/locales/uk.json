@@ -280,7 +280,7 @@
       "wheat": "Пшениця",
       "corn": "Кукурудза",
       "rice": "Рис",
-      "soybeans": "Соєва олія",
+      "soybeans": "Соєві боби",
       "barley": "Ячмінь",
       "palmOil": "Пальмова олія"
     },
@@ -1283,7 +1283,7 @@
         "drones": "Дрони",
         "aircraft": "Літаки",
         "carriers": "Авіаносці",
-        "destroyers": "Еквадори",
+        "destroyers": "Есмінці",
         "frigates": "Фрегати",
         "submarines": "Підводні човни",
         "patrol": "Патрульні",
@@ -1371,7 +1371,7 @@
         "commodityHub": "Вузол торгівлі сировиною",
         "waterway": "Водний шлях",
         "highAlert": "Високий рівень готовності",
-        "elevated": "Підвищена висота",
+        "elevated": "Підвищений рівень загрози",
         "monitoring": "Моніторинг",
         "base": "База",
         "nuclear": "Ядерна об'єкти",
@@ -2717,7 +2717,7 @@
           "doneNote": "Ви вже використовуєте свої інструменти Pro.",
           "summaryLabel": "Набір інструментів Pro",
           "summaryVerified": "Розблоковано й готово до використання.",
-          "channelsNote": "Você вважаєте за краще Telegram, Slack, Discord або webhook?",
+          "channelsNote": "Віддаєте перевагу Telegram, Slack, Discord або webhook?",
           "pointers": {
             "search": "Шукати в усьому dashboard",
             "widgets": "Побудувати користувацький віджет",
@@ -3330,9 +3330,9 @@
     },
     "outage": {
       "levels": {
-        "total": "ПОВНЕ ЗНЕСТРУМЛЕННЯ",
-        "major": "МАСШТАБНЕ ЗНЕСТРУМЛЕННЯ",
-        "partial": "ЧАСТКОВЕ ЗНЕСТРУМЛЕННЯ",
+        "total": "ПОВНЕ ВІДКЛЮЧЕННЯ ІНТЕРНЕТУ",
+        "major": "МАСШТАБНИЙ ЗБІЙ ІНТЕРНЕТУ",
+        "partial": "ЧАСТКОВИЙ ЗБІЙ ІНТЕРНЕТУ",
         "disruption": "ЗБІЙ"
       },
       "reported": "ПОВІДОМЛЕНО",

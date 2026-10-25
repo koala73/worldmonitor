@@ -417,10 +417,18 @@ export function mayAdvanceBaseline({
   baselineExisted,
   adoptBaseline = false,
   dryRun,
+  copiedOutstanding = 0,
 }) {
   if (dryRun) return { advance: false, reason: 'dry run' };
   if (unresolved > 0) return { advance: false, reason: `${unresolved} key(s) still missing, stale or orphaned` };
   if (rejected > 0) return { advance: false, reason: `${rejected} translation(s) rejected` };
+  // Copied English is classified fresh, so a batch that throws or a reply that
+  // omits those keys never shows up as missing, stale, or orphaned. The run
+  // has to count the requested copies it did not write, or it exits 0 and
+  // advances the baseline over an unfinished fill.
+  if (copiedOutstanding > 0) {
+    return { advance: false, reason: `${copiedOutstanding} copied-English key(s) were requested and not refreshed` };
+  }
   // Untracked keys mean the run is about to declare translations correct against
   // English it never checked them against. That is legitimate exactly once per
   // root — the initial adoption — and is a disaster every other time, so it has
@@ -643,9 +651,11 @@ export async function translateLocale({ loc, raw, expected, toTranslate, transla
         added++;
       }
     } catch (err) {
-      // A failed batch leaves its keys unrefreshed, so the post-run scan still
-      // sees them and the run exits non-zero. Failing the whole locale here
-      // would throw away the batches that did succeed.
+      // A failed batch leaves its keys unrefreshed. Missing and stale keys
+      // stay visible to the post-run scan. Copied-English keys do not, because
+      // classifyKeys calls them fresh, so main counts those from the request
+      // list. Failing the whole locale here would throw away the batches that
+      // did succeed.
       console.error(`[${loc}] batch ${i}-${i + batch.length} failed:`, err.message);
     }
     // Persist after every batch so an interrupted run keeps its progress.
@@ -716,6 +726,10 @@ async function main() {
   const targets = onlyLocales || TRANSLATABLE_LOCALES;
   // locale → keys this run successfully wrote. Consumed by unresolvedAfterRun.
   const refreshedByLocale = new Map();
+  // locale → copied-English keys this run asked to translate. The post-run
+  // scan cannot see a copy it failed to replace: the value still equals the
+  // English source, so classifyKeys calls it fresh.
+  const copiedRequestedByLocale = new Map();
   let totalMissing = 0;
   let totalStale = 0;
   let totalUntracked = 0;
@@ -764,6 +778,7 @@ async function main() {
     // and a normal pass never resends it. --fill-copied-english sends those
     // user-facing copies for the locales named by --only.
     const copied = fillCopiedEnglish ? copiedEnglishKeys(flat, expected, loc) : [];
+    if (copied.length > 0) copiedRequestedByLocale.set(loc, copied);
     const toTranslate = [...new Set([...missing, ...stale, ...copied])];
     if (toTranslate.length === 0) {
       console.log(`[${loc}] ✓ complete and fresh (CLDR categories: ${categories.join('/')})`);
@@ -794,7 +809,7 @@ async function main() {
     const shortfall = toTranslate.length - added;
     console.log(
       shortfall > 0
-        ? `[${loc}] ✓ wrote ${added} translations (${shortfall} not returned or rejected — re-run to fill)`
+        ? `[${loc}] wrote ${added} translations (${shortfall} not returned or rejected — re-run to fill)`
         : `[${loc}] ✓ wrote ${added} translations`,
     );
   }
@@ -810,6 +825,7 @@ async function main() {
   // permanently.
   let unresolved = 0;
   let generatedOutstanding = 0;
+  let copiedOutstanding = 0;
   if (!dryRun) {
     for (const loc of LOCALES) {
       const locPath = path.join(ROOT, `${loc}.json`);
@@ -817,9 +833,16 @@ async function main() {
       const flat = flatten(JSON.parse(readFileSync(locPath, 'utf8')));
       const categories = getPluralCategories(loc);
       const expected = expectedKeysForLocale(enFlat, pluralBases, categories);
+      const refreshed = refreshedByLocale.get(loc) ?? new Set();
+      const requestedCopied = copiedRequestedByLocale.get(loc) ?? [];
+      const copiedLeft = requestedCopied.filter(key => !refreshed.has(key));
+      if (copiedLeft.length > 0) {
+        console.error(`[${loc}] ✗ ${copiedLeft.length} copied-English key(s) not refreshed (e.g. ${copiedLeft.slice(0, 3).join(', ')})`);
+        copiedOutstanding += copiedLeft.length;
+      }
       const left = unresolvedAfterRun(
         classifyKeys(flat, expected, baselineFor(categories), baselineFlat !== null),
-        refreshedByLocale.get(loc) ?? new Set(),
+        refreshed,
       );
       const outstanding = left.missing.length + left.stale.length + left.orphan.length;
       if (outstanding === 0) continue;
@@ -851,10 +874,11 @@ async function main() {
   // run in dry-run — printing 0 there reads as an all-clear next to a non-zero
   // orphan or stale count.
   const unresolvedReport = dryRun ? 'n/a (dry run)' : unresolved;
+  const copiedReport = dryRun ? 'n/a (dry run)' : copiedOutstanding;
   // Reported separately rather than folded into unresolved: it does not gate the
   // baseline, but a silent zero would read as "every locale is fresh".
   const generatedReport = generatedOutstanding > 0 ? `, generated-locale-outstanding ${generatedOutstanding} (rerun scripts/convert-zh-tw.py)` : '';
-  console.log(`\n[done] missing ${totalMissing}, stale ${totalStale}, untracked ${totalUntracked}, orphaned ${totalOrphan}, translated ${totalTranslated}, rejected ${totalRejected}, unresolved-after-run ${unresolvedReport}${generatedReport}`);
+  console.log(`\n[done] missing ${totalMissing}, stale ${totalStale}, untracked ${totalUntracked}, orphaned ${totalOrphan}, translated ${totalTranslated}, rejected ${totalRejected}, unresolved-after-run ${unresolvedReport}, copied-english-outstanding ${copiedReport}${generatedReport}`);
 
   const verdict = mayAdvanceBaseline({
     unresolved,
@@ -863,6 +887,7 @@ async function main() {
     baselineExisted: baselineFlat !== null,
     adoptBaseline,
     dryRun,
+    copiedOutstanding,
   });
   if (!dryRun && !verdict.advance) {
     console.error(`\n[FAIL] baseline not advanced — ${verdict.reason}.`);

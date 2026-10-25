@@ -325,6 +325,15 @@ describe('baseline advance', () => {
     assert.equal(mayAdvanceBaseline({ ...clean, rejected: 1 }).advance, false);
   });
 
+  it('refuses when a requested English copy was not refreshed', () => {
+    // classifyKeys calls a value that still equals its English source fresh, so
+    // the missing/stale/orphan scan cannot see a copied-English batch that
+    // threw or omitted the key. The fill has to fail on that remainder itself.
+    const verdict = mayAdvanceBaseline({ ...clean, copiedOutstanding: 4 });
+    assert.equal(verdict.advance, false);
+    assert.match(verdict.reason, /copied-English/);
+  });
+
   it('refuses when an existing baseline has lost entries', () => {
     // Deleting the baseline file — or resolving a merge conflict in it by
     // dropping a line — otherwise makes every key untracked, so a run that
