@@ -840,7 +840,7 @@
         "apiKey": {
           "title": "Asztalialkalmazás-kulcs",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Bejelentkezés nélküli buildekhez. Pro: hozz létre egyet a Beállítások → API-kulcsok menüben az interneten; az API-terv kulcsai is működnek. Személyes használatra; megosztott vagy nyilvános telepítésekhez API-terv szükséges. Segítség: worldmonitor.app/docs/api-keys"
+          "description": "Bejelentkezés nélküli buildekhez. Pro: hozz létre egyet a Settings → API Keys menüben az interneten; az API-terv kulcsai is működnek. Személyes használatra; megosztott vagy nyilvános telepítésekhez API-terv szükséges. Segítség: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "VAGY",
         "register": {

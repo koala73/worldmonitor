@@ -771,7 +771,7 @@
         "apiKey": {
           "title": "Klíč počítače",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Pro buildy bez přihlášení. Pro: vytvořte si klíč v Nastavení → Klíče API na webu; fungují i klíče API plánu. Určeno pro osobní použití; sdílená nebo veřejná nasazení vyžadují plán API. Nápověda: worldmonitor.app/docs/api-keys"
+          "description": "Pro buildy bez přihlášení. Pro: vytvořte si klíč v Settings → API Keys na webu; fungují i klíče API plánu. Určeno pro osobní použití; sdílená nebo veřejná nasazení vyžadují plán API. Nápověda: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "NEBO",
         "register": {

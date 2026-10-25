@@ -456,7 +456,7 @@
       "logCleared": "Loggen rensad.",
       "worldMonitor": {
         "apiKey": {
-          "description": "För versioner utan inloggning. Pro: skapa en under Inställningar → API-nycklar på webben; API-plannycklar fungerar också. För eget bruk; delade eller offentliga distributioner kräver en API-plan. Hjälp: worldmonitor.app/docs/api-keys",
+          "description": "För versioner utan inloggning. Pro: skapa en under Settings → API Keys på webben; API-plannycklar fungerar också. För eget bruk; delade eller offentliga distributioner kräver en API-plan. Hjälp: worldmonitor.app/docs/api-keys",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
           "title": "Skrivbordsnyckel"
         },

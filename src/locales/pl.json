@@ -846,7 +846,7 @@
       "logCleared": "Log wyczyszczony.",
       "worldMonitor": {
         "apiKey": {
-          "description": "Dla wersji bez logowania. Pro: utwórz klucz w Ustawienia → Klucze API na stronie; klucze z planu API też działają. Do użytku osobistego; wdrożenia współdzielone lub publiczne wymagają planu API. Pomoc: worldmonitor.app/docs/api-keys",
+          "description": "Dla wersji bez logowania. Pro: utwórz klucz w Settings → API Keys na stronie; klucze z planu API też działają. Do użytku osobistego; wdrożenia współdzielone lub publiczne wymagają planu API. Pomoc: worldmonitor.app/docs/api-keys",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
           "title": "Klucz desktopowy"
         },

@@ -768,7 +768,7 @@
         "apiKey": {
           "title": "Cheie desktop",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Pentru compilări fără conectare. Pro: creează una în Setări → Chei API pe web; cheile planului API funcționează și ele. Pentru uz personal; implementările distribuite sau publice necesită un plan API. Ajutor: worldmonitor.app/docs/api-keys"
+          "description": "Pentru compilări fără conectare. Pro: creează una în Settings → API Keys pe web; cheile planului API funcționează și ele. Pentru uz personal; implementările distribuite sau publice necesită un plan API. Ajutor: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "SAU",
         "register": {

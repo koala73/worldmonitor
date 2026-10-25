@@ -842,7 +842,7 @@
         "apiKey": {
           "title": "Desktop-Schlüssel",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Für Builds ohne Anmeldung. Pro: Erstelle einen unter Einstellungen → API-Schlüssel im Web; API-Plan-Schlüssel funktionieren auch. Für deine eigene Nutzung; gemeinsame oder öffentliche Deployments benötigen einen API-Plan. Hilfe: worldmonitor.app/docs/api-keys"
+          "description": "Für Builds ohne Anmeldung. Pro: Erstelle einen unter Settings → API Keys im Web; API-Plan-Schlüssel funktionieren auch. Für deine eigene Nutzung; gemeinsame oder öffentliche Deployments benötigen einen API-Plan. Hilfe: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "ODER",
         "register": {

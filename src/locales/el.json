@@ -765,7 +765,7 @@
         "apiKey": {
           "title": "Κλειδί επιφάνειας εργασίας",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Για εκδόσεις χωρίς σύνδεση. Pro: δημιουργήστε ένα στο Ρυθμίσεις → API Keys στο web· τα κλειδιά σχεδίου API λειτουργούν επίσης. Για δική σας χρήση· οι κοινόχρηστες ή δημόσιες ανάπτυξες χρειάζονται σχέδιο API. Βοήθεια: worldmonitor.app/docs/api-keys"
+          "description": "Για εκδόσεις χωρίς σύνδεση. Pro: δημιουργήστε ένα στο Settings → API Keys στο web· τα κλειδιά σχεδίου API λειτουργούν επίσης. Για δική σας χρήση· οι κοινόχρηστες ή δημόσιες ανάπτυξες χρειάζονται σχέδιο API. Βοήθεια: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "Ή",
         "register": {

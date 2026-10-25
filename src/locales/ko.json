@@ -762,7 +762,7 @@
         "apiKey": {
           "title": "데스크톱 키",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "로그인이 없는 빌드의 경우입니다. Pro: 웹의 설정 → API 키에서 생성하세요. API 플랜 키도 작동합니다. 개인 사용용이며, 공유 또는 공개 배포는 API 플랜이 필요합니다. 도움말: worldmonitor.app/docs/api-keys"
+          "description": "로그인이 없는 빌드의 경우입니다. Pro: 웹의 Settings → API Keys에서 생성하세요. API 플랜 키도 작동합니다. 개인 사용용이며, 공유 또는 공개 배포는 API 플랜이 필요합니다. 도움말: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "또는",
         "register": {

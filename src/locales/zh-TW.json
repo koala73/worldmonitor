@@ -762,7 +762,7 @@
         "apiKey": {
           "title": "桌面金鑰",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "適用於無登入功能的構建版本。Pro 使用者：在網頁版設定 → API 金鑰中建立；API 計劃金鑰也可使用。僅供個人使用；共享或公開部署需要 API 計劃。幫助：worldmonitor.app/docs/api-keys"
+          "description": "適用於無登入功能的構建版本。Pro 使用者：在網頁版Settings → API Keys中建立；API 計劃金鑰也可使用。僅供個人使用；共享或公開部署需要 API 計劃。幫助：worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "或",
         "register": {

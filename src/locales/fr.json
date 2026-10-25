@@ -775,7 +775,7 @@
         "apiKey": {
           "title": "Clé de bureau",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Pour les builds sans connexion. Pro : créez-en une dans Paramètres → Clés API sur le web ; les clés de forfait API fonctionnent aussi. Pour votre usage personnel ; les déploiements partagés ou publics nécessitent un forfait API. Aide : worldmonitor.app/docs/api-keys"
+          "description": "Pour les builds sans connexion. Pro : créez-en une dans Settings → API Keys sur le web ; les clés de forfait API fonctionnent aussi. Pour votre usage personnel ; les déploiements partagés ou publics nécessitent un forfait API. Aide : worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "OU",
         "register": {

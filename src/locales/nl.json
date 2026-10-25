@@ -458,7 +458,7 @@
         "apiKey": {
           "title": "Desktop-sleutel",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Voor builds zonder aanmelding. Pro: maak er een aan in Instellingen → API-sleutels op het web; API-plansleutels werken ook. Voor eigen gebruik; gedeelde of openbare implementaties hebben een API-plan nodig. Help: worldmonitor.app/docs/api-keys"
+          "description": "Voor builds zonder aanmelding. Pro: maak er een aan in Settings → API Keys op het web; API-plansleutels werken ook. Voor eigen gebruik; gedeelde of openbare implementaties hebben een API-plan nodig. Help: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "OF",
         "register": {

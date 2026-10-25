@@ -845,7 +845,7 @@
         "apiKey": {
           "title": "Chiave Desktop",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Per versioni senza accesso. Pro: creane una in Impostazioni → Chiavi API sul web; funzionano anche le chiavi con piano API. Per uso personale; i deployment condivisi o pubblici richiedono un piano API. Aiuto: worldmonitor.app/docs/api-keys"
+          "description": "Per versioni senza accesso. Pro: creane una in Settings → API Keys sul web; funzionano anche le chiavi con piano API. Per uso personale; i deployment condivisi o pubblici richiedono un piano API. Aiuto: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "OPPURE",
         "register": {

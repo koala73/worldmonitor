@@ -762,7 +762,7 @@
         "apiKey": {
           "title": "デスクトップキー",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "サインインなしのビルド向け。Pro：ウェブの設定 → APIキーで作成してください。APIプランのキーも使用できます。個人使用向け。共有またはパブリックデプロイメントはAPIプランが必要です。ヘルプ：worldmonitor.app/docs/api-keys"
+          "description": "サインインなしのビルド向け。Pro：ウェブのSettings → API Keysで作成してください。APIプランのキーも使用できます。個人使用向け。共有またはパブリックデプロイメントはAPIプランが必要です。ヘルプ：worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "または",
         "register": {

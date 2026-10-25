@@ -459,7 +459,7 @@
         "apiKey": {
           "title": "Chave Desktop",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Para compilações sem login. Pro: crie uma em Configurações → Chaves de API na web; chaves do plano API também funcionam. Para uso pessoal; implantações compartilhadas ou públicas precisam de um plano API. Ajuda: worldmonitor.app/docs/api-keys"
+          "description": "Para compilações sem login. Pro: crie uma em Settings → API Keys na web; chaves do plano API também funcionam. Para uso pessoal; implantações compartilhadas ou públicas precisam de um plano API. Ajuda: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "OU",
         "register": {

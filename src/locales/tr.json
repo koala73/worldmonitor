@@ -765,7 +765,7 @@
         "apiKey": {
           "title": "Masaüstü anahtarı",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Oturum açma olmayan derlemeler için. Pro: web üzerinde Ayarlar → API Anahtarları'nda bir tane oluşturun; API planı anahtarları da çalışır. Kendi kullanımınız için; paylaşılan veya herkese açık dağıtımlar bir API planı gerektirir. Yardım: worldmonitor.app/docs/api-keys"
+          "description": "Oturum açma olmayan derlemeler için. Pro: web üzerinde Settings → API Keys bölümünde bir tane oluşturun; API planı anahtarları da çalışır. Kendi kullanımınız için; paylaşılan veya herkese açık dağıtımlar bir API planı gerektirir. Yardım: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "VEYA",
         "register": {

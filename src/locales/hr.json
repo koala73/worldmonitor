@@ -844,7 +844,7 @@
         "apiKey": {
           "title": "Ključ za desktop",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Za izdanja bez prijave. Pro: kreirajte ga u Postavkama → API ključevi na webu; radi i s ključevima za API plan. Za vlastitu upotrebu; deljene ili javne instalacije trebaju API plan. Pomoć: worldmonitor.app/docs/api-keys"
+          "description": "Za izdanja bez prijave. Pro: kreirajte ga u Settings → API Keys na webu; radi i s ključevima za API plan. Za vlastitu upotrebu; deljene ili javne instalacije trebaju API plan. Pomoć: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "ILI",
         "register": {

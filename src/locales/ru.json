@@ -771,7 +771,7 @@
         "apiKey": {
           "title": "Ключ Desktop",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Для сборок без входа. Pro: создайте в Параметры → Ключи API в веб-версии; работают и ключи API-плана. Для личного использования; общие или публичные развёртывания требуют API-план. Справка: worldmonitor.app/docs/api-keys"
+          "description": "Для сборок без входа. Pro: создайте в Settings → API Keys в веб-версии; работают и ключи API-плана. Для личного использования; общие или публичные развёртывания требуют API-план. Справка: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "ИЛИ",
         "register": {

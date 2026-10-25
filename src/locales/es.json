@@ -845,7 +845,7 @@
         "apiKey": {
           "title": "Clave de escritorio",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Para compilaciones sin inicio de sesión. Pro: crea una en Configuración → Claves API en la web; las claves del plan API también funcionan. Para tu uso personal; las implementaciones compartidas o públicas requieren un plan API. Ayuda: worldmonitor.app/docs/api-keys"
+          "description": "Para compilaciones sin inicio de sesión. Pro: crea una en Settings → API Keys en la web; las claves del plan API también funcionan. Para tu uso personal; las implementaciones compartidas o públicas requieren un plan API. Ayuda: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "O",
         "register": {
