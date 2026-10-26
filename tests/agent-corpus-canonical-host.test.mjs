@@ -336,8 +336,10 @@ describe('every published MCP endpoint is the canonical one (#9722)', () => {
 
   // Any worldmonitor.app host, `/mcp` or `/api/mcp` as the whole first path
   // segment (so `/mcp-server.md` and `/mcp-grant` are other pages), through
-  // the next delimiter. A sentence-final period is prose, not path.
-  const MCP_URL_RE = /https?:\/\/(?:[a-z0-9-]+\.)*worldmonitor\.app(?:\/api)?\/mcp(?![\w-]|\.\w)[^\s)"'`<>,;\\&]*/gi;
+  // the next delimiter. A sentence-final period is prose, not path; a period
+  // just inside a closing quote is part of the quoted URL.
+  const MCP_URL_RE = /https?:\/\/(?:[a-z0-9-]+\.)*worldmonitor\.app(?::\d+)?(?:\/api)?\/mcp(?![\w-]|\.\w)[^\s)"'`<>,;\\&]*/gi;
+  const QUOTE = /["'`\\]/;
   // A Link-header anchor is resolved against the page that sent it. Every page
   // carrying the discovery header is served on www, so `anchor="/mcp"` names
   // https://www.worldmonitor.app/mcp, which answers 410.
@@ -348,7 +350,8 @@ describe('every published MCP endpoint is the canonical one (#9722)', () => {
     for (const [label, body] of sources) {
       body.split('\n').forEach((line, index) => {
         for (const match of line.matchAll(MCP_URL_RE)) {
-          const url = match[0].replace(/\.+$/, '');
+          const quoted = QUOTE.test(line[match.index + match[0].length] ?? '');
+          const url = quoted ? match[0] : match[0].replace(/\.+$/, '');
           if (url !== MCP_CANONICAL_ENDPOINT) found.push(`  ${label}:${index + 1}  ${url}`);
         }
         for (const match of line.matchAll(RELATIVE_MCP_ANCHOR_RE)) {
@@ -379,10 +382,12 @@ describe('every published MCP endpoint is the canonical one (#9722)', () => {
       'https://www.worldmonitor.app/api/mcp',
       'https://worldmonitor.app/mcp/',
       'http://worldmonitor.app/mcp',
+      'https://worldmonitor.app:8443/mcp',
     ];
     for (const url of planted) {
       assert.equal(offenders([['planted', `Add "${url}" as a connector.`]]).length, 1, url);
     }
+    assert.equal(offenders([['planted', `"url": "${MCP_CANONICAL_ENDPOINT}."`]]).length, 1, 'period inside a quoted URL');
     assert.equal(offenders([['planted', 'Link: </x>; anchor="/mcp"']]).length, 1);
     assert.equal(offenders([['planted', String.raw`"value": "</x>; anchor=\"/mcp\""`]]).length, 1);
     for (const ok of [
