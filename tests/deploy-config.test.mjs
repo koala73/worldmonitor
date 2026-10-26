@@ -4371,8 +4371,9 @@ describe('vercel.json functions config (none expected after carousel moved to ed
 // header advertising every well-known resource. Each rel is either
 // an IANA-registered token (api-catalog, service-desc, service-doc,
 // status) or the full IANA URI form (RFC 9728 OAuth rels). The MCP
-// card rel carries anchor="/mcp" because the server card describes
-// the /mcp endpoint, not the document URL being fetched.
+// card rel carries an absolute apex anchor because the server card
+// describes the apex /mcp endpoint, not the document URL being fetched; a
+// relative anchor resolves against the www page and names the 410 alias (#9722).
 describe('agent readiness: public document Link headers', () => {
   const vercel = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
 
@@ -4406,11 +4407,10 @@ describe('agent readiness: public document Link headers', () => {
         );
       }
 
-      // MCP card rel must carry anchor="/mcp" (server card describes /mcp, not homepage)
       assert.match(
         linkHeader.value,
-        /<\/\.well-known\/mcp\/server-card\.json>[^,]*anchor="\/mcp"/,
-        'mcp-server-card rel must carry anchor="/mcp"'
+        /<\/\.well-known\/mcp\/server-card\.json>[^,]*anchor="https:\/\/worldmonitor\.app\/mcp"/,
+        'mcp-server-card rel must carry the absolute canonical anchor; anchor="/mcp" resolves to www/mcp, which answers 410'
       );
 
       // The docs MCP server (#4958) is advertised in the Link header directly —
