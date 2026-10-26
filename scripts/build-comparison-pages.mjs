@@ -212,7 +212,8 @@ const COMPARISON_PAGE_SEEDS = [
   {
     slug: 'worldmonitor-vs-acled',
     path: '/compare/worldmonitor-vs-acled/',
-    title: 'ACLED Alternative | World Monitor vs ACLED | World Monitor',
+    title: 'ACLED Alternative | World Monitor vs ACLED',
+    metaDescription: 'World Monitor vs ACLED: no-signup live conflict monitoring next to ACLED\'s coded-event data, compared on access tiers, latency, API and licensing.',
     h1: 'World Monitor vs ACLED',
     competitors: ['ACLED', 'myACLED'],
     claim: 'Latency and open access',
@@ -260,7 +261,8 @@ const COMPARISON_PAGE_SEEDS = [
   {
     slug: 'worldmonitor-vs-dataminr',
     path: '/compare/worldmonitor-vs-dataminr/',
-    title: 'Dataminr Alternatives | World Monitor vs Dataminr | World Monitor',
+    title: 'Dataminr Alternatives | World Monitor vs Dataminr',
+    metaDescription: 'A Dataminr alternative with published prices: World Monitor vs Dataminr on alert latency, data domains, API access and cost, and where Dataminr wins.',
     h1: 'World Monitor vs Dataminr',
     competitors: ['Dataminr'],
     claim: 'Price at comparable alert latency',
@@ -284,7 +286,8 @@ const COMPARISON_PAGE_SEEDS = [
   {
     slug: 'worldmonitor-vs-recorded-future',
     path: '/compare/worldmonitor-vs-recorded-future/',
-    title: 'Recorded Future Alternatives | World Monitor vs Recorded Future | World Monitor',
+    title: 'Recorded Future Alternatives Compared | World Monitor',
+    metaDescription: 'Recorded Future alternatives compared: World Monitor, Flare and MISP on price transparency, public access, domains covered and open-source licensing.',
     h1: 'World Monitor vs Recorded Future',
     competitors: ['Recorded Future', 'Flare', 'MISP'],
     claim: 'Public access and price transparency',
@@ -624,6 +627,7 @@ function renderMeasurement(slug, snapshotDate, escapeHtml) {
 }
 
 function renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate, relatedReading = [] }) {
+  assertTitle(page.title, page.slug);
   if (page.layout === SHORTLIST_LAYOUT) {
     return renderShortlistPage(page, {
       tpl,
@@ -758,6 +762,13 @@ function assertMetaDescription(description, label) {
   }
 }
 
+function assertTitle(title, label) {
+  const length = [...title].length;
+  if (length > 60) {
+    throw new Error(label + ' title must be at most 60 characters (got ' + length + ')');
+  }
+}
+
 /**
  * One `[title](url): description` entry per /compare/ route for llms.txt and
  * llms-full.txt (#7746). Titles are the page h1 — the query the page answers,
@@ -783,7 +794,9 @@ function renderCompareHub({ tpl, baseUrl, lastmod, snapshotDate }) {
   const { escapeHtml, breadcrumbLd, pageDocument } = tpl;
   const path = COMPARE_HUB_PATH;
   const description = COMPARE_HUB_DESCRIPTION;
+  const title = 'Compare World Monitor vs Liveuamap, ACLED, GDELT and More';
   assertMetaDescription(description, 'compare hub');
+  assertTitle(title, 'compare hub');
   const cards = COMPARISON_PAGES
     .map((page) => '        <a class="card" href="' + escapeHtml(page.path) + '"><strong>' + escapeHtml(page.h1) + '</strong><br><span>' + escapeHtml(page.claim) + '</span></a>')
     .join('\n');
@@ -829,7 +842,7 @@ function renderCompareHub({ tpl, baseUrl, lastmod, snapshotDate }) {
   return pageDocument({
     baseUrl,
     path,
-    title: 'Compare World Monitor | World Monitor',
+    title,
     description,
     lastmod,
     ogType: 'website',
