@@ -849,7 +849,8 @@ function filterForecastScorecard(data: Record<string, unknown>, params: Record<s
 // buildStoryPool). Without a usable pool they fall back to the top stories and
 // say why in insights.storyScope.
 type StoryScope =
-  | { source: 'story-pool'; poolStories: number; poolClusters: number | null; droppedForSize: number | null; generatedAt: string }
+  | { source: 'story-pool'; poolStories: number; poolClusters: number | null; droppedForSize: number | null; generatedAt: string;
+    matchingStories?: number; nextCursor?: string }
   | { source: 'top-stories'; reason: 'story-pool-unavailable' | 'story-pool-stale' };
 function storyPoolScope(pool: unknown, now: number): { stories: unknown[] | null; scope: StoryScope } {
   const record = pool !== null && typeof pool === 'object' && !Array.isArray(pool) ? pool as Record<string, unknown> : null;
@@ -869,6 +870,49 @@ function storyPoolScope(pool: unknown, now: number): { stories: unknown[] | null
       generatedAt: record.generatedAt as string,
     },
   };
+}
+
+// One page of pool matches stays well inside the tool's 128 KiB output
+// budget, which also carries signals and advisories.
+const STORY_PAGE_MAX_BYTES = 65_536;
+const storyBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
+function invalidStoriesCursor(description: string): RpcValidationError {
+  return new RpcValidationError('get_news_intelligence', [{ field: 'stories_cursor', description }]);
+}
+function storiesCursor(value: unknown): { generatedAt?: number; offset: number } {
+  if (value === undefined) return { offset: 0 };
+  const match = typeof value === 'string' && value.length <= 64 && /^([1-9]\d{0,15}):(0|[1-9]\d{0,5})$/.exec(value);
+  if (!match || !Number.isSafeInteger(Number(match[1]))) throw invalidStoriesCursor('Use insights.storyScope.nextCursor from the previous page.');
+  return { generatedAt: Number(match[1]), offset: Number(match[2]) };
+}
+// Pages filtered pool matches in rank order: limit (0 = no cap) and the byte
+// allowance bound a page, and nextCursor continues it. A page always holds at
+// least one story, so one oversized story cannot stall paging.
+function pageStoryPool(
+  insights: Record<string, unknown>,
+  scope: Extract<StoryScope, { source: 'story-pool' }>,
+  cursor: { generatedAt?: number; offset: number },
+  limit: number,
+): void {
+  const matches = Array.isArray(insights.topStories) ? insights.topStories : [];
+  const generatedAt = Date.parse(scope.generatedAt);
+  if (cursor.generatedAt !== undefined && cursor.generatedAt !== generatedAt) {
+    throw invalidStoriesCursor('The story pool changed; restart without the cursor.');
+  }
+  if (cursor.offset > matches.length) throw invalidStoriesCursor('Cursor is outside the matching stories.');
+  const size = limit > 0 ? Math.max(1, Math.trunc(limit)) : matches.length;
+  const page: unknown[] = [];
+  let bytes = 2;
+  for (const story of matches.slice(cursor.offset, cursor.offset + size)) {
+    const add = storyBytes(story) + (page.length > 0 ? 1 : 0);
+    if (page.length > 0 && bytes + add > STORY_PAGE_MAX_BYTES) break;
+    bytes += add;
+    page.push(story);
+  }
+  insights.topStories = page;
+  scope.matchingStories = matches.length;
+  const next = cursor.offset + page.length;
+  scope.nextCursor = next < matches.length ? `${generatedAt}:${next}` : '';
 }
 
 export const CACHE_TOOLS: ToolDef[] = [
@@ -1568,6 +1612,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         query: { type: 'string', description: 'Keep only stories whose headline, primary source, or one of the first six clustered member headlines contains this text (case-insensitive substring), across every scored story of the latest run. This filters the LIVE news window only — it is not a historical index, so an event older than the current digest will not be found here. Use search_intel_history for that.' },
         min_importance: { type: 'number', description: 'Keep only top stories whose effectiveImportanceScore is at least this value. 0 is honoured as a real floor rather than treated as absent; a story carrying no score is excluded when this is set, never treated as scoring zero.' },
         limit: { type: 'number', description: 'Cap each list (top stories, signals, advisories) to at most this many items (default 30, pass 0 for no cap). Applied AFTER query and min_importance, so a capped list is drawn from the matches.' },
+        stories_cursor: { type: 'string', maxLength: 64, description: 'Continue a story-filtered search from insights.storyScope.nextCursor, keeping the same filters. A page of matches is also bounded in size, so follow nextCursor until it is empty.' },
       },
       required: [],
     },
@@ -1635,6 +1680,8 @@ export const CACHE_TOOLS: ToolDef[] = [
               poolClusters: { type: ['number', 'null'] },
               droppedForSize: { type: ['number', 'null'] },
               generatedAt: { type: 'string' },
+              matchingStories: { type: 'number', description: 'story-pool only: stories matching the filters, before paging.' },
+              nextCursor: { type: 'string', description: 'story-pool only: pass as stories_cursor with the same filters for the next page; empty when complete.' },
               reason: { type: 'string', enum: ['story-pool-unavailable', 'story-pool-stale'] },
             },
             required: ['source'],
@@ -1681,11 +1728,17 @@ export const CACHE_TOOLS: ToolDef[] = [
       const pool = data['story-pool'];
       delete data['story-pool'];
       const storyFilter = Boolean(category) || countries.length > 0 || argBool(params.alerts_only) || Boolean(query) || minImportance !== null;
+      const cursor = storiesCursor(params.stories_cursor);
       const insights = data.insights;
+      let poolScope: Extract<StoryScope, { source: 'story-pool' }> | null = null;
       if (storyFilter && insights !== null && typeof insights === 'object' && !Array.isArray(insights)) {
         const { stories, scope } = storyPoolScope(pool, Date.now());
         if (stories) (insights as Record<string, unknown>).topStories = stories;
         (insights as Record<string, unknown>).storyScope = scope;
+        if (scope.source === 'story-pool') poolScope = scope;
+      }
+      if (cursor.generatedAt !== undefined && !poolScope) {
+        throw invalidStoriesCursor('Pages only a story-filtered search of a current story pool; restart without the cursor.');
       }
       mapNested(data, 'insights', 'topStories', addNewsSourceProvenance);
       if (topic) narrowNested(data, 'gdelt-intel', 'topics', (t) => argStr(t.id) === topic);
@@ -1711,7 +1764,8 @@ export const CACHE_TOOLS: ToolDef[] = [
           return score !== null && score >= minImportance;
         });
       }
-      capNested(data, 'insights', 'topStories', limit);
+      if (poolScope) pageStoryPool(insights as Record<string, unknown>, poolScope, cursor, limit);
+      else capNested(data, 'insights', 'topStories', limit);
       capNested(data, 'cross-source-signals', 'signals', limit);
       capNested(data, 'advisories-bootstrap', 'advisories', limit);
       return data;

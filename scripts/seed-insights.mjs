@@ -887,19 +887,16 @@ export function buildStoryPool(clusters, { nowMs = Date.now(), generatedAt, maxB
     .sort((a, b) => b.effectiveImportanceScore - a.effectiveImportanceScore || b.importanceScore - a.importanceScore);
   const stories = [];
   let bytes = 2;
-  let droppedForSize = 0;
   for (const cluster of ranked) {
     const { velocity: _velocity, ...story } = enrichInsightStory(cluster);
     story.memberTitles = story.memberTitles.slice(0, STORY_POOL_MAX_MEMBER_TITLES);
     const size = Buffer.byteLength(JSON.stringify(story)) + (stories.length > 0 ? 1 : 0);
-    if (bytes + size > maxBytes) {
-      droppedForSize++;
-      continue;
-    }
+    // Stop rather than skip, so the pool stays a ranked prefix.
+    if (bytes + size > maxBytes) break;
     bytes += size;
     stories.push(story);
   }
-  return { generatedAt, clusterCount: clusters.length, droppedForSize, stories };
+  return { generatedAt, clusterCount: clusters.length, droppedForSize: ranked.length - stories.length, stories };
 }
 
 export function preserveStoryPoolInLkg(existing, storyPool) {

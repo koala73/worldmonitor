@@ -61,6 +61,21 @@ describe('seed-insights story pool', () => {
     assert.deepEqual(capped.stories, full.stories.slice(0, capped.stories.length), 'the kept stories are the highest ranked');
   });
 
+  it('stops at the first story past the byte budget instead of back-filling smaller lower-ranked ones', () => {
+    const clusters = clusterItems(items(20));
+    const ranked = seedInsights.buildStoryPool(clusters, { nowMs: NOW, generatedAt: 'x' }).stories;
+    const second = clusters.find(cluster => cluster.primaryLink === ranked[1].primaryLink);
+    second.memberTitles = second.memberTitles.map(() => 'oversized member headline '.repeat(400));
+    const full = seedInsights.buildStoryPool(clusters, { nowMs: NOW, generatedAt: 'x' });
+    assert.equal(full.stories[1].primaryLink, second.primaryLink, 'the oversized story keeps its rank');
+
+    // Room for the first story and any small one, but not the oversized second.
+    const maxBytes = Buffer.byteLength(JSON.stringify([full.stories[0], full.stories[2]])) + 1;
+    const capped = seedInsights.buildStoryPool(clusters, { nowMs: NOW, generatedAt: 'x', maxBytes });
+    assert.deepEqual(capped.stories, [full.stories[0]]);
+    assert.equal(capped.droppedForSize, clusters.length - 1);
+  });
+
   it('keeps the pool out of the canonical insights payload and inside the LKG copy', () => {
     const storyPool = { generatedAt: 'x', clusterCount: 1, droppedForSize: 0, stories: [] };
     const published = seedInsights.publishInsightsPayload({ topStories: [{}], storyPool, chinaNewsCoverage: {} });

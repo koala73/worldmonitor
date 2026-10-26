@@ -37,6 +37,7 @@ describe('get_news_intelligence story pool', () => {
     assert.deepEqual(titles(result), ['Kenya election count continues', 'Floods in Kenya and Uganda']);
     assert.deepEqual(result.insights.storyScope, {
       source: 'story-pool', poolStories: 5, poolClusters: 6, droppedForSize: 1, generatedAt: pool().generatedAt,
+      matchingStories: 2, nextCursor: '',
     });
     assert.equal(Object.hasOwn(result, 'story-pool'), false, 'the raw pool never reaches the caller');
   });
@@ -67,6 +68,51 @@ describe('get_news_intelligence story pool', () => {
       const result = tool._postFilter(data(storyPool), { country: 'US' });
       assert.deepEqual(titles(result), ['Top story one'], reason);
       assert.deepEqual(result.insights.storyScope, { source: 'top-stories', reason });
+    }
+  });
+
+  it('pages through pool matches with stories_cursor', () => {
+    const first = tool._postFilter(data(), { country: 'KE', limit: 1 });
+    assert.deepEqual(titles(first), ['Kenya election count continues']);
+    assert.equal(first.insights.storyScope.matchingStories, 2);
+    assert.equal(first.insights.storyScope.nextCursor, `${Date.parse(pool().generatedAt)}:1`);
+    const second = tool._postFilter(data(), { country: 'KE', limit: 1, stories_cursor: first.insights.storyScope.nextCursor });
+    assert.deepEqual(titles(second), ['Floods in Kenya and Uganda']);
+    assert.equal(second.insights.storyScope.nextCursor, '');
+  });
+
+  it('keeps a broad uncapped match inside the output budget and pages the rest', () => {
+    const big = Array.from({ length: 6 }, (_, i) => story(`Large story ${i}`, {
+      memberTitles: [`Large story ${i} `.repeat(2000)], effectiveImportanceScore: 60 - i,
+    }));
+    const wide = data(pool({ stories: big }));
+    const seen = [];
+    let cursor;
+    for (let page = 0; page < 10; page++) {
+      const result = tool._postFilter(structuredClone(wide), { min_importance: 0, limit: 0, ...(cursor ? { stories_cursor: cursor } : {}) });
+      const stories = result.insights.topStories;
+      assert.ok(stories.length >= 1);
+      assert.ok(Buffer.byteLength(JSON.stringify(stories)) <= 65_536 || stories.length === 1, 'a page fits the story budget');
+      assert.equal(result.insights.storyScope.matchingStories, 6);
+      seen.push(...stories.map((s) => s.primaryTitle));
+      cursor = result.insights.storyScope.nextCursor;
+      if (!cursor) break;
+    }
+    assert.deepEqual(seen, big.map((s) => s.primaryTitle), 'every match is reachable, in rank order');
+    assert.ok(seen.length > 0 && cursor === '');
+  });
+
+  it('rejects a cursor that is malformed, from another pool run, past the matches, or without a pool search', () => {
+    const at = Date.parse(pool().generatedAt);
+    for (const [params, storyPool] of [
+      [{ country: 'KE', stories_cursor: 'nope' }, pool()],
+      [{ country: 'KE', stories_cursor: `${at - 1}:1` }, pool()],
+      [{ country: 'KE', stories_cursor: `${at}:9` }, pool()],
+      [{ stories_cursor: `${at}:1` }, pool()],
+      [{ country: 'KE', stories_cursor: `${at}:1` }, null],
+    ]) {
+      assert.throws(() => tool._postFilter(data(storyPool), params), (error) => error.name === 'RpcValidationError'
+        && JSON.stringify(error).includes('stories_cursor'), JSON.stringify(params));
     }
   });
 
