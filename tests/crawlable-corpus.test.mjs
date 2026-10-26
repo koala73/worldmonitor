@@ -2910,7 +2910,12 @@ describe('crawlable corpus generator', () => {
       assert.match(ciiIndex, /<title>Country Instability Index: Live Rankings \| World Monitor<\/title>/);
       assert.match(ciiIndex, /<h1>Country Instability Index<\/h1>/);
       assert.match(ciiIndex, new RegExp(`<meta name="lastmod" content="${ciiIndexLastmod}">`));
-      assert.match(ciiIndex, /data-cii-methodology-version="v8"/);
+      // The version and country count come from the capture, not literals:
+      // the weekly refresh moves them (a v8 pin failed v14's refresh, #9693).
+      const { methodologyVersion, entries: ciiCountries } = clock.ciiRanking;
+      assert.match(methodologyVersion, /^v\d+$/);
+      assert.ok(ciiCountries.length >= 20, `CII ranking lists only ${ciiCountries.length} countries`);
+      assert.ok(ciiIndex.includes(`data-cii-methodology-version="${methodologyVersion}"`));
       // Reader copy names the snapshot and the live reading; the repo path and
       // the conflated "stable or unavailable" cell stay off the page.
       assert.match(ciiIndex, /Source: World Monitor Country Instability Index snapshot, \w+ \d{1,2}, \d{4}\./);
@@ -2921,7 +2926,7 @@ describe('crawlable corpus generator', () => {
         ?? livePulseMovementClaim(livePulseSnapshotAgeDays(clock.livePulse.capturedAt));
       assert.match(
         ciiIndex,
-        new RegExp(`CII v8 currently monitors 31 countries and ${movementClaim.rankingReports.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.`),
+        new RegExp(`CII ${methodologyVersion} currently monitors ${ciiCountries.length} countries and ${movementClaim.rankingReports.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.`),
       );
       const ciiQuestion = 'Which countries are most unstable right now?';
       const ciiQuestionHeading = [...ciiDocument.querySelectorAll('h2')]
@@ -2970,12 +2975,12 @@ describe('crawlable corpus generator', () => {
       assert.deepEqual(ciiCollection?.mainEntity, {
         '@id': 'https://www.worldmonitor.app/country-instability-index/#dataset',
       });
-      assert.equal(ciiDataset?.measurementTechnique, 'World Monitor CII v8');
+      assert.equal(ciiDataset?.measurementTechnique, `World Monitor CII ${methodologyVersion}`);
       assert.deepEqual(ciiDataset?.mainEntity, {
         '@id': 'https://www.worldmonitor.app/country-instability-index/#ranking',
       });
-      assert.equal(ciiItemList?.numberOfItems, 31);
-      assert.equal(ciiItemList?.itemListElement?.length, 31);
+      assert.equal(ciiItemList?.numberOfItems, ciiCountries.length);
+      assert.equal(ciiItemList?.itemListElement?.length, ciiCountries.length);
       // Pick both countries FROM the pulse by the property under test. These
       // were hardcoded to United Arab Emirates (stable) and Afghanistan
       // (moving), which is a live value: the first refresh gave the UAE a
@@ -3037,7 +3042,7 @@ describe('crawlable corpus generator', () => {
       assert.deepEqual(ukrainePage?.mainEntity, {
         '@id': 'https://www.worldmonitor.app/countries/ukraine/#cii-dataset',
       });
-      assert.equal(ukraineCiiDataset?.measurementTechnique, 'World Monitor CII v8');
+      assert.equal(ukraineCiiDataset?.measurementTechnique, `World Monitor CII ${methodologyVersion}`);
       assert.equal(ukraineCiiDataset?.spatialCoverage?.['@type'], 'Place');
       assert.ok(ukraineResilienceDataset, 'CII country pages must retain the CRI Dataset');
       assert.ok(norway.includes(liveScriptTag), 'country live script must match the production CSP nonce');
@@ -5001,7 +5006,8 @@ describe('crawlable corpus generator', () => {
         Object.keys(pulseSnapshot.chokepoints ?? {}).length,
         'every frozen chokepoint pulse must map to a generated page',
       );
-      assert.ok(withheldCounts > 0, 'the freeze must exercise the withhold path');
+      // Whether this week's capture withholds any count is live data (2026-10-26
+      // published all 13, #9693); the fixture build below always covers both.
 
       const crisesIndex = read(outDir, 'crises/index.html');
       assert.match(crisesIndex, /<h1>Current crisis trackers<\/h1>/);
@@ -5783,6 +5789,17 @@ describe('live-pulse snapshot injection (#7533)', () => {
       const chokepointDataset = jsonLdObjects(chokepointsIndex)
         .find((entry) => entry['@type'] === 'Dataset');
       assert.equal(chokepointDataset?.datePublished, FIXTURE_PULSE_DATE);
+      // The fixture pins one chokepoint on each side of the publish-or-withhold
+      // rule, which a live capture may not (#9693 published every count).
+      const withheldRe = /No IMF PortWatch daily transit count is published for this snapshot/;
+      assert.equal(fixture.chokepoints.hormuz_strait.officialLatestTotal, null);
+      const hormuz = read(outDir, 'chokepoints/strait-of-hormuz/index.html');
+      assert.match(hormuz, withheldRe);
+      assert.match(hormuz, /data-chokepoint-official-transits>—</);
+      assert.equal(typeof fixture.chokepoints.dover_strait.officialLatestTotal, 'number');
+      const dover = read(outDir, 'chokepoints/dover-strait/index.html');
+      assert.doesNotMatch(dover, withheldRe);
+      assert.match(dover, /data-chokepoint-official-transits>\d/);
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }
