@@ -54,7 +54,21 @@ afterEach(() => {
 });
 
 describe('sub-cent asset prices stay visible (#9705)', () => {
-  it('renders the same nonzero prices in the market, crypto, and token panels', async () => {
+  it('preserves ordinary crypto and token quote precision', async () => {
+    const crypto = new CryptoPanel();
+    const tokens = new AiTokensPanel();
+    document.body.append(crypto.getElement(), tokens.getElement());
+
+    const prices = [3200.75, 12.345, NaN, Infinity, -Infinity];
+    crypto.renderCrypto(prices.map((price) => ({ name: 'Coin', symbol: 'C', price, change: 0 })));
+    tokens.renderTokens(prices.map((price) => ({ name: 'Token', symbol: 'T', price, change24h: 0, change7d: 0 })));
+    await flush();
+
+    expect(priceTexts(crypto.getElement())).toEqual(['$3,200.75', '$12.345', '--', '--', '--']);
+    expect(priceTexts(tokens.getElement())).toEqual(['$3,200.75', '$12.35', '--', '--', '--']);
+  });
+
+  it('keeps sub-cent prices visible across the market, crypto, and token panels', async () => {
     const markets = new MarketPanel();
     const crypto = new CryptoPanel();
     const tokens = new AiTokensPanel();
@@ -87,8 +101,10 @@ describe('sub-cent asset prices stay visible (#9705)', () => {
     await flush();
 
     expect(priceTexts(markets.getElement())).toEqual(EXPECTED);
-    expect(priceTexts(crypto.getElement())).toEqual(EXPECTED);
-    expect(priceTexts(tokens.getElement())).toEqual(EXPECTED);
+    const assetExpected = [...EXPECTED];
+    assetExpected[8] = '$12.5';
+    expect(priceTexts(crypto.getElement())).toEqual(assetExpected);
+    expect(priceTexts(tokens.getElement())).toEqual(assetExpected);
 
     for (const text of [...priceTexts(markets.getElement()), ...priceTexts(crypto.getElement()), ...priceTexts(tokens.getElement())]) {
       expect(text.length).toBeLessThanOrEqual(16);

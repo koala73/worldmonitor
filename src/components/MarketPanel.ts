@@ -932,7 +932,7 @@ export class CryptoPanel extends Panel {
         </div>
         <div class="market-data">
           ${miniSparkline(coin.sparkline, coin.change)}
-          <span class="market-price">${escapeHtml(formatPrice(coin.price))}</span>
+          <span class="market-price">${escapeHtml(Number.isFinite(coin.price) && Math.abs(coin.price) >= 1 ? `$${coin.price.toLocaleString()}` : formatPrice(coin.price))}</span>
           <span class="market-change ${getChangeClass(coin.change)}">${formatChange(coin.change)}</span>
         </div>
       </div>
@@ -990,7 +990,7 @@ export class TokenListPanel extends Panel {
           <span class="market-symbol">${escapeHtml(tok.symbol)}</span>
         </div>
         <div class="market-data">
-          <span class="market-price">${escapeHtml(formatPrice(tok.price))}</span>
+          <span class="market-price">${escapeHtml(Number.isFinite(tok.price) && Math.abs(tok.price) >= 1 ? `$${tok.price.toLocaleString(undefined, { maximumFractionDigits: tok.price < 1 ? 6 : 2 })}` : formatPrice(tok.price))}</span>
           <span class="market-change ${getChangeClass(tok.change24h)}">${formatChange(tok.change24h)}</span>
           <span class="market-change market-change--7d ${getChangeClass(tok.change7d)}">${formatChange(tok.change7d)}W</span>
         </div>
