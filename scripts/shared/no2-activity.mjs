@@ -172,7 +172,11 @@ const isRecord = (value) => value !== null && typeof value === 'object' && !Arra
 const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 const isCount = (value) => Number.isInteger(value) && value >= 0;
 const isIsoDate = (value) => Number.isFinite(dateMs(value));
-const isInstant = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value));
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,3})?Z$/;
+const isInstant = (value) => typeof value === 'string'
+  && ISO_INSTANT.test(value)
+  && isIsoDate(value.slice(0, 10))
+  && Number.isFinite(Date.parse(value));
 
 function isWindow(value) {
   return isRecord(value)

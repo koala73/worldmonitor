@@ -351,11 +351,15 @@ describe('seed-no2-activity fetchAll', () => {
     const { fetchImpl } = stubFetch({ fail: () => true });
     await assert.rejects(fetchAllWith(fetchImpl, stubStore().store)(), (error) => {
       assert.match(error.message, /every refresh failed/);
-      assert.equal(error.preservableFetchFailure ?? error.preservable ?? true, true);
+      assert.equal(error.preservableFetchFailure, true);
       return true;
     });
     const tokenDown = async (url) => (url === CDSE_TOKEN_URL ? new Response('nope', { status: 500 }) : assert.fail('no statistics call'));
-    await assert.rejects(fetchAllWith(tokenDown, stubStore().store)(), /token fetch failed/);
+    await assert.rejects(fetchAllWith(tokenDown, stubStore().store)(), (error) => {
+      assert.match(error.message, /token fetch failed/);
+      assert.equal(error.preservableFetchFailure, true);
+      return true;
+    });
   });
 
   it('fetches a fresh token when the API rejects the current one', async () => {

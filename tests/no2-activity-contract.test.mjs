@@ -128,6 +128,8 @@ describe('NO2 activity method contract (#9722)', () => {
         Object.assign(region, { exclusion: 'cloudy', changePercent: null, signalValue: null, direction: null });
       },
       'a window that ends after generation': (dataset) => { dataset.generatedAt = '2026-10-23T12:00:00.000Z'; },
+      'a generation time that is not an ISO UTC instant': (dataset) => { dataset.generatedAt = 'Oct 26 2026 06:10'; },
+      'a generation time on an impossible day': (dataset) => { dataset.generatedAt = '2026-02-30T06:10:00.000Z'; },
       'a window on an impossible calendar day': (dataset) => { dataset.regions['country-de'].current.windowStart = '2026-02-30'; },
       'a window with valid days but no mean': (dataset) => { dataset.regions['country-de'].current.meanNo2MolM2 = null; },
       'series coverage without dates': (dataset) => { dataset.regions['country-de'].series.firstDate = null; },
