@@ -88,6 +88,22 @@ describe('crawlable pulse refresh rehearsal', () => {
     }
   });
 
+  it('empties the minority PortWatch side of a mixed capture, so a pin on it fails', () => {
+    const mostlyWithheld = capture();
+    mostlyWithheld.chokepoints.bab_el_mandeb = { ...mostlyWithheld.chokepoints.hormuz_strait, description: 'Bab el-Mandeb' };
+    const drifted = driftLivePulseCapture(mostlyWithheld, { targetDate: '2026-10-26' });
+    for (const reading of Object.values(drifted.chokepoints)) {
+      assert.equal(reading.officialLatestTotal, null, 'two withheld days to one published rehearse with none published');
+    }
+
+    const mostlyPublished = capture();
+    mostlyPublished.chokepoints.bab_el_mandeb = { ...mostlyPublished.chokepoints.suez, description: 'Bab el-Mandeb' };
+    const published = driftLivePulseCapture(mostlyPublished, { targetDate: '2026-10-26' });
+    for (const reading of Object.values(published.chokepoints)) {
+      assert.ok(reading.officialLatestTotal > 0, 'two published days to one withheld rehearse with none withheld');
+    }
+  });
+
   it('drifts values but not dates when the capture is already today', () => {
     const drifted = driftLivePulseCapture(capture(), { targetDate: '2026-10-19' });
     assert.equal(drifted.capturedAt, '2026-10-19');
