@@ -14,6 +14,7 @@ import type { CryptoData, MarketData, TokenData } from '@/types';
 const { AiTokensPanel, CryptoPanel, MarketPanel } = await import('@/components/MarketPanel');
 
 const CONTENT_DEBOUNCE_MS = 150;
+const numberToLocaleString = Number.prototype.toLocaleString;
 
 const PRICES = [0.00024, 1e-8, 1e-12, -0.00024, -1e-12, 0, 0.123456, 0.5, 12.5, 1500, -0.5] as const;
 
@@ -44,6 +45,9 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  vi.spyOn(Number.prototype, 'toLocaleString').mockImplementation(function (this: number, locales, options) {
+    return numberToLocaleString.call(this, locales ?? 'en-US', options);
+  });
   document.body.replaceChildren();
   vi.useFakeTimers();
 });
