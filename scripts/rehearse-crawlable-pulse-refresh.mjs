@@ -13,8 +13,8 @@
 // This script moves those values on purpose, before the live data does. It
 // derives a capture from the committed one: re-dated to today, every
 // methodology version bumped, CII scores rotated across the scored countries,
-// chokepoint readings rotated across chokepoints, and every PortWatch day
-// published. Every record keeps its
+// chokepoint readings rotated across chokepoints, and PortWatch days all
+// published or all withheld. Every record keeps its
 // shape, so the build accepts it the way it accepts a real capture. It then
 // runs the refresh workflow's own "Rebuild published artifacts" and "Verify
 // published artifacts" steps, read from the workflow file so the two cannot
@@ -92,9 +92,9 @@ export function driftLivePulseCapture(capture, { targetDate }) {
   }
 
   const scored = Object.keys(drifted.countries).sort().filter((code) => drifted.countries[code].partial === false);
-  const readings = rotate(scored.map((code) => CII_READING_FIELDS.map((field) => drifted.countries[code][field])));
+  const ciiReadings = rotate(scored.map((code) => CII_READING_FIELDS.map((field) => drifted.countries[code][field])));
   scored.forEach((code, index) => {
-    CII_READING_FIELDS.forEach((field, fieldIndex) => { drifted.countries[code][field] = readings[index][fieldIndex]; });
+    CII_READING_FIELDS.forEach((field, fieldIndex) => { drifted.countries[code][field] = ciiReadings[index][fieldIndex]; });
   });
 
   const chokepointIds = Object.keys(drifted.chokepoints).sort();
@@ -108,13 +108,26 @@ export function driftLivePulseCapture(capture, { targetDate }) {
     drifted.chokepoints[id] = { ...chokepointReadings[index], ...identity };
   });
   // Rotation keeps the mix of published and withheld PortWatch days, so a
-  // test that needs at least one withheld day still passes. The 2026-10-26
-  // capture published every day (#9693); so does the rehearsal.
-  const donor = chokepointIds.map((id) => drifted.chokepoints[id]).find((reading) => reading.officialLatestTotal != null);
-  if (donor) {
-    for (const id of chokepointIds) {
-      if (drifted.chokepoints[id].officialLatestTotal != null) continue;
-      for (const field of PORTWATCH_DAY_FIELDS) drifted.chokepoints[id][field] = donor[field];
+  // test that needs one of each still passes until a week has none of one:
+  // 2026-10-19 withheld every day, 2026-10-26 published every day (#9693).
+  // Empty the side the capture holds fewer of, so such a test fails here.
+  const readings = chokepointIds.map((id) => drifted.chokepoints[id]);
+  const published = readings.filter((reading) => reading.officialLatestTotal != null);
+  const withheldCount = readings.length - published.length;
+  if (withheldCount > 0 && (published.length === 0 || withheldCount <= published.length)) {
+    // With no published day to copy, a plausible one: PortWatch lags about a week.
+    const day = published[0] ?? {
+      officialLatestDate: new Date(Date.parse(`${targetDate}T00:00:00Z`) - 8 * DAY_MS).toISOString().slice(0, 10),
+      officialLatestTotal: 40,
+      officialAvg7d: 41.3,
+    };
+    for (const reading of readings) {
+      if (reading.officialLatestTotal != null) continue;
+      for (const field of PORTWATCH_DAY_FIELDS) reading[field] = day[field];
+    }
+  } else {
+    for (const reading of published) {
+      for (const field of PORTWATCH_DAY_FIELDS) reading[field] = null;
     }
   }
   return drifted;
@@ -166,7 +179,7 @@ function main() {
   try {
     for (const filename of snapshots) rmSync(join(REPO_ROOT, SNAPSHOT_DIR, filename));
     writeFileSync(join(REPO_ROOT, SNAPSHOT_DIR, driftedName), `${JSON.stringify(drifted, null, 2)}\n`);
-    console.log(`[rehearse-pulse] ${committed} -> ${driftedName} (methodology bumped, CII and chokepoint readings rotated, PortWatch days published)`);
+    console.log(`[rehearse-pulse] ${committed} -> ${driftedName} (methodology bumped, CII and chokepoint readings rotated, PortWatch days moved to one side)`);
     for (const step of steps) {
       console.log(`[rehearse-pulse] ${step.name}`);
       const result = spawnSync('bash', ['-eo', 'pipefail', '-c', step.run], {

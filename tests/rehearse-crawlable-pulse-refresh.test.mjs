@@ -70,6 +70,24 @@ describe('crawlable pulse refresh rehearsal', () => {
     assert.deepEqual(original, capture(), 'the committed capture is not mutated');
   });
 
+  it('empties whichever PortWatch side a capture holds, so neither can be assumed', () => {
+    const allWithheld = capture();
+    Object.assign(allWithheld.chokepoints.suez, { officialLatestDate: null, officialLatestTotal: null, officialAvg7d: null });
+    const published = driftLivePulseCapture(allWithheld, { targetDate: '2026-10-26' });
+    for (const reading of Object.values(published.chokepoints)) {
+      assert.equal(reading.officialLatestDate, '2026-10-18');
+      assert.ok(reading.officialLatestTotal > 0, 'a capture with no published day is rehearsed with every day published');
+    }
+
+    const allPublished = capture();
+    Object.assign(allPublished.chokepoints.hormuz_strait, { officialLatestDate: '2026-10-11', officialLatestTotal: 4, officialAvg7d: 3.7 });
+    const withheld = driftLivePulseCapture(allPublished, { targetDate: '2026-10-26' });
+    for (const reading of Object.values(withheld.chokepoints)) {
+      assert.equal(reading.officialLatestTotal, null, 'a capture with no withheld day is rehearsed with every day withheld');
+      assert.equal(reading.officialLatestDate, null);
+    }
+  });
+
   it('drifts values but not dates when the capture is already today', () => {
     const drifted = driftLivePulseCapture(capture(), { targetDate: '2026-10-19' });
     assert.equal(drifted.capturedAt, '2026-10-19');
