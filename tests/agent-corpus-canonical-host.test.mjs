@@ -302,7 +302,7 @@ describe('every published MCP endpoint is the canonical one (#9722)', () => {
     'vercel.json',
   ];
   const SOURCE_EXTENSIONS = /\.(?:txt|md|mdx|json|yaml|yml|xml|html|ts|tsx|js|mjs|go|py|rb|rs)$/;
-  const SKIP = new Set([...SKIP_DIRS, 'generated', 'locales-generated']);
+  const SKIP = new Set([...SKIP_DIRS, 'generated']);
 
   function walk(path, acc) {
     if (!existsSync(path)) return acc;
