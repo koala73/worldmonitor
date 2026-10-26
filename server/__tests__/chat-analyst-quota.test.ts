@@ -33,7 +33,10 @@ vi.mock("../worldmonitor/intelligence/v1/chat-analyst-context", () => ({
 }));
 
 vi.mock("../worldmonitor/intelligence/v1/chat-analyst-prompt", () => ({
-  buildAnalystSystemPrompt: () => "system prompt",
+  buildAnalystMessages: ({ query }: { query: string }) => [
+    { role: "system", content: "system prompt" },
+    { role: "user", content: query },
+  ],
 }));
 
 vi.mock("../worldmonitor/intelligence/v1/chat-analyst-actions", () => ({
