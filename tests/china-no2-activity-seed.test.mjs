@@ -366,6 +366,19 @@ describe('seed-china-no2-activity fetchAll', () => {
     assert.ok(Math.abs(payload.source.processingUnitsSpent - 12 * 1.25) < 1e-9);
   });
 
+  it('keeps a region whose one failed request was a baseline year', async () => {
+    const { fetchImpl } = stubFetch({
+      fail: (body) => body.input.bounds.bbox[0] === 112.5 && body.aggregation.timeRange.from.startsWith('2024'),
+    });
+    const payload = await fetchAllWith(fetchImpl)();
+    assert.equal(validateChinaNo2ActivityPayload(payload), true);
+    const region = payload.regions.find((item) => item.id === 'pearl-river-delta');
+    assert.equal(region.exclusion, null);
+    assert.deepEqual(region.baseline.years.map((year) => year.year), [2025, 2023]);
+    assert.ok(region.changePercent > 0);
+    assert.deepEqual(payload.composite.regionIds, ['jing-jin-ji', 'yangtze-river-delta', 'pearl-river-delta', 'shandong']);
+  });
+
   it('throws a preservable failure when every region fails', async () => {
     const { fetchImpl } = stubFetch({ fail: () => true });
     await assert.rejects(fetchAllWith(fetchImpl)(), (error) => {

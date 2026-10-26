@@ -10,8 +10,9 @@
 // over each region: the current window ending windowEndLagDays before today
 // (UTC) and the same month-day span in each of the baselineYears before it.
 // 4 regions x (1 current + 3 baseline) = 16 requests, about 18 processing units.
-// A region whose requests fail after retries publishes as request_failed; a run
-// where every region fails (or the token cannot be fetched) publishes nothing,
+// A region whose current-window request fails after retries publishes as
+// request_failed (a failed baseline year is just absent); a run where every
+// region fails (or the token cannot be fetched) publishes nothing,
 // so runSeed keeps last-good and exits 75. The first successful publish SETs
 // seed-activated:economic:china-no2-activity, which ends /api/health's
 // pre-provisioning softening for chinaNo2Activity.
@@ -286,11 +287,13 @@ export function makeFetchAll({
       const years = baselineOutcomes.flatMap((outcome, index) => (outcome.status === 'fulfilled'
         ? [{ year: baselines[index].year, ...outcome.value }]
         : []));
+      // A failed baseline year is simply absent; regionResult still judges
+      // the region on the years that answered.
       return regionResult(region, {
         current: currentOutcome.status === 'fulfilled' ? currentOutcome.value : null,
         currentSpan: current,
         years,
-        requestFailed: outcomes.some((outcome) => outcome.status === 'rejected'),
+        requestFailed: currentOutcome.status === 'rejected',
       }, method);
     });
 

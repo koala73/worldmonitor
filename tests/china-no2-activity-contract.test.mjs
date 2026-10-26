@@ -32,6 +32,7 @@ describe('China NO2 activity contract (#9722)', () => {
     assert.equal(isLunarNewYearHoliday('2025-07-01'), false);
     assert.equal(isLunarNewYearHoliday('2017-01-28'), false);
     assert.equal(isLunarNewYearHoliday('not a date'), false);
+    assert.equal(isLunarNewYearHoliday('2026-02-30'), false);
   });
 
   it('accepts a payload that carries the reviewed method, every region, and a consistent composite', () => {
@@ -58,6 +59,13 @@ describe('China NO2 activity contract (#9722)', () => {
       'a composite median that disagrees with the dead band': (payload) => {
         payload.composite.changePercent = 4;
         payload.composite.signalValue = 4;
+      },
+      'a composite that is not the median of its regions': (payload) => {
+        payload.composite.changePercent = -20;
+        payload.composite.signalValue = -20;
+      },
+      'a window on an impossible calendar day': (payload) => {
+        payload.regions[0].current.windowStart = '2026-02-30';
       },
       'a composite that lists an excluded region': (payload) => {
         payload.regions[0].exclusion = 'insufficient_valid_days';

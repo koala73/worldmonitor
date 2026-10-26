@@ -103,7 +103,17 @@ const ISO_DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const MS_PER_DAY = 86_400_000;
 
 function dateMs(isoDate) {
-  return ISO_DATE.test(isoDate) ? Date.parse(`${isoDate}T00:00:00Z`) : Number.NaN;
+  if (!ISO_DATE.test(isoDate)) return Number.NaN;
+  const ms = Date.parse(`${isoDate}T00:00:00Z`);
+  // Date.parse normalizes an impossible day such as 02-30 into March; only a
+  // date that round-trips is a calendar date.
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === isoDate ? ms : Number.NaN;
+}
+
+function median(values) {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
 }
 
 /**
@@ -124,7 +134,7 @@ export function isLunarNewYearHoliday(isoDate, method = CHINA_NO2_ACTIVITY_METHO
 }
 
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
-const isFinite = (value) => typeof value === 'number' && Number.isFinite(value);
+const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 const isCount = (value) => Number.isInteger(value) && value >= 0;
 const isIsoDate = (value) => typeof value === 'string' && Number.isFinite(dateMs(value));
 const isInstant = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value));
@@ -136,9 +146,9 @@ function isWindow(value) {
     && dateMs(value.windowStart) <= dateMs(value.windowEnd)
     && isCount(value.validDays)
     && isCount(value.maskedDays)
-    && (value.meanNo2MolM2 === null || (isFinite(value.meanNo2MolM2) && value.meanNo2MolM2 >= 0))
+    && (value.meanNo2MolM2 === null || (isFiniteNumber(value.meanNo2MolM2) && value.meanNo2MolM2 >= 0))
     && (value.meanValidFraction === null
-      || (isFinite(value.meanValidFraction) && value.meanValidFraction >= 0 && value.meanValidFraction <= 1))
+      || (isFiniteNumber(value.meanValidFraction) && value.meanValidFraction >= 0 && value.meanValidFraction <= 1))
     && (value.validDays === 0) === (value.meanNo2MolM2 === null);
 }
 
@@ -154,22 +164,23 @@ function isRegion(value, definition) {
   if (!isRecord(value.baseline) || !Array.isArray(value.baseline.years)
     || !value.baseline.years.every(isBaselineYear)
     || !(value.baseline.meanNo2MolM2 === null
-      || (isFinite(value.baseline.meanNo2MolM2) && value.baseline.meanNo2MolM2 > 0))) return false;
+      || (isFiniteNumber(value.baseline.meanNo2MolM2) && value.baseline.meanNo2MolM2 > 0))) return false;
   if (value.exclusion === null) {
-    return isFinite(value.changePercent);
+    return isFiniteNumber(value.changePercent);
   }
   return CHINA_NO2_REGION_EXCLUSIONS.includes(value.exclusion) && value.changePercent === null;
 }
 
 function isComposite(value, regions, method) {
   if (!isRecord(value) || !Array.isArray(value.regionIds)) return false;
-  const eligibleIds = regions.filter((region) => region.exclusion === null).map((region) => region.id);
-  if (value.regionIds.length !== eligibleIds.length
-    || value.regionIds.some((id, index) => id !== eligibleIds[index])) return false;
+  const eligible = regions.filter((region) => region.exclusion === null);
+  if (value.regionIds.length !== eligible.length
+    || value.regionIds.some((id, index) => id !== eligible[index].id)) return false;
   if (value.exclusion === null) {
-    return isFinite(value.changePercent)
-      && isFinite(value.signalValue)
+    return isFiniteNumber(value.changePercent)
+      && isFiniteNumber(value.signalValue)
       && value.regionIds.length >= method.minRegions
+      && value.changePercent === median(eligible.map((region) => region.changePercent))
       && (Math.abs(value.changePercent) < method.deadBandPercent
         ? value.signalValue === 0
         : value.signalValue === value.changePercent);
@@ -199,7 +210,7 @@ function isSource(value) {
     && typeof value.attribution === 'string'
     && value.attribution.startsWith(CHINA_NO2_ATTRIBUTION_PREFIX)
     && isCount(value.requestCount)
-    && isFinite(value.processingUnitsSpent)
+    && isFiniteNumber(value.processingUnitsSpent)
     && value.processingUnitsSpent >= 0;
 }
 
