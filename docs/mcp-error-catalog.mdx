@@ -550,7 +550,7 @@ Fields:
 
 ### `_jmespath_error` — projection failed
 
-Three failure kinds, all returned with the same envelope shape. The `_jmespath_error` value is a **string** (not an object); its content is `<kind>: <details>`. The discriminator is the **leading kind token** before the first `:`.
+Four failure kinds, all returned with the same envelope shape (`empty_projection` also carries `unknown_fields` and `key_paths`). The `_jmespath_error` value is a **string** (not an object); its content is `<kind>: <details>`. The discriminator is the **leading kind token** before the first `:`.
 
 ```json
 {
@@ -563,7 +563,7 @@ Three failure kinds, all returned with the same envelope shape. The `_jmespath_e
 
 **Quota.** The Pro daily-quota slot is **NOT** rolled back. The tool fetch succeeded; the user-supplied projection is what failed. A bad expression consumes one quota slot per attempt, which is why `original_keys` exists — to make the retry self-correcting in one extra call rather than guesswork over N.
 
-The three kinds:
+The four kinds:
 
 #### `expression_too_long`
 
@@ -590,6 +590,21 @@ The JMESPath parser, evaluation guard, or evaluator rejected the expression. Cau
 ```
 
 **Recovery.** Fix the expression. The two most common bugs are (a) using double quotes around string literals (`[?country == "Iraq"]`) when JMESPath wants single quotes (`[?country == 'Iraq']`), and (b) using bare numeric literals (`[?deathsBest > 0]`) when JMESPath wants backticks (`[?deathsBest > \`0\`]`). The [JMESPath guide](/mcp-jmespath) covers both pitfalls.
+
+#### `empty_projection`
+
+The expression ran, but it selected nothing because it reads a field the response does not have: the result was `null`, or a multiselect whose every entry was `null`, and at least one field name in the expression appears nowhere in the response. `unknown_fields` lists those names. The envelope adds `key_paths`, dotted paths into the unprojected response (arrays as `[]`, described by their first object element, up to 4 levels and 80 paths). A `null` read from a field that exists is returned as data, not as this error.
+
+```json
+{
+  "_jmespath_error": "empty_projection: every selected field resolved to null, and the response has no field named headline. Check the field names against key_paths.",
+  "original_keys": ["cached_at", "stale", "data"],
+  "unknown_fields": ["headline"],
+  "key_paths": ["cached_at", "stale", "data", "data.insights", "data.insights.topStories[]", "data.insights.topStories[].primaryTitle"]
+}
+```
+
+**Recovery.** Rewrite the expression against `key_paths`, or call `describe_tool` for the `outputSchema`. An empty list (`[]`) is not this error: a filter that matches no rows is a real result.
 
 #### `projection_too_large`
 

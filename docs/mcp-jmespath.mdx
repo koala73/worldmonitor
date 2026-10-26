@@ -39,23 +39,22 @@ The count above is an example, not a fixed catalog size. These channel mappings 
 
 | Response case | Parsed `content[0].text` | `structuredContent` |
 | --- | --- | --- |
-| Scalar projection | `3`, `0`, `false`, or `"name"` | `{ "projection": <value> }` |
+| Scalar projection | `3`, `0`, `false`, `"name"`, or `null` from a field that holds null | `{ "projection": <value> }` |
 | Array projection | `["a", "b"]` | `{ "projection": ["a", "b"] }` |
 | Object projection | `{ "providerCount": 3 }` | `{ "projection": { "providerCount": 3 } }` |
-| No matching field | `null` | `{ "projection": null }` |
 | Cache tool with `summary: true` | The summary object | `{ "projection": <summary> }` |
-| Invalid expression, without attribution | `{ "_jmespath_error": "...", "original_keys": [...] }` | The same envelope |
+| Invalid expression or no matching field, without attribution | `{ "_jmespath_error": "...", "original_keys": [...] }` | The same envelope |
 | Projection with an attribution rider | `{ "data": <value>, "_attribution": <rider> }` | The same envelope |
 | Projection of fitted output, without attribution | `{ "projection": <value>, "transportCoverage": <coverage> }` | The same envelope |
 | Output budget exceeded | `{ "_budget_exceeded": true, ... }` | The same envelope |
 
-A no-match `null` is a successful projection. It does not establish that the source has zero records or that the source failed. An invalid expression returns `_jmespath_error` instead.
+A projection that selects nothing because it names a field the response does not have returns `_jmespath_error` with the `empty_projection` kind. It fires when the result is `null`, or a multiselect whose every entry is `null`, and at least one field the expression reads appears nowhere in the response, such as `{stories: topStories[].{h: headline}}` when stories carry `primaryTitle`. JMESPath yields `null` for a path that does not exist, so returning it as data reads as "the source has nothing". The envelope lists those names in `unknown_fields` and adds `key_paths`, the dotted paths into the response, so the retry can use the real field names. A field that exists and holds `null` (a story that names no country) is returned as `null`, and an empty list or a hash with only some `null` entries is a result.
 
 Attribution comes from the payload before projection. When source attribution is present, the server attaches `_attribution` outside the selected `data` value. This also applies to invalid expressions, whose error envelope becomes `data`. If the payload contains no source attribution values, no rider is added. Keep the rider with any values you redistribute.
 
 Some tools fit large responses to their output budget. If a projection selects fitted data, `transportCoverage` remains outside the projection in both channels. With an attribution rider, both channels use `{ "data": <value>, "_attribution": <rider>, "transportCoverage": <coverage> }`. Preserve this coverage record so omitted records remain visible. If the final text still exceeds the budget, the budget envelope replaces the data in both channels. The budget measures text after attribution, coverage, and deprecation metadata have been added.
 
-Deprecated tool aliases add a root `deprecation` notice to `structuredContent`. If parsed text is an object, the server also adds the notice at that object's root. Scalar, array, and `null` text remain raw, so their notice is available only in `structuredContent`. For an object projection, the structured value stays under `projection`, with the notice beside it. Budget and invalid-expression envelopes also retain the notice.
+Deprecated tool aliases add a root `deprecation` notice to `structuredContent`. If parsed text is an object, the server also adds the notice at that object's root. Scalar, array, and `null` text remain raw, so their notice is available only in `structuredContent`. For an object projection, the structured value stays under `projection`, with the notice beside it. Budget and projection-error envelopes also retain the notice.
 
 For new clients, prefer `structuredContent` and retain its metadata. Check for `_budget_exceeded` at the root. Check for `_jmespath_error` at the root or inside attribution `data` before you use a projected value. A legacy text client must handle the envelopes above as well as raw JSON values. Do not assume that `JSON.parse(content[0].text)` equals `structuredContent`, or unwrap an ordinary tool payload merely because it has a field named `data`.
 
@@ -584,7 +583,7 @@ The recovery is always the same: **make the projection more selective**, or laye
 
 ### `_jmespath_error` — when the projection itself fails
 
-A JMESPath expression can fail when it exceeds 1024 bytes, has invalid syntax, violates the evaluation rules above, or exceeds the 256 KB output cap via a runaway multiselect-hash. In all cases you get this envelope back. `_jmespath_error` is a **string** (`<kind>: <details>`), not an object:
+A JMESPath expression can fail when it exceeds 1024 bytes, has invalid syntax, violates the evaluation rules above, selects nothing, or exceeds the 256 KB output cap via a runaway multiselect-hash. In all cases you get this envelope back. `_jmespath_error` is a **string** (`<kind>: <details>`), not an object:
 
 ```json
 {
@@ -593,7 +592,7 @@ A JMESPath expression can fail when it exceeds 1024 bytes, has invalid syntax, v
 }
 ```
 
-`original_keys` is the top-level keys of the unprojected response (capped at 50 keys with a `...<N more>` sentinel) — enough context for the model to retry with a corrected expression in one extra call. When the unprojected root is not an object, it degrades to a shape hint instead: `["<array length=N>"]` for an array root, `["<string>"]` / `["<number>"]` for a scalar. A bad expression **does** consume one daily quota slot per attempt when that quota path applies; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork. The three kinds (`expression_too_long`, `invalid_expression`, `projection_too_large`) and their exact discriminator strings live in the [MCP Error Catalog](/mcp-error-catalog#_jmespath_error-—-projection-failed).
+`original_keys` is the top-level keys of the unprojected response (capped at 50 keys with a `...<N more>` sentinel) — enough context for the model to retry with a corrected expression in one extra call. When the unprojected root is not an object, it degrades to a shape hint instead: `["<array length=N>"]` for an array root, `["<string>"]` / `["<number>"]` for a scalar. A bad expression **does** consume one daily quota slot per attempt when that quota path applies; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork. The four kinds (`expression_too_long`, `invalid_expression`, `empty_projection`, `projection_too_large`) and their exact discriminator strings live in the [MCP Error Catalog](/mcp-error-catalog#_jmespath_error-—-projection-failed).
 
 ## Complements to projection
 

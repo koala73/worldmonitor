@@ -251,7 +251,7 @@ export class EnergyComplexPanel extends Panel {
                 <div class="commodity-item energy-tape-card">
                   <div class="commodity-name">${escapeHtml(item.display)}</div>
                   ${miniSparkline(item.sparkline, item.change, 60, 18)}
-                  <div class="commodity-price">${formatPrice(item.price!)}</div>
+                  <div class="commodity-price">${escapeHtml(formatPrice(item.price!))}</div>
                   <div class="commodity-change ${getChangeClass(item.change ?? 0)}">${formatChange(item.change ?? 0)}</div>
                 </div>
               `).join('')}
