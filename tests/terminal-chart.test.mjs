@@ -74,6 +74,12 @@ describe('terminalChart', () => {
     assert.ok(baselines[2] - baselines[1] >= 11);
   });
 
+  it('keeps a less-than price floor inside the axis label', () => {
+    const svg = terminalChart([1, 2], { formatValue: () => '<$0.00000001' });
+    assert.match(svg, /HI\/LAST &lt;\$0\.00000001</);
+    assert.doesNotMatch(svg, /<\$0\.00000001/);
+  });
+
   it('honors width/height and a custom formatter', () => {
     const svg = terminalChart([1.111, 2.222], { width: 300, height: 120, formatValue: (v) => `$${v.toFixed(1)}` });
     assert.match(svg, /width="300"/);

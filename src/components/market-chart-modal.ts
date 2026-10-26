@@ -74,7 +74,7 @@ export function openMarketChartModal(stock: MarketData): void {
             <div class="market-chart-symbol">${escapeHtml(stock.display)}</div>
           </div>
           <div class="market-chart-quote">
-            <span class="market-chart-price">${formatPrice(stock.price)}</span>
+            <span class="market-chart-price">${escapeHtml(formatPrice(stock.price))}</span>
             <span class="market-change ${changeClass}">${formatChange(stock.change)}</span>
           </div>
         </div>
