@@ -114,7 +114,7 @@ describe('Country brief open failure recovery (#9710)', () => {
     expect(harness.isVisible()).toBe(false);
     expect(harness.getCode()).not.toBe('IT');
     expect(harness.renderPaused[0]).toBe(true);
-    expect(harness.renderPaused.at(-1)).toBe(false);
+    expect(harness.renderPaused[harness.renderPaused.length - 1]).toBe(false);
     expect(harness.toasts).toEqual(['Country brief failed to open. Please try again.']);
   });
 
@@ -124,7 +124,7 @@ describe('Country brief open failure recovery (#9710)', () => {
 
     expect(harness.hideCalls()).toBe(1);
     expect(harness.isVisible()).toBe(false);
-    expect(harness.renderPaused.at(-1)).toBe(false);
+    expect(harness.renderPaused[harness.renderPaused.length - 1]).toBe(false);
     expect(harness.toasts).toEqual(['Country brief failed to open. Please try again.']);
   });
 
@@ -169,7 +169,7 @@ describe('Country brief open failure recovery (#9710)', () => {
     expect(panel.getCode()).toBeNull();
     expect(document.getElementById('country-deep-dive-panel')?.classList.contains('active')).toBe(false);
     expect(renderPaused[0]).toBe(true);
-    expect(renderPaused.at(-1)).toBe(false);
+    expect(renderPaused[renderPaused.length - 1]).toBe(false);
     expect(toasts).toEqual(['Country brief failed to open. Please try again.']);
   });
 
@@ -211,7 +211,7 @@ describe('Country brief open failure recovery (#9710)', () => {
     expect(visible).toBe(true);
     expect(activeCode).toBe('FR');
     expect(page.show).not.toHaveBeenCalled();
-    expect(renderPaused.at(-1)).toBe(true);
+    expect(renderPaused[renderPaused.length - 1]).toBe(true);
     expect(toasts).toEqual(['Country brief failed to open. Please try again.']);
   });
 });
