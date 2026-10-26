@@ -6,7 +6,7 @@ keywords: "global intelligence dashboard, real-time intelligence platform, OSINT
 audience: "General tech audience, OSINT researchers, analysts, journalists"
 heroImage: "/blog/images/blog/what-is-worldmonitor-real-time-global-intelligence.jpg"
 pubDate: "2026-02-10"
-modifiedDate: "2026-08-05"
+modifiedDate: "2026-10-26"
 ---
 
 World Monitor is a **free, open-source, real-time global intelligence dashboard** that correlates conflicts, markets, shipping, aviation, infrastructure, cyber threats, natural hazards, and live news on one map. The public dashboard requires no signup; paid Pro, API, and Enterprise plans add analyst, automation, programmatic, and team workflows.
@@ -76,6 +76,8 @@ Developers can start with the [API reference](https://www.worldmonitor.app/docs/
 Yes. The platform source is published under AGPL-3.0 on [GitHub](https://github.com/koala73/worldmonitor). The web app uses Preact, TypeScript, and Vite; the desktop shell uses Tauri with a Node.js sidecar. The hosted service also offers paid Pro, API, and Enterprise plans with separate subscription-license terms.
 
 Open source makes the implementation inspectable, but it does not eliminate source limitations. Public feeds can be delayed, revised, rate-limited, unavailable, or wrong. World Monitor preserves timestamps and provenance so users can distinguish an observed fact from an analytical inference and return to the original publisher.
+
+The inputs do not all share one clock. Read [what real-time means in an intelligence dashboard](/blog/posts/real-time-intelligence-data-freshness/) to distinguish observation age from screen refresh.
 
 ## Frequently Asked Questions
 
