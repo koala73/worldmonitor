@@ -337,6 +337,24 @@ describe('News Intelligence accepted projections', () => {
     });
   });
 
+  it('does not report an outage when a content-only result omits topStories', async () => {
+    // A host that forwards only content passes the bare projected value, with
+    // no projection wrapper to say the stories were left out on purpose.
+    const textOnly = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value) }] });
+    await mount(textOnly(envelope()), async (document, send) => {
+      for (const value of [{ stories: [], advisories: [] }, { insights: { status: 'degraded' } }, { insights: 'degraded' }]) {
+        send(textOnly(value));
+        assert.equal(rows(document).length, 0);
+        assert.equal(document.getElementById('list').textContent,
+          'This response does not include data.insights.topStories, so the panel has no stories to show. The source was not reported unavailable.');
+      }
+      for (const value of [{ insights: null }, { insights: { topStories: null } }]) {
+        send(textOnly(value));
+        assert.equal(document.getElementById('list').textContent, 'News intelligence is temporarily unavailable.');
+      }
+    });
+  });
+
   it('names a projection error instead of reporting an outage', async () => {
     const error = { _jmespath_error: 'empty_projection: every selected field resolved to null.', original_keys: ['cached_at', 'stale', 'data'] };
     for (const wire of [result(error), { content: result(error).content }]) {
