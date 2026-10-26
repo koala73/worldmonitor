@@ -52,6 +52,15 @@ const RENDER = `
     q("empty").style.display = "none";
     q("card").style.display = "block";
 
+    var hasOwn = Object.prototype.hasOwnProperty;
+    // An unprojected response always carries insights (null when the source is
+    // missing), so an insights that is absent, a non-null scalar, or an object
+    // without topStories was left out by a projection, with or without the
+    // wrapper; only an explicit null stays an unavailable source.
+    var projectedInsights = d.insights;
+    var omitsInsights = !hasOwn.call(d, "insights") || (projectedInsights !== null
+      && (typeof projectedInsights !== "object" || !hasOwn.call(projectedInsights, "topStories")));
+    var projectionWrapped = hasOwn.call(data, "projection");
     var ins = d.insights && typeof d.insights === "object" ? d.insights : null;
     var sourceStories = ins && ins.topStories;
     var storyState = listState(sourceStories);
@@ -138,8 +147,11 @@ const RENDER = `
     }
     var shown = host.childNodes.length;
     if (!shown) {
+      var notShownBecause = " so the panel has no stories to show. The source was not reported unavailable.";
       host.appendChild(el("div", "empty", storyState.available
         ? "No news stories available."
+        : omitsInsights ? (projectionWrapped ? "This jmespath projection" : "This response")
+          + " does not include data.insights.topStories," + notShownBecause
         : "News intelligence is temporarily unavailable."));
     }
 

@@ -396,10 +396,10 @@ describe('MCP tool aliases', { concurrency: false }, () => {
     assertValid(advertised('get_tariff_averages'), scalar.body.result.structuredContent, 'scalar projection');
 
     const missing = await call('get_tariff_trends', { dataset: 'tariffs', jmespath: 'nonexistent' });
-    assert.equal(missing.body.result.content[0].text, 'null');
-    assert.equal(missing.body.result.structuredContent.projection, null);
+    assert.match(JSON.parse(missing.body.result.content[0].text)._jmespath_error, /^empty_projection/);
+    assert.match(missing.body.result.structuredContent._jmespath_error, /^empty_projection/);
     assert.equal(missing.body.result.structuredContent.deprecation.replacement, 'get_tariff_averages');
-    assertValid(advertised('get_tariff_averages'), missing.body.result.structuredContent, 'null projection');
+    assertValid(advertised('get_tariff_averages'), missing.body.result.structuredContent, 'empty projection');
 
     seedPriceBundle();
     const list = await call('get_tariff_trends', { dataset: 'bigmac', jmespath: 'data.bigmac.countries[].code' });

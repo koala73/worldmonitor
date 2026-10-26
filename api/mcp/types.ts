@@ -336,7 +336,7 @@ export type McpAccessClass = 'free' | 'free-account' | 'subscription';
 // ---------------------------------------------------------------------------
 // JMESPath result envelope
 // ---------------------------------------------------------------------------
-export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 'invalid_expression';
+export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 'invalid_expression' | 'empty_projection';
 
 // Result envelope. `text` is always the wire-ready JSON the dispatcher will
 // emit in `content[0].text`. `failed` is set only on a soft-failure path,

@@ -593,8 +593,9 @@ describe('paid curated market panel through the MCP handler', () => {
       if (args.panel_request) assert.equal(reads.length, beforeReads, 'the original reader reuses its snapshot without source reads');
     }
     const projectedCoverage = await (await handler(proReq('POST', callBody('get_market_data', { jmespath: 'transportCoverage' })), deps)).json();
-    assert.equal(projectedCoverage.result.content[0].text, 'null', 'real projection bypasses default coverage presentation');
-    assert.deepEqual(projectedCoverage.result.structuredContent, { projection: null });
+    assert.match(projectedCoverage.result.structuredContent._jmespath_error, /^empty_projection/, 'real projection bypasses default coverage presentation');
+    assert.equal(projectedCoverage.result.structuredContent.original_keys.includes('transportCoverage'), false);
+    assert.deepEqual(projectedCoverage.result.structuredContent, JSON.parse(projectedCoverage.result.content[0].text));
     for (const args of [{ limit: 10 }, { limit: 1 }, { symbols: ['AAPL'] }, { asset_class: ['equity'] }, { summary: true }, { jmespath: 'data' }]) {
       const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
       assert.equal(next.result.structuredContent.transportCoverage, undefined, 'explicit presentation is not fitted');
