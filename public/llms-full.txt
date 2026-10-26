@@ -1315,6 +1315,8 @@ Transparency matters. Here is where the data comes from:
 
 All sources are public. No proprietary data feeds. No paywall.
 
+For vessel-level research, read [how to assess AIS tracking accuracy](/blog/posts/ais-vessel-tracking-accuracy/) before treating a position, destination field or transmission gap as evidence of a port visit.
+
 <a id="corpus-frequently-asked-questions-track-trade-routes-chokepoints-and-freight-costs"></a>
 ## Frequently Asked Questions (Track Trade Routes, Chokepoints, and Freight Costs)
 
