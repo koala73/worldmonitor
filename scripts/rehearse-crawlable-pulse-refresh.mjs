@@ -13,7 +13,8 @@
 // This script moves those values on purpose, before the live data does. It
 // derives a capture from the committed one: re-dated to today, every
 // methodology version bumped, CII scores rotated across the scored countries,
-// and chokepoint readings rotated across chokepoints. Every record keeps its
+// chokepoint readings rotated across chokepoints, and every PortWatch day
+// published. Every record keeps its
 // shape, so the build accepts it the way it accepts a real capture. It then
 // runs the refresh workflow's own "Rebuild published artifacts" and "Verify
 // published artifacts" steps, read from the workflow file so the two cannot
@@ -46,6 +47,8 @@ const CII_READING_FIELDS = ['score', 'band', 'trend', 'geoConvergence'];
 // A chokepoint's description is its identity; everything else is this week's
 // reading.
 const CHOKEPOINT_IDENTITY_FIELDS = new Set(['description']);
+// The IMF PortWatch day a chokepoint page publishes or, when absent, withholds.
+const PORTWATCH_DAY_FIELDS = ['officialLatestDate', 'officialLatestTotal', 'officialAvg7d'];
 
 function rotate(values) {
   return values.length < 2 ? values : [...values.slice(1), values[0]];
@@ -104,6 +107,16 @@ export function driftLivePulseCapture(capture, { targetDate }) {
     );
     drifted.chokepoints[id] = { ...chokepointReadings[index], ...identity };
   });
+  // Rotation keeps the mix of published and withheld PortWatch days, so a
+  // test that needs at least one withheld day still passes. The 2026-10-26
+  // capture published every day (#9693); so does the rehearsal.
+  const donor = chokepointIds.map((id) => drifted.chokepoints[id]).find((reading) => reading.officialLatestTotal != null);
+  if (donor) {
+    for (const id of chokepointIds) {
+      if (drifted.chokepoints[id].officialLatestTotal != null) continue;
+      for (const field of PORTWATCH_DAY_FIELDS) drifted.chokepoints[id][field] = donor[field];
+    }
+  }
   return drifted;
 }
 
@@ -153,7 +166,7 @@ function main() {
   try {
     for (const filename of snapshots) rmSync(join(REPO_ROOT, SNAPSHOT_DIR, filename));
     writeFileSync(join(REPO_ROOT, SNAPSHOT_DIR, driftedName), `${JSON.stringify(drifted, null, 2)}\n`);
-    console.log(`[rehearse-pulse] ${committed} -> ${driftedName} (methodology bumped, CII and chokepoint readings rotated)`);
+    console.log(`[rehearse-pulse] ${committed} -> ${driftedName} (methodology bumped, CII and chokepoint readings rotated, PortWatch days published)`);
     for (const step of steps) {
       console.log(`[rehearse-pulse] ${step.name}`);
       const result = spawnSync('bash', ['-eo', 'pipefail', '-c', step.run], {

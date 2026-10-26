@@ -24,8 +24,8 @@ function capture() {
       NR: { partial: true, score: null, band: null, trend: null, geoConvergence: null, advisory: 'Exercise Normal Precautions', methodologyVersion: '', asOf: null },
     },
     chokepoints: {
-      hormuz_strait: { disruptionScore: '70', status: 'Red', description: 'Hormuz', baselineFrom: '2024-10-19', asOf: '2026-10-19T04:53:51.886Z' },
-      suez: { disruptionScore: '35', status: 'Yellow', description: 'Suez', baselineFrom: '2024-10-19', asOf: '2026-10-19T04:53:51.886Z' },
+      hormuz_strait: { disruptionScore: '70', status: 'Red', officialLatestDate: null, officialLatestTotal: null, officialAvg7d: null, description: 'Hormuz', baselineFrom: '2024-10-19', asOf: '2026-10-19T04:53:51.886Z' },
+      suez: { disruptionScore: '35', status: 'Yellow', officialLatestDate: '2026-10-11', officialLatestTotal: 43, officialAvg7d: 44.3, description: 'Suez', baselineFrom: '2024-10-19', asOf: '2026-10-19T04:53:51.886Z' },
     },
     forecastScorecard: { attemptedAt: '2026-10-19', attemptedAtMs: Date.parse('2026-10-19T04:55:00Z'), capturedAt: '2026-10-19' },
   };
@@ -59,6 +59,13 @@ describe('crawlable pulse refresh rehearsal', () => {
     assert.equal(drifted.chokepoints.hormuz_strait.disruptionScore, '35');
     assert.equal(drifted.chokepoints.hormuz_strait.status, 'Yellow');
     assert.equal(drifted.chokepoints.hormuz_strait.description, 'Hormuz', 'a chokepoint keeps its identity');
+    for (const id of ['hormuz_strait', 'suez']) {
+      assert.deepEqual(
+        [drifted.chokepoints[id].officialLatestDate, drifted.chokepoints[id].officialLatestTotal],
+        ['2026-10-11', 43],
+        `${id} publishes a PortWatch day, as a capture with none withheld does`,
+      );
+    }
 
     assert.deepEqual(original, capture(), 'the committed capture is not mutated');
   });
