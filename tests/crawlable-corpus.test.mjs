@@ -2910,7 +2910,12 @@ describe('crawlable corpus generator', () => {
       assert.match(ciiIndex, /<title>Country Instability Index: Live Rankings \| World Monitor<\/title>/);
       assert.match(ciiIndex, /<h1>Country Instability Index<\/h1>/);
       assert.match(ciiIndex, new RegExp(`<meta name="lastmod" content="${ciiIndexLastmod}">`));
-      assert.match(ciiIndex, /data-cii-methodology-version="v8"/);
+      // The version and country count come from the capture, not literals:
+      // the weekly refresh moves them (a v8 pin failed v14's refresh, #9693).
+      const { methodologyVersion, entries: ciiCountries } = clock.ciiRanking;
+      assert.match(methodologyVersion, /^v\d+$/);
+      assert.ok(ciiCountries.length >= 20, `CII ranking lists only ${ciiCountries.length} countries`);
+      assert.ok(ciiIndex.includes(`data-cii-methodology-version="${methodologyVersion}"`));
       // Reader copy names the snapshot and the live reading; the repo path and
       // the conflated "stable or unavailable" cell stay off the page.
       assert.match(ciiIndex, /Source: World Monitor Country Instability Index snapshot, \w+ \d{1,2}, \d{4}\./);
@@ -2921,7 +2926,7 @@ describe('crawlable corpus generator', () => {
         ?? livePulseMovementClaim(livePulseSnapshotAgeDays(clock.livePulse.capturedAt));
       assert.match(
         ciiIndex,
-        new RegExp(`CII v8 currently monitors 31 countries and ${movementClaim.rankingReports.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.`),
+        new RegExp(`CII ${methodologyVersion} currently monitors ${ciiCountries.length} countries and ${movementClaim.rankingReports.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.`),
       );
       const ciiQuestion = 'Which countries are most unstable right now?';
       const ciiQuestionHeading = [...ciiDocument.querySelectorAll('h2')]
@@ -2970,12 +2975,12 @@ describe('crawlable corpus generator', () => {
       assert.deepEqual(ciiCollection?.mainEntity, {
         '@id': 'https://www.worldmonitor.app/country-instability-index/#dataset',
       });
-      assert.equal(ciiDataset?.measurementTechnique, 'World Monitor CII v8');
+      assert.equal(ciiDataset?.measurementTechnique, `World Monitor CII ${methodologyVersion}`);
       assert.deepEqual(ciiDataset?.mainEntity, {
         '@id': 'https://www.worldmonitor.app/country-instability-index/#ranking',
       });
-      assert.equal(ciiItemList?.numberOfItems, 31);
-      assert.equal(ciiItemList?.itemListElement?.length, 31);
+      assert.equal(ciiItemList?.numberOfItems, ciiCountries.length);
+      assert.equal(ciiItemList?.itemListElement?.length, ciiCountries.length);
       // Pick both countries FROM the pulse by the property under test. These
       // were hardcoded to United Arab Emirates (stable) and Afghanistan
       // (moving), which is a live value: the first refresh gave the UAE a
@@ -3037,7 +3042,7 @@ describe('crawlable corpus generator', () => {
       assert.deepEqual(ukrainePage?.mainEntity, {
         '@id': 'https://www.worldmonitor.app/countries/ukraine/#cii-dataset',
       });
-      assert.equal(ukraineCiiDataset?.measurementTechnique, 'World Monitor CII v8');
+      assert.equal(ukraineCiiDataset?.measurementTechnique, `World Monitor CII ${methodologyVersion}`);
       assert.equal(ukraineCiiDataset?.spatialCoverage?.['@type'], 'Place');
       assert.ok(ukraineResilienceDataset, 'CII country pages must retain the CRI Dataset');
       assert.ok(norway.includes(liveScriptTag), 'country live script must match the production CSP nonce');
