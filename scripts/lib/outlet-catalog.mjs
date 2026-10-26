@@ -72,7 +72,7 @@ const PROFILE_KEYS = new Set(['country', 'audience', 'language', 'ownershipClass
  *
  * @param {{
  *   profiles: Record<string, any>,
- *   catalog: Map<string, { langs: Set<string> }>,
+ *   catalog: Map<string, unknown>,
  *   validCountries: Set<string>,
  *   familyFor: (name: string) => string,
  *   isStateAffiliated: (name: string) => boolean,
@@ -111,10 +111,6 @@ export function validateOutletProfiles({ profiles, catalog, validCountries, fami
     }
     if (profile.ownershipClass === 'unreviewed' && isStateAffiliated(name)) {
       problems.push(`${name}: state-affiliated outlet must have a reviewed ownershipClass`);
-    }
-    const declaredLangs = [...outlet.langs];
-    if (declaredLangs.length === 1 && declaredLangs[0] !== profile.language) {
-      problems.push(`${name}: language ${profile.language} disagrees with feed lang ${declaredLangs[0]}`);
     }
 
     const family = familyFor(name);

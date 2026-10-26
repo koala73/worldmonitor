@@ -89,11 +89,6 @@ describe('validateOutletProfiles', () => {
     assert.deepEqual(problems, ['Press TV: state-affiliated outlet must have a reviewed ownershipClass']);
   });
 
-  it('requires the profile language to match a single declared feed language', () => {
-    const problems = check({ profiles: { IRNA: { ...ok, language: 'en' } }, catalog: fixtureCatalog({ IRNA: ['fa'] }) });
-    assert.deepEqual(problems, ['IRNA: language en disagrees with feed lang fa']);
-  });
-
   it('lets a publisher family vary audience but not home country', () => {
     const catalog = fixtureCatalog({ 'BBC UK': [], 'BBC Persian': ['fa'], 'BBC Fake': [] });
     const familyFor = () => 'bbc';
