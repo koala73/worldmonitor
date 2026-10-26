@@ -449,9 +449,9 @@ World Monitor publishes 777 named providers across 18 source catalog pages. Each
 - [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 6 providers.
 - [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 23 providers.
 - [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 52 providers.
-- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 46 providers.
+- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 48 providers.
 - [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 15 providers.
-- [China Coverage](https://www.worldmonitor.app/sources/china/): 16 providers.
+- [China Coverage](https://www.worldmonitor.app/sources/china/): 14 providers.
 - [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 25 providers.
 
 <a id="corpus-comparisons"></a>
