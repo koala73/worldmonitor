@@ -339,7 +339,7 @@ function projectStoryCorroboration(title: string, story: Record<string, unknown>
 // registry outlets reach ~80 KB with them and ~59 KB without. Live briefs carry
 // one or two outlets per story, so notes are shed only when they cannot fit.
 // Titles clip by characters, so multibyte titles can still overflow; then the
-// provenance lists go too, leaving outlet names, tiers and the roster.
+// provenance lists go too, leaving outlet names, sourceTier and the roster.
 function fitWorldBriefToBudget(result: Record<string, unknown>, budgetBytes: number): Record<string, unknown> {
   if (!Array.isArray(result.topStories)) return result;
   const stories = result.topStories;
@@ -1565,7 +1565,7 @@ export const RPC_TOOLS: ToolDef[] = [
         model: { type: 'string', description: 'LLM model used by the insights seeder.' },
         transportCoverage: {
           type: 'object',
-          description: 'Present only when provenance was trimmed to fit the output budget: first every topStories[].sourceProvenance[].note, and only if that is not enough, every topStories[].sourceProvenance list. Outlet names, tiers and the publishers roster are always returned.',
+          description: 'Present only when provenance was trimmed to fit the output budget: first every topStories[].sourceProvenance[].note, and only if that is not enough, every topStories[].sourceProvenance list, which also removes the per-outlet tier. Outlet names, the best sourceTier and the publishers roster are always returned.',
           required: ['field', 'original_count', 'returned_count', 'omitted_count', 'omission_reason'],
           properties: {
             field: { enum: ['topStories[].sourceProvenance[].note', 'topStories[].sourceProvenance'] },
