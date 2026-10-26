@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '../src/utils/keyword-match.ts';
-import { getGeoHubById } from '../src/services/geo-hub-index.ts';
+import { getGeoHubById, inferGeoHubsFromTitle } from '../src/services/geo-hub-index.ts';
 
 // --- Tokenizer tests ---
 
@@ -421,6 +421,37 @@ describe('unicode and compound tokens (#9706)', () => {
   it('curly apostrophe possessive', () => {
     assert.ok(m('Assad\u2019s forces advance', 'assad'));
     assert.ok(m("Assad's forces advance", 'assad forces'));
+  });
+
+  it('matches identical phrase keywords with apostrophes and possessives', () => {
+    assert.ok(m("Assad's forces advance", "assad's forces"));
+    assert.ok(m('Assad\u2019s forces advance', "assad's forces"));
+    assert.ok(m("Cote d'Ivoire holds elections", "cote d'ivoire"));
+    assert.ok(m('Côte d’Ivoire holds elections', "cote d'ivoire"));
+    assert.ok(m("Assad's forces advance", "assad's"));
+    assert.ok(m("Cote d'Ivoire holds elections", "d'ivoire"));
+  });
+
+  it('preserves meaningful marks in non-Latin words', () => {
+    assert.ok(m('काला', 'काला'));
+    assert.ok(!m('काला', 'कल'));
+    assert.ok(!m('कल', 'काला'));
+    assert.ok(m('काला सागर', 'काला सागर'));
+    assert.ok(m('কি', 'কি'));
+    assert.ok(!m('কি', 'ক'));
+    assert.ok(m('й', 'и\u0306'));
+    assert.ok(!m('й', 'и'));
+  });
+
+  it('matches curated geo hubs through the title inference path', () => {
+    const fixtures = [
+      { title: 'North-Korea launches missile', hubId: 'pyongyang' },
+      { title: 'Élysée announces new talks', hubId: 'paris' },
+    ];
+    for (const { title, hubId } of fixtures) {
+      assert.ok(inferGeoHubsFromTitle(title).some(match => match.hubId === hubId), title);
+    }
+    assert.ok(!inferGeoHubsFromTitle('Ambassador discusses warehouse rights').some(match => match.hubId === 'damascus'));
   });
 
   it('false-positive guards hold', () => {
