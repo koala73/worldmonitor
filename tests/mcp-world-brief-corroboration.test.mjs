@@ -361,19 +361,19 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
     }]);
   });
 
-  it('stays inside the 64KB output budget with a worst-case snapshot', async () => {
-    // 12 stories (the headline cap) each at the 500-char title clip and the
-    // 12-outlet cap. If this ever exceeds the budget, api/mcp/dispatch.ts
-    // replaces the entire response with { _budget_exceeded: true } — a
-    // user-visible regression, not a silent truncation.
-    // Each story also carries ten publisher families of six case-variant
-    // labels, so the roster fills all eight publisher slots and all four label
-    // slots with strings at the 40-byte wire cap.
-    const longTitle = 'W'.repeat(600);
+  // 12 stories (the headline cap) each at the 500-char title clip and the
+  // 12-outlet cap. If a response exceeds the budget, api/mcp/dispatch.ts
+  // replaces the entire response with { _budget_exceeded: true }, a
+  // user-visible regression, not a silent truncation.
+  // Each story also carries ten publisher families of six case-variant
+  // labels, so the roster fills all eight publisher slots and all four label
+  // slots with strings at the 40-byte wire cap. The first 12 labels are the
+  // reviewed sources with the largest provenance records, so every
+  // sourceProvenance slot carries the heaviest real entry.
+  function stubWorstCaseBrief(titleChar) {
+    const longTitle = titleChar.repeat(600);
     const caseVariant = (base, variant) => [...base]
       .map((char, index) => (index < 6 && (variant >> index) & 1 ? char.toUpperCase() : char)).join('');
-    // The first 12 labels are the reviewed sources with the largest provenance
-    // records, so every sourceProvenance slot carries the heaviest real entry.
     const provenanceBytes = (source) => Buffer.byteLength(JSON.stringify(expectedProvenance([source])[0]), 'utf8');
     const heaviest = [...new Set([...Object.keys(SOURCE_TIERS), ...Object.keys(SOURCE_TYPES), ...Object.keys(SOURCE_PROPAGANDA_RISK)])]
       .sort((a, b) => provenanceBytes(b) - provenanceBytes(a))
@@ -389,6 +389,10 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
       primaryTitle: `${i} ${longTitle}`,
       sources: outlets,
     })));
+  }
+
+  it('stays inside the 64KB output budget with a worst-case snapshot', async () => {
+    stubWorstCaseBrief('W');
 
     const { payload, rawText } = await callWorldBrief();
 
@@ -402,6 +406,26 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
       'notes are shed while the structured provenance stays');
     assert.deepEqual(payload.transportCoverage, {
       field: 'topStories[].sourceProvenance[].note', original_count: 144, returned_count: 0, omitted_count: 144, omission_reason: 'output_budget',
+    });
+    assert.ok(
+      Buffer.byteLength(rawText, 'utf8') < 65_536,
+      `serialized world brief is ${Buffer.byteLength(rawText, 'utf8')} bytes, over the 65536 budget`,
+    );
+  });
+
+  it('drops whole provenance lists when shedding notes cannot fit multibyte titles', async () => {
+    // The title clip counts characters, so a CJK title costs three bytes per
+    // character in both headlines and topStories.
+    stubWorstCaseBrief('世');
+
+    const { payload, rawText } = await callWorldBrief();
+
+    assert.equal(payload._budget_exceeded, undefined, 'response must not be replaced by the budget guard');
+    assert.equal(payload.topStories.length, 12);
+    assert.ok(payload.topStories.every((story) => story.sourceProvenance === undefined && story.sources.length === 12),
+      'provenance lists are dropped while outlet names stay');
+    assert.deepEqual(payload.transportCoverage, {
+      field: 'topStories[].sourceProvenance', original_count: 12, returned_count: 0, omitted_count: 12, omission_reason: 'output_budget',
     });
     assert.ok(
       Buffer.byteLength(rawText, 'utf8') < 65_536,

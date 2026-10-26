@@ -338,26 +338,40 @@ function projectStoryCorroboration(title: string, story: Record<string, unknown>
 // Notes are the bulkiest provenance field: 12 stories of 12 of the heaviest
 // registry outlets reach ~80 KB with them and ~59 KB without. Live briefs carry
 // one or two outlets per story, so notes are shed only when they cannot fit.
+// Titles clip by characters, so multibyte titles can still overflow; then the
+// provenance lists go too, leaving outlet names, tiers and the roster.
 function fitWorldBriefToBudget(result: Record<string, unknown>, budgetBytes: number): Record<string, unknown> {
   if (!Array.isArray(result.topStories)) return result;
-  let omitted = 0;
-  const topStories = result.topStories.map((story) => {
+  const stories = result.topStories;
+  const withProvenance = stories.filter((story) => isRecord(story) && Array.isArray(story.sourceProvenance)).length;
+  if (withProvenance === 0) return result;
+  const present = (topStories: unknown[], field: string, omitted: number) => {
+    const presented = {
+      ...result,
+      topStories,
+      transportCoverage: { field, original_count: omitted, returned_count: 0, omitted_count: omitted, omission_reason: 'output_budget' },
+    };
+    return utf8ByteLength(JSON.stringify(presented)) <= budgetBytes ? presented : null;
+  };
+  let notes = 0;
+  const withoutNotes = stories.map((story) => {
     if (!isRecord(story) || !Array.isArray(story.sourceProvenance)) return story;
     const sourceProvenance = story.sourceProvenance.map((entry) => {
       if (!isRecord(entry) || entry.note === undefined) return entry;
-      omitted++;
+      notes++;
       const { note: _note, ...rest } = entry;
       return rest;
     });
     return { ...story, sourceProvenance };
   });
-  if (omitted === 0) return result;
-  const presented = {
-    ...result,
-    topStories,
-    transportCoverage: { field: 'topStories[].sourceProvenance[].note', original_count: omitted, returned_count: 0, omitted_count: omitted, omission_reason: 'output_budget' },
-  };
-  return utf8ByteLength(JSON.stringify(presented)) <= budgetBytes ? presented : result;
+  const withoutLists = stories.map((story) => {
+    if (!isRecord(story) || !Array.isArray(story.sourceProvenance)) return story;
+    const { sourceProvenance: _sourceProvenance, ...rest } = story;
+    return rest;
+  });
+  return (notes > 0 ? present(withoutNotes, 'topStories[].sourceProvenance[].note', notes) : null)
+    ?? present(withoutLists, 'topStories[].sourceProvenance', withProvenance)
+    ?? result;
 }
 
 type SeededWorldBriefPayload = {
@@ -1531,7 +1545,7 @@ export const RPC_TOOLS: ToolDef[] = [
               },
               sourceProvenance: {
                 type: 'array',
-                description: 'Fail-closed provenance for each outlet in sources, index-aligned: sourceProvenance[j] describes sources[j]. Shows when one story mixes a tier-1 wire with a high-risk or state-affiliated outlet, which sourceTier alone hides. Omitted when sources is.',
+                description: 'Fail-closed provenance for each outlet in sources, index-aligned: sourceProvenance[j] describes sources[j]. Shows when one story mixes a tier-1 wire with a high-risk or state-affiliated outlet, which sourceTier alone hides. Omitted when sources is, or when transportCoverage records it was trimmed for the output budget.',
                 items: {
                   type: 'object',
                   required: ['source', 'tier', ...BRIEF_SOURCE_PROVENANCE_SCHEMA.required],
@@ -1551,10 +1565,10 @@ export const RPC_TOOLS: ToolDef[] = [
         model: { type: 'string', description: 'LLM model used by the insights seeder.' },
         transportCoverage: {
           type: 'object',
-          description: 'Present only when every topStories[].sourceProvenance[].note was omitted to fit the output budget; the structured provenance fields are always returned.',
+          description: 'Present only when provenance was trimmed to fit the output budget: first every topStories[].sourceProvenance[].note, and only if that is not enough, every topStories[].sourceProvenance list. Outlet names, tiers and the publishers roster are always returned.',
           required: ['field', 'original_count', 'returned_count', 'omitted_count', 'omission_reason'],
           properties: {
-            field: { const: 'topStories[].sourceProvenance[].note' },
+            field: { enum: ['topStories[].sourceProvenance[].note', 'topStories[].sourceProvenance'] },
             original_count: { type: 'integer', minimum: 0 }, returned_count: { type: 'integer', minimum: 0 },
             omitted_count: { type: 'integer', minimum: 0 }, omission_reason: { const: 'output_budget' },
           },
