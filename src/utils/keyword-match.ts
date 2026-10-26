@@ -6,19 +6,18 @@ export interface TokenizedTitle {
 const INFLECTION_SUFFIXES = new Set(['s', 'es', 'ian', 'ians', 'ean', 'eans', 'an', 'ans', 'n', 'ns', 'i', 'is', 'ish', 'ese']);
 const MIN_SUFFIX_KEYWORD_LEN = 4;
 
-const COMBINING_MARKS = /\p{M}+/gu;
+const LATIN_COMBINING_MARKS = /(\p{Script=Latin})\p{M}+/gu;
 const APOSTROPHES = /[\u2018\u2019\u02BC\u0060\u00B4]/g;
-const EDGE_NON_WORD = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
-const NON_WORD = /[^\p{L}\p{N}]+/u;
+const EDGE_NON_WORD = /^[^\p{L}\p{N}\p{M}]+|[^\p{L}\p{N}\p{M}]+$/gu;
+const NON_WORD = /[^\p{L}\p{N}\p{M}]+/u;
 const POSSESSIVE = /'s$/;
 
 /**
- * Shared normalization for headlines and keywords: lowercase, NFKD, strip
- * combining marks (so "Türkiye" == "turkiye", "São Tomé" == "sao tome"), and
- * fold curly apostrophes to ASCII. Applied to BOTH sides of a match.
+ * Normalize headlines and keywords with NFKD, fold Latin accents and curly
+ * apostrophes, and lowercase. Preserve meaningful marks in non-Latin scripts.
  */
 export function normalizeForMatch(text: string): string {
-  return text.normalize('NFKD').replace(COMBINING_MARKS, '').toLowerCase().replace(APOSTROPHES, "'");
+  return text.normalize('NFKD').replace(LATIN_COMBINING_MARKS, '$1').toLowerCase().replace(APOSTROPHES, "'");
 }
 
 export function tokenizeForMatch(title: string): TokenizedTitle {
@@ -76,12 +75,13 @@ function matchSingleWord(words: Set<string>, keyword: string): boolean {
 }
 
 export function matchKeyword(tokens: TokenizedTitle, keyword: string): boolean {
-  const parts = normalizeForMatch(keyword)
-    .split(/[^\p{L}\p{N}']+/u)
+  const words = normalizeForMatch(keyword)
+    .split(/[^\p{L}\p{N}\p{M}']+/u)
     .map(w => w.replace(/^'+|'+$/g, ''))
     .filter((w): w is string => w.length > 0);
-  if (parts.length === 0) return false;
-  if (parts.length === 1) return matchSingleWord(tokens.words, parts[0]!);
+  if (words.length === 0) return false;
+  if (words.length === 1) return matchSingleWord(tokens.words, words[0]!);
+  const { ordered: parts } = tokenizeForMatch(keyword);
   const { ordered } = tokens;
   for (let i = 0; i <= ordered.length - parts.length; i++) {
     let match = true;
