@@ -1003,9 +1003,9 @@ describe('planned Railway service lifecycle', () => {
       // `node seed-live-video-resolved.mjs` on cron 0 */6 * * * and has
       // published once. Leaving it planned would exempt a live cron from the
       // watch-path and deploy-drift checks.
-      // seed-china-no2-activity (#9722) is planned until the owner provisions
-      // the Railway service with the CDSE credentials; activate it then.
-      'seed-china-no2-activity',
+      // seed-no2-activity (#9722) is planned until the owner provisions the
+      // Railway service with the CDSE credentials; activate it then.
+      'seed-no2-activity',
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',

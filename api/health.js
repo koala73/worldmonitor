@@ -441,9 +441,10 @@ const STANDALONE_KEYS = {
   // Seeded and health-monitored; no dashboard consumer yet (#6155 is the
   // data layer only), so it is standalone rather than bootstrap-tiered.
   chinaStockConnect:  'market:china:stock-connect:v1',
-  // Seeded by seed-china-no2-activity (#9722); read by the China activity
-  // nowcast RPC as its atmosphere family, so no bootstrap tier.
-  chinaNo2Activity:   'economic:china:no2-activity:v1',
+  // Seeded by seed-no2-activity (#9722): the global Sentinel-5P NO2 dataset
+  // keyed by region, read by the China activity nowcast RPC for its
+  // atmosphere family, so no bootstrap tier.
+  no2Activity:        'economic:no2-activity:v1',
   hkoWarnings:        'weather:hko-warnings:v1',
   imdCycloneMarine:   'weather:imd-cyclone-marine:v1',
   // Seeded by seed-live-video-resolved (#8545); read by the live video players
@@ -990,16 +991,16 @@ const SEED_META = {
   chinaReleaseCalendar: { key: 'seed-meta:economic:china-release-calendar', maxStaleMin: 4_320 },
   chinaCorporateDisclosures: { key: 'seed-meta:market:china-corporate-disclosures', maxStaleMin: 180 },
   chinaStockConnect: { key: 'seed-meta:market:china-stock-connect', maxStaleMin: 180 },
-  // seed-china-no2-activity daily cron `20 6 * * *` (#9722); 4320 = 3x cadence.
-  chinaNo2Activity: {
-    key: 'seed-meta:economic:china-no2-activity',
+  // seed-no2-activity daily cron `20 6 * * *` (#9722); 4320 = 3x cadence.
+  no2Activity: {
+    key: 'seed-meta:economic:no2-activity',
     maxStaleMin: 4320,
-    activationKey: 'seed-activated:economic:china-no2-activity',
+    activationKey: 'seed-activated:economic:no2-activity',
     cutover: {
       mode: 'activation-marker',
       fromKey: null,
       issue: 9722,
-      activationKey: 'seed-activated:economic:china-no2-activity',
+      activationKey: 'seed-activated:economic:no2-activity',
     },
   },
   crossStraitActivity: { key: 'seed-meta:military:cross-strait-activity', maxStaleMin: 720 },
@@ -2277,8 +2278,8 @@ const ON_DEMAND_KEYS = new Set([
   // durable marker after its first successful publish; strict from then on.
   'liveVideoResolved',
   // Same bridge (#9722): the nowcast reader ships before the
-  // seed-china-no2-activity Railway service is provisioned.
-  'chinaNo2Activity',
+  // seed-no2-activity Railway service is provisioned.
+  'no2Activity',
   // #8480. The macro bundle can ship the reader before the tail sections
   // publish. Each marker is written after the first successful publish.
   'usCpiMonthly',
@@ -2439,8 +2440,8 @@ const ACTIVATION_MARKERS = {
   statcanWds: 'seed-activated:economic:statcan-wds',
   // Written by scripts/seed-live-video-resolved.mjs in runSeed's afterPublish hook.
   liveVideoResolved: SEED_META.liveVideoResolved.activationKey,
-  // Written by scripts/seed-china-no2-activity.mjs in runSeed's afterPublish hook.
-  chinaNo2Activity: SEED_META.chinaNo2Activity.activationKey,
+  // Written by scripts/seed-no2-activity.mjs in runSeed's afterPublish hook.
+  no2Activity: SEED_META.no2Activity.activationKey,
   // Written by scripts/seed-fire-detections.mjs in runSeed's afterFreshness hook,
   // after the summary extra key and the canonical seed-meta (#9509).
   wildfiresSummary: SEED_META.wildfiresSummary.activationKey,
