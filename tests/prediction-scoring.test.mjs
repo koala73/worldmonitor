@@ -196,7 +196,7 @@ describe('parsePolymarketLiquidity', () => {
     assert.equal(parsePolymarketLiquidity({ liquidityNum: Number.NaN, liquidity: '12' }), 12);
   });
 
-  it('keeps Kalshi without liquidity because its market payload carries no liquidity field', () => {
+  it('confirms the Kalshi market payload carries no liquidity field, so depth comes from order books', () => {
     const kalshiFields = Object.keys(capturedLiquidity.kalshiMarket);
     assert.ok(kalshiFields.includes('open_interest_fp'));
     assert.deepEqual(kalshiFields.filter((field) => /liquid/i.test(field)), []);

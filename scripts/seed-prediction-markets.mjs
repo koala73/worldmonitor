@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, sleep, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, sleep, runSeed, withRetry } from './_seed-utils.mjs';
 import {
   buildBootstrapPools,
   predictionPoolCounts,
@@ -17,6 +17,7 @@ import {
   selectKalshiSeriesTickers,
 } from './_prediction-country-index.mjs';
 import {
+  attachKalshiLiquidity,
   fetchKalshiEvents as fetchKalshiEventPages,
   fetchKalshiMarketsBySeries,
   fetchKalshiSeries,
@@ -71,8 +72,6 @@ function kalshiTitle(marketTitle, eventTitle) {
   return `${eventTitle}: ${marketTitle}`;
 }
 
-// Kalshi records carry no `liquidity`: its market payload has no liquidity
-// field, and open_interest_fp counts outstanding contracts, not resting depth.
 function kalshiCountryCandidate(market, eventTitle, seriesTicker = market.series_ticker) {
   const yesPrice = parseKalshiYesPrice(market);
   if (yesPrice === null) return null;
@@ -314,6 +313,22 @@ async function fetchAllPredictions() {
   const countryMarkets = projectCountryMarketIndex(countryCandidates, {
     complete: countryProjectionComplete,
   });
+
+  // Kalshi's market payload has no liquidity field, so published Kalshi records
+  // are priced from their order books. A failed chunk leaves liquidity unknown.
+  const kalshiLiquidity = await attachKalshiLiquidity(
+    [...pools.geopolitical, ...pools.tech, ...pools.finance, ...Object.values(countryMarkets).flat()],
+    {
+      baseUrl: KALSHI_BASE,
+      userAgent: CHROME_UA,
+      timeoutMs: FETCH_TIMEOUT,
+      retry: (fn) => withRetry(fn, 2, 500),
+      onChunkError: (err, chunk) => {
+        console.warn(`  [kalshi] orderbooks for ${chunk.length} markets failed; liquidity left unknown: ${err.message}`);
+      },
+    },
+  );
+  console.log(`  [kalshi] order-book liquidity for ${kalshiLiquidity.priced}/${kalshiLiquidity.tickers} published markets`);
 
   if (duplicatesDropped > 0) {
     console.log(`  deduped ${duplicatesDropped} same-identity record(s) before classification`);
