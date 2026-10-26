@@ -59,7 +59,7 @@ Read the source, not just its headline. Check whether the cited passage supports
 
 Several links can repeat the same statement or wire report. WorldMonitor's [news credibility methodology](https://www.worldmonitor.app/docs/methodology/news-credibility) distinguishes credibility from importance. A story can be urgent and poorly supported at the same time.
 
-Where coverage labels are available, use them to understand how widely a claim is reported. “Corroborated” is not a guarantee of accuracy. Ask whether the reports add independent evidence or simply quote the same original source.
+Where coverage labels are available, use them to understand how widely a claim is reported. A multi-publisher or “confirmed” label is not a guarantee of accuracy. Ask whether the reports add independent evidence or simply quote the same original source.
 
 ### 4. Check the clocks and geographic scope
 

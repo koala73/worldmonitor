@@ -32,7 +32,7 @@ For example, a panel reloaded at 09:10 might display a vessel observation from 0
 
 Aircraft and vessel observations depend on transmissions, reception and provider delivery. News depends on reporting and publication. Satellite products depend on acquisition and processing. Published economic series describe their own reference periods.
 
-NASA's [MODAPS FAQ](https://modaps.modaps.eosdis.nasa.gov/services/faq/) illustrates why a provider's “near real time” label needs context: it describes MODIS near-real-time products available in about three hours. That is a provider product description, not a promise that every satellite observation reaches WorldMonitor in that time.
+NASA's [LANCE near-real-time service](https://www.earthdata.nasa.gov/data/projects/lance) illustrates why a provider's “near real time” label needs context: it describes Earth observation data made available within three hours of a satellite observation. That is a provider product description, not a promise that every satellite observation reaches WorldMonitor in that time.
 
 Use the [data sources documentation](https://www.worldmonitor.app/docs/data-sources) to identify the input behind a view. Then ask whether its publication cadence fits your task. A weekly series may be suitable for a trend comparison while being unsuitable for determining what happened in the last hour.
 
