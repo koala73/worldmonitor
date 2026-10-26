@@ -175,6 +175,9 @@ export const CHOKEPOINT_CONTENT = {
     countryCodes: CHOKEPOINT_COUNTRY_CODES.bab_el_mandeb,
     crisisSlugs: ['red-sea-security'],
     region: 'Red Sea ↔ Gulf of Aden',
+    metaTitle: 'Bab el-Mandeb Status: Red Sea Shipping Risk | World Monitor',
+    metaDescription:
+      'Bab el-Mandeb status: live disruption risk, AIS warnings and Red Sea security signals at the Suez route’s southern gate, where attacks push ships to the Cape.',
     whyHeading: 'Why do Suez sailings also have to clear Bab el-Mandeb?',
     blurb:
       'Bab el-Mandeb is the strait between the Horn of Africa and the Arabian Peninsula that connects the Red Sea to the Gulf of Aden and the Indian Ocean. Every ship using the Suez Canal route also transits Bab el-Mandeb, so attacks or instability here push traffic onto the far longer Cape of Good Hope route.',
@@ -199,6 +202,9 @@ export const CHOKEPOINT_CONTENT = {
     editorialLinks: [MARITIME_EXPLAINER, SUPPLY_CHAIN_DASHBOARD, SCENARIO_GUIDE],
     countryCodes: CHOKEPOINT_COUNTRY_CODES.panama,
     region: 'Atlantic ↔ Pacific',
+    metaTitle: 'Panama Canal Status: Drought & Transits | World Monitor',
+    metaDescription:
+      'Panama Canal status: live disruption risk and AIS warnings for the Atlantic-Pacific lock canal, where Gatún Lake drought can cut daily transits and ship draft.',
     whyHeading: 'Why can drought close the Panama Canal when both oceans are open?',
     blurb:
       'The Panama Canal cuts across the Isthmus of Panama to link the Atlantic and Pacific oceans, saving vessels the long voyage around South America. Its lock system depends on freshwater from Gatún Lake, so drought can throttle daily transits and reshape Asia–US East Coast routing.',
@@ -320,6 +326,9 @@ export const CHOKEPOINT_CONTENT = {
     editorialLinks: [MARITIME_EXPLAINER],
     countryCodes: CHOKEPOINT_COUNTRY_CODES.korea_strait,
     region: 'East China Sea ↔ Sea of Japan',
+    metaTitle: 'Korea Strait (Tsushima Strait) Status | World Monitor',
+    metaDescription:
+      'Korea Strait status: live disruption risk and AIS warnings for the Tsushima passage between South Korea and Japan, linking the East China Sea and Sea of Japan.',
     whyHeading: 'Why watch the Korea Strait if no modelled trade corridor is mapped?',
     blurb:
       'The Korea Strait lies between the Korean Peninsula and the Japanese islands, linking the East China Sea to the Sea of Japan. It is a key passage for North Asian container and energy traffic and a closely watched naval corridor.',
@@ -396,6 +405,9 @@ export const CHOKEPOINT_CONTENT = {
     editorialLinks: [MARITIME_EXPLAINER],
     countryCodes: CHOKEPOINT_COUNTRY_CODES.lombok_strait,
     region: 'Indian Ocean ↔ Java Sea',
+    metaTitle: 'Lombok Strait Status: Malacca Bypass | World Monitor',
+    metaDescription:
+      'Lombok Strait status: live disruption risk and AIS warnings for the deep-water route between Bali and Lombok that large bulk carriers use instead of Malacca.',
     whyHeading: 'When do ships choose Lombok instead of Malacca?',
     blurb:
       'The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the Malacca–Singapore route. It is favoured by the largest, deepest-draft bulk carriers and serves as a relief valve when Malacca is congested or disrupted.',
