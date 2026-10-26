@@ -387,3 +387,45 @@ describe('edge cases', () => {
     assert.ok(matchKeyword(t, 'Iran'));
   });
 });
+
+// --- Issue #9706: hyphens, diacritics, non-Latin scripts ---
+
+describe('unicode and compound tokens (#9706)', () => {
+  const m = (title: string, kw: string) => matchKeyword(tokenizeForMatch(title), kw);
+
+  it('hyphenated headline matches phrase keyword', () => {
+    assert.ok(m('North-Korea launches missile', 'north korea'));
+    assert.ok(m('North Korea launches missile', 'north-korea'));
+    assert.ok(m('Al-Shabaab attack in Mogadishu', 'al-shabaab'));
+  });
+
+  it('diacritics fold in both directions', () => {
+    assert.ok(m('Café bombing', 'cafe'));
+    assert.ok(m('Turkiye responds', 'türkiye'));
+    assert.ok(m('Türkiye responds', 'turkiye'));
+    assert.ok(m('Türkiye responds', 'türkiye'));
+    assert.ok(m('Protests in São Tomé', 'sao tome'));
+    assert.ok(m('Protests in Sao Tome', 'são tomé'));
+    assert.ok(m('Curaçao refinery fire', 'curacao'));
+    assert.ok(m('Storm hits Réunion', 'reunion'));
+  });
+
+  it('non-Latin scripts tokenize and match', () => {
+    const t = tokenizeForMatch('إيران تطلق صاروخا');
+    assert.ok(t.ordered.length === 3);
+    assert.ok(m('إيران تطلق صاروخا', 'إيران'));
+    assert.ok(m('Москва заявила о ракетах', 'москва'));
+    assert.ok(m('МОСКВА заявила', 'Москва'));
+  });
+
+  it('curly apostrophe possessive', () => {
+    assert.ok(m('Assad\u2019s forces advance', 'assad'));
+    assert.ok(m("Assad's forces advance", 'assad forces'));
+  });
+
+  it('false-positive guards hold', () => {
+    assert.ok(!m('Ambassador meets officials', 'assad'));
+    assert.ok(!m('Warehouse fire downtown', 'house'));
+    assert.ok(!m('Ambassadors meet', 'assad'));
+  });
+});
