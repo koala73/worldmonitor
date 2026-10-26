@@ -24,8 +24,8 @@ import type {
 import type {
   ChinaCorridorDirectionalSnapshot,
 } from '../server/worldmonitor/economic/v1/china-corridor-breadth-history';
-import { CHINA_NO2_ACTIVITY_KEY } from '../scripts/shared/china-no2-activity.mjs';
-import { chinaNo2ActivityPayload } from './helpers/china-no2-activity-fixture.mjs';
+import { NO2_ACTIVITY_KEY } from '../scripts/shared/no2-activity.mjs';
+import { no2ActivityDataset } from './helpers/no2-activity-fixture.mjs';
 
 const EVALUATED_AT = '2026-07-25T12:00:00.000Z';
 
@@ -1458,16 +1458,18 @@ describe('Sentinel-5P NO2 atmosphere contribution (#9722)', () => {
         requestedKeys = keys;
         return new Map<string, unknown>([
           ...marketValues(),
-          ...(payload === undefined ? [] : [[CHINA_NO2_ACTIVITY_KEY, payload] as const]),
+          ...(payload === undefined ? [] : [[NO2_ACTIVITY_KEY, payload] as const]),
         ]);
       },
     });
-    assert.ok(requestedKeys.includes(CHINA_NO2_ACTIVITY_KEY), 'the NO2 key joins the batch read');
+    assert.ok(requestedKeys.includes(NO2_ACTIVITY_KEY), 'the NO2 key joins the batch read');
     return response.contributions.find((item) => item.family === 'atmosphere');
   }
 
-  it('reads the seeded composite as a dated, attributed atmosphere observation', async () => {
-    const contribution = await atmosphereContribution(chinaNo2ActivityPayload(RECENT));
+  const STRONG = { 'jing-jin-ji': 14.2, 'yangtze-river-delta': 12.8, 'pearl-river-delta': 9.1, shandong: 16.5 };
+
+  it('reads the Chinese clusters of the seeded dataset as a dated, attributed atmosphere observation', async () => {
+    const contribution = await atmosphereContribution(no2ActivityDataset({ ...RECENT, changes: STRONG }));
     assert.equal(contribution?.seriesId, 's5p_no2_industrial_activity_change');
     assert.equal(contribution?.included, true);
     assert.equal(contribution?.direction, 'strengthening');
@@ -1482,15 +1484,20 @@ describe('Sentinel-5P NO2 atmosphere contribution (#9722)', () => {
       'shandong',
     ]);
     assert.equal(provenance.changeBasis, 'same_calendar_window_prior_years');
+    assert.equal(provenance.aggregation, 'median_of_eligible_cluster_changes');
     assert.equal(provenance.windowEnd, '2026-07-21');
     assert.equal(provenance.timeliness, 'OFFL');
     assert.equal(provenance.minQa, 75);
+    assert.deepEqual(
+      (provenance.regions as Array<Record<string, unknown>>).map((region) => [region.id, region.direction]),
+      [['jing-jin-ji', 'strengthening'], ['yangtze-river-delta', 'strengthening'], ['pearl-river-delta', 'unchanged'], ['shandong', 'strengthening']],
+    );
     assert.equal(provenance.deadBandPercent, 10);
     assert.equal(provenance.generatedAt, RECENT.generatedAt);
   });
 
   it('reports a change inside the dead band as unchanged rather than as a missing input', async () => {
-    const contribution = await atmosphereContribution(chinaNo2ActivityPayload({
+    const contribution = await atmosphereContribution(no2ActivityDataset({
       ...RECENT,
       changes: { 'jing-jin-ji': 3, 'yangtze-river-delta': -2, 'pearl-river-delta': 1, shandong: 4 },
     }));
@@ -1501,9 +1508,9 @@ describe('Sentinel-5P NO2 atmosphere contribution (#9722)', () => {
   });
 
   it('excludes a cloud-starved composite under its own reason', async () => {
-    const contribution = await atmosphereContribution(chinaNo2ActivityPayload({
+    const contribution = await atmosphereContribution(no2ActivityDataset({
       ...RECENT,
-      changes: { shandong: 20 },
+      changes: { 'jing-jin-ji': null, 'yangtze-river-delta': 'pending', 'pearl-river-delta': null, shandong: 20 },
     }));
     assert.equal(contribution?.included, false);
     assert.equal(contribution?.rawValue, null);
@@ -1512,7 +1519,7 @@ describe('Sentinel-5P NO2 atmosphere contribution (#9722)', () => {
   });
 
   it('ignores a payload that does not carry the reviewed method', async () => {
-    const payload = chinaNo2ActivityPayload(RECENT);
+    const payload = no2ActivityDataset({ ...RECENT, changes: STRONG });
     payload.method.deadBandPercent = 5;
     const contribution = await atmosphereContribution(payload);
     assert.equal(contribution?.included, false);
@@ -1522,9 +1529,10 @@ describe('Sentinel-5P NO2 atmosphere contribution (#9722)', () => {
   });
 
   it('drops a window past the freshness budget instead of carrying it forward', async () => {
-    const contribution = await atmosphereContribution(chinaNo2ActivityPayload({
+    const contribution = await atmosphereContribution(no2ActivityDataset({
       generatedAt: '2026-07-13T06:10:00.000Z',
       windowEnd: '2026-07-10',
+      changes: STRONG,
     }));
     assert.equal(contribution?.included, false);
     assert.equal(contribution?.exclusionReason, 'freshness_budget_exceeded');

@@ -20,9 +20,11 @@ import {
 } from '../../../../shared/china-corridor-control-towers';
 import { chinaMacroObservationDateMs } from '../../../../shared/china-macro-contract.js';
 import {
-  CHINA_NO2_ACTIVITY_KEY,
-  validateChinaNo2ActivityPayload,
-} from '../../../../scripts/shared/china-no2-activity.mjs';
+  CHINA_NO2_COMPOSITE,
+  NO2_ACTIVITY_KEY,
+  composeRegions,
+  validateNo2ActivityDataset,
+} from '../../../../scripts/shared/no2-activity.mjs';
 import { cachedFetchJsonWithMeta, getCachedJsonBatch } from '../../../_shared/redis';
 import { CHINA_ACTIVITY_NOWCAST_KEY } from '../../../_shared/cache-keys';
 import { resolveChinaCorridorSnapshot } from '../../supply-chain/v1/get-china-corridor-control-towers';
@@ -51,7 +53,7 @@ export const CHINA_ACTIVITY_NOWCAST_MARKET_KEYS = Object.freeze({
 });
 export const CHINA_ACTIVITY_NOWCAST_SEED_KEYS = Object.freeze([
   ...Object.values(CHINA_ACTIVITY_NOWCAST_MARKET_KEYS),
-  CHINA_NO2_ACTIVITY_KEY,
+  NO2_ACTIVITY_KEY,
 ]);
 
 type UnknownRecord = Record<string, unknown>;
@@ -687,20 +689,23 @@ function marketProxyObservations(
 }
 
 /**
- * The seeded Sentinel-5P NO2 composite, consumed only when it carries the
- * reviewed method verbatim (`validateChinaNo2ActivityPayload` is the same
- * check the seeder publishes under). A composite the seeder could not form
+ * The Chinese industrial clusters of the global Sentinel-5P NO2 dataset,
+ * composed into one observation. The dataset is consumed only when it carries
+ * the reviewed method verbatim (`validateNo2ActivityDataset` is the same
+ * check the seeder publishes under). A composite the clusters cannot form
  * keeps its own exclusion so a cloudy stretch is never read as flat activity.
  */
 function no2ProxyObservations(
   seedValues: Map<string, unknown>,
 ): ChinaActivityProxyObservation[] {
-  const payload = seedValues.get(CHINA_NO2_ACTIVITY_KEY);
-  if (!validateChinaNo2ActivityPayload(payload)) return [];
-  const windowEnd = payload.regions[0]!.current.windowEnd;
+  const dataset = seedValues.get(NO2_ACTIVITY_KEY);
+  if (!validateNo2ActivityDataset(dataset)) return [];
+  const regions = CHINA_NO2_COMPOSITE.regionIds.map((id) => dataset.regions[id]!);
+  const composite = composeRegions(dataset, CHINA_NO2_COMPOSITE.regionIds, CHINA_NO2_COMPOSITE.minRegions);
+  const windowEnd = regions[0]!.current.windowEnd;
   const observedAt = new Date(Date.parse(`${windowEnd}T00:00:00Z`) + 86_400_000).toISOString();
-  const generatedAt = new Date(payload.generatedAt).toISOString();
-  const { composite, method, source } = payload;
+  const generatedAt = new Date(dataset.generatedAt).toISOString();
+  const { method, source } = dataset;
   return [{
     seriesId: 's5p_no2_industrial_activity_change',
     observationId: `s5p-no2-change:${windowEnd}`,
@@ -720,17 +725,19 @@ function no2ProxyObservations(
       unit: source.unit,
       timeliness: method.timeliness,
       minQa: method.minQa,
-      resolutionDegrees: method.resolutionDegrees,
       changeBasis: 'same_calendar_window_prior_years',
       windowDays: method.windowDays,
       windowEnd,
       baselineYears: method.baselineYears,
       deadBandPercent: method.deadBandPercent,
+      aggregation: 'median_of_eligible_cluster_changes',
       changePercent: composite.changePercent,
       regionIds: composite.regionIds,
-      regions: payload.regions.map((region) => ({
+      regions: regions.map((region) => ({
         id: region.id,
+        resolutionDegrees: region.resolutionDegrees,
         changePercent: region.changePercent,
+        direction: region.direction,
         validDays: region.current.validDays,
         exclusion: region.exclusion,
       })),
