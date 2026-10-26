@@ -105,9 +105,9 @@ No. The summary depends on its inputs. Open the sources and establish what evide
 
 No. Importance prioritizes attention; credibility concerns the support for a report. An urgent allegation can have weak evidence.
 
-**How should I compare two AI intelligence tools?**
+**How should I evaluate an AI intelligence platform?**
 
-Give both the same dated questions. Record unsupported claims, source support, missing context and time errors separately. Keep unanswered questions visible rather than scoring fluent prose as success.
+Use the same dated questions when evaluating alternatives. Record unsupported claims, source support, missing context and time errors separately. Keep unanswered questions visible rather than scoring fluent prose as success.
 
 **Can I use a summary in a team briefing?**
 
