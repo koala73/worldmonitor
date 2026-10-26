@@ -75,9 +75,12 @@ Use three short lines: what is reported, what supports it, and what remains unre
 
 This is an illustrative example, not a live incident:
 
-> **Question:** Has a reported terminal suspension become a port-wide closure?  
-> **Supported:** The linked authority notice describes a suspension at one named terminal.  
-> **Unresolved:** The notice does not state that all terminals are closed or give a reopening date.  
+> **Question:** Has a reported terminal suspension become a port-wide closure?
+>
+> **Supported:** The linked authority notice describes a suspension at one named terminal.
+>
+> **Unresolved:** The notice does not state that all terminals are closed or give a reopening date.
+>
 > **Next check:** Look for a newer authority notice and reporting about the other terminals before changing the scope of the brief.
 
 This note is more useful than a confident paragraph that hides the missing evidence. It also makes the next analyst's work faster: they know exactly which claim still needs checking.
