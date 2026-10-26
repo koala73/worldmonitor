@@ -1,6 +1,6 @@
 ---
 title: "China Activity Nowcast"
-description: "Deterministic comparison of revision-aware official activity releases with reviewed logistics, operational, commodity, and market proxies."
+description: "Deterministic comparison of revision-aware official activity releases with reviewed logistics, operational, commodity, market, and satellite NO2 proxies."
 ---
 
 _Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
@@ -45,10 +45,11 @@ prescient after the fact.
 
 ### The signals it watches
 
-Six independent families — freight rates, port activity, aviation, energy
-demand, industrial metals, and trade-corridor breadth — each with a published
-rationale, transformation, and freshness budget. A signal past its freshness
-budget drops out rather than going stale in place.
+Eight independent families — freight rates, port activity, aviation, energy
+demand, industrial metals, trade-corridor breadth, the equity market, and
+satellite-observed NO2 — each with a published rationale, transformation, and
+freshness budget. A signal past its freshness budget drops out rather than
+going stale in place.
 
 The live method version is `china-activity-nowcast/v1`.
 
@@ -86,12 +87,51 @@ freshness budget, alignment rule, and source declaration in
 | Commodity | Copper and aluminium moves | Mean of finite published percentage changes | Daily | None | 180 minutes |
 | Corridor | Comparable corridor breadth change | Current family count minus a prior comparable snapshot | Daily | None | 72 hours |
 | Market | SSE Composite weekly move | Published signed percentage change | Daily | None | 10 days |
+| Atmosphere | Sentinel-5P tropospheric NO2 change | Median regional year-over-year change of 56-day window means, 10% dead band | Daily | None | 7 days |
 
 The registry does not turn source coverage into activity. For example, an
 energy-spine payload that says JODI data is present does not establish demand
 direction. Likewise, a current CCFI level without a comparable prior is not a
 freight-rate change. Those inputs remain visibly excluded until the consumed
 contract publishes the required directional observation.
+
+### Satellite NO2
+
+The atmosphere family reads the Sentinel-5P TROPOMI tropospheric NO2 column, a
+combustion trace that no domestic publisher controls. A daily Railway seeder
+asks the Copernicus Data Space Ecosystem Sentinel Hub Statistical API for the
+daily regional mean over four industrial clusters: Jing-Jin-Ji, the Yangtze
+River Delta, the Pearl River Delta, and Shandong. Every request uses the
+offline (`OFFL`) product, keeps only pixels with `qa_value >= 75`, and
+aggregates on a 0.05 degree grid. The method constants, the region rectangles,
+and the payload validator live in `scripts/shared/china-no2-activity.mjs`, and
+the nowcast consumes a payload only when it carries that method verbatim.
+
+Cloud cover is the dominant noise, so the signal is built to refuse a move it
+cannot support:
+
+- A day counts only when at least 20% of the region's pixels passed the
+  quality filter; a region needs 14 such days inside its 56-day window.
+- The window is compared with the same calendar window in the three prior
+  years (at least two of them must also clear the 14-day floor), so
+  seasonality cannot read as a change.
+- Days inside a holiday mask around each Lunar New Year (7 days before to 14
+  days after) are dropped from every window, so a holiday that moves between
+  years cannot read as a change.
+- The composite is the median across eligible regions, at least two of which
+  are required; a cloud-starved stretch is published as `insufficient_regions`
+  and the nowcast shows the family as missing rather than flat.
+- A median change inside a 10% dead band reads as unchanged. Measured against
+  two years with equal annual means, single-region window changes had a
+  median absolute value of 5-9% and a standard deviation of 7-9%, so the dead
+  band sits above the single-region p75.
+
+The provenance carries the regional changes, valid-day counts, the window end,
+the request count and processing units spent, and the credit "Contains modified
+Copernicus Sentinel data" with the years used. Processor-version changes
+between years and the NRTI-versus-OFFL distinction are limits of a column
+retrieval that the method does not hide: the current window ends three days
+before the run so that only OFFL data is compared with OFFL data.
 
 ## Alignment and missingness
 
