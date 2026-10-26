@@ -178,6 +178,13 @@ export async function fetchKalshiMarketsBySeries(seriesTickers, {
 const KALSHI_ORDERBOOK_CHUNK = 100;
 const KALSHI_MARKET_URL = /^https:\/\/kalshi\.com\/markets\/([A-Za-z0-9._-]+)$/;
 
+function parseBookNumber(raw) {
+  if (typeof raw !== 'string' && typeof raw !== 'number') return null;
+  if (typeof raw === 'string' && raw.trim() === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 // Resting depth in USD: every bid level on both sides (yes bids and no bids),
 // price times size. An empty book is a known 0; an unreadable one is unknown.
 export function kalshiOrderbookDepth(book) {
@@ -188,9 +195,9 @@ export function kalshiOrderbookDepth(book) {
     if (side == null) continue;
     if (!Array.isArray(side)) return null;
     for (const level of side) {
-      const price = Number(level?.[0]);
-      const size = Number(level?.[1]);
-      if (!Number.isFinite(price) || !Number.isFinite(size) || price < 0 || size < 0) return null;
+      const price = parseBookNumber(level?.[0]);
+      const size = parseBookNumber(level?.[1]);
+      if (price === null || size === null) return null;
       total += price * size;
     }
   }

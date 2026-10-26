@@ -283,6 +283,9 @@ describe('Kalshi order-book liquidity', () => {
     assert.equal(kalshiOrderbookDepth({ ticker: 'MISSING' }), null);
     assert.equal(kalshiOrderbookDepth({ ticker: 'BAD', orderbook_fp: { yes_dollars: [['0.5', 'lots']] } }), null);
     assert.equal(kalshiOrderbookDepth({ ticker: 'BAD', orderbook_fp: { yes_dollars: [['-0.5', '10']] } }), null);
+    for (const level of [['0.5', null], [null, '10'], ['0.5', ''], ['0.5'], [true, '10']]) {
+      assert.equal(kalshiOrderbookDepth({ ticker: 'BAD', orderbook_fp: { no_dollars: [level] } }), null, JSON.stringify(level));
+    }
   });
 
   it('requests at most 100 tickers per call as repeated tickers= parameters', async () => {

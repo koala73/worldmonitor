@@ -72,7 +72,7 @@ export function parsePredictionMarketVolume(market) {
 // omit both, and that must stay null: a 0 would read as a known-empty book.
 export function parsePolymarketLiquidity(source) {
   for (const raw of [source?.liquidityNum, source?.liquidity]) {
-    if (raw === null || raw === undefined || raw === '') continue;
+    if ((typeof raw !== 'number' && typeof raw !== 'string') || raw === '') continue;
     const value = Number(raw);
     if (Number.isFinite(value)) return value >= 0 ? value : null;
   }

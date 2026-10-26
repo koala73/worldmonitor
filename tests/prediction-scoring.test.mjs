@@ -192,6 +192,8 @@ describe('parsePolymarketLiquidity', () => {
     assert.equal(parsePolymarketLiquidity({ liquidity: '' }), null);
     assert.equal(parsePolymarketLiquidity({ liquidity: null }), null);
     assert.equal(parsePolymarketLiquidity({ liquidity: 'n/a' }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidity: true }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidityNum: [] }), null);
     assert.equal(parsePolymarketLiquidity({ liquidityNum: -5 }), null);
     assert.equal(parsePolymarketLiquidity({ liquidityNum: Number.NaN, liquidity: '12' }), 12);
   });
