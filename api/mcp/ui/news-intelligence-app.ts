@@ -53,9 +53,13 @@ const RENDER = `
     q("card").style.display = "block";
 
     var hasOwn = Object.prototype.hasOwnProperty;
-    var projectedInsights = d.insights && typeof d.insights === "object" ? d.insights : null;
+    // A projected insights that is absent, a non-null scalar, or an object
+    // without topStories omitted the stories; only an explicit null stays an
+    // unavailable source.
+    var projectedInsights = d.insights;
     var projectionOmitsInsights = hasOwn.call(data, "projection")
-      && (!hasOwn.call(d, "insights") || (projectedInsights !== null && !hasOwn.call(projectedInsights, "topStories")));
+      && (!hasOwn.call(d, "insights") || (projectedInsights !== null
+        && (typeof projectedInsights !== "object" || !hasOwn.call(projectedInsights, "topStories"))));
     var ins = d.insights && typeof d.insights === "object" ? d.insights : null;
     var sourceStories = ins && ins.topStories;
     var storyState = listState(sourceStories);

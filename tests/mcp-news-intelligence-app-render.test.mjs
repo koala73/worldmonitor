@@ -321,7 +321,8 @@ describe('News Intelligence accepted projections', () => {
         assert.equal(foot(document), '');
       }
       for (const value of ['headlines', ['headline'], null, { stories: [], advisories: [] },
-        { insights: { status: 'degraded' } }, { insights: { provenance: { storiesConsidered: 270 } } }]) {
+        { insights: { status: 'degraded' } }, { insights: { provenance: { storiesConsidered: 270 } } },
+        { insights: 'degraded' }, { insights: 8 }, { insights: ['headline'] }]) {
         send(result(value, true));
         assert.equal(rows(document).length, 0);
         assert.equal(document.getElementById('list').textContent,
