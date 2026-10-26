@@ -7,7 +7,7 @@ import {
   validateBootstrapPayload,
 } from './_prediction-classify.mjs';
 import {
-  isExcluded, parseYesPrice, parseKalshiYesPrice, parsePredictionMarketVolume,
+  isExcluded, parseYesPrice, parseKalshiYesPrice, parsePredictionMarketVolume, parsePolymarketLiquidity,
   selectPricedKalshiMarket, isExpired, kalshiMarketUrl, parsePolymarketChange, parseKalshiChange24h,
 } from './_prediction-scoring.mjs';
 import {
@@ -71,6 +71,8 @@ function kalshiTitle(marketTitle, eventTitle) {
   return `${eventTitle}: ${marketTitle}`;
 }
 
+// Kalshi records carry no `liquidity`: its market payload has no liquidity
+// field, and open_interest_fp counts outstanding contracts, not resting depth.
 function kalshiCountryCandidate(market, eventTitle, seriesTicker = market.series_ticker) {
   const yesPrice = parseKalshiYesPrice(market);
   if (yesPrice === null) return null;
@@ -239,12 +241,14 @@ async function fetchAllPredictions() {
           const eventKey = `polymarket:${event.id}`;
           const change24h = parsePolymarketChange(topMarket, 'oneDayPriceChange');
           const change7d = parsePolymarketChange(topMarket, 'oneWeekPriceChange');
+          const eventLiquidity = parsePolymarketLiquidity(event);
           markets.push({
             title: topMarket.question || event.title,
             yesPrice,
             ...(change24h === null ? {} : { change24h }),
             ...(change7d === null ? {} : { change7d }),
             volume: eventVolume,
+            ...(eventLiquidity === null ? {} : { liquidity: eventLiquidity }),
             url: `https://polymarket.com/event/${event.slug}`,
             endDate: topMarket.endDate ?? event.endDate ?? undefined,
             tags: (event.tags ?? []).map(t => t.slug),
@@ -256,12 +260,14 @@ async function fetchAllPredictions() {
             if (candidatePrice === null) continue;
             const candidateChange24h = parsePolymarketChange(market, 'oneDayPriceChange');
             const candidateChange7d = parsePolymarketChange(market, 'oneWeekPriceChange');
+            const candidateLiquidity = parsePolymarketLiquidity(market);
             countryCandidates.push({
               title: market.question || event.title,
               yesPrice: candidatePrice,
               ...(candidateChange24h === null ? {} : { change24h: candidateChange24h }),
               ...(candidateChange7d === null ? {} : { change7d: candidateChange7d }),
               volume: parsePredictionMarketVolume(market),
+              ...(candidateLiquidity === null ? {} : { liquidity: candidateLiquidity }),
               url: `https://polymarket.com/event/${event.slug}`,
               endDate: market.endDate ?? event.endDate ?? undefined,
               tags: (event.tags ?? []).map(t => t.slug),

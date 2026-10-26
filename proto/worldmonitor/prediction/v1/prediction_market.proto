@@ -47,4 +47,6 @@ message PredictionMarket {
     (buf.validate.field).double.gte = -1,
     (buf.validate.field).double.lte = 1
   ];
+  // Upstream liquidity in USD. Polymarket only; absent when the venue reports none.
+  optional double liquidity = 12 [(buf.validate.field).double.gte = 0];
 }

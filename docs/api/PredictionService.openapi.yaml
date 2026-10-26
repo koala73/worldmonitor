@@ -63,6 +63,17 @@ paths:
                   example: "supply chain risk"
                   schema:
                     type: string
+                - name: min_liquidity
+                  in: query
+                  description: |-
+                    Optional minimum liquidity in USD. When above 0, only markets reporting
+                     liquidity at or above this value are returned; markets without a reported
+                     liquidity (all Kalshi markets) are dropped. Applied before page_size.
+                  required: false
+                  example: 1.5
+                  schema:
+                    type: number
+                    format: double
                 - name: jmespath
                   in: query
                   description: |-
@@ -83,9 +94,9 @@ paths:
                                     - "category": "cs.AI"
                                       "closesAt": 1717200000000
                                       "id": "example-id"
+                                      "liquidity": 1.5
                                       "source": "MARKET_SOURCE_POLYMARKET"
                                       "title": "example"
-                                      "url": "https://example.com/worldmonitor"
                                 "pagination":
                                     "nextCursor": "next-page-token"
                                     "totalCount": 1
@@ -336,6 +347,14 @@ components:
                 query:
                     type: string
                     description: Optional search query for market titles.
+                minLiquidity:
+                    type: number
+                    minimum: 0
+                    format: double
+                    description: |-
+                        Optional minimum liquidity in USD. When above 0, only markets reporting
+                         liquidity at or above this value are returned; markets without a reported
+                         liquidity (all Kalshi markets) are dropped. Applied before page_size.
             description: ListPredictionMarketsRequest specifies filters for retrieving prediction markets.
         ListPredictionMarketsResponse:
             type: object
@@ -409,6 +428,11 @@ components:
                     minimum: -1
                     format: double
                     description: Upstream 7-day Yes price change on the probability scale. Polymarket only.
+                liquidity:
+                    type: number
+                    minimum: 0
+                    format: double
+                    description: Upstream liquidity in USD. Polymarket only; absent when the venue reports none.
             required:
                 - id
             description: PredictionMarket represents a prediction market contract.

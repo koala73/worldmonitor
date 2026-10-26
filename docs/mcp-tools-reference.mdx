@@ -1001,12 +1001,14 @@ Return seeded prediction-market contracts from multiple venues with current prob
 | `query` | string | Keep only markets whose title contains this text (case-insensitive). |
 | `source` | string: kalshi / polymarket | Filter to one prediction-market source. Kalshi currently provides no classifier tags, so source=kalshi with category=tech returns no records. |
 | `sort` | string: rank / move_24h / move_7d | Order each bucket by seed rank or absolute 24h/7d move before limiting. Missing moves go last. |
+| `min_liquidity` | number | Keep only markets whose reported liquidity in USD is at least this value, applied before limit. Markets without a reported liquidity (all Kalshi records) are dropped when this is above 0. |
 | `limit` | number | Cap each category bucket to at most this many markets (default 30, pass 0 for no cap). |
 | `panel_request` | string | Paid prediction panel receipt. Reuse for internal curated reads without another daily allocation. |
 | `refresh` | boolean | Paid panel only. Start a new allocation with request_id; retry the same ID to reuse it. |
 | `request_id` | string | Paid refresh identifier. Required when refresh is true. |
 
 - **Price moves:** Optional `change24h` and `change7d` are percentage-point changes on the `yesPrice` 0–100 scale. Missing upstream values are absent; zero means no change. Kalshi supplies only 24h changes. REST returns `yesPriceChange24h` and `yesPriceChange7d` on the 0–1 probability scale.
+- **Liquidity:** Optional `liquidity` is the venue-reported liquidity in USD. Polymarket supplies it (event-level on bucket records, contract-level on country records). Kalshi publishes no liquidity field, so Kalshi records omit it. REST accepts the same filter as `min_liquidity`.
 - **API endpoints:** `GET /api/prediction/v1/list-prediction-markets`
 - **Access:** `free-account`. Any signed-in account can call this tool. Free accounts spend their daily free allowance. API plans retain weighted per-tool billing. Accepts the universal `summary` argument.
 - **Paid panel accounting:** Pro and Pro Business spend one allocation for an opening. Canonical filters and repeated opens share the prediction admission within five minutes. The returned `panelRequest.token` authorizes curated prediction reads until expiry. Local category expansion reads loaded data without another tool call. Each admission permits at most 64 uncached tool executions, with separate 64-per-minute uncached and cached-replay limits. Those executions are not individual Redis commands.

@@ -899,6 +899,7 @@ curl -s https://worldmonitor.app/mcp \
 | `query` | string | 仅保留标题包含此文本的市场（不区分大小写）。 |
 | `source` | string: kalshi / polymarket | 筛选为一个预测市场来源。Kalshi 目前不提供分类器标签，因此与 `category=tech` 组合不会返回记录。 |
 | `sort` | string: rank / move_24h / move_7d | 默认 `rank` 保留种子排序。`move_24h` 和 `move_7d` 在每个类别内按变化绝对值降序排列，然后应用 limit；缺失值排在最后。 |
+| `min_liquidity` | number | 仅保留上游报告的美元流动性不低于此值的市场，在 limit 之前应用。大于 0 时，没有流动性数据的市场（全部 Kalshi 记录）会被排除。 |
 | `limit` | number | 限制每个类别的记录数，默认 30。零或负数表示不限。正小数使用整数部分。 |
 | `refresh` | boolean | 仅限付费面板。默认 false 复用预测分配。true 必须附带 UUID request_id，并开始一次新分配。刷新时省略 panel_request。 |
 | `request_id` | string | 付费刷新 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
