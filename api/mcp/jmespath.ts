@@ -1,4 +1,4 @@
-import { searchBoundedJmespath } from '../../server/_shared/bounded-jmespath';
+import { jmespathFieldNames, searchBoundedJmespath } from '../../server/_shared/bounded-jmespath';
 import { JMESPATH_MAX_EXPR_BYTES, JMESPATH_MAX_OUTPUT_BYTES } from './constants';
 import type { ApplyJmespathResult } from './types';
 import { utf8ByteLength } from './utils';
@@ -71,15 +71,38 @@ function jmespathKeyPaths(v: unknown): string[] {
 }
 
 // A projection that selected nothing: null, or a multiselect whose every
-// entry is null. JMESPath yields null for any path that does not exist, so
-// this is almost always a wrong field name, and returning it as data reads as
-// "the source has nothing". An empty list or a partly-null hash is a result.
+// entry is null. An empty list or a partly-null hash is a result.
 function isEmptyProjection(projected: unknown): boolean {
   if (projected === null || projected === undefined) return true;
   const entries = Array.isArray(projected)
     ? projected
     : typeof projected === 'object' ? Object.values(projected as object) : null;
   return entries !== null && entries.length > 0 && entries.every(entry => entry === null);
+}
+
+// JMESPath yields null both for a field that holds null and for a path that
+// does not exist, so an empty result alone cannot name the mistake. A field
+// name found nowhere in the payload can: that is a guessed name, and returning
+// its null as data reads as "the source has nothing".
+const KEY_SET_MAX_NODES = 100_000;
+function keyNames(v: unknown): Set<string> {
+  const names = new Set<string>();
+  const stack: unknown[] = [v];
+  let visited = 0;
+  while (stack.length > 0 && visited < KEY_SET_MAX_NODES) {
+    const node = stack.pop();
+    visited++;
+    if (node === null || typeof node !== 'object') continue;
+    if (Array.isArray(node)) {
+      for (const child of node) stack.push(child);
+      continue;
+    }
+    for (const [key, child] of Object.entries(node)) {
+      names.add(key);
+      stack.push(child);
+    }
+  }
+  return names;
 }
 
 // Apply a JMESPath expression to a value. Always returns `{ text }`. Pure;
@@ -119,12 +142,17 @@ export function applyJmespath(value: unknown, exprArg: unknown): ApplyJmespathRe
   }
 
   if (isEmptyProjection(projected)) {
-    const envelope = {
-      _jmespath_error: 'empty_projection: every selected field resolved to null. JMESPath returns null for paths that do not exist; check the field names against key_paths.',
-      original_keys: jmespathOriginalKeys(value),
-      key_paths: jmespathKeyPaths(value),
-    };
-    return { text: JSON.stringify(envelope), value: envelope, failed: 'empty_projection' };
+    const present = keyNames(value);
+    const unknownFields = jmespathFieldNames(exprArg).filter(name => !present.has(name));
+    if (unknownFields.length > 0) {
+      const envelope = {
+        _jmespath_error: `empty_projection: every selected field resolved to null, and the response has no field named ${unknownFields.join(', ')}. Check the field names against key_paths.`,
+        original_keys: jmespathOriginalKeys(value),
+        unknown_fields: unknownFields,
+        key_paths: jmespathKeyPaths(value),
+      };
+      return { text: JSON.stringify(envelope), value: envelope, failed: 'empty_projection' };
+    }
   }
 
   // Output gate — measured before serializing. Projections can share

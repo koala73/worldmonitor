@@ -550,7 +550,7 @@ Fields:
 
 ### `_jmespath_error` — projection failed
 
-Four failure kinds, all returned with the same envelope shape (`empty_projection` also carries `key_paths`). The `_jmespath_error` value is a **string** (not an object); its content is `<kind>: <details>`. The discriminator is the **leading kind token** before the first `:`.
+Four failure kinds, all returned with the same envelope shape (`empty_projection` also carries `unknown_fields` and `key_paths`). The `_jmespath_error` value is a **string** (not an object); its content is `<kind>: <details>`. The discriminator is the **leading kind token** before the first `:`.
 
 ```json
 {
@@ -593,12 +593,13 @@ The JMESPath parser, evaluation guard, or evaluator rejected the expression. Cau
 
 #### `empty_projection`
 
-The expression ran, but it selected nothing: the result was `null`, or a multiselect whose every entry was `null`. JMESPath returns `null` for a path that does not exist, so this almost always means a wrong field name or a missing `data.` prefix. The envelope adds `key_paths`, dotted paths into the unprojected response (arrays as `[]`, described by their first object element, up to 4 levels and 80 paths).
+The expression ran, but it selected nothing because it reads a field the response does not have: the result was `null`, or a multiselect whose every entry was `null`, and at least one field name in the expression appears nowhere in the response. `unknown_fields` lists those names. The envelope adds `key_paths`, dotted paths into the unprojected response (arrays as `[]`, described by their first object element, up to 4 levels and 80 paths). A `null` read from a field that exists is returned as data, not as this error.
 
 ```json
 {
-  "_jmespath_error": "empty_projection: every selected field resolved to null. JMESPath returns null for paths that do not exist; check the field names against key_paths.",
+  "_jmespath_error": "empty_projection: every selected field resolved to null, and the response has no field named headline. Check the field names against key_paths.",
   "original_keys": ["cached_at", "stale", "data"],
+  "unknown_fields": ["headline"],
   "key_paths": ["cached_at", "stale", "data", "data.insights", "data.insights.topStories[]", "data.insights.topStories[].primaryTitle"]
 }
 ```
