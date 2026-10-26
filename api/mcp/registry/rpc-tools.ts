@@ -37,6 +37,7 @@ import { normalizePassengerCount } from '../../../server/_shared/passenger-count
 import { normalizeFoodStocksCommodity } from '../../../server/worldmonitor/resilience/v1/_food-stocks-query';
 import {
   CORROBORATION_OUTPUT_SCHEMA,
+  DECLARED_TIER_SCHEMA,
   PUBLISHER_ROSTER_OUTPUT_PROPERTIES,
   assessCorroboration,
   evidenceFromItem,
@@ -47,6 +48,7 @@ import {
   type CorroborationJson,
   type PublisherRosterJson,
 } from '../../../server/_shared/corroboration';
+import { declaredSourceTier, type DeclaredTier } from '../../../server/_shared/source-tiers';
 import {
   collectInsightSources,
   INSIGHTS_MAX_SERVEABLE_AGE_MS,
@@ -290,6 +292,7 @@ type McpWorldBriefStory = {
   entityCorroboration?: boolean;
   sourceTier?: number;
   sources?: string[];
+  sourceProvenance?: Array<{ source: string; tier: DeclaredTier | null } & Omit<SourceProvenanceState, 'summary'>>;
   corroboration: CorroborationJson;
 } & PublisherRosterJson;
 
@@ -321,8 +324,40 @@ function projectStoryCorroboration(title: string, story: Record<string, unknown>
   if (corroborationSourceCount !== undefined) projected.corroborationSourceCount = corroborationSourceCount;
   if (typeof story.entityCorroboration === 'boolean') projected.entityCorroboration = story.entityCorroboration;
   if (sourceTier !== undefined) projected.sourceTier = sourceTier;
-  if (Array.isArray(story.sources)) projected.sources = evidence.labels.slice(0, MAX_WORLD_BRIEF_STORY_OUTLETS);
+  if (Array.isArray(story.sources)) {
+    projected.sources = evidence.labels.slice(0, MAX_WORLD_BRIEF_STORY_OUTLETS);
+    projected.sourceProvenance = projected.sources.map((source) => ({
+      source,
+      tier: declaredSourceTier(source),
+      ...briefSourceProvenance(source),
+    }));
+  }
   return projected;
+}
+
+// Notes are the bulkiest provenance field: 12 stories of 12 of the heaviest
+// registry outlets reach ~80 KB with them and ~59 KB without. Live briefs carry
+// one or two outlets per story, so notes are shed only when they cannot fit.
+function fitWorldBriefToBudget(result: Record<string, unknown>, budgetBytes: number): Record<string, unknown> {
+  if (!Array.isArray(result.topStories)) return result;
+  let omitted = 0;
+  const topStories = result.topStories.map((story) => {
+    if (!isRecord(story) || !Array.isArray(story.sourceProvenance)) return story;
+    const sourceProvenance = story.sourceProvenance.map((entry) => {
+      if (!isRecord(entry) || entry.note === undefined) return entry;
+      omitted++;
+      const { note: _note, ...rest } = entry;
+      return rest;
+    });
+    return { ...story, sourceProvenance };
+  });
+  if (omitted === 0) return result;
+  const presented = {
+    ...result,
+    topStories,
+    transportCoverage: { field: 'topStories[].sourceProvenance[].note', original_count: omitted, returned_count: 0, omitted_count: omitted, omission_reason: 'output_budget' },
+  };
+  return utf8ByteLength(JSON.stringify(presented)) <= budgetBytes ? presented : result;
 }
 
 type SeededWorldBriefPayload = {
@@ -1460,7 +1495,7 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'get_world_brief',
     title: 'Hourly AI world news brief',
     _outputBudgetBytes: 65536,
-    description: 'Return one written world brief, the hourly AI summary of top headlines rather than a story feed, from the precomputed news:insights:v1 snapshot. The insights seeder applies corroboration, citation and hallucination gates before publishing; this reads that accepted result with no request-time LLM call, so the same snapshot is returned until the seeder republishes. Each headline pairs with an index-aligned topStories entry carrying its corroboration evidence (uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, the publishers roster); corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Past the 60-minute freshness window the last-known-good snapshot is served with stale:true and ageMinutes, capped at 3 h old; older, absent or broken snapshots are reported unavailable. Requires a paid plan; one downstream read, weight 2 on API plans. Paid MCP openings consume one request allocation that loaded reuse shares.',
+    description: 'Return one written world brief, the hourly AI summary of top headlines, not a story feed, from the precomputed news:insights:v1 snapshot. The insights seeder applies corroboration, citation and hallucination gates before publishing; this reads that accepted result with no request-time LLM call; the snapshot repeats until the seeder republishes. Each headline pairs with an index-aligned topStories entry carrying its corroboration evidence (uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, the publishers roster, sourceProvenance per outlet); corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Past the 60-minute freshness window the last-known-good snapshot is served with stale:true and ageMinutes, capped at 3 h old; older, absent or broken snapshots are reported unavailable. Requires a paid plan; one downstream read, weight 2 on API plans. Paid MCP openings consume one request allocation that loaded reuse shares.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1494,6 +1529,19 @@ export const RPC_TOOLS: ToolDef[] = [
                 items: { type: 'string' },
                 description: 'Outlet names that carried the story, tier-sorted and deduped, capped at 12. Distinct from this tool top-level sources field, which carries citation records rather than outlet names. Omitted when unavailable.',
               },
+              sourceProvenance: {
+                type: 'array',
+                description: 'Fail-closed provenance for each outlet in sources, index-aligned: sourceProvenance[j] describes sources[j]. Shows when one story mixes a tier-1 wire with a high-risk or state-affiliated outlet, which sourceTier alone hides. Omitted when sources is.',
+                items: {
+                  type: 'object',
+                  required: ['source', 'tier', ...BRIEF_SOURCE_PROVENANCE_SCHEMA.required],
+                  properties: {
+                    source: { type: 'string' },
+                    tier: DECLARED_TIER_SCHEMA,
+                    ...BRIEF_SOURCE_PROVENANCE_SCHEMA.properties,
+                  },
+                },
+              },
               corroboration: CORROBORATION_OUTPUT_SCHEMA,
               ...PUBLISHER_ROSTER_OUTPUT_PROPERTIES,
             },
@@ -1501,6 +1549,16 @@ export const RPC_TOOLS: ToolDef[] = [
         },
         provider: { type: 'string', description: 'LLM provider used by the insights seeder.' },
         model: { type: 'string', description: 'LLM model used by the insights seeder.' },
+        transportCoverage: {
+          type: 'object',
+          description: 'Present only when every topStories[].sourceProvenance[].note was omitted to fit the output budget; the structured provenance fields are always returned.',
+          required: ['field', 'original_count', 'returned_count', 'omitted_count', 'omission_reason'],
+          properties: {
+            field: { const: 'topStories[].sourceProvenance[].note' },
+            original_count: { type: 'integer', minimum: 0 }, returned_count: { type: 'integer', minimum: 0 },
+            omitted_count: { type: 'integer', minimum: 0 }, omission_reason: { const: 'output_budget' },
+          },
+        },
         generatedAt: { type: ['string', 'number', 'null'] },
         stale: { type: 'boolean', description: 'True when the snapshot is older than the 60-minute freshness gate and is being served as last-known-good because the seeder has not published since. Always present, on fresh responses too. The content is unchanged and still fully gated — only its age is in question — so weigh it for time-sensitive decisions rather than discarding it.' },
         ageMinutes: { type: 'number', description: 'Whole minutes between generatedAt and the response. Always present. Capped at 3h: past that the tool reports the source unavailable rather than serving it. The cap is enforced against generatedAt, NOT the Redis TTL, which the producer re-extends on every failed run and so never expires during an outage.' },
@@ -1524,6 +1582,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // ui:// app shell (rendered inline by an MCP-Apps host). Single source of
     // truth — the ui:// resource is registered in ../ui/registry.ts.
     _uiResourceUri: WORLD_BRIEF_UI_URI,
+    _fitToBudget: fitWorldBriefToBudget,
     _execute: async (_params, base, context, execution) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
       // Read the same validated payload that bootstraps the dashboard through

@@ -1,14 +1,23 @@
 import { z } from 'zod';
 import { INSIGHTS_MAX_AGE_MS } from '../../shared/insights-snapshot.js';
 
+const tierSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable();
 const publisherSchema = z.object({
-  name: z.string(), tier: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable(),
+  name: z.string(), tier: tierSchema,
   labels: z.array(z.string()).max(4), labelsUnlisted: z.number().finite(),
+}).strict();
+const sourceProvenanceSchema = z.object({
+  source: z.string(), tier: tierSchema,
+  risk: z.enum(['low', 'medium', 'high', 'unknown']),
+  type: z.enum(['wire', 'gov', 'intel', 'mainstream', 'market', 'tech', 'other', 'unknown']),
+  riskDeclared: z.boolean(), typeDeclared: z.boolean(), riskReviewed: z.boolean(), typeReviewed: z.boolean(),
+  stateAffiliated: z.string().optional(), knownBiases: z.array(z.string()), note: z.string().optional(),
 }).strict();
 const storySchema = z.object({
   title: z.string(), sourceCount: z.number().finite().optional(), uniqueSourceCount: z.number().finite().optional(),
   corroborationSourceCount: z.number().finite().optional(), entityCorroboration: z.boolean().optional(),
   sourceTier: z.number().finite().optional(), sources: z.array(z.string()).max(12).optional(),
+  sourceProvenance: z.array(sourceProvenanceSchema).max(12).optional(),
   corroboration: z.object({ state: z.enum(['unknown', 'single-publisher', 'tier4-only', 'corroborated']), publishers: z.number().finite().nullable() }).strict(),
   publishers: z.array(publisherSchema).max(8), publishersUnlisted: z.number().finite(),
 }).strict();
