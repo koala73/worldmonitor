@@ -1,7 +1,8 @@
 /**
- * Every outlet WorldMonitor reads, keyed by source name: both RSS catalogs
+ * Every outlet WorldMonitor names, keyed by source name: both RSS catalogs
  * (src/config/feeds.ts and server/worldmonitor/news/v1/_feeds.ts), Telegram
- * channels and X accounts. The outlet profile gate and the candidate builder
+ * channels, X accounts, and every name in the tier and provenance tables
+ * (aggregated publishers such as Reuters or AFP that no feed is named after). The outlet profile gate and the candidate builder
  * share this so they cannot disagree about the population.
  *
  * Imports TypeScript modules, so run it under tsx.
@@ -22,10 +23,12 @@ function feedUrls(url) {
  */
 export async function loadOutletCatalog(repoRoot) {
   const importTs = (relativePath) => import(pathToFileURL(join(repoRoot, relativePath)).href);
-  const [server, telegram, x] = await Promise.all([
+  const [server, telegram, x, tiers, provenance] = await Promise.all([
     importTs('server/worldmonitor/news/v1/_feeds.ts'),
     importTs('shared/telegram-channel-trust.ts'),
     importTs('shared/x-account-trust.ts'),
+    importTs('server/_shared/source-tiers.ts'),
+    importTs('shared/source-provenance.ts'),
   ]);
   const { feeds: client, cleanup } = await bundleFeedsModule(repoRoot);
 
@@ -59,6 +62,8 @@ export async function loadOutletCatalog(repoRoot) {
   }
   for (const channel of telegram.TELEGRAM_CHANNEL_TRUST) add(channel.name, 'telegram', { handle: channel.handle });
   for (const account of x.X_ACCOUNT_TRUST) add(account.sourceName, 'x');
+  for (const name of Object.keys(tiers.SOURCE_TIERS)) add(name, 'tier');
+  for (const name of Object.keys(provenance.SOURCE_PROPAGANDA_RISK)) add(name, 'provenance');
   return outlets;
 }
 

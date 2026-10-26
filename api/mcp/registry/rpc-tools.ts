@@ -8,6 +8,7 @@ import { countryMentionTerms, mentionsCountry } from '../../../shared/country-me
 import { isBriefRelevantTitle } from '../../../shared/brief-relevance.js';
 import { isOpenSkyProvider } from '../../../shared/provider-redistribution';
 import { getSourceProvenanceState, type SourceProvenanceState } from '../../../shared/source-provenance';
+import { OUTLET_PROFILE_OUTPUT_PROPERTIES, OUTLET_PROFILE_REQUIRED, withOutletProfile, type OutletProfileFields } from '../../../server/_shared/outlet-profile';
 import {
   CHINA_DECISION_SIGNAL_GROUP_IDS,
   CHINA_DECISION_SIGNAL_MAX_SERIALIZED_BYTES,
@@ -102,7 +103,7 @@ type McpDigestCoverage = {
 type McpBriefGroundingStory = PublisherRosterJson & {
   title: string;
   source: string;
-  sourceProvenance: Omit<SourceProvenanceState, 'summary'>;
+  sourceProvenance: BriefSourceProvenance;
   url?: string;
   publishedAt?: string;
   corroborationCount: number;
@@ -142,7 +143,7 @@ const MAX_COUNTRY_BRIEF_GROUNDING_URL_LENGTH = 2_000;
 const BRIEF_SOURCE_PROVENANCE_SCHEMA = {
   type: 'object',
   description: 'Source provenance without the prose summary to keep the country brief within its output budget.',
-  required: ['risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases'],
+  required: ['risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', ...OUTLET_PROFILE_REQUIRED],
   properties: {
     risk: { type: 'string', enum: ['low', 'medium', 'high', 'unknown'] },
     type: { type: 'string', enum: ['wire', 'gov', 'intel', 'mainstream', 'market', 'tech', 'other', 'unknown'] },
@@ -153,12 +154,15 @@ const BRIEF_SOURCE_PROVENANCE_SCHEMA = {
     stateAffiliated: { type: 'string' },
     knownBiases: { type: 'array', items: { type: 'string' }, description: 'Curated perspective labels. Empty means no label recorded, not neutral.' },
     note: { type: 'string' },
+    ...OUTLET_PROFILE_OUTPUT_PROPERTIES,
   },
 };
 
-function briefSourceProvenance(source: string): Omit<SourceProvenanceState, 'summary'> {
+type BriefSourceProvenance = Omit<SourceProvenanceState, 'summary'> & OutletProfileFields;
+
+function briefSourceProvenance(source: string): BriefSourceProvenance {
   const { summary: _summary, ...provenance } = getSourceProvenanceState(source);
-  return provenance;
+  return withOutletProfile(source, provenance);
 }
 
 function clipBriefText(value: unknown, maxLen: number): string {
@@ -1652,7 +1656,7 @@ export const RPC_TOOLS: ToolDef[] = [
     title: 'AI-written country assessment (text)',
     // Two downstream fetches (brief + news digest for grounding).
     _weight: 3,
-    _outputBudgetBytes: 65536,
+    _outputBudgetBytes: 131072,
     description: 'Return a text-only AI assessment of one country with sources, groundingStories and digestCoverage. The default shares the server-accepted assessment, citations and original generation time with the website. Explicit framework or allow_stale requests can use personalized digest context. groundingStories and digestCoverage describe the separately read English digest, not the identity of the accepted assessment. Each story carries corroborationCount, corroboration.state (single-publisher, tier4-only, corroborated, unknown; coverage, not accuracy), mentionCount and storyPhase. Stale local digest context is withheld unless allow_stale=true. No per-section datasets or interactive view. Requires a paid plan; two downstream fetches (digest and brief), weight 3 on API plans, 5-25 s. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one but does not force AI generation. Read-only.',
     inputSchema: {
       type: 'object',

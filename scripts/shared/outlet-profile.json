@@ -63,6 +63,12 @@
     "ownershipClass": "private",
     "note": "Google News query for a16z podcasts and interviews."
   },
+  "a16z Podcast": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "Aaj Tak": {
     "country": "IN",
     "audience": "domestic",
@@ -102,6 +108,12 @@
     "ownershipClass": "private",
     "note": "Google News query for coverage of the Acquired podcast."
   },
+  "Acquired Podcast": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "Actualite.cd": {
     "country": "CD",
     "audience": "domestic",
@@ -113,6 +125,19 @@
     "audience": "domestic",
     "language": "fr",
     "ownershipClass": "private"
+  },
+  "AEI": {
+    "country": "US",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "AFP": {
+    "country": "FR",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service",
+    "note": "Agence France-Presse, a statutory autonomous agency funded partly by the French state."
   },
   "Africa News": {
     "country": "INTL",
@@ -175,6 +200,12 @@
     "language": "en",
     "ownershipClass": "nonprofit",
     "note": "Ingested via a Google News name search for the institute."
+  },
+  "AI Podcast (NVIDIA)": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
   },
   "AI Podcasts": {
     "country": "INTL",
@@ -574,6 +605,12 @@
     "ownershipClass": "unreviewed",
     "note": "Google News topic search aggregating many publishers; no single owner."
   },
+  "Benedict Evans": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "BHP News": {
     "country": "INTL",
     "audience": "international",
@@ -697,6 +734,13 @@
     "ownershipClass": "unreviewed",
     "note": "Google News keyword search aggregating many publishers; no single owner."
   },
+  "Brazil Tech News": {
+    "country": "INTL",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "unreviewed",
+    "note": "Topic search across many publishers (Brazilian tech); no single owner."
+  },
   "Breaking Defense": {
     "country": "US",
     "audience": "international",
@@ -711,6 +755,12 @@
   },
   "Brookings Tech": {
     "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit"
+  },
+  "Bruegel (EU)": {
+    "country": "BE",
     "audience": "international",
     "language": "en",
     "ownershipClass": "nonprofit"
@@ -732,6 +782,12 @@
     "audience": "international",
     "language": "en",
     "ownershipClass": "private"
+  },
+  "CAC (China)": {
+    "country": "CN",
+    "audience": "domestic",
+    "language": "zh",
+    "ownershipClass": "state"
   },
   "Calgary Herald": {
     "country": "CA",
@@ -859,6 +915,13 @@
     "language": "en",
     "ownershipClass": "unreviewed",
     "note": "Google News keyword search aggregating many publishers; no single owner."
+  },
+  "China Tech News": {
+    "country": "INTL",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "unreviewed",
+    "note": "Topic search across many publishers (Chinese tech); no single owner."
   },
   "China Tech Policy": {
     "country": "INTL",
@@ -1004,6 +1067,12 @@
     "audience": "international",
     "language": "en",
     "ownershipClass": "nonprofit"
+  },
+  "Contxto (LATAM)": {
+    "country": "MX",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
   },
   "Copper Market": {
     "country": "INTL",
@@ -1191,12 +1260,24 @@
     "language": "nl",
     "ownershipClass": "private"
   },
+  "DealStreetAsia": {
+    "country": "SG",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "Decacorn News": {
     "country": "INTL",
     "audience": "international",
     "language": "en",
     "ownershipClass": "unreviewed",
     "note": "Google News topic query aggregating many publishers; no single owner."
+  },
+  "Decoder (Verge)": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
   },
   "Decrypt": {
     "country": "US",
@@ -1369,6 +1450,12 @@
     "ownershipClass": "public-service",
     "note": "German public-service broadcaster service aimed at Turkey."
   },
+  "e27 (SEA)": {
+    "country": "SG",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "Earnings Reports": {
     "country": "INTL",
     "audience": "international",
@@ -1491,6 +1578,12 @@
     "language": "en",
     "ownershipClass": "private"
   },
+  "Entrackr (India)": {
+    "country": "IN",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "ERR News": {
     "country": "EE",
     "audience": "international",
@@ -1577,6 +1670,12 @@
     "language": "en",
     "ownershipClass": "unreviewed",
     "note": "Google News topic query aggregating many publishers; no single owner."
+  },
+  "Eye on AI": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
   },
   "FalconFeeds.io": {
     "country": "IN",
@@ -1811,6 +1910,12 @@
     "language": "ro",
     "ownershipClass": "private"
   },
+  "GACC (China)": {
+    "country": "CN",
+    "audience": "domestic",
+    "language": "zh",
+    "ownershipClass": "state"
+  },
   "Gazeta Wyborcza": {
     "country": "PL",
     "audience": "domestic",
@@ -1901,6 +2006,13 @@
     "language": "en",
     "ownershipClass": "private"
   },
+  "GloNewswire (Taiwan)": {
+    "country": "INTL",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "unreviewed",
+    "note": "Topic search across many publishers (Taiwan press releases); no single owner."
+  },
   "GMF": {
     "country": "US",
     "audience": "international",
@@ -1989,6 +2101,12 @@
     "ownershipClass": "private"
   },
   "Good News Network": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Gradient Dissent": {
     "country": "US",
     "audience": "international",
     "language": "en",
@@ -2433,6 +2551,12 @@
     "language": "en",
     "ownershipClass": "private"
   },
+  "Japan Joint Staff": {
+    "country": "JP",
+    "audience": "domestic",
+    "language": "ja",
+    "ownershipClass": "state"
+  },
   "Japan Startups": {
     "country": "INTL",
     "audience": "international",
@@ -2493,6 +2617,18 @@
     "country": "GR",
     "audience": "domestic",
     "language": "el",
+    "ownershipClass": "private"
+  },
+  "KCNA": {
+    "country": "KP",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "state"
+  },
+  "KED Global": {
+    "country": "KR",
+    "audience": "international",
+    "language": "en",
     "ownershipClass": "private"
   },
   "Kian Meli (Iran)": {
@@ -2565,12 +2701,26 @@
     "language": "es",
     "ownershipClass": "private"
   },
+  "LATAM Fintech": {
+    "country": "INTL",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "unreviewed",
+    "note": "Topic search across many publishers (Latin American fintech); no single owner."
+  },
   "LATAM Startups": {
     "country": "INTL",
     "audience": "international",
     "language": "en",
     "ownershipClass": "unreviewed",
     "note": "Google News topic search aggregating many publishers; no single owner."
+  },
+  "LATAM Tech News": {
+    "country": "INTL",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "unreviewed",
+    "note": "Topic search across many publishers (Latin American tech); no single owner."
   },
   "Latin America": {
     "country": "INTL",
@@ -2629,6 +2779,12 @@
     "country": "BF",
     "audience": "domestic",
     "language": "fr",
+    "ownershipClass": "private"
+  },
+  "Lenny Newsletter": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
     "ownershipClass": "private"
   },
   "Lenny's Newsletter": {
@@ -2732,6 +2888,12 @@
     "language": "en",
     "ownershipClass": "private"
   },
+  "Magnitt": {
+    "country": "AE",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "Market Outlook": {
     "country": "INTL",
     "audience": "international",
@@ -2809,6 +2971,13 @@
     "language": "en",
     "ownershipClass": "unreviewed",
     "note": "Google News topic query aggregating many publishers; no single owner."
+  },
+  "Mexico Tech News": {
+    "country": "INTL",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "unreviewed",
+    "note": "Topic search across many publishers (Mexican tech); no single owner."
   },
   "Middle East Eye": {
     "country": "GB",
@@ -2954,6 +3123,12 @@
     "ownershipClass": "private",
     "note": "Russian outlet relocated to Amsterdam after 2022."
   },
+  "My Modern Met": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "MyJoyOnline": {
     "country": "GH",
     "audience": "domestic",
@@ -3029,6 +3204,18 @@
     "audience": "domestic",
     "language": "en",
     "ownershipClass": "private"
+  },
+  "NBS (China)": {
+    "country": "CN",
+    "audience": "domestic",
+    "language": "zh",
+    "ownershipClass": "state"
+  },
+  "NDRC (China)": {
+    "country": "CN",
+    "audience": "domestic",
+    "language": "zh",
+    "ownershipClass": "state"
   },
   "NDTV": {
     "country": "IN",
@@ -3356,6 +3543,12 @@
     "language": "en",
     "ownershipClass": "private"
   },
+  "Pandaily (China)": {
+    "country": "CN",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "PAP": {
     "country": "PL",
     "audience": "domestic",
@@ -3368,6 +3561,12 @@
     "language": "en",
     "ownershipClass": "private",
     "note": "Paul Graham essays; one variant ingests a Google News query instead of the essay feed."
+  },
+  "PBoC (China)": {
+    "country": "CN",
+    "audience": "domestic",
+    "language": "zh",
+    "ownershipClass": "state"
   },
   "PBoC Watch": {
     "country": "INTL",
@@ -3396,6 +3595,12 @@
     "note": "Google News topic query aggregating many publishers; no single owner."
   },
   "PitchBook News": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Pivot (Vox)": {
     "country": "US",
     "audience": "international",
     "language": "en",
@@ -3617,6 +3822,12 @@
     "language": "en",
     "ownershipClass": "nonprofit"
   },
+  "Reuters": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "Reuters Asia": {
     "country": "GB",
     "audience": "international",
@@ -3799,12 +4010,24 @@
     "language": "fa",
     "ownershipClass": "state"
   },
+  "SAFE (China)": {
+    "country": "CN",
+    "audience": "domestic",
+    "language": "zh",
+    "ownershipClass": "state"
+  },
   "Sahel Crisis": {
     "country": "INTL",
     "audience": "international",
     "language": "en",
     "ownershipClass": "unreviewed",
     "note": "Google News keyword search aggregating many publishers; no single owner."
+  },
+  "SAMR (China)": {
+    "country": "CN",
+    "audience": "domestic",
+    "language": "zh",
+    "ownershipClass": "state"
   },
   "Sana'a Center": {
     "country": "YE",
@@ -3921,11 +4144,29 @@
     "language": "cs",
     "ownershipClass": "private"
   },
+  "Shanghai Financial Portal (People’s Bank of China republication)": {
+    "country": "CN",
+    "audience": "domestic",
+    "language": "zh",
+    "ownershipClass": "state"
+  },
+  "Shanghai Stock Exchange": {
+    "country": "CN",
+    "audience": "domestic",
+    "language": "zh",
+    "ownershipClass": "state"
+  },
   "Shareable": {
     "country": "US",
     "audience": "international",
     "language": "en",
     "ownershipClass": "nonprofit"
+  },
+  "Shenzhen Stock Exchange": {
+    "country": "CN",
+    "audience": "domestic",
+    "language": "zh",
+    "ownershipClass": "state"
   },
   "Shipping & Freight": {
     "country": "INTL",
@@ -3998,6 +4239,12 @@
     "ownershipClass": "unreviewed",
     "note": "Google News topic search aggregating many publishers; no single owner."
   },
+  "Sputnik": {
+    "country": "RU",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "state"
+  },
   "Stablecoin Policy": {
     "country": "INTL",
     "audience": "international",
@@ -4031,6 +4278,13 @@
     "language": "en",
     "ownershipClass": "unreviewed",
     "note": "Google News topic query aggregating many publishers; no single owner."
+  },
+  "Startups.co (LATAM)": {
+    "country": "INTL",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "unreviewed",
+    "note": "Topic search across many publishers (Latin American startups); no single owner."
   },
   "State Dept": {
     "country": "US",
@@ -4113,6 +4367,12 @@
     "language": "en",
     "ownershipClass": "private"
   },
+  "Taiwan Ministry of National Defense": {
+    "country": "TW",
+    "audience": "domestic",
+    "language": "zh",
+    "ownershipClass": "state"
+  },
   "Taiwan News": {
     "country": "TW",
     "audience": "international",
@@ -4125,6 +4385,13 @@
     "language": "en",
     "ownershipClass": "unreviewed",
     "note": "Google News topic search aggregating many publishers; no single owner."
+  },
+  "Taiwan Tech News": {
+    "country": "INTL",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "unreviewed",
+    "note": "Topic search across many publishers (Taiwanese tech); no single owner."
   },
   "Tanker & Shipping": {
     "country": "INTL",
@@ -4227,6 +4494,12 @@
     "language": "en",
     "ownershipClass": "private"
   },
+  "TechNode (China)": {
+    "country": "CN",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "Techstars News": {
     "country": "INTL",
     "audience": "international",
@@ -4267,6 +4540,12 @@
   },
   "The Block": {
     "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Bridge (Japan)": {
+    "country": "JP",
     "audience": "international",
     "language": "en",
     "ownershipClass": "private"
@@ -4377,6 +4656,18 @@
     "language": "en",
     "ownershipClass": "private"
   },
+  "The Pitch": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "The Pragmatic Engineer": {
+    "country": "NL",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "The Province": {
     "country": "CA",
     "audience": "domestic",
@@ -4414,6 +4705,12 @@
     "language": "en",
     "ownershipClass": "private"
   },
+  "The Twenty Minute VC": {
+    "country": "GB",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "The Tyee": {
     "country": "CA",
     "audience": "domestic",
@@ -4432,7 +4729,19 @@
     "language": "en",
     "ownershipClass": "private"
   },
+  "The Vergecast": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
   "The War Zone": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "This Week in Startups": {
     "country": "US",
     "audience": "international",
     "language": "en",
@@ -4501,6 +4810,12 @@
     "language": "en",
     "ownershipClass": "unreviewed",
     "note": "Google News keyword search aggregating many publishers; no single owner."
+  },
+  "TRT World": {
+    "country": "TR",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "state"
   },
   "Trump - Truth Social": {
     "country": "US",
@@ -4710,6 +5025,13 @@
     "ownershipClass": "private",
     "note": "Owned by FPT Corporation; operates under a state press licence like all Vietnamese media."
   },
+  "Voice of America": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "public-service",
+    "note": "US government-funded international broadcaster with a statutory editorial firewall."
+  },
   "VSquare": {
     "country": "PL",
     "audience": "international",
@@ -4732,6 +5054,12 @@
   "Wall Street Journal": {
     "country": "US",
     "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "Wamda (MENA)": {
+    "country": "AE",
+    "audience": "international",
     "language": "en",
     "ownershipClass": "private"
   },

@@ -5,7 +5,7 @@
  */
 import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -44,6 +44,23 @@ describe('outlet profile registry', () => {
       isStateAffiliated: isStateAffiliatedSource,
     });
     assert.deepEqual(problems, []);
+  });
+
+  it('stays out of browser and shared code', () => {
+    // shared/ is bundled into the browser through src/config/feeds.ts.
+    const importers: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(join(repoRoot, dir), { withFileTypes: true })) {
+        const path = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) walk(path);
+        else if (/\.(ts|tsx|js|mjs|cjs)$/.test(entry.name) && /outlet-profile/.test(readFileSync(join(repoRoot, path), 'utf8'))) {
+          importers.push(path);
+        }
+      }
+    };
+    walk('src');
+    walk('shared');
+    assert.deepEqual(importers, []);
   });
 
   it('serves the reviewed entry through the server loader', () => {

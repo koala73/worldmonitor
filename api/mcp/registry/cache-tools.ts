@@ -36,6 +36,7 @@ import {
   toPublisherRosterJson,
 } from '../../../server/_shared/corroboration';
 import { getSourceTier } from '../../../server/_shared/source-tiers';
+import { OUTLET_PROFILE_OUTPUT_PROPERTIES, OUTLET_PROFILE_REQUIRED, withOutletProfile } from '../../../server/_shared/outlet-profile';
 import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shared/flow-source';
 import { RECEIPT_FIELDS, selectMarketAlertScorecard, selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
@@ -416,7 +417,7 @@ function addNewsSourceProvenance(value: unknown): unknown {
     const verdict = assessCorroboration(evidence);
     return {
       ...record,
-      sourceProvenance: provenance,
+      sourceProvenance: withOutletProfile(sourceName, provenance),
       corroboration: toCorroborationJson(verdict),
       ...toPublisherRosterJson(publisherRoster(evidence), verdict),
       credibilityScore: servedScore !== null
@@ -1665,8 +1666,9 @@ export const CACHE_TOOLS: ToolDef[] = [
                 },
                 note: { type: 'string' },
                 summary: { type: 'string', description: 'Every provenance fact as short fixed-order clauses in one string; includes "Perspective: none recorded." when no label exists.' },
+                ...OUTLET_PROFILE_OUTPUT_PROPERTIES,
               },
-              required: ['risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', 'summary'],
+              required: ['risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', 'summary', ...OUTLET_PROFILE_REQUIRED],
             },
             corroboration: CORROBORATION_OUTPUT_SCHEMA,
             ...PUBLISHER_ROSTER_OUTPUT_PROPERTIES,
