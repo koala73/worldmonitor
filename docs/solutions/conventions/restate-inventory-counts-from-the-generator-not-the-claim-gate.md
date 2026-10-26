@@ -35,7 +35,7 @@ On 2026-10-24 public copy gave five different source totals. The registry measur
 
 `scripts/generate-public-product-facts.mjs` keeps a per-file table, `RESTATED_FACT_PHRASES`, of exact phrases whose leading numerals it rewrites from measured values. This generalizes the restater that already kept `docs/about.mdx` current. Each entry is `{ pattern, occurrences, keys }`:
 
-- `pattern` matches the whole phrase, digits included, for example `/\b\d+ attributed providers across \d+ observed source hosts\b/g`.
+- `pattern` matches the whole phrase, digits included, for example `/\b\d+ attributed providers across \d+ observed source hosts\b/g`. It must carry the `g` flag: `restateFacts` counts with `source.match(pattern)` and rewrites with `source.replace(pattern, …)`, and without `g` both see only the first occurrence.
 - `occurrences` must match exactly. Copy that loses its wording fails generation with `<path>: expected N match(es) of <pattern>` instead of silently going stale.
 - `keys` fill the numerals in order from `RESTATED_FACT_VALUES`: `depthProofStats` (`providers`, `feeds`, `mapLayers`…) plus `sourceHosts` (the attribution scan's `activeHosts`).
 
@@ -98,9 +98,8 @@ The registering entry:
 ]],
 ```
 
-`tests/public-product-facts.test.mjs` locks both properties:
+`tests/public-product-facts.test.mjs` test **"states the measured source inventory on every surface that quotes it"** reads each surface and requires the phrase built from `buildSourceAttributionStats()`. It also bans the old "578+ observed upstream hosts", "574 active providers" and "100+ global sources" wordings.
 
-- **"states the measured source inventory on every surface that quotes it"** reads each surface and requires the phrase built from `buildSourceAttributionStats()`. It also bans the old "578+ observed upstream hosts", "574 active providers" and "100+ global sources" wordings.
-- **"fails generation when a restated homepage source phrase loses its wording"** checks the exact-occurrence guard.
+The exact-occurrence guard has no dedicated test. It lives in `restateFacts`, which throws `<path>: expected N match(es) of <pattern>, found M` during generation, so `npm run product:facts` and every `prebuild` fail when a registered phrase loses its wording.
 
 Related: [every quotable homepage answer carries its own build-measured figure](../best-practices/every-quotable-homepage-answer-carries-its-own-build-measured-figure.md) covers the same principle for the pro-test welcome page's i18next tokens.
