@@ -65,7 +65,7 @@ describe('China activity nowcast explanatory UI (#5579)', () => {
     assert.match(html, /Official and proxies agree/);
     assert.match(html, /nbs_industrial_value_added_yoy:2026-06:r1/);
     assert.match(html, /90-day comparison window/);
-    assert.match(html, /4\/7 proxy families eligible/);
+    assert.match(html, /4\/8 proxy families eligible/);
     assert.match(html, /Freight/);
     assert.match(html, /Maritime/);
     assert.match(html, /Aviation/);

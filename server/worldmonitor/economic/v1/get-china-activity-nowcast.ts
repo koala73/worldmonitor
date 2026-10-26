@@ -19,6 +19,10 @@ import {
   type CorridorSourceSignal,
 } from '../../../../shared/china-corridor-control-towers';
 import { chinaMacroObservationDateMs } from '../../../../shared/china-macro-contract.js';
+import {
+  CHINA_NO2_ACTIVITY_KEY,
+  validateChinaNo2ActivityPayload,
+} from '../../../../scripts/shared/china-no2-activity.mjs';
 import { cachedFetchJsonWithMeta, getCachedJsonBatch } from '../../../_shared/redis';
 import { CHINA_ACTIVITY_NOWCAST_KEY } from '../../../_shared/cache-keys';
 import { resolveChinaCorridorSnapshot } from '../../supply-chain/v1/get-china-corridor-control-towers';
@@ -45,6 +49,10 @@ export const CHINA_ACTIVITY_NOWCAST_MARKET_KEYS = Object.freeze({
   commoditiesMeta: 'seed-meta:market:commodities',
   stockIndex: 'market:stock-index:v1:CN',
 });
+export const CHINA_ACTIVITY_NOWCAST_SEED_KEYS = Object.freeze([
+  ...Object.values(CHINA_ACTIVITY_NOWCAST_MARKET_KEYS),
+  CHINA_NO2_ACTIVITY_KEY,
+]);
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -678,6 +686,62 @@ function marketProxyObservations(
   return observations;
 }
 
+/**
+ * The seeded Sentinel-5P NO2 composite, consumed only when it carries the
+ * reviewed method verbatim (`validateChinaNo2ActivityPayload` is the same
+ * check the seeder publishes under). A composite the seeder could not form
+ * keeps its own exclusion so a cloudy stretch is never read as flat activity.
+ */
+function no2ProxyObservations(
+  seedValues: Map<string, unknown>,
+): ChinaActivityProxyObservation[] {
+  const payload = seedValues.get(CHINA_NO2_ACTIVITY_KEY);
+  if (!validateChinaNo2ActivityPayload(payload)) return [];
+  const windowEnd = payload.regions[0]!.current.windowEnd;
+  const observedAt = new Date(Date.parse(`${windowEnd}T00:00:00Z`) + 86_400_000).toISOString();
+  const generatedAt = new Date(payload.generatedAt).toISOString();
+  const { composite, method, source } = payload;
+  return [{
+    seriesId: 's5p_no2_industrial_activity_change',
+    observationId: `s5p-no2-change:${windowEnd}`,
+    observedAt,
+    releasedAt: generatedAt,
+    retrievedAt: generatedAt,
+    value: composite.signalValue,
+    priorValue: null,
+    available: true,
+    stale: false,
+    structuralBreak: false,
+    provenance: {
+      publisherId: source.publisherId,
+      attribution: source.attribution,
+      dataset: source.dataset,
+      band: source.band,
+      unit: source.unit,
+      timeliness: method.timeliness,
+      minQa: method.minQa,
+      resolutionDegrees: method.resolutionDegrees,
+      changeBasis: 'same_calendar_window_prior_years',
+      windowDays: method.windowDays,
+      windowEnd,
+      baselineYears: method.baselineYears,
+      deadBandPercent: method.deadBandPercent,
+      changePercent: composite.changePercent,
+      regionIds: composite.regionIds,
+      regions: payload.regions.map((region) => ({
+        id: region.id,
+        changePercent: region.changePercent,
+        validDays: region.current.validDays,
+        exclusion: region.exclusion,
+      })),
+      generatedAt,
+      requestCount: source.requestCount,
+      processingUnitsSpent: source.processingUnitsSpent,
+      ...(composite.exclusion === null ? {} : { exclusion: composite.exclusion }),
+    },
+  }];
+}
+
 export function buildChinaActivityNowcastInputs(input: {
   evaluatedAt: string;
   macro: GetChinaMacroSnapshotResponse;
@@ -699,6 +763,7 @@ export function buildChinaActivityNowcastInputs(input: {
         input.corridorHistoryReadFailed ?? false,
       ),
       ...marketProxyObservations(input.marketValues),
+      ...no2ProxyObservations(input.marketValues),
     ],
   };
 }
@@ -732,10 +797,7 @@ export async function composeChinaActivityNowcastSnapshot(
     await Promise.allSettled([
     dependencies.getMacro(),
     dependencies.getCorridors(),
-    dependencies.readMarketBatch(
-      Object.values(CHINA_ACTIVITY_NOWCAST_MARKET_KEYS),
-      true,
-    ),
+    dependencies.readMarketBatch([...CHINA_ACTIVITY_NOWCAST_SEED_KEYS], true),
     dependencies.readCorridorHistory?.() ?? Promise.resolve([]),
   ]);
   const corridors = corridorsResult.status === 'fulfilled'
