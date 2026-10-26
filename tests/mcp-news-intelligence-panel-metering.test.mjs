@@ -79,6 +79,21 @@ describe('News Intelligence closed paid admission', () => {
     assert.equal(fetched.length, READS); assert.equal(bundle.pipe.count, 1);
     const original = JSON.parse(cache(bundle)[0][1]); assert.equal(original.value.data.insights.topStories.length, 2); assert.equal(typeof original.reuseUntil, 'number');
   });
+  it('pages pool matches with stories_cursor on the same paid opening', async () => {
+    const bundle = makeProDeps(); await invoke(bundle);
+    const first = value(await invoke(bundle, { min_importance: 0, limit: 1 })).data.insights;
+    assert.deepEqual(first.topStories.map(row => row.primaryTitle), ['US trade talks']);
+    assert.equal(first.storyScope.matchingStories, 3);
+    const titles = [...first.topStories.map(row => row.primaryTitle)];
+    let cursor = first.storyScope.nextCursor;
+    while (cursor) {
+      const page = value(await invoke(bundle, { min_importance: 0, limit: 1, stories_cursor: cursor })).data.insights;
+      titles.push(...page.topStories.map(row => row.primaryTitle));
+      cursor = page.storyScope.nextCursor;
+    }
+    assert.deepEqual(titles, ['US trade talks', 'Japan cyber update', 'Kenya port strike']);
+    assert.equal(fetched.length, READS); assert.equal(bundle.pipe.count, 1);
+  });
   it('reuses GDELT originals whose producer record count measures articles', async () => {
     const bundle = makeProDeps();
     for (const topic of sources[keys[1]].topics) topic.articles.push({ ...topic.articles[0], title: `${topic.id} second article` });

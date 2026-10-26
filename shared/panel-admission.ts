@@ -96,6 +96,7 @@ export type NewsIntelligencePanelAdmission = z.infer<typeof newsIntelligencePane
 export const newsIntelligencePanelReadSchema = z.object({
   topic: z.unknown().optional(), category: z.unknown().optional(), country: z.unknown().optional(),
   alerts_only: z.unknown().optional(), query: z.unknown().optional(), min_importance: z.unknown().optional(), limit: z.unknown().optional(),
+  stories_cursor: z.unknown().optional(),
 }).strict();
 export const newsIntelligencePanelViewSchema = newsIntelligencePanelReadSchema.extend({
   refresh: z.boolean().default(false), request_id: z.string().uuid().optional(),
