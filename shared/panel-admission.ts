@@ -46,6 +46,7 @@ export const predictionPanelReadSchema = z.object({
   category: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined).pipe(z.enum(['geopolitical', 'tech', 'finance']).optional()),
   source: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined).pipe(z.enum(['kalshi', 'polymarket']).optional()),
   query: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined),
+  min_liquidity: z.number().finite().min(0).optional().transform(value => value || undefined),
   limit: z.number().default(30),
 }).strict();
 export const predictionPanelViewSchema = predictionPanelReadSchema.extend({
