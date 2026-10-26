@@ -89,6 +89,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_country_brief_section: 'geopolitical-security',
   get_country_brief: 'geopolitical-security',
   get_news_intelligence: 'geopolitical-security',
+  get_media_perspective: 'geopolitical-security',
   get_cyber_threats: 'geopolitical-security',
   get_sanctions_data: 'geopolitical-security',
   get_social_velocity: 'geopolitical-security',

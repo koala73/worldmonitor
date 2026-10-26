@@ -590,6 +590,172 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/list-media-perspective:
+        get:
+            tags:
+                - NewsService
+            summary: ListMediaPerspective
+            description: ListMediaPerspective groups recent headlines about one country by the publishing outlet's home country and intended audience (domestic, international, diaspora), with ownership, tier and headline framing per item.
+            operationId: ListMediaPerspective
+            parameters:
+                - name: subject_country
+                  in: query
+                  description: ISO 3166-1 alpha-2 country the headlines must mention.
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+                - name: outlet_countries
+                  in: query
+                  description: Outlet home countries to include (ISO2). Empty means every country. Repeated query parameter, at most 30.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "example"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: audience
+                  in: query
+                  description: domestic | international | diaspora. Empty means every audience.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: window_hours
+                  in: query
+                  description: 'Look-back window in hours: 24, 48, 72 or 96. 0 means 72.'
+                  required: false
+                  example: 1
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "feedCached": 1
+                                "feedTotal": 1
+                                "groups":
+                                    - "audience": "example"
+                                      "framing":
+                                          "critical": 1
+                                          "favorable": 1
+                                          "hostile": 1
+                                          "method": "example"
+                                          "neutral": 1
+                                      "headlineCount": 1
+                                      "headlines":
+                                          - "englishTitle": "example"
+                                            "framing":
+                                                "label": "example"
+                                                "method": "example"
+                                                "model": "example"
+                                                "promptVersion": "example"
+                                            "link": "https://example.com/worldmonitor"
+                                            "outlet": "example"
+                                            "ownershipClass": "example"
+                                      "homeCountry": "US"
+                                "noCoverageCountries":
+                                    - "example"
+                                "readAt": "2026-01-15T12:00:00Z"
+                            schema:
+                                $ref: '#/components/schemas/ListMediaPerspectiveResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/news/v1/list-label-changes:
         get:
             tags:
@@ -1782,6 +1948,176 @@ components:
                     format: int64
                     description: 'Publisher publication time in Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: CountryHeadline is a dated article from a configured RSS feed, before dashboard category caps.
+        ListMediaPerspectiveRequest:
+            type: object
+            properties:
+                subjectCountry:
+                    type: string
+                    maxLength: 2
+                    minLength: 2
+                    description: ISO 3166-1 alpha-2 country the headlines must mention.
+                outletCountries:
+                    type: array
+                    items:
+                        type: string
+                        maxItems: 30
+                        description: Outlet home countries to include (ISO2). Empty means every country. Repeated query parameter, at most 30.
+                    maxItems: 30
+                audience:
+                    type: string
+                    description: domestic | international | diaspora. Empty means every audience.
+                windowHours:
+                    type: integer
+                    maximum: 96
+                    minimum: 0
+                    format: int32
+                    description: 'Look-back window in hours: 24, 48, 72 or 96. 0 means 72.'
+            required:
+                - subjectCountry
+            description: ListMediaPerspectiveRequest selects headlines about one subject country, grouped by who published them.
+        ListMediaPerspectiveResponse:
+            type: object
+            properties:
+                subjectCountry:
+                    type: string
+                    description: Subject country as canonicalized (ISO2).
+                windowHours:
+                    type: integer
+                    format: int32
+                    description: Look-back window applied, in hours.
+                groups:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MediaPerspectiveGroup'
+                noCoverageCountries:
+                    type: array
+                    items:
+                        type: string
+                        description: Requested outlet countries with no matching headline in the window.
+                unattributedCount:
+                    type: integer
+                    format: int32
+                    description: 'Matching headlines left ungrouped: the publisher has no outlet profile, or the feed is a multi-publisher search.'
+                state:
+                    type: string
+                    description: complete | partial | unavailable. A failed revocation read is unavailable.
+                feedTotal:
+                    type: integer
+                    format: int32
+                    description: Configured feeds read.
+                feedCached:
+                    type: integer
+                    format: int32
+                    description: Feeds whose parsed cache was available, including cached empty feeds.
+                readAt:
+                    type: string
+                    description: Time the caches were read.
+            description: ListMediaPerspectiveResponse groups coverage of the subject country by outlet home country, then audience.
+        MediaPerspectiveGroup:
+            type: object
+            properties:
+                homeCountry:
+                    type: string
+                    description: Outlet home country (ISO2, INTL for intergovernmental outlets, EU for EU institutions).
+                audience:
+                    type: string
+                    description: domestic | international | diaspora.
+                outletCount:
+                    type: integer
+                    format: int32
+                    description: Distinct publisher families in the group; several editions of one newsroom count once.
+                headlineCount:
+                    type: integer
+                    format: int32
+                    description: All matching headlines in the group, before the per-group cap.
+                framing:
+                    $ref: '#/components/schemas/MediaPerspectiveFramingCounts'
+                headlines:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MediaPerspectiveHeadline'
+                    maxItems: 20
+            description: MediaPerspectiveGroup holds the headlines of outlets sharing one home country and audience.
+        MediaPerspectiveFramingCounts:
+            type: object
+            properties:
+                favorable:
+                    type: integer
+                    format: int32
+                neutral:
+                    type: integer
+                    format: int32
+                critical:
+                    type: integer
+                    format: int32
+                hostile:
+                    type: integer
+                    format: int32
+                unlabeled:
+                    type: integer
+                    format: int32
+                    description: Headlines with no framing label yet.
+                method:
+                    type: string
+                    description: How the labels were produced, e.g. llm-headline-stance. Empty when no headline is labelled.
+            description: MediaPerspectiveFramingCounts counts a group's headlines by framing label.
+        MediaPerspectiveHeadline:
+            type: object
+            properties:
+                title:
+                    type: string
+                    description: Headline as published, in the outlet's language. Untrusted publisher text.
+                englishTitle:
+                    type: string
+                    description: 'English headline: the original when the outlet publishes in English, otherwise a machine translation of untrusted text. Empty when no translation exists yet.'
+                titleLanguage:
+                    type: string
+                    description: ISO 639-1 language of the original headline.
+                outlet:
+                    type: string
+                    description: 'Publisher name: trusted origin publisher or registered feed name.'
+                publisherFamily:
+                    type: string
+                    description: Publisher family; sibling editions of one newsroom share it.
+                tier:
+                    type: integer
+                    format: int32
+                    description: Declared source tier 1-4; 0 when undeclared.
+                ownershipClass:
+                    type: string
+                    description: 'Ownership: state | public-service | private | nonprofit | intergovernmental | unreviewed.'
+                stateAffiliated:
+                    type: string
+                    description: Government the outlet is affiliated with, when recorded.
+                propagandaRisk:
+                    type: string
+                    description: 'Recorded propaganda risk: low | medium | high | unknown.'
+                framing:
+                    $ref: '#/components/schemas/MediaPerspectiveFraming'
+                publishedAt:
+                    type: integer
+                    format: int64
+                    description: 'Publisher publication time in Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                link:
+                    type: string
+                    description: HTTPS article URL.
+            description: MediaPerspectiveHeadline is one dated article that mentions the subject country.
+        MediaPerspectiveFraming:
+            type: object
+            properties:
+                label:
+                    type: string
+                    description: favorable | neutral | critical | hostile.
+                method:
+                    type: string
+                    description: How the label was produced, e.g. llm-headline-stance.
+                model:
+                    type: string
+                    description: Model that produced the label.
+                promptVersion:
+                    type: string
+                    description: Prompt version the label was produced with.
+            description: MediaPerspectiveFraming is a model's reading of one headline's stance toward the subject country, not WorldMonitor's view of the outlet.
         ListLabelChangesRequest:
             type: object
             properties:

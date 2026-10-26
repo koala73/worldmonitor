@@ -23,6 +23,7 @@ import { TELEGRAM_CHANNEL_TRUST } from '../../../shared/telegram-channel-trust';
 import { SOURCE_TIERS } from '../../../server/_shared/source-tiers';
 import { resolveSourceOrigin, sourceOriginFilterValue, sourceOriginLabel } from '../../../scripts/source-origin.mjs';
 import { argNum, argStr, ciIncludes } from '../filters';
+import { MEDIA_PERSPECTIVE_TOOL } from './media-perspective-tool';
 import type { ToolDef } from '../types';
 
 interface ManifestEntry {
@@ -337,4 +338,5 @@ export const SOURCE_TOOLS: ToolDef[] = [
     // which the RpcToolDef contract names as the valid empty-_apiPaths case.
     _apiPaths: [],
   },
+  MEDIA_PERSPECTIVE_TOOL,
 ];

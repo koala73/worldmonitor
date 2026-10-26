@@ -647,6 +647,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // --------------------------------------------------------------------
   const VERBATIM_PASSTHROUGH_TOOLS = [
     'get_country_history',
+    'get_media_perspective',
     'analyze_news_headlines',
     'analyze_situation',
     'get_chokepoint_dependencies',
