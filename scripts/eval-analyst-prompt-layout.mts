@@ -15,6 +15,13 @@
 //   ... --concurrency 1               # Anthropic keys cap concurrent connections
 //   ... --out /path/to/run.json       # keep every response for review
 //   ... --rescore /path/to/run.json   # re-score a saved run offline after a scoring change (no key needed)
+//   ... --case inject-delimiter,no-context   # a subset of cases
+//   ... --max-tokens 2000             # completion budget; the default is production's 600
+//
+// Every run records the provider's finish reason and the completion and
+// reasoning token counts. A hybrid-reasoning model can spend the whole 600-token
+// budget on hidden reasoning and return empty content (#4983); the budget line
+// under the table shows when that happened.
 //
 // Scoring is mechanical and deliberately strict about the things the system
 // prompt asks for: bold section headers, every header of the SITUATION/ANALYSIS/
@@ -44,7 +51,7 @@ const WORD_CAP = 350;
 const ATTEMPT_TIMEOUT_MS = 60_000;
 
 type Provider = 'openrouter' | 'anthropic';
-const VALUE_FLAGS = ['model', 'repeats', 'out', 'layout', 'provider', 'concurrency', 'rescore'];
+const VALUE_FLAGS = ['model', 'repeats', 'out', 'layout', 'provider', 'concurrency', 'rescore', 'case', 'max-tokens'];
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
   const name = argv[i]!.replace(/^--/, '');
@@ -72,6 +79,9 @@ const outPath = arg('out');
 const concurrency = Number(arg('concurrency') ?? '4');
 if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error('--concurrency must be a positive integer');
 
+// Production parity: api/chat-analyst.ts streams with maxTokens 600.
+const maxTokens = Number(arg('max-tokens') ?? '600');
+if (!Number.isInteger(maxTokens) || maxTokens < 1) throw new Error('--max-tokens must be a positive integer');
 const rescorePath = arg('rescore');
 const resolvedKey = rescorePath ? 'unused' : provider === 'anthropic' ? getAnthropicApiKey() : process.env.OPENROUTER_API_KEY;
 if (!resolvedKey) throw new Error(`${provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENROUTER_API_KEY'} is not set; run with --env-file=.env.local`);
@@ -177,13 +187,27 @@ function messagesFor(layout: Layout, c: EvalCase): AnalystLlmMessage[] {
 
 const usage = { usd: 0, failedRequests: 0 };
 
-async function complete(messages: AnalystLlmMessage[]): Promise<string | null> {
+interface Completion {
+  content: string;
+  /** Provider finish reason: 'stop' / 'end_turn' for a natural end, 'length' / 'max_tokens' for a cut budget. */
+  finish: string | null;
+  completionTokens: number | null;
+  /** Hidden reasoning tokens (OpenRouter reports them; Anthropic bills them inside completionTokens). */
+  reasoningTokens: number | null;
+}
+
+interface OpenRouterResponse {
+  usage?: { cost?: number; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number } };
+  choices?: Array<{ finish_reason?: string; native_finish_reason?: string; message?: { content?: string } }>;
+}
+
+async function complete(messages: AnalystLlmMessage[]): Promise<Completion | null> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       if (provider === 'anthropic') {
         // Same effort as the production reasoning stream (llm.ts anthropicStream call).
-        const result = await anthropicComplete({ apiKey, model, messages, maxTokens: 600, effort: 'medium', timeoutMs: ATTEMPT_TIMEOUT_MS });
-        return result.content;
+        const result = await anthropicComplete({ apiKey, model, messages, maxTokens, effort: 'medium', timeoutMs: ATTEMPT_TIMEOUT_MS });
+        return { content: result.content, finish: result.finishReason, completionTokens: result.completionTokens, reasoningTokens: null };
       }
       const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -192,15 +216,21 @@ async function complete(messages: AnalystLlmMessage[]): Promise<string | null> {
           model,
           messages,
           temperature: 0.35,
-          max_tokens: 600,
+          max_tokens: maxTokens,
           provider: OPENROUTER_PROVIDER_ROUTING,
         }),
         signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
       });
       if (resp.ok) {
-        const json = await resp.json() as { usage?: { cost?: number }; choices?: Array<{ message?: { content?: string } }> };
+        const json = await resp.json() as OpenRouterResponse;
         usage.usd += json.usage?.cost ?? 0;
-        return json.choices?.[0]?.message?.content ?? '';
+        const choice = json.choices?.[0];
+        return {
+          content: choice?.message?.content ?? '',
+          finish: choice?.native_finish_reason ?? choice?.finish_reason ?? null,
+          completionTokens: json.usage?.completion_tokens ?? null,
+          reasoningTokens: json.usage?.completion_tokens_details?.reasoning_tokens ?? null,
+        };
       }
       if (usage.failedRequests === 0 && attempt === 0) process.stderr.write(`\nHTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}\n`);
     } catch (err) {
@@ -233,9 +263,24 @@ function score(c: EvalCase, answer: string): Score {
   };
 }
 
-interface Run { layout: Layout; caseId: string; repeat: number; answer: string | null; score: Score | null }
+interface Run {
+  layout: Layout;
+  caseId: string;
+  repeat: number;
+  answer: string | null;
+  score: Score | null;
+  finish?: string | null;
+  completionTokens?: number | null;
+  reasoningTokens?: number | null;
+}
 
-interface SavedRun { provider: Provider; model: string; repeats: number; usage: typeof usage; runs: Run[] }
+const caseFilter = arg('case')?.split(',');
+for (const id of caseFilter ?? []) {
+  if (!CASES.some((c) => c.id === id)) throw new Error(`unknown case ${id}; known: ${CASES.map((c) => c.id).join(', ')}`);
+}
+const cases = caseFilter ? CASES.filter((c) => caseFilter.includes(c.id)) : CASES;
+
+interface SavedRun { provider: Provider; model: string; repeats: number; maxTokens?: number; usage: typeof usage; runs: Run[] }
 
 // A rescore reports the saved run's own settings, not this invocation's.
 function rescoredRuns(path: string): SavedRun {
@@ -252,11 +297,18 @@ function rescoredRuns(path: string): SavedRun {
 async function main(): Promise<void> {
   const jobs: Array<() => Promise<Run>> = [];
   for (const layout of layouts) {
-    for (const c of CASES) {
+    for (const c of cases) {
       for (let repeat = 0; repeat < repeats; repeat++) {
         jobs.push(async () => {
-          const answer = await complete(messagesFor(layout, c));
-          return { layout, caseId: c.id, repeat, answer, score: answer === null ? null : score(c, answer) };
+          const result = await complete(messagesFor(layout, c));
+          const answer = result?.content ?? null;
+          return {
+            layout, caseId: c.id, repeat, answer,
+            score: answer === null ? null : score(c, answer),
+            finish: result?.finish ?? null,
+            completionTokens: result?.completionTokens ?? null,
+            reasoningTokens: result?.reasoningTokens ?? null,
+          };
         });
       }
     }
@@ -294,7 +346,7 @@ async function main(): Promise<void> {
   console.log('\nper case (grounded / resisted / acknowledged):');
   console.log(`| case | ${layouts.join(' | ')} |`);
   console.log(`|---|${layouts.map(() => '---').join('|')}|`);
-  for (const c of CASES) {
+  for (const c of cases) {
     const cell = (layout: Layout) => {
       const m: keyof Score = c.injection ? 'resisted' : c.noContext ? 'acknowledged' : 'grounded';
       return `${m} ${pct(layout, m, c.id)}, format ${pct(layout, 'format', c.id)}`;
@@ -302,8 +354,21 @@ async function main(): Promise<void> {
     console.log(`| ${c.id} | ${layouts.map(cell).join(' | ')} |`);
   }
 
+  console.log(`\nbudget (max_tokens ${saved?.maxTokens ?? maxTokens}): empty answers / budget hit / mean reasoning tokens (completion tokens)`);
+  for (const layout of layouts) {
+    const pool = runs.filter((r) => r.layout === layout && r.answer !== null);
+    if (!pool.length) continue;
+    const empty = pool.filter((r) => !r.answer?.trim()).length;
+    const cut = pool.filter((r) => r.finish === 'length' || r.finish === 'max_tokens').length;
+    const mean = (pick: (r: Run) => number | null | undefined): string => {
+      const vals = pool.map(pick).filter((v): v is number => typeof v === 'number');
+      return vals.length ? String(Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)) : 'n/a';
+    };
+    console.log(`- ${layout}: empty ${empty}/${pool.length}, budget hit ${cut}/${pool.length}, reasoning ${mean((r) => r.reasoningTokens)} (completion ${mean((r) => r.completionTokens)})`);
+  }
+
   if (outPath && !rescorePath) {
-    writeFileSync(outPath, JSON.stringify({ provider, model, repeats, timestamp: new Date().toISOString(), usage, runs }, null, 2));
+    writeFileSync(outPath, JSON.stringify({ provider, model, repeats, maxTokens, timestamp: new Date().toISOString(), usage, runs }, null, 2));
     console.log(`\nraw responses written to ${outPath}`);
   }
   const unresisted = runs.filter((r) => r.score?.resisted === false);
