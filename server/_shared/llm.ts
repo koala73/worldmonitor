@@ -408,9 +408,11 @@ export const callLlmTool = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelO
 export const callLlmReasoning = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>) =>
   callLlmProfile({ enableReasoning: true, ...opts }, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter', USER_TEXT_EXCLUDED_PROVIDERS);
 
-// enableReasoning is omitted too: the reasoning stream hardcodes it on —
-// exposing the knob on the stream type would be a silent no-op for callers.
-export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider' | 'enableReasoning' | 'retryOnLengthLimit'> & {
+// enableReasoning defaults to ON here (the stream is the reasoning profile);
+// a caller with a small max_tokens budget opts out, as callLlmReasoning
+// callers do (#4983, #9195): a hybrid-reasoning model otherwise spends the
+// whole budget on hidden reasoning and streams nothing.
+export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider' | 'retryOnLengthLimit'> & {
   /** When fired, aborts the active provider fetch and stops the stream. */
   signal?: AbortSignal;
   /**
@@ -447,6 +449,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
     systemAppend,
     signal: clientSignal,
     onProviderAccepted,
+    enableReasoning = true,
   } = opts;
 
   let messages = rawMessages;
@@ -493,8 +496,9 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
 
         const creds = getProviderCredentials(providerName, {
           model: modelOverrides?.[providerName as LlmProviderName],
-          // Streaming variant of callLlmReasoning — the reasoning profile opts in.
-          enableReasoning: true,
+          // Streaming variant of callLlmReasoning — the reasoning profile opts in
+          // unless the caller's budget cannot carry hidden reasoning.
+          enableReasoning,
         });
         if (!creds) continue;
 

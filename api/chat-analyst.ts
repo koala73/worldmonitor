@@ -308,6 +308,10 @@ export default async function handler(req: Request): Promise<Response> {
       messages,
       routingPolicy,
       maxTokens: 600,
+      // 600 tokens cannot carry DeepSeek V4 Flash's hidden reasoning: with it
+      // on, the model returned empty or cut answers (eval 2026-10-26; #9195
+      // measured the same for deduct-situation). Reasoning off answers in ~5s.
+      enableReasoning: false,
       temperature: 0.35,
       timeoutMs: 25_000,
       signal: req.signal,

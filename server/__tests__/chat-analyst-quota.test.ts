@@ -150,6 +150,17 @@ describe("api/chat-analyst direct LLM quota lifecycle", () => {
     expect(quotaCounter).toBe(1);
   });
 
+  test("the answer streams with hidden reasoning off inside the 600-token budget", async () => {
+    await handler(analystRequest(JSON.stringify({ query: "What changed?" })));
+
+    // DeepSeek V4 Flash spends a 600-token budget on hidden reasoning and
+    // returns empty content (#9195 measured it for deduct-situation; the
+    // analyst eval reproduced it on 2026-10-26).
+    expect(callLlmReasoningStream).toHaveBeenCalledWith(
+      expect.objectContaining({ enableReasoning: false, maxTokens: 600 }),
+    );
+  });
+
   test("an operator key reserves on its per-key bucket, never under a null userId", async () => {
     resolvePremiumCallerIdentity.mockResolvedValue({
       isPremium: true,
