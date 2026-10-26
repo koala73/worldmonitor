@@ -263,6 +263,12 @@ function score(c: EvalCase, answer: string): Score {
   };
 }
 
+// An empty answer is a budget symptom, not an opinion: it stays in the budget
+// report but scores nothing, so a blank cannot count as injection resistance.
+function scoreOrNull(c: EvalCase, answer: string | null): Score | null {
+  return answer === null || !answer.trim() ? null : score(c, answer);
+}
+
 interface Run {
   layout: Layout;
   caseId: string;
@@ -282,14 +288,18 @@ const cases = caseFilter ? CASES.filter((c) => caseFilter.includes(c.id)) : CASE
 
 interface SavedRun { provider: Provider; model: string; repeats: number; maxTokens?: number; usage: typeof usage; runs: Run[] }
 
-// A rescore reports the saved run's own settings, not this invocation's.
+// A rescore reports the saved run's own settings, not this invocation's, and
+// honours --case the same way a live run does.
 function rescoredRuns(path: string): SavedRun {
   const saved = JSON.parse(readFileSync(path, 'utf8')) as SavedRun;
-  const byId = new Map(CASES.map((c) => [c.id, c]));
-  const runs = saved.runs.map((r) => {
+  const byId = new Map(cases.map((c) => [c.id, c]));
+  const runs = saved.runs.flatMap((r) => {
     const c = byId.get(r.caseId);
-    if (!c) throw new Error(`saved run names unknown case ${r.caseId}`);
-    return { ...r, score: r.answer === null ? null : score(c, r.answer) };
+    if (!c) {
+      if (CASES.some((k) => k.id === r.caseId)) return [];
+      throw new Error(`saved run names unknown case ${r.caseId}`);
+    }
+    return [{ ...r, score: scoreOrNull(c, r.answer) }];
   });
   return { ...saved, runs };
 }
@@ -304,7 +314,7 @@ async function main(): Promise<void> {
           const answer = result?.content ?? null;
           return {
             layout, caseId: c.id, repeat, answer,
-            score: answer === null ? null : score(c, answer),
+            score: scoreOrNull(c, answer),
             finish: result?.finish ?? null,
             completionTokens: result?.completionTokens ?? null,
             reasoningTokens: result?.reasoningTokens ?? null,
