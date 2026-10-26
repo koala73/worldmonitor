@@ -8,8 +8,10 @@ function usesCookies(): boolean {
 }
 
 export function getDismissed(key: string): boolean {
-  if (usesCookies()) {
-    return document.cookie.split('; ').some((c) => c === `${key}=1`);
+  // The shared cookie carries a dismissal across *.worldmonitor.app. A browser
+  // that drops that write still keeps the same-origin copy in localStorage.
+  if (usesCookies() && document.cookie.split('; ').some((c) => c === `${key}=1`)) {
+    return true;
   }
   const stored = safeStorageGet(key);
   return stored === '1' || stored === 'true';
