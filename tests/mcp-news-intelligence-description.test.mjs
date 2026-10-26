@@ -22,18 +22,19 @@ describe('get_news_intelligence credibility discovery (#6597)', () => {
     assert.equal(cardTool.description, tool.description);
   });
 
-  it('states that story filters narrow the seeder\'s global top-story selection', async () => {
-    // A country call returned 2 stories because the filter runs over the
-    // 8 the seeder selected worldwide; an agent reading the old description
-    // took that as all the coverage there was.
+  it('states that unfiltered reads are the top-story selection and filters search the story pool', async () => {
+    // A country filter used to run over only the 8 stories the seeder selected
+    // worldwide, so a heavily covered country returned two stories or none.
     const seeder = readFileSync(new URL('../scripts/seed-insights.mjs', import.meta.url), 'utf8');
     const selected = Number(seeder.match(/selectTopStories\(clusters, (\d+), selectionStats\)/)?.[1]);
     assert.ok(Number.isInteger(selected), 'seed-insights must still pass a literal top-story count');
-    assert.match(tool.description, new RegExp(`the ${selected} AI-classified top stories the dashboard selects worldwide`));
-    assert.match(tool.description, new RegExp(`narrow those ${selected} and never search the wider feed`));
+    assert.match(seeder, /const STORY_POOL_KEY = 'news:insights:v1:pool';/);
+    assert.ok(tool._cacheKeys.includes('news:insights:v1:pool'));
+    assert.match(tool.description, new RegExp(`With no story filter, topStories is the ${selected} the dashboard selects worldwide`));
+    assert.match(tool.description, /search every scored story of the latest run/);
+    assert.match(tool.inputSchema.properties.country.description, new RegExp(`not only the top ${selected}`));
     const { SERVER_INSTRUCTIONS } = await import('../api/mcp/constants.ts');
-    assert.match(SERVER_INSTRUCTIONS, new RegExp(`get_news_intelligence's country filter only narrows its ${selected} global top stories`));
-    assert.match(tool.inputSchema.properties.country.description, new RegExp(`the ${selected} top stories`));
+    assert.match(SERVER_INSTRUCTIONS, /get_news_intelligence story filters \(country, query, category\) search every scored story of the latest run/);
   });
 
   it('honors GDELT observation age as well as its seeder clock', () => {
