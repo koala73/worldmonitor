@@ -4819,10 +4819,16 @@ function countrySelectOptions(countryBounds, { includeWorldwide = false, default
 
 function renderCrisesIndex({ crises, baseUrl, lastmod }) {
   const path = '/crises/';
-  const description = 'Curated, bounded crisis trackers that combine stable coverage definitions with World Monitor’s maintained country-level humanitarian summaries.';
+  for (const needle of ['ukraine', 'sudan', 'myanmar', 'palestine', 'red-sea']) {
+    if (!crises.some((crisis) => String(crisis.slug).includes(needle))) {
+      throw new Error('crisis index requires a registry slug containing "' + needle + '"');
+    }
+  }
+  const lede = 'Curated, bounded crisis trackers that combine stable coverage definitions with World Monitor’s maintained country-level humanitarian summaries.';
+  const description = `Monthly conflict trackers for ${crises.length} crises, including Ukraine, Sudan, Myanmar, Palestine and the Red Sea, built from UN OCHA HDX HAPI event and fatality data.`;
   const body = `      <p class="eyebrow">Bounded trackers</p>
       <h1>Current crisis trackers</h1>
-      <p class="lede">${escapeHtml(description)}</p>
+      <p class="lede">${escapeHtml(lede)}</p>
       <p>Each tracker has a fixed, reviewable geographic boundary. The static page explains that boundary and ships a dated maintained-month pulse; JavaScript can refresh newer values and fails closed when a country summary is unavailable.</p>
       <div class="grid">
 ${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(crisis.slug)}/"><strong>${escapeHtml(crisis.shortTitle)}</strong><br><span>${escapeHtml(crisis.coverage.map((country) => country.name).join(', '))}</span></a>`).join('\n')}
@@ -4835,7 +4841,7 @@ ${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(cri
   return pageDocument({
     baseUrl,
     path,
-    title: 'Current Crisis Trackers | World Monitor',
+    title: 'Crisis Trackers: Ukraine, Sudan, Red Sea | World Monitor',
     description,
     lastmod,
     jsonLd: [
