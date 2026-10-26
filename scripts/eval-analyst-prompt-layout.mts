@@ -17,11 +17,18 @@
 //   ... --rescore /path/to/run.json   # re-score a saved run offline after a scoring change (no key needed)
 //   ... --case inject-delimiter,no-context   # a subset of cases
 //   ... --max-tokens 2000             # completion budget; the default is production's 600
+//   ... --reasoning default           # let the model reason (production sends reasoning off, the default here)
+//   ... --reasoning-max-tokens 300    # OpenRouter reasoning budget probe (DeepSeek V4 Flash ignores it)
+//   ... --reasoning-effort low        # OpenRouter reasoning effort probe (same)
+//   ... --served-by wafer             # pin one OpenRouter provider slug so two runs compare prompts, not providers
 //
-// Every run records the provider's finish reason and the completion and
-// reasoning token counts. A hybrid-reasoning model can spend the whole 600-token
-// budget on hidden reasoning and return empty content (#4983); the budget line
-// under the table shows when that happened.
+// Every run records the serving provider, latency, the provider's finish reason
+// and the completion and reasoning token counts. A hybrid-reasoning model can
+// spend the whole 600-token budget on hidden reasoning and return empty content
+// (#4983, #9195); the budget line under the table shows when that happened.
+// Providers differ a lot: throughput routing lands on Wafer (mxfp4, no hidden
+// reasoning by default) or Parasail (reasons by default), so pin one with
+// --served-by before comparing two prompt variants.
 //
 // Scoring is mechanical and deliberately strict about the things the system
 // prompt asks for: bold section headers, every header of the SITUATION/ANALYSIS/
@@ -51,7 +58,7 @@ const WORD_CAP = 350;
 const ATTEMPT_TIMEOUT_MS = 60_000;
 
 type Provider = 'openrouter' | 'anthropic';
-const VALUE_FLAGS = ['model', 'repeats', 'out', 'layout', 'provider', 'concurrency', 'rescore', 'case', 'max-tokens'];
+const VALUE_FLAGS = ['model', 'repeats', 'out', 'layout', 'provider', 'concurrency', 'rescore', 'case', 'max-tokens', 'reasoning-max-tokens', 'reasoning-effort', 'reasoning', 'served-by'];
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
   const name = argv[i]!.replace(/^--/, '');
@@ -82,6 +89,24 @@ if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error('--concur
 // Production parity: api/chat-analyst.ts streams with maxTokens 600.
 const maxTokens = Number(arg('max-tokens') ?? '600');
 if (!Number.isInteger(maxTokens) || maxTokens < 1) throw new Error('--max-tokens must be a positive integer');
+// OpenRouter's normalized `reasoning` param. Production parity is reasoning
+// off (api/chat-analyst.ts passes enableReasoning: false); the other values
+// are probes. Measured 2026-10-26 on deepseek/deepseek-v4-flash: max_tokens
+// and effort caps are ignored (the model still spends the whole budget), so
+// off is the only setting that fits 600 tokens.
+const reasoningArg = arg('reasoning') ?? 'off';
+if (reasoningArg !== 'off' && reasoningArg !== 'default') throw new Error('--reasoning must be off or default');
+const reasoningMaxTokens = arg('reasoning-max-tokens') ? Number(arg('reasoning-max-tokens')) : undefined;
+if (reasoningMaxTokens !== undefined && (!Number.isInteger(reasoningMaxTokens) || reasoningMaxTokens < 1)) throw new Error('--reasoning-max-tokens must be a positive integer');
+const reasoningEffort = arg('reasoning-effort');
+const reasoningBody = reasoningMaxTokens ? { reasoning: { max_tokens: reasoningMaxTokens } }
+  : reasoningEffort ? { reasoning: { effort: reasoningEffort } }
+  : reasoningArg === 'off' ? { reasoning: { enabled: false } }
+  : {};
+// Pin one OpenRouter provider slug (from /models/<id>/endpoints) so two runs compare
+// prompts, not whichever provider throughput-sorting picked that minute.
+const servedBy = arg('served-by');
+const providerRouting = servedBy ? { ...OPENROUTER_PROVIDER_ROUTING, order: [servedBy], allow_fallbacks: false } : OPENROUTER_PROVIDER_ROUTING;
 const rescorePath = arg('rescore');
 const resolvedKey = rescorePath ? 'unused' : provider === 'anthropic' ? getAnthropicApiKey() : process.env.OPENROUTER_API_KEY;
 if (!resolvedKey) throw new Error(`${provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENROUTER_API_KEY'} is not set; run with --env-file=.env.local`);
@@ -189,6 +214,8 @@ const usage = { usd: 0, failedRequests: 0 };
 
 interface Completion {
   content: string;
+  /** Upstream provider that served the request (OpenRouter routing). */
+  servedBy: string | null;
   /** Provider finish reason: 'stop' / 'end_turn' for a natural end, 'length' / 'max_tokens' for a cut budget. */
   finish: string | null;
   completionTokens: number | null;
@@ -197,6 +224,7 @@ interface Completion {
 }
 
 interface OpenRouterResponse {
+  provider?: string;
   usage?: { cost?: number; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number } };
   choices?: Array<{ finish_reason?: string; native_finish_reason?: string; message?: { content?: string } }>;
 }
@@ -207,7 +235,7 @@ async function complete(messages: AnalystLlmMessage[]): Promise<Completion | nul
       if (provider === 'anthropic') {
         // Same effort as the production reasoning stream (llm.ts anthropicStream call).
         const result = await anthropicComplete({ apiKey, model, messages, maxTokens, effort: 'medium', timeoutMs: ATTEMPT_TIMEOUT_MS });
-        return { content: result.content, finish: result.finishReason, completionTokens: result.completionTokens, reasoningTokens: null };
+        return { content: result.content, servedBy: 'anthropic', finish: result.finishReason, completionTokens: result.completionTokens, reasoningTokens: null };
       }
       const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -217,7 +245,8 @@ async function complete(messages: AnalystLlmMessage[]): Promise<Completion | nul
           messages,
           temperature: 0.35,
           max_tokens: maxTokens,
-          provider: OPENROUTER_PROVIDER_ROUTING,
+          provider: providerRouting,
+          ...reasoningBody,
         }),
         signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
       });
@@ -227,6 +256,7 @@ async function complete(messages: AnalystLlmMessage[]): Promise<Completion | nul
         const choice = json.choices?.[0];
         return {
           content: choice?.message?.content ?? '',
+          servedBy: json.provider ?? null,
           finish: choice?.native_finish_reason ?? choice?.finish_reason ?? null,
           completionTokens: json.usage?.completion_tokens ?? null,
           reasoningTokens: json.usage?.completion_tokens_details?.reasoning_tokens ?? null,
@@ -275,6 +305,8 @@ interface Run {
   repeat: number;
   answer: string | null;
   score: Score | null;
+  servedBy?: string | null;
+  durationMs?: number | null;
   finish?: string | null;
   completionTokens?: number | null;
   reasoningTokens?: number | null;
@@ -310,11 +342,15 @@ async function main(): Promise<void> {
     for (const c of cases) {
       for (let repeat = 0; repeat < repeats; repeat++) {
         jobs.push(async () => {
+          const t0 = Date.now();
           const result = await complete(messagesFor(layout, c));
+          const durationMs = Date.now() - t0;
           const answer = result?.content ?? null;
           return {
             layout, caseId: c.id, repeat, answer,
             score: scoreOrNull(c, answer),
+            servedBy: result?.servedBy ?? null,
+            durationMs,
             finish: result?.finish ?? null,
             completionTokens: result?.completionTokens ?? null,
             reasoningTokens: result?.reasoningTokens ?? null,
@@ -374,11 +410,14 @@ async function main(): Promise<void> {
       const vals = pool.map(pick).filter((v): v is number => typeof v === 'number');
       return vals.length ? String(Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)) : 'n/a';
     };
-    console.log(`- ${layout}: empty ${empty}/${pool.length}, budget hit ${cut}/${pool.length}, reasoning ${mean((r) => r.reasoningTokens)} (completion ${mean((r) => r.completionTokens)})`);
+    const servedBy = [...new Set(pool.map((r) => r.servedBy).filter(Boolean))].join(',') || 'n/a';
+    const durations = pool.map((r) => r.durationMs).filter((v): v is number => typeof v === 'number').sort((a, b) => a - b);
+    const p90 = durations.length ? durations[Math.min(durations.length - 1, Math.floor(durations.length * 0.9))] : null;
+    console.log(`- ${layout}: empty ${empty}/${pool.length}, budget hit ${cut}/${pool.length}, reasoning ${mean((r) => r.reasoningTokens)} (completion ${mean((r) => r.completionTokens)}), latency mean ${mean((r) => r.durationMs)} ms p90 ${p90 ?? 'n/a'} ms, served by ${servedBy}`);
   }
 
   if (outPath && !rescorePath) {
-    writeFileSync(outPath, JSON.stringify({ provider, model, repeats, maxTokens, timestamp: new Date().toISOString(), usage, runs }, null, 2));
+    writeFileSync(outPath, JSON.stringify({ provider, model, repeats, maxTokens, reasoning: reasoningBody, servedBy: servedBy ?? null, timestamp: new Date().toISOString(), usage, runs }, null, 2));
     console.log(`\nraw responses written to ${outPath}`);
   }
   const unresisted = runs.filter((r) => r.score?.resisted === false);
