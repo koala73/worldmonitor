@@ -139,7 +139,7 @@ const CASES: EvalCase[] = [
   { id: 'geo-ukraine', domainFocus: 'geo', format: 'geo', query: 'What is the current situation in Ukraine and where is it heading?', ctx: baseCtx(), figures: ['85', '2.1 GW', '140', '22%'] },
   { id: 'market-gold', domainFocus: 'market', format: 'market', query: 'How should I think about gold this week?', ctx: baseCtx(), figures: ['2,884', 'RISK-OFF', '24.6', 'GLD'] },
   { id: 'military-taiwan', domainFocus: 'military', format: 'geo', query: 'Assess escalation risk around Taiwan.', ctx: baseCtx(), figures: ['31', '61.2', '17%'] },
-  { id: 'economic-gas', domainFocus: 'economic', format: 'market', query: 'Which European economies are most exposed to a gas supply shock?', ctx: baseCtx(), figures: ['46%', '39%', '88%', '65%'] },
+  { id: 'economic-gas', domainFocus: 'economic', format: 'market', query: 'Which European economies are most exposed to a gas supply shock?', ctx: baseCtx(), figures: ['46%', '39%'] },
   {
     id: 'followup-history', domainFocus: 'geo', format: 'geo', query: 'And what does that mean for its energy exposure?', ctx: baseCtx(), figures: ['2.1 GW', 'Kharkiv', 'Odesa', '85'],
     history: [
@@ -235,14 +235,18 @@ function score(c: EvalCase, answer: string): Score {
 
 interface Run { layout: Layout; caseId: string; repeat: number; answer: string | null; score: Score | null }
 
-function rescoredRuns(path: string): Run[] {
-  const saved = JSON.parse(readFileSync(path, 'utf8')) as { runs: Run[] };
+interface SavedRun { provider: Provider; model: string; repeats: number; usage: typeof usage; runs: Run[] }
+
+// A rescore reports the saved run's own settings, not this invocation's.
+function rescoredRuns(path: string): SavedRun {
+  const saved = JSON.parse(readFileSync(path, 'utf8')) as SavedRun;
   const byId = new Map(CASES.map((c) => [c.id, c]));
-  return saved.runs.map((r) => {
+  const runs = saved.runs.map((r) => {
     const c = byId.get(r.caseId);
     if (!c) throw new Error(`saved run names unknown case ${r.caseId}`);
     return { ...r, score: r.answer === null ? null : score(c, r.answer) };
   });
+  return { ...saved, runs };
 }
 
 async function main(): Promise<void> {
@@ -257,7 +261,11 @@ async function main(): Promise<void> {
       }
     }
   }
-  const runs: Run[] = rescorePath ? rescoredRuns(rescorePath) : [];
+  const saved = rescorePath ? rescoredRuns(rescorePath) : null;
+  const runs: Run[] = saved ? saved.runs : [];
+  const report = saved
+    ? { provider: saved.provider, model: saved.model, repeats: saved.repeats, usage: saved.usage, label: `rescored from ${rescorePath}` }
+    : { provider, model, repeats, usage, label: 'live run' };
   let next = 0;
   if (!rescorePath) {
     await Promise.all(Array.from({ length: concurrency }, async () => {
@@ -278,8 +286,8 @@ async function main(): Promise<void> {
     return `${ok}/${pool.length}`;
   };
 
-  const cost = provider === 'anthropic' ? 'n/a (see the Anthropic console)' : `$${usage.usd.toFixed(4)}`;
-  console.log(`provider: ${provider}   model: ${model}   repeats: ${repeats}   cost: ${cost}   failed requests: ${usage.failedRequests}\n`);
+  const cost = report.provider === 'anthropic' ? 'n/a (see the Anthropic console)' : `$${report.usage.usd.toFixed(4)}`;
+  console.log(`${report.label}   provider: ${report.provider}   model: ${report.model}   repeats: ${report.repeats}   cost: ${cost}   failed requests: ${report.usage.failedRequests}\n`);
   console.log(`| layout | ${metrics.join(' | ')} |`);
   console.log(`|---|${metrics.map(() => '---').join('|')}|`);
   for (const layout of layouts) console.log(`| ${layout} | ${metrics.map((m) => pct(layout, m)).join(' | ')} |`);
