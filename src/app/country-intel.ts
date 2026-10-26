@@ -440,6 +440,7 @@ export class CountryIntelManager implements AppModule {
     const token = request.token;
     let pageShown = false;
     let showedLoading = loadingAlreadyShown;
+    let presentationStarted = false;
 
     try {
       throwIfWebMcpAborted(opts?.signal);
@@ -477,14 +478,15 @@ export class CountryIntelManager implements AppModule {
       this.qualifiedMilitary = null;
       this.qualifiedMilitarySummary = null;
       signals = { ...signals, ...this.getQualifiedMilitaryCounts(code) };
+      presentationStarted = true;
       page.show(country, code, score, signals);
+      pageShown = true;
       const presentation: CountryPresentation = {
         page, code, score, stock: null, imf: null, refreshGeneration: 0, signalDetailsPending: true,
       };
       this.currentCountryPresentation = presentation;
       const signalGeneration = presentation.refreshGeneration;
       this.currentCoverageEvents = [];
-      pageShown = true;
       this.visibleBriefOwner = request.owner;
       this.clearBriefRequest(request);
       // Agent selection needs to acknowledge the visible UI transition, not
@@ -773,7 +775,13 @@ export class CountryIntelManager implements AppModule {
       if (!pageShown) {
         const activePage = this.ctx.countryBriefPage;
         const activeCode = activePage?.getCode();
-        if (showedLoading && activePage?.isVisible() && (activeCode === '__loading__' || activeCode === '__error__')) activePage.hide();
+        // show() can throw after it replaces the loading shell, including a
+        // same-country reopen that never set __loading__ or __error__ (#9710).
+        const failedPresentation = presentationStarted && !!activePage?.isVisible();
+        const failedLoadingShell = showedLoading
+          && !!activePage?.isVisible()
+          && (activeCode === '__loading__' || activeCode === '__error__');
+        if (failedPresentation || failedLoadingShell) activePage?.hide();
         if (!this.hasVisibleRealCountryBrief()) this.ctx.map?.setRenderPaused(false);
         this.showToast('Country brief failed to open. Please try again.');
       }

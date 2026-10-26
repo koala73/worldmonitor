@@ -404,7 +404,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentHeadlineCount = 0;
     this.economicIndicators = [];
     this.infrastructureByType.clear();
-    this.renderSkeleton(country, code, score, signals);
+    try {
+      this.renderSkeleton(country, code, score, signals);
+    } catch (error) {
+      this.recoverFailedOpen();
+      throw error;
+    }
     if (this.source?.mode === 'host') this.renderAtlasExposure(true);
     this.content.scrollTop = 0;
     // open() reports only a closed-to-open change. Opened by showLoading(),
@@ -3158,6 +3163,42 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     readFull.type = 'button';
     readFull.addEventListener('click', () => this.presentation?.selectTopic('sources'));
     this.briefBody.append(readFull);
+  }
+
+  /**
+   * `renderSkeleton` clears `#deep-dive-content` before it appends the shell.
+   * A throw in that gap used to leave the opaque sidebar open with only the
+   * close button painted (#9710). Show a closeable error instead of that blank.
+   */
+  private recoverFailedOpen(): void {
+    try {
+      this.abortController.abort();
+      this.abortController = new AbortController();
+      this.currentCode = '__error__';
+      this.currentName = null;
+      this.currentScore = null;
+      this.currentSignals = null;
+      this.resetPanelContent();
+      const wrapper = this.el('div', 'cdp-geo-error');
+      wrapper.setAttribute('role', 'alert');
+      wrapper.append(this.el('div', 'cdp-geo-error-msg', 'Country brief failed to open. Please try again.'));
+      const actions = this.el('div', 'cdp-geo-error-actions');
+      const closeBtn = this.el('button', 'cdp-geo-error-close', t('countryBrief.closeBtn')) as HTMLButtonElement;
+      closeBtn.type = 'button';
+      closeBtn.addEventListener('click', () => this.hide(), { once: true });
+      actions.append(closeBtn);
+      wrapper.append(actions);
+      this.content.append(wrapper);
+      if (!this.isVisible()) this.open();
+    } catch (recoveryError) {
+      console.error('[CountryDeepDivePanel] open recovery failed:', recoveryError);
+      try {
+        this.hide();
+      } catch {
+        this.close();
+        this.currentCode = null;
+      }
+    }
   }
 
   private renderLoading(): void {
