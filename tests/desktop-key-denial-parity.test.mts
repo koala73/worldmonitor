@@ -82,7 +82,7 @@ beforeEach(async () => {
     // Bootstrap's own per-IP limiter (INCR / EXPIRE NX / TTL) predates the
     // fake's command set (no TTL); answer it under-limit the way
     // api/bootstrap-auth.test.mjs does so the desktop path below is reached.
-    if (url.startsWith('https://redis.example') && String(init?.body ?? '').includes('rl:bootstrap-user-api-key:')) {
+    if (new URL(url).hostname === 'redis.example' && String(init?.body ?? '').includes('rl:bootstrap-user-api-key:')) {
       return Response.json([{ result: 1 }, { result: 1 }, { result: 60 }]);
     }
     return redisFetch(input, init);
@@ -159,7 +159,7 @@ describe('desktop-key denials are identical on the gateway and bootstrap', () =>
     const redisFetch = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (url.startsWith('https://redis.example') && String(init?.body ?? '').includes('rl:desktopkey:')) {
+      if (new URL(url).hostname === 'redis.example' && String(init?.body ?? '').includes('rl:desktopkey:')) {
         return new Response('upstream error', { status: 500 });
       }
       return redisFetch(input, init);
