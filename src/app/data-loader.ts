@@ -1755,6 +1755,9 @@ export class DataLoaderManager implements AppModule {
           this.flashMapForNews(digestItems);
           const directFeeds = reachableFeeds.filter(f => f.browserOnly);
           if (directFeeds.length === 0) {
+            // Every reachable source is digest-served, so there is no partial
+            // source coverage to disclose on the badge.
+            this.clearNewsSourceCoverage(category);
             const items = mergeRotatedNewsItems([], digestItems, {
               maxItems: this.customCategoryMergedItemLimit,
               enabledSources: enabledNames,

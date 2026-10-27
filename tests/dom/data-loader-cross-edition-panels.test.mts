@@ -182,6 +182,16 @@ describe('cross-edition panels read the digests of every edition that carries th
     expect(mocks.checkBatchForBreakingAlerts).not.toHaveBeenCalled();
   });
 
+  it('clears the partial-coverage badge total when every source is digest-served', async () => {
+    vi.stubGlobal('fetch', digestFetch({ tech: editionDigest('podcasts', ['Show']) }));
+    const loader = await makeLoader();
+    const totals = (loader as unknown as { customNewsSourceTotals: Map<string, number> }).customNewsSourceTotals;
+
+    await loader.loadNewsCategory('podcasts', feeds(['Show']), null, true, OPTIONS);
+
+    expect(totals.has('podcasts')).toBe(false);
+  });
+
   const directFetch = async (requested: Array<{ name: string }>) =>
     requested.map((feed, i) => ({
       source: feed.name,
