@@ -50,7 +50,10 @@ async function readBoundedBody(
   if (!source.body) return new Uint8Array();
 
   const reader = source.body.getReader();
-  const body = new Uint8Array(Math.floor(maxBytes));
+  // Keep only what arrived: a buffer reserved per cap would cost the full cap
+  // on every read (the news digest runs 20 concurrent 5 MiB reads on a 128 MB
+  // Edge isolate).
+  const chunks: Uint8Array[] = [];
   let total = 0;
   let cancelled = false;
   const cancel = async () => {
@@ -68,7 +71,7 @@ async function readBoundedBody(
         await cancel();
         throw createTooLargeError(maxBytes);
       }
-      body.set(value, total);
+      chunks.push(value);
       total += value.byteLength;
     }
   } catch (error) {
@@ -76,7 +79,13 @@ async function readBoundedBody(
     throw error;
   }
 
-  return body.slice(0, total);
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
 }
 
 /**

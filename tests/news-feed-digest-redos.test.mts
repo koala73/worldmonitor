@@ -184,11 +184,15 @@ describe('digest feed parser: scanners match the regexes on fuzzed markup', () =
   ];
   const TAGS = ['item', 'title', 'description', 'dc:Date.Issued'];
 
-  // Deterministic LCG so a failure reproduces from the printed input.
+  // Deterministic mulberry32 so a failure reproduces from the printed input.
+  // Math.imul keeps the multiply in 32 bits; a plain `*` overflows 2^53 and
+  // drops the low bits, which collapsed the old LCG to ~200 distinct samples.
   let seed = 0x5eed;
   const rnd = (n: number) => {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    return seed % n;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) % n;
   };
   const sample = () => {
     let s = '';
@@ -196,6 +200,15 @@ describe('digest feed parser: scanners match the regexes on fuzzed markup', () =
     for (let k = 0; k < len; k++) s += PIECES[rnd(PIECES.length)];
     return s;
   };
+
+  it('the generator yields varied documents with complete tag pairs', () => {
+    const docs = Array.from({ length: 20_000 }, sample);
+    // The old LCG gave 222 distinct; repeats now are one-piece samples (42 values).
+    assert.ok(new Set(docs).size > 18_000, `only ${new Set(docs).size} distinct documents`);
+    assert.ok(new Set(docs.map((d) => d.length)).size > 100, 'lengths vary');
+    const paired = docs.filter((d) => /<title[\s>][\s\S]*<\/title>/i.test(d) && /<item[\s>][\s\S]*<\/item>/i.test(d));
+    assert.ok(paired.length > 200, `only ${paired.length} documents hold both an item and a title pair`);
+  });
 
   it('20k random documents x 4 tags: identical captures', () => {
     for (let i = 0; i < 20_000; i++) {

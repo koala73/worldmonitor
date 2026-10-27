@@ -230,6 +230,19 @@ describe('readBoundedResponseBody', () => {
     assert.deepEqual(body, payload);
   });
 
+  it('sizes its buffer by the bytes received, not by the cap', async () => {
+    // The news digest reads up to 20 feeds at once under a 5 MiB cap on a
+    // 128 MB Edge isolate; a buffer reserved per cap would cost ~100 MiB.
+    // No allocator can reserve MAX_SAFE_INTEGER bytes (a lazily zeroed 1 TiB
+    // buffer still succeeds on macOS), so this only passes if the reader
+    // allocates for what actually arrived.
+    const payload = new TextEncoder().encode('<rss>small feed</rss>');
+    const body = await readBoundedResponseBody(new Response(payload), Number.MAX_SAFE_INTEGER);
+
+    assert.deepEqual(body, payload);
+    assert.equal(body.buffer.byteLength, payload.byteLength);
+  });
+
   it('assembles a response split into one-byte fragments', async () => {
     const expected = new Uint8Array(4096);
     for (let index = 0; index < expected.length; index += 1) expected[index] = index % 251;
