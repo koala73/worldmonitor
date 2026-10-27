@@ -453,27 +453,42 @@ const LABEL_KEYS = [
   'layerExplanation.labels.layerGuide',
 ] as const;
 
+function missingExplanationKeys(locale: LocaleTree): string[] {
+  const missing: string[] = [];
+  for (const key of Object.keys(LAYER_REGISTRY) as Array<keyof typeof LAYER_REGISTRY>) {
+    const explanation = getLayerExplanation(key);
+    const prefix = layerExplanationCopyPrefix(explanation.key, explanation.coverage);
+    for (const field of COPY_FIELDS) {
+      const path = `${prefix}.${field}`;
+      const value = lookupLocale(locale, path);
+      const list = layerExplanationList(value);
+      const ok = field === 'limitations' || field === 'related'
+        ? list.length > 0 && list.every((item) => item.trim() !== '')
+        : typeof value === 'string' && value.trim() !== '' && value !== path;
+      if (!ok) missing.push(`${key} ${path}`);
+    }
+  }
+  for (const key of LABEL_KEYS) {
+    const value = lookupLocale(locale, key);
+    if (typeof value !== 'string' || value.trim() === '' || value === key) missing.push(key);
+  }
+  return missing;
+}
+
 describe('layer explanation localization', () => {
   test('every map layer has an i18n description key', () => {
-    const missing: string[] = [];
-    for (const key of Object.keys(LAYER_REGISTRY) as Array<keyof typeof LAYER_REGISTRY>) {
-      const explanation = getLayerExplanation(key);
-      const prefix = layerExplanationCopyPrefix(explanation.key, explanation.coverage);
-      for (const field of COPY_FIELDS) {
-        const path = `${prefix}.${field}`;
-        const value = lookupLocale(enLocale, path);
-        const list = layerExplanationList(value);
-        const ok = field === 'limitations' || field === 'related'
-          ? list.length > 0 && list.every((item) => item.trim() !== '')
-          : typeof value === 'string' && value.trim() !== '';
-        if (!ok) missing.push(`${key} ${path}`);
-      }
-    }
-    for (const key of LABEL_KEYS) {
-      const value = lookupLocale(enLocale, key);
-      if (typeof value !== 'string' || value.trim() === '') missing.push(key);
-    }
-    assert.deepEqual(missing, []);
+    assert.deepEqual(missingExplanationKeys(enLocale), []);
+  });
+
+  test('missing English prose and labels fail the completeness check', () => {
+    const incomplete = structuredClone(enLocale);
+    const explanation = lookupLocale(incomplete, 'layerExplanation.layers.hotspots') as LocaleTree;
+    const labels = lookupLocale(incomplete, 'layerExplanation.labels') as LocaleTree;
+    delete explanation.purpose;
+    delete labels.source;
+    const missing = missingExplanationKeys(incomplete);
+    assert.ok(missing.includes('hotspots layerExplanation.layers.hotspots.purpose'));
+    assert.ok(missing.includes('layerExplanation.labels.source'));
   });
 
   test('German locale renders translated card labels and hotspot prose', () => {
