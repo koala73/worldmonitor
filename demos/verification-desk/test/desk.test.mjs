@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import https from 'node:https';
 import { Readable } from 'node:stream';
 import { EventEmitter } from 'node:events';
+import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib';
 import { Anchor } from '../lib/anchor.mjs';
 import { gradeToResult } from '../lib/grade.mjs';
 import { WorldMonitorMcp } from '../lib/mcp-client.mjs';
@@ -68,6 +69,44 @@ test('a pinned article response without a body does not crash the server', async
     return request;
   });
   assert.equal(await fetchArticleText('https://news.example/empty', {
+    lookupImpl: async () => [{ address: '93.184.215.14', family: 4 }],
+  }), null);
+});
+
+for (const [encoding, compress] of [['gzip', gzipSync], ['br', brotliCompressSync], ['deflate', deflateSync]]) {
+  test(`pinned article transport decodes ${encoding} evidence`, async t => {
+    const evidence = 'Verified figures: 31 people died and 120 were injured. '.repeat(8).trim();
+    t.mock.method(https, 'request', (_url, _options, callback) => {
+      const request = new EventEmitter();
+      request.end = () => {
+        const response = Readable.from([compress(Buffer.from(`<p>${evidence}</p>`))]);
+        response.statusCode = 200;
+        response.headers = { 'content-type': 'text/html', 'content-encoding': encoding };
+        callback(response);
+      };
+      return request;
+    });
+    const { fetchArticleText } = await import('../lib/sources.mjs');
+    assert.equal(await fetchArticleText('https://news.example/compressed', {
+      lookupImpl: async () => [{ address: '93.184.215.14', family: 4 }],
+    }), evidence);
+  });
+}
+
+test('a malformed compressed article is unavailable', async t => {
+  t.mock.method(https, 'request', (_url, _options, callback) => {
+    const request = new EventEmitter();
+    request.destroy = error => request.emit('error', error);
+    request.end = () => {
+      const response = Readable.from([Buffer.from('This is not a gzip stream. '.repeat(20))]);
+      response.statusCode = 200;
+      response.headers = { 'content-encoding': 'gzip' };
+      callback(response);
+    };
+    return request;
+  });
+  const { fetchArticleText } = await import('../lib/sources.mjs');
+  assert.equal(await fetchArticleText('https://news.example/broken', {
     lookupImpl: async () => [{ address: '93.184.215.14', family: 4 }],
   }), null);
 });

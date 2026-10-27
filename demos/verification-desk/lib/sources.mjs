@@ -7,7 +7,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
 import http from 'node:http';
 import https from 'node:https';
-import { Readable } from 'node:stream';
+import { Readable, pipeline } from 'node:stream';
+import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import path from 'node:path';
 import { dig } from './mcp-client.mjs';
 import { overlapScore } from './text.mjs';
@@ -162,7 +163,14 @@ function fetchPinned(url, { headers, signal, lookup: pinnedLookup }) {
       try {
         const empty = [204, 205, 304].includes(res.statusCode);
         if (empty) res.resume();
-        resolve(new Response(empty ? null : Readable.toWeb(res), { status: res.statusCode, headers: res.headers }));
+        const encoding = res.headers['content-encoding']?.trim().toLowerCase();
+        const decode = { gzip: createGunzip, br: createBrotliDecompress, deflate: createInflate }[encoding];
+        let body = res;
+        if (!empty && decode) {
+          body = decode();
+          pipeline(res, body, error => { if (error) req.destroy(error); });
+        }
+        resolve(new Response(empty ? null : Readable.toWeb(body), { status: res.statusCode, headers: res.headers }));
       } catch (error) {
         res.destroy();
         reject(error);
