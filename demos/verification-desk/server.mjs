@@ -188,10 +188,13 @@ const server = createServer(async (req, res) => {
       });
     }
 
+    if (access.enabled() &&
+        ['/api/grade', '/api/board', '/api/recap', '/api/reveal', '/api/tts', '/api/avatar/token'].includes(url.pathname) &&
+        !access.hasRequestIntent(req)) {
+      return sendJson(res, 403, { error: 'Request intent required' });
+    }
+
     if (url.pathname === '/api/grade') {
-      if (access.enabled() && !access.hasRequestIntent(req)) {
-        return sendJson(res, 403, { error: 'Request intent required' });
-      }
       const headline = (url.searchParams.get('headline') || '').trim().slice(0, 300);
       if (!headline) return sendJson(res, 400, { error: 'headline required' });
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });

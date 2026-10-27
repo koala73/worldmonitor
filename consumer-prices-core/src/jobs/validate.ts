@@ -121,11 +121,13 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
           `UPDATE product_matches
            SET match_status = 'review',
                evidence_json = evidence_json || $2,
-               reviewed_by = 'validate-job',
-               reviewed_at = NOW()
+               reviewed_by = CASE WHEN match_status = 'approved' THEN reviewed_by ELSE 'validate-job' END,
+               reviewed_at = CASE WHEN match_status = 'approved' THEN reviewed_at ELSE NOW() END
            WHERE id = $1 AND match_status IN ('auto', 'approved')`,
           [row.matchId, JSON.stringify({
             flaggedAt: new Date().toISOString(),
+            previousMatchStatus: row.matchStatus,
+            previousReviewedBy: row.reviewedBy,
             reason: disputedPair ? 'price_disagreement' : 'price_outlier',
             price: row.price,
             medianPrice: Math.round(med * 100) / 100,

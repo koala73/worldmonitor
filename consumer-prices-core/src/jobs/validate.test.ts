@@ -16,6 +16,14 @@ it('holds both sides of a two-retailer disagreement', async () => {
   await validateAll();
   expect(query.mock.calls.slice(1).map(([, args]) => args[0])).toEqual(['honest', 'attacker']);
 });
+it('preserves human approval provenance when a price disagreement needs review', async () => {
+  query.mockResolvedValueOnce({ rows: [row('human', 30, 'approved', 'curator'), row('peer', 100)] });
+  await validateAll();
+  const [sql, args] = query.mock.calls[1];
+  expect(sql).toContain("WHEN match_status = 'approved' THEN reviewed_by");
+  expect(sql).toContain("WHEN match_status = 'approved' THEN reviewed_at");
+  expect(JSON.parse(args[1])).toMatchObject({ previousMatchStatus: 'approved', previousReviewedBy: 'curator' });
+});
 it('does not treat two SKUs from one retailer as two independent peers', async () => {
   query.mockResolvedValueOnce({ rows: [row('a', 10), { ...row('b', 100), retailer_slug: 'a' }] });
   await validateAll();

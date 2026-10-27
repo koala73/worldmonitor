@@ -28,6 +28,19 @@ describe('version', () => {
     assert.match(io.out, /Normal é\\u000aFORGED\\u001b/);
     assert.equal(io.out.trim().split('\n').length, 2);
   });
+  it('escapes bidi controls in fetched listing fields while retaining normal Unicode', async () => {
+    const controls = '\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069';
+    const io = collect();
+    const { fetchImpl } = stubFetch({ body: JSON.stringify({ paths: {
+      [`/api/news/v1/${controls}`]: { get: { summary: `Normal é${controls}` } },
+    } }) });
+    assert.equal(await run(['list'], { ...io, fetch: fetchImpl, env: {} }), 0);
+    for (const control of controls) {
+      assert.ok(!io.out.includes(control));
+      assert.ok(io.out.includes(`\\u${control.charCodeAt(0).toString(16).padStart(4, '0')}`));
+    }
+    assert.match(io.out, /Normal é/);
+  });
   it('core VERSION stays in sync with package.json (guards `npm version` bumps)', () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.equal(VERSION, pkg.version);
