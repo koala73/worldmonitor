@@ -74,6 +74,7 @@ const SERIES_TTL_SECONDS = 400 * 24 * 60 * 60;
 const DATASET_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MGET_CHUNK = 50;
 const DAY_MS = 86_400_000;
+const VALID_FRACTION_VERSION = 2;
 
 export const EVALSCRIPT = `//VERSION=3
 function setup() {
@@ -135,6 +136,9 @@ export function buildStatisticsRequest(region, range, geometry = null, method = 
 /** Daily rows keyed by UTC date. A day the API could not compute, or with no samples, reads as invalid (nulls). */
 export function parseStatisticsResponse(body) {
   if (!Array.isArray(body?.data)) throw new Error('statistics response has no data array');
+  const geometryPixelCount = Number.isFinite(body.geometryPixelCount) && body.geometryPixelCount > 0
+    ? body.geometryPixelCount
+    : null;
   const rows = new Map();
   for (const entry of body.data) {
     const date = String(entry?.interval?.from ?? '').slice(0, 10);
@@ -148,14 +152,14 @@ export function parseStatisticsResponse(body) {
     rows.set(date, {
       date,
       mean: Number.isFinite(stats.mean) ? stats.mean : null,
-      validFraction: (sampleCount - stats.noDataCount) / sampleCount,
+      validFraction: Math.min(1, (sampleCount - stats.noDataCount) / (geometryPixelCount ?? sampleCount)),
     });
   }
   return rows;
 }
 
 export function emptySeries(region) {
-  return { id: region.id, resolutionDegrees: region.resolutionDegrees, refreshedAt: null, backfilledYears: [], days: {} };
+  return { id: region.id, resolutionDegrees: region.resolutionDegrees, validFractionVersion: VALID_FRACTION_VERSION, refreshedAt: null, backfilledYears: [], days: {} };
 }
 
 /** A stored series is reused only when it is well formed and on the region's current grid. */
@@ -163,12 +167,14 @@ export function parseSeries(value, region) {
   const series = typeof value === 'string' ? safeJson(value) : value;
   if (!series || typeof series !== 'object' || series.id !== region.id
     || series.resolutionDegrees !== region.resolutionDegrees
+    || (region.kind === 'country' && series.validFractionVersion !== VALID_FRACTION_VERSION)
     || !Array.isArray(series.backfilledYears) || !series.days || typeof series.days !== 'object') {
     return emptySeries(region);
   }
   return {
     id: region.id,
     resolutionDegrees: region.resolutionDegrees,
+    validFractionVersion: VALID_FRACTION_VERSION,
     refreshedAt: typeof series.refreshedAt === 'string' && Number.isFinite(Date.parse(series.refreshedAt)) ? series.refreshedAt : null,
     backfilledYears: series.backfilledYears.filter((year) => Number.isInteger(year)).sort(),
     days: Object.fromEntries(Object.entries(series.days).filter(([date, row]) =>
@@ -456,7 +462,16 @@ export function makeFetchAll({
     regions.forEach((region, index) => {
       const outcome = refreshes[index];
       if (outcome.status === 'fulfilled') {
-        const series = mergeSeries(seriesById.get(region.id), outcome.value, keepFrom);
+        const before = seriesById.get(region.id);
+        const previousWindowEnd = before.refreshedAt === null
+          ? Object.keys(before.days).sort().at(-1)
+          : currentWindow(Date.parse(before.refreshedAt), method).windowEnd;
+        const series = mergeSeries(before, outcome.value, keepFrom);
+        if (previousWindowEnd !== undefined && addDays(previousWindowEnd, 1) < range.from) {
+          const gapFromYear = Number(addDays(previousWindowEnd, 1).slice(0, 4));
+          const gapToYear = Number(addDays(range.from, -1).slice(0, 4));
+          series.backfilledYears = series.backfilledYears.filter((year) => year < gapFromYear || year > gapToYear);
+        }
         series.refreshedAt = new Date(runMs).toISOString();
         // A year that lies entirely inside the refresh range is complete with it.
         for (const year of years) {

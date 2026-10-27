@@ -125,6 +125,31 @@ describe('seed-no2-activity calendar', () => {
 });
 
 describe('seed-no2-activity response parsing and stored series', () => {
+  it('rebuilds country series calculated with bounding-box coverage and preserves unchanged cluster series', () => {
+    const country = seriesWith(DE, { '2026-10-01': [1e-4, 0.03] }, [2024, 2025, 2026]);
+    const cluster = seriesWith(JJJ, { '2026-10-01': [1e-4, 0.3] }, [2024, 2025, 2026]);
+    delete country.validFractionVersion;
+    delete cluster.validFractionVersion;
+    assert.deepEqual(parseSeries(country, DE), emptySeries(DE));
+    assert.deepEqual(parseSeries(cluster, JJJ).days, cluster.days);
+    assert.deepEqual(parseSeries(seriesWith(DE, cluster.days, [2024, 2025, 2026]), DE).days, cluster.days);
+  });
+
+  it('uses the response geometry pixel count for polygon coverage and bounds the fraction', () => {
+    const data = [{
+      interval: { from: '2026-10-01T00:00:00Z' },
+      outputs: { no2: { bands: { B0: { stats: { mean: 1e-4, sampleCount: 1000, noDataCount: 970 } } } } },
+    }];
+    const rows = parseStatisticsResponse({ geometryPixelCount: 100, data });
+    assert.equal(rows.get('2026-10-01').validFraction, 0.3);
+    const series = mergeSeries(emptySeries(DE), rows, '2026-01-01');
+    assert.equal(summarizeWindow(series, '2026-10-01', '2026-10-01', null).validDays, 1);
+    assert.equal(parseStatisticsResponse({ geometryPixelCount: 20, data }).get('2026-10-01').validFraction, 1);
+    for (const geometryPixelCount of [undefined, null, 0, -1, NaN]) {
+      assert.equal(parseStatisticsResponse({ geometryPixelCount, data }).get('2026-10-01').validFraction, 0.03);
+    }
+  });
+
   it('reads the recorded OFFL response into one row per day', () => {
     const rows = parseStatisticsResponse(FIXTURE.response);
     assert.equal(rows.size, 29);
@@ -329,6 +354,65 @@ function fetchAllWith(fetchImpl, store, options = {}) {
 }
 
 describe('seed-no2-activity fetchAll', () => {
+  for (const { label, previousRun, run, previousYears, gapDates, repairYears } of [
+    {
+      label: 'within one year', previousRun: '2026-10-10T06:20:00Z', run: NOW,
+      previousYears: [2023, 2024, 2025, 2026], gapDates: ['2026-10-08', '2026-10-13'], repairYears: [2026],
+    },
+    {
+      label: 'across New Year', previousRun: '2026-12-20T06:20:00Z', run: Date.parse('2027-01-20T06:20:00Z'),
+      previousYears: [2023, 2024, 2025, 2026], gapDates: ['2026-12-18', '2027-01-07'], repairYears: [2026, 2027],
+    },
+  ]) {
+    it(`persists incomplete years after a refresh gap ${label} and repairs them within the backfill budget`, async () => {
+      const previousEnd = currentWindow(Date.parse(previousRun)).windowEnd;
+      const key = `${NO2_ACTIVITY_SERIES_KEY_PREFIX}${JJJ.id}`;
+      const previous = {
+        ...seriesWith(JJJ, { [previousEnd]: [1e-4, 0.6] }, previousYears),
+        refreshedAt: previousRun,
+      };
+      const { fetchImpl, calls } = stubFetch();
+      const { store, writes } = stubStore({ [key]: previous });
+      const deferred = await fetchAllWith(fetchImpl, store, { regions: [JJJ], now: () => run, backfillChunks: 0 })();
+      assert.equal(calls.statistics.length, 1);
+      const retained = writes[0][1];
+      assert.deepEqual(retained.backfilledYears, previousYears.filter((year) => !repairYears.includes(year)));
+      assert.equal(deferred.regions[JJJ.id].exclusion, 'baseline_backfill_pending');
+      for (const date of gapDates) assert.equal(retained.days[date], undefined);
+
+      const retry = stubFetch();
+      const recovered = stubStore({ [key]: retained });
+      const healed = await fetchAllWith(retry.fetchImpl, recovered.store, { regions: [JJJ], now: () => run, backfillChunks: 100 })();
+      assert.deepEqual([...new Set(retry.calls.statistics.slice(1).map((body) => Number(body.aggregation.timeRange.from.slice(0, 4))))], repairYears);
+      for (const date of gapDates) assert.ok(recovered.writes[0][1].days[date], `repaired ${date}`);
+      for (const year of repairYears) assert.ok(healed.regions[JJJ.id].series.backfilledYears.includes(year));
+    });
+  }
+
+  it('keeps completed years after a contiguous refresh even when the previous query returned sparse days', async () => {
+    const key = `${NO2_ACTIVITY_SERIES_KEY_PREFIX}${JJJ.id}`;
+    const previous = {
+      ...seriesWith(JJJ, { '2026-10-03': [1e-4, 0.6] }, [2023, 2024, 2025, 2026]),
+      refreshedAt: '2026-10-16T06:20:00Z',
+    };
+    const { fetchImpl, calls } = stubFetch();
+    const { store } = stubStore({ [key]: previous });
+    const dataset = await fetchAllWith(fetchImpl, store, { regions: [JJJ], backfillChunks: 100 })();
+    assert.equal(calls.statistics.length, 1);
+    assert.deepEqual(dataset.regions[JJJ.id].series.backfilledYears, previous.backfilledYears);
+  });
+
+  it('repairs gaps in a stored series that has no previous refresh clock', async () => {
+    const key = `${NO2_ACTIVITY_SERIES_KEY_PREFIX}${JJJ.id}`;
+    const previous = { ...seriesWith(JJJ, { '2026-10-07': [1e-4, 0.6] }, [2023, 2024, 2025, 2026]), refreshedAt: null };
+    const { fetchImpl, calls } = stubFetch();
+    const { store, writes } = stubStore({ [key]: previous });
+    await fetchAllWith(fetchImpl, store, { regions: [JJJ], backfillChunks: 100 })();
+    assert.ok(calls.statistics.length > 1);
+    assert.ok(writes[0][1].days['2026-10-08']);
+    assert.deepEqual(writes[0][1].backfilledYears, previous.backfilledYears);
+  });
+
   it('preserves last-good publication when every refresh fails even with stored series', async () => {
     const stored = {
       [`${NO2_ACTIVITY_SERIES_KEY_PREFIX}jing-jin-ji`]: seriesWith(JJJ, {
