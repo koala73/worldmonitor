@@ -184,7 +184,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
 }, {
   name: 'get_country_brief_section',
   title: 'Structured country data, one section',
-  description: 'Read one named structured data section for a country, raw values without narrative, and return {state: ready|locked|unavailable, section, value, retrievedAt, reason}. 38 readers selected by section: country facts and risk, energy and maritime, markets, trade, supply chain, resilience and demographics, defense, NO2 activity, China signals, housing and IMF macro, military flights, AIS vessels, the USNI fleet report and signalsRaw; each oneOf branch documents one section. Each section takes its own arguments object (key names differ: country_code, countryCode or iso2; numeric M49 codes for trade; HS codes for products) and rejects unknown keys. flights pages 100 rows at a time through cursor. signalsRaw returns attributed earthquake, Internet-outage, travel-advisory and thermal samples and needs a verified same-country paid panel token; every other section works with an ordinary paid credential. Unavailable evidence is unknown, not zero. Requires a paid plan; one downstream read, weight 2 on API plans.',
+  description: 'Read one named structured data section for a country, raw values without narrative, and return {state: ready|locked|unavailable, section, value, retrievedAt, reason}. 39 readers selected by section: country facts and risk, energy and maritime, markets, trade, supply chain, resilience and demographics, defense, NO2 activity, China signals, housing and IMF macro, military flights, AIS vessels, the USNI fleet report and signalsRaw; each oneOf branch documents one section. Each section takes its own arguments object (key names differ: country_code, countryCode or iso2; numeric M49 codes for trade; HS codes for products) and rejects unknown keys. flights pages 100 rows at a time through cursor. signalsRaw returns attributed earthquake, Internet-outage, travel-advisory and thermal samples and needs a verified same-country paid panel token; every other section works with an ordinary paid credential. Unavailable evidence is unknown, not zero. Requires a paid plan; one downstream read, weight 2 on API plans.',
   _subscriptionOnly: true,
   _weight: 2,
   _outputBudgetBytes: COUNTRY_SECTION_BUDGET_BYTES,
@@ -194,7 +194,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
     type: 'object',
     properties: {
       panel_request: { type: 'string', maxLength: 160, description: 'Server-issued paid country-panel request token. Only the embedded country view supplies this.' },
-      section: { type: 'string', enum: Object.keys(COUNTRY_READERS), description: 'Which of the 38 fixed readers to run; each oneOf branch below documents one. signalsRaw requires a verified paid country-panel receipt and a matching arguments.country_code.' },
+      section: { type: 'string', enum: Object.keys(COUNTRY_READERS), description: 'Which of the 39 fixed readers to run; each oneOf branch below documents one. signalsRaw requires a verified paid country-panel receipt and a matching arguments.country_code.' },
       arguments: { type: 'object', additionalProperties: { type: ['string', 'number', 'boolean'] }, description: 'Arguments for the chosen section, as the matching oneOf branch defines them (key names differ per section and unknown keys are rejected). Omit for sections that take none.' },
     },
     required: ['section'],
