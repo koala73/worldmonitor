@@ -2390,6 +2390,7 @@ curl -s https://worldmonitor.app/mcp \
 - **类型：** 缓存支撑的 RPC。付费打开消耗一个世界简报面板额度；有效期内的健康重复读取和 JMESPath 视图复用已接受的原始快照。有效且不足三小时的最近可用内容仍可返回，并显示过期提示，但过期内容允许重试，不会作为新鲜快照缓存。缺失、损坏或超过期限的内容不可用。不在请求时调用 LLM。API 保持普通逐工具计费，免费账户保持订阅拒绝行为。
 - **来源：** 按生产者顺序返回种子 payload 发布的有界 `worldBriefSources` 数组。URL 从显式来源记录复制，而不是在 MCP 执行时生成；保留空 URL 回退项，避免引用编号错位。
 - **交叉印证：** `headlines` 中的每一项在 `topStories` 中都有一个按下标对齐的条目（`topStories[i]` 描述 `headlines[i]`），包含 `sourceCount`、`uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`，以及 `sources` 中参与报道的媒体名称（上限 12 个）。这些全部由洞察种子程序发布，因此不在请求时计算。注意这里每个故事的 `sources` 是媒体名称列表，与该工具顶层的 `sources`（承载引用记录）不同。`memberTitles` 在此处刻意不返回 —— 它可在输出预算更大的 `get_news_intelligence` 上获取。
+- **来源溯源：** 每个 `topStories[i]` 还带有 `sourceProvenance`，与其 `sources` 按下标对齐（`sourceProvenance[j]` 描述 `sources[j]`）。每一项给出该媒体声明的 `tier`（1–4，未登记时为 `null`）、`risk`、`type`，以及它们是否已声明和已审核（`riskDeclared`、`typeDeclared`、`riskReviewed`、`typeReviewed`）；登记了关联方时给出 `stateAffiliated`，另有 `knownBiases`（人工整理的立场标签；空数组表示尚未记录标签，并不代表该媒体中立）和可选的 `note`。这与 `get_news_clusters` 返回的逐媒体记录相同，只是没有 `summary`；它能显示同一故事同时引用一级通讯社和高风险或国家关联媒体的情况，而仅看 `sourceTier` 看不出这一点。没有媒体列表的故事不带溯源。若响应会超出输出预算，先删除所有 `note`，仍不够时才删除所有 `sourceProvenance` 列表；此时 `transportCoverage` 会标明被裁剪的字段，`omission_reason` 为 `"output_budget"`。媒体名称和 `sourceTier` 始终返回。
 
 <CodeGroup>
 
