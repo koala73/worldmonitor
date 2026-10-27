@@ -1976,7 +1976,7 @@ async function dispatch(requestUrl, req, routes, context) {
     // SSRF protection: block private IPs, reserved ranges, and DNS rebinding
     const safety = await isSafeUrl(feedUrl);
     if (!safety.safe) {
-      context.logger.warn(`[local-api] rss-proxy SSRF blocked: ${safety.reason} (url=${feedUrl})`);
+      context.logger.warn(`[local-api] rss-proxy SSRF blocked: ${safety.reason} (url=${JSON.stringify(feedUrl)})`);
       return rssProxyJson({ error: safety.reason }, 403);
     }
 
@@ -1987,7 +1987,7 @@ async function dispatch(requestUrl, req, routes, context) {
       // the TOCTOU DNS-rebinding window for IPv4 and IPv6-only feeds.
       const pinned = pickPinnedAddress(safety.resolvedAddresses);
       if (!pinned) {
-        context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${feedUrl})`);
+        context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${JSON.stringify(feedUrl)})`);
         return rssProxyJson({ error: 'Could not resolve hostname' }, 403);
       }
       const response = await fetchWithTimeout(feedUrl, {
@@ -2189,8 +2189,17 @@ export async function createLocalApiServer(options = {}) {
   const routes = await buildRouteTable(context.apiDir);
   let unregisterSelfFetchOrigins = null;
 
-  const server = createServer(async (req, res) => {
-    const requestUrl = new URL(req.url || '/', `http://127.0.0.1:${context.port}`);
+  const handleRequest = async (req, res) => {
+    let requestUrl;
+    try {
+      requestUrl = new URL(req.url || '/', `http://127.0.0.1:${context.port}`);
+    } catch {
+      // A raw request-target such as `//` is not a valid relative URL and
+      // makes the WHATWG parser throw ERR_INVALID_URL.
+      res.writeHead(400, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
+      res.end(JSON.stringify({ error: 'Bad request' }));
+      return;
+    }
 
     if (!requestUrl.pathname.startsWith('/api/')) {
       res.writeHead(404, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
@@ -2252,6 +2261,20 @@ export async function createLocalApiServer(options = {}) {
       res.writeHead(500, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
       res.end(JSON.stringify({ error: 'Internal server error' }));
     }
+  };
+
+  // Any throw that escapes handleRequest would be an unhandled rejection,
+  // which terminates the sidecar until the app restarts.
+  const server = createServer((req, res) => {
+    handleRequest(req, res).catch((error) => {
+      context.logger.error('[local-api] unhandled request error', error);
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+      res.writeHead(500, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    });
   });
 
   return {

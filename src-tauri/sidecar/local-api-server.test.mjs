@@ -3609,6 +3609,74 @@ test('rss-proxy blocks IPv4-mapped IPv6 literals and DNS answers before transpor
   }
 });
 
+test('rss-proxy escapes control characters from the blocked url before logging it', async () => {
+  const localApi = await setupApiDir({});
+  const warnings = [];
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn(...args) { warnings.push(args.join(' ')); }, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const feedUrl = 'http://127.0.0.1/\n[local-api] forged\r\u001b[2J';
+    const response = await authFetch(
+      `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`,
+    );
+    assert.equal(response.status, 403);
+    const blocked = warnings.filter((line) => line.includes('rss-proxy SSRF blocked'));
+    assert.equal(blocked.length, 1, JSON.stringify(warnings));
+    for (const line of warnings) {
+      assert.doesNotMatch(line, /[\r\n\u001b]/, JSON.stringify(line));
+    }
+    assert.ok(blocked[0].includes(JSON.stringify(feedUrl)), blocked[0]);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('a malformed request-target gets a 400 and the sidecar keeps serving', async () => {
+  const localApi = await setupApiDir({
+    'ping.js': `
+      export default async function handler() {
+        return new Response('pong', { status: 200 });
+      }
+    `,
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  const rawRequest = (target) => new Promise((resolve, reject) => {
+    const socket = net.connect(port, '127.0.0.1', () => {
+      socket.write(`GET ${target} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`);
+    });
+    let data = '';
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk) => { data += chunk; });
+    socket.on('end', () => resolve(data));
+    socket.on('error', reject);
+    socket.setTimeout(5000, () => { socket.destroy(); reject(new Error(`no response for ${target}`)); });
+  });
+
+  try {
+    const raw = await rawRequest('//');
+    assert.match(raw.split('\r\n')[0], /^HTTP\/1\.1 400 /);
+
+    const response = await authFetch(`http://127.0.0.1:${port}/api/ping`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'pong');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('rss-proxy forces active and error responses through an inert response policy', async () => {
   const localApi = await setupApiDir({});
   const originalResolve4 = dns.resolve4;
