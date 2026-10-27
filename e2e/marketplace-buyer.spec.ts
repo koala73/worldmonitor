@@ -118,6 +118,42 @@ test('claiming a license enables key creation without a page reload', async ({ p
   expect(keyRequests).toBe(1);
 });
 
+test('same-account Clerk updates preserve a pending one-time key', async ({ page }, testInfo) => {
+  await mockClerk(page, true);
+  await page.route('**/api/marketplace/account', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      licenses: [{ id: 'license_1', productCode: 'prod-test', licenseArn: 'arn:test', status: 'active', planKey: 'api_starter', quantity: 1,
+        validUntil: Date.now() + 300_000, checkedAt: Date.now(), keys: [] }], pendingRegistration: false,
+    }) });
+  });
+  let release: (() => void) | undefined;
+  await page.route('**/api/marketplace/keys', async (route) => {
+    await new Promise<void>((resolve) => { release = resolve; });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ keyId: 'key_refresh', key }) });
+  });
+  await page.goto('/marketplace.html');
+  await page.getByRole('textbox', { name: 'New key name' }).fill('refresh-safe-agent');
+  await page.getByRole('button', { name: 'Create key' }).click();
+  await expect.poll(() => Boolean(release)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('marketplace-key-pending-desktop.png'), fullPage: true });
+  const notifySameUser = () => page.evaluate(() => (window as Window & {
+    __marketplaceSetUser: (user: { id: string }) => void;
+  }).__marketplaceSetUser({ id: 'user_buyer' }));
+  await notifySameUser();
+  const response = page.waitForResponse((result) => result.url().endsWith('/api/marketplace/keys'));
+  release?.();
+  await (await response).finished();
+  await expect(page.getByRole('button', { name: 'Create key' })).toBeEnabled();
+  await expect(page.getByText(key)).toBeVisible({ timeout: 2000 });
+  await expect(page.locator('.key-list strong')).toHaveText('refresh-safe-agent');
+  await notifySameUser();
+  await expect(page.getByText(key)).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('Key created. Copy it now');
+  await page.screenshot({ path: testInfo.outputPath('marketplace-key-refresh-desktop.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: testInfo.outputPath('marketplace-key-refresh-mobile.png'), fullPage: true });
+});
+
 test('late key creation after sign-out does not reveal a secret or restore the old account', async ({ page }) => {
   await mockClerk(page, true);
   await page.route('**/api/marketplace/account', async (route) => {
@@ -138,7 +174,10 @@ test('late key creation after sign-out does not reveal a secret or restore the o
   await expect.poll(() => Boolean(release)).toBe(true);
   await page.evaluate(() => (window as Window & { __marketplaceSetUser: (user: null) => void }).__marketplaceSetUser(null));
   await expect(page.locator('#licenses')).toBeEmpty();
+  const response = page.waitForResponse((result) => result.url().endsWith('/api/marketplace/keys'));
   release?.();
+  await (await response).finished();
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   await expect(page.getByRole('heading', { name: 'Sign in to claim your purchase' })).toBeVisible();
   await expect(page.locator('.secret')).toHaveCount(0);
   await expect(page.locator('#licenses')).toBeEmpty();
@@ -163,7 +202,10 @@ test('late key revocation after sign-out does not restore account content', asyn
   await expect(page.getByRole('button', { name: /Revoke existing key/ })).toBeDisabled();
   await expect.poll(() => Boolean(release)).toBe(true);
   await page.evaluate(() => (window as Window & { __marketplaceSetUser: (user: null) => void }).__marketplaceSetUser(null));
+  const response = page.waitForResponse((result) => result.url().endsWith('/api/marketplace/keys'));
   release?.();
+  await (await response).finished();
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   await expect(page.getByRole('heading', { name: 'Sign in to claim your purchase' })).toBeVisible();
   await expect(page.locator('#licenses')).toBeEmpty();
 });

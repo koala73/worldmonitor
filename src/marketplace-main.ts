@@ -317,6 +317,8 @@ async function revokeKey(license: License, key: Key): Promise<void> {
 void initClerk().then(() => {
   $('signInButton').addEventListener('click', () => openSignIn());
   $('claimButton').addEventListener('click', () => { void claim(); });
-  subscribeClerk(() => { void refresh(); });
+  subscribeClerk(() => {
+    if ((getCurrentClerkUser()?.id ?? null) !== loadedForUser) void refresh();
+  });
   void refresh();
 }).catch(() => setStatus('Sign-in service is unavailable. Try again later.', true));
