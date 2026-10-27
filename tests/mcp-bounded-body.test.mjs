@@ -1,6 +1,8 @@
 // RUN WITH: `npm run test:data` OR `node --import=tsx --test tests/mcp-bounded-body.test.mjs`.
 import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import {
   readBoundedRequestBody,
   readBoundedResponseBody,
@@ -260,6 +262,37 @@ describe('readBoundedResponseBody', () => {
     const body = await readBoundedResponseBody(new Response(stream), 64);
 
     assert.deepEqual(body, Uint8Array.from([1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]));
+  });
+
+  it('retains memory by bytes received, not by the number of reads', async () => {
+    // A hostile origin can trickle a body as many tiny chunked frames.
+    // Retaining one object per read cost ~100+ bytes of heap per read; the
+    // reader must hold the received bytes in one buffer instead.
+    setFlagsFromString('--expose-gc');
+    const gc = runInNewContext('gc');
+    const READS = 200_000;
+    let reads = 0;
+    let retained = 0;
+    gc();
+    const baseline = process.memoryUsage().heapUsed;
+    const stream = new ReadableStream({
+      pull(controller) {
+        if (reads === READS) {
+          // Every byte has been handed over and the read loop still holds them.
+          gc();
+          retained = process.memoryUsage().heapUsed - baseline;
+          return controller.close();
+        }
+        reads += 1;
+        controller.enqueue(Uint8Array.of(reads % 256));
+      },
+    });
+
+    const body = await readBoundedResponseBody(new Response(stream), 5 * 1024 * 1024);
+
+    assert.equal(body.byteLength, READS);
+    assert.equal(body[READS - 1], READS % 256);
+    assert.ok(retained < 8 * 1024 * 1024, `${(retained / 1024 / 1024).toFixed(1)} MiB of heap retained for ${READS} one-byte reads`);
   });
 
   it('assembles a response split into one-byte fragments', async () => {
