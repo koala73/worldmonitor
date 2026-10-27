@@ -3,18 +3,24 @@ import { SITE_VARIANT } from './variant';
 import { rssProxyUrl } from '@/utils';
 import { mergeCanonicalFeeds } from './feed-resolution';
 import {
-  buildBrowserCategoryFeeds,
-  buildBrowserIntelSources,
+  browserCategoryFeeds,
+  browserIntelSources,
+  type BrowserCatalog,
   type BrowserCatalogFeed,
-} from '../../shared/news-catalog';
+} from '../../shared/news-catalog-browser';
+import browserCatalogJson from './news-catalog.browser.generated.json';
 import {
   getSourceProvenanceState,
   type SourceProvenanceState,
 } from '../../shared/source-provenance';
 
 // Feeds are declared once in shared/news-catalog.json; these maps are its
-// browser view. Absolute URLs go through the RSS proxy; same-origin API
-// routes (e.g. /api/miit-news) are fetched as-is.
+// browser view, built from the generated browser slice so the bundle carries
+// no server-only fields. Absolute URLs go through the RSS proxy; same-origin
+// API routes (e.g. /api/miit-news) are fetched as-is.
+// JSON imports widen literal types (e.g. `version`); the slice is generated from
+// the typed projection and freshness-tested, so the shape is guaranteed.
+const BROWSER_CATALOG = browserCatalogJson as unknown as BrowserCatalog;
 const proxyCatalogUrl = (url: string): string => (/^https?:\/\//.test(url) ? rssProxyUrl(url) : url);
 
 function proxied(feed: BrowserCatalogFeed): Feed {
@@ -26,7 +32,7 @@ function proxied(feed: BrowserCatalogFeed): Feed {
 
 function browserFeeds(edition: string): Record<string, Feed[]> {
   return Object.fromEntries(
-    Object.entries(buildBrowserCategoryFeeds(edition)).map(([category, feeds]) => [category, feeds.map(proxied)]),
+    Object.entries(browserCategoryFeeds(BROWSER_CATALOG, edition)).map(([category, feeds]) => [category, feeds.map(proxied)]),
   );
 }
 
@@ -170,7 +176,7 @@ export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: str
   gulfMena: { labelKey: 'header.sourceRegionGulfMena', feedKeys: ['gccNews'] },
 };
 
-export const INTEL_SOURCES: Feed[] = buildBrowserIntelSources().map(proxied);
+export const INTEL_SOURCES: Feed[] = browserIntelSources(BROWSER_CATALOG).map(proxied);
 
 /** Unique configured feed names across every variant map + intel sources. */
 export function listConfiguredFeedNames(): string[] {
