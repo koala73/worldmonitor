@@ -441,6 +441,10 @@ const STANDALONE_KEYS = {
   // Seeded and health-monitored; no dashboard consumer yet (#6155 is the
   // data layer only), so it is standalone rather than bootstrap-tiered.
   chinaStockConnect:  'market:china:stock-connect:v1',
+  // Seeded by seed-no2-activity (#9722): the global Sentinel-5P NO2 dataset
+  // keyed by region, read by the China activity nowcast RPC for its
+  // atmosphere family, so no bootstrap tier.
+  no2Activity:        'economic:no2-activity:v1',
   hkoWarnings:        'weather:hko-warnings:v1',
   imdCycloneMarine:   'weather:imd-cyclone-marine:v1',
   // Seeded by seed-live-video-resolved (#8545); read by the live video players
@@ -987,6 +991,18 @@ const SEED_META = {
   chinaReleaseCalendar: { key: 'seed-meta:economic:china-release-calendar', maxStaleMin: 4_320 },
   chinaCorporateDisclosures: { key: 'seed-meta:market:china-corporate-disclosures', maxStaleMin: 180 },
   chinaStockConnect: { key: 'seed-meta:market:china-stock-connect', maxStaleMin: 180 },
+  // seed-no2-activity daily cron `20 6 * * *` (#9722); 4320 = 3x cadence.
+  no2Activity: {
+    key: 'seed-meta:economic:no2-activity',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:no2-activity',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9722,
+      activationKey: 'seed-activated:economic:no2-activity',
+    },
+  },
   crossStraitActivity: { key: 'seed-meta:military:cross-strait-activity', maxStaleMin: 720 },
   crossStraitActivityBootstrap: { key: 'seed-meta:military:cross-strait-activity-bootstrap', maxStaleMin: 720 },
   crossStraitActivityTaiwanMnd: {
@@ -2261,6 +2277,9 @@ const ON_DEMAND_KEYS = new Set([
   // seed-live-video-resolved Railway service is provisioned. The seeder SETs the
   // durable marker after its first successful publish; strict from then on.
   'liveVideoResolved',
+  // Same bridge (#9722): the nowcast reader ships before the
+  // seed-no2-activity Railway service is provisioned.
+  'no2Activity',
   // #8480. The macro bundle can ship the reader before the tail sections
   // publish. Each marker is written after the first successful publish.
   'usCpiMonthly',
@@ -2421,6 +2440,8 @@ const ACTIVATION_MARKERS = {
   statcanWds: 'seed-activated:economic:statcan-wds',
   // Written by scripts/seed-live-video-resolved.mjs in runSeed's afterPublish hook.
   liveVideoResolved: SEED_META.liveVideoResolved.activationKey,
+  // Written atomically with the dataset by scripts/seed-no2-activity.mjs.
+  no2Activity: SEED_META.no2Activity.activationKey,
   // Written by scripts/seed-fire-detections.mjs in runSeed's afterFreshness hook,
   // after the summary extra key and the canonical seed-meta (#9509).
   wildfiresSummary: SEED_META.wildfiresSummary.activationKey,
@@ -2871,6 +2892,7 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // exists after a successful query, but a quiet 90-day window can validly
   // contain zero owned-category events.
   'chinaCorporateDisclosures',
+  'no2Activity',
   // #5736 ingest-health records. `recordCount` is the volume the relay accepted
   // on the last successful append, and zero is legitimate — a run whose records
   // were all deduped, or one with no noteworthy records at all. The record key
@@ -3483,7 +3505,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   //      so the window is visible instead of silent.
   // The content-freshness grace below has none of those bounds, which is why it
   // takes the opposite policy on the same unknown state.
-  const isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
+  let isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
     && ctx.activationStates?.get(name) !== true;
   // Unlike ON_DEMAND, runtime rollout windows need no per-registry opt-in
   // (`allowOnDemand`): each window is bounded by a deployment-relative deadline
@@ -3510,6 +3532,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   ].some((markerName) => markerName !== null && !ctx.activationStates.has(markerName));
 
   const meta = readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now);
+  if (name === 'no2Activity' && meta.hasMeta) isOnDemand = false;
 
   // Per-command Redis errors (data STRLEN or seed-meta GET) propagate as their
   // own bucket — don't conflate with "key missing", since ops needs to know if
