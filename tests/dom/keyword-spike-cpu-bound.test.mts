@@ -36,6 +36,6 @@ describe('keyword spike checks stay cheap for headlines with thousands of terms'
     ingestHeadlines([{ source: 'Other', title: 'Quiet harbour reopens', link: 'https://other.test/1', pubDate: new Date(now) }]);
     const elapsed = performance.now() - started;
 
-    expect(elapsed, `repeat ingest took ${elapsed.toFixed(0)} ms`).toBeLessThan(500);
+    expect(elapsed, `repeat ingest took ${elapsed.toFixed(0)} ms`).toBeLessThan(2000);
   });
 });

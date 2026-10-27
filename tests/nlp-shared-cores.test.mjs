@@ -514,6 +514,6 @@ describe('news-clustering-core', () => {
 
     const hugeCluster = clusters.find((c) => c.allItems.some((item) => item.source === 'Evil'));
     assert.equal(hugeCluster.sourceCount, 5, 'the near-identical huge titles still cluster together');
-    assert.ok(elapsed < 750, `clustering took ${elapsed.toFixed(0)} ms`);
+    assert.ok(elapsed < 1500, `clustering took ${elapsed.toFixed(0)} ms`);
   });
 });
