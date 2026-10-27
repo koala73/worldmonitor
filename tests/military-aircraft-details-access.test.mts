@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { getAircraftDetails } from '../server/worldmonitor/military/v1/get-aircraft-details.ts';
 import { getAircraftDetailsBatch } from '../server/worldmonitor/military/v1/get-aircraft-details-batch.ts';
 import { _resetTrackedAircraftCacheForTests } from '../server/worldmonitor/military/v1/_tracked-aircraft.ts';
+import { sidecarCacheSet } from '../server/_shared/sidecar-cache.ts';
 import {
   ENDPOINT_RATE_POLICIES,
   FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
@@ -220,23 +221,35 @@ describe('Wingbits aircraft-details batch input contract', () => {
 describe('Wingbits aircraft-details batch spend boundary', () => {
   const REDIS_URL = 'https://redis.test';
 
-  // Redis answers the flight snapshot read with `seed`, misses every aircraft
-  // cache key, and accepts writes. Wingbits URLs are recorded.
-  function installFetch(seed: unknown, wingbitsUrls: string[]) {
+  // Redis answers the flight snapshot read with `seed` and serves aircraft
+  // cache keys from `store` (empty by default), so a lookup made by the
+  // singular route is visible to the batch route, as in production. Wingbits
+  // URLs are recorded; 'dd0004' is a Wingbits 404 (a cached negative).
+  function installFetch(seed: unknown, wingbitsUrls: string[], store = new Map<string, string>()) {
     globalThis.fetch = async (input, init) => {
       const url = String(input);
       if (url.startsWith('https://customer-api.wingbits.com/')) {
         wingbitsUrls.push(url);
-        return Response.json({ registration: 'N123WM' });
+        if (url.endsWith('/dd0004')) return new Response('null', { status: 404 });
+        return Response.json({ registration: `REG-${url.slice(-6)}` });
       }
       if (url === `${REDIS_URL}/pipeline`) {
-        const commands = JSON.parse(String(init?.body ?? '[]')) as unknown[];
-        return Response.json(commands.map(() => ({ result: null })));
+        const commands = JSON.parse(String(init?.body ?? '[]')) as string[][];
+        return Response.json(commands.map((command) => ({
+          result: command[0] === 'GET' ? (store.get(command[1]!) ?? null) : 'OK',
+        })));
       }
       if (url === `${REDIS_URL}/get/${encodeURIComponent('military:flights:v1')}`) {
         return Response.json({ result: seed === null ? null : JSON.stringify(seed) });
       }
-      if (url.startsWith(`${REDIS_URL}/get/`)) return Response.json({ result: null });
+      if (url.startsWith(`${REDIS_URL}/get/`)) {
+        const key = decodeURIComponent(url.slice(`${REDIS_URL}/get/`.length));
+        return Response.json({ result: store.get(key) ?? null });
+      }
+      if (url === `${REDIS_URL}/` && init?.method === 'POST') {
+        const command = JSON.parse(String(init.body)) as string[];
+        if (command[0] === 'SET') store.set(command[1]!, command[2]!);
+      }
       return Response.json({ result: 'OK' });
     };
   }
@@ -298,5 +311,96 @@ describe('Wingbits aircraft-details batch spend boundary', () => {
     installFetch(null, urls);
     await getAircraftDetailsBatch(ctx(), { icao24s: ['ff0042'] });
     assert.deepEqual(urls, ['https://customer-api.wingbits.com/v1/flights/details/ff0042']);
+  });
+
+  // The shared `military:aircraft:v1:<icao24>` keys are also written by the
+  // Pro-gated singular route, so a cache HIT is not proof that an address is
+  // one the map can show. Pre-fix the snapshot check gated only misses: an
+  // anonymous caller read back any address a Pro caller had looked up, and
+  // `requested` told it whether a non-snapshot address was cached at all.
+  it('withholds a cached record for an aircraft outside the snapshot', async () => {
+    const urls: string[] = [];
+    const store = new Map<string, string>();
+    installFetch({ flights: [{ hexCode: 'AA0001', lat: 1, lon: 2 }] }, urls, store);
+    process.env.WORLDMONITOR_VALID_KEYS = API_KEY;
+    const pro = await getAircraftDetails(ctx({ 'X-WorldMonitor-Key': API_KEY }), { icao24: 'cc0003' });
+    assert.equal(pro.details?.registration, 'REG-cc0003');
+    urls.length = 0;
+
+    const response = await getAircraftDetailsBatch(ctx(), { icao24s: ['cc0003', 'aa0001'] });
+
+    assert.deepEqual(Object.keys(response.results), ['aa0001']);
+    assert.equal(response.requested, 1, 'the prefix stops before the withheld address');
+    assert.deepEqual(urls, ['https://customer-api.wingbits.com/v1/flights/details/aa0001']);
+  });
+
+  it('does not reveal a cached negative lookup through `requested`', async () => {
+    const urls: string[] = [];
+    const store = new Map<string, string>();
+    installFetch({ flights: [{ hexCode: 'AA0001', lat: 1, lon: 2 }] }, urls, store);
+    process.env.WORLDMONITOR_VALID_KEYS = API_KEY;
+    await getAircraftDetails(ctx({ 'X-WorldMonitor-Key': API_KEY }), { icao24: 'dd0004' });
+    assert.ok([...store.keys()].some((key) => key.endsWith(':dd0004')), 'the 404 is cached');
+    urls.length = 0;
+
+    // An uncached non-snapshot address reports requested 0; a cached one must
+    // report the same, or the field is a cache-presence oracle.
+    const response = await getAircraftDetailsBatch(ctx(), { icao24s: ['dd0004'] });
+
+    assert.equal(response.requested, 0);
+    assert.deepEqual(Object.keys(response.results), []);
+    assert.deepEqual(urls, []);
+  });
+
+  it('withholds cached records when the snapshot cannot be read', async () => {
+    const urls: string[] = [];
+    const store = new Map<string, string>();
+    installFetch({ flights: [{ hexCode: 'AA0001', lat: 1, lon: 2 }] }, urls, store);
+    await getAircraftDetailsBatch(ctx(), { icao24s: ['aa0001'] });
+    assert.ok([...store.keys()].some((key) => key.endsWith(':aa0001')), 'aa0001 is cached');
+    _resetTrackedAircraftCacheForTests();
+    urls.length = 0;
+    const redisAndWingbits = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).startsWith(`${REDIS_URL}/get/military%3Aflights`)) {
+        return new Response('unavailable', { status: 503 });
+      }
+      return redisAndWingbits(input, init);
+    };
+
+    const response = await getAircraftDetailsBatch(ctx(), { icao24s: ['aa0001'] });
+
+    assert.deepEqual(Object.keys(response.results), []);
+    assert.equal(response.requested, 0);
+    assert.deepEqual(urls, []);
+  });
+
+  it('still serves a cached record for an aircraft in the snapshot', async () => {
+    const urls: string[] = [];
+    const store = new Map<string, string>();
+    installFetch({ flights: [{ hexCode: 'AA0001', lat: 1, lon: 2 }] }, urls, store);
+    await getAircraftDetailsBatch(ctx(), { icao24s: ['aa0001'] });
+    _resetTrackedAircraftCacheForTests();
+    urls.length = 0;
+
+    const response = await getAircraftDetailsBatch(ctx(), { icao24s: ['aa0001'] });
+
+    assert.equal(response.results.aa0001?.registration, 'REG-aa0001');
+    assert.equal(response.requested, 1);
+    assert.deepEqual(urls, [], 'served from the shared cache');
+  });
+
+  it('serves any cached record on the authenticated desktop sidecar', async () => {
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    const urls: string[] = [];
+    installFetch({ flights: [{ hexCode: 'AA0001', lat: 1, lon: 2 }] }, urls);
+    // The single-user sidecar reads its own in-process cache, not Upstash.
+    sidecarCacheSet('military:aircraft:v1:cc0003', { details: { registration: 'REG-cc0003' }, configured: true }, 60);
+
+    const response = await getAircraftDetailsBatch(ctx(), { icao24s: ['cc0003'] });
+
+    assert.equal(response.results.cc0003?.registration, 'REG-cc0003');
+    assert.equal(response.requested, 1);
+    assert.deepEqual(urls, []);
   });
 });
