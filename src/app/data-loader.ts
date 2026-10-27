@@ -681,6 +681,62 @@ export class DataLoaderManager implements AppModule {
     markLcpDebug('wm:data:country-geometry-replay-ready', { replayed: cache.gpsJamming?.length ? 1 : 0 });
   }
 
+  /**
+   * Digests of OTHER editions, fetched for cross-edition panels: a category a
+   * user enabled from another edition's dashboard is served by that edition's
+   * digest instead of per-feed browser fetches. One in-flight request per
+   * (edition, language), reused for `crossEditionDigestTtlMs` so N panels from
+   * the same edition cost one request per refresh. A failed fetch is not
+   * cached, so the next refresh retries it.
+   */
+  private readonly crossEditionDigests = new Map<string, { at: number; promise: Promise<ListFeedDigestResponse | null> }>();
+  private readonly crossEditionDigestTtlMs = 5 * 60_000;
+
+  private fetchEditionDigest(edition: string, language: string): Promise<ListFeedDigestResponse | null> {
+    const key = `${edition}:${language}`;
+    const now = Date.now();
+    const cached = this.crossEditionDigests.get(key);
+    if (cached && now - cached.at < this.crossEditionDigestTtlMs) return cached.promise;
+    const promise = (async (): Promise<ListFeedDigestResponse | null> => {
+      try {
+        const resp = await publicRpcFetch(
+          toApiUrl(`/api/news/v1/list-feed-digest?variant=${encodeURIComponent(edition)}&lang=${encodeURIComponent(language)}`),
+          { signal: AbortSignal.timeout(this.digestRequestTimeoutMs) },
+        );
+        if (!resp.ok) return null;
+        const data = await resp.json() as ListFeedDigestResponse;
+        return countDigestCategories(data) > 0 ? data : null;
+      } catch (e) {
+        console.warn(`[News] ${edition} digest fetch for a cross-edition panel failed:`, e);
+        return null;
+      }
+    })();
+    this.crossEditionDigests.set(key, { at: now, promise });
+    void promise.then((data) => {
+      if (!data && this.crossEditionDigests.get(key)?.promise === promise) this.crossEditionDigests.delete(key);
+    });
+    return promise;
+  }
+
+  /**
+   * Items for a cross-edition panel, read from every other edition whose
+   * digest carries `category` (a key such as `markets` is placed in both the
+   * finance and commodity editions). Returns null when no such digest is
+   * available, so the caller keeps its existing fallback.
+   */
+  private async crossEditionCategoryItems(category: string): Promise<{ items: NewsItem[]; servedStale: boolean } | null> {
+    const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
+    if (editions.length === 0) return null;
+    const language = getCurrentLanguage();
+    const digests = await Promise.all(editions.map(edition => this.fetchEditionDigest(edition, language)));
+    const carrying = digests.filter((d): d is ListFeedDigestResponse => !!d?.categories && category in d.categories);
+    if (carrying.length === 0) return null;
+    return {
+      items: carrying.flatMap(d => (d.categories[category]?.items ?? []).map(protoItemToNewsItem)),
+      servedStale: carrying.some(d => d.coverage?.servedStale === true),
+    };
+  }
+
   private async tryFetchDigest(): Promise<SelectedNewsDigest | null> {
     const now = Date.now();
     // Capture request and persistence scope together. Sampling the language again
@@ -1665,6 +1721,29 @@ export class DataLoaderManager implements AppModule {
         }
 
         return items;
+      }
+
+      // Cross-edition panel: read the digests of the editions that carry this
+      // category and merge them, source-fair, up to the custom-panel limit. The
+      // digests already hold every reachable source, so the result replaces
+      // the panel rather than accumulating onto it.
+      if (isCustom) {
+        const crossEdition = await this.crossEditionCategoryItems(category);
+        if (crossEdition) {
+          recordSelectedFreshness(crossEdition.servedStale);
+          this.setNewsRefreshDegraded(category, false);
+          const items = mergeRotatedNewsItems([], crossEdition.items, {
+            maxItems: this.customCategoryMergedItemLimit,
+            enabledSources: enabledNames,
+          });
+          this.flashMapForNews(items);
+          this.renderNewsForCategory(category, items);
+          this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
+            status: 'ok',
+            itemCount: items.length,
+          });
+          return items;
+        }
       }
 
       // Preset categories: serve last-known-good while the digest is briefly
