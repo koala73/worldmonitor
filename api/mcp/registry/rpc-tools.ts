@@ -342,8 +342,12 @@ function projectStoryCorroboration(title: string, story: Record<string, unknown>
 // Notes are the bulkiest provenance field: 12 stories of 12 of the heaviest
 // registry outlets reach ~80 KB with them and ~59 KB without. Live briefs carry
 // one or two outlets per story, so notes are shed only when they cannot fit.
-// Titles clip by characters, so multibyte titles can still overflow; then the
-// provenance lists go too, leaving outlet names, sourceTier and the roster.
+// The outlet profile adds ~13 KB at that worst case, so it is shed next, before
+// the structured provenance. Titles clip by characters, so multibyte titles can
+// still overflow; then the provenance lists go too, leaving outlet names,
+// sourceTier and the roster.
+const WORLD_BRIEF_NOTE_AND_PROFILE_FIELD = 'topStories[].sourceProvenance[].{note,homeCountry,audience,language,ownershipClass}';
+
 function fitWorldBriefToBudget(result: Record<string, unknown>, budgetBytes: number): Record<string, unknown> {
   if (!Array.isArray(result.topStories)) return result;
   const stories = result.topStories;
@@ -368,12 +372,25 @@ function fitWorldBriefToBudget(result: Record<string, unknown>, budgetBytes: num
     });
     return { ...story, sourceProvenance };
   });
+  let profiled = 0;
+  const withoutNotesOrProfile = withoutNotes.map((story) => {
+    if (!isRecord(story) || !Array.isArray(story.sourceProvenance)) return story;
+    const sourceProvenance = story.sourceProvenance.map((entry) => {
+      if (!isRecord(entry)) return entry;
+      const rest: Record<string, unknown> = { ...entry };
+      for (const key of OUTLET_PROFILE_REQUIRED) delete rest[key];
+      profiled++;
+      return rest;
+    });
+    return { ...story, sourceProvenance };
+  });
   const withoutLists = stories.map((story) => {
     if (!isRecord(story) || !Array.isArray(story.sourceProvenance)) return story;
     const { sourceProvenance: _sourceProvenance, ...rest } = story;
     return rest;
   });
   return (notes > 0 ? present(withoutNotes, 'topStories[].sourceProvenance[].note', notes) : null)
+    ?? (profiled > 0 ? present(withoutNotesOrProfile, WORLD_BRIEF_NOTE_AND_PROFILE_FIELD, profiled) : null)
     ?? present(withoutLists, 'topStories[].sourceProvenance', withProvenance)
     ?? result;
 }
@@ -1552,7 +1569,8 @@ export const RPC_TOOLS: ToolDef[] = [
                 description: 'Fail-closed provenance for each outlet in sources, index-aligned: sourceProvenance[j] describes sources[j]. Shows when one story mixes a tier-1 wire with a high-risk or state-affiliated outlet, which sourceTier alone hides. Omitted when sources is, or when transportCoverage records it was trimmed for the output budget.',
                 items: {
                   type: 'object',
-                  required: ['source', 'tier', ...BRIEF_SOURCE_PROVENANCE_SCHEMA.required],
+                  // Profile fields are shed before whole lists under the output budget.
+                  required: ['source', 'tier', ...BRIEF_SOURCE_PROVENANCE_SCHEMA.required.filter((key) => !(OUTLET_PROFILE_REQUIRED as readonly string[]).includes(key))],
                   properties: {
                     source: { type: 'string' },
                     tier: DECLARED_TIER_SCHEMA,
@@ -1569,10 +1587,10 @@ export const RPC_TOOLS: ToolDef[] = [
         model: { type: 'string', description: 'LLM model used by the insights seeder.' },
         transportCoverage: {
           type: 'object',
-          description: 'Present only when provenance was trimmed to fit the output budget: first every topStories[].sourceProvenance[].note, and only if that is not enough, every topStories[].sourceProvenance list, which also removes the per-outlet tier. Outlet names, the best sourceTier and the publishers roster are always returned.',
+          description: 'Present only when provenance was trimmed to fit the output budget: first every topStories[].sourceProvenance[].note, then also the outlet profile fields (homeCountry, audience, language, ownershipClass), and only if that is not enough, every topStories[].sourceProvenance list, which also removes the per-outlet tier. Outlet names, the best sourceTier and the publishers roster are always returned.',
           required: ['field', 'original_count', 'returned_count', 'omitted_count', 'omission_reason'],
           properties: {
-            field: { enum: ['topStories[].sourceProvenance[].note', 'topStories[].sourceProvenance'] },
+            field: { enum: ['topStories[].sourceProvenance[].note', WORLD_BRIEF_NOTE_AND_PROFILE_FIELD, 'topStories[].sourceProvenance'] },
             original_count: { type: 'integer', minimum: 0 }, returned_count: { type: 'integer', minimum: 0 },
             omitted_count: { type: 'integer', minimum: 0 }, omission_reason: { const: 'output_budget' },
           },
