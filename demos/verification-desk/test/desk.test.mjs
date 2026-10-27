@@ -19,7 +19,34 @@ import { getSourceTier } from '../../../server/_shared/source-tiers.ts';
 import { getSourcePropagandaRisk } from '../../../shared/source-provenance.ts';
 
 const anchor = new Anchor({ apiKey: '' });
-test('hosted grading accepts same-origin request intent and denies cross-site navigations', async () => {
+function withDeskEnv(t, env) {
+  const saved = Object.fromEntries(Object.keys(env).map(name => [name, process.env[name]]));
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined) delete process.env[name]; else process.env[name] = value;
+  }
+  t.after(() => {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name]; else process.env[name] = value;
+    }
+  });
+}
+
+test('a passwordless desk answers only the names it was configured on (DNS rebinding)', async t => {
+  withDeskEnv(t, { DESK_PASSWORD: undefined, DESK_ALLOW_OPEN: undefined, DESK_HOST: undefined });
+  const { hasRequestIntent } = await import('../lib/access.mjs');
+  // A rebound attacker domain supplies both Host and a matching Origin.
+  assert.equal(hasRequestIntent({ headers: { host: 'rebind.attacker.tld:8787', origin: 'http://rebind.attacker.tld:8787' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'rebind.attacker.tld:8787', 'sec-fetch-site': 'same-origin' } }), false);
+  for (const host of ['127.0.0.1:8787', 'localhost:8787', '[::1]:8787']) {
+    assert.equal(hasRequestIntent({ headers: { host, origin: `http://${host}` } }), true, host);
+  }
+  // An explicit open-network opt-in keeps LAN names working.
+  process.env.DESK_ALLOW_OPEN = '1';
+  assert.equal(hasRequestIntent({ headers: { host: '192.168.1.5:8787', origin: 'http://192.168.1.5:8787' } }), true);
+});
+
+test('hosted grading accepts same-origin request intent and denies cross-site navigations', async t => {
+  withDeskEnv(t, { DESK_PASSWORD: 'test-desk-password' });
   const { hasRequestIntent } = await import('../lib/access.mjs');
   assert.equal(hasRequestIntent({ headers: { host: 'desk.example', 'sec-fetch-site': 'cross-site', cookie: 'valid' } }), false);
   assert.equal(hasRequestIntent({ headers: { host: 'desk.example' } }), false);

@@ -54,7 +54,19 @@ export const LOGIN_PAGE = (failed) => `<!doctype html>
 // Browsers omit Origin on same-origin GETs, and omit Sec-Fetch-Site outside
 // secure contexts (a LAN host over plain HTTP), so the Referer is the last
 // same-origin signal. A cross-site page can suppress a Referer but not forge one.
+// Host is the caller's own claim: a rebound attacker domain sends a Host and a
+// matching Origin. Without a password (and without the open-network opt-in),
+// answer only the names the desk was configured on.
+function isConfiguredHost(host) {
+  let hostname;
+  try { hostname = new URL(`http://${host}`).hostname.toLowerCase(); } catch { return false; }
+  const bind = (process.env.DESK_HOST || '127.0.0.1').toLowerCase();
+  return ['localhost', '127.0.0.1', '[::1]'].includes(hostname) ||
+    (!/^(0\.0\.0\.0|::|\*)$/.test(bind) && hostname === (bind.includes(':') ? `[${bind}]` : bind));
+}
+
 export function hasRequestIntent(req) {
+  if (!enabled() && process.env.DESK_ALLOW_OPEN !== '1' && !isConfiguredHost(req.headers.host ?? '')) return false;
   const sameOrigin = (raw) => {
     try {
       const url = new URL(raw);
