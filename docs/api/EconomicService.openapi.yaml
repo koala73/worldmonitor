@@ -821,6 +821,167 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-no2-activity:
+        get:
+            tags:
+                - EconomicService
+            summary: GetNo2Activity
+            description: 'Read Sentinel-5P tropospheric NO2 activity for 167 countries and 32 industrial clusters: the year-over-year change of the latest 56-day window against the same dates in prior years, its direction after a 10% dead band, valid-day counts and the exclusion naming why a region has no reading. Filter by country_code, region_id or kind. Seed-backed; never calls Copernicus per request.'
+            operationId: GetNo2Activity
+            parameters:
+                - name: country_code
+                  in: query
+                  description: |-
+                    ISO 3166-1 alpha-2 code. Returns the country region and every cluster
+                     inside that country; clusters spanning several countries carry no code
+                     and never match. Case-insensitive. Empty means no country filter.
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
+                    pattern: '^([A-Za-z]{2})?$'
+                - name: region_id
+                  in: query
+                  description: |-
+                    Region id from the shared registry, for example "country-cn" or
+                     "yangtze-river-delta". Empty means no region filter.
+                  required: false
+                  example: "mena"
+                  schema:
+                    type: string
+                    pattern: '^([a-z0-9-]{1,64})?$'
+                - name: kind
+                  in: query
+                  description: Restrict to countries or clusters. Unspecified means both.
+                  required: false
+                  example: "NO2_REGION_KIND_COUNTRY"
+                  schema:
+                    type: string
+                    enum:
+                        - 'NO2_REGION_KIND_COUNTRY'
+                        - 'NO2_REGION_KIND_CLUSTER'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "attribution": "example"
+                                "generatedAt": "2026-01-15T12:00:00Z"
+                                "method":
+                                    "baselineYears": 1
+                                    "deadBandPercent": 42.5
+                                    "methodVersion": "example"
+                                    "minBaselineYears": 1
+                                    "minValidDays": 7
+                                "regions":
+                                    - "baselineMeanNo2MolM2": 1.5
+                                      "baselineYears":
+                                          - "window":
+                                              "maskedDays": 7
+                                              "meanNo2MolM2": 1.5
+                                              "validDays": 7
+                                              "windowEnd": "example"
+                                              "windowStart": "example"
+                                            "year": 1
+                                      "bbox":
+                                          - 1.5
+                                      "changePercent": 42.5
+                                      "countryCode": "US"
+                                "sourceDataset": "example"
+                            schema:
+                                $ref: '#/components/schemas/GetNo2ActivityResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/economic/v1/get-energy-capacity:
         get:
             tags:
@@ -5622,6 +5783,212 @@ components:
                     description: |-
                         Canonical inspectable method payload. Numeric computation and state
                          assignment are deterministic and validated before crossing this boundary.
+        GetNo2ActivityRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^([A-Za-z]{2})?$
+                    description: |-
+                        ISO 3166-1 alpha-2 code. Returns the country region and every cluster
+                         inside that country; clusters spanning several countries carry no code
+                         and never match. Case-insensitive. Empty means no country filter.
+                regionId:
+                    type: string
+                    pattern: ^([a-z0-9-]{1,64})?$
+                    description: |-
+                        Region id from the shared registry, for example "country-cn" or
+                         "yangtze-river-delta". Empty means no region filter.
+                kind:
+                    type: string
+                    enum:
+                        - NO2_REGION_KIND_UNSPECIFIED
+                        - NO2_REGION_KIND_COUNTRY
+                        - NO2_REGION_KIND_CLUSTER
+                    description: No2RegionKind selects country polygons, named industrial clusters, or both.
+            description: |-
+                Filters for the Sentinel-5P NO2 activity dataset. Filters combine with AND.
+                 With no filter every registered region is returned.
+        GetNo2ActivityResponse:
+            type: object
+            properties:
+                regions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/No2ActivityRegion'
+                generatedAt:
+                    type: string
+                    description: When the seeder produced the dataset. Empty when no regions are served.
+                stale:
+                    type: boolean
+                    description: True when generated_at is older than the health budget for this dataset.
+                method:
+                    $ref: '#/components/schemas/No2ActivityMethod'
+                attribution:
+                    type: string
+                    description: |-
+                        Required credit line, for example "Contains modified Copernicus Sentinel
+                         data 2023-2026". Empty when no regions are served.
+                sourceDataset:
+                    type: string
+                    description: Source dataset identifier, for example "sentinel-5p-l2".
+                unavailableReason:
+                    type: string
+                    enum:
+                        - NO2_ACTIVITY_UNAVAILABLE_REASON_UNSPECIFIED
+                        - NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST
+                        - NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED
+                        - NO2_ACTIVITY_UNAVAILABLE_REASON_SEED_MISSING
+                        - NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_DATASET
+                        - NO2_ACTIVITY_UNAVAILABLE_REASON_CACHE_UNAVAILABLE
+                    description: |-
+                        No2ActivityUnavailableReason says why no regions were returned. NOT_COVERED
+                         is a contract answer: the filter names nothing in the region registry and a
+                         retry cannot help. Every other member names a fault.
+                upstreamUnavailable:
+                    type: boolean
+                    description: |-
+                        True when a fault prevented serving; false both when served and when the
+                         filter is simply not covered.
+            description: Sentinel-5P NO2 activity readings for the requested regions.
+        No2ActivityRegion:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Registry id, for example "country-cn" or "yangtze-river-delta".
+                kind:
+                    type: string
+                    enum:
+                        - NO2_REGION_KIND_UNSPECIFIED
+                        - NO2_REGION_KIND_COUNTRY
+                        - NO2_REGION_KIND_CLUSTER
+                    description: No2RegionKind selects country polygons, named industrial clusters, or both.
+                label:
+                    type: string
+                    description: Display label.
+                countryCode:
+                    type: string
+                    description: ISO 3166-1 alpha-2 code; empty for a cluster that spans countries.
+                bbox:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Bounding box as west, south, east, north in CRS84 degrees.
+                current:
+                    $ref: '#/components/schemas/No2Window'
+                baselineYears:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/No2BaselineYear'
+                baselineMeanNo2MolM2:
+                    type: number
+                    format: double
+                    description: Mean of the baseline windows, mol/m2. Absent while the baseline is pending.
+                changePercent:
+                    type: number
+                    format: double
+                    description: |-
+                        Percent change of the current window against the baseline mean. Absent
+                         when the region is excluded.
+                signalValue:
+                    type: number
+                    format: double
+                    description: change_percent outside the dead band, 0 inside it. Absent when excluded.
+                direction:
+                    type: string
+                    enum:
+                        - NO2_DIRECTION_UNSPECIFIED
+                        - NO2_DIRECTION_STRENGTHENING
+                        - NO2_DIRECTION_WEAKENING
+                        - NO2_DIRECTION_UNCHANGED
+                    description: No2Direction is the year-over-year reading after the dead band.
+                exclusion:
+                    type: string
+                    enum:
+                        - NO2_REGION_EXCLUSION_UNSPECIFIED
+                        - NO2_REGION_EXCLUSION_REQUEST_FAILED
+                        - NO2_REGION_EXCLUSION_BASELINE_BACKFILL_PENDING
+                        - NO2_REGION_EXCLUSION_INSUFFICIENT_VALID_DAYS
+                        - NO2_REGION_EXCLUSION_INSUFFICIENT_BASELINE_YEARS
+                    description: |-
+                        No2RegionExclusion says why a region carries no reading this run. The
+                         vocabulary is closed and shared with the seeder; BASELINE_BACKFILL_PENDING
+                         is an expected state during the first weeks after a region is added, not a
+                         fault.
+                seriesRefreshedAt:
+                    type: string
+                    description: |-
+                        Last successful source refresh for this region's series. Empty while no
+                         refresh has succeeded.
+                seriesDays:
+                    type: integer
+                    format: int32
+                    description: Daily observations stored for this region across every backfilled year.
+            description: One region's reading for this run.
+        No2Window:
+            type: object
+            properties:
+                windowStart:
+                    type: string
+                    description: First UTC calendar date, inclusive.
+                windowEnd:
+                    type: string
+                    description: Last UTC calendar date, inclusive.
+                validDays:
+                    type: integer
+                    format: int32
+                    description: Days whose valid pixel fraction met the method minimum.
+                maskedDays:
+                    type: integer
+                    format: int32
+                    description: Days removed by the holiday mask.
+                meanNo2MolM2:
+                    type: number
+                    format: double
+                    description: |-
+                        Mean tropospheric NO2 column over the valid days, mol/m2. Absent when
+                         valid_days is 0.
+            description: |-
+                One observation window: the current 56-day window or one prior-year window
+                 over the same calendar dates.
+        No2BaselineYear:
+            type: object
+            properties:
+                year:
+                    type: integer
+                    format: int32
+                window:
+                    $ref: '#/components/schemas/No2Window'
+            description: A prior-year window used as baseline.
+        No2ActivityMethod:
+            type: object
+            properties:
+                methodVersion:
+                    type: string
+                windowDays:
+                    type: integer
+                    format: int32
+                windowEndLagDays:
+                    type: integer
+                    format: int32
+                baselineYears:
+                    type: integer
+                    format: int32
+                minBaselineYears:
+                    type: integer
+                    format: int32
+                minValidDays:
+                    type: integer
+                    format: int32
+                minValidFraction:
+                    type: number
+                    format: double
+                deadBandPercent:
+                    type: number
+                    format: double
+            description: The reviewed method constants the dataset was produced with.
         GetEnergyCapacityRequest:
             type: object
             properties:

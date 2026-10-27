@@ -9,6 +9,7 @@ import "worldmonitor/economic/v1/get_energy_prices.proto";
 import "worldmonitor/economic/v1/get_macro_signals.proto";
 import "worldmonitor/economic/v1/get_china_macro_snapshot.proto";
 import "worldmonitor/economic/v1/get_china_activity_nowcast.proto";
+import "worldmonitor/economic/v1/get_no2_activity.proto";
 import "worldmonitor/economic/v1/get_energy_capacity.proto";
 import "worldmonitor/economic/v1/get_bis_policy_rates.proto";
 import "worldmonitor/economic/v1/get_bis_exchange_rates.proto";
@@ -74,6 +75,11 @@ service EconomicService {
   // with reviewed proxy families using a deterministic, no-lookahead method.
   rpc GetChinaActivityNowcast(GetChinaActivityNowcastRequest) returns (GetChinaActivityNowcastResponse) {
     option (sebuf.http.config) = {path: "/get-china-activity-nowcast", method: HTTP_METHOD_GET};
+  }
+
+  // Read Sentinel-5P tropospheric NO2 activity for 167 countries and 32 industrial clusters: the year-over-year change of the latest 56-day window against the same dates in prior years, its direction after a 10% dead band, valid-day counts and the exclusion naming why a region has no reading. Filter by country_code, region_id or kind. Seed-backed; never calls Copernicus per request.
+  rpc GetNo2Activity(GetNo2ActivityRequest) returns (GetNo2ActivityResponse) {
+    option (sebuf.http.config) = {path: "/get-no2-activity", method: HTTP_METHOD_GET};
   }
 
   // Retrieve cached EIA installed capacity series by energy source, with annual megawatt values for comparing available solar, wind and coal generation capacity.
