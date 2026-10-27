@@ -59,10 +59,15 @@ after(async () => {
   Object.assign(process.env, originalEnv);
 });
 
-it('Vite does not trust an inbound policy user ID', async () => {
+it('Vite does not trust inbound gateway-only identity stamps', async () => {
   const key = `summary:${CACHE_VERSION}:translate:fr:${'a'.repeat(32)}`;
   const response = await originalFetch(`${base}/api/news/v1/summarize-article-cache?cache_key=${key}`, {
-    headers: { 'X-WorldMonitor-Key': 'vite-test-operator', 'x-user-id': 'forged-user' },
+    headers: {
+      'X-WorldMonitor-Key': 'vite-test-operator',
+      'x-user-id': 'forged-user',
+      'x-wm-mcp-internal-verified': '1',
+      'x-wm-rl-principal': 'user:forged-user',
+    },
   });
   assert.equal(response.status, 200, await response.clone().text());
   assert.ok(cacheReads.includes(key), cacheReads.join('\n'));

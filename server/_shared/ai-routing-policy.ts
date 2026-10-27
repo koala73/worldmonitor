@@ -3,7 +3,7 @@
 import { ENV_PREFIX, getConvexSharedSecret, getConvexSiteUrl } from './entitlement-check';
 import type { LlmRoutingPolicy } from './llm';
 import { TRUSTED_USER_ID_HEADER } from './mcp-internal-hmac';
-import { validateBearerToken } from '../auth-session';
+import { validateBearerToken, verifiedSubjectIgnoringExpiry } from '../auth-session';
 import { getCachedJson, setCachedJson } from './redis.js';
 
 // Per-customer AI routing restriction (e.g. a contract that says the
@@ -98,9 +98,11 @@ export async function getAiRoutingDecisionForUser(userId: string | null | undefi
  * handler that authenticated the caller itself (resolvePremiumCallerIdentity)
  * passes that user id as the fallback, which covers routes where the gateway
  * does not resolve a Clerk session (free modes, cache reads). Otherwise a
- * bearer session is verified here before its policy is read. A call with no
- * identity at all (an internal invocation, an anonymous caller) is
- * unrestricted, like any other caller without a user id.
+ * bearer is verified here before its policy is read: an expired Clerk token
+ * still binds its signer's policy, a token Clerk never signed counts as no
+ * identity, and an unreachable key set fails closed. A call with no identity
+ * at all (an internal invocation, an anonymous caller) is unrestricted, like
+ * any other caller without a user id.
  */
 export async function resolveAiRouting(
   request: Request | undefined,
@@ -110,9 +112,16 @@ export async function resolveAiRouting(
   if (userId) return getAiRoutingDecisionForUser(userId);
   const authorization = request?.headers?.get('Authorization');
   if (!authorization?.startsWith('Bearer ')) return DEFAULT_DECISION;
-  const session = await validateBearerToken(authorization.slice(7));
-  if (!session.valid || !session.userId) return UNAVAILABLE_DECISION;
-  return getAiRoutingDecisionForUser(session.userId);
+  const token = authorization.slice(7);
+  const session = await validateBearerToken(token);
+  if (session.valid && session.userId) return getAiRoutingDecisionForUser(session.userId);
+  if (session.reason === 'unverifiable') return UNAVAILABLE_DECISION;
+  // Clerk session tokens expire within a minute, so a restricted customer's
+  // request often carries a just-expired one: hold it to its signer's policy.
+  // A token Clerk never signed proves no identity, like an anonymous caller.
+  const subject = await verifiedSubjectIgnoringExpiry(token);
+  if (subject === 'unverifiable') return UNAVAILABLE_DECISION;
+  return subject ? getAiRoutingDecisionForUser(subject) : DEFAULT_DECISION;
 }
 
 /** The `routingPolicy` to pass to llm.ts. */

@@ -75,6 +75,21 @@ describe('withTransaction', () => {
       expect(ssl && ssl.rejectUnauthorized).not.toBe(false);
       expect(ssl && ssl.checkServerIdentity).toBeUndefined();
     });
+  it.each(['', '?sslmode=verify-full'])('pins DATABASE_SSL_CA in the actual pg configuration with verification on: %s', async suffix => {
+    vi.stubEnv('DATABASE_URL', `postgres://user@postgres.railway.internal/prices${suffix}`);
+    vi.stubEnv('DATABASE_SSL_CA', '-----BEGIN CERTIFICATE-----\\nMIIB\\n-----END CERTIFICATE-----');
+    getPool();
+    const actual = await vi.importActual<typeof import('pg')>('pg');
+    const client = new actual.default.Client(mocks.poolOptions.mock.lastCall![0]);
+    const { ssl } = (client as unknown as { connectionParameters: { ssl: false | { rejectUnauthorized?: boolean; ca?: string } } }).connectionParameters;
+    expect(ssl && ssl.rejectUnauthorized).not.toBe(false);
+    expect(ssl && ssl.ca).toBe('-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----');
+  });
+  it('rejects a DATABASE_SSL_CA that is not a PEM certificate', () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://user@postgres.railway.internal/prices');
+    vi.stubEnv('DATABASE_SSL_CA', 'true');
+    expect(() => getPool()).toThrow(/PEM certificate/);
+  });
   it('verifies remote database certificates even with localhost in the password', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://user:localhost@database.example/prices');
     getPool();

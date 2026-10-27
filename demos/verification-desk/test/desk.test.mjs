@@ -100,6 +100,33 @@ for (const [encoding, compress] of [['gzip', gzipSync], ['br', brotliCompressSyn
   });
 }
 
+test('an oversized (or decompression-bomb) article body stops at the read cap', async t => {
+  // 32 MiB of body; a capped read pulls only about MAX_ARTICLE_BYTES of it.
+  let pulled = 0;
+  async function* oversized() {
+    yield Buffer.from(`<p>${'Officials said 31 people died. '.repeat(20)}</p>`);
+    for (let i = 0; i < 512; i++) { pulled += 64 * 1024; yield Buffer.alloc(64 * 1024, 0x20); }
+  }
+  t.mock.method(https, 'request', (_url, _options, callback) => {
+    const request = new EventEmitter();
+    request.destroy = () => {};
+    request.end = () => {
+      const response = Readable.from(oversized());
+      response.statusCode = 200;
+      response.headers = { 'content-type': 'text/html' };
+      callback(response);
+    };
+    return request;
+  });
+  const { fetchArticleText, MAX_ARTICLE_BYTES } = await import('../lib/sources.mjs');
+  const text = await fetchArticleText('https://news.example/bomb', {
+    timeoutMs: 2000,
+    lookupImpl: async () => [{ address: '93.184.215.14', family: 4 }],
+  });
+  assert.match(text ?? '', /^Officials said 31 people died\./);
+  assert.ok(pulled <= MAX_ARTICLE_BYTES + 1024 * 1024, `read ${pulled} bytes past a ${MAX_ARTICLE_BYTES}-byte cap`);
+});
+
 test('a malformed compressed article is unavailable', async t => {
   t.mock.method(https, 'request', (_url, _options, callback) => {
     const request = new EventEmitter();

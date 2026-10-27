@@ -26,13 +26,23 @@ export function getPool(): pg.Pool {
       url.searchParams.getAll('ssl').some(value => !['true', '1'].includes(value)) ||
       url.searchParams.getAll('sslmode').some(value => value !== 'verify-full')
     )) throw new Error('Remote DATABASE_URL requires verified TLS; use sslmode=verify-full');
+    // Railway Postgres serves a chain from its own private root CA. Pinning that
+    // root keeps chain and hostname verification on without trusting any CA.
+    const ca = process.env.DATABASE_SSL_CA?.replace(/\\n/g, '\n').trim();
+    if (ca && !ca.startsWith('-----BEGIN CERTIFICATE-----')) {
+      throw new Error('DATABASE_SSL_CA must be a PEM certificate');
+    }
+
+    // pg lets URL TLS params replace the `ssl` object below (dropping a pinned
+    // CA). They were checked to be strict above, so the object is authoritative.
+    if (url && !local) for (const name of ['ssl', 'sslmode', 'uselibpqcompat']) url.searchParams.delete(name);
 
     _pool = new Pool({
-      connectionString: databaseUrl,
+      connectionString: url && !local ? url.href : databaseUrl,
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
-      ssl: local ? false : { rejectUnauthorized: true },
+      ssl: local ? false : { rejectUnauthorized: true, ...(ca ? { ca } : {}) },
     });
 
     _pool.on('error', (err) => {

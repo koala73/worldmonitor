@@ -27,6 +27,7 @@ const ISSUER = 'https://clerk-bearer-test.example';
 const ORIGINAL_ENV = { ...process.env };
 
 let signToken: (claims: Record<string, unknown>) => Promise<string>;
+let signExpiredToken: (claims: Record<string, unknown>) => Promise<string>;
 let resolvePremiumCallerIdentity: typeof import('../server/_shared/premium-check.ts')['resolvePremiumCallerIdentity'];
 let widgetHandler: typeof import('../api/widget-agent.ts')['default'];
 let bearerEntitlements: Record<string, unknown>;
@@ -68,6 +69,13 @@ before(async () => {
       .setIssuer(ISSUER)
       .setIssuedAt()
       .setExpirationTime('5m')
+      .sign(privateKey);
+  signExpiredToken = (claims) =>
+    new SignJWT(claims)
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
+      .setIssuer(ISSUER)
+      .setIssuedAt(Math.floor(Date.now() / 1000) - 3600)
+      .setExpirationTime(Math.floor(Date.now() / 1000) - 1800)
       .sign(privateKey);
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -136,6 +144,42 @@ describe('the bearer arm of resolvePremiumCallerIdentity (#5619 follow-up)', () 
     assert.equal(identity.isPremium, false);
     assert.deepEqual(await resolveAiRouting(request, identity.userId), { kind: 'restricted', allowedProviders: ['anthropic'] });
     assert.ok(policyUsers.includes('user_free_policy'));
+  });
+
+  it('applies the signer\'s policy to an expired bearer instead of failing closed', async () => {
+    const { resolveAiRouting } = await import('../server/_shared/ai-routing-policy.ts');
+    // Clerk session tokens live ~60s, so a restricted customer's request often
+    // carries one that just expired; it must still be held to their policy.
+    const request = bearerRequest(await signExpiredToken({ sub: 'user_expired_policy', plan: 'free' }));
+    assert.deepEqual(await resolveAiRouting(request), { kind: 'restricted', allowedProviders: ['anthropic'] });
+    assert.ok(policyUsers.includes('user_expired_policy'));
+  });
+
+  it('treats an unverifiable-by-signature bearer as an anonymous caller', async () => {
+    const { resolveAiRouting } = await import('../server/_shared/ai-routing-policy.ts');
+    const { privateKey } = await generateKeyPair('RS256');
+    const foreign = await new SignJWT({ sub: 'user_forged' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
+      .setIssuer(ISSUER).setIssuedAt().setExpirationTime('5m').sign(privateKey);
+    for (const token of ['not-a-jwt', foreign]) {
+      assert.deepEqual(await resolveAiRouting(bearerRequest(token)), { kind: 'default' });
+    }
+    assert.ok(!policyUsers.includes('user_forged'));
+  });
+
+  it('fails closed when the bearer cannot be verified at all', async () => {
+    const { resolveAiRouting } = await import('../server/_shared/ai-routing-policy.ts');
+    const { __resetJwksForTests } = await import('../server/auth-session.ts');
+    const saved = process.env.CLERK_JWT_ISSUER_DOMAIN;
+    delete process.env.CLERK_JWT_ISSUER_DOMAIN;
+    __resetJwksForTests();
+    try {
+      const request = bearerRequest(await signToken({ sub: 'user_unverifiable', plan: 'free' }));
+      assert.equal((await resolveAiRouting(request)).kind, 'unavailable');
+    } finally {
+      process.env.CLERK_JWT_ISSUER_DOMAIN = saved;
+      __resetJwksForTests();
+    }
   });
 
   it('reads only the verified bearer policy namespace on the public summary cache route', async () => {

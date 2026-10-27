@@ -182,6 +182,24 @@ function fetchPinned(url, { headers, signal, lookup: pinnedLookup }) {
 }
 
 const MAX_REDIRECTS = 5;
+// Decoded bytes read from one article. A few KB of gzip can inflate without
+// bound, and only the first 60,000 characters of text are kept anyway.
+export const MAX_ARTICLE_BYTES = 2 * 1024 * 1024;
+
+async function readCapped(res) {
+  if (!res.body?.getReader) return res.text();
+  const reader = res.body.getReader();
+  const chunks = [];
+  let size = 0;
+  while (size < MAX_ARTICLE_BYTES) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    size += value.byteLength;
+  }
+  await reader.cancel().catch(() => {});
+  return new TextDecoder().decode(Buffer.concat(chunks).subarray(0, MAX_ARTICLE_BYTES));
+}
 
 export async function fetchArticleText(url, { timeoutMs = 5000, fetchImpl = fetchPinned, lookupImpl } = {}) {
   if (!url || !/^https?:\/\//.test(url)) return null;
@@ -203,8 +221,11 @@ export async function fetchArticleText(url, { timeoutMs = 5000, fetchImpl = fetc
         current = new URL(next, current).href;
         continue;
       }
-      if (!res.ok) return null;
-      const text = stripHtml(await res.text());
+      if (!res.ok) {
+        await res.body?.cancel();
+        return null;
+      }
+      const text = stripHtml(await readCapped(res));
       return text.length > 200 ? text.slice(0, 60_000) : null;
     }
     return null; // too many redirects
