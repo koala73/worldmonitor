@@ -20,21 +20,22 @@ before(async () => {
   process.env.WORLDMONITOR_VALID_KEYS = 'vite-test-operator';
   globalThis.fetch = (async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
-    if (url.startsWith('https://feeds.bbci.co.uk/')) {
+    const target = new URL(url);
+    if (target.hostname === 'feeds.bbci.co.uk') {
       feedRequests.push(url);
       assert.equal(init?.redirect, 'manual');
       return url.endsWith('/next') ? new Response('<rss/>')
         : new Response(null, { status: 302, headers: { location: redirectTarget } });
     }
-    if (/^https?:/.test(url) && !url.startsWith('http://127.0.0.1:') && !url.includes('.vite.test')) {
+    if (target.hostname !== '127.0.0.1' && !['redis.vite.test', 'convex.vite.test'].includes(target.hostname)) {
       feedRequests.push(url);
       throw new Error('Unexpected outbound request');
     }
-    if (url.startsWith('https://redis.vite.test')) {
+    if (target.hostname === 'redis.vite.test') {
       if (url.includes('/get/')) cacheReads.push(decodeURIComponent(url.split('/get/')[1]));
       return Response.json({ result: null });
     }
-    if (url.endsWith('/api/internal-ai-routing-policy')) {
+    if (target.hostname === 'convex.vite.test' && target.pathname === '/api/internal-ai-routing-policy') {
       policyUsers.push(JSON.parse(String(init?.body)).userId);
       return Response.json({ policy: { allowedProviders: [] } });
     }
