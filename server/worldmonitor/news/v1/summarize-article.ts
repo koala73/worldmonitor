@@ -102,7 +102,10 @@ export async function summarizeArticle(
   // Only a policy chain or a default-chain name may resolve credentials; any
   // other client-named provider is reported as unknown (#8885).
   const providerIsSelectable = policyChain !== null || isDefaultChainProvider(provider);
-  const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
+  // Bounded like geoContext and the intel-brief framework: the append is
+  // free text that the sanitizer scans and the system prompt carries.
+  const MAX_SYSTEM_APPEND_LEN = 2000;
+  const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend.slice(0, MAX_SYSTEM_APPEND_LEN) : '';
   const requiresPremium = mode !== 'translate';
   // Every empty-summary envelope below (denied, skipped, rejected, failed)
   // serves no LLM output; the gateway reserved a daily-quota slot for this

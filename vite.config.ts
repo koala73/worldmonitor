@@ -865,7 +865,11 @@ function rssProxyPlugin(): Plugin {
 
           const data = await response.text();
           res.statusCode = response.status;
-          res.setHeader('Content-Type', 'application/xml');
+          // Same isolation as api/rss-proxy.js: callers parse response.text(),
+          // so feed bytes must never render as a same-origin document.
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
           res.setHeader('Cache-Control', 'public, max-age=300');
           res.setHeader('Access-Control-Allow-Origin', '*');
           res.end(data);
