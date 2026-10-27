@@ -13,6 +13,7 @@ import {
   DEFAULT_MIN_SPIKE_COUNT,
   DEFAULT_SPIKE_MULTIPLIER,
   MIN_SPIKE_SOURCE_COUNT,
+  MAX_TERM_TITLE_CHARS,
   MIN_TOKEN_LENGTH,
   ROLLING_WINDOW_MS,
   buildBaseTermCandidates,
@@ -42,6 +43,9 @@ interface StoredHeadline {
   link: string;
   publishedAt: number;
   ingestedAt: number;
+  // Lower-cased `source|title`, built once per headline: every term of a
+  // title shares this object instead of re-keying the title per term.
+  dedupeKey: string;
 }
 
 interface TermCandidate {
@@ -98,11 +102,6 @@ const MAX_AUTO_SUMMARIES_PER_HOUR = 5;
 // bounded by the feed registry, and capping it would put `sourceCount` and the
 // names it claims to explain back into disagreement.)
 const MAX_SPIKE_ARTICLES = 6;
-// Real headlines are far shorter. A feed title of thousands of words would
-// otherwise become thousands of terms, each holding the same few headlines,
-// and every spike check would walk all of them (and evict every real term
-// past MAX_TRACKED_TERMS).
-const MAX_HEADLINE_CHARS = 500;
 const CONFIG_KEY = 'worldmonitor-trending-config-v1';
 const ML_ENTITY_MIN_CONFIDENCE = 0.75;
 const ML_ENTITY_BATCH_SIZE = 20;
@@ -322,9 +321,8 @@ function dedupeHeadlines(headlines: StoredHeadline[]): StoredHeadline[] {
   const seen = new Set<string>();
   const unique: StoredHeadline[] = [];
   for (const headline of headlines) {
-    const key = `${headline.source}|${headline.title}`.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (seen.has(headline.dedupeKey)) continue;
+    seen.add(headline.dedupeKey);
     unique.push(headline);
   }
   return unique;
@@ -366,6 +364,7 @@ function recordTermCandidates(
   blockedTerms: Set<string>
 ): boolean {
   let addedAny = false;
+  let stored: StoredHeadline | undefined;
 
   for (const [term, meta] of termCandidates) {
     if (blockedTerms.has(term)) continue;
@@ -386,13 +385,15 @@ function recordTermCandidates(
     }
 
     record.timestamps.push(now);
-    record.headlines.push({
+    stored ??= {
       title: headline.title,
       source: headline.source,
       link: headline.link ?? '',
       publishedAt: effectivePubDateMs(headline),
       ingestedAt: now,
-    });
+      dedupeKey: `${headline.source}|${headline.title}`.toLowerCase(),
+    };
+    record.headlines.push(stored);
     addedAny = true;
   }
 
@@ -569,7 +570,8 @@ async function enrichWithMLEntities(headlines: PendingMLEnrichmentHeadline[], in
   if (headlines.length === 0 || !mlWorker.isAvailable) return;
 
   try {
-    const texts = headlines.map(entry => entry.headline.title);
+    // Same bound as base-term extraction (buildBaseTermCandidates).
+    const texts = headlines.map(entry => entry.headline.title.slice(0, MAX_TERM_TITLE_CHARS));
     const mlEntitiesByText = await extractMLEntitiesForTexts(texts);
     const config = readConfig();
     const blockedTerms = getBlockedTermSet(config);
@@ -614,11 +616,8 @@ export function ingestHeadlines(headlines: TrendingHeadlineInput[]): void {
   const blockedTerms = getBlockedTermSet(config);
   const pendingMLEnrichment: PendingMLEnrichmentHeadline[] = [];
 
-  for (const input of headlines) {
-    if (!input.title?.trim()) continue;
-    const headline = input.title.length > MAX_HEADLINE_CHARS
-      ? { ...input, title: input.title.slice(0, MAX_HEADLINE_CHARS) }
-      : input;
+  for (const headline of headlines) {
+    if (!headline.title?.trim()) continue;
 
     const key = headlineKey(headline);
     const previouslySeen = seenHeadlines.get(key);

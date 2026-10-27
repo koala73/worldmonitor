@@ -103,6 +103,24 @@ describe('keyword-spike-core', () => {
     );
   });
 
+  it('bounds the terms one title can produce, for every caller', () => {
+    // A feed title of thousands of words would otherwise become thousands of
+    // terms: the dashboard rescans each per spike check, and get_keyword_spikes
+    // walks and returns them all.
+    const words = Array.from({ length: 10_000 }, (_, i) => `zq${i.toString(36).padStart(5, 'a')}`).join(' ');
+    assert.ok(buildBaseTermCandidates(words).size < 1_000);
+    assert.ok(buildBaseTermCandidates(`Zaporizhzhia ${words}`).has('zaporizhzhia'), 'the start of the title still counts');
+
+    const nowMs = 1_800_000_000_000;
+    const stories = Array.from({ length: 6 }, (_, i) => ({
+      title: `${words} ${i}`,
+      lastSeenMs: nowMs - i * 60_000,
+      sources: [`source-${i % 3}`],
+    }));
+    const spikes = computeKeywordSpikesFromStories(stories, { nowMs, baselineDurationMs: 46 * 60 * 60 * 1000 });
+    assert.ok(spikes.length > 0 && spikes.length < 1_000, `got ${spikes.length} spikes`);
+  });
+
   it('stripSourceAttribution removes trailing outlet suffixes only', () => {
     assert.equal(stripSourceAttribution('Markets rally - Reuters'), 'Markets rally');
     assert.equal(
