@@ -7879,6 +7879,10 @@ export class DeckGLMap {
       else if (region.kind === 'cluster') this.no2ClusterRegions.push(region);
     }
     this.no2ActivityVersion++;
+    if (import.meta.env.VITE_E2E === '1') {
+      this.container.dataset.wmNo2Regions = String(snapshot?.regions.length ?? 0);
+      this.container.dataset.wmNo2Countries = String(this.no2CountryRegions.size);
+    }
     this.updateLegend();
     this.render();
   }
@@ -8410,6 +8414,10 @@ export class DeckGLMap {
         this.countriesBounded = null;
         this.culledCountriesGeoJson = null;
         this.culledCountriesContentKey = '';
+        // Choropleth data that arrived before the boundaries has nothing to
+        // paint onto until now; schedule the frame that paints it.
+        this.render();
+        if (import.meta.env.VITE_E2E === '1') this.container.dataset.wmCountryBoundaries = String(geojson.features.length);
         this.maplibreMap.addSource('country-boundaries', {
           type: 'geojson',
           data: geojson,
