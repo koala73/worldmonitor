@@ -1566,9 +1566,9 @@ describe('api/mcp-proxy', () => {
     // The pending RPC deferred can reject (stream close or RPC timer) while send()
     // is still awaiting the endpoint POST. Without a handler attached at creation,
     // Node reports an unhandled rejection, which by default kills the process.
-    for (const [name, closeStreamOnCall] of [
-      ['the SSE stream closes', true],
-      ['the RPC timer fires', false],
+    for (const [name, closeStreamOnCall, expectedStatus, expectedError] of [
+      ['the SSE stream closes', true, 422, 'SSE stream closed'],
+      ['the RPC timer fires', false, 504, 'MCP server timed out'],
     ]) {
       it(`does not leak an unhandled rejection when ${name} during a slow tools/call POST`, async () => {
         const unhandled = [];
@@ -1577,6 +1577,7 @@ describe('api/mcp-proxy', () => {
         try {
           const encoder = new TextEncoder();
           let sseController;
+          let toolsCallPosted = false;
           globalThis.fetch = async (_url, opts) => {
             if (!opts?.body) {
               const stream = new ReadableStream({
@@ -1599,6 +1600,7 @@ describe('api/mcp-proxy', () => {
               })}\n\n`));
             }
             if (body.method === 'tools/call') {
+              toolsCallPosted = true;
               if (closeStreamOnCall) sseController.close();
               // Hold the POST past SSE_RPC_TIMEOUT_MS (200 ms under node:test).
               await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1612,8 +1614,9 @@ describe('api/mcp-proxy', () => {
           }));
           await new Promise((resolve) => setImmediate(resolve));
 
-          assert.ok(res.status >= 400 && res.status < 600, `Unexpected status: ${res.status}`);
-          await res.text();
+          assert.equal(toolsCallPosted, true, 'the race must happen during the tools/call POST');
+          assert.equal(res.status, expectedStatus);
+          assert.deepEqual(await res.json(), { error: expectedError });
           assert.deepEqual(unhandled.map((e) => e?.message ?? String(e)), []);
         } finally {
           process.off('unhandledRejection', onUnhandled);
