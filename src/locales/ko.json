@@ -1312,7 +1312,8 @@
         "radiationElevated": "상승된 방사능",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "NOTAM 공역 제한"
+        "notamAirspace": "NOTAM 공역 제한",
+        "no2Activity": "산업 활동(NO2)"
       },
       "tooltip": {
         "earthquake": "지진",
@@ -1428,7 +1429,8 @@
           "ciiChoropleth": "Country Instability Index 히트맵 — 점수별 국가 표시(녹색=안정, 적색=심각)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "FAA NOTAM에서 현재 시행 중이거나 24시간 이내에 시작되는 임시 비행 제한, 제한된 공역, 위험 및 금지 공역"
+          "notamAirspace": "FAA NOTAM에서 현재 시행 중이거나 24시간 이내에 시작되는 임시 비행 제한, 제한된 공역, 위험 및 금지 공역",
+          "no2Activity": "167개국과 32개 산업 클러스터에 대한 Sentinel-5P NO2 활동 방향: 최근 56일 창을 이전 연도의 같은 날짜와 비교하고 10% 데드밴드를 적용합니다. 수정된 Copernicus Sentinel 데이터를 포함합니다."
         },
         "notes": {
           "timeAffects": "영향 대상: 지진, 기상, 시위, 장애"
@@ -3886,6 +3888,21 @@
           "1": "전략적 리스크 개요 패널",
           "2": "국가 개요",
           "3": "핫스팟 팝업"
+        }
+      },
+      "no2Activity": {
+        "category": "경제",
+        "purpose": "연소 흔적인 Sentinel-5P 대류권 NO2의 방향에 따라 국가와 산업 클러스터를 색칠합니다. 최근 56일 창을 이전 연도의 같은 날짜와 비교합니다.",
+        "source": "CDSE Sentinel Hub Statistical API를 통한 Copernicus Sentinel-5P TROPOMI NO2를 seed-no2-activity 서비스가 지역별로 매일 집계합니다. 수정된 Copernicus Sentinel 데이터를 포함합니다.",
+        "freshness": "24시간마다 갱신되며, 늦게 도착하는 데이터를 위해 창은 실행 3일 전에 끝나고 신선도 예산은 72시간입니다.",
+        "confidence": "유효일 14일 이상과 기준 연도 2년이 있어야만 값을 냅니다. 구름이 주요 노이즈이므로 데이터가 부족한 창은 추측하지 않고 값을 거부합니다.",
+        "limitations": {
+          "0": "지역이 추가된 뒤 이전 연도 창을 가져오는 몇 주 동안 '기준 대기'는 예상되는 상태입니다.",
+          "1": "NO2는 연소를 추적하므로 더 깨끗한 발전이나 차량은 활동 약화로 읽힙니다."
+        },
+        "related": {
+          "0": "중국 활동 나우캐스트",
+          "1": "국가 브리프"
         }
       },
       "conflicts": {

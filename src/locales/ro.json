@@ -1318,7 +1318,8 @@
         "radiationElevated": "Radiații ridicate",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "Restricții de spațiu aerian NOTAM"
+        "notamAirspace": "Restricții de spațiu aerian NOTAM",
+        "no2Activity": "Activitate industrială (NO2)"
       },
       "tooltip": {
         "earthquake": "Cutremur",
@@ -1434,7 +1435,8 @@
           "ciiChoropleth": "Hartă termică a Indicelui de instabilitate la nivel de țară — colorează țările după scor (verde=stabil, roșu=critic)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Restricții temporare de zbor și spațiu aerian restricționat, de pericol și interzis din NOTAM-urile FAA, în vigoare acum sau începând în următoarele 24 de ore"
+          "notamAirspace": "Restricții temporare de zbor și spațiu aerian restricționat, de pericol și interzis din NOTAM-urile FAA, în vigoare acum sau începând în următoarele 24 de ore",
+          "no2Activity": "Direcția activității NO2 din Sentinel-5P pentru 167 de țări și 32 de clustere industriale: cea mai recentă fereastră de 56 de zile față de aceleași date din anii anteriori, după o bandă moartă de 10%. Conține date Copernicus Sentinel modificate."
         },
         "notes": {
           "timeAffects": "Afectează: cutremure, vreme, proteste, întreruperi"
@@ -3926,6 +3928,21 @@
           "1": "panou Prezentare generală a riscurilor strategice",
           "2": "Rezumat informativ",
           "3": "Ferestre pop-up pentru hotspot-uri"
+        }
+      },
+      "no2Activity": {
+        "category": "Economie",
+        "purpose": "Colorează țările și clusterele industriale după direcția NO2 troposferic din Sentinel-5P, o urmă de ardere, în cea mai recentă fereastră de 56 de zile față de aceleași date din anii anteriori.",
+        "source": "NO2 Copernicus Sentinel-5P TROPOMI prin CDSE Sentinel Hub Statistical API, agregat zilnic pe regiune de serviciul seed-no2-activity. Conține date Copernicus Sentinel modificate.",
+        "freshness": "Alimentat la fiecare 24 de ore; fereastra se încheie cu 3 zile înainte de rulare pentru a primi granulele întârziate, cu un buget de prospețime de 72 de ore.",
+        "confidence": "O regiune primește o citire doar cu cel puțin 14 zile valide și 2 ani de referință; nebulozitatea este zgomotul dominant, așa că o fereastră săracă refuză citirea în loc să ghicească.",
+        "limitations": {
+          "0": "„Referință în așteptare” este starea așteptată săptămâni întregi după adăugarea unei regiuni, cât timp ferestrele anilor anteriori sunt încă preluate.",
+          "1": "NO2 urmărește arderea, așa că producția mai curată sau vehiculele mai curate se citesc ca activitate în scădere."
+        },
+        "related": {
+          "0": "Nowcast al activității Chinei",
+          "1": "Profil de țară"
         }
       },
       "conflicts": {

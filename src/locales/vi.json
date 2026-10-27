@@ -1312,7 +1312,8 @@
         "radiationElevated": "Bức xạ tăng cao",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "Hạn chế không phận NOTAM"
+        "notamAirspace": "Hạn chế không phận NOTAM",
+        "no2Activity": "Hoạt động công nghiệp (NO2)"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -1428,7 +1429,8 @@
           "ciiChoropleth": "Bản đồ nhiệt Chỉ số Bất ổn định Đất nước — tô màu các quốc gia theo điểm số (xanh=ổn định, đỏ=tới hạn)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Hạn chế bay tạm thời và không phận bị hạn chế, nguy hiểm và bị cấm từ NOTAM của FAA, có hiệu lực ngay bây giờ hoặc bắt đầu trong vòng 24 giờ"
+          "notamAirspace": "Hạn chế bay tạm thời và không phận bị hạn chế, nguy hiểm và bị cấm từ NOTAM của FAA, có hiệu lực ngay bây giờ hoặc bắt đầu trong vòng 24 giờ",
+          "no2Activity": "Hướng hoạt động NO2 từ Sentinel-5P cho 167 quốc gia và 32 cụm công nghiệp: cửa sổ 56 ngày gần nhất so với cùng các ngày trong những năm trước, sau dải chết 10%. Chứa dữ liệu Copernicus Sentinel đã sửa đổi."
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"
@@ -3886,6 +3888,21 @@
           "1": "Bảng Tổng quan Rủi ro Chiến lược",
           "2": "Tổng quan quốc gia",
           "3": "Cửa sổ điểm nóng"
+        }
+      },
+      "no2Activity": {
+        "category": "Kinh tế",
+        "purpose": "Tô màu các quốc gia và cụm công nghiệp theo hướng NO2 tầng đối lưu từ Sentinel-5P, một dấu vết của đốt cháy, trong cửa sổ 56 ngày gần nhất so với cùng các ngày trong những năm trước.",
+        "source": "NO2 Copernicus Sentinel-5P TROPOMI qua CDSE Sentinel Hub Statistical API, được dịch vụ seed-no2-activity tổng hợp hằng ngày theo từng vùng. Chứa dữ liệu Copernicus Sentinel đã sửa đổi.",
+        "freshness": "Nạp mỗi 24 giờ; cửa sổ kết thúc 3 ngày trước lần chạy để dữ liệu đến muộn kịp cập nhật, với ngân sách độ mới 72 giờ.",
+        "confidence": "Một vùng chỉ có kết quả khi có ít nhất 14 ngày hợp lệ và 2 năm cơ sở; mây là nhiễu chủ đạo, nên cửa sổ thiếu dữ liệu sẽ từ chối kết quả thay vì đoán.",
+        "limitations": {
+          "0": "\"Đang chờ cơ sở\" là trạng thái dự kiến trong nhiều tuần sau khi thêm một vùng, khi các cửa sổ của những năm trước vẫn đang được lấy.",
+          "1": "NO2 theo dõi đốt cháy, nên sản xuất điện sạch hơn hoặc phương tiện sạch hơn được đọc là hoạt động suy yếu."
+        },
+        "related": {
+          "0": "Dự báo tức thời hoạt động Trung Quốc",
+          "1": "Tóm tắt quốc gia"
         }
       },
       "conflicts": {

@@ -100,6 +100,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   resilienceScore:          def('resilienceScore',          '&#128200;', 'resilienceScore',          'Resilience', ['deck'], 'locked'),
   dayNight:                 def('dayNight',                 '&#127763;', 'dayNight',                 'Day/Night', ['svg', 'deck']),
   sanctions:                def('sanctions',                '&#128683;', 'sanctions',                'Sanctions', ['svg', 'deck']),
+  no2Activity:              def('no2Activity',              '&#127981;', 'no2Activity',              'Industrial activity (NO2)', ['deck']),
   startupHubs:              def('startupHubs',              '&#128640;', 'startupHubs',              'Startup Hubs', ['svg', 'deck']),
   techHQs:                  def('techHQs',                  '&#127970;', 'techHQs',                  'Tech HQs', ['svg', 'deck']),
   accelerators:             def('accelerators',             '&#9889;',   'accelerators',             'Accelerators', ['svg', 'deck']),
@@ -145,6 +146,7 @@ export const V1_LAYER_EXPLANATION_KEYS = [
   'tradeRoutes',
   'cyberThreats',
   'hotspots',
+  'no2Activity',
 ] as const satisfies readonly (keyof MapLayers)[];
 
 export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanation>> = {
@@ -162,6 +164,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
   tradeRoutes: { key: 'tradeRoutes', coverage: 'curated', evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/config/trade-routes.ts', 'src/services/supply-chain/index.ts'] },
   cyberThreats: { key: 'cyberThreats', coverage: 'curated', evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'scripts/seed-cyber-threats.mjs', 'server/worldmonitor/cyber/v1/list-cyber-threats.ts'] },
   hotspots: { key: 'hotspots', coverage: 'curated', evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/config/geo.ts', 'src/services/hotspot-escalation.ts'] },
+  no2Activity: { key: 'no2Activity', coverage: 'curated', evidence: ['scripts/seed-no2-activity.mjs', 'scripts/shared/no2-activity.mjs', 'api/health.js', 'server/worldmonitor/economic/v1/get-no2-activity.ts'] },
 };
 
 const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
@@ -173,7 +176,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'ucdpEvents', 'displacement', 'climate', 'weather', 'canadaRoads', 'canadaAlerts',
     'outages', 'cyberThreats', 'natural', 'fires',
     'waterways', 'economic', 'minerals', 'gpsJamming',
-    'satellites', 'ciiChoropleth', 'resilienceScore', 'sanctions', 'dayNight', 'webcams',
+    'satellites', 'ciiChoropleth', 'resilienceScore', 'sanctions', 'no2Activity', 'dayNight', 'webcams',
     'diseaseOutbreaks',
   ],
   tech: [
@@ -514,6 +517,11 @@ export const LAYER_SYNONYMS: Record<string, Array<keyof MapLayers>> = {
   gulf: ['gulfInvestments'],
   gcc: ['gulfInvestments'],
   sanction: ['sanctions'],
+  no2: ['no2Activity'],
+  emissions: ['no2Activity'],
+  pollution: ['no2Activity'],
+  industrial: ['no2Activity'],
+  satellite: ['no2Activity', 'satellites'],
   night: ['dayNight'],
   sun: ['dayNight'],
   webcam: ['webcams'],

@@ -1479,7 +1479,8 @@
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "NOTAM Airspace Restrictions"
+        "notamAirspace": "NOTAM Airspace Restrictions",
+        "no2Activity": "Industrial Activity (NO2)"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1595,7 +1596,8 @@
           "ciiChoropleth": "Country Instability Index heat-map — colors countries by score (green=stable, red=critical)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Temporary flight restrictions and restricted, danger and prohibited airspace from FAA NOTAMs, in effect now or starting within 24 hours"
+          "notamAirspace": "Temporary flight restrictions and restricted, danger and prohibited airspace from FAA NOTAMs, in effect now or starting within 24 hours",
+          "no2Activity": "Sentinel-5P NO2 activity direction for 167 countries and 32 industrial clusters: the latest 56-day window against the same dates in prior years, after a 10% dead band. Contains modified Copernicus Sentinel data."
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
@@ -3905,6 +3907,21 @@
           "1": "Strategic Risk panel",
           "2": "Country brief",
           "3": "Hotspot popups"
+        }
+      },
+      "no2Activity": {
+        "category": "Economy",
+        "purpose": "Colors countries and industrial clusters by the direction of their Sentinel-5P tropospheric NO2, a combustion trace, over the latest 56-day window against the same dates in prior years.",
+        "source": "Copernicus Sentinel-5P TROPOMI NO2 via the CDSE Sentinel Hub Statistical API, aggregated daily per region by the seed-no2-activity service. Contains modified Copernicus Sentinel data.",
+        "freshness": "Seeded every 24 hours; the window ends 3 days before the run so late granules can land, with a 72-hour freshness budget.",
+        "confidence": "A region reads only with at least 14 valid days and 2 baseline years; cloud cover is the dominant noise, so a thin window refuses a reading rather than guessing.",
+        "limitations": {
+          "0": "Baseline pending is the expected state for weeks after a region is added, while prior-year windows are still being fetched.",
+          "1": "NO2 tracks combustion, so cleaner generation or cleaner vehicles read as weakening activity."
+        },
+        "related": {
+          "0": "China activity nowcast",
+          "1": "Country brief"
         }
       },
       "conflicts": {

@@ -1457,7 +1457,8 @@
         "renewableInstallations": "Nishati Safi",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "Vikwazo vya Anga la NOTAM"
+        "notamAirspace": "Vikwazo vya Anga la NOTAM",
+        "no2Activity": "Shughuli za viwanda (NO2)"
       },
       "tooltip": {
         "earthquake": "Tetemeko la ardhi",
@@ -1573,7 +1574,8 @@
           "ciiChoropleth": "Ramani ya joto ya Fahirisi ya Kutokuwa na Uthabiti wa Nchi — rangizo nchi kwa alama (kijani=imara, nyekundu=muhimu)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Vikwazo vya kuruka kwa muda na anga yenye vikwazo, hatari na iliyokatazwa kutoka kwa NOTAMs za FAA, inayotumika sasa au kuanza ndani ya saa 24"
+          "notamAirspace": "Vikwazo vya kuruka kwa muda na anga yenye vikwazo, hatari na iliyokatazwa kutoka kwa NOTAMs za FAA, inayotumika sasa au kuanza ndani ya saa 24",
+          "no2Activity": "Mwelekeo wa shughuli za NO2 kutoka Sentinel-5P kwa nchi 167 na makundi 32 ya viwanda: dirisha la hivi karibuni la siku 56 ikilinganishwa na tarehe zile zile za miaka iliyopita, baada ya ukanda usiohesabiwa wa 10%. Ina data iliyorekebishwa ya Copernicus Sentinel."
         },
         "notes": {
           "timeAffects": "Athari: Matetemeko ya Ardhi, Hali ya Hewa, Maandamano, Kukatika"
@@ -3906,6 +3908,21 @@
           "1": "Paneli ya Muhtasari wa Hatari ya Kimkakati",
           "2": "Ujasusi kwa kifupi",
           "3": "Madirisha ya Intel Hotspots"
+        }
+      },
+      "no2Activity": {
+        "category": "Uchumi",
+        "purpose": "Hupaka rangi nchi na makundi ya viwanda kulingana na mwelekeo wa NO2 ya troposphere kutoka Sentinel-5P, alama ya mwako, katika dirisha la hivi karibuni la siku 56 ikilinganishwa na tarehe zile zile za miaka iliyopita.",
+        "source": "NO2 ya Copernicus Sentinel-5P TROPOMI kupitia CDSE Sentinel Hub Statistical API, ikijumlishwa kila siku kwa kila eneo na huduma ya seed-no2-activity. Ina data iliyorekebishwa ya Copernicus Sentinel.",
+        "freshness": "Hupakiwa kila saa 24; dirisha huisha siku 3 kabla ya uendeshaji ili data iliyochelewa ifike, na bajeti ya usasa ya saa 72.",
+        "confidence": "Eneo hupata usomaji tu likiwa na angalau siku 14 halali na miaka 2 ya msingi; mawingu ndiyo kelele kuu, hivyo dirisha dhaifu hukataa usomaji badala ya kubahatisha.",
+        "limitations": {
+          "0": "\"Msingi unasubiri\" ni hali inayotarajiwa kwa wiki kadhaa baada ya eneo kuongezwa, wakati madirisha ya miaka iliyopita bado yanapatikana.",
+          "1": "NO2 hufuatilia mwako, hivyo uzalishaji safi zaidi au magari safi zaidi husomwa kama shughuli inayopungua."
+        },
+        "related": {
+          "0": "Nowcast ya shughuli za China",
+          "1": "Muhtasari wa nchi"
         }
       },
       "conflicts": {

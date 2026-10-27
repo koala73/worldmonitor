@@ -388,6 +388,7 @@
   "components.deckgl.layerHelp.descriptions.naturalEventsFull": "Earthquakes (USGS) + storms, fires, volcanoes, floods (NASA EONET)",
   "components.deckgl.layerHelp.descriptions.naturalEventsMacro": "Earthquakes, fires, floods, and other natural disruptions",
   "components.deckgl.layerHelp.descriptions.naturalEventsTech": "Earthquakes, storms, fires (may affect data centers)",
+  "components.deckgl.layerHelp.descriptions.no2Activity": "Sentinel-5P NO2 activity direction for 167 countries and 32 industrial clusters: the latest 56-day window against the same dates in prior years, after a 10% dead band. Contains modified Copernicus Sentinel data.",
   "components.deckgl.layerHelp.descriptions.notamAirspace": "Temporary flight restrictions and restricted, danger and prohibited airspace from FAA NOTAMs, in effect now or starting within 24 hours",
   "components.deckgl.layerHelp.descriptions.techAccelerators": "Y Combinator, Techstars, 500 Startups locations",
   "components.deckgl.layerHelp.descriptions.techCloudRegions": "AWS, Azure, GCP data center regions",
@@ -452,6 +453,7 @@
   "components.deckgl.layers.militaryActivity": "Military Activity",
   "components.deckgl.layers.militaryBases": "Military Bases",
   "components.deckgl.layers.naturalEvents": "Natural Events",
+  "components.deckgl.layers.no2Activity": "Industrial Activity (NO2)",
   "components.deckgl.layers.notamAirspace": "NOTAM Airspace Restrictions",
   "components.deckgl.layers.nuclearSites": "Nuclear Sites",
   "components.deckgl.layers.pipelines": "Pipelines",
@@ -3232,5 +3234,14 @@
   "widgets.saveFailed": "Widget could not be saved. Please try again.",
   "widgets.send": "Send",
   "widgets.serverError": "Server error: {{status}}",
-  "widgets.unknownError": "Unknown error"
+  "widgets.unknownError": "Unknown error",
+  "layerExplanation.layers.no2Activity.category": "Economy",
+  "layerExplanation.layers.no2Activity.purpose": "Colors countries and industrial clusters by the direction of their Sentinel-5P tropospheric NO2, a combustion trace, over the latest 56-day window against the same dates in prior years.",
+  "layerExplanation.layers.no2Activity.source": "Copernicus Sentinel-5P TROPOMI NO2 via the CDSE Sentinel Hub Statistical API, aggregated daily per region by the seed-no2-activity service. Contains modified Copernicus Sentinel data.",
+  "layerExplanation.layers.no2Activity.freshness": "Seeded every 24 hours; the window ends 3 days before the run so late granules can land, with a 72-hour freshness budget.",
+  "layerExplanation.layers.no2Activity.confidence": "A region reads only with at least 14 valid days and 2 baseline years; cloud cover is the dominant noise, so a thin window refuses a reading rather than guessing.",
+  "layerExplanation.layers.no2Activity.limitations.0": "Baseline pending is the expected state for weeks after a region is added, while prior-year windows are still being fetched.",
+  "layerExplanation.layers.no2Activity.limitations.1": "NO2 tracks combustion, so cleaner generation or cleaner vehicles read as weakening activity.",
+  "layerExplanation.layers.no2Activity.related.0": "China activity nowcast",
+  "layerExplanation.layers.no2Activity.related.1": "Country brief"
 }

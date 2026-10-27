@@ -69,6 +69,7 @@ import { projectChinaCorridorOverlay } from './map/china-corridor-overlay';
 import { AircraftEmergencyLayer } from './AircraftEmergencyLayer';
 import { NotamAirspaceLayer } from './NotamAirspaceLayer';
 import type { NotamAirspaceRestriction } from '@/services/notam-airspace';
+import type { No2ActivitySnapshot } from '@/services/economic/no2-activity';
 import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -263,6 +264,7 @@ export class MapContainer {
   private cachedHappinessScores: HappinessData | null = null;
   private cachedCIIScores: CIIScore[] | null = null;
   private cachedResilienceRanking: ResilienceRankingItem[] | null = null;
+  private cachedNo2Activity: No2ActivitySnapshot | null = null;
   private cachedResilienceGreyedOut: ResilienceRankingItem[] = [];
   private cachedSpeciesRecovery: SpeciesRecovery[] | null = null;
   private cachedRenewableInstallations: RenewableInstallation[] | null = null;
@@ -862,6 +864,7 @@ export class MapContainer {
     if (this.cachedHappinessScores) this.setHappinessScores(this.cachedHappinessScores);
     if (this.cachedCIIScores) this.setCIIScores(this.cachedCIIScores);
     if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking, this.cachedResilienceGreyedOut);
+    if (this.cachedNo2Activity) this.setNo2Activity(this.cachedNo2Activity);
     if (this.cachedSpeciesRecovery) this.setSpeciesRecoveryZones(this.cachedSpeciesRecovery);
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
@@ -1434,6 +1437,11 @@ export class MapContainer {
     this.cachedCIIScores = scores;
     if (this.useGlobe) { this.globeMap?.setCIIScores(scores); return; }
     if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
+  }
+
+  public setNo2Activity(snapshot: No2ActivitySnapshot | null): void {
+    this.cachedNo2Activity = snapshot;
+    if (this.useDeckGL) this.deckGLMap?.setNo2Activity(snapshot);
   }
 
   public setResilienceRanking(items: ResilienceRankingItem[], greyedOut: ResilienceRankingItem[] = []): void {

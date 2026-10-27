@@ -1312,7 +1312,8 @@
         "radiationElevated": "放射線上昇",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "NOTAM飛行制限空域"
+        "notamAirspace": "NOTAM飛行制限空域",
+        "no2Activity": "産業活動（NO2）"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1428,7 +1429,8 @@
           "ciiChoropleth": "Country Instability Index ヒートマップ — スコア別に国をカラーリング(緑=安定、赤=深刻)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "FAA NOTAMの一時的飛行制限および制限空域、危険空域、禁止空域。現在有効、または24時間以内に開始予定"
+          "notamAirspace": "FAA NOTAMの一時的飛行制限および制限空域、危険空域、禁止空域。現在有効、または24時間以内に開始予定",
+          "no2Activity": "Sentinel-5P の NO2 活動の方向（167 か国と 32 の工業クラスター）: 直近 56 日間のウィンドウを過去数年の同じ日付と比較し、10% のデッドバンドを適用。改変された Copernicus Sentinel データを含みます。"
         },
         "notes": {
           "timeAffects": "影響: 地震、気象、抗議活動、障害"
@@ -3886,6 +3888,21 @@
           "1": "戦略リスク概観パネル",
           "2": "国の概要",
           "3": "ホットスポットのポップアップ"
+        }
+      },
+      "no2Activity": {
+        "category": "経済",
+        "purpose": "燃焼の痕跡である Sentinel-5P の対流圏 NO2 の方向に基づき、直近 56 日間のウィンドウを過去数年の同じ日付と比較して、国と工業クラスターを色分けします。",
+        "source": "CDSE Sentinel Hub Statistical API 経由の Copernicus Sentinel-5P TROPOMI NO2 を、seed-no2-activity サービスが地域ごとに日次で集計。改変された Copernicus Sentinel データを含みます。",
+        "freshness": "24 時間ごとに更新。遅れて届くグラニュールのためにウィンドウは実行の 3 日前で終了し、鮮度予算は 72 時間です。",
+        "confidence": "有効日が 14 日以上かつ基準年が 2 年以上ある場合のみ値を出します。雲が主なノイズのため、データの薄いウィンドウは推測せず値を出しません。",
+        "limitations": {
+          "0": "地域の追加後、過去年のウィンドウを取得している数週間は「基準準備中」が想定される状態です。",
+          "1": "NO2 は燃焼を追跡するため、よりクリーンな発電や車両への移行は活動の弱まりとして読まれます。"
+        },
+        "related": {
+          "0": "中国活動ナウキャスト",
+          "1": "国別ブリーフ"
         }
       },
       "conflicts": {

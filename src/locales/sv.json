@@ -606,7 +606,8 @@
         "radiationElevated": "Förhöjd strålning",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "NOTAM-luftrumsbegränsningar"
+        "notamAirspace": "NOTAM-luftrumsbegränsningar",
+        "no2Activity": "Industriell aktivitet (NO2)"
       },
       "layersTitle": "Lager",
       "layerSearch": "Sök lager...",
@@ -729,7 +730,8 @@
           "ciiChoropleth": "Landinstabilitetsindexvärmekarta — färger länder efter poäng (grön=stabil, röd=kritisk)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Tillfälliga flygbegränsningar och begränsat, farligt och förbjudet luftrum från FAA NOTAMs, gäller nu eller börjar inom 24 timmar"
+          "notamAirspace": "Tillfälliga flygbegränsningar och begränsat, farligt och förbjudet luftrum från FAA NOTAMs, gäller nu eller börjar inom 24 timmar",
+          "no2Activity": "Riktning för NO2-aktivitet från Sentinel-5P för 167 länder och 32 industrikluster: det senaste 56-dagarsfönstret mot samma datum tidigare år, efter ett dödband på 10 %. Innehåller modifierade Copernicus Sentinel-data."
         },
         "notes": {
           "timeAffects": "Påverkar: Jordbävningar, väder, protester, avbrott"
@@ -3906,6 +3908,21 @@
           "1": "panel Strategisk risköversikt",
           "2": "Underrättelseöversikt",
           "3": "Popup-fönster för hotspots"
+        }
+      },
+      "no2Activity": {
+        "category": "Ekonomi",
+        "purpose": "Färgar länder och industrikluster efter riktningen på deras troposfäriska NO2 från Sentinel-5P, ett förbränningsspår, i det senaste 56-dagarsfönstret mot samma datum tidigare år.",
+        "source": "Copernicus Sentinel-5P TROPOMI NO2 via CDSE Sentinel Hub Statistical API, dagligen aggregerat per region av tjänsten seed-no2-activity. Innehåller modifierade Copernicus Sentinel-data.",
+        "freshness": "Matas var 24:e timme; fönstret slutar 3 dagar före körningen så att sena granuler hinner fram, med en färskhetsbudget på 72 timmar.",
+        "confidence": "En region får ett värde bara med minst 14 giltiga dagar och 2 basår; molnighet är det dominerande bruset, så ett tunt fönster avstår från värde i stället för att gissa.",
+        "limitations": {
+          "0": "”Bas väntar” är det förväntade läget i veckor efter att en region lagts till, medan fönster från tidigare år fortfarande hämtas.",
+          "1": "NO2 följer förbränning, så renare produktion eller renare fordon läses som avtagande aktivitet."
+        },
+        "related": {
+          "0": "Nowcast för Kinas aktivitet",
+          "1": "Landsöversikt"
         }
       },
       "conflicts": {

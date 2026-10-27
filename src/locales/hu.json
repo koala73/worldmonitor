@@ -1457,7 +1457,8 @@
         "renewableInstallations": "Tiszta energia",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "NOTAM légtéri korlátozások"
+        "notamAirspace": "NOTAM légtéri korlátozások",
+        "no2Activity": "Ipari aktivitás (NO2)"
       },
       "tooltip": {
         "earthquake": "Földrengés",
@@ -1573,7 +1574,8 @@
           "ciiChoropleth": "Ország Instabilitási Index hőtérkép — országokat pontszám szerint színez (zöld=stabil, piros=kritikus)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Ideiglenes repüléskorlátozások, valamint korlátozott, veszélyes és tiltott légtér az FAA NOTAM-jaiból, amely jelenleg érvényes vagy 24 órán belül kezdődik"
+          "notamAirspace": "Ideiglenes repüléskorlátozások, valamint korlátozott, veszélyes és tiltott légtér az FAA NOTAM-jaiból, amely jelenleg érvényes vagy 24 órán belül kezdődik",
+          "no2Activity": "Sentinel-5P NO2-aktivitás iránya 167 országra és 32 ipari klaszterre: a legutóbbi 56 napos ablak az előző évek azonos dátumaihoz képest, 10%-os holtsáv után. Módosított Copernicus Sentinel adatokat tartalmaz."
         },
         "notes": {
           "timeAffects": "Érintett: Földrengések, Időjárás, Tüntetések, Leállások"
@@ -3906,6 +3908,21 @@
           "1": "panel Stratégiai Kockázat Áttekintés",
           "2": "Hírszerzési összefoglaló",
           "3": "Gócpontok felugró ablakai"
+        }
+      },
+      "no2Activity": {
+        "category": "Gazdaság",
+        "purpose": "Az országokat és ipari klasztereket a Sentinel-5P troposzferikus NO2-jének, egy égési nyomnak az iránya szerint színezi a legutóbbi 56 napos ablakban az előző évek azonos dátumaihoz képest.",
+        "source": "Copernicus Sentinel-5P TROPOMI NO2 a CDSE Sentinel Hub Statistical API-n keresztül, régiónként naponta összesítve a seed-no2-activity szolgáltatás által. Módosított Copernicus Sentinel adatokat tartalmaz.",
+        "freshness": "24 óránként frissül; az ablak 3 nappal a futás előtt zárul, hogy a késői granulumok beérkezzenek, 72 órás frissességi kerettel.",
+        "confidence": "Egy régió csak legalább 14 érvényes nappal és 2 bázisévvel kap értéket; a felhőzet a fő zaj, ezért a vékony ablak találgatás helyett elutasítja az értéket.",
+        "limitations": {
+          "0": "A „bázis függőben” hetekig a várt állapot egy régió hozzáadása után, amíg az előző évek ablakai még letöltés alatt állnak.",
+          "1": "Az NO2 az égést követi, így a tisztább termelés vagy a tisztább járművek gyengülő aktivitásként jelennek meg."
+        },
+        "related": {
+          "0": "Kína aktivitási nowcast",
+          "1": "Országösszefoglaló"
         }
       },
       "conflicts": {

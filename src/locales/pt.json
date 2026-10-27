@@ -607,7 +607,8 @@
         "radiationElevated": "Radiação elevada",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "Restrições de Espaço Aéreo NOTAM"
+        "notamAirspace": "Restrições de Espaço Aéreo NOTAM",
+        "no2Activity": "Atividade industrial (NO2)"
       },
       "layersTitle": "Camadas",
       "layerSearch": "Pesquisar camadas...",
@@ -730,7 +731,8 @@
           "ciiChoropleth": "Mapa de calor do Índice de Instabilidade do País — colore os países por pontuação (verde=estável, vermelho=crítico)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Restrições temporárias de voo e espaço aéreo restrito, perigoso e proibido dos NOTAMs da FAA, em vigência agora ou começando nas próximas 24 horas"
+          "notamAirspace": "Restrições temporárias de voo e espaço aéreo restrito, perigoso e proibido dos NOTAMs da FAA, em vigência agora ou começando nas próximas 24 horas",
+          "no2Activity": "Direção da atividade de NO2 do Sentinel-5P para 167 países e 32 polos industriais: a janela mais recente de 56 dias comparada com as mesmas datas de anos anteriores, após uma banda morta de 10%. Contém dados Copernicus Sentinel modificados."
         },
         "notes": {
           "timeAffects": "Afeta: terremotos, clima, protestos, interrupções"
@@ -3926,6 +3928,21 @@
           "1": "painel Visão Geral do Risco Estratégico",
           "2": "Resumo de Inteligência",
           "3": "Pop-ups de Pontos de acesso Intel"
+        }
+      },
+      "no2Activity": {
+        "category": "Economia",
+        "purpose": "Colore países e polos industriais pela direção do seu NO2 troposférico do Sentinel-5P, um traço de combustão, na janela mais recente de 56 dias comparada com as mesmas datas de anos anteriores.",
+        "source": "NO2 Copernicus Sentinel-5P TROPOMI via CDSE Sentinel Hub Statistical API, agregado diariamente por região pelo serviço seed-no2-activity. Contém dados Copernicus Sentinel modificados.",
+        "freshness": "Alimentado a cada 24 horas; a janela termina 3 dias antes da execução para que grânulos tardios cheguem, com um orçamento de atualidade de 72 horas.",
+        "confidence": "Uma região só obtém leitura com pelo menos 14 dias válidos e 2 anos de referência; a nebulosidade é o ruído dominante, então uma janela escassa recusa a leitura em vez de adivinhar.",
+        "limitations": {
+          "0": "«Referência pendente» é o estado esperado durante semanas após adicionar uma região, enquanto as janelas de anos anteriores ainda são obtidas.",
+          "1": "O NO2 acompanha a combustão, por isso geração mais limpa ou veículos mais limpos aparecem como atividade em queda."
+        },
+        "related": {
+          "0": "Nowcast de atividade da China",
+          "1": "Resumo do país"
         }
       },
       "conflicts": {

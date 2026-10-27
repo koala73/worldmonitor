@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 466870
+    "raw": 455814
   },
   "chunks": {
     "analytics": {
@@ -23,7 +23,7 @@
       "files": 1
     },
     "debugbear-rum": {
-      "raw": 2940,
+      "raw": 4089,
       "files": 1
     },
     "dom-utils": {
@@ -43,7 +43,7 @@
       "files": 1
     },
     "geo-distance": {
-      "raw": 28576,
+      "raw": 28609,
       "files": 1
     },
     "globe-marker-probe": {
@@ -55,11 +55,11 @@
       "files": 1
     },
     "main": {
-      "raw": 134168,
+      "raw": 134528,
       "files": 1
     },
     "map-layer-definitions": {
-      "raw": 27289,
+      "raw": 14650,
       "files": 1
     },
     "panels": {
@@ -87,7 +87,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 71221,
+      "raw": 71262,
       "files": 1
     },
     "theme-manager": {
@@ -101,11 +101,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1461015
+      "raw": 1471467
     },
     "chunks": {
       "App": {
-        "raw": 922929,
+        "raw": 932119,
         "files": 1
       },
       "ai-flow-settings": {
@@ -121,11 +121,11 @@
         "files": 1
       },
       "cached-risk-scores": {
-        "raw": 15073,
+        "raw": 15477,
         "files": 1
       },
       "checkout": {
-        "raw": 14264,
+        "raw": 14582,
         "files": 1
       },
       "cloud-prefs-sync": {
@@ -141,7 +141,7 @@
         "files": 1
       },
       "cross-domain-storage": {
-        "raw": 533,
+        "raw": 536,
         "files": 1
       },
       "desktop-cloud-access-hint": {
@@ -149,7 +149,7 @@
         "files": 1
       },
       "desktop-cloud-auth": {
-        "raw": 1476,
+        "raw": 1501,
         "files": 1
       },
       "feeds": {
@@ -161,7 +161,7 @@
         "files": 1
       },
       "index": {
-        "raw": 39123,
+        "raw": 39307,
         "files": 2
       },
       "layout-batch": {
@@ -201,7 +201,7 @@
         "files": 1
       },
       "source-provenance": {
-        "raw": 88495,
+        "raw": 88764,
         "files": 1
       },
       "storage-facility-registry-store": {
@@ -221,7 +221,7 @@
         "files": 1
       },
       "widget-store": {
-        "raw": 23204,
+        "raw": 23263,
         "files": 1
       }
     }

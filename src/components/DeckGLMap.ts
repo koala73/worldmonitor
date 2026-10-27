@@ -187,6 +187,8 @@ import { createDeckLoopRecovery } from '@/components/map/deck-loop-recovery';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { ZoomHintGuard } from '@/components/map/zoom-hint-guard';
 import { NOTAM_AIRSPACE_COLORS, notamAirspaceTooltip } from '@/components/map/notam-airspace-style';
+import { NO2_ACTIVITY_LEGEND, no2ActivityFill, no2ActivityTooltip, NO2_ACTIVITY_COLORS } from '@/components/map/no2-activity-style';
+import type { No2ActivityRegionView, No2ActivitySnapshot } from '@/services/economic/no2-activity';
 import type { NotamAirspaceRestriction } from '@/services/notam-airspace';
 import { dispatchWebcamLayerClick, resolveWebcamStreamUrl, type WebcamLeafLike } from '@/components/map/webcam-click';
 import {
@@ -737,6 +739,10 @@ export class DeckGLMap {
   private ciiScoresVersion = 0;
   private resilienceScoresMap: ReturnType<typeof buildResilienceChoroplethMap> = new Map();
   private resilienceScoresVersion = 0;
+  private no2Activity: No2ActivitySnapshot | null = null;
+  private no2CountryRegions: Map<string, No2ActivityRegionView> = new Map();
+  private no2ClusterRegions: No2ActivityRegionView[] = [];
+  private no2ActivityVersion = 0;
 
   // Country highlight state
   private countryGeoJsonLoaded = false;
@@ -2466,6 +2472,7 @@ export class DeckGLMap {
       const resilienceLayer = this.createResilienceChoroplethLayer();
       if (resilienceLayer) layers.push(resilienceLayer);
     }
+    if (mapLayers.no2Activity) layers.push(...this.createNo2ActivityLayers());
     // Sanctions choropleth
     if (mapLayers.sanctions) {
       const sanctionsLayer = this.createSanctionsChoroplethLayer();
@@ -4976,6 +4983,51 @@ export class DeckGLMap {
     });
   }
 
+  /**
+   * Country polygons filled by NO2 activity state, with the industrial
+   * clusters drawn as outlined boxes on top so a cluster reads against its
+   * country rather than vanishing into it.
+   */
+  private createNo2ActivityLayers(): Layer[] {
+    if (!this.no2Activity || !this.countriesGeoJsonData) return [];
+    const countries = this.no2CountryRegions;
+    const layers: Layer[] = [
+      new GeoJsonLayer({
+        id: 'no2-activity-countries',
+        data: this.getCulledCountriesGeoJson() ?? this.countriesGeoJsonData,
+        filled: true,
+        stroked: true,
+        getFillColor: (feature: { properties?: Record<string, unknown> }) => {
+          const code = feature.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+          const region = code ? countries.get(code) : undefined;
+          return region ? no2ActivityFill(region.state, region.state === 'pending' || region.state === 'excluded' ? 70 : 110) : [0, 0, 0, 0];
+        },
+        getLineColor: [80, 80, 80, 80] as [number, number, number, number],
+        getLineWidth: 1,
+        lineWidthMinPixels: 0.5,
+        pickable: true,
+        updateTriggers: { getFillColor: [this.no2ActivityVersion] },
+      }),
+    ];
+    if (this.no2ClusterRegions.length > 0) {
+      layers.push(new PolygonLayer<No2ActivityRegionView>({
+        id: 'no2-activity-clusters',
+        data: this.no2ClusterRegions,
+        getPolygon: (d) => {
+          const [west, south, east, north] = d.bbox;
+          return [[west, south], [east, south], [east, north], [west, north], [west, south]];
+        },
+        getFillColor: (d) => no2ActivityFill(d.state, 150),
+        getLineColor: (d) => no2ActivityFill(d.state, 240),
+        lineWidthMinPixels: 1.5,
+        stroked: true,
+        pickable: true,
+        updateTriggers: { getFillColor: [this.no2ActivityVersion], getLineColor: [this.no2ActivityVersion] },
+      }));
+    }
+    return layers;
+  }
+
   private createSanctionsChoroplethLayer(): GeoJsonLayer | null {
     if (!this.countriesGeoJsonData) return null;
     return new GeoJsonLayer({
@@ -5257,6 +5309,14 @@ export class DeckGLMap {
       case 'notam-airspace-circles':
       case 'notam-airspace-markers':
         return { html: notamAirspaceTooltip((obj.row ?? obj) as NotamAirspaceRestriction, text) };
+      case 'no2-activity-countries': {
+        const code = obj.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        const region = code ? this.no2CountryRegions.get(code) : undefined;
+        if (!region) return { html: `<div class="deckgl-tooltip"><strong>${text(obj.properties?.name ?? 'Unknown')}</strong><br/><span style="opacity:.7">No NO2 activity region</span></div>` };
+        return { html: no2ActivityTooltip(region, this.no2Activity?.attribution ?? '', text) };
+      }
+      case 'no2-activity-clusters':
+        return { html: no2ActivityTooltip(obj as No2ActivityRegionView, this.no2Activity?.attribution ?? '', text) };
       case 'aircraft-positions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.icao24)}</strong><br/>${numericLabel(obj.altitudeFt)} ft · ${numericLabel(obj.groundSpeedKts)} kts · ${numericLabel(obj.trackDeg, 0)}°</div>` };
       case 'apt-groups-layer':
@@ -5441,11 +5501,13 @@ export class DeckGLMap {
     'cii-choropleth-layer',
     'happiness-choropleth-layer',
     'resilience-choropleth-layer',
+    'no2-activity-countries',
   ]);
 
   // Hover-only NOTAM shapes (areas and their fallback markers): a click on one
   // is a click on the country under it.
   private static readonly AREA_OVERLAY_LAYER_IDS = new Set([
+    'no2-activity-clusters',
     'notam-airspace-polygons',
     'notam-airspace-circles',
     'notam-airspace-markers',
@@ -6290,6 +6352,7 @@ export class DeckGLMap {
       helpItem(label('notamAirspace'), 'notamAirspace'),
     ])}
         ${helpSection('naturalEconomic', [
+      helpItem(label('no2Activity'), 'no2Activity'),
       helpItem(label('naturalEvents'), 'naturalEventsFull'),
       helpItem(label('fires'), 'firesFull'),
       helpItem(label('weatherAlerts'), 'weatherAlerts'),
@@ -6444,6 +6507,20 @@ export class DeckGLMap {
     `, "legacy direct innerHTML migration"));
     legend.appendChild(ciiLegend);
 
+    // NO2 activity legend with the credit Copernicus requires wherever the
+    // data is shown; visible only while the layer is on.
+    const no2Legend = document.createElement('div');
+    no2Legend.className = 'no2-activity-legend';
+    no2Legend.id = 'no2ActivityLegend';
+    no2Legend.style.display = this.state.layers.no2Activity ? 'block' : 'none';
+    const no2Swatch = (state: keyof typeof NO2_ACTIVITY_COLORS) => shapes.square(`rgb(${NO2_ACTIVITY_COLORS[state].join(', ')})`);
+    setTrustedHtml(no2Legend, trustedHtml(`
+      <span class="legend-label-title" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));letter-spacing:0.5px;">${t('components.deckgl.layers.no2Activity').toUpperCase()}</span>
+      ${NO2_ACTIVITY_LEGEND.map(({ state, label }) => `<span class="legend-item">${no2Swatch(state)}<span class="legend-label">${label}</span></span>`).join('')}
+      <div class="no2-activity-credit" style="font-size:calc(8px * var(--wm-panel-effective-scale, 1));opacity:0.7;margin-top:2px;">${escapeHtml(this.no2Activity?.attribution ?? 'Contains modified Copernicus Sentinel data')}</div>
+    `, "legacy direct innerHTML migration"));
+    legend.appendChild(no2Legend);
+
     this.container.appendChild(legend);
     this.updateLegend();
   }
@@ -6457,6 +6534,12 @@ export class DeckGLMap {
     const ciiLegend = this.container.querySelector<HTMLElement>('#ciiChoroplethLegend');
     if (ciiLegend) {
       ciiLegend.style.display = this.state.layers.ciiChoropleth ? 'block' : 'none';
+    }
+    const no2Legend = this.container.querySelector<HTMLElement>('#no2ActivityLegend');
+    if (no2Legend) {
+      no2Legend.style.display = this.state.layers.no2Activity ? 'block' : 'none';
+      const credit = no2Legend.querySelector<HTMLElement>('.no2-activity-credit');
+      if (credit && this.no2Activity?.attribution) credit.textContent = this.no2Activity.attribution;
     }
   }
 
@@ -7795,6 +7878,23 @@ export class DeckGLMap {
     this.render();
   }
 
+  public setNo2Activity(snapshot: No2ActivitySnapshot | null): void {
+    this.no2Activity = snapshot;
+    this.no2CountryRegions = new Map();
+    this.no2ClusterRegions = [];
+    for (const region of snapshot?.regions ?? []) {
+      if (region.kind === 'country' && region.countryCode) this.no2CountryRegions.set(region.countryCode, region);
+      else if (region.kind === 'cluster') this.no2ClusterRegions.push(region);
+    }
+    this.no2ActivityVersion++;
+    if (import.meta.env.VITE_E2E === '1') {
+      this.container.dataset.wmNo2Regions = String(snapshot?.regions.length ?? 0);
+      this.container.dataset.wmNo2Countries = String(this.no2CountryRegions.size);
+    }
+    this.updateLegend();
+    this.render();
+  }
+
   public setResilienceRanking(items: ResilienceRankingItem[], greyedOut: ResilienceRankingItem[] = []): void {
     this.resilienceScoresMap = buildResilienceChoroplethMap(items, greyedOut);
     this.resilienceScoresVersion++;
@@ -8322,6 +8422,10 @@ export class DeckGLMap {
         this.countriesBounded = null;
         this.culledCountriesGeoJson = null;
         this.culledCountriesContentKey = '';
+        // Choropleth data that arrived before the boundaries has nothing to
+        // paint onto until now; schedule the frame that paints it.
+        this.render();
+        if (import.meta.env.VITE_E2E === '1') this.container.dataset.wmCountryBoundaries = String(geojson.features.length);
         this.maplibreMap.addSource('country-boundaries', {
           type: 'geojson',
           data: geojson,

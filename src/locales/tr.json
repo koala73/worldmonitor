@@ -1315,7 +1315,8 @@
         "radiationElevated": "Yükseltilmiş radyasyon",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "NOTAM Hava Sahasına İlişkin Kısıtlamalar"
+        "notamAirspace": "NOTAM Hava Sahasına İlişkin Kısıtlamalar",
+        "no2Activity": "Sanayi faaliyeti (NO2)"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -1431,7 +1432,8 @@
           "ciiChoropleth": "Ülke İstikrarsızlık Endeksi ısı haritası — ülkeleri puana göre renklendiriyor (yeşil=istikrarlı, kırmızı=kritik)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "FAA NOTAM'larından geçici uçuş kısıtlamaları ve sınırlı, tehlikeli ve yasaklı hava sahaları; şu anda yürürlükte olan veya 24 saat içinde başlayacak olanlar"
+          "notamAirspace": "FAA NOTAM'larından geçici uçuş kısıtlamaları ve sınırlı, tehlikeli ve yasaklı hava sahaları; şu anda yürürlükte olan veya 24 saat içinde başlayacak olanlar",
+          "no2Activity": "167 ülke ve 32 sanayi kümesi için Sentinel-5P NO2 faaliyet yönü: son 56 günlük pencerenin önceki yılların aynı tarihleriyle karşılaştırması, %10 ölü bant sonrası. Değiştirilmiş Copernicus Sentinel verileri içerir."
         },
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"
@@ -3906,6 +3908,21 @@
           "1": "«Stratejik Risk Genel Gorunumu» paneli",
           "2": "Ülke özeti",
           "3": "Sıcak nokta açılır pencereleri"
+        }
+      },
+      "no2Activity": {
+        "category": "Ekonomi",
+        "purpose": "Ülkeleri ve sanayi kümelerini, bir yanma izi olan Sentinel-5P troposferik NO2'nin yönüne göre, son 56 günlük pencereyi önceki yılların aynı tarihleriyle karşılaştırarak renklendirir.",
+        "source": "CDSE Sentinel Hub Statistical API üzerinden Copernicus Sentinel-5P TROPOMI NO2, seed-no2-activity hizmeti tarafından bölge başına günlük toplanır. Değiştirilmiş Copernicus Sentinel verileri içerir.",
+        "freshness": "Her 24 saatte bir beslenir; geç gelen granüllerin yetişmesi için pencere çalıştırmadan 3 gün önce biter, 72 saatlik tazelik bütçesiyle.",
+        "confidence": "Bir bölge yalnızca en az 14 geçerli gün ve 2 temel yıl ile değer alır; bulutluluk baskın gürültüdür, bu yüzden zayıf bir pencere tahmin etmek yerine değer vermeyi reddeder.",
+        "limitations": {
+          "0": "\"Temel bekleniyor\", bir bölge eklendikten sonra önceki yılların pencereleri hâlâ alınırken haftalarca beklenen durumdur.",
+          "1": "NO2 yanmayı izler, bu nedenle daha temiz üretim veya daha temiz araçlar zayıflayan faaliyet olarak okunur."
+        },
+        "related": {
+          "0": "Çin faaliyet nowcast'ı",
+          "1": "Ülke özeti"
         }
       },
       "conflicts": {

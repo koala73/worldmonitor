@@ -1309,7 +1309,8 @@
         "radiationElevated": "Zvýšená radiace",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "Omezení vzdušného prostoru NOTAM"
+        "notamAirspace": "Omezení vzdušného prostoru NOTAM",
+        "no2Activity": "Průmyslová aktivita (NO2)"
       },
       "tooltip": {
         "earthquake": "Zemětřesení",
@@ -1425,7 +1426,8 @@
           "ciiChoropleth": "Tepelná mapa Country Instability Index — barevně rozlišuje země podle skóre (zelená=stabilní, červená=kritické)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Dočasná omezení letů a omezený, nebezpečný a zakázaný vzdušný prostor z NOTAMů FAA, která jsou právě v platnosti nebo začínají do 24 hodin"
+          "notamAirspace": "Dočasná omezení letů a omezený, nebezpečný a zakázaný vzdušný prostor z NOTAMů FAA, která jsou právě v platnosti nebo začínají do 24 hodin",
+          "no2Activity": "Směr aktivity NO2 ze Sentinel-5P pro 167 zemí a 32 průmyslových klastrů: poslední 56denní okno oproti stejným datům v předchozích letech, po 10% mrtvém pásmu. Obsahuje upravená data Copernicus Sentinel."
         },
         "notes": {
           "timeAffects": "Ovlivňuje: Zemětřesení, Počasí, Protesty, Výpadky"
@@ -3946,6 +3948,21 @@
           "1": "panel Přehled strategických rizik",
           "2": "Zpravodajská svodka",
           "3": "Vyskakovací okna hotspotů"
+        }
+      },
+      "no2Activity": {
+        "category": "Ekonomika",
+        "purpose": "Obarvuje země a průmyslové klastry podle směru troposférického NO2 ze Sentinel-5P, stopy spalování, v posledním 56denním okně oproti stejným datům v předchozích letech.",
+        "source": "NO2 z Copernicus Sentinel-5P TROPOMI přes CDSE Sentinel Hub Statistical API, denně agregované podle regionu službou seed-no2-activity. Obsahuje upravená data Copernicus Sentinel.",
+        "freshness": "Načítá se každých 24 hodin; okno končí 3 dny před během, aby stihly dorazit opožděné granule, s 72hodinovým rozpočtem aktuálnosti.",
+        "confidence": "Region dostane hodnotu jen s nejméně 14 platnými dny a 2 základními roky; oblačnost je hlavní šum, takže tenké okno hodnotu odmítne místo hádání.",
+        "limitations": {
+          "0": "„Základna čeká“ je očekávaný stav týdny po přidání regionu, dokud se okna z předchozích let stále stahují.",
+          "1": "NO2 sleduje spalování, takže čistší výroba nebo čistší vozidla se jeví jako slábnoucí aktivita."
+        },
+        "related": {
+          "0": "Nowcast aktivity Číny",
+          "1": "Přehled země"
         }
       },
       "conflicts": {

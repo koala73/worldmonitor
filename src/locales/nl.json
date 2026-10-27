@@ -606,7 +606,8 @@
         "radiationElevated": "Verhoogde straling",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "NOTAM-luchtruimbeperkingen"
+        "notamAirspace": "NOTAM-luchtruimbeperkingen",
+        "no2Activity": "Industriële activiteit (NO2)"
       },
       "layersTitle": "Lagen",
       "layerSearch": "Lagen zoeken...",
@@ -729,7 +730,8 @@
           "ciiChoropleth": "Country Instability Index heatmap — landen ingekleurd naar score (groen=stabiel, rood=kritiek)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Tijdelijke vliegbeperkingen en beperkt, gevaar- en verboden luchtruim van FAA NOTAMs, nu van kracht of binnen 24 uur van start"
+          "notamAirspace": "Tijdelijke vliegbeperkingen en beperkt, gevaar- en verboden luchtruim van FAA NOTAMs, nu van kracht of binnen 24 uur van start",
+          "no2Activity": "Richting van de NO2-activiteit uit Sentinel-5P voor 167 landen en 32 industriële clusters: het laatste venster van 56 dagen tegenover dezelfde data in voorgaande jaren, na een dode band van 10%. Bevat gewijzigde Copernicus Sentinel-gegevens."
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"
@@ -3906,6 +3908,21 @@
           "1": "paneel Strategisch risicooverzicht",
           "2": "Inlichtingenoverzicht",
           "3": "Pop-ups van Intel-hotspots"
+        }
+      },
+      "no2Activity": {
+        "category": "Economie",
+        "purpose": "Kleurt landen en industriële clusters naar de richting van hun troposferische NO2 uit Sentinel-5P, een verbrandingsspoor, in het laatste venster van 56 dagen tegenover dezelfde data in voorgaande jaren.",
+        "source": "Copernicus Sentinel-5P TROPOMI NO2 via de CDSE Sentinel Hub Statistical API, dagelijks per regio samengevoegd door de dienst seed-no2-activity. Bevat gewijzigde Copernicus Sentinel-gegevens.",
+        "freshness": "Elke 24 uur gevoed; het venster eindigt 3 dagen voor de run zodat late granules kunnen binnenkomen, met een versheidsbudget van 72 uur.",
+        "confidence": "Een regio krijgt alleen een uitlezing met minstens 14 geldige dagen en 2 basisjaren; bewolking is de dominante ruis, dus een mager venster weigert een uitlezing in plaats van te gokken.",
+        "limitations": {
+          "0": "„Basis in afwachting” is wekenlang de verwachte status na het toevoegen van een regio, zolang vensters van voorgaande jaren nog worden opgehaald.",
+          "1": "NO2 volgt verbranding, dus schonere opwekking of schonere voertuigen lezen als afnemende activiteit."
+        },
+        "related": {
+          "0": "Nowcast activiteit China",
+          "1": "Landenbrief"
         }
       },
       "conflicts": {

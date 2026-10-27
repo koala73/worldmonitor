@@ -1146,7 +1146,8 @@
         "radiationElevated": "Erhöhte Strahlung",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "NOTAM-Luftraumbeschränkungen"
+        "notamAirspace": "NOTAM-Luftraumbeschränkungen",
+        "no2Activity": "Industrielle Aktivität (NO2)"
       },
       "layersTitle": "Ebenen",
       "layerSearch": "Ebenen suchen...",
@@ -1269,7 +1270,8 @@
           "ciiChoropleth": "Länderinstabilitätsindex-Wärmekarte – färbt Länder nach Punktzahl (grün=stabil, rot=kritisch)",
           "canadaRoads": "Offizielle Straßenvorkommnisse, Warnungen, Bedingungen, Sperrungen, Bauarbeiten und Gefahren in unterstützten Jurisdiktionen in Kanada",
           "canadaAlerts": "Provinzielle öffentliche Sicherheitswarnungen von Alberta Emergency Alert, B.C. Evacuation Orders and Alerts und SaskAlert",
-          "notamAirspace": "Temporäre Flugbeschränkungen und beschränkter, Gefahren- und verbotener Luftraum aus FAA-NOTAMs, derzeit gültig oder innerhalb von 24 Stunden beginnend"
+          "notamAirspace": "Temporäre Flugbeschränkungen und beschränkter, Gefahren- und verbotener Luftraum aus FAA-NOTAMs, derzeit gültig oder innerhalb von 24 Stunden beginnend",
+          "no2Activity": "NO2-Aktivitätsrichtung aus Sentinel-5P für 167 Länder und 32 Industriecluster: das jüngste 56-Tage-Fenster gegenüber denselben Daten der Vorjahre, nach einem Totband von 10 %. Enthält modifizierte Copernicus-Sentinel-Daten."
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"
@@ -3906,6 +3908,21 @@
           "1": "Strategischer Risikoüberblick",
           "2": "Länderbrief",
           "3": "Hotspot-Popups"
+        }
+      },
+      "no2Activity": {
+        "category": "Wirtschaft",
+        "purpose": "Färbt Länder und Industriecluster nach der Richtung ihres troposphärischen NO2 aus Sentinel-5P, einer Verbrennungsspur, im jüngsten 56-Tage-Fenster gegenüber denselben Daten der Vorjahre.",
+        "source": "Copernicus Sentinel-5P TROPOMI NO2 über die CDSE Sentinel Hub Statistical API, täglich je Region vom Dienst seed-no2-activity aggregiert. Enthält modifizierte Copernicus-Sentinel-Daten.",
+        "freshness": "Alle 24 Stunden eingespeist; das Fenster endet 3 Tage vor dem Lauf, damit späte Granulate eintreffen, mit einem Aktualitätsbudget von 72 Stunden.",
+        "confidence": "Eine Region erhält nur mit mindestens 14 gültigen Tagen und 2 Basisjahren einen Wert; Bewölkung ist das dominierende Rauschen, daher verweigert ein dünnes Fenster den Wert statt zu raten.",
+        "limitations": {
+          "0": "„Basis ausstehend“ ist wochenlang nach dem Hinzufügen einer Region der erwartete Zustand, solange Vorjahresfenster noch abgerufen werden.",
+          "1": "NO2 folgt der Verbrennung, daher erscheinen sauberere Erzeugung oder sauberere Fahrzeuge als nachlassende Aktivität."
+        },
+        "related": {
+          "0": "China-Aktivitäts-Nowcast",
+          "1": "Länderbrief"
         }
       },
       "conflicts": {

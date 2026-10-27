@@ -1465,7 +1465,8 @@
         "renewableInstallations": "Čista energija",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "NOTAM ograničenja zračnog prostora"
+        "notamAirspace": "NOTAM ograničenja zračnog prostora",
+        "no2Activity": "Industrijska aktivnost (NO2)"
       },
       "tooltip": {
         "earthquake": "Zemljotres",
@@ -1581,7 +1582,8 @@
           "ciiChoropleth": "Toplinska mapa indeksa nestabilnosti države — boje zemlje prema bodovima (zelena=stabilna, crvena=kritična)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Privremena ograničenja letenja i ograničeni, opasni i zabranjeni zračni prostor prema FAA NOTAM-ima, koji su trenutno na snazi ili počinju u roku od 24 sata"
+          "notamAirspace": "Privremena ograničenja letenja i ograničeni, opasni i zabranjeni zračni prostor prema FAA NOTAM-ima, koji su trenutno na snazi ili počinju u roku od 24 sata",
+          "no2Activity": "Smjer NO2 aktivnosti iz Sentinel-5P za 167 zemalja i 32 industrijska klastera: najnoviji 56-dnevni prozor u odnosu na iste datume prethodnih godina, nakon mrtve zone od 10 %. Sadrži izmijenjene podatke Copernicus Sentinel."
         },
         "notes": {
           "timeAffects": "Utječe na: Zemljotresi, Vrijeme, Protesti, Prekidi"
@@ -3937,6 +3939,21 @@
           "1": "panel Pregled strateškog rizika",
           "2": "Obavještajni pregled",
           "3": "Skočni prozori žarišta"
+        }
+      },
+      "no2Activity": {
+        "category": "Gospodarstvo",
+        "purpose": "Boji zemlje i industrijske klastere prema smjeru troposferskog NO2 iz Sentinel-5P, traga izgaranja, u najnovijem 56-dnevnom prozoru u odnosu na iste datume prethodnih godina.",
+        "source": "Copernicus Sentinel-5P TROPOMI NO2 putem CDSE Sentinel Hub Statistical API, dnevno agregiran po regiji uslugom seed-no2-activity. Sadrži izmijenjene podatke Copernicus Sentinel.",
+        "freshness": "Puni se svaka 24 sata; prozor završava 3 dana prije izvođenja kako bi stigle zakašnjele granule, uz proračun svježine od 72 sata.",
+        "confidence": "Regija dobiva očitanje samo s najmanje 14 valjanih dana i 2 bazne godine; naoblaka je dominantan šum, pa tanak prozor odbija očitanje umjesto nagađanja.",
+        "limitations": {
+          "0": "„Baza na čekanju“ očekivano je stanje tjednima nakon dodavanja regije, dok se prozori prethodnih godina još dohvaćaju.",
+          "1": "NO2 prati izgaranje, pa se čišća proizvodnja ili čišća vozila očitavaju kao slabljenje aktivnosti."
+        },
+        "related": {
+          "0": "Nowcast aktivnosti Kine",
+          "1": "Sažetak zemlje"
         }
       },
       "conflicts": {

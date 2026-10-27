@@ -82,6 +82,8 @@ import { renderDemographicsCapabilitySection } from './CountryDeepDivePanel-demo
 import { renderFiveFactorScorecardSection } from './CountryDeepDivePanel-five-factor-scorecard';
 import { combineAbortSignals } from '@/services/timeout-signal';
 import { CountrySectionError } from '@/services/country-brief-error';
+import { NO2_ACTIVITY_COLORS, NO2_ACTIVITY_EXCLUSION_LABELS, NO2_ACTIVITY_STATE_LABELS, formatNo2Change } from '@/components/map/no2-activity-style';
+import type { No2CountryReading } from '@/services/economic/no2-activity';
 import { BRIEF_SECTIONS, CountryBriefPresentation, briefSectionState, summarizeCountryBrief, type BriefSection, type BriefSectionId } from './country-brief-presentation';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
@@ -209,6 +211,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private commodityVulnerabilityBody: HTMLElement | null = null;
   private debtBody: HTMLElement | null = null;
   private sanctionsBody: HTMLElement | null = null;
+  private no2ActivityBody: HTMLElement | null = null;
   private comtradeBody: HTMLElement | null = null;
   private tariffBody: HTMLElement | null = null;
   // ── Phase 5: Multi-sector Cost Shock Calculator ─────────────────────────
@@ -1018,6 +1021,32 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     layout.append(ratio, detail);
     this.debtBody.append(layout, this.el('div', 'cdp-economic-source', `Source: ${entry.source}`),
       this.el('p', 'cdp-measure-note', '100% of GDP is a size reference, not a risk threshold.'));
+  }
+
+  public updateNo2Activity({ region, stale, attribution }: No2CountryReading): void {
+    if (!this.no2ActivityBody) return;
+    this.no2ActivityBody.replaceChildren();
+    if (!region) {
+      this.no2ActivityBody.append(this.makeEmpty('No NO2 activity region is registered for this country.'));
+      return;
+    }
+    const line = this.el('p', `cdp-no2-activity cdp-no2-activity-${region.state}`);
+    line.dataset.no2State = region.state;
+    if (region.state === 'pending') {
+      line.textContent = 'Baseline pending: prior-year windows are still being fetched, so there is no reading yet.';
+    } else if (region.state === 'excluded') {
+      line.textContent = `No reading this window: ${region.exclusion ? NO2_ACTIVITY_EXCLUSION_LABELS[region.exclusion] : NO2_ACTIVITY_STATE_LABELS.excluded}.`;
+    } else {
+      const strong = this.el('strong', '', `${NO2_ACTIVITY_STATE_LABELS[region.state]} ${formatNo2Change(region.changePercent)}`);
+      strong.style.color = `rgb(${NO2_ACTIVITY_COLORS[region.state].join(', ')})`;
+      line.append(strong, ` vs the same window in ${region.baselineYears.join(', ')}`);
+    }
+    this.no2ActivityBody.append(
+      line,
+      this.el('p', 'cdp-measure-note', `${region.windowStart} to ${region.windowEnd}, ${region.validDays} valid days`),
+    );
+    if (stale) this.no2ActivityBody.append(this.el('p', 'cdp-measure-note cdp-no2-stale', 'Stale: the dataset is older than its 72-hour refresh budget, so this reading may be out of date.'));
+    if (attribution) this.no2ActivityBody.append(this.el('p', 'cdp-economic-source', attribution));
   }
 
   public updateSanctionsPressure(data: { entryCount: number; sanctionsActive?: boolean } | null): void {
@@ -3374,6 +3403,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const [militaryCard, militaryBody] = this.sectionCard('military', t('countryBrief.militaryActivity'));
     const [infraCard, infraBody] = this.sectionCard('infrastructure', t('countryBrief.infrastructure'));
     const [economicCard, economicBody] = this.sectionCard('economic', t('countryBrief.economicIndicators'));
+    const [no2ActivityCard, no2ActivityBody] = this.sectionCard('activity', 'Industrial Activity (NO2)', 'Direction of Sentinel-5P tropospheric NO2 over the latest 56-day window against the same dates in prior years, after a 10% dead band. Contains modified Copernicus Sentinel data.');
+    this.no2ActivityBody = no2ActivityBody;
+    no2ActivityBody.append(this.makeLoading('Loading NO2 activity\u2026'));
     const [housingCard, housingBody] = this.sectionCard(
       'housing',
       'Housing Cycle',
@@ -3519,7 +3551,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(fiveFactorScorecardCard, factsCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), signalsCard, timelineCard, ...(historyCard ? [historyCard] : []), newsCard, militaryCard, sanctionsCard, economicCard, housingCard, debtCard, comtradeCard, tariffCard, tradeCard, costShockCalcCard, productImportsCard, marketsCard, energyCard, maritimeCard, commodityVulnerabilityCard, foodStocksCard, infraCard, demographicsCard);
+    bodyGrid.append(fiveFactorScorecardCard, factsCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), signalsCard, timelineCard, ...(historyCard ? [historyCard] : []), newsCard, militaryCard, sanctionsCard, economicCard, no2ActivityCard, housingCard, debtCard, comtradeCard, tariffCard, tradeCard, costShockCalcCard, productImportsCard, marketsCard, energyCard, maritimeCard, commodityVulnerabilityCard, foodStocksCard, infraCard, demographicsCard);
     const lead = this.el('div', 'cdp-overview-lead');
     lead.append(briefCard, summaryGrid);
     shell.append(header, lead, bodyGrid);

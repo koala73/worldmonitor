@@ -1312,7 +1312,8 @@
         "radiationElevated": "辐射升高",
         "canadaRoads": "Canada 道路",
         "canadaAlerts": "加拿大警报（AB + BC + SK）",
-        "notamAirspace": "NOTAM 空域限制"
+        "notamAirspace": "NOTAM 空域限制",
+        "no2Activity": "工业活动（NO2）"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1428,7 +1429,8 @@
           "ciiChoropleth": "国家不稳定指数热力图 — 按评分为各国着色（绿色=稳定，红色=严重）",
           "canadaRoads": "加拿大（Canada）受支持辖区的官方道路事件、警报、路况、封闭、施工和危险信息",
           "canadaAlerts": "来自 Alberta Emergency Alert、B.C. 疏散令与警报及 SaskAlert 的省级公共安全警报",
-          "notamAirspace": "FAA NOTAM 中的临时飞行限制和受限、危险及禁飞空域，当前生效或将在 24 小时内生效"
+          "notamAirspace": "FAA NOTAM 中的临时飞行限制和受限、危险及禁飞空域，当前生效或将在 24 小时内生效",
+          "no2Activity": "Sentinel-5P NO2 活动方向，覆盖 167 个国家和 32 个工业集群：最新 56 天窗口与往年同期日期对比，经 10% 死区处理。包含经修改的 Copernicus Sentinel 数据。"
         },
         "notes": {
           "timeAffects": "影响范围：地震、天气、抗议、中断"
@@ -3886,6 +3888,21 @@
           "1": "战略风险概览面板",
           "2": "国家简报",
           "3": "热点弹窗"
+        }
+      },
+      "no2Activity": {
+        "category": "经济",
+        "purpose": "按 Sentinel-5P 对流层 NO2（一种燃烧痕迹）的方向为国家和工业集群着色：最新 56 天窗口与往年同期日期对比。",
+        "source": "通过 CDSE Sentinel Hub Statistical API 获取的 Copernicus Sentinel-5P TROPOMI NO2，由 seed-no2-activity 服务按区域每日聚合。包含经修改的 Copernicus Sentinel 数据。",
+        "freshness": "每 24 小时播种一次；窗口在运行前 3 天结束，以便迟到的颗粒数据到达，新鲜度预算为 72 小时。",
+        "confidence": "仅当至少有 14 个有效日和 2 个基线年时区域才会给出读数；云量是主要噪声，因此数据稀薄的窗口会拒绝读数而非猜测。",
+        "limitations": {
+          "0": "区域加入后的数周内，“基线待定”是预期状态，此时往年窗口仍在获取中。",
+          "1": "NO2 跟踪燃烧，因此更清洁的发电或更清洁的车辆会被读作活动减弱。"
+        },
+        "related": {
+          "0": "中国活动即时预测",
+          "1": "国家简报"
         }
       },
       "conflicts": {

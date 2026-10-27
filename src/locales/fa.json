@@ -1457,7 +1457,8 @@
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "محدودیت‌های فضای هوایی NOTAM"
+        "notamAirspace": "محدودیت‌های فضای هوایی NOTAM",
+        "no2Activity": "فعالیت صنعتی (NO2)"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1573,7 +1574,8 @@
           "ciiChoropleth": "نقشه حرارتی شاخص بی‌ثباتی کشور — رنگ‌بندی کشورها بر اساس امتیاز (سبز=پایدار، قرمز=حیاتی)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "محدودیت‌های پروازی موقت و فضای هوایی محدود، خطرناک و ممنوع از NOTAM‌های FAA که در حال اجرا هستند یا در طی ۲۴ ساعت آینده شروع می‌شوند"
+          "notamAirspace": "محدودیت‌های پروازی موقت و فضای هوایی محدود، خطرناک و ممنوع از NOTAM‌های FAA که در حال اجرا هستند یا در طی ۲۴ ساعت آینده شروع می‌شوند",
+          "no2Activity": "جهت فعالیت NO2 از Sentinel-5P برای ۱۶۷ کشور و ۳۲ خوشه صنعتی: آخرین پنجره ۵۶ روزه در برابر همان تاریخ‌ها در سال‌های گذشته، پس از باند مرده ۱۰٪. شامل داده‌های اصلاح‌شده Copernicus Sentinel است."
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
@@ -3906,6 +3908,21 @@
           "1": "پنل Strategic Risk Overview",
           "2": "Intelligence Brief",
           "3": "پنجره‌های Intel Hotspots"
+        }
+      },
+      "no2Activity": {
+        "category": "اقتصاد",
+        "purpose": "کشورها و خوشه‌های صنعتی را بر اساس جهت NO2 تروپوسفری Sentinel-5P، که اثری از احتراق است، در آخرین پنجره ۵۶ روزه در برابر همان تاریخ‌ها در سال‌های گذشته رنگ می‌کند.",
+        "source": "NO2 از Copernicus Sentinel-5P TROPOMI از طریق CDSE Sentinel Hub Statistical API، که روزانه برای هر منطقه توسط سرویس seed-no2-activity تجمیع می‌شود. شامل داده‌های اصلاح‌شده Copernicus Sentinel است.",
+        "freshness": "هر ۲۴ ساعت بارگذاری می‌شود؛ پنجره ۳ روز پیش از اجرا بسته می‌شود تا گرانول‌های دیرهنگام برسند، با بودجه تازگی ۷۲ ساعته.",
+        "confidence": "یک منطقه فقط با حداقل ۱۴ روز معتبر و ۲ سال پایه خوانش می‌گیرد؛ ابر نویز غالب است، بنابراین پنجره کم‌داده به‌جای حدس زدن، خوانش را رد می‌کند.",
+        "limitations": {
+          "0": "«پایه در انتظار» وضعیت مورد انتظار برای هفته‌ها پس از افزودن یک منطقه است، تا زمانی که پنجره‌های سال‌های گذشته هنوز دریافت می‌شوند.",
+          "1": "NO2 احتراق را دنبال می‌کند، بنابراین تولید پاک‌تر یا خودروهای پاک‌تر به‌صورت کاهش فعالیت خوانده می‌شود."
+        },
+        "related": {
+          "0": "پیش‌بینی آنی فعالیت چین",
+          "1": "خلاصه کشور"
         }
       },
       "conflicts": {
