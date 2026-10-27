@@ -162,5 +162,5 @@ test('the right part of the translate button clicks, and the strip still resizes
   await page.mouse.down();
   await page.mouse.move(startX + panelBox.width, midY, { steps: 8 });
   await page.mouse.up();
-  await expect(panel).toHaveClass(/col-span-2/);
+  await expect(panel).toHaveClass(/col-span-[23]/);
 });

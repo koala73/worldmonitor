@@ -1946,7 +1946,9 @@ canvas,
   bottom: 0;
   left: 0;
   right: 0;
-  height: 20px;
+  /* Stays inside .panel-content's 8px padding, with room for subpixel hit-test rounding,
+     so the strip never covers content (#9729). */
+  height: 6px;
   cursor: ns-resize;
   background: linear-gradient(to top, rgba(68, 136, 255, 0.15), transparent);
   z-index: 100;
@@ -1971,6 +1973,7 @@ canvas,
   letter-spacing: 2px;
   color: var(--text-dim);
   transition: color 0.2s;
+  pointer-events: none;
 }
 
 .panel-resize-handle:hover::after {
@@ -1983,7 +1986,7 @@ canvas,
   top: 0;
   right: 0;
   bottom: 0;
-  width: 20px;
+  width: 6px;
   cursor: ew-resize;
   background: linear-gradient(to left, rgba(68, 136, 255, 0.15), transparent);
   z-index: 100;
@@ -2008,6 +2011,7 @@ canvas,
   letter-spacing: 2px;
   color: var(--text-dim);
   transition: color 0.2s;
+  pointer-events: none;
 }
 
 .panel-col-resize-handle:hover::after {
