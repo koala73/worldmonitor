@@ -13502,7 +13502,11 @@ const server = http.createServer(async (req, res) => {
   } else if (pathname === '/widget-agent/health' && req.method === 'GET') {
     handleWidgetAgentHealthRequest(req, res);
   } else if (pathname === '/widget-agent' && req.method === 'POST') {
-    handleWidgetAgentRequest(req, res);
+    // Not awaited: an escaped rejection would be unhandled and exit the relay.
+    handleWidgetAgentRequest(req, res).catch((err) => {
+      console.error('[widget-agent] Unhandled handler error:', err?.name || 'Error', err?.message || '');
+      safeEnd(res, 500, {}, '');
+    });
   } else {
     res.writeHead(404);
     res.end();
@@ -14554,6 +14558,10 @@ async function handleWidgetAgentRequest(req, res) {
     const raw = await readRequestBody(req, 163840);
     body = JSON.parse(raw);
   } catch {
+    return safeEnd(res, 400, {}, '');
+  }
+  // Valid JSON need not be an object: reading .tier off null throws.
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return safeEnd(res, 400, {}, '');
   }
 

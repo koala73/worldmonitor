@@ -504,13 +504,23 @@ async function proxyWidgetAgent(
 
   // Normalise tier in body to match the server-validated isPro flag.
   // Prevents the relay from seeing tier:pro without the matching X-Pro-Key.
+  // Valid JSON that is not an object (null, an array, a number, a string) is
+  // refused here: reading .tier off null used to throw into the catch and
+  // forward the raw body to the relay.
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(rawBody) as Record<string, unknown>;
-    const expectedTier = isPro ? 'pro' : 'basic';
-    if (parsed.tier !== expectedTier) {
-      rawBody = JSON.stringify({ ...parsed, tier: expectedTier });
-    }
+    parsed = JSON.parse(rawBody);
   } catch { /* malformed body — relay will return 400 */ }
+  if (parsed !== undefined) {
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return json({ error: 'Request body must be a JSON object' }, 400, corsHeaders);
+    }
+    const body = parsed as Record<string, unknown>;
+    const expectedTier = isPro ? 'pro' : 'basic';
+    if (body.tier !== expectedTier) {
+      rawBody = JSON.stringify({ ...body, tier: expectedTier });
+    }
+  }
 
   // Reserve against the same daily meter as chat-analyst / gateway LLM routes
   // before any upstream call. Unlimited (null) entitlements stay metered by
