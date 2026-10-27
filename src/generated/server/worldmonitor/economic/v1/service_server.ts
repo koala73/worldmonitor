@@ -266,9 +266,8 @@ export interface GetNo2ActivityResponse {
   regions: No2ActivityRegion[];
   generatedAt: string;
   stale: boolean;
-  method?: No2ActivityMethod;
+  methodVersion: string;
   attribution: string;
-  sourceDataset: string;
   unavailableReason: No2ActivityUnavailableReason;
   upstreamUnavailable: boolean;
 }
@@ -280,38 +279,18 @@ export interface No2ActivityRegion {
   countryCode: string;
   bbox: number[];
   current?: No2Window;
-  baselineYears: No2BaselineYear[];
+  baselineYears: number[];
   baselineMeanNo2MolM2?: number;
   changePercent?: number;
-  signalValue?: number;
   direction: No2Direction;
   exclusion: No2RegionExclusion;
-  seriesRefreshedAt: string;
-  seriesDays: number;
 }
 
 export interface No2Window {
   windowStart: string;
   windowEnd: string;
   validDays: number;
-  maskedDays: number;
   meanNo2MolM2?: number;
-}
-
-export interface No2BaselineYear {
-  year: number;
-  window?: No2Window;
-}
-
-export interface No2ActivityMethod {
-  methodVersion: string;
-  windowDays: number;
-  windowEndLagDays: number;
-  baselineYears: number;
-  minBaselineYears: number;
-  minValidDays: number;
-  minValidFraction: number;
-  deadBandPercent: number;
 }
 
 export interface GetEnergyCapacityRequest {

@@ -1,7 +1,8 @@
 // get_no2_activity: RPC proxy over GET /api/economic/v1/get-no2-activity. The
 // handler owns filtering, validation and miss classification, so an agent
 // sees exactly what the route serves; this module maps arguments to the
-// route's query and compacts each record to the fields agents read.
+// route's query, compacts each record to the fields agents read, and attaches
+// the method constants the methodVersion pins.
 import { COUNTRY_ARG_HINT, echoCountryInput } from '../_country-args';
 import { resolveCountryCode } from '../../../shared/country-code-resolve';
 import { buildAuthHeaders } from '../auth';
@@ -17,9 +18,12 @@ import type {
 } from '../../../src/generated/server/worldmonitor/economic/v1/service_server';
 import {
   NO2_ACTIVITY_KEY,
+  NO2_ACTIVITY_METHOD,
+  NO2_ACTIVITY_METHOD_VERSION,
   NO2_ACTIVITY_SEED_META_KEY,
   NO2_DIRECTIONS,
   NO2_REGION_EXCLUSIONS,
+  signalFor,
 } from '../../../scripts/shared/no2-activity.mjs';
 import { NO2_ATTRIBUTION_EXPRESSION } from '../../../shared/attribution-rider';
 
@@ -61,29 +65,43 @@ const UNAVAILABLE_REASONS = [
   'NO2_ACTIVITY_UNAVAILABLE_REASON_CACHE_UNAVAILABLE',
 ] as const;
 
+/** The constants the served methodVersion pins; an unknown version carries none. */
+export function no2MethodSummary(methodVersion: string) {
+  const known = methodVersion === NO2_ACTIVITY_METHOD_VERSION;
+  return {
+    methodVersion,
+    windowDays: known ? NO2_ACTIVITY_METHOD.windowDays : 0,
+    windowEndLagDays: known ? NO2_ACTIVITY_METHOD.windowEndLagDays : 0,
+    baselineYears: known ? NO2_ACTIVITY_METHOD.baselineYears : 0,
+    minBaselineYears: known ? NO2_ACTIVITY_METHOD.minBaselineYears : 0,
+    minValidDays: known ? NO2_ACTIVITY_METHOD.minValidDays : 0,
+    minValidFraction: known ? NO2_ACTIVITY_METHOD.minValidFraction : 0,
+    deadBandPercent: known ? NO2_ACTIVITY_METHOD.deadBandPercent : 0,
+  };
+}
+
 function number(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function compactRegion(region: No2ActivityRegion) {
+  const changePercent = number(region.changePercent);
   return {
     id: region.id,
-    kind: KIND_LABEL[region.kind],
+    kind: KIND_LABEL[region.kind] ?? null,
     label: region.label,
     countryCode: region.countryCode === '' ? null : region.countryCode,
     bbox: region.bbox,
     windowStart: region.current?.windowStart ?? '',
     windowEnd: region.current?.windowEnd ?? '',
     validDays: region.current?.validDays ?? 0,
-    maskedDays: region.current?.maskedDays ?? 0,
     meanNo2MolM2: number(region.current?.meanNo2MolM2),
-    baselineYears: region.baselineYears.map((year) => year.year),
+    baselineYears: Array.isArray(region.baselineYears) ? region.baselineYears : [],
     baselineMeanNo2MolM2: number(region.baselineMeanNo2MolM2),
-    changePercent: number(region.changePercent),
-    signalValue: number(region.signalValue),
+    changePercent,
+    signalValue: changePercent === null ? null : signalFor(changePercent).signalValue,
     direction: DIRECTION_LABEL[region.direction] ?? null,
     exclusion: EXCLUSION_LABEL[region.exclusion] ?? null,
-    seriesRefreshedAt: region.seriesRefreshedAt === '' ? null : region.seriesRefreshedAt,
   };
 }
 
@@ -153,23 +171,22 @@ export const NO2_ACTIVITY_TOOL: RpcToolDef = {
   },
   outputSchema: {
     type: 'object',
-    required: ['regions', 'generatedAt', 'stale', 'method', 'attribution', 'sourceDataset', 'unavailableReason', 'upstreamUnavailable'],
+    required: ['regions', 'generatedAt', 'stale', 'method', 'attribution', 'unavailableReason', 'upstreamUnavailable'],
     properties: {
       regions: {
         type: 'array',
         items: {
           type: 'object',
-          required: ['id', 'kind', 'label', 'countryCode', 'bbox', 'windowStart', 'windowEnd', 'validDays', 'maskedDays', 'meanNo2MolM2', 'baselineYears', 'baselineMeanNo2MolM2', 'changePercent', 'signalValue', 'direction', 'exclusion', 'seriesRefreshedAt'],
+          required: ['id', 'kind', 'label', 'countryCode', 'bbox', 'windowStart', 'windowEnd', 'validDays', 'meanNo2MolM2', 'baselineYears', 'baselineMeanNo2MolM2', 'changePercent', 'signalValue', 'direction', 'exclusion'],
           properties: {
             id: { type: 'string', description: 'Registry id, for example "country-cn" or "yangtze-river-delta".' },
-            kind: { type: 'string', enum: ['country', 'cluster'] },
+            kind: { type: ['string', 'null'], enum: ['country', 'cluster', null] },
             label: { type: 'string' },
             countryCode: { type: ['string', 'null'], description: 'ISO 3166-1 alpha-2; null for a cluster spanning several countries.' },
             bbox: { type: 'array', items: { type: 'number' }, minItems: 4, maxItems: 4, description: 'West, south, east, north in degrees.' },
             windowStart: { type: 'string', description: 'First UTC date of the current window, inclusive.' },
             windowEnd: { type: 'string', description: 'Last UTC date of the current window, inclusive.' },
             validDays: { type: 'integer', description: 'Days in the current window with enough cloud-free, quality-filtered pixels.' },
-            maskedDays: { type: 'integer', description: 'Days removed by the holiday mask.' },
             meanNo2MolM2: { ...NULLABLE_NUMBER, description: 'Mean tropospheric NO2 column over the valid days, mol/m2; null with no valid day.' },
             baselineYears: { type: 'array', items: { type: 'integer' }, description: 'Prior years whose same-date window entered the baseline, newest first; empty while the backfill is pending.' },
             baselineMeanNo2MolM2: { ...NULLABLE_NUMBER, description: 'Mean of the baseline windows, mol/m2; null while pending.' },
@@ -177,7 +194,6 @@ export const NO2_ACTIVITY_TOOL: RpcToolDef = {
             signalValue: { ...NULLABLE_NUMBER, description: 'changePercent outside the dead band, 0 inside it; null when excluded.' },
             direction: { type: ['string', 'null'], enum: [...NO2_DIRECTIONS, null], description: 'null when excluded.' },
             exclusion: { type: ['string', 'null'], enum: [...NO2_REGION_EXCLUSIONS, null], description: 'Why there is no reading; null when the region has one. baseline_backfill_pending is expected for a new region, not a fault.' },
-            seriesRefreshedAt: { type: ['string', 'null'], description: 'Last successful source refresh for the region; null before the first.' },
           },
         },
       },
@@ -187,7 +203,7 @@ export const NO2_ACTIVITY_TOOL: RpcToolDef = {
         type: 'object',
         required: ['methodVersion', 'windowDays', 'windowEndLagDays', 'baselineYears', 'minBaselineYears', 'minValidDays', 'minValidFraction', 'deadBandPercent'],
         properties: {
-          methodVersion: { type: 'string' },
+          methodVersion: { type: 'string', description: 'Pins the constants below; they read 0 for a version this server does not know.' },
           windowDays: { type: 'integer' },
           windowEndLagDays: { type: 'integer' },
           baselineYears: { type: 'integer' },
@@ -198,7 +214,6 @@ export const NO2_ACTIVITY_TOOL: RpcToolDef = {
         },
       },
       attribution: { type: 'string', description: 'Required credit, for example "Contains modified Copernicus Sentinel data 2023-2026"; empty when no regions are served.' },
-      sourceDataset: { type: 'string', description: '"sentinel-5p-l2" when served.' },
       unavailableReason: {
         type: 'string',
         enum: [...UNAVAILABLE_REASONS],
@@ -230,18 +245,8 @@ export const NO2_ACTIVITY_TOOL: RpcToolDef = {
       regions: Array.isArray(wire.regions) ? wire.regions.map(compactRegion) : [],
       generatedAt: typeof wire.generatedAt === 'string' ? wire.generatedAt : '',
       stale: wire.stale === true,
-      method: {
-        methodVersion: wire.method?.methodVersion ?? '',
-        windowDays: wire.method?.windowDays ?? 0,
-        windowEndLagDays: wire.method?.windowEndLagDays ?? 0,
-        baselineYears: wire.method?.baselineYears ?? 0,
-        minBaselineYears: wire.method?.minBaselineYears ?? 0,
-        minValidDays: wire.method?.minValidDays ?? 0,
-        minValidFraction: wire.method?.minValidFraction ?? 0,
-        deadBandPercent: wire.method?.deadBandPercent ?? 0,
-      },
+      method: no2MethodSummary(typeof wire.methodVersion === 'string' ? wire.methodVersion : ''),
       attribution: typeof wire.attribution === 'string' ? wire.attribution : '',
-      sourceDataset: typeof wire.sourceDataset === 'string' ? wire.sourceDataset : '',
       unavailableReason,
       upstreamUnavailable: wire.upstreamUnavailable === true,
     };

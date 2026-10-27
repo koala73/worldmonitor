@@ -15,21 +15,18 @@ import type {
   No2ActivityRegion,
   No2ActivityUnavailableReason,
   No2Direction,
-  No2Window,
   No2RegionExclusion,
   No2RegionKind,
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 import {
   NO2_ACTIVITY_KEY,
-  NO2_ACTIVITY_METHOD,
   NO2_ACTIVITY_METHOD_VERSION,
   NO2_REGIONS,
   validateNo2ActivityDataset,
   type No2ActivityDataset,
   type No2Region,
   type No2RegionResult,
-  type No2Window as No2WindowRecord,
 } from '../../../../scripts/shared/no2-activity.mjs';
 import { readCachedJson } from '../../../_shared/redis';
 
@@ -108,16 +105,6 @@ export function selectNo2Regions(filter: No2ActivityFilter): No2Region[] {
   ));
 }
 
-function projectWindow(window: No2WindowRecord): No2Window {
-  return {
-    windowStart: window.windowStart,
-    windowEnd: window.windowEnd,
-    validDays: window.validDays,
-    maskedDays: window.maskedDays,
-    ...(window.meanNo2MolM2 === null ? {} : { meanNo2MolM2: window.meanNo2MolM2 }),
-  };
-}
-
 export function projectNo2ActivityRegion(record: No2RegionResult): No2ActivityRegion {
   return {
     id: record.id,
@@ -125,15 +112,17 @@ export function projectNo2ActivityRegion(record: No2RegionResult): No2ActivityRe
     label: record.label,
     countryCode: record.countryCode ?? '',
     bbox: [...record.bbox],
-    current: projectWindow(record.current),
-    baselineYears: record.baseline.years.map((year) => ({ year: year.year, window: projectWindow(year) })),
+    current: {
+      windowStart: record.current.windowStart,
+      windowEnd: record.current.windowEnd,
+      validDays: record.current.validDays,
+      ...(record.current.meanNo2MolM2 === null ? {} : { meanNo2MolM2: record.current.meanNo2MolM2 }),
+    },
+    baselineYears: record.baseline.years.map((year) => year.year),
     ...(record.baseline.meanNo2MolM2 === null ? {} : { baselineMeanNo2MolM2: record.baseline.meanNo2MolM2 }),
     ...(record.changePercent === null ? {} : { changePercent: record.changePercent }),
-    ...(record.signalValue === null ? {} : { signalValue: record.signalValue }),
     direction: record.direction === null ? 'NO2_DIRECTION_UNSPECIFIED' : DIRECTION[record.direction],
     exclusion: record.exclusion === null ? 'NO2_REGION_EXCLUSION_UNSPECIFIED' : EXCLUSION[record.exclusion],
-    seriesRefreshedAt: record.series.refreshedAt ?? '',
-    seriesDays: record.series.days,
   };
 }
 
@@ -142,32 +131,20 @@ function unavailable(reason: No2ActivityUnavailableReason, upstreamUnavailable: 
     regions: [],
     generatedAt: '',
     stale: false,
-    method: {
-      methodVersion: NO2_ACTIVITY_METHOD_VERSION,
-      windowDays: NO2_ACTIVITY_METHOD.windowDays,
-      windowEndLagDays: NO2_ACTIVITY_METHOD.windowEndLagDays,
-      baselineYears: NO2_ACTIVITY_METHOD.baselineYears,
-      minBaselineYears: NO2_ACTIVITY_METHOD.minBaselineYears,
-      minValidDays: NO2_ACTIVITY_METHOD.minValidDays,
-      minValidFraction: NO2_ACTIVITY_METHOD.minValidFraction,
-      deadBandPercent: NO2_ACTIVITY_METHOD.deadBandPercent,
-    },
+    methodVersion: NO2_ACTIVITY_METHOD_VERSION,
     attribution: '',
-    sourceDataset: '',
     unavailableReason: reason,
     upstreamUnavailable,
   };
 }
 
 function served(dataset: No2ActivityDataset, regions: No2Region[], nowMs: number): GetNo2ActivityResponse {
-  const base = unavailable(REASON.served, false);
   return {
-    ...base,
+    ...unavailable(REASON.served, false),
     regions: regions.map((region) => projectNo2ActivityRegion(dataset.regions[region.id]!)),
     generatedAt: dataset.generatedAt,
     stale: nowMs - Date.parse(dataset.generatedAt) > NO2_ACTIVITY_MAX_STALE_MINUTES * 60_000,
     attribution: dataset.source.attribution,
-    sourceDataset: dataset.source.dataset,
   };
 }
 

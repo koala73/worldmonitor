@@ -85,7 +85,7 @@ export const ATTRIBUTION_RIDER_NOTICE =
  * through the get_no2_activity tool, whose _execute keeps these top-level
  * fields verbatim.
  */
-export const NO2_ATTRIBUTION_EXPRESSION = '{attribution: attribution, sourceDataset: sourceDataset, generatedAt: generatedAt}';
+export const NO2_ATTRIBUTION_EXPRESSION = '{attribution: attribution, generatedAt: generatedAt}';
 
 export const REST_ATTRIBUTION_EXPRESSIONS: Readonly<Record<string, string>> = {
   '/api/economic/v1/get-no2-activity': NO2_ATTRIBUTION_EXPRESSION,

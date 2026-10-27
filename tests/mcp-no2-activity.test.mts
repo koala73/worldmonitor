@@ -102,7 +102,10 @@ describe('get_no2_activity', () => {
     assert.equal(result.upstreamUnavailable, false);
     assert.equal(result.stale, false);
     assert.equal(result.attribution, 'Contains modified Copernicus Sentinel data 2023-2026');
-    assert.equal((result.method as Record<string, unknown>).deadBandPercent, 10);
+    assert.deepEqual(result.method, {
+      methodVersion: 'no2-activity/v1', windowDays: 56, windowEndLagDays: 3, baselineYears: 3,
+      minBaselineYears: 2, minValidDays: 14, minValidFraction: 0.2, deadBandPercent: 10,
+    });
     assert.ok(utf8ByteLength(JSON.stringify(result)) <= tool._outputBudgetBytes, 'unfiltered response must fit the output budget');
 
     const china = regions.find((region) => region.id === 'country-cn');
@@ -115,7 +118,6 @@ describe('get_no2_activity', () => {
       windowStart: (redisValue as ReturnType<typeof freshDataset>).regions['country-cn'].current.windowStart,
       windowEnd: (redisValue as ReturnType<typeof freshDataset>).regions['country-cn'].current.windowEnd,
       validDays: 40,
-      maskedDays: 0,
       meanNo2MolM2: 1.1e-4 * 1.142,
       baselineYears: (redisValue as ReturnType<typeof freshDataset>).regions['country-cn'].baseline.years.map((year) => year.year),
       baselineMeanNo2MolM2: 1.1e-4,
@@ -123,8 +125,11 @@ describe('get_no2_activity', () => {
       signalValue: 14.2,
       direction: 'strengthening',
       exclusion: null,
-      seriesRefreshedAt: (redisValue as ReturnType<typeof freshDataset>).generatedAt,
     });
+    const inside = regions.find((region) => region.id === 'country-ae');
+    assert.equal(inside?.changePercent, 2);
+    assert.equal(inside?.signalValue, 0);
+    assert.equal(inside?.direction, 'unchanged');
 
     const pending = regions.find((region) => region.id === 'country-fr');
     assert.deepEqual(pending && {
@@ -176,7 +181,6 @@ describe('get_no2_activity', () => {
     assert.equal(tool._attribution, REST_ATTRIBUTION_EXPRESSIONS['/api/economic/v1/get-no2-activity']);
     assert.deepEqual(jmespath.search(result, tool._attribution as string), {
       attribution: 'Contains modified Copernicus Sentinel data 2023-2026',
-      sourceDataset: 'sentinel-5p-l2',
       generatedAt: (redisValue as ReturnType<typeof freshDataset>).generatedAt,
     });
   });

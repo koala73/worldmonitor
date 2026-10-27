@@ -561,7 +561,7 @@ curl -s https://worldmonitor.app/mcp \
 
 基于 Sentinel-5P 对流层 NO2 的工业活动方向，覆盖 167 个国家和 32 个工业集群：最新 56 天窗口与前三年同期日期对比，给出 changePercent 以及经 10% 死区后的 direction。没有读数的区域带有 exclusion；在前几年数据仍在回填时，baseline_backfill_pending 是预期状态，不是故障。可按 country_code（该国及其境内集群）、region_id 或 kind 过滤。每日播种，从不实时调用 Copernicus；请转载 attribution。需要付费套餐；一次下游请求，API 套餐权重 2。只读。
 
-每个区域报告 `windowStart`、`windowEnd`、`validDays`（无云且通过质量过滤像元足够的天数）、`maskedDays`（节假日掩码）、以 mol/m2 计的平均 NO2 柱浓度、进入基线的往年年份、`changePercent`、`signalValue`（10% 死区之外的变化，死区内为 0）和 `direction`（`strengthening`、`weakening`、`unchanged`）。没有读数的区域 `direction: null`，并带有封闭词汇表中的 `exclusion`：`request_failed`、`baseline_backfill_pending`、`insufficient_valid_days`、`insufficient_baseline_years`。响应携带方法常量、`generatedAt`、`stale`（超过 72 小时健康预算时为 true）以及 `attribution` 中必须保留的署名，例如 "Contains modified Copernicus Sentinel data 2023-2026"。方法说明见[中国活动即时预测方法论](/zh/methodology/china-activity-nowcast)。
+每个区域报告 `windowStart`、`windowEnd`、`validDays`（无云且通过质量过滤像元足够的天数）、以 mol/m2 计的平均 NO2 柱浓度、进入基线的往年年份、`changePercent`、`signalValue`（10% 死区之外的变化，死区内为 0）和 `direction`（`strengthening`、`weakening`、`unchanged`）。没有读数的区域 `direction: null`，并带有封闭词汇表中的 `exclusion`：`request_failed`、`baseline_backfill_pending`、`insufficient_valid_days`、`insufficient_baseline_years`。响应携带 `method`（由路由的 `methodVersion` 固定的常量）、`generatedAt`、`stale`（超过 72 小时健康预算时为 true）以及 `attribution` 中必须保留的署名，例如 "Contains modified Copernicus Sentinel data 2023-2026"。方法说明见[中国活动即时预测方法论](/zh/methodology/china-activity-nowcast)。
 
 **参数（工具专用）：**
 

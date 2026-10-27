@@ -7815,15 +7815,12 @@ paths:
             tags:
                 - EconomicService
             summary: GetNo2Activity
-            description: 'Read Sentinel-5P tropospheric NO2 activity for 167 countries and 32 industrial clusters: the year-over-year change of the latest 56-day window against the same dates in prior years, its direction after a 10% dead band, valid-day counts and the exclusion naming why a region has no reading. Filter by country_code, region_id or kind. Seed-backed; never calls Copernicus per request.'
+            description: Sentinel-5P NO2 activity direction for 167 countries and 32 industrial clusters, year over year. Seed-backed.
             operationId: GetNo2Activity
             parameters:
                 - name: country_code
                   in: query
-                  description: |-
-                    ISO 3166-1 alpha-2 code. Returns the country region and every cluster
-                     inside that country; clusters spanning several countries carry no code
-                     and never match. Case-insensitive. Empty means no country filter.
+                  description: 'ISO 3166-1 alpha-2: the country plus its clusters.'
                   required: false
                   example: "US"
                   schema:
@@ -7831,9 +7828,7 @@ paths:
                     pattern: '^([A-Za-z]{2})?$'
                 - name: region_id
                   in: query
-                  description: |-
-                    Region id from the shared registry, for example "country-cn" or
-                     "yangtze-river-delta". Empty means no region filter.
+                  description: Registry id, e.g. "yangtze-river-delta".
                   required: false
                   example: "mena"
                   schema:
@@ -7841,7 +7836,6 @@ paths:
                     pattern: '^([a-z0-9-]{1,64})?$'
                 - name: kind
                   in: query
-                  description: Restrict to countries or clusters. Unspecified means both.
                   required: false
                   example: "NO2_REGION_KIND_COUNTRY"
                   schema:
@@ -7865,27 +7859,16 @@ paths:
                             example:
                                 "attribution": "example"
                                 "generatedAt": "2026-01-15T12:00:00Z"
-                                "method":
-                                    "baselineYears": 1
-                                    "deadBandPercent": 42.5
-                                    "methodVersion": "example"
-                                    "minBaselineYears": 1
-                                    "minValidDays": 7
+                                "methodVersion": "example"
                                 "regions":
                                     - "baselineMeanNo2MolM2": 1.5
                                       "baselineYears":
-                                          - "window":
-                                              "maskedDays": 7
-                                              "meanNo2MolM2": 1.5
-                                              "validDays": 7
-                                              "windowEnd": "example"
-                                              "windowStart": "example"
-                                            "year": 1
+                                          - 1
                                       "bbox":
                                           - 1.5
                                       "changePercent": 42.5
                                       "countryCode": "US"
-                                "sourceDataset": "example"
+                                "stale": true
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_economic_v1_GetNo2ActivityResponse'
                 "400":
@@ -43986,26 +43969,18 @@ components:
                 countryCode:
                     type: string
                     pattern: ^([A-Za-z]{2})?$
-                    description: |-
-                        ISO 3166-1 alpha-2 code. Returns the country region and every cluster
-                         inside that country; clusters spanning several countries carry no code
-                         and never match. Case-insensitive. Empty means no country filter.
+                    description: 'ISO 3166-1 alpha-2: the country plus its clusters.'
                 regionId:
                     type: string
                     pattern: ^([a-z0-9-]{1,64})?$
-                    description: |-
-                        Region id from the shared registry, for example "country-cn" or
-                         "yangtze-river-delta". Empty means no region filter.
+                    description: Registry id, e.g. "yangtze-river-delta".
                 kind:
                     type: string
                     enum:
                         - NO2_REGION_KIND_UNSPECIFIED
                         - NO2_REGION_KIND_COUNTRY
                         - NO2_REGION_KIND_CLUSTER
-                    description: No2RegionKind selects country polygons, named industrial clusters, or both.
-            description: |-
-                Filters for the Sentinel-5P NO2 activity dataset. Filters combine with AND.
-                 With no filter every registered region is returned.
+            description: Filters combine with AND; none means every registered region.
         worldmonitor_economic_v1_GetNo2ActivityResponse:
             type: object
             properties:
@@ -44015,20 +43990,15 @@ components:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_No2ActivityRegion'
                 generatedAt:
                     type: string
-                    description: When the seeder produced the dataset. Empty when no regions are served.
                 stale:
                     type: boolean
-                    description: True when generated_at is older than the health budget for this dataset.
-                method:
-                    $ref: '#/components/schemas/worldmonitor_economic_v1_No2ActivityMethod'
+                    description: Older than the 72 h health budget.
+                methodVersion:
+                    type: string
+                    description: Pins the method constants in scripts/shared/no2-activity.mjs.
                 attribution:
                     type: string
-                    description: |-
-                        Required credit line, for example "Contains modified Copernicus Sentinel
-                         data 2023-2026". Empty when no regions are served.
-                sourceDataset:
-                    type: string
-                    description: Source dataset identifier, for example "sentinel-5p-l2".
+                    description: Required credit, e.g. "Contains modified Copernicus Sentinel data 2023-2026".
                 unavailableReason:
                     type: string
                     enum:
@@ -44038,61 +44008,46 @@ components:
                         - NO2_ACTIVITY_UNAVAILABLE_REASON_SEED_MISSING
                         - NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_DATASET
                         - NO2_ACTIVITY_UNAVAILABLE_REASON_CACHE_UNAVAILABLE
-                    description: |-
-                        No2ActivityUnavailableReason says why no regions were returned. NOT_COVERED
-                         is a contract answer: the filter names nothing in the region registry and a
-                         retry cannot help. Every other member names a fault.
+                    description: NOT_COVERED is a contract answer; the rest are faults.
                 upstreamUnavailable:
                     type: boolean
-                    description: |-
-                        True when a fault prevented serving; false both when served and when the
-                         filter is simply not covered.
-            description: Sentinel-5P NO2 activity readings for the requested regions.
+                    description: False when served or not covered.
         worldmonitor_economic_v1_No2ActivityRegion:
             type: object
             properties:
                 id:
                     type: string
-                    description: Registry id, for example "country-cn" or "yangtze-river-delta".
                 kind:
                     type: string
                     enum:
                         - NO2_REGION_KIND_UNSPECIFIED
                         - NO2_REGION_KIND_COUNTRY
                         - NO2_REGION_KIND_CLUSTER
-                    description: No2RegionKind selects country polygons, named industrial clusters, or both.
                 label:
                     type: string
-                    description: Display label.
                 countryCode:
                     type: string
-                    description: ISO 3166-1 alpha-2 code; empty for a cluster that spans countries.
                 bbox:
                     type: array
                     items:
                         type: number
                         format: double
-                        description: Bounding box as west, south, east, north in CRS84 degrees.
+                        description: West, south, east, north.
                 current:
                     $ref: '#/components/schemas/worldmonitor_economic_v1_No2Window'
                 baselineYears:
                     type: array
                     items:
-                        $ref: '#/components/schemas/worldmonitor_economic_v1_No2BaselineYear'
+                        type: integer
+                        format: int32
+                        description: Newest first; empty while pending.
                 baselineMeanNo2MolM2:
                     type: number
                     format: double
-                    description: Mean of the baseline windows, mol/m2. Absent while the baseline is pending.
                 changePercent:
                     type: number
                     format: double
-                    description: |-
-                        Percent change of the current window against the baseline mean. Absent
-                         when the region is excluded.
-                signalValue:
-                    type: number
-                    format: double
-                    description: change_percent outside the dead band, 0 inside it. Absent when excluded.
+                    description: Percent against the baseline mean; absent when excluded.
                 direction:
                     type: string
                     enum:
@@ -44100,7 +44055,6 @@ components:
                         - NO2_DIRECTION_STRENGTHENING
                         - NO2_DIRECTION_WEAKENING
                         - NO2_DIRECTION_UNCHANGED
-                    description: No2Direction is the year-over-year reading after the dead band.
                 exclusion:
                     type: string
                     enum:
@@ -44109,83 +44063,22 @@ components:
                         - NO2_REGION_EXCLUSION_BASELINE_BACKFILL_PENDING
                         - NO2_REGION_EXCLUSION_INSUFFICIENT_VALID_DAYS
                         - NO2_REGION_EXCLUSION_INSUFFICIENT_BASELINE_YEARS
-                    description: |-
-                        No2RegionExclusion says why a region carries no reading this run. The
-                         vocabulary is closed and shared with the seeder; BASELINE_BACKFILL_PENDING
-                         is an expected state during the first weeks after a region is added, not a
-                         fault.
-                seriesRefreshedAt:
-                    type: string
-                    description: |-
-                        Last successful source refresh for this region's series. Empty while no
-                         refresh has succeeded.
-                seriesDays:
-                    type: integer
-                    format: int32
-                    description: Daily observations stored for this region across every backfilled year.
-            description: One region's reading for this run.
+                    description: BASELINE_BACKFILL_PENDING is expected for a new region, not a fault.
         worldmonitor_economic_v1_No2Window:
             type: object
             properties:
                 windowStart:
                     type: string
-                    description: First UTC calendar date, inclusive.
                 windowEnd:
                     type: string
-                    description: Last UTC calendar date, inclusive.
                 validDays:
                     type: integer
                     format: int32
-                    description: Days whose valid pixel fraction met the method minimum.
-                maskedDays:
-                    type: integer
-                    format: int32
-                    description: Days removed by the holiday mask.
+                    description: Days with enough cloud-free, quality-filtered pixels.
                 meanNo2MolM2:
                     type: number
                     format: double
-                    description: |-
-                        Mean tropospheric NO2 column over the valid days, mol/m2. Absent when
-                         valid_days is 0.
-            description: |-
-                One observation window: the current 56-day window or one prior-year window
-                 over the same calendar dates.
-        worldmonitor_economic_v1_No2BaselineYear:
-            type: object
-            properties:
-                year:
-                    type: integer
-                    format: int32
-                window:
-                    $ref: '#/components/schemas/worldmonitor_economic_v1_No2Window'
-            description: A prior-year window used as baseline.
-        worldmonitor_economic_v1_No2ActivityMethod:
-            type: object
-            properties:
-                methodVersion:
-                    type: string
-                windowDays:
-                    type: integer
-                    format: int32
-                windowEndLagDays:
-                    type: integer
-                    format: int32
-                baselineYears:
-                    type: integer
-                    format: int32
-                minBaselineYears:
-                    type: integer
-                    format: int32
-                minValidDays:
-                    type: integer
-                    format: int32
-                minValidFraction:
-                    type: number
-                    format: double
-                deadBandPercent:
-                    type: number
-                    format: double
-            description: The reviewed method constants the dataset was produced with.
+                    description: Mean tropospheric NO2 column, mol/m2; absent with no valid day.
         worldmonitor_economic_v1_GetEnergyCapacityRequest:
             type: object
             properties:

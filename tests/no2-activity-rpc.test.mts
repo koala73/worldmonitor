@@ -74,17 +74,7 @@ describe('getNo2Activity', () => {
     assert.equal(response.stale, false);
     assert.equal(response.generatedAt, dataset.generatedAt);
     assert.equal(response.attribution, 'Contains modified Copernicus Sentinel data 2023-2026');
-    assert.equal(response.sourceDataset, 'sentinel-5p-l2');
-    assert.deepEqual(response.method, {
-      methodVersion: 'no2-activity/v1',
-      windowDays: 56,
-      windowEndLagDays: 3,
-      baselineYears: 3,
-      minBaselineYears: 2,
-      minValidDays: 14,
-      minValidFraction: 0.2,
-      deadBandPercent: 10,
-    });
+    assert.equal(response.methodVersion, 'no2-activity/v1');
     assert.equal(response.regions.length, NO2_REGIONS.length);
     assert.deepEqual(response.regions.map((region) => region.id), NO2_REGIONS.map((region) => region.id));
 
@@ -95,36 +85,31 @@ describe('getNo2Activity', () => {
     assert.equal(china.label, 'China');
     assert.deepEqual(china.bbox, [73.63, 18.29, 134.77, 53.55]);
     assert.equal(china.changePercent, 14.2);
-    assert.equal(china.signalValue, 14.2);
     assert.equal(china.direction, 'NO2_DIRECTION_STRENGTHENING');
     assert.equal(china.exclusion, 'NO2_REGION_EXCLUSION_UNSPECIFIED');
     assert.equal(china.current?.validDays, 40);
     assert.equal(china.current?.windowEnd, dataset.regions['country-cn'].current.windowEnd);
-    assert.equal(china.baselineYears.length, 3);
-    assert.equal(china.baselineYears[0]?.year, Number(dataset.regions['country-cn'].current.windowEnd.slice(0, 4)) - 1);
+    const windowYear = Number(dataset.regions['country-cn'].current.windowEnd.slice(0, 4));
+    assert.deepEqual(china.baselineYears, [windowYear - 1, windowYear - 2, windowYear - 3]);
     assert.equal(china.baselineMeanNo2MolM2, 1.1e-4);
-    assert.equal(china.seriesRefreshedAt, dataset.generatedAt);
-    assert.equal(china.seriesDays, 1460);
+    assert.equal('maskedDays' in JSON.parse(JSON.stringify(china.current)), false);
 
     const delta = response.regions.find((region) => region.id === 'yangtze-river-delta');
     assert.equal(delta?.kind, 'NO2_REGION_KIND_CLUSTER');
     assert.equal(delta?.direction, 'NO2_DIRECTION_WEAKENING');
-    assert.equal(delta?.signalValue, -12.5);
+    assert.equal(delta?.changePercent, -12.5);
 
     const inside = response.regions.find((region) => region.id === 'country-ae');
     assert.equal(inside?.changePercent, 2);
-    assert.equal(inside?.signalValue, 0);
     assert.equal(inside?.direction, 'NO2_DIRECTION_UNCHANGED');
 
     const pending = response.regions.find((region) => region.id === 'country-fr');
     assert.ok(pending);
     assert.equal(pending.exclusion, 'NO2_REGION_EXCLUSION_BASELINE_BACKFILL_PENDING');
     assert.equal(pending.direction, 'NO2_DIRECTION_UNSPECIFIED');
-    assert.equal(pending.baselineYears.length, 0);
-    assert.equal(pending.seriesRefreshedAt, '');
+    assert.deepEqual(pending.baselineYears, []);
     const serialized = JSON.parse(JSON.stringify(pending));
     assert.equal('changePercent' in serialized, false);
-    assert.equal('signalValue' in serialized, false);
     assert.equal('baselineMeanNo2MolM2' in serialized, false);
 
     const cloudy = response.regions.find((region) => region.id === 'country-de');

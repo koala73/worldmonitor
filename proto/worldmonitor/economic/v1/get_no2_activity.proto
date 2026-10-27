@@ -5,167 +5,92 @@ package worldmonitor.economic.v1;
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
-// No2RegionKind selects country polygons, named industrial clusters, or both.
 enum No2RegionKind {
-  // No kind filter: every region.
   NO2_REGION_KIND_UNSPECIFIED = 0;
-  // One of the 167 countries from the public country boundary file.
   NO2_REGION_KIND_COUNTRY = 1;
-  // One of the 32 named industrial clusters.
   NO2_REGION_KIND_CLUSTER = 2;
 }
 
-// No2Direction is the year-over-year reading after the dead band.
 enum No2Direction {
-  // The region is excluded this run; see No2ActivityRegion.exclusion.
   NO2_DIRECTION_UNSPECIFIED = 0;
-  // Change above the dead band.
   NO2_DIRECTION_STRENGTHENING = 1;
-  // Change below the negative dead band.
   NO2_DIRECTION_WEAKENING = 2;
-  // Change inside the dead band.
   NO2_DIRECTION_UNCHANGED = 3;
 }
 
-// No2RegionExclusion says why a region carries no reading this run. The
-// vocabulary is closed and shared with the seeder; BASELINE_BACKFILL_PENDING
-// is an expected state during the first weeks after a region is added, not a
-// fault.
+// BASELINE_BACKFILL_PENDING is expected for a new region, not a fault.
 enum No2RegionExclusion {
-  // The region has a reading.
   NO2_REGION_EXCLUSION_UNSPECIFIED = 0;
-  // The source request for the current window failed.
   NO2_REGION_EXCLUSION_REQUEST_FAILED = 1;
-  // Prior-year windows are still being backfilled.
   NO2_REGION_EXCLUSION_BASELINE_BACKFILL_PENDING = 2;
-  // Fewer valid (cloud-free, quality-filtered) days than the method requires.
   NO2_REGION_EXCLUSION_INSUFFICIENT_VALID_DAYS = 3;
-  // Fewer baseline years than the method requires.
   NO2_REGION_EXCLUSION_INSUFFICIENT_BASELINE_YEARS = 4;
 }
 
-// No2ActivityUnavailableReason says why no regions were returned. NOT_COVERED
-// is a contract answer: the filter names nothing in the region registry and a
-// retry cannot help. Every other member names a fault.
+// NOT_COVERED is a contract answer; the rest are faults.
 enum No2ActivityUnavailableReason {
-  // Regions were served.
   NO2_ACTIVITY_UNAVAILABLE_REASON_UNSPECIFIED = 0;
-  // A filter was malformed. Only reachable where request validation is
-  // bypassed; the gateway rejects these with HTTP 400 before the handler runs.
   NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST = 1;
-  // Well-formed filters that match no registered region.
   NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED = 2;
-  // The seeded dataset is absent.
   NO2_ACTIVITY_UNAVAILABLE_REASON_SEED_MISSING = 3;
-  // The seeded dataset failed the shared contract validation.
   NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_DATASET = 4;
-  // The cache read itself failed.
   NO2_ACTIVITY_UNAVAILABLE_REASON_CACHE_UNAVAILABLE = 5;
 }
 
-// Filters for the Sentinel-5P NO2 activity dataset. Filters combine with AND.
-// With no filter every registered region is returned.
+// Filters combine with AND; none means every registered region.
 message GetNo2ActivityRequest {
-  // ISO 3166-1 alpha-2 code. Returns the country region and every cluster
-  // inside that country; clusters spanning several countries carry no code
-  // and never match. Case-insensitive. Empty means no country filter.
+  // ISO 3166-1 alpha-2: the country plus its clusters.
   string country_code = 1 [
     (buf.validate.field).string.pattern = "^([A-Za-z]{2})?$",
     (sebuf.http.query) = {name: "country_code"}
   ];
-  // Region id from the shared registry, for example "country-cn" or
-  // "yangtze-river-delta". Empty means no region filter.
+  // Registry id, e.g. "yangtze-river-delta".
   string region_id = 2 [
     (buf.validate.field).string.pattern = "^([a-z0-9-]{1,64})?$",
     (sebuf.http.query) = {name: "region_id"}
   ];
-  // Restrict to countries or clusters. Unspecified means both.
   No2RegionKind kind = 3 [
     (buf.validate.field).enum.defined_only = true,
     (sebuf.http.query) = {name: "kind"}
   ];
 }
 
-// One observation window: the current 56-day window or one prior-year window
-// over the same calendar dates.
 message No2Window {
-  // First UTC calendar date, inclusive.
   string window_start = 1;
-  // Last UTC calendar date, inclusive.
   string window_end = 2;
-  // Days whose valid pixel fraction met the method minimum.
+  // Days with enough cloud-free, quality-filtered pixels.
   int32 valid_days = 3;
-  // Days removed by the holiday mask.
-  int32 masked_days = 4;
-  // Mean tropospheric NO2 column over the valid days, mol/m2. Absent when
-  // valid_days is 0.
-  optional double mean_no2_mol_m2 = 5;
+  // Mean tropospheric NO2 column, mol/m2; absent with no valid day.
+  optional double mean_no2_mol_m2 = 4;
 }
 
-// A prior-year window used as baseline.
-message No2BaselineYear {
-  int32 year = 1;
-  No2Window window = 2;
-}
-
-// One region's reading for this run.
 message No2ActivityRegion {
-  // Registry id, for example "country-cn" or "yangtze-river-delta".
   string id = 1;
   No2RegionKind kind = 2;
-  // Display label.
   string label = 3;
-  // ISO 3166-1 alpha-2 code; empty for a cluster that spans countries.
   string country_code = 4;
-  // Bounding box as west, south, east, north in CRS84 degrees.
+  // West, south, east, north.
   repeated double bbox = 5;
   No2Window current = 6;
-  // Prior-year windows that entered the baseline, newest first.
-  repeated No2BaselineYear baseline_years = 7;
-  // Mean of the baseline windows, mol/m2. Absent while the baseline is pending.
+  // Newest first; empty while pending.
+  repeated int32 baseline_years = 7;
   optional double baseline_mean_no2_mol_m2 = 8;
-  // Percent change of the current window against the baseline mean. Absent
-  // when the region is excluded.
+  // Percent against the baseline mean; absent when excluded.
   optional double change_percent = 9;
-  // change_percent outside the dead band, 0 inside it. Absent when excluded.
-  optional double signal_value = 10;
-  No2Direction direction = 11;
-  No2RegionExclusion exclusion = 12;
-  // Last successful source refresh for this region's series. Empty while no
-  // refresh has succeeded.
-  string series_refreshed_at = 13;
-  // Daily observations stored for this region across every backfilled year.
-  int32 series_days = 14;
+  No2Direction direction = 10;
+  No2RegionExclusion exclusion = 11;
 }
 
-// The reviewed method constants the dataset was produced with.
-message No2ActivityMethod {
-  string method_version = 1;
-  int32 window_days = 2;
-  int32 window_end_lag_days = 3;
-  int32 baseline_years = 4;
-  int32 min_baseline_years = 5;
-  int32 min_valid_days = 6;
-  double min_valid_fraction = 7;
-  double dead_band_percent = 8;
-}
-
-// Sentinel-5P NO2 activity readings for the requested regions.
 message GetNo2ActivityResponse {
   repeated No2ActivityRegion regions = 1;
-  // When the seeder produced the dataset. Empty when no regions are served.
   string generated_at = 2;
-  // True when generated_at is older than the health budget for this dataset.
+  // Older than the 72 h health budget.
   bool stale = 3;
-  No2ActivityMethod method = 4;
-  // Required credit line, for example "Contains modified Copernicus Sentinel
-  // data 2023-2026". Empty when no regions are served.
+  // Pins the method constants in scripts/shared/no2-activity.mjs.
+  string method_version = 4;
+  // Required credit, e.g. "Contains modified Copernicus Sentinel data 2023-2026".
   string attribution = 5;
-  // Source dataset identifier, for example "sentinel-5p-l2".
-  string source_dataset = 6;
-  // Why regions is empty. UNSPECIFIED when regions were served.
-  No2ActivityUnavailableReason unavailable_reason = 7;
-  // True when a fault prevented serving; false both when served and when the
-  // filter is simply not covered.
-  bool upstream_unavailable = 8;
+  No2ActivityUnavailableReason unavailable_reason = 6;
+  // False when served or not covered.
+  bool upstream_unavailable = 7;
 }
