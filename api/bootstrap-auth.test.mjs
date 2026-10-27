@@ -52,7 +52,7 @@ async function withMockedBootstrapAuth({
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     calls.push({ url, init });
 
-    if (url.startsWith('https://upstash.test')) {
+    if (new URL(url).hostname === 'upstash.test') {
       const commands = JSON.parse(String(init?.body || '[]'));
       if (commands[0]?.[0] === 'INCR') {
         if (rateLimitStatus) {
@@ -666,7 +666,7 @@ test('HEAD tier bootstrap is not the public path (no unshielded Redis read)', as
     assert.equal(resp.status, 401);
     assert.equal(resp.headers.get('cache-control'), 'no-store');
     // Rejected before any Redis GET pipeline runs.
-    assert.equal(calls.some((call) => call.url.startsWith('https://upstash.test')), false);
+    assert.equal(calls.some((call) => new URL(call.url).hostname === 'upstash.test'), false);
   });
 });
 
@@ -1104,7 +1104,7 @@ async function withDesktopBootstrapAuth({ keys, entitlements, seed = {}, failDes
 
   globalThis.fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    if (url.startsWith('https://upstash.test')) {
+    if (new URL(url).hostname === 'upstash.test') {
       const commands = JSON.parse(String(init?.body || '[]'));
       if (failDesktopCounter && commands.some((c) => String(c[1] ?? '').startsWith('rl:desktopkey:'))) {
         return new Response(JSON.stringify({ error: 'redis unavailable' }), { status: 503 });
