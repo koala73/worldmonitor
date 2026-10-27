@@ -94,6 +94,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
         return Response.json({ ok: true });
       },
       parseDigestOnlyUser: () => ({ kind: 'unset' }),
+      fetchBriefOnlyUserIds: async () => [], buildBriefOnlyRules: () => [],
       composeBriefsForRun: async () => ({ briefByUser: new Map(), composeSuccess: 0, composeFailed: 0 }),
       readCooldownConfig: () => ({ invalidRaw: null, mode: 'off' }),
       getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,

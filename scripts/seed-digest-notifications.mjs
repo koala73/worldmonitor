@@ -63,6 +63,8 @@ import {
 } from '../shared/story-phase.js';
 import { shouldDropOpinionTrack } from './lib/digest-opinion-track-filter.mjs';
 import {
+  briefCandidateDue,
+  buildBriefOnlyRules,
   composeBriefFromDigestStories,
   compareRules,
   deriveThreadsFromOrderedStories,
@@ -1586,8 +1588,9 @@ async function composeBriefsForRun(rules, nowMs) {
   for (const [userId, candidates] of groupEligibleRulesByUser(rules)) {
     const annotated = [];
     for (const rule of candidates) {
-      const lastSentAt = await getLastSentAt(rule);
-      annotated.push({ rule, lastSentAt, due: isDue(rule, lastSentAt) });
+      // Brief-only rules are never sent, so they have no last-sent record.
+      const lastSentAt = rule.briefOnly ? null : await getLastSentAt(rule);
+      annotated.push({ rule, lastSentAt, due: briefCandidateDue(rule, lastSentAt, isDue) });
     }
     annotatedByUser.set(userId, annotated);
   }
@@ -2053,6 +2056,35 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Paid users who need a default in-app brief (Convex `getBriefOnlyUsers`).
+ * Never fatal: on any failure the run composes for digest rules only, as it
+ * did before this list existed.
+ *
+ * @returns {Promise<string[]>}
+ */
+async function fetchBriefOnlyUserIds() {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/relay/brief-only-users`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${RELAY_SECRET}`,
+        'User-Agent': 'worldmonitor-digest/1.0',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) {
+      console.warn('[digest] brief: brief-only users fetch failed:', res.status);
+      return [];
+    }
+    const body = await res.json();
+    return Array.isArray(body) ? body.filter((id) => typeof id === 'string') : [];
+  } catch (err) {
+    console.warn('[digest] brief: brief-only users fetch threw:', err?.message);
+    return [];
+  }
+}
+
 async function main() {
   const nowMs = Date.now();
   digestRunStartedAtMs = nowMs;
@@ -2115,7 +2147,12 @@ async function main() {
     process.exit(1);
   }
 
-  if (rules.length === 0) {
+  // Paid users without a digest rule still get today's in-app brief (default
+  // compose-only rules, appended before compose). Fetched before the empty and
+  // single-user checks so a run with no digest rules still composes them.
+  let briefOnlyUserIds = await fetchBriefOnlyUserIds();
+
+  if (rules.length === 0 && briefOnlyUserIds.length === 0) {
     console.log('[digest] No digest rules found — nothing to do');
     await writeDigestLastRunMeta({ startedAtMs: nowMs, sentCount: 0 });
     return;
@@ -2148,10 +2185,11 @@ async function main() {
     );
     const before = rules.length;
     rules = rules.filter((r) => r && r.userId === onlyUserFilter.userId);
+    briefOnlyUserIds = briefOnlyUserIds.filter((id) => id === onlyUserFilter.userId);
     console.log(
       `[digest] DIGEST_ONLY_USER — filtered ${before} rules → ${rules.length}`,
     );
-    if (rules.length === 0) {
+    if (rules.length === 0 && briefOnlyUserIds.length === 0) {
       console.warn(
         `[digest] No rules matched userId=${onlyUserFilter.userId} — nothing to do (exiting green).`,
       );
@@ -2175,7 +2213,11 @@ async function main() {
   // exit-non-zero gate AFTER the digest dispatch so Railway still
   // surfaces compose-layer breakage without skipping user-visible
   // digest delivery.
-  const { briefByUser, composeSuccess, composeFailed } = await composeBriefsForRun(rules, nowMs);
+  // Default compose-only rules for paid users without a digest rule. They never
+  // enter the send loop below (it iterates `rules`), so nothing is delivered.
+  const briefOnlyRules = buildBriefOnlyRules(briefOnlyUserIds, rules);
+  if (briefOnlyRules.length) console.log(`[digest] brief: ${briefOnlyRules.length} paid users without a digest rule get a default in-app brief`);
+  const { briefByUser, composeSuccess, composeFailed } = await composeBriefsForRun([...rules, ...briefOnlyRules], nowMs);
 
   // Sprint 1 / U2 — option (a) canonical-send mapping. Build a per-user
   // rule index ONCE so each iteration of the send loop can resolve the

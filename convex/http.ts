@@ -1344,6 +1344,22 @@ http.route({
   }),
 });
 
+// Service-to-service: the digest cron fetches paid users who need a default
+// in-app brief (no digest rule of their own). Returns user ids only.
+http.route({
+  path: "/relay/brief-only-users",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
+    const userIds = await ctx.runQuery((internal as any).alertRules.getBriefOnlyUsers);
+    return new Response(JSON.stringify(userIds), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
 // Service-to-service: the notification relay fetches ALL enabled rules (it
 // fans out alerts + drains quiet-hours batches). Wraps the INTERNAL
 // `alertRules.getByEnabled` (GHSA-r649-4cqj-w93h) behind the shared secret so
