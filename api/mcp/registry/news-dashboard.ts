@@ -57,7 +57,7 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   inputSchema: {
     type: 'object',
     properties: {
-      headlines: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'string', maxLength: 4000 }, description: 'Headlines to work on: 1-8 for a brief, exactly 1 for a translation. Each up to 4000 characters.' },
+      headlines: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'string', maxLength: 500 }, description: 'Headlines to work on: 1-8 for a brief, exactly 1 for a translation. Each up to 500 characters; a longer translation is refused.' },
       bodies: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 400 }, description: 'Optional article snippets, index-aligned with headlines (up to 400 characters each), that ground the brief. Ignored for translation.' },
       mode: { type: 'string', enum: ['brief', 'translate'], description: 'brief (default) summarizes the headlines; translate renders one headline in lang.' },
       lang: { type: 'string', maxLength: 16, description: 'BCP 47 language code: the target language for translate and the output language for brief (default en).' },
