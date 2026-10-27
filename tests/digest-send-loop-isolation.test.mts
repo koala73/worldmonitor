@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { renderDigestEmailHtml, DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
-import { buildBriefOnlyRules } from '../scripts/lib/brief-compose.mjs';
+import { buildBriefOnlyRules, rotateBriefOnlyRules } from '../scripts/lib/brief-compose.mjs';
 
 // A transient Upstash timeout in one user's send path used to reach
 // main().catch and end the whole cron tick, so every user after it in the
@@ -61,9 +61,11 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
       return Response.json([{ channelType: 'email', email: `${userId}@example.com`, verified: true, emailOwnership: 'verified_account' }]);
     },
     parseDigestOnlyUser: () => ({ kind: 'unset' }),
-    fetchBriefOnlyUserIds: async () => briefOnlyUserIds, buildBriefOnlyRules,
-    composeBriefsForRun: async (rules: any[]) => {
+    fetchBriefOnlyUserIds: async () => briefOnlyUserIds, buildBriefOnlyRules, rotateBriefOnlyRules,
+    BRIEF_ONLY_COMPOSE_BUDGET_MS: 60_000,
+    composeBriefsForRun: async (rules: any[], _nowMs: number, opts?: { deadlineMs?: number }) => {
       composedRules.push(rules);
+      lifecycle.push(opts?.deadlineMs ? 'compose:bounded' : 'compose');
       return { briefByUser: new Map(), composeSuccess: 0, composeFailed: 0 };
     },
     readCooldownConfig: () => ({ invalidRaw: null, mode: 'off' }),
@@ -84,6 +86,7 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
     emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',
     sendResendEmail: async (_client: unknown, message: { to: string }) => {
       delivered.push(message.to);
+      lifecycle.push('deliver');
       return { ok: true };
     },
     writeDigestLastRunMeta: async (meta: unknown) => { metadata.push(meta); lifecycle.push('metadata'); },
@@ -94,15 +97,19 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
 // A paid user with no digest rule got no brief, and the dashboard said
 // "composing" forever (2026-10-27). They get a default compose-only rule, which
 // must reach compose and never reach any channel.
+// Array.from copies out of the VM realm so deepStrictEqual compares values, not prototypes.
+const ids = (rules: any[]) => Array.from(rules, (r: { userId: string; briefOnly?: boolean }) => `${r.userId}${r.briefOnly ? ':brief-only' : ''}`);
+
 test('paid users without a digest rule are composed but never sent anything', async () => {
-  const { run, delivered, composedRules } = runDigest({ failingUsers: new Set(), briefOnlyUserIds: ['brief_only', 'second'] });
+  const { run, delivered, composedRules, lifecycle } = runDigest({ failingUsers: new Set(), briefOnlyUserIds: ['brief_only', 'second'] });
   await run();
-  assert.equal(composedRules.length, 1);
-  // Array.from copies out of the VM realm so deepStrictEqual compares values, not prototypes.
-  const composed = Array.from(composedRules[0], (r: { userId: string; briefOnly?: boolean }) => `${r.userId}${r.briefOnly ? ':brief-only' : ''}`);
   // 'second' already has a digest rule, so it gets no duplicate default.
-  assert.deepEqual(composed, ['first', 'second', 'third', 'brief_only:brief-only']);
+  assert.deepEqual(composedRules.map(ids), [['first', 'second', 'third'], ['brief_only:brief-only']]);
   assert.deepEqual(delivered, ['first@example.com', 'second@example.com', 'third@example.com']);
+  // Default briefs are composed after every delivery, under a deadline, so they
+  // never delay a scheduled digest (#9758 review).
+  const events = Array.from(lifecycle).filter((e) => e !== 'metadata');
+  assert.deepEqual(events, ['compose', 'deliver', 'deliver', 'deliver', 'compose:bounded']);
 });
 
 test('a run with no digest rules still composes the brief-only users', async () => {
@@ -110,8 +117,7 @@ test('a run with no digest rules still composes the brief-only users', async () 
     failingUsers: new Set(), rulesResponse: Response.json([]), briefOnlyUserIds: ['brief_only'],
   });
   await run();
-  assert.equal(composedRules.length, 1);
-  assert.deepEqual(Array.from(composedRules[0], (r: { userId: string }) => r.userId), ['brief_only']);
+  assert.deepEqual(composedRules.map(ids), [[], ['brief_only:brief-only']]);
   assert.deepEqual(delivered, []);
   assert.equal(metadata.at(-1).sentCount, 0);
 });

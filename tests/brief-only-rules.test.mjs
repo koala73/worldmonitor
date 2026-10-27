@@ -6,7 +6,31 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildBriefOnlyRules, briefCandidateDue, groupEligibleRulesByUser } from '../scripts/lib/brief-compose.mjs';
+import { buildBriefOnlyRules, briefCandidateDue, groupEligibleRulesByUser, rotateBriefOnlyRules } from '../scripts/lib/brief-compose.mjs';
+
+describe('rotateBriefOnlyRules', () => {
+  const rules = ['a', 'b', 'c', 'd', 'e'].map((userId) => ({ userId }));
+  const TICK = 30 * 60 * 1000;
+
+  it('keeps every rule exactly once', () => {
+    const out = rotateBriefOnlyRules(rules, 7 * TICK);
+    assert.deepEqual([...out.map((r) => r.userId)].sort(), ['a', 'b', 'c', 'd', 'e']);
+  });
+
+  // The default-brief pass runs under a time budget; a fixed order would
+  // starve the users at the tail every tick. Consecutive ticks start at
+  // different users so each one is reached within a few ticks.
+  it('starts consecutive ticks at different users and reaches every user first', () => {
+    const firsts = new Set();
+    for (let tick = 0; tick < rules.length; tick++) firsts.add(rotateBriefOnlyRules(rules, tick * TICK)[0].userId);
+    assert.equal(firsts.size, rules.length);
+  });
+
+  it('returns the input for zero or one rule', () => {
+    assert.deepEqual(rotateBriefOnlyRules([], TICK), []);
+    assert.deepEqual(rotateBriefOnlyRules([{ userId: 'a' }], TICK), [{ userId: 'a' }]);
+  });
+});
 
 describe('buildBriefOnlyRules', () => {
   it('builds one full/high/daily in-app rule per user, with no channels', () => {

@@ -105,6 +105,24 @@ export function buildBriefOnlyRules(userIds, digestRules) {
 }
 
 /**
+ * Order default-brief rules for this tick. The default-brief pass runs after
+ * deliveries under a time budget, so a fixed order would starve the same tail
+ * users every tick; rotating the start by tick index reaches every user first
+ * within `rules.length` ticks.
+ *
+ * @template T
+ * @param {T[]} rules
+ * @param {number} nowMs
+ * @param {number} [tickMs] cron cadence (30 min)
+ * @returns {T[]}
+ */
+export function rotateBriefOnlyRules(rules, nowMs, tickMs = 30 * 60 * 1000) {
+  if (!Array.isArray(rules) || rules.length < 2) return Array.isArray(rules) ? rules : [];
+  const offset = Math.floor(nowMs / tickMs) % rules.length;
+  return [...rules.slice(offset), ...rules.slice(0, offset)];
+}
+
+/**
  * Whether a compose candidate is due this tick. A brief-only rule never is:
  * nothing is ever sent for it, so a due flag would request a fresh paid
  * synthesis on every ~30-min tick; non-due candidates reuse recent prose
