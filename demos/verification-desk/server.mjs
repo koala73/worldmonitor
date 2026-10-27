@@ -188,8 +188,7 @@ const server = createServer(async (req, res) => {
       });
     }
 
-    if (access.enabled() &&
-        ['/api/grade', '/api/board', '/api/recap', '/api/reveal', '/api/tts', '/api/avatar/token'].includes(url.pathname) &&
+    if (['/api/grade', '/api/board', '/api/recap', '/api/reveal', '/api/tts', '/api/avatar/token'].includes(url.pathname) &&
         !access.hasRequestIntent(req)) {
       return sendJson(res, 403, { error: 'Request intent required' });
     }

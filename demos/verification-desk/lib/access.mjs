@@ -51,11 +51,18 @@ export const LOGIN_PAGE = (failed) => `<!doctype html>
   <button type="submit">Open the desk</button>
   ${failed ? '<p>Wrong password.</p>' : ''}
 </form></body></html>`;
+// Browsers omit Origin on same-origin GETs, and omit Sec-Fetch-Site outside
+// secure contexts (a LAN host over plain HTTP), so the Referer is the last
+// same-origin signal. A cross-site page can suppress a Referer but not forge one.
 export function hasRequestIntent(req) {
-  if (!req.headers.origin) return req.headers['sec-fetch-site'] === 'same-origin';
-  try {
-    const origin = new URL(req.headers.origin);
-    const protocol = req.headers['x-forwarded-proto'] === 'https' || req.socket?.encrypted ? 'https:' : 'http:';
-    return origin.protocol === protocol && origin.host === req.headers.host;
-  } catch { return false; }
+  const sameOrigin = (raw) => {
+    try {
+      const url = new URL(raw);
+      const protocol = req.headers['x-forwarded-proto'] === 'https' || req.socket?.encrypted ? 'https:' : 'http:';
+      return url.protocol === protocol && url.host === req.headers.host;
+    } catch { return false; }
+  };
+  if (req.headers.origin) return sameOrigin(req.headers.origin);
+  if (req.headers['sec-fetch-site']) return req.headers['sec-fetch-site'] === 'same-origin';
+  return Boolean(req.headers.referer) && sameOrigin(req.headers.referer);
 }

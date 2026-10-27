@@ -33,14 +33,18 @@ function getKeyPrefix() {
   return `${env}:${sha}:`;
 }
 
+// Strip any deployment prefixes getKeyPrefix() writes, so another
+// deployment's keys are judged by their logical name.
+function logicalKey(key) {
+  return key.replace(/^(?:(?:preview|development):[^:]+:)+/, '');
+}
+
 function isBlocklisted(key) {
-  const logicalKey = key.replace(/^(?:(?:preview|development):[^:]+:)+/, '');
-  return BLOCKLIST_PREFIXES.some(p => logicalKey.startsWith(p));
+  return BLOCKLIST_PREFIXES.some(p => logicalKey(key).startsWith(p));
 }
 
 function isDurableData(key) {
-  const logicalKey = key.replace(/^(?:(?:preview|development):[^:]+:)+/, '');
-  return DURABLE_DATA_PREFIXES.some(p => logicalKey.startsWith(p));
+  return DURABLE_DATA_PREFIXES.some(p => logicalKey(key).startsWith(p));
 }
 
 async function redisPipeline(commands) {

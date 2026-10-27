@@ -67,6 +67,25 @@ describe('cache-purge protects auth state', () => {
       assert.deepEqual(commands, [['DEL', safe]]);
     } finally { globalThis.fetch = saved; }
   });
+  it('keeps foreign preview durable data out of wildcard purges during production execution', async () => {
+    const durable = ['military:bases:x', 'conflict:iran-events:x', 'conflict:ucdp-events:x']
+      .map(key => `preview:deadbeef:${key}`);
+    const safe = 'preview:deadbeef:news:digest';
+    const commands = [];
+    const saved = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).includes('/scan/')) return Response.json({ result: ['0', [...durable, safe]] });
+      commands.push(...JSON.parse(init.body));
+      return Response.json([{ result: 1 }]);
+    };
+    try {
+      const response = await handler(new Request('https://worldmonitor.app/api/cache-purge', {
+        method: 'POST', headers: { Authorization: `Bearer ${SECRET}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ patterns: ['preview:*'] }),
+      }));
+      assert.equal(response.status, 200);
+      assert.deepEqual(commands, [['DEL', safe]]);
+    } finally { globalThis.fetch = saved; }
+  });
   it('drops OAuth and connector auth keys from an explicit key list', async () => {
     const res = await purge({
       keys: [

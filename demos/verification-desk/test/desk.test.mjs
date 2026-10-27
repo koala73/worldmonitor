@@ -27,6 +27,13 @@ test('hosted grading accepts same-origin request intent and denies cross-site na
   assert.equal(hasRequestIntent({ headers: { host: 'desk.example', origin: 'https://desk.example', 'x-forwarded-proto': 'https' } }), true);
   assert.equal(hasRequestIntent({ headers: { host: 'desk.example', origin: 'http://desk.example', 'x-forwarded-proto': 'https' } }), false);
   assert.equal(hasRequestIntent({ headers: { host: 'desk.example', 'sec-fetch-site': 'same-origin' } }), true);
+  // Plain-HTTP LAN hosts are not secure contexts: same-origin GETs carry no
+  // Origin and no Sec-Fetch-Site, only a Referer.
+  assert.equal(hasRequestIntent({ headers: { host: '192.168.1.5:8787', referer: 'http://192.168.1.5:8787/deck' } }), true);
+  assert.equal(hasRequestIntent({ headers: { host: '192.168.1.5:8787', referer: 'http://evil.example/' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', referer: 'http://desk.example/', 'x-forwarded-proto': 'https' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', referer: 'https://desk.example/', 'sec-fetch-site': 'cross-site' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', referer: 'not a url' } }), false);
 });
 
 test('article sockets use the validated DNS answer without resolving the hostname again', async t => {

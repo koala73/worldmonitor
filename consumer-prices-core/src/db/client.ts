@@ -13,7 +13,11 @@ export function getPool(): pg.Pool {
   if (!_pool) {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) throw new Error('DATABASE_URL is not set');
-    const url = databaseUrl.startsWith('/') ? null : new URL(databaseUrl);
+    let url: URL | null = null;
+    if (!databaseUrl.startsWith('/')) {
+      // URL parse errors carry the input, which holds the database password.
+      try { url = new URL(databaseUrl); } catch { throw new Error('DATABASE_URL is not a valid connection URL'); }
+    }
     if (['host', 'hostaddr', 'port'].some(name => url?.searchParams.has(name))) {
       throw new Error('DATABASE_URL must not override the connection endpoint via query parameters');
     }

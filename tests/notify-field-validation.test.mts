@@ -128,10 +128,10 @@ describe('/api/notify field validation (pentest PoC)', () => {
     console.log = (...args) => { logs.push(args.join(' ')); };
     globalThis.fetch = (async () => Response.json([])) as typeof fetch;
     try {
-      await relayProcessEvent({ eventType: 'custom\nFORGED\u001b[2J\u2028', severity: 'high', payload: {} });
+      await relayProcessEvent({ eventType: 'custom\nFORGED\u001b[2J\u2028\u202e\u2066', severity: 'high', payload: {} });
       const line = logs.find(line => line.startsWith('[relay] Processing event:'));
       assert.ok(line);
-      assert.ok(!/[\n\r\u001b\u2028]/.test(line));
+      assert.ok(!/[\n\r\u001b\u2028\u202e\u2066]/.test(line));
       assert.match(line, /\\nFORGED\\u001b/);
     } finally { console.log = savedLog; }
   });
@@ -139,7 +139,7 @@ describe('/api/notify field validation (pentest PoC)', () => {
     installDeps();
     let queued = false;
     globalThis.fetch = (async () => { queued = true; return Response.json({ result: 1 }); }) as typeof fetch;
-    for (const eventType of ['rss\n[relay] forged', 'rss\rforged', 'rss\u001b[2J', 'rss\u2028forged']) {
+    for (const eventType of ['rss\n[relay] forged', 'rss\rforged', 'rss\u001b[2J', 'rss\u2028forged', 'rss\u202eforged', 'rss\u2066forged', 'rss\u200fforged']) {
       assert.equal((await handler(makePost({ eventType, payload: {} }))).status, 400);
     }
     assert.equal(queued, false);

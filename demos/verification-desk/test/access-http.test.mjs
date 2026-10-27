@@ -4,14 +4,14 @@ import { createServer } from 'node:net';
 import { once } from 'node:events';
 import { test } from 'node:test';
 
-test('hosted metered routes check request intent after cookie authentication', { timeout: 15000 }, async t => {
+async function startDesk(t, env) {
   const reservation = createServer();
   reservation.listen(0, '127.0.0.1');
   await once(reservation, 'listening');
   const port = reservation.address().port;
   await new Promise(resolve => reservation.close(resolve));
   const child = spawn(process.execPath, ['--import', 'tsx', new URL('../server.mjs', import.meta.url).pathname], {
-    env: { ...process.env, PORT: String(port), DESK_HOST: '127.0.0.1', DESK_PASSWORD: 'test-desk-password', DESK_OFFLINE: '1', ANTHROPIC_API_KEY: '' },
+    env: { ...process.env, PORT: String(port), DESK_HOST: '127.0.0.1', DESK_OFFLINE: '1', ANTHROPIC_API_KEY: '', ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   t.after(async () => {
@@ -26,7 +26,19 @@ test('hosted metered routes check request intent after cookie authentication', {
     child.on('error', reject);
     child.on('exit', code => reject(new Error(`Desk exited before readiness: ${code}`)));
   });
-  const base = `http://127.0.0.1:${port}`;
+  return `http://127.0.0.1:${port}`;
+}
+
+test('passwordless localhost desk still requires request intent on metered routes', { timeout: 15000 }, async t => {
+  const base = await startDesk(t, { DESK_PASSWORD: '' });
+  const denied = await fetch(`${base}/api/grade?headline=Untrusted`, { headers: { 'Sec-Fetch-Site': 'cross-site' } });
+  assert.equal(denied.status, 403);
+  const sameOrigin = await fetch(`${base}/api/grade`, { headers: { 'Sec-Fetch-Site': 'same-origin' } });
+  assert.equal(sameOrigin.status, 400);
+});
+
+test('hosted metered routes check request intent after cookie authentication', { timeout: 15000 }, async t => {
+  const base = await startDesk(t, { DESK_PASSWORD: 'test-desk-password' });
   const login = await fetch(`${base}/login`, { method: 'POST', redirect: 'manual', body: 'password=test-desk-password' });
   assert.equal(login.status, 303);
   const cookie = login.headers.get('set-cookie').split(';')[0];

@@ -43,6 +43,14 @@ describe('withTransaction', () => {
       vi.stubEnv('DATABASE_URL', `postgres://user@127.0.0.1/prices?${options}`);
       expect(() => getPool()).toThrow(/endpoint/);
     });
+  it('rejects an unparseable URL without echoing its credentials', () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://user:s3cret-password@database.example:99999/prices');
+    let error: unknown;
+    try { getPool(); } catch (err) { error = err; }
+    expect(error).toBeInstanceOf(Error);
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain('s3cret-password');
+    expect((error as Error).cause).toBeUndefined();
+  });
   it('preserves a local Unix socket connection string', async () => {
     vi.stubEnv('DATABASE_URL', '/var/run/postgresql prices');
     getPool();
