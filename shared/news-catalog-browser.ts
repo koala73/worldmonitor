@@ -16,10 +16,12 @@ export interface BrowserCatalogFeed {
 }
 
 export interface BrowserCatalog {
-  version: 2;
+  version: 3;
   /** edition → category → feeds, in browser order. Excludes intel. */
   editions: Record<string, Record<string, BrowserCatalogFeed[]>>;
   intel: BrowserCatalogFeed[];
+  /** edition → categories its server digest builds (the catalog's server layout). */
+  digestLayout: Record<string, string[]>;
 }
 
 /** Placement edition for intel sources; it has one category, `intel`. */
@@ -34,4 +36,14 @@ export function browserCategoryFeeds(catalog: BrowserCatalog, edition: string): 
 
 export function browserIntelSources(catalog: BrowserCatalog): BrowserCatalogFeed[] {
   return catalog.intel;
+}
+
+/**
+ * Editions whose digest carries `category`, in layout order. A panel the user
+ * added from another edition reads these digests instead of fetching feeds.
+ */
+export function digestEditionsForCategory(catalog: BrowserCatalog, category: string): string[] {
+  return Object.entries(catalog.digestLayout)
+    .filter(([, categories]) => categories.includes(category))
+    .map(([edition]) => edition);
 }

@@ -22,6 +22,7 @@ import {
   LAYER_TO_SOURCE,
   STORAGE_KEYS,
   isPanelInVariantDefaults,
+  digestEditionsFor,
 } from '@/config';
 import { resolveNewsCategories, enabledNewsCategoryKeys, type ResolvedCategory } from '@/config/feed-resolution';
 import { variantShipsOrUserEnabled } from './panel-data-gate';

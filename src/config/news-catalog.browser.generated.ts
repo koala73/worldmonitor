@@ -3,7 +3,7 @@
 import type { BrowserCatalog } from '../../shared/news-catalog-browser';
 
 export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
-  "version": 2,
+  "version": 3,
   "editions": {
     "full": {
       "politics": [
@@ -3368,5 +3368,91 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
       "url": "https://news.google.com/rss/search?q=site:iss.europa.eu+when:7d&hl=en-US&gl=US&ceid=US:en",
       "type": "intl"
     }
-  ]
+  ],
+  "digestLayout": {
+    "full": [
+      "politics",
+      "us",
+      "europe",
+      "middleeast",
+      "tech",
+      "ai",
+      "finance",
+      "commodities",
+      "gov",
+      "africa",
+      "latam",
+      "asia",
+      "energy",
+      "thinktanks",
+      "crisis",
+      "layoffs",
+      "science"
+    ],
+    "tech": [
+      "tech",
+      "ai",
+      "startups",
+      "vcblogs",
+      "regionalStartups",
+      "unicorns",
+      "accelerators",
+      "security",
+      "policy",
+      "github",
+      "funding",
+      "cloud",
+      "layoffs",
+      "finance",
+      "dev",
+      "ipo",
+      "producthunt",
+      "hardware",
+      "outages",
+      "thinktanks",
+      "podcasts"
+    ],
+    "finance": [
+      "markets",
+      "forex",
+      "bonds",
+      "commodities",
+      "crypto",
+      "centralbanks",
+      "economic",
+      "ipo",
+      "derivatives",
+      "fintech",
+      "fin-regulation",
+      "institutional",
+      "analysis",
+      "gccNews",
+      "nq-news"
+    ],
+    "commodity": [
+      "commodity-news",
+      "gold-silver",
+      "energy",
+      "mining-news",
+      "critical-minerals",
+      "base-metals",
+      "mining-companies",
+      "supply-chain",
+      "commodity-regulation",
+      "markets",
+      "finance"
+    ],
+    "happy": [
+      "positive",
+      "science",
+      "nature",
+      "inspiring",
+      "community"
+    ],
+    "energy": [
+      "live-news",
+      "energy",
+      "supply-chain"
+    ]
+  }
 };

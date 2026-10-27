@@ -157,7 +157,10 @@ export function projectBrowserCatalog(catalog: NewsCatalog = NEWS_CATALOG): Brow
   for (const [edition, categories] of Object.entries(catalog.layout.browser)) {
     editions[edition] = Object.fromEntries(categories.map((category) => [category, placed(edition, category)]));
   }
-  return { version: 2, editions, intel: placed(INTEL_EDITION, INTEL_EDITION) };
+  const digestLayout = Object.fromEntries(
+    Object.entries(catalog.layout.server).map(([edition, categories]) => [edition, [...categories]]),
+  );
+  return { version: 3, editions, intel: placed(INTEL_EDITION, INTEL_EDITION), digestLayout };
 }
 
 let browserSlice: BrowserCatalog | null = null;

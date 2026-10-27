@@ -5,6 +5,7 @@ import { mergeCanonicalFeeds } from './feed-resolution';
 import {
   browserCategoryFeeds,
   browserIntelSources,
+  digestEditionsForCategory,
   type BrowserCatalogFeed,
 } from '../../shared/news-catalog-browser';
 import { BROWSER_NEWS_CATALOG as BROWSER_CATALOG } from './news-catalog.browser.generated';
@@ -24,6 +25,11 @@ function proxied(feed: BrowserCatalogFeed): Feed {
     ? proxyCatalogUrl(feed.url)
     : Object.fromEntries(Object.entries(feed.url).map(([lang, href]) => [lang, proxyCatalogUrl(href)]));
   return { ...feed, url };
+}
+
+/** Editions whose server digest carries `category` (for cross-edition panels). */
+export function digestEditionsFor(category: string): string[] {
+  return digestEditionsForCategory(BROWSER_CATALOG, category);
 }
 
 function browserFeeds(edition: string): Record<string, Feed[]> {
