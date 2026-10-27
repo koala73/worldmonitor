@@ -2095,8 +2095,7 @@ describe('crawlable corpus generator', () => {
       'shared/source-geography.json',
       'shared/publisher-families.js',
       'shared/crawlable-crises.json',
-      'src/config/feeds.ts',
-      'server/worldmonitor/news/v1/_feeds.ts',
+      'shared/news-catalog.json',
     ]);
     for (let index = 0; index < SOURCE_CATALOG_LASTMOD_PATHS.length; index += 1) {
       const catalogInputLastmods = SOURCE_CATALOG_LASTMOD_PATHS.map(() => '2026-08-10');

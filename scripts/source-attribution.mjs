@@ -1113,6 +1113,61 @@ function read(rootDir, path) {
   return readFileSync(join(rootDir, path), 'utf8');
 }
 
+// Catalog prose (feed notes, category notes, $comment) can quote retired URLs
+// that no view fetches. Blank those string values where they sit, by key, so
+// only active URL fields are scanned. Masking by position (not by text) keeps
+// an active URL that happens to equal a note. Line numbers stay put.
+const CATALOG_PROSE_KEYS = new Set(['$comment', 'note', 'notes']);
+
+function maskCatalogProse(source) {
+  try {
+    JSON.parse(source);
+  } catch {
+    return source;
+  }
+  const out = source.split('');
+  // Each open container records whether its values are prose: an object
+  // tracks the key it is reading; an array inherits from its own key.
+  const stack = [];
+  let pendingKey = null;
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === '"') {
+      let j = i + 1;
+      while (source[j] !== '"') j += source[j] === '\\' ? 2 : 1;
+      const top = stack[stack.length - 1];
+      let k = j + 1;
+      while (/\s/.test(source[k] ?? '')) k += 1;
+      const isKey = top?.type === 'object' && source[k] === ':';
+      if (isKey) {
+        pendingKey = JSON.parse(source.slice(i, j + 1));
+      } else {
+        const prose = top?.type === 'array' ? top.prose : CATALOG_PROSE_KEYS.has(pendingKey);
+        if (prose) for (let m = i + 1; m < j; m += 1) out[m] = ' ';
+        pendingKey = null;
+      }
+      i = j + 1;
+      continue;
+    }
+    if (ch === '{') {
+      stack.push({ type: 'object' });
+      pendingKey = null;
+    } else if (ch === '[') {
+      const parent = stack[stack.length - 1];
+      const prose = parent?.type === 'array' ? parent.prose : CATALOG_PROSE_KEYS.has(pendingKey);
+      stack.push({ type: 'array', prose });
+      pendingKey = null;
+    } else if (ch === '}' || ch === ']') {
+      stack.pop();
+    } else if (ch === ',') {
+      if (stack[stack.length - 1]?.type === 'object') pendingKey = null;
+    }
+    i += 1;
+  }
+  return out.join('');
+}
+
 function readdirPresentSync(absoluteDir) {
   try {
     return readdirSync(absoluteDir, { withFileTypes: true });
@@ -1161,6 +1216,10 @@ function walkSourceFiles(rootDir) {
     }
   };
   for (const root of SOURCE_ROOTS) visit(root);
+  // The feed catalog is data under shared/, outside the code roots.
+  for (const path of FEED_DECLARATION_FILES) {
+    if (!files.includes(path) && existsSync(join(rootDir, path))) files.push(path);
+  }
   return files.sort();
 }
 
@@ -1200,7 +1259,8 @@ export function scanUpstreamHosts(rootDir = ROOT) {
     hosts.set(host, current);
   };
   for (const relativePath of walkSourceFiles(rootDir)) {
-    const source = read(rootDir, relativePath);
+    const raw = read(rootDir, relativePath);
+    const source = relativePath.endsWith('.json') && FEED_FILES.has(relativePath) ? maskCatalogProse(raw) : raw;
     const lineStarts = [0];
     for (let offset = source.indexOf('\n'); offset !== -1; offset = source.indexOf('\n', offset + 1)) {
       lineStarts.push(offset + 1);
@@ -1252,7 +1312,9 @@ export function scanUpstreamHosts(rootDir = ROOT) {
         }
       }
     }
-    if (FEED_FILES.has(relativePath)) {
+    // The JSON catalog stores expanded Google News URLs (handled above); its
+    // `notes` may quote retired gn() queries that are no longer fetched.
+    if (FEED_FILES.has(relativePath) && !relativePath.endsWith('.json')) {
       // Server feed mirrors build Google News URLs through gn()/gnLocale().
       // Count a site-scoped publisher under its own host as well as counting
       // the Google News URL literal above under news.google.com.

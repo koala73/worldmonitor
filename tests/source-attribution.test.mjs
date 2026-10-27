@@ -137,36 +137,42 @@ test('source inventory has complete metadata and matches the generated catalog',
   assert.equal(byHost.get('ecs-api.wingbits.com')?.provider, 'wingbits.com');
 });
 
+const NEWS_CATALOG_PATH = 'shared/news-catalog.json';
+
+function loadNewsCatalog() {
+  return JSON.parse(readFileSync(join(rootDir, NEWS_CATALOG_PATH), 'utf8'));
+}
+
+function catalogHrefs(feed) {
+  return [feed.url, feed.browser?.url]
+    .flatMap((value) => (typeof value === 'string' ? [value] : Object.values(value ?? {})));
+}
+
+function sitePublisherHosts(href) {
+  let url;
+  try {
+    url = new URL(href);
+  } catch {
+    return [];
+  }
+  if (url.hostname !== 'news.google.com') return [];
+  const query = url.searchParams.get('q') ?? '';
+  return [...query.matchAll(/\bsite:([a-z0-9.-]+)/gi)].map((match) => match[1].toLowerCase());
+}
+
 test('Google News site feeds account for both the editorial host and Google News', () => {
   const inventory = scanUpstreamHosts(rootDir);
   const byHost = new Map(inventory.map((entry) => [entry.host, entry]));
+  const catalog = loadNewsCatalog();
 
   const googleNews = byHost.get('news.google.com');
   assert.ok(googleNews, 'Google News must remain an accounted transport host');
 
-  const lorientToday = byHost.get('lorientlejour.com');
-  assert.ok(lorientToday, "L'Orient Today must be accounted under lorientlejour.com");
-  assert.ok(
-    lorientToday.references.some((reference) => reference.path === 'src/config/feeds.ts'),
-    "L'Orient Today must retain its client feed reference",
-  );
-  assert.ok(
-    lorientToday.references.some((reference) => reference.path === 'server/worldmonitor/news/v1/_feeds.ts'),
-    "L'Orient Today must retain its server feed reference",
-  );
-
-  const annahar = byHost.get('annahar.com');
-  assert.ok(annahar, 'Annahar must be accounted under annahar.com');
-  assert.ok(
-    annahar.references.some((reference) => reference.path === 'src/config/feeds.ts'),
-    'Annahar must retain its client feed reference',
-  );
-  assert.ok(
-    annahar.references.some((reference) => reference.path === 'server/worldmonitor/news/v1/_feeds.ts'),
-    'Annahar must retain its server feed reference',
-  );
-
+  // Each publisher stays accounted under its own host, cites the catalog, and
+  // is still served to both the dashboard and the server digest.
   for (const [host, provider] of [
+    ['lorientlejour.com', "L'Orient Today"],
+    ['annahar.com', 'Annahar'],
     ['pap.pl', 'PAP'],
     ['wyborcza.pl', 'Gazeta Wyborcza'],
     ['polityka.pl', 'Polityka'],
@@ -177,27 +183,25 @@ test('Google News site feeds account for both the editorial host and Google News
     const entry = byHost.get(host);
     assert.ok(entry, `${provider} must be accounted under ${host}`);
     assert.ok(
-      entry.references.some((reference) => reference.path === 'src/config/feeds.ts'),
-      `${provider} must retain its client feed reference`,
+      entry.references.some((reference) => reference.path === NEWS_CATALOG_PATH),
+      `${provider} must cite the news catalog`,
     );
-    assert.ok(
-      entry.references.some((reference) => reference.path === 'server/worldmonitor/news/v1/_feeds.ts'),
-      `${provider} must retain its server feed reference`,
-    );
+    const feeds = catalog.feeds.filter((feed) => catalogHrefs(feed)
+      .some((href) => sitePublisherHosts(href).includes(host) || href.includes(`//${host}/`) || href.includes(`.${host}/`)));
+    assert.ok(feeds.length > 0, `${provider} must have a catalog feed`);
+    const placements = feeds.flatMap((feed) => feed.placements);
+    assert.ok(placements.some((placement) => placement.browserOrder !== undefined), `${provider} must keep its client placement`);
+    assert.ok(placements.some((placement) => placement.serverOrder !== undefined), `${provider} must keep its server placement`);
   }
 
-  const serverFeeds = readFileSync(
-    join(rootDir, 'server/worldmonitor/news/v1/_feeds.ts'),
-    'utf8',
-  );
   const configuredPublisherHosts = new Set();
-  for (const rawLine of serverFeeds.split('\n')) {
-    const line = rawLine.trim();
-    if (line.startsWith('//') || !line.includes('site:')) continue;
-    for (const match of line.matchAll(/\bsite:([a-z0-9.-]+)/gi)) {
-      configuredPublisherHosts.add(match[1].toLowerCase());
+  for (const feed of catalog.feeds) {
+    if (!feed.placements.some((placement) => placement.serverOrder !== undefined)) continue;
+    for (const href of [feed.url, feed.depthUrl].filter(Boolean)) {
+      for (const host of sitePublisherHosts(href)) configuredPublisherHosts.add(host);
     }
   }
+  assert.ok(configuredPublisherHosts.size > 20, 'server site-scoped publishers must be extracted');
   const missingHosts = [...configuredPublisherHosts]
     .filter((host) => !byHost.has(host))
     .sort();
@@ -574,19 +578,51 @@ function writeUrlModule(path, host) {
   writeFileSync(path, `const SOURCE_URL = 'https://${host}/v1/data';\nexport const url = SOURCE_URL;\n`);
 }
 
-test('a gn() site: search after a URL on the same line is scanned; a commented-out one is not', () => {
+test('catalog Google News URLs count their site: publisher; a retired query quoted in notes does not', () => {
   const fixture = makeFixtureCheckout();
   try {
-    const feedsPath = join(fixture.dir, 'server/worldmonitor/news/v1/_feeds.ts');
-    mkdirSync(dirname(feedsPath), { recursive: true });
-    writeFileSync(feedsPath, [
-      "{ name: 'Native', url: 'https://native.example/rss', depthUrl: gn('site:depth.example when:2d') },",
-      "// { name: 'Retired', url: gn('site:retired.example when:1d') },",
-      '',
-    ].join('\n'));
+    writeFileSync(join(fixture.dir, 'shared/news-catalog.json'), `${JSON.stringify({
+      feeds: [{
+        name: 'Native',
+        url: 'https://native.example/rss',
+        depthUrl: 'https://news.google.com/rss/search?q=site%3Adepth.example%20when%3A2d&hl=en-US&gl=US&ceid=US:en',
+        notes: ["Replaces gn('site:retired.example when:1d') and https://retired-url.example/rss."],
+        placements: [{ edition: 'full', category: 'politics', serverOrder: 0 }],
+      }],
+      categoryNotes: [{ side: 'server', edition: 'full', category: 'politics', note: 'Moved off https://retired-category.example/feed.' }],
+    }, null, 2)}\n`);
     const hosts = scanUpstreamHosts(fixture.dir).map((entry) => entry.host);
-    assert.ok(hosts.includes('depth.example'), 'the scheme in an earlier URL is not a comment');
-    assert.ok(!hosts.includes('retired.example'), 'a commented-out feed stays out of the inventory');
+    assert.ok(hosts.includes('native.example'), 'a catalog feed URL is accounted');
+    assert.ok(!hosts.includes('retired-url.example'), 'a retired URL quoted in feed notes stays out of the inventory');
+    assert.ok(!hosts.includes('retired-category.example'), 'a URL quoted in category notes stays out of the inventory');
+    assert.ok(hosts.includes('depth.example'), 'a site-scoped Google News URL counts its publisher');
+    assert.ok(!hosts.includes('retired.example'), 'a retired query quoted in notes stays out of the inventory');
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a note whose text equals an active catalog URL does not hide that URL', () => {
+  const fixture = makeFixtureCheckout();
+  try {
+    writeFileSync(join(fixture.dir, 'shared/news-catalog.json'), `${JSON.stringify({
+      feeds: [
+        {
+          name: 'Active',
+          url: 'https://active.example/rss',
+          placements: [{ edition: 'full', category: 'politics', serverOrder: 0 }],
+        },
+        {
+          name: 'Annotated',
+          url: 'https://other.example/rss',
+          notes: ['https://active.example/rss'],
+          placements: [{ edition: 'full', category: 'politics', serverOrder: 1 }],
+        },
+      ],
+    }, null, 2)}\n`);
+    const hosts = scanUpstreamHosts(fixture.dir).map((entry) => entry.host);
+    assert.ok(hosts.includes('active.example'), 'masking a note must not blank an identical active URL field');
+    assert.ok(hosts.includes('other.example'));
   } finally {
     fixture.cleanup();
   }

@@ -1227,6 +1227,14 @@ const telegramState = {
   startedAt: Date.now(),
 };
 
+// The feed lives in process memory and a new container waits
+// TELEGRAM_STARTUP_DELAY_MS before polling, so every deploy served an empty
+// feed for minutes and blanked the panel for every open dashboard. Each good
+// poll snapshots the items; a starting container serves that snapshot until
+// its own first poll. The TTL bounds how old a restored feed can be.
+const TELEGRAM_ITEMS_SNAPSHOT_KEY = 'intelligence:telegram-feed:items:v1';
+const TELEGRAM_ITEMS_SNAPSHOT_TTL_SECONDS = 1800;
+
 const TELEGRAM_RESOLVE_CACHE_TTL_MS = 60 * 60 * 1000;
 const TELEGRAM_CHANNEL_CACHE_TTL_MS = 30_000;
 const TELEGRAM_LOOKUP_CACHE_MAX_ENTRIES = 512;
@@ -2202,6 +2210,10 @@ async function pollTelegramOnce() {
 
   if (channelsPolled > 0) {
     const rc = telegramState.items.length;
+    upstashSet(TELEGRAM_ITEMS_SNAPSHOT_KEY, {
+      savedAt: new Date(telegramState.lastPollAt).toISOString(),
+      items: telegramState.items,
+    }, TELEGRAM_ITEMS_SNAPSHOT_TTL_SECONDS).catch(() => {});
     // Data key TTL must outlive maxStaleMin (10 min = 600s) by enough
     // buffer so health sees hasData=true + stale seed-meta → STALE_SEED.
     // If both keys expire together, health jumps straight to EMPTY and
@@ -2240,9 +2252,28 @@ function guardedTelegramPoll() {
     });
 }
 
+async function restoreTelegramSnapshot() {
+  const snapshot = await upstashGet(TELEGRAM_ITEMS_SNAPSHOT_KEY);
+  const savedAt = Date.parse(snapshot?.savedAt);
+  // Keep only feed-item shapes: the topic/channel filters and the poll merge
+  // read fields on every entry, and a bad one would sit there until TTL.
+  const items = Array.isArray(snapshot?.items)
+    ? snapshot.items.filter(item => item && typeof item === 'object' && typeof item.id === 'string' && item.id)
+    : [];
+  if (!items.length || !Number.isFinite(savedAt)) return;
+  // A poll that finished first holds fresher items; never overwrite it.
+  if (telegramState.lastPollAt || telegramState.items.length) return;
+  telegramState.items = items.slice(0, TELEGRAM_MAX_FEED_ITEMS);
+  // updatedAt reports when these posts were polled. lastSuccessfulPollAt stays
+  // 0: it gates the strike feed's freshness and no poll has run here yet.
+  telegramState.lastPollAt = savedAt;
+  console.log(`[Relay] Telegram feed restored ${telegramState.items.length} items from snapshot saved ${snapshot.savedAt}`);
+}
+
 function startTelegramPollLoop() {
   if (!TELEGRAM_ENABLED) return;
   loadTelegramChannels();
+  restoreTelegramSnapshot().catch((e) => console.warn('[Relay] Telegram snapshot restore failed:', e?.message || e));
   if (TELEGRAM_STARTUP_DELAY_MS > 0) {
     console.log(`[Relay] Telegram connect delayed ${TELEGRAM_STARTUP_DELAY_MS}ms (waiting for old container to disconnect)`);
     setTimeout(() => {

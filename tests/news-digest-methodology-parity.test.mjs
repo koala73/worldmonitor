@@ -5,6 +5,7 @@
 // test locks the small set of public constants/vocabularies that readers and
 // API clients rely on, without trying to parse every sentence in the doc.
 
+import { buildServerIntelSources, buildServerVariantFeeds } from '../shared/news-catalog.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -78,10 +79,6 @@ const summarizeSrc = readFileSync(
 );
 const summaryCacheKeySrc = readFileSync(
   resolve(repoRoot, 'src/utils/summary-cache-key.ts'),
-  'utf8',
-);
-const feedsSrc = readFileSync(
-  resolve(repoRoot, 'server/worldmonitor/news/v1/_feeds.ts'),
   'utf8',
 );
 const cacheKeysSrc = readFileSync(
@@ -361,67 +358,18 @@ function formatFeedName(name, lang) {
   return lang ? `${name} (${lang})` : name;
 }
 
-function extractFeedInventoryRows(src) {
+// Server digest inventory, in server order, read from the catalog's server view.
+// INTEL_SOURCES follow the full edition as the `intel` category.
+function extractFeedInventoryRows() {
+  const format = (feed) => formatFeedName(feed.name, feed.lang);
   const rows = [];
-  let inVariants = false;
-  let currentVariant = null;
-  let currentCategory = null;
-
-  for (const line of src.split(/\r?\n/)) {
-    if (line.startsWith('export const VARIANT_FEEDS')) {
-      inVariants = true;
-      continue;
-    }
-    if (!inVariants) continue;
-    if (line.startsWith('};')) break;
-
-    const variantMatch = line.match(/^ {2}([A-Za-z][A-Za-z0-9_]*): \{$/);
-    if (variantMatch) {
-      currentVariant = variantMatch[1];
-      currentCategory = null;
-      continue;
-    }
-    if (currentVariant && line === '  },') {
-      currentVariant = null;
-      currentCategory = null;
-      continue;
-    }
-
-    const categoryMatch = line.match(/^ {4}(?:(['"])(.*?)\1|([A-Za-z][A-Za-z0-9_]*)):\s\[$/);
-    if (currentVariant && categoryMatch) {
-      currentCategory = categoryMatch[2] ?? categoryMatch[3];
-      rows.push({ variant: currentVariant, category: currentCategory, sources: [] });
-      continue;
-    }
-    if (currentCategory && line === '    ],') {
-      currentCategory = null;
-      continue;
-    }
-
-    const feedMatch = line.match(/\{\s*name:\s*(['"])(.*?)\1,/);
-    if (currentVariant && currentCategory && feedMatch) {
-      const lang = line.match(/lang:\s*'([^']+)'/)?.[1];
-      rows.at(-1).sources.push(formatFeedName(feedMatch[2], lang));
+  for (const [variant, byCategory] of Object.entries(buildServerVariantFeeds())) {
+    for (const [category, feeds] of Object.entries(byCategory)) {
+      rows.push({ variant, category, sources: feeds.map(format) });
     }
   }
-
-  const intelSources = [];
-  let inIntelSources = false;
-  for (const line of src.split(/\r?\n/)) {
-    if (line.startsWith('export const INTEL_SOURCES')) {
-      inIntelSources = true;
-      continue;
-    }
-    if (!inIntelSources) continue;
-    if (line.startsWith('];')) break;
-    const feedMatch = line.match(/\{\s*name:\s*(['"])(.*?)\1,/);
-    if (feedMatch) {
-      const lang = line.match(/lang:\s*'([^']+)'/)?.[1];
-      intelSources.push(formatFeedName(feedMatch[2], lang));
-    }
-  }
-
-  assert.ok(rows.length > 0, 'failed to extract VARIANT_FEEDS inventory rows');
+  const intelSources = buildServerIntelSources().map(format);
+  assert.ok(rows.length > 0, 'failed to extract server inventory rows');
   assert.ok(intelSources.length > 0, 'failed to extract INTEL_SOURCES inventory');
   const fullSectionInsertAt = rows.findLastIndex((row) => row.variant === 'full');
   assert.notEqual(fullSectionInsertAt, -1, 'failed to extract full variant rows for INTEL_SOURCES insertion');
@@ -491,15 +439,15 @@ describe('news digest methodology parity', () => {
 
   it('documents the server news feed inventory in public data-source docs', () => {
     assert.ok(
-      dataSourcesText.includes('source-backed from `server/worldmonitor/news/v1/_feeds.ts`'),
-      'data sources page must identify _feeds.ts as the server inventory source of truth',
+      dataSourcesText.includes('source-backed from `shared/news-catalog.json`'),
+      'data sources page must identify the news catalog as the server inventory source of truth',
     );
 
-    const rows = extractFeedInventoryRows(feedsSrc);
+    const rows = extractFeedInventoryRows();
     assert.equal(
       rows.length,
       67,
-      'server news feed inventory row count changed; update _feeds.ts, docs/data-sources.mdx, and this assertion together',
+      'server news feed inventory row count changed; update shared/news-catalog.json, docs/data-sources.mdx, and this assertion together',
     );
     for (const row of rows) {
       assert.ok(

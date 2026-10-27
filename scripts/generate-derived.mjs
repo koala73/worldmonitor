@@ -30,6 +30,7 @@ const MAX_PASSES = 3;
 // follows the data flow: the product config feeds the facts, which feed AI
 // search and the crawlable pages.
 export const STEPS = [
+  ['browser news catalog', [...TSX, 'scripts/generate-browser-news-catalog.mjs']],
   ['product facts', [...TSX, 'scripts/generate-public-product-facts.mjs']],
   ['entitlement crosswalk', [NODE, 'scripts/generate-entitlement-crosswalk.mjs']],
   ['country corpus slugs', [...TSX, 'scripts/generate-country-corpus-slugs.mjs']],

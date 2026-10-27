@@ -347,6 +347,18 @@ after(() => {
 });
 
 describe('feed catalog drift', () => {
+  it('declares each feed (name + URL) in exactly one catalog record', () => {
+    const catalog = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../shared/news-catalog.json'), 'utf8'));
+    const seen = new Set<string>();
+    const split: string[] = [];
+    for (const feed of catalog.feeds as Array<{ name: string; url: unknown }>) {
+      const key = `${feed.name}|${JSON.stringify(feed.url)}`;
+      if (seen.has(key)) split.push(feed.name);
+      seen.add(key);
+    }
+    assert.deepEqual(split, [], 'merge split records; use a placement-level `type` for per-placement browser fields');
+  });
+
   it('does not add unreviewed cross-category aliases for one server feed URL', () => {
     // fetchAndParseRss caches parsed items by variant + URL, and each parsed
     // item carries the feed name. Reusing one URL under different names in

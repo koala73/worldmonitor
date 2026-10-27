@@ -152,9 +152,12 @@ export function tokenize(text) {
 
 export function jaccardSimilarity(a, b) {
   if (a.size === 0 && b.size === 0) return 0;
-  const intersection = new Set([...a].filter(x => b.has(x)));
-  const union = new Set([...a, ...b]);
-  return intersection.size / union.size;
+  // Walk the smaller set and derive the union size, so one huge title costs
+  // nothing extra against each ordinary headline it is compared with.
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  let intersection = 0;
+  for (const x of small) if (large.has(x)) intersection++;
+  return intersection / (a.size + b.size - intersection);
 }
 
 export function includesKeyword(text, keywords) {

@@ -45,6 +45,9 @@ const MAX_FEED_ITEMS = 20;
 const ITEM_CLOSE_PATTERN = /<\/(?:item|entry)\s*>/gi;
 // Longest `</entry  >` spelling we rescan across a chunk seam.
 const ITEM_CLOSE_SEAM = 16;
+// Real feeds nest a handful of levels. Holding more open than this is hostile,
+// and bounding it keeps closeOpenElements' memory flat under the byte cap.
+const MAX_OPEN_ELEMENTS = 512;
 
 /**
  * Closing tags for every element still open in `xml`, outermost last.
@@ -57,6 +60,10 @@ const ITEM_CLOSE_SEAM = 16;
  */
 function closeOpenElements(xml) {
   const stack = [];
+  // Stack positions per element name, so a close tag finds its opener without
+  // scanning the stack: a run of unmatched closers would otherwise cost N^2.
+  // Holds only names that are currently open.
+  const positions = new Map();
   let i = 0;
   while (i < xml.length) {
     const lt = xml.indexOf('<', i);
@@ -82,9 +89,21 @@ function closeOpenElements(xml) {
     const name = raw.replace(/^\//, '').match(/^[A-Za-z_][\w.:-]*/)?.[0];
     if (name) {
       if (raw.startsWith('/')) {
-        const open = stack.lastIndexOf(name);
-        if (open !== -1) stack.length = open;
+        const open = positions.get(name)?.at(-1);
+        if (open !== undefined) {
+          while (stack.length > open) {
+            const popped = stack.pop();
+            const at = positions.get(popped);
+            at.pop();
+            if (at.length === 0) positions.delete(popped);
+          }
+        }
       } else if (!raw.endsWith('/')) {
+        // Fails like an item wider than the byte cap: nothing well-formed to keep.
+        if (stack.length >= MAX_OPEN_ELEMENTS) throw new Error('Feed body too large');
+        const at = positions.get(name);
+        if (at) at.push(stack.length);
+        else positions.set(name, [stack.length]);
         stack.push(name);
       }
     }
