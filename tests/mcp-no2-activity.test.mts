@@ -7,12 +7,14 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import Ajv2020 from 'ajv/dist/2020.js';
+import jmespath from 'jmespath';
 
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { TOOL_CATEGORY_BY_NAME } from '../api/mcp/domains.ts';
 import { RpcValidationError } from '../api/mcp/billing-denial.ts';
 import { utf8ByteLength } from '../api/mcp/utils.ts';
 import { NO2_ACTIVITY_KEY, NO2_REGIONS } from '../scripts/shared/no2-activity.mjs';
+import { REST_ATTRIBUTION_EXPRESSIONS } from '../shared/attribution-rider.ts';
 import { getNo2Activity } from '../server/worldmonitor/economic/v1/get-no2-activity.ts';
 import { no2ActivityDataset } from './helpers/no2-activity-fixture.mjs';
 
@@ -166,6 +168,17 @@ describe('get_no2_activity', () => {
     assert.equal(result.upstreamUnavailable, true);
     assert.deepEqual(result.regions, []);
     assert.equal(result.attribution, '');
+  });
+
+  it('rides the Copernicus credit with every projection, on MCP and REST alike', async () => {
+    redisValue = freshDataset();
+    const result = await execute({ country_code: 'IT' }, BASE, CTX, {}) as Record<string, unknown>;
+    assert.equal(tool._attribution, REST_ATTRIBUTION_EXPRESSIONS['/api/economic/v1/get-no2-activity']);
+    assert.deepEqual(jmespath.search(result, tool._attribution as string), {
+      attribution: 'Contains modified Copernicus Sentinel data 2023-2026',
+      sourceDataset: 'sentinel-5p-l2',
+      generatedAt: (redisValue as ReturnType<typeof freshDataset>).generatedAt,
+    });
   });
 
   it('answers not_covered for a resolvable country outside the registry', async () => {

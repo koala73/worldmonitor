@@ -21,6 +21,7 @@ import {
   NO2_DIRECTIONS,
   NO2_REGION_EXCLUSIONS,
 } from '../../../scripts/shared/no2-activity.mjs';
+import { NO2_ATTRIBUTION_EXPRESSION } from '../../../shared/attribution-rider';
 
 const OPERATION = 'get-no2-activity';
 const REGION_ID_PATTERN = /^[a-z0-9-]{1,64}$/;
@@ -129,6 +130,7 @@ export const NO2_ACTIVITY_TOOL: RpcToolDef = {
   name: 'get_no2_activity',
   title: 'Sentinel-5P NO2 activity',
   _outputBudgetBytes: 131072,
+  _attribution: NO2_ATTRIBUTION_EXPRESSION,
   description: 'Industrial activity direction from Sentinel-5P tropospheric NO2 for 167 countries and 32 industrial clusters: the latest 56-day window against the same dates in the prior three years, as changePercent and a direction after a 10% dead band. A region with no reading carries an exclusion; baseline_backfill_pending is expected while prior years are still being fetched, not a fault. Filter by country_code (the country plus its clusters), region_id or kind. Daily seed, never a live Copernicus call; reproduce attribution. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
   inputSchema: {
     type: 'object',
