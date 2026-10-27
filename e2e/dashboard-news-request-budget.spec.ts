@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
+import { BROWSER_NEWS_CATALOG } from '../src/config/news-catalog.browser.generated';
 
 // Request budget for the news load on a default anonymous dashboard load (#5376).
 //
@@ -540,9 +541,17 @@ test.describe('dashboard news request budget (#5376)', () => {
       startupsPanel.getByText(headline).first(),
       'the item the edition digest carries must render in the panel',
     ).toBeAttached();
+    // Sources the tech digest carries come from it; only the ones no digest
+    // carries yet (browserOnly, still pending migration) are fetched directly,
+    // within the per-category window.
+    const startupsFeeds = BROWSER_NEWS_CATALOG.editions.tech?.startups ?? [];
+    const browserOnlyUrls = new Set(startupsFeeds.filter((f) => f.browserOnly).map((f) => f.url));
+    const direct = distinctProxiedFeeds(log.rssProxyUrls);
+    expect(direct.length, 'direct fetches stay within the per-category window')
+      .toBeLessThanOrEqual(PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT);
     expect(
-      distinctProxiedFeeds(log.rssProxyUrls),
-      'a category its edition digest carries must not be fetched feed by feed',
+      direct.filter((url) => !browserOnlyUrls.has(url)),
+      'a source the edition digest carries must not be fetched feed by feed',
     ).toEqual([]);
     const editions = log.digestUrls.map((url) => new URL(url).searchParams.get('variant') ?? 'full');
     expect(editions.filter((edition) => edition === 'full').length).toBe(1);
