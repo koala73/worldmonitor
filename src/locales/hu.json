@@ -1457,7 +1457,8 @@
         "renewableInstallations": "Tiszta energia",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "NOTAM légtéri korlátozások"
+        "notamAirspace": "NOTAM légtéri korlátozások",
+        "no2Activity": "Ipari aktivitás (NO2)"
       },
       "tooltip": {
         "earthquake": "Földrengés",
@@ -1573,7 +1574,8 @@
           "ciiChoropleth": "Ország Instabilitási Index hőtérkép — országokat pontszám szerint színez (zöld=stabil, piros=kritikus)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Ideiglenes repüléskorlátozások, valamint korlátozott, veszélyes és tiltott légtér az FAA NOTAM-jaiból, amely jelenleg érvényes vagy 24 órán belül kezdődik"
+          "notamAirspace": "Ideiglenes repüléskorlátozások, valamint korlátozott, veszélyes és tiltott légtér az FAA NOTAM-jaiból, amely jelenleg érvényes vagy 24 órán belül kezdődik",
+          "no2Activity": "Sentinel-5P NO2-aktivitás iránya 167 országra és 32 ipari klaszterre: a legutóbbi 56 napos ablak az előző évek azonos dátumaihoz képest, 10%-os holtsáv után. Módosított Copernicus Sentinel adatokat tartalmaz."
         },
         "notes": {
           "timeAffects": "Érintett: Földrengések, Időjárás, Tüntetések, Leállások"

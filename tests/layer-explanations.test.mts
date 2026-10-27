@@ -132,6 +132,7 @@ describe('layer explanation metadata', () => {
       'tradeRoutes',
       'cyberThreats',
       'hotspots',
+      'no2Activity',
     ]);
 
     assert.deepEqual(new Set(V1_LAYER_EXPLANATION_KEYS), expected);

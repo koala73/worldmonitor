@@ -1457,7 +1457,8 @@
         "renewableInstallations": "Nishati Safi",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "Vikwazo vya Anga la NOTAM"
+        "notamAirspace": "Vikwazo vya Anga la NOTAM",
+        "no2Activity": "Shughuli za viwanda (NO2)"
       },
       "tooltip": {
         "earthquake": "Tetemeko la ardhi",
@@ -1573,7 +1574,8 @@
           "ciiChoropleth": "Ramani ya joto ya Fahirisi ya Kutokuwa na Uthabiti wa Nchi — rangizo nchi kwa alama (kijani=imara, nyekundu=muhimu)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Vikwazo vya kuruka kwa muda na anga yenye vikwazo, hatari na iliyokatazwa kutoka kwa NOTAMs za FAA, inayotumika sasa au kuanza ndani ya saa 24"
+          "notamAirspace": "Vikwazo vya kuruka kwa muda na anga yenye vikwazo, hatari na iliyokatazwa kutoka kwa NOTAMs za FAA, inayotumika sasa au kuanza ndani ya saa 24",
+          "no2Activity": "Mwelekeo wa shughuli za NO2 kutoka Sentinel-5P kwa nchi 167 na makundi 32 ya viwanda: dirisha la hivi karibuni la siku 56 ikilinganishwa na tarehe zile zile za miaka iliyopita, baada ya ukanda usiohesabiwa wa 10%. Ina data iliyorekebishwa ya Copernicus Sentinel."
         },
         "notes": {
           "timeAffects": "Athari: Matetemeko ya Ardhi, Hali ya Hewa, Maandamano, Kukatika"

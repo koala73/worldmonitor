@@ -1457,7 +1457,8 @@
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "محدودیت‌های فضای هوایی NOTAM"
+        "notamAirspace": "محدودیت‌های فضای هوایی NOTAM",
+        "no2Activity": "فعالیت صنعتی (NO2)"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1573,7 +1574,8 @@
           "ciiChoropleth": "نقشه حرارتی شاخص بی‌ثباتی کشور — رنگ‌بندی کشورها بر اساس امتیاز (سبز=پایدار، قرمز=حیاتی)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "محدودیت‌های پروازی موقت و فضای هوایی محدود، خطرناک و ممنوع از NOTAM‌های FAA که در حال اجرا هستند یا در طی ۲۴ ساعت آینده شروع می‌شوند"
+          "notamAirspace": "محدودیت‌های پروازی موقت و فضای هوایی محدود، خطرناک و ممنوع از NOTAM‌های FAA که در حال اجرا هستند یا در طی ۲۴ ساعت آینده شروع می‌شوند",
+          "no2Activity": "جهت فعالیت NO2 از Sentinel-5P برای ۱۶۷ کشور و ۳۲ خوشه صنعتی: آخرین پنجره ۵۶ روزه در برابر همان تاریخ‌ها در سال‌های گذشته، پس از باند مرده ۱۰٪. شامل داده‌های اصلاح‌شده Copernicus Sentinel است."
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"

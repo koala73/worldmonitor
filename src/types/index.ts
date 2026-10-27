@@ -692,6 +692,8 @@ export interface MapLayers {
   irradiators: boolean;
   radiationWatch?: boolean;
   sanctions: boolean;
+  /** Sentinel-5P NO2 activity direction per country and industrial cluster. */
+  no2Activity?: boolean;
   weather: boolean;
   /** Official Canada road events and conditions from Ontario, Alberta, Toronto, and British Columbia. */
   canadaRoads: boolean;

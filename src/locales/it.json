@@ -1149,7 +1149,8 @@
         "radiationElevated": "Radiazione elevata",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "Restrizioni Spazio Aereo NOTAM"
+        "notamAirspace": "Restrizioni Spazio Aereo NOTAM",
+        "no2Activity": "Attività industriale (NO2)"
       },
       "layersTitle": "Livelli",
       "layerSearch": "Cerca livelli...",
@@ -1272,7 +1273,8 @@
           "ciiChoropleth": "Mappa di calore dell'Indice di instabilità del paese — colora i paesi in base al punteggio (verde=stabile, rosso=critico)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Restrizioni di volo temporanee e spazio aereo ristretto, pericoloso e proibito dai NOTAM della FAA, in vigore ora o a partire entro 24 ore"
+          "notamAirspace": "Restrizioni di volo temporanee e spazio aereo ristretto, pericoloso e proibito dai NOTAM della FAA, in vigore ora o a partire entro 24 ore",
+          "no2Activity": "Direzione dell’attività NO2 da Sentinel-5P per 167 paesi e 32 distretti industriali: l’ultima finestra di 56 giorni rispetto alle stesse date degli anni precedenti, dopo una banda morta del 10%. Contiene dati Copernicus Sentinel modificati."
         },
         "notes": {
           "timeAffects": "Effetti: terremoti, condizioni meteorologiche, proteste, interruzioni"

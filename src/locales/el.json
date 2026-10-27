@@ -1315,7 +1315,8 @@
         "radiationElevated": "Αυξημένη ραδιενέργεια",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "Περιορισμοί Εναέριου Χώρου NOTAM"
+        "notamAirspace": "Περιορισμοί Εναέριου Χώρου NOTAM",
+        "no2Activity": "Βιομηχανική δραστηριότητα (NO2)"
       },
       "tooltip": {
         "earthquake": "Σεισμός",
@@ -1431,7 +1432,8 @@
           "ciiChoropleth": "Θερμικός χάρτης Country Instability Index — χρώματα χώρες κατά βαθμό (πράσινο=σταθερή, κόκκινο=κρίσιμη)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Προσωρινοί περιορισμοί πτήσης και περιορισμένος, επικίνδυνος και απαγορευμένος εναέριος χώρος από FAA NOTAMs, σε ισχύ τώρα ή ξεκινώντας εντός 24 ωρών"
+          "notamAirspace": "Προσωρινοί περιορισμοί πτήσης και περιορισμένος, επικίνδυνος και απαγορευμένος εναέριος χώρος από FAA NOTAMs, σε ισχύ τώρα ή ξεκινώντας εντός 24 ωρών",
+          "no2Activity": "Κατεύθυνση δραστηριότητας NO2 από το Sentinel-5P για 167 χώρες και 32 βιομηχανικές συστάδες: το τελευταίο παράθυρο 56 ημερών έναντι των ίδιων ημερομηνιών προηγούμενων ετών, μετά από νεκρή ζώνη 10%. Περιέχει τροποποιημένα δεδομένα Copernicus Sentinel."
         },
         "notes": {
           "timeAffects": "Επηρεάζει: Σεισμούς, Καιρό, Διαμαρτυρίες, Διακοπές"

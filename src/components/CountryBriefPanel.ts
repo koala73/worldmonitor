@@ -253,6 +253,7 @@ export interface CountryBriefPanel {
   onStateChange?(cb: (state: { visible: boolean; maximized: boolean }) => void): void;
   updateNationalDebt?(entry: { debtToGdp: number; debtUsd: number; annualGrowth: number; source: string } | null): void;
   updateSanctionsPressure?(data: { entryCount: number; sanctionsActive?: boolean } | null): void;
+  updateNo2Activity?(region: import('@/services/economic/no2-activity').No2ActivityRegionView | null): void;
   updateComtradeFlows?(flows: Array<{ partnerName: string; cmdDesc: string; tradeValueUsd: number; yoyChange: number }> | null): void;
   updateTariffTrends?(data: CountryTariffTrendsData | null): void;
   updateMultiSectorCostShock?(data: MultiSectorShockResponse | null): void;

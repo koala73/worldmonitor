@@ -606,7 +606,8 @@
         "radiationElevated": "Förhöjd strålning",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "NOTAM-luftrumsbegränsningar"
+        "notamAirspace": "NOTAM-luftrumsbegränsningar",
+        "no2Activity": "Industriell aktivitet (NO2)"
       },
       "layersTitle": "Lager",
       "layerSearch": "Sök lager...",
@@ -729,7 +730,8 @@
           "ciiChoropleth": "Landinstabilitetsindexvärmekarta — färger länder efter poäng (grön=stabil, röd=kritisk)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Tillfälliga flygbegränsningar och begränsat, farligt och förbjudet luftrum från FAA NOTAMs, gäller nu eller börjar inom 24 timmar"
+          "notamAirspace": "Tillfälliga flygbegränsningar och begränsat, farligt och förbjudet luftrum från FAA NOTAMs, gäller nu eller börjar inom 24 timmar",
+          "no2Activity": "Riktning för NO2-aktivitet från Sentinel-5P för 167 länder och 32 industrikluster: det senaste 56-dagarsfönstret mot samma datum tidigare år, efter ett dödband på 10 %. Innehåller modifierade Copernicus Sentinel-data."
         },
         "notes": {
           "timeAffects": "Påverkar: Jordbävningar, väder, protester, avbrott"

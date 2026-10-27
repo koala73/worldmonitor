@@ -1312,7 +1312,8 @@
         "radiationElevated": "辐射升高",
         "canadaRoads": "Canada 道路",
         "canadaAlerts": "加拿大警报（AB + BC + SK）",
-        "notamAirspace": "NOTAM 空域限制"
+        "notamAirspace": "NOTAM 空域限制",
+        "no2Activity": "工业活动（NO2）"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1428,7 +1429,8 @@
           "ciiChoropleth": "国家不稳定指数热力图 — 按评分为各国着色（绿色=稳定，红色=严重）",
           "canadaRoads": "加拿大（Canada）受支持辖区的官方道路事件、警报、路况、封闭、施工和危险信息",
           "canadaAlerts": "来自 Alberta Emergency Alert、B.C. 疏散令与警报及 SaskAlert 的省级公共安全警报",
-          "notamAirspace": "FAA NOTAM 中的临时飞行限制和受限、危险及禁飞空域，当前生效或将在 24 小时内生效"
+          "notamAirspace": "FAA NOTAM 中的临时飞行限制和受限、危险及禁飞空域，当前生效或将在 24 小时内生效",
+          "no2Activity": "Sentinel-5P NO2 活动方向，覆盖 167 个国家和 32 个工业集群：最新 56 天窗口与往年同期日期对比，经 10% 死区处理。包含经修改的 Copernicus Sentinel 数据。"
         },
         "notes": {
           "timeAffects": "影响范围：地震、天气、抗议、中断"

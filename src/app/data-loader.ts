@@ -136,6 +136,7 @@ import { fetchXFeed, isUsableHydratedXFeed } from '@/services/x-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate, type OrefAlertsResponse } from '@/services/oref-alerts';
 import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
+import { getNo2ActivityData } from '@/services/no2-activity';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo, loadFromStorage, saveToStorage } from '@/utils';
 import { addLocalDays, localYmd } from '@/utils/local-date';
@@ -1190,6 +1191,7 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && (shouldLoad('sanctions-pressure') || this.ctx.mapLayers.sanctions)) {
       tasks.push({ name: 'sanctions', task: () => runGuarded('sanctions', () => this.loadSanctionsPressure()) });
     }
+    if (this.ctx.mapLayers.no2Activity) tasks.push({ name: 'no2Activity', task: () => runGuarded('no2Activity', () => this.loadNo2Activity()) });
     if (this.ctx.mapLayers.resilienceScore) {
       if (hasPremiumAccess()) {
         tasks.push({ name: 'resilienceRanking', task: () => runGuarded('resilienceRanking', () => this.loadResilienceRanking()) });
@@ -1336,6 +1338,9 @@ export class DataLoaderManager implements AppModule {
           break;
         case 'resilienceScore':
           await this.loadResilienceRanking();
+          break;
+        case 'no2Activity':
+          await this.loadNo2Activity();
           break;
       }
     } finally {
@@ -5045,6 +5050,21 @@ export class DataLoaderManager implements AppModule {
       dataFreshness.recordError('sanctions_pressure', String(error));
       this.ctx.statusPanel?.updateApi('OFAC', { status: 'error' });
     }
+  }
+
+  /** Opt-in layer: the route is read only while the layer is on, never at bootstrap. */
+  async loadNo2Activity(): Promise<void> {
+    if (!this.ctx.map?.isDeckGLActive?.()) {
+      this.ctx.map?.setLayerReady('no2Activity', false);
+      return;
+    }
+    const snapshot = await getNo2ActivityData();
+    if (snapshot === null) {
+      this.ctx.map?.setLayerReady('no2Activity', false);
+      return;
+    }
+    this.ctx.map?.setNo2Activity(snapshot);
+    this.ctx.map?.setLayerReady('no2Activity', snapshot.regions.length > 0);
   }
 
   async loadResilienceRanking(): Promise<void> {

@@ -1479,7 +1479,8 @@
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (AB + BC + SK)",
-        "notamAirspace": "NOTAM Airspace Restrictions"
+        "notamAirspace": "NOTAM Airspace Restrictions",
+        "no2Activity": "Industrial Activity (NO2)"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1595,7 +1596,8 @@
           "ciiChoropleth": "Country Instability Index heat-map — colors countries by score (green=stable, red=critical)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
-          "notamAirspace": "Temporary flight restrictions and restricted, danger and prohibited airspace from FAA NOTAMs, in effect now or starting within 24 hours"
+          "notamAirspace": "Temporary flight restrictions and restricted, danger and prohibited airspace from FAA NOTAMs, in effect now or starting within 24 hours",
+          "no2Activity": "Sentinel-5P NO2 activity direction for 167 countries and 32 industrial clusters: the latest 56-day window against the same dates in prior years, after a 10% dead band. Contains modified Copernicus Sentinel data."
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"

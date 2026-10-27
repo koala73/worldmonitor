@@ -101,6 +101,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   resilienceScore:          def('resilienceScore',          '&#128200;', 'resilienceScore',          'Resilience', ['deck'], 'locked'),
   dayNight:                 def('dayNight',                 '&#127763;', 'dayNight',                 'Day/Night', ['svg', 'deck']),
   sanctions:                def('sanctions',                '&#128683;', 'sanctions',                'Sanctions', ['svg', 'deck']),
+  no2Activity:              def('no2Activity',              '&#127981;', 'no2Activity',              'Industrial activity (NO2)', ['deck']),
   startupHubs:              def('startupHubs',              '&#128640;', 'startupHubs',              'Startup Hubs', ['svg', 'deck']),
   techHQs:                  def('techHQs',                  '&#127970;', 'techHQs',                  'Tech HQs', ['svg', 'deck']),
   accelerators:             def('accelerators',             '&#9889;',   'accelerators',             'Accelerators', ['svg', 'deck']),
@@ -146,9 +147,26 @@ export const V1_LAYER_EXPLANATION_KEYS = [
   'tradeRoutes',
   'cyberThreats',
   'hotspots',
+  'no2Activity',
 ] as const satisfies readonly (keyof MapLayers)[];
 
 export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanation>> = {
+  no2Activity: {
+    key: 'no2Activity',
+    coverage: 'curated',
+    category: 'Economy',
+    purpose: 'Colors 167 countries and 32 industrial clusters by the direction of their Sentinel-5P tropospheric NO2, a combustion trace no domestic publisher controls: the latest 56-day window against the same dates in the prior three years, after a 10% dead band.',
+    source: 'Copernicus Sentinel-5P TROPOMI NO2 through the CDSE Sentinel Hub Statistical API (OFFL product, qa_value >= 75), aggregated daily per region by the seed-no2-activity Railway service. Contains modified Copernicus Sentinel data.',
+    freshness: 'Seeded every 24 hours; the window ends 3 days before the run so late granules can land, and the layer is monitored against a 4320-minute freshness budget.',
+    confidence: 'A region reads only when at least 14 valid days and 2 baseline years support it; cloud cover is the dominant noise, so a thin window refuses a reading rather than guessing.',
+    limitations: [
+      'Baseline pending is the expected state for weeks after a region is added: prior-year windows are fetched in chunks, not all at once.',
+      'NO2 tracks combustion, so a shift to cleaner generation or cleaner vehicles reads as weakening activity.',
+      'Large countries are aggregated on a coarse grid (up to 1 degree), which dilutes a single city.',
+    ],
+    related: ['China activity nowcast', 'Country brief', 'Fires'],
+    evidence: ['scripts/seed-no2-activity.mjs', 'scripts/shared/no2-activity.mjs', 'api/health.js', 'server/worldmonitor/economic/v1/get-no2-activity.ts'],
+  },
   conflicts: {
     key: 'conflicts',
     coverage: 'curated',
@@ -370,7 +388,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'ucdpEvents', 'displacement', 'climate', 'weather', 'canadaRoads', 'canadaAlerts',
     'outages', 'cyberThreats', 'natural', 'fires',
     'waterways', 'economic', 'minerals', 'gpsJamming',
-    'satellites', 'ciiChoropleth', 'resilienceScore', 'sanctions', 'dayNight', 'webcams',
+    'satellites', 'ciiChoropleth', 'resilienceScore', 'sanctions', 'no2Activity', 'dayNight', 'webcams',
     'diseaseOutbreaks',
   ],
   tech: [
@@ -711,6 +729,11 @@ export const LAYER_SYNONYMS: Record<string, Array<keyof MapLayers>> = {
   gulf: ['gulfInvestments'],
   gcc: ['gulfInvestments'],
   sanction: ['sanctions'],
+  no2: ['no2Activity'],
+  emissions: ['no2Activity'],
+  pollution: ['no2Activity'],
+  industrial: ['no2Activity'],
+  satellite: ['no2Activity', 'satellites'],
   night: ['dayNight'],
   sun: ['dayNight'],
   webcam: ['webcams'],
