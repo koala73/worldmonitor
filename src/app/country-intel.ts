@@ -424,6 +424,9 @@ export class CountryIntelManager implements AppModule {
     opts?: CountryBriefOpenOptions,
   ): Promise<void> {
     throwIfWebMcpAborted(opts?.signal);
+    // Reject a code with no country before claiming, so it cannot supersede a
+    // pending valid open and strand its loading shell.
+    if (!canonicalizeCountryCode(code)) return;
     const requestOwner = opts?.owner ?? (opts?.signal ? 'agent' : 'human');
     const request = this.claimBriefRequest(requestOwner);
     if (!request) return;
