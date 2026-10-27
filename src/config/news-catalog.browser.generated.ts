@@ -210,7 +210,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
             "es": "https://es.euronews.com/rss?format=xml",
             "pt": "https://pt.euronews.com/rss?format=xml",
             "ru": "https://ru.euronews.com/rss?format=xml",
-            "gr": "https://gr.euronews.com/rss?format=xml"
+            "el": "https://gr.euronews.com/rss?format=xml"
           }
         },
         {

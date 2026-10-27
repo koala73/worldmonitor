@@ -141,7 +141,7 @@ import {
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
-const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
+export const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
 // The one digest language set, shared with the gateway's public-shape
 // classifier so a CDN-shielded `?lang=xx&public=1` shape and the handler can
 // never disagree. Anything outside it is a 400 (#8360).
