@@ -67,6 +67,16 @@ export async function loadOutletCatalog(repoRoot) {
   return outlets;
 }
 
+/** True when every URL the outlet is fetched from is a Google News search with no site: term. */
+export function isKeywordSearchOnly(outlet) {
+  const urls = outlet && outlet.urls instanceof Set ? [...outlet.urls] : [];
+  if (urls.length === 0) return false;
+  return urls.every((url) => {
+    const match = /news\.google\.com\/rss\/search\?q=([^&]*)/.exec(decodeURIComponent(url));
+    return match !== null && !/\bsite:/.test(match[1]);
+  });
+}
+
 const AUDIENCES = new Set(['domestic', 'international', 'diaspora']);
 const OWNERSHIP_CLASSES = new Set(['state', 'public-service', 'private', 'nonprofit', 'intergovernmental', 'unreviewed']);
 const PROFILE_KEYS = new Set(['country', 'audience', 'language', 'ownershipClass', 'note']);
@@ -118,8 +128,15 @@ export function validateOutletProfiles({ profiles, catalog, validCountries, fami
       problems.push(`${name}: state-affiliated outlet must have a reviewed ownershipClass`);
     }
 
+    // A Google News keyword search without site: returns many publishers'
+    // stories, so it has no single home country or owner.
+    const multiPublisher = isKeywordSearchOnly(outlet);
+    if (multiPublisher && (profile.country !== 'INTL' || profile.ownershipClass !== 'unreviewed')) {
+      problems.push(`${name}: keyword-search feed (no site:) must be INTL and unreviewed`);
+    }
+
     const family = familyFor(name);
-    if (family) {
+    if (family && !multiPublisher) {
       const seen = familyCountry.get(family);
       if (!seen) familyCountry.set(family, { country: profile.country, name });
       else if (seen.country !== profile.country) {

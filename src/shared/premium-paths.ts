@@ -78,6 +78,8 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // registry so premiumFetch attaches the Clerk bearer and the gateway enforces
   // the same route as the entitlement map.
   '/api/economic/v1/list-global-tenders',
+  // Outlet-perspective grouping is a Pro MCP tool; the REST route matches it.
+  '/api/news/v1/list-media-perspective',
   '/api/trade/v1/list-comtrade-flows',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-bilateral-tariff',

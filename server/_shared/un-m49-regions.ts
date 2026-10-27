@@ -1,4 +1,4 @@
-import table from '../../shared/un-m49-regions.json' with { type: 'json' };
+import table from '../../shared/un-m49-regions.json';
 
 /** UN M49 region, sub-region and intermediate-region slugs, e.g. latin-america-and-the-caribbean. */
 export const UN_M49_REGION_IDS = Object.keys(table.regions);

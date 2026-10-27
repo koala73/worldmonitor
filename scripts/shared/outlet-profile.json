@@ -57,11 +57,11 @@
     "ownershipClass": "private"
   },
   "a16z Insights": {
-    "country": "US",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "private",
-    "note": "Google News query for a16z podcasts and interviews."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "a16z Podcast": {
     "country": "US",
@@ -102,11 +102,11 @@
     "note": "Israeli-run military OSINT channel operated by an individual blogger."
   },
   "Acquired Episodes": {
-    "country": "US",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "private",
-    "note": "Google News query for coverage of the Acquired podcast."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "Acquired Podcast": {
     "country": "US",
@@ -195,11 +195,11 @@
     "note": "Google News topic query aggregating many publishers; no single owner."
   },
   "AI Now Institute": {
-    "country": "US",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "nonprofit",
-    "note": "Ingested via a Google News name search for the institute."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "AI Podcast (NVIDIA)": {
     "country": "US",
@@ -261,11 +261,11 @@
     "note": "Ownership and base of this Telegram desk are not identifiable."
   },
   "All-In Podcast": {
-    "country": "US",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "private",
-    "note": "Google News query for coverage of the All-In podcast."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "Aluminum & Zinc": {
     "country": "INTL",
@@ -670,11 +670,11 @@
     "ownershipClass": "private"
   },
   "Bloomberg Crypto": {
-    "country": "US",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "private",
-    "note": "Ingested via a Google News query for Bloomberg crypto coverage."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "Bloomberg Energy": {
     "country": "US",
@@ -1385,11 +1385,11 @@
     "ownershipClass": "private"
   },
   "DigiChina": {
-    "country": "US",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "nonprofit",
-    "note": "Stanford-based project, ingested via a Google News name search."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "DL News": {
     "country": "GB",
@@ -2213,10 +2213,11 @@
     "ownershipClass": "private"
   },
   "Hard Fork (NYT)": {
-    "country": "US",
-    "audience": "domestic",
+    "country": "INTL",
+    "audience": "international",
     "language": "en",
-    "ownershipClass": "private"
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "Havana Times": {
     "country": "CU",
@@ -2794,11 +2795,11 @@
     "ownershipClass": "private"
   },
   "Lex Fridman Tech": {
-    "country": "US",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "private",
-    "note": "Google News query for coverage of Lex Fridman interviews."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "Liberal GR": {
     "country": "GR",
@@ -3078,11 +3079,11 @@
     "ownershipClass": "nonprofit"
   },
   "MIT Tech Policy": {
-    "country": "US",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "nonprofit",
-    "note": "Google News name search for Tech Policy Press, a nonprofit publication."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "MIT Tech Review": {
     "country": "US",
@@ -3556,11 +3557,11 @@
     "ownershipClass": "state"
   },
   "Paul Graham Essays": {
-    "country": "US",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "private",
-    "note": "Paul Graham essays; one variant ingests a Google News query instead of the essay feed."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "PBoC (China)": {
     "country": "CN",
@@ -3847,11 +3848,11 @@
     "ownershipClass": "private"
   },
   "Reuters Crypto": {
-    "country": "GB",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "private",
-    "note": "Google News query for Reuters crypto coverage."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "Reuters Energy": {
     "country": "GB",
@@ -4520,11 +4521,11 @@
     "ownershipClass": "private"
   },
   "Thai PBS": {
-    "country": "TH",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "public-service",
-    "note": "Ingests Thai PBS World, the English service; the catalog lang th only routes it to Thai digests."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "The Astana Times": {
     "country": "KZ",
@@ -4998,11 +4999,11 @@
     "ownershipClass": "private"
   },
   "Verge Shows": {
-    "country": "US",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "private",
-    "note": "Ingested via a Google News query for Verge podcast coverage."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "Vietnam Tech": {
     "country": "INTL",
@@ -5175,11 +5176,11 @@
     "ownershipClass": "private"
   },
   "YC Launches": {
-    "country": "US",
+    "country": "INTL",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "private",
-    "note": "Ingested via a Google News query or hnrss proxy of Y Combinator launch coverage."
+    "ownershipClass": "unreviewed",
+    "note": "Google News keyword search with no site: filter; its rows come from many publishers."
   },
   "YC News": {
     "country": "US",

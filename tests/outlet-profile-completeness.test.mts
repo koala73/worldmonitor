@@ -128,4 +128,34 @@ describe('validateOutletProfiles', () => {
       },
     }), ['publisher family bbc: BBC UK is GB but BBC Fake is US']);
   });
+
+  it('keeps keyword-search feeds multi-publisher and out of family country checks', () => {
+    const search = 'https://news.google.com/rss/search?q=%22All-In+podcast%22+when:7d&hl=en-US';
+    const site = 'https://news.google.com/rss/search?q=site:reuters.com+crypto+when:1d&hl=en-US';
+    const catalog = new Map<string, unknown>([
+      ['Reuters', { urls: new Set(['https://www.reuters.com/rss']) }],
+      ['Reuters Crypto', { urls: new Set([search]) }],
+      ['Reuters Site', { urls: new Set([site]) }],
+    ]);
+    const base = { audience: 'international', language: 'en' };
+    const familyFor = () => 'reuters';
+    assert.deepEqual(check({
+      catalog,
+      familyFor,
+      profiles: {
+        Reuters: { ...base, country: 'GB', ownershipClass: 'private' },
+        'Reuters Crypto': { ...base, country: 'INTL', ownershipClass: 'unreviewed' },
+        'Reuters Site': { ...base, country: 'GB', ownershipClass: 'private' },
+      },
+    }), []);
+    assert.deepEqual(check({
+      catalog,
+      familyFor,
+      profiles: {
+        Reuters: { ...base, country: 'GB', ownershipClass: 'private' },
+        'Reuters Crypto': { ...base, country: 'GB', ownershipClass: 'private' },
+        'Reuters Site': { ...base, country: 'GB', ownershipClass: 'private' },
+      },
+    }), ['Reuters Crypto: keyword-search feed (no site:) must be INTL and unreviewed']);
+  });
 });

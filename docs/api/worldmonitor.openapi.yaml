@@ -26196,14 +26196,18 @@ paths:
             tags:
                 - NewsService
             summary: ListMediaPerspective
-            description: ListMediaPerspective groups headlines about one country by outlet home country and audience.
+            description: ListMediaPerspective groups headlines about one country by outlet home country and audience. PRO-gated. Requires entitlement tier >= 1.
             operationId: ListMediaPerspective
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: subject_country
                   in: query
                   description: ISO2.
                   required: true
-                  example: "US"
+                  example: "SA"
                   schema:
                     type: string
                 - name: outlet_countries
@@ -26213,7 +26217,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "US"
                   schema:
                     type: array
                     items:
@@ -26222,17 +26226,23 @@ paths:
                   in: query
                   description: domestic, international or diaspora.
                   required: false
-                  example: "example"
+                  example: "domestic"
                   schema:
                     type: string
                 - name: window_hours
                   in: query
                   description: 24, 48, 72 or 96.
                   required: false
-                  example: 1
-                  schema:
-                    type: integer
-                    format: int32
+                  "schema":
+                      "type": "integer"
+                      "format": "int32"
+                      "enum":
+                          - 0
+                          - 24
+                          - 48
+                          - 72
+                          - 96
+                  example: 0
                 - name: outlet_regions
                   in: query
                   description: UN M49 region slugs, e.g. northern-europe.
@@ -26240,7 +26250,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "northern-europe"
                   schema:
                     type: array
                     items:
@@ -26262,7 +26272,7 @@ paths:
                                 "feedCached": 1
                                 "feedTotal": 1
                                 "groups":
-                                    - "audience": "example"
+                                    - "audience": "domestic"
                                       "framing":
                                           "critical": 1
                                           "favorable": 1
@@ -26297,7 +26307,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -55715,12 +55725,16 @@ components:
                 audience:
                     type: string
                     description: domestic, international or diaspora.
-                windowHours:
-                    type: integer
-                    maximum: 96
-                    minimum: 0
-                    format: int32
-                    description: 24, 48, 72 or 96.
+                "windowHours":
+                    "type": "integer"
+                    "format": "int32"
+                    "description": "24, 48, 72 or 96."
+                    "enum":
+                        - 0
+                        - 24
+                        - 48
+                        - 72
+                        - 96
                 outletRegions:
                     type: array
                     items:

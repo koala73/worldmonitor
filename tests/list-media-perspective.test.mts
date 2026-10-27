@@ -16,7 +16,19 @@ const route = createNewsServiceRoutes(newsHandler, { validateRequest: validateGe
 const envKeys = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV', 'LOCAL_API_MODE', 'NEWS_MAX_AGE_HOURS'] as const;
 const oldEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
 const originalFetch = globalThis.fetch;
-const feeds = [...Object.values(VARIANT_FEEDS.full ?? {}).flat(), ...INTEL_SOURCES];
+// Every catalog feed under the cache key of the first variant that lists it (full first), as the handler reads them.
+const variantOrder = ['full', ...Object.keys(VARIANT_FEEDS).filter(variant => variant !== 'full')];
+const feedVariants = new Map<string, string>();
+const feeds = [
+  ...variantOrder.flatMap(variant => Object.values(VARIANT_FEEDS[variant] ?? {}).flat().map(entry => ({ entry, variant }))),
+  ...INTEL_SOURCES.map(entry => ({ entry, variant: 'full' })),
+].filter(({ entry, variant }) => {
+  if (feedVariants.has(entry.url)) return false;
+  feedVariants.set(entry.url, variant);
+  return true;
+}).map(({ entry }) => entry);
+const feedKey = (entry: { url: string }) => rssFeedCacheKey(feedVariants.get(entry.url)!, entry.url);
+let ttls: Map<string, number>;
 let cache: Map<string, unknown>;
 let writes: Map<string, unknown>;
 let revoked: string[];
@@ -35,7 +47,7 @@ function article(source: string, title: string, overrides: Record<string, unknow
 }
 
 function put(source: string, items: unknown[]) {
-  cache.set(rssFeedCacheKey('full', feed(source).url), { items });
+  cache.set(feedKey(feed(source)), { items });
 }
 
 async function request(params: Record<string, string | string[]>) {
@@ -59,8 +71,9 @@ beforeEach(() => {
   delete process.env.LOCAL_API_MODE;
   delete process.env.NEWS_MAX_AGE_HOURS;
   __resetKeyPrefixCacheForTests();
-  cache = new Map(feeds.map(entry => [rssFeedCacheKey('full', entry.url), { items: [] }]));
+  cache = new Map(feeds.map(entry => [feedKey(entry), { items: [] }]));
   writes = new Map();
+  ttls = new Map();
   revoked = [];
   failRevocations = false;
   globalThis.fetch = async (url, init) => {
@@ -70,9 +83,10 @@ beforeEach(() => {
       return Response.json({ result: writes.has(key) ? JSON.stringify(writes.get(key)) : null });
     }
     if (target === 'https://redis.example.test/') {
-      const [command, key, value] = JSON.parse(String(init?.body)) as string[];
+      const [command, key, value, , ttl] = JSON.parse(String(init?.body)) as string[];
       assert.equal(command, 'SET');
       writes.set(key, JSON.parse(value));
+      ttls.set(key, Number(ttl));
       return Response.json({ result: 'OK' });
     }
     assert.equal(target, 'https://redis.example.test/pipeline', 'never fetch a publisher or call a model');
@@ -162,17 +176,20 @@ describe('ListMediaPerspective', () => {
     assert.deepEqual(payload.noCoverageCountries, latam.filter(code => code !== 'AR' && code !== 'MX').sort());
   });
 
-  it('keys a region and its spelled-out countries alike, and adds listed countries to it', async () => {
+  it('caches one unfiltered entry per subject and window, and filters on serve', async () => {
     put('Clarín', [article('Clarín', 'Finland tops the world happiness ranking again')]);
+    put('BBC World', [article('BBC World', 'Finland reinforces its eastern border')]);
 
     await request({ subject_country: 'FI', outlet_regions: 'Latin-America-and-the-Caribbean' });
-    const latamKey = `${MEDIA_PERSPECTIVE_CACHE_PREFIX}:FI:${[...unM49RegionCountries('latin-america-and-the-caribbean')!].sort().join(',')}:*:72`;
-    assert.deepEqual([...writes.keys()].map(key => key.slice(key.indexOf(MEDIA_PERSPECTIVE_CACHE_PREFIX))), [latamKey]);
+    assert.deepEqual([...writes.keys()].map(key => key.slice(key.indexOf(MEDIA_PERSPECTIVE_CACHE_PREFIX))),
+      [`${MEDIA_PERSPECTIVE_CACHE_PREFIX}:FI:72`], 'filters never mint cache keys');
 
-    writes.clear();
+    cache.clear();
     const { payload } = await request({ subject_country: 'FI', outlet_regions: 'latin-america-and-the-caribbean', outlet_countries: ['GB'] });
-    assert.ok(payload.noCoverageCountries.includes('GB'), 'listed countries join the region');
-    assert.ok(!payload.noCoverageCountries.includes('AR'));
+    assert.equal(writes.size, 1, 'served from the shared entry');
+    assert.deepEqual(payload.groups.map(entry => `${entry.homeCountry}/${entry.audience}`).sort(), ['AR/domestic', 'GB/international']);
+    assert.ok(!payload.noCoverageCountries.includes('GB'), 'listed countries join the region');
+    assert.ok(payload.noCoverageCountries.includes('MX'));
   });
 
   it('filters by audience', async () => {
@@ -206,16 +223,63 @@ describe('ListMediaPerspective', () => {
     assert.deepEqual(group(payload, 'SA', 'international')!.headlines.map(item => item.title), ['Saudi Arabia opens airport']);
   });
 
-  it('builds one cache key for reordered or duplicated outlet countries, and serves it', async () => {
-    put('Al Arabiya', [article('Al Arabiya', 'Saudi Arabia intercepts missiles')]);
+  it('serves a cached entry while none of its links is revoked, and rebuilds once one is', async () => {
+    put('Al Arabiya', [
+      article('Al Arabiya', 'Saudi Arabia intercepts missiles', { link: 'https://news.example.org/withdrawn' }),
+      article('Al Arabiya', 'Saudi Arabia opens airport'),
+    ]);
 
     await request({ subject_country: 'SA', outlet_countries: ['US', 'SA', 'sa'] });
-    assert.deepEqual([...writes.keys()].map(key => key.slice(key.indexOf(MEDIA_PERSPECTIVE_CACHE_PREFIX))),
-      [`${MEDIA_PERSPECTIVE_CACHE_PREFIX}:SA:SA,US:*:72`]);
+    put('Al Arabiya', [article('Al Arabiya', 'Saudi Arabia signs accord')]);
+    const cached = await request({ subject_country: 'SA' });
+    assert.deepEqual(group(cached.payload, 'SA', 'international')!.headlines.map(item => item.title).sort(),
+      ['Saudi Arabia intercepts missiles', 'Saudi Arabia opens airport'], 'served from the response cache');
 
-    cache.clear();
-    const { payload } = await request({ subject_country: 'SA', outlet_countries: ['SA', 'US'] });
-    assert.equal(payload.groups[0]!.headlines[0]!.title, 'Saudi Arabia intercepts missiles', 'served from the response cache');
+    revoked = ['https://news.example.org/withdrawn'];
+    const rebuilt = await request({ subject_country: 'SA' });
+    assert.deepEqual(group(rebuilt.payload, 'SA', 'international')!.headlines.map(item => item.title), ['Saudi Arabia signs accord']);
+
+    failRevocations = true;
+    const blind = await request({ subject_country: 'SA' });
+    assert.equal(blind.payload.state, 'unavailable', 'a hit is not served while revocations are unreadable');
+    assert.deepEqual(blind.payload.groups, []);
+  });
+
+  it('treats a cached fetch failure as a missing feed, not coverage', async () => {
+    put('Al Arabiya', [article('Al Arabiya', 'Saudi Arabia intercepts missiles')]);
+    const healthy = await request({ subject_country: 'SA', window_hours: '24' });
+    assert.equal(healthy.payload.state, 'complete', 'fixture premise: every feed is cached');
+
+    cache.set(feedKey(feed('BBC World')), { items: [], parsedTotal: 0, attempt: { source: 'direct', failure: 'direct-error', negativeCache: false } });
+    const { payload } = await request({ subject_country: 'SA' });
+    assert.equal(payload.state, 'partial');
+    assert.equal(payload.feedCached, payload.feedTotal - 1);
+  });
+
+  it('keeps an article syndicated to two audiences in both groups', async () => {
+    const link = 'https://www.bbc.co.uk/news/articles/shared';
+    put('BBC World', [article('BBC World', 'Saudi Arabia hosts ceasefire talks', { link })]);
+    put('BBC UK', [article('BBC UK', 'Saudi Arabia hosts ceasefire talks', { link })]);
+
+    const domestic = await request({ subject_country: 'SA', audience: 'domestic' });
+    assert.deepEqual(domestic.payload.groups.map(entry => `${entry.homeCountry}/${entry.audience}`), ['GB/domestic']);
+    const all = await request({ subject_country: 'SA' });
+    assert.deepEqual(all.payload.groups.map(entry => `${entry.audience}:${entry.headlineCount}`).sort(), ['domestic:1', 'international:1']);
+  });
+
+  it('matches the subject named in the headline language', async () => {
+    put('BBC Persian', [article('BBC Persian', 'حمله موشکی به عربستان سعودی', { lang: 'fa' })]);
+
+    const { payload } = await request({ subject_country: 'SA' });
+    assert.equal(group(payload, 'GB', 'diaspora')!.headlines[0]!.title, 'حمله موشکی به عربستان سعودی');
+  });
+
+  it('reads feeds that only a non-full variant lists', async () => {
+    assert.equal(feedVariants.get(feed('Tech in Asia').url), 'tech', 'fixture premise');
+    put('Tech in Asia', [article('Tech in Asia', 'Saudi Arabia funds a Singapore AI lab')]);
+
+    const { payload } = await request({ subject_country: 'SA' });
+    assert.equal(group(payload, 'SG', 'international')!.headlines[0]!.outlet, 'Tech in Asia');
   });
 
   it('rejects invalid parameters', async () => {
@@ -232,19 +296,20 @@ describe('ListMediaPerspective', () => {
     }
   });
 
-  it('never caches a partial or revocation-blind response', async () => {
+  it('caches a partial response briefly and a revocation-blind one never', async () => {
     put('Al Arabiya', [article('Al Arabiya', 'Saudi Arabia intercepts missiles')]);
-    cache.delete(rssFeedCacheKey('full', feed('BBC World').url));
+    cache.delete(feedKey(feed('BBC World')));
 
     const partial = await request({ subject_country: 'SA' });
     assert.equal(partial.payload.state, 'partial');
     assert.equal(drainResponseHeaders(partial.req)?.['X-No-Cache'], '1');
+    assert.deepEqual([...ttls.values()], [60], 'a partial build is cached for one minute');
 
     failRevocations = true;
     const blind = await request({ subject_country: 'SA', window_hours: '48' });
     assert.equal(blind.payload.state, 'unavailable');
     assert.deepEqual(blind.payload.groups, []);
     assert.equal(drainResponseHeaders(blind.req)?.['X-No-Cache'], '1');
-    assert.equal(writes.size, 0);
+    assert.equal(writes.size, 1);
   });
 });

@@ -185,6 +185,40 @@ export function countryDisplayName(code) {
 }
 
 /**
+ * The country's ICU names (long and short) in one language, normalized, or []
+ * for English (covered by countryMentionTerms) and when ICU has no name.
+ */
+export function localizedCountryNames(code, language) {
+  const normalized = String(code || '').trim().toUpperCase();
+  const lang = String(language || '').trim().toLowerCase();
+  if (!/^[A-Z]{2}$/.test(normalized) || !/^[a-z]{2,3}$/.test(lang) || lang === 'en') return [];
+  const names = new Set();
+  for (const style of ['long', 'short']) {
+    try {
+      const name = new Intl.DisplayNames([lang], { type: 'region', style }).of(normalized);
+      if (name && name.toUpperCase() !== normalized) names.add(normalizeMentionText(name));
+    } catch {
+      /* Intl.DisplayNames can be missing in constrained runtimes. */
+    }
+  }
+  return [...names].filter(Boolean);
+}
+
+/**
+ * True when the text names the country in its own language. The name must
+ * start a word but may carry a suffix, so inflected forms (Финляндии,
+ * Finlandiya'nın) match; scripts written without spaces (zh, ja) match anywhere.
+ */
+export function mentionsLocalizedCountry(rawText, names, language) {
+  if (!names || names.length === 0) return false;
+  const normalized = normalizeMentionText(rawText);
+  const unspaced = ['zh', 'ja'].includes(String(language || '').toLowerCase());
+  return names.some((name) => (unspaced
+    ? normalized.includes(name)
+    : new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(name)}`, 'u').test(normalized)));
+}
+
+/**
  * Terms one country is recognised by. `names` and `exclusions` are normalized
  * (compare against normalizeMentionText output); `demonyms` are raw-cased.
  */
