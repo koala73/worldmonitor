@@ -238,6 +238,6 @@ describe('cross-edition panels read the digests of every edition that carries th
     ], null, true, OPTIONS, undefined, servedStale => { recorded.push(servedStale); });
 
     expect(recorded.length).toBeGreaterThan(0);
-    expect(recorded.at(-1)).toBe(true);
+    expect(recorded[recorded.length - 1]).toBe(true);
   });
 });
