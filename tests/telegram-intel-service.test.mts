@@ -175,6 +175,30 @@ describe('telegram-intel service', () => {
     }
   });
 
+  it('does not fall back to a polled empty feed while the relay restarts', async () => {
+    const realNow = Date.now;
+    let now = realNow();
+    Date.now = () => now;
+    const replies = [
+      { source: 'telegram', enabled: true, updatedAt: '2026-10-27T16:04:00.000Z', items: [] },
+      { source: 'telegram', enabled: true, updatedAt: null, items: [] },
+    ];
+    globalThis.fetch = (async () => new Response(JSON.stringify(replies.shift()), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })) as typeof fetch;
+
+    try {
+      assert.equal((await fetchTelegramFeed()).updatedAt, '2026-10-27T16:04:00.000Z');
+      now += 60_000;
+      // The polled-empty copy would make the panel say "No messages available"
+      // during the restart; the unpolled reply keeps it on "Connecting".
+      assert.equal((await fetchTelegramFeed()).updatedAt, null);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
   it('does not cache a never-polled empty feed as the current one', async () => {
     const replies = [
       { source: 'telegram', enabled: true, updatedAt: null, items: [] },

@@ -1485,6 +1485,49 @@ test('a restarted relay serves the last Telegram snapshot before its first poll'
   }
 });
 
+test('a restored Telegram snapshot drops entries that are not feed items', async () => {
+  const savedAt = new Date(Date.now() - 90_000).toISOString();
+  const upstash = await createUpstashMock({
+    getValues: {
+      [TELEGRAM_ITEMS_SNAPSHOT_KEY]: {
+        savedAt,
+        items: [
+          null,
+          { text: 'no id' },
+          { id: 'clashreport:41', source: 'telegram', channel: 'clashreport', channelTitle: 'Clash Report', text: 'Tanker on fire near Hormuz', ts: savedAt, topic: 'conflict', tags: [], earlySignal: true, mediaUrls: [] },
+        ],
+      },
+    },
+  });
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '600000',
+    RELAY_TEST_TELEGRAM: 'true',
+    RELAY_TEST_TELEGRAM_POLL: 'true',
+    ...upstash.env,
+  });
+  const { child, port } = await relay.ready;
+
+  try {
+    let feed = null;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      feed = JSON.parse((await get(port, '/telegram/feed?limit=50')).body);
+      if (feed.items.length) break;
+      await sleep(100);
+    }
+    assert.deepEqual(feed.items.map(item => item.id), ['clashreport:41']);
+    // A null entry used to reach the topic filter and fail the request.
+    const filtered = await get(port, '/telegram/feed?limit=50&topic=conflict');
+    assert.equal(filtered.status, 200);
+    assert.deepEqual(JSON.parse(filtered.body).items.map(item => item.id), ['clashreport:41']);
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
 test('a successful Telegram poll snapshots its items to Redis', async () => {
   const upstash = await createUpstashMock();
   const relay = spawnRelay({

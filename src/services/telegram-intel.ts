@@ -290,7 +290,10 @@ export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedRespons
   // no updatedAt. That is a restart, not an empty feed: keep the posts already
   // on screen, and never cache it, so the next refresh asks again.
   if (isUnpolledTelegramFeed(json)) {
-    return staleFallback() ?? json;
+    // Only posts are worth keeping. A polled-empty fallback would replace
+    // "Connecting" with "No messages available" for the whole restart.
+    const stale = staleFallback();
+    return stale?.items.length ? stale : json;
   }
   cachedResponse = json;
   cachedAt = Date.now();

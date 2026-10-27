@@ -2255,10 +2255,15 @@ function guardedTelegramPoll() {
 async function restoreTelegramSnapshot() {
   const snapshot = await upstashGet(TELEGRAM_ITEMS_SNAPSHOT_KEY);
   const savedAt = Date.parse(snapshot?.savedAt);
-  if (!Array.isArray(snapshot?.items) || !snapshot.items.length || !Number.isFinite(savedAt)) return;
+  // Keep only feed-item shapes: the topic/channel filters and the poll merge
+  // read fields on every entry, and a bad one would sit there until TTL.
+  const items = Array.isArray(snapshot?.items)
+    ? snapshot.items.filter(item => item && typeof item === 'object' && typeof item.id === 'string' && item.id)
+    : [];
+  if (!items.length || !Number.isFinite(savedAt)) return;
   // A poll that finished first holds fresher items; never overwrite it.
   if (telegramState.lastPollAt || telegramState.items.length) return;
-  telegramState.items = snapshot.items.slice(0, TELEGRAM_MAX_FEED_ITEMS);
+  telegramState.items = items.slice(0, TELEGRAM_MAX_FEED_ITEMS);
   // updatedAt reports when these posts were polled. lastSuccessfulPollAt stays
   // 0: it gates the strike feed's freshness and no poll has run here yet.
   telegramState.lastPollAt = savedAt;
