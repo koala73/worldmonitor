@@ -387,6 +387,11 @@ describe('feed catalog drift', () => {
       }
       for (const [url, labels] of byUrl) {
         if (labels.length < 2) continue;
+        // One URL under the SAME name in two categories cannot relabel
+        // anything: the cached items already carry that name. The energy
+        // dashboard places OilPrice.com in both its live and energy panels.
+        const names = new Set(labels.map((label) => label.slice(label.indexOf(':') + 1)));
+        if (names.size < 2) continue;
         const signature = `${variant}|${url}|${labels.sort().join('|')}`;
         if (!reviewedAliases.has(signature)) unreviewedAliases.push(signature);
       }
