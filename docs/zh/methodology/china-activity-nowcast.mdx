@@ -81,7 +81,9 @@ Data Space Ecosystem 的 Sentinel Hub Statistical API 发出的每次请求均�
 （`OFFL`）产品，仅保留 `qa_value >= 75` 的像元，并在使区域输出像元不超过 10,000 的
 最细网格上聚合（集群为 0.05 度，俄罗斯和美国最粗为 1 度）。方法常量与数据集校验器位于
 `scripts/shared/no2-activity.mjs`，区域注册表由 `scripts/generate-no2-regions.mjs`
-生成；只有当数据集逐字携带该方法时，即时预测才会消费它。
+生成；只有当数据集逐字携带该方法时，即时预测才会消费它。同一数据集的每个区域都由
+`GET /api/economic/v1/get-no2-activity` 和 MCP 工具 `get_no2_activity` 提供，可按国家、
+区域 id 或类型过滤；见 [MCP 工具参考](/zh/mcp-tools-reference#get_no2_activity)。
 
 云量是最主要的噪声来源，因此该信号被设计为拒绝任何它无法支撑的变动：
 

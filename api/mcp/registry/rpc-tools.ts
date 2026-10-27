@@ -63,6 +63,7 @@ import { CII_FORMULA_VERSION } from '../../../server/worldmonitor/intelligence/v
 import { ANALYSIS_TOOLS } from './analysis-tools';
 import { buildPublicTool, TOOL_ALIASES, TOOL_REGISTRY } from './index';
 import { COMPANY_INTEL_TOOL } from './company-intel-tools';
+import { NO2_ACTIVITY_TOOL } from './_no2-activity';
 import { tradeCountryCode } from './tariff-tools';
 
 type McpBriefSource = {
@@ -1169,6 +1170,7 @@ const VULNERABILITY_COMPONENTS_OUTPUT_SCHEMA = {
   },
 };
 export const RPC_TOOLS: ToolDef[] = [
+  NO2_ACTIVITY_TOOL,
   {
     name: 'get_defense_industrial_base',
     _validateArgs: params => { requireCountryCode(params.country_code, 'get-defense-industrial-base'); },

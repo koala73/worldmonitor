@@ -484,6 +484,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-economic-calendar': 'slow',
   '/api/economic/v1/get-china-macro-snapshot': 'slow',
   '/api/economic/v1/get-china-activity-nowcast': 'medium',
+  // Daily seed (#9722); the CDN key carries the country_code, region_id and kind filters.
+  '/api/economic/v1/get-no2-activity': 'slow',
   '/api/intelligence/v1/list-market-implications': 'slow',
   '/api/intelligence/v1/list-wsb-tickers': 'no-store',
   '/api/economic/v1/get-ecb-fx-rates': 'slow',

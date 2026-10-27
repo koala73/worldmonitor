@@ -59,6 +59,7 @@
   "get_natural_disasters",
   "get_news_clusters",
   "get_news_intelligence",
+  "get_no2_activity",
   "get_oil_trade_series",
   "get_population_exposure",
   "get_positive_events",

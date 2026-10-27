@@ -332,6 +332,7 @@ function overrideStringExample(key, context = {}) {
   if (key === 'range') {
     if (where.includes('consumerprice') || where.includes('consumer-prices')) return CONSUMER_PRICE_RANGE_EXAMPLE_ID;
   }
+  if (key === 'regionid' && (where.includes('getno2activity') || where.includes('get-no2-activity'))) return 'yangtze-river-delta';
   if (key === 'regionid') return REGIONAL_INTELLIGENCE_EXAMPLE_ID;
   if (key === 'airlines') return 'BA';
   if (key === 'departurewindow') return '6-20';

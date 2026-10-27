@@ -384,7 +384,8 @@ export const SERVER_NAME = 'worldmonitor';
 // merged into get_energy_intelligence and get_infrastructure_status (97 → 95
 // tools); both old names stay callable as aliases.
 // Bumped 1.44.0 → 1.45.0 for get_media_perspective (95 → 96 tools).
-export const SERVER_VERSION = '1.45.0';
+// Bumped 1.45.0 → 1.46.0 for get_no2_activity (96 → 97 tools, #9722).
+export const SERVER_VERSION = '1.46.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -439,11 +440,13 @@ export { MAX_JSON_RPC_BODY_BYTES };
 // can quote it without a temporal-dead-zone error.
 export const TOOL_DESCRIPTION_MAX_BYTES = 1024;
 
-// Total budget for every tools/list description together. 64 KiB is about
-// 16k tokens, roughly a sixth of the tools/list envelope (the input and output
-// schemas are the rest), and leaves headroom for a few more tools at the
-// per-tool cap above the ~57 KB the registry uses today. Test-enforced only.
-export const TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES = 65536;
+// Total budget for every tools/list description together. 68 KiB is about
+// 17k tokens, roughly a sixth of the tools/list envelope (the input and output
+// schemas are the rest). The 64 KiB cap was set at ~57 KB (#9302) to leave
+// headroom for a few more tools; the #9357 depth work spent that headroom on
+// existing descriptions, and get_no2_activity (#9722) reached ~66 KB, so the
+// cap moves once to restore room for two more tools. Test-enforced only.
+export const TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES = 69632;
 
 // Session-level discovery instructions. Per MCP 2025-03-26 lifecycle spec,
 // servers MAY return an `instructions` string in the `initialize` result;

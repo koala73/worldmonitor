@@ -565,6 +565,42 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_no2_activity`
+
+Industrial activity direction from Sentinel-5P tropospheric NO2 for 167 countries and 32 industrial clusters: the latest 56-day window against the same dates in the prior three years, as changePercent and a direction after a 10% dead band. A region with no reading carries an exclusion; baseline_backfill_pending is expected while prior years are still being fetched, not a fault. Filter by country_code (the country plus its clusters), region_id or kind. Daily seed, never a live Copernicus call; reproduce attribution. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.
+
+Each region reports `windowStart`, `windowEnd`, `validDays` (days with enough cloud-free, quality-filtered pixels), the mean NO2 column in mol/m2, the prior years that entered the baseline, `changePercent`, `signalValue` (the change outside the 10% dead band, 0 inside it) and `direction` (`strengthening`, `weakening`, `unchanged`). A region without a reading has `direction: null` and an `exclusion` from the closed vocabulary `request_failed`, `baseline_backfill_pending`, `insufficient_valid_days`, `insufficient_baseline_years`. The response carries `method` (the constants pinned by the route's `methodVersion`), `generatedAt`, `stale` (true past the 72 h health budget) and the required credit line in `attribution`, for example "Contains modified Copernicus Sentinel data 2023-2026". See [China activity nowcast methodology](/methodology/china-activity-nowcast#satellite-no2) for the method.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country_code` | string | Optional. ISO 3166-1 alpha-2 code ("DE"), alpha-3 ("DEU") or an English name ("Germany"). Returns the country region and every cluster inside it; clusters spanning several countries (`gulf-states`, `rotterdam-antwerp`) carry no code. |
+| `region_id` | string | Optional registry id, for example `country-cn` or `yangtze-river-delta`. Combines with the other filters as AND. |
+| `kind` | `string: country / cluster` | Optional. `country` for country polygons, `cluster` for named industrial clusters; omit for both. |
+
+**Response distinctions:** `unavailableReason` is the closed `No2ActivityUnavailableReason` enum from the RPC. `NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED` is a contract answer (the filters name no registered region, a retry cannot help) with `upstreamUnavailable: false`. `NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST` is a client error (a malformed filter reached the handler directly; the gateway answers HTTP 400 first) with `upstreamUnavailable: false`. The remaining reasons name faults (`seed_missing`, `invalid_dataset`, `cache_unavailable`) with `upstreamUnavailable: true`. A per-region `exclusion` never withholds the response: `baseline_backfill_pending`, `insufficient_valid_days` and `insufficient_baseline_years` mean the method refused a reading it cannot support, while `request_failed` means that region's own source refresh has been failing for longer than the retained data lasts.
+
+- **API endpoint:** `GET /api/economic/v1/get-no2-activity`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy over the canonical NO2 activity route (the handler owns filtering, contract validation and miss classification).
+- **Freshness budget:** up to **72 h** before `stale` (daily seeder cadence times three, matching `/api/health`).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_no2_activity","arguments":{"country_code":"CN","kind":"cluster"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_wto_trade_flows`
 
 WTO merchandise trade flows for one reporting country versus the World, over a configurable year window. Data comes from the WTO `ITS_MTV_AX` (exports) and `ITS_MTV_AM` (imports) indicators, seeded on a 6-hour cadence; the tool reads the same seeded snapshot the dashboard serves — it never calls WTO per request.

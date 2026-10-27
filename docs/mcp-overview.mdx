@@ -322,6 +322,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `get_supply_chain_data` | Dry bulk shipping stress index, customs flows, COMTRADE bilateral trade. |
 | `get_price_and_debt_indicators` | Price and debt indicators: Big Mac index, FAO Food Price Index, and per-country national debt levels. |
 | `get_wto_trade_flows` | WTO merchandise trade flows for one reporting country versus the World (reporter 3-digit UN M49, window 1–30 years). Distinguishes `not_covered` from faults. |
+| `get_no2_activity` | Sentinel-5P NO2 activity direction for 167 countries and 32 industrial clusters: year-over-year change of the latest 56-day window with a 10% dead band, per-region exclusions and the Copernicus credit. Filter by country, region id or kind. |
 | `get_tariff_averages` | Average tariff a country applies by year: schedule rates through 2023, no Section 301/232 duties. The WTO MFN average, or with a partner and/or WITS product group the effectively applied simple and import-weighted averages (UNCTAD TRAINS). |
 | `get_bilateral_tariff` | Tariff on one HS6 product between two countries: schedule rate through 2023, no Section 301/232 duties. Applied, MFN and preferential rates for one year (UNCTAD TRAINS via WITS). |
 | `get_us_import_duty` | Current US duty on one HTS product from one country: live HTS base rates plus the Section 301 and 232 duties in force, each with a status. |
@@ -470,6 +471,7 @@ Reverse lookup workflow:
 | `get_economic_data` | `GET /api/economic/v1/get-ecb-fx-rates`<br/>`GET /api/economic/v1/get-economic-calendar`<br/>`GET /api/economic/v1/get-eu-yield-curve`<br/>`GET /api/economic/v1/list-fuel-prices`<br/>`GET /api/market/v1/get-cot-positioning`<br/>`GET /api/market/v1/list-earnings-calendar` |
 | `get_price_and_debt_indicators` | `GET /api/economic/v1/get-fao-food-price-index`<br/>`GET /api/economic/v1/get-national-debt`<br/>`GET /api/economic/v1/list-bigmac-prices` |
 | `get_wto_trade_flows` | `GET /api/trade/v1/get-trade-flows` |
+| `get_no2_activity` | `GET /api/economic/v1/get-no2-activity` |
 | `get_tariff_averages` | `GET /api/trade/v1/get-tariff-trends` |
 | `get_bilateral_tariff` | `GET /api/trade/v1/get-bilateral-tariff` |
 | `get_us_import_duty` | `GET /api/trade/v1/get-us-import-duty` |

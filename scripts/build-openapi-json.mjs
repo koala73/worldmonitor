@@ -191,6 +191,46 @@ export function shortenGeneratedSuccessDescriptions(spec) {
 }
 
 /**
+ * A 2xx response example illustrates the payload's shape; one item of each list
+ * of objects shows that shape as well as nine. The two captured examples that
+ * repeat whole rows (giving summary, China corridor control towers) spent 27 KB
+ * of the budget on rows a reader skims past. Lists of scalars stay whole: they
+ * are small, and a tuple like a bbox only makes sense complete. JSON only; the
+ * YAML and the per-service specs keep every row for Mintlify and the contract
+ * tests that validate them.
+ *
+ * Mutates `spec` in place; returns { trimmed }.
+ */
+export function trimResponseExampleLists(spec) {
+  const stats = { trimmed: 0 };
+  const trim = (value) => {
+    if (Array.isArray(value)) {
+      if (value.length > 1 && value.every((item) => item && typeof item === 'object')) {
+        value.length = 1;
+        stats.trimmed += 1;
+      }
+      value.forEach(trim);
+    } else if (value && typeof value === 'object') {
+      Object.values(value).forEach(trim);
+    }
+  };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    if (!pathItem || typeof pathItem !== 'object') continue;
+    for (const operation of Object.values(pathItem)) {
+      const responses = operation && typeof operation === 'object' ? operation.responses : null;
+      if (!responses || typeof responses !== 'object') continue;
+      for (const [code, response] of Object.entries(responses)) {
+        if (!/^2\d\d$/.test(code) || !response || typeof response !== 'object' || response.$ref) continue;
+        for (const media of Object.values(response.content ?? {})) {
+          if (media && typeof media === 'object' && 'example' in media) trim(media.example);
+        }
+      }
+    }
+  }
+  return stats;
+}
+
+/**
  * Operations left out of this scanner-facing JSON. The bundle has a hard byte
  * budget (SCANNER_BUDGET_BYTES) and the owner decided (#9093) that endpoints
  * built for WorldMonitor's own pages and for operators stay out of it, so the
@@ -343,6 +383,7 @@ export function buildBundle({ spec: provided } = {}) {
   const softBreakStats = collapseSoftLineBreaks(spec);
   const defaultRequiredStats = dropDefaultParameterRequired(spec);
   const successDescriptionStats = shortenGeneratedSuccessDescriptions(spec);
+  const exampleListStats = trimResponseExampleLists(spec);
 
   // Minified: this artifact is machine-consumed (scanners/agents), and the
   // smaller payload dodges fetch-size caps. The YAML remains the human copy.
@@ -365,6 +406,7 @@ export function buildBundle({ spec: provided } = {}) {
     softBreakStats,
     defaultRequiredStats,
     successDescriptionStats,
+    exampleListStats,
     excludedStats,
   };
 }

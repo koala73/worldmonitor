@@ -557,6 +557,42 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_no2_activity`
+
+基于 Sentinel-5P 对流层 NO2 的工业活动方向，覆盖 167 个国家和 32 个工业集群：最新 56 天窗口与前三年同期日期对比，给出 changePercent 以及经 10% 死区后的 direction。没有读数的区域带有 exclusion；在前几年数据仍在回填时，baseline_backfill_pending 是预期状态，不是故障。可按 country_code（该国及其境内集群）、region_id 或 kind 过滤。每日播种，从不实时调用 Copernicus；请转载 attribution。需要付费套餐；一次下游请求，API 套餐权重 2。只读。
+
+每个区域报告 `windowStart`、`windowEnd`、`validDays`（无云且通过质量过滤像元足够的天数）、以 mol/m2 计的平均 NO2 柱浓度、进入基线的往年年份、`changePercent`、`signalValue`（10% 死区之外的变化，死区内为 0）和 `direction`（`strengthening`、`weakening`、`unchanged`）。没有读数的区域 `direction: null`，并带有封闭词汇表中的 `exclusion`：`request_failed`、`baseline_backfill_pending`、`insufficient_valid_days`、`insufficient_baseline_years`。响应携带 `method`（由路由的 `methodVersion` 固定的常量）、`generatedAt`、`stale`（超过 72 小时健康预算时为 true）以及 `attribution` 中必须保留的署名，例如 "Contains modified Copernicus Sentinel data 2023-2026"。方法说明见[中国活动即时预测方法论](/zh/methodology/china-activity-nowcast)。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 说明 |
+|------|------|-------------|
+| `country_code` | string | 可选。ISO 3166-1 alpha-2 代码（"DE"）、alpha-3（"DEU"）或英文名称（"Germany"）。返回该国区域及其境内的所有集群；跨国集群（`gulf-states`、`rotterdam-antwerp`）没有国家代码。 |
+| `region_id` | string | 可选的注册表 id，例如 `country-cn` 或 `yangtze-river-delta`。与其他过滤条件按 AND 组合。 |
+| `kind` | `string: country / cluster` | 可选。`country` 为国家多边形，`cluster` 为命名工业集群；省略则两者都返回。 |
+
+**响应区分：** `unavailableReason` 使用 RPC 的封闭 `No2ActivityUnavailableReason` 枚举。`NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED` 是合约答案（过滤条件未命中任何注册区域，重试无效），`upstreamUnavailable: false`。`NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST` 是客户端错误（畸形过滤条件直接到达 handler；网关会先返回 HTTP 400），`upstreamUnavailable: false`。其余原因表示故障（`seed_missing`、`invalid_dataset`、`cache_unavailable`），`upstreamUnavailable: true`。区域级 `exclusion` 不会撤回整个响应：`baseline_backfill_pending`、`insufficient_valid_days` 和 `insufficient_baseline_years` 表示方法拒绝给出它无法支撑的读数，而 `request_failed` 表示该区域自身的来源刷新失败时间已超过保留数据的有效期。
+
+- **API 端点：** `GET /api/economic/v1/get-no2-activity`
+- **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：没有 `summary` 参数（用 `jmespath` 裁剪响应）。
+- **类型：** 规范 NO2 活动路由的 RPC 代理（handler 负责过滤、合约校验和未命中分类）。
+- **新鲜度预算：** 最多 **72 小时** 后 `stale`（每日播种节奏的三倍，与 `/api/health` 一致）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_no2_activity","arguments":{"country_code":"CN","kind":"cluster"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_wto_trade_flows`
 
 查询一个报告国与世界之间、可配置年份窗口内的 WTO 商品贸易流量。数据来自 WTO `ITS_MTV_AX`（出口）和 `ITS_MTV_AM`（进口）指标，每 6 小时播种一次；该工具读取与仪表板相同的播种快照，不会在每次请求时调用 WTO。
