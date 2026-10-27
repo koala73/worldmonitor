@@ -285,6 +285,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_supply_chain_data` | 干散货航运压力指数、海关流量、COMTRADE 双边贸易。 |
 | `get_price_and_debt_indicators` | 价格和债务指标：巨无霸指数、FAO 食品价格指数以及各国国债水平。 |
 | `get_wto_trade_flows` | 一个报告国与世界之间的 WTO 商品贸易流量（报告国使用 3 位 UN M49 代码，时间窗口为 1–30 年）。区分 `not_covered` 与故障。 |
+| `get_no2_activity` | 167 个国家和 32 个工业集群的 Sentinel-5P NO2 活动方向：最新 56 天窗口的同比变化（10% 死区）、区域级排除原因及 Copernicus 署名。可按国家、区域 id 或类型过滤。 |
 | `get_tariff_averages` | 一个国家按年份适用的平均关税：截至 2023 年的税则税率，不含 301/232 条款关税。WTO MFN 平均，或传入伙伴和/或 WITS 产品组时的实际适用简单平均和进口加权平均（UNCTAD TRAINS）。 |
 | `get_bilateral_tariff` | 两国之间某一 HS6 产品的关税：截至 2023 年的税则税率，不含 301/232 条款关税。某一年的适用、MFN 和优惠税率（UNCTAD TRAINS，经 WITS）。 |
 | `get_us_import_duty` | 美国当前对来自某国的某一 HTS 产品征收的关税：实时 HTS 基础税率，加上现行 301 和 232 条款关税，每项带状态。 |
@@ -410,6 +411,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_economic_data` | `GET /api/economic/v1/get-ecb-fx-rates`<br/>`GET /api/economic/v1/get-economic-calendar`<br/>`GET /api/economic/v1/get-eu-yield-curve`<br/>`GET /api/economic/v1/list-fuel-prices`<br/>`GET /api/market/v1/get-cot-positioning`<br/>`GET /api/market/v1/list-earnings-calendar` |
 | `get_price_and_debt_indicators` | `GET /api/economic/v1/get-fao-food-price-index`<br/>`GET /api/economic/v1/get-national-debt`<br/>`GET /api/economic/v1/list-bigmac-prices` |
 | `get_wto_trade_flows` | `GET /api/trade/v1/get-trade-flows` |
+| `get_no2_activity` | `GET /api/economic/v1/get-no2-activity` |
 | `get_tariff_averages` | `GET /api/trade/v1/get-tariff-trends` |
 | `get_bilateral_tariff` | `GET /api/trade/v1/get-bilateral-tariff` |
 | `get_us_import_duty` | `GET /api/trade/v1/get-us-import-duty` |
