@@ -127,6 +127,7 @@ export interface ListMediaPerspectiveRequest {
   outletCountries: string[];
   audience: string;
   windowHours: number;
+  outletRegions: string[];
 }
 
 export interface ListMediaPerspectiveResponse {
@@ -469,6 +470,7 @@ export class NewsServiceClient {
     if (req.outletCountries && req.outletCountries.length > 0) req.outletCountries.forEach(v => params.append("outlet_countries", v));
     if (req.audience != null && req.audience !== "") params.set("audience", String(req.audience));
     if (req.windowHours != null && req.windowHours !== 0) params.set("window_hours", String(req.windowHours));
+    if (req.outletRegions && req.outletRegions.length > 0) req.outletRegions.forEach(v => params.append("outlet_regions", v));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

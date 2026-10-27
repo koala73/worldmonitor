@@ -7,6 +7,7 @@ import { REVOKED_URLS_KEY } from '../server/_shared/digest-revocations';
 import { drainResponseHeaders } from '../server/_shared/response-headers';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
 import { MEDIA_PERSPECTIVE_CACHE_PREFIX } from '../server/worldmonitor/news/v1/list-media-perspective';
+import { unM49RegionCountries } from '../server/_shared/un-m49-regions';
 import { createNewsServiceRoutes, type ListMediaPerspectiveResponse } from '../src/generated/server/worldmonitor/news/v1/service_server';
 import { validateGeneratedRequest } from '../server/request-validator';
 
@@ -149,6 +150,31 @@ describe('ListMediaPerspective', () => {
     assert.deepEqual(payload.noCoverageCountries, ['EG']);
   });
 
+  it('expands an outlet region, so one call covers a whole region', async () => {
+    put('Clarín', [article('Clarín', 'Finland tops the world happiness ranking again')]);
+    put('Mexico News Daily', [article('Mexico News Daily', 'Finland opens its schools to Mexican teachers')]);
+    put('BBC World', [article('BBC World', 'Finland reinforces its eastern border')]);
+
+    const { payload } = await request({ subject_country: 'FI', outlet_regions: 'latin-america-and-the-caribbean' });
+    const latam = unM49RegionCountries('latin-america-and-the-caribbean')!;
+    assert.deepEqual(payload.groups.map(entry => `${entry.homeCountry}/${entry.audience}`).sort(), ['AR/domestic', 'MX/international']);
+    assert.ok(latam.length > 30, 'a whole region exceeds the outlet_countries cap');
+    assert.deepEqual(payload.noCoverageCountries, latam.filter(code => code !== 'AR' && code !== 'MX').sort());
+  });
+
+  it('keys a region and its spelled-out countries alike, and adds listed countries to it', async () => {
+    put('Clarín', [article('Clarín', 'Finland tops the world happiness ranking again')]);
+
+    await request({ subject_country: 'FI', outlet_regions: 'Latin-America-and-the-Caribbean' });
+    const latamKey = `${MEDIA_PERSPECTIVE_CACHE_PREFIX}:FI:${[...unM49RegionCountries('latin-america-and-the-caribbean')!].sort().join(',')}:*:72`;
+    assert.deepEqual([...writes.keys()].map(key => key.slice(key.indexOf(MEDIA_PERSPECTIVE_CACHE_PREFIX))), [latamKey]);
+
+    writes.clear();
+    const { payload } = await request({ subject_country: 'FI', outlet_regions: 'latin-america-and-the-caribbean', outlet_countries: ['GB'] });
+    assert.ok(payload.noCoverageCountries.includes('GB'), 'listed countries join the region');
+    assert.ok(!payload.noCoverageCountries.includes('AR'));
+  });
+
   it('filters by audience', async () => {
     put('BBC UK', [article('BBC UK', 'UK minister visits Saudi Arabia')]);
     put('BBC World', [article('BBC World', 'Saudi Arabia hosts ceasefire talks')]);
@@ -198,6 +224,8 @@ describe('ListMediaPerspective', () => {
       { subject_country: 'SA', window_hours: '50' },
       { subject_country: 'SA', audience: 'elite' },
       { subject_country: 'SA', outlet_countries: ['Saudi'] },
+      { subject_country: 'SA', outlet_regions: 'atlantis' },
+      { subject_country: 'SA', outlet_regions: 'latam' },
     ]) {
       const { res } = await request(params);
       assert.equal(res.status, 400, JSON.stringify(params));

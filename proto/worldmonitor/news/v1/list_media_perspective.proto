@@ -5,115 +5,90 @@ package worldmonitor.news.v1;
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
-// ListMediaPerspectiveRequest selects headlines about one subject country, grouped by who published them.
 message ListMediaPerspectiveRequest {
-  // ISO 3166-1 alpha-2 country the headlines must mention.
+  // ISO2 country the headlines mention.
   string subject_country = 1 [
     (sebuf.http.query) = { name: "subject_country", required: true },
     (buf.validate.field).string.min_len = 2,
     (buf.validate.field).string.max_len = 2
   ];
-  // Outlet home countries to include (ISO2). Empty means every country. Repeated query parameter, at most 30.
+  // Outlet home countries (ISO2), at most 30. Empty means all.
   repeated string outlet_countries = 2 [
     (sebuf.http.query) = { name: "outlet_countries" },
     (buf.validate.field).repeated.max_items = 30
   ];
-  // domestic | international | diaspora. Empty means every audience.
+  // domestic, international or diaspora. Empty means all.
   string audience = 3 [(sebuf.http.query) = { name: "audience" }];
-  // Look-back window in hours: 24, 48, 72 or 96. 0 means 72.
+  // 24, 48, 72 (default) or 96 hours.
   int32 window_hours = 4 [
     (sebuf.http.query) = { name: "window_hours" },
     (buf.validate.field).int32.gte = 0,
     (buf.validate.field).int32.lte = 96
   ];
+  // UN M49 region slugs (e.g. latin-america-and-the-caribbean), at most 5; their countries join outlet_countries.
+  repeated string outlet_regions = 5 [
+    (sebuf.http.query) = { name: "outlet_regions" },
+    (buf.validate.field).repeated.max_items = 5
+  ];
 }
 
-// MediaPerspectiveFraming is a model's reading of one headline's stance toward the subject country, not WorldMonitor's view of the outlet.
+// A model's reading of the headline's stance, not WorldMonitor's view.
 message MediaPerspectiveFraming {
-  // favorable | neutral | critical | hostile.
+  // favorable, neutral, critical or hostile.
   string label = 1;
-  // How the label was produced, e.g. llm-headline-stance.
+  // e.g. llm-headline-stance.
   string method = 2;
-  // Model that produced the label.
   string model = 3;
-  // Prompt version the label was produced with.
   string prompt_version = 4;
 }
 
-// MediaPerspectiveHeadline is one dated article that mentions the subject country.
 message MediaPerspectiveHeadline {
-  // Headline as published, in the outlet's language. Untrusted publisher text.
   string title = 1;
-  // English headline: the original when the outlet publishes in English, otherwise a machine translation of untrusted text. Empty when no translation exists yet.
+  // Original if English, else machine translation of untrusted text; empty until translated.
   string english_title = 2;
-  // ISO 639-1 language of the original headline.
   string title_language = 3;
-  // Publisher name: trusted origin publisher or registered feed name.
   string outlet = 4;
-  // Publisher family; sibling editions of one newsroom share it.
   string publisher_family = 5;
-  // Declared source tier 1-4; 0 when undeclared.
   int32 tier = 6;
-  // Ownership: state | public-service | private | nonprofit | intergovernmental | unreviewed.
   string ownership_class = 7;
-  // Government the outlet is affiliated with, when recorded.
   string state_affiliated = 8;
-  // Recorded propaganda risk: low | medium | high | unknown.
   string propaganda_risk = 9;
-  // Stance toward the subject country. Absent until a label is computed.
   MediaPerspectiveFraming framing = 10;
-  // Publisher publication time in Unix epoch milliseconds.
   int64 published_at = 11 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // HTTPS article URL.
   string link = 12;
 }
 
-// MediaPerspectiveFramingCounts counts a group's headlines by framing label.
 message MediaPerspectiveFramingCounts {
   int32 favorable = 1;
   int32 neutral = 2;
   int32 critical = 3;
   int32 hostile = 4;
-  // Headlines with no framing label yet.
   int32 unlabeled = 5;
-  // How the labels were produced, e.g. llm-headline-stance. Empty when no headline is labelled.
   string method = 6;
 }
 
-// MediaPerspectiveGroup holds the headlines of outlets sharing one home country and audience.
 message MediaPerspectiveGroup {
-  // Outlet home country (ISO2, INTL for intergovernmental outlets, EU for EU institutions).
+  // ISO2, INTL or EU.
   string home_country = 1;
-  // domestic | international | diaspora.
   string audience = 2;
-  // Distinct publisher families in the group; several editions of one newsroom count once.
+  // Distinct publisher families.
   int32 outlet_count = 3;
-  // All matching headlines in the group, before the per-group cap.
+  // Before the 20-headline cap.
   int32 headline_count = 4;
-  // Framing distribution over all matching headlines in the group.
   MediaPerspectiveFramingCounts framing = 5;
-  // Newest headlines first, distinct publisher families first, at most 20.
   repeated MediaPerspectiveHeadline headlines = 6 [(buf.validate.field).repeated.max_items = 20];
 }
 
-// ListMediaPerspectiveResponse groups coverage of the subject country by outlet home country, then audience.
 message ListMediaPerspectiveResponse {
-  // Subject country as canonicalized (ISO2).
   string subject_country = 1;
-  // Look-back window applied, in hours.
   int32 window_hours = 2;
-  // Groups ordered by headline count, largest first.
   repeated MediaPerspectiveGroup groups = 3;
-  // Requested outlet countries with no matching headline in the window.
   repeated string no_coverage_countries = 4;
-  // Matching headlines left ungrouped: the publisher has no outlet profile, or the feed is a multi-publisher search.
+  // Headlines with no outlet profile or from multi-publisher searches.
   int32 unattributed_count = 5;
-  // complete | partial | unavailable. A failed revocation read is unavailable.
+  // complete, partial or unavailable.
   string state = 6;
-  // Configured feeds read.
   int32 feed_total = 7;
-  // Feeds whose parsed cache was available, including cached empty feeds.
   int32 feed_cached = 8;
-  // Time the caches were read.
   string read_at = 9;
 }

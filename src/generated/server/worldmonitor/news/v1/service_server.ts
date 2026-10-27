@@ -127,6 +127,7 @@ export interface ListMediaPerspectiveRequest {
   outletCountries: string[];
   audience: string;
   windowHours: number;
+  outletRegions: string[];
 }
 
 export interface ListMediaPerspectiveResponse {
@@ -575,6 +576,7 @@ export function createNewsServiceRoutes(
             outletCountries: params.getAll("outlet_countries"),
             audience: params.get("audience") ?? "",
             windowHours: Number(params.get("window_hours") ?? "0"),
+            outletRegions: params.getAll("outlet_regions"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listMediaPerspective", body);

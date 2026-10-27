@@ -15,6 +15,7 @@ import { getSourcePropagandaRisk } from '../../../../shared/source-provenance';
 import { countryMentionTerms, mentionsCountry } from '../../../../shared/country-mention.js';
 import { publisherFamilyFor } from '../../../../shared/publisher-families.js';
 import { isVerifiableArticleUrl } from '../../../../shared/article-url.js';
+import { UN_M49_REGION_IDS, unM49RegionCountries } from '../../../_shared/un-m49-regions';
 import { INTEL_SOURCES, VARIANT_FEEDS } from './_feeds';
 import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
 
@@ -38,11 +39,17 @@ function canonicalQuery(req: ListMediaPerspectiveRequest): Query {
   if (!COUNTRY_CODE.test(subject) || subject === INTERNATIONAL_HOME) {
     throw new ValidationError([{ field: 'subject_country', description: 'Use an ISO 3166-1 alpha-2 country code' }]);
   }
-  const outletCountries = [...new Set(req.outletCountries.map(code => code.trim().toUpperCase()).filter(Boolean))].sort();
-  const invalid = outletCountries.find(code => !COUNTRY_CODE.test(code) && code !== INTERNATIONAL_HOME);
-  if (invalid !== undefined || outletCountries.length > OUTLET_COUNTRY_LIMIT) {
+  const listed = [...new Set(req.outletCountries.map(code => code.trim().toUpperCase()).filter(Boolean))];
+  const invalid = listed.find(code => !COUNTRY_CODE.test(code) && code !== INTERNATIONAL_HOME);
+  if (invalid !== undefined || listed.length > OUTLET_COUNTRY_LIMIT) {
     throw new ValidationError([{ field: 'outlet_countries', description: `Use at most ${OUTLET_COUNTRY_LIMIT} ISO 3166-1 alpha-2 codes (or INTL)` }]);
   }
+  const regionCountries = req.outletRegions.map(region => unM49RegionCountries(region.trim().toLowerCase()));
+  if (regionCountries.some(countries => countries === null)) {
+    throw new ValidationError([{ field: 'outlet_regions', description: `Use UN M49 region slugs: ${UN_M49_REGION_IDS.join(', ')}` }]);
+  }
+  // The key carries the expanded country list, so regions and their spelled-out countries share one entry.
+  const outletCountries = [...new Set([...listed, ...regionCountries.flatMap(countries => countries ?? [])])].sort();
   const audience = req.audience.trim().toLowerCase();
   if (audience && !(OUTLET_AUDIENCES as readonly string[]).includes(audience)) {
     throw new ValidationError([{ field: 'audience', description: `Use one of ${OUTLET_AUDIENCES.join(', ')}` }]);

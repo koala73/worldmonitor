@@ -37,7 +37,7 @@ service NewsService {
     option (sebuf.http.config) = {path: "/list-country-headlines", method: HTTP_METHOD_GET};
   }
 
-  // ListMediaPerspective groups recent headlines about one country by the publishing outlet's home country and intended audience (domestic, international, diaspora), with ownership, tier and headline framing per item.
+  // ListMediaPerspective groups headlines about one country by outlet home country and audience.
   rpc ListMediaPerspective(ListMediaPerspectiveRequest) returns (ListMediaPerspectiveResponse) {
     option (sebuf.http.config) = {path: "/list-media-perspective", method: HTTP_METHOD_GET};
   }

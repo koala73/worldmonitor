@@ -4,6 +4,7 @@ import { buildAuthHeaders } from '../auth';
 import { RpcValidationError } from '../billing-denial';
 import { assertMcpToolFetchOk, fetchMcpDownstream } from '../downstream';
 import { OUTLET_AUDIENCES, OWNERSHIP_CLASSES } from '../../../server/_shared/outlet-profile';
+import { UN_M49_REGION_IDS } from '../../../server/_shared/un-m49-regions';
 
 const TOOL = 'get_media_perspective';
 const WINDOW_HOURS = [24, 48, 72, 96];
@@ -12,6 +13,7 @@ const FRAMING_LABELS = ['favorable', 'neutral', 'critical', 'hostile'];
 interface Args {
   subject: string;
   outletCountries: string[];
+  outletRegions: string[];
   audience: string;
   windowHours: number;
 }
@@ -20,6 +22,11 @@ function parseArgs(params: Record<string, unknown>): Args {
   const subject = requireCountryCode(params.subject_country, TOOL, 'subject_country');
   const outletCountries = resolveCountryFilter(params.outlet_countries, 'outlet_countries').map(code => code.toUpperCase());
   if (outletCountries.length > 30) throw new RpcValidationError(TOOL, [{ field: 'outlet_countries', description: 'Use at most 30 countries.' }]);
+  const outletRegions = params.outlet_regions ?? [];
+  if (!Array.isArray(outletRegions) || outletRegions.length > 5
+    || outletRegions.some(region => typeof region !== 'string' || !UN_M49_REGION_IDS.includes(region))) {
+    throw new RpcValidationError(TOOL, [{ field: 'outlet_regions', description: 'Use at most 5 UN M49 region slugs from the enum.' }]);
+  }
   const audience = params.audience ?? '';
   if (typeof audience !== 'string' || (audience && !(OUTLET_AUDIENCES as readonly string[]).includes(audience))) {
     throw new RpcValidationError(TOOL, [{ field: 'audience', description: `Use one of ${OUTLET_AUDIENCES.join(', ')}.` }]);
@@ -28,7 +35,7 @@ function parseArgs(params: Record<string, unknown>): Args {
   if (typeof windowHours !== 'number' || !WINDOW_HOURS.includes(windowHours)) {
     throw new RpcValidationError(TOOL, [{ field: 'window_hours', description: `Use one of ${WINDOW_HOURS.join(', ')}.` }]);
   }
-  return { subject, outletCountries, audience, windowHours };
+  return { subject, outletCountries, outletRegions, audience, windowHours };
 }
 
 const framing = {
@@ -74,6 +81,7 @@ export const MEDIA_PERSPECTIVE_TOOL: ToolDef = {
     properties: {
       subject_country: { type: 'string', description: 'Country the headlines must mention: ISO alpha-2 code (SA) or name.' },
       outlet_countries: { type: 'array', maxItems: 30, items: { type: 'string' }, description: 'Only outlets based in these countries (ISO alpha-2 or names). Omit for every country.' },
+      outlet_regions: { type: 'array', maxItems: 5, items: { type: 'string', enum: UN_M49_REGION_IDS }, description: 'Only outlets based in these UN M49 regions (e.g. latin-america-and-the-caribbean, northern-europe; western-asia plus northern-africa for MENA). Their countries join outlet_countries; those without coverage are listed in noCoverageCountries.' },
       audience: { type: 'string', enum: [...OUTLET_AUDIENCES], description: 'Only outlets writing for this audience. Omit for all.' },
       window_hours: { type: 'integer', enum: WINDOW_HOURS, description: 'Look-back window in hours. Defaults to 72.' },
     },
@@ -117,6 +125,7 @@ export const MEDIA_PERSPECTIVE_TOOL: ToolDef = {
     const args = parseArgs(params);
     const query = new URLSearchParams({ subject_country: args.subject, window_hours: String(args.windowHours) });
     for (const code of args.outletCountries) query.append('outlet_countries', code);
+    for (const region of args.outletRegions) query.append('outlet_regions', region);
     if (args.audience) query.set('audience', args.audience);
     const url = `${base}/api/news/v1/list-media-perspective?${query}`;
     const response = await fetchMcpDownstream(url, { headers: { ...await buildAuthHeaders(context, 'GET', url, null), 'User-Agent': 'worldmonitor-mcp-edge/1.0' }, signal: AbortSignal.timeout(8000) }, execution);

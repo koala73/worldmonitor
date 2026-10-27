@@ -26,8 +26,10 @@ describe('get_media_perspective', () => {
   it('rejects an unknown audience or an unsupported window', () => {
     rejects({ subject_country: 'SA', audience: 'elite' }, 'audience');
     rejects({ subject_country: 'SA', window_hours: 50 }, 'window_hours');
+    rejects({ subject_country: 'SA', outlet_regions: ['latam'] }, 'outlet_regions');
+    rejects({ subject_country: 'SA', outlet_regions: 'europe' }, 'outlet_regions');
     assert.deepEqual(tool._validateArgs({ subject_country: 'SA', outlet_countries: ['Iran', 'EG'], audience: 'domestic', window_hours: 24 }),
-      { subject: 'SA', outletCountries: ['IR', 'EG'], audience: 'domestic', windowHours: 24 });
+      { subject: 'SA', outletCountries: ['IR', 'EG'], outletRegions: [], audience: 'domestic', windowHours: 24 });
   });
 
   it('forwards canonical arguments to the API route', async () => {
@@ -38,7 +40,7 @@ describe('get_media_perspective', () => {
       return Response.json({ subjectCountry: 'SA', windowHours: 24, groups: [], noCoverageCountries: [], unattributedCount: 0, state: 'complete' });
     };
     try {
-      await tool._execute({ subject_country: 'SA', outlet_countries: ['IR', 'EG'], audience: 'domestic', window_hours: 24 }, 'https://api.example.test', { kind: 'env_key', apiKey: 'wm_fixture' });
+      await tool._execute({ subject_country: 'SA', outlet_countries: ['IR', 'EG'], outlet_regions: ['western-asia', 'northern-africa'], audience: 'domestic', window_hours: 24 }, 'https://api.example.test', { kind: 'env_key', apiKey: 'wm_fixture' });
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -46,6 +48,7 @@ describe('get_media_perspective', () => {
     assert.equal(url.pathname, '/api/news/v1/list-media-perspective');
     assert.equal(url.searchParams.get('subject_country'), 'SA');
     assert.deepEqual(url.searchParams.getAll('outlet_countries'), ['IR', 'EG']);
+    assert.deepEqual(url.searchParams.getAll('outlet_regions'), ['western-asia', 'northern-africa']);
     assert.equal(url.searchParams.get('audience'), 'domestic');
     assert.equal(url.searchParams.get('window_hours'), '24');
   });
