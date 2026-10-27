@@ -899,12 +899,14 @@ curl -s https://worldmonitor.app/mcp \
 | `query` | string | 仅保留标题包含此文本的市场（不区分大小写）。 |
 | `source` | string: kalshi / polymarket | 筛选为一个预测市场来源。Kalshi 目前不提供分类器标签，因此与 `category=tech` 组合不会返回记录。 |
 | `sort` | string: rank / move_24h / move_7d | 默认 `rank` 保留种子排序。`move_24h` 和 `move_7d` 在每个类别内按变化绝对值降序排列，然后应用 limit；缺失值排在最后。 |
+| `min_liquidity` | number | 仅保留流动性（以美元计的挂单深度）不低于此值的市场，在 limit 之前应用。大于 0 时，没有流动性数据的市场（例如订单簿获取失败的 Kalshi 市场）会被排除。 |
 | `limit` | number | 限制每个类别的记录数，默认 30。零或负数表示不限。正小数使用整数部分。 |
 | `refresh` | boolean | 仅限付费面板。默认 false 复用预测分配。true 必须附带 UUID request_id，并开始一次新分配。刷新时省略 panel_request。 |
 | `request_id` | string | 付费刷新 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
 | `panel_request` | string | 服务器签发的预测凭据，用于到期前的授权精选读取。API 和免费账户调用不接受该凭据。 |
 
 - **概率变化：** 可选 `change24h` 和 `change7d` 为 `yesPrice` 0–100 标度的百分点变化。上游缺失时不返回该字段，零表示没有变化。Kalshi 仅提供 24 小时变化。REST 的 `yesPriceChange24h` 和 `yesPriceChange7d` 使用 0–1 概率标度。
+- **流动性：** 可选 `liquidity` 为按交易场所计算的美元挂单深度。Polymarket 记录使用 Gamma 的 CLOB 流动性（`liquidity`，等于 `liquidityClob`）：类别桶记录为事件级，国家记录为合约级。Kalshi 记录对合约订单簿中全部 yes 与 no 买单的价格乘以数量求和。两个场所的计算方式不同，阈值宜在同一来源内比较。场所未报告或订单簿获取失败时不返回该字段。REST 以 `min_liquidity` 接受同一筛选。
 - **API 端点：** `GET /api/prediction/v1/list-prediction-markets`
 - **访问：** `free-account`，任意已登录账户均可调用。免费账户消耗每日免费额度，API 套餐仍按工具权重计费。接受通用 `summary` 参数。
 - **付费面板计量：** Pro 与 Pro Business 打开面板扣一次额度。规范化筛选与重复打开在五分钟内复用预测分配。返回的 `panelRequest.token` 在到期前授权精选预测读取。本地类别展开只读取已加载数据，不发起新的工具调用。每份分配最多允许 64 次未缓存工具执行，未缓存执行与已确认缓存回放分别限制为每分钟 64 次。工具执行次数不等于单条 Redis 命令数。

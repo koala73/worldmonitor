@@ -116,7 +116,7 @@ describe('ListMediaPerspective', () => {
     assert.equal(saudi.outlet, 'Al Arabiya');
     assert.equal(saudi.ownershipClass, 'state');
     assert.equal(saudi.englishTitle, saudi.title);
-    assert.equal(saudi.framing, undefined, 'no framing label before the background job computes one');
+    assert.equal(saudi.framing, '', 'no framing label before the background job computes one');
     assert.equal(group(payload, 'SA', 'international')!.framing!.unlabeled, 1);
     assert.equal(drainResponseHeaders(req)?.['X-No-Cache'], undefined, 'a complete response stays cacheable');
   });

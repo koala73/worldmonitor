@@ -38,17 +38,6 @@ function parseArgs(params: Record<string, unknown>): Args {
   return { subject, outletCountries, outletRegions, audience, windowHours };
 }
 
-const framing = {
-  type: 'object',
-  required: ['label', 'method', 'model', 'promptVersion'],
-  properties: {
-    label: { type: 'string', enum: FRAMING_LABELS },
-    method: { type: 'string', description: 'How the label was produced, e.g. llm-headline-stance.' },
-    model: { type: 'string' },
-    promptVersion: { type: 'string' },
-  },
-};
-
 const headline = {
   type: 'object',
   required: ['title', 'englishTitle', 'titleLanguage', 'outlet', 'publisherFamily', 'tier', 'ownershipClass', 'propagandaRisk', 'publishedAt', 'link'],
@@ -62,7 +51,7 @@ const headline = {
     ownershipClass: { type: 'string', enum: [...OWNERSHIP_CLASSES] },
     stateAffiliated: { type: 'string', description: 'Government the outlet is affiliated with, when recorded.' },
     propagandaRisk: { type: 'string' },
-    framing,
+    framing: { type: 'string', enum: [...FRAMING_LABELS, ''], description: 'A model\'s reading of the headline\'s stance toward the subject; empty until labelled. The group framing names the method and model.' },
     publishedAt: { type: 'number', description: 'Unix epoch milliseconds.' },
     link: { type: 'string' },
   },
@@ -98,7 +87,8 @@ export const MEDIA_PERSPECTIVE_TOOL: ToolDef = {
         outletCount: { type: 'integer', description: 'Distinct publisher families.' },
         headlineCount: { type: 'integer', description: 'All matching headlines in the group; more than headlines.length when capped or trimmed for size.' },
         framing: { type: 'object', properties: {
-          favorable: { type: 'integer' }, neutral: { type: 'integer' }, critical: { type: 'integer' }, hostile: { type: 'integer' }, unlabeled: { type: 'integer' }, method: { type: 'string' },
+          favorable: { type: 'integer' }, neutral: { type: 'integer' }, critical: { type: 'integer' }, hostile: { type: 'integer' }, unlabeled: { type: 'integer' },
+          method: { type: 'string', description: 'How the labels were produced, e.g. llm-headline-stance.' }, model: { type: 'string' }, promptVersion: { type: 'string' },
         } },
         headlines: { type: 'array', maxItems: 20, items: headline },
       } } },

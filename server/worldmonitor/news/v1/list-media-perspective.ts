@@ -119,7 +119,7 @@ function headlineFor(row: Row, profile: OutletProfile): MediaPerspectiveHeadline
     ownershipClass: profile.ownershipClass,
     stateAffiliated: risk.stateAffiliated ?? '',
     propagandaRisk: risk.risk,
-    framing: undefined,
+    framing: '',
     publishedAt: row.publishedAt,
     link: row.link,
   };
@@ -147,7 +147,7 @@ function buildGroup(homeCountry: string, audience: string, items: MediaPerspecti
     audience,
     outletCount: new Set(items.map(item => item.publisherFamily)).size,
     headlineCount: items.length,
-    framing: { favorable: 0, neutral: 0, critical: 0, hostile: 0, unlabeled: items.length, method: '' },
+    framing: { favorable: 0, neutral: 0, critical: 0, hostile: 0, unlabeled: items.length, method: '', model: '', promptVersion: '' },
     headlines: selectHeadlines(items),
   };
 }

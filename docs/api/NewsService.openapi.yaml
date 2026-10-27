@@ -600,14 +600,14 @@ paths:
             parameters:
                 - name: subject_country
                   in: query
-                  description: ISO2 country the headlines mention.
+                  description: ISO2.
                   required: true
                   example: "US"
                   schema:
                     type: string
                 - name: outlet_countries
                   in: query
-                  description: Outlet home countries (ISO2), at most 30. Empty means all.
+                  description: ISO2, at most 30.
                   required: false
                   style: form
                   explode: true
@@ -619,14 +619,14 @@ paths:
                         type: string
                 - name: audience
                   in: query
-                  description: domestic, international or diaspora. Empty means all.
+                  description: domestic, international or diaspora.
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: window_hours
                   in: query
-                  description: 24, 48, 72 (default) or 96 hours.
+                  description: 24, 48, 72 or 96.
                   required: false
                   example: 1
                   schema:
@@ -634,7 +634,7 @@ paths:
                     format: int32
                 - name: outlet_regions
                   in: query
-                  description: UN M49 region slugs (e.g. latin-america-and-the-caribbean), at most 5; their countries join outlet_countries.
+                  description: UN M49 region slugs, e.g. northern-europe.
                   required: false
                   style: form
                   explode: true
@@ -667,15 +667,11 @@ paths:
                                           "favorable": 1
                                           "hostile": 1
                                           "method": "example"
-                                          "neutral": 1
+                                          "model": "example"
                                       "headlineCount": 1
                                       "headlines":
                                           - "englishTitle": "example"
-                                            "framing":
-                                                "label": "example"
-                                                "method": "example"
-                                                "model": "example"
-                                                "promptVersion": "example"
+                                            "framing": "example"
                                             "link": "https://example.com/worldmonitor"
                                             "outlet": "example"
                                             "ownershipClass": "example"
@@ -1967,29 +1963,29 @@ components:
                     type: string
                     maxLength: 2
                     minLength: 2
-                    description: ISO2 country the headlines mention.
+                    description: ISO2.
                 outletCountries:
                     type: array
                     items:
                         type: string
                         maxItems: 30
-                        description: Outlet home countries (ISO2), at most 30. Empty means all.
+                        description: ISO2, at most 30.
                     maxItems: 30
                 audience:
                     type: string
-                    description: domestic, international or diaspora. Empty means all.
+                    description: domestic, international or diaspora.
                 windowHours:
                     type: integer
                     maximum: 96
                     minimum: 0
                     format: int32
-                    description: 24, 48, 72 (default) or 96 hours.
+                    description: 24, 48, 72 or 96.
                 outletRegions:
                     type: array
                     items:
                         type: string
                         maxItems: 5
-                        description: UN M49 region slugs (e.g. latin-america-and-the-caribbean), at most 5; their countries join outlet_countries.
+                        description: UN M49 region slugs, e.g. northern-europe.
                     maxItems: 5
             required:
                 - subjectCountry
@@ -2012,7 +2008,7 @@ components:
                 unattributedCount:
                     type: integer
                     format: int32
-                    description: Headlines with no outlet profile or from multi-publisher searches.
+                    description: No outlet profile or multi-publisher feed.
                 state:
                     type: string
                     description: complete, partial or unavailable.
@@ -2029,13 +2025,12 @@ components:
             properties:
                 homeCountry:
                     type: string
-                    description: ISO2, INTL or EU.
                 audience:
                     type: string
                 outletCount:
                     type: integer
                     format: int32
-                    description: Distinct publisher families.
+                    description: Publisher families.
                 headlineCount:
                     type: integer
                     format: int32
@@ -2067,6 +2062,11 @@ components:
                     format: int32
                 method:
                     type: string
+                    description: e.g. llm-headline-stance.
+                model:
+                    type: string
+                promptVersion:
+                    type: string
         MediaPerspectiveHeadline:
             type: object
             properties:
@@ -2074,7 +2074,7 @@ components:
                     type: string
                 englishTitle:
                     type: string
-                    description: Original if English, else machine translation of untrusted text; empty until translated.
+                    description: Machine translation unless English; untrusted.
                 titleLanguage:
                     type: string
                 outlet:
@@ -2091,27 +2091,14 @@ components:
                 propagandaRisk:
                     type: string
                 framing:
-                    $ref: '#/components/schemas/MediaPerspectiveFraming'
+                    type: string
+                    description: favorable, neutral, critical or hostile.
                 publishedAt:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
                 link:
                     type: string
-        MediaPerspectiveFraming:
-            type: object
-            properties:
-                label:
-                    type: string
-                    description: favorable, neutral, critical or hostile.
-                method:
-                    type: string
-                    description: e.g. llm-headline-stance.
-                model:
-                    type: string
-                promptVersion:
-                    type: string
-            description: A model's reading of the headline's stance, not WorldMonitor's view.
         ListLabelChangesRequest:
             type: object
             properties:

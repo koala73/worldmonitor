@@ -26201,14 +26201,14 @@ paths:
             parameters:
                 - name: subject_country
                   in: query
-                  description: ISO2 country the headlines mention.
+                  description: ISO2.
                   required: true
                   example: "US"
                   schema:
                     type: string
                 - name: outlet_countries
                   in: query
-                  description: Outlet home countries (ISO2), at most 30. Empty means all.
+                  description: ISO2, at most 30.
                   required: false
                   style: form
                   explode: true
@@ -26220,14 +26220,14 @@ paths:
                         type: string
                 - name: audience
                   in: query
-                  description: domestic, international or diaspora. Empty means all.
+                  description: domestic, international or diaspora.
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: window_hours
                   in: query
-                  description: 24, 48, 72 (default) or 96 hours.
+                  description: 24, 48, 72 or 96.
                   required: false
                   example: 1
                   schema:
@@ -26235,7 +26235,7 @@ paths:
                     format: int32
                 - name: outlet_regions
                   in: query
-                  description: UN M49 region slugs (e.g. latin-america-and-the-caribbean), at most 5; their countries join outlet_countries.
+                  description: UN M49 region slugs, e.g. northern-europe.
                   required: false
                   style: form
                   explode: true
@@ -26268,15 +26268,11 @@ paths:
                                           "favorable": 1
                                           "hostile": 1
                                           "method": "example"
-                                          "neutral": 1
+                                          "model": "example"
                                       "headlineCount": 1
                                       "headlines":
                                           - "englishTitle": "example"
-                                            "framing":
-                                                "label": "example"
-                                                "method": "example"
-                                                "model": "example"
-                                                "promptVersion": "example"
+                                            "framing": "example"
                                             "link": "https://example.com/worldmonitor"
                                             "outlet": "example"
                                             "ownershipClass": "example"
@@ -27126,6 +27122,17 @@ paths:
                   example: "supply chain risk"
                   schema:
                     type: string
+                - name: min_liquidity
+                  in: query
+                  description: |-
+                    Optional minimum liquidity (resting order-book depth in USD). When above 0,
+                     only markets with liquidity at or above this value are returned; markets
+                     without a liquidity value are dropped. Applied before page_size.
+                  required: false
+                  example: 1.5
+                  schema:
+                    type: number
+                    format: double
                 - name: jmespath
                   in: query
                   description: |-
@@ -27146,9 +27153,9 @@ paths:
                                     - "category": "cs.AI"
                                       "closesAt": 1717200000000
                                       "id": "example-id"
+                                      "liquidity": 1.5
                                       "source": "MARKET_SOURCE_POLYMARKET"
                                       "title": "example"
-                                      "url": "https://example.com/worldmonitor"
                                 "pagination":
                                     "nextCursor": "next-page-token"
                                     "totalCount": 1
@@ -55697,29 +55704,29 @@ components:
                     type: string
                     maxLength: 2
                     minLength: 2
-                    description: ISO2 country the headlines mention.
+                    description: ISO2.
                 outletCountries:
                     type: array
                     items:
                         type: string
                         maxItems: 30
-                        description: Outlet home countries (ISO2), at most 30. Empty means all.
+                        description: ISO2, at most 30.
                     maxItems: 30
                 audience:
                     type: string
-                    description: domestic, international or diaspora. Empty means all.
+                    description: domestic, international or diaspora.
                 windowHours:
                     type: integer
                     maximum: 96
                     minimum: 0
                     format: int32
-                    description: 24, 48, 72 (default) or 96 hours.
+                    description: 24, 48, 72 or 96.
                 outletRegions:
                     type: array
                     items:
                         type: string
                         maxItems: 5
-                        description: UN M49 region slugs (e.g. latin-america-and-the-caribbean), at most 5; their countries join outlet_countries.
+                        description: UN M49 region slugs, e.g. northern-europe.
                     maxItems: 5
             required:
                 - subjectCountry
@@ -55742,7 +55749,7 @@ components:
                 unattributedCount:
                     type: integer
                     format: int32
-                    description: Headlines with no outlet profile or from multi-publisher searches.
+                    description: No outlet profile or multi-publisher feed.
                 state:
                     type: string
                     description: complete, partial or unavailable.
@@ -55759,13 +55766,12 @@ components:
             properties:
                 homeCountry:
                     type: string
-                    description: ISO2, INTL or EU.
                 audience:
                     type: string
                 outletCount:
                     type: integer
                     format: int32
-                    description: Distinct publisher families.
+                    description: Publisher families.
                 headlineCount:
                     type: integer
                     format: int32
@@ -55797,6 +55803,11 @@ components:
                     format: int32
                 method:
                     type: string
+                    description: e.g. llm-headline-stance.
+                model:
+                    type: string
+                promptVersion:
+                    type: string
         worldmonitor_news_v1_MediaPerspectiveHeadline:
             type: object
             properties:
@@ -55804,7 +55815,7 @@ components:
                     type: string
                 englishTitle:
                     type: string
-                    description: Original if English, else machine translation of untrusted text; empty until translated.
+                    description: Machine translation unless English; untrusted.
                 titleLanguage:
                     type: string
                 outlet:
@@ -55821,27 +55832,14 @@ components:
                 propagandaRisk:
                     type: string
                 framing:
-                    $ref: '#/components/schemas/worldmonitor_news_v1_MediaPerspectiveFraming'
+                    type: string
+                    description: favorable, neutral, critical or hostile.
                 publishedAt:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
                 link:
                     type: string
-        worldmonitor_news_v1_MediaPerspectiveFraming:
-            type: object
-            properties:
-                label:
-                    type: string
-                    description: favorable, neutral, critical or hostile.
-                method:
-                    type: string
-                    description: e.g. llm-headline-stance.
-                model:
-                    type: string
-                promptVersion:
-                    type: string
-            description: A model's reading of the headline's stance, not WorldMonitor's view.
         worldmonitor_news_v1_ListLabelChangesRequest:
             type: object
             properties:
@@ -56237,6 +56235,14 @@ components:
                 query:
                     type: string
                     description: Optional search query for market titles.
+                minLiquidity:
+                    type: number
+                    minimum: 0
+                    format: double
+                    description: |-
+                        Optional minimum liquidity (resting order-book depth in USD). When above 0,
+                         only markets with liquidity at or above this value are returned; markets
+                         without a liquidity value are dropped. Applied before page_size.
             description: ListPredictionMarketsRequest specifies filters for retrieving prediction markets.
         worldmonitor_prediction_v1_ListPredictionMarketsResponse:
             type: object
@@ -56310,6 +56316,14 @@ components:
                     minimum: -1
                     format: double
                     description: Upstream 7-day Yes price change on the probability scale. Polymarket only.
+                liquidity:
+                    type: number
+                    minimum: 0
+                    format: double
+                    description: |-
+                        Resting order-book depth in USD, measured per venue: Polymarket CLOB
+                         liquidity, or the sum of price times size over every Kalshi yes and no bid.
+                         Absent when the venue reports none or the order book could not be fetched.
             required:
                 - id
             description: PredictionMarket represents a prediction market contract.

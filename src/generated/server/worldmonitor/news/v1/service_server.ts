@@ -158,6 +158,8 @@ export interface MediaPerspectiveFramingCounts {
   hostile: number;
   unlabeled: number;
   method: string;
+  model: string;
+  promptVersion: string;
 }
 
 export interface MediaPerspectiveHeadline {
@@ -170,16 +172,9 @@ export interface MediaPerspectiveHeadline {
   ownershipClass: string;
   stateAffiliated: string;
   propagandaRisk: string;
-  framing?: MediaPerspectiveFraming;
+  framing: string;
   publishedAt: number;
   link: string;
-}
-
-export interface MediaPerspectiveFraming {
-  label: string;
-  method: string;
-  model: string;
-  promptVersion: string;
 }
 
 export interface ListLabelChangesRequest {
