@@ -128,18 +128,32 @@ function namesApiFunction(path: string): boolean {
   return API_REWRITE_PAGE_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
-/** True when a page twin may fetch this sibling over HTTP: a site page, never an API function. */
+const MAX_SIBLING_DECODE_LAYERS = 4;
+
+/**
+ * True when a page twin may fetch this sibling over HTTP: a site page, never an
+ * API function. Checked at every percent-decoding layer, each both as written
+ * and with dot segments resolved the way the URL parser resolves them, so
+ * neither `/%61pi/...` nor `/x/%2e%2e/api/...` (or a further-encoded form an
+ * upstream might decode once more) reaches a function this check let through.
+ * A path that is still changing after the layer budget is refused.
+ */
 export function isPageTwinSibling(pathname: string): boolean {
-  const path = pathname.toLowerCase();
-  // Checked both as sent and percent-decoded: an upstream that normalises
-  // `/%61pi/...` must not reach a function this check let through.
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(path);
-  } catch {
-    return false;
+  let layer = pathname.toLowerCase();
+  for (let depth = 0; depth < MAX_SIBLING_DECODE_LAYERS; depth += 1) {
+    let resolved: string;
+    let decoded: string;
+    try {
+      resolved = new URL(layer, 'https://sibling.invalid').pathname.toLowerCase();
+      decoded = decodeURIComponent(layer);
+    } catch {
+      return false;
+    }
+    if (namesApiFunction(layer) || namesApiFunction(resolved)) return false;
+    if (decoded === layer) return true;
+    layer = decoded;
   }
-  return !namesApiFunction(path) && !namesApiFunction(decoded);
+  return false;
 }
 
 export interface MarkdownTwinOptions {
@@ -473,6 +487,14 @@ export async function buildMarkdownTwinResponse(
   // The sibling is always a page on this site. Checked on the resolved URL,
   // not the path string, so no parser quirk can turn it into another host.
   if (siblingUrl.origin !== requestUrl.origin) {
+    return new Response('# Not found\n', {
+      status: 404,
+      headers: markdownHeaders(null, { ...NOT_A_DOCUMENT }),
+    });
+  }
+  // Checked again on the parsed URL, which has resolved any dot segments
+  // (`%2e%2e` included) that the path string still carried.
+  if (!isAllowedSibling(siblingUrl.pathname)) {
     return new Response('# Not found\n', {
       status: 404,
       headers: markdownHeaders(null, { ...NOT_A_DOCUMENT }),

@@ -468,6 +468,12 @@ describe('page twins (api/md-twin.ts) never hop into an API function', () => {
     '/api/news/v1/search-fact-checks.md',
     'api/health.md',
     '%61pi/news/v1/search-fact-checks.md',
+    // Encoded dot segments: the URL parser collapses `%2e%2e` onto `/api/`.
+    'x/%2e%2e/api/news/v1/search-fact-checks.md',
+    'x/%2E%2e/api/news/v1/search-fact-checks.md',
+    'x/%252e%252e/api/news/v1/search-fact-checks.md',
+    'x/%25252e%25252e/api/news/v1/search-fact-checks.md',
+    'x/.%2e/ask.md',
     'ask.md',
     'ASK.md',
     'mcp.md',
@@ -513,6 +519,8 @@ describe('page twins (api/md-twin.ts) never hop into an API function', () => {
       assert.equal(isPageTwinSibling(literal), false, `${source} rewrites into /api/ and must not be a page twin sibling`);
       assert.equal(isPageTwinSibling(`${literal}/`), false, `${source}/ must not be a page twin sibling`);
     }
+    assert.equal(isPageTwinSibling('/x/%2e%2e/api/health'), false);
+    assert.equal(isPageTwinSibling('/x/%252e%252e/api/health'), false);
     assert.equal(isPageTwinSibling('/pricing'), true);
     assert.equal(isPageTwinSibling('/countries/iran/'), true);
   });
