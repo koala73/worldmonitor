@@ -3877,5 +3877,271 @@
     "noEvents": "Hakuna vichwa vya habari vilivyochaguliwa vilivyorekodiwa kwa tarehe hii. Hii haithibitishi kwamba hakuna matukio yaliyotokea.",
     "unlock90": "Fungua siku 90 kwa Pro",
     "unlock365": "Fungua siku 365 kwa mpango wa API"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Chanzo",
+      "freshness": "Upya",
+      "confidence": "Uhakika",
+      "limitations": "Mapungufu",
+      "related": "Husika",
+      "groundedIn": "Msingi katika",
+      "curated": "Iliyochaguliwa v1",
+      "fallback": "Mbadala",
+      "layerGuide": "Mwongozo wa Tabaka"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Habari / maeneo moto ya ujasusi",
+        "purpose": "Inaangazia maeneo moto ya jiografia ya kisiasa yanayofuatiliwa na kuinua kiwango chake wakati habari husika na ishara za kuongezeka zinapokutana.",
+        "source": "Rejista ya maeneo moto ya WorldMonitor, ujasusi wa habari wa RSS na GDELT, upigaji alama wa kuongezeka kwa maeneo moto, shughuli za kijeshi, na muktadha wa kutokuwa na uthabiti wa nchi.",
+        "freshness": "Mahali pa maeneo moto pamechaguliwa na pamesimama. Upya wa milisho ya habari hufuatiliwa kivyake. Viwango vya maeneo moto huhesabiwa upya milisho ya habari ya dashibodi inaposasishwa, kwa muda wa karibu dakika 10, wakati ujasusi wa GDELT una bajeti ndefu za mbegu na akiba.",
+        "confidence": "Inafaa kama ishara ya uchambuzi wa kwanza, si dai linalofaa kunukuliwa bila kufungua habari za chini na muktadha wa nchi.",
+        "limitations": {
+          "0": "Kiasi cha habari na ulinganishaji wa maneno muhimu unaweza kuzidisha maeneo yenye habari nyingi.",
+          "1": "Matukio yasiyoonekana sana yanaweza kukosekana chanjo ya RSS au GDELT inapokuwa haba au kuchelewa."
+        },
+        "related": {
+          "0": "Paneli ya Habari za Moja kwa Moja",
+          "1": "Paneli ya Muhtasari wa Hatari ya Kimkakati",
+          "2": "Ujasusi kwa kifupi",
+          "3": "Madirisha ya Intel Hotspots"
+        }
+      },
+      "conflicts": {
+        "category": "Migogoro",
+        "purpose": "Inaonyesha maeneo ya migogoro yaliyochaguliwa na mipako ya mipaka ya jiografia ya kisiasa ili wachambuzi waelekeze ishara za moja kwa moja dhidi ya maeneo ya mapigano yanayojulikana.",
+        "source": "Rejista ya maeneo ya migogoro ya WorldMonitor, muktadha wa migogoro wa UCDP na ACLED, na maelezo yaliyoandikwa ya mipaka kama DMZ ya Korea.",
+        "freshness": "Maeneo ya msingi yamechaguliwa na yamesimama. Ingizo zinazobadilika za matukio ya migogoro hufuatiliwa kivyake kupitia milisho ya ACLED na UCDP na ishara za afya ya huduma.",
+        "confidence": "Inafaa kwa mwelekeo wa kijiografia. Peke yake si uthibitisho wa tukio kwa wakati halisi.",
+        "limitations": {
+          "0": "Maeneo tulivu yanaweza kubaki nyuma ya mabadiliko ya haraka ya mbinu.",
+          "1": "Baadhi ya ushahidi wa migogoro huonekana katika matukio ya migogoro, kutokuwa na uthabiti wa nchi, au paneli husika, si kama poligoni ya eneo la migogoro."
+        },
+        "related": {
+          "0": "Matukio ya UCDP ya Migogoro ya Silaha",
+          "1": "Paneli ya Kutokuwa na Uthabiti wa Nchi",
+          "2": "Muhtasari wa Hatari ya Kimkakati",
+          "3": "Ujasusi kwa kifupi"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Usafiri wa anga",
+        "purpose": "Inaonyesha kodi za transponda zilizoripotiwa 7500, 7600 na 7700 bila kutegemea uainishaji wa kijeshi.",
+        "source": "Maswali sahihi ya squawk kutoka adsb.lol. Maelezo ya ndege yanatumia sehemu za mtoa huduma. Leseni ni ODbL.",
+        "freshness": "Hukagua kila dakika linapoonekana. Ujumbe wa mwisho lazima uwe na umri usiozidi sekunde 120. Nafasi za ramani lazima ziwe na umri usiozidi sekunde 90. Ripoti zisizojulikana huisha baada ya dakika 15.",
+        "confidence": "Ishara ya transponda iliyoripotiwa haithibitishi tukio, sababu, kutua, wala kumalizika kwa hali.",
+        "limitations": {
+          "0": "Chanjo ya vipokezi haijakamilika.",
+          "1": "Muda wa ujumbe wa mwisho si muda squawk ilipochaguliwa.",
+          "2": "Ndege zisizo na nafasi mpya huonekana tu katika orodha ya maelezo.",
+          "3": "Mgongano wa data na kupotea kwa mapokezi huwa haijulikani."
+        },
+        "related": {
+          "0": "Maelezo ya ndege"
+        }
+      },
+      "ais": {
+        "category": "Bahari",
+        "purpose": "Inaonyesha msongamano wa meli na ishara za usumbufu wa AIS karibu na maji ya kimkakati na vichochoro.",
+        "source": "Picha za papo hapo za rele ya AISStream, huduma ya bahari ya WorldMonitor, na viainishi vya usumbufu wa vichochoro.",
+        "freshness": "Picha za papo hapo za rele ya AIS hujengwa upya kila sekunde 5 kwa chaguo-msingi. Seva inaweza kuhifadhi picha ya msingi ya msongamano kwa dakika 5, na tabaka huzimwa au kuwa kuukuu wakati hati za rele hazipatikani au muunganisho haupatikani.",
+        "confidence": "Inafaa kuchuja mambo yasiyo ya kawaida ya bahari, lakini AIS hujiripoti na meli zinaweza kunyamaza.",
+        "limitations": {
+          "0": "Chanjo ya AIS ya nchi kavu si sawa, na uoni dhaifu katika Mashariki ya Kati, Asia, na bahari kuu umeandikwa.",
+          "1": "Usafirishaji wa giza hutolewa kutokana na mapengo na mifumo ya msongamano, si uthibitisho wa moja kwa moja wa nia."
+        },
+        "related": {
+          "0": "Paneli ya Mnyororo wa Ugavi",
+          "1": "Mstari wa vichochoro",
+          "2": "Meli za kijeshi",
+          "3": "Ishara za AIS katika Ujasusi kwa kifupi"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Bahari",
+        "purpose": "Huchora njia kuu za kontena, nishati, na mizigo ya wingi kupitia vichochoro vya kimkakati ili kusoma njia ya usumbufu.",
+        "source": "Rejista ya njia za biashara ya WorldMonitor pamoja na hali ya vichochoro ya mnyororo wa ugavi na muhtasari wa kupita.",
+        "freshness": "Jiometri ya njia imesimama. Hali ya vichochoro huangaliwa kila dakika 6 ili data ibaki tayari, na muhtasari wa kupita husasishwa kila dakika 10 kupitia akiba ya mnyororo wa ugavi na njia za rele.",
+        "confidence": "Inafaa kwa muktadha wa athari katika kiwango cha njia. Si mlisho wa uelekezaji katika kiwango cha meli.",
+        "limitations": {
+          "0": "Njia ni korido zilizoundwa kwa modeli na huenda zisilingane na mpango wa safari maalumu.",
+          "1": "Mipako ya usumbufu hutegemea afya ya sasa ya vichochoro na AIS."
+        },
+        "related": {
+          "0": "Paneli ya Mnyororo wa Ugavi",
+          "1": "Kichunguzi cha njia",
+          "2": "Injini ya senario",
+          "3": "Tabaka la Chokepoints"
+        }
+      },
+      "flights": {
+        "category": "Usafiri wa anga",
+        "purpose": "Inaangazia usumbufu wa viwanja vya ndege na kufungwa kwa NOTAM, NOTAM za anga zinazotumika sasa au zinazoanza ndani ya saa 24 (vikwazo vya kuruka kwa muda, maeneo yenye vikwazo, hatari na yaliyokatazwa, maeneo ya operesheni za kijeshi, hifadhi za anga na kufungwa), na nafasi za ndege za moja kwa moja ufuatiliaji unapopatikana.",
+        "source": "FAA ASWS, AviationStack, Huduma ya Usimamizi ya NOTAM ya FAA (NMS-API) na NOTAM za ICAO, adsb.lol (ODbL), Wingbits, urejeshaji wa huduma ya zamani ya OpenSky, kujaza mapengo kwa hiari na bila biashara kupitia airplanes.live/adsb.fi, na huduma ya usafiri wa anga. NOTAM za anga huchorwa kama poligoni ambapo NMS huzitoa, duara ambapo NOTAM inatoa eneo la hadi 250 NM, na alama vinginevyo.",
+        "freshness": "Mbegu za usumbufu wa viwanja vya ndege huendeshwa kila dakika 30. NOTAM za anga hupandwa kila dakika 5 kutoka kwa maombi ya mabadiliko ya NMS, na usawazishaji kamili wa kila siku, dhidi ya bajeti ya upya ya dakika 20. Paneli ya usafiri wa anga pia husasisha mwonekano wa uendeshaji kwa mzunguko wa kuuliza wa dakika 5.",
+        "confidence": "Bora kwa uchambuzi wa kwanza wa usumbufu. Chanjo ya kila ndege ya moja kwa moja hutegemea upatikanaji wa ADS-B na watoa huduma waliosanidiwa. Maandishi ya NOTAM ndiyo yenye mamlaka kama FAA inavyoyasambaza.",
+        "limitations": {
+          "0": "Data ya maonyesho ya kuiga inayotegemea AviationStack inaweza kuonekana wakati ufunguo wa API haupo.",
+          "1": "Nafasi za ndege za moja kwa moja zinaweza kuchelewa au kukosekana ambapo chanjo ya ADS-B ni dhaifu au imezuiwa.",
+          "2": "Maeneo ya NOTAM ya anga huchorwa kwenye ramani ya deck.gl tu. Ramani za SVG na tufe zinaonyesha alama za viwanja vya ndege.",
+          "3": "TFR nyingi za Marekani zinaeleza umbo katika maandishi tu, kwa hiyo huonekana kama alama kwenye nafasi ya NOTAM, si umbo lililozuiliwa.",
+          "4": "Ratiba ndani ya dirisha la uhalali wa NOTAM (kwa mfano saa za kila siku) huonyeshwa kwenye kidokezo lakini hazitumiki kwa kuonekana."
+        },
+        "related": {
+          "0": "Paneli ya Ujasusi wa Ndege",
+          "1": "Upau wa amri ya usafiri wa anga",
+          "2": "Ishara za usafiri wa anga katika Ujasusi kwa kifupi",
+          "3": "Dharura za ndege",
+          "4": "Mgogoliko wa usambazaji"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Migogoro",
+        "purpose": "Huweka rekodi za migogoro ya silaha katika kiwango cha tukio pamoja na nchi, wahusika, tarehe, na masafa ya vifo.",
+        "source": "GED API ya Mpango wa Data ya Uppsala kupitia huduma ya migogoro na mbegu ya matukio ya UCDP.",
+        "freshness": "Hupandwa kila saa 6 mbegu ya UCDP inapokuwa nzima.",
+        "confidence": "Ina uthabiti wa uhariri kuliko milisho ghafi ya habari za dharura, lakini imechelewa kwa makusudi na si mlisho wa moja kwa moja wa uwanja wa mapigano.",
+        "limitations": {
+          "0": "Kasi ya kutolewa ya kila mwaka na ya kiwango cha utafiti inaweza kukosa matukio ya hivi karibuni sana.",
+          "1": "Masafa ya vifo ni makadirio na yasomwe kama masafa, si hesabu kamili."
+        },
+        "related": {
+          "0": "Paneli ya Matukio ya UCDP ya Migogoro ya Silaha",
+          "1": "Sehemu ya migogoro katika Kielezo cha Kuyumba",
+          "2": "Ratiba ya nchi"
+        }
+      },
+      "weather": {
+        "category": "Hali ya hewa",
+        "purpose": "Inaonyesha tahadhari rasmi zinazoendelea za hali mbaya ya hewa kutoka huduma za kitaifa za hali ya hewa, zilizounganishwa katika mlisho mmoja weather:alerts:v1.",
+        "source": "Huduma ya Kitaifa ya Hali ya Hewa ya Marekani (NWS), Environment and Climate Change Canada (ECCC), na mkusanyiko wa CAP wa Kituo cha Taarifa za Hali Mbaya ya Hewa cha WMO (SWIC), unaopandwa kupitia rele ya WorldMonitor.",
+        "freshness": "Tahadhari za NWS, ECCC, na SWIC hupandwa kila dakika 15 na rele na hufuatiliwa dhidi ya bajeti ya upya ya dakika 45.",
+        "confidence": "Ina mamlaka kwa tahadhari zinazotolewa na huduma za kitaifa zinazochangia, kulingana na muda wa kuchapishwa kwa chanzo. NWS na ECCC huchorwa kama poligoni. Tahadhari za SWIC zilizo na mahali pa kijiografia huchorwa kwenye kitovu cha nchi cha huduma inayotoa, na alama wazi ya usahihi.",
+        "limitations": {
+          "0": "Wanachama wengi wa SWIC huchapisha mahali pa kijiografia, si poligoni. Tahadhari hizo huonekana kama nukta za kiwango cha nchi na maelezo ya eneo kama yalivyo, si mipako ya eneo lililoonywa.",
+          "1": "Chanjo ya SWIC hutegemea wanachama wa WMO wanaochapisha sasa kwa mkusanyiko. Msongamano hutofautiana kwa kanda.",
+          "2": "Safu za SWIC za Marekani na Kanada hurukwa kwa sababu NWS na ECCC tayari hutoa chanjo ya kiwango cha poligoni kwa nchi hizo."
+        },
+        "related": {
+          "0": "Tabaka la Matukio ya Asili",
+          "1": "Madirisha ya tahadhari za hali ya hewa",
+          "2": "Hali ya upya wa data"
+        }
+      },
+      "canadaRoads": {
+        "category": "Usafiri",
+        "purpose": "Inaonyesha matukio rasmi ya barabara, arifa, hali, kufungwa, ujenzi, na hatari katika mamlaka za Kanada zinazoungwa mkono.",
+        "source": "Milisho ya mikoa ya Ontario 511, Alberta 511, na Manitoba 511, Vikwazo vya Barabara vya Jiji la Toronto, na DriveBC Open511, vinavyopandwa kupitia WorldMonitor.",
+        "freshness": "Ontario, Alberta, na Manitoba 511 hupandwa kila dakika 15 na hufuatiliwa dhidi ya bajeti ya upya ya dakika 45. Vikwazo vya Toronto hupandwa kila saa 2. DriveBC Open511 kila dakika 30.",
+        "confidence": "Ina mamlaka kwa wachapishaji wa mikoa na manispaa wanaoungwa mkono, kulingana na muda wa kuchapishwa kwa chanzo na jiometri iliyochorwa.",
+        "limitations": {
+          "0": "roadconditions ya Alberta 511 haipokelewi (mwisho wa mtoa huduma unarudisha 404). Mchoro wa moja kwa moja wa Alberta ni matukio na arifa tu.",
+          "1": "Arifa za mikoa zisizo na kuratibu hazionekani kama nukta za ramani.",
+          "2": "Mistari ya hali ya barabara inaweza kurahisisha jiometri tata ya barabara kuu."
+        },
+        "related": {
+          "0": "Tahadhari za hali mbaya ya hewa (NWS, ECCC, WMO SWIC)",
+          "1": "Hali ya upya wa data"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Arifa za dharura",
+        "purpose": "Inaonyesha maonyo yanayoendelea ya usalama wa umma ya Alberta, British Columbia, na Saskatchewan kama nukta za ramani kando ya hali ya hewa ya NWS ya Marekani.",
+        "source": "Atom ya Alberta Emergency Alert, tabaka la GeoJSON la OGL-BC Evacuation Orders and Alerts, na mlisho wa umma wa JSON wa SaskAlert pamoja na maelezo ya CAP 1.2 ya seva pangishi ile ile hurekebishwa kuwa muungano mmoja wa canadaAlerts. Poligoni za CAP na GeoRSS, poligoni za uhamishaji wa British Columbia, na poligoni za CAP za SaskAlert huwa vitovu. Rekodi zisizo na jiometri hutumia kitovu cha mkoa wa chanzo.",
+        "freshness": "Vyanzo vya mikoa hupandwa kila dakika 15 na muungano hufuatiliwa dhidi ya bajeti ya upya ya dakika 45. Mlisho tupu (hakuna arifa zinazoendelea) ni mafanikio halali bila rekodi.",
+        "confidence": "Ina mamlaka kwa arifa zinazochapishwa na Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, na SaskAlert, kulingana na muda wa kuchapishwa kwa chanzo na jiometri ya arifa iliyochorwa.",
+        "limitations": {
+          "0": "Chanjo imewekewa Alberta, British Columbia, na Saskatchewan. Ontario haina mlisho wa mashine unaostahiki unaoendeshwa na mkoa nje ya NAAD iliyotengwa.",
+          "1": "Haichukui nafasi ya arifa za hali ya hewa za NWS za Marekani wala tabaka za barabara za Ontario na Toronto.",
+          "2": "Ingizo zisizo na ukali unaoweza kuchorwa (maana ya CAP au rangi ya Alberta, hali ya uhamishaji ya British Columbia, au ukali wa CAP wa SaskAlert) huachwa badala ya kuvumbuliwa. Rangi au kiwango cha muhtasari wa SaskAlert hakihesabiwi kuwa ukali wa CAP."
+        },
+        "related": {
+          "0": "Tahadhari za hali mbaya ya hewa (NWS, ECCC, WMO SWIC)",
+          "1": "Tabaka la Matukio ya Asili",
+          "2": "Hali ya upya wa data"
+        }
+      },
+      "cyberThreats": {
+        "category": "Mtandao",
+        "purpose": "Huchora viashiria vya kuingiliwa vilivyoboreshwa kijiografia kama seva za C2, seva pangishi za programu hasidi, uhadaa wa kuiba taarifa, URL hasidi, na miundombinu ya utekaji kwa fidia.",
+        "source": "abuse.ch Feodo Tracker na URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, mlisho wa RSS na habari wa ransomware.live, na uboreshaji wa eneo la kijiografia la IP.",
+        "freshness": "Mbegu za vitisho vya mtandao huendeshwa kila saa 2. IOC zinazoonyeshwa hutumia dirisha linalosonga la siku 14 na zina kikomo kwa utendaji wa ramani.",
+        "confidence": "Inafaa kuona miundombinu, lakini kuhusisha na eneo la kijiografia la IP kunaweza kuwa na kelele.",
+        "limitations": {
+          "0": "Eneo la kijiografia la IP linaweza kuelekeza kwenye miundombinu ya upangishaji badala ya mwendeshaji au mwathirika.",
+          "1": "Upatikanaji wa milisho, funguo za API, na ripoti za matumizi mabaya kwa kila mlisho zinaweza kupindisha chanjo."
+        },
+        "related": {
+          "0": "Madirisha ya ramani ya Vitisho vya Mtandao",
+          "1": "Mchango wa mtandao katika Kutokuwa na Uthabiti wa Nchi",
+          "2": "Hali ya upya wa data"
+        }
+      },
+      "natural": {
+        "category": "Maafa ya asili",
+        "purpose": "Inaonyesha matetemeko ya ardhi, tahadhari kali za maafa, na matukio amilifu ya uchunguzi wa Dunia kwa ufahamu wa hali.",
+        "source": "Matetemeko ya USGS, tahadhari za GDACS, na matukio ya NASA EONET yaliyounganishwa katika huduma ya matukio ya asili.",
+        "freshness": "Matukio ya asili hupandwa kila saa 3. Matarajio ya matetemeko ya USGS yameandikwa kwa kasi ya chanzo ya karibu dakika 5.",
+        "confidence": "Imara kwa ishara za umma za maafa zilizogunduliwa. Uhakika hutofautiana kwa aina ya hatari na ucheleweshaji wa taarifa ya chanzo.",
+        "limitations": {
+          "0": "Tahadhari za GDACS za ukali mdogo huondolewa ili ramani ibaki inasomeka.",
+          "1": "Moto wa nyika wa EONET huchujwa kwa upya, kwa hiyo matukio ya zamani yaliyo wazi yanaweza yasitokee kama nukta amilifu za ramani."
+        },
+        "related": {
+          "0": "Madirisha ya Tabaka la Matukio ya Asili",
+          "1": "Tahadhari za hali mbaya ya hewa (NWS, ECCC, WMO SWIC)",
+          "2": "Ishara za matukio ya asili katika Ujasusi kwa kifupi"
+        }
+      },
+      "waterways": {
+        "category": "Bahari",
+        "purpose": "Huweka alama kwenye njia za maji za kimkakati na vichochoro ili ishara za usumbufu zisomwe dhidi ya jiografia thabiti ya bahari.",
+        "source": "Rejista ya njia za maji za kimkakati ya WorldMonitor na mipako ya hali ya vichochoro ya mnyororo wa ugavi kutoka AIS, maonyo ya NGA, na milisho inayotokana na PortWatch.",
+        "freshness": "Mahali pa njia za maji pamesimama. Hali ya moja kwa moja ya vichochoro huangaliwa kila dakika 6 ili data ibaki tayari, na muhtasari wa kupita husasishwa kila dakika 10 njia ya rele na PortWatch ikiwa nzima.",
+        "confidence": "Juu kwa jiografia thabiti. Uhakika wa usumbufu wa moja kwa moja hutegemea milisho saidizi ya AIS, NGA, na PortWatch.",
+        "limitations": {
+          "0": "Alama inayoonekana ya kichochoro haimaanishi kuna usumbufu unaoendelea.",
+          "1": "Uzio wa kijiografia na njia za modeli zinaweza kurahisisha mifumo tata ya trafiki."
+        },
+        "related": {
+          "0": "Paneli ya Mnyororo wa Ugavi",
+          "1": "Tabaka la Njia za Biashara",
+          "2": "Kichunguzi cha njia",
+          "3": "Injini ya senario"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Hatari ya nchi",
+        "purpose": "Hupaka nchi kwa alama ya sasa ya Fahirisi ya Kutokuwa na Uthabiti wa Nchi kwa uchambuzi mpana wa hatari ya kimkakati.",
+        "source": "Huduma ya upigaji alama ya Fahirisi ya Kutokuwa na Uthabiti wa Nchi ya WorldMonitor ikitumia ishara za migogoro, machafuko, tahadhari, mtandao, ufuatiliaji wa meli, usafiri wa anga, matukio ya asili, na habari.",
+        "freshness": "Akiba ya alama za hatari huangaliwa kila dakika 8 ili data ibaki tayari. seed-meta na health.riskScores huonyesha hali hai, iliyopitwa, ya sehemu, au iliyoharibika dhidi ya bajeti ya upya ya dakika 30.",
+        "confidence": "Ishara ya modeli iliyounganishwa, si kiwango rasmi cha nchi wala utabiri wa uwezekano.",
+        "limitations": {
+          "0": "Familia za vyanzo zilizo haba au zilizoharibika zinaweza kupunguza uhakika hata nchi ikiwa bado ina alama.",
+          "1": "Rangi ya kiwango cha nchi inaweza kuficha tofauti ndani ya nchi na ilinganishwe na paneli kabla ya kunukuu."
+        },
+        "related": {
+          "0": "Paneli ya Kutokuwa na Uthabiti wa Nchi",
+          "1": "Paneli ya Muhtasari wa Hatari ya Kimkakati",
+          "2": "Hali ya upya wa data",
+          "3": "Ujasusi kwa kifupi"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Tabaka",
+      "purpose": "Tabaka hili linaweza kuwashwa kwenye ramani, lakini kadi iliyochaguliwa ya chanzo na uhakika bado haijaongezwa.",
+      "source": "Halijachaguliwa katika seti ya v1 ya kueleza tabaka.",
+      "freshness": "Mkataba wa upya katika kiwango cha tabaka hautangazwi hapa. Angalia beji za paneli zinazoonekana, madirisha, au hali ya upya wa data inapopatikana.",
+      "confidence": "Haijulikani hadi maelezo mahususi ya chanzo yaongezwe.",
+      "limitations": {
+        "0": "Kukosekana kwa kadi iliyochaguliwa haimaanishi tabaka halisaidiwi.",
+        "1": "Tumia madirisha ya tabaka na paneli husika kwa muktadha mahususi wa chanzo."
+      },
+      "related": {
+        "0": "Mwongozo wa Tabaka"
+      }
+    }
   }
 }

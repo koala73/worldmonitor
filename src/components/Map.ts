@@ -85,7 +85,7 @@ import {
   LAYER_REGISTRY,
   resolveLayerLabel,
 } from '@/config/map-layer-definitions';
-import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
+import { layerExplanationLookup, renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import {
   createCountryClickGestureTracker,
   finishCountryClickGesture,
@@ -750,7 +750,7 @@ export class MapComponent {
     popup.className = 'layer-explanation-popup';
     popup.dataset.layer = layer;
     setTrustedHtml(popup, trustedHtml(
-      renderLayerExplanationCard(this.getLayerControlLabel(layer), getLayerExplanation(layer)),
+      renderLayerExplanationCard(this.getLayerControlLabel(layer), getLayerExplanation(layer), layerExplanationLookup(t)),
       "static layer explanation metadata",
     ));
 

@@ -131,7 +131,7 @@ import {
   type MapVariant,
 } from '@/config/map-layer-definitions';
 import { isProTierResolved } from '@/services/widget-store';
-import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
+import { layerExplanationLookup, renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -6146,7 +6146,7 @@ export class DeckGLMap {
     popup.className = 'layer-explanation-popup';
     popup.dataset.layer = layer;
     setTrustedHtml(popup, trustedHtml(
-      renderLayerExplanationCard(layerLabel, explanation),
+      renderLayerExplanationCard(layerLabel, explanation, layerExplanationLookup(t)),
       "static layer explanation metadata",
     ));
 

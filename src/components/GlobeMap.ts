@@ -33,7 +33,7 @@ import {
   bindLayerSearch,
   type MapVariant,
 } from '@/config/map-layer-definitions';
-import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
+import { layerExplanationLookup, renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import { guardOrbitControlsPointerTracking } from '@/utils/orbit-controls-pointer-guard';
 import { getAuthState } from '@/services/auth-state';
 import { resolveTradeRouteSegments, type TradeRouteSegment } from '@/config/trade-routes';
@@ -2178,7 +2178,7 @@ export class GlobeMap {
     popup.className = 'layer-explanation-popup';
     popup.dataset.layer = layer;
     setTrustedHtml(popup, trustedHtml(
-      renderLayerExplanationCard(layerLabel, getLayerExplanation(layer)),
+      renderLayerExplanationCard(layerLabel, getLayerExplanation(layer), layerExplanationLookup(t)),
       "static layer explanation metadata",
     ));
 
