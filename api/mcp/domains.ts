@@ -46,6 +46,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   // Markets & economy
   get_market_data: 'markets-economy',
   get_economic_data: 'markets-economy',
+  get_no2_activity: 'markets-economy',
   get_procurement_opportunities: 'markets-economy',
   get_company_intelligence: 'markets-economy',
   get_country_macro: 'markets-economy',
