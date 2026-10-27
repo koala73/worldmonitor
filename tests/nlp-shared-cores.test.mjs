@@ -475,4 +475,45 @@ describe('news-clustering-core', () => {
     assert.ok(jaccardSimilarity(a, b) >= 0.5, 'near-duplicate titles must clear the 0.5 threshold');
     assert.equal(jaccardSimilarity(new Set(), new Set()), 0);
   });
+
+  it('jaccardSimilarity matches the set-materializing definition', () => {
+    const reference = (a, b) => {
+      if (a.size === 0 && b.size === 0) return 0;
+      return new Set([...a].filter((x) => b.has(x))).size / new Set([...a, ...b]).size;
+    };
+    let seed = 7;
+    const next = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed; };
+    const randomSet = () => new Set(Array.from({ length: next() % 12 }, () => `t${next() % 16}`));
+    for (let k = 0; k < 500; k++) {
+      const a = randomSet();
+      const b = randomSet();
+      assert.equal(jaccardSimilarity(a, b), reference(a, b), `${[...a]} vs ${[...b]}`);
+    }
+  });
+
+  it('clusters a feed of huge titles in time bounded by the smaller title of each pair', () => {
+    // Every huge title shares a common word with every normal headline, so
+    // each is compared against all of them; building the union of a 50k-token
+    // set per pair made this take seconds.
+    const common = ['iran', 'israel', 'strike', 'oil', 'market', 'ukraine', 'russia', 'china', 'election', 'storm'];
+    const now = Date.UTC(2026, 9, 27);
+    const items = Array.from({ length: 995 }, (_, i) => ({
+      source: `S${i % 50}`,
+      title: `${common[i % 10]} ${common[(i + 3) % 10]} story${i} detail${i}`,
+      link: `https://fixture.test/${i}`,
+      pubDate: new Date(now - i * 1000),
+    }));
+    const huge = `${common.join(' ')} ${Array.from({ length: 50_000 }, (_, k) => `tok${k.toString(36)}`).join(' ')}`;
+    for (let h = 0; h < 5; h++) {
+      items.unshift({ source: 'Evil', title: `${huge} v${h}`, link: `https://evil.test/${h}`, pubDate: new Date(now + 1000) });
+    }
+
+    const started = performance.now();
+    const clusters = clusterNewsCore(items, () => 3);
+    const elapsed = performance.now() - started;
+
+    const hugeCluster = clusters.find((c) => c.allItems.some((item) => item.source === 'Evil'));
+    assert.equal(hugeCluster.sourceCount, 5, 'the near-identical huge titles still cluster together');
+    assert.ok(elapsed < 750, `clustering took ${elapsed.toFixed(0)} ms`);
+  });
 });

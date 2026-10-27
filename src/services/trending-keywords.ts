@@ -98,6 +98,11 @@ const MAX_AUTO_SUMMARIES_PER_HOUR = 5;
 // bounded by the feed registry, and capping it would put `sourceCount` and the
 // names it claims to explain back into disagreement.)
 const MAX_SPIKE_ARTICLES = 6;
+// Real headlines are far shorter. A feed title of thousands of words would
+// otherwise become thousands of terms, each holding the same few headlines,
+// and every spike check would walk all of them (and evict every real term
+// past MAX_TRACKED_TERMS).
+const MAX_HEADLINE_CHARS = 500;
 const CONFIG_KEY = 'worldmonitor-trending-config-v1';
 const ML_ENTITY_MIN_CONFIDENCE = 0.75;
 const ML_ENTITY_BATCH_SIZE = 20;
@@ -609,8 +614,11 @@ export function ingestHeadlines(headlines: TrendingHeadlineInput[]): void {
   const blockedTerms = getBlockedTermSet(config);
   const pendingMLEnrichment: PendingMLEnrichmentHeadline[] = [];
 
-  for (const headline of headlines) {
-    if (!headline.title?.trim()) continue;
+  for (const input of headlines) {
+    if (!input.title?.trim()) continue;
+    const headline = input.title.length > MAX_HEADLINE_CHARS
+      ? { ...input, title: input.title.slice(0, MAX_HEADLINE_CHARS) }
+      : input;
 
     const key = headlineKey(headline);
     const previouslySeen = seenHeadlines.get(key);

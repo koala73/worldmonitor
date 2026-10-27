@@ -57,6 +57,9 @@ const ITEM_CLOSE_SEAM = 16;
  */
 function closeOpenElements(xml) {
   const stack = [];
+  // Stack positions per element name, so a close tag finds its opener without
+  // scanning the stack: a run of unmatched closers would otherwise cost N^2.
+  const positions = new Map();
   let i = 0;
   while (i < xml.length) {
     const lt = xml.indexOf('<', i);
@@ -82,9 +85,14 @@ function closeOpenElements(xml) {
     const name = raw.replace(/^\//, '').match(/^[A-Za-z_][\w.:-]*/)?.[0];
     if (name) {
       if (raw.startsWith('/')) {
-        const open = stack.lastIndexOf(name);
-        if (open !== -1) stack.length = open;
+        const open = positions.get(name)?.at(-1);
+        if (open !== undefined) {
+          while (stack.length > open) positions.get(stack.pop()).pop();
+        }
       } else if (!raw.endsWith('/')) {
+        const at = positions.get(name);
+        if (at) at.push(stack.length);
+        else positions.set(name, [stack.length]);
         stack.push(name);
       }
     }

@@ -1050,6 +1050,30 @@ test('leaves a feed inside both bounds byte-identical', async () => {
   assert.equal(await res.text(), feed, 'a small feed must pass through untouched');
 });
 
+test('closes a truncated feed in linear time when it holds thousands of unmatched close tags', async () => {
+  // A close tag with no matching opener used to scan the whole open-element
+  // stack, so N openers followed by N stray closers cost N^2: 0.25 MiB took
+  // ~3.5 s of synchronous edge CPU, 1 MiB ~52 s.
+  const openers = 90_000;
+  const hostile = `<item><title>x</title>${'<a>'.repeat(openers)}${'</b>'.repeat(openers)}</item>`;
+  // `</inner>` closes the LAST `<inner>`, dropping the `<wrap>` opened after
+  // it, so only the first `<wrap>` is left to close.
+  const feed = `<rss><channel><wrap><inner><wrap></inner>${hostile}`
+    + Array.from({ length: 30 }, (_, i) => `<item><title>Episode ${i}</title></item>`).join('');
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const started = performance.now();
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const text = await res.text();
+  const elapsed = performance.now() - started;
+
+  assert.equal(res.status, 200);
+  assert.equal(countTags(text, 'item').close, 20, 'the item bound truncated the feed');
+  assert.ok(text.endsWith('<title>Episode 18</title></item></wrap></channel></rss>'),
+    `closing tags must match the open-element stack, got tail ${JSON.stringify(text.slice(-80))}`);
+  assert.ok(elapsed < 500, `closing the truncated feed took ${elapsed.toFixed(0)} ms`);
+});
+
 test('rejects an allowlisted host on a non-default port, directly or via redirect', async () => {
   const calls = [];
   globalThis.fetch = async (input) => {
