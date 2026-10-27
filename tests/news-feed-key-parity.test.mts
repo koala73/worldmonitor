@@ -23,10 +23,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { NEWS_CATALOG } from '../shared/news-catalog.ts';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const CLIENT_FEEDS_PATH = resolve(__dirname, '../src/config/feeds.ts');
-const SERVER_FEEDS_PATH = resolve(__dirname, '../server/worldmonitor/news/v1/_feeds.ts');
 
 // Map client const names to the variant string used by the server.
 // The runtime selector in src/config/feeds.ts:927-937 routes
@@ -56,116 +56,14 @@ const VARIANTS: Array<{ clientConst: string; serverKey: string; knownGapsClientO
   // time this test was written. Add them as the server catches up.
 ];
 
-// Strip line + block comments so natural-language words in JSDoc/inline
-// notes can't masquerade as property keys.
-function stripComments(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|\s)\/\/[^\n]*/g, '$1');
-}
-
-// Extract a top-level const block by name. Returns the body between the
-// outermost `{` and `}` so we can scan property keys safely.
-function extractConstObjectBody(src: string, constName: string): string | null {
-  const cleaned = stripComments(src);
-  const re = new RegExp(`(?:export\\s+)?const\\s+${constName}\\b[^=]*=\\s*\\{`);
-  const m = cleaned.match(re);
-  if (!m || typeof m.index !== 'number') return null;
-  const open = cleaned.indexOf('{', m.index);
-  if (open === -1) return null;
-  let depth = 0;
-  for (let i = open; i < cleaned.length; i++) {
-    if (cleaned[i] === '{') depth++;
-    else if (cleaned[i] === '}') {
-      depth--;
-      if (depth === 0) return cleaned.slice(open + 1, i);
-    }
-  }
-  return null;
-}
-
-// Extract the inner body for a named property of `VARIANT_FEEDS` whose
-// value is an object literal: `<variantKey>: { ... }`.
-function extractVariantBlock(src: string, variantKey: string): string | null {
-  const cleaned = stripComments(src);
-  // Match either bare or quoted variant key, but only at top of a line so
-  // we don't catch e.g. a comment-stripped sentence ending in `<word>: {`.
-  const re = new RegExp(`(?:^|\\n)\\s+(?:'${variantKey}'|"${variantKey}"|${variantKey})\\s*:\\s*\\{`, 'm');
-  const m = cleaned.match(re);
-  if (!m || typeof m.index !== 'number') return null;
-  const open = cleaned.indexOf('{', m.index);
-  if (open === -1) return null;
-  let depth = 0;
-  for (let i = open; i < cleaned.length; i++) {
-    if (cleaned[i] === '{') depth++;
-    else if (cleaned[i] === '}') {
-      depth--;
-      if (depth === 0) return cleaned.slice(open + 1, i);
-    }
-  }
-  return null;
-}
-
-// Pull category keys out of a variant body. We only count properties
-// whose VALUE is an array literal (`<key>: [`). That excludes nested
-// objects and natural-language text that happens to contain a colon.
-// Both bare identifiers and quoted (kebab-case) keys are accepted.
-//
-// Brace-depth tracking: a key only counts when found at depth 0 of the
-// passed body. Otherwise a future feed entry shaped like
-// `{ name: '...', tags: ['a', 'b'] }` would emit a spurious `tags` key
-// for the test. The current feed maps use flat single-line objects so
-// this isn't observable yet, but the guard means the parity guard
-// stays correct under reasonable future formatting.
-function extractCategoryKeys(body: string): string[] {
-  const keys: string[] = [];
-  // Anchor: <leading-ws><key>: [   where <key> is either a bare
-  // identifier or a single/double-quoted string.
-  const KEY_RE = /[ \t]+(?:'([^']+)'|"([^"]+)"|([a-zA-Z_$][a-zA-Z0-9_$]*))\s*:\s*\[/y;
-  let depth = 0;
-  let inString: '"' | "'" | '`' | null = null;
-  for (let i = 0; i < body.length; i++) {
-    const ch = body[i] ?? '';
-    // Crude string skip — string literals can contain `{` / `}` / `:` which would
-    // otherwise corrupt depth tracking. We don't need full template-literal
-    // expression handling because feed map values never contain ${...}.
-    if (inString) {
-      if (ch === '\\') { i++; continue; }
-      if (ch === inString) inString = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === '`') {
-      inString = ch as '"' | "'" | '`';
-      continue;
-    }
-    if (ch === '{') { depth++; continue; }
-    if (ch === '}') { depth--; continue; }
-    if (depth !== 0) continue;
-    if (ch !== '\n') continue;
-    KEY_RE.lastIndex = i + 1;
-    const m = KEY_RE.exec(body);
-    if (m) {
-      const key = m[1] ?? m[2] ?? m[3];
-      if (key) keys.push(key);
-    }
-  }
-  return keys;
-}
+// Category layout per edition, read from the one catalog.
+const LAYOUT = NEWS_CATALOG.layout;
 
 describe('news feed key parity (client FEEDS ⇔ server VARIANT_FEEDS)', () => {
-  const clientSrc = readFileSync(CLIENT_FEEDS_PATH, 'utf-8');
-  const serverSrc = readFileSync(SERVER_FEEDS_PATH, 'utf-8');
-
   for (const { clientConst, serverKey, knownGapsClientOnly } of VARIANTS) {
     test(`${serverKey}: every client key has a matching server key`, () => {
-      const clientBody = extractConstObjectBody(clientSrc, clientConst);
-      assert.ok(clientBody, `failed to locate const ${clientConst} in client feeds.ts`);
-
-      const serverBody = extractVariantBlock(serverSrc, serverKey);
-      assert.ok(serverBody, `failed to locate VARIANT_FEEDS.${serverKey} in server _feeds.ts`);
-
-      const clientKeys = new Set(extractCategoryKeys(clientBody));
-      const serverKeys = new Set(extractCategoryKeys(serverBody));
+      const clientKeys = new Set(LAYOUT.browser[serverKey] ?? []);
+      const serverKeys = new Set(LAYOUT.server[serverKey] ?? []);
       assert.ok(clientKeys.size > 0, `client ${clientConst} parsed 0 keys`);
       assert.ok(serverKeys.size > 0, `server VARIANT_FEEDS.${serverKey} parsed 0 keys`);
 
@@ -228,32 +126,16 @@ describe('news panel ↔ feed coverage (panel-layout createNewsPanel ⇔ feeds.t
     'intel', // INTEL_SOURCES + bespoke branch in DataLoader.loadNews()
   ]);
 
-  // Every client-side variant feed map plus on-demand categories.
-  // CANONICAL_FEEDS is their union; nq-news lives only in ON_DEMAND_FEEDS.
-  const ALL_FEED_CONSTS = [
-    'FULL_FEEDS',
-    'TECH_FEEDS',
-    'FINANCE_FEEDS',
-    'COMMODITY_FEEDS',
-    'ENERGY_FEEDS',
-    'HAPPY_FEEDS',
-    'ON_DEMAND_FEEDS',
-  ];
-
+  // CANONICAL_FEEDS is the union of every edition's browser categories,
+  // including the on-demand edition (nq-news).
   test('every createNewsPanel(...) key resolves to feeds in CANONICAL_FEEDS', () => {
-    const clientSrc = readFileSync(CLIENT_FEEDS_PATH, 'utf-8');
     // NB: do NOT run stripComments() on panel-layout.ts — unlike the pure-data
     // feed maps, it contains regex literals (e.g. /-([a-z])/g) that the naive
     // block-comment regex would mangle. The createNewsPanel('X') call shape is
     // distinctive enough to match safely on raw source.
     const panelLayoutSrc = readFileSync(PANEL_LAYOUT_PATH, 'utf-8');
 
-    const canonicalKeys = new Set<string>();
-    for (const constName of ALL_FEED_CONSTS) {
-      const body = extractConstObjectBody(clientSrc, constName);
-      assert.ok(body, `failed to locate const ${constName} in feeds.ts`);
-      for (const k of extractCategoryKeys(body)) canonicalKeys.add(k);
-    }
+    const canonicalKeys = new Set<string>(Object.values(LAYOUT.browser).flat());
     assert.ok(canonicalKeys.size > 0, 'parsed 0 canonical feed keys');
 
     const createNewsPanelKeys = new Set<string>();

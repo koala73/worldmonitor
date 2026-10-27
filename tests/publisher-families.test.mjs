@@ -32,8 +32,7 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
-const CLIENT_FEEDS = resolve(ROOT, 'src/config/feeds.ts');
-const SERVER_FEEDS = resolve(ROOT, 'server/worldmonitor/news/v1/_feeds.ts');
+const NEWS_CATALOG = resolve(ROOT, 'shared/news-catalog.json');
 const SOURCE_TIERS = resolve(ROOT, 'shared/source-tiers.json');
 
 /**
@@ -51,54 +50,41 @@ const NON_PUBLISHER_HOSTS = new Set([
 ]);
 
 /**
- * Every publisher host a feed entry points at.
+ * The publisher host a feed URL points at.
  *
  * A Google News URL is only evidence of a publisher when the query is
  * `site:`-scoped; a bare keyword query returns the open web and identifies
- * nobody. Locale-keyed `url: { en: ..., fr: ... }` entries contribute every
- * locale's host, because they are all one label.
+ * nobody.
  */
-function publisherHostsFor(urlExpr) {
-  const hosts = new Set();
-  for (const m of urlExpr.matchAll(/(['"`])(https?:\/\/(?:\\.|(?!\1)[\s\S])*?)\1/g)) {
-    let url;
-    try {
-      url = new URL(m[2]);
-    } catch {
-      continue;
-    }
-    const host = url.hostname.replace(/^www\./, '');
-    if (!NON_PUBLISHER_HOSTS.has(host)) {
-      hosts.add(host);
-      continue;
-    }
-    const query = decodeURIComponent(url.searchParams.get('q') ?? '').replace(/\+/g, ' ');
-    const site = query.match(/site:([A-Za-z0-9.-]+)/);
-    if (site) hosts.add(site[1].replace(/^www\./, ''));
+function publisherHostFor(href) {
+  let url;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
   }
-  // The server config wraps Google News in gn()/gnLocale() helpers whose
-  // argument is the bare query, not a URL.
-  for (const m of urlExpr.matchAll(/\bgn(?:Locale)?\(\s*(['"`])([\s\S]*?)\1/g)) {
-    const site = m[2].match(/site:([A-Za-z0-9.-]+)/);
-    if (site) hosts.add(site[1].replace(/^www\./, ''));
-  }
-  return hosts;
+  const host = url.hostname.replace(/^www\./, '');
+  if (!NON_PUBLISHER_HOSTS.has(host)) return host;
+  const query = decodeURIComponent(url.searchParams.get('q') ?? '').replace(/\+/g, ' ');
+  const site = query.match(/site:([A-Za-z0-9.-]+)/);
+  return site ? site[1].replace(/^www\./, '') : null;
 }
 
-/** name -> Set<publisher host>, across both feed configs. */
+/**
+ * name -> Set<publisher host>, across the server and browser URLs of every
+ * catalog feed. Locale-keyed browser URLs contribute every locale's host,
+ * because they are all one label.
+ */
 function collectFeedLabels() {
   const labels = new Map();
-  for (const file of [CLIENT_FEEDS, SERVER_FEEDS]) {
-    const src = readFileSync(file, 'utf-8');
-    for (const m of src.matchAll(/\bname:\s*'((?:[^'\\]|\\.)*)'/g)) {
-      const name = m[1].replace(/\\'/g, "'");
-      // Scan forward to this entry's `url:`; 600 chars spans a multiline
-      // locale-keyed url object without reaching the next entry's name.
-      const window = src.slice(m.index, m.index + 600);
-      const urlMatch = window.match(/\burl:\s*([\s\S]*?)(?:,\s*$|}\s*[,\]])/m);
-      if (!labels.has(name)) labels.set(name, new Set());
-      if (!urlMatch) continue;
-      for (const host of publisherHostsFor(urlMatch[1])) labels.get(name).add(host);
+  for (const feed of JSON.parse(readFileSync(NEWS_CATALOG, 'utf-8')).feeds) {
+    if (!labels.has(feed.name)) labels.set(feed.name, new Set());
+    for (const value of [feed.url, feed.browser?.url]) {
+      const hrefs = typeof value === 'string' ? [value] : Object.values(value ?? {});
+      for (const href of hrefs) {
+        const host = publisherHostFor(href);
+        if (host) labels.get(feed.name).add(host);
+      }
     }
   }
   for (const name of Object.keys(JSON.parse(readFileSync(SOURCE_TIERS, 'utf-8')))) {
