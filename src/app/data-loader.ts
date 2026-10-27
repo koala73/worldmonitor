@@ -721,8 +721,10 @@ export class DataLoaderManager implements AppModule {
   /**
    * Items for a cross-edition panel, read from every other edition whose
    * digest carries `category` (a key such as `markets` is placed in both the
-   * finance and commodity editions). Returns null when no such digest is
-   * available, so the caller keeps its existing fallback.
+   * finance and commodity editions). Returns null unless EVERY such edition's
+   * digest arrived and carries the category: a partial set would silently drop
+   * the missing edition's sources, so the caller falls back to fetching the
+   * full reachable feed set instead.
    */
   private async crossEditionCategoryItems(category: string): Promise<{ items: NewsItem[]; servedStale: boolean } | null> {
     const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
@@ -730,7 +732,7 @@ export class DataLoaderManager implements AppModule {
     const language = getCurrentLanguage();
     const digests = await Promise.all(editions.map(edition => this.fetchEditionDigest(edition, language)));
     const carrying = digests.filter((d): d is ListFeedDigestResponse => !!d?.categories && category in d.categories);
-    if (carrying.length === 0) return null;
+    if (carrying.length !== editions.length) return null;
     return {
       items: carrying.flatMap(d => (d.categories[category]?.items ?? []).map(protoItemToNewsItem)),
       servedStale: carrying.some(d => d.coverage?.servedStale === true),
@@ -1728,6 +1730,7 @@ export class DataLoaderManager implements AppModule {
       // Sources no digest carries yet (`browserOnly`, still on the migration
       // list) keep the rotating direct fetch below, merged onto these items.
       let crossEditionCarry: NewsItem[] | null = null;
+      let crossEditionServedStale = false;
       let rotationFeeds = reachableFeeds;
       if (isCustom) {
         const crossEdition = await this.crossEditionCategoryItems(category);
@@ -1764,6 +1767,7 @@ export class DataLoaderManager implements AppModule {
             return items;
           }
           crossEditionCarry = digestItems;
+          crossEditionServedStale = crossEdition.servedStale;
           rotationFeeds = directFeeds;
         }
       }
@@ -1892,7 +1896,10 @@ export class DataLoaderManager implements AppModule {
       // unreachable on every load and every refresh (#5873). It rotates
       // instead: same request budget, advanced by the cap each cycle, so every
       // source is reached within ceil(N / cap) cycles.
-      recordSelectedFreshness(false);
+      //
+      // Direct feeds merged onto a stale cross-edition digest keep the digest's
+      // stale state: the combined panel still carries replayed items.
+      recordSelectedFreshness(crossEditionCarry ? crossEditionServedStale : false);
       const rotationCycle = isCustom ? this.newsRotationCycle(category) : 0;
       const fallbackFeeds = isCustom
         ? selectRotatingFeedWindow(rotationFeeds, this.perFeedFallbackCategoryFeedLimit, rotationCycle)
