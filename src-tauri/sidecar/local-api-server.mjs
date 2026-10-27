@@ -949,6 +949,7 @@ const cloudPreferredExact = new Set([
   '/api/economic/v1/get-macro-signals',
   '/api/economic/v1/get-nat-gas-storage',
   '/api/economic/v1/get-national-debt',
+  '/api/economic/v1/get-no2-activity',
   '/api/economic/v1/get-oil-inventories',
   '/api/economic/v1/get-oil-stocks-analysis',
   '/api/economic/v1/get-us-cpi-monthly',
