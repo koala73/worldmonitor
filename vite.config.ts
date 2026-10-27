@@ -2,7 +2,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
 import type { OutputBundle } from 'rollup';
-import { resolve, dirname, extname, basename } from 'path';
+import { resolve, dirname, extname, basename, posix } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
@@ -916,8 +916,9 @@ function webMcpDevSecurityHeadersPlugin(): Plugin {
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        let pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+        let pathname = (req.url ?? '/').split(/[?#]/, 1)[0];
         try { pathname = decodeURI(pathname); } catch { /* Vite handles malformed paths. */ }
+        pathname = posix.normalize(pathname).replace(/\/$/, '') || '/';
         const isEmbedDocument = pathname === '/embed' || pathname === '/embed.html';
         if (pathname === '/wm-widget-sandbox.html') {
           res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;");

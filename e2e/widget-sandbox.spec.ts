@@ -148,8 +148,10 @@ test.describe('PRO widget sandbox', () => {
     expect(await page.evaluate(() => document.body.dataset.compromised)).toBeUndefined();
     await page.screenshot({ path: testInfo.outputPath('widget-sandbox-normal.png') });
     const sandboxUrl = new URL('/wm-widget-sandbox.html#id=foreign&token=foreign-token', page.url());
-    await page.context().grantPermissions(['local-network-access'], { origin: 'http://localhost:4173' });
-    await page.goto('http://localhost:4173/widget-sandbox-parent');
+    const foreignParent = new URL('/widget-sandbox-parent', page.url());
+    foreignParent.hostname = 'localhost';
+    await page.context().grantPermissions(['local-network-access'], { origin: foreignParent.origin });
+    await page.goto(foreignParent.href);
     await page.evaluate(() => {
       document.body.innerHTML = '<style>body{font:18px system-ui;padding:24px}iframe{width:700px;height:240px;display:block;margin:20px 0}</style><h1>Widget sandbox security check</h1><p>Controlled local fixture. Parent and sandbox have different loopback origins.</p>';
     });

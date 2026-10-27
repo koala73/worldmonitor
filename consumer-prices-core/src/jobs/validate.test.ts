@@ -32,6 +32,17 @@ it('does not treat two SKUs from one retailer as two independent peers', async (
   await validateAll();
   expect(query).toHaveBeenCalledTimes(1);
 });
+it('holds both retailer sides when duplicate SKUs inflate a disputed pair', async () => {
+  query.mockResolvedValueOnce({ rows: [row('a', 10), row('b', 100), { ...row('b2', 100), retailer_slug: 'b' }] });
+  await validateAll();
+  expect(query.mock.calls.slice(1).map(([, args]) => args[0])).toEqual(['a', 'b', 'b2']);
+});
+it('gives each retailer one median vote despite duplicate SKUs', async () => {
+  query.mockResolvedValueOnce({ rows: [row('a', 10), row('b', 11), row('c', 100),
+    { ...row('c2', 100), retailer_slug: 'c' }, { ...row('c3', 100), retailer_slug: 'c' }] });
+  await validateAll();
+  expect(query.mock.calls.slice(1).map(([, args]) => args[0])).toEqual(['c', 'c2', 'c3']);
+});
 it('restores its own legacy hold when no validator was required', async () => {
   query.mockResolvedValueOnce({ rows: [row('held', 10, 'review', 'validate-job', null), row('peer', 10)] });
   await validateAll();

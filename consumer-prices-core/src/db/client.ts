@@ -13,9 +13,12 @@ export function getPool(): pg.Pool {
   if (!_pool) {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) throw new Error('DATABASE_URL is not set');
-    const url = new URL(databaseUrl);
-    const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-    if (!local && (
+    const url = databaseUrl.startsWith('/') ? null : new URL(databaseUrl);
+    if (['host', 'hostaddr', 'port'].some(name => url?.searchParams.has(name))) {
+      throw new Error('DATABASE_URL must not override the connection endpoint via query parameters');
+    }
+    const local = !url || ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (url && !local && (
       url.searchParams.getAll('ssl').some(value => !['true', '1'].includes(value)) ||
       url.searchParams.getAll('sslmode').some(value => value !== 'verify-full')
     )) throw new Error('Remote DATABASE_URL requires verified TLS; use sslmode=verify-full');

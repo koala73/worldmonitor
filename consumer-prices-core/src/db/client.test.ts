@@ -38,6 +38,19 @@ afterEach(async () => {
 });
 
 describe('withTransaction', () => {
+  it.each(['host=database.example', 'hostaddr=203.0.113.1', 'port=6543', 'host=localhost&host=database.example'])(
+    'rejects endpoint query overrides before pg can reclassify a local connection: %s', options => {
+      vi.stubEnv('DATABASE_URL', `postgres://user@127.0.0.1/prices?${options}`);
+      expect(() => getPool()).toThrow(/endpoint/);
+    });
+  it('preserves a local Unix socket connection string', async () => {
+    vi.stubEnv('DATABASE_URL', '/var/run/postgresql prices');
+    getPool();
+    const actual = await vi.importActual<typeof import('pg')>('pg');
+    const client = new actual.default.Client(mocks.poolOptions.mock.lastCall![0]);
+    expect((client as unknown as { connectionParameters: { host: string; database: string; ssl: boolean } }).connectionParameters)
+      .toMatchObject({ host: '/var/run/postgresql', database: 'prices', ssl: false });
+  });
   it.each(['sslmode=disable', 'sslmode=no-verify', 'ssl=0', 'ssl=false', 'sslmode=verify-full&sslmode=no-verify', 'uselibpqcompat=true&sslmode=prefer'])(
     'rejects a remote URL that weakens TLS: %s', options => {
       vi.stubEnv('DATABASE_URL', `postgres://user@database.example/prices?${options}`);

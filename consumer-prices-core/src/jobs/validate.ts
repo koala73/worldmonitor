@@ -104,12 +104,18 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
   for (const [, itemRows] of byItem) {
     // Need >= 2 retailers to compute a meaningful cross-retailer median.
     // Single-retailer items cannot be sanity-checked — skip.
-    if (new Set(itemRows.map(row => row.retailerSlug)).size < 2) continue;
-
-    const med = median(itemRows.map((r) => r.price));
+    const pricesByRetailer = new Map<string, number[]>();
+    for (const row of itemRows) {
+      const prices = pricesByRetailer.get(row.retailerSlug) ?? [];
+      prices.push(row.price);
+      pricesByRetailer.set(row.retailerSlug, prices);
+    }
+    if (pricesByRetailer.size < 2) continue;
+    const peerPrices = [...pricesByRetailer.values()].map(prices => median(prices));
+    const med = median(peerPrices);
     if (med === 0) continue;
-    const disputedPair = itemRows.length === 2 &&
-      Math.max(...itemRows.map(r => r.price)) / Math.min(...itemRows.map(r => r.price)) > UPPER_RATIO;
+    const disputedPair = peerPrices.length === 2 &&
+      Math.max(...peerPrices) / Math.min(...peerPrices) > UPPER_RATIO;
 
     for (const row of itemRows) {
       const ratio = row.price / med;
