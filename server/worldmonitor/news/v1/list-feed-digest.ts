@@ -22,6 +22,7 @@ import {
 } from '../../../_shared/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
+import { readBoundedResponseBody } from '../../../../api/mcp/bounded-body';
 import {
   classifyStaleSnapshot,
   filterRevokedUrls,
@@ -842,6 +843,9 @@ function responseValidators(resp: Response): FeedValidators | undefined {
   return etag || lastModified ? { etag, lastModified } : undefined;
 }
 
+/** Mirrors `RSS_MAX_BODY_BYTES` in scripts/ais-relay.cjs (the relay leg's cap). */
+const RSS_MAX_BODY_BYTES = 5 * 1024 * 1024;
+
 async function fetchRssText(
   url: string,
   signal: AbortSignal,
@@ -860,7 +864,9 @@ async function fetchRssText(
     const resp = await fetch(url, { headers, signal: controller.signal });
     if (resp.status === 304 && validators) return { text: null, failure: null, notModified: true };
     if (!resp.ok) return { text: null, failure: 'direct-error' };
-    const text = await resp.text();
+    // Same 5 MiB ceiling the relay leg enforces; an oversized body throws
+    // here and falls through to the relay like any other direct failure.
+    const text = new TextDecoder().decode(await readBoundedResponseBody(resp, RSS_MAX_BODY_BYTES));
     // Defensive: upstream may return HTTP 200 with an HTML interstitial
     // (Cloudflare bot challenge, captcha page). Reject up front so the
     // caller's relay fallback fires instead of caching an empty parse.
@@ -1221,10 +1227,10 @@ function isTrustedOriginAggregator(feedUrl: string): boolean {
   }
 }
 
-function extractFirstDateTag(block: string, isAtom: boolean): string {
+function extractFirstDateTag(block: string, isAtom: boolean, lower = asciiLower(block)): string {
   const tags = isAtom ? DATE_TAG_PRIORITY.atom : DATE_TAG_PRIORITY.rss;
   for (const tag of tags) {
-    const value = extractTag(block, tag);
+    const value = extractTag(block, tag, lower);
     if (value) return value;
   }
   return '';
@@ -1237,12 +1243,10 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   let parsedTotal = 0;
   let droppedUndated = 0;
 
-  const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
-  const entryRegex = /<entry[\s>]([\s\S]*?)<\/entry>/gi;
-
-  let matches = [...xml.matchAll(itemRegex)];
+  const xmlLower = asciiLower(xml);
+  let matches = scanTagBlocks(xml, xmlLower, 'item');
   const isAtom = matches.length === 0;
-  if (isAtom) matches = [...xml.matchAll(entryRegex)];
+  if (isAtom) matches = scanTagBlocks(xml, xmlLower, 'entry');
   const originPublisherTrusted = !isAtom && isTrustedOriginAggregator(feed.url);
 
   // #4920 coverage ledger: items beyond the per-feed cap were previously
@@ -1252,11 +1256,11 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   const parseLimit = retainCountryItems ? COUNTRY_ITEMS_PER_FEED : ITEMS_PER_FEED;
   // One log line per feed for gated pool links: a deep pool can drop dozens.
   const poolLinkDrops = new Map<string, number>();
-  for (const [index, match] of matches.slice(0, parseLimit).entries()) {
-    const block = match[1]!;
+  for (const [index, block] of matches.slice(0, parseLimit).entries()) {
+    const blockLower = asciiLower(block);
     const forDigest = index < ITEMS_PER_FEED;
 
-    const title = extractTag(block, 'title');
+    const title = extractTag(block, 'title', blockLower);
     if (!title) continue;
 
     if (forDigest) parsedTotal++;
@@ -1264,10 +1268,12 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     let link: string;
     let blankedLinkHost = '';
     if (isAtom) {
-      const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["']/);
+      // `[^<>]+`, not `[^>]+`: an opener's scan stops at the next tag, so a
+      // run of unterminated `<link` openers no longer rescans to the end.
+      const hrefMatch = block.match(/<link[^<>]+href=["']([^"']+)["']/);
       link = hrefMatch?.[1] ?? '';
     } else {
-      link = extractTag(block, 'link');
+      link = extractTag(block, 'link', blockLower);
     }
     // Strip non-HTTP links (javascript:, data:, etc.) before any downstream use.
     if (!/^https?:\/\//i.test(link)) link = '';
@@ -1283,7 +1289,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // require at least one non-empty, parseable, non-future timestamp. Items
     // that fail the gate are dropped — never silently stamped with Date.now()
     // (which is the bug that let static institutional pages reach the brief).
-    const pubDateStr = extractFirstDateTag(block, isAtom);
+    const pubDateStr = extractFirstDateTag(block, isAtom, blockLower);
     if (!pubDateStr) {
       if (forDigest) droppedUndated++;
       continue;
@@ -1306,7 +1312,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // dialect is read; extractTag's [^<]* body would not match a container
     // anyway, but skipping Atom keeps that an invariant rather than a
     // regex accident.
-    const extractedOriginPublisher = isAtom ? '' : extractTag(block, 'source');
+    const extractedOriginPublisher = isAtom ? '' : extractTag(block, 'source', blockLower);
     // Ordinary feeds cannot vouch for RSS <source>. The country reader already
     // ignores untrusted origin metadata, so keep those late headlines and store
     // an empty publisher. Trusted aggregators still have the 200-character
@@ -1344,7 +1350,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
 
     const threat = classifyByKeyword(title, variant);
     const isAlert = threat.level === 'critical' || threat.level === 'high';
-    const description = extractDescription(block, isAtom, title);
+    const description = extractDescription(block, isAtom, title, blockLower);
 
     // #8398: digest branch — same ingest gate as the country-pool branch
     // above (this is the last feed-scoped point before items lose their feed;
@@ -1439,25 +1445,25 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
  * Returns the raw content without entity decoding — caller strips HTML and
  * decodes entities via `decodeXmlEntities`.
  */
-const DESCRIPTION_TAG_REGEX_CACHE = new Map<string, { cdata: RegExp; plain: RegExp }>();
+function extractRawTagBody(xml: string, tag: string, lower = asciiLower(xml)): string {
+  const cdata = matchCdataTag(xml, lower, tag);
+  if (cdata !== null) return cdata;
+  return matchTagBody(xml, lower, tag) ?? '';
+}
 
-function extractRawTagBody(xml: string, tag: string): string {
-  let cached = DESCRIPTION_TAG_REGEX_CACHE.get(tag);
-  if (!cached) {
-    cached = {
-      cdata: new RegExp(
-        `<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`,
-        'i',
-      ),
-      plain: new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'),
-    };
-    DESCRIPTION_TAG_REGEX_CACHE.set(tag, cached);
-  }
-  const cdataMatch = xml.match(cached.cdata);
-  if (cdataMatch) return cdataMatch[1] ?? '';
-
-  const match = xml.match(cached.plain);
-  return match ? match[1] ?? '' : '';
+/**
+ * `s.replace(re, replacement)` for a global regex whose every match ends with
+ * `terminator`. Each failed match attempt scans to the end of the string, so a
+ * long unterminated tail (`<<<<…`, `<![CDATA[…` with no `]]>`) made the replace
+ * quadratic. No match can end past the last terminator, so only the prefix
+ * through it is handed to the regex, where each attempt stops at the next
+ * terminator; the tail is appended unchanged. Same result as the plain replace.
+ */
+function replaceBeforeLast(s: string, terminator: string, re: RegExp, replacement: string): string {
+  const end = s.lastIndexOf(terminator);
+  if (end < 0) return s;
+  const cut = end + terminator.length;
+  return s.slice(0, cut).replace(re, replacement) + s.slice(cut);
 }
 
 function normalizeForDescriptionEquality(s: string): string {
@@ -1472,20 +1478,24 @@ function normalizeForDescriptionEquality(s: string): string {
  * MIN_DESCRIPTION_LEN, or normalises-equal to the headline — in those cases
  * downstream consumers must fall back to the cleaned headline (R6).
  */
-function extractDescription(block: string, isAtom: boolean, title: string): string {
+function extractDescription(
+  block: string,
+  isAtom: boolean,
+  title: string,
+  lower = asciiLower(block),
+): string {
   const tags = isAtom ? DESCRIPTION_TAG_PRIORITY.atom : DESCRIPTION_TAG_PRIORITY.rss;
 
   let best = '';
   for (const tag of tags) {
-    const raw = extractRawTagBody(block, tag);
+    const raw = extractRawTagBody(block, tag, lower);
     if (!raw) continue;
     // Some publisher feeds place entity-encoded thumbnail markup before a
     // literal CDATA summary in one tag body (Times of India is one example).
     // Unwrap complete embedded CDATA sections before entity decoding and HTML
     // stripping; otherwise `<...>` removal consumes the wrapper and its text.
-    const unwrapped = raw.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
-    const cleaned = decodeXmlEntities(unwrapped)
-      .replace(/<[^>]+>/g, ' ')
+    const unwrapped = replaceBeforeLast(raw, ']]>', /<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+    const cleaned = replaceBeforeLast(decodeXmlEntities(unwrapped), '>', /<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
     if (cleaned.length > best.length) best = cleaned;
@@ -1498,36 +1508,130 @@ function extractDescription(block: string, isAtom: boolean, title: string): stri
   return best.slice(0, MAX_DESCRIPTION_LEN);
 }
 
-const TAG_REGEX_CACHE = new Map<string, { cdata: RegExp; plain: RegExp }>();
-const KNOWN_TAGS = [
-  'title',
-  'link',
-  'pubDate',
-  'published',
-  'updated',
-  // Dublin Core date dialects (ArXiv and similar feeds publish via these
-  // instead of <pubDate>). Pre-caching their regexes mirrors the perf
-  // pattern used for other hot-path tags.
-  'dc:date',
-  'dc:Date.Issued',
-] as const;
-for (const tag of KNOWN_TAGS) {
-  TAG_REGEX_CACHE.set(tag, {
-    cdata: new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`, 'i'),
-    plain: new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`, 'i'),
-  });
+function extractTag(xml: string, tag: string, lower = asciiLower(xml)): string {
+  const cdata = matchCdataTag(xml, lower, tag);
+  if (cdata !== null) return cdata.trim();
+
+  const text = matchTagText(xml, lower, tag);
+  return text !== null ? decodeXmlEntities(text.trim()) : '';
 }
 
-function extractTag(xml: string, tag: string): string {
-  const cached = TAG_REGEX_CACHE.get(tag);
-  const cdataRe = cached?.cdata ?? new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`, 'i');
-  const plainRe = cached?.plain ?? new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`, 'i');
+// ── Linear tag scanners ─────────────────────────────────────────────────────
+// Feed bodies are publisher-controlled and parsed synchronously on the edge
+// isolate. The lazy/`[^>]*` tag regexes these replace backtrack quadratically
+// on unterminated markup (a 1 MB run of `<title` took ~2 min), so each scanner
+// below reproduces one regex's first match with indexOf walks that never
+// revisit a character more than a constant number of times. Tag names are
+// matched literally and ASCII-case-insensitively, like the `/i` regexes did.
+// `lower` must be `asciiLower(xml)`: index-aligned with `xml`, so a match
+// found in `lower` is sliced from `xml` with the original case.
 
-  const cdataMatch = xml.match(cdataRe);
-  if (cdataMatch) return cdataMatch[1]!.trim();
+const JS_WHITESPACE = /\s/;
 
-  const match = xml.match(plainRe);
-  return match ? decodeXmlEntities(match[1]!.trim()) : '';
+/** Lowercase A-Z only. Index-preserving, unlike toLowerCase (`İ` grows to 2 units). */
+function asciiLower(s: string): string {
+  return s.replace(/[A-Z]+/g, (run) => run.toLowerCase());
+}
+
+function isJsWhitespace(c: string | undefined): boolean {
+  return c !== undefined && JS_WHITESPACE.test(c);
+}
+
+/**
+ * For each `<tag` opener in order, yields the index of the first `>` after
+ * it: where `<tag[^>]*>` ends for that opener. The `>` lookup is reused while
+ * it still lies past the opener, so a run of openers before one `>` costs
+ * O(n) in total.
+ */
+function* tagOpeners(lower: string, tag: string): Generator<number> {
+  const open = `<${tag.toLowerCase()}`;
+  let pos = 0;
+  let gt = -1;
+  for (;;) {
+    const o = lower.indexOf(open, pos);
+    if (o < 0) return;
+    if (gt < o + open.length) gt = lower.indexOf('>', o + open.length);
+    if (gt < 0) return; // no `>` after this opener, so none after a later one
+    yield gt;
+    pos = o + 1;
+  }
+}
+
+/** Every `/<tag[\s>]([\s\S]*?)<\/tag>/gi` capture, in order (item/entry split). */
+function scanTagBlocks(xml: string, lower: string, tag: string): string[] {
+  const open = `<${tag}`;
+  const close = `</${tag}>`;
+  const blocks: string[] = [];
+  let pos = 0;
+  for (;;) {
+    const o = lower.indexOf(open, pos);
+    if (o < 0) break;
+    const next = lower[o + open.length];
+    if (next !== '>' && !isJsWhitespace(next)) {
+      pos = o + 1;
+      continue;
+    }
+    const bodyStart = o + open.length + 1;
+    const c = lower.indexOf(close, bodyStart);
+    if (c < 0) break; // no close after this opener, so none after a later one
+    blocks.push(xml.slice(bodyStart, c));
+    pos = c + close.length;
+  }
+  return blocks;
+}
+
+/** First `<tag[^>]*>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/tag>` capture (`/i`), or null. */
+function matchCdataTag(xml: string, lower: string, tag: string): string | null {
+  const close = `</${tag.toLowerCase()}>`;
+  let lastGt = -1;
+  let bodyStart = -1;
+  for (const gt of tagOpeners(lower, tag)) {
+    if (gt !== lastGt) {
+      // Openers sharing one `>` share the same verdict.
+      lastGt = gt;
+      let j = gt + 1;
+      while (isJsWhitespace(lower[j])) j++;
+      bodyStart = lower.startsWith('<![cdata[', j) ? j + 9 : -1;
+    }
+    if (bodyStart < 0) continue;
+    // The first CDATA opener decides: a later opener's body starts later, so
+    // it cannot reach a terminator this one did not.
+    let k = lower.indexOf(']]>', bodyStart);
+    while (k >= 0) {
+      let j = k + 3;
+      while (isJsWhitespace(lower[j])) j++;
+      if (lower.startsWith(close, j)) return xml.slice(bodyStart, k);
+      k = lower.indexOf(']]>', k + 1);
+    }
+    return null;
+  }
+  return null;
+}
+
+/** First `<tag[^>]*>([^<]*)<\/tag>` capture (`/i`), or null. */
+function matchTagText(xml: string, lower: string, tag: string): string | null {
+  const close = `</${tag.toLowerCase()}>`;
+  let lastGt = -1;
+  let lt = -1;
+  for (const gt of tagOpeners(lower, tag)) {
+    if (gt !== lastGt) {
+      lastGt = gt;
+      lt = lower.indexOf('<', gt + 1);
+    }
+    if (lt < 0) return null; // no `<` left for any later opener either
+    if (lower.startsWith(close, lt)) return xml.slice(gt + 1, lt);
+  }
+  return null;
+}
+
+/** First `<tag[^>]*>([\s\S]*?)<\/tag>` capture (`/i`), or null. */
+function matchTagBody(xml: string, lower: string, tag: string): string | null {
+  for (const gt of tagOpeners(lower, tag)) {
+    // The first opener decides: a later one's body starts no earlier.
+    const c = lower.indexOf(`</${tag.toLowerCase()}>`, gt + 1);
+    return c < 0 ? null : xml.slice(gt + 1, c);
+  }
+  return null;
 }
 
 /**
@@ -3783,6 +3887,12 @@ export const __testing__ = {
   extractDescription,
   extractRawTagBody,
   extractFirstDateTag,
+  asciiLower,
+  scanTagBlocks,
+  matchCdataTag,
+  matchTagText,
+  matchTagBody,
+  replaceBeforeLast,
   buildStoryTrackHsetFields,
   storyTrackLinkForPersist,
   isItemLinkAllowed,
