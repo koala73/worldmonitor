@@ -378,7 +378,7 @@ describe('api/mcp-proxy', () => {
           if (url.endsWith('/api/internal-entitlements')) {
             return Response.json({ planKey: 'pro_monthly', validUntil: FROZEN_NOW + 86_400_000, features: getEntitlementFeatures('pro_monthly') });
           }
-          if (url.startsWith('https://redis.example')) return redisFetch(input, init);
+          if (new URL(url).hostname === 'redis.example') return redisFetch(input, init);
           return mcpFetch(input, init);
         };
       });
@@ -424,7 +424,7 @@ describe('api/mcp-proxy', () => {
         const redisFetch = globalThis.fetch;
         globalThis.fetch = async (input, init) => {
           const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-          if (url.startsWith('https://redis.example') && String(init?.body ?? '').includes('rl:desktopkey:')) {
+          if (new URL(url).hostname === 'redis.example' && String(init?.body ?? '').includes('rl:desktopkey:')) {
             return new Response('upstream error', { status: 500 });
           }
           return redisFetch(input, init);

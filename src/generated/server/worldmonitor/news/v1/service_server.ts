@@ -122,6 +122,61 @@ export interface CountryHeadline {
   publishedAt: number;
 }
 
+export interface ListMediaPerspectiveRequest {
+  subjectCountry: string;
+  outletCountries: string[];
+  audience: string;
+  windowHours: number;
+  outletRegions: string[];
+}
+
+export interface ListMediaPerspectiveResponse {
+  subjectCountry: string;
+  windowHours: number;
+  groups: MediaPerspectiveGroup[];
+  noCoverageCountries: string[];
+  unattributedCount: number;
+  state: string;
+  feedTotal: number;
+  feedCached: number;
+  readAt: string;
+}
+
+export interface MediaPerspectiveGroup {
+  homeCountry: string;
+  audience: string;
+  outletCount: number;
+  headlineCount: number;
+  framing?: MediaPerspectiveFramingCounts;
+  headlines: MediaPerspectiveHeadline[];
+}
+
+export interface MediaPerspectiveFramingCounts {
+  favorable: number;
+  neutral: number;
+  critical: number;
+  hostile: number;
+  unlabeled: number;
+  method: string;
+  model: string;
+  promptVersion: string;
+}
+
+export interface MediaPerspectiveHeadline {
+  title: string;
+  englishTitle: string;
+  titleLanguage: string;
+  outlet: string;
+  publisherFamily: string;
+  tier: number;
+  ownershipClass: string;
+  stateAffiliated: string;
+  propagandaRisk: string;
+  framing: string;
+  publishedAt: number;
+  link: string;
+}
+
 export interface ListLabelChangesRequest {
   storyId: string;
   limit: number;
@@ -304,6 +359,7 @@ export interface NewsServiceHandler {
   getSummarizeArticleCache(ctx: ServerContext, req: GetSummarizeArticleCacheRequest): Promise<SummarizeArticleResponse>;
   listFeedDigest(ctx: ServerContext, req: ListFeedDigestRequest): Promise<ListFeedDigestResponse>;
   listCountryHeadlines(ctx: ServerContext, req: ListCountryHeadlinesRequest): Promise<ListCountryHeadlinesResponse>;
+  listMediaPerspective(ctx: ServerContext, req: ListMediaPerspectiveRequest): Promise<ListMediaPerspectiveResponse>;
   listLabelChanges(ctx: ServerContext, req: ListLabelChangesRequest): Promise<ListLabelChangesResponse>;
   submitErrorReport(ctx: ServerContext, req: SubmitErrorReportRequest): Promise<SubmitErrorReportResponse>;
   listErrorReports(ctx: ServerContext, req: ListErrorReportsRequest): Promise<ListErrorReportsResponse>;
@@ -481,6 +537,57 @@ export function createNewsServiceRoutes(
 
           const result = await handler.listCountryHeadlines(ctx, body);
           return new Response(JSON.stringify(result as ListCountryHeadlinesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/list-media-perspective",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListMediaPerspectiveRequest = {
+            subjectCountry: params.get("subject_country") ?? "",
+            outletCountries: params.getAll("outlet_countries"),
+            audience: params.get("audience") ?? "",
+            windowHours: Number(params.get("window_hours") ?? "0"),
+            outletRegions: params.getAll("outlet_regions"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listMediaPerspective", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listMediaPerspective(ctx, body);
+          return new Response(JSON.stringify(result as ListMediaPerspectiveResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

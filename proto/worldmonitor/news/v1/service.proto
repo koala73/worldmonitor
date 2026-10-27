@@ -7,6 +7,7 @@ import "worldmonitor/news/v1/summarize_article.proto";
 import "worldmonitor/news/v1/get_summarize_article_cache.proto";
 import "worldmonitor/news/v1/list_feed_digest.proto";
 import "worldmonitor/news/v1/list_country_headlines.proto";
+import "worldmonitor/news/v1/list_media_perspective.proto";
 import "worldmonitor/news/v1/list_label_changes.proto";
 import "worldmonitor/news/v1/error_reports.proto";
 import "worldmonitor/news/v1/search_fact_checks.proto";
@@ -34,6 +35,11 @@ service NewsService {
   // ListCountryHeadlines reads fresh country reporting from existing RSS caches without fetching publishers or applying dashboard category caps.
   rpc ListCountryHeadlines(ListCountryHeadlinesRequest) returns (ListCountryHeadlinesResponse) {
     option (sebuf.http.config) = {path: "/list-country-headlines", method: HTTP_METHOD_GET};
+  }
+
+  // ListMediaPerspective groups headlines about one country by outlet home country and audience.
+  rpc ListMediaPerspective(ListMediaPerspectiveRequest) returns (ListMediaPerspectiveResponse) {
+    option (sebuf.http.config) = {path: "/list-media-perspective", method: HTTP_METHOD_GET};
   }
 
   // ListLabelChanges returns stories whose corroboration label moved between single-publisher and corroborated in the last seven days, with the publishers behind each change.

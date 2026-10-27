@@ -121,6 +121,8 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['factchecktools.googleapis.com', 'news'],
   // BestTime live busyness is the fallback feed for the PizzINT (Pentagon pizza) panel.
   ['besttime.app', 'military'],
+  // UN M49 region table behind media-perspective outlet_regions (build-time only).
+  ['unstats.un.org', 'news'],
   ['api.scrapecreators.com', 'news'],
   ['api.telegram.org', 'news'],
   ['api.tzevaadom.co.il', 'military'],

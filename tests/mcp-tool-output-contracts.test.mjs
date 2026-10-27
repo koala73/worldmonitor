@@ -45,6 +45,7 @@ const originalEnv = { ...process.env };
 // each tool's documented format (e.g. ISO 3166-1 alpha-2 for country_code).
 const REQUIRED_ARGS = {
   get_country_history: { country_code: 'US' },
+  get_media_perspective: { subject_country: 'SA' },
   get_defense_industrial_base: { country_code: 'US' },
   get_country_coverage: { country_code: 'US' },
   get_food_stocks: { country_code: 'US' },

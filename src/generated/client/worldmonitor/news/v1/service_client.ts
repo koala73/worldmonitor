@@ -122,6 +122,61 @@ export interface CountryHeadline {
   publishedAt: number;
 }
 
+export interface ListMediaPerspectiveRequest {
+  subjectCountry: string;
+  outletCountries: string[];
+  audience: string;
+  windowHours: number;
+  outletRegions: string[];
+}
+
+export interface ListMediaPerspectiveResponse {
+  subjectCountry: string;
+  windowHours: number;
+  groups: MediaPerspectiveGroup[];
+  noCoverageCountries: string[];
+  unattributedCount: number;
+  state: string;
+  feedTotal: number;
+  feedCached: number;
+  readAt: string;
+}
+
+export interface MediaPerspectiveGroup {
+  homeCountry: string;
+  audience: string;
+  outletCount: number;
+  headlineCount: number;
+  framing?: MediaPerspectiveFramingCounts;
+  headlines: MediaPerspectiveHeadline[];
+}
+
+export interface MediaPerspectiveFramingCounts {
+  favorable: number;
+  neutral: number;
+  critical: number;
+  hostile: number;
+  unlabeled: number;
+  method: string;
+  model: string;
+  promptVersion: string;
+}
+
+export interface MediaPerspectiveHeadline {
+  title: string;
+  englishTitle: string;
+  titleLanguage: string;
+  outlet: string;
+  publisherFamily: string;
+  tier: number;
+  ownershipClass: string;
+  stateAffiliated: string;
+  propagandaRisk: string;
+  framing: string;
+  publishedAt: number;
+  link: string;
+}
+
 export interface ListLabelChangesRequest {
   storyId: string;
   limit: number;
@@ -401,6 +456,35 @@ export class NewsServiceClient {
     }
 
     return await resp.json() as ListCountryHeadlinesResponse;
+  }
+
+  async listMediaPerspective(req: ListMediaPerspectiveRequest, options?: NewsServiceCallOptions): Promise<ListMediaPerspectiveResponse> {
+    let path = "/api/news/v1/list-media-perspective";
+    const params = new URLSearchParams();
+    if (req.subjectCountry != null && req.subjectCountry !== "") params.set("subject_country", String(req.subjectCountry));
+    if (req.outletCountries && req.outletCountries.length > 0) req.outletCountries.forEach(v => params.append("outlet_countries", v));
+    if (req.audience != null && req.audience !== "") params.set("audience", String(req.audience));
+    if (req.windowHours != null && req.windowHours !== 0) params.set("window_hours", String(req.windowHours));
+    if (req.outletRegions && req.outletRegions.length > 0) req.outletRegions.forEach(v => params.append("outlet_regions", v));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListMediaPerspectiveResponse;
   }
 
   async listLabelChanges(req: ListLabelChangesRequest, options?: NewsServiceCallOptions): Promise<ListLabelChangesResponse> {

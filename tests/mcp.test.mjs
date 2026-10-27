@@ -1043,6 +1043,8 @@ describe('api/mcp.ts — PRO MCP Server', () => {
         { primaryTitle: 'Official ministry update', primarySource: 'MIIT (China)' },
         { primaryTitle: 'Unreviewed report', primarySource: 'Reuters US' },
         { primaryTitle: 'Reviewed wire report', primarySource: 'Reuters' },
+        { primaryTitle: 'Foreign-facing state broadcast', primarySource: 'Press TV' },
+        { primaryTitle: 'Uncatalogued outlet', primarySource: 'No Such Outlet' },
       ],
     };
     mockCacheKeys(
@@ -1051,7 +1053,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     );
 
     const out = await callTool('get_news_intelligence', {});
-    const [government, unreviewed, wire] = out.data.insights.topStories;
+    const [government, unreviewed, wire, stateBroadcast, uncatalogued] = out.data.insights.topStories;
 
     assert.deepEqual(government.sourceProvenance, {
       risk: 'high',
@@ -1063,7 +1065,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       stateAffiliated: 'China',
       knownBiases: [],
       note: 'Chinese Ministry of Industry and Information Technology official feed',
-      summary: 'Official government source: China. Perspective: none recorded. Chinese Ministry of Industry and Information Technology official feed.',
+      summary: 'Official government source: China. Perspective: none recorded. Chinese Ministry of Industry and Information Technology official feed. Home CN; domestic audience; language zh; ownership state.',
+      homeCountry: 'CN',
+      audience: 'domestic',
+      language: 'zh',
+      ownershipClass: 'state',
     });
     assert.deepEqual(unreviewed.sourceProvenance, {
       risk: 'unknown',
@@ -1074,7 +1080,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       typeReviewed: false,
       knownBiases: [],
       note: 'Provenance not yet reviewed — do not treat as independent journalism',
-      summary: 'Provenance not yet reviewed — do not treat as independent journalism. Perspective: none recorded.',
+      summary: 'Provenance not yet reviewed — do not treat as independent journalism. Perspective: none recorded. Home GB; international audience; language en; ownership private.',
+      homeCountry: 'GB',
+      audience: 'international',
+      language: 'en',
+      ownershipClass: 'private',
     });
     assert.deepEqual(wire.sourceProvenance, {
       risk: 'low',
@@ -1085,8 +1095,21 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       typeReviewed: true,
       knownBiases: [],
       note: 'Wire service, strict editorial standards',
-      summary: 'Reviewed. Perspective: none recorded. Wire service, strict editorial standards.',
+      summary: 'Reviewed. Perspective: none recorded. Wire service, strict editorial standards. Home GB; international audience; language en; ownership private.',
+      homeCountry: 'GB',
+      audience: 'international',
+      language: 'en',
+      ownershipClass: 'private',
     });
+    assert.equal(stateBroadcast.sourceProvenance.audience, 'international');
+    assert.equal(stateBroadcast.sourceProvenance.homeCountry, 'IR');
+    assert.equal(stateBroadcast.sourceProvenance.ownershipClass, 'state');
+    assert.deepEqual(
+      [uncatalogued.sourceProvenance.homeCountry, uncatalogued.sourceProvenance.audience, uncatalogued.sourceProvenance.language, uncatalogued.sourceProvenance.ownershipClass],
+      [null, null, null, null],
+      'an outlet with no profile reports nulls, never a guessed country or audience',
+    );
+    assert.match(uncatalogued.sourceProvenance.summary, /Outlet profile: none recorded\.$/);
   });
 
   // --- Telemetry ---

@@ -25,6 +25,7 @@ import {
 import { clusterNewsCore, protoThreatLevelToLabel, topClusterKeywords } from '../../../shared/news-clustering-core.js';
 import type { NewsItemCore } from '../../../shared/news-clustering-core.js';
 import { getSourceProvenanceState } from '../../../shared/source-provenance.js';
+import { OUTLET_PROFILE_OUTPUT_PROPERTIES, OUTLET_PROFILE_REQUIRED, withOutletProfile } from '../../../server/_shared/outlet-profile';
 import { computeCredibilityScore } from '../../../shared/news-credibility.js';
 import { declaredSourceTier, getSourceTier } from '../../../server/_shared/source-tiers';
 import {
@@ -123,6 +124,7 @@ const DIGEST_CATEGORY_DESC =
 
 const SOURCE_PROVENANCE_REQUIRED = [
   'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', 'summary',
+  ...OUTLET_PROFILE_REQUIRED,
 ];
 const SOURCE_PROVENANCE_PROPERTIES = {
   risk: { type: 'string' }, type: { type: 'string' },
@@ -135,6 +137,7 @@ const SOURCE_PROVENANCE_PROPERTIES = {
     description: 'Curated perspective labels. Recorded for few sources: empty means not assessed, not neutral.',
   },
   summary: { type: 'string', description: 'Every provenance fact as short fixed-order clauses in one string; includes "Perspective: none recorded." when no label exists.' },
+  ...OUTLET_PROFILE_OUTPUT_PROPERTIES,
 };
 
 function nlpTruncateUtf8(value: string, maxBytes: number): string {
@@ -810,7 +813,7 @@ export const NLP_TOOLS: ToolDef[] = [
         const verdict = assessCorroboration(evidence);
         const provenanceBySource = new Map(
           [...new Set([cluster.primarySource, ...projectedSources])]
-            .map(source => [source, getSourceProvenanceState(source)] as const),
+            .map(source => [source, withOutletProfile(source, getSourceProvenanceState(source))] as const),
         );
         return {
           id: cluster.id,
