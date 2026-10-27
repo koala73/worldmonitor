@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import i18next from 'i18next';
@@ -12,6 +12,7 @@ import {
   V1_LAYER_EXPLANATION_KEYS,
 } from '../src/config/map-layer-definitions';
 import { layerExplanationList, layerExplanationLookup, renderLayerExplanationCard } from '../src/utils/layer-explanation-card';
+import { escapeHtml } from '../src/utils/sanitize';
 
 const root = resolve(import.meta.dirname, '..');
 const relaySource = readFileSync(resolve(root, 'scripts/ais-relay.cjs'), 'utf8');
@@ -523,4 +524,92 @@ describe('layer explanation localization', () => {
     assert.equal(html.includes('>Fallback<'), false);
     assert.equal(html.includes('a curated source and confidence card has not been added yet'), false);
   });
+
+  test('every shipped locale renders its own explanation card', () => {
+    const english = collectLayerExplanationStrings(enLocale);
+    const englishPurpose = english.get('layerExplanation.layers.hotspots.purpose') ?? '';
+    const englishFallback = english.get('layerExplanation.fallback.purpose') ?? '';
+    assert.ok(englishPurpose.length > 0, 'English hotspot purpose is required');
+    assert.ok(englishFallback.length > 0, 'English fallback purpose is required');
+
+    const problems: string[] = [];
+    for (const code of shippedLocaleCodes()) {
+      const locale = code === 'en' ? enLocale : loadLocale(code);
+      const strings = collectLayerExplanationStrings(locale);
+      for (const [path, englishValue] of english) {
+        const value = strings.get(path);
+        if (value === undefined || value.trim() === '') {
+          problems.push(`${code} missing ${path}`);
+          continue;
+        }
+        if (code !== 'en' && isLayerExplanationProse(path) && value === englishValue) {
+          problems.push(`${code} left English prose at ${path}`);
+        }
+      }
+      for (const path of strings.keys()) {
+        if (!english.has(path)) problems.push(`${code} orphan ${path}`);
+      }
+
+      const lookup = dictionaryLookup(locale, enLocale);
+      const hotspots = renderLayerExplanationCard('Hotspots', getLayerExplanation('hotspots'), lookup);
+      const fallback = renderLayerExplanationCard('Day/Night', getLayerExplanation('dayNight'), lookup);
+      const purpose = strings.get('layerExplanation.layers.hotspots.purpose') ?? '';
+      const fallbackPurpose = strings.get('layerExplanation.fallback.purpose') ?? '';
+      if (purpose && !hotspots.includes(escapeHtml(purpose))) problems.push(`${code} hotspot card dropped its purpose`);
+      if (fallbackPurpose && !fallback.includes(escapeHtml(fallbackPurpose))) problems.push(`${code} fallback card dropped its purpose`);
+      for (const labelKey of ['source', 'freshness', 'confidence', 'limitations', 'related', 'groundedIn', 'curated'] as const) {
+        const label = strings.get(`layerExplanation.labels.${labelKey}`) ?? '';
+        if (!hotspots.includes(`>${escapeHtml(label)}<`)) problems.push(`${code} hotspot card missing ${labelKey} label`);
+      }
+      const fallbackLabel = strings.get('layerExplanation.labels.fallback') ?? '';
+      if (!fallback.includes(`>${escapeHtml(fallbackLabel)}<`)) problems.push(`${code} fallback card missing its coverage label`);
+      if (code !== 'en') {
+        if (hotspots.includes(englishPurpose)) problems.push(`${code} hotspot card still shows the English purpose`);
+        if (fallback.includes(englishFallback)) problems.push(`${code} fallback card still shows the English purpose`);
+        if (hotspots.includes('>Freshness<')) problems.push(`${code} hotspot card still shows the English Freshness label`);
+      }
+    }
+    assert.deepEqual(problems, []);
+  });
 });
+
+const PROSE_FIELDS = new Set(['purpose', 'source', 'freshness', 'confidence', 'limitations', 'related']);
+
+function shippedLocaleCodes(): string[] {
+  const source = readFileSync(resolve(root, 'src/services/i18n.ts'), 'utf8');
+  const match = source.match(/const SUPPORTED_LANGUAGES = \[([^\]]+)\] as const/);
+  assert.ok(match, 'src/services/i18n.ts must declare SUPPORTED_LANGUAGES');
+  const declared = [...match[1].matchAll(/'([^']+)'/g)].map((item) => item[1]).sort();
+  const files = readdirSync(resolve(root, 'src/locales'))
+    .filter((name) => name.endsWith('.json') && name !== 'en.shell.json')
+    .map((name) => name.replace(/\.json$/, ''))
+    .sort();
+  assert.deepEqual(files, declared, 'every supported language needs a full locale file');
+  return declared;
+}
+
+function loadLocale(code: string): LocaleTree {
+  return JSON.parse(readFileSync(resolve(root, `src/locales/${code}.json`), 'utf8')) as LocaleTree;
+}
+
+function collectLayerExplanationStrings(locale: LocaleTree): Map<string, string> {
+  const out = new Map<string, string>();
+  collectStrings(locale.layerExplanation, 'layerExplanation', out);
+  return out;
+}
+
+function collectStrings(value: unknown, path: string, out: Map<string, string>): void {
+  if (typeof value === 'string') {
+    out.set(path, value);
+    return;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+  for (const [key, child] of Object.entries(value)) {
+    collectStrings(child, `${path}.${key}`, out);
+  }
+}
+
+function isLayerExplanationProse(path: string): boolean {
+  if (path.startsWith('layerExplanation.labels.')) return false;
+  return path.split('.').some((part) => PROSE_FIELDS.has(part));
+}
