@@ -1991,7 +1991,6 @@
   {
     "entry": "scripts/seed-no2-activity.mjs",
     "deployMode": "nixpacks-root-scripts",
-    "lifecycle": "planned",
     "service": "seed-no2-activity",
     "startCommand": "node seed-no2-activity.mjs",
     "requiredEnv": [
