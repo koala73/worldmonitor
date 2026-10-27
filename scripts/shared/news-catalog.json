@@ -128,7 +128,9 @@
         "ipo",
         "producthunt",
         "hardware",
-        "outages"
+        "outages",
+        "thinktanks",
+        "podcasts"
       ],
       "finance": [
         "markets",
@@ -144,7 +146,8 @@
         "fin-regulation",
         "institutional",
         "analysis",
-        "gccNews"
+        "gccNews",
+        "nq-news"
       ],
       "commodity": [
         "commodity-news",
@@ -165,8 +168,21 @@
         "nature",
         "inspiring",
         "community"
+      ],
+      "energy": [
+        "live-news",
+        "energy",
+        "supply-chain"
       ]
     }
+  },
+  "gateExempt": {
+    "energy": [
+      "supply-chain"
+    ],
+    "finance": [
+      "nq-news"
+    ]
   },
   "categoryNotes": [
     {
@@ -2966,6 +2982,11 @@
           "edition": "ondemand",
           "category": "nq-news",
           "browserOrder": 2
+        },
+        {
+          "edition": "finance",
+          "category": "nq-news",
+          "serverOrder": 2
         }
       ]
     },
@@ -4343,7 +4364,8 @@
         {
           "edition": "energy",
           "category": "live-news",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 2
         }
       ]
     },
@@ -5876,12 +5898,14 @@
         {
           "edition": "energy",
           "category": "live-news",
-          "browserOrder": 0
+          "browserOrder": 0,
+          "serverOrder": 0
         },
         {
           "edition": "energy",
           "category": "energy",
-          "browserOrder": 0
+          "browserOrder": 0,
+          "serverOrder": 0
         }
       ]
     },
@@ -5898,12 +5922,14 @@
         {
           "edition": "energy",
           "category": "live-news",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 1
         },
         {
           "edition": "energy",
           "category": "energy",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 1
         }
       ]
     },
@@ -5965,7 +5991,8 @@
         {
           "edition": "energy",
           "category": "energy",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 8
         }
       ]
     },
@@ -8353,7 +8380,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 0
+          "browserOrder": 0,
+          "serverOrder": 0
         }
       ]
     },
@@ -8364,7 +8392,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 1
         }
       ]
     },
@@ -8375,7 +8404,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 2
         }
       ]
     },
@@ -8386,7 +8416,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 3
         }
       ]
     },
@@ -8397,7 +8428,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 4
         }
       ]
     },
@@ -8411,7 +8443,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 5
         }
       ]
     },
@@ -8422,7 +8455,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 6
         }
       ]
     },
@@ -8433,7 +8467,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 7
         }
       ]
     },
@@ -8447,7 +8482,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 8
         }
       ]
     },
@@ -8458,7 +8494,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 9
+          "browserOrder": 9,
+          "serverOrder": 9
         }
       ]
     },
@@ -8469,7 +8506,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 10
+          "browserOrder": 10,
+          "serverOrder": 10
         }
       ]
     },
@@ -8480,7 +8518,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 11
+          "browserOrder": 11,
+          "serverOrder": 11
         }
       ]
     },
@@ -8494,7 +8533,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 12
+          "browserOrder": 12,
+          "serverOrder": 12
         }
       ]
     },
@@ -8505,7 +8545,8 @@
         {
           "edition": "tech",
           "category": "thinktanks",
-          "browserOrder": 13
+          "browserOrder": 13,
+          "serverOrder": 13
         }
       ]
     },
@@ -8607,7 +8648,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 0
+          "browserOrder": 0,
+          "serverOrder": 0
         }
       ]
     },
@@ -8618,7 +8660,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 1
         }
       ]
     },
@@ -8629,7 +8672,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 2
         }
       ]
     },
@@ -8640,7 +8684,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 3
         }
       ]
     },
@@ -8651,7 +8696,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 4
         }
       ]
     },
@@ -8662,7 +8708,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 5
         }
       ]
     },
@@ -8676,7 +8723,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 6
         }
       ]
     },
@@ -8687,7 +8735,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 7
         }
       ]
     },
@@ -8698,7 +8747,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 8
         }
       ]
     },
@@ -8712,7 +8762,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 9
+          "browserOrder": 9,
+          "serverOrder": 9
         }
       ]
     },
@@ -8726,7 +8777,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 10
+          "browserOrder": 10,
+          "serverOrder": 10
         }
       ]
     },
@@ -8737,7 +8789,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 11
+          "browserOrder": 11,
+          "serverOrder": 11
         }
       ]
     },
@@ -8751,7 +8804,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 12
+          "browserOrder": 12,
+          "serverOrder": 12
         }
       ]
     },
@@ -8762,7 +8816,8 @@
         {
           "edition": "tech",
           "category": "podcasts",
-          "browserOrder": 13
+          "browserOrder": 13,
+          "serverOrder": 13
         }
       ]
     },
@@ -9153,7 +9208,8 @@
         {
           "edition": "energy",
           "category": "live-news",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 3
         }
       ]
     },
@@ -9164,7 +9220,8 @@
         {
           "edition": "energy",
           "category": "live-news",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 4
         }
       ]
     },
@@ -9175,7 +9232,8 @@
         {
           "edition": "energy",
           "category": "live-news",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 5
         }
       ]
     },
@@ -9186,7 +9244,8 @@
         {
           "edition": "energy",
           "category": "live-news",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 6
         }
       ]
     },
@@ -9197,7 +9256,8 @@
         {
           "edition": "energy",
           "category": "energy",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 2
         }
       ]
     },
@@ -9208,7 +9268,8 @@
         {
           "edition": "energy",
           "category": "energy",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 3
         }
       ]
     },
@@ -9219,7 +9280,8 @@
         {
           "edition": "energy",
           "category": "energy",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 4
         }
       ]
     },
@@ -9230,7 +9292,8 @@
         {
           "edition": "energy",
           "category": "energy",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 5
         }
       ]
     },
@@ -9241,7 +9304,8 @@
         {
           "edition": "energy",
           "category": "energy",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 6
         }
       ]
     },
@@ -9252,7 +9316,8 @@
         {
           "edition": "energy",
           "category": "energy",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 7
         }
       ]
     },
@@ -9263,7 +9328,8 @@
         {
           "edition": "energy",
           "category": "supply-chain",
-          "browserOrder": 0
+          "browserOrder": 0,
+          "serverOrder": 0
         }
       ]
     },
@@ -9274,7 +9340,8 @@
         {
           "edition": "energy",
           "category": "supply-chain",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 1
         }
       ]
     },
@@ -9285,7 +9352,8 @@
         {
           "edition": "energy",
           "category": "supply-chain",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 2
         }
       ]
     },
@@ -9296,7 +9364,8 @@
         {
           "edition": "energy",
           "category": "supply-chain",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 3
         }
       ]
     },
@@ -9308,6 +9377,11 @@
           "edition": "ondemand",
           "category": "nq-news",
           "browserOrder": 0
+        },
+        {
+          "edition": "finance",
+          "category": "nq-news",
+          "serverOrder": 0
         }
       ]
     },
@@ -9319,6 +9393,11 @@
           "edition": "ondemand",
           "category": "nq-news",
           "browserOrder": 1
+        },
+        {
+          "edition": "finance",
+          "category": "nq-news",
+          "serverOrder": 1
         }
       ]
     },
@@ -9330,6 +9409,11 @@
           "edition": "ondemand",
           "category": "nq-news",
           "browserOrder": 3
+        },
+        {
+          "edition": "finance",
+          "category": "nq-news",
+          "serverOrder": 3
         }
       ]
     },
@@ -9341,6 +9425,11 @@
           "edition": "ondemand",
           "category": "nq-news",
           "browserOrder": 4
+        },
+        {
+          "edition": "finance",
+          "category": "nq-news",
+          "serverOrder": 4
         }
       ]
     },

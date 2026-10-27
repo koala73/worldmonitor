@@ -60,6 +60,12 @@ export interface NewsCatalog {
     browser: Record<string, string[]>;
     server: Record<string, string[]>;
   };
+  /**
+   * Server categories the digest last-good gate leaves out of its category
+   * count, per edition: small categories added after the gate's baseline, whose
+   * every feed can fail at once without that meaning the edition regressed.
+   */
+  gateExempt: Record<string, string[]>;
   categoryNotes: CatalogCategoryNote[];
   feeds: CatalogFeed[];
 }

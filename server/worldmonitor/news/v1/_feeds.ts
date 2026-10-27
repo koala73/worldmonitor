@@ -1,4 +1,5 @@
-import { buildServerIntelSources, buildServerVariantFeeds } from '../../../../shared/news-catalog';
+import { NEWS_CATALOG, buildServerIntelSources, buildServerVariantFeeds } from '../../../../shared/news-catalog';
+import { hashString } from '../../../_shared/hash';
 
 export interface ServerFeed {
   name: string;
@@ -48,3 +49,33 @@ export function orderServerFeedEntries<T extends {
 export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = buildServerVariantFeeds();
 
 export const INTEL_SOURCES: ServerFeed[] = buildServerIntelSources();
+
+/** Every edition the digest builds. Derived from the catalog layout. */
+export const SERVER_EDITIONS: readonly string[] = Object.keys(NEWS_CATALOG.layout.server);
+
+export interface DigestGateProfile {
+  /** Categories the last-good gate leaves out of its category count. */
+  exemptCategories: string[];
+  /**
+   * Fingerprint of the feeds this edition's digest fetches. When it differs
+   * from the accepted snapshot's, the snapshot was built from a different
+   * catalog, so it cannot veto a candidate and its item peak resets.
+   */
+  catalogFingerprint: string;
+}
+
+const gateProfiles = new Map<string, DigestGateProfile>();
+
+export function digestGateProfile(variant: string): DigestGateProfile {
+  const cached = gateProfiles.get(variant);
+  if (cached) return cached;
+  const categories = VARIANT_FEEDS[variant] ?? {};
+  const shape = Object.entries(categories).map(([category, feeds]) => [category, feeds.map((f) => f.url)]);
+  if (variant === 'full') shape.push(['intel', INTEL_SOURCES.map((f) => f.url)]);
+  const profile: DigestGateProfile = {
+    exemptCategories: [...(NEWS_CATALOG.gateExempt[variant] ?? [])],
+    catalogFingerprint: hashString(JSON.stringify(shape)),
+  };
+  gateProfiles.set(variant, profile);
+  return profile;
+}

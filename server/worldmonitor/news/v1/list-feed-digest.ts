@@ -52,6 +52,8 @@ import {
   orderServerFeedEntries,
   VARIANT_FEEDS,
   INTEL_SOURCES,
+  SERVER_EDITIONS,
+  digestGateProfile,
   type ServerFeed,
 } from './_feeds';
 import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
@@ -141,7 +143,7 @@ import {
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
-export const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
+export const VALID_VARIANTS = new Set<string>(SERVER_EDITIONS);
 // The one digest language set, shared with the gateway's public-shape
 // classifier so a CDN-shielded `?lang=xx&public=1` shape and the handler can
 // never disagree. Anything outside it is a 400 (#8360).
@@ -2508,7 +2510,7 @@ export async function listFeedDigest(
           onPositiveResult: async (result) => {
             if (Date.now() - requestStart <= PUBLISH_DEADLINE_CUTOFF_MS) {
               const publication = await settleBeforeDeadline(
-                publishAcceptedSnapshot(variant, lang, result, digestCacheKey),
+                publishAcceptedSnapshot(variant, lang, result, digestCacheKey, digestGateProfile(variant)),
                 responseDeadlineAt,
                 'unavailable',
               );
