@@ -185,8 +185,11 @@ export function countryDisplayName(code) {
 }
 
 /**
- * The country's ICU names (long and short) in one language, normalized, or []
- * for English (covered by countryMentionTerms) and when ICU has no name.
+ * The country's ICU names in one language, normalized, or [] for English
+ * (covered by countryMentionTerms) and when ICU has no name. The short style
+ * is kept only when it is a real name of 4+ letters: ICU short forms are often
+ * abbreviations ("RU" for the United Kingdom in Spanish) that would match
+ * unrelated words.
  */
 export function localizedCountryNames(code, language) {
   const normalized = String(code || '').trim().toUpperCase();
@@ -196,7 +199,10 @@ export function localizedCountryNames(code, language) {
   for (const style of ['long', 'short']) {
     try {
       const name = new Intl.DisplayNames([lang], { type: 'region', style }).of(normalized);
-      if (name && name.toUpperCase() !== normalized) names.add(normalizeMentionText(name));
+      if (!name || name.toUpperCase() === normalized) continue;
+      const text = normalizeMentionText(name);
+      if (style === 'short' && [...text.replace(/\s/g, '')].length < 4) continue;
+      names.add(text);
     } catch {
       /* Intl.DisplayNames can be missing in constrained runtimes. */
     }
@@ -205,9 +211,8 @@ export function localizedCountryNames(code, language) {
 }
 
 /**
- * True when the text names the country in its own language. The name must
- * start a word but may carry a suffix, so inflected forms (Финляндии,
- * Finlandiya'nın) match; scripts written without spaces (zh, ja) match anywhere.
+ * True when the text names the country as a whole word in its own language;
+ * scripts written without spaces (zh, ja) match anywhere.
  */
 export function mentionsLocalizedCountry(rawText, names, language) {
   if (!names || names.length === 0) return false;
@@ -215,7 +220,7 @@ export function mentionsLocalizedCountry(rawText, names, language) {
   const unspaced = ['zh', 'ja'].includes(String(language || '').toLowerCase());
   return names.some((name) => (unspaced
     ? normalized.includes(name)
-    : new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(name)}`, 'u').test(normalized)));
+    : new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(name)}(?=$|[^\\p{L}\\p{N}])`, 'u').test(normalized)));
 }
 
 /**

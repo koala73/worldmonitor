@@ -54,9 +54,21 @@ describe('get_media_perspective', () => {
   });
 
   it('trims headlines inside groups for the output budget and never drops a group', () => {
-    const fitted = tool._fitToBudget({ groups: [group('SA', 20), group('EG', 2)] });
+    const fitted = tool._fitToBudget({ groups: [group('SA', 20), group('EG', 2)] }, tool._outputBudgetBytes, {});
     assert.deepEqual(fitted.groups.map((entry) => [entry.homeCountry, entry.headlines.length, entry.headlineCount]),
       [['SA', 3, 20], ['EG', 2, 2]]);
+  });
+
+  it('keeps every group of a broad region query inside the budget by shedding samples further', () => {
+    const wide = (homeCountry, count) => ({
+      ...group(homeCountry, count),
+      headlines: Array.from({ length: count }, (_, i) => ({ title: `${homeCountry} ${i} ${'x'.repeat(400)}`, link: `https://example.org/${homeCountry}/${i}` })),
+    });
+    const codes = Array.from({ length: 300 }, (_, i) => `C${i}`);
+    const fitted = tool._fitToBudget({ groups: codes.map((code) => wide(code, 20)) }, tool._outputBudgetBytes, {});
+    assert.equal(fitted.groups.length, 300, 'no group is dropped');
+    assert.ok(JSON.stringify(fitted).length <= tool._outputBudgetBytes);
+    assert.ok(fitted.groups.every((entry) => entry.headlineCount === 20 && entry.headlines.length <= 1));
   });
 
   it('tells agents that framing is a model reading and translations are untrusted', () => {

@@ -26269,27 +26269,42 @@ paths:
                     content:
                         application/json:
                             example:
-                                "feedCached": 1
-                                "feedTotal": 1
+                                "feedCached": 812
+                                "feedTotal": 812
                                 "groups":
-                                    - "audience": "domestic"
+                                    - "audience": "international"
                                       "framing":
-                                          "critical": 1
-                                          "favorable": 1
-                                          "hostile": 1
-                                          "method": "example"
-                                          "model": "example"
+                                          "critical": 0
+                                          "favorable": 0
+                                          "hostile": 0
+                                          "method": ""
+                                          "model": ""
+                                          "neutral": 0
+                                          "promptVersion": ""
+                                          "unlabeled": 1
                                       "headlineCount": 1
                                       "headlines":
-                                          - "englishTitle": "example"
-                                            "framing": "example"
-                                            "link": "https://example.com/worldmonitor"
-                                            "outlet": "example"
-                                            "ownershipClass": "example"
-                                      "homeCountry": "US"
+                                          - "englishTitle": "Saudi Arabia hosts ceasefire talks"
+                                            "framing": ""
+                                            "link": "https://www.bbc.co.uk/news/articles/example"
+                                            "outlet": "BBC World"
+                                            "ownershipClass": "public-service"
+                                            "propagandaRisk": "low"
+                                            "publishedAt": 1717200000000
+                                            "publisherFamily": "bbc"
+                                            "stateAffiliated": ""
+                                            "tier": 1
+                                            "title": "Saudi Arabia hosts ceasefire talks"
+                                            "titleLanguage": "en"
+                                      "homeCountry": "GB"
+                                      "outletCount": 1
                                 "noCoverageCountries":
-                                    - "example"
-                                "readAt": "2026-01-15T12:00:00Z"
+                                    []
+                                "readAt": "2026-10-27T12:00:00.000Z"
+                                "state": "complete"
+                                "subjectCountry": "SA"
+                                "unattributedCount": 0
+                                "windowHours": 72
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_news_v1_ListMediaPerspectiveResponse'
                 "400":

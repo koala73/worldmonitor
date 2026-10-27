@@ -7,7 +7,9 @@ import {
   CODE_TOKEN_ALLOWLIST,
   countryDisplayName,
   countryMentionTerms,
+  localizedCountryNames,
   mentionsCountry,
+  mentionsLocalizedCountry,
   normalizeMentionText,
 } from '../shared/country-mention.js';
 
@@ -143,5 +145,24 @@ describe('country mention matcher', () => {
         assert.ok(!/[()&-]/.test(name), `${code} carries an un-normalized name term "${name}"`);
       }
     }
+  });
+});
+
+describe('localized country mentions', () => {
+  const mentions = (text, code, lang) => mentionsLocalizedCountry(text, localizedCountryNames(code, lang), lang);
+
+  it('matches the country named in the headline language', () => {
+    assert.ok(mentions('حمله موشکی به عربستان سعودی', 'SA', 'fa'));
+    assert.ok(mentions("Suudi Arabistan'ın kararı", 'SA', 'tr'));
+    assert.ok(mentions('Reino Unido y Francia firman', 'GB', 'es'));
+    assert.ok(mentions('Irã lança mísseis', 'IR', 'pt'));
+    assert.ok(mentions('芬兰总统访问北京', 'FI', 'zh'));
+  });
+
+  it('never credits a longer word or an ICU abbreviation to the country', () => {
+    assert.ok(!mentions('Ataque no Iraque deixa mortos', 'IR', 'pt'), 'Iraque is Iraq, not Irã');
+    assert.ok(!mentions('Rusia amenaza a Europa', 'GB', 'es'), 'the short form RU is not a name');
+    assert.deepEqual(localizedCountryNames('GB', 'es'), ['reino unido']);
+    assert.deepEqual(localizedCountryNames('SA', 'en'), [], 'English goes through countryMentionTerms');
   });
 });

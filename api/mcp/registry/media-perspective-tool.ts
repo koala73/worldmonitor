@@ -101,15 +101,23 @@ export const MEDIA_PERSPECTIVE_TOOL: ToolDef = {
     },
   },
   _validateArgs: parseArgs,
-  _fitToBudget(result) {
+  _fitToBudget(result, budgetBytes) {
     if (!Array.isArray(result.groups)) return result;
-    // Trim headlines inside each group, never whole groups: a missing group would read as no coverage.
-    return {
-      ...result,
-      groups: result.groups.map((group: { headlines?: unknown[] }) => Array.isArray(group.headlines) && group.headlines.length > 3
-        ? { ...group, headlines: group.headlines.slice(0, 3) }
-        : group),
-    };
+    // Trim headlines inside each group, never whole groups: a missing group
+    // would read as no coverage. Each group keeps its counts and framing, so
+    // a broad region query degrades to fewer samples (down to none).
+    const groups = result.groups as Array<{ headlines?: unknown[] }>;
+    let fitted = result;
+    for (const keep of [3, 1, 0]) {
+      fitted = {
+        ...result,
+        groups: groups.map(group => Array.isArray(group.headlines) && group.headlines.length > keep
+          ? { ...group, headlines: group.headlines.slice(0, keep) }
+          : group),
+      };
+      if (new TextEncoder().encode(JSON.stringify(fitted)).length <= budgetBytes) break;
+    }
+    return fitted;
   },
   async _execute(params, base, context, execution) {
     const args = parseArgs(params);

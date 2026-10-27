@@ -1126,6 +1126,24 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
         matchedRows: null, sampledRows: null, omittedRows: null }),
     };
   }
+  // ListMediaPerspective has no framing labels until the background labeller
+  // ships: every headline is counted as unlabeled and the label fields are empty.
+  if (depth === 0 && context.operationId === 'ListMediaPerspective'
+    && String(context.name ?? '').endsWith('Response')) {
+    return {
+      subjectCountry: 'SA', windowHours: 72, state: 'complete', feedTotal: 812, feedCached: 812,
+      unattributedCount: 0, noCoverageCountries: [], readAt: '2026-10-27T12:00:00.000Z',
+      groups: [{
+        homeCountry: 'GB', audience: 'international', outletCount: 1, headlineCount: 1,
+        framing: { favorable: 0, neutral: 0, critical: 0, hostile: 0, unlabeled: 1, method: '', model: '', promptVersion: '' },
+        headlines: [{
+          title: 'Saudi Arabia hosts ceasefire talks', englishTitle: 'Saudi Arabia hosts ceasefire talks', titleLanguage: 'en',
+          outlet: 'BBC World', publisherFamily: 'bbc', tier: 1, ownershipClass: 'public-service', stateAffiliated: '',
+          propagandaRisk: 'low', framing: '', publishedAt: 1717200000000, link: 'https://www.bbc.co.uk/news/articles/example',
+        }],
+      }],
+    };
+  }
   if (depth === 0 && context.operationId === 'ListAircraftEmergencies'
     && String(context.name ?? '').endsWith('Response')) {
     return {

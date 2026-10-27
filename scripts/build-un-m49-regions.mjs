@@ -14,6 +14,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const SOURCE_URL = 'https://unstats.un.org/unsd/methodology/m49/overview/';
 const TARGET = new URL('../shared/un-m49-regions.json', import.meta.url);
+// scripts/shared/ carries a byte-identical copy (tests/edge-functions.test.mjs).
+const MIRROR = new URL('./shared/un-m49-regions.json', import.meta.url);
 
 const SUPPLEMENTS = {
   TW: { region: 'Asia', subRegion: 'Eastern Asia', reason: 'Not listed by M49; geographically Eastern Asia.' },
@@ -91,13 +93,14 @@ async function main() {
     regions: buildRegions(parseOverview(html)),
   }, null, 2)}\n`;
   if (check) {
-    if (readFileSync(TARGET, 'utf8') !== output) {
-      console.error('shared/un-m49-regions.json is stale; run node scripts/build-un-m49-regions.mjs');
+    if (readFileSync(TARGET, 'utf8') !== output || readFileSync(MIRROR, 'utf8') !== output) {
+      console.error('shared/un-m49-regions.json or its scripts/shared mirror is stale; run node scripts/build-un-m49-regions.mjs');
       process.exit(1);
     }
     return;
   }
   writeFileSync(TARGET, output);
+  writeFileSync(MIRROR, output);
   console.log(`wrote ${Object.keys(JSON.parse(output).regions).length} regions`);
 }
 
