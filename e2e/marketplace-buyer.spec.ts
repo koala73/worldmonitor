@@ -1,7 +1,38 @@
 import { expect, test, type Page } from '@playwright/test';
+import { COOKIE_BINDING, COOKIE_REGISTRATION, cookieHeader } from '../api/marketplace/_common';
 
 const key = `wm_${'a'.repeat(40)}`;
 const now = Date.now();
+
+test('registration cookies cannot be shadowed by a sibling domain', async ({ page }) => {
+  const buyer = 'https://buyer.marketplace.test';
+  const sibling = 'https://sibling.marketplace.test';
+  const planted = 'a'.repeat(64);
+  const legitimate = 'b'.repeat(64);
+  let received = '';
+  await page.route('https://*.marketplace.test/**', async (route) => {
+    const url = new URL(route.request().url());
+    const name = url.searchParams.get('name');
+    const headers: Record<string, string> = {};
+    if (name) {
+      headers['Set-Cookie'] = url.origin === sibling
+        ? `${cookieHeader(name, planted)}; Domain=marketplace.test`
+        : cookieHeader(name, legitimate);
+    } else {
+      received = route.request().headers().cookie ?? '';
+    }
+    await route.fulfill({ contentType: 'text/html', body: '<p>Marketplace cookie test</p>', headers });
+  });
+  for (const name of [COOKIE_REGISTRATION, COOKIE_BINDING]) {
+    await page.goto(`${sibling}/api/marketplace/plant?name=${name}`);
+    await page.goto(`${buyer}/api/marketplace/setup?name=${name}`);
+  }
+  await page.goto(`${buyer}/api/marketplace/claim`);
+  for (const name of [COOKIE_REGISTRATION, COOKIE_BINDING]) {
+    expect(received).toContain(`${name}=${legitimate}`);
+    expect(received).not.toContain(`${name}=${planted}`);
+  }
+});
 
 async function mockClerk(page: Page, signedIn: boolean): Promise<void> {
   await page.route(/\/src\/services\/clerk\.ts(?:\?|$)/, async (route) => {

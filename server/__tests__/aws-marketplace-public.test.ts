@@ -4,6 +4,7 @@ const backend = vi.hoisted(() => vi.fn());
 const resolve = vi.hoisted(() => vi.fn());
 const entitlements = vi.hoisted(() => vi.fn());
 const session = vi.hoisted(() => vi.fn());
+const rateLimit = vi.hoisted(() => vi.fn());
 vi.mock('../_shared/aws-marketplace', async importOriginal => ({
   ...await importOriginal<typeof import('../_shared/aws-marketplace')>(),
   callMarketplaceBackend: backend,
@@ -11,6 +12,7 @@ vi.mock('../_shared/aws-marketplace', async importOriginal => ({
   getMarketplaceEntitlements: entitlements,
 }));
 vi.mock('../_shared/auth-session', () => ({ resolveSessionUserId: session }));
+vi.mock('../_shared/rate-limit', () => ({ checkEndpointRateLimit: rateLimit }));
 
 import register from '../../api/marketplace/register';
 import claim from '../../api/marketplace/claim';
@@ -28,6 +30,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.AWS_MARKETPLACE_BUYER_ORIGIN = origin;
   session.mockResolvedValue('clerk-owner');
+  rateLimit.mockResolvedValue(null);
   resolve.mockResolvedValue(identity);
   entitlements.mockResolvedValue([{ dimension: 'api_access', quantity: 1, expirationDate: Date.now() + 60_000 }]);
 });
@@ -41,6 +44,22 @@ function mutation(path: string, body: unknown, extra: Record<string, string> = {
 }
 
 describe('Marketplace public routes', () => {
+  it.each([429, 503])('stops registration before AWS work when admission returns %i', async (status) => {
+    const denied = new Response(null, { status, headers: { 'Retry-After': '5' } });
+    rateLimit.mockResolvedValueOnce(denied);
+    const request = new Request(`${origin}/api/marketplace/register`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'x-amzn-marketplace-token=sensitive-token',
+    });
+    const response = await register(request);
+    expect(response.status).toBe(status);
+    expect(response.headers.get('Retry-After')).toBe('5');
+    expect(rateLimit).toHaveBeenCalledWith(request, '/api/marketplace/register', expect.objectContaining({ 'Cache-Control': 'private, no-store' }));
+    expect(resolve).not.toHaveBeenCalled();
+    expect(entitlements).not.toHaveBeenCalled();
+    expect(backend).not.toHaveBeenCalled();
+  });
+
   it('resolves token, verifies AWS, stores hashes, and redirects without URL secrets', async () => {
     resolve.mockResolvedValueOnce({ ...identity, customerIdentifier: 'legacy-customer', agreementId: 'agmt-1' });
     backend.mockResolvedValueOnce({ licenseId: 'license-1', revision: 2, duplicate: false })
@@ -63,7 +82,7 @@ describe('Marketplace public routes', () => {
 
   it('requires both registration cookies and verified Clerk identity for claim', async () => {
     const request = mutation('/api/marketplace/claim', { userId: 'attacker' }, {
-      Cookie: '__Secure-wm_aws_registration=' + 'a'.repeat(64) + '; __Secure-wm_aws_binding=' + 'b'.repeat(64),
+      Cookie: '__Host-wm_aws_registration=' + 'a'.repeat(64) + '; __Host-wm_aws_binding=' + 'b'.repeat(64),
     });
     backend.mockResolvedValueOnce({ licenseId: 'license-1', principalId: 'aws-marketplace:license-1' });
     expect((await claim(request)).status).toBe(200);
@@ -104,7 +123,7 @@ describe('Marketplace public routes', () => {
   it('reports a pending registration from both cookies', async () => {
     backend.mockResolvedValueOnce({ licenses: [] });
     const response = await account(new Request(`${origin}/api/marketplace/account`, {
-      headers: { Authorization: 'Bearer clerk-jwt', Cookie: '__Secure-wm_aws_registration=' + 'a'.repeat(64) + '; __Secure-wm_aws_binding=' + 'b'.repeat(64) },
+      headers: { Authorization: 'Bearer clerk-jwt', Cookie: '__Host-wm_aws_registration=' + 'a'.repeat(64) + '; __Host-wm_aws_binding=' + 'b'.repeat(64) },
     }));
     expect(await response.json()).toEqual({ licenses: [], pendingRegistration: true });
   });

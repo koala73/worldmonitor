@@ -2,11 +2,14 @@ export const config = { runtime: 'edge' };
 
 import { callMarketplaceBackend, getMarketplaceEntitlements, resolveMarketplaceCustomer } from '../../server/_shared/aws-marketplace';
 import { BASE_HEADERS, COOKIE_BINDING, COOKIE_REGISTRATION, cookieHeader, errorResponse, json, randomSecret, readSmallText, sha256 } from './_common';
+import { checkEndpointRateLimit } from '../../server/_shared/rate-limit';
 
 export default async function handler(request: Request): Promise<Response> {
   if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, 405, { Allow: 'POST' });
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/x-www-form-urlencoded')) return json({ error: 'INVALID_REQUEST' }, 400);
   try {
+    const limited = await checkEndpointRateLimit(request, '/api/marketplace/register', BASE_HEADERS);
+    if (limited) return limited;
     const form = new URLSearchParams(await readSmallText(request, 8192));
     const values = form.getAll('x-amzn-marketplace-token');
     if (values.length !== 1 || !values[0] || values[0].length > 4096) return json({ error: 'INVALID_REQUEST' }, 400);

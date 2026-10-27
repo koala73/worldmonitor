@@ -828,6 +828,7 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // edge. Enforced in-handler via `checkScopedRateLimit`, same pattern as
   // /api/docs-mcp. (#6234)
   '/api/skills/fetch-agentskills': { limit: 30, window: '60 s' },
+  '/api/marketplace/register': { limit: 10, window: '60 s' },
   // Legacy `api/*.js` provider proxies (`api/youtube/live.js`,
   // `api/reverse-geocode.js`), both registered in
   // api/api-route-exceptions.json. Neither flows through the gateway, and
@@ -901,6 +902,7 @@ interface RateLimitPolicyDecision {
 // defence. scripts/enforce-rate-limit-policies.mjs fails if any route listed
 // here can drift back to the gateway's availability-first global fallback.
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
+  '/api/marketplace/register': { reason: 'Anonymous registration uses seller AWS credentials and shares entitlement-service quotas with active buyers.' },
   '/api/news/v1/list-feed-digest': { reason: 'Cold digest builds fan out to RSS providers and require a fail-closed caller budget.' },
   '/api/aviation/v1/track-aircraft': {
     reason: 'Distinct aircraft viewports call Wingbits on cache misses and can fall back to authenticated OpenSky quota.',

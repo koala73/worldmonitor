@@ -2,8 +2,8 @@ import { resolveSessionUserId } from '../../server/_shared/auth-session';
 import { MarketplaceError } from '../../server/_shared/aws-marketplace';
 
 export const config = { runtime: 'edge' };
-export const COOKIE_REGISTRATION = '__Secure-wm_aws_registration';
-export const COOKIE_BINDING = '__Secure-wm_aws_binding';
+export const COOKIE_REGISTRATION = '__Host-wm_aws_registration';
+export const COOKIE_BINDING = '__Host-wm_aws_binding';
 export const COOKIE_MAX_AGE = 10 * 60;
 export const BASE_HEADERS = {
   'Cache-Control': 'private, no-store',
@@ -81,7 +81,7 @@ export function cookieValue(request: Request, name: string): string | null {
 }
 
 export function cookieHeader(name: string, value: string, maxAge = COOKIE_MAX_AGE): string {
-  return `${name}=${value}; Max-Age=${maxAge}; Path=/api/marketplace; HttpOnly; Secure; SameSite=Lax`;
+  return `${name}=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Lax`;
 }
 
 export function randomSecret(bytes = 32): string {
