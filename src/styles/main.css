@@ -1966,11 +1966,11 @@ canvas,
 .panel-resize-handle::after {
   content: '⋯';
   position: absolute;
-  bottom: 2px;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   font-size: calc(16px * var(--wm-panel-effective-scale, 1));
-  letter-spacing: 2px;
+  line-height: 1;
   color: var(--text-dim);
   transition: color 0.2s;
   pointer-events: none;
@@ -2004,11 +2004,11 @@ canvas,
 .panel-col-resize-handle::after {
   content: '⋮';
   position: absolute;
-  right: 3px;
   top: 50%;
-  transform: translateY(-50%);
+  left: 50%;
+  transform: translate(-50%, -50%);
   font-size: calc(16px * var(--wm-panel-effective-scale, 1));
-  letter-spacing: 2px;
+  line-height: 1;
   color: var(--text-dim);
   transition: color 0.2s;
   pointer-events: none;

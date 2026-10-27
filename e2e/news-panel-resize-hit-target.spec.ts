@@ -66,7 +66,8 @@ test('panel resize strips never cover the headline translate button (#9729)', as
       grid.appendChild(el);
       (panel as unknown as { clusteredMode: boolean }).clusteredMode = clustered;
       panel.renderNews(items);
-      for (let i = 0; i < 100 && el.querySelectorAll('.item-translate-btn').length < 3; i++) {
+      const ready = clustered ? '.cluster-meta .item-translate-btn' : '.item-translate-btn';
+      for (let i = 0; i < 100 && el.querySelectorAll(ready).length < 3; i++) {
         await new Promise((r) => setTimeout(r, 50));
       }
       await frame();
@@ -90,6 +91,7 @@ test('panel resize strips never cover the headline translate button (#9729)', as
       const pr = el.getBoundingClientRect();
       return {
         clustered,
+        clusterRows: el.querySelectorAll('.cluster-meta').length,
         buttons: top.length,
         stolenTop: top.reduce((n, s) => n + s.stolen, 0),
         last,
@@ -102,6 +104,8 @@ test('panel resize strips never cover the headline translate button (#9729)', as
   }, HEADLINES);
 
   expect(result.lang).toBe('de');
+  expect(result.clustered.clusterRows, 'clustered sweep measures clustered rows').toBeGreaterThan(2);
+  expect(result.flat.clusterRows, 'flat sweep measures flat rows').toBe(0);
   for (const layout of [result.clustered, result.flat]) {
     expect(layout.buttons, `${layout.clustered ? 'clustered' : 'flat'} rows render translate buttons`).toBeGreaterThan(0);
     expect(layout, 'resize strips cover no translate-button pixel').toMatchObject({
@@ -163,4 +167,61 @@ test('the right part of the translate button clicks, and the strip still resizes
   await page.mouse.move(startX + panelBox.width, midY, { steps: 8 });
   await page.mouse.up();
   await expect(panel).toHaveClass(/col-span-[23]/);
+});
+
+test('aiming at a visible resize grip lands on its drag strip (#9729)', async ({ page }) => {
+  await page.goto('/tests/runtime-harness.html');
+  const strips = await page.evaluate(async () => {
+    await import('/src/styles/main.css');
+    const { NewsPanel } = await import('/src/components/NewsPanel.ts');
+    document.getElementById('runtime-harness')?.remove();
+    const grid = document.createElement('div');
+    grid.className = 'panels-grid';
+    document.body.appendChild(grid);
+    const panel = new NewsPanel('probe-grip', 'Probe');
+    grid.appendChild(panel.getElement());
+    const style = document.createElement('style');
+    style.textContent = '.panel-resize-handle, .panel-col-resize-handle { background: none !important; }'
+      + ' .panel-resize-handle::after, .panel-col-resize-handle::after { color: #ff00ff !important; transition: none !important; }';
+    document.head.appendChild(style);
+    return ['.panel-col-resize-handle', '.panel-resize-handle'].map((selector) => {
+      const r = panel.getElement().querySelector(selector)!.getBoundingClientRect();
+      return { selector, x: r.left, y: r.top, width: r.width, height: r.height };
+    });
+  });
+
+  for (const strip of strips) {
+    const pad = 24;
+    const clip = strip.selector === '.panel-col-resize-handle'
+      ? { x: strip.x - pad, y: strip.y + strip.height / 2 - pad, width: strip.width + pad * 2, height: pad * 2 }
+      : { x: strip.x + strip.width / 2 - pad, y: strip.y - pad, width: pad * 2, height: strip.height + pad * 2 };
+    const png = await page.screenshot({ clip });
+    const ink = await page.evaluate(async (b64) => {
+      const img = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
+      const canvas = new OffscreenCanvas(img.width, img.height);
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, img.width, img.height).data;
+      let sx = 0;
+      let sy = 0;
+      let n = 0;
+      for (let y = 0; y < img.height; y++) {
+        for (let x = 0; x < img.width; x++) {
+          const i = (y * img.width + x) * 4;
+          if (data[i]! > 120 && data[i + 2]! > 120 && data[i + 1]! < 90) {
+            sx += x;
+            sy += y;
+            n++;
+          }
+        }
+      }
+      return n ? { x: (sx / n + 0.5) / devicePixelRatio, y: (sy / n + 0.5) / devicePixelRatio } : null;
+    }, png.toString('base64'));
+    expect(ink, `${strip.selector} grip renders`).not.toBeNull();
+    const hit = await page.evaluate(
+      ({ x, y, selector }) => document.elementFromPoint(x, y)?.matches(selector) ?? false,
+      { x: clip.x + ink!.x, y: clip.y + ink!.y, selector: strip.selector },
+    );
+    expect(hit, `the visible ${strip.selector} grip is on the drag strip`).toBe(true);
+  }
 });
