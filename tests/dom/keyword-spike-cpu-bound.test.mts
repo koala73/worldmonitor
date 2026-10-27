@@ -12,7 +12,7 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { ingestHeadlines, updateTrendingConfig } from '@/services/trending-keywords';
+import { getTrackedTermCount, ingestHeadlines, updateTrendingConfig } from '@/services/trending-keywords';
 
 describe('keyword spike checks stay cheap for headlines with thousands of terms', () => {
   beforeAll(() => {
@@ -29,6 +29,8 @@ describe('keyword spike checks stay cheap for headlines with thousands of terms'
       link: `https://feed.test/${i}`,
       pubDate: new Date(now - i * 1000),
     })));
+    // Uncapped, these titles fill all 10,000 tracked-term slots.
+    expect(getTrackedTermCount()).toBeLessThan(1_000);
 
     const started = performance.now();
     ingestHeadlines([{ source: 'Other', title: 'Quiet harbour reopens', link: 'https://other.test/1', pubDate: new Date(now) }]);
