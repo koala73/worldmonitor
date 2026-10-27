@@ -15,10 +15,10 @@
 // granules heal past days, then backfills the prior baselineYears in chunks
 // sized by the region's width, at most backfillChunksPerRun chunks per run,
 // clusters first. A region whose refresh failed keeps its stored series; a
-// region with nothing stored and a failed refresh publishes request_failed; a
-// run where the token cannot be fetched, or every refresh fails with nothing
-// stored, publishes nothing so runSeed keeps last-good and exits 75. The first
-// successful publish SETs seed-activated:economic:no2-activity, which ends
+// region without a refresh in the last seven days publishes request_failed;
+// a run where the token cannot be fetched or every refresh fails publishes
+// nothing so runSeed keeps last-good and exits 75. A successful publish also
+// atomically SETs seed-activated:economic:no2-activity, which ends
 // /api/health's pre-provisioning softening for no2Activity.
 //
 // Railway service config (set up manually via the Railway dashboard or `railway service`):
@@ -46,12 +46,12 @@ import {
   withRetry,
   writeExtraKey,
 } from './_seed-utils.mjs';
-import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import {
   CHINA_NO2_COMPOSITE,
   NO2_ACTIVITY_ACTIVATION_KEY,
   NO2_ACTIVITY_KEY,
   NO2_ACTIVITY_METHOD,
+  NO2_ACTIVITY_MAX_REFRESH_AGE_MS,
   NO2_ACTIVITY_METHOD_VERSION,
   NO2_ACTIVITY_SERIES_KEY_PREFIX,
   NO2_ACTIVITY_SOURCE_VERSION,
@@ -155,7 +155,7 @@ export function parseStatisticsResponse(body) {
 }
 
 export function emptySeries(region) {
-  return { id: region.id, resolutionDegrees: region.resolutionDegrees, backfilledYears: [], days: {} };
+  return { id: region.id, resolutionDegrees: region.resolutionDegrees, refreshedAt: null, backfilledYears: [], days: {} };
 }
 
 /** A stored series is reused only when it is well formed and on the region's current grid. */
@@ -169,6 +169,7 @@ export function parseSeries(value, region) {
   return {
     id: region.id,
     resolutionDegrees: region.resolutionDegrees,
+    refreshedAt: typeof series.refreshedAt === 'string' && Number.isFinite(Date.parse(series.refreshedAt)) ? series.refreshedAt : null,
     backfilledYears: series.backfilledYears.filter((year) => Number.isInteger(year)).sort(),
     days: Object.fromEntries(Object.entries(series.days).filter(([date, row]) =>
       Number.isFinite(dateMs(date)) && Array.isArray(row) && row.length === 2)),
@@ -196,6 +197,7 @@ export function mergeSeries(series, rows, keepFrom) {
 export function seriesCoverage(series) {
   const dates = Object.keys(series.days).sort();
   return {
+    refreshedAt: series.refreshedAt,
     days: dates.length,
     firstDate: dates[0] ?? null,
     lastDate: dates[dates.length - 1] ?? null,
@@ -283,9 +285,9 @@ export function summarizeWindow(series, windowStart, windowEnd, holidayCalendar,
 /**
  * One dataset record from a region's stored series. `refreshFailed` says this
  * run's refresh request failed; the region is still judged on what is stored,
- * and reads request_failed only when nothing inside the window is stored.
+ * and reads request_failed when its last successful refresh is absent or old.
  */
-export function regionResult(definition, series, current, baselines, refreshFailed = false, method = NO2_ACTIVITY_METHOD) {
+export function regionResult(definition, series, current, baselines, refreshFailed = false, method = NO2_ACTIVITY_METHOD, nowMs = dateMs(current.windowEnd) + method.windowEndLagDays * DAY_MS) {
   const currentWindowSummary = summarizeWindow(series, current.windowStart, current.windowEnd, definition.holidayCalendar, method);
   const years = baselines.map((baseline) => ({
     year: baseline.year,
@@ -297,11 +299,11 @@ export function regionResult(definition, series, current, baselines, refreshFail
   const eligibleYears = backfilledBaselines.filter((year) => year.validDays >= method.minValidDays);
   const baselineMean = eligibleYears.length >= method.minBaselineYears ? mean(eligibleYears.map((year) => year.meanNo2MolM2)) : null;
   const baseline = { years, meanNo2MolM2: baselineMean !== null && baselineMean > 0 ? baselineMean : null };
-  const storedInWindow = current.dates.some((date) => series.days[date] !== undefined);
+  const refreshAgeMs = series.refreshedAt === null ? Infinity : nowMs - Date.parse(series.refreshedAt);
   // Every year a window touches must be backfilled: until then the refresh
   // days alone would read as cloud-starved rather than as not yet fetched.
   const backfillPending = backfilledBaselines.length < method.minBaselineYears || !covered(current);
-  const exclusion = refreshFailed && !storedInWindow
+  const exclusion = refreshFailed && refreshAgeMs > NO2_ACTIVITY_MAX_REFRESH_AGE_MS
     ? 'request_failed'
     : backfillPending
       ? 'baseline_backfill_pending'
@@ -455,6 +457,7 @@ export function makeFetchAll({
       const outcome = refreshes[index];
       if (outcome.status === 'fulfilled') {
         const series = mergeSeries(seriesById.get(region.id), outcome.value, keepFrom);
+        series.refreshedAt = new Date(runMs).toISOString();
         // A year that lies entirely inside the refresh range is complete with it.
         for (const year of years) {
           if (yearChunks(region, year, current.windowEnd, range.from, method).length === 0 && !series.backfilledYears.includes(year)) {
@@ -467,8 +470,8 @@ export function makeFetchAll({
         log(`  ${region.id} refresh failed: ${outcome.reason?.message || outcome.reason}`);
       }
     });
-    if (refreshFailed.size === regions.length && regions.every((region) => Object.keys(seriesById.get(region.id).days).length === 0)) {
-      throw markPreservableFetchFailure(new Error(`every refresh failed (${usage.requestCount} requests) with nothing stored; last-good kept`));
+    if (refreshFailed.size === regions.length) {
+      throw markPreservableFetchFailure(new Error(`every refresh failed (${usage.requestCount} requests); last-good kept`));
     }
 
     const queue = backfillQueue(regions, seriesById, years, current.windowEnd, range.from, backfillChunks, method);
@@ -518,7 +521,7 @@ export function makeFetchAll({
     }
 
     const records = regions.map((region) =>
-      regionResult(region, seriesById.get(region.id), current, baselines, refreshFailed.has(region.id), method));
+      regionResult(region, seriesById.get(region.id), current, baselines, refreshFailed.has(region.id), method, runMs));
     const coveredYears = records.flatMap((record) => [record.series.firstDate, record.series.lastDate, record.current.windowEnd])
       .filter((date) => date !== null)
       .map((date) => Number(date.slice(0, 4)));
@@ -552,15 +555,13 @@ export function declareRecords(data) {
   return Object.values(data?.regions ?? {}).filter((region) => region?.exclusion === null).length;
 }
 
-/** runSeed's afterPublish hook. Best-effort: a failed write costs one more run of health softening, never the run. */
-export async function markNo2Activated() {
-  try {
-    const creds = getOptionalUpstashCreds();
-    if (!creds) return;
-    await upstashCommand(creds, ['SET', NO2_ACTIVITY_ACTIVATION_KEY, '1']);
-  } catch (error) {
-    console.warn(`  WARN: activation marker write failed: ${error?.message || error}`);
-  }
+export async function publishNo2Atomically(_data, { canonicalKey, payload, ttlSeconds }, { url, token } = getRedisCredentials()) {
+  const { result } = await redisCommand(url, token, [
+    'EVAL',
+    "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2]); redis.call('SET', KEYS[2], '1'); return 1",
+    2, canonicalKey, NO2_ACTIVITY_ACTIVATION_KEY, payload, ttlSeconds,
+  ], { label: 'NO2 dataset and activation publication' });
+  if (result !== 1) throw new Error('NO2 dataset and activation publication was not confirmed');
 }
 
 function argValue(name) {
@@ -622,7 +623,7 @@ async function main() {
   console.log(`no2 activity: ${NO2_REGIONS.length} regions, backfill chunks ${backfillChunks ?? NO2_ACTIVITY_METHOD.backfillChunksPerRun}`);
   await runSeed('economic', 'no2-activity', NO2_ACTIVITY_KEY, fetchAll, {
     validateFn: validateNo2ActivityDataset,
-    afterPublish: markNo2Activated,
+    publishAtomically: publishNo2Atomically,
     ttlSeconds: DATASET_TTL_SECONDS,
     declareRecords,
     zeroIsValid: true,

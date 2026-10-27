@@ -1496,6 +1496,30 @@ describe('Sentinel-5P NO2 atmosphere contribution (#9722)', () => {
     assert.equal(provenance.generatedAt, RECENT.generatedAt);
   });
 
+  it('dates a retained composite by its oldest successful refresh', async () => {
+    const payload = no2ActivityDataset({ ...RECENT, changes: STRONG });
+    payload.regions['jing-jin-ji'].series.refreshedAt = '2026-07-20T06:10:00.000Z';
+    const contribution = await atmosphereContribution(payload);
+    assert.equal(contribution?.included, true);
+    assert.equal(contribution?.observedAt, '2026-07-20T06:10:00.000Z');
+  });
+
+  it('expires retained input at evaluation time even when generation was recent', async () => {
+    const payload = no2ActivityDataset({ ...RECENT, changes: STRONG });
+    payload.regions['jing-jin-ji'].series.refreshedAt = '2026-07-18T06:10:00.000Z';
+    const contribution = await atmosphereContribution(payload);
+    assert.equal(contribution?.included, false);
+    assert.equal(contribution?.exclusionReason, 'freshness_budget_exceeded');
+  });
+
+  it('does not refresh an old region through the dataset generation clock', async () => {
+    const payload = no2ActivityDataset({ ...RECENT, changes: STRONG });
+    payload.regions['jing-jin-ji'].series.refreshedAt = '2026-07-17T00:00:00.000Z';
+    const contribution = await atmosphereContribution(payload);
+    assert.equal(contribution?.included, false);
+    assert.equal(contribution?.exclusionReason, 'no_observation');
+  });
+
   it('reports a change inside the dead band as unchanged rather than as a missing input', async () => {
     const contribution = await atmosphereContribution(no2ActivityDataset({
       ...RECENT,

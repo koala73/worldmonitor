@@ -703,7 +703,10 @@ function no2ProxyObservations(
   const regions = CHINA_NO2_COMPOSITE.regionIds.map((id) => dataset.regions[id]!);
   const composite = composeRegions(dataset, CHINA_NO2_COMPOSITE.regionIds, CHINA_NO2_COMPOSITE.minRegions);
   const windowEnd = regions[0]!.current.windowEnd;
-  const observedAt = new Date(Date.parse(`${windowEnd}T00:00:00Z`) + 86_400_000).toISOString();
+  const observedAt = new Date(Math.min(
+    Date.parse(`${windowEnd}T00:00:00Z`) + 86_400_000,
+    ...composite.regionIds.map((id) => Date.parse(dataset.regions[id]!.series.refreshedAt!)),
+  )).toISOString();
   const generatedAt = new Date(dataset.generatedAt).toISOString();
   const { method, source } = dataset;
   return [{
@@ -739,6 +742,7 @@ function no2ProxyObservations(
         changePercent: region.changePercent,
         direction: region.direction,
         validDays: region.current.validDays,
+        refreshedAt: region.series.refreshedAt,
         exclusion: region.exclusion,
       })),
       generatedAt,

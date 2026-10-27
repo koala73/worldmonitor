@@ -8,6 +8,7 @@ export declare const NO2_ACTIVITY_ACTIVATION_KEY: 'seed-activated:economic:no2-a
 export declare const NO2_ACTIVITY_METHOD_VERSION: 'no2-activity/v1';
 export declare const NO2_ACTIVITY_SOURCE_VERSION: string;
 export declare const NO2_ATTRIBUTION_PREFIX: string;
+export declare const NO2_ACTIVITY_MAX_REFRESH_AGE_MS: number;
 
 export type No2Direction = 'strengthening' | 'weakening' | 'unchanged';
 export declare const NO2_DIRECTIONS: readonly No2Direction[];
@@ -76,6 +77,8 @@ export interface No2BaselineYear extends No2Window {
 }
 
 export interface No2SeriesCoverage {
+  /** Last successful source refresh. Retained unchanged when a refresh fails. */
+  refreshedAt: string | null;
   days: number;
   firstDate: string | null;
   lastDate: string | null;

@@ -126,6 +126,10 @@ cannot support:
 - The daily series behind each region is stored and healed as late offline
   granules arrive; a region whose prior years are not yet backfilled is
   published as `baseline_backfill_pending`, never as a direction.
+- Each region retains its last successful refresh time through a failed
+  request. Retained data expires after seven days, and the nowcast observation
+  cannot be dated later than the oldest contributing refresh. If every region
+  refresh fails, the previous dataset and its freshness clock are preserved.
 - The China composite is the median across the eligible Chinese clusters, at
   least two of which are required; a cloud-starved stretch is published as
   `insufficient_regions` and the nowcast shows the family as missing rather

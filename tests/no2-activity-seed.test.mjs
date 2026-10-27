@@ -17,6 +17,7 @@ import {
   parseSeries,
   parseStatisticsResponse,
   pendingRecord,
+  publishNo2Atomically,
   refreshRange,
   regionResult,
   summarizeWindow,
@@ -25,6 +26,8 @@ import {
 } from '../scripts/seed-no2-activity.mjs';
 import {
   NO2_ACTIVITY_METHOD,
+  NO2_ACTIVITY_ACTIVATION_KEY,
+  NO2_ACTIVITY_MAX_REFRESH_AGE_MS,
   NO2_ACTIVITY_SERIES_KEY_PREFIX,
   NO2_REGIONS,
   validateNo2ActivityDataset,
@@ -41,7 +44,7 @@ const RU = region('country-ru');
 const GEOMETRIES = { 'country-de': { type: 'Polygon', coordinates: [[[6, 47], [15, 47], [15, 55], [6, 55], [6, 47]]] } };
 
 function seriesWith(regionDef, days, backfilledYears = []) {
-  return { ...emptySeries(regionDef), backfilledYears, days };
+  return { ...emptySeries(regionDef), refreshedAt: new Date(NOW).toISOString(), backfilledYears, days };
 }
 
 function denseDays(from, count, meanValue, fraction = 0.6) {
@@ -190,7 +193,7 @@ describe('seed-no2-activity window summary and region result', () => {
     assert.equal(result.direction, 'strengthening');
     assert.equal(result.signalValue, result.changePercent);
     assert.deepEqual(result.baseline.years.map((year) => [year.year, year.validDays]), [[2025, 56], [2024, 56], [2023, 10]]);
-    assert.deepEqual(result.series, { days: 178, firstDate: '2023-08-29', lastDate: '2026-10-23', backfilledYears: [2023, 2024, 2025, 2026] });
+    assert.deepEqual(result.series, { refreshedAt: new Date(NOW).toISOString(), days: 178, firstDate: '2023-08-29', lastDate: '2026-10-23', backfilledYears: [2023, 2024, 2025, 2026] });
     assert.equal(validateNo2ActivityDataset({ ...datasetAround([result]) }), true);
   });
 
@@ -211,6 +214,41 @@ describe('seed-no2-activity window summary and region result', () => {
     assert.equal(failed.changePercent, null);
     assert.equal(failed.direction, null);
     assert.equal(pendingRecord(DE, NOW).exclusion, 'baseline_backfill_pending');
+  });
+
+  it('excludes retained data after its fixed refresh deadline', () => {
+    const series = seriesWith(DE, {
+      ...denseDays('2026-08-29', 56, 1.2e-4),
+      ...denseDays('2025-08-29', 56, 1e-4),
+      ...denseDays('2024-08-29', 56, 1e-4),
+    }, [2024, 2025, 2026]);
+    series.refreshedAt = new Date(NOW - NO2_ACTIVITY_MAX_REFRESH_AGE_MS).toISOString();
+    assert.equal(regionResult(DE, series, current, baselines, true, NO2_ACTIVITY_METHOD, NOW).exclusion, null);
+    assert.equal(regionResult(DE, series, current, baselines, true, NO2_ACTIVITY_METHOD, NOW + 1).exclusion, 'request_failed');
+    series.refreshedAt = null;
+    assert.equal(regionResult(DE, series, current, baselines, true, NO2_ACTIVITY_METHOD, NOW).exclusion, 'request_failed');
+  });
+});
+
+describe('NO2 atomic publication', () => {
+  it('sends the payload and durable activation marker in one Redis command', async (t) => {
+    const commands = [];
+    t.mock.method(globalThis, 'fetch', async (_url, init) => {
+      commands.push(JSON.parse(init.body));
+      return new Response(JSON.stringify({ result: 1 }));
+    });
+    await publishNo2Atomically({}, { canonicalKey: 'economic:no2-activity:v1', payload: '{}', ttlSeconds: 604800 }, { url: 'https://redis.test', token: 'test' });
+    assert.equal(commands.length, 1);
+    assert.equal(commands[0][0], 'EVAL');
+    assert.match(commands[0][1], /SET.*KEYS\[1\].*EX.*SET.*KEYS\[2\]/);
+    assert.deepEqual(commands[0].slice(2), [2, 'economic:no2-activity:v1', NO2_ACTIVITY_ACTIVATION_KEY, '{}', 604800]);
+  });
+
+  it('fails publication when Redis rejects or does not confirm the atomic write', async (t) => {
+    for (const response of [{ error: 'publication failed' }, { result: null }]) {
+      t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(response)));
+      await assert.rejects(publishNo2Atomically({}, { canonicalKey: 'economic:no2-activity:v1', payload: '{}', ttlSeconds: 604800 }, { url: 'https://redis.test', token: 'test' }), /publication/);
+    }
   });
 });
 
@@ -291,6 +329,42 @@ function fetchAllWith(fetchImpl, store, options = {}) {
 }
 
 describe('seed-no2-activity fetchAll', () => {
+  it('preserves last-good publication when every refresh fails even with stored series', async () => {
+    const stored = {
+      [`${NO2_ACTIVITY_SERIES_KEY_PREFIX}jing-jin-ji`]: seriesWith(JJJ, {
+        ...denseDays('2026-08-29', 36, 1.3e-4),
+        ...denseDays('2025-08-29', 56, 1e-4),
+        ...denseDays('2024-08-29', 56, 1e-4),
+      }, [2024, 2025, 2026]),
+    };
+    const { fetchImpl } = stubFetch({ fail: () => true });
+    const { store, writes } = stubStore(stored);
+    await assert.rejects(fetchAllWith(fetchImpl, store, { backfillChunks: 0 })(), (error) => {
+      assert.equal(error.preservableFetchFailure, true);
+      return true;
+    });
+    assert.equal(writes.length, 0);
+  });
+
+  it('preserves each region refresh clock through partial failure', async () => {
+    const refreshedAt = '2026-10-22T06:20:00.000Z';
+    const stored = {
+      [`${NO2_ACTIVITY_SERIES_KEY_PREFIX}jing-jin-ji`]: {
+        ...seriesWith(JJJ, {
+          ...denseDays('2026-08-29', 46, 1.3e-4),
+          ...denseDays('2025-08-29', 56, 1e-4),
+          ...denseDays('2024-08-29', 56, 1e-4),
+        }, [2024, 2025, 2026]),
+        refreshedAt,
+      },
+    };
+    const { fetchImpl } = stubFetch({ fail: (body) => Boolean(body.input.bounds.bbox) });
+    const { store } = stubStore(stored);
+    const dataset = await fetchAllWith(fetchImpl, store, { backfillChunks: 0 })();
+    assert.equal(dataset.regions['jing-jin-ji'].series.refreshedAt, refreshedAt);
+    assert.equal(dataset.regions['country-de'].series.refreshedAt, new Date(NOW).toISOString());
+  });
+
   it('refreshes every region, backfills within the budget, stores the series, and publishes a valid dataset', async () => {
     const { fetchImpl, calls } = stubFetch();
     const { store, writes } = stubStore();
@@ -339,12 +413,12 @@ describe('seed-no2-activity fetchAll', () => {
         ...denseDays('2026-08-29', 40, 1.3e-4), ...denseDays('2025-08-29', 56, 1e-4), ...denseDays('2024-08-29', 56, 1e-4),
       }, [2024, 2025, 2026]),
     };
-    const { fetchImpl } = stubFetch({ fail: () => true });
+    const { fetchImpl } = stubFetch({ fail: (body) => body.input.bounds.bbox?.[0] !== RU.bbox[0] });
     const { store, writes } = stubStore(stored);
-    const dataset = await fetchAllWith(fetchImpl, store, { backfillChunks: 0 })();
+    const dataset = await fetchAllWith(fetchImpl, store, { regions: [JJJ, DE, RU], backfillChunks: 0 })();
     assert.equal(dataset.regions['jing-jin-ji'].exclusion, null);
     assert.equal(dataset.regions['country-de'].exclusion, 'request_failed');
-    assert.equal(writes.length, 0, 'nothing changed, nothing written');
+    assert.equal(writes.length, 1, 'only the successful refresh is written');
   });
 
   it('throws a preservable failure when every refresh fails with nothing stored, or the token is down', async () => {

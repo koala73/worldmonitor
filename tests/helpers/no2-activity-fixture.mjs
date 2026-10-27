@@ -62,6 +62,7 @@ export function no2ActivityDataset({
       current: eligible ? window(windowEnd, baselineMean * (1 + change / 100)) : window(windowEnd, null, 0),
       baseline: { years, meanNo2MolM2: pending ? null : baselineMean },
       series: {
+        refreshedAt: pending ? null : generatedAt,
         days: pending ? 60 : 1460,
         firstDate: pending ? shiftYear(windowEnd, 0).replace(/-\d\d-\d\d$/, '-08-29') : shiftYear(windowEnd, 4),
         lastDate: windowEnd,

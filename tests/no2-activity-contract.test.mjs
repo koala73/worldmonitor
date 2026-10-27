@@ -133,6 +133,9 @@ describe('NO2 activity method contract (#9722)', () => {
       'a window on an impossible calendar day': (dataset) => { dataset.regions['country-de'].current.windowStart = '2026-02-30'; },
       'a window with valid days but no mean': (dataset) => { dataset.regions['country-de'].current.meanNo2MolM2 = null; },
       'series coverage without dates': (dataset) => { dataset.regions['country-de'].series.firstDate = null; },
+      'an eligible region without a refresh clock': (dataset) => { dataset.regions['country-de'].series.refreshedAt = null; },
+      'a future refresh clock': (dataset) => { dataset.regions['country-de'].series.refreshedAt = '2026-10-27T06:10:00.000Z'; },
+      'a stale refresh clock on an eligible region': (dataset) => { dataset.regions['country-de'].series.refreshedAt = '2026-10-18T06:10:00.000Z'; },
       'a missing attribution': (dataset) => { dataset.source.attribution = 'Sentinel-5P'; },
       'another publisher': (dataset) => { dataset.source.publisherId = 'publisher:nasa'; },
     };

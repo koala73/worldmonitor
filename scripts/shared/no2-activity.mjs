@@ -15,6 +15,7 @@ export const NO2_ACTIVITY_ACTIVATION_KEY = 'seed-activated:economic:no2-activity
 export const NO2_ACTIVITY_METHOD_VERSION = 'no2-activity/v1';
 export const NO2_ACTIVITY_SOURCE_VERSION = 'cdse-sentinel-hub-statistics-s5p-no2-v1';
 export const NO2_ATTRIBUTION_PREFIX = 'Contains modified Copernicus Sentinel data';
+export const NO2_ACTIVITY_MAX_REFRESH_AGE_MS = 7 * 86_400_000;
 
 export const NO2_REGIONS = Object.freeze(registry.regions.map((region) => Object.freeze({
   ...region,
@@ -197,6 +198,7 @@ function isBaselineYear(value) {
 
 function isSeriesCoverage(value) {
   return isRecord(value)
+    && (value.refreshedAt === null || isInstant(value.refreshedAt))
     && isCount(value.days)
     && (value.firstDate === null || isIsoDate(value.firstDate))
     && (value.lastDate === null || isIsoDate(value.lastDate))
@@ -271,6 +273,9 @@ export function validateNo2ActivityDataset(value, method = NO2_ACTIVITY_METHOD) 
   return NO2_REGIONS.every((definition) => {
     const region = value.regions[definition.id];
     return isRegion(region, definition, method)
+      && (region.series.refreshedAt === null || Date.parse(region.series.refreshedAt) <= generatedAtMs)
+      && (region.exclusion !== null || (region.series.refreshedAt !== null
+        && generatedAtMs - Date.parse(region.series.refreshedAt) <= NO2_ACTIVITY_MAX_REFRESH_AGE_MS))
       && dateMs(region.current.windowEnd) + MS_PER_DAY <= generatedAtMs;
   });
 }
