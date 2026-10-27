@@ -1,197 +1,93 @@
 /**
- * Feed parity test — client vs server (PR #3715 review follow-up).
+ * Feed parity test — browser view vs server view (PR #3715 review follow-up).
  *
- * The client feed config (`src/config/feeds.ts`) and the server-side digest
- * feed config (`server/worldmonitor/news/v1/_feeds.ts`) are independent files
- * that frequently share feed NAMES. When a publisher dies and we fall back
- * to Google News on one side but forget to mirror the change on the other,
- * the digest path keeps fetching the dead URL while the direct-RSS path is
- * healthy (or vice versa) — exactly the Blockworks drift caught on #3715.
+ * Every feed is declared once in shared/news-catalog.json; the browser catalog
+ * (src/config/feeds.ts) and the server digest catalog
+ * (server/worldmonitor/news/v1/_feeds.ts) are views over it. The views can
+ * still disagree through a feed's `browser` overrides and through placements
+ * that exist on one side only. These checks keep each such difference
+ * deliberate: a feed NAME placed on both sides must agree on Google News vs
+ * direct routing and, in the full edition, on the upstream URL, unless a
+ * reviewed exception says why not.
  *
- * This test fails when a feed NAME appears on both sides with INCONSISTENT
- * routing — i.e. client uses Google News while server uses a direct upstream
- * URL (or vice versa). It does NOT require URL byte-equality (server uses a
- * `gn()` helper with slightly different topic terms in places), only that
- * both sides agree on the "Google News fallback or direct fetch" question.
- *
- * KNOWN_DRIFTS grandfathers in feeds that already drift at the time this
- * test landed. Each is its own per-feed judgment (some intentionally use
- * Google News on one side because the direct URL recently broke). New drift
- * fails the test. The set should SHRINK over time as feeds get reconciled,
- * not grow.
+ * KNOWN_DRIFTS grandfathers routing drift that predates the test. New drift
+ * fails. The set should SHRINK over time as feeds get reconciled, not grow.
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, '..');
+import {
+  INTEL_EDITION,
+  NEWS_CATALOG,
+  buildBrowserCategoryFeeds,
+  buildBrowserIntelSources,
+  buildServerIntelSources,
+  buildServerVariantFeeds,
+} from '../shared/news-catalog.ts';
 
-const CLIENT_PATH = resolve(ROOT, 'src/config/feeds.ts');
-const SERVER_PATH = resolve(ROOT, 'server/worldmonitor/news/v1/_feeds.ts');
+// Both sides are views over shared/news-catalog.json. The browser view keeps a
+// feed's `browser` overrides, so these checks now guard the overrides: a
+// reviewed exception below is the only way the two views may disagree.
 
-/**
- * Extract feed name + a routing hint from a source file.
- *
- * Handles both shapes:
- *
- *     // inline
- *     { name: 'X', url: rss('https://...') },
- *     { name: 'Y', url: gn('site:y.com when:1d') },
- *
- *     // multiline with locale-keyed URL object (locale variants all use
- *     // direct rss/gn helpers, never mixed)
- *     {
- *       name: 'Z',
- *       url: {
- *         en: rss('...'),
- *         fr: rss('...'),
- *       },
- *     }
- *
- * The earlier single-line-only regex missed ~46 multiline entries on the
- * client side, which caused the orphan check below to falsely flag entries
- * that ARE on both sides (France 24, EuroNews, etc.) as server-only.
- *
- * Returns a Map<name, { isGoogleNews: boolean, snippet: string }>.
- */
-function extractFeedRouting(filePath) {
-  const src = readFileSync(filePath, 'utf-8');
-  const out = new Map();
-  const NAME_RE = /\bname:\s*['"]([^'"]+)['"]/g;
-  let m;
-  while ((m = NAME_RE.exec(src)) !== null) {
-    const [, name] = m;
-    // Scan forward from this `name:` to find the matching `url:` — within
-    // the next ~600 chars (enough to span a multiline locale-object url
-    // without crossing into the sibling entry's name).
-    const window = src.slice(m.index, m.index + 600);
-    const urlMatch = window.match(/\burl:\s*([\s\S]*?)(?:,\s*$|}\s*[,\]])/m);
-    if (!urlMatch) continue;
-    const urlExpr = urlMatch[1];
-    // Match the bare `gn(...)` helper AND any sibling like `gnLocale(...)` —
-    // both emit `news.google.com/rss/search?...` URLs that the cache /
-    // user-experience pipeline should treat identically. Don't widen this to
-    // unrelated `gn*` identifiers; restrict to known prefixes that wrap GN.
-    const isGN =
-      /news\.google\.com\/rss\/search/i.test(urlExpr) ||
-      /\bgn(?:Locale)?\s*\(/.test(urlExpr);
-    // First-seen wins — names can repeat across categories (localized
-    // variants etc.); the first definition is the canonical routing.
-    if (!out.has(name)) {
-      out.set(name, { isGoogleNews: isGN, snippet: urlExpr.trim().slice(0, 120) });
-    }
-  }
-  return out;
+/** Every URL a feed entry denotes; locale-keyed URL objects yield each member. */
+function upstreamUrls(url) {
+  return typeof url === 'string' ? [url] : Object.values(url);
 }
 
-/**
- * Extract feed names by their containing category array.
- *
- * A global name match is insufficient here: the digest truncates and the
- * client filters within each category, so a same-name client feed in another
- * category cannot make a server item visible. The client intentionally uses
- * CANONICAL_FEEDS, the cross-variant union for a category, when a user enables
- * a custom panel; this extractor mirrors that behavior by unioning catalogs
- * by category. Use the TypeScript AST so multiline entries remain visible.
- *
- * Returns a Map<category, Set<name>>.
- */
-function extractFeedNamesByCategory(filePath) {
-  const src = readFileSync(filePath, 'utf-8');
-  const ast = ts.createSourceFile(filePath, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const out = new Map();
+const isGoogleNewsUrl = (url) => /news\.google\.com\/rss\/search/i.test(url);
 
-  const propertyName = (node) => {
-    if (ts.isIdentifier(node) || ts.isStringLiteral(node)) return node.text;
-    return null;
-  };
-
-  const collectNames = (category, elements) => {
-    for (const element of elements) {
-      if (!ts.isObjectLiteralExpression(element)) continue;
-      const nameProperty = element.properties.find(
-        property =>
-          ts.isPropertyAssignment(property) &&
-          propertyName(property.name) === 'name' &&
-          ts.isStringLiteral(property.initializer),
-      );
-      if (!nameProperty || !ts.isPropertyAssignment(nameProperty) || !ts.isStringLiteral(nameProperty.initializer)) {
-        continue;
+/** Side -> list of { category, feeds } over every edition, intel included. */
+function sideCategories(side) {
+  const out = [];
+  if (side === 'client') {
+    for (const edition of Object.keys(NEWS_CATALOG.layout.browser)) {
+      for (const [category, feeds] of Object.entries(buildBrowserCategoryFeeds(edition))) {
+        out.push({ edition, category, feeds });
       }
-      const names = out.get(category) ?? new Set();
-      names.add(nameProperty.initializer.text);
-      out.set(category, names);
     }
-  };
-
-  const visit = (node) => {
-    if (ts.isPropertyAssignment(node) && ts.isArrayLiteralExpression(node.initializer)) {
-      const category = propertyName(node.name);
-      if (category) collectNames(category, node.initializer.elements);
+    out.push({ edition: INTEL_EDITION, category: 'intel', feeds: buildBrowserIntelSources() });
+  } else {
+    for (const [edition, categories] of Object.entries(buildServerVariantFeeds())) {
+      for (const [category, feeds] of Object.entries(categories)) {
+        out.push({ edition, category, feeds });
+      }
     }
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === 'INTEL_SOURCES' &&
-      node.initializer &&
-      ts.isArrayLiteralExpression(node.initializer)
-    ) {
-      collectNames('intel', node.initializer.elements);
-    }
-    ts.forEachChild(node, visit);
-  };
-
-  visit(ast);
+    out.push({ edition: INTEL_EDITION, category: 'intel', feeds: buildServerIntelSources() });
+  }
   return out;
 }
 
-const stringArgument = (expression, index) => {
-  const argument = expression.arguments[index];
-  return ts.isStringLiteralLike(argument) ? argument.text : null;
-};
+/** Map<name, { isGoogleNews, snippet }>; the first placement is canonical. */
+function extractFeedRouting(side) {
+  const out = new Map();
+  for (const { feeds } of sideCategories(side)) {
+    for (const feed of feeds) {
+      if (out.has(feed.name)) continue;
+      const urls = upstreamUrls(feed.url);
+      out.set(feed.name, {
+        isGoogleNews: urls.some(isGoogleNewsUrl),
+        snippet: urls.join(', ').slice(0, 120),
+      });
+    }
+  }
+  return out;
+}
 
 /**
- * Resolve a feed initializer to the upstream URL(s) it denotes. Locale-keyed
- * URL objects can intentionally contain more than one URL; callers compare
- * every returned member rather than silently choosing an English default.
+ * Map<category, Set<name>> unioned across editions. The digest truncates and
+ * the client filters within each category, so a same-name feed in another
+ * category cannot make a server item visible. The client unions categories
+ * across editions (CANONICAL_FEEDS) when a user enables a custom panel.
  */
-function extractUpstreamUrls(initializer) {
-  if (ts.isStringLiteralLike(initializer)) return [initializer.text];
-
-  if (ts.isObjectLiteralExpression(initializer)) {
-    return initializer.properties.flatMap(property => {
-      if (!ts.isPropertyAssignment(property)) return [];
-      return extractUpstreamUrls(property.initializer);
-    });
+function extractFeedNamesByCategory(side) {
+  const out = new Map();
+  for (const { category, feeds } of sideCategories(side)) {
+    const names = out.get(category) ?? new Set();
+    for (const feed of feeds) names.add(feed.name);
+    out.set(category, names);
   }
-
-  if (!ts.isCallExpression(initializer) || !ts.isIdentifier(initializer.expression)) return [];
-  const helper = initializer.expression.text;
-  if ((helper === 'rss' || helper === 'railwayRss') && initializer.arguments.length === 1) {
-    const upstream = stringArgument(initializer, 0);
-    return upstream === null ? [] : [upstream];
-  }
-  if (helper === 'gn' && initializer.arguments.length === 1) {
-    const query = stringArgument(initializer, 0);
-    return query === null
-      ? []
-      : [
-          `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`,
-        ];
-  }
-  if (helper === 'gnLocale' && initializer.arguments.length === 4) {
-    const [query, hl, gl, ceid] = [0, 1, 2, 3].map(index => stringArgument(initializer, index));
-    if ([query, hl, gl, ceid].some(value => value === null)) return [];
-    return [
-      `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=${hl}&gl=${gl}&ceid=${ceid}`,
-    ];
-  }
-  return [];
+  return out;
 }
 
 function canonicalizeUpstreamUrl(upstream) {
@@ -204,108 +100,29 @@ function canonicalizeUpstreamUrl(upstream) {
   return url.toString();
 }
 
-function findVariableInitializerInSource(source, filePath, variableName) {
-  const ast = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  let initializer = null;
-  const visit = node => {
-    if (
-      initializer === null &&
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === variableName
-    ) {
-      initializer = node.initializer ?? null;
-    }
-    if (initializer === null) ts.forEachChild(node, visit);
-  };
-  visit(ast);
-  return initializer;
-}
-
-function findVariableInitializer(filePath, variableName) {
-  return findVariableInitializerInSource(readFileSync(filePath, 'utf-8'), filePath, variableName);
-}
-
-/**
- * Extract the full-variant catalog with enough context to compare URLs.
- *
- * The routing test above intentionally ignores query differences, but a shared
- * name whose sides point at different publishers is still two different feeds.
- * Scope this strict comparison to FULL_FEEDS versus VARIANT_FEEDS.full; the
- * variant-specific catalogs are not required to duplicate the full catalog.
- */
-function extractFullFeedsByCategory(filePath, side) {
-  const initializer = findVariableInitializer(
-    filePath,
-    side === 'client' ? 'FULL_FEEDS' : 'VARIANT_FEEDS',
-  );
-  assert.ok(initializer, `Unable to locate the ${side} full-feed declaration in ${filePath}`);
-  const record = ts.isObjectLiteralExpression(initializer) ? initializer : null;
-  if (side === 'server') {
-    const fullVariant = record?.properties.find(
-      property => ts.isPropertyAssignment(property) && property.name.getText() === 'full',
-    );
-    assert.ok(ts.isPropertyAssignment(fullVariant), 'VARIANT_FEEDS must contain a full variant');
-    assert.ok(ts.isObjectLiteralExpression(fullVariant.initializer));
-    return extractFeedRecord(fullVariant.initializer, filePath);
-  }
-  assert.ok(record);
-  return extractFeedRecord(record, filePath);
-}
-
-function extractFeedRecord(record, filePath) {
+/** Map<`category:name`, Set<canonical url>> for the full edition. */
+function extractFullFeedsByCategory(side) {
+  const categories = side === 'client'
+    ? buildBrowserCategoryFeeds('full')
+    : buildServerVariantFeeds().full;
   const out = new Map();
-  for (const categoryProperty of record.properties) {
-    assert.ok(
-      ts.isPropertyAssignment(categoryProperty),
-      `${filePath} full-feed catalog contains an unsupported category entry: ${categoryProperty.getText()}`,
-    );
-    const category = categoryProperty.name.getText().replace(/^['"]|['"]$/g, '');
-    assert.ok(
-      ts.isArrayLiteralExpression(categoryProperty.initializer),
-      `${filePath} category ${category} must use an inline array literal`,
-    );
-    let parsedCount = 0;
-    for (const element of categoryProperty.initializer.elements) {
-      assert.ok(
-        ts.isObjectLiteralExpression(element),
-        `${filePath} category ${category} contains an unsupported feed entry: ${element.getText()}`,
-      );
-      const nameProperty = element.properties.find(property => {
-        return (
-          ts.isPropertyAssignment(property) &&
-          property.name.getText().replace(/^['"]|['"]$/g, '') === 'name' &&
-          ts.isStringLiteralLike(property.initializer)
-        );
-      });
-      const urlProperty = element.properties.find(property => {
-        return (
-          ts.isPropertyAssignment(property) &&
-          property.name.getText().replace(/^['"]|['"]$/g, '') === 'url'
-        );
-      });
-      assert.ok(
-        ts.isPropertyAssignment(nameProperty) && ts.isStringLiteralLike(nameProperty.initializer),
-        `${filePath} category ${category} contains a feed without an inline string name`,
-      );
-      assert.ok(
-        ts.isPropertyAssignment(urlProperty),
-        `${filePath} feed ${category}:${nameProperty.initializer.text} has no inline URL`,
-      );
-      const name = nameProperty.initializer.text;
-      const urls = extractUpstreamUrls(urlProperty.initializer).map(canonicalizeUpstreamUrl);
-      if (urls.length === 0) {
-        throw new Error(`Unable to resolve a URL for ${filePath} feed ${category}:${name}`);
-      }
-      const key = `${category}:${name}`;
+  for (const [category, feeds] of Object.entries(categories)) {
+    for (const feed of feeds) {
+      const key = `${category}:${feed.name}`;
       const existing = out.get(key) ?? new Set();
-      for (const url of urls) existing.add(url);
+      for (const url of upstreamUrls(feed.url)) existing.add(canonicalizeUpstreamUrl(url));
       out.set(key, existing);
-      parsedCount += 1;
     }
-    assert.ok(parsedCount > 0, `No feeds parsed from ${filePath} category ${category}`);
   }
   return out;
+}
+
+/** Every raw URL the catalog holds, base and browser override alike. */
+function catalogUrls() {
+  return NEWS_CATALOG.feeds.flatMap((feed) => [
+    ...upstreamUrls(feed.url),
+    ...(feed.browser?.url ? upstreamUrls(feed.browser.url) : []),
+  ]);
 }
 
 function assertReasonedExceptions(exceptions, label) {
@@ -316,8 +133,8 @@ function assertReasonedExceptions(exceptions, label) {
 }
 
 describe('feed parity: client vs server (PR #3715 follow-up)', () => {
-  const client = extractFeedRouting(CLIENT_PATH);
-  const server = extractFeedRouting(SERVER_PATH);
+  const client = extractFeedRouting('client');
+  const server = extractFeedRouting('server');
 
   it('extracted feeds from both files', () => {
     assert.ok(client.size > 0, 'client feed extraction must not be empty');
@@ -384,31 +201,13 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
   });
 
   it('REGRESSION (#3715): Blockworks does not appear on either side with a direct blockworks.co URL', () => {
-    // The exact failure mode that prompted this test — server still pointed
-    // at https://blockworks.co/feed after client moved to Google News, so the
-    // digest path kept hitting Cloudflare-blocked upstream. Both sides have
-    // since removed Blockworks (The Block covers the same territory). Lock
-    // it in: a future contributor must not re-add the dead URL.
-    for (const [path, label] of [[CLIENT_PATH, 'client'], [SERVER_PATH, 'server']]) {
-      const src = readFileSync(path, 'utf-8');
-      assert.ok(
-        !/['"]https?:\/\/blockworks\.co\/feed['"]/.test(src),
-        `${label} (${path}) still references the dead blockworks.co/feed URL`,
-      );
-    }
+    const dead = catalogUrls().filter((url) => /^https?:\/\/blockworks\.co\/feed$/.test(url));
+    assert.deepEqual(dead, [], 'the news catalog still references the dead blockworks.co/feed URL');
   });
 
-  // Server-only feeds get aggregated, ranked, and TRUNCATED to
-  // MAX_ITEMS_PER_CATEGORY in list-feed-digest.ts, THEN data-loader.ts filters
-  // them by `enabledNames` from src/config/feeds.ts.
-  // If the server emits a feed whose name has no client-side counterpart, the
-  // server fetches it for nothing AND its items crowd out visible items in the
-  // same category, shrinking the visible result set. Exactly the
-  // Commodity-Trade-Mantra failure mode the #3717 reviewer caught.
-  //
   it('every server feed has a client home in the same category before MAX_ITEMS_PER_CATEGORY truncation', () => {
-    const clientByCategory = extractFeedNamesByCategory(CLIENT_PATH);
-    const serverByCategory = extractFeedNamesByCategory(SERVER_PATH);
+    const clientByCategory = extractFeedNamesByCategory('client');
+    const serverByCategory = extractFeedNamesByCategory('server');
     const clientNameCount = [...clientByCategory.values()].reduce((sum, names) => sum + names.size, 0);
     const serverNameCount = [...serverByCategory.values()].reduce((sum, names) => sum + names.size, 0);
     assert.ok(clientNameCount > 0, 'client category parser must not be empty');
@@ -433,20 +232,12 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
   });
 
   it('REGRESSION (#3717): Commodity Trade Mantra is not on the server side', () => {
-    // The #3717 reviewer caught this: I removed CTM from the client in #3715
-    // but left it on the server, so the server fetched it, counted it toward
-    // MAX_ITEMS_PER_CATEGORY, then the client filter dropped it — invisible
-    // crowd-out. Lock it in.
-    const src = readFileSync(SERVER_PATH, 'utf-8');
     assert.ok(
-      !/name:\s*['"]Commodity Trade Mantra['"]/.test(src),
-      `${SERVER_PATH} still has a 'Commodity Trade Mantra' entry — it has no client counterpart so its items get truncated-then-dropped`,
+      !server.has('Commodity Trade Mantra'),
+      'the server view still places Commodity Trade Mantra; it has no client counterpart so its items get truncated-then-dropped',
     );
   });
 
-  // Existing full-catalog differences are deliberate or grandfathered with a
-  // reason. New differences must either be aligned or get a new reviewed entry
-  // here; silently adding another exception in product code is not allowed.
   const INTENTIONAL_URL_DIVERGENCES = new Map([
     ['politics:AP News', 'The server digest adds a one-day Google News window.'],
     ['politics:Reuters World', 'The server digest adds a one-day Google News window.'],
@@ -479,24 +270,6 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
     ['energy:Reuters Energy', 'The server uses a narrower, more recent energy query.'],
   ]);
 
-  it('REGRESSION (#6427): full-feed extraction rejects unsupported catalog shapes', () => {
-    const unsupportedCatalogs = [
-      'const FULL_FEEDS = { ...baseCategories };',
-      'const FULL_FEEDS = { us: sharedFeeds };',
-      "const FULL_FEEDS = { us: [{ name: 'Inline', url: rss('https://example.com/feed') }, ...sharedFeeds] };",
-    ];
-
-    for (const [index, source] of unsupportedCatalogs.entries()) {
-      const filePath = `unsupported-full-feeds-${index}.ts`;
-      const initializer = findVariableInitializerInSource(source, filePath, 'FULL_FEEDS');
-      assert.ok(ts.isObjectLiteralExpression(initializer));
-      assert.throws(
-        () => extractFeedRecord(initializer, filePath),
-        /unsupported category entry|must use an inline array literal|unsupported feed entry/,
-      );
-    }
-  });
-
   it('REGRESSION (#6427): parity exceptions require written reasons', () => {
     assertReasonedExceptions(INTENTIONAL_URL_DIVERGENCES, 'URL-divergence exception');
     assert.throws(
@@ -507,8 +280,8 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
 
   it('REGRESSION (#6427): shared full-variant feeds resolve to the same upstream', () => {
     assertReasonedExceptions(INTENTIONAL_URL_DIVERGENCES, 'URL-divergence exception');
-    const clientFullFeeds = extractFullFeedsByCategory(CLIENT_PATH, 'client');
-    const serverFullFeeds = extractFullFeedsByCategory(SERVER_PATH, 'server');
+    const clientFullFeeds = extractFullFeedsByCategory('client');
+    const serverFullFeeds = extractFullFeedsByCategory('server');
     assert.ok(clientFullFeeds.size > 0);
     assert.ok(serverFullFeeds.size > 0);
 
@@ -550,8 +323,8 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
   });
 
   it('REGRESSION (#6427): new client-only full-variant feeds require a reviewed server decision', () => {
-    const clientFullFeeds = extractFullFeedsByCategory(CLIENT_PATH, 'client');
-    const serverFullFeeds = extractFullFeedsByCategory(SERVER_PATH, 'server');
+    const clientFullFeeds = extractFullFeedsByCategory('client');
+    const serverFullFeeds = extractFullFeedsByCategory('server');
     const INTENTIONAL_CLIENT_ONLY = new Map([
       ['europe:El País', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
       ['europe:El Mundo', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],

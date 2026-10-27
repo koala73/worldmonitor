@@ -281,7 +281,8 @@ describe('validator reads the URLs the views serve (#4927 review)', () => {
       ...buildServerIntelSources(),
     ].map((feed) => feed.url));
     const extracted = extractServerFeeds().map((feed) => feed.url);
-    assert.ok(extracted.length > 300, `server extraction looks empty (${extracted.length})`);
+    assert.ok(served.size > 0, 'the server view is empty');
+    assert.ok(extracted.length > 0, 'server extraction is empty');
     assert.deepEqual(new Set(extracted), served);
   });
 
