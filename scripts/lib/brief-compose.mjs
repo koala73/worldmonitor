@@ -105,21 +105,29 @@ export function buildBriefOnlyRules(userIds, digestRules) {
 }
 
 /**
- * Order default-brief rules for this tick. The default-brief pass runs after
- * deliveries under a time budget, so a fixed order would starve the same tail
- * users every tick; rotating the start by tick index reaches every user first
- * within `rules.length` ticks.
+ * Order default-brief rules for this tick, stalest first: users with no brief,
+ * then the oldest synthesis time (from each user's brief:latest pointer). The
+ * pass runs after deliveries under a time budget, so whoever it does not reach
+ * this tick is first on the next one. A rotation that shifted the start by one
+ * user per tick recomposed nearly the same users every tick and left most of
+ * them without a brief for days (first run 2026-10-27: 99 composed, 152
+ * deferred).
  *
- * @template T
+ * @template {{ userId: string }} T
  * @param {T[]} rules
- * @param {number} nowMs
- * @param {number} [tickMs] cron cadence (30 min)
+ * @param {Map<string, unknown>} synthesizedAtByUser
  * @returns {T[]}
  */
-export function rotateBriefOnlyRules(rules, nowMs, tickMs = 30 * 60 * 1000) {
-  if (!Array.isArray(rules) || rules.length < 2) return Array.isArray(rules) ? rules : [];
-  const offset = Math.floor(nowMs / tickMs) % rules.length;
-  return [...rules.slice(offset), ...rules.slice(0, offset)];
+export function orderBriefOnlyRulesByStaleness(rules, synthesizedAtByUser) {
+  if (!Array.isArray(rules)) return [];
+  const at = (r) => {
+    const v = synthesizedAtByUser?.get(r.userId);
+    return typeof v === 'number' && Number.isFinite(v) ? v : -Infinity;
+  };
+  return rules
+    .map((rule, index) => ({ rule, index, t: at(rule) }))
+    .sort((a, b) => (a.t === b.t ? a.index - b.index : a.t - b.t))
+    .map((x) => x.rule);
 }
 
 /**

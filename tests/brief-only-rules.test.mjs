@@ -6,29 +6,43 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildBriefOnlyRules, briefCandidateDue, groupEligibleRulesByUser, rotateBriefOnlyRules } from '../scripts/lib/brief-compose.mjs';
+import { buildBriefOnlyRules, briefCandidateDue, groupEligibleRulesByUser, orderBriefOnlyRulesByStaleness } from '../scripts/lib/brief-compose.mjs';
 
-describe('rotateBriefOnlyRules', () => {
-  const rules = ['a', 'b', 'c', 'd', 'e'].map((userId) => ({ userId }));
-  const TICK = 30 * 60 * 1000;
+// The default-brief pass runs under a time budget. The first production run
+// (2026-10-27 20:01Z) composed 99 of 251 users and deferred 152; a rotation
+// that shifts the start by one user per tick would recompose nearly the same
+// 99 every tick and leave the rest without a brief for days. Ordering by
+// staleness reaches every deferred user on the next ticks.
+describe('orderBriefOnlyRulesByStaleness', () => {
+  const rules = ['a', 'b', 'c', 'd'].map((userId) => ({ userId }));
 
-  it('keeps every rule exactly once', () => {
-    const out = rotateBriefOnlyRules(rules, 7 * TICK);
-    assert.deepEqual([...out.map((r) => r.userId)].sort(), ['a', 'b', 'c', 'd', 'e']);
+  it('puts users with no brief first, then the oldest synthesis', () => {
+    const out = orderBriefOnlyRulesByStaleness(rules, new Map([['a', 300], ['b', 100], ['d', 200]]));
+    assert.deepEqual(out.map((r) => r.userId), ['c', 'b', 'd', 'a']);
   });
 
-  // The default-brief pass runs under a time budget; a fixed order would
-  // starve the users at the tail every tick. Consecutive ticks start at
-  // different users so each one is reached within a few ticks.
-  it('starts consecutive ticks at different users and reaches every user first', () => {
-    const firsts = new Set();
-    for (let tick = 0; tick < rules.length; tick++) firsts.add(rotateBriefOnlyRules(rules, tick * TICK)[0].userId);
-    assert.equal(firsts.size, rules.length);
+  it('treats a missing or non-numeric time as no brief', () => {
+    const out = orderBriefOnlyRulesByStaleness(rules, new Map([['a', 5], ['b', 'x'], ['c', null]]));
+    assert.deepEqual(out.map((r) => r.userId), ['b', 'c', 'd', 'a']);
   });
 
-  it('returns the input for zero or one rule', () => {
-    assert.deepEqual(rotateBriefOnlyRules([], TICK), []);
-    assert.deepEqual(rotateBriefOnlyRules([{ userId: 'a' }], TICK), [{ userId: 'a' }]);
+  it('a budget that covers k users per tick reaches all n users in ceil(n/k) ticks', () => {
+    const n = 251;
+    const k = 99;
+    const all = Array.from({ length: n }, (_, i) => ({ userId: `u${i}` }));
+    const synthesizedAt = new Map();
+    let tick = 0;
+    while (all.some((r) => !synthesizedAt.has(r.userId)) && tick < 10) {
+      tick++;
+      for (const r of orderBriefOnlyRulesByStaleness(all, synthesizedAt).slice(0, k)) synthesizedAt.set(r.userId, tick);
+    }
+    assert.equal(tick, Math.ceil(n / k));
+  });
+
+  it('does not mutate its input', () => {
+    const input = [...rules];
+    orderBriefOnlyRulesByStaleness(input, new Map([['d', 1]]));
+    assert.deepEqual(input, rules);
   });
 });
 

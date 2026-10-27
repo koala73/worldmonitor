@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { renderDigestEmailHtml, DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
-import { buildBriefOnlyRules, rotateBriefOnlyRules } from '../scripts/lib/brief-compose.mjs';
+import { buildBriefOnlyRules, orderBriefOnlyRulesByStaleness } from '../scripts/lib/brief-compose.mjs';
 
 // A transient Upstash timeout in one user's send path used to reach
 // main().catch and end the whole cron tick, so every user after it in the
@@ -23,11 +23,12 @@ function timeoutError() {
   return new DOMException('The operation was aborted due to timeout', 'TimeoutError');
 }
 
-function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = [] }: {
+function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = [], synthesizedAt = new Map() }: {
   failingUsers: Set<string>;
   rulesResponse?: Response;
   exitError?: Error;
   briefOnlyUserIds?: string[];
+  synthesizedAt?: Map<string, number>;
 }) {
   const users = ['first', 'second', 'third'];
   const composedRules: any[][] = [];
@@ -61,7 +62,8 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
       return Response.json([{ channelType: 'email', email: `${userId}@example.com`, verified: true, emailOwnership: 'verified_account' }]);
     },
     parseDigestOnlyUser: () => ({ kind: 'unset' }),
-    fetchBriefOnlyUserIds: async () => briefOnlyUserIds, buildBriefOnlyRules, rotateBriefOnlyRules,
+    fetchBriefOnlyUserIds: async () => briefOnlyUserIds, buildBriefOnlyRules, orderBriefOnlyRulesByStaleness,
+    fetchBriefSynthesisTimes: async () => synthesizedAt,
     BRIEF_ONLY_COMPOSE_BUDGET_MS: 60_000,
     composeBriefsForRun: async (rules: any[], _nowMs: number, opts?: { deadlineMs?: number }) => {
       composedRules.push(rules);
@@ -110,6 +112,18 @@ test('paid users without a digest rule are composed but never sent anything', as
   // never delay a scheduled digest (#9758 review).
   const events = Array.from(lifecycle).filter((e) => e !== 'metadata');
   assert.deepEqual(events, ['compose', 'deliver', 'deliver', 'deliver', 'compose:bounded']);
+});
+
+// The pass runs under a time budget, so its order decides who gets a brief.
+// First production run (2026-10-27): 99 composed, 152 deferred.
+test('the default-brief pass composes users with no brief first, then the stalest', async () => {
+  const { run, composedRules } = runDigest({
+    failingUsers: new Set(),
+    briefOnlyUserIds: ['fresh', 'never', 'stale'],
+    synthesizedAt: new Map([['fresh', 2_000], ['stale', 1_000]]),
+  });
+  await run();
+  assert.deepEqual(ids(composedRules[1]), ['never:brief-only', 'stale:brief-only', 'fresh:brief-only']);
 });
 
 test('a run with no digest rules still composes the brief-only users', async () => {

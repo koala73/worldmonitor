@@ -65,7 +65,7 @@ import { shouldDropOpinionTrack } from './lib/digest-opinion-track-filter.mjs';
 import {
   briefCandidateDue,
   buildBriefOnlyRules,
-  rotateBriefOnlyRules,
+  orderBriefOnlyRulesByStaleness,
   composeBriefFromDigestStories,
   compareRules,
   deriveThreadsFromOrderedStories,
@@ -2097,6 +2097,34 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
  *
  * @returns {Promise<string[]>}
  */
+/**
+ * When each user's current brief prose was synthesized, from the
+ * brief:latest pointer (one pipeline for all users). Users with no pointer, or
+ * a pointer written before synthesizedAt existed, are absent from the map,
+ * which orders them first. On a Redis failure the map is empty and the pass
+ * keeps the Convex order for this tick.
+ *
+ * @param {string[]} userIds
+ * @returns {Promise<Map<string, number>>}
+ */
+async function fetchBriefSynthesisTimes(userIds) {
+  const out = new Map();
+  if (userIds.length === 0) return out;
+  // raw = true: the pointer is a bare seeder-owned key (#7674).
+  const cells = await redisPipeline(userIds.map((id) => ['GET', `brief:latest:${id}`]), 5_000, true);
+  if (!Array.isArray(cells)) {
+    console.warn('[digest] brief: brief-only staleness read failed; composing in Convex order this tick');
+    return out;
+  }
+  cells.forEach((cell, i) => {
+    try {
+      const ptr = typeof cell?.result === 'string' ? JSON.parse(cell.result) : null;
+      if (Number.isFinite(ptr?.synthesizedAt)) out.set(userIds[i], ptr.synthesizedAt);
+    } catch { /* malformed pointer → treated as no brief */ }
+  });
+  return out;
+}
+
 async function fetchBriefOnlyUserIds() {
   try {
     const res = await fetch(`${CONVEX_SITE_URL}/relay/brief-only-users`, {
@@ -2951,11 +2979,13 @@ async function main() {
   // Default-brief pass: in-app briefs for paid users without a digest rule.
   // Runs after deliveries so it never delays a scheduled digest, and under a
   // time budget so a cold start (every user needs a fresh synthesis) cannot
-  // push the run past the next tick; the rotation reaches skipped users first
-  // on later ticks. Its compose results count toward the failure gate below.
+  // push the run past the next tick. Users are taken stalest first, so whoever
+  // the budget skips is first on the next tick. Its compose results count
+  // toward the failure gate below.
   if (briefOnlyRules.length) {
     console.log(`[digest] brief: ${briefOnlyRules.length} paid users without a digest rule get a default in-app brief`);
-    const briefOnly = await composeBriefsForRun(rotateBriefOnlyRules(briefOnlyRules, nowMs), nowMs, {
+    const synthesizedAtByUser = await fetchBriefSynthesisTimes(briefOnlyRules.map((r) => r.userId));
+    const briefOnly = await composeBriefsForRun(orderBriefOnlyRulesByStaleness(briefOnlyRules, synthesizedAtByUser), nowMs, {
       deadlineMs: Date.now() + BRIEF_ONLY_COMPOSE_BUDGET_MS,
     });
     composeSuccess += briefOnly.composeSuccess;
