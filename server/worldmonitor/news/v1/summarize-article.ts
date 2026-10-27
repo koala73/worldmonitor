@@ -119,6 +119,19 @@ export function __setTranslateBudgetLimiterForTests(limiter: ScopedLimiter | nul
 type TranslateBudgetDecision = 'allowed' | 'exhausted' | 'unavailable';
 
 /**
+ * Thrown from the cache-miss fetcher when the caller's budget refuses. It is a
+ * caller-local error (isCallerLocalError below): a request coalesced on the
+ * same key does not inherit it, but retries as the next leader and is charged
+ * against its own budget.
+ */
+class TranslateBudgetRefusal extends Error {
+  constructor(readonly decision: Exclude<TranslateBudgetDecision, 'allowed'>) {
+    super(`translate budget ${decision}`);
+    this.name = 'TranslateBudgetRefusal';
+  }
+}
+
+/**
  * Charges one anonymous translate cache miss. Fails closed: an unproven
  * Cloudflare client IP, a degraded or throwing limiter all refuse, because the
  * budget is the only spend bound on this path.
@@ -243,8 +256,12 @@ export async function summarizeArticle(
     });
   }
 
-  const translateInput = mode === 'translate' && Array.isArray(req.headlines) ? req.headlines[0] : undefined;
-  if (typeof translateInput === 'string' && translateInput.length > MAX_TRANSLATE_INPUT_LEN) {
+  // Every entry, not only the first: translate reads the first headline that
+  // survives sanitization, which need not be headlines[0].
+  const translateInputTooLong = mode === 'translate'
+    && Array.isArray(req.headlines)
+    && req.headlines.some((h) => typeof h === 'string' && h.length > MAX_TRANSLATE_INPUT_LEN);
+  if (translateInputTooLong) {
     return unserved({
       summary: '',
       model: '',
@@ -267,7 +284,6 @@ export async function summarizeArticle(
     && routingPolicy === null
     && process.env.LOCAL_API_MODE !== 'tauri-sidecar'
     && provider !== 'ollama';
-  let translateBudgetRefusal: Exclude<TranslateBudgetDecision, 'allowed'> | null = null;
 
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
@@ -441,16 +457,16 @@ export async function summarizeArticle(
         const translateOutputCap = maxTranslateOutputChars(uniqueHeadlines[0]?.length ?? 0);
         const rejectsSummary = (text: string): boolean => (['brief', 'analysis'].includes(mode)
           && (text.length < 20 || hasReasoningPreamble(text)))
-          || (mode === 'translate' && text.length > translateOutputCap);
+          || (mode === 'translate' && (text.length === 0 || text.length > translateOutputCap));
+        // Echoed data-block markers are dropped on every provider path before
+        // the answer is validated, served or cached.
+        const cleanAnswer = (text: string): string => (mode === 'translate' ? stripTranslateMarkers(text) : text);
 
         // Charged here, on the miss path right before the provider call, so
         // cache hits and requests rejected above never spend the budget.
         if (chargesTranslateBudget) {
           const decision = await chargeAnonymousTranslateMiss(ctx.request);
-          if (decision !== 'allowed') {
-            translateBudgetRefusal = decision;
-            return null;
-          }
+          if (decision !== 'allowed') throw new TranslateBudgetRefusal(decision);
         }
 
         if (routingPolicy) {
@@ -466,10 +482,10 @@ export async function summarizeArticle(
             timeoutMs: 25_000,
             routingPolicy,
             stage: 'summarize-article',
-            validate: (text) => !rejectsSummary(text),
+            validate: (text) => !rejectsSummary(cleanAnswer(text)),
           });
           return result
-            ? { summary: result.content, model: result.model, tokens: result.tokens, provider: result.provider }
+            ? { summary: cleanAnswer(result.content), model: result.model, tokens: result.tokens, provider: result.provider }
             : null;
         }
 
@@ -510,9 +526,7 @@ export async function summarizeArticle(
         const usage = data.usage as { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number } | undefined;
         const message = data.choices?.[0]?.message;
         const rawText = typeof message?.content === 'string' ? message.content.trim() : '';
-        const rawContent = mode === 'translate'
-          ? stripTranslateMarkers(stripThinkingTags(rawText))
-          : stripThinkingTags(rawText);
+        const rawContent = cleanAnswer(stripThinkingTags(rawText));
 
         if (['brief', 'analysis'].includes(mode) && rawContent.length < 20) {
           console.warn(`[SummarizeArticle:${provider}] Output too short after stripping (${rawContent.length} chars), rejecting`);
@@ -542,32 +556,10 @@ export async function summarizeArticle(
         // local failures and in-flight work must not suppress another provider.
         shouldFetch: () => routingPolicy !== null || isModelUsable(apiUrl, model),
         cacheFailures: false,
-        // A budget refusal resolves the shared fetch to null; a metered caller
-        // coalesced on the same key must not inherit it as an empty answer.
-        inflightKey: `${cacheKey}:${provider}:${model}${chargesTranslateBudget ? ':anon-translate' : ''}`,
+        inflightKey: `${cacheKey}:${provider}:${model}`,
+        isCallerLocalError: (err) => err instanceof TranslateBudgetRefusal,
       },
     );
-
-    if (translateBudgetRefusal) {
-      const exhausted = translateBudgetRefusal === 'exhausted';
-      if (!exhausted) {
-        markRetryableResponse(ctx.request);
-        setResponseHeader(ctx.request, 'Retry-After', '5');
-      }
-      return unserved({
-        summary: '',
-        model: '',
-        provider,
-        tokens: 0,
-        // Not a provider failure: every budgeted provider shares this budget,
-        // so there is nothing for a fallback to recover.
-        fallback: false,
-        error: exhausted ? 'Daily translation limit reached' : 'Translation temporarily unavailable',
-        errorType: exhausted ? 'RateLimitError' : 'ServiceUnavailable',
-        status: 'SUMMARIZE_STATUS_ERROR',
-        statusDetail: exhausted ? 'translate_daily_budget' : 'translate_budget_unavailable',
-      });
-    }
 
     if (result?.summary) {
       const isCached = source === 'cache';
@@ -597,6 +589,26 @@ export async function summarizeArticle(
     });
 
   } catch (err: unknown) {
+    if (err instanceof TranslateBudgetRefusal) {
+      const exhausted = err.decision === 'exhausted';
+      if (!exhausted) {
+        markRetryableResponse(ctx.request);
+        setResponseHeader(ctx.request, 'Retry-After', '5');
+      }
+      return unserved({
+        summary: '',
+        model: '',
+        provider,
+        tokens: 0,
+        // Not a provider failure: every budgeted provider shares this budget,
+        // so there is nothing for a fallback to recover.
+        fallback: false,
+        error: exhausted ? 'Daily translation limit reached' : 'Translation temporarily unavailable',
+        errorType: exhausted ? 'RateLimitError' : 'ServiceUnavailable',
+        status: 'SUMMARIZE_STATUS_ERROR',
+        statusDetail: exhausted ? 'translate_daily_budget' : 'translate_budget_unavailable',
+      });
+    }
     // sentry-coverage-ok Provider failures return SUMMARIZE_STATUS_ERROR for the client fallback chain.
     const error = err instanceof Error ? err : new Error(String(err));
     console.error(`[SummarizeArticle:${provider}] Error:`, error.name, error.message);

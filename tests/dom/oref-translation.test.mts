@@ -118,3 +118,19 @@ it('ignores an LLM answer that is still Hebrew', async () => {
   expect(result.history[0]!.alerts[0]!.data).toEqual(['כפר ורדים']);
   expect(result.history[0]!.alerts[0]!.title).toBe('Rocket and missile fire');
 });
+
+it('shows every finished string while an alert still has strings waiting for a later pass', async () => {
+  // Nine unmapped areas: one pass sends eight, so the alert is not settled yet.
+  const areas = Array.from({ length: 9 }, (_, i) => `יישוב ${'א'.repeat(i + 1)}`);
+  translateText.mockImplementation(async (text) => `Place ${text.length}`);
+  window.fetch = (async () => historyResponse([
+    { id: 'd1', cat: '1', alertDate: '2026-10-27 13:00:00', title: 'ירי רקטות וטילים', data: areas, desc: '' },
+  ])) as typeof fetch;
+
+  const { fetchOrefHistory } = await import('@/services/oref-alerts');
+  const result = await fetchOrefHistory();
+  expect(translateText).toHaveBeenCalledTimes(8);
+  const shown = result.history[0]!.alerts[0]!.data;
+  expect(shown.filter((a) => a.startsWith('Place ')).length).toBe(8);
+  expect(shown.filter((a) => /[֐-׿]/.test(a)).length).toBe(1);
+});

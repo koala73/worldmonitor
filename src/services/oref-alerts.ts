@@ -161,12 +161,14 @@ function trimOldest<K, V>(map: Map<K, V>, max: number): void {
   }
 }
 
+// Uses every per-string answer already in hand, so an alert whose remaining
+// strings wait for a later pass still shows the ones that are done.
 function translateFields(alert: OrefAlert): OrefAlert {
   return {
     ...alert,
-    title: staticTranslate(alert.title),
-    data: alert.data.map(d => locationTranslator ? locationTranslator(staticTranslate(d)) : staticTranslate(d)),
-    desc: staticTranslate(alert.desc),
+    title: resolveString(alert.title, staticTranslate),
+    data: alert.data.map(d => resolveString(d, staticTranslateArea)),
+    desc: resolveString(alert.desc, staticTranslate),
   };
 }
 

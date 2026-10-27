@@ -287,6 +287,36 @@ describe('anonymous translate daily budget', () => {
     assert.equal(bodies.length, 1);
     assert.equal(response.status, 'SUMMARIZE_STATUS_SUCCESS');
   });
+
+  it('a request coalesced behind a refused miss is charged its own budget, not handed the refusal', async () => {
+    // IP A is over budget, IP B is not; both ask for the same text at once.
+    let releaseA!: () => void;
+    const aDecided = new Promise<void>((resolve) => { releaseA = resolve; });
+    let aCharged!: () => void;
+    const aInFetcher = new Promise<void>((resolve) => { aCharged = resolve; });
+    const limiterCalls: LimiterCall[] = [];
+    __setTranslateBudgetLimiterForTests(async (scope, limit, window, identifier) => {
+      limiterCalls.push({ scope, limit, window: String(window), identifier });
+      if (identifier.includes('203.0.113.7')) {
+        aCharged();
+        await aDecided;
+        return DENY;
+      }
+      return ALLOW;
+    });
+    const bodies = installProvider();
+    const text = uniqueHeadline();
+    const first = summarizeArticle(anonymousContext(), translateRequest(text));
+    await aInFetcher; // A now leads the shared miss
+    const second = summarizeArticle(anonymousContext({ 'x-real-ip': '198.51.100.20' }), translateRequest(text));
+    await new Promise((resolve) => setTimeout(resolve, 20)); // B joins A's in-flight fetch
+    releaseA();
+    const [a, b] = await Promise.all([first, second]);
+    assert.equal(a.errorType, 'RateLimitError');
+    assert.equal(b.status, 'SUMMARIZE_STATUS_SUCCESS', `B inherited A's refusal: ${JSON.stringify(b)}`);
+    assert.equal(bodies.length, 1);
+    assert.ok(limiterCalls.some((c) => c.identifier.includes('198.51.100.20')), 'B was charged its own budget');
+  });
 });
 
 describe('translate input and output bounds', () => {
@@ -301,6 +331,16 @@ describe('translate input and output bounds', () => {
     assert.equal(bodies.length, 0);
     assert.equal(limiterCalls.length, 0);
     assert.equal(drainUnservedLlmResponse(ctx.request), true);
+  });
+
+  it('rejects an over-long entry even when an earlier entry sanitizes away', async () => {
+    installLimiter(() => ALLOW);
+    const bodies = installProvider();
+    const response = await summarizeArticle(anonymousContext(), translateRequest('', {
+      headlines: ['', 'y'.repeat(MAX_TRANSLATE_INPUT_LEN + 1)],
+    }));
+    assert.equal(response.errorType, 'ValidationError');
+    assert.equal(bodies.length, 0);
   });
 
   it(`still translates text of exactly ${MAX_TRANSLATE_INPUT_LEN} characters`, async () => {

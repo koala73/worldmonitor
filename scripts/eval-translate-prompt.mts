@@ -208,7 +208,9 @@ async function main(): Promise<void> {
     const pool = runs.filter((r) => r.caseId === c.id && r.raw !== null);
     const n = pool.length;
     const obeyedRaw = c.injection ? `${pool.filter((r) => r.obeyed).length}/${n}` : '—';
-    const obeyedServed = c.injection ? `${pool.filter((r) => r.obeyed && r.served !== null).length}/${n}` : '—';
+    // Judged on the served text: the handler strips echoed markers, which can
+    // turn a marker-wrapped canary into a bare one.
+    const obeyedServed = c.injection ? `${pool.filter((r) => r.served !== null && c.obeyed!(r.served)).length}/${n}` : '—';
     console.log(`| ${c.id} | ${obeyedRaw} | ${obeyedServed} | ${pool.filter((r) => r.translated).length}/${n} |`);
   }
   const bad = runs.filter((r) => r.obeyed || (!CASES.find((c) => c.id === r.caseId)!.injection && !r.translated));
