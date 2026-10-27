@@ -12092,7 +12092,8 @@ function handlePolymarketRequest(req, res) {
     polymarketInflight.set(cacheKey, inflight);
   }
 
-  inflight.then((data) => {
+  // Returned so a throw while serving reaches the router's catch instead of going unhandled.
+  return inflight.then((data) => {
     if (data) {
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
@@ -12549,7 +12550,24 @@ function getCorsOrigin(req) {
   return '';
 }
 
-const server = http.createServer(async (req, res) => {
+// A throw that escapes a request (the router's own awaits, or an async route
+// handler) would otherwise be an unhandled rejection, which exits the relay on
+// Node 24 and takes every route and the AIS stream down with it. Route handlers
+// are dispatched with `return` so this one catch covers them.
+const server = http.createServer((req, res) => handleRelayRequest(req, res)
+  .catch((err) => handleRelayRequestFailure(res, err)));
+
+function handleRelayRequestFailure(res, err) {
+  console.error('[Relay] request handler failed:', err?.name || 'Error', err?.message || '');
+  // A half-written body must not be ended as if complete: cut the socket so the client sees the failure.
+  if (res.headersSent) {
+    if (!res.writableEnded) res.destroy();
+    return;
+  }
+  safeEnd(res, 500, {}, '');
+}
+
+async function handleRelayRequest(req, res) {
   const pathname = (req.url || '/').split('?')[0];
   const corsOrigin = getCorsOrigin(req);
   // Always emit Vary: Origin on /rss (browser-direct via CDN) to prevent
@@ -13507,42 +13525,38 @@ const server = http.createServer(async (req, res) => {
       }));
     }
   } else if (pathname.startsWith('/ucdp-events')) {
-    handleUcdpEventsRequest(req, res);
+    return handleUcdpEventsRequest(req, res);
   } else if (pathname.startsWith('/wingbits/track')) {
-    handleWingbitsTrackRequest(req, res);
+    return handleWingbitsTrackRequest(req, res);
   } else if (pathname.startsWith('/opensky')) {
-    handleOpenSkyRequest(req, res, PORT);
+    return handleOpenSkyRequest(req, res, PORT);
   } else if (pathname.startsWith('/worldbank')) {
-    handleWorldBankRequest(req, res);
+    return handleWorldBankRequest(req, res);
   } else if (pathname === '/wits') {
     return handleWitsRequest(req, res);
   } else if (pathname.startsWith('/polymarket')) {
-    handlePolymarketRequest(req, res);
+    return handlePolymarketRequest(req, res);
   } else if (pathname === '/yahoo-chart') {
-    handleYahooChartRequest(req, res);
+    return handleYahooChartRequest(req, res);
   } else if (pathname === '/crypto-quotes') {
-    handleCryptoQuotesRequest(req, res);
+    return handleCryptoQuotesRequest(req, res);
   } else if (pathname === '/notam') {
-    handleNotamProxyRequest(req, res);
+    return handleNotamProxyRequest(req, res);
   } else if (pathname === '/aviationstack') {
-    handleAviationStackRequest(req, res);
+    return handleAviationStackRequest(req, res);
   } else if (pathname === '/google-flights/search') {
-    handleGoogleFlightsSearch(req, res);
+    return handleGoogleFlightsSearch(req, res);
   } else if (pathname === '/google-flights/search-dates') {
-    handleGoogleFlightsDates(req, res);
+    return handleGoogleFlightsDates(req, res);
   } else if (pathname === '/widget-agent/health' && req.method === 'GET') {
-    handleWidgetAgentHealthRequest(req, res);
+    return handleWidgetAgentHealthRequest(req, res);
   } else if (pathname === '/widget-agent' && req.method === 'POST') {
-    // Not awaited: an escaped rejection would be unhandled and exit the relay.
-    handleWidgetAgentRequest(req, res).catch((err) => {
-      console.error('[widget-agent] Unhandled handler error:', err?.name || 'Error', err?.message || '');
-      safeEnd(res, 500, {}, '');
-    });
+    return handleWidgetAgentRequest(req, res);
   } else {
     res.writeHead(404);
     res.end();
   }
-});
+}
 
 // ─── Google Flights ───────────────────────────────────────────────────────────
 //
