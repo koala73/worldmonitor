@@ -93,11 +93,16 @@ function normalizeUnit(raw: string): string | null {
 
 const PACK_PATTERN = /(?:^|\s)(\d+)\s*(?:[x×]|pack\b)\s*(.+)$/i;
 const SIZE_PATTERN = /(\d+(?:\.\d+)?)\s*([a-z]+)/i;
+// Both patterns backtrack across the rest of the text from each start, so a
+// long digit run or many pack prefixes cost quadratic time. Real size labels
+// and product names are far shorter.
+const MAX_SIZE_TEXT_CHARS = 256;
 
 export function parseSize(raw: string | null | undefined, context?: SizeContext): ParsedSize | null {
   if (!raw) return null;
 
   const text = raw.trim().toLowerCase();
+  if (text.length > MAX_SIZE_TEXT_CHARS) return null;
 
   const contextualUnit = context?.baseUnit === 'ct'
     ? { pattern: /^(\d+)\s*(pack)$/, base: 'ct', factor: 1 }

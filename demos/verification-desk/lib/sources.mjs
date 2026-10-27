@@ -96,12 +96,39 @@ export function collectMarkets(payload) {
 
 const ENTITIES = { nbsp: ' ', amp: '&', quot: '"', '#39': "'", apos: "'" };
 
+// Replaces each `<name ...>...</name ...>` block with a space, like
+// /<name\b[\s\S]*?<\/name\b[^>]*>/gi, but in one forward pass: the regex
+// rescanned the rest of the page for every unclosed opener.
+function dropBlocks(text, name) {
+  const open = new RegExp(`<${name}\\b`, 'gi');
+  const close = new RegExp(`<\\/${name}\\b`, 'gi');
+  let out = '';
+  let kept = 0;
+  for (;;) {
+    open.lastIndex = kept;
+    const start = open.exec(text);
+    if (!start) break;
+    close.lastIndex = open.lastIndex;
+    const end = close.exec(text);
+    const gt = end ? text.indexOf('>', close.lastIndex) : -1;
+    // No complete closing tag after this opener means none after any later one.
+    if (gt === -1) break;
+    out += `${text.slice(kept, start.index)} `;
+    kept = gt + 1;
+  }
+  return out + text.slice(kept);
+}
+
+// Only text up to the last '>' can hold a whole tag; scanning past it made
+// every unclosed '<' rescan the rest of the page.
+function dropTags(text) {
+  const closed = text.lastIndexOf('>') + 1;
+  return text.slice(0, closed).replace(/<[^>]+>/g, ' ') + text.slice(closed);
+}
+
 // Plain text for figure checks only; it is never rendered as HTML.
 function stripHtml(html) {
-  return String(html)
-    .replace(/<script\b[\s\S]*?<\/script\b[^>]*>/gi, ' ')
-    .replace(/<style\b[\s\S]*?<\/style\b[^>]*>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
+  return dropTags(dropBlocks(dropBlocks(String(html), 'script'), 'style'))
     // One pass, so "&amp;lt;" stays "&lt;" (no double unescaping).
     .replace(/&(nbsp|amp|quot|#39|apos);/g, (_, name) => ENTITIES[name])
     .replace(/\s+/g, ' ')

@@ -233,30 +233,59 @@ function asciiLower(text) {
   return text.replace(/[A-Z]/g, (char) => char.toLowerCase());
 }
 
-function firstNonContentBlock(lower, from) {
+function nextBlockOpen(lower, block, from) {
+  let at = lower.indexOf(block.open, from);
+  while (at !== -1 && block.tag && /\w/.test(lower[at + block.open.length] ?? '')) {
+    at = lower.indexOf(block.open, at + 1);
+  }
+  return at;
+}
+
+function firstNonContentBlock(lower, from, nextOpen = null) {
   let first = null;
   for (const block of NON_CONTENT_BLOCKS) {
-    let at = lower.indexOf(block.open, from);
-    while (at !== -1 && block.tag && /\w/.test(lower[at + block.open.length] ?? '')) {
-      at = lower.indexOf(block.open, at + 1);
+    // A cached position stays valid while it is still ahead of `from`.
+    let at = nextOpen?.get(block);
+    if (at === undefined || (at !== -1 && at < from)) {
+      at = nextBlockOpen(lower, block, from);
+      nextOpen?.set(block, at);
     }
     if (at !== -1 && (!first || at < first.at)) first = { at, block };
   }
   return first;
 }
 
+// One pass: kept text is appended once and each block's next opener is only
+// searched forward, so a page made of tiny blocks stays linear.
 export function stripNonContentBlocks(html) {
-  let text = String(html || '');
-  let from = 0;
+  const text = String(html || '');
+  const lower = asciiLower(text);
+  const kept = [];
+  // The last kept characters. A cut can join them with the text after it into
+  // a new opener (`<scr<script></script>ipt>`), so they are checked first.
+  let seam = '';
+  let at = 0;
+  const nextOpen = new Map();
   for (;;) {
-    const lower = asciiLower(text);
-    const hit = firstNonContentBlock(lower, from);
-    if (!hit) return text;
-    const closeAt = lower.indexOf(hit.block.close, hit.at + hit.block.open.length);
-    const end = closeAt === -1 ? text.length : closeAt + hit.block.close.length;
-    text = text.slice(0, hit.at) + text.slice(end);
-    // Only an opener that straddles the cut can be new; rescan from just before it.
-    from = Math.max(0, hit.at - LONGEST_BLOCK_OPEN);
+    let hit = firstNonContentBlock(asciiLower(seam) + lower.slice(at, at + LONGEST_BLOCK_OPEN + 1), 0);
+    let openEnd;
+    if (hit && hit.at < seam.length) {
+      openEnd = at + hit.at + hit.block.open.length - seam.length;
+      seam = seam.slice(0, hit.at);
+    } else {
+      hit = firstNonContentBlock(lower, at, nextOpen);
+      if (!hit) {
+        kept.push(seam, text.slice(at));
+        return kept.join('');
+      }
+      const run = seam + text.slice(at, hit.at);
+      const split = Math.max(0, run.length - LONGEST_BLOCK_OPEN);
+      kept.push(run.slice(0, split));
+      seam = run.slice(split);
+      openEnd = hit.at + hit.block.open.length;
+    }
+    const closeAt = lower.indexOf(hit.block.close, openEnd);
+    at = closeAt === -1 ? text.length : closeAt + hit.block.close.length;
   }
 }
 

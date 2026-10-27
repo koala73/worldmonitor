@@ -484,6 +484,7 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-aaii-sentiment",
     "watchPatterns": [
+      "scripts/_china-exchange-transport.mjs",
       "scripts/_env-file.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
@@ -565,6 +566,7 @@
     "watchPatterns": [
       "scripts/_511-rate-limit.mjs",
       "scripts/_bundle-runner.mjs",
+      "scripts/_china-exchange-transport.mjs",
       "scripts/_html-entities.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",

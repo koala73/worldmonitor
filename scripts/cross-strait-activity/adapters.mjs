@@ -1460,6 +1460,9 @@ function isImplausiblyFuture(dayOrInstant, retrievedAt) {
     || value > retrieval + DAY_MS;
 }
 
+// The real window sentence is about 50 characters long.
+const MND_WINDOW_LOOKBEHIND_CHARS = 2048;
+
 export function parseTaiwanMndDetail(
   html,
   {
@@ -1482,7 +1485,13 @@ export function parseTaiwanMndDetail(
   }
 
   const text = decodeHtml(extractMndReportBody(html));
-  const windowMatch = text.match(
+  // The window sentence ends at the first "(UTC+8)". Matching only the text
+  // just before it keeps a body full of "6 a.m." starts from being rescanned
+  // to the end once per start.
+  const markerAt = text.search(/\(UTC\+8\)/i);
+  if (markerAt === -1) throw new Error('MND_REPORTING_WINDOW_MISSING');
+  const windowText = text.slice(Math.max(0, markerAt - MND_WINDOW_LOOKBEHIND_CHARS), markerAt + '(UTC+8)'.length);
+  const windowMatch = windowText.match(
     /6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?to\s*6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?\(UTC\+8\)/i,
   );
   if (!windowMatch) throw new Error('MND_REPORTING_WINDOW_MISSING');
