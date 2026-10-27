@@ -26191,6 +26191,205 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/list-media-perspective:
+        get:
+            tags:
+                - NewsService
+            summary: ListMediaPerspective
+            description: ListMediaPerspective groups headlines about one country by outlet home country and audience. PRO-gated. Requires entitlement tier >= 1.
+            operationId: ListMediaPerspective
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: subject_country
+                  in: query
+                  description: ISO2.
+                  required: true
+                  example: "SA"
+                  schema:
+                    type: string
+                - name: outlet_countries
+                  in: query
+                  description: ISO2, at most 30.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "US"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: audience
+                  in: query
+                  description: domestic, international or diaspora.
+                  required: false
+                  example: "domestic"
+                  schema:
+                    type: string
+                - name: window_hours
+                  in: query
+                  description: 24, 48, 72 or 96.
+                  required: false
+                  "schema":
+                      "type": "integer"
+                      "format": "int32"
+                      "enum":
+                          - 0
+                          - 24
+                          - 48
+                          - 72
+                          - 96
+                  example: 0
+                - name: outlet_regions
+                  in: query
+                  description: UN M49 region slugs, e.g. northern-europe.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "northern-europe"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "feedCached": 812
+                                "feedTotal": 812
+                                "groups":
+                                    - "audience": "international"
+                                      "framing":
+                                          "critical": 0
+                                          "favorable": 0
+                                          "hostile": 0
+                                          "method": ""
+                                          "model": ""
+                                          "neutral": 0
+                                          "promptVersion": ""
+                                          "unlabeled": 1
+                                      "headlineCount": 1
+                                      "headlines":
+                                          - "englishTitle": "Saudi Arabia hosts ceasefire talks"
+                                            "framing": ""
+                                            "link": "https://www.bbc.co.uk/news/articles/example"
+                                            "outlet": "BBC World"
+                                            "ownershipClass": "public-service"
+                                            "propagandaRisk": "low"
+                                            "publishedAt": 1717200000000
+                                            "publisherFamily": "bbc"
+                                            "stateAffiliated": ""
+                                            "tier": 1
+                                            "title": "Saudi Arabia hosts ceasefire talks"
+                                            "titleLanguage": "en"
+                                      "homeCountry": "GB"
+                                      "outletCount": 1
+                                "noCoverageCountries":
+                                    []
+                                "readAt": "2026-10-27T12:00:00.000Z"
+                                "state": "complete"
+                                "subjectCountry": "SA"
+                                "unattributedCount": 0
+                                "windowHours": 72
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_news_v1_ListMediaPerspectiveResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/news/v1/list-label-changes:
         get:
             tags:
@@ -55523,6 +55722,153 @@ components:
                     format: int64
                     description: 'Publisher publication time in Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: CountryHeadline is a dated article from a configured RSS feed, before dashboard category caps.
+        worldmonitor_news_v1_ListMediaPerspectiveRequest:
+            type: object
+            properties:
+                subjectCountry:
+                    type: string
+                    maxLength: 2
+                    minLength: 2
+                    description: ISO2.
+                outletCountries:
+                    type: array
+                    items:
+                        type: string
+                        maxItems: 30
+                        description: ISO2, at most 30.
+                    maxItems: 30
+                audience:
+                    type: string
+                    description: domestic, international or diaspora.
+                "windowHours":
+                    "type": "integer"
+                    "format": "int32"
+                    "description": "24, 48, 72 or 96."
+                    "enum":
+                        - 0
+                        - 24
+                        - 48
+                        - 72
+                        - 96
+                outletRegions:
+                    type: array
+                    items:
+                        type: string
+                        maxItems: 5
+                        description: UN M49 region slugs, e.g. northern-europe.
+                    maxItems: 5
+            required:
+                - subjectCountry
+        worldmonitor_news_v1_ListMediaPerspectiveResponse:
+            type: object
+            properties:
+                subjectCountry:
+                    type: string
+                windowHours:
+                    type: integer
+                    format: int32
+                groups:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_news_v1_MediaPerspectiveGroup'
+                noCoverageCountries:
+                    type: array
+                    items:
+                        type: string
+                unattributedCount:
+                    type: integer
+                    format: int32
+                    description: No outlet profile or multi-publisher feed.
+                state:
+                    type: string
+                    description: complete, partial or unavailable.
+                feedTotal:
+                    type: integer
+                    format: int32
+                feedCached:
+                    type: integer
+                    format: int32
+                readAt:
+                    type: string
+        worldmonitor_news_v1_MediaPerspectiveGroup:
+            type: object
+            properties:
+                homeCountry:
+                    type: string
+                audience:
+                    type: string
+                outletCount:
+                    type: integer
+                    format: int32
+                    description: Publisher families.
+                headlineCount:
+                    type: integer
+                    format: int32
+                    description: Before the 20-headline cap.
+                framing:
+                    $ref: '#/components/schemas/worldmonitor_news_v1_MediaPerspectiveFramingCounts'
+                headlines:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_news_v1_MediaPerspectiveHeadline'
+                    maxItems: 20
+        worldmonitor_news_v1_MediaPerspectiveFramingCounts:
+            type: object
+            properties:
+                favorable:
+                    type: integer
+                    format: int32
+                neutral:
+                    type: integer
+                    format: int32
+                critical:
+                    type: integer
+                    format: int32
+                hostile:
+                    type: integer
+                    format: int32
+                unlabeled:
+                    type: integer
+                    format: int32
+                method:
+                    type: string
+                    description: e.g. llm-headline-stance.
+                model:
+                    type: string
+                promptVersion:
+                    type: string
+        worldmonitor_news_v1_MediaPerspectiveHeadline:
+            type: object
+            properties:
+                title:
+                    type: string
+                englishTitle:
+                    type: string
+                    description: Machine translation unless English; untrusted.
+                titleLanguage:
+                    type: string
+                outlet:
+                    type: string
+                publisherFamily:
+                    type: string
+                tier:
+                    type: integer
+                    format: int32
+                ownershipClass:
+                    type: string
+                stateAffiliated:
+                    type: string
+                propagandaRisk:
+                    type: string
+                framing:
+                    type: string
+                    description: favorable, neutral, critical or hostile.
+                publishedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                link:
+                    type: string
         worldmonitor_news_v1_ListLabelChangesRequest:
             type: object
             properties:
