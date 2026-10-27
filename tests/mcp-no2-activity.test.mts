@@ -157,12 +157,31 @@ describe('get_no2_activity', () => {
     assert.deepEqual((byRegion.regions as Array<{ countryCode: string }>).map((region) => region.countryCode), ['IT']);
   });
 
-  it('rejects an unresolvable country or an unknown kind before any fetch', async () => {
+  it('rejects an unresolvable country or an unknown kind before any fetch, in _validateArgs too', async () => {
     redisValue = freshDataset();
+    assert.throws(() => tool._validateArgs?.({ country_code: 'Atlantis' }), RpcValidationError);
+    assert.throws(() => tool._validateArgs?.({ kind: 'constructor' }), RpcValidationError);
     await assert.rejects(execute({ country_code: 'Atlantis' }, BASE, CTX, {}), RpcValidationError);
     await assert.rejects(execute({ kind: 'city' }, BASE, CTX, {}), RpcValidationError);
     await assert.rejects(execute({ region_id: 'Po Valley' }, BASE, CTX, {}), RpcValidationError);
     assert.deepEqual(requestedUrls, []);
+  });
+
+  it('carries no signal and zeroed constants for a method version this server does not know', async () => {
+    redisValue = freshDataset();
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith('https://redis.example.test/')) return Response.json({ result: JSON.stringify(redisValue) });
+      const served = await getNo2Activity({} as never, { countryCode: 'CN', regionId: 'country-cn', kind: 'NO2_REGION_KIND_UNSPECIFIED' });
+      return Response.json({ ...served, methodVersion: 'no2-activity/v9' });
+    }) as typeof fetch;
+    const result = await execute({ region_id: 'country-cn' }, BASE, CTX, {}) as Record<string, unknown>;
+    assert.ok(validateOutput(result), JSON.stringify(validateOutput.errors));
+    const region = (result.regions as Array<Record<string, unknown>>)[0];
+    assert.equal(region?.changePercent, 2);
+    assert.equal(region?.signalValue, null);
+    assert.equal((result.method as Record<string, unknown>).methodVersion, 'no2-activity/v9');
+    assert.equal((result.method as Record<string, unknown>).deadBandPercent, 0);
   });
 
   it('passes a fault through with its reason instead of inventing an empty reading', async () => {

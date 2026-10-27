@@ -7830,7 +7830,7 @@ paths:
                   in: query
                   description: Registry id, e.g. "yangtze-river-delta".
                   required: false
-                  example: "mena"
+                  example: "yangtze-river-delta"
                   schema:
                     type: string
                     pattern: '^([a-z0-9-]{1,64})?$'
@@ -43999,7 +43999,7 @@ components:
                     description: Pins the method constants in scripts/shared/no2-activity.mjs.
                 attribution:
                     type: string
-                    description: Required credit, e.g. "Contains modified Copernicus Sentinel data 2023-2026".
+                    description: Required Copernicus credit line.
                 unavailableReason:
                     type: string
                     enum:
@@ -44041,7 +44041,7 @@ components:
                     items:
                         type: integer
                         format: int32
-                        description: Newest first; empty while pending.
+                        description: Prior years whose window entered the baseline, newest first.
                 baselineMeanNo2MolM2:
                     type: number
                     format: double

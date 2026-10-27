@@ -73,7 +73,7 @@ message No2ActivityRegion {
   // West, south, east, north.
   repeated double bbox = 5;
   No2Window current = 6;
-  // Newest first; empty while pending.
+  // Prior years whose window entered the baseline, newest first.
   repeated int32 baseline_years = 7;
   optional double baseline_mean_no2_mol_m2 = 8;
   // Percent against the baseline mean; absent when excluded.
@@ -89,7 +89,7 @@ message GetNo2ActivityResponse {
   bool stale = 3;
   // Pins the method constants in scripts/shared/no2-activity.mjs.
   string method_version = 4;
-  // Required credit, e.g. "Contains modified Copernicus Sentinel data 2023-2026".
+  // Required Copernicus credit line.
   string attribution = 5;
   No2ActivityUnavailableReason unavailable_reason = 6;
   // False when served or not covered.

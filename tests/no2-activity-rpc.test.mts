@@ -121,6 +121,16 @@ describe('getNo2Activity', () => {
     assert.equal(crossBorder?.countryCode, '');
   });
 
+  it('lists only baseline years that entered the mean, never candidate windows', async () => {
+    const dataset = freshDataset();
+    const record = dataset.regions['country-cn'];
+    record.baseline.years[1].validDays = 3;
+    record.series.backfilledYears = record.series.backfilledYears.filter((year) => year !== record.baseline.years[2].year);
+    serveRedis(dataset);
+    const response = await getNo2Activity(CTX, { countryCode: 'CN', regionId: 'country-cn', kind: 'NO2_REGION_KIND_UNSPECIFIED' });
+    assert.deepEqual(response.regions[0]?.baselineYears, [record.baseline.years[0].year]);
+  });
+
   it('reads a bare dataset the same as an enveloped one', async () => {
     serveRedis(freshDataset());
     const response = await getNo2Activity(CTX, { countryCode: '', regionId: '', kind: 'NO2_REGION_KIND_UNSPECIFIED' });

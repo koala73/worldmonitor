@@ -84,7 +84,7 @@ function number(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function compactRegion(region: No2ActivityRegion) {
+function compactRegion(region: No2ActivityRegion, knownMethod: boolean) {
   const changePercent = number(region.changePercent);
   return {
     id: region.id,
@@ -99,7 +99,7 @@ function compactRegion(region: No2ActivityRegion) {
     baselineYears: Array.isArray(region.baselineYears) ? region.baselineYears : [],
     baselineMeanNo2MolM2: number(region.baselineMeanNo2MolM2),
     changePercent,
-    signalValue: changePercent === null ? null : signalFor(changePercent).signalValue,
+    signalValue: changePercent === null || !knownMethod ? null : signalFor(changePercent).signalValue,
     direction: DIRECTION_LABEL[region.direction] ?? null,
     exclusion: EXCLUSION_LABEL[region.exclusion] ?? null,
   };
@@ -130,7 +130,7 @@ function queryFor(params: Record<string, unknown>): URLSearchParams {
   }
   const rawKind = params.kind;
   if (rawKind !== undefined && rawKind !== null && rawKind !== '') {
-    const kind = typeof rawKind === 'string' ? KIND_ARG[rawKind] : undefined;
+    const kind = typeof rawKind === 'string' && Object.prototype.hasOwnProperty.call(KIND_ARG, rawKind) ? KIND_ARG[rawKind] : undefined;
     if (!kind) {
       throw new RpcValidationError(OPERATION, [{
         field: 'kind',
@@ -149,6 +149,8 @@ export const NO2_ACTIVITY_TOOL: RpcToolDef = {
   title: 'Sentinel-5P NO2 activity',
   _outputBudgetBytes: 131072,
   _attribution: NO2_ATTRIBUTION_EXPRESSION,
+  // Reject malformed arguments before the caller's quota is charged.
+  _validateArgs: (params) => { queryFor(params); },
   description: 'Industrial activity direction from Sentinel-5P tropospheric NO2 for 167 countries and 32 industrial clusters: the latest 56-day window against the same dates in the prior three years, as changePercent and a direction after a 10% dead band. A region with no reading carries an exclusion; baseline_backfill_pending is expected while prior years are still being fetched, not a fault. Filter by country_code (the country plus its clusters), region_id or kind. Daily seed, never a live Copernicus call; reproduce attribution. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
   inputSchema: {
     type: 'object',
@@ -191,7 +193,7 @@ export const NO2_ACTIVITY_TOOL: RpcToolDef = {
             baselineYears: { type: 'array', items: { type: 'integer' }, description: 'Prior years whose same-date window entered the baseline, newest first; empty while the backfill is pending.' },
             baselineMeanNo2MolM2: { ...NULLABLE_NUMBER, description: 'Mean of the baseline windows, mol/m2; null while pending.' },
             changePercent: { ...NULLABLE_NUMBER, description: 'Current window against the baseline mean, percent; null when excluded.' },
-            signalValue: { ...NULLABLE_NUMBER, description: 'changePercent outside the dead band, 0 inside it; null when excluded.' },
+            signalValue: { ...NULLABLE_NUMBER, description: 'changePercent outside the dead band, 0 inside it; null when excluded or when methodVersion is one this server does not know.' },
             direction: { type: ['string', 'null'], enum: [...NO2_DIRECTIONS, null], description: 'null when excluded.' },
             exclusion: { type: ['string', 'null'], enum: [...NO2_REGION_EXCLUSIONS, null], description: 'Why there is no reading; null when the region has one. baseline_backfill_pending is expected for a new region, not a fault.' },
           },
@@ -239,10 +241,11 @@ export const NO2_ACTIVITY_TOOL: RpcToolDef = {
       execution,
     });
     const wire = await response.json() as GetNo2ActivityResponse;
+    const knownMethod = wire.methodVersion === NO2_ACTIVITY_METHOD_VERSION;
     const unavailableReason = UNAVAILABLE_REASONS.find((reason) => reason === wire.unavailableReason)
       ?? 'NO2_ACTIVITY_UNAVAILABLE_REASON_UNSPECIFIED';
     return {
-      regions: Array.isArray(wire.regions) ? wire.regions.map(compactRegion) : [],
+      regions: Array.isArray(wire.regions) ? wire.regions.map((region) => compactRegion(region, knownMethod)) : [],
       generatedAt: typeof wire.generatedAt === 'string' ? wire.generatedAt : '',
       stale: wire.stale === true,
       method: no2MethodSummary(typeof wire.methodVersion === 'string' ? wire.methodVersion : ''),

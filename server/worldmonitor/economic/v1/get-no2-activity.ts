@@ -21,6 +21,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 import {
   NO2_ACTIVITY_KEY,
+  NO2_ACTIVITY_METHOD,
   NO2_ACTIVITY_METHOD_VERSION,
   NO2_REGIONS,
   validateNo2ActivityDataset,
@@ -105,6 +106,24 @@ export function selectNo2Regions(filter: No2ActivityFilter): No2Region[] {
   ));
 }
 
+/**
+ * The prior years whose window entered the baseline mean: every calendar year
+ * the window touches is backfilled and the window has enough valid days. The
+ * seeder keeps every candidate window on the record, so while the backfill is
+ * pending the candidates must not read as completed coverage.
+ */
+export function baselineYearsOf(record: No2RegionResult): number[] {
+  const backfilled = new Set(record.series.backfilledYears);
+  return record.baseline.years
+    .filter((year) => {
+      const first = Number(year.windowStart.slice(0, 4));
+      const last = Number(year.windowEnd.slice(0, 4));
+      for (let y = first; y <= last; y++) if (!backfilled.has(y)) return false;
+      return year.validDays >= NO2_ACTIVITY_METHOD.minValidDays;
+    })
+    .map((year) => year.year);
+}
+
 export function projectNo2ActivityRegion(record: No2RegionResult): No2ActivityRegion {
   return {
     id: record.id,
@@ -118,7 +137,7 @@ export function projectNo2ActivityRegion(record: No2RegionResult): No2ActivityRe
       validDays: record.current.validDays,
       ...(record.current.meanNo2MolM2 === null ? {} : { meanNo2MolM2: record.current.meanNo2MolM2 }),
     },
-    baselineYears: record.baseline.years.map((year) => year.year),
+    baselineYears: baselineYearsOf(record),
     ...(record.baseline.meanNo2MolM2 === null ? {} : { baselineMeanNo2MolM2: record.baseline.meanNo2MolM2 }),
     ...(record.changePercent === null ? {} : { changePercent: record.changePercent }),
     direction: record.direction === null ? 'NO2_DIRECTION_UNSPECIFIED' : DIRECTION[record.direction],

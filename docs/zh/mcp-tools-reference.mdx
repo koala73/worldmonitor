@@ -571,7 +571,7 @@ curl -s https://worldmonitor.app/mcp \
 | `region_id` | string | 可选的注册表 id，例如 `country-cn` 或 `yangtze-river-delta`。与其他过滤条件按 AND 组合。 |
 | `kind` | `string: country / cluster` | 可选。`country` 为国家多边形，`cluster` 为命名工业集群；省略则两者都返回。 |
 
-**响应区分：** `unavailableReason` 使用 RPC 的封闭 `No2ActivityUnavailableReason` 枚举。`NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED` 是合约答案（过滤条件未命中任何注册区域，重试无效），`upstreamUnavailable: false`。其他非 UNSPECIFIED 原因均表示故障（`seed_missing`、`invalid_dataset`、`cache_unavailable`），`upstreamUnavailable: true`。区域级 `exclusion` 不是故障：该区域已注册且播种器已运行，只是拒绝给出它无法支撑的读数。
+**响应区分：** `unavailableReason` 使用 RPC 的封闭 `No2ActivityUnavailableReason` 枚举。`NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED` 是合约答案（过滤条件未命中任何注册区域，重试无效），`upstreamUnavailable: false`。`NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST` 是客户端错误（畸形过滤条件直接到达 handler；网关会先返回 HTTP 400），`upstreamUnavailable: false`。其余原因表示故障（`seed_missing`、`invalid_dataset`、`cache_unavailable`），`upstreamUnavailable: true`。区域级 `exclusion` 不会撤回整个响应：`baseline_backfill_pending`、`insufficient_valid_days` 和 `insufficient_baseline_years` 表示方法拒绝给出它无法支撑的读数，而 `request_failed` 表示该区域自身的来源刷新失败时间已超过保留数据的有效期。
 
 - **API 端点：** `GET /api/economic/v1/get-no2-activity`
 - **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：没有 `summary` 参数（用 `jmespath` 裁剪响应）。
