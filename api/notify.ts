@@ -165,7 +165,7 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'Invalid JSON' }, 400, cors);
   }
 
-  if (typeof body.eventType !== 'string' || !body.eventType || body.eventType.length > 64) {
+  if (typeof body.eventType !== 'string' || !body.eventType || body.eventType.length > 64 || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(body.eventType)) {
     return jsonResponse({ error: 'eventType required (string, max 64 chars)' }, 400, cors);
   }
 

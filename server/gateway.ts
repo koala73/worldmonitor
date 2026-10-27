@@ -2027,6 +2027,16 @@ export function createDomainGateway(
       && Boolean(enterpriseCredential)
       && !isUserApiKey
       && keyCheck.kind === 'enterprise';
+    if (requiresDirectLlmQuota && isEnterpriseAuth && enterpriseCredential !== wmKey) {
+      const origin = request.headers.get('Origin');
+      const hasRequestIntent = origin
+        ? isAllowedOrigin(origin)
+        : request.headers.get('Sec-Fetch-Site') === 'same-origin';
+      if (!hasRequestIntent) {
+        emitRequest(403, 'auth_403', null);
+        return createGatewayAuthErrorResponse(403, 'Request intent required for cookie-authorized AI work', corsHeaders);
+      }
+    }
     if (
       !dockerSelfHostSessionAuthorized &&
       !isEnterpriseAuth &&
@@ -2182,7 +2192,9 @@ export function createDomainGateway(
     const hasIdempotencyKey = request.method === 'POST'
       && request.headers.has(IDEMPOTENCY_HEADER)
       && !IDEMPOTENCY_EXEMPT_RPC_PATHS.has(pathname);
-    const idScope = identityForScope.principal_id ?? identityForScope.customer_id;
+    const idScope = isUserApiKey && pathname === '/api/v2/shipping/webhooks'
+      ? userKeyPrincipal?.keyHash ?? null
+      : identityForScope.principal_id ?? identityForScope.customer_id;
     const idempotencyScope = idScope ? `${identityForScope.auth_kind}:${idScope}` : null;
 
     // Look up an existing idempotency record before rate-limit/quota counters.

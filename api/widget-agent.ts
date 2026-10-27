@@ -27,6 +27,8 @@ import { isSessionTokenShape } from './_session.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
+import { hasCurrentEntitlementCoverage } from '../server/_shared/entitlement-coverage';
+import { allowsProvider, getAiRoutingDecisionForUser } from '../server/_shared/ai-routing-policy';
 // @ts-expect-error — JS module, no declaration file
 import { checkRateLimit } from './_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
@@ -352,7 +354,7 @@ async function proxyWidgetAgent(
         ent = await getEntitlements(session.userId);
         entitlementChecked = true;
         entitlementTier = ent ? ent.features.tier : null;
-        allowed = !!ent && ent.features.tier >= 1;
+        allowed = hasCurrentEntitlementCoverage(ent) && ent.features.tier >= 1;
       }
       if (!allowed) {
         // #4771: a paying user whose local renewal state is stale gets the
@@ -400,6 +402,12 @@ async function proxyWidgetAgent(
       }
       if (!session.userId) {
         return json({ error: 'Invalid or expired session' }, 401, corsHeaders);
+      }
+      if (req.method === 'POST') {
+        const routing = await getAiRoutingDecisionForUser(session.userId);
+        if (!allowsProvider(routing, 'anthropic')) {
+          return json({ error: 'Widget provider is unavailable under your AI routing policy' }, routing.kind === 'unavailable' ? 503 : 403, corsHeaders);
+        }
       }
       isPro = true;
       spendId = `user:${session.userId}`;

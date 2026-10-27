@@ -2,6 +2,9 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { test } from 'node:test';
+import https from 'node:https';
+import { Readable } from 'node:stream';
+import { EventEmitter } from 'node:events';
 import { Anchor } from '../lib/anchor.mjs';
 import { gradeToResult } from '../lib/grade.mjs';
 import { WorldMonitorMcp } from '../lib/mcp-client.mjs';
@@ -15,6 +18,41 @@ import { getSourceTier } from '../../../server/_shared/source-tiers.ts';
 import { getSourcePropagandaRisk } from '../../../shared/source-provenance.ts';
 
 const anchor = new Anchor({ apiKey: '' });
+test('hosted grading accepts same-origin request intent and denies cross-site navigations', async () => {
+  const { hasRequestIntent } = await import('../lib/access.mjs');
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', 'sec-fetch-site': 'cross-site', cookie: 'valid' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', origin: 'https://evil.example' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', origin: 'https://desk.example' } }), true);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', 'sec-fetch-site': 'same-origin' } }), true);
+});
+
+test('article sockets use the validated DNS answer without resolving the hostname again', async t => {
+  const { fetchArticleText } = await import('../lib/sources.mjs');
+  let lookups = 0;
+  let connections = 0;
+  const lookupImpl = async () => [{ address: ++lookups === 1 ? '93.184.215.14' : '169.254.169.254', family: 4 }];
+  t.mock.method(https, 'request', (url, options, callback) => {
+    assert.equal(url, 'https://rebind.example/article');
+    assert.equal(options.agent, false);
+    options.lookup('rebind.example', { all: true }, (err, addresses) => {
+      assert.ifError(err);
+      assert.deepEqual(addresses, [{ address: '93.184.215.14', family: 4 }]);
+    });
+    const request = new EventEmitter();
+    request.end = () => {
+      connections++;
+      const response = Readable.from([Buffer.from(`<p>${'Verified article text. '.repeat(20)}</p>`)]);
+      response.statusCode = 200;
+      response.headers = { 'content-type': 'text/html' };
+      callback(response);
+    };
+    return request;
+  });
+  assert.ok(await fetchArticleText('https://rebind.example/article', { lookupImpl }));
+  assert.equal(lookups, 1);
+  assert.equal(connections, 1);
+});
 const snapshotDesk = () => ({
   source: new CombinedSource(null, new ArchiveSource([new URL('../snapshots', import.meta.url).pathname], { days: 100000 })),
   anchor,

@@ -3,6 +3,7 @@
 import { ENV_PREFIX, getConvexSharedSecret, getConvexSiteUrl } from './entitlement-check';
 import type { LlmRoutingPolicy } from './llm';
 import { TRUSTED_USER_ID_HEADER } from './mcp-internal-hmac';
+import { validateBearerToken } from '../auth-session';
 import { getCachedJson, setCachedJson } from './redis.js';
 
 // Per-customer AI routing restriction (e.g. a contract that says the
@@ -96,15 +97,22 @@ export async function getAiRoutingDecisionForUser(userId: string | null | undefi
  * Decision for a gateway-routed request. The gateway-set user id wins; a
  * handler that authenticated the caller itself (resolvePremiumCallerIdentity)
  * passes that user id as the fallback, which covers routes where the gateway
- * does not resolve a Clerk session (free modes, cache reads). A call with no
+ * does not resolve a Clerk session (free modes, cache reads). Otherwise a
+ * bearer session is verified here before its policy is read. A call with no
  * identity at all (an internal invocation, an anonymous caller) is
  * unrestricted, like any other caller without a user id.
  */
-export function resolveAiRouting(
+export async function resolveAiRouting(
   request: Request | undefined,
   fallbackUserId?: string | null,
 ): Promise<AiRoutingDecision> {
-  return getAiRoutingDecisionForUser(request?.headers?.get(TRUSTED_USER_ID_HEADER) || fallbackUserId || null);
+  const userId = request?.headers?.get(TRUSTED_USER_ID_HEADER) || fallbackUserId;
+  if (userId) return getAiRoutingDecisionForUser(userId);
+  const authorization = request?.headers?.get('Authorization');
+  if (!authorization?.startsWith('Bearer ')) return DEFAULT_DECISION;
+  const session = await validateBearerToken(authorization.slice(7));
+  if (!session.valid || !session.userId) return UNAVAILABLE_DECISION;
+  return getAiRoutingDecisionForUser(session.userId);
 }
 
 /** The `routingPolicy` to pass to llm.ts. */

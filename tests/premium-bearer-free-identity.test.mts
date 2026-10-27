@@ -28,6 +28,10 @@ const ORIGINAL_ENV = { ...process.env };
 
 let signToken: (claims: Record<string, unknown>) => Promise<string>;
 let resolvePremiumCallerIdentity: typeof import('../server/_shared/premium-check.ts')['resolvePremiumCallerIdentity'];
+let widgetHandler: typeof import('../api/widget-agent.ts')['default'];
+let bearerEntitlements: Record<string, unknown>;
+const policyUsers: string[] = [];
+const cacheReads: string[] = [];
 
 const FREE_ROW = {
   planKey: 'free',
@@ -50,7 +54,10 @@ before(async () => {
   process.env.CONVEX_SERVER_SHARED_SECRET = 'fake-secret';
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-test-token';
+  process.env.WIDGET_AGENT_KEY = 'test-widget-server';
+  process.env.PRO_WIDGET_KEY = 'test-widget-pro';
   delete process.env.WORLDMONITOR_VALID_KEYS;
+  bearerEntitlements = FREE_ROW;
 
   const { publicKey, privateKey } = await generateKeyPair('RS256', { extractable: true });
   const jwk = { ...(await exportJWK(publicKey)), kid: 'test-key', alg: 'RS256', use: 'sig' };
@@ -63,7 +70,7 @@ before(async () => {
       .setExpirationTime('5m')
       .sign(privateKey);
 
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : String((input as Request)?.url ?? input);
     if (url.includes('/.well-known/jwks.json')) {
       return new Response(JSON.stringify({ keys: [jwk] }), {
@@ -73,24 +80,33 @@ before(async () => {
     }
     // Redis always misses so every lookup reaches the Convex fallback below.
     if (url.includes('redis.test/get/')) {
+      cacheReads.push(decodeURIComponent(url.split('/get/')[1]));
       return new Response(JSON.stringify({ result: undefined }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
     }
+    if (url.includes('/api/internal-ai-routing-policy')) {
+      policyUsers.push(JSON.parse(String(init?.body)).userId);
+      return Response.json({ policy: { allowedProviders: ['anthropic'] } });
+    }
     if (url.includes('redis.test')) {
       return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
     }
     if (url.includes('/api/internal-entitlements')) {
-      return new Response(JSON.stringify(FREE_ROW), {
+      return new Response(JSON.stringify(bearerEntitlements), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+    if (url.includes('/api/internal-validate-api-key')) {
+      return Response.json({ id: 'retained-key', userId: 'user_free_key', keyKind: 'api', activeKeyRank: 0 });
     }
     throw new Error(`unexpected fetch in test: ${url}`);
   }) as typeof fetch;
 
   ({ resolvePremiumCallerIdentity } = await import('../server/_shared/premium-check.ts'));
+  ({ default: widgetHandler } = await import('../api/widget-agent.ts'));
 });
 
 after(() => {
@@ -113,6 +129,72 @@ function bearerRequest(token: string): Request {
 }
 
 describe('the bearer arm of resolvePremiumCallerIdentity (#5619 follow-up)', () => {
+  it('retains a verified free bearer identity for translation routing', async () => {
+    const { resolveAiRouting } = await import('../server/_shared/ai-routing-policy.ts');
+    const request = bearerRequest(await signToken({ sub: 'user_free_policy', plan: 'free' }));
+    const identity = await resolvePremiumCallerIdentity(request);
+    assert.equal(identity.isPremium, false);
+    assert.deepEqual(await resolveAiRouting(request, identity.userId), { kind: 'restricted', allowedProviders: ['anthropic'] });
+    assert.ok(policyUsers.includes('user_free_policy'));
+  });
+
+  it('reads only the verified bearer policy namespace on the public summary cache route', async () => {
+    const { getSummarizeArticleCache } = await import('../server/worldmonitor/news/v1/get-summarize-article-cache.ts');
+    const { buildSummaryCacheKey } = await import('../src/utils/summary-cache-key.ts');
+    const cacheKey = await buildSummaryCacheKey(['Policy cache story'], 'translate', '', 'fr', 'en');
+    const request = bearerRequest(await signToken({ sub: 'user_cache_policy', plan: 'free' }));
+    await getSummarizeArticleCache({ request } as never, { cacheKey });
+    assert.ok(cacheReads.some(key => key.endsWith(`${cacheKey}:ai=anthropic`)), cacheReads.join('\n'));
+  });
+
+  it('blocks restricted widget content before reserving spend or forwarding it to Anthropic', async () => {
+    const { __setWidgetAgentSpendDepsForTests } = await import('../api/widget-agent.ts');
+    let quotaCalls = 0;
+    __setWidgetAgentSpendDepsForTests({ checkRateLimit: async () => null, runRedisPipeline: async () => { quotaCalls++; return [{ result: 1 }, { result: 1 }]; } });
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (input, init) => {
+      if (String(input).includes('/api/internal-ai-routing-policy')) return Response.json({ policy: { allowedProviders: ['ollama'] } });
+      return original(input, init);
+    }) as typeof fetch;
+    try {
+      const token = await signToken({ sub: 'user_widget_policy', plan: 'pro' });
+      const response = await widgetHandler(new Request('https://www.worldmonitor.app/api/widget-agent', {
+        method: 'POST', headers: { Origin: 'https://www.worldmonitor.app', Authorization: `Bearer ${token}` }, body: '{"prompt":"private"}',
+      }));
+      assert.equal(quotaCalls, 0);
+      assert.equal(response.status, 403);
+    } finally {
+      globalThis.fetch = original;
+      __setWidgetAgentSpendDepsForTests(null);
+    }
+  });
+  it('does not replace a retained secondary key scope with a premium bearer', async () => {
+    const token = await signToken({ sub: 'user_pro_bearer', plan: 'pro' });
+    const request = new Request('https://api.worldmonitor.app/api/v2/shipping/webhooks/own/rotate-secret', {
+      method: 'POST', headers: { 'X-WorldMonitor-Key': '', 'X-Api-Key': `wm_${'a'.repeat(40)}`, Authorization: `Bearer ${token}` },
+    });
+    const identity = await resolvePremiumCallerIdentity(request);
+    assert.equal(identity.isPremium, false);
+  });
+
+  it('rejects an expired paid marker at the widget gate', async () => {
+    bearerEntitlements = { ...FREE_ROW, features: { ...FREE_ROW.features, tier: 1 }, validUntil: Date.now() - 1, billingStatus: 'renewal_verification_pending' };
+    const { __setWidgetAgentSpendDepsForTests } = await import('../api/widget-agent.ts');
+    let quotaCalls = 0;
+    __setWidgetAgentSpendDepsForTests({ checkRateLimit: async () => null, runRedisPipeline: async () => { quotaCalls++; return [{ result: 1 }, { result: 1 }]; } });
+    try {
+      const token = await signToken({ sub: 'user_widget_expired', plan: 'free' });
+      const response = await widgetHandler(new Request('https://www.worldmonitor.app/api/widget-agent', {
+        method: 'POST', headers: { Origin: 'https://www.worldmonitor.app', Authorization: `Bearer ${token}` }, body: '{"prompt":"weather"}',
+      }));
+      assert.equal(quotaCalls, 0);
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.get('X-Billing-Verification'), 'renewal_verification_pending');
+    } finally {
+      bearerEntitlements = FREE_ROW;
+      __setWidgetAgentSpendDepsForTests(null);
+    }
+  });
   it('a CONFIRMED free session is denied as a plan verdict, never as unauthenticated', async () => {
     // The property the internal-MCP fixture cannot prove: a real signed-in free
     // user reaches denyFor via the bearer branch and must keep the honest

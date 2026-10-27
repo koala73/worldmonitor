@@ -5,6 +5,9 @@
 import { lookup } from 'node:dns/promises';
 import { readdir, readFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
+import http from 'node:http';
+import https from 'node:https';
+import { Readable } from 'node:stream';
 import path from 'node:path';
 import { dig } from './mcp-client.mjs';
 import { overlapScore } from './text.mjs';
@@ -132,33 +135,55 @@ export function isPrivateAddress(ip) {
 }
 
 /** http(s) only, no credentials, and every address the host resolves to is public. */
-export async function isPublicHttpUrl(raw, lookupImpl = (host) => lookup(host, { all: true, verbatim: true })) {
+async function publicAddresses(raw, lookupImpl = (host) => lookup(host, { all: true, verbatim: true })) {
   let url;
-  try { url = new URL(raw); } catch { return false; }
-  if (!/^https?:$/.test(url.protocol) || url.username || url.password) return false;
+  try { url = new URL(raw); } catch { return null; }
+  if (!/^https?:$/.test(url.protocol) || url.username || url.password) return null;
   const host = url.hostname.replace(/^\[|\]$/g, '');
-  if (!host || /^localhost$|\.localhost$|\.internal$|\.local$/i.test(host)) return false;
-  if (isIP(host)) return !isPrivateAddress(host);
+  if (!host || /^localhost$|\.localhost$|\.internal$|\.local$/i.test(host)) return null;
+  if (isIP(host)) return isPrivateAddress(host) ? null : [{ address: host, family: isIP(host) }];
   try {
     const addrs = await lookupImpl(host);
-    return addrs.length > 0 && addrs.every((a) => !isPrivateAddress(a.address));
+    return addrs.length > 0 && addrs.every((a) => !isPrivateAddress(a.address))
+      ? addrs.map(a => ({ address: a.address, family: isIP(a.address) })) : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export async function isPublicHttpUrl(raw, lookupImpl) {
+  return Boolean(await publicAddresses(raw, lookupImpl));
+}
+
+function fetchPinned(url, { headers, signal, lookup: pinnedLookup }) {
+  return new Promise((resolve, reject) => {
+    const transport = new URL(url).protocol === 'https:' ? https : http;
+    const req = transport.request(url, { headers, signal, lookup: pinnedLookup, agent: false }, res => {
+      resolve(new Response(Readable.toWeb(res), { status: res.statusCode, headers: res.headers }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 const MAX_REDIRECTS = 5;
 
-export async function fetchArticleText(url, { timeoutMs = 5000, fetchImpl = (...a) => globalThis.fetch(...a), lookupImpl } = {}) {
+export async function fetchArticleText(url, { timeoutMs = 5000, fetchImpl = fetchPinned, lookupImpl } = {}) {
   if (!url || !/^https?:\/\//.test(url)) return null;
   try {
     const signal = AbortSignal.timeout(timeoutMs);
     let current = url;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      if (!(await isPublicHttpUrl(current, lookupImpl))) return null;
-      const res = await fetchImpl(current, { headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' }, signal, redirect: 'manual' });
+      const addresses = await publicAddresses(current, lookupImpl);
+      if (!addresses) return null;
+      const pinnedLookup = (_host, options, callback) => {
+        if (options.all) callback(null, addresses);
+        else callback(null, addresses[0].address, addresses[0].family);
+      };
+      const res = await fetchImpl(current, { headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' }, signal, redirect: 'manual', lookup: pinnedLookup });
       if (res.status >= 300 && res.status < 400) {
         const next = res.headers?.get?.('location');
+        await res.body?.cancel();
         if (!next) return null;
         current = new URL(next, current).href;
         continue;

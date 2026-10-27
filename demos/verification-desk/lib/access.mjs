@@ -51,3 +51,10 @@ export const LOGIN_PAGE = (failed) => `<!doctype html>
   <button type="submit">Open the desk</button>
   ${failed ? '<p>Wrong password.</p>' : ''}
 </form></body></html>`;
+export function hasRequestIntent(req) {
+  if (req.headers['sec-fetch-site'] === 'same-origin') return true;
+  try {
+    const origin = new URL(req.headers.origin);
+    return /^https?:$/.test(origin.protocol) && origin.host === req.headers.host;
+  } catch { return false; }
+}

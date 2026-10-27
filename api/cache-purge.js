@@ -34,11 +34,13 @@ function getKeyPrefix() {
 }
 
 function isBlocklisted(key) {
-  return BLOCKLIST_PREFIXES.some(p => key.startsWith(p));
+  const logicalKey = key.replace(/^(?:(?:preview|development):[^:]+:)+/, '');
+  return BLOCKLIST_PREFIXES.some(p => logicalKey.startsWith(p));
 }
 
 function isDurableData(key) {
-  return DURABLE_DATA_PREFIXES.some(p => key.startsWith(p));
+  const logicalKey = key.replace(/^(?:(?:preview|development):[^:]+:)+/, '');
+  return DURABLE_DATA_PREFIXES.some(p => logicalKey.startsWith(p));
 }
 
 async function redisPipeline(commands) {

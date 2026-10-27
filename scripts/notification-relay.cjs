@@ -1723,7 +1723,7 @@ ${profile}`;
 async function processEvent(event) {
   if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
   if (event.eventType === 'flush_quiet_held') { await processFlushQuietHeld(event); return; }
-  console.log(`[relay] Processing event: ${event.eventType} (${event.severity ?? 'high'})`);
+  console.log('[relay] Processing event:', JSON.stringify({ eventType: event.eventType, severity: event.severity ?? 'high' }));
 
   // Shadow log importanceScore for comparison. Gate at caller: only rss_alert
   // events carry importanceScore; for everything else shadowLogScore would

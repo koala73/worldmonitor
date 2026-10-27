@@ -38,6 +38,9 @@ interface MatchRow {
   canonicalName: string;
   price: number;
   currencyCode?: string;
+  reviewedBy: string | null;
+  observationId: string;
+  admitted: boolean;
 }
 
 async function validateBasket(basketSlug: string, marketCode: string): Promise<void> {
@@ -49,9 +52,15 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     canonical_name: string;
     price: string;
     currency_code: string | null;
+    reviewed_by: string | null;
+    observation_id: string;
+    admitted: boolean;
   }>(
     `SELECT pm.id AS match_id, pm.basket_item_id, pm.match_status,
-            r.slug AS retailer_slug, cp.canonical_name, po.price, r.currency_code
+            r.slug AS retailer_slug, cp.canonical_name, po.price, r.currency_code,
+            pm.reviewed_by, po.id AS observation_id,
+            (po.raw_payload_json->'validator'->>'ok' = 'true'
+              AND (po.raw_payload_json->'validator'->>'score')::numeric >= 0.75) AS admitted
      FROM product_matches pm
      JOIN retailer_products rp ON rp.id = pm.retailer_product_id AND rp.active = true
      JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
@@ -59,10 +68,10 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
      JOIN baskets b ON b.id = bi.basket_id AND b.slug = $1
      JOIN canonical_products cp ON cp.id = pm.canonical_product_id
      JOIN LATERAL (
-       SELECT price FROM price_observations
-       WHERE retailer_product_id = rp.id AND in_stock = true
+       SELECT id, price, in_stock, raw_payload_json FROM price_observations
+       WHERE retailer_product_id = rp.id
        ORDER BY observed_at DESC, id DESC LIMIT 1
-     ) po ON true
+     ) po ON po.in_stock = true
      WHERE pm.match_status IN ('auto', 'approved', 'review')
        AND pm.pin_disabled_at IS NULL`,
     [basketSlug, marketCode],
@@ -76,6 +85,9 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     canonicalName: r.canonical_name,
     price: parseFloat(r.price),
     currencyCode: typeof r.currency_code === 'string' ? r.currency_code : undefined,
+    reviewedBy: r.reviewed_by,
+    observationId: r.observation_id,
+    admitted: r.admitted === true,
   }));
 
   // Group by basket item
@@ -95,10 +107,12 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
 
     const med = median(itemRows.map((r) => r.price));
     if (med === 0) continue;
+    const disputedPair = itemRows.length === 2 &&
+      Math.max(...itemRows.map(r => r.price)) / Math.min(...itemRows.map(r => r.price)) > UPPER_RATIO;
 
     for (const row of itemRows) {
       const ratio = row.price / med;
-      const isOutlier = ratio > UPPER_RATIO || ratio < LOWER_RATIO;
+      const isOutlier = disputedPair || ratio > UPPER_RATIO || ratio < LOWER_RATIO;
       const wasReview = row.matchStatus === 'review';
 
       if (isOutlier && !wasReview) {
@@ -108,10 +122,10 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
                evidence_json = evidence_json || $2,
                reviewed_by = 'validate-job',
                reviewed_at = NOW()
-           WHERE id = $1`,
+           WHERE id = $1 AND match_status IN ('auto', 'approved')`,
           [row.matchId, JSON.stringify({
             flaggedAt: new Date().toISOString(),
-            reason: 'price_outlier',
+            reason: disputedPair ? 'price_disagreement' : 'price_outlier',
             price: row.price,
             medianPrice: Math.round(med * 100) / 100,
             ratio: Math.round(ratio * 100) / 100,
@@ -123,7 +137,7 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
           `${(row.currencyCode ?? "").padEnd(3)}${row.price.toFixed(2).padStart(7)}  (median=${med.toFixed(2)}, ratio=${ratio.toFixed(2)}x)`,
         );
         flagged++;
-      } else if (!isOutlier && wasReview) {
+      } else if (!isOutlier && wasReview && row.reviewedBy === 'validate-job' && row.admitted) {
         // Price returned to normal range — restore so it flows into aggregate again.
         await query(
           `UPDATE product_matches
@@ -131,14 +145,18 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
                evidence_json = evidence_json || $2,
                reviewed_by = 'validate-job',
                reviewed_at = NOW()
-           WHERE id = $1`,
+           WHERE id = $1 AND match_status = 'review' AND reviewed_by = 'validate-job'
+             AND pin_disabled_at IS NULL
+             AND $3 = (SELECT id::text FROM price_observations
+                       WHERE retailer_product_id = product_matches.retailer_product_id
+                       ORDER BY observed_at DESC, id DESC LIMIT 1)`,
           [row.matchId, JSON.stringify({
             restoredAt: new Date().toISOString(),
             reason: 'price_within_range',
             price: row.price,
             medianPrice: Math.round(med * 100) / 100,
             ratio: Math.round(ratio * 100) / 100,
-          })],
+          }), row.observationId],
         );
         logger.info(
           `  RESTORED ${row.canonicalName.padEnd(30)} ${row.retailerSlug.padEnd(20)}` +

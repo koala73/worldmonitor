@@ -24,6 +24,7 @@ import {
 import { assertNotificationWebhookRegistrationUrlSafe, blockedTeamsWebhookUrlReason } from './_notification-webhook-ssrf';
 import { validateBearerToken } from '../server/auth-session';
 import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
+import { hasCurrentEntitlementCoverage } from '../server/_shared/entitlement-coverage';
 import {
   RATE_LIMIT_DEGRADED_HEADERS,
   checkScopedRateLimit,
@@ -445,7 +446,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
     // third-party grant (notify, slack/discord oauth-start) requires the billed
     // row — as this endpoint does.
     const ent = await notificationChannelsDeps.getEntitlements(session.userId);
-    if (!ent || ent.features.tier < 1) {
+    if (!hasCurrentEntitlementCoverage(ent) || ent.features.tier < 1) {
       // #5600: an entitlement the backend could not VERIFY (Convex 5xx/timeout,
       // or a renewal re-check in flight) is not a confirmed free user. Answer
       // it with the shared retryable contract — 503 + Retry-After +

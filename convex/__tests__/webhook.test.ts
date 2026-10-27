@@ -2587,7 +2587,7 @@ describe("webhook processWebhookEvent", () => {
     expect(rows.entitlement?.planKey).toBe("pro_monthly");
   });
 
-  test("dispute.lost expires only the disputed subscription when another active subscription covers the user", async () => {
+  test.each([true, false])("dispute.lost resolves the disputed subscription (inline subscription id: %s)", async (inlineSubscriptionId) => {
     const t = convexTest(schema, modules);
     const userId = "user_dispute_multi";
 
@@ -2633,15 +2633,20 @@ describe("webhook processWebhookEvent", () => {
       });
     });
 
+    await t.run(async ctx => {
+      await ctx.db.insert('paymentEvents', { userId, dodoPaymentId: 'pay_dispute_multi',
+        type: 'charge', amount: 1000, currency: 'USD', status: 'succeeded',
+        dodoSubscriptionId: 'sub_disputed_multi', rawPayload: {}, occurredAt: BASE_TIMESTAMP });
+    });
+    const payload = makePaymentPayload("payment.succeeded", {
+      payment_id: "pay_dispute_multi", subscription_id: "sub_disputed_multi",
+      customer: { customer_id: "cust_dispute_multi", email: "multi@example.com" },
+    });
+    if (!inlineSubscriptionId) delete (payload.data as Record<string, unknown>).subscription_id;
     await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
       webhookId: "wh_dispute_multi",
       eventType: "dispute.lost",
-      rawPayload: makePaymentPayload("payment.succeeded", {
-        payment_id: "pay_dispute_multi",
-        subscription_id: "sub_disputed_multi",
-        customer: { customer_id: "cust_dispute_multi", email: "multi@example.com" },
-        metadata: { wm_user_id: userId },
-      }),
+      rawPayload: payload,
       timestamp: BASE_TIMESTAMP + 1000,
     });
 
@@ -2650,7 +2655,7 @@ describe("webhook processWebhookEvent", () => {
         ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_disputed_multi")).unique(),
         ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_cover_multi")).unique(),
         ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", userId)).first(),
-        ctx.db.query("paymentEvents").withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", "pay_dispute_multi")).first(),
+        ctx.db.query("paymentEvents").withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", "pay_dispute_multi")).order('desc').first(),
       ]);
       return { disputed, cover, entitlement, paymentEvent };
     });

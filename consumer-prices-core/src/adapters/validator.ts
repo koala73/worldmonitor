@@ -138,13 +138,13 @@ function evaluateSizeWindow(
   item: ValidatorInput['item'],
   marketCode: string | undefined,
 ): { status: SizeWindowStatus; baseQty: number | null; baseUnit: string | null } {
-  // `absent` = nothing to verify (no window configured, or no sizeText at all).
+  // `absent` = nothing to verify (no window configured).
   // `unverified` = a size was present but we declined or failed to judge it
   // (unparseable text, or a deliberate carve-out). Downstream scoring treats
   // these differently — see sizeComponent in validateSearchHit (#6868).
   const absent = { status: 'absent' as const, baseQty: null, baseUnit: null };
   if (item.minBaseQty == null && item.maxBaseQty == null) return absent;
-  if (!sizeText) return absent;
+  if (!sizeText?.trim()) return { status: 'unverified', baseQty: null, baseUnit: null };
   const parsed = parseSize(sizeText, marketCode ? { baseUnit: item.baseUnit, marketCode } : undefined);
   if (!parsed) return { status: 'unverified', baseQty: null, baseUnit: null };
 
@@ -205,7 +205,7 @@ export function validateSearchHit(input: ValidatorInput): ValidatorResult {
   const overlapFloor = 0.4;
   if (overlap < overlapFloor) reasons.push(`low-token-overlap:${overlap.toFixed(2)}`);
 
-  const sizeEval = evaluateSizeWindow(input.sizeText, input.item, input.marketCode);
+  const sizeEval = evaluateSizeWindow(input.sizeText?.trim() || input.productName, input.item, input.marketCode);
   signals.sizeWindow = sizeEval.status;
   signals.extractedBaseQty = sizeEval.baseQty;
   signals.extractedBaseUnit = sizeEval.baseUnit;

@@ -19,6 +19,15 @@ import {
 import { run } from '../src/run.mjs';
 
 describe('version', () => {
+  it('escapes terminal controls from a fetched OpenAPI listing', async () => {
+    const io = collect();
+    const spec = JSON.stringify({ paths: { '/api/news/v1/\u001b]52;c;payload\u0007': { get: { summary: 'Normal é\nFORGED\u001b[2J' } } } });
+    const { fetchImpl } = stubFetch({ body: spec });
+    assert.equal(await run(['list'], { ...io, fetch: fetchImpl, env: {} }), 0);
+    assert.ok(!/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/.test(io.out));
+    assert.match(io.out, /Normal é\\u000aFORGED\\u001b/);
+    assert.equal(io.out.trim().split('\n').length, 2);
+  });
   it('core VERSION stays in sync with package.json (guards `npm version` bumps)', () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.equal(VERSION, pkg.version);

@@ -344,7 +344,6 @@ export class SearchAdapter implements RetailerAdapter {
     // Pins outlive config changes, so a pin stored while a looser policy was
     // live would keep being scraped directly and bypass discovery entirely.
     // The market scope has to apply here too, not just to discovered URLs.
-    const requiredSegments = ctx.config.searchConfig?.urlPathMustContain ?? [];
     const targets: Target[] = [];
 
     for (const basket of baskets) {
@@ -366,8 +365,7 @@ export class SearchAdapter implements RetailerAdapter {
 
         if (
           pinned &&
-          isAllowedHost(pinned.sourceUrl, allowedHosts) &&
-          matchesRequiredPathSegments(pinned.sourceUrl, requiredSegments)
+          isUrlInPolicy(pinned.sourceUrl, ctx.config.searchConfig, allowedHosts)
         ) {
           targets.push({
             id: item.id,
@@ -612,7 +610,7 @@ export class SearchAdapter implements RetailerAdapter {
         itemConstraints &&
         (itemConstraints.minBaseQty != null || itemConstraints.maxBaseQty != null) &&
         !data.sizeText?.trim() &&
-        !parseSize(canonicalName)
+        !parseSize(data.productName ?? '')
       ) {
         failures.push({ provider, reason: 'validator-rejected', detail: 'missing-size' });
         continue;

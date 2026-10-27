@@ -5,11 +5,13 @@ const mocks = vi.hoisted(() => ({
   release: vi.fn(),
   connect: vi.fn(),
   end: vi.fn(),
+  poolOptions: vi.fn(),
 }));
 
 vi.mock('pg', () => ({
   default: {
     Pool: class MockPool {
+      constructor(options: unknown) { mocks.poolOptions(options); }
       connect = mocks.connect;
       end = mocks.end;
       on = vi.fn();
@@ -17,7 +19,7 @@ vi.mock('pg', () => ({
   },
 }));
 
-const { closePool, withTransaction } = await import('./client.js');
+const { closePool, withTransaction, getPool } = await import('./client.js');
 
 beforeEach(() => {
   vi.stubEnv('DATABASE_URL', 'postgres://localhost/consumer-prices-test');
@@ -36,6 +38,15 @@ afterEach(async () => {
 });
 
 describe('withTransaction', () => {
+  it('verifies remote database certificates even with localhost in the password', () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://user:localhost@database.example/prices');
+    getPool();
+    expect(mocks.poolOptions).toHaveBeenLastCalledWith(expect.objectContaining({ ssl: { rejectUnauthorized: true } }));
+  });
+  it('preserves local database access', () => {
+    getPool();
+    expect(mocks.poolOptions).toHaveBeenLastCalledWith(expect.objectContaining({ ssl: false }));
+  });
   it('commits work on one client', async () => {
     await withTransaction(async (execute) => {
       await execute('UPDATE product_matches SET match_status = $1', ['candidate']);

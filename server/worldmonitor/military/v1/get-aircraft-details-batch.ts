@@ -67,16 +67,14 @@ export async function getAircraftDetailsBatch(
     // snapshot after the tracked set was read is looked up on a later refresh.
     // So `requested` stops before the first skipped address (see below).
     let requested = limitedList.length;
-    if (toFetch.length > 0) {
+    if (toFetch.length > 0 && process.env.LOCAL_API_MODE !== 'tauri-sidecar') {
       const tracked = await getTrackedAircraftIcao24s();
-      if (tracked) {
-        const skipped = toFetch.filter((id) => !tracked.has(id));
-        if (skipped.length > 0) {
-          const skippedSet = new Set(skipped);
-          requested = limitedList.findIndex((id) => skippedSet.has(id));
-          for (let i = toFetch.length - 1; i >= 0; i--) {
-            if (skippedSet.has(toFetch[i]!)) toFetch.splice(i, 1);
-          }
+      const skipped = toFetch.filter((id) => !tracked?.has(id));
+      if (skipped.length > 0) {
+        const skippedSet = new Set(skipped);
+        requested = limitedList.findIndex((id) => skippedSet.has(id));
+        for (let i = toFetch.length - 1; i >= 0; i--) {
+          if (skippedSet.has(toFetch[i]!)) toFetch.splice(i, 1);
         }
       }
     }
