@@ -31,6 +31,7 @@ const USER_KEY_CACHE_PREFIX = 'user-api-key:';
 const COMPANY_MONITORING_SCOPES = new Set(['company_monitoring:read', 'company_monitoring:write']);
 const BOOTSTRAP_USER_KEY_NEGATIVE_CACHE_PREFIX = 'bootstrap-user-api-key-invalid:';
 const ENTITLEMENT_CACHE_TTL_SECONDS = 900;
+const AWS_MARKETPLACE_PRINCIPAL_PREFIX = 'aws-marketplace:';
 // Mirrors server/_shared/entitlement-check.ts (this .js file cannot import the
 // .ts module under node --test; tests/billing-marker-ttl-parity.test.mjs pins
 // the two copies together): both marker TTLs stay short because each is the
@@ -416,6 +417,20 @@ function clampRetryAfterSeconds(rawRetryAfter) {
 }
 
 function billingVerificationFailure(value, lapsedError = API_ACCESS_POLICY.lapsedError) {
+  if (value?.verificationUnavailable === true) {
+    const status = 'entitlement_verification_unavailable';
+    return {
+      ok: false,
+      status: 503,
+      error: 'Unable to verify API access',
+      reason: status,
+      unavailable: true,
+      headers: noStoreHeaders({
+        'Retry-After': String(clampRetryAfterSeconds(value.retryAfterSeconds)),
+        'X-Billing-Verification': status,
+      }),
+    };
+  }
   const status = value?.billingStatus;
   if (status === 'subscription_lapsed') {
     return {
@@ -606,7 +621,8 @@ async function validateBootstrapEntitlement(userId, policy) {
 
 async function validateBootstrapEntitlementUncached(userId, policy) {
   const cacheKey = `entitlements:${ENTITLEMENT_ENV_PREFIX}:${userId}`;
-  const cached = await readCachedJson(cacheKey);
+  const marketplace = userId.startsWith(AWS_MARKETPLACE_PRINCIPAL_PREFIX);
+  const cached = marketplace ? { status: 'miss' } : await readCachedJson(cacheKey);
   if (
     cached.status === 'hit' && cached.value && typeof cached.value === 'object'
     && (policy.trustsCachedEntry === undefined || policy.trustsCachedEntry(cached.value))
@@ -643,7 +659,7 @@ async function validateBootstrapEntitlementUncached(userId, policy) {
     };
   }
 
-  if (result.value && typeof result.value === 'object') {
+  if (!marketplace && result.value && typeof result.value === 'object') {
     await writeCachedJson(cacheKey, result.value, entitlementCacheTtlSeconds(result.value));
   }
 

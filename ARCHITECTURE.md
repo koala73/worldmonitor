@@ -133,6 +133,8 @@ The `api/` directory holds two kinds of endpoints, both deployed as Vercel Edge 
 - **Domain intelligence gateways** — generated from proto contracts and backed by handlers under `server/worldmonitor/**`. The per-domain thin entry points (`api/<domain>/v<N>/[rpc].ts`) are produced via `createDomainGateway` (`server/gateway.ts`) and esbuild-bundled, so the *deployed* artifact is self-contained even though the source composes server-side modules.
 - **Operational endpoints** — hand-written for concerns that don't fit the contract model: auth/session, checkout and customer portal, MCP, bootstrap/health, notifications, cache invalidation, and user workflows (e.g. `api/create-checkout.ts`, `api/customer-portal.ts`, `api/mcp.ts`, `api/user-prefs.ts`).
 
+AWS Marketplace purchases use a separate license principal (`aws-marketplace:<licenseId>`). The buyer completes setup at `/marketplace`, where Clerk authenticates the managing person; the license owns API keys and metering. The Marketplace ledger, not that person's retail entitlement, controls API and MCP access. The public Marketplace endpoints verify AWS registration or Clerk identity before relaying to the license ledger. MCP preserves per-license quota and never sends this principal to the retail Dodo checkout flow.
+
 Compact health separates actionable `problems` from bounded `pending` diagnostics. Both retain the source diagnosis. Pending deadlines also bound the Redis verdict cache lifetime.
 
 Edge functions are bundled per file: each deployed function may not pull in unrelated modules at runtime, a constraint enforced by `tests/edge-functions.test.mjs` and the pre-push esbuild bundle check. Hand-written endpoints that genuinely cannot be proto-defined are listed in `api/api-route-exceptions.json` and enforced by `npm run lint:api-contract`.
@@ -426,7 +428,7 @@ Runs before every `git push`:
 | `orphaned-stacked-merge-monitor.yml` | PR closed and merged | Post-merge safety net for #7006: fails when the merge commit is not an ancestor of `main`, then opens an issue and comments on the purple PR |
 | `deploy-gate.yml` | After Test/Typecheck/Lint Code/Security Audit/Stacked Merge Guard complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection |
 | `indexnow-submit.yml` | Successful Production deployment, manual | Submits deployment-relevant canonical URLs to IndexNow only after their host-specific ownership keys are directly reachable |
-| `convex-deploy.yml` | Push to main, manual | Deploys Convex backend functions |
+| `convex-deploy.yml` | Push to main, manual | Deploys Convex backend functions when `convex/` or a bundled shared source such as `shared/aws-marketplace.ts` changes |
 | `deploy-worker.yml` | Push to main (worker paths), manual | Deploys the `api-cors-preflight` Cloudflare Worker |
 | `deploy-railway-reconcile-control.yml` | Push to main (control-plane paths), manual | Tests and deploys the isolated SQLite-backed Durable Object used for Railway reconciliation leases, attempts, dispatch holds, and the global mutation-uncertain barrier; deployment does not itself activate the trigger cutover |
 | `railway-deploy-trigger-watchdog.yml` | Manual rollback only | Checks the legacy rollback surface only when an operator dispatches it; it can authorize a fenced replacement only when both legacy activation flags are explicitly enabled |

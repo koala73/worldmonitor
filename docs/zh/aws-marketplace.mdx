@@ -1,0 +1,30 @@
+---
+title: "通过 AWS Marketplace 使用 WorldMonitor"
+description: "认领 AWS Marketplace 许可证、创建 API 密钥，并连接 WorldMonitor MCP 客户端。"
+---
+
+AWS Marketplace 购买的订阅由 AWS 管理和计费。该订阅提供 Marketplace 报价中注明的 API 和 MCP 用量限额，不会更改您个人 WorldMonitor 控制面板账户的套餐。
+
+## 认领购买的许可证
+
+1. 打开 [AWS Marketplace 的管理订阅页面](https://console.aws.amazon.com/marketplace/home#/subscriptions)，找到您的 WorldMonitor 订阅，然后选择 **Set up your account**（设置账户）。
+2. AWS 会将您转到 [WorldMonitor Marketplace 设置页面](https://www.worldmonitor.app/marketplace)。请在同一浏览器中完成设置。登录或创建 WorldMonitor 账户；这个账户的用户负责管理许可证及其密钥。
+3. 选择 **Claim license**（认领许可证）。页面会显示已关联的许可证，以及经 AWS 验证的状态。
+
+设置链接有效期短，且只能认领一次。如果设置已过期，请返回 AWS Marketplace 订阅页面，再次选择 **Set up your account**。请勿通过电子邮件发送注册令牌，也不要将其粘贴到支持请求中。
+
+## 创建和使用密钥
+
+在 Marketplace 设置页面选择许可证、输入密钥名称，然后选择 **Create key**（创建密钥）。密钥显示时，请复制完整的 `wm_...` 密钥。WorldMonitor 只保存其哈希值，之后无法再次显示密钥。请将它保存在密钥管理器中。
+
+使用 MCP 时，连接到 `https://worldmonitor.app/mcp`，并在 `X-WorldMonitor-Key` 请求头中发送密钥。直接调用 API 时也使用相同的请求头。每个密钥消耗其所属 AWS 许可证的额度；使用该许可证的不同应用共享这份额度。设置页面显示套餐的 API 和 MCP 限额；[MCP 额度工具](/zh/mcp-tools-reference)显示当前用量。
+
+轮换密钥时，先创建新密钥，更新所有使用旧密钥的应用，然后对旧密钥选择 **Revoke key**（撤销密钥）。撤销无法恢复。缓存的密钥验证可能需要最多一分钟才会过期；在受保护的请求中，实时许可证检查也会阻止非活跃许可证。
+
+## 订阅和账单
+
+打开 [AWS Marketplace 的管理订阅页面](https://console.aws.amazon.com/marketplace/home#/subscriptions)，查看协议、在 AWS 允许的范围内更改或取消订阅，以及查看账单详情。AWS 权益覆盖期结束后，许可证不再授予 API 和 MCP 访问权限。密钥仍会列出，供您识别或撤销；只有 AWS 再次确认有效的权益后，密钥才能使用。
+
+Marketplace 许可证与 WorldMonitor 的直接结账流程分开。对于 AWS 许可证，MCP 的 `start_upgrade` 工具不会创建直接结账订单。要更改 Marketplace 套餐，请使用 AWS Marketplace。如需 WorldMonitor 账户或密钥支持，请将简短的密钥前缀和许可证标识发送至 [support@worldmonitor.app](mailto:support@worldmonitor.app)。请勿发送完整密钥。
+
+有关订阅状态和协议管理方式，请参阅 [AWS 买家指南](https://docs.aws.amazon.com/marketplace/latest/buyerguide/buyer-managing-subscriptions.html)。

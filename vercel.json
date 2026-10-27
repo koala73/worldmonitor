@@ -148,6 +148,7 @@
     { "source": "/ask", "destination": "/api/ask" },
     { "source": "/agent/auth", "destination": "/api/agent-auth" },
     { "source": "/mcp-grant", "destination": "/mcp-grant.html" },
+    { "source": "/marketplace", "destination": "/marketplace.html" },
     { "source": "/desktop-sign-in", "destination": "/desktop-sign-in.html" },
     { "source": "/verify", "destination": "/verify.html" },
     { "source": "/oauth/token", "destination": "/api/oauth/token" },
@@ -671,6 +672,20 @@
       "source": "/mcp-grant.html",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/marketplace",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/marketplace.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
       ]
     },
     {

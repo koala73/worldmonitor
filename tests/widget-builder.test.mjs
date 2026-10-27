@@ -3419,10 +3419,16 @@ describe('entitlement-check — cache-write failure does not collapse confirmed 
     // Find the success-path block: `if (result) { … setCachedJson(…) … return result }`
     const successIdx = src_.indexOf('if (result) {');
     assert.ok(successIdx !== -1, 'success-path "if (result)" branch not found');
-    const region = src_.slice(successIdx, successIdx + 1500);
+    const nextBranchIdx = src_.indexOf('\n    return null;', successIdx);
+    assert.ok(nextBranchIdx !== -1, 'missing null return after the success branch');
+    const region = src_.slice(successIdx, nextBranchIdx);
 
     const setIdx = region.indexOf('setCachedJson(');
     assert.ok(setIdx !== -1, 'setCachedJson call missing from success path');
+    assert.ok(
+      region.slice(0, setIdx).includes('if (!marketplace) {'),
+      'Marketplace entitlements must bypass the retail cache write',
+    );
 
     // Walk backward from setCachedJson to find the nearest enclosing `try {`
     // BEFORE the outer catch. The outer try is at the top of the function,
@@ -3441,6 +3447,11 @@ describe('entitlement-check — cache-write failure does not collapse confirmed 
     assert.ok(
       returnIdx !== -1,
       '`return result` must follow the cache-write try/catch so a swallowed cache error still returns the confirmed entitlement',
+    );
+    assert.match(
+      region.slice(setIdx),
+      /\}\s*\}\s*return result\b/,
+      '`return result` must be outside the cache-write catch and Marketplace guard',
     );
   });
 

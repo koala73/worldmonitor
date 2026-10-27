@@ -12,6 +12,7 @@
 
 import catalog from '../../shared/product-catalog.generated.json';
 import { MCP_ATTRIBUTION_SOURCE } from '../../shared/mcp-attribution';
+import { isAwsMarketplacePrincipal } from '../../shared/aws-marketplace';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { rpcError } from './rpc';
@@ -201,6 +202,9 @@ export async function startUpgradeCheckout(
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<StartUpgradeResult | Response> {
+  if (isAwsMarketplacePrincipal(userId)) {
+    return rpcError(id, -32002, 'This license is billed through AWS Marketplace. Manage it at https://www.worldmonitor.app/marketplace.', corsHeaders);
+  }
   let outcome: McpCheckoutOutcome;
   try {
     outcome = await (createCheckout ?? relayMcpCheckout)({ userId, productId });

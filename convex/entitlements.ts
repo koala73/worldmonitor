@@ -15,6 +15,8 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { getFeaturesForPlan, mergeEntitlementFeatures } from "./lib/entitlements";
 import { resolveUserId } from "./lib/auth";
+import { isAwsMarketplacePrincipal } from "../shared/aws-marketplace";
+import { principalEntitlementsForUser } from "./awsMarketplace";
 
 const FREE_TIER_DEFAULTS = {
   planKey: "free" as const,
@@ -27,6 +29,9 @@ async function getEntitlementsHandler(
   ctx: QueryCtx,
   userId: string,
 ) {
+  if (isAwsMarketplacePrincipal(userId)) {
+    return (await principalEntitlementsForUser(ctx, userId)) ?? FREE_TIER_DEFAULTS;
+  }
   const entitlement = await ctx.db
     .query("entitlements")
     .withIndex("by_userId", (q) => q.eq("userId", userId))

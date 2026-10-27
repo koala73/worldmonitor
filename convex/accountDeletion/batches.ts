@@ -9,6 +9,7 @@ import {
 } from "../_generated/server";
 import { userIdToShard } from "../lib/shards";
 import { recomputeEntitlementFromAllSubs } from "../payments/subscriptionHelpers";
+import { AWS_MARKETPLACE_PRINCIPAL_PREFIX } from "../../shared/aws-marketplace";
 import {
   ERASE_WRITE_BUDGET,
   PENDING_STALE_AFTER_MS,
@@ -32,6 +33,7 @@ export const PERSONAL_DELETE_TABLES = [
   "alertRules",
   "telegramPairingTokens",
   "userApiKeys",
+  "awsMarketplaceLicenses",
   "embedKeys",
   "mcpProTokens",
   "userReferralCodes",
@@ -99,6 +101,11 @@ async function takePersonalRows(
         .query("userApiKeys")
         .withIndex("by_userId", (q) => q.eq("userId", userId))
         .take(limit);
+    case "awsMarketplaceLicenses":
+      return ctx.db
+        .query("awsMarketplaceLicenses")
+        .withIndex("by_owner", (q) => q.eq("ownerUserId", userId))
+        .take(1);
     case "embedKeys":
       return ctx.db
         .query("embedKeys")
@@ -285,6 +292,38 @@ async function erasePersonal(
     if (!table) break;
     const remaining = budget - writes;
     const rows = await takePersonalRows(ctx, table, deletion.userId, remaining);
+    if (table === "awsMarketplaceLicenses") {
+      const license = rows[0] as Doc<"awsMarketplaceLicenses"> | undefined;
+      if (!license) {
+        tableIndex += 1;
+        continue;
+      }
+      const principalId = `${AWS_MARKETPLACE_PRINCIPAL_PREFIX}${license._id}`;
+      const keys = await ctx.db.query("userApiKeys")
+        .withIndex("by_userId", (q) => q.eq("userId", principalId))
+        .take(Math.max(1, remaining - 2));
+      if (keys.length) {
+        writes += await mergeDeletionStrings(ctx, deletion._id, "keyHashes", keys.map((key) => key.keyHash));
+        for (const key of keys) {
+          await ctx.db.delete(key._id);
+          writes += 1;
+        }
+        break;
+      }
+      const registrations = await ctx.db.query("awsMarketplaceRegistrations")
+        .withIndex("by_license", (q) => q.eq("licenseId", license._id))
+        .take(remaining);
+      if (registrations.length) {
+        for (const registration of registrations) {
+          await ctx.db.delete(registration._id);
+          writes += 1;
+        }
+        break;
+      }
+      await ctx.db.patch(license._id, { ownerUserId: undefined, status: "inactive", updatedAt: Date.now() });
+      writes += 1;
+      continue;
+    }
     if (table === "userApiKeys") {
       writes += await mergeDeletionStrings(
         ctx,

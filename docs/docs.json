@@ -91,6 +91,7 @@
                   "pricing",
                   "accounts",
                   "api-keys",
+                  "aws-marketplace",
                   "support"
                 ]
               },
@@ -578,6 +579,7 @@
                   "zh/pricing",
                   "zh/accounts",
                   "zh/api-keys",
+                  "zh/aws-marketplace",
                   "zh/support"
                 ]
               },

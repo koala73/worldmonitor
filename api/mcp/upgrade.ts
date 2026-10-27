@@ -51,7 +51,7 @@ type McpUpgradeableReason = 'allowance-exhausted' | 'upgrade-required' | 'quota-
  * `start_upgrade`; the denial then names the plan to buy and the tool.
  */
 export type McpDenial =
-  | { reason: McpStaticDenialReason; upgradeFrom?: string }
+  | { reason: McpStaticDenialReason; upgradeFrom?: string; marketplace?: true }
   | {
       reason: 'quota-exceeded';
       /** The daily limit the reservation ENFORCED, so copy and cap agree. */
@@ -59,6 +59,7 @@ export type McpDenial =
       /** True when REST requests spend this same budget. */
       sharedWithRestApi: boolean;
       upgradeFrom?: string;
+      marketplace?: true;
     };
 
 /**
@@ -146,6 +147,8 @@ export function buildMcpStructuredDenial(denial: McpDenial): {
   message: string;
   data: McpStructuredDenial;
 } {
+  const marketplace = denial.marketplace === true;
+  const marketplaceUrl = 'https://www.worldmonitor.app/marketplace';
   if (denial.reason === 'quota-exceeded') {
     return {
       // Byte-identical to the copy this denial has always carried, because
@@ -154,26 +157,32 @@ export function buildMcpStructuredDenial(denial: McpDenial): {
       message: `Daily MCP quota exceeded (${denial.limit}/day). Resets at next UTC midnight.`,
       data: {
         reason: denial.reason,
-        nextStep: denial.sharedWithRestApi
+        nextStep: marketplace
+          ? 'Your allowance is managed through AWS Marketplace. Check your subscription and license on the WorldMonitor Marketplace page, or wait for the next UTC day.'
+          : denial.sharedWithRestApi
           ? 'This allowance is shared with your REST API requests, so REST traffic spends it too — '
             + 'the exhaustion may not be your tool calls. Wait for the next UTC day, or upgrade at the '
             + 'upgrade URL for a higher daily limit.'
           : 'Wait for the next UTC day, or upgrade at the upgrade URL for a higher daily limit.',
-        upgradeUrl: MCP_UPGRADE_URL,
+        upgradeUrl: marketplace ? marketplaceUrl : MCP_UPGRADE_URL,
         limit: denial.limit,
         sharedWithRestApi: denial.sharedWithRestApi,
-        ...checkoutHint(denial),
+        ...(marketplace ? {} : checkoutHint(denial)),
       },
     };
   }
   const copy = DENIAL_COPY[denial.reason];
   return {
-    message: copy.message,
+    message: marketplace
+      ? 'This AWS Marketplace license does not grant this operation. Manage the license at https://www.worldmonitor.app/marketplace.'
+      : copy.message,
     data: {
       reason: denial.reason,
-      nextStep: copy.nextStep,
-      upgradeUrl: MCP_UPGRADE_URL,
-      ...checkoutHint(denial),
+      nextStep: marketplace
+        ? 'Manage this license through AWS Marketplace. Check its status on the WorldMonitor Marketplace page.'
+        : copy.nextStep,
+      upgradeUrl: marketplace ? marketplaceUrl : MCP_UPGRADE_URL,
+      ...(marketplace ? {} : checkoutHint(denial)),
     },
   };
 }

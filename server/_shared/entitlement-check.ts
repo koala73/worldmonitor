@@ -29,6 +29,9 @@ import { hasCurrentEntitlementCoverage } from './entitlement-coverage.js';
  */
 
 import { getCachedJson, setCachedJson } from './redis.js';
+import { isAwsMarketplacePrincipal } from '../../shared/aws-marketplace.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../api/_sentry-edge.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -602,7 +605,8 @@ async function _getEntitlementsImpl(
 ): Promise<CachedEntitlements | null> {
   try {
     // Redis cache check (raw=true: entitlements use user-scoped keys, no deployment prefix)
-    const cached = await getCachedJson(`entitlements:${ENV_PREFIX}:${userId}`, true);
+    const marketplace = isAwsMarketplacePrincipal(userId);
+    const cached = marketplace ? null : await getCachedJson(`entitlements:${ENV_PREFIX}:${userId}`, true);
 
     if (cached && typeof cached === 'object') {
       const ent = cached as CachedEntitlements;
@@ -727,15 +731,21 @@ async function _getEntitlementsImpl(
       // Without this, an Upstash hiccup would 403 every paying customer on the
       // very call paths this file gates — the same shape PR #3505 fixed for the
       // Clerk-only-no-Convex outlier in api/widget-agent.ts.
-      try {
-        await setCachedJson(
-          `entitlements:${ENV_PREFIX}:${userId}`,
-          result,
-          entitlementMarkerTtlSeconds(result) ?? ENTITLEMENT_CACHE_TTL_SECONDS,
-          true,
-        );
-      } catch (cacheErr) {
-        console.warn('[entitlement-check] cache write failed (non-fatal):', cacheErr instanceof Error ? cacheErr.message : String(cacheErr));
+      if (!marketplace) {
+        try {
+          await setCachedJson(
+            `entitlements:${ENV_PREFIX}:${userId}`,
+            result,
+            entitlementMarkerTtlSeconds(result) ?? ENTITLEMENT_CACHE_TTL_SECONDS,
+            true,
+          );
+        } catch (cacheErr) {
+          console.warn('[entitlement-check] cache write failed (non-fatal):', cacheErr instanceof Error ? cacheErr.message : String(cacheErr));
+          captureSilentError(cacheErr, {
+            tags: { component: 'entitlement-check', step: 'cache-write' },
+            fingerprint: ['entitlement-check', 'cache-write', cacheErr instanceof Error ? cacheErr.name : 'Error'],
+          });
+        }
       }
       return result as CachedEntitlements;
     }

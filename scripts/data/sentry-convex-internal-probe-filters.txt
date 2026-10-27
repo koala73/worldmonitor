@@ -43,6 +43,16 @@
 *Could not find public function for 'apiPlanLimitNotices:recordUsageEvaluation'*
 *Could not find public function for 'apiPlanLimitUsage:listActivePaidEntitlements'*
 *Could not find public function for 'apiPlanLimitUsage:scanApiPlanLimitUsageInternal'*
+*Could not find public function for 'awsMarketplace:account'*
+*Could not find public function for 'awsMarketplace:applyRefresh'*
+*Could not find public function for 'awsMarketplace:beginRefresh'*
+*Could not find public function for 'awsMarketplace:claimRegistration'*
+*Could not find public function for 'awsMarketplace:createKey'*
+*Could not find public function for 'awsMarketplace:getPrincipalAccessProjection'*
+*Could not find public function for 'awsMarketplace:listDue'*
+*Could not find public function for 'awsMarketplace:pruneExpiredRegistrations'*
+*Could not find public function for 'awsMarketplace:revokeKey'*
+*Could not find public function for 'awsMarketplace:stageRegistration'*
 *Could not find public function for 'broadcast/audienceExport:exportProLaunchAudience'*
 *Could not find public function for 'broadcast/audienceExport:getPaidEmails'*
 *Could not find public function for 'broadcast/audienceExport:getRegistrationsPage'*

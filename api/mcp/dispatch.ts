@@ -14,6 +14,7 @@ import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
 import { OPERATOR_KEY_DAILY_CEILINGS, reportHighUsageIfCrossed } from '../../server/_shared/high-usage-alarm';
 import { hashKeySync } from '../../server/_shared/usage-identity';
+import { isAwsMarketplacePrincipal } from '../../shared/aws-marketplace';
 import { readAccountAllowance } from './_account-allowance';
 import { applyPerMinuteLimit, getMcpBillingVerificationDenial, wwwAuthHeader } from './auth';
 import { BillingDenialError, RpcValidationError, ToolBackoffError } from './billing-denial';
@@ -466,7 +467,8 @@ export async function dispatchToolsCall(
   // Only a user-bound caller can call start_upgrade, so only they get a
   // checkout hint. The free allowance is upgraded as free even when a lapsed
   // paid row still carries its old plan key.
-  const upgradeFrom = context.kind === 'pro' || context.kind === 'user_key'
+  const marketplace = context.kind === 'user_key' && isAwsMarketplacePrincipal(context.userId);
+  const upgradeFrom = !marketplace && (context.kind === 'pro' || context.kind === 'user_key')
     ? (freeAccountAllowance ? 'free' : planKey)
     : undefined;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
@@ -537,6 +539,9 @@ export async function dispatchToolsCall(
   // session reaches the normal result path.
   let startUpgradeResult: StartUpgradeResult | undefined;
   if (tool.name === START_UPGRADE_TOOL) {
+    if (marketplace) {
+      return rpcError(id, -32002, 'This license is billed through AWS Marketplace. Manage it at https://www.worldmonitor.app/marketplace.', corsHeaders);
+    }
     if (context.kind !== 'pro' && context.kind !== 'user_key') {
       return rpcError(id, -32002, 'Starting an upgrade requires a user-bound credential.', corsHeaders);
     }
@@ -810,7 +815,7 @@ export async function dispatchToolsCall(
       const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
       if (limited) return limited;
     }
-    if (error.code === 'quota') return mcpDenialResponse({ reason: 'quota-exceeded', limit: error.limit ?? 0, sharedWithRestApi: false, upgradeFrom }, -32029, 429, id, corsHeaders, { retryAfter: String(secondsUntilUtcMidnight()) });
+    if (error.code === 'quota') return mcpDenialResponse({ reason: 'quota-exceeded', limit: error.limit ?? 0, sharedWithRestApi: false, upgradeFrom, marketplace: marketplace ? true : undefined }, -32029, 429, id, corsHeaders, { retryAfter: String(secondsUntilUtcMidnight()) });
     if (error.code === 'backend') return quotaBackendUnavailableResponse(id, corsHeaders);
     // Only `reads` carries retryAfter; `invalid` is a panel argument rejection.
     if (error.code === 'invalid') return invalidArguments(error.message);
@@ -873,6 +878,7 @@ export async function dispatchToolsCall(
               limit: reservation.floor,
               sharedWithRestApi: isSharedRestCounter(budget),
               upgradeFrom,
+              marketplace: marketplace ? true : undefined,
             },
             -32029,
             429,

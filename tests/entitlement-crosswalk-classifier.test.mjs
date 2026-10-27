@@ -56,6 +56,11 @@ describe('entitlement crosswalk classifier', () => {
     assert.equal(v.cap, 'alerts.rules');
   });
 
+  it('maps the AWS plan allowlist to API key access only', () => {
+    assert.equal(classify(site('convex/awsMarketplace.ts', 'apiAccess'))?.cap, 'api.keys');
+    assert.equal(classify(site('convex/awsMarketplace.ts', 'tier')), null);
+  });
+
   it('does NOT map a different predicate kind in that same file', () => {
     // The regression: a NEW gate of another kind must not inherit alerts.rules.
     const v = classify(site('convex/alertRules.ts', 'apiAccess'));
