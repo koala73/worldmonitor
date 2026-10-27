@@ -165,4 +165,16 @@ describe('localized country mentions', () => {
     assert.deepEqual(localizedCountryNames('GB', 'es'), ['reino unido']);
     assert.deepEqual(localizedCountryNames('SA', 'en'), [], 'English goes through countryMentionTerms');
   });
+
+  it('keeps Japanese marks and never credits a name inside a longer word or region', () => {
+    assert.ok(mentions('スーダンで停戦合意', 'SD', 'ja'));
+    assert.ok(!mentions('パキスタンで選挙', 'SD', 'ja'), 'スーダン must not collapse to スタン');
+    assert.ok(!mentions('南スーダンで衝突', 'SD', 'ja'), 'South Sudan is not Sudan');
+    assert.ok(!mentions('新しいスタイルのタイトル', 'TH', 'ja'), 'タイ inside a katakana word');
+    assert.ok(mentions('タイ政府が発表', 'TH', 'ja'));
+    assert.ok(!mentions('印度尼西亚总统访问北京', 'IN', 'zh'), 'Indonesia is not India');
+    assert.ok(mentions('印度总理访问北京', 'IN', 'zh'));
+    assert.ok(!mentions('Южный Судан объявил', 'SD', 'ru'), 'South Sudan is not Sudan');
+    assert.ok(mentions('Судан объявил перемирие', 'SD', 'ru'));
+  });
 });
