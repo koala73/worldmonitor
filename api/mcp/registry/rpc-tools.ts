@@ -8,6 +8,7 @@ import { countryMentionTerms, mentionsCountry } from '../../../shared/country-me
 import { isBriefRelevantTitle } from '../../../shared/brief-relevance.js';
 import { isOpenSkyProvider } from '../../../shared/provider-redistribution';
 import { getSourceProvenanceState, type SourceProvenanceState } from '../../../shared/source-provenance';
+import { OUTLET_PROFILE_OUTPUT_PROPERTIES, OUTLET_PROFILE_REQUIRED, withOutletProfile, type OutletProfileFields } from '../../../server/_shared/outlet-profile';
 import {
   CHINA_DECISION_SIGNAL_GROUP_IDS,
   CHINA_DECISION_SIGNAL_MAX_SERIALIZED_BYTES,
@@ -102,7 +103,7 @@ type McpDigestCoverage = {
 type McpBriefGroundingStory = PublisherRosterJson & {
   title: string;
   source: string;
-  sourceProvenance: Omit<SourceProvenanceState, 'summary'>;
+  sourceProvenance: BriefSourceProvenance;
   url?: string;
   publishedAt?: string;
   corroborationCount: number;
@@ -142,7 +143,7 @@ const MAX_COUNTRY_BRIEF_GROUNDING_URL_LENGTH = 2_000;
 const BRIEF_SOURCE_PROVENANCE_SCHEMA = {
   type: 'object',
   description: 'Source provenance without the prose summary to keep the country brief within its output budget.',
-  required: ['risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases'],
+  required: ['risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', ...OUTLET_PROFILE_REQUIRED],
   properties: {
     risk: { type: 'string', enum: ['low', 'medium', 'high', 'unknown'] },
     type: { type: 'string', enum: ['wire', 'gov', 'intel', 'mainstream', 'market', 'tech', 'other', 'unknown'] },
@@ -153,12 +154,15 @@ const BRIEF_SOURCE_PROVENANCE_SCHEMA = {
     stateAffiliated: { type: 'string' },
     knownBiases: { type: 'array', items: { type: 'string' }, description: 'Curated perspective labels. Empty means no label recorded, not neutral.' },
     note: { type: 'string' },
+    ...OUTLET_PROFILE_OUTPUT_PROPERTIES,
   },
 };
 
-function briefSourceProvenance(source: string): Omit<SourceProvenanceState, 'summary'> {
+type BriefSourceProvenance = Omit<SourceProvenanceState, 'summary'> & OutletProfileFields;
+
+function briefSourceProvenance(source: string): BriefSourceProvenance {
   const { summary: _summary, ...provenance } = getSourceProvenanceState(source);
-  return provenance;
+  return withOutletProfile(source, provenance);
 }
 
 function clipBriefText(value: unknown, maxLen: number): string {
@@ -338,8 +342,12 @@ function projectStoryCorroboration(title: string, story: Record<string, unknown>
 // Notes are the bulkiest provenance field: 12 stories of 12 of the heaviest
 // registry outlets reach ~80 KB with them and ~59 KB without. Live briefs carry
 // one or two outlets per story, so notes are shed only when they cannot fit.
-// Titles clip by characters, so multibyte titles can still overflow; then the
-// provenance lists go too, leaving outlet names, sourceTier and the roster.
+// The outlet profile adds ~13 KB at that worst case, so it is shed next, before
+// the structured provenance. Titles clip by characters, so multibyte titles can
+// still overflow; then the provenance lists go too, leaving outlet names,
+// sourceTier and the roster.
+const WORLD_BRIEF_NOTE_AND_PROFILE_FIELD = 'topStories[].sourceProvenance[].{note,homeCountry,audience,language,ownershipClass}';
+
 function fitWorldBriefToBudget(result: Record<string, unknown>, budgetBytes: number): Record<string, unknown> {
   if (!Array.isArray(result.topStories)) return result;
   const stories = result.topStories;
@@ -364,12 +372,25 @@ function fitWorldBriefToBudget(result: Record<string, unknown>, budgetBytes: num
     });
     return { ...story, sourceProvenance };
   });
+  let profiled = 0;
+  const withoutNotesOrProfile = withoutNotes.map((story) => {
+    if (!isRecord(story) || !Array.isArray(story.sourceProvenance)) return story;
+    const sourceProvenance = story.sourceProvenance.map((entry) => {
+      if (!isRecord(entry)) return entry;
+      const rest: Record<string, unknown> = { ...entry };
+      for (const key of OUTLET_PROFILE_REQUIRED) delete rest[key];
+      profiled++;
+      return rest;
+    });
+    return { ...story, sourceProvenance };
+  });
   const withoutLists = stories.map((story) => {
     if (!isRecord(story) || !Array.isArray(story.sourceProvenance)) return story;
     const { sourceProvenance: _sourceProvenance, ...rest } = story;
     return rest;
   });
   return (notes > 0 ? present(withoutNotes, 'topStories[].sourceProvenance[].note', notes) : null)
+    ?? (profiled > 0 ? present(withoutNotesOrProfile, WORLD_BRIEF_NOTE_AND_PROFILE_FIELD, profiled) : null)
     ?? present(withoutLists, 'topStories[].sourceProvenance', withProvenance)
     ?? result;
 }
@@ -1509,7 +1530,7 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'get_world_brief',
     title: 'Hourly AI world news brief',
     _outputBudgetBytes: 65536,
-    description: 'Return one written world brief, the hourly AI summary of top headlines, not a story feed, from the precomputed news:insights:v1 snapshot. The insights seeder applies corroboration, citation and hallucination gates before publishing; this reads that accepted result with no request-time LLM call; the snapshot repeats until the seeder republishes. Each headline pairs with an index-aligned topStories entry carrying its corroboration evidence (uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, the publishers roster, sourceProvenance per outlet); corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Past the 60-minute freshness window the last-known-good snapshot is served with stale:true and ageMinutes, capped at 3 h old; older, absent or broken snapshots are reported unavailable. Requires a paid plan; one downstream read, weight 2 on API plans. Paid MCP openings consume one request allocation that loaded reuse shares.',
+    description: 'Return one written world brief, the hourly AI summary of top headlines rather than a story feed, from the precomputed news:insights:v1 snapshot. It reads the seeder\'s gated result (corroboration, citation and hallucination checks) with no request-time LLM call. Each headline pairs with an index-aligned topStories entry carrying its corroboration evidence (uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, the publishers roster, sourceProvenance per outlet); corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Past the 60-minute freshness window the last-known-good snapshot is served with stale:true and ageMinutes, capped at 3 h old; older, absent or broken snapshots are reported unavailable. Requires a paid plan; one downstream read, weight 2 on API plans. Paid MCP openings consume one request allocation that loaded reuse shares.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1548,7 +1569,8 @@ export const RPC_TOOLS: ToolDef[] = [
                 description: 'Fail-closed provenance for each outlet in sources, index-aligned: sourceProvenance[j] describes sources[j]. Shows when one story mixes a tier-1 wire with a high-risk or state-affiliated outlet, which sourceTier alone hides. Omitted when sources is, or when transportCoverage records it was trimmed for the output budget.',
                 items: {
                   type: 'object',
-                  required: ['source', 'tier', ...BRIEF_SOURCE_PROVENANCE_SCHEMA.required],
+                  // Profile fields are shed before whole lists under the output budget.
+                  required: ['source', 'tier', ...BRIEF_SOURCE_PROVENANCE_SCHEMA.required.filter((key) => !(OUTLET_PROFILE_REQUIRED as readonly string[]).includes(key))],
                   properties: {
                     source: { type: 'string' },
                     tier: DECLARED_TIER_SCHEMA,
@@ -1565,10 +1587,10 @@ export const RPC_TOOLS: ToolDef[] = [
         model: { type: 'string', description: 'LLM model used by the insights seeder.' },
         transportCoverage: {
           type: 'object',
-          description: 'Present only when provenance was trimmed to fit the output budget: first every topStories[].sourceProvenance[].note, and only if that is not enough, every topStories[].sourceProvenance list, which also removes the per-outlet tier. Outlet names, the best sourceTier and the publishers roster are always returned.',
+          description: 'Present only when provenance was trimmed to fit the output budget: first every topStories[].sourceProvenance[].note, then also the outlet profile fields (homeCountry, audience, language, ownershipClass), and only if that is not enough, every topStories[].sourceProvenance list, which also removes the per-outlet tier. Outlet names, the best sourceTier and the publishers roster are always returned.',
           required: ['field', 'original_count', 'returned_count', 'omitted_count', 'omission_reason'],
           properties: {
-            field: { enum: ['topStories[].sourceProvenance[].note', 'topStories[].sourceProvenance'] },
+            field: { enum: ['topStories[].sourceProvenance[].note', WORLD_BRIEF_NOTE_AND_PROFILE_FIELD, 'topStories[].sourceProvenance'] },
             original_count: { type: 'integer', minimum: 0 }, returned_count: { type: 'integer', minimum: 0 },
             omitted_count: { type: 'integer', minimum: 0 }, omission_reason: { const: 'output_budget' },
           },
@@ -1652,7 +1674,7 @@ export const RPC_TOOLS: ToolDef[] = [
     title: 'AI-written country assessment (text)',
     // Two downstream fetches (brief + news digest for grounding).
     _weight: 3,
-    _outputBudgetBytes: 65536,
+    _outputBudgetBytes: 131072,
     description: 'Return a text-only AI assessment of one country with sources, groundingStories and digestCoverage. The default shares the server-accepted assessment, citations and original generation time with the website. Explicit framework or allow_stale requests can use personalized digest context. groundingStories and digestCoverage describe the separately read English digest, not the identity of the accepted assessment. Each story carries corroborationCount, corroboration.state (single-publisher, tier4-only, corroborated, unknown; coverage, not accuracy), mentionCount and storyPhase. Stale local digest context is withheld unless allow_stale=true. No per-section datasets or interactive view. Requires a paid plan; two downstream fetches (digest and brief), weight 3 on API plans, 5-25 s. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one but does not force AI generation. Read-only.',
     inputSchema: {
       type: 'object',
@@ -1999,7 +2021,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // default of 2 is already correct. The fan-out to two coverage feeds and
     // five producers happens behind the handler, not in this tool.
     _outputBudgetBytes: 131072,
-    description: "The country panel's own coverage timeline: recent country-relevant headlines plus the clustered incident timeline the WorldMonitor UI renders for that country. Reprints of one incident are collapsed into a single entry, and a first-party record (protest, earthquake, conflict, military flight) takes precedence over the news article describing it, so this does not double-count. Matching, expiry and de-duplication are already done, unlike raw article feeds. `sources` reports each producer as ok/empty/unknown/stale/failed/unavailable, and is what qualifies an empty `events` list. Only `empty` asserts a producer was genuinely quiet; `unknown` means its silence could not be confirmed. `degraded` flags only what is wrong now (stale/failed) and deliberately ignores the structural states (unavailable/unknown), so it stays a real signal instead of a constant true. The guarantee that an empty list is never silently healthy lives in `sources`, not in this one bit. Titles and labels are untrusted publisher text.",
+    description: "The country panel's own coverage timeline: recent country-relevant headlines plus the clustered incident timeline the WorldMonitor UI renders for that country. Reprints of one incident collapse into one entry, and a first-party record (protest, earthquake, conflict, military flight) outranks the article describing it. `sources` reports each producer as ok/empty/unknown/stale/failed/unavailable, and is what qualifies an empty `events` list. Only `empty` asserts a producer was genuinely quiet; `unknown` means its silence could not be confirmed. `degraded` flags only stale/failed; read `sources`, not `degraded`, before trusting an empty list. Titles and labels are untrusted publisher text.",
     inputSchema: {
       type: 'object',
       properties: {

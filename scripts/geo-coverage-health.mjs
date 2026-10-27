@@ -43,7 +43,7 @@ function dataEntries(doc, fileLabel) {
  * Bundle the feed catalog plus theater presets into a temp dir and import it.
  * Returns { feeds, cleanup } — caller MUST run cleanup() when done.
  */
-async function bundleFeedsModule(repoRoot) {
+export async function bundleFeedsModule(repoRoot) {
   const tempDir = mkdtempSync(join(tmpdir(), 'geo-coverage-health-'));
   const outfile = join(tempDir, 'feeds-bundle.mjs');
   let cleaned = false;

@@ -79,7 +79,7 @@ import { getCachedFuelShortageRegistry } from '@/shared/fuel-shortage-registry-s
 // getCountryCentroid is imported lower in the file alongside other
 // country-geometry helpers; don't re-import it here.
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
-import { t } from '@/services/i18n';
+import { initI18n, t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import { createIdleAwareFrameProvider } from '@/utils/idle-aware-frame-provider';
 import { isInputPending, scheduleYield } from '@/utils/after-paint';
@@ -131,7 +131,7 @@ import {
   type MapVariant,
 } from '@/config/map-layer-definitions';
 import { isProTierResolved } from '@/services/widget-store';
-import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
+import { layerExplanationLookup, renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -6097,7 +6097,7 @@ export class DeckGLMap {
         event.preventDefault();
         event.stopPropagation();
         const layer = (button as HTMLElement).getAttribute('data-layer') as keyof MapLayers | null;
-        if (layer) this.showLayerExplanation(layer);
+        if (layer) void this.showLayerExplanation(layer);
       });
     });
 
@@ -6128,7 +6128,15 @@ export class DeckGLMap {
     });
   }
 
-  private showLayerExplanation(layer: keyof MapLayers): void {
+  private async showLayerExplanation(layer: keyof MapLayers): Promise<void> {
+    try {
+      await initI18n();
+    } catch (error) {
+      console.warn('[DeckGLMap] Unable to load layer explanation text', error);
+      return;
+    }
+    if (this.destroyed) return;
+
     const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
     if (existing?.dataset.layer === layer) {
       existing.remove();
@@ -6146,7 +6154,7 @@ export class DeckGLMap {
     popup.className = 'layer-explanation-popup';
     popup.dataset.layer = layer;
     setTrustedHtml(popup, trustedHtml(
-      renderLayerExplanationCard(layerLabel, explanation),
+      renderLayerExplanationCard(layerLabel, explanation, layerExplanationLookup(t)),
       "static layer explanation metadata",
     ));
 

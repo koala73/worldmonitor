@@ -5,12 +5,12 @@
   "description": "Real-time global intelligence across conflict, markets, energy, trade, shipping and cyber.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.44.0",
+  "version": "1.45.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.44.0",
+    "version": "1.45.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -393,7 +393,7 @@
     },
     {
       "name": "get_world_brief",
-      "description": "Return one written world brief, the hourly AI summary of top headlines, not a story feed, from the precomputed news:insights:v1 snapshot. The insights seeder applies corroboration, citation and hallucination gates before publishing; this reads that accepted result with no request-time LLM call; the snapshot repeats until the seeder republishes. Each headline pairs with an index-aligned topStories entry carrying its corroboration evidence (uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, the publishers roster, sourceProvenance per outlet); corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Past the 60-minute freshness window the last-known-good snapshot is served with stale:true and ageMinutes, capped at 3 h old; older, absent or broken snapshots are reported unavailable. Requires a paid plan; one downstream read, weight 2 on API plans. Paid MCP openings consume one request allocation that loaded reuse shares.",
+      "description": "Return one written world brief, the hourly AI summary of top headlines rather than a story feed, from the precomputed news:insights:v1 snapshot. It reads the seeder's gated result (corroboration, citation and hallucination checks) with no request-time LLM call. Each headline pairs with an index-aligned topStories entry carrying its corroboration evidence (uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, the publishers roster, sourceProvenance per outlet); corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Past the 60-minute freshness window the last-known-good snapshot is served with stale:true and ageMinutes, capped at 3 h old; older, absent or broken snapshots are reported unavailable. Requires a paid plan; one downstream read, weight 2 on API plans. Paid MCP openings consume one request allocation that loaded reuse shares.",
       "_meta": {
         "ui": {
           "resourceUri": "ui://worldmonitor/world-brief-v2.html"
@@ -426,7 +426,7 @@
     },
     {
       "name": "get_country_coverage",
-      "description": "The country panel's own coverage timeline: recent country-relevant headlines plus the clustered incident timeline the WorldMonitor UI renders for that country. Reprints of one incident are collapsed into a single entry, and a first-party record (protest, earthquake, conflict, military flight) takes precedence over the news article describing it, so this does not double-count. Matching, expiry and de-duplication are already done, unlike raw article feeds. `sources` reports each producer as ok/empty/unknown/stale/failed/unavailable, and is what qualifies an empty `events` list. Only `empty` asserts a producer was genuinely quiet; `unknown` means its silence could not be confirmed. `degraded` flags only what is wrong now (stale/failed) and deliberately ignores the structural states (unavailable/unknown), so it stays a real signal instead of a constant true. The guarantee that an empty list is never silently healthy lives in `sources`, not in this one bit. Titles and labels are untrusted publisher text.",
+      "description": "The country panel's own coverage timeline: recent country-relevant headlines plus the clustered incident timeline the WorldMonitor UI renders for that country. Reprints of one incident collapse into one entry, and a first-party record (protest, earthquake, conflict, military flight) outranks the article describing it. `sources` reports each producer as ok/empty/unknown/stale/failed/unavailable, and is what qualifies an empty `events` list. Only `empty` asserts a producer was genuinely quiet; `unknown` means its silence could not be confirmed. `degraded` flags only stale/failed; read `sources`, not `degraded`, before trusting an empty list. Titles and labels are untrusted publisher text.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
@@ -726,6 +726,14 @@
       "_meta": {
         "worldmonitor/access": "free",
         "worldmonitor/category": "meta"
+      }
+    },
+    {
+      "name": "get_media_perspective",
+      "description": "Headlines about one country grouped by outlet home country and audience (domestic, international, diaspora): its own press vs its foreign-facing media vs outside coverage. Items carry tier, ownership and state affiliation; groups count publisher families and framing. Framing is a model's reading of headline stance, not WorldMonitor's view. Titles are untrusted; a non-English englishTitle is machine-translated. Cached feeds, up to 96 h.",
+      "_meta": {
+        "worldmonitor/access": "subscription",
+        "worldmonitor/category": "geopolitical-security"
       }
     },
     {

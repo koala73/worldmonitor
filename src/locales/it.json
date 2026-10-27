@@ -3897,5 +3897,271 @@
     "noEvents": "Nessun titolo selezionato acquisito per questa data. Ciò non dimostra l’assenza di eventi.",
     "unlock90": "Sblocca 90 giorni con Pro",
     "unlock365": "Sblocca 365 giorni con un piano API"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Fonte",
+      "freshness": "Freschezza",
+      "confidence": "Attendibilità",
+      "limitations": "Limiti",
+      "related": "Vedi anche",
+      "groundedIn": "Basato su",
+      "curated": "Selezione v1",
+      "fallback": "Ripiego",
+      "layerGuide": "Guida ai livelli"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Notizie / Hotspot",
+        "purpose": "Evidenzia gli hotspot geopolitici monitorati e alza il loro livello quando convergono le notizie collegate e i segnali di escalation.",
+        "source": "Registro degli hotspot di WorldMonitor, intelligence delle notizie RSS/GDELT, punteggio di escalation degli hotspot, attività militare e contesto di instabilità dei paesi.",
+        "freshness": "Le posizioni degli hotspot sono selezionate e statiche. La freschezza dei flussi di notizie è seguita a parte. I livelli vengono ricalcolati quando si aggiornano i flussi di notizie del cruscotto, a intervalli di circa 10 minuti, mentre l'intelligence GDELT ha budget di caricamento e di cache più lunghi.",
+        "confidence": "Utile per una prima cernita, non come affermazione citabile senza aprire le notizie di base e il contesto del paese.",
+        "limitations": {
+          "0": "Il volume delle notizie e la corrispondenza per parole chiave possono sovrarappresentare le regioni molto coperte.",
+          "1": "Gli eventi poco visibili possono mancare quando la copertura RSS/GDELT è scarsa o in ritardo."
+        },
+        "related": {
+          "0": "pannello Notizie in diretta",
+          "1": "pannello Panoramica dei rischi strategici",
+          "2": "Rapporto di intelligence",
+          "3": "Popup degli hotspot di intelligence"
+        }
+      },
+      "conflicts": {
+        "category": "Conflitto",
+        "purpose": "Mostra zone di conflitto selezionate e sovrapposizioni di confini geopolitici, così gli analisti collocano i segnali in diretta rispetto ai teatri noti.",
+        "source": "Registro delle zone di conflitto di WorldMonitor, contesto di conflitto UCDP/ACLED e metadati di confini documentati, come la DMZ coreana.",
+        "freshness": "Le zone di base sono selezionate e statiche. Gli eventi di conflitto dinamici sono seguiti a parte tramite i flussi ACLED/UCDP e i segnali di stato.",
+        "confidence": "Utile per l'orientamento geografico. Da solo non conferma un incidente in tempo reale.",
+        "limitations": {
+          "0": "Le zone statiche possono restare indietro rispetto ai cambiamenti tattici rapidi.",
+          "1": "Parte delle prove di conflitto compare negli eventi di conflitto, nell'instabilità dei paesi o nei pannelli collegati, e non come poligono di zona di conflitto."
+        },
+        "related": {
+          "0": "Eventi UCDP",
+          "1": "pannello Instabilità del paese",
+          "2": "Panoramica dei rischi strategici",
+          "3": "Rapporto di intelligence"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Aviazione",
+        "purpose": "Mostra i codici transponder segnalati 7500, 7600 e 7700, a prescindere dalla classificazione militare.",
+        "source": "Interrogazioni esatte del codice transponder su adsb.lol. I dettagli dell'aeromobile usano i campi del fornitore. L'attribuzione è ODbL.",
+        "freshness": "Il livello viene controllato ogni minuto finché è visibile. L'ultimo messaggio deve avere al massimo 120 secondi. Le posizioni sulla mappa devono avere al massimo 90 secondi. Le segnalazioni sconosciute scadono dopo 15 minuti.",
+        "confidence": "Un segnale transponder segnalato non conferma un incidente, una causa, un atterraggio o una risoluzione.",
+        "limitations": {
+          "0": "La copertura dei ricevitori è incompleta.",
+          "1": "L'ora dell'ultimo messaggio non è l'ora in cui è stato selezionato il codice transponder.",
+          "2": "Gli aeromobili senza una posizione recente compaiono solo nell'elenco dei dettagli.",
+          "3": "I dati in contrasto e la perdita di ricezione diventano sconosciuti."
+        },
+        "related": {
+          "0": "Dettagli dell'aeromobile"
+        }
+      },
+      "ais": {
+        "category": "Marittimo",
+        "purpose": "Mostra la densità delle navi e i segnali di perturbazione AIS intorno alle acque strategiche e ai colli di bottiglia.",
+        "source": "Istantanee dell'inoltro AISStream, servizio marittimo di WorldMonitor e classificatori di perturbazione dei colli di bottiglia.",
+        "freshness": "Le istantanee dell'inoltro AIS sono ricostruite ogni 5 secondi per impostazione predefinita. Il server può tenere in cache l'istantanea di densità di base per 5 minuti, e il livello è disattivato o obsoleto quando mancano le credenziali o la connettività dell'inoltro.",
+        "confidence": "Utile per individuare anomalie marittime, ma l'AIS è dichiarato dalle navi stesse e quelle possono spegnerlo.",
+        "limitations": {
+          "0": "La copertura AIS terrestre è diseguale, con una visibilità documentata più debole in Medio Oriente, in Asia e in mare aperto.",
+          "1": "La navigazione al buio si deduce da vuoti e da schemi di congestione, non da una prova diretta dell'intenzione."
+        },
+        "related": {
+          "0": "pannello Catena di Approvvigionamento",
+          "1": "Stato dei Punti Critici",
+          "2": "Navi militari",
+          "3": "Segnali AIS del rapporto di intelligence"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Marittimo",
+        "purpose": "Traccia le grandi rotte di container, energia e rinfuse che passano per i colli di bottiglia strategici, per ragionare sui percorsi di perturbazione.",
+        "source": "Registro delle rotte commerciali di WorldMonitor, più lo stato dei colli di bottiglia della catena di approvvigionamento e i riepiloghi di transito.",
+        "freshness": "La geometria delle rotte è statica. Lo stato dei colli di bottiglia è tenuto aggiornato con un controllo leggero ogni 6 minuti, e i riepiloghi di transito si aggiornano ogni 10 minuti tramite le cache della catena di approvvigionamento e i percorsi dell'inoltro.",
+        "confidence": "Utile per il contesto di esposizione a livello di rotta. Non è un flusso di instradamento nave per nave.",
+        "limitations": {
+          "0": "Le rotte sono corridoi modellati e possono non coincidere con un piano di viaggio preciso.",
+          "1": "Le sovrapposizioni di perturbazione dipendono dallo stato attuale dei colli di bottiglia e dalla salute dell'AIS."
+        },
+        "related": {
+          "0": "pannello Catena di Approvvigionamento",
+          "1": "Esploratore di rotte (Route Explorer)",
+          "2": "Motore di scenari (Scenario Engine)",
+          "3": "Livello Vie d'acqua strategiche"
+        }
+      },
+      "flights": {
+        "category": "Aviazione",
+        "purpose": "Evidenzia i disagi aeroportuali e le chiusure NOTAM, i NOTAM di spazio aereo in vigore ora o che iniziano entro 24 ore (restrizioni temporanee di volo, zone riservate, pericolose e proibite, aree di operazione militare, riserve e chiusure di spazio aereo) e le posizioni degli aeromobili in diretta quando il tracciamento è disponibile.",
+        "source": "FAA ASWS, AviationStack, FAA NOTAM Management Service (NMS-API) e NOTAM ICAO, adsb.lol (ODbL), Wingbits, ripristino del vecchio servizio OpenSky, integrazione facoltativa non commerciale airplanes.live/adsb.fi e il servizio aviazione. I NOTAM di spazio aereo sono disegnati come poligoni quando NMS li fornisce, come cerchi quando il NOTAM indica un raggio fino a 250 NM, e come marcatori negli altri casi.",
+        "freshness": "I caricamenti dei disagi aeroportuali seguono un ritmo di 30 minuti. I NOTAM di spazio aereo sono caricati ogni 5 minuti dalle estrazioni di modifiche NMS, con una risincronizzazione completa giornaliera, rispetto a un budget di freschezza di 20 minuti. Il pannello aviazione aggiorna anche le viste operative su un ciclo di interrogazione di 5 minuti.",
+        "confidence": "È il più utile per smistare i disagi. La copertura di ogni aeromobile in diretta dipende dalla disponibilità ADS-B e dai fornitori configurati. Il testo del NOTAM fa fede così come lo distribuisce la FAA.",
+        "limitations": {
+          "0": "Possono comparire dati dimostrativi simulati, basati su AviationStack, quando manca una chiave API.",
+          "1": "Le posizioni degli aeromobili in diretta possono essere in ritardo o assenti dove la copertura ADS-B è debole o bloccata.",
+          "2": "Le aree NOTAM di spazio aereo sono disegnate solo sulla mappa deck.gl. Le mappe SVG e globo mostrano marcatori di aeroporto.",
+          "3": "La maggior parte delle TFR degli Stati Uniti descrive la forma solo nel testo, quindi compaiono come un marcatore alla posizione del NOTAM e non come la forma ristretta.",
+          "4": "Gli orari dentro la finestra di validità di un NOTAM (per esempio ore giornaliere) sono mostrati nel suggerimento, ma non sono applicati alla visibilità."
+        },
+        "related": {
+          "0": "pannello Airline Intelligence",
+          "1": "Barra di comando aviazione",
+          "2": "Segnali aviazione del rapporto di intelligence",
+          "3": "Emergenze aeromobili",
+          "4": "Interferenza di navigazione"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Conflitto",
+        "purpose": "Traccia le registrazioni di conflitto armato a livello di evento, con paese, attori, data e intervalli di vittime.",
+        "source": "API GED dell'Uppsala Conflict Data Program, tramite il servizio conflitti e il caricamento degli eventi UCDP.",
+        "freshness": "I dati sono caricati ogni 6 ore quando il caricamento UCDP è integro.",
+        "confidence": "Ha più coerenza editoriale dei flussi grezzi di ultima ora, ma il ritardo è voluto. Non è un flusso dal campo di battaglia in diretta.",
+        "limitations": {
+          "0": "Il ritmo di pubblicazione annuale, di qualità da ricerca, può mancare gli eventi molto recenti.",
+          "1": "Gli intervalli di vittime sono stime e vanno letti come intervalli, non come conteggi esatti."
+        },
+        "related": {
+          "0": "pannello Eventi di conflitto UCDP",
+          "1": "Componente di conflitto dell'Indice di instabilità del paese",
+          "2": "Cronologia del paese"
+        }
+      },
+      "weather": {
+        "category": "Meteo",
+        "purpose": "Mostra gli avvisi ufficiali di maltempo grave in corso, dei servizi meteorologici nazionali, fusi in un solo flusso weather:alerts:v1.",
+        "source": "National Weather Service degli Stati Uniti (NWS), Environment and Climate Change Canada (ECCC) e l'aggregazione CAP del centro informazioni della WMO sul maltempo grave (SWIC), caricati dall'inoltro di WorldMonitor.",
+        "freshness": "Gli avvisi NWS, ECCC e SWIC sono caricati ogni 15 minuti dall'inoltro e sorvegliati rispetto a un budget di freschezza di 45 minuti.",
+        "confidence": "È autorevole per gli avvisi emessi dai servizi nazionali che contribuiscono, con riserva sui tempi di pubblicazione a monte. NWS ed ECCC sono disegnati come poligoni. Gli avvisi SWIC geocodificati sono disegnati al centroide del paese del servizio emittente, con un marcatore esplicito di precisione.",
+        "limitations": {
+          "0": "La maggior parte dei membri SWIC pubblica codici geografici, non poligoni. Quegli avvisi compaiono come punti a livello di paese, con la descrizione dell'area riportata tale e quale, e non come sovrapposizioni dell'area avvisata.",
+          "1": "La copertura SWIC dipende da quali membri della WMO pubblicano ora nell'aggregatore. La densità varia per regione.",
+          "2": "Le righe SWIC di Stati Uniti e Canada sono saltate perché NWS ed ECCC forniscono già una copertura di livello poligono per quei paesi."
+        },
+        "related": {
+          "0": "Livello Eventi naturali",
+          "1": "Popup di allerta meteo",
+          "2": "Freschezza dati"
+        }
+      },
+      "canadaRoads": {
+        "category": "Trasporto",
+        "purpose": "Mostra incidenti stradali ufficiali, avvisi, condizioni, chiusure, cantieri e pericoli nelle giurisdizioni canadesi coperte.",
+        "source": "Flussi provinciali Ontario 511, Alberta 511 e Manitoba 511, City of Toronto Road Restrictions e DriveBC Open511, caricati tramite WorldMonitor.",
+        "freshness": "Ontario 511, Alberta 511 e Manitoba 511 sono caricati ogni 15 minuti e sorvegliati rispetto a un budget di freschezza di 45 minuti. Le restrizioni di Toronto sono caricate ogni 2 ore, e DriveBC Open511 ogni 30 minuti.",
+        "confidence": "È autorevole per gli editori provinciali e comunali coperti, con riserva sui tempi di pubblicazione a monte e sulla geometria mappata.",
+        "limitations": {
+          "0": "Alberta 511 roadconditions non viene importato (l'indirizzo del fornitore risponde 404). Il tracciato in diretta dell'Alberta copre solo eventi e avvisi.",
+          "1": "Gli avvisi provinciali senza coordinate non compaiono come punti sulla mappa.",
+          "2": "Le polilinee delle condizioni stradali possono semplificare la geometria complessa delle autostrade."
+        },
+        "related": {
+          "0": "Allerte meteo severe (NWS, ECCC, WMO SWIC)",
+          "1": "Freschezza dati"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Allerte di emergenza",
+        "purpose": "Mostra gli avvisi di pubblica sicurezza in corso di Alberta, Columbia Britannica e Saskatchewan come punti sulla mappa, accanto al meteo NWS degli Stati Uniti.",
+        "source": "L'Atom di Alberta Emergency Alert, il livello GeoJSON OGL-BC Evacuation Orders and Alerts e il flusso JSON pubblico di SaskAlert, più i dettagli CAP 1.2 dello stesso server, sono normalizzati in una sola unione canadaAlerts. I poligoni CAP/GeoRSS, i poligoni di evacuazione di B.C. e i poligoni CAP di SaskAlert diventano centroidi. Le registrazioni senza geometria usano il centroide della provincia di origine.",
+        "freshness": "Le fonti provinciali sono caricate ogni 15 minuti e l'unione è sorvegliata rispetto a un budget di freschezza di 45 minuti. Un flusso vuoto (nessun avviso in corso) è un successo valido senza registrazioni.",
+        "confidence": "È autorevole per gli avvisi pubblicati da Alberta Emergency Alert, B.C. Evacuation Orders and Alerts e SaskAlert, con riserva sui tempi di pubblicazione a monte e sulla geometria di avviso mappata.",
+        "limitations": {
+          "0": "La copertura è limitata ad Alberta, Columbia Britannica e Saskatchewan. L'Ontario non ha un flusso automatico ammissibile gestito dalla provincia, a parte il NAAD escluso.",
+          "1": "Questo livello non sostituisce gli avvisi meteo NWS degli Stati Uniti né i livelli stradali di Ontario e Toronto.",
+          "2": "Le voci senza una gravità mappabile (semantica CAP e di colore dell'Alberta, stato di evacuazione di B.C. o gravità CAP di SaskAlert) sono scartate invece di essere inventate. Il colore o il livello del riepilogo SaskAlert non è trattato come gravità CAP."
+        },
+        "related": {
+          "0": "Allerte meteo severe (NWS, ECCC, WMO SWIC)",
+          "1": "Livello Eventi naturali",
+          "2": "Freschezza dati"
+        }
+      },
+      "cyberThreats": {
+        "category": "Minacce informatiche",
+        "purpose": "Mappa indicatori di compromissione arricchiti geograficamente, come server C2, macchine con malware, phishing, URL dannosi e infrastruttura ransomware.",
+        "source": "abuse.ch Feodo Tracker e URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, il flusso RSS e di notizie di ransomware.live, e l'arricchimento con geolocalizzazione IP.",
+        "freshness": "I caricamenti delle minacce informatiche partono ogni 2 ore. Gli IOC mostrati usano una finestra mobile di 14 giorni e hanno un tetto per le prestazioni della mappa.",
+        "confidence": "Utile per vedere l'infrastruttura, ma l'attribuzione e la geolocalizzazione IP possono essere rumorose.",
+        "limitations": {
+          "0": "La geolocalizzazione IP può indicare l'infrastruttura che ospita il servizio piuttosto che un operatore o una vittima.",
+          "1": "La disponibilità dei flussi, le chiavi API e le segnalazioni di abuso per flusso possono distorcere la copertura."
+        },
+        "related": {
+          "0": "Popup della mappa Minacce cyber",
+          "1": "Contributo informatico all'instabilità dei paesi",
+          "2": "Freschezza dati"
+        }
+      },
+      "natural": {
+        "category": "Disastri naturali",
+        "purpose": "Mostra terremoti, allerte di disastro grave ed eventi attivi di osservazione della Terra, per la consapevolezza della situazione.",
+        "source": "Terremoti USGS, allerte GDACS ed eventi NASA EONET, fusi nel servizio degli eventi naturali.",
+        "freshness": "Gli eventi naturali sono caricati ogni 3 ore. Il ritmo di origine atteso per i terremoti USGS è documentato a circa 5 minuti.",
+        "confidence": "Solido per i segnali pubblici di disastro che sono stati rilevati. L'attendibilità varia secondo il tipo di pericolo e il ritardo della segnalazione a monte.",
+        "limitations": {
+          "0": "Le allerte GDACS di bassa gravità sono filtrate per tenere la mappa leggibile.",
+          "1": "Gli incendi EONET sono filtrati per freschezza, quindi eventi aperti più vecchi possono non comparire come punti attivi sulla mappa."
+        },
+        "related": {
+          "0": "Popup del livello Eventi naturali",
+          "1": "Allerte meteo severe (NWS, ECCC, WMO SWIC)",
+          "2": "Segnali naturali del rapporto di intelligence"
+        }
+      },
+      "waterways": {
+        "category": "Marittimo",
+        "purpose": "Segna le vie d'acqua e i colli di bottiglia strategici, per leggere i segnali di perturbazione su una geografia marittima fissa.",
+        "source": "Registro delle vie d'acqua strategiche di WorldMonitor, con sovrapposizioni dello stato dei colli di bottiglia della catena di approvvigionamento da AIS, avvisi NGA e flussi derivati da PortWatch.",
+        "freshness": "Le posizioni delle vie d'acqua sono statiche. Lo stato in diretta dei colli di bottiglia è tenuto aggiornato con un controllo leggero ogni 6 minuti, e i riepiloghi di transito si aggiornano ogni 10 minuti quando il percorso di inoltro/PortWatch è integro.",
+        "confidence": "Alta per la geografia fissa. L'attendibilità della perturbazione in diretta dipende dai flussi associati AIS, NGA e PortWatch.",
+        "limitations": {
+          "0": "Un marcatore visibile di collo di bottiglia non significa che ci sia una perturbazione in corso.",
+          "1": "I perimetri di area e le rotte modellate possono semplificare schemi di traffico complessi."
+        },
+        "related": {
+          "0": "pannello Catena di Approvvigionamento",
+          "1": "Livello Rotte Commerciali",
+          "2": "Esploratore di rotte (Route Explorer)",
+          "3": "Motore di scenari (Scenario Engine)"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Rischio paese",
+        "purpose": "Colora i paesi secondo il punteggio attuale dell'Indice di instabilità del paese, per una prima lettura ampia del rischio strategico.",
+        "source": "Servizio di punteggio dell'Indice di instabilità del paese di WorldMonitor, con segnali di conflitto, disordini, avvisi, informatici, tracciamento navale, aviazione, eventi naturali e notizie.",
+        "freshness": "La cache dei punteggi di rischio è tenuta aggiornata con un controllo leggero ogni 8 minuti. seed-meta e health.riskScores espongono lo stato in diretta, obsoleto, parziale o degradato, rispetto a un budget di freschezza di 30 minuti.",
+        "confidence": "Segnale di un modello composito, non una valutazione ufficiale del paese né una previsione di probabilità.",
+        "limitations": {
+          "0": "Famiglie di fonti scarse o degradate possono ridurre l'attendibilità anche quando un paese ha ancora un punteggio.",
+          "1": "Il colore a livello di paese può nascondere variazioni subnazionali. Va confrontato con i pannelli prima di citarlo."
+        },
+        "related": {
+          "0": "pannello Instabilità del paese",
+          "1": "pannello Panoramica dei rischi strategici",
+          "2": "Freschezza dati",
+          "3": "Rapporto di intelligence"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Livello",
+      "purpose": "Questo livello si può attivare sulla mappa, ma una scheda selezionata di fonte e di attendibilità non è stata ancora aggiunta.",
+      "source": "Non fa parte dell'insieme di spiegabilità dei livelli v1.",
+      "freshness": "Qui non è dichiarato un contratto di freschezza per il singolo livello. Controlla i badge visibili dei pannelli, i popup o lo stato Freschezza dati, quando sono disponibili.",
+      "confidence": "Sconosciuta finché non si aggiungono metadati propri della fonte.",
+      "limitations": {
+        "0": "L'assenza di una scheda selezionata non significa che il livello non sia disponibile.",
+        "1": "Usa i popup del livello e i pannelli collegati per il contesto proprio della fonte."
+      },
+      "related": {
+        "0": "Guida ai livelli"
+      }
+    }
   }
 }

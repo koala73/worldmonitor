@@ -1003,6 +1003,10 @@ describe('planned Railway service lifecycle', () => {
       // `node seed-live-video-resolved.mjs` on cron 0 */6 * * * and has
       // published once. Leaving it planned would exempt a live cron from the
       // watch-path and deploy-drift checks.
+      // seed-no2-activity (#9722) is deliberately ABSENT: service
+      // 359e5bd7-4160-41d6-8792-f4aff20a3006 runs `node seed-no2-activity.mjs`
+      // on cron 20 6 * * * with the CDSE credentials. Leaving it planned would
+      // exempt a live cron from the watch-path and deploy-drift checks.
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',

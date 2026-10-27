@@ -3857,5 +3857,271 @@
     "noEvents": "Không có tiêu đề được chọn nào được ghi nhận cho ngày này. Điều này không chứng minh rằng không có sự kiện xảy ra.",
     "unlock90": "Mở khóa 90 ngày với Pro",
     "unlock365": "Mở khóa 365 ngày với gói API"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Nguồn",
+      "freshness": "Độ mới",
+      "confidence": "Độ tin cậy",
+      "limitations": "Hạn chế",
+      "related": "Liên quan",
+      "groundedIn": "Căn cứ",
+      "curated": "Tuyển chọn v1",
+      "fallback": "Dự phòng",
+      "layerGuide": "Hướng dẫn Lớp"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Tin tức / Điểm nóng",
+        "purpose": "Nêu các điểm nóng địa chính trị đang được theo dõi, và nâng mức của chúng khi tin liên quan cùng tín hiệu leo thang hội tụ.",
+        "source": "Sổ điểm nóng của WorldMonitor, tin tình báo RSS/GDELT, điểm leo thang của điểm nóng, hoạt động quân sự, và bối cảnh bất ổn quốc gia.",
+        "freshness": "Vị trí điểm nóng được tuyển chọn và đứng yên. Độ mới của nguồn tin được theo dõi riêng. Mức điểm nóng được tính lại khi nguồn tin trên bảng điều khiển làm mới, cách nhau khoảng 10 phút. Hạn thời gian của bản nạp và bộ nhớ đệm cho tình báo GDELT dài hơn.",
+        "confidence": "Dùng được như một tín hiệu để xếp ưu tiên. Nếu chưa mở tin gốc và bối cảnh quốc gia, đây không phải kết luận đủ để trích dẫn.",
+        "limitations": {
+          "0": "Lượng tin và việc khớp từ khóa có thể làm các khu vực được đưa tin nhiều trông lớn hơn thực tế.",
+          "1": "Sự kiện ít được chú ý có thể bị bỏ sót khi phạm vi RSS/GDELT mỏng hoặc đến chậm."
+        },
+        "related": {
+          "0": "Bảng Tin tức Trực tiếp",
+          "1": "Bảng Tổng quan Rủi ro Chiến lược",
+          "2": "Tổng quan quốc gia",
+          "3": "Cửa sổ điểm nóng"
+        }
+      },
+      "conflicts": {
+        "category": "Xung đột",
+        "purpose": "Hiển thị vùng xung đột đã tuyển và lớp phủ ranh giới địa chính trị, để đặt tín hiệu trực tiếp vào các chiến trường đã biết.",
+        "source": "Sổ vùng xung đột của WorldMonitor, bối cảnh xung đột UCDP/ACLED, và siêu dữ liệu ranh giới đã được ghi nhận, chẳng hạn DMZ Triều Tiên.",
+        "freshness": "Vùng nền được tuyển chọn và đứng yên. Dữ liệu sự kiện xung đột động được theo dõi riêng qua nguồn ACLED/UCDP và tín hiệu tình trạng.",
+        "confidence": "Phù hợp để định hướng địa lý. Bản thân lớp này không xác nhận một sự cố đang xảy ra theo thời gian thực.",
+        "limitations": {
+          "0": "Vùng đứng yên có thể chậm hơn các thay đổi chiến thuật nhanh.",
+          "1": "Một phần bằng chứng xung đột nằm ở sự kiện xung đột, bất ổn quốc gia hoặc các bảng liên quan, chứ không phải đa giác vùng xung đột."
+        },
+        "related": {
+          "0": "Sự kiện UCDP",
+          "1": "Bảng Bất ổn Quốc gia",
+          "2": "Tổng quan Rủi ro Chiến lược",
+          "3": "Tổng quan quốc gia"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Hàng không",
+        "purpose": "Hiển thị mã bộ đáp đã báo cáo 7500, 7600 và 7700, tách khỏi phân loại quân sự.",
+        "source": "Truy vấn mã bộ đáp chính xác trên adsb.lol. Chi tiết máy bay dùng trường của nhà cung cấp. Ghi công theo ODbL.",
+        "freshness": "Kiểm tra mỗi phút khi lớp đang hiện. Tin nhắn cuối không được cũ hơn 120 giây. Vị trí trên bản đồ không được cũ hơn 90 giây. Báo cáo không rõ hết hạn sau 15 phút.",
+        "confidence": "Tín hiệu bộ đáp đã báo cáo không xác nhận sự cố, nguyên nhân, việc hạ cánh hay việc đã xử lý xong.",
+        "limitations": {
+          "0": "Phạm vi máy thu không đầy đủ.",
+          "1": "Thời điểm tin nhắn cuối không phải thời điểm chọn mã bộ đáp.",
+          "2": "Máy bay không có vị trí mới chỉ xuất hiện trong danh sách chi tiết.",
+          "3": "Thông tin mâu thuẫn và mất tín hiệu thu được xếp là không rõ."
+        },
+        "related": {
+          "0": "Chi tiết máy bay"
+        }
+      },
+      "ais": {
+        "category": "Hàng hải",
+        "purpose": "Hiển thị mật độ tàu và tín hiệu gián đoạn AIS quanh vùng nước chiến lược và điểm nghẽn.",
+        "source": "Bản chụp chuyển tiếp của AISStream, dịch vụ hàng hải của WorldMonitor, và bộ phân loại gián đoạn điểm nghẽn.",
+        "freshness": "Bản chụp chuyển tiếp AIS được dựng lại mỗi 5 giây theo mặc định. Máy chủ có thể giữ bản chụp mật độ nền trong bộ nhớ đệm 5 phút. Lớp bị tắt hoặc lỗi thời khi thiếu thông tin xác thực hoặc kết nối của đường chuyển tiếp.",
+        "confidence": "Dùng được để sàng lọc bất thường hàng hải. AIS do tàu tự khai, và tàu có thể tắt tín hiệu.",
+        "limitations": {
+          "0": "Phạm vi AIS trên đất liền không đều. Khả năng nhìn ở Trung Đông, châu Á và ngoài khơi xa đã được ghi nhận là yếu hơn.",
+          "1": "Vận tải tắt tín hiệu được suy từ khoảng trống và kiểu tắc nghẽn, không phải bằng chứng trực tiếp về ý định."
+        },
+        "related": {
+          "0": "Bảng Chuỗi Cung ứng",
+          "1": "Dải điểm nghẽn",
+          "2": "Tàu quân sự",
+          "3": "Tín hiệu AIS trong tổng quan quốc gia"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Hàng hải",
+        "purpose": "Vẽ các tuyến côngtenơ, năng lượng và hàng rời chính đi qua điểm nghẽn chiến lược, để suy ra đường mà gián đoạn sẽ đi.",
+        "source": "Sổ tuyến thương mại của WorldMonitor, cùng trạng thái điểm nghẽn chuỗi cung ứng và bản tóm tắt quá cảnh.",
+        "freshness": "Hình học tuyến đứng yên. Trạng thái điểm nghẽn được gọi làm ấm mỗi 6 phút. Bản tóm tắt quá cảnh làm mới mỗi 10 phút qua bộ nhớ đệm chuỗi cung ứng và đường chuyển tiếp.",
+        "confidence": "Phù hợp làm bối cảnh phơi nhiễm ở mức tuyến. Đây không phải nguồn định tuyến từng tàu.",
+        "limitations": {
+          "0": "Tuyến là hành lang được mô hình hóa, và có thể không khớp một kế hoạch hành trình cụ thể.",
+          "1": "Lớp phủ gián đoạn phụ thuộc tình trạng hiện tại của điểm nghẽn và AIS."
+        },
+        "related": {
+          "0": "Bảng Chuỗi Cung ứng",
+          "1": "Khám phá tuyến",
+          "2": "Công cụ kịch bản",
+          "3": "Lớp Đường thủy Chiến lược"
+        }
+      },
+      "flights": {
+        "category": "Hàng không",
+        "purpose": "Nêu gián đoạn sân bay và việc đóng theo NOTAM. Cũng nêu NOTAM không phận đang có hiệu lực hoặc bắt đầu trong vòng 24 giờ (hạn chế bay tạm thời, vùng hạn chế, vùng nguy hiểm, vùng cấm, khu vực hoạt động quân sự, khu vực đặt trước và đóng không phận). Khi theo dõi được, còn nêu vị trí máy bay trực tiếp.",
+        "source": "FAA ASWS, AviationStack, dịch vụ quản lý NOTAM của FAA (NMS-API) và NOTAM của ICAO, adsb.lol (ODbL), Wingbits, khôi phục dịch vụ OpenSky cũ, phần lấp chỗ trống phi thương mại tùy chọn từ airplanes.live/adsb.fi, và dịch vụ hàng không. NOTAM không phận được vẽ thành đa giác ở nơi NMS cung cấp hình, thành vòng tròn ở nơi NOTAM cho bán kính tối đa 250 hải lý, và thành điểm đánh dấu trong các trường hợp còn lại.",
+        "freshness": "Bản nạp gián đoạn sân bay chạy theo nhịp 30 phút. NOTAM không phận được nạp mỗi 5 phút từ các lần kéo thay đổi của NMS, kèm một lần đồng bộ đầy đủ mỗi ngày, theo hạn độ mới 20 phút. Bảng hàng không cũng làm mới các khung vận hành theo chu kỳ hỏi mỗi 5 phút.",
+        "confidence": "Phù hợp nhất để phân loại gián đoạn. Phạm vi từng máy bay trực tiếp phụ thuộc ADS-B có sẵn hay không và nhà cung cấp đã cấu hình. Nội dung NOTAM có thẩm quyền theo bản mà FAA phân phối.",
+        "limitations": {
+          "0": "Khi thiếu khóa API, có thể xuất hiện dữ liệu minh họa mô phỏng dựa trên AviationStack.",
+          "1": "Vị trí máy bay trực tiếp có thể chậm hoặc vắng ở nơi phạm vi ADS-B yếu hoặc bị chặn.",
+          "2": "Vùng NOTAM không phận chỉ được vẽ trên bản đồ deck.gl. Bản đồ SVG và quả địa cầu hiện điểm đánh dấu sân bay.",
+          "3": "Phần lớn TFR của Hoa Kỳ chỉ mô tả hình trong nội dung, nên chúng hiện là điểm đánh dấu tại vị trí NOTAM, không phải hình vùng hạn chế.",
+          "4": "Lịch trong cửa sổ hiệu lực của một NOTAM (ví dụ các giờ hằng ngày) hiện trong chú giải, nhưng không được dùng để quyết định có hiển thị hay không."
+        },
+        "related": {
+          "0": "Bảng Thông tin Hàng không",
+          "1": "Thanh lệnh hàng không",
+          "2": "Tín hiệu hàng không trong tổng quan quốc gia",
+          "3": "Tình huống khẩn cấp máy bay",
+          "4": "Gây nhiễu dẫn hướng"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Xung đột",
+        "purpose": "Vẽ hồ sơ xung đột vũ trang ở cấp sự kiện, gồm quốc gia, các bên, ngày và khoảng số người chết.",
+        "source": "GED API của Chương trình Dữ liệu Xung đột Uppsala, qua dịch vụ xung đột và bản nạp sự kiện UCDP.",
+        "freshness": "Được nạp mỗi 6 giờ khi bản nạp UCDP đang bình thường.",
+        "confidence": "Nhất quán về biên tập hơn nguồn tin nóng chưa xử lý, nhưng cố ý đến chậm, và không phải nguồn chiến trường trực tiếp.",
+        "limitations": {
+          "0": "Nhịp công bố hằng năm, thiên về nghiên cứu, có thể bỏ sót sự kiện rất mới.",
+          "1": "Khoảng số người chết là ước tính, và phải được đọc như một khoảng, không phải số đếm chính xác."
+        },
+        "related": {
+          "0": "Bảng Sự kiện Xung đột UCDP",
+          "1": "Thành phần xung đột của Chỉ số Không ổn định Quốc gia",
+          "2": "Dòng thời gian quốc gia"
+        }
+      },
+      "weather": {
+        "category": "Thời tiết",
+        "purpose": "Hiển thị cảnh báo thời tiết nguy hiểm chính thức còn hiệu lực từ các cơ quan khí tượng quốc gia, gộp vào một nguồn weather:alerts:v1.",
+        "source": "Cục Thời tiết Quốc gia Hoa Kỳ (NWS), Bộ Môi trường và Biến đổi Khí hậu Canada (ECCC), và phần gộp CAP của Trung tâm Thông tin Thời tiết Nguy hiểm của WMO (SWIC), được nạp qua đường chuyển tiếp của WorldMonitor.",
+        "freshness": "Cảnh báo của NWS, ECCC và SWIC được đường chuyển tiếp nạp mỗi 15 phút, và được giám sát theo hạn độ mới 45 phút.",
+        "confidence": "Có thẩm quyền với cảnh báo do các cơ quan quốc gia tham gia ban hành, tùy thời điểm xuất bản ở thượng nguồn. NWS và ECCC được vẽ thành đa giác. Cảnh báo SWIC đã gán mã địa lý được vẽ tại trọng tâm quốc gia của cơ quan ban hành, kèm điểm đánh dấu độ chính xác rõ ràng.",
+        "limitations": {
+          "0": "Hầu hết thành viên SWIC công bố mã địa lý, không phải đa giác. Các cảnh báo đó hiện thành điểm cấp quốc gia, kèm mô tả khu vực nguyên văn, không phải lớp phủ vùng được cảnh báo.",
+          "1": "Phạm vi SWIC phụ thuộc thành viên WMO nào đang công bố tới nơi gộp. Mật độ khác nhau theo khu vực.",
+          "2": "Các dòng SWIC của Hoa Kỳ và Canada bị bỏ qua, vì NWS và ECCC đã cung cấp phạm vi cấp đa giác cho các nước đó."
+        },
+        "related": {
+          "0": "Lớp Thiên tai",
+          "1": "Cửa sổ cảnh báo thời tiết",
+          "2": "Trạng thái độ mới của dữ liệu"
+        }
+      },
+      "canadaRoads": {
+        "category": "Giao thông",
+        "purpose": "Hiển thị sự cố đường, cảnh báo, tình trạng mặt đường, phong tỏa, thi công và nguy hiểm chính thức tại các khu vực pháp lý Canada được hỗ trợ.",
+        "source": "Nguồn cấp tỉnh Ontario 511, Alberta 511 và Manitoba 511, Hạn chế đường bộ của Thành phố Toronto, và DriveBC Open511, được nạp qua WorldMonitor.",
+        "freshness": "Ontario, Alberta và Manitoba 511 được nạp mỗi 15 phút và được giám sát theo hạn độ mới 45 phút. Hạn chế của Toronto được nạp mỗi 2 giờ. DriveBC Open511 được nạp mỗi 30 phút.",
+        "confidence": "Có thẩm quyền với cơ quan tỉnh và thành phố được hỗ trợ, tùy thời điểm xuất bản ở thượng nguồn và hình học đã đưa lên bản đồ.",
+        "limitations": {
+          "0": "roadconditions của Alberta 511 không được nạp (điểm cuối của nhà cung cấp trả về 404). Phần vẽ trực tiếp của Alberta chỉ gồm sự kiện và cảnh báo.",
+          "1": "Cảnh báo cấp tỉnh không có tọa độ không hiện thành chấm trên bản đồ.",
+          "2": "Đường gấp khúc tình trạng mặt đường có thể đơn giản hóa hình học đường cao tốc phức tạp."
+        },
+        "related": {
+          "0": "Cảnh báo thời tiết nghiêm trọng (NWS, ECCC, WMO SWIC)",
+          "1": "Trạng thái độ mới của dữ liệu"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Cảnh báo khẩn cấp",
+        "purpose": "Hiển thị cảnh báo an toàn công cộng còn hiệu lực của Alberta, British Columbia và Saskatchewan thành chấm trên bản đồ, đặt cạnh thời tiết NWS của Hoa Kỳ.",
+        "source": "Atom của Cảnh báo khẩn cấp Alberta, lớp GeoJSON Lệnh và cảnh báo sơ tán OGL-BC, nguồn JSON công khai của SaskAlert cùng chi tiết CAP 1.2 trên cùng máy chủ được chuẩn hóa thành một hợp nhất canadaAlerts. Đa giác CAP/GeoRSS, đa giác sơ tán của British Columbia và đa giác CAP của SaskAlert trở thành trọng tâm. Bản ghi không có hình học dùng trọng tâm của tỉnh nguồn.",
+        "freshness": "Nguồn cấp tỉnh được nạp mỗi 15 phút, và phần hợp nhất được giám sát theo hạn độ mới 45 phút. Một nguồn trống (không có cảnh báo còn hiệu lực) là thành công hợp lệ với không bản ghi.",
+        "confidence": "Có thẩm quyền với cảnh báo do Cảnh báo khẩn cấp Alberta, Lệnh và cảnh báo sơ tán của British Columbia, và SaskAlert công bố, tùy thời điểm xuất bản ở thượng nguồn và hình học cảnh báo đã đưa lên bản đồ.",
+        "limitations": {
+          "0": "Phạm vi chỉ gồm Alberta, British Columbia và Saskatchewan. Ontario không có nguồn máy đọc được do tỉnh vận hành và đủ điều kiện, ngoài NAAD đã bị loại.",
+          "1": "Không thay thế cảnh báo thời tiết NWS của Hoa Kỳ, cũng không thay thế các lớp đường của Ontario và Toronto.",
+          "2": "Mục không có mức nghiêm trọng đưa được lên bản đồ (ngữ nghĩa CAP và màu của Alberta, trạng thái sơ tán của British Columbia, hoặc mức nghiêm trọng CAP của SaskAlert) bị loại, không bị bịa ra. Màu hoặc mức trong phần tóm tắt của SaskAlert không được coi là mức nghiêm trọng CAP."
+        },
+        "related": {
+          "0": "Cảnh báo thời tiết nghiêm trọng (NWS, ECCC, WMO SWIC)",
+          "1": "Lớp Thiên tai",
+          "2": "Trạng thái độ mới của dữ liệu"
+        }
+      },
+      "cyberThreats": {
+        "category": "Mạng",
+        "purpose": "Đưa lên bản đồ các chỉ báo xâm phạm đã gắn địa lý, như máy chủ C2, máy chủ mã độc, lừa đảo giả mạo, URL độc hại và hạ tầng mã tống tiền.",
+        "source": "Feodo Tracker và URLhaus của abuse.ch, C2IntelFeeds, AlienVault OTX, AbuseIPDB, nguồn RSS và tin của ransomware.live, cùng phần bổ sung định vị địa lý IP.",
+        "freshness": "Bản nạp mối đe dọa mạng chạy mỗi 2 giờ. IOC được hiển thị dùng cửa sổ trượt 14 ngày và bị giới hạn số lượng cho hiệu năng bản đồ.",
+        "confidence": "Phù hợp để thấy hạ tầng. Việc quy kết và định vị địa lý IP có thể nhiễu.",
+        "limitations": {
+          "0": "Định vị địa lý IP có thể trỏ tới hạ tầng lưu trữ, không phải người vận hành hay nạn nhân.",
+          "1": "Việc nguồn có sẵn hay không, khóa API, và báo cáo lạm dụng của từng nguồn có thể làm lệch phạm vi."
+        },
+        "related": {
+          "0": "Cửa sổ bản đồ Mối đe dọa Mạng",
+          "1": "đóng góp mạng vào bất ổn quốc gia",
+          "2": "Trạng thái độ mới của dữ liệu"
+        }
+      },
+      "natural": {
+        "category": "Thiên tai",
+        "purpose": "Hiển thị động đất, cảnh báo thảm họa nghiêm trọng và sự kiện quan sát Trái Đất đang diễn ra, để nắm tình hình.",
+        "source": "Động đất của USGS, cảnh báo GDACS và sự kiện NASA EONET, được gộp vào dịch vụ sự kiện tự nhiên.",
+        "freshness": "Sự kiện tự nhiên được nạp mỗi 3 giờ. Kỳ vọng về động đất USGS được ghi trong tài liệu là nhịp nguồn khoảng 5 phút.",
+        "confidence": "Mạnh với các tín hiệu thảm họa công khai đã được phát hiện. Độ tin cậy thay đổi theo loại hiểm họa và độ trễ báo cáo ở thượng nguồn.",
+        "limitations": {
+          "0": "Cảnh báo GDACS mức thấp bị lọc bỏ để bản đồ dễ đọc.",
+          "1": "Cháy rừng EONET được lọc theo độ mới, nên sự kiện còn mở từ lâu có thể không hiện như điểm bản đồ đang hoạt động."
+        },
+        "related": {
+          "0": "Cửa sổ lớp Thiên tai",
+          "1": "Cảnh báo thời tiết nghiêm trọng (NWS, ECCC, WMO SWIC)",
+          "2": "Tín hiệu tự nhiên trong tổng quan quốc gia"
+        }
+      },
+      "waterways": {
+        "category": "Hàng hải",
+        "purpose": "Đánh dấu đường thủy chiến lược và điểm nghẽn, để đọc tín hiệu gián đoạn trên nền địa lý hàng hải cố định.",
+        "source": "Sổ đường thủy chiến lược của WorldMonitor, với lớp phủ trạng thái điểm nghẽn chuỗi cung ứng từ AIS, cảnh báo NGA và các nguồn dẫn xuất từ PortWatch.",
+        "freshness": "Vị trí đường thủy đứng yên. Trạng thái điểm nghẽn trực tiếp được gọi làm ấm mỗi 6 phút. Bản tóm tắt quá cảnh làm mới mỗi 10 phút khi đường chuyển tiếp và PortWatch đang bình thường.",
+        "confidence": "Cao với địa lý cố định. Độ tin cậy của gián đoạn trực tiếp phụ thuộc các nguồn đi kèm là AIS, NGA và PortWatch.",
+        "limitations": {
+          "0": "Một điểm đánh dấu điểm nghẽn đang hiện không có nghĩa là đang có gián đoạn.",
+          "1": "Hàng rào địa lý theo khu vực và tuyến được mô hình hóa có thể đơn giản hóa kiểu giao thông phức tạp."
+        },
+        "related": {
+          "0": "Bảng Chuỗi Cung ứng",
+          "1": "Lớp Tuyến Thương mại",
+          "2": "Khám phá tuyến",
+          "3": "Công cụ kịch bản"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Rủi ro quốc gia",
+        "purpose": "Tô màu quốc gia theo điểm hiện tại của Chỉ số Không ổn định Quốc gia, để phân loại sơ bộ rủi ro chiến lược.",
+        "source": "Dịch vụ chấm điểm Chỉ số Không ổn định Quốc gia của WorldMonitor, dùng tín hiệu xung đột, bất ổn dân sự, khuyến cáo, mạng, theo dõi tàu, hàng không, sự kiện tự nhiên và tin tức.",
+        "freshness": "Bộ nhớ đệm điểm rủi ro được gọi làm ấm mỗi 8 phút. seed-meta và health.riskScores cho thấy trạng thái trực tiếp, lỗi thời, một phần hoặc xuống cấp, đối chiếu hạn độ mới 30 phút.",
+        "confidence": "Đây là tín hiệu của mô hình tổng hợp, không phải xếp hạng quốc gia chính thức hay dự báo xác suất.",
+        "limitations": {
+          "0": "Họ nguồn mỏng hoặc xuống cấp có thể làm giảm độ tin cậy ngay cả khi quốc gia vẫn có điểm.",
+          "1": "Màu ở cấp quốc gia có thể che khác biệt trong nước, và nên được đối chiếu với các bảng trước khi trích dẫn."
+        },
+        "related": {
+          "0": "Bảng Bất ổn Quốc gia",
+          "1": "Bảng Tổng quan Rủi ro Chiến lược",
+          "2": "Trạng thái độ mới của dữ liệu",
+          "3": "Tổng quan quốc gia"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Lớp",
+      "purpose": "Lớp này có thể bật hoặc tắt trên bản đồ, nhưng thẻ nguồn và độ tin cậy đã tuyển chưa được thêm.",
+      "source": "Chưa nằm trong tập giải thích lớp đã tuyển của v1.",
+      "freshness": "Ở đây không khai báo cam kết độ mới ở cấp lớp. Hãy xem huy hiệu của bảng đang hiện, cửa sổ, hoặc trạng thái độ mới của dữ liệu khi có.",
+      "confidence": "Chưa rõ cho đến khi siêu dữ liệu theo từng nguồn được thêm.",
+      "limitations": {
+        "0": "Việc thiếu một thẻ đã tuyển không có nghĩa là lớp không được hỗ trợ.",
+        "1": "Hãy dùng cửa sổ của lớp và các bảng liên quan cho bối cảnh theo từng nguồn."
+      },
+      "related": {
+        "0": "Hướng dẫn Lớp"
+      }
+    }
   }
 }

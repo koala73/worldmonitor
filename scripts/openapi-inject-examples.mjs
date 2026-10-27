@@ -239,6 +239,14 @@ function overrideStringExample(key, context = {}) {
   if (key === 'id' && (where.includes('getusinterestrates') || where.includes('get-us-interest-rates'))) {
     return 'fed_funds_effective';
   }
+  // ListMediaPerspective validates codes, audiences and region slugs; the
+  // heuristic's "example" values are rejected with HTTP 400.
+  if (where.includes('listmediaperspective') || where.includes('list-media-perspective')) {
+    if (key === 'subjectcountry') return 'SA';
+    if (key === 'outletcountries') return 'US';
+    if (key === 'audience') return 'domestic';
+    if (key === 'outletregions') return 'northern-europe';
+  }
   if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
     if (key === 'commodityid') return 'crude_oil';
     if (key === 'band') return 'high';
@@ -771,6 +779,11 @@ function numberExample(name, schema = {}, integer = false) {
 
   if (Number.isFinite(schema.minimum) && value < schema.minimum) value = schema.minimum;
   if (Number.isFinite(schema.maximum) && value > schema.maximum) value = schema.maximum;
+  // A closed numeric set: use its first non-zero member (zero is usually the
+  // "default" sentinel), never a value outside the set.
+  if (Array.isArray(schema.enum) && schema.enum.length > 0 && !schema.enum.includes(value)) {
+    return schema.enum.find((member) => member !== 0) ?? schema.enum[0];
+  }
   if (integer) value = Math.trunc(value);
   if (integer && Number.isFinite(schema.minimum) && value < schema.minimum) value = Math.ceil(schema.minimum);
   if (integer && Number.isFinite(schema.maximum) && value > schema.maximum) value = Math.floor(schema.maximum);
@@ -1113,6 +1126,24 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
         matchedRows: null, sampledRows: null, omittedRows: null }),
     };
   }
+  // ListMediaPerspective has no framing labels until the background labeller
+  // ships: every headline is counted as unlabeled and the label fields are empty.
+  if (depth === 0 && context.operationId === 'ListMediaPerspective'
+    && String(context.name ?? '').endsWith('Response')) {
+    return {
+      subjectCountry: 'SA', windowHours: 72, state: 'complete', feedTotal: 812, feedCached: 812,
+      unattributedCount: 0, noCoverageCountries: [], readAt: '2026-10-27T12:00:00.000Z',
+      groups: [{
+        homeCountry: 'GB', audience: 'international', outletCount: 1, headlineCount: 1,
+        framing: { favorable: 0, neutral: 0, critical: 0, hostile: 0, unlabeled: 1, method: '', model: '', promptVersion: '' },
+        headlines: [{
+          title: 'Saudi Arabia hosts ceasefire talks', englishTitle: 'Saudi Arabia hosts ceasefire talks', titleLanguage: 'en',
+          outlet: 'BBC World', publisherFamily: 'bbc', tier: 1, ownershipClass: 'public-service', stateAffiliated: '',
+          propagandaRisk: 'low', framing: '', publishedAt: 1717200000000, link: 'https://www.bbc.co.uk/news/articles/example',
+        }],
+      }],
+    };
+  }
   if (depth === 0 && context.operationId === 'ListAircraftEmergencies'
     && String(context.name ?? '').endsWith('Response')) {
     return {
@@ -1422,8 +1453,35 @@ function injectDisplacementYearContract(spec) {
   return changed;
 }
 
+// buf.validate can only bound windowHours to 0..96 (the runtime validator has
+// no int32.in), but ListMediaPerspective accepts exactly these values. Publish
+// the closed set on the request schema and on the REST query parameter.
+const MEDIA_PERSPECTIVE_WINDOW_HOURS = [0, 24, 48, 72, 96];
+function injectMediaPerspectiveWindowContract(spec) {
+  const properties = spec.components?.schemas?.ListMediaPerspectiveRequest?.properties;
+  if (!properties?.windowHours) return false;
+  const desired = {
+    type: 'integer',
+    format: 'int32',
+    description: properties.windowHours.description,
+    enum: MEDIA_PERSPECTIVE_WINDOW_HOURS,
+  };
+  if (desired.description === undefined) delete desired.description;
+  let changed = !eq(properties.windowHours, desired);
+  properties.windowHours = desired;
+  const parameter = spec.paths?.['/api/news/v1/list-media-perspective']?.get?.parameters
+    ?.find((item) => item?.in === 'query' && item.name === 'window_hours');
+  if (parameter) {
+    const schema = { type: 'integer', format: 'int32', enum: MEDIA_PERSPECTIVE_WINDOW_HOURS };
+    if (!eq(parameter.schema, schema)) changed = true;
+    parameter.schema = schema;
+  }
+  return changed;
+}
+
 function injectSpecExamples(spec) {
   let changed = injectDisplacementYearContract(spec);
+  changed = injectMediaPerspectiveWindowContract(spec) || changed;
   const countrySignals = spec.paths?.['/api/intelligence/v1/get-country-signal-observations']?.get;
   const countrySignalFields = spec.components?.schemas?.GetCountrySignalObservationsRequest?.properties;
   for (const parameter of countrySignals?.parameters ?? []) {
@@ -1737,27 +1795,36 @@ function replaceResponseExample(lines, opStart, opEnd, code, example) {
   replaceMediaExample(lines, mediaStart, example);
 }
 
-function patchYamlDisplacementYearSchema(lines, schema) {
-  const requestStart = lines.findIndex((line) => line.trim().endsWith('GetDisplacementSummaryRequest:'));
+function patchYamlRequestPropertySchema(lines, requestName, property, schema) {
+  const requestStart = lines.findIndex((line) => line.trim().endsWith(`${requestName}:`));
   if (requestStart === -1) return;
   const requestIndent = countIndent(lines[requestStart]);
   const requestEnd = blockEnd(lines, requestStart, requestIndent);
-  const yearStart = lines.findIndex((line, index) =>
+  const propertyStart = lines.findIndex((line, index) =>
     index > requestStart
     && index < requestEnd
     && countIndent(line) === requestIndent + 8
-    && (line.trim() === 'year:' || line.trim() === '"year":'),
+    && (line.trim() === `${property}:` || line.trim() === `"${property}":`),
   );
-  if (yearStart === -1) throw new Error('could not locate GetDisplacementSummaryRequest.year in YAML artifact');
-  const yearIndent = countIndent(lines[yearStart]);
-  const yearEnd = blockEnd(lines, yearStart, yearIndent);
-  lines.splice(yearStart, yearEnd - yearStart, ...renderYamlNode({ year: schema }, yearIndent));
+  if (propertyStart === -1) throw new Error(`could not locate ${requestName}.${property} in YAML artifact`);
+  const propertyIndent = countIndent(lines[propertyStart]);
+  const propertyEnd = blockEnd(lines, propertyStart, propertyIndent);
+  lines.splice(propertyStart, propertyEnd - propertyStart, ...renderYamlNode({ [property]: schema }, propertyIndent));
 }
 
 function patchYamlExamples(raw, spec, label) {
   const lines = raw.split('\n');
   const displacementYear = spec.components?.schemas?.GetDisplacementSummaryRequest?.properties?.year;
-  if (displacementYear) patchYamlDisplacementYearSchema(lines, displacementYear);
+  if (displacementYear) patchYamlRequestPropertySchema(lines, 'GetDisplacementSummaryRequest', 'year', displacementYear);
+  const mediaWindow = spec.components?.schemas?.ListMediaPerspectiveRequest?.properties?.windowHours;
+  if (mediaWindow) patchYamlRequestPropertySchema(lines, 'ListMediaPerspectiveRequest', 'windowHours', mediaWindow);
+  const mediaPath = '/api/news/v1/list-media-perspective';
+  const mediaWindowParameter = spec.paths?.[mediaPath]?.get?.parameters
+    ?.find((item) => item?.in === 'query' && item.name === 'window_hours');
+  if (mediaWindowParameter?.schema) {
+    const loc = findOperation(lines, mediaPath, 'get', label);
+    replaceParamSchema(lines, loc.start, loc.end, 'window_hours', mediaWindowParameter.schema);
+  }
   const displacementParameter = spec.paths?.['/api/displacement/v1/get-displacement-summary']?.get?.parameters
     ?.find((item) => item?.in === 'query' && item.name === 'year');
   if (displacementParameter?.schema) {

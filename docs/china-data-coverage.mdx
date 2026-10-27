@@ -22,7 +22,7 @@ recently; a fresh evaluator heartbeat does not prove healthy China content.
 | Corporate disclosures | SSE and SZSE public metadata for a reviewed issuer basket; HKEX is explicitly blocked | `chinaCorporateDisclosures` bootstrap and China decision signals | 30 minutes |
 | Stock Connect turnover and margin | SSE and SZSE public aggregate statistics for northbound turnover and margin financing balances | `market:china:stock-connect:v1` snapshot and the China health projection | 60 minutes |
 | Logistics corridors | Four reviewed corridors composed from six named source families | REST/UI detail; MCP receives a bounded decision-signal summary | On request; healthy aggregate cached 5 minutes |
-| Activity nowcast | Deterministic comparison of official macro vintages with seven reviewed proxy families | REST/UI detail; MCP receives a bounded decision-signal summary | On request; healthy result cached 15 minutes |
+| Activity nowcast | Deterministic comparison of official macro vintages with eight reviewed proxy families | REST/UI detail; MCP receives a bounded decision-signal summary | On request; healthy result cached 15 minutes |
 | Decision-signal composition | Bounded composition of macro, policy, Cross-Strait, disclosures, corridors, and nowcast | Country brief, public RPC, bootstrap, and Pro MCP | 15 minutes |
 | Bilateral HS4 continuity | Annual UN Comtrade import baskets for the reviewed country/strategic-product registry | PRO `GET /api/supply-chain/v1/get-country-products` and route-exposure workflows | `0 6 1 * *` |
 

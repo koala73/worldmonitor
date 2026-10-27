@@ -3908,5 +3908,271 @@
     "noEvents": "Za ovaj datum nisu zabilježeni odabrani naslovi. To ne dokazuje da nije bilo događaja.",
     "unlock90": "Otključajte 90 dana uz Pro",
     "unlock365": "Otključajte 365 dana uz API paket"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Izvor",
+      "freshness": "Ažurnost",
+      "confidence": "Pouzdanost",
+      "limitations": "Ograničenja",
+      "related": "Povezano",
+      "groundedIn": "Utemeljeno na",
+      "curated": "Kurirano v1",
+      "fallback": "Zamjenski",
+      "layerGuide": "Vodič slojeva"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Vijesti / žarišta",
+        "purpose": "Ističe praćena geopolitička žarišta i podiže im razinu kad se poklope povezane vijesti i signali eskalacije.",
+        "source": "Registar žarišta WorldMonitor, obavještajni podaci vijesti RSS/GDELT, ocjena eskalacije žarišta, vojna aktivnost i kontekst nestabilnosti države.",
+        "freshness": "Položaji žarišta su kurirani i statični. Ažurnost kanala vijesti prati se zasebno. Razine žarišta ponovno se računaju kad se osvježe kanali vijesti nadzorne ploče, otprilike svakih 10 minuta. Obavještajni podaci GDELT imaju dulji proračun punjenja i predmemorije.",
+        "confidence": "Korisno kao znak za prvo razvrstavanje. Bez otvaranja temeljnih vijesti i konteksta države to nije tvrdnja za citiranje.",
+        "limitations": {
+          "0": "Opseg vijesti i podudaranje ključnih riječi mogu previše zastupiti regije s velikom pokrivenošću.",
+          "1": "Događaji niskog profila mogu izostati kad je pokrivenost RSS/GDELT rijetka ili kasni."
+        },
+        "related": {
+          "0": "panel Vijesti uživo",
+          "1": "panel Pregled strateškog rizika",
+          "2": "Obavještajni pregled",
+          "3": "Skočni prozori žarišta"
+        }
+      },
+      "conflicts": {
+        "category": "Konflikt",
+        "purpose": "Prikazuje kurirane zone sukoba i prekrivanja geopolitičkih granica, da se živi signali smjeste u poznata bojišta.",
+        "source": "Registar zona sukoba WorldMonitor, kontekst sukoba UCDP/ACLED i dokumentirani metapodaci granica, poput korejske DMZ.",
+        "freshness": "Osnovne zone su kurirane i statične. Dinamični događaji sukoba prate se zasebno kroz kanale ACLED/UCDP i signale ispravnosti.",
+        "confidence": "Dobro za geografsku orijentaciju. Samo po sebi ne potvrđuje incident u stvarnom vremenu.",
+        "limitations": {
+          "0": "Statične zone mogu kasniti za brzim taktičkim promjenama.",
+          "1": "Dio dokaza o sukobu pojavljuje se u događajima sukoba, u nestabilnosti države ili u povezanim panelima, a ne kao poligon zone sukoba."
+        },
+        "related": {
+          "0": "UCDP Događaji Oružanih Konfliktaa",
+          "1": "panel Nestabilnost država",
+          "2": "Pregled strateškog rizika",
+          "3": "Obavještajni pregled"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Zrakoplovstvo",
+        "purpose": "Prikazuje prijavljene kodove transpondera 7500, 7600 i 7700 neovisno o vojnoj klasifikaciji.",
+        "source": "Točni upiti squawk na adsb.lol. Pojedinosti o zrakoplovu dolaze iz polja pružatelja. Navođenje izvora je ODbL.",
+        "freshness": "Dok je sloj vidljiv, provjerava svake minute. Posljednja poruka smije biti stara najviše 120 sekundi. Položaji na karti smiju biti stari najviše 90 sekundi. Nepoznate prijave istječu nakon 15 minuta.",
+        "confidence": "Prijavljeni signal transpondera ne potvrđuje incident, uzrok, slijetanje ni rješenje.",
+        "limitations": {
+          "0": "Pokrivenost prijamnika je nepotpuna.",
+          "1": "Vrijeme posljednje poruke nije vrijeme odabira squawk.",
+          "2": "Zrakoplovi bez svježeg položaja pojavljuju se samo na popisu pojedinosti.",
+          "3": "Proturječni podaci i gubitak prijema vode se kao nepoznato."
+        },
+        "related": {
+          "0": "Pojedinosti o zrakoplovu"
+        }
+      },
+      "ais": {
+        "category": "Pomorstvo",
+        "purpose": "Prikazuje gustoću plovila i signale poremećaja AIS oko strateških voda i uskih grla.",
+        "source": "Snimke releja AISStream, pomorska usluga WorldMonitor i klasifikatori poremećaja uskih grla.",
+        "freshness": "Snimke releja AIS ponovno se grade svakih 5 sekundi prema zadanim postavkama. Poslužitelj može držati osnovnu snimku gustoće 5 minuta. Sloj je isključen ili zastario kad nema vjerodajnica releja ili veze.",
+        "confidence": "Korisno za prosijavanje pomorskih anomalija. AIS prijavljuju sama plovila i brodovi mogu ugasiti odašiljanje.",
+        "limitations": {
+          "0": "Kopnena pokrivenost AIS je neravnomjerna. Slabija vidljivost Bliskog istoka, Azije i otvorenog oceana je dokumentirana.",
+          "1": "Tamna plovidba izvodi se iz praznina i obrazaca zagušenja. To nije izravan dokaz namjere."
+        },
+        "related": {
+          "0": "panel Opskrbni lanac",
+          "1": "Status uskih mjesta",
+          "2": "Vojni brodovi",
+          "3": "AIS signali u obavještajnom pregledu"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Pomorstvo",
+        "purpose": "Crta glavne kontejnerske, energetske i rasute rute kroz strateška uska grla, da se mogu pratiti putovi poremećaja.",
+        "source": "Registar trgovačkih ruta WorldMonitor te status uskih grla opskrbnog lanca i sažeci tranzita.",
+        "freshness": "Geometrija ruta je statična. Status uskih grla održava se upitom svakih 6 minuta. Sažeci tranzita osvježavaju se svakih 10 minuta kroz predmemoriju opskrbnog lanca i putove releja.",
+        "confidence": "Dobro kao kontekst izloženosti na razini rute. To nije kanal usmjeravanja pojedinog broda.",
+        "limitations": {
+          "0": "Rute su modelirani koridori i ne moraju odgovarati konkretnom planu putovanja.",
+          "1": "Prekrivanja poremećaja ovise o trenutačnom stanju uskih grla i AIS."
+        },
+        "related": {
+          "0": "panel Opskrbni lanac",
+          "1": "Istraživač ruta",
+          "2": "Motor scenarija",
+          "3": "sloj Uska Grla"
+        }
+      },
+      "flights": {
+        "category": "Zrakoplovstvo",
+        "purpose": "Ističe poremećaje zračnih luka i zatvaranja NOTAM. Obuhvaća NOTAM zračnog prostora koji vrijede sada ili počinju unutar 24 sata, uključujući privremena ograničenja letova, ograničena, opasna i zabranjena područja, vojna operativna područja, rezervacije zračnog prostora i zatvaranja. Prikazuje i žive položaje zrakoplova kad je praćenje dostupno.",
+        "source": "FAA ASWS, AviationStack, FAA NOTAM Management Service (NMS-API) i NOTAM ICAO, adsb.lol (ODbL), Wingbits, oporavak starije usluge OpenSky, neobavezno nekomercijalno popunjavanje praznina s airplanes.live/adsb.fi i zrakoplovna usluga. NOTAM zračnog prostora crtaju se kao poligoni ondje gdje ih daje NMS, kao krugovi ondje gdje NOTAM navodi polumjer do 250 NM, a inače kao oznake.",
+        "freshness": "Punjenje poremećaja zračnih luka ide u taktu od 30 minuta. NOTAM zračnog prostora pune se svakih 5 minuta iz povlačenja promjena NMS, uz dnevnu punu resinkronizaciju, uz proračun ažurnosti od 20 minuta. Zrakoplovni panel također osvježava operativne prikaze u ciklusu upita od 5 minuta.",
+        "confidence": "Najbolje za prvo razvrstavanje poremećaja. Pokrivenost pojedinih živih zrakoplova ovisi o dostupnosti ADS-B i postavljenim pružateljima. Tekst NOTAM mjerodavan je u obliku u kojem ga FAA distribuira.",
+        "limitations": {
+          "0": "Simulirani pokazni podaci oslonjeni na AviationStack mogu se pojaviti kad nema ključa API.",
+          "1": "Živi položaji zrakoplova mogu kasniti ili izostati ondje gdje je pokrivenost ADS-B slaba ili blokirana.",
+          "2": "Područja NOTAM zračnog prostora crtaju se samo na karti deck.gl. Karte SVG i globusa pokazuju oznake zračnih luka.",
+          "3": "Većina američkih TFR opisuje oblik samo u tekstu, pa se pojavljuju kao oznaka na položaju NOTAM, a ne kao oblik ograničenog područja.",
+          "4": "Rasporedi unutar prozora važenja NOTAM, na primjer dnevni sati, prikazani su u opisu, ali ne utječu na vidljivost."
+        },
+        "related": {
+          "0": "panel Obavještenja o Zrakoplovnim Kompanijama",
+          "1": "Traka zrakoplovnih naredbi",
+          "2": "Zrakoplovni signali u obavještajnom pregledu",
+          "3": "Zrakoplovne hitne situacije",
+          "4": "Smetnje navigaciji"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Konflikt",
+        "purpose": "Ucrtava zapise oružanog sukoba na razini događaja, s državom, akterima, datumom i rasponima poginulih.",
+        "source": "GED API programa Uppsala Conflict Data Program preko usluge sukoba i punjenja događaja UCDP.",
+        "freshness": "Puni se svakih 6 sati kad je punjenje UCDP ispravno.",
+        "confidence": "Urednički dosljednije od sirovih kanala vijesti u tijeku. Kašnjenje je namjerno. To nije živi kanal s bojišta.",
+        "limitations": {
+          "0": "Godišnji ritam objava istraživačke razine može propustiti vrlo svježe događaje.",
+          "1": "Rasponi poginulih su procjene. Treba ih čitati kao raspone, ne kao točne brojeve."
+        },
+        "related": {
+          "0": "panel UCDP Događaji Oružanih Sukoba",
+          "1": "Komponenta sukoba Indeksa nestabilnosti zemlje",
+          "2": "Vremenka države"
+        }
+      },
+      "weather": {
+        "category": "Vrijeme",
+        "purpose": "Prikazuje aktivna službena upozorenja na opasne vremenske prilike nacionalnih meteoroloških službi, spojena u jedan kanal weather:alerts:v1.",
+        "source": "National Weather Service Sjedinjenih Država (NWS), Environment and Climate Change Canada (ECCC) i agregacija CAP središta WMO Severe Weather Information Centre (SWIC), punjeni preko releja WorldMonitor.",
+        "freshness": "Upozorenja NWS, ECCC i SWIC relej puni svakih 15 minuta i prati ih prema proračunu ažurnosti od 45 minuta.",
+        "confidence": "Mjerodavno za upozorenja koja izdaju uključene nacionalne službe, uz ogradu vremena objave na izvoru. NWS i ECCC crtaju se kao poligoni. Geokodirana upozorenja SWIC crtaju se u centroidu države službe koja ih izdaje, s izričitom oznakom preciznosti.",
+        "limitations": {
+          "0": "Većina članica SWIC objavljuje geokodove, ne poligone. Ta upozorenja pojavljuju se kao točke na razini države, s doslovnim opisom područja, a ne kao prekrivanje upozorenog područja.",
+          "1": "Pokrivenost SWIC ovisi o tome koje članice WMO trenutačno objavljuju u agregator. Gustoća se razlikuje po regiji.",
+          "2": "Retci SWIC za SAD i Kanadu preskaču se jer NWS i ECCC tim državama već daju pokrivenost na razini poligona."
+        },
+        "related": {
+          "0": "sloj Prirodni Događaji",
+          "1": "Skočni prozori vremenskih upozorenja",
+          "2": "Status ažurnosti podataka"
+        }
+      },
+      "canadaRoads": {
+        "category": "Promet",
+        "purpose": "Prikazuje službene cestovne događaje, upozorenja, stanja, zatvaranja, radove i opasnosti u podržanim kanadskim nadležnostima.",
+        "source": "Pokrajinski kanali Ontario 511, Alberta 511 i Manitoba 511, City of Toronto Road Restrictions i DriveBC Open511, punjeni preko WorldMonitor.",
+        "freshness": "Ontario 511, Alberta 511 i Manitoba 511 pune se svakih 15 minuta i prate se prema proračunu ažurnosti od 45 minuta. Ograničenja u Torontu pune se svaka 2 sata. DriveBC Open511 puni se svakih 30 minuta.",
+        "confidence": "Mjerodavno za podržane pokrajinske i gradske izdavače, uz ogradu vremena objave na izvoru i mapirane geometrije.",
+        "limitations": {
+          "0": "Izvor roadconditions iz Alberta 511 ne preuzima se jer krajnja točka dobavljača vraća 404. Živo crtanje Alberte obuhvaća samo događaje i upozorenja.",
+          "1": "Pokrajinska upozorenja bez koordinata ne pojavljuju se kao točke na karti.",
+          "2": "Polilinije stanja cesta mogu pojednostavniti složenu geometriju autocesta."
+        },
+        "related": {
+          "0": "Upozorenja za opasne vremenske prilike (NWS, ECCC, WMO SWIC)",
+          "1": "Status ažurnosti podataka"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Hitna upozorenja",
+        "purpose": "Prikazuje aktivna upozorenja javne sigurnosti iz Alberte, Britanske Kolumbije i Saskatchewana kao točke na karti, uz vrijeme NWS za SAD.",
+        "source": "Atom Alberta Emergency Alert, sloj GeoJSON OGL-BC Evacuation Orders and Alerts i javni kanal JSON SaskAlert zajedno s pojedinostima CAP 1.2 s istog poslužitelja normaliziraju se u jednu uniju canadaAlerts. Poligoni CAP/GeoRSS, poligoni evakuacije Britanske Kolumbije i poligoni CAP SaskAlert postaju centroidi. Zapisi bez geometrije koriste centroid izvorne pokrajine.",
+        "freshness": "Pokrajinski izvori pune se svakih 15 minuta, a unija se prati prema proračunu ažurnosti od 45 minuta. Prazan kanal, dakle nema aktivnih upozorenja, valjan je uspjeh s nula zapisa.",
+        "confidence": "Mjerodavno za upozorenja koja objavljuju Alberta Emergency Alert, B.C. Evacuation Orders and Alerts i SaskAlert, uz ogradu vremena objave na izvoru i mapirane geometrije upozorenja.",
+        "limitations": {
+          "0": "Pokrivenost je ograničena na Albertu, Britansku Kolumbiju i Saskatchewan. Ontario nema prihvatljiv strojni kanal koji vodi pokrajina izvan isključenog NAAD.",
+          "1": "Ne zamjenjuje vremenska upozorenja NWS za SAD ni cestovne slojeve Ontarija i Toronta.",
+          "2": "Unosi bez ozbiljnosti koja se može mapirati odbacuju se, a ne izmišljaju. Riječ je o semantici CAP i boje Alberte, statusu evakuacije Britanske Kolumbije ili ozbiljnosti CAP SaskAlert. Boja ili razina u sažetku SaskAlert ne tretira se kao ozbiljnost CAP."
+        },
+        "related": {
+          "0": "Upozorenja za opasne vremenske prilike (NWS, ECCC, WMO SWIC)",
+          "1": "sloj Prirodni Događaji",
+          "2": "Status ažurnosti podataka"
+        }
+      },
+      "cyberThreats": {
+        "category": "Kiber",
+        "purpose": "Kartira geografski obogaćene pokazatelje kompromitacije, poput poslužitelja C2, domaćina zlonamjernog softvera, phishinga, zlonamjernih URL-ova i infrastrukture ransomwarea.",
+        "source": "abuse.ch Feodo Tracker i URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, kanal RSS i vijesti ransomware.live te obogaćivanje geolokacijom IP.",
+        "freshness": "Punjenje kibernetičkih prijetnji ide svaka 2 sata. Prikazani IOC koriste klizni prozor od 14 dana i imaju ograničenje zbog performansi karte.",
+        "confidence": "Dobro za vidljivost infrastrukture. Atribucija i geolokacija IP mogu biti bučne.",
+        "limitations": {
+          "0": "Geolokacija IP može pokazati na hosting infrastrukturu, a ne na operatera ili žrtvu.",
+          "1": "Dostupnost kanala, ključevi API i prijave zlouporabe po kanalu mogu iskriviti pokrivenost."
+        },
+        "related": {
+          "0": "Skočni prozori karte Kibernetske Prijetnje",
+          "1": "Kibernetički doprinos Indeksu nestabilnosti zemlje",
+          "2": "Status ažurnosti podataka"
+        }
+      },
+      "natural": {
+        "category": "Prirodne katastrofe",
+        "purpose": "Prikazuje potrese, teška upozorenja na katastrofe i aktivne događaje promatranja Zemlje za pregled situacije.",
+        "source": "Potresi USGS, upozorenja GDACS i događaji NASA EONET, spojeni u usluzi prirodnih događaja.",
+        "freshness": "Prirodni događaji pune se svaka 3 sata. Za potrese USGS opisano očekivanje je ritam izvora otprilike svakih 5 minuta.",
+        "confidence": "Jako za otkrivene javne signale katastrofa. Pouzdanost ovisi o vrsti opasnosti i kašnjenju prijave na izvoru.",
+        "limitations": {
+          "0": "Upozorenja GDACS niske ozbiljnosti filtriraju se da karta ostane čitljiva.",
+          "1": "Požari EONET filtriraju se po ažurnosti, pa se stariji još otvoreni događaji ne moraju pojaviti kao aktivne točke na karti."
+        },
+        "related": {
+          "0": "Skočni prozori sloja Prirodni Događaji",
+          "1": "Upozorenja za opasne vremenske prilike (NWS, ECCC, WMO SWIC)",
+          "2": "Prirodni signali u obavještajnom pregledu"
+        }
+      },
+      "waterways": {
+        "category": "Pomorstvo",
+        "purpose": "Označuje strateške plovne putove i uska grla, da se signali poremećaja čitaju na pozadini fiksne pomorske geografije.",
+        "source": "Registar strateških plovnih putova WorldMonitor s prekrivanjima statusa uskih grla opskrbnog lanca iz AIS, upozorenja NGA i kanala izvedenih iz PortWatch.",
+        "freshness": "Položaji plovnih putova su statični. Živi status uskih grla održava se upitom svakih 6 minuta. Sažeci tranzita osvježavaju se svakih 10 minuta kad je put releja i PortWatch ispravan.",
+        "confidence": "Visoka za fiksnu geografiju. Pouzdanost živog poremećaja ovisi o popratnim kanalima AIS, NGA i PortWatch.",
+        "limitations": {
+          "0": "Vidljiva oznaka uskog grla ne znači da poremećaj traje.",
+          "1": "Geofence područja i modelirane rute mogu pojednostavniti složene obrasce prometa."
+        },
+        "related": {
+          "0": "panel Opskrbni lanac",
+          "1": "sloj Trgovačke Rute",
+          "2": "Istraživač ruta",
+          "3": "Motor scenarija"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Rizik države",
+        "purpose": "Boji države prema trenutačnom rezultatu Indeksa nestabilnosti zemlje, za široko prvo razvrstavanje strateškog rizika.",
+        "source": "Usluga bodovanja Indeksa nestabilnosti zemlje u WorldMonitoru koristi signale sukoba, nemira, upozorenja, kibera, praćenja brodova, zrakoplovstva, prirodnih događaja i vijesti.",
+        "freshness": "Predmemorija rezultata rizika održava se upitom svakih 8 minuta. seed-meta i health.riskScores pokazuju stanje uživo, zastarjelo, djelomično ili pogoršano prema proračunu ažurnosti od 30 minuta.",
+        "confidence": "To je složeni signal modela. Nije službena ocjena države ni prognoza vjerojatnosti.",
+        "limitations": {
+          "0": "Rijetke ili pogoršane obitelji izvora mogu smanjiti pouzdanost i kad država i dalje ima rezultat.",
+          "1": "Boja na razini države može sakriti razlike unutar države. Prije citiranja provjeri je u panelima."
+        },
+        "related": {
+          "0": "panel Nestabilnost država",
+          "1": "panel Pregled strateškog rizika",
+          "2": "Status ažurnosti podataka",
+          "3": "Obavještajni pregled"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Sloj",
+      "purpose": "Ovaj sloj može se uključiti na karti, ali kurirana kartica izvora i pouzdanosti još nije dodana.",
+      "source": "Nije u kuriranom skupu v1 objašnjenja slojeva.",
+      "freshness": "Ovdje nije deklariran ugovor ažurnosti na razini sloja. Provjeri vidljive oznake panela, skočne prozore ili status ažurnosti podataka kad su dostupni.",
+      "confidence": "Nepoznata dok se ne dodaju metapodaci konkretnog izvora.",
+      "limitations": {
+        "0": "Nedostatak kurirane kartice ne znači da sloj nije podržan.",
+        "1": "Koristi skočne prozore sloja i povezane panele za kontekst konkretnog izvora."
+      },
+      "related": {
+        "0": "Vodič slojeva"
+      }
+    }
   }
 }

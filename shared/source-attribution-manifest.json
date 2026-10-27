@@ -5402,6 +5402,20 @@
       ]
     },
     {
+      "host": "identity.dataspace.copernicus.eu",
+      "provider": "identity.dataspace.copernicus.eu",
+      "kind": "structured",
+      "observed": true,
+      "license": "Copernicus Sentinel data policy: free, full and open access, including commercial use and redistribution, with the Copernicus credit",
+      "attribution": "Contains modified Copernicus Sentinel data [year]",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-no2-activity.mjs"
+        }
+      ]
+    },
+    {
       "host": "iea.org",
       "provider": "iea.org",
       "kind": "feed",
@@ -9011,6 +9025,20 @@
       ]
     },
     {
+      "host": "sh.dataspace.copernicus.eu",
+      "provider": "sh.dataspace.copernicus.eu",
+      "kind": "structured",
+      "observed": true,
+      "license": "Copernicus Sentinel data policy: free, full and open access, including commercial use and redistribution, with the Copernicus credit",
+      "attribution": "Contains modified Copernicus Sentinel data [year]",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-no2-activity.mjs"
+        }
+      ]
+    },
+    {
       "host": "sifted.eu",
       "provider": "sifted.eu",
       "kind": "feed+structured",
@@ -10470,6 +10498,20 @@
       "references": [
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "unstats.un.org",
+      "provider": "unstats.un.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit unstats.un.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/build-un-m49-regions.mjs"
         }
       ]
     },
@@ -15264,6 +15306,9 @@
           "path": "scripts/build-sitemap.mjs"
         },
         {
+          "path": "scripts/build-un-m49-regions.mjs"
+        },
+        {
           "path": "scripts/build-use-cases.mjs"
         },
         {
@@ -15313,6 +15358,9 @@
         },
         {
           "path": "scripts/notification-relay.cjs"
+        },
+        {
+          "path": "scripts/seed-no2-activity.mjs"
         },
         {
           "path": "scripts/seo-indexnow-submit.mjs"

@@ -58,7 +58,7 @@ import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { CountryClickPayload } from './DeckGLMap';
-import { t } from '@/services/i18n';
+import { initI18n, t } from '@/services/i18n';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { renderLayerTruncationBadges } from '@/utils/layer-truncation-badge';
@@ -85,7 +85,7 @@ import {
   LAYER_REGISTRY,
   resolveLayerLabel,
 } from '@/config/map-layer-definitions';
-import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
+import { layerExplanationLookup, renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import {
   createCountryClickGestureTracker,
   finishCountryClickGesture,
@@ -708,7 +708,7 @@ export class MapComponent {
       explainBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        this.showLayerExplanation(layer);
+        void this.showLayerExplanation(layer);
       });
       row.appendChild(explainBtn);
 
@@ -734,7 +734,15 @@ export class MapComponent {
     this.layerExplanationOutsideClickHandler = null;
   }
 
-  private showLayerExplanation(layer: keyof MapLayers): void {
+  private async showLayerExplanation(layer: keyof MapLayers): Promise<void> {
+    try {
+      await initI18n();
+    } catch (error) {
+      console.warn('[Map] Unable to load layer explanation text', error);
+      return;
+    }
+    if (this.destroyed) return;
+
     const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
     this.clearLayerExplanationOutsideClickHandler();
     if (existing?.dataset.layer === layer) {
@@ -750,7 +758,7 @@ export class MapComponent {
     popup.className = 'layer-explanation-popup';
     popup.dataset.layer = layer;
     setTrustedHtml(popup, trustedHtml(
-      renderLayerExplanationCard(this.getLayerControlLabel(layer), getLayerExplanation(layer)),
+      renderLayerExplanationCard(this.getLayerControlLabel(layer), getLayerExplanation(layer), layerExplanationLookup(t)),
       "static layer explanation metadata",
     ));
 

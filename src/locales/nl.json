@@ -3877,5 +3877,271 @@
     "noEvents": "Voor deze datum zijn geen geselecteerde koppen vastgelegd. Dit bewijst niet dat er geen gebeurtenissen waren.",
     "unlock90": "Ontgrendel 90 dagen met Pro",
     "unlock365": "Ontgrendel 365 dagen met een API-abonnement"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Bron",
+      "freshness": "Actualiteit",
+      "confidence": "Betrouwbaarheid",
+      "limitations": "Beperkingen",
+      "related": "Gerelateerd",
+      "groundedIn": "Onderbouwd met",
+      "curated": "Samengesteld v1",
+      "fallback": "Terugval",
+      "layerGuide": "Lagengids"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Nieuws / Hotspots",
+        "purpose": "Licht bewaakte geopolitieke hotspots uit en verhoogt hun niveau wanneer gerelateerd nieuws en escalatiesignalen samenkomen.",
+        "source": "Hotspotregister van WorldMonitor, nieuwsinlichtingen via RSS/GDELT, escalatiescore van hotspots, militaire activiteit en context van landinestabiliteit.",
+        "freshness": "Hotspotlocaties zijn samengesteld en statisch. De actualiteit van nieuwsstromen wordt apart gevolgd. De niveaus worden opnieuw berekend wanneer de nieuwsstromen van het dashboard verversen, met ongeveer 10 minuten ertussen, terwijl GDELT-inlichtingen langere laad- en cachebudgetten heeft.",
+        "confidence": "Bruikbaar als aanwijzing om te sorteren, niet als citeerbare bewering zonder het onderliggende nieuws en de landcontext te openen.",
+        "limitations": {
+          "0": "Nieuwsvolume en trefwoordherkenning kunnen sterk gevolgde regio's oververtegenwoordigen.",
+          "1": "Weinig zichtbare gebeurtenissen kunnen ontbreken wanneer de dekking van RSS/GDELT dun of vertraagd is."
+        },
+        "related": {
+          "0": "paneel Live nieuws",
+          "1": "paneel Strategisch risicooverzicht",
+          "2": "Inlichtingenoverzicht",
+          "3": "Pop-ups van Intel-hotspots"
+        }
+      },
+      "conflicts": {
+        "category": "Conflict",
+        "purpose": "Toont samengestelde conflictzones en geopolitieke grenslagen, zodat analisten actuele signalen kunnen plaatsen tegen bekende strijdtonelen.",
+        "source": "Conflictzoneregister van WorldMonitor, conflictcontext van UCDP/ACLED en gedocumenteerde grensmetadata, zoals de Koreaanse DMZ.",
+        "freshness": "De basiszones zijn samengesteld en statisch. Dynamische conflictgebeurtenissen worden apart gevolgd via ACLED/UCDP-stromen en statussignalen.",
+        "confidence": "Goed voor geografische oriëntatie. Op zichzelf bevestigt het geen incident op het moment zelf.",
+        "limitations": {
+          "0": "Statische zones kunnen achterlopen op snelle tactische veranderingen.",
+          "1": "Sommige conflictbewijzen verschijnen als conflictgebeurtenissen, in de landinestabiliteit of in gerelateerde panelen, en niet als een conflictzonepolygoon."
+        },
+        "related": {
+          "0": "UCDP-evenementen",
+          "1": "paneel Country Instability Index",
+          "2": "Strategisch risicooverzicht",
+          "3": "Inlichtingenoverzicht"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Luchtvaart",
+        "purpose": "Toont gemelde transpondercodes 7500, 7600 en 7700, los van de militaire indeling.",
+        "source": "Exacte transpondercode-opvragingen op adsb.lol. Vliegtuigdetails gebruiken de velden van de aanbieder. De naamsvermelding is ODbL.",
+        "freshness": "De laag wordt elke minuut gecontroleerd zolang die zichtbaar is. Het laatste bericht mag hoogstens 120 seconden oud zijn. Kaartposities mogen hoogstens 90 seconden oud zijn. Onbekende meldingen vervallen na 15 minuten.",
+        "confidence": "Een gemeld transpondersignaal bevestigt geen incident, oorzaak, landing of afhandeling.",
+        "limitations": {
+          "0": "De dekking van ontvangers is onvolledig.",
+          "1": "Het tijdstip van het laatste bericht is niet het tijdstip waarop de transpondercode is gekozen.",
+          "2": "Vliegtuigen zonder verse positie verschijnen alleen in de detaillijst.",
+          "3": "Tegenstrijdige gegevens en verlies van ontvangst worden onbekend."
+        },
+        "related": {
+          "0": "Vliegtuigdetails"
+        }
+      },
+      "ais": {
+        "category": "Maritiem",
+        "purpose": "Toont scheepsdichtheid en AIS-verstoringssignalen rond strategische wateren en knelpunten.",
+        "source": "Momentopnamen van de AISStream-doorgifte, de maritieme dienst van WorldMonitor en classificeerders van knelpuntverstoring.",
+        "freshness": "Momentopnamen van de AIS-doorgifte worden standaard elke 5 seconden opnieuw opgebouwd. De server kan de basisdichtheid 5 minuten in de cache houden, en de laag is uitgeschakeld of verouderd wanneer de inloggegevens of de verbinding van de doorgifte ontbreken.",
+        "confidence": "Bruikbaar om maritieme afwijkingen te screenen, maar AIS wordt door de schepen zelf gemeld en die kunnen van de uitzending verdwijnen.",
+        "limitations": {
+          "0": "De dekking van AIS aan land is ongelijk, met gedocumenteerd zwakker zicht op het Midden-Oosten, Azië en de open oceaan.",
+          "1": "Donkere scheepvaart wordt afgeleid uit gaten en congestiepatronen, niet uit een direct bewijs van opzet."
+        },
+        "related": {
+          "0": "paneel Toeleveringsketen",
+          "1": "Status Chokepunten",
+          "2": "Militaire schepen",
+          "3": "AIS-signalen van het inlichtingenoverzicht"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Maritiem",
+        "purpose": "Tekent de grote container-, energie- en massagoedroutes door strategische knelpunten, om over verstoringstrajecten te redeneren.",
+        "source": "Handelsrouteregister van WorldMonitor, plus de knelpuntstatus van de toeleveringsketen en de transitsamenvattingen.",
+        "freshness": "De geometrie van de routes is statisch. De knelpuntstatus wordt elke 6 minuten licht ververst, en de transitsamenvattingen verversen elke 10 minuten via de caches van de toeleveringsketen en de paden van de doorgifte.",
+        "confidence": "Goed voor blootstelling op routeniveau. Het is geen routeringsstroom per schip.",
+        "limitations": {
+          "0": "Routes zijn gemodelleerde corridors en hoeven niet overeen te komen met een bepaald reisplan.",
+          "1": "Verstoringslagen hangen af van de huidige knelpuntstatus en van de staat van AIS."
+        },
+        "related": {
+          "0": "paneel Toeleveringsketen",
+          "1": "Routeverkenner (Route Explorer)",
+          "2": "Scenariomotor (Scenario Engine)",
+          "3": "Laag Strategische waterwegen"
+        }
+      },
+      "flights": {
+        "category": "Luchtvaart",
+        "purpose": "Laat luchthavenverstoring en NOTAM-sluitingen zien, luchtruim-NOTAM die nu gelden of binnen 24 uur beginnen (tijdelijke vluchtbeperkingen, beperkte, gevaarlijke en verboden gebieden, militaire oefengebieden, reserveringen en sluitingen van het luchtruim), en live vliegtuigposities wanneer volgen beschikbaar is.",
+        "source": "FAA ASWS, AviationStack, FAA NOTAM Management Service (NMS-API) en ICAO-NOTAM, adsb.lol (ODbL), Wingbits, herstel via de oude OpenSky-dienst, optionele niet-commerciële aanvulling airplanes.live/adsb.fi, en de luchtvaartdienst. Luchtruim-NOTAM worden als polygonen getekend waar NMS ze levert, als cirkels waar de NOTAM een straal tot 250 NM geeft, en anders als markering.",
+        "freshness": "Luchthavenverstoring wordt op een ritme van 30 minuten geladen. Luchtruim-NOTAM worden elke 5 minuten geladen uit wijzigingsophalingen van NMS, met een dagelijkse volledige hersynchronisatie, tegen een actualiteitsbudget van 20 minuten. Het luchtvaartpaneel ververst operationele weergaven ook in een opvraagcyclus van 5 minuten.",
+        "confidence": "Het meest bruikbaar om verstoringen te sorteren. De dekking van elk live vliegtuig hangt af van de beschikbaarheid van ADS-B en van de ingestelde aanbieders. De NOTAM-tekst is gezaghebbend zoals de FAA die verspreidt.",
+        "limitations": {
+          "0": "Gesimuleerde demogegevens op basis van AviationStack kunnen verschijnen wanneer een API-sleutel ontbreekt.",
+          "1": "Live vliegtuigposities kunnen vertraagd of afwezig zijn waar de ADS-B-dekking zwak of geblokkeerd is.",
+          "2": "NOTAM-gebieden in het luchtruim worden alleen op de deck.gl-kaart getekend. De SVG- en globekaarten tonen luchthavenmarkeringen.",
+          "3": "De meeste Amerikaanse TFR beschrijven hun vorm alleen in de tekst, dus ze verschijnen als een markering op de NOTAM-positie en niet als de beperkte vorm.",
+          "4": "Tijdschema's binnen het geldigheidsvenster van een NOTAM (bijvoorbeeld dagelijkse uren) staan in de toelichting, maar worden niet op de zichtbaarheid toegepast."
+        },
+        "related": {
+          "0": "paneel Airline Intelligence",
+          "1": "Luchtvaartcommandobalk",
+          "2": "Luchtvaartsignalen van het inlichtingenoverzicht",
+          "3": "Vliegtuignoodgevallen",
+          "4": "Navigatieinterferentie"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Conflict",
+        "purpose": "Zet gewapende conflictregistraties op gebeurtenisniveau uit, met land, actoren, datum en bandbreedtes van dodelijke slachtoffers.",
+        "source": "GED-API van het Uppsala Conflict Data Program, via de conflictdienst en de lading van UCDP-gebeurtenissen.",
+        "freshness": "De gegevens worden elke 6 uur geladen wanneer de UCDP-lading in orde is.",
+        "confidence": "Redactioneel consequenter dan ruwe stromen van laatste nieuws, maar de vertraging is bewust. Het is geen live stroom van het slagveld.",
+        "limitations": {
+          "0": "Het jaarlijkse publicatieritme, van onderzoekskwaliteit, kan zeer recente gebeurtenissen missen.",
+          "1": "De bandbreedtes van dodelijke slachtoffers zijn schattingen en moeten als bandbreedtes worden gelezen, niet als exacte tellingen."
+        },
+        "related": {
+          "0": "paneel UCDP-conflictgebeurtenissen",
+          "1": "Conflictcomponent van de Country Instability Index",
+          "2": "Tijdlijn van het land"
+        }
+      },
+      "weather": {
+        "category": "Weer",
+        "purpose": "Toont actieve officiële waarschuwingen voor zwaar weer van nationale meteorologische diensten, samengevoegd in één stroom weather:alerts:v1.",
+        "source": "National Weather Service van de Verenigde Staten (NWS), Environment and Climate Change Canada (ECCC) en de CAP-aggregatie van het WMO-informatiecentrum voor zwaar weer (SWIC), geladen via de doorgifte van WorldMonitor.",
+        "freshness": "NWS-, ECCC- en SWIC-waarschuwingen worden elke 15 minuten door de doorgifte geladen en bewaakt tegen een actualiteitsbudget van 45 minuten.",
+        "confidence": "Gezaghebbend voor waarschuwingen die de bijdragende nationale diensten uitgeven, afhankelijk van het publicatiemoment bij de bron. NWS en ECCC worden als polygonen getekend. SWIC-waarschuwingen met een locatiecode worden getekend op de centroïde van het land van de uitgevende dienst, met een expliciete precisiemarkering.",
+        "limitations": {
+          "0": "De meeste SWIC-leden publiceren locatiecodes, geen polygonen. Die waarschuwingen verschijnen als punten op landniveau, met de gebiedsbeschrijving letterlijk overgenomen, en niet als lagen van het gewaarschuwde gebied.",
+          "1": "De SWIC-dekking hangt af van welke WMO-leden nu naar de aggregator publiceren. De dichtheid verschilt per regio.",
+          "2": "SWIC-rijen van de Verenigde Staten en Canada worden overgeslagen omdat NWS en ECCC voor die landen al dekking op polygoonniveau leveren."
+        },
+        "related": {
+          "0": "Laag Natuurlijke gebeurtenissen",
+          "1": "Pop-ups voor weerwaarschuwingen",
+          "2": "Data Freshness"
+        }
+      },
+      "canadaRoads": {
+        "category": "Vervoer",
+        "purpose": "Toont officiële wegincidenten, waarschuwingen, condities, afsluitingen, werkzaamheden en gevaren in de ondersteunde Canadese rechtsgebieden.",
+        "source": "Provinciale stromen Ontario 511, Alberta 511 en Manitoba 511, City of Toronto Road Restrictions en DriveBC Open511, geladen via WorldMonitor.",
+        "freshness": "Ontario 511, Alberta 511 en Manitoba 511 worden elke 15 minuten geladen en bewaakt tegen een actualiteitsbudget van 45 minuten. De beperkingen van Toronto worden elke 2 uur geladen, en DriveBC Open511 elke 30 minuten.",
+        "confidence": "Gezaghebbend voor de ondersteunde provinciale en gemeentelijke uitgevers, afhankelijk van het publicatiemoment bij de bron en van de gekarteerde geometrie.",
+        "limitations": {
+          "0": "Alberta 511 roadconditions wordt niet binnengehaald (het adres van de leverancier antwoordt met 404). De livekaart van Alberta toont alleen gebeurtenissen en waarschuwingen.",
+          "1": "Provinciale waarschuwingen zonder coördinaten verschijnen niet als punten op de kaart.",
+          "2": "Polylijnen van wegconditie kunnen complexe snelweggeometrie vereenvoudigen."
+        },
+        "related": {
+          "0": "Waarschuwingen voor zwaar weer (NWS, ECCC, WMO SWIC)",
+          "1": "Data Freshness"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Noodwaarschuwingen",
+        "purpose": "Toont actieve waarschuwingen voor de openbare veiligheid van Alberta, British Columbia en Saskatchewan als punten op de kaart, naast het NWS-weer van de Verenigde Staten.",
+        "source": "De Atom van Alberta Emergency Alert, de GeoJSON-laag OGL-BC Evacuation Orders and Alerts en de openbare JSON-stroom van SaskAlert, plus CAP 1.2-details van dezelfde server, worden genormaliseerd tot één canadaAlerts-unie. CAP/GeoRSS-polygonen, evacuatiepolygonen van B.C. en CAP-polygonen van SaskAlert worden centroïden. Registraties zonder geometrie gebruiken de centroïde van de provincie van herkomst.",
+        "freshness": "Provinciale bronnen worden elke 15 minuten geladen en de unie wordt bewaakt tegen een actualiteitsbudget van 45 minuten. Een lege stroom (geen actieve waarschuwingen) is een geldig succes zonder registraties.",
+        "confidence": "Gezaghebbend voor waarschuwingen die Alberta Emergency Alert, B.C. Evacuation Orders and Alerts en SaskAlert publiceren, afhankelijk van het publicatiemoment bij de bron en van de gekarteerde waarschuwingsgeometrie.",
+        "limitations": {
+          "0": "De dekking is beperkt tot Alberta, British Columbia en Saskatchewan. Ontario heeft geen geschikte machinaal leesbare stroom die de provincie zelf beheert, buiten de uitgesloten NAAD.",
+          "1": "Deze laag vervangt geen NWS-weerwaarschuwingen van de Verenigde Staten en geen weglagen van Ontario en Toronto.",
+          "2": "Meldingen zonder een ernst die op de kaart kan worden gezet (CAP- en kleursemantiek van Alberta, evacuatiestatus van B.C. of CAP-ernst van SaskAlert) worden weggelaten in plaats van verzonnen. Kleur of niveau van de SaskAlert-samenvatting telt niet als CAP-ernst."
+        },
+        "related": {
+          "0": "Waarschuwingen voor zwaar weer (NWS, ECCC, WMO SWIC)",
+          "1": "Laag Natuurlijke gebeurtenissen",
+          "2": "Data Freshness"
+        }
+      },
+      "cyberThreats": {
+        "category": "Cyberbedreigingen",
+        "purpose": "Brengt geografisch verrijkte indicatoren van compromittering in kaart, zoals C2-servers, systemen met kwaadaardige software, phishing, kwaadaardige URL's en ransomware-infrastructuur.",
+        "source": "abuse.ch Feodo Tracker en URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, de RSS- en nieuwsstroom van ransomware.live, en verrijking met IP-geolocatie.",
+        "freshness": "De ladingen voor cyberbedreigingen draaien elke 2 uur. De getoonde IOC gebruiken een voortschrijdend venster van 14 dagen en hebben een plafond voor de kaartprestaties.",
+        "confidence": "Goed om infrastructuur te zien, maar attributie en IP-geolocatie kunnen ruis geven.",
+        "limitations": {
+          "0": "IP-geolocatie kan naar de infrastructuur van de aanbieder wijzen in plaats van naar een operator of een slachtoffer.",
+          "1": "Beschikbaarheid van stromen, API-sleutels en misbruikmeldingen per stroom kunnen de dekking vertekenen."
+        },
+        "related": {
+          "0": "Kaartpop-ups Cyberbedreigingen",
+          "1": "Cyberbijdrage aan de landinestabiliteit",
+          "2": "Data Freshness"
+        }
+      },
+      "natural": {
+        "category": "Natuurrampen",
+        "purpose": "Toont aardbevingen, zware rampwaarschuwingen en actieve aardobservatiegebeurtenissen, voor situatiebewustzijn.",
+        "source": "Aardbevingen van USGS, waarschuwingen van GDACS en gebeurtenissen van NASA EONET, samengevoegd in de dienst voor natuurlijke gebeurtenissen.",
+        "freshness": "Natuurlijke gebeurtenissen worden elke 3 uur geladen. Het verwachte bronritme voor aardbevingen van USGS is gedocumenteerd op ongeveer 5 minuten.",
+        "confidence": "Sterk voor gedetecteerde openbare rampsignalen. De betrouwbaarheid verschilt per gevaartype en door de meldingsvertraging bij de bron.",
+        "limitations": {
+          "0": "GDACS-waarschuwingen van lage ernst worden weggefilterd zodat de kaart leesbaar blijft.",
+          "1": "Natuurbranden van EONET worden op actualiteit gefilterd, dus oudere open gebeurtenissen kunnen ontbreken als actieve kaartpunten."
+        },
+        "related": {
+          "0": "Pop-ups van de laag Natuurlijke gebeurtenissen",
+          "1": "Waarschuwingen voor zwaar weer (NWS, ECCC, WMO SWIC)",
+          "2": "Natuursignalen van het inlichtingenoverzicht"
+        }
+      },
+      "waterways": {
+        "category": "Maritiem",
+        "purpose": "Markeert strategische waterwegen en knelpunten, zodat verstoringssignalen tegen een vaste maritieme geografie kunnen worden gelezen.",
+        "source": "Register van strategische waterwegen van WorldMonitor, met statuslagen van knelpunten in de toeleveringsketen uit AIS, NGA-waarschuwingen en van PortWatch afgeleide stromen.",
+        "freshness": "Waterweglocaties zijn statisch. De live knelpuntstatus wordt elke 6 minuten licht ververst, en de transitsamenvattingen verversen elke 10 minuten wanneer het pad van de doorgifte en PortWatch in orde is.",
+        "confidence": "Hoog voor de vaste geografie. De betrouwbaarheid van een live verstoring hangt af van de bijbehorende stromen AIS, NGA en PortWatch.",
+        "limitations": {
+          "0": "Een zichtbare knelpuntmarkering betekent niet dat er een actieve verstoring is.",
+          "1": "Gebiedsafbakeningen en gemodelleerde routes kunnen complexe verkeerspatronen vereenvoudigen."
+        },
+        "related": {
+          "0": "paneel Toeleveringsketen",
+          "1": "Laag Handelsroutes",
+          "2": "Routeverkenner (Route Explorer)",
+          "3": "Scenariomotor (Scenario Engine)"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Landrisico",
+        "purpose": "Kleurt landen volgens de huidige score van de Country Instability Index, voor een brede eerste sortering van strategisch risico.",
+        "source": "Scoredienst van de Country Instability Index van WorldMonitor, met signalen van conflict, onrust, reisadviezen, cyberdreiging, scheepsvolging, luchtvaart, natuurlijke gebeurtenissen en nieuws.",
+        "freshness": "De cache van risicoscores wordt elke 8 minuten licht ververst. seed-meta en health.riskScores tonen de staat actueel, verouderd, gedeeltelijk of gedegradeerd, tegen een actualiteitsbudget van 30 minuten.",
+        "confidence": "Signaal van een samengesteld model, geen officiële landbeoordeling en geen kansverwachting.",
+        "limitations": {
+          "0": "Schaarse of gedegradeerde brongroepen kunnen de betrouwbaarheid verlagen ook wanneer een land nog een score heeft.",
+          "1": "Kleur op landniveau kan verschillen binnen het land verbergen. Vergelijk die met de panelen voordat de kleur wordt geciteerd."
+        },
+        "related": {
+          "0": "paneel Country Instability Index",
+          "1": "paneel Strategisch risicooverzicht",
+          "2": "Data Freshness",
+          "3": "Inlichtingenoverzicht"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Laag",
+      "purpose": "Deze laag kan op de kaart worden aangezet, maar een samengestelde fiche over bron en betrouwbaarheid is nog niet toegevoegd.",
+      "source": "Niet opgenomen in de v1-set voor laaguitleg.",
+      "freshness": "Hier is geen actualiteitscontract op laagniveau vastgelegd. Controleer de zichtbare badges van de panelen, de pop-ups of de status Data Freshness zodra die beschikbaar zijn.",
+      "confidence": "Onbekend totdat brongebonden metadata is toegevoegd.",
+      "limitations": {
+        "0": "Het ontbreken van een samengestelde fiche betekent niet dat de laag niet beschikbaar is.",
+        "1": "Gebruik de pop-ups van de laag en de gerelateerde panelen voor context die bij de bron hoort."
+      },
+      "related": {
+        "0": "Lagengids"
+      }
+    }
   }
 }

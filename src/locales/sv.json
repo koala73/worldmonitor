@@ -3877,5 +3877,271 @@
     "noEvents": "Inga utvalda rubriker registrerades för detta datum. Det bevisar inte att inga händelser inträffade.",
     "unlock90": "Lås upp 90 dagar med Pro",
     "unlock365": "Lås upp 365 dagar med ett API-abonnemang"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Källa",
+      "freshness": "Aktualitet",
+      "confidence": "Tillförlitlighet",
+      "limitations": "Begränsningar",
+      "related": "Relaterat",
+      "groundedIn": "Grundat i",
+      "curated": "Kuraterat v1",
+      "fallback": "Reserv",
+      "layerGuide": "Lagerguide"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Nyheter / hotspots",
+        "purpose": "Lyfter bevakade geopolitiska hotspots och höjer deras nivå när relaterade nyheter och eskaleringssignaler sammanfaller.",
+        "source": "WorldMonitors hotspotregister, RSS/GDELT-nyhetsunderrättelser, poängsättning av hotspot-eskalering, militär aktivitet och landets instabilitetskontext.",
+        "freshness": "Hotspot-positionerna är kuraterade och statiska. Nyhetsflödenas aktualitet följs separat. Hotspot-nivåerna räknas om när instrumentpanelens nyhetsflöden uppdateras, ungefär var 10:e minut. GDELT-underrättelser har en längre budget för inmatning och cache.",
+        "confidence": "Användbart som signal för en första sortering. Utan de underliggande nyheterna och landets kontext är det inte ett påstående att citera.",
+        "limitations": {
+          "0": "Nyhetsvolym och nyckelordsträffar kan överrepresentera regioner med tät bevakning.",
+          "1": "Händelser med låg profil kan missas när RSS/GDELT-täckningen är gles eller fördröjd."
+        },
+        "related": {
+          "0": "panel Live Nyheter",
+          "1": "panel Strategisk risköversikt",
+          "2": "Underrättelseöversikt",
+          "3": "Popup-fönster för hotspots"
+        }
+      },
+      "conflicts": {
+        "category": "Konflikt",
+        "purpose": "Visar kuraterade konfliktzoner och geopolitiska gränsöverlägg så att livesignaler kan läsas mot kända konfliktområden.",
+        "source": "WorldMonitors register över konfliktzoner, UCDP/ACLED-konfliktkontext och dokumenterade gränsmetadata, till exempel den koreanska DMZ.",
+        "freshness": "Baszonerna är kuraterade och statiska. Dynamiska konflikthändelser följs separat via ACLED/UCDP-flöden och statussignaler.",
+        "confidence": "Bra för geografisk orientering. Det bekräftar inte i sig en händelse i realtid.",
+        "limitations": {
+          "0": "Statiska zoner kan halka efter snabba taktiska förändringar.",
+          "1": "En del konfliktunderlag syns i konflikthändelser, i landets instabilitet eller i relaterade paneler, inte som en konfliktzonspolygon."
+        },
+        "related": {
+          "0": "UCDP-evenemang",
+          "1": "panel Country Instability Index",
+          "2": "Strategisk risköversikt",
+          "3": "Underrättelseöversikt"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Flyg",
+        "purpose": "Visar rapporterade transponderkoder 7500, 7600 och 7700 oberoende av militär klassning.",
+        "source": "Exakta squawk-frågor mot adsb.lol. Flygplansuppgifter kommer från leverantörens fält. Erkännandet är ODbL.",
+        "freshness": "Kontrollerar varje minut medan lagret är synligt. Senaste meddelandet får vara högst 120 sekunder. Kartpositioner får vara högst 90 sekunder. Okända rapporter förfaller efter 15 minuter.",
+        "confidence": "En rapporterad transpondersignal bekräftar inte en händelse, en orsak, en landning eller en lösning.",
+        "limitations": {
+          "0": "Mottagartäckningen är ofullständig.",
+          "1": "Tiden för senaste meddelandet är inte tiden då squawk valdes.",
+          "2": "Flygplan utan färsk position syns bara i detaljlistan.",
+          "3": "Motsägande data och förlorad mottagning markeras som okända."
+        },
+        "related": {
+          "0": "Flygplansdetaljer"
+        }
+      },
+      "ais": {
+        "category": "Maritim",
+        "purpose": "Visar fartygsdensitet och AIS-störningssignaler kring strategiska vatten och flaskhalsar.",
+        "source": "Ögonblicksbilder från AISStream-reläet, WorldMonitors maritima tjänst och klassificerare för flaskhalsstörningar.",
+        "freshness": "AIS-reläets ögonblicksbilder byggs om var 5:e sekund som standard. Servern kan cacha basdensitetens ögonblicksbild i 5 minuter. Lagret är avstängt eller inaktuellt när reläets inloggning eller anslutning saknas.",
+        "confidence": "Användbart för att sålla marina avvikelser. AIS rapporteras av fartygen själva, och fartyg kan släcka sändningen.",
+        "limitations": {
+          "0": "Landbaserad AIS-täckning är ojämn. Svagare sikt i Mellanöstern, Asien och på öppet hav är dokumenterad.",
+          "1": "Mörk sjöfart härleds från luckor och kömönster. Det är inte ett direkt bevis på avsikt."
+        },
+        "related": {
+          "0": "panel Försörjningskedja",
+          "1": "Flaskhalsstatus",
+          "2": "Militära fartyg",
+          "3": "AIS-signaler i underrättelseöversikten"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Maritim",
+        "purpose": "Ritar större container-, energi- och bulkleder genom strategiska flaskhalsar, så att störningsvägar kan följas.",
+        "source": "WorldMonitors register över handelsrutter samt flaskhalsstatus och transitsammanfattningar i försörjningskedjan.",
+        "freshness": "Ruttgeometrin är statisk. Flaskhalsstatus hålls igång med en förfrågan var 6:e minut. Transitsammanfattningar uppdateras var 10:e minut via försörjningskedjans cache och relävägar.",
+        "confidence": "Bra som exponering på ruttnivå. Det är inte ett flöde för dirigering av enskilda fartyg.",
+        "limitations": {
+          "0": "Rutter är modellerade korridorer och behöver inte stämma med en viss reseplan.",
+          "1": "Störningsöverlägg beror på aktuell flaskhals- och AIS-status."
+        },
+        "related": {
+          "0": "panel Försörjningskedja",
+          "1": "Ruttutforskare",
+          "2": "Scenariomotor",
+          "3": "lager Strategiska vattenvägar"
+        }
+      },
+      "flights": {
+        "category": "Flyg",
+        "purpose": "Lyfter flygplatsstörningar och NOTAM-stängningar. Det omfattar luftrums-NOTAM som gäller nu eller börjar inom 24 timmar, inräknat tillfälliga flygrestriktioner, restriktions-, fara- och förbjudna områden, militära operationsområden, luftrumsreservationer och stängningar. Visar också livepositioner för flygplan när spårning finns.",
+        "source": "FAA ASWS, AviationStack, FAA NOTAM Management Service (NMS-API) och ICAO NOTAM, adsb.lol (ODbL), Wingbits, återställning av den äldre OpenSky-tjänsten, valfri icke-kommersiell luckfyllnad från airplanes.live/adsb.fi och flygtjänsten. Luftrums-NOTAM ritas som polygoner där NMS levererar dem, som cirklar där NOTAM anger en radie upp till 250 NM, och annars som markörer.",
+        "freshness": "Inmatning av flygplatsstörningar går i en takt på 30 minuter. Luftrums-NOTAM matas in var 5:e minut från NMS-ändringshämtningar, med en daglig full omsynk, mot en aktualitetsbudget på 20 minuter. Flygpanelen uppdaterar också operativa vyer i en avfrågningscykel på 5 minuter.",
+        "confidence": "Bäst för att sortera störningar. Täckningen för enskilda liveflygplan beror på ADS-B och konfigurerade leverantörer. NOTAM-texten gäller i den form FAA sprider den.",
+        "limitations": {
+          "0": "Simulerade demodata som bygger på AviationStack kan synas när en API-nyckel saknas.",
+          "1": "Livepositioner för flygplan kan vara fördröjda eller saknas där ADS-B-täckningen är svag eller blockerad.",
+          "2": "Luftrums-NOTAM ritas bara på deck.gl-kartan. SVG-kartan och globkartan visar flygplatsmarkörer.",
+          "3": "De flesta amerikanska TFR beskriver formen bara i text, så de syns som en markör vid NOTAM-positionen, inte som den begränsade formen.",
+          "4": "Scheman inom ett NOTAM:s giltighetsfönster, till exempel dagliga tider, visas i tipsrutan men styr inte synligheten."
+        },
+        "related": {
+          "0": "panel Luftfartsöversikt",
+          "1": "Flygets kommandorad",
+          "2": "Flygsignaler i underrättelseöversikten",
+          "3": "Flygnödlägen",
+          "4": "Navigeringsstörning"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Konflikt",
+        "purpose": "Ritar väpnade konflikthändelser på händelsenivå, med land, aktörer, datum och intervall för dödstal.",
+        "source": "GED API från Uppsala Conflict Data Program via konflikttjänsten och UCDP-händelseinmatningen.",
+        "freshness": "Matas in var 6:e timme när UCDP-inmatningen fungerar.",
+        "confidence": "Redaktionellt jämnare än råa flöden av senaste nytt. Fördröjningen är avsiktlig. Det är inte ett liveflöde från slagfältet.",
+        "limitations": {
+          "0": "En årlig publiceringstakt på forskningsnivå kan missa mycket nya händelser.",
+          "1": "Intervallen för dödstal är uppskattningar. De ska läsas som intervall, inte som exakta antal."
+        },
+        "related": {
+          "0": "panel UCDP-konflikthändelser",
+          "1": "Konfliktkomponenten i Country Instability Index",
+          "2": "Landets tidslinje"
+        }
+      },
+      "weather": {
+        "category": "Väder",
+        "purpose": "Visar aktiva officiella varningar för svåra väderförhållanden från nationella vädertjänster, sammanslagna i ett flöde weather:alerts:v1.",
+        "source": "USA:s National Weather Service (NWS), Environment and Climate Change Canada (ECCC) och CAP-aggregering från WMO Severe Weather Information Centre (SWIC), inmatade via WorldMonitor-reläet.",
+        "freshness": "Varningar från NWS, ECCC och SWIC matas in var 15:e minut av reläet och bevakas mot en aktualitetsbudget på 45 minuter.",
+        "confidence": "Auktoritativt för varningar som de deltagande nationella tjänsterna utfärdar, med förbehåll för källans publiceringstid. NWS och ECCC ritas som polygoner. Geokodade SWIC-varningar ritas vid den utfärdande tjänstens landscentroid, med en uttrycklig precisionsmarkör.",
+        "limitations": {
+          "0": "De flesta SWIC-medlemmar publicerar geokoder, inte polygoner. De varningarna syns som punkter på landsnivå, med områdesbeskrivningen ordagrant, inte som ett överlägg för det varnade området.",
+          "1": "SWIC-täckningen beror på vilka WMO-medlemmar som just nu publicerar till aggregatorn. Tätheten skiljer sig mellan regioner.",
+          "2": "SWIC-rader för USA och Kanada hoppas över, eftersom NWS och ECCC redan ger täckning på polygonnivå för de länderna."
+        },
+        "related": {
+          "0": "lager Naturliga händelser",
+          "1": "Popup-fönster för vädervarningar",
+          "2": "Status för dataaktualitet"
+        }
+      },
+      "canadaRoads": {
+        "category": "Transport",
+        "purpose": "Visar officiella väghändelser, varningar, tillstånd, avstängningar, vägarbeten och faror i de kanadensiska jurisdiktioner som stöds.",
+        "source": "Provinsflödena Ontario 511, Alberta 511 och Manitoba 511, City of Toronto Road Restrictions och DriveBC Open511, inmatade via WorldMonitor.",
+        "freshness": "Ontario 511, Alberta 511 och Manitoba 511 matas in var 15:e minut och bevakas mot en aktualitetsbudget på 45 minuter. Begränsningar i Toronto matas in var 2:e timme. DriveBC Open511 matas in var 30:e minut.",
+        "confidence": "Auktoritativt för de provinsiella och kommunala utgivare som stöds, med förbehåll för källans publiceringstid och den karterade geometrin.",
+        "limitations": {
+          "0": "Källan roadconditions från Alberta 511 tas inte in, eftersom leverantörens ändpunkt svarar 404. Albertas liveritning omfattar bara händelser och varningar.",
+          "1": "Provinsvarningar utan koordinater syns inte som punkter på kartan.",
+          "2": "Linjer för väglag kan förenkla komplex motorvägsgeometri."
+        },
+        "related": {
+          "0": "Varningar för svåra väderförhållanden (NWS, ECCC, WMO SWIC)",
+          "1": "Status för dataaktualitet"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Nödvarningar",
+        "purpose": "Visar aktiva varningar om allmän säkerhet från Alberta, British Columbia och Saskatchewan som punkter på kartan, bredvid NWS-väder för USA.",
+        "source": "Atom från Alberta Emergency Alert, GeoJSON-lagret OGL-BC Evacuation Orders and Alerts och det offentliga JSON-flödet från SaskAlert plus CAP 1.2-detaljer från samma värd normaliseras till en canadaAlerts-union. Polygoner från CAP/GeoRSS, evakueringspolygoner från British Columbia och CAP-polygoner från SaskAlert blir centroider. Poster utan geometri använder källprovinsens centroid.",
+        "freshness": "Provinskällorna matas in var 15:e minut och unionen bevakas mot en aktualitetsbudget på 45 minuter. Ett tomt flöde, alltså inga aktiva varningar, är en giltig träff med noll poster.",
+        "confidence": "Auktoritativt för varningar som publiceras av Alberta Emergency Alert, B.C. Evacuation Orders and Alerts och SaskAlert, med förbehåll för källans publiceringstid och den karterade varningsgeometrin.",
+        "limitations": {
+          "0": "Täckningen är begränsad till Alberta, British Columbia och Saskatchewan. Ontario har inget godkänt maskinläsbart flöde som provinsen driver, utöver det uteslutna NAAD.",
+          "1": "Det ersätter inte NWS-vädervarningar för USA och inte heller väglagren för Ontario och Toronto.",
+          "2": "Poster utan en allvarlighetsgrad som kan ritas ut faller bort i stället för att hittas på. Det gäller Albertas CAP- och färgsemantik, evakueringsstatus i British Columbia eller CAP-allvarlighetsgrad från SaskAlert. Färg eller nivå i SaskAlerts sammanfattning räknas inte som CAP-allvarlighetsgrad."
+        },
+        "related": {
+          "0": "Varningar för svåra väderförhållanden (NWS, ECCC, WMO SWIC)",
+          "1": "lager Naturliga händelser",
+          "2": "Status för dataaktualitet"
+        }
+      },
+      "cyberThreats": {
+        "category": "Cyber",
+        "purpose": "Kartlägger geo-berikade indikatorer på intrång, till exempel C2-servrar, värdar för skadlig kod, nätfiske, skadliga URL:er och ransomware-infrastruktur.",
+        "source": "abuse.ch Feodo Tracker och URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, RSS- och nyhetsflödet från ransomware.live samt berikning med IP-geolokalisering.",
+        "freshness": "Inmatning av cyberhot körs var 2:e timme. Visade IOC använder ett rullande fönster på 14 dagar och begränsas för kartans prestanda.",
+        "confidence": "Bra för att se infrastruktur. Attribution och IP-geolokalisering kan vara brusiga.",
+        "limitations": {
+          "0": "IP-geolokalisering kan peka på värdinfrastruktur i stället för en operatör eller ett offer.",
+          "1": "Flödestillgång, API-nycklar och missbruksrapporter per flöde kan snedvrida täckningen."
+        },
+        "related": {
+          "0": "Kartpopup-fönster för Cyberhot",
+          "1": "Cyberbidrag till Country Instability Index",
+          "2": "Status för dataaktualitet"
+        }
+      },
+      "natural": {
+        "category": "Naturkatastrofer",
+        "purpose": "Visar jordbävningar, svåra katastrofvarningar och aktiva jordobservationshändelser för lägesbilden.",
+        "source": "Jordbävningar från USGS, varningar från GDACS och händelser från NASA EONET, sammanslagna i tjänsten för naturliga händelser.",
+        "freshness": "Naturliga händelser matas in var 3:e timme. För USGS-jordbävningar är den dokumenterade förväntan en källtakt på ungefär 5 minuter.",
+        "confidence": "Starkt för upptäckta offentliga katastrofsignaler. Tillförlitligheten varierar med farotyp och källans rapporteringsfördröjning.",
+        "limitations": {
+          "0": "GDACS-varningar med låg allvarlighetsgrad filtreras bort så att kartan ska gå att läsa.",
+          "1": "EONET-skogsbränder filtreras på aktualitet, så äldre öppna händelser kan utebli som aktiva kartpunkter."
+        },
+        "related": {
+          "0": "Popup-fönster för lagret Naturliga händelser",
+          "1": "Varningar för svåra väderförhållanden (NWS, ECCC, WMO SWIC)",
+          "2": "Natursignaler i underrättelseöversikten"
+        }
+      },
+      "waterways": {
+        "category": "Maritim",
+        "purpose": "Markerar strategiska vattenvägar och flaskhalsar så att störningssignaler kan läsas mot den fasta maritima geografin.",
+        "source": "WorldMonitors register över strategiska vattenvägar med statusöverlägg för försörjningskedjans flaskhalsar från AIS, NGA-varningar och flöden som härleds från PortWatch.",
+        "freshness": "Vattenvägarnas lägen är statiska. Live-status för flaskhalsar hålls igång med en förfrågan var 6:e minut. Transitsammanfattningar uppdateras var 10:e minut när vägen via relä och PortWatch fungerar.",
+        "confidence": "Hög för den fasta geografin. Tillförlitligheten för en live-störning beror på de medföljande flödena AIS, NGA och PortWatch.",
+        "limitations": {
+          "0": "En synlig flaskhalsmarkör betyder inte att en störning pågår.",
+          "1": "Områdesgeofences och modellerade rutter kan förenkla komplexa trafikmönster."
+        },
+        "related": {
+          "0": "panel Försörjningskedja",
+          "1": "lager Handelsrutter",
+          "2": "Ruttutforskare",
+          "3": "Scenariomotor"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Landsrisk",
+        "purpose": "Färgar länder efter det aktuella värdet i Country Instability Index, för en bred första sortering av strategisk risk.",
+        "source": "WorldMonitors poängtjänst för Country Instability Index använder signaler från konflikt, oroligheter, råd, cyber, fartygsspårning, flyg, naturhändelser och nyheter.",
+        "freshness": "Cachen för riskpoäng hålls igång med en förfrågan var 8:e minut. seed-meta och health.riskScores visar tillståndet live, inaktuellt, partiellt eller degraderat mot en aktualitetsbudget på 30 minuter.",
+        "confidence": "En sammansatt modellsignal. Det är inte ett officiellt landsbetyg och inte en sannolikhetsprognos.",
+        "limitations": {
+          "0": "Glesa eller degraderade källfamiljer kan sänka tillförlitligheten även när ett land fortfarande har ett värde.",
+          "1": "Färg på landsnivå kan dölja skillnader inom landet. Kontrollera den i panelerna innan du citerar."
+        },
+        "related": {
+          "0": "panel Country Instability Index",
+          "1": "panel Strategisk risköversikt",
+          "2": "Status för dataaktualitet",
+          "3": "Underrättelseöversikt"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Lager",
+      "purpose": "Lagret kan slås på i kartan, men ett kuraterat kort för källa och tillförlitlighet har inte lagts till ännu.",
+      "source": "Ingår inte i den kuraterade v1-uppsättningen för lagerförklaringar.",
+      "freshness": "Inget aktualitetskontrakt på lagernivå är deklarerat här. Kontrollera synliga panelmärken, popup-fönster eller status för dataaktualitet när de finns.",
+      "confidence": "Okänd tills källspecifika metadata har lagts till.",
+      "limitations": {
+        "0": "Avsaknaden av ett kuraterat kort betyder inte att lagret saknar stöd.",
+        "1": "Använd lagrets popup-fönster och relaterade paneler för källspecifikt sammanhang."
+      },
+      "related": {
+        "0": "Lagerguide"
+      }
+    }
   }
 }
