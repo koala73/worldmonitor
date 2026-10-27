@@ -162,7 +162,7 @@ const RELAY_INVENTORY_BUILD_INPUTS = Object.freeze([
   'shared/source-attribution-manifest.json',
   'public/.well-known/mcp/server-card.json',
   'src/components/**/*.ts',
-  'src/config/feeds.ts',
+  'shared/news-catalog.json',
   'src/config/map-layer-definitions.ts',
   'src/config/variants/*.ts',
   'src/locales/*.json',
