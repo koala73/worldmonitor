@@ -1152,6 +1152,13 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // token gate below misses this zero-frame variant (WORLDMONITOR-??:
           // Unexpected token 'else' / 'for', 2026-07-18).
           || /^(?:SyntaxError: )?Unexpected token '(?:else|for)'$/.test(msg)
+          // V8's `Unexpected identifier '<name>'` through window.onerror with
+          // no stack at all (Sentry WORLDMONITOR-19G, Chrome 155 / Windows).
+          // A parse failure in one of our hashed chunks reports that chunk's
+          // URL as its frame (hasFirstParty → preserved); a frameless one is
+          // a script injected into the page. Matches any identifier so this
+          // does not become another per-letter census.
+          || (!hasAnyStack && /^(?:SyntaxError: )?Unexpected identifier '[^']+'$/.test(msg))
           // Firefox's wording for a failed `fetch()` — the engine-emitted
           // equivalent of Chrome's bare `Failed to fetch` (above) and Safari's
           // `Load failed`. Surfaces via `onunhandledrejection` with zero captured

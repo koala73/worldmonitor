@@ -451,6 +451,10 @@ export class CountryIntelManager implements AppModule {
       if (!page) return;
       // Map GeoJSON can still stamp Taiwan as CN-TW; APIs require ISO alpha-2.
       code = canonicalizeCountryCode(code);
+      if (!code) {
+        if (showedLoading) page.hide();
+        return;
+      }
       const hasVisibleBrief = this.hasVisibleRealCountryBrief();
       // An agent open must not replace visible state while it works. Ownership
       // is explicit because shipping WebMCP browsers omit the target signal.

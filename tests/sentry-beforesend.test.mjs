@@ -1043,6 +1043,12 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // mapped .ts frame or an owned hashed-chunk URL (handled above).
     ["Unexpected token 'else'", 'SyntaxError'],
     ["Unexpected token 'for'", 'SyntaxError'],
+    // V8's identifier phrasing via window.onerror with stacktrace: null
+    // (Sentry WORLDMONITOR-19G: Chrome 155 / Windows, /dashboard). A parse
+    // failure in one of our hashed chunks keeps that chunk's URL as its frame,
+    // so a frameless one is an injected script. Any identifier, not a census.
+    ["Unexpected identifier 'd'", 'SyntaxError'],
+    ["SyntaxError: Unexpected identifier 'queueMicrotask'", 'SyntaxError'],
     ['SyntaxError: Unexpected token \'else\'', 'SyntaxError'],
     ['SyntaxError: Unexpected token \'for\'', 'SyntaxError'],
     // Firefox's wording for a failed `fetch()` (WORLDMONITOR-RK) — the

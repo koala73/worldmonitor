@@ -35,6 +35,30 @@ describe('CountryIntelManager WebMCP presentation cancellation', () => {
     expect(page.show).toHaveBeenCalledExactlyOnceWith('Taiwan', 'TW', null, {militaryFlights:null,militaryFlightsInCountry:null,militaryVessels:null,militaryVesselsInCountry:null});
   });
 
+  it('opens nothing for a placeholder -99 code', async () => {
+    const page = {
+      getCode: () => null,
+      isVisible: () => false,
+      showLoading: vi.fn(),
+      show: vi.fn(),
+      hide: vi.fn(),
+    };
+    const manager = new CountryIntelManager({
+      countryBriefPage: page,
+      isDestroyed: false,
+      map: { setRenderPaused: vi.fn() },
+    } as unknown as AppContext);
+    const getSignals = vi.fn(async () => ({}));
+    Reflect.set(manager, 'ensureCountryBriefPage', async () => true);
+    Reflect.set(manager, 'getCountrySignals', getSignals);
+
+    await manager.openCountryBriefByCode('-99', 'Somaliland', { trackAnalytics: false });
+
+    expect(getSignals).not.toHaveBeenCalled();
+    expect(page.showLoading).not.toHaveBeenCalled();
+    expect(page.show).not.toHaveBeenCalled();
+  });
+
   it('removes the loading shell and never presents after an in-flight abort', async () => {
     let visible = false;
     let activeCode = '';
