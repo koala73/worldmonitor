@@ -34,6 +34,13 @@ export interface No2ActivityRegionView {
   exclusion: No2ActivityExclusion | null;
 }
 
+/** One country's line in the brief, with the dataset facts it must show beside it. */
+export interface No2CountryReading {
+  region: No2ActivityRegionView | null;
+  stale: boolean;
+  attribution: string;
+}
+
 export interface No2ActivitySnapshot {
   generatedAt: string;
   stale: boolean;

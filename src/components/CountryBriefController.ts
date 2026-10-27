@@ -104,8 +104,8 @@ export class CountryBriefController {
     void this.read('activity', async signal => {
       const snapshot = projectNo2ActivitySnapshot(await this.source.economic.getNo2Activity({ countryCode: code, regionId: '', kind: 'NO2_REGION_KIND_COUNTRY' }, { signal }));
       if (!snapshot) throw new Error('NO2 activity unavailable');
-      return countryNo2Activity(snapshot, code);
-    }, region => this.panel.updateNo2Activity?.(region));
+      return { region: countryNo2Activity(snapshot, code), stale: snapshot.stale, attribution: snapshot.attribution };
+    }, reading => this.panel.updateNo2Activity?.(reading));
     void this.read('markets', async signal => {
       if (this.source.mode === 'website') {
         let fetchedAt: number | undefined;

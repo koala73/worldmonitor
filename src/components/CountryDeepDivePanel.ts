@@ -83,7 +83,7 @@ import { renderFiveFactorScorecardSection } from './CountryDeepDivePanel-five-fa
 import { combineAbortSignals } from '@/services/timeout-signal';
 import { CountrySectionError } from '@/services/country-brief-error';
 import { NO2_ACTIVITY_COLORS, NO2_ACTIVITY_EXCLUSION_LABELS, NO2_ACTIVITY_STATE_LABELS, formatNo2Change } from '@/components/map/no2-activity-style';
-import type { No2ActivityRegionView } from '@/services/economic/no2-activity';
+import type { No2CountryReading } from '@/services/economic/no2-activity';
 import { BRIEF_SECTIONS, CountryBriefPresentation, briefSectionState, summarizeCountryBrief, type BriefSection, type BriefSectionId } from './country-brief-presentation';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
@@ -1023,7 +1023,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.el('p', 'cdp-measure-note', '100% of GDP is a size reference, not a risk threshold.'));
   }
 
-  public updateNo2Activity(region: No2ActivityRegionView | null): void {
+  public updateNo2Activity({ region, stale, attribution }: No2CountryReading): void {
     if (!this.no2ActivityBody) return;
     this.no2ActivityBody.replaceChildren();
     if (!region) {
@@ -1045,6 +1045,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       line,
       this.el('p', 'cdp-measure-note', `${region.windowStart} to ${region.windowEnd}, ${region.validDays} valid days`),
     );
+    if (stale) this.no2ActivityBody.append(this.el('p', 'cdp-measure-note cdp-no2-stale', 'Stale: the dataset is older than its 72-hour refresh budget, so this reading may be out of date.'));
+    if (attribution) this.no2ActivityBody.append(this.el('p', 'cdp-economic-source', attribution));
   }
 
   public updateSanctionsPressure(data: { entryCount: number; sanctionsActive?: boolean } | null): void {

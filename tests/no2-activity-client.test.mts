@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { GetNo2ActivityResponse, No2ActivityRegion } from '../src/generated/client/worldmonitor/economic/v1/service_client.ts';
+import { EconomicServiceClient } from '../src/generated/client/worldmonitor/economic/v1/service_client.ts';
+import { COUNTRY_READERS } from '../shared/country-brief-host.ts';
 import {
   countryNo2Activity,
   fetchNo2Activity,
@@ -166,5 +168,18 @@ describe('no2-activity-style', () => {
     assert.match(cloudy, /6 valid days/);
     const hostile: No2ActivityRegionView = { ...snapshot.regions[0]!, label: '<img src=x onerror=alert(1)>' };
     assert.doesNotMatch(no2ActivityTooltip(hostile, '<b>credit</b>', text), /<img|<b>/);
+  });
+});
+
+describe('host-mode country brief reader', () => {
+  it('accepts the exact request the country brief sends for the NO2 line', async () => {
+    let requested = '';
+    const client = new EconomicServiceClient('https://www.worldmonitor.app', {
+      fetch: (async (input: RequestInfo | URL) => { requested = String(input); throw new Error('captured'); }) as typeof fetch,
+    });
+    await client.getNo2Activity({ countryCode: 'DE', regionId: '', kind: 'NO2_REGION_KIND_COUNTRY' }).catch(() => {});
+    const url = new URL(requested);
+    const reader = Object.values(COUNTRY_READERS).find((entry) => entry.path === url.pathname && entry.args.safeParse(Object.fromEntries(url.searchParams)).success);
+    assert.ok(reader, `no host reader accepts ${url.pathname}${url.search}`);
   });
 });
