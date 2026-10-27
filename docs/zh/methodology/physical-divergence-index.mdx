@@ -49,7 +49,7 @@ flowchart TD
 这个指数宁可不发布，也不猜。每个结果都带有一个明确状态——`missing_input`、`stale_input`、`insufficient_history` 或 `ok`——只有 `ok` 的结果才带数字。只要任一金属不是 `ok`，综合指数就整体失效（fail closed）。参见[趋势和数据状态](#趋势和数据状态)。
 
 <Info>
-**访问方式。** 每日原始溢价来自 `GET /api/market/v1/get-physical-premiums`；派生指数来自 `GET /api/market/v1/get-physical-divergence-index`。两者均需 Pro 订阅——参见 [Pro 情报套件](/zh/pro-intelligence-suite)。基于缓存的 MCP 工具 `get_market_data` 的数据包中也包含 `physical-premium` 与 `physical-divergence` 数据集，该工具在每日额度内对已登录的免费账户开放。
+**访问方式。** 每日原始溢价来自 `GET /api/market/v1/get-physical-premiums`；派生指数来自 `GET /api/market/v1/get-physical-divergence-index`。两者均需 Pro 订阅——参见 [Pro 情报套件](/zh/pro-intelligence-suite)。基于缓存的 MCP 工具 `get_market_data` 仅向订阅用户提供 `physical-premium` 与 `physical-divergence` 数据集。已登录的免费账户仍可调用它获取行情，响应会在 `locked` 中列出这两个数据集。
 </Info>
 
 ## 历史和稳健归一化

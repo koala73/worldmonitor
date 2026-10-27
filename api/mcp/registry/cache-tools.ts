@@ -1040,7 +1040,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_market_data',
     title: 'Market quotes and commodity prices',
     _outputBudgetBytes: 131072,
-    description: 'Return the seeded market snapshot: equity, commodity, crypto and Gulf-market quotes, SGE physical-vs-COMEX premiums, physical-divergence regimes, sector performance with explicit valuation coverage, ETF flows and the Fear & Greed index. Quotes are flagged stale after 30 minutes. Covers the curated symbol universe only: symbols filters that snapshot and cannot look up arbitrary tickers. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. asset_class selects classes, limit caps each per-class list (default 30, 0 for no cap). Dedicated paid plans open or reuse one market panel allocation across filters; refresh with request_id starts a new one. API plans retain per-tool billing.',
+    description: 'Return the seeded market snapshot: equity, commodity, crypto and Gulf-market quotes, sector performance with explicit valuation coverage, ETF flows and the Fear & Greed index; subscriptions also get SGE physical-vs-COMEX premiums and physical-divergence regimes, which a free account receives as `locked` with an upgradeUrl. Quotes are flagged stale after 30 minutes. Covers the curated symbol universe only: symbols filters that snapshot and cannot look up arbitrary tickers. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. asset_class selects classes, limit caps each per-class list (default 30, 0 for no cap). Dedicated paid plans open or reuse one market panel allocation across filters; refresh with request_id starts a new one. API plans retain per-tool billing.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1190,7 +1190,10 @@ export const CACHE_TOOLS: ToolDef[] = [
         },
       },
       }) as { properties: Record<string, unknown> };
-      return { ...schema, properties: { ...schema.properties, transportCoverage: {
+      return { ...schema, properties: { ...schema.properties, locked: {
+        type: 'array', items: { type: 'string', enum: ['physical-premium', 'physical-divergence'] },
+        description: 'Present only for a signed-in free account: subscription datasets withheld from `data`. Their absence means locked, not empty. Upgrade at upgradeUrl.',
+      }, upgradeUrl: { type: 'string', format: 'uri', description: 'Present with `locked`: where to upgrade to receive the locked datasets.' }, transportCoverage: {
         type: 'object', required: ['count_scope', 'default_list_limit', 'collections'], properties: {
           count_scope: { const: 'post_filter_snapshot' }, default_list_limit: { const: 30 },
           collections: { type: 'object', properties: Object.fromEntries(MARKET_TRANSPORT_LISTS.map(([section, field]) => [section + '.' + field, {
@@ -1388,6 +1391,12 @@ export const CACHE_TOOLS: ToolDef[] = [
       'market:gulf-quotes:v1',
       'market:fear-greed:v1',
     ],
+    // Tier-1 REST datasets (#7433). A free account gets the quotes and never
+    // reads these keys; the response names them in `locked` instead.
+    _subscriptionCacheKeys: {
+      'market:physical-premium:v1': '/api/market/v1/get-physical-premiums',
+      'market:physical-divergence:v1': '/api/market/v1/get-physical-divergence-index',
+    },
     // Do not add the new physical-premium seed-meta yet. evaluateFreshness ORs
     // every check into one tool-wide flag, so its deployment-order miss would
     // mark unrelated equity, crypto, FX, and commodity responses stale until

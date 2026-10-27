@@ -66,6 +66,9 @@ export interface McpToolExecutionContext {
   // Set only by dispatch after a dedicated paid country-panel read is authorized.
   countryPanelCode?: string;
   countryRiskHistoryReuseUntil?: number | null;
+  // Set only by dispatch for a signed-in free account on the paid-funnel
+  // allowance (#6716). Cache tools then never read their `_subscriptionCacheKeys`.
+  freeAccountAllowance?: true;
   inboundHostClass: McpInboundHostClass;
   downstreamOrigin: string;
   downstreamOriginTag: string;
@@ -257,6 +260,15 @@ export interface CacheToolDef extends BaseToolDef {
   // element) — every cache tool must declare at least one freshness budget, and
   // the dispatcher reads this list directly with no synthesized fallback.
   _freshnessChecks: [FreshnessCheck, ...FreshnessCheck[]];
+  // Keys of a free-account tool that hold subscription datasets, each mapped to
+  // the tier-gated REST path that sells the same data. For a free-account
+  // caller the dispatcher never reads these keys or their
+  // `seed-meta:<key without :vN>` freshness records, and names the withheld
+  // sections in `locked` with an `upgradeUrl`. Filtering here, at key-read
+  // time, and not in `_postFilter` keeps it closed: a throwing post-filter
+  // falls back to the unfiltered data. Enforced by
+  // tests/mcp-free-account-paid-data-invariant.test.mts.
+  _subscriptionCacheKeys?: Record<string, string>;
   _execute?: never;
   // Optional argument-free projection of the stored values onto the fields the
   // tool's `outputSchema` declares, applied to the label-walked `data` map
