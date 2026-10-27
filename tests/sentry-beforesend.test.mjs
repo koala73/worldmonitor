@@ -1043,6 +1043,18 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // mapped .ts frame or an owned hashed-chunk URL (handled above).
     ["Unexpected token 'else'", 'SyntaxError'],
     ["Unexpected token 'for'", 'SyntaxError'],
+    // V8's identifier phrasing via window.onerror with stacktrace: null
+    // (Sentry WORLDMONITOR-19G: Chrome 155 / Windows, /dashboard). A parse
+    // failure in one of our hashed chunks keeps that chunk's URL as its frame,
+    // so a frameless one is an injected script. Any identifier, not a census.
+    ["Unexpected identifier 'd'", 'SyntaxError'],
+    ["SyntaxError: Unexpected identifier 'queueMicrotask'", 'SyntaxError'],
+    // The identifiers that used to sit in frame-blind ignoreErrors entries
+    // (WORLDMONITOR-NT `'m'`, plus `'https'` and `'does'`), including
+    // WebKit's trailing `. Expected ...` clause.
+    ["Unexpected identifier 'm'", 'SyntaxError'],
+    ["Unexpected identifier 'https'. Expected ';' after variable declaration.", 'SyntaxError'],
+    ["Unexpected identifier 'does'", 'SyntaxError'],
     ['SyntaxError: Unexpected token \'else\'', 'SyntaxError'],
     ['SyntaxError: Unexpected token \'for\'', 'SyntaxError'],
     // Firefox's wording for a failed `fetch()` (WORLDMONITOR-RK) — the
@@ -1113,6 +1125,20 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       [{ filename: '<anonymous>', lineno: 1 }, { filename: '<anonymous>', lineno: 1 }],
     );
     assert.equal(beforeSend(event), null);
+  });
+
+  it("suppresses an injected script's Unexpected identifier with only <anonymous> frames", () => {
+    const event = makeEvent("Unexpected identifier 'm'", 'SyntaxError',
+      [{ filename: '<anonymous>', lineno: 1 }]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('keeps Unexpected identifier when ignoreErrors runs first (no frame-blind entry)', () => {
+    // ignoreErrors cannot see frames, so any entry there would drop the
+    // first-party case before beforeSend could preserve it.
+    for (const msg of ["Unexpected identifier 'm'", "Unexpected identifier 'https'", "Unexpected identifier 'does'"]) {
+      assert.equal(isIgnored(msg, 'SyntaxError'), false, msg);
+    }
   });
 
   it('keeps a pending-request message that is not the whole browser sentence', () => {
