@@ -2006,7 +2006,6 @@
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-payload-codec.mjs",
       "scripts/_seed-utils.mjs",
-      "scripts/_upstash-rest.mjs",
       "scripts/generate-no2-regions.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/main-module.mjs",
