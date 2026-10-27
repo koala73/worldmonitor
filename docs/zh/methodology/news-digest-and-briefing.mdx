@@ -45,7 +45,7 @@ flowchart TD
 
 ## 信息流清单
 
-信息流清单位于 `server/worldmonitor/news/v1/_feeds.ts`。
+信息流清单位于 `shared/news-catalog.json`；`server/worldmonitor/news/v1/_feeds.ts` 是由其派生的服务端视图。
 接受的摘要变体为：
 
 | 变体 | 用途 |
@@ -441,7 +441,8 @@ PRO 读者可以保留更大的关注集合。如果关注国家中继不可用�
 
 ## 源文件
 
-- 信息流清单与摘要构建：`server/worldmonitor/news/v1/_feeds.ts`，
+- 信息流清单与摘要构建：`shared/news-catalog.json`，
+  `server/worldmonitor/news/v1/_feeds.ts`（派生的服务端视图），
   `server/worldmonitor/news/v1/list-feed-digest.ts`
 - 关键词分类器：`server/worldmonitor/news/v1/_classifier.ts`
 - API 契约：`proto/worldmonitor/news/v1/list_feed_digest.proto`

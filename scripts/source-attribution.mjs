@@ -1114,29 +1114,58 @@ function read(rootDir, path) {
 }
 
 // Catalog prose (feed notes, category notes, $comment) can quote retired URLs
-// that no view fetches. Blank those strings in place so only active URL fields
-// are scanned; each string is one JSON line, so line numbers stay put.
+// that no view fetches. Blank those string values where they sit, by key, so
+// only active URL fields are scanned. Masking by position (not by text) keeps
+// an active URL that happens to equal a note. Line numbers stay put.
+const CATALOG_PROSE_KEYS = new Set(['$comment', 'note', 'notes']);
+
 function maskCatalogProse(source) {
-  let catalog;
   try {
-    catalog = JSON.parse(source);
+    JSON.parse(source);
   } catch {
     return source;
   }
-  const prose = new Set();
-  if (typeof catalog.$comment === 'string') prose.add(catalog.$comment);
-  for (const entry of catalog.categoryNotes ?? []) {
-    if (typeof entry?.note === 'string') prose.add(entry.note);
+  const out = source.split('');
+  // Each open container records whether its values are prose: an object
+  // tracks the key it is reading; an array inherits from its own key.
+  const stack = [];
+  let pendingKey = null;
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === '"') {
+      let j = i + 1;
+      while (source[j] !== '"') j += source[j] === '\\' ? 2 : 1;
+      const top = stack[stack.length - 1];
+      let k = j + 1;
+      while (/\s/.test(source[k] ?? '')) k += 1;
+      const isKey = top?.type === 'object' && source[k] === ':';
+      if (isKey) {
+        pendingKey = JSON.parse(source.slice(i, j + 1));
+      } else {
+        const prose = top?.type === 'array' ? top.prose : CATALOG_PROSE_KEYS.has(pendingKey);
+        if (prose) for (let m = i + 1; m < j; m += 1) out[m] = ' ';
+        pendingKey = null;
+      }
+      i = j + 1;
+      continue;
+    }
+    if (ch === '{') {
+      stack.push({ type: 'object' });
+      pendingKey = null;
+    } else if (ch === '[') {
+      const parent = stack[stack.length - 1];
+      const prose = parent?.type === 'array' ? parent.prose : CATALOG_PROSE_KEYS.has(pendingKey);
+      stack.push({ type: 'array', prose });
+      pendingKey = null;
+    } else if (ch === '}' || ch === ']') {
+      stack.pop();
+    } else if (ch === ',') {
+      if (stack[stack.length - 1]?.type === 'object') pendingKey = null;
+    }
+    i += 1;
   }
-  for (const feed of catalog.feeds ?? []) {
-    for (const note of feed?.notes ?? []) if (typeof note === 'string') prose.add(note);
-  }
-  let masked = source;
-  for (const text of prose) {
-    const encoded = JSON.stringify(text);
-    masked = masked.split(encoded).join(`"${' '.repeat(encoded.length - 2)}"`);
-  }
-  return masked;
+  return out.join('');
 }
 
 function readdirPresentSync(absoluteDir) {

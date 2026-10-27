@@ -67,7 +67,7 @@ tracks, digest notifications, and the personalised editorial brief.
 
 ## Feed Inventory
 
-Feed inventory lives in `server/worldmonitor/news/v1/_feeds.ts`.
+Feed inventory lives in `shared/news-catalog.json`; `server/worldmonitor/news/v1/_feeds.ts` is the server view derived from it.
 The accepted digest variants are:
 
 | Variant | Purpose |
@@ -543,7 +543,8 @@ be event-driven global intelligence.
 
 ## Source Files
 
-- Feed inventory and digest build: `server/worldmonitor/news/v1/_feeds.ts`,
+- Feed inventory and digest build: `shared/news-catalog.json`,
+  `server/worldmonitor/news/v1/_feeds.ts` (derived server view),
   `server/worldmonitor/news/v1/list-feed-digest.ts`
 - Keyword classifier: `server/worldmonitor/news/v1/_classifier.ts`
 - API contract: `proto/worldmonitor/news/v1/list_feed_digest.proto`

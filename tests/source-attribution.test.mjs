@@ -602,6 +602,32 @@ test('catalog Google News URLs count their site: publisher; a retired query quot
   }
 });
 
+test('a note whose text equals an active catalog URL does not hide that URL', () => {
+  const fixture = makeFixtureCheckout();
+  try {
+    writeFileSync(join(fixture.dir, 'shared/news-catalog.json'), `${JSON.stringify({
+      feeds: [
+        {
+          name: 'Active',
+          url: 'https://active.example/rss',
+          placements: [{ edition: 'full', category: 'politics', serverOrder: 0 }],
+        },
+        {
+          name: 'Annotated',
+          url: 'https://other.example/rss',
+          notes: ['https://active.example/rss'],
+          placements: [{ edition: 'full', category: 'politics', serverOrder: 1 }],
+        },
+      ],
+    }, null, 2)}\n`);
+    const hosts = scanUpstreamHosts(fixture.dir).map((entry) => entry.host);
+    assert.ok(hosts.includes('active.example'), 'masking a note must not blank an identical active URL field');
+    assert.ok(hosts.includes('other.example'));
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('the source walk ignores generated inventory modules and compiled handler siblings', () => {
   const fixture = makeFixtureCheckout();
   try {
