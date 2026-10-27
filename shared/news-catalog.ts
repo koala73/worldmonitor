@@ -26,6 +26,8 @@ export interface CatalogPlacement {
   category: string;
   serverOrder?: number;
   browserOrder?: number;
+  /** Browser source type for this placement only (overrides the feed's). */
+  type?: string;
 }
 
 export interface CatalogFeed {
@@ -136,10 +138,11 @@ export function projectBrowserCatalog(catalog: NewsCatalog = NEWS_CATALOG): Brow
         const strategicDefault = browserField(feed, 'strategicDefault');
         if (strategicDefault !== undefined) browserFeed.strategicDefault = strategicDefault;
       }
+      const placedFeed = placement.type === undefined ? browserFeed : { ...browserFeed, type: placement.type };
       const key = `${placement.edition}|${placement.category}`;
       let bucket = buckets.get(key);
       if (!bucket) buckets.set(key, (bucket = []));
-      bucket.push({ order: placement.browserOrder, feed: browserFeed });
+      bucket.push({ order: placement.browserOrder, feed: placedFeed });
     }
   }
   const placed = (edition: string, category: string): BrowserCatalogFeed[] =>

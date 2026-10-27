@@ -4376,18 +4376,12 @@
           "edition": "intel",
           "category": "intel",
           "serverOrder": 9
-        }
-      ]
-    },
-    {
-      "name": "Foreign Policy",
-      "url": "https://foreignpolicy.com/feed/",
-      "type": "intl",
-      "placements": [
+        },
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 14
+          "browserOrder": 14,
+          "type": "intl"
         }
       ]
     },
@@ -4405,18 +4399,12 @@
           "edition": "intel",
           "category": "intel",
           "serverOrder": 11
-        }
-      ]
-    },
-    {
-      "name": "Atlantic Council",
-      "url": "https://www.atlanticcouncil.org/feed/",
-      "type": "intl",
-      "placements": [
+        },
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 16
+          "browserOrder": 16,
+          "type": "intl"
         }
       ]
     },
@@ -4434,18 +4422,12 @@
           "edition": "intel",
           "category": "intel",
           "serverOrder": 10
-        }
-      ]
-    },
-    {
-      "name": "Foreign Affairs",
-      "url": "https://www.foreignaffairs.com/rss.xml",
-      "type": "intl",
-      "placements": [
+        },
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 15
+          "browserOrder": 15,
+          "type": "intl"
         }
       ]
     },
@@ -4943,18 +4925,12 @@
           "edition": "intel",
           "category": "intel",
           "serverOrder": 13
-        }
-      ]
-    },
-    {
-      "name": "Krebs Security",
-      "url": "https://krebsonsecurity.com/feed/",
-      "type": "cyber",
-      "placements": [
+        },
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 32
+          "browserOrder": 32,
+          "type": "cyber"
         }
       ]
     },
@@ -7262,22 +7238,16 @@
           "edition": "full",
           "category": "thinktanks",
           "browserOrder": 4
-        }
-      ]
-    },
-    {
-      "name": "RAND",
-      "url": "https://www.rand.org/pubs/articles.xml",
-      "type": "research",
-      "notes": [
-        "Think Tanks & Research (Tier 3)"
-      ],
-      "placements": [
+        },
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 18
+          "browserOrder": 18,
+          "type": "research"
         }
+      ],
+      "notes": [
+        "Think Tanks & Research (Tier 3)"
       ]
     },
     {

@@ -1113,6 +1113,32 @@ function read(rootDir, path) {
   return readFileSync(join(rootDir, path), 'utf8');
 }
 
+// Catalog prose (feed notes, category notes, $comment) can quote retired URLs
+// that no view fetches. Blank those strings in place so only active URL fields
+// are scanned; each string is one JSON line, so line numbers stay put.
+function maskCatalogProse(source) {
+  let catalog;
+  try {
+    catalog = JSON.parse(source);
+  } catch {
+    return source;
+  }
+  const prose = new Set();
+  if (typeof catalog.$comment === 'string') prose.add(catalog.$comment);
+  for (const entry of catalog.categoryNotes ?? []) {
+    if (typeof entry?.note === 'string') prose.add(entry.note);
+  }
+  for (const feed of catalog.feeds ?? []) {
+    for (const note of feed?.notes ?? []) if (typeof note === 'string') prose.add(note);
+  }
+  let masked = source;
+  for (const text of prose) {
+    const encoded = JSON.stringify(text);
+    masked = masked.split(encoded).join(`"${' '.repeat(encoded.length - 2)}"`);
+  }
+  return masked;
+}
+
 function readdirPresentSync(absoluteDir) {
   try {
     return readdirSync(absoluteDir, { withFileTypes: true });
@@ -1204,7 +1230,8 @@ export function scanUpstreamHosts(rootDir = ROOT) {
     hosts.set(host, current);
   };
   for (const relativePath of walkSourceFiles(rootDir)) {
-    const source = read(rootDir, relativePath);
+    const raw = read(rootDir, relativePath);
+    const source = relativePath.endsWith('.json') && FEED_FILES.has(relativePath) ? maskCatalogProse(raw) : raw;
     const lineStarts = [0];
     for (let offset = source.indexOf('\n'); offset !== -1; offset = source.indexOf('\n', offset + 1)) {
       lineStarts.push(offset + 1);

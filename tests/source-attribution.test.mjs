@@ -586,12 +586,15 @@ test('catalog Google News URLs count their site: publisher; a retired query quot
         name: 'Native',
         url: 'https://native.example/rss',
         depthUrl: 'https://news.google.com/rss/search?q=site%3Adepth.example%20when%3A2d&hl=en-US&gl=US&ceid=US:en',
-        notes: ["Replaces gn('site:retired.example when:1d')."],
+        notes: ["Replaces gn('site:retired.example when:1d') and https://retired-url.example/rss."],
         placements: [{ edition: 'full', category: 'politics', serverOrder: 0 }],
       }],
+      categoryNotes: [{ side: 'server', edition: 'full', category: 'politics', note: 'Moved off https://retired-category.example/feed.' }],
     }, null, 2)}\n`);
     const hosts = scanUpstreamHosts(fixture.dir).map((entry) => entry.host);
     assert.ok(hosts.includes('native.example'), 'a catalog feed URL is accounted');
+    assert.ok(!hosts.includes('retired-url.example'), 'a retired URL quoted in feed notes stays out of the inventory');
+    assert.ok(!hosts.includes('retired-category.example'), 'a URL quoted in category notes stays out of the inventory');
     assert.ok(hosts.includes('depth.example'), 'a site-scoped Google News URL counts its publisher');
     assert.ok(!hosts.includes('retired.example'), 'a retired query quoted in notes stays out of the inventory');
   } finally {
