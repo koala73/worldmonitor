@@ -65,6 +65,7 @@ import { shouldDropOpinionTrack } from './lib/digest-opinion-track-filter.mjs';
 import {
   briefCandidateDue,
   buildBriefOnlyRules,
+  briefComposeTimesFromPointerCells,
   orderBriefOnlyRulesByStaleness,
   composeBriefFromDigestStories,
   compareRules,
@@ -2045,9 +2046,11 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   // endpoint) locate the most recent brief without knowing the slot.
   // One SET per compose is cheap and always current.
   const latestPointerKey = `brief:latest:${userId}`;
-  // synthesizedAt rides on the pointer, not the envelope (the renderer
-  // rejects unknown envelope keys); readers of the pointer use issueSlot only.
-  const latestPointerValue = JSON.stringify({ issueSlot, synthesizedAt });
+  // synthesizedAt and composedAt ride on the pointer, not the envelope (the
+  // renderer rejects unknown envelope keys); the api readers use issueSlot
+  // only. synthesizedAt ages reused prose; composedAt (every compose, reused
+  // prose included) orders the budgeted default-brief pass.
+  const latestPointerValue = JSON.stringify({ issueSlot, synthesizedAt, composedAt: nowMs });
   // raw = true pins the bare-key write (#7674): the digest composer publishes
   // the envelopes every api/brief reader resolves raw; see the insights read
   // above for the VERCEL_ENV-leak rationale.
@@ -2098,31 +2101,24 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
  * @returns {Promise<string[]>}
  */
 /**
- * When each user's current brief prose was synthesized, from the
- * brief:latest pointer (one pipeline for all users). Users with no pointer, or
- * a pointer written before synthesizedAt existed, are absent from the map,
- * which orders them first. On a Redis failure the map is empty and the pass
- * keeps the Convex order for this tick.
+ * Each default-brief user's last compose time, from the brief:latest pointer
+ * (one pipeline for all users; parsing in briefComposeTimesFromPointerCells).
+ * On a failed pipeline or read the map is empty and the pass keeps the Convex
+ * order for this tick.
  *
  * @param {string[]} userIds
  * @returns {Promise<Map<string, number>>}
  */
-async function fetchBriefSynthesisTimes(userIds) {
-  const out = new Map();
-  if (userIds.length === 0) return out;
+async function fetchBriefComposeTimes(userIds) {
+  if (userIds.length === 0) return new Map();
   // raw = true: the pointer is a bare seeder-owned key (#7674).
   const cells = await redisPipeline(userIds.map((id) => ['GET', `brief:latest:${id}`]), 5_000, true);
-  if (!Array.isArray(cells)) {
+  const times = briefComposeTimesFromPointerCells(userIds, cells);
+  if (!times) {
     console.warn('[digest] brief: brief-only staleness read failed; composing in Convex order this tick');
-    return out;
+    return new Map();
   }
-  cells.forEach((cell, i) => {
-    try {
-      const ptr = typeof cell?.result === 'string' ? JSON.parse(cell.result) : null;
-      if (Number.isFinite(ptr?.synthesizedAt)) out.set(userIds[i], ptr.synthesizedAt);
-    } catch { /* malformed pointer → treated as no brief */ }
-  });
-  return out;
+  return times;
 }
 
 async function fetchBriefOnlyUserIds() {
@@ -2984,8 +2980,8 @@ async function main() {
   // toward the failure gate below.
   if (briefOnlyRules.length) {
     console.log(`[digest] brief: ${briefOnlyRules.length} paid users without a digest rule get a default in-app brief`);
-    const synthesizedAtByUser = await fetchBriefSynthesisTimes(briefOnlyRules.map((r) => r.userId));
-    const briefOnly = await composeBriefsForRun(orderBriefOnlyRulesByStaleness(briefOnlyRules, synthesizedAtByUser), nowMs, {
+    const composedAtByUser = await fetchBriefComposeTimes(briefOnlyRules.map((r) => r.userId));
+    const briefOnly = await composeBriefsForRun(orderBriefOnlyRulesByStaleness(briefOnlyRules, composedAtByUser), nowMs, {
       deadlineMs: Date.now() + BRIEF_ONLY_COMPOSE_BUDGET_MS,
     });
     composeSuccess += briefOnly.composeSuccess;

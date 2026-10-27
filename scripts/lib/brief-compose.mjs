@@ -105,23 +105,49 @@ export function buildBriefOnlyRules(userIds, digestRules) {
 }
 
 /**
+ * Each user's last compose time from a pipeline of `GET brief:latest:{id}`
+ * results (same order as `userIds`). The pointer's `composedAt` is stamped on
+ * every compose, fresh or reused prose, so it is the scheduling key;
+ * `synthesizedAt` only ages reused prose. Missing, legacy (no composedAt) and
+ * malformed pointers are left out, which orders those users first. Returns
+ * null when the pipeline or any single read failed: a failed read is not "no
+ * brief", and the caller keeps the Convex order for that tick.
+ *
+ * @param {string[]} userIds
+ * @param {unknown} cells
+ * @returns {Map<string, number> | null}
+ */
+export function briefComposeTimesFromPointerCells(userIds, cells) {
+  if (!Array.isArray(cells) || cells.length !== userIds.length) return null;
+  if (cells.some((c) => !c || typeof c !== 'object' || 'error' in c)) return null;
+  const out = new Map();
+  cells.forEach((cell, i) => {
+    try {
+      const ptr = typeof cell.result === 'string' ? JSON.parse(cell.result) : null;
+      if (Number.isFinite(ptr?.composedAt)) out.set(userIds[i], ptr.composedAt);
+    } catch { /* malformed pointer → treated as no brief */ }
+  });
+  return out;
+}
+
+/**
  * Order default-brief rules for this tick, stalest first: users with no brief,
- * then the oldest synthesis time (from each user's brief:latest pointer). The
- * pass runs after deliveries under a time budget, so whoever it does not reach
- * this tick is first on the next one. A rotation that shifted the start by one
- * user per tick recomposed nearly the same users every tick and left most of
- * them without a brief for days (first run 2026-10-27: 99 composed, 152
- * deferred).
+ * then the oldest last-compose time (from each user's brief:latest pointer).
+ * The pass runs after deliveries under a time budget, so whoever it does not
+ * reach this tick is first on the next one. A rotation that shifted the start
+ * by one user per tick recomposed nearly the same users every tick and left
+ * most of them without a brief for days (first run 2026-10-27: 99 composed,
+ * 152 deferred).
  *
  * @template {{ userId: string }} T
  * @param {T[]} rules
- * @param {Map<string, unknown>} synthesizedAtByUser
+ * @param {Map<string, unknown>} composedAtByUser
  * @returns {T[]}
  */
-export function orderBriefOnlyRulesByStaleness(rules, synthesizedAtByUser) {
+export function orderBriefOnlyRulesByStaleness(rules, composedAtByUser) {
   if (!Array.isArray(rules)) return [];
   const at = (r) => {
-    const v = synthesizedAtByUser?.get(r.userId);
+    const v = composedAtByUser?.get(r.userId);
     return typeof v === 'number' && Number.isFinite(v) ? v : -Infinity;
   };
   return rules

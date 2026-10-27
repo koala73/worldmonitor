@@ -63,7 +63,7 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
     },
     parseDigestOnlyUser: () => ({ kind: 'unset' }),
     fetchBriefOnlyUserIds: async () => briefOnlyUserIds, buildBriefOnlyRules, orderBriefOnlyRulesByStaleness,
-    fetchBriefSynthesisTimes: async () => synthesizedAt,
+    fetchBriefComposeTimes: async () => synthesizedAt,
     BRIEF_ONLY_COMPOSE_BUDGET_MS: 60_000,
     composeBriefsForRun: async (rules: any[], _nowMs: number, opts?: { deadlineMs?: number }) => {
       composedRules.push(rules);
