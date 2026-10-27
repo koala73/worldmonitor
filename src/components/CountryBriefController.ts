@@ -106,7 +106,7 @@ export class CountryBriefController {
         const markets = await fetchCountryMarkets(countryName, code, metadata => { fetchedAt = metadata.fetchedAt; });
         return { markets, fetchedAt };
       }
-      const response = await this.source.prediction.listPredictionMarkets({ category: `country:${code}`, query: '', pageSize: 5, cursor: '' }, { signal });
+      const response = await this.source.prediction.listPredictionMarkets({ category: `country:${code}`, query: '', pageSize: 5, cursor: '', minLiquidity: 0 }, { signal });
       if (!response.dataAvailable) throw new Error('Country markets unavailable');
       return { markets: response.markets.map(protoToMarket).filter(m => !m.endDate || Date.parse(m.endDate) > Date.now()).slice(0, 5), fetchedAt: response.fetchedAt };
     }, result => this.panel.updateMarkets(result.markets, { fetchedAt: result.fetchedAt }));

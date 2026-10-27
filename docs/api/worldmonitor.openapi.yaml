@@ -26948,6 +26948,17 @@ paths:
                   example: "supply chain risk"
                   schema:
                     type: string
+                - name: min_liquidity
+                  in: query
+                  description: |-
+                    Optional minimum liquidity (resting order-book depth in USD). When above 0,
+                     only markets with liquidity at or above this value are returned; markets
+                     without a liquidity value are dropped. Applied before page_size.
+                  required: false
+                  example: 1.5
+                  schema:
+                    type: number
+                    format: double
                 - name: jmespath
                   in: query
                   description: |-
@@ -26968,9 +26979,9 @@ paths:
                                     - "category": "cs.AI"
                                       "closesAt": 1717200000000
                                       "id": "example-id"
+                                      "liquidity": 1.5
                                       "source": "MARKET_SOURCE_POLYMARKET"
                                       "title": "example"
-                                      "url": "https://example.com/worldmonitor"
                                 "pagination":
                                     "nextCursor": "next-page-token"
                                     "totalCount": 1
@@ -55907,6 +55918,14 @@ components:
                 query:
                     type: string
                     description: Optional search query for market titles.
+                minLiquidity:
+                    type: number
+                    minimum: 0
+                    format: double
+                    description: |-
+                        Optional minimum liquidity (resting order-book depth in USD). When above 0,
+                         only markets with liquidity at or above this value are returned; markets
+                         without a liquidity value are dropped. Applied before page_size.
             description: ListPredictionMarketsRequest specifies filters for retrieving prediction markets.
         worldmonitor_prediction_v1_ListPredictionMarketsResponse:
             type: object
@@ -55980,6 +55999,14 @@ components:
                     minimum: -1
                     format: double
                     description: Upstream 7-day Yes price change on the probability scale. Polymarket only.
+                liquidity:
+                    type: number
+                    minimum: 0
+                    format: double
+                    description: |-
+                        Resting order-book depth in USD, measured per venue: Polymarket CLOB
+                         liquidity, or the sum of price times size over every Kalshi yes and no bid.
+                         Absent when the venue reports none or the order book could not be fetched.
             required:
                 - id
             description: PredictionMarket represents a prediction market contract.
