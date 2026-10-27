@@ -102,8 +102,9 @@ describe('seed-gold-etf-flows: parseGldArchiveXlsx', () => {
 });
 
 // A one-entry ZIP whose central directory declares `declaredSize` bytes once
-// inflated. `method` 0 stores `data`; 8 deflates it.
-function buildZip(data, { declaredSize = data.length, method = 0 } = {}) {
+// inflated. `method` 0 stores `data`; 8 deflates it. `entryCount` is what the
+// end-of-central-directory record claims.
+function buildZip(data, { declaredSize = data.length, method = 0, entryCount = 1 } = {}) {
   const body = method === 8 ? deflateRawSync(data) : data;
   const name = Buffer.from('xl/worksheets/sheet1.xml');
   const local = Buffer.alloc(30);
@@ -124,8 +125,8 @@ function buildZip(data, { declaredSize = data.length, method = 0 } = {}) {
   const centralOffset = local.length + name.length + body.length;
   const end = Buffer.alloc(22);
   end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(1, 8);
-  end.writeUInt16LE(1, 10);
+  end.writeUInt16LE(entryCount, 8);
+  end.writeUInt16LE(entryCount, 10);
   end.writeUInt32LE(central.length + name.length, 12);
   end.writeUInt32LE(centralOffset, 16);
   return Buffer.concat([local, name, body, central, name, end]);
@@ -144,6 +145,16 @@ describe('seed-gold-etf-flows: archive size limits', () => {
   it('rejects an entry that inflates past the cap even when it declares a small size', () => {
     const bomb = buildZip(Buffer.alloc(4 * 1024 * 1024), { declaredSize: 100, method: 8 });
     assert.throws(() => assertXlsxExpansionWithin(bomb, 1024 * 1024), /expands past/);
+  });
+
+  it('checks every central-directory record, not just the count the archive claims', () => {
+    // JSZip walks the records by signature and ignores this count.
+    const bomb = (entryCount) => buildZip(Buffer.alloc(4 * 1024 * 1024), { declaredSize: 100, method: 8, entryCount });
+    assert.throws(() => assertXlsxExpansionWithin(bomb(0), 1024 * 1024));
+    assert.throws(() => assertXlsxExpansionWithin(bomb(2), 1024 * 1024));
+    const small = (entryCount) => buildZip(Buffer.from('<x/>'), { entryCount });
+    assert.throws(() => assertXlsxExpansionWithin(small(0)), /1 central directory records, expected 0/);
+    assert.doesNotThrow(() => assertXlsxExpansionWithin(small(1)));
   });
 
   it('accepts a real workbook', async () => {

@@ -89,12 +89,15 @@ export function assertXlsxExpansionWithin(buf, maxBytes = MAX_GLD_XLSX_EXPANDED_
     }
   }
   if (eocd === -1) throw notAZip('no end of central directory');
+  // JSZip walks the records by signature and ignores the declared count, so
+  // walk them the same way and refuse an archive whose count disagrees.
   const count = buf.readUInt16LE(eocd + 10);
   let at = buf.readUInt32LE(eocd + 16);
   let declared = 0;
   let inflated = 0;
-  for (let n = 0; n < count; n++) {
-    if (at + 46 > buf.length || buf.readUInt32LE(at) !== 0x02014b50) throw notAZip('bad central directory');
+  let records = 0;
+  while (at + 46 <= buf.length && buf.readUInt32LE(at) === 0x02014b50) {
+    records++;
     const method = buf.readUInt16LE(at + 10);
     const compressedSize = buf.readUInt32LE(at + 20);
     declared += buf.readUInt32LE(at + 24);
@@ -118,6 +121,7 @@ export function assertXlsxExpansionWithin(buf, maxBytes = MAX_GLD_XLSX_EXPANDED_
     if (inflated > maxBytes) throw tooLarge(maxBytes);
     at += 46 + buf.readUInt16LE(at + 28) + buf.readUInt16LE(at + 30) + buf.readUInt16LE(at + 32);
   }
+  if (records !== count) throw notAZip(`${records} central directory records, expected ${count}`);
 }
 
 export async function parseGldArchiveXlsx(xlsxBuffer) {

@@ -1460,8 +1460,10 @@ function isImplausiblyFuture(dayOrInstant, retrievedAt) {
     || value > retrieval + DAY_MS;
 }
 
-// The real window sentence is about 50 characters long.
+// The real window sentence is about 50 characters long, and a report mentions
+// "(UTC+8)" two or three times.
 const MND_WINDOW_LOOKBEHIND_CHARS = 2048;
+const MND_WINDOW_MAX_MARKERS = 4;
 
 export function parseTaiwanMndDetail(
   html,
@@ -1485,15 +1487,20 @@ export function parseTaiwanMndDetail(
   }
 
   const text = decodeHtml(extractMndReportBody(html));
-  // The window sentence ends at the first "(UTC+8)". Matching only the text
-  // just before it keeps a body full of "6 a.m." starts from being rescanned
-  // to the end once per start.
-  const markerAt = text.search(/\(UTC\+8\)/i);
-  if (markerAt === -1) throw new Error('MND_REPORTING_WINDOW_MISSING');
-  const windowText = text.slice(Math.max(0, markerAt - MND_WINDOW_LOOKBEHIND_CHARS), markerAt + '(UTC+8)'.length);
-  const windowMatch = windowText.match(
-    /6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?to\s*6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?\(UTC\+8\)/i,
-  );
+  // The window sentence ends at a "(UTC+8)". Matching only the text just
+  // before each of the first few markers keeps a body full of "6 a.m." starts
+  // from being rescanned to the end once per start.
+  const marker = /\(UTC\+8\)/gi;
+  let windowMatch = null;
+  for (let tried = 0; !windowMatch && tried < MND_WINDOW_MAX_MARKERS; tried++) {
+    const found = marker.exec(text);
+    if (!found) break;
+    windowMatch = text
+      .slice(Math.max(0, found.index - MND_WINDOW_LOOKBEHIND_CHARS), marker.lastIndex)
+      .match(
+        /6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?to\s*6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?\(UTC\+8\)/i,
+      );
+  }
   if (!windowMatch) throw new Error('MND_REPORTING_WINDOW_MISSING');
   const publicationYear = Number(publicationTime.slice(0, 4));
   const start = localSixAmToUtc(

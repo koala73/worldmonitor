@@ -159,9 +159,21 @@ describe('parseSize', () => {
   });
 
   it('still reads a size from a long product name', () => {
-    const name = `Organic Free-Range Brown Eggs from Pasture-Raised Hens, Grade A Large, Family Pack ${'Value '.repeat(10)}12 x 500g`;
-    expect(name.length).toBeGreaterThan(100);
+    const name = `Organic Free-Range Brown Eggs from Pasture-Raised Hens, Grade A Large, Family Pack ${'Value '.repeat(40)}12 x 500g`;
+    expect(name.length).toBeGreaterThan(300);
     expect(parseSize(name)?.baseQuantity).toBe(6000);
+  });
+
+  it.each([
+    ['2\nx\n500g', 2, 1000],
+    ['6 x\n330ml', 6, 1980],
+    ['3 pack\n\n250 g', 3, 750],
+  ])('reads a pack split across lines: %j', (raw, packCount, baseQuantity) => {
+    expect(parseSize(raw)).toMatchObject({ packCount, baseQuantity });
+  });
+
+  it('does not read a pack whose size is not on the last line', () => {
+    expect(parseSize('2 x 1\n500g')).toBeNull();
   });
 
   it.each([
