@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 471211
+    "raw": 455814
   },
   "chunks": {
     "analytics": {
@@ -59,7 +59,7 @@
       "files": 1
     },
     "map-layer-definitions": {
-      "raw": 30047,
+      "raw": 14650,
       "files": 1
     },
     "panels": {
