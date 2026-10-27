@@ -141,6 +141,18 @@ describe('readChannelLivePage', () => {
     assert.equal(readChannelLivePage(SORRY_PAGE, CHANNEL).reason, 'bot-wall');
   });
 
+  it('reads a capped page of unclosed <link or <form openers in linear time', () => {
+    // Each unclosed opener used to rescan the rest of the page: seconds at 4 MiB.
+    const size = 4 * 1024 * 1024;
+    for (const unit of ['<link ', '<form ']) {
+      const page = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+      const started = performance.now();
+      assert.equal(readChannelLivePage(page, CHANNEL).reason, 'no-canonical', unit);
+      const elapsed = performance.now() - started;
+      assert.ok(elapsed < 250, `${unit}: ${elapsed.toFixed(0)} ms`);
+    }
+  });
+
   it('never throws on input that is not a page', () => {
     for (const junk of [null, undefined, 42, {}, '<link rel="canonical" href="https://www.youtube.com/watch?v=short">']) {
       assert.equal(readChannelLivePage(junk, CHANNEL).status, 'unreadable');

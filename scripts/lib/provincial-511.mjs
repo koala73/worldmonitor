@@ -10,6 +10,7 @@
  */
 
 import { acquire511Slot } from '../_511-rate-limit.mjs';
+import { readBoundedJsonResponse } from '../_china-exchange-transport.mjs';
 import { finiteLat, finiteLon, lonLatPair } from './geo-coord.mjs';
 // #6618 limiter v1 lives in scripts/_511-rate-limit.mjs only — no scripts/shared/ mirror.
 
@@ -360,16 +361,15 @@ export function isCompleteVendor511(envelope, config) {
   return envelope.failedResources.length === 0;
 }
 
+// Streams the body and cancels it at the cap; a body without a declared
+// length is never buffered whole.
 async function readLimitedJson(resp, maxBytes) {
-  const contentLength = resp.headers?.get?.('content-length');
-  if (contentLength && Number(contentLength) > maxBytes) {
-    throw new Error(`provincial-511: payload exceeds ${maxBytes} bytes`);
+  try {
+    return await readBoundedJsonResponse(resp, maxBytes);
+  } catch (err) {
+    if (err?.code === 'RESPONSE_TOO_LARGE') throw new Error(`provincial-511: payload exceeds ${maxBytes} bytes`);
+    throw err?.code === 'MALFORMED_RESPONSE' && err.cause ? err.cause : err;
   }
-  const buffer = Buffer.from(await resp.arrayBuffer());
-  if (buffer.byteLength > maxBytes) {
-    throw new Error(`provincial-511: payload exceeds ${maxBytes} bytes`);
-  }
-  return JSON.parse(buffer.toString('utf8'));
 }
 
 function kindForResource(resource) {

@@ -107,6 +107,35 @@ test('a pinned article response without a body does not crash the server', async
   }), null);
 });
 
+const articleFrom = async (html) => {
+  const { fetchArticleText } = await import('../lib/sources.mjs');
+  return fetchArticleText('https://news.example/article', {
+    fetchImpl: async () => new Response(html),
+    lookupImpl: async () => [{ address: '93.184.215.14', family: 4 }],
+  });
+};
+
+test('article text drops scripts, styles and tags but keeps unclosed text', async () => {
+  const words = 'Officials said 31 people died. '.repeat(8);
+  const html = `<p>${words}</p><SCRIPT type="x">alert(1)</script ><style>p{}</STYLE>`
+    + `<scripts>kept</scripts> a<b <script>never closed, tail <b`;
+  assert.equal(
+    await articleFrom(html),
+    `${words.trim()} kept a never closed, tail <b`,
+  );
+});
+
+test('article text strips a capped page of unclosed tag openers in linear time', async () => {
+  const { MAX_ARTICLE_BYTES } = await import('../lib/sources.mjs');
+  for (const unit of ['<', '<script', '<style ', '<script></script']) {
+    const html = unit.repeat(Math.ceil(MAX_ARTICLE_BYTES / unit.length)).slice(0, MAX_ARTICLE_BYTES);
+    const started = performance.now();
+    await articleFrom(html);
+    const elapsed = performance.now() - started;
+    assert.ok(elapsed < 500, `${unit}: ${elapsed.toFixed(0)} ms`);
+  }
+});
+
 for (const [encoding, compress] of [['gzip', gzipSync], ['br', brotliCompressSync], ['deflate', deflateSync]]) {
   test(`pinned article transport decodes ${encoding} evidence`, async t => {
     const evidence = 'Verified figures: 31 people died and 120 were injured. '.repeat(8).trim();

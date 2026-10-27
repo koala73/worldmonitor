@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { renderDigestEmailHtml, DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
+import { buildBriefOnlyRules, rotateBriefOnlyRules } from '../scripts/lib/brief-compose.mjs';
 
 // A transient Upstash timeout in one user's send path used to reach
 // main().catch and end the whole cron tick, so every user after it in the
@@ -22,12 +23,14 @@ function timeoutError() {
   return new DOMException('The operation was aborted due to timeout', 'TimeoutError');
 }
 
-function runDigest({ failingUsers, rulesResponse, exitError }: {
+function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = [] }: {
   failingUsers: Set<string>;
   rulesResponse?: Response;
   exitError?: Error;
+  briefOnlyUserIds?: string[];
 }) {
   const users = ['first', 'second', 'third'];
+  const composedRules: any[][] = [];
   const delivered: string[] = [];
   const metadata: any[] = [];
   const exits: number[] = [];
@@ -58,7 +61,13 @@ function runDigest({ failingUsers, rulesResponse, exitError }: {
       return Response.json([{ channelType: 'email', email: `${userId}@example.com`, verified: true, emailOwnership: 'verified_account' }]);
     },
     parseDigestOnlyUser: () => ({ kind: 'unset' }),
-    composeBriefsForRun: async () => ({ briefByUser: new Map(), composeSuccess: 0, composeFailed: 0 }),
+    fetchBriefOnlyUserIds: async () => briefOnlyUserIds, buildBriefOnlyRules, rotateBriefOnlyRules,
+    BRIEF_ONLY_COMPOSE_BUDGET_MS: 60_000,
+    composeBriefsForRun: async (rules: any[], _nowMs: number, opts?: { deadlineMs?: number }) => {
+      composedRules.push(rules);
+      lifecycle.push(opts?.deadlineMs ? 'compose:bounded' : 'compose');
+      return { briefByUser: new Map(), composeSuccess: 0, composeFailed: 0 };
+    },
     readCooldownConfig: () => ({ invalidRaw: null, mode: 'off' }),
     getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,
     digestWindowStartMs: () => 0,
@@ -77,12 +86,41 @@ function runDigest({ failingUsers, rulesResponse, exitError }: {
     emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',
     sendResendEmail: async (_client: unknown, message: { to: string }) => {
       delivered.push(message.to);
+      lifecycle.push('deliver');
       return { ok: true };
     },
     writeDigestLastRunMeta: async (meta: unknown) => { metadata.push(meta); lifecycle.push('metadata'); },
   });
-  return { run, delivered, metadata, exits, warnings, lifecycle };
+  return { run, delivered, metadata, exits, warnings, lifecycle, composedRules };
 }
+
+// A paid user with no digest rule got no brief, and the dashboard said
+// "composing" forever (2026-10-27). They get a default compose-only rule, which
+// must reach compose and never reach any channel.
+// Array.from copies out of the VM realm so deepStrictEqual compares values, not prototypes.
+const ids = (rules: any[]) => Array.from(rules, (r: { userId: string; briefOnly?: boolean }) => `${r.userId}${r.briefOnly ? ':brief-only' : ''}`);
+
+test('paid users without a digest rule are composed but never sent anything', async () => {
+  const { run, delivered, composedRules, lifecycle } = runDigest({ failingUsers: new Set(), briefOnlyUserIds: ['brief_only', 'second'] });
+  await run();
+  // 'second' already has a digest rule, so it gets no duplicate default.
+  assert.deepEqual(composedRules.map(ids), [['first', 'second', 'third'], ['brief_only:brief-only']]);
+  assert.deepEqual(delivered, ['first@example.com', 'second@example.com', 'third@example.com']);
+  // Default briefs are composed after every delivery, under a deadline, so they
+  // never delay a scheduled digest (#9758 review).
+  const events = Array.from(lifecycle).filter((e) => e !== 'metadata');
+  assert.deepEqual(events, ['compose', 'deliver', 'deliver', 'deliver', 'compose:bounded']);
+});
+
+test('a run with no digest rules still composes the brief-only users', async () => {
+  const { run, delivered, composedRules, metadata } = runDigest({
+    failingUsers: new Set(), rulesResponse: Response.json([]), briefOnlyUserIds: ['brief_only'],
+  });
+  await run();
+  assert.deepEqual(composedRules.map(ids), [[], ['brief_only:brief-only']]);
+  assert.deepEqual(delivered, []);
+  assert.equal(metadata.at(-1).sentCount, 0);
+});
 
 test('a non-array rules response fails after recording metadata and flushing events', async (t) => {
   for (const body of [{}, { rules: [] }, null, 'rules', 1, false]) {

@@ -9,6 +9,7 @@ import {
 } from "./_generated/server";
 import { channelTypeValidator, digestModeValidator, quietHoursOverrideValidator, sensitivityValidator } from "./constants";
 import { CHOKEPOINT_ALERT_IDS } from "../shared/chokepoint-alert-ids";
+import { mergeEntitlementFeatures } from "./lib/entitlements";
 
 type DigestMode = "realtime" | "daily" | "twice_daily" | "weekly";
 type Sensitivity = "all" | "high" | "critical";
@@ -777,6 +778,40 @@ export const getDigestRules = internalQuery({
     return enabled.filter(
       (r) => r.digestMode !== undefined && r.digestMode !== "realtime",
     );
+  },
+});
+
+// INTERNAL ONLY (cross-tenant scan, same reasoning as getDigestRules). Paid users
+// who get no brief from their own rules: no enabled digest-mode rule, and no rule
+// that opted out of the AI digest. The digest cron composes a default in-app brief
+// for each (it never sends one to a channel), so the dashboard's Latest Brief
+// panel is not stuck on "composing" for a paying user who never set a schedule.
+// "Paid" mirrors /relay/entitlement: validUntil >= now and the catalog-merged
+// features.tier >= 1.
+export const getBriefOnlyUsers = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const active = await ctx.db
+      .query("entitlements")
+      .withIndex("by_validUntil", (q) => q.gte("validUntil", now))
+      .collect();
+    const paid = new Set(
+      active
+        .filter((e) => (mergeEntitlementFeatures(e.planKey, e.features).tier ?? 0) >= 1)
+        .map((e) => e.userId),
+    );
+    const out: string[] = [];
+    for (const userId of paid) {
+      const rules = await ctx.db
+        .query("alertRules")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect();
+      if (rules.some((r) => r.aiDigestEnabled === false)) continue;
+      if (rules.some((r) => r.enabled && r.digestMode !== undefined && r.digestMode !== "realtime")) continue;
+      out.push(userId);
+    }
+    return out;
   },
 });
 

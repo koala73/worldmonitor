@@ -565,6 +565,24 @@ test('responses larger than 5MB are rejected', async () => {
   );
 });
 
+test('an undeclared oversized body is cancelled at the 5MB cap, not buffered', async () => {
+  let pulled = 0;
+  const chunk = new Uint8Array(1 << 20).fill(0x20);
+  const fetchFn = async () => new Response(new ReadableStream({
+    pull(controller) {
+      if (pulled >= 64 * chunk.length) return controller.close();
+      pulled += chunk.length;
+      controller.enqueue(chunk);
+    },
+    // No read-ahead: each chunk is pulled only when the reader asks for it.
+  }, { highWaterMark: 0 }), { headers: { 'content-type': 'application/json' } });
+  await assert.rejects(
+    () => get('https://511on.ca', 'event', { fetchFn, acquireSlot: async () => {} }),
+    /exceeds 5242880 bytes/,
+  );
+  assert.ok(pulled <= 5 * 1024 * 1024 + chunk.length, `pulled ${pulled} bytes`);
+});
+
 const ALBERTA_ALERTS_FIXTURE = JSON.parse(
   readFileSync(new URL('./fixtures/alberta-511-alerts.json', import.meta.url), 'utf8'),
 );

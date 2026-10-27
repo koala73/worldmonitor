@@ -63,6 +63,9 @@ import {
 } from '../shared/story-phase.js';
 import { shouldDropOpinionTrack } from './lib/digest-opinion-track-filter.mjs';
 import {
+  briefCandidateDue,
+  buildBriefOnlyRules,
+  rotateBriefOnlyRules,
   composeBriefFromDigestStories,
   compareRules,
   deriveThreadsFromOrderedStories,
@@ -235,6 +238,15 @@ const NONDUE_SYNTHESIS_REUSE_MS = (() => {
   return minutes * 60_000;
 })();
 
+// Wall-clock budget for the default-brief pass (#9758), which runs after
+// deliveries. The cron ticks every ~30 min; a cold start needs a fresh
+// synthesis for every default-brief user, so the pass stops starting new
+// users at this budget and the rest are reached on later ticks.
+const BRIEF_ONLY_COMPOSE_BUDGET_MS = (() => {
+  const raw = Number.parseInt(process.env.DIGEST_BRIEF_ONLY_BUDGET_MIN ?? '', 10);
+  return (Number.isFinite(raw) && raw > 0 ? raw : 8) * 60_000;
+})();
+
 // Free-tier follow limit (PR C / U10). Mirrors the UI cap at
 // `src/components/FollowCountryButton.ts` and the server-side mutation
 // cap at `convex/followedCountries.ts::followCountry`. Three layers
@@ -371,8 +383,12 @@ const briefLlmDeps = {
 
 /**
  * #4917: read the user's most recent stored brief envelope via the
- * latest-pointer. Returns null on any miss/parse failure — callers treat
- * null as "no prior envelope" and pay a fresh synthesis.
+ * latest-pointer, plus the time its prose was synthesized (carried on the
+ * pointer; absent on pointers written before #9758). Returns null on any
+ * miss/parse failure — callers treat null as "no prior envelope" and pay a
+ * fresh synthesis.
+ *
+ * @returns {Promise<{ envelope: object; synthesizedAt: number|undefined } | null>}
  */
 async function fetchLatestBriefEnvelope(userId) {
   try {
@@ -382,7 +398,10 @@ async function fetchLatestBriefEnvelope(userId) {
     if (!ptr || typeof ptr.issueSlot !== 'string' || ptr.issueSlot.length === 0) return null;
     const rawEnv = await upstashRest('GET', `brief:${userId}:${ptr.issueSlot}`);
     if (typeof rawEnv !== 'string' || rawEnv.length === 0) return null;
-    return JSON.parse(rawEnv);
+    return {
+      envelope: JSON.parse(rawEnv),
+      synthesizedAt: Number.isFinite(ptr.synthesizedAt) ? ptr.synthesizedAt : undefined,
+    };
   } catch {
     return null;
   }
@@ -1528,9 +1547,10 @@ function buildChannelBodies(storyLists, aiSummary, magazineUrl) {
  *
  * @param {unknown[]} rules
  * @param {number} nowMs
+ * @param {{ deadlineMs?: number }} [opts] stop starting new users at this wall-clock time
  * @returns {Promise<{ briefByUser: Map<string, object>; composeSuccess: number; composeFailed: number }>}
  */
-async function composeBriefsForRun(rules, nowMs) {
+async function composeBriefsForRun(rules, nowMs, { deadlineMs } = {}) {
   const briefByUser = new Map();
   // Missing secret without explicit operator-disable = misconfigured
   // rollout. Count it as a compose failure so the end-of-run exit
@@ -1586,15 +1606,23 @@ async function composeBriefsForRun(rules, nowMs) {
   for (const [userId, candidates] of groupEligibleRulesByUser(rules)) {
     const annotated = [];
     for (const rule of candidates) {
-      const lastSentAt = await getLastSentAt(rule);
-      annotated.push({ rule, lastSentAt, due: isDue(rule, lastSentAt) });
+      // Brief-only rules are never sent, so they have no last-sent record.
+      const lastSentAt = rule.briefOnly ? null : await getLastSentAt(rule);
+      annotated.push({ rule, lastSentAt, due: briefCandidateDue(rule, lastSentAt, isDue) });
     }
     annotatedByUser.set(userId, annotated);
   }
 
   let composeSuccess = 0;
   let composeFailed = 0;
+  let composeDeferred = 0;
   for (const [userId, annotated] of annotatedByUser) {
+    // A bounded pass (the default-brief pass) stops starting new users at its
+    // deadline; the rest are composed on a later tick.
+    if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+      composeDeferred++;
+      continue;
+    }
     try {
       const hit = await composeAndStoreBriefForUser(userId, annotated, insightsNumbers, digestFor, nowMs);
       if (hit) {
@@ -1611,7 +1639,8 @@ async function composeBriefsForRun(rules, nowMs) {
     }
   }
   console.log(
-    `[digest] brief: compose_success=${composeSuccess} compose_failed=${composeFailed} total_users=${annotatedByUser.size}`,
+    `[digest] brief: compose_success=${composeSuccess} compose_failed=${composeFailed} ` +
+      `deferred=${composeDeferred} total_users=${annotatedByUser.size}`,
   );
   return { briefByUser, composeSuccess, composeFailed };
 }
@@ -1686,6 +1715,10 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   let publicLead = null;
   let synthesisLevel = 3;  // pessimistic default; bumped on success
   let synthesisReused = false;
+  // When this brief's prose was generated: this tick unless it is reused, in
+  // which case the reused prose keeps its original time (written to the
+  // brief:latest pointer so the next reuse check ages it correctly).
+  let synthesizedAt = nowMs;
   if (BRIEF_LLM_ENABLED) {
     // Synthesis-boundary adapter. `winnerStories` is the raw
     // buildDigest pool ({ title, severity, sources }); the synthesis
@@ -1710,16 +1743,18 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     // due candidate with stories is always the winner).
     if (!winner.due && NONDUE_SYNTHESIS_REUSE_MS > 0) {
       const prior = await fetchLatestBriefEnvelope(userId);
-      const decision = resolveNonDueSynthesisReuse(prior, {
+      const decision = resolveNonDueSynthesisReuse(prior?.envelope ?? null, {
         nowMs,
         maxAgeMs: NONDUE_SYNTHESIS_REUSE_MS,
         currentStories: synthesisStories,
+        priorSynthesizedAt: prior?.synthesizedAt,
       });
       if (decision.reuse) {
         synthesis = decision.synthesis;
         publicLead = decision.publicLead;
         synthesisLevel = 1;
         synthesisReused = true;
+        synthesizedAt = decision.synthesizedAt;
         console.log(
           `[digest] synthesis reused user=${userId} ` +
             `age_min=${Math.round(decision.ageMs / 60_000)} public=${publicLead ? 1 : 0}`,
@@ -2010,7 +2045,9 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   // endpoint) locate the most recent brief without knowing the slot.
   // One SET per compose is cheap and always current.
   const latestPointerKey = `brief:latest:${userId}`;
-  const latestPointerValue = JSON.stringify({ issueSlot });
+  // synthesizedAt rides on the pointer, not the envelope (the renderer
+  // rejects unknown envelope keys); readers of the pointer use issueSlot only.
+  const latestPointerValue = JSON.stringify({ issueSlot, synthesizedAt });
   // raw = true pins the bare-key write (#7674): the digest composer publishes
   // the envelopes every api/brief reader resolves raw; see the insights read
   // above for the VERCEL_ENV-leak rationale.
@@ -2052,6 +2089,35 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Paid users who need a default in-app brief (Convex `getBriefOnlyUsers`).
+ * Never fatal: on any failure the run composes for digest rules only, as it
+ * did before this list existed.
+ *
+ * @returns {Promise<string[]>}
+ */
+async function fetchBriefOnlyUserIds() {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/relay/brief-only-users`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${RELAY_SECRET}`,
+        'User-Agent': 'worldmonitor-digest/1.0',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) {
+      console.warn('[digest] brief: brief-only users fetch failed:', res.status);
+      return [];
+    }
+    const body = await res.json();
+    return Array.isArray(body) ? body.filter((id) => typeof id === 'string') : [];
+  } catch (err) {
+    console.warn('[digest] brief: brief-only users fetch threw:', err?.message);
+    return [];
+  }
+}
 
 async function main() {
   const nowMs = Date.now();
@@ -2115,7 +2181,12 @@ async function main() {
     process.exit(1);
   }
 
-  if (rules.length === 0) {
+  // Paid users without a digest rule still get today's in-app brief (default
+  // compose-only rules, appended before compose). Fetched before the empty and
+  // single-user checks so a run with no digest rules still composes them.
+  let briefOnlyUserIds = await fetchBriefOnlyUserIds();
+
+  if (rules.length === 0 && briefOnlyUserIds.length === 0) {
     console.log('[digest] No digest rules found — nothing to do');
     await writeDigestLastRunMeta({ startedAtMs: nowMs, sentCount: 0 });
     return;
@@ -2148,10 +2219,11 @@ async function main() {
     );
     const before = rules.length;
     rules = rules.filter((r) => r && r.userId === onlyUserFilter.userId);
+    briefOnlyUserIds = briefOnlyUserIds.filter((id) => id === onlyUserFilter.userId);
     console.log(
       `[digest] DIGEST_ONLY_USER — filtered ${before} rules → ${rules.length}`,
     );
-    if (rules.length === 0) {
+    if (rules.length === 0 && briefOnlyUserIds.length === 0) {
       console.warn(
         `[digest] No rules matched userId=${onlyUserFilter.userId} — nothing to do (exiting green).`,
       );
@@ -2175,7 +2247,11 @@ async function main() {
   // exit-non-zero gate AFTER the digest dispatch so Railway still
   // surfaces compose-layer breakage without skipping user-visible
   // digest delivery.
-  const { briefByUser, composeSuccess, composeFailed } = await composeBriefsForRun(rules, nowMs);
+  // Default compose-only rules for paid users without a digest rule. They never
+  // enter the send loop below (it iterates `rules`), so nothing is delivered;
+  // they are composed after deliveries (see the default-brief pass below).
+  const briefOnlyRules = buildBriefOnlyRules(briefOnlyUserIds, rules);
+  let { briefByUser, composeSuccess, composeFailed } = await composeBriefsForRun(rules, nowMs);
 
   // Sprint 1 / U2 — option (a) canonical-send mapping. Build a per-user
   // rule index ONCE so each iteration of the send loop can resolve the
@@ -2871,6 +2947,20 @@ async function main() {
   }
 
   console.log(`[digest] Cron run complete: ${sentCount} digest(s) sent`);
+
+  // Default-brief pass: in-app briefs for paid users without a digest rule.
+  // Runs after deliveries so it never delays a scheduled digest, and under a
+  // time budget so a cold start (every user needs a fresh synthesis) cannot
+  // push the run past the next tick; the rotation reaches skipped users first
+  // on later ticks. Its compose results count toward the failure gate below.
+  if (briefOnlyRules.length) {
+    console.log(`[digest] brief: ${briefOnlyRules.length} paid users without a digest rule get a default in-app brief`);
+    const briefOnly = await composeBriefsForRun(rotateBriefOnlyRules(briefOnlyRules, nowMs), nowMs, {
+      deadlineMs: Date.now() + BRIEF_ONLY_COMPOSE_BUDGET_MS,
+    });
+    composeSuccess += briefOnly.composeSuccess;
+    composeFailed += briefOnly.composeFailed;
+  }
 
   // Brief-compose failure gate. Runs at the very end so a compose-
   // layer outage (Upstash blip, insights key stale, signing secret

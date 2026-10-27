@@ -72,6 +72,72 @@ export function groupEligibleRulesByUser(rules) {
 }
 
 /**
+ * Default in-app brief rules for paid users with no digest rule of their own
+ * (ids from Convex `/relay/brief-only-users`). Before these existed such a user
+ * got no brief, and the dashboard's Latest Brief panel said "composing"
+ * forever. The rule is compose-only: it carries no channels and is never put
+ * in the send loop, so nothing is delivered anywhere.
+ *
+ * @param {unknown} userIds
+ * @param {Array<{ userId?: unknown }>} digestRules users already covered by a real rule
+ */
+export function buildBriefOnlyRules(userIds, digestRules) {
+  if (!Array.isArray(userIds)) return [];
+  const covered = new Set((digestRules ?? []).map((r) => r?.userId));
+  const out = [];
+  for (const userId of userIds) {
+    if (typeof userId !== 'string' || !userId || covered.has(userId)) continue;
+    covered.add(userId);
+    out.push({
+      userId,
+      variant: 'full',
+      enabled: true,
+      digestMode: 'daily',
+      sensitivity: 'high',
+      aiDigestEnabled: true,
+      channels: [],
+      eventTypes: [],
+      updatedAt: 0,
+      briefOnly: true,
+    });
+  }
+  return out;
+}
+
+/**
+ * Order default-brief rules for this tick. The default-brief pass runs after
+ * deliveries under a time budget, so a fixed order would starve the same tail
+ * users every tick; rotating the start by tick index reaches every user first
+ * within `rules.length` ticks.
+ *
+ * @template T
+ * @param {T[]} rules
+ * @param {number} nowMs
+ * @param {number} [tickMs] cron cadence (30 min)
+ * @returns {T[]}
+ */
+export function rotateBriefOnlyRules(rules, nowMs, tickMs = 30 * 60 * 1000) {
+  if (!Array.isArray(rules) || rules.length < 2) return Array.isArray(rules) ? rules : [];
+  const offset = Math.floor(nowMs / tickMs) % rules.length;
+  return [...rules.slice(offset), ...rules.slice(0, offset)];
+}
+
+/**
+ * Whether a compose candidate is due this tick. A brief-only rule never is:
+ * nothing is ever sent for it, so a due flag would request a fresh paid
+ * synthesis on every ~30-min tick; non-due candidates reuse recent prose
+ * (brief-synthesis-reuse.mjs).
+ *
+ * @param {{ briefOnly?: boolean }} rule
+ * @param {number|null} lastSentAt
+ * @param {(rule: object, lastSentAt: number|null) => boolean} isDue
+ */
+export function briefCandidateDue(rule, lastSentAt, isDue) {
+  if (rule?.briefOnly) return false;
+  return isDue(rule, lastSentAt);
+}
+
+/**
  * @deprecated Kept for existing test imports. Prefer
  * groupEligibleRulesByUser + per-user fallback at call sites.
  */

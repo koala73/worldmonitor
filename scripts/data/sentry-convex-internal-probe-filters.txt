@@ -23,6 +23,7 @@
 *Could not find public function for 'agentSources:countBySource'*
 *Could not find public function for 'agentSources:pageSources'*
 *Could not find public function for 'alertRules:getAlertRulesByUserId'*
+*Could not find public function for 'alertRules:getBriefOnlyUsers'*
 *Could not find public function for 'alertRules:getByEnabled'*
 *Could not find public function for 'alertRules:getDigestRules'*
 *Could not find public function for 'alertRules:setAlertRulesForUser'*

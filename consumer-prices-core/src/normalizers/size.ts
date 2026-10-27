@@ -76,7 +76,7 @@ const UNIT_MAP = new Map<string, { base: string; factor: number }>([
  * fallback never re-resolves them.
  *
  * Deliberately absent, because each would loosen a gate rather than tighten it:
- * `pack` (PACK_PATTERN already consumes "N pack <size>", and mapping it would
+ * `pack` (the pack pattern already consumes "N pack <size>", and mapping it would
  * make every "N Pack" canonical name parse, weakening the adapter's
  * missing-size rejection), `unidade(s)` (same, for the BR egg item), and
  * `pint` (568ml imperial vs 473ml US — the magnitude is market-dependent).
@@ -91,8 +91,37 @@ function normalizeUnit(raw: string): string | null {
   return null;
 }
 
-const PACK_PATTERN = /(?:^|\s)(\d+)\s*(?:[x×]|pack\b)\s*(.+)$/i;
-const SIZE_PATTERN = /(\d+(?:\.\d+)?)\s*([a-z]+)/i;
+// The pack prefix of /(?:^|\s)(\d+)\s*(?:[x×]|pack\b)\s*(.+)$/i. Its `(.+)$`
+// is checked in matchPack instead: as a regex it re-scanned the text up to the
+// last line break from every start, which is quadratic.
+const PACK_HEAD = /(?:^|\s)(\d+)\s*(?:[x×]|pack\b)\s*/gi;
+// A match never starts inside a digit run: one starting there implies the same
+// match from the run's first digit, which is further left. Without the
+// lookbehind every digit of a long run re-scanned the rest of it.
+const SIZE_PATTERN = /(?<!\d)(\d+(?:\.\d+)?)\s*([a-z]+)/i;
+
+const LINE_TERMINATORS = new Set(['\n', '\r', String.fromCharCode(0x2028), String.fromCharCode(0x2029)]);
+
+/** The full pack pattern's count and remainder, found in linear time. */
+function matchPack(text: string): { count: string; rest: string } | null {
+  // `.+` cannot cross a line terminator, so the remainder must start on the
+  // last line and be non-empty. The head's quantifiers cannot backtrack into a
+  // different split, so the first head that passes is the regex's match.
+  let lastLine = 0;
+  for (let i = text.length - 1; i >= 0; i--) {
+    if (LINE_TERMINATORS.has(text.charAt(i))) {
+      lastLine = i + 1;
+      break;
+    }
+  }
+  PACK_HEAD.lastIndex = 0;
+  for (let m = PACK_HEAD.exec(text); m; m = PACK_HEAD.exec(text)) {
+    const restAt = PACK_HEAD.lastIndex;
+    if (restAt >= lastLine && restAt < text.length) return { count: m[1] ?? '', rest: text.slice(restAt) };
+    PACK_HEAD.lastIndex = m.index + 1;
+  }
+  return null;
+}
 
 export function parseSize(raw: string | null | undefined, context?: SizeContext): ParsedSize | null {
   if (!raw) return null;
@@ -123,10 +152,10 @@ export function parseSize(raw: string | null | undefined, context?: SizeContext)
   let packCount = 1;
   let sizeStr = text;
 
-  const packMatch = PACK_PATTERN.exec(text);
+  const packMatch = matchPack(text);
   if (packMatch) {
-    packCount = parseInt(packMatch[1], 10);
-    sizeStr = packMatch[2].trim();
+    packCount = parseInt(packMatch.count, 10);
+    sizeStr = packMatch.rest.trim();
   }
 
   const sizeMatch = SIZE_PATTERN.exec(sizeStr);

@@ -258,6 +258,20 @@ test('strips comments and script/style blocks completely, including nested and s
   assert.equal(stripNonContentBlocks(null), '');
 });
 
+test('strips a page made only of empty blocks in linear time', () => {
+  // The 512 KiB response cap filled with tiny blocks took about a minute when
+  // every cut rebuilt and re-lowercased the whole page.
+  const size = 512 * 1024;
+  for (const unit of ['<!---->', '<style></style>', '<!---->x']) {
+    const page = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+    const started = performance.now();
+    const out = stripNonContentBlocks(page);
+    const elapsed = performance.now() - started;
+    assert.doesNotMatch(out, /<!--|<style\b/i, unit);
+    assert.ok(elapsed < 250, `${unit}: ${elapsed.toFixed(0)} ms`);
+  }
+});
+
 test('an expired page publishes no records but still proves IMD replied', () => {
   const snapshot = assembleImdSnapshot({ pageResults: parsedResults(), now: AFTER_EXPIRY });
   assert.equal(snapshot.coverageState, 'ok');
