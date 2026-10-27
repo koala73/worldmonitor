@@ -1,6 +1,6 @@
 // The browser's slice of the news catalog. shared/news-catalog.ts projects the
 // full catalog into this shape and scripts/generate-browser-news-catalog.mjs
-// writes it to src/config/news-catalog.browser.generated.json, so the browser
+// writes it to src/config/news-catalog.browser.generated.ts, so the browser
 // bundle carries only what the browser serves: no server-only fields, notes or
 // server placements. Feeds are pre-grouped in browser order so the bundle
 // carries no placement data. This module must not import the full catalog.

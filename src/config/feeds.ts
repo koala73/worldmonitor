@@ -5,10 +5,9 @@ import { mergeCanonicalFeeds } from './feed-resolution';
 import {
   browserCategoryFeeds,
   browserIntelSources,
-  type BrowserCatalog,
   type BrowserCatalogFeed,
 } from '../../shared/news-catalog-browser';
-import browserCatalogJson from './news-catalog.browser.generated.json';
+import { BROWSER_NEWS_CATALOG as BROWSER_CATALOG } from './news-catalog.browser.generated';
 import {
   getSourceProvenanceState,
   type SourceProvenanceState,
@@ -18,9 +17,6 @@ import {
 // browser view, built from the generated browser slice so the bundle carries
 // no server-only fields. Absolute URLs go through the RSS proxy; same-origin
 // API routes (e.g. /api/miit-news) are fetched as-is.
-// JSON imports widen literal types (e.g. `version`); the slice is generated from
-// the typed projection and freshness-tested, so the shape is guaranteed.
-const BROWSER_CATALOG = browserCatalogJson as unknown as BrowserCatalog;
 const proxyCatalogUrl = (url: string): string => (/^https?:\/\//.test(url) ? rssProxyUrl(url) : url);
 
 function proxied(feed: BrowserCatalogFeed): Feed {
