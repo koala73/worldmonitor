@@ -327,7 +327,7 @@ paths:
             parameters:
                 - name: variant
                   in: query
-                  description: 'Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.'
+                  description: 'Digest variant: full, tech, finance, happy, commodity, energy. Unsupported variants fall back to full.'
                   required: false
                   example: "example"
                   schema:
@@ -1625,7 +1625,7 @@ components:
             properties:
                 variant:
                     type: string
-                    description: 'Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.'
+                    description: 'Digest variant: full, tech, finance, happy, commodity, energy. Unsupported variants fall back to full.'
                 lang:
                     type: string
                     description: ISO 639-1 language code of a supported digest language (en, fr, ar, etc.). Unsupported codes are rejected with 400.

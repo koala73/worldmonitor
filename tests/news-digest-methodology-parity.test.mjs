@@ -6,6 +6,7 @@
 // API clients rely on, without trying to parse every sentence in the doc.
 
 import { buildServerIntelSources, buildServerVariantFeeds } from '../shared/news-catalog.ts';
+import { VALID_VARIANTS } from '../server/worldmonitor/news/v1/list-feed-digest.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -446,7 +447,7 @@ describe('news digest methodology parity', () => {
     const rows = extractFeedInventoryRows();
     assert.equal(
       rows.length,
-      67,
+      73,
       'server news feed inventory row count changed; update shared/news-catalog.json, docs/data-sources.mdx, and this assertion together',
     );
     for (const row of rows) {
@@ -523,8 +524,8 @@ describe('news digest methodology parity', () => {
   });
 
   it('documents the accepted feed digest variants from VALID_VARIANTS', () => {
-    const variants = extractSetLiteralValues(digestSrc, 'VALID_VARIANTS');
-    assert.deepEqual(variants, ['full', 'tech', 'finance', 'happy', 'commodity']);
+    const variants = [...VALID_VARIANTS];
+    assert.deepEqual(variants, ['full', 'tech', 'finance', 'commodity', 'happy', 'energy']);
     for (const variant of variants) assertDocIncludes(`\`${variant}\``, `variant ${variant}`);
     for (const variant of variants) {
       assert.ok(
@@ -532,11 +533,10 @@ describe('news digest methodology parity', () => {
         `list_feed_digest.proto variant comment must mention ${variant}`,
       );
     }
-    assertDocIncludes('`energy` is a site and client-feed variant', 'energy site-variant distinction');
-    assertDocMatches(/variant=energy[\s\S]*to\s+`full`/, 'energy digest fallback');
+    assertDocIncludes('news:digest:v1:energy:{lang}', 'energy digest cache key');
     assert.ok(
-      protoText.includes('including energy') && protoText.includes('fall back to full'),
-      'list_feed_digest.proto variant comment must document energy fallback',
+      protoText.includes('fall back to full'),
+      'list_feed_digest.proto variant comment must document the unsupported-variant fallback',
     );
   });
 

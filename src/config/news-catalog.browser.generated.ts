@@ -2071,7 +2071,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "MIT Tech Policy",
-          "url": "https://news.google.com/rss/search?q=%22Tech+Policy+Press%22&hl=en&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=%22Tech+Policy+Press%22+when:7d&hl=en&gl=US&ceid=US:en"
         },
         {
           "name": "Stanford HAI",
@@ -2079,7 +2079,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "AI Now Institute",
-          "url": "https://news.google.com/rss/search?q=%22AI+Now+Institute%22&hl=en&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=%22AI+Now+Institute%22+when:7d&hl=en&gl=US&ceid=US:en"
         },
         {
           "name": "OECD Digital",
@@ -2115,7 +2115,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "DigiChina",
-          "url": "https://news.google.com/rss/search?q=DigiChina+Stanford+China+technology&hl=en&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=DigiChina+Stanford+China+technology+when:7d&hl=en&gl=US&ceid=US:en"
         }
       ],
       "finance": [

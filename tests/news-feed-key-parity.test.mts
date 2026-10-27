@@ -41,13 +41,7 @@ const VARIANTS: Array<{ clientConst: string; serverKey: string; knownGapsClientO
   {
     clientConst: 'TECH_FEEDS',
     serverKey: 'tech',
-    knownGapsClientOnly: [
-      // No tech-variant server buckets for these. Either add them
-      // server-side with curated RSS sources, or drop the panels
-      // client-side. Tracked in todos/257 item 9.
-      'podcasts',
-      'thinktanks',
-    ],
+    knownGapsClientOnly: [],
   },
   { clientConst: 'FINANCE_FEEDS', serverKey: 'finance', knownGapsClientOnly: [] },
   { clientConst: 'COMMODITY_FEEDS', serverKey: 'commodity', knownGapsClientOnly: [] },

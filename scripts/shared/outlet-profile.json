@@ -1508,6 +1508,12 @@
     "language": "en",
     "ownershipClass": "private"
   },
+  "EIA Press Room": {
+    "country": "US",
+    "audience": "domestic",
+    "language": "en",
+    "ownershipClass": "state"
+  },
   "EIA Reports": {
     "country": "US",
     "audience": "domestic",
