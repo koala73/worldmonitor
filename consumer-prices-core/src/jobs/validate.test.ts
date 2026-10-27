@@ -15,6 +15,9 @@ it('holds both sides of a two-retailer disagreement', async () => {
   query.mockResolvedValueOnce({ rows: [row('honest', 10), row('attacker', 100)] });
   await validateAll();
   expect(query.mock.calls.slice(1).map(([, args]) => args[0])).toEqual(['honest', 'attacker']);
+  for (const [, args] of query.mock.calls.slice(1)) {
+    expect(JSON.parse(args[1])).toMatchObject({ reason: 'price_disagreement', threshold: '>2.5x peer' });
+  }
 });
 it('preserves human approval provenance when a price disagreement needs review', async () => {
   query.mockResolvedValueOnce({ rows: [row('human', 30, 'approved', 'curator'), row('peer', 100)] });

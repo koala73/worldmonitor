@@ -132,7 +132,8 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
             price: row.price,
             medianPrice: Math.round(med * 100) / 100,
             ratio: Math.round(ratio * 100) / 100,
-            threshold: ratio > UPPER_RATIO ? `>${UPPER_RATIO}x median` : `<${LOWER_RATIO}x median`,
+            threshold: disputedPair ? `>${UPPER_RATIO}x peer`
+              : ratio > UPPER_RATIO ? `>${UPPER_RATIO}x median` : `<${LOWER_RATIO}x median`,
           })],
         );
         logger.warn(
