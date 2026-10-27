@@ -89,10 +89,24 @@ export function assertXlsxExpansionWithin(buf, maxBytes = MAX_GLD_XLSX_EXPANDED_
     }
   }
   if (eocd === -1) throw notAZip('no end of central directory');
+  // JSZip reads a different directory when any end-record field is at its
+  // maximum (its ZIP64 branch) or when a ZIP64 locator precedes the record.
+  const disks = [buf.readUInt16LE(eocd + 4), buf.readUInt16LE(eocd + 6)];
+  const counts = [buf.readUInt16LE(eocd + 8), buf.readUInt16LE(eocd + 10)];
+  const dirSize = buf.readUInt32LE(eocd + 12);
+  const dirOffset = buf.readUInt32LE(eocd + 16);
+  if ([...disks, ...counts].includes(0xFFFF) || dirSize === 0xFFFFFFFF || dirOffset === 0xFFFFFFFF
+    || (eocd >= 20 && buf.readUInt32LE(eocd - 20) === 0x07064b50)) {
+    throw notAZip('ZIP64 archives are not accepted');
+  }
+  // JSZip shifts every offset by any gap between the directory's declared end
+  // and the end record (bytes prepended to the archive). Refuse that layout so
+  // the offsets read here are the ones it uses.
+  if (dirOffset + dirSize !== eocd) throw notAZip('central directory does not end at the end record');
   // JSZip walks the records by signature and ignores the declared count, so
   // walk them the same way and refuse an archive whose count disagrees.
-  const count = buf.readUInt16LE(eocd + 10);
-  let at = buf.readUInt32LE(eocd + 16);
+  const count = counts[1];
+  let at = dirOffset;
   let declared = 0;
   let inflated = 0;
   let records = 0;
@@ -122,6 +136,7 @@ export function assertXlsxExpansionWithin(buf, maxBytes = MAX_GLD_XLSX_EXPANDED_
     at += 46 + buf.readUInt16LE(at + 28) + buf.readUInt16LE(at + 30) + buf.readUInt16LE(at + 32);
   }
   if (records !== count) throw notAZip(`${records} central directory records, expected ${count}`);
+  if (at !== eocd) throw notAZip('central directory does not end at the end record');
 }
 
 export async function parseGldArchiveXlsx(xlsxBuffer) {

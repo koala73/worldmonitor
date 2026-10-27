@@ -104,7 +104,7 @@ describe('seed-gold-etf-flows: parseGldArchiveXlsx', () => {
 // A one-entry ZIP whose central directory declares `declaredSize` bytes once
 // inflated. `method` 0 stores `data`; 8 deflates it. `entryCount` is what the
 // end-of-central-directory record claims.
-function buildZip(data, { declaredSize = data.length, method = 0, entryCount = 1 } = {}) {
+function buildZip(data, { declaredSize = data.length, method = 0, entryCount = 1, patchEnd = () => {} } = {}) {
   const body = method === 8 ? deflateRawSync(data) : data;
   const name = Buffer.from('xl/worksheets/sheet1.xml');
   const local = Buffer.alloc(30);
@@ -129,6 +129,7 @@ function buildZip(data, { declaredSize = data.length, method = 0, entryCount = 1
   end.writeUInt16LE(entryCount, 10);
   end.writeUInt32LE(central.length + name.length, 12);
   end.writeUInt32LE(centralOffset, 16);
+  patchEnd(end);
   return Buffer.concat([local, name, body, central, name, end]);
 }
 
@@ -155,6 +156,16 @@ describe('seed-gold-etf-flows: archive size limits', () => {
     const small = (entryCount) => buildZip(Buffer.from('<x/>'), { entryCount });
     assert.throws(() => assertXlsxExpansionWithin(small(0)), /1 central directory records, expected 0/);
     assert.doesNotThrow(() => assertXlsxExpansionWithin(small(1)));
+  });
+
+  it('refuses a directory JSZip would locate differently from the end record', () => {
+    // A MAX-valued field sends JSZip down its ZIP64 branch, which reads a
+    // different directory; a size that does not reach the end record makes it
+    // shift every offset by the gap.
+    const small = (patchEnd) => buildZip(Buffer.from('<x/>'), { patchEnd });
+    assert.throws(() => assertXlsxExpansionWithin(small((end) => end.writeUInt16LE(0xFFFF, 4))), /ZIP64/);
+    assert.throws(() => assertXlsxExpansionWithin(small((end) => end.writeUInt32LE(end.readUInt32LE(12) + 4, 12))), /does not end at/);
+    assert.throws(() => assertXlsxExpansionWithin(Buffer.concat([Buffer.alloc(16), small()])), /not a readable XLSX/);
   });
 
   it('accepts a real workbook', async () => {
