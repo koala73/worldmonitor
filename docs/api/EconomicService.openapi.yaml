@@ -847,6 +847,7 @@ paths:
                     pattern: '^([a-z0-9-]{1,64})?$'
                 - name: kind
                   in: query
+                  description: Countries, clusters, or both when unspecified.
                   required: false
                   example: "NO2_REGION_KIND_COUNTRY"
                   schema:

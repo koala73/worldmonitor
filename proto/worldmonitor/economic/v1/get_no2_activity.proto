@@ -49,6 +49,7 @@ message GetNo2ActivityRequest {
     (buf.validate.field).string.pattern = "^([a-z0-9-]{1,64})?$",
     (sebuf.http.query) = {name: "region_id"}
   ];
+  // Countries, clusters, or both when unspecified.
   No2RegionKind kind = 3 [
     (buf.validate.field).enum.defined_only = true,
     (sebuf.http.query) = {name: "kind"}
