@@ -24,7 +24,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
-import { uncoveredSources } from './_lib/news-catalog-coverage.mts';
+import { servedLayout, uncoveredSources } from './_lib/news-catalog-coverage.mts';
 import { VALID_VARIANTS } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { INTEL_EDITION } from '../shared/news-catalog-browser';
 import { isAllowedDomain } from '../api/_rss-allowed-domain-match.js';
@@ -404,7 +404,7 @@ describe('feed catalog drift', () => {
   it('every default-enabled source is fetched by a served digest, or pending migration', () => {
     const catalog = JSON.parse(readFileSync(join(repoRoot, 'shared/news-catalog.json'), 'utf8'));
     const pending = new Set<string>(JSON.parse(readFileSync(join(repoRoot, 'shared/news-catalog-pending-migration.json'), 'utf8')).names);
-    const served = new Set<string>([...VALID_VARIANTS, INTEL_EDITION]);
+    const served = servedLayout(catalog.layout.server, VALID_VARIANTS, INTEL_EDITION);
     const gaps = uncoveredSources(feeds.getAllDefaultEnabledSources(), catalog.feeds, served, pending);
     assert.deepEqual(gaps, [], `default-enabled sources no digest fetches: ${gaps.join(', ')}`);
   });

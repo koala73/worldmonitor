@@ -8,14 +8,35 @@ export interface CoverageFeed {
   url: unknown;
   lang?: string;
   browser?: { url?: unknown; lang?: string | null } | null;
-  placements: Array<{ edition: string; serverOrder?: number; browserOrder?: number }>;
+  placements: Array<{ edition: string; category: string; serverOrder?: number; browserOrder?: number }>;
 }
 
-/** Names placed in at least one edition the digest serves. */
-export function serverPlacedNames(feeds: CoverageFeed[], servedEditions: ReadonlySet<string>): Set<string> {
+/** Edition → categories a digest actually fetches. */
+export type ServedLayout = ReadonlyMap<string, ReadonlySet<string>>;
+
+/**
+ * What the server builds: `layout.server` categories for each digest variant,
+ * plus the intel list the full digest also fetches.
+ */
+export function servedLayout(
+  serverLayout: Record<string, string[]>,
+  digestVariants: Iterable<string>,
+  intelEdition: string,
+): ServedLayout {
+  const served = new Map<string, ReadonlySet<string>>();
+  for (const variant of digestVariants) served.set(variant, new Set(serverLayout[variant] ?? []));
+  served.set(intelEdition, new Set([intelEdition]));
+  return served;
+}
+
+const isServed = (served: ServedLayout, edition: string, category: string) =>
+  served.get(edition)?.has(category) ?? false;
+
+/** Names placed in at least one edition/category a digest fetches. */
+export function serverPlacedNames(feeds: CoverageFeed[], served: ServedLayout): Set<string> {
   const names = new Set<string>();
   for (const feed of feeds) {
-    if (feed.placements.some((p) => p.serverOrder !== undefined && servedEditions.has(p.edition))) {
+    if (feed.placements.some((p) => p.serverOrder !== undefined && isServed(served, p.edition, p.category))) {
       names.add(feed.name);
     }
   }
@@ -34,19 +55,21 @@ export function browserPlacedNames(feeds: CoverageFeed[]): Set<string> {
 export function uncoveredSources(
   referenced: Iterable<string>,
   feeds: CoverageFeed[],
-  servedEditions: ReadonlySet<string>,
+  served: ServedLayout,
   pending: ReadonlySet<string>,
 ): string[] {
-  const covered = serverPlacedNames(feeds, servedEditions);
+  const covered = serverPlacedNames(feeds, served);
   return [...new Set(referenced)].filter((name) => !covered.has(name) && !pending.has(name)).sort();
 }
 
-/** Server placements in editions no digest serves. */
-export function unservedServerPlacements(feeds: CoverageFeed[], servedEditions: ReadonlySet<string>): string[] {
+/** Server placements in an edition/category no digest fetches. */
+export function unservedServerPlacements(feeds: CoverageFeed[], served: ServedLayout): string[] {
   const out: string[] = [];
   for (const feed of feeds) {
     for (const p of feed.placements) {
-      if (p.serverOrder !== undefined && !servedEditions.has(p.edition)) out.push(`${feed.name} → ${p.edition}`);
+      if (p.serverOrder !== undefined && !isServed(served, p.edition, p.category)) {
+        out.push(`${feed.name} → ${p.edition}/${p.category}`);
+      }
     }
   }
   return out.sort();
