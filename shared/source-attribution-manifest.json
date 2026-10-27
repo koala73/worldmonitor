@@ -34,10 +34,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -65,7 +62,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -79,10 +76,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -124,7 +118,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -218,10 +212,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -235,10 +226,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -314,10 +302,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -348,7 +333,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -390,10 +375,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -407,10 +389,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -424,7 +403,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -438,10 +417,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -594,10 +570,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1557,7 +1530,7 @@
           "path": "scripts/verify-import-hhi-coverage.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/app/desktop-updater.ts"
@@ -1623,10 +1596,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1649,10 +1619,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1666,10 +1633,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1697,10 +1661,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1714,10 +1675,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1731,10 +1689,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1762,7 +1717,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1776,10 +1731,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1793,10 +1745,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1810,7 +1759,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1824,10 +1773,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1897,10 +1843,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1914,10 +1857,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1945,10 +1885,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1962,10 +1899,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2016,10 +1950,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2047,10 +1978,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2064,10 +1992,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2095,10 +2020,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2112,10 +2034,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/live-video-sources.ts"
@@ -2146,10 +2065,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2163,7 +2079,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2205,10 +2121,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2236,7 +2149,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2273,7 +2186,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2301,7 +2214,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2392,10 +2305,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2423,10 +2333,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -2457,7 +2364,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2471,10 +2378,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2488,10 +2392,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2570,7 +2471,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2584,10 +2485,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2601,10 +2499,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2618,10 +2513,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2649,10 +2541,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2666,10 +2555,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/finance.ts"
@@ -2758,10 +2644,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2789,10 +2672,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2820,10 +2700,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2851,10 +2728,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2868,7 +2742,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2882,10 +2756,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2942,10 +2813,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3242,7 +3110,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3270,10 +3138,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3319,10 +3184,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -3339,7 +3201,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -3356,10 +3218,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3373,10 +3232,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3390,7 +3246,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3461,10 +3317,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3520,7 +3373,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3562,7 +3415,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3636,7 +3489,7 @@
           "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         },
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3650,7 +3503,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3664,10 +3517,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3695,10 +3545,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3712,10 +3559,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3729,7 +3573,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3757,7 +3601,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3788,7 +3632,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3802,7 +3646,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3895,10 +3739,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3926,10 +3767,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3957,10 +3795,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3974,10 +3809,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3991,10 +3823,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4036,10 +3865,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4062,7 +3888,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4076,7 +3902,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4090,7 +3916,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4104,10 +3930,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4121,10 +3944,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4164,10 +3984,7 @@
           "path": "scripts/seed-research.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -4198,7 +4015,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4212,7 +4029,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4226,7 +4043,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4254,10 +4071,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4271,10 +4085,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -4291,10 +4102,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4308,10 +4116,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -4328,10 +4133,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4345,10 +4147,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4362,7 +4161,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4376,10 +4175,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -4411,7 +4207,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4425,7 +4221,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4439,10 +4235,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4456,10 +4249,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4473,10 +4263,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4490,10 +4277,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4507,7 +4291,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4561,10 +4345,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/finance.ts"
@@ -4584,10 +4365,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4659,10 +4437,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4690,10 +4465,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4707,7 +4479,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4721,7 +4493,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4763,7 +4535,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4777,7 +4549,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4825,10 +4597,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4842,10 +4611,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4901,10 +4667,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4976,10 +4739,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4993,10 +4753,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5010,7 +4767,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5038,7 +4795,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5066,7 +4823,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5080,7 +4837,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5123,10 +4880,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5154,7 +4908,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5196,10 +4950,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5241,10 +4992,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5258,10 +5006,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5275,10 +5020,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -5309,10 +5051,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5346,10 +5085,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5363,10 +5099,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5394,10 +5127,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5425,10 +5155,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5456,10 +5183,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -5476,10 +5200,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5493,10 +5214,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5510,7 +5228,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5547,10 +5265,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5564,10 +5279,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5595,7 +5307,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5623,10 +5335,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5640,7 +5349,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5654,10 +5363,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5671,7 +5377,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5685,7 +5391,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5713,10 +5419,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5730,7 +5433,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5744,7 +5447,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5758,10 +5461,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5775,10 +5475,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5792,10 +5489,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5854,10 +5548,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5911,10 +5602,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5928,10 +5616,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5945,7 +5630,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -5962,10 +5647,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -5982,10 +5664,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5999,7 +5678,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -6016,10 +5695,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6033,10 +5709,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6050,10 +5723,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6067,10 +5737,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6319,10 +5986,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -6362,10 +6026,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6379,7 +6040,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6393,10 +6054,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6410,10 +6068,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6455,10 +6110,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6545,10 +6197,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6562,7 +6211,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6590,10 +6239,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6607,10 +6253,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6624,10 +6267,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6650,10 +6290,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6667,10 +6304,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6698,10 +6332,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6715,10 +6346,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6732,10 +6360,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6749,10 +6374,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6766,7 +6388,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6825,10 +6447,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6859,10 +6478,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6876,10 +6492,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6916,10 +6529,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -6936,10 +6546,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6956,19 +6563,13 @@
           "path": "scripts/source-catalog-identity.mjs"
         },
         {
-          "path": "scripts/validate-rss-feeds.mjs"
-        },
-        {
           "path": "server/worldmonitor/intelligence/v1/_country-coverage-feeds.ts"
         },
         {
           "path": "server/worldmonitor/market/v1/stock-news-search.ts"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/finance.ts"
@@ -6992,7 +6593,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -7009,10 +6610,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7026,10 +6624,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7043,7 +6638,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7057,10 +6652,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7077,10 +6669,7 @@
           "path": "scripts/ais-relay.cjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7094,10 +6683,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -7114,7 +6700,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7128,10 +6714,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7199,7 +6782,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7213,7 +6796,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7241,7 +6824,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7255,10 +6838,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7300,10 +6880,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7317,7 +6894,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7359,7 +6936,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7376,10 +6953,7 @@
           "path": "scripts/seed-energy-intelligence.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7393,10 +6967,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7569,10 +7140,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7657,10 +7225,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7674,10 +7239,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7728,7 +7290,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -7773,10 +7335,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7824,10 +7383,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7858,10 +7414,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7875,10 +7428,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7934,10 +7484,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7971,7 +7518,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8236,10 +7783,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8298,7 +7842,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8312,7 +7856,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8344,10 +7888,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8361,10 +7902,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -8381,10 +7919,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8398,7 +7933,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8440,7 +7975,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8454,10 +7989,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8471,7 +8003,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8485,10 +8017,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -8519,7 +8048,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8575,7 +8104,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8589,10 +8118,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8606,7 +8132,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8634,10 +8160,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8722,7 +8245,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8878,10 +8401,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/finance.ts"
@@ -8901,7 +8421,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8915,10 +8435,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9048,10 +8565,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -9085,10 +8599,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9150,10 +8661,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9167,10 +8675,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9184,10 +8689,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9429,10 +8931,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -9472,10 +8971,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9498,10 +8994,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9555,10 +9048,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9572,10 +9062,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9589,10 +9076,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9606,7 +9090,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9620,10 +9104,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9637,10 +9118,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -9674,10 +9152,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -9694,10 +9169,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -9714,7 +9186,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9728,7 +9200,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9742,10 +9214,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9804,7 +9273,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9818,10 +9287,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9835,10 +9301,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9852,10 +9315,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9869,10 +9329,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9886,10 +9343,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9903,10 +9357,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9920,10 +9371,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9937,7 +9385,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9951,10 +9399,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9968,10 +9413,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9985,10 +9427,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10002,10 +9441,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -10022,7 +9458,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10053,10 +9489,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10070,10 +9503,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10087,10 +9517,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10104,10 +9531,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10152,10 +9576,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10169,10 +9590,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10186,10 +9604,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10231,10 +9646,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10248,10 +9660,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10339,10 +9748,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10356,10 +9762,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10432,10 +9835,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10449,7 +9849,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10463,10 +9863,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10480,10 +9877,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10497,7 +9891,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10576,10 +9970,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10593,10 +9984,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10610,10 +9998,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -10647,10 +10032,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10678,10 +10060,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10726,10 +10105,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10743,10 +10119,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10834,10 +10207,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10851,7 +10221,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11123,10 +10493,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11140,10 +10507,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11157,10 +10521,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11174,7 +10535,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -11208,10 +10569,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11239,7 +10597,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11253,10 +10611,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11284,10 +10639,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11301,7 +10653,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11332,10 +10684,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11349,7 +10698,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11380,10 +10729,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11397,10 +10743,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11414,10 +10757,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11445,10 +10785,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11462,10 +10799,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11479,10 +10813,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11496,10 +10827,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11592,7 +10920,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11620,7 +10948,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11643,7 +10971,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11657,10 +10985,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11688,10 +11013,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11719,10 +11041,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11736,7 +11055,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -11784,10 +11103,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11815,10 +11131,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11832,10 +11145,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11863,7 +11173,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11891,10 +11201,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -11911,10 +11218,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11956,10 +11260,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/finance.ts"
@@ -11988,10 +11289,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/finance.ts"
@@ -12022,7 +11320,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12036,10 +11334,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12053,7 +11348,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12067,10 +11362,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12084,7 +11376,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12098,10 +11390,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12115,10 +11404,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -12135,10 +11421,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12152,10 +11435,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12169,10 +11449,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12186,10 +11463,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12203,7 +11477,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12217,10 +11491,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12248,10 +11519,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12310,10 +11578,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12330,7 +11595,7 @@
           "path": "scripts/seed-oil-trade-series.mjs"
         },
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12344,7 +11609,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12358,10 +11623,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12375,7 +11637,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -12392,10 +11654,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12409,7 +11668,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -12426,10 +11685,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/main.ts"
@@ -12477,10 +11733,7 @@
           "path": "scripts/seed-fao-food-price-index.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12514,10 +11767,7 @@
           "path": "scripts/seed-regulatory-actions.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/finance.ts"
@@ -12551,10 +11801,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12568,7 +11815,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12582,10 +11829,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12616,10 +11860,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12647,10 +11888,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12715,10 +11953,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12732,7 +11967,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12746,7 +11981,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12760,7 +11995,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12774,10 +12009,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12851,7 +12083,7 @@
           "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         },
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12865,10 +12097,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12882,10 +12111,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12913,10 +12139,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12930,10 +12153,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12947,10 +12167,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12981,10 +12198,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13012,10 +12226,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13029,10 +12240,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13046,10 +12254,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13063,10 +12268,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13094,10 +12296,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13111,10 +12310,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13128,10 +12324,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13165,10 +12358,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13182,10 +12372,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13199,10 +12386,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13216,7 +12400,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13230,10 +12414,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13247,10 +12428,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13264,7 +12442,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -13290,10 +12468,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13327,7 +12502,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13341,10 +12516,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13420,10 +12592,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13437,10 +12606,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13454,10 +12620,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13519,10 +12682,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13536,10 +12696,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13553,10 +12710,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13587,10 +12741,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13632,7 +12783,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13674,7 +12825,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13702,7 +12853,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13716,10 +12867,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13733,10 +12881,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13750,10 +12895,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13781,10 +12923,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13812,10 +12951,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13843,10 +12979,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13877,10 +13010,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13894,10 +13024,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13911,10 +13038,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13928,10 +13052,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13945,10 +13066,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -13965,10 +13083,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13982,10 +13097,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13999,10 +13111,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14016,7 +13125,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14030,7 +13139,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -14047,10 +13156,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14106,7 +13212,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14120,10 +13226,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14137,10 +13240,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14154,10 +13254,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14180,7 +13277,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -14225,7 +13322,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -14259,10 +13356,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14276,7 +13370,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14302,10 +13396,7 @@
           "path": "scripts/seed-sec-cik-map.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/finance.ts"
@@ -14322,7 +13413,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -14353,10 +13444,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14370,10 +13458,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14387,7 +13472,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14429,7 +13514,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14474,7 +13559,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14488,10 +13573,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14522,7 +13604,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14536,7 +13618,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14550,10 +13632,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14598,10 +13677,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14615,10 +13691,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14632,7 +13705,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -14658,7 +13731,7 @@
           "path": "server/worldmonitor/research/v1/list-tech-events.ts"
         },
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -14675,10 +13748,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -14709,10 +13779,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14740,10 +13807,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14760,10 +13824,7 @@
           "path": "scripts/seed-climate-news.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14777,10 +13838,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14794,10 +13852,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14811,7 +13866,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14825,10 +13880,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14842,10 +13894,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14859,10 +13908,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -14879,10 +13925,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14905,10 +13948,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -14953,10 +13993,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14970,10 +14007,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15015,7 +14049,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15029,10 +14063,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15105,10 +14136,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15136,10 +14164,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15153,10 +14178,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15176,10 +14198,7 @@
           "path": "scripts/seed-security-advisories.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15213,10 +14232,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15230,10 +14246,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15425,10 +14438,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -15445,10 +14455,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15462,10 +14469,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15479,10 +14483,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15528,10 +14529,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15545,7 +14543,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -15610,10 +14608,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15647,10 +14642,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15673,10 +14665,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15690,10 +14679,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15721,7 +14707,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/variants/tech.ts"
@@ -15752,10 +14738,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15769,10 +14752,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     }

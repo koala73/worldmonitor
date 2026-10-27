@@ -21,6 +21,7 @@ export const COVERAGE_INPUT_PATHS = Object.freeze([
   'src/config/map-layer-definitions.ts',
   'src/locales/en.json',
   SERVER_FEEDS_PATH,
+  'shared/news-catalog.json',
   'api/mcp/registry',
 ]);
 

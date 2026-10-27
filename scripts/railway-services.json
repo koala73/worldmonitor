@@ -104,6 +104,7 @@
       "shared/source-attribution-manifest.json",
       "src/components/**/*.ts",
       "src/config/feeds.ts",
+      "shared/news-catalog.json",
       "src/config/map-layer-definitions.ts",
       "src/config/variants/*.ts",
       "src/locales/*.json",
