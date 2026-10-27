@@ -265,7 +265,7 @@ export async function summarizeArticle(
           h,
           b: bodies[i] ?? '',
         }));
-        const selectedPairs = selectUniqueHeadlinePairs(paired);
+        const selectedPairs = mode === 'translate' ? paired.slice(0, 1) : selectUniqueHeadlinePairs(paired);
         // sanitizeForPromptLine, not sanitizeForPrompt: the latter deliberately
         // preserves a lone newline, and buildArticlePrompts joins headlines
         // with '\n' as the item delimiter, so one embedded newline in a feed

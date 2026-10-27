@@ -238,6 +238,26 @@ async function lookupPlanFromClerk(userId: string): Promise<'free' | 'pro'> {
 }
 
 /**
+ * The subject of a token Clerk signed, even if it has expired. Only for
+ * restriction lookups, where a policy can only narrow what the caller may use;
+ * never for authentication. `null` means Clerk did not sign it, and
+ * `'unverifiable'` means the signing keys could not be fetched.
+ */
+export async function verifiedSubjectIgnoringExpiry(token: string): Promise<string | null | 'unverifiable'> {
+  const jwks = getJWKS();
+  if (!jwks) return 'unverifiable';
+  try {
+    const { payload } = await jwtVerify(token, jwks, {
+      ...getClerkJwtVerifyBaseOptions(),
+      clockTolerance: Number.MAX_SAFE_INTEGER,
+    });
+    return typeof payload.sub === 'string' && payload.sub ? payload.sub : null;
+  } catch (err) {
+    return isJwksFetchFailure(err) ? 'unverifiable' : null;
+  }
+}
+
+/**
  * Validate a Clerk-issued bearer token using local JWKS verification.
  * Accepts both custom-template tokens (with `plan` claim) and standard
  * session tokens (plan looked up via Clerk Backend API).

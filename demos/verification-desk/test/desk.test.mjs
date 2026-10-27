@@ -2,6 +2,10 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { test } from 'node:test';
+import https from 'node:https';
+import { Readable } from 'node:stream';
+import { EventEmitter } from 'node:events';
+import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib';
 import { Anchor } from '../lib/anchor.mjs';
 import { gradeToResult } from '../lib/grade.mjs';
 import { WorldMonitorMcp } from '../lib/mcp-client.mjs';
@@ -15,6 +19,158 @@ import { getSourceTier } from '../../../server/_shared/source-tiers.ts';
 import { getSourcePropagandaRisk } from '../../../shared/source-provenance.ts';
 
 const anchor = new Anchor({ apiKey: '' });
+function withDeskEnv(t, env) {
+  const saved = Object.fromEntries(Object.keys(env).map(name => [name, process.env[name]]));
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined) delete process.env[name]; else process.env[name] = value;
+  }
+  t.after(() => {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name]; else process.env[name] = value;
+    }
+  });
+}
+
+test('a passwordless desk answers only the names it was configured on (DNS rebinding)', async t => {
+  withDeskEnv(t, { DESK_PASSWORD: undefined, DESK_ALLOW_OPEN: undefined, DESK_HOST: undefined });
+  const { hasRequestIntent } = await import('../lib/access.mjs');
+  // A rebound attacker domain supplies both Host and a matching Origin.
+  assert.equal(hasRequestIntent({ headers: { host: 'rebind.attacker.tld:8787', origin: 'http://rebind.attacker.tld:8787' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'rebind.attacker.tld:8787', 'sec-fetch-site': 'same-origin' } }), false);
+  for (const host of ['127.0.0.1:8787', 'localhost:8787', '[::1]:8787']) {
+    assert.equal(hasRequestIntent({ headers: { host, origin: `http://${host}` } }), true, host);
+  }
+  // An explicit open-network opt-in keeps LAN names working.
+  process.env.DESK_ALLOW_OPEN = '1';
+  assert.equal(hasRequestIntent({ headers: { host: '192.168.1.5:8787', origin: 'http://192.168.1.5:8787' } }), true);
+});
+
+test('hosted grading accepts same-origin request intent and denies cross-site navigations', async t => {
+  withDeskEnv(t, { DESK_PASSWORD: 'test-desk-password' });
+  const { hasRequestIntent } = await import('../lib/access.mjs');
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', 'sec-fetch-site': 'cross-site', cookie: 'valid' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', origin: 'https://evil.example' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', origin: 'https://desk.example', 'x-forwarded-proto': 'https' } }), true);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', origin: 'http://desk.example', 'x-forwarded-proto': 'https' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', 'sec-fetch-site': 'same-origin' } }), true);
+  // Plain-HTTP LAN hosts are not secure contexts: same-origin GETs carry no
+  // Origin and no Sec-Fetch-Site, only a Referer.
+  assert.equal(hasRequestIntent({ headers: { host: '192.168.1.5:8787', referer: 'http://192.168.1.5:8787/deck' } }), true);
+  assert.equal(hasRequestIntent({ headers: { host: '192.168.1.5:8787', referer: 'http://evil.example/' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', referer: 'http://desk.example/', 'x-forwarded-proto': 'https' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', referer: 'https://desk.example/', 'sec-fetch-site': 'cross-site' } }), false);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', referer: 'not a url' } }), false);
+});
+
+test('article sockets use the validated DNS answer without resolving the hostname again', async t => {
+  const { fetchArticleText } = await import('../lib/sources.mjs');
+  let lookups = 0;
+  let connections = 0;
+  const lookupImpl = async () => [{ address: ++lookups === 1 ? '93.184.215.14' : '169.254.169.254', family: 4 }];
+  t.mock.method(https, 'request', (url, options, callback) => {
+    assert.equal(url, 'https://rebind.example/article');
+    assert.equal(options.agent, false);
+    options.lookup('rebind.example', { all: true }, (err, addresses) => {
+      assert.ifError(err);
+      assert.deepEqual(addresses, [{ address: '93.184.215.14', family: 4 }]);
+    });
+    const request = new EventEmitter();
+    request.end = () => {
+      connections++;
+      const response = Readable.from([Buffer.from(`<p>${'Verified article text. '.repeat(20)}</p>`)]);
+      response.statusCode = 200;
+      response.headers = { 'content-type': 'text/html' };
+      callback(response);
+    };
+    return request;
+  });
+  assert.ok(await fetchArticleText('https://rebind.example/article', { lookupImpl }));
+  assert.equal(lookups, 1);
+  assert.equal(connections, 1);
+});
+
+test('a pinned article response without a body does not crash the server', async t => {
+  const { fetchArticleText } = await import('../lib/sources.mjs');
+  t.mock.method(https, 'request', (_url, _options, callback) => {
+    const request = new EventEmitter();
+    request.end = () => {
+      const response = Readable.from([]);
+      response.statusCode = 204;
+      response.headers = {};
+      callback(response);
+    };
+    return request;
+  });
+  assert.equal(await fetchArticleText('https://news.example/empty', {
+    lookupImpl: async () => [{ address: '93.184.215.14', family: 4 }],
+  }), null);
+});
+
+for (const [encoding, compress] of [['gzip', gzipSync], ['br', brotliCompressSync], ['deflate', deflateSync]]) {
+  test(`pinned article transport decodes ${encoding} evidence`, async t => {
+    const evidence = 'Verified figures: 31 people died and 120 were injured. '.repeat(8).trim();
+    t.mock.method(https, 'request', (_url, _options, callback) => {
+      const request = new EventEmitter();
+      request.end = () => {
+        const response = Readable.from([compress(Buffer.from(`<p>${evidence}</p>`))]);
+        response.statusCode = 200;
+        response.headers = { 'content-type': 'text/html', 'content-encoding': encoding };
+        callback(response);
+      };
+      return request;
+    });
+    const { fetchArticleText } = await import('../lib/sources.mjs');
+    assert.equal(await fetchArticleText('https://news.example/compressed', {
+      lookupImpl: async () => [{ address: '93.184.215.14', family: 4 }],
+    }), evidence);
+  });
+}
+
+test('an oversized (or decompression-bomb) article body stops at the read cap', async t => {
+  // 32 MiB of body; a capped read pulls only about MAX_ARTICLE_BYTES of it.
+  let pulled = 0;
+  async function* oversized() {
+    yield Buffer.from(`<p>${'Officials said 31 people died. '.repeat(20)}</p>`);
+    for (let i = 0; i < 512; i++) { pulled += 64 * 1024; yield Buffer.alloc(64 * 1024, 0x20); }
+  }
+  t.mock.method(https, 'request', (_url, _options, callback) => {
+    const request = new EventEmitter();
+    request.destroy = () => {};
+    request.end = () => {
+      const response = Readable.from(oversized());
+      response.statusCode = 200;
+      response.headers = { 'content-type': 'text/html' };
+      callback(response);
+    };
+    return request;
+  });
+  const { fetchArticleText, MAX_ARTICLE_BYTES } = await import('../lib/sources.mjs');
+  const text = await fetchArticleText('https://news.example/bomb', {
+    timeoutMs: 2000,
+    lookupImpl: async () => [{ address: '93.184.215.14', family: 4 }],
+  });
+  assert.match(text ?? '', /^Officials said 31 people died\./);
+  assert.ok(pulled <= MAX_ARTICLE_BYTES + 1024 * 1024, `read ${pulled} bytes past a ${MAX_ARTICLE_BYTES}-byte cap`);
+});
+
+test('a malformed compressed article is unavailable', async t => {
+  t.mock.method(https, 'request', (_url, _options, callback) => {
+    const request = new EventEmitter();
+    request.destroy = error => request.emit('error', error);
+    request.end = () => {
+      const response = Readable.from([Buffer.from('This is not a gzip stream. '.repeat(20))]);
+      response.statusCode = 200;
+      response.headers = { 'content-encoding': 'gzip' };
+      callback(response);
+    };
+    return request;
+  });
+  const { fetchArticleText } = await import('../lib/sources.mjs');
+  assert.equal(await fetchArticleText('https://news.example/broken', {
+    lookupImpl: async () => [{ address: '93.184.215.14', family: 4 }],
+  }), null);
+});
 const snapshotDesk = () => ({
   source: new CombinedSource(null, new ArchiveSource([new URL('../snapshots', import.meta.url).pathname], { days: 100000 })),
   anchor,

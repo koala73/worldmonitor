@@ -20,6 +20,7 @@ const ENV_KEYS = [
   'WORLDMONITOR_VALID_KEYS',
   'UPSTASH_REDIS_REST_URL',
   'UPSTASH_REDIS_REST_TOKEN',
+  'LOCAL_API_MODE',
 ] as const;
 const originalEnv = new Map<string, string | undefined>();
 const originalFetch = globalThis.fetch;
@@ -170,6 +171,7 @@ describe('Wingbits aircraft-details access contract', () => {
 describe('Wingbits aircraft-details batch input contract', () => {
   it('never sends a malformed address to the paid provider', async () => {
     process.env.WINGBITS_API_KEY = 'test-wingbits-key';
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
     const urls: string[] = [];
     globalThis.fetch = async (input) => {
       urls.push(String(input));
@@ -189,6 +191,7 @@ describe('Wingbits aircraft-details batch input contract', () => {
 
   it('reports `requested` as a prefix length over the caller keys, not the survivors', async () => {
     process.env.WINGBITS_API_KEY = 'test-wingbits-key';
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
     const urls: string[] = [];
     globalThis.fetch = async (input) => {
       urls.push(String(input));
@@ -281,16 +284,19 @@ describe('Wingbits aircraft-details batch spend boundary', () => {
     assert.equal(response.requested, 0);
   });
 
-  it('keeps looking up misses when no snapshot exists to check against', async () => {
+  it('makes no paid lookups when both snapshots are confirmed absent', async () => {
     const urls: string[] = [];
     installFetch(null, urls);
+    const response = await getAircraftDetailsBatch(ctx(), { icao24s: ['aa0001', 'bb0002'] });
+    assert.deepEqual(urls, []);
+    assert.equal(response.requested, 0);
+  });
 
-    // The desktop sidecar has no seed; enrichment there must keep working.
-    await getAircraftDetailsBatch(ctx(), { icao24s: ['aa0001', 'bb0002'] });
-
-    assert.deepEqual(urls, [
-      'https://customer-api.wingbits.com/v1/flights/details/aa0001',
-      'https://customer-api.wingbits.com/v1/flights/details/bb0002',
-    ]);
+  it('keeps caller-configured enrichment on the authenticated desktop sidecar', async () => {
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    const urls: string[] = [];
+    installFetch(null, urls);
+    await getAircraftDetailsBatch(ctx(), { icao24s: ['ff0042'] });
+    assert.deepEqual(urls, ['https://customer-api.wingbits.com/v1/flights/details/ff0042']);
   });
 });

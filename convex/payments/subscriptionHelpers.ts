@@ -1432,6 +1432,12 @@ export async function handleSubscriptionActive(
     }
   }
 
+  if (existing && !isBusinessPlan(planKey)) {
+    await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
+  } else if (isBusinessPlan(planKey)) {
+    await recomputeAcceptedBusinessInvitees(ctx, data.subscription_id, Date.now());
+  }
+
   // Recompute from ALL subs on this userId — the event's sub may be a
   // duplicate or lower-tier than another active sub (multi-active-sub guard).
   await recomputeEntitlementFromAllSubs(ctx, userId, eventTimestamp);
@@ -2337,22 +2343,28 @@ export async function handleDisputeEvent(
   eventType: string,
   eventTimestamp: number,
 ): Promise<void> {
-  const existingSubscription = data.subscription_id
+  const payments = data.subscription_id ? [] : await ctx.db.query("paymentEvents")
+    .withIndex("by_dodoPaymentId", q => q.eq("dodoPaymentId", data.payment_id)).collect();
+  const subscriptionIds = [...new Set(payments.map(p => p.dodoSubscriptionId).filter((id): id is string => Boolean(id)))];
+  if (subscriptionIds.length > 1) throw new Error("Ambiguous disputed payment subscription");
+  const subscriptionId = data.subscription_id ?? subscriptionIds[0];
+  const existingSubscription = subscriptionId
     ? await ctx.db
         .query("subscriptions")
         .withIndex("by_dodoSubscriptionId", (q) =>
-          q.eq("dodoSubscriptionId", data.subscription_id ?? ""),
+          q.eq("dodoSubscriptionId", subscriptionId),
         )
         .unique()
     : null;
-  const resolvedUserId = existingSubscription?.userId
+  const resolvedUserId = existingSubscription?.userId ?? payments[0]?.userId
     ?? await resolveUserId(
       ctx,
       data.customer?.customer_id ?? "",
       data.metadata,
     );
-  const deletion = await billingDeletionForEvent(ctx, data)
-    ?? await billingDeletionForUser(ctx, resolvedUserId);
+  const deletion = existingSubscription
+    ? await billingDeletionForUser(ctx, resolvedUserId)
+    : await billingDeletionForEvent(ctx, data) ?? await billingDeletionForUser(ctx, resolvedUserId);
   const userId = deletion ? tombstoneUserId(deletion.userIdHash) : resolvedUserId;
 
   const disputeStatusMap: Record<string, "dispute_opened" | "dispute_won" | "dispute_lost" | "dispute_closed"> = {
@@ -2374,7 +2386,7 @@ export async function handleDisputeEvent(
     amount: webhookAmount(data),
     currency: data.currency ?? "USD",
     status: disputeStatus,
-    dodoSubscriptionId: data.subscription_id ?? undefined,
+    dodoSubscriptionId: subscriptionId,
     rawPayload: deletion ? redactBillingPayload(data) : data,
     occurredAt: eventTimestamp,
   });

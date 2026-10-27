@@ -26,8 +26,13 @@ export function slug(name) {
   return name.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
+const ENTITIES = { amp: '&', '#39': "'", apos: "'", quot: '"', nbsp: ' ' };
+
+// Drop tags and any unclosed `<` (an opener with no `>` survives a tag regex),
+// then decode entities in one pass so `&amp;quot;` stays `&quot;`.
 function decode(text) {
-  return text.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ').trim();
+  return text.replace(/<[^>]*>/g, '').replace(/</g, '')
+    .replace(/&(amp|#39|apos|quot|nbsp);/g, (_, name) => ENTITIES[name]).trim();
 }
 
 export function parseOverview(html) {

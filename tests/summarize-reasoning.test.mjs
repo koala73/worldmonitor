@@ -253,7 +253,7 @@ describe('Fix 3: hasReasoningPreamble', () => {
 describe('Fix 4: cache version bump', () => {
   const src = readSrc('src/utils/summary-cache-key.ts');
 
-  it('CACHE_VERSION is v10', () => {
+  it('CACHE_VERSION retires both collidable and divergent translation entries', () => {
     // Bumped v9 → v10 on 2026-09-02 (GHSA-9gp4-366w-pcq3): identity moved off
     // the FNV-1a 52-bit hash, whose invertible steps made a second preimage
     // cheap enough for an anonymous caller to poison a shared translate row.
@@ -261,8 +261,8 @@ describe('Fix 4: cache version bump', () => {
     // attacker-chosen text. (v8 → v9 on 2026-08-01 for prompt/cache selection
     // parity, #5969; v7 → v8 on 2026-07-06 for the DeepSeek cutover, #4944;
     // v6 → v7 on 2026-07-05 for pair-dedup, #4914.)
-    assert.match(src, /CACHE_VERSION\s*=\s*'v10'/,
-      'CACHE_VERSION must be v10 to retire rows keyed with the collidable FNV hash');
+    assert.match(src, /CACHE_VERSION\s*=\s*'v11'/,
+      'CACHE_VERSION must be v11 to retire older poisoned cache rows');
   });
 
   it('cache identity does not use the collidable FNV hash', () => {

@@ -1723,7 +1723,9 @@ ${profile}`;
 async function processEvent(event) {
   if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
   if (event.eventType === 'flush_quiet_held') { await processFlushQuietHeld(event); return; }
-  console.log(`[relay] Processing event: ${event.eventType} (${event.severity ?? 'high'})`);
+  const eventLog = JSON.stringify({ eventType: event.eventType, severity: event.severity ?? 'high' })
+    .replace(/[\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g, ch => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  console.log('[relay] Processing event:', eventLog);
 
   // Shadow log importanceScore for comparison. Gate at caller: only rss_alert
   // events carry importanceScore; for everything else shadowLogScore would

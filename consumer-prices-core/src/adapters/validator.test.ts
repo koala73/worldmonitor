@@ -283,14 +283,14 @@ describe('validateSearchHit — quantity window', () => {
     expect(r.signals.sizeWindow).toBe('pass');
   });
 
-  it('treats a structurally-absent size as neutral (does not hard-fail)', () => {
+  it('keeps missing quantity evidence unverified (does not hard-fail)', () => {
     const r = validateSearchHit({
       canonicalName: 'Plain Yogurt 500g',
       productName: 'Plain Yogurt',
       sizeText: undefined,
       item: item({ baseUnit: 'g', minBaseQty: 450, maxBaseQty: 550 }),
     });
-    expect(r.signals.sizeWindow).toBe('absent');
+    expect(r.signals.sizeWindow).toBe('unverified');
     expect(r.ok).toBe(true);
   });
 });
@@ -300,21 +300,32 @@ describe('validateSearchHit — quantity window', () => {
 // 0.85 and published as `auto`. Split the neutral bucket so "could not verify"
 // no longer clears AUTO_MATCH_THRESHOLD on overlap alone.
 describe('validateSearchHit — absent vs unverified size (#6868)', () => {
-  // Nothing to verify keeps the old 0.2 weight, so a full-overlap hit still
-  // publishes. Without this fixture a future edit that lowers every non-pass
-  // size to 0.05 would silently demote every retailer that omits sizeText.
-  it('keeps a missing sizeText above the auto-match threshold', () => {
+  it.each([['Plain Yogurt 2x250g', true], ['Plain Yogurt 2x25g', false]] as const)(
+    'uses the complete fetched multipack quantity from %s', (productName, accepted) => {
+      const result = validateSearchHit({ canonicalName: 'Plain Yogurt 500g', productName,
+        sizeText: undefined, item: item({ baseUnit: 'g', minBaseQty: 450, maxBaseQty: 550 }) });
+      expect(result.ok && result.score >= AUTO_MATCH_THRESHOLD).toBe(accepted);
+      expect(result.signals.extractedBaseQty).toBe(accepted ? 500 : 50);
+    });
+  it('uses the fetched title instead of the requested quantity when sizeText is missing', () => {
+    for (const productName of ['Plain Yogurt 500g', 'Plain Yogurt 50g']) {
+      const result = validateSearchHit({ canonicalName: 'Plain Yogurt 500g', productName,
+        sizeText: undefined, item: item({ baseUnit: 'g', minBaseQty: 450, maxBaseQty: 550 }) });
+      expect(result.ok).toBe(productName === 'Plain Yogurt 500g');
+      expect(result.score >= AUTO_MATCH_THRESHOLD).toBe(productName === 'Plain Yogurt 500g');
+    }
+  });
+  it('keeps a missing sizeText below the auto-match threshold', () => {
     const r = validateSearchHit({
       canonicalName: 'Plain Yogurt 500g',
       productName: 'Al Ain Plain Yogurt',
       sizeText: undefined,
       item: item({ baseUnit: 'g', minBaseQty: 450, maxBaseQty: 550 }),
     });
-    expect(r.signals.sizeWindow).toBe('absent');
+    expect(r.signals.sizeWindow).toBe('unverified');
     expect(r.ok).toBe(true);
-    expect(r.score).toBeGreaterThanOrEqual(AUTO_MATCH_THRESHOLD);
-    // 1.0*0.55 + 0.2 + 0.1 = 0.85
-    expect(r.score).toBeCloseTo(0.85);
+    expect(r.score).toBeLessThan(AUTO_MATCH_THRESHOLD);
+    expect(r.score).toBeCloseTo(0.70);
   });
 
   it('keeps an item with no quantity window above the auto-match threshold', () => {

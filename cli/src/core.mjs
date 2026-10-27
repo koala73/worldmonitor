@@ -354,8 +354,10 @@ export function summarizeSpec(spec, serviceFilter) {
 
 export function renderListing(rows) {
   if (!rows.length) return 'No operations found.';
+  const printable = (value) => String(value).replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g,
+    ch => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
   const lines = rows.map(
-    (r) => `${r.method.padEnd(5)} ${r.path}${r.summary ? `  — ${r.summary}` : ''}`,
+    (r) => `${printable(r.method).padEnd(5)} ${printable(r.path)}${r.summary ? `  — ${printable(r.summary)}` : ''}`,
   );
   return `${rows.length} operation(s):\n${lines.join('\n')}`;
 }

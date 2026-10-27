@@ -2,7 +2,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
 import type { OutputBundle } from 'rollup';
-import { resolve, dirname, extname, basename } from 'path';
+import { resolve, dirname, extname, basename, posix } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
@@ -696,6 +696,9 @@ function sebufApiPlugin(): Plugin {
               headers[key] = value.join(', ');
             }
           }
+          delete headers['x-user-id'];
+          delete headers['x-wm-mcp-internal-verified'];
+          delete headers['x-wm-rl-principal'];
 
           const webRequest = new Request(url.toString(), {
             method: req.method,
@@ -824,7 +827,7 @@ function rssProxyPlugin(): Plugin {
 
         try {
           const parsed = new URL(feedUrl);
-          if (!isAllowedDomain(parsed.hostname)) {
+          if (parsed.protocol !== 'https:' || parsed.port || parsed.username || parsed.password || !isAllowedDomain(parsed.hostname)) {
             res.statusCode = 403;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ error: `Domain not allowed: ${parsed.hostname}` }));
@@ -835,12 +838,30 @@ function rssProxyPlugin(): Plugin {
           const timeout = feedUrl.includes('news.google.com') ? 20000 : 12000;
           const timer = setTimeout(() => controller.abort(), timeout);
 
-          const response = await fetch(feedUrl, {
-            signal: controller.signal,
-            headers: rssFetchHeadersForHost(parsed.hostname),
-            redirect: 'follow',
-          });
-          clearTimeout(timer);
+          let response: Response;
+          try {
+            let current = parsed;
+            for (let hop = 0; ; hop++) {
+              response = await fetch(current.href, {
+                signal: controller.signal,
+                headers: rssFetchHeadersForHost(current.hostname),
+                redirect: 'manual',
+              });
+              if (![301, 302, 303, 307, 308].includes(response.status)) break;
+              const location = response.headers.get('location');
+              await response.body?.cancel();
+              if (!location || hop >= 5) throw new Error('Invalid RSS redirect');
+              const nextUrl = new URL(location, current);
+              if (nextUrl.protocol !== 'https:' || nextUrl.port || nextUrl.username || nextUrl.password || !isAllowedDomain(nextUrl.hostname)) {
+                res.statusCode = 403;
+                res.end(JSON.stringify({ error: 'Redirect not allowed' }));
+                return;
+              }
+              current = nextUrl;
+            }
+          } finally {
+            clearTimeout(timer);
+          }
 
           const data = await response.text();
           res.statusCode = response.status;
@@ -895,8 +916,13 @@ function webMcpDevSecurityHeadersPlugin(): Plugin {
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+        let pathname = (req.url ?? '/').split(/[?#]/, 1)[0];
+        try { pathname = decodeURI(pathname); } catch { /* Vite handles malformed paths. */ }
+        pathname = posix.normalize(pathname).replace(/\/$/, '') || '/';
         const isEmbedDocument = pathname === '/embed' || pathname === '/embed.html';
+        if (pathname === '/wm-widget-sandbox.html') {
+          res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;");
+        }
         res.setHeader('Origin-Agent-Cluster', '?1');
         res.setHeader('Permissions-Policy', isEmbedDocument ? 'tools=()' : 'tools=(self)');
         next();

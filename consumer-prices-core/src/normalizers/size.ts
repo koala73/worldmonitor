@@ -91,7 +91,7 @@ function normalizeUnit(raw: string): string | null {
   return null;
 }
 
-const PACK_PATTERN = /^(\d+)\s*(?:[x×]|pack\b)\s*(.+)$/i;
+const PACK_PATTERN = /(?:^|\s)(\d+)\s*(?:[x×]|pack\b)\s*(.+)$/i;
 const SIZE_PATTERN = /(\d+(?:\.\d+)?)\s*([a-z]+)/i;
 
 export function parseSize(raw: string | null | undefined, context?: SizeContext): ParsedSize | null {

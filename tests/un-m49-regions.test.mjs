@@ -44,6 +44,15 @@ describe('UN M49 region table', () => {
     assert.deepEqual(regions['eastern-asia'].countries, ['CN', 'TW']);
   });
 
+  it('decodes each entity once and leaves no markup in names', () => {
+    const [australia, fiji] = parseOverview(overview([
+      ['009', 'Oceania', '053', 'Australia &amp;quot;and&amp;quot; New&nbsp;Zealand', '', '', 'AU'],
+      ['009', 'Oceania', '054', 'Melanesia<script', '', '', 'FJ'],
+    ]));
+    assert.equal(australia.groups[1][1], 'Australia &quot;and&quot; New Zealand');
+    assert.equal(fiji.groups[1][1], 'Melanesiascript');
+  });
+
   it('fails loudly when the source page changes shape', () => {
     assert.throws(() => parseOverview('<html></html>'), /English download table/);
     assert.throws(() => parseOverview('<table id = "downloadTableEN"><tr><td>Country</td></tr></table>'), /Region Code/);

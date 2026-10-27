@@ -53,11 +53,11 @@ async function getBasketRows(basketSlug: string, marketCode: string): Promise<Ba
      JOIN retailer_products rp ON rp.id = pm.retailer_product_id AND rp.active = true
      JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
      JOIN LATERAL (
-       SELECT price, unit_price, currency_code, observed_at
+       SELECT price, unit_price, currency_code, observed_at, in_stock
        FROM price_observations
-       WHERE retailer_product_id = rp.id AND in_stock = true
+       WHERE retailer_product_id = rp.id
        ORDER BY observed_at DESC, id DESC LIMIT 1
-     ) po ON true
+     ) po ON po.in_stock = true
      WHERE b.slug = $1`,
     [basketSlug, marketCode],
   );

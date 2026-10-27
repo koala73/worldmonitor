@@ -34,7 +34,8 @@ import { sha256Hex } from './hash';
 // DON'T pass `bodies` saw a forced cold-start so the pre-grounding
 // headline-only rows aged out cleanly on first tick after deploy. See
 // docs/plans/2026-04-24-001-fix-rss-description-end-to-end-plan.md U6.
-export const CACHE_VERSION = 'v10';
+// Retire translation entries created before prompt and cache input selection agreed.
+export const CACHE_VERSION = 'v11';
 
 // 128 bits of SHA-256. Wide enough that a second preimage is infeasible,
 // short enough that the longest key stays inside the 120-character tail the

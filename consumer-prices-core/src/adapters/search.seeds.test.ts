@@ -20,6 +20,19 @@ function callsFor(fn: ReturnType<typeof vi.fn>, url: string): number {
 }
 
 describe('SearchAdapter configured item seeds', () => {
+  it('rechecks the configured path policy for persisted pins', async () => {
+    const config = loadRetailerConfig('pao_de_acucar_br');
+    config.searchConfig = { ...config.searchConfig!, urlPathContains: ['/produto/'] };
+    const ctx = { ...makeContext(config), pinnedUrls: new Map([
+      ['essentials-br:Pão de Forma Branco 500g', { sourceUrl: 'https://www.paodeacucar.com/category/pao', productId: 'old', matchId: 'old' }],
+    ]) };
+    const adapter = new SearchAdapter({} as ExaProvider, {} as FirecrawlProvider);
+    const targets = await adapter.discoverTargets(ctx);
+    expect(targets.find(t => t.id === 'bread_white')?.metadata?.direct).not.toBe(true);
+    ctx.pinnedUrls.set('essentials-br:Pão de Forma Branco 500g', { sourceUrl: 'https://www.paodeacucar.com/produto/123/pao', productId: 'good', matchId: 'good' });
+    const allowed = await adapter.discoverTargets(ctx);
+    expect(allowed.find(t => t.id === 'bread_white')?.metadata?.direct).toBe(true);
+  });
   it('tries an item seed after a stale pin before paid discovery', async () => {
     const config = loadRetailerConfig('pao_de_acucar_br');
     const seedUrl = 'https://www.paodeacucar.com/produto/144583/pao';
