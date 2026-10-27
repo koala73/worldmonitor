@@ -2412,6 +2412,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         query: { type: 'string', description: 'Keep only markets whose title contains this text (case-insensitive).' },
         source: { type: 'string', enum: ['kalshi', 'polymarket'], description: 'Filter to one prediction-market source. Kalshi currently provides no classifier tags, so source=kalshi with category=tech returns no records.' },
         sort: { type: 'string', enum: ['rank', 'move_24h', 'move_7d'], default: 'rank', description: 'Order each bucket by seed rank or absolute 24h/7d move before limiting. Missing moves go last.' },
+        min_liquidity: { type: 'number', minimum: 0, description: 'Keep only markets whose liquidity (resting order-book depth in USD) is at least this value, applied before limit. Markets without a liquidity value, such as a Kalshi market whose order book could not be fetched, are dropped when this is above 0.' },
         limit: { type: 'number', description: 'Cap each category bucket to at most this many markets (default 30, pass 0 for no cap).' },
         panel_request: { type: 'string', description: 'Paid prediction panel receipt. Reuse for internal curated reads without another daily allocation.' },
         refresh: { type: 'boolean', description: 'Paid panel only. Start a new allocation with request_id; retry the same ID to reuse it.' },
@@ -2427,21 +2428,21 @@ export const CACHE_TOOLS: ToolDef[] = [
             title: { type: 'string' }, yesPrice: { type: 'number', minimum: 0, maximum: 100 },
             change24h: { type: 'number', minimum: -100, maximum: 100 },
             change7d: { type: 'number', minimum: -100, maximum: 100 },
-            source: { type: 'string' }, volume: { type: 'number' }, url: { type: 'string' },
+            source: { type: 'string' }, volume: { type: 'number' }, liquidity: { type: 'number' }, url: { type: 'string' },
             endDate: { type: 'string' }, regions: { type: 'array', items: { type: 'string' } },
           } } },
           tech: { type: 'array', items: { type: 'object', properties: {
             title: { type: 'string' }, yesPrice: { type: 'number', minimum: 0, maximum: 100 },
             change24h: { type: 'number', minimum: -100, maximum: 100 },
             change7d: { type: 'number', minimum: -100, maximum: 100 },
-            source: { type: 'string' }, volume: { type: 'number' }, url: { type: 'string' },
+            source: { type: 'string' }, volume: { type: 'number' }, liquidity: { type: 'number' }, url: { type: 'string' },
             endDate: { type: 'string' }, regions: { type: 'array', items: { type: 'string' } },
           } } },
           finance: { type: 'array', items: { type: 'object', properties: {
             title: { type: 'string' }, yesPrice: { type: 'number', minimum: 0, maximum: 100 },
             change24h: { type: 'number', minimum: -100, maximum: 100 },
             change7d: { type: 'number', minimum: -100, maximum: 100 },
-            source: { type: 'string' }, volume: { type: 'number' }, url: { type: 'string' },
+            source: { type: 'string' }, volume: { type: 'number' }, liquidity: { type: 'number' }, url: { type: 'string' },
             endDate: { type: 'string' }, regions: { type: 'array', items: { type: 'string' } },
           } } },
         },
@@ -2458,10 +2459,14 @@ export const CACHE_TOOLS: ToolDef[] = [
       const source = argStr(params.source);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       const sort = argStr(params.sort);
+      const minLiquidity = argNum(params.min_liquidity) ?? 0;
       const changeField = sort === 'move_24h' ? 'change24h' : sort === 'move_7d' ? 'change7d' : null;
       for (const b of buckets) {
         if (query) narrowNested(data, 'markets-bootstrap', b, (m) => ciIncludes(m.title, query));
         if (source) narrowNested(data, 'markets-bootstrap', b, (m) => argStr(m.source) === source);
+        if (minLiquidity > 0) {
+          narrowNested(data, 'markets-bootstrap', b, (m) => typeof m.liquidity === 'number' && m.liquidity >= minLiquidity);
+        }
         if (changeField) {
           const node = bootstrap as Record<string, unknown>;
           node[b] = [...node[b] as Record<string, unknown>[]].sort((a, b) => {

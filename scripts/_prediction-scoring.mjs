@@ -67,6 +67,18 @@ export function parsePredictionMarketVolume(market) {
   return Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
+// Gamma reports liquidity as a number on events, and as both a numeric
+// `liquidityNum` and a string `liquidity` on markets. Closed or unquoted markets
+// omit both, and that must stay null: a 0 would read as a known-empty book.
+export function parsePolymarketLiquidity(source) {
+  for (const raw of [source?.liquidityNum, source?.liquidity]) {
+    if ((typeof raw !== 'number' && typeof raw !== 'string') || raw === '') continue;
+    const value = Number(raw);
+    if (Number.isFinite(value)) return value >= 0 ? value : null;
+  }
+  return null;
+}
+
 export function kalshiMarketUrl(seriesTicker) {
   const ticker = String(seriesTicker ?? '').trim();
   return /^[A-Za-z0-9_-]+$/.test(ticker)

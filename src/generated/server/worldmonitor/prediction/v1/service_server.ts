@@ -6,6 +6,7 @@ export interface ListPredictionMarketsRequest {
   cursor: string;
   category: string;
   query: string;
+  minLiquidity: number;
 }
 
 export interface ListPredictionMarketsResponse {
@@ -26,6 +27,7 @@ export interface PredictionMarket {
   source: MarketSource;
   yesPriceChange24h?: number;
   yesPriceChange7d?: number;
+  liquidity?: number;
 }
 
 export interface PaginationResponse {
@@ -101,6 +103,7 @@ export function createPredictionServiceRoutes(
             cursor: params.get("cursor") ?? "",
             category: params.get("category") ?? "",
             query: params.get("query") ?? "",
+            minLiquidity: Number(params.get("min_liquidity") ?? "0"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listPredictionMarkets", body);
