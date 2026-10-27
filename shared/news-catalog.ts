@@ -144,7 +144,12 @@ export function projectBrowserCatalog(catalog: NewsCatalog = NEWS_CATALOG): Brow
         const strategicDefault = browserField(feed, 'strategicDefault');
         if (strategicDefault !== undefined) browserFeed.strategicDefault = strategicDefault;
       }
-      const placedFeed = placement.type === undefined ? browserFeed : { ...browserFeed, type: placement.type };
+      let placedFeed = placement.type === undefined ? browserFeed : { ...browserFeed, type: placement.type };
+      const digestServed = feed.placements.some((p) =>
+        p.serverOrder !== undefined
+        && p.category === placement.category
+        && (p.edition === INTEL_EDITION || catalog.layout.server[p.edition]?.includes(p.category)));
+      if (!digestServed) placedFeed = { ...placedFeed, browserOnly: true };
       const key = `${placement.edition}|${placement.category}`;
       let bucket = buckets.get(key);
       if (!bucket) buckets.set(key, (bucket = []));

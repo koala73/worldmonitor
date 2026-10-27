@@ -3,8 +3,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppContext } from '@/app/app-context';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 
+const mocks = vi.hoisted(() => ({
+  fetchCategoryFeeds: vi.fn(),
+  checkBatchForBreakingAlerts: vi.fn(),
+  ingestHeadlines: vi.fn(),
+}));
+
 vi.mock('@/services/analysis-worker', () => ({
   analysisWorker: { clusterNews: vi.fn(), analyzeCorrelations: vi.fn() },
+}));
+vi.mock('@/services/rss', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/rss')>(),
+  fetchCategoryFeeds: mocks.fetchCategoryFeeds,
+  getFeedFailures: () => new Map(),
+}));
+vi.mock('@/services/breaking-news-alerts', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/breaking-news-alerts')>(),
+  checkBatchForBreakingAlerts: mocks.checkBatchForBreakingAlerts,
+}));
+vi.mock('@/services/trending-keywords', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/trending-keywords')>(),
+  ingestHeadlines: mocks.ingestHeadlines,
 }));
 
 interface NewsItemLike { source: string; title: string }
@@ -12,7 +31,7 @@ interface NewsItemLike { source: string; title: string }
 interface CrossEditionInternals {
   loadNewsCategory(
     category: string,
-    feeds: Array<{ name: string; url: string }>,
+    feeds: Array<{ name: string; url: string; browserOnly?: true }>,
     digest: null,
     isCustom: boolean,
     options: { allowDigestPendingFallback: boolean; recordBaselineSample: boolean },
@@ -78,6 +97,9 @@ const feeds = (names: string[]) => names.map(name => ({ name, url: `https://feed
 describe('cross-edition panels read the digests of every edition that carries them', () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
+    mocks.fetchCategoryFeeds.mockReset();
+    mocks.checkBatchForBreakingAlerts.mockReset();
+    mocks.ingestHeadlines.mockReset();
   });
 
   it('merges a markets panel from both the finance and commodity digests', async () => {
@@ -130,5 +152,52 @@ describe('cross-edition panels read the digests of every edition that carries th
     await loader.loadNewsCategory('thinktanks', feeds(['Institute']), null, true, OPTIONS);
 
     expect(editionsRequested(fetchMock).filter(e => e === 'tech')).toHaveLength(1);
+  });
+
+  it('sends digest items through breaking alerts and trending headlines', async () => {
+    vi.stubGlobal('fetch', digestFetch({ tech: editionDigest('podcasts', ['Show']) }));
+    const loader = await makeLoader();
+
+    await loader.loadNewsCategory('podcasts', feeds(['Show']), null, true, OPTIONS);
+
+    expect(mocks.checkBatchForBreakingAlerts).toHaveBeenCalledTimes(1);
+    const alerted = mocks.checkBatchForBreakingAlerts.mock.calls[0]![0] as NewsItemLike[];
+    expect(alerted.map(i => i.source)).toEqual(['Show', 'Show']);
+    // Ingestion is async (dynamic import), so earlier tests' calls can land
+    // here too; look for this panel's batch.
+    await vi.waitFor(() => expect(mocks.ingestHeadlines.mock.calls.some(([batch]) =>
+      (batch as NewsItemLike[]).length === 2 && (batch as NewsItemLike[]).every(h => h.source === 'Show'))).toBe(true));
+  });
+
+  it('does not alert on a stale digest replay', async () => {
+    const stale = editionDigest('podcasts', ['Show']);
+    stale.coverage = { state: 'ok', servedStale: true } as never;
+    vi.stubGlobal('fetch', digestFetch({ tech: stale }));
+    const loader = await makeLoader();
+
+    await loader.loadNewsCategory('podcasts', feeds(['Show']), null, true, OPTIONS);
+
+    expect(mocks.checkBatchForBreakingAlerts).not.toHaveBeenCalled();
+  });
+
+  it('still fetches sources no digest carries yet, merged with the digest items', async () => {
+    vi.stubGlobal('fetch', digestFetch({ finance: editionDigest('markets', ['Finance Wire']) }));
+    mocks.fetchCategoryFeeds.mockImplementation(async (requested: Array<{ name: string }>) =>
+      requested.map((feed, i) => ({
+        source: feed.name,
+        title: `${feed.name} direct ${i}`,
+        link: `https://direct.example/${encodeURIComponent(feed.name)}`,
+        pubDate: new Date(Date.UTC(2026, 9, 27, 13, 0, i)),
+      })));
+    const loader = await makeLoader();
+
+    const items = await loader.loadNewsCategory('markets', [
+      ...feeds(['Finance Wire']),
+      { name: 'Browser Only Wire', url: 'https://feeds.example/browser-only', browserOnly: true },
+    ], null, true, OPTIONS);
+
+    const requested = mocks.fetchCategoryFeeds.mock.calls[0]![0] as Array<{ name: string }>;
+    expect(requested.map(f => f.name)).toEqual(['Browser Only Wire']);
+    expect(new Set(items.map(i => i.source))).toEqual(new Set(['Finance Wire', 'Browser Only Wire']));
   });
 });

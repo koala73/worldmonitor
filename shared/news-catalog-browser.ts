@@ -13,6 +13,12 @@ export interface BrowserCatalogFeed {
   type?: string;
   lang?: string;
   strategicDefault?: boolean;
+  /**
+   * No digest carries this source in this category yet, so a panel that reads
+   * digests must still fetch it directly. Cleared as sources gain server
+   * placements (shared/news-catalog-pending-migration.json).
+   */
+  browserOnly?: true;
 }
 
 export interface BrowserCatalog {

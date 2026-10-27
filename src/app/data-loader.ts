@@ -1724,25 +1724,47 @@ export class DataLoaderManager implements AppModule {
       }
 
       // Cross-edition panel: read the digests of the editions that carry this
-      // category and merge them, source-fair, up to the custom-panel limit. The
-      // digests already hold every reachable source, so the result replaces
-      // the panel rather than accumulating onto it.
+      // category and merge them, source-fair, up to the custom-panel limit.
+      // Sources no digest carries yet (`browserOnly`, still on the migration
+      // list) keep the rotating direct fetch below, merged onto these items.
+      let crossEditionCarry: NewsItem[] | null = null;
+      let rotationFeeds = reachableFeeds;
       if (isCustom) {
         const crossEdition = await this.crossEditionCategoryItems(category);
         if (crossEdition) {
           recordSelectedFreshness(crossEdition.servedStale);
           this.setNewsRefreshDegraded(category, false);
-          const items = mergeRotatedNewsItems([], crossEdition.items, {
-            maxItems: this.customCategoryMergedItemLimit,
-            enabledSources: enabledNames,
-          });
-          this.flashMapForNews(items);
-          this.renderNewsForCategory(category, items);
-          this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
-            status: 'ok',
-            itemCount: items.length,
-          });
-          return items;
+          const digestItems = crossEdition.items.filter(i => enabledNames.has(i.source));
+          void ingestTrendingHeadlines(digestItems.map(i => ({
+            title: i.title,
+            pubDate: i.pubDate,
+            pubDateMissing: i.pubDateMissing,
+            source: i.source,
+            link: i.link,
+          })))
+            .catch((err) => {
+              console.warn('[News] ingestTrendingHeadlines failed (chunk load?):', err);
+            });
+          // Same #7084 gate as the home digest: a stale replay must not re-fire banners.
+          if (this.isCurrentNewsLoad(generation) && !crossEdition.servedStale) {
+            checkBatchForBreakingAlerts(digestItems);
+          }
+          this.flashMapForNews(digestItems);
+          const directFeeds = reachableFeeds.filter(f => f.browserOnly);
+          if (directFeeds.length === 0) {
+            const items = mergeRotatedNewsItems([], digestItems, {
+              maxItems: this.customCategoryMergedItemLimit,
+              enabledSources: enabledNames,
+            });
+            this.renderNewsForCategory(category, items);
+            this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
+              status: 'ok',
+              itemCount: items.length,
+            });
+            return items;
+          }
+          crossEditionCarry = digestItems;
+          rotationFeeds = directFeeds;
         }
       }
 
@@ -1762,7 +1784,14 @@ export class DataLoaderManager implements AppModule {
       // before any render — renderNewsForCategory overwrites
       // ctx.newsByCategory, which is what getStaleNewsItems reads, so reading
       // it later would fold each partial render back into itself.
-      const carryOver = isCustom ? staleItems : [];
+      const rotationNames = new Set(rotationFeeds.map(f => f.name));
+      const carryOver = !isCustom
+        ? []
+        : crossEditionCarry
+          // Earlier direct fetches of the browser-only sources, plus this
+          // cycle's digest items (which supersede any older copies).
+          ? [...staleItems.filter(i => rotationNames.has(i.source)), ...crossEditionCarry]
+          : staleItems;
 
       /**
        * What to actually paint for a given set of freshly fetched items.
@@ -1779,6 +1808,9 @@ export class DataLoaderManager implements AppModule {
           enabledSources: enabledNames,
         });
       };
+
+      // Show the digest items now; the direct fetch below only adds to them.
+      if (crossEditionCarry) this.renderNewsForCategory(category, mergeForRender([]));
 
       // Per-feed fallback: fetch each feed individually (first load or digest unavailable)
       const renderIntervalMs = 100;
@@ -1863,14 +1895,14 @@ export class DataLoaderManager implements AppModule {
       recordSelectedFreshness(false);
       const rotationCycle = isCustom ? this.newsRotationCycle(category) : 0;
       const fallbackFeeds = isCustom
-        ? selectRotatingFeedWindow(reachableFeeds, this.perFeedFallbackCategoryFeedLimit, rotationCycle)
+        ? selectRotatingFeedWindow(rotationFeeds, this.perFeedFallbackCategoryFeedLimit, rotationCycle)
         : this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
       if (isCustom) {
         // Advanced as soon as the window is claimed rather than after the fetch
         // resolves, so a cycle that fails outright still moves on instead of
         // retrying the same failing window forever.
-        this.advanceNewsRotationCycle(category, reachableFeeds.length);
-        console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length}/${reachableFeeds.length} feeds directly (rotation cycle ${rotationCycle})`);
+        this.advanceNewsRotationCycle(category, rotationFeeds.length);
+        console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length}/${rotationFeeds.length} feeds directly (rotation cycle ${rotationCycle})`);
       } else if (options.allowDigestPendingFallback) {
         console.warn(`[News] Digest still pending for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
       } else if (fallbackFeeds.length < enabledFeeds.length) {

@@ -535,12 +535,10 @@ test.describe('dashboard news request budget (#5376)', () => {
     }
     await settleAfterInitialFanout(page);
 
-    // The panel itself mounts below the fold, so this checks the item reached
-    // the app's news state (rendering into the panel is covered by the DOM
-    // tests in tests/dom/data-loader-cross-edition-panels.test.mts).
+    const startupsPanel = await mountDeferredPanel(page, CUSTOM_CATEGORY_KEY);
     await expect(
-      page.getByText(headline).first(),
-      'the item the edition digest carries must reach the dashboard',
+      startupsPanel.getByText(headline).first(),
+      'the item the edition digest carries must render in the panel',
     ).toBeAttached();
     expect(
       distinctProxiedFeeds(log.rssProxyUrls),

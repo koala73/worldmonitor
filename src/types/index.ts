@@ -80,6 +80,7 @@ export interface Feed {
   stateAffiliated?: string;  // e.g., "Russia", "China", "Iran"
   lang?: string;             // ISO 2-letter code for filtering (locale boost)
   strategicDefault?: boolean; // always default-on regardless of UI language
+  browserOnly?: true;         // no digest carries it in this category yet; fetched directly
 }
 
 export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
