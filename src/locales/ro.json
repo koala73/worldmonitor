@@ -3897,5 +3897,271 @@
     "noEvents": "Nu au fost capturate titluri selectate pentru această dată. Acest lucru nu dovedește absența evenimentelor.",
     "unlock90": "Deblocați 90 de zile cu Pro",
     "unlock365": "Deblocați 365 de zile cu un plan API"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Sursă",
+      "freshness": "Actualitate",
+      "confidence": "Încredere",
+      "limitations": "Limitări",
+      "related": "Conexe",
+      "groundedIn": "Bazat pe",
+      "curated": "Curatoriat v1",
+      "fallback": "Rezervă",
+      "layerGuide": "Ghid de straturi"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Știri / hotspot-uri",
+        "purpose": "Evidențiază hotspot-urile geopolitice monitorizate și le ridică nivelul când se întâlnesc știrile legate și semnalele de escaladare.",
+        "source": "Registrul de hotspot-uri WorldMonitor, informațiile de știri RSS/GDELT, scorul de escaladare al hotspot-urilor, activitatea militară și contextul de instabilitate a țării.",
+        "freshness": "Pozițiile hotspot-urilor sunt curatoriate și statice. Actualitatea fluxurilor de știri este urmărită separat. Nivelurile hotspot-urilor se recalculează când se reîmprospătează fluxurile de știri ale tabloului, cam la 10 minute. Informațiile GDELT au un buget mai lung de alimentare și de cache.",
+        "confidence": "Util ca indiciu pentru o primă triere. Fără deschiderea știrilor de bază și a contextului de țară, nu este o afirmație care poate fi citată.",
+        "limitations": {
+          "0": "Volumul de știri și potrivirea cuvintelor-cheie pot supra-reprezenta regiunile intens acoperite.",
+          "1": "Evenimentele cu profil redus pot lipsi când acoperirea RSS/GDELT este rară sau întârziată."
+        },
+        "related": {
+          "0": "panou Știri Live",
+          "1": "panou Prezentare generală a riscurilor strategice",
+          "2": "Rezumat informativ",
+          "3": "Ferestre pop-up pentru hotspot-uri"
+        }
+      },
+      "conflicts": {
+        "category": "Conflict",
+        "purpose": "Arată zone de conflict curatoriate și suprapuneri de granițe geopolitice, ca semnalele live să poată fi așezate în teatre cunoscute.",
+        "source": "Registrul de zone de conflict WorldMonitor, contextul de conflict UCDP/ACLED și metadate de graniță documentate, cum este DMZ coreeană.",
+        "freshness": "Zonele de bază sunt curatoriate și statice. Evenimentele de conflict dinamice sunt urmărite separat prin fluxurile ACLED/UCDP și semnalele de stare.",
+        "confidence": "Bun pentru orientare geografică. Singur, nu confirmă un incident în timp real.",
+        "limitations": {
+          "0": "Zonele statice pot rămâne în urma schimbărilor tactice rapide.",
+          "1": "O parte din dovezile de conflict apar în evenimentele de conflict, în instabilitatea țării sau în panourile conexe, nu ca poligon al zonei de conflict."
+        },
+        "related": {
+          "0": "UCDP Evenimente de conflict armat",
+          "1": "panou Instabilitate Națională",
+          "2": "Prezentare generală a riscurilor strategice",
+          "3": "Rezumat informativ"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Aviație",
+        "purpose": "Arată codurile de transponder raportate 7500, 7600 și 7700, independent de clasificarea militară.",
+        "source": "Interogări squawk exacte la adsb.lol. Detaliile aeronavei folosesc câmpurile furnizorului. Atribuirea este ODbL.",
+        "freshness": "Verifică în fiecare minut cât timp este vizibil. Ultimul mesaj trebuie să aibă cel mult 120 de secunde. Pozițiile pe hartă trebuie să aibă cel mult 90 de secunde. Rapoartele necunoscute expiră după 15 minute.",
+        "confidence": "Un semnal de transponder raportat nu confirmă un incident, o cauză, o aterizare sau o rezolvare.",
+        "limitations": {
+          "0": "Acoperirea receptoarelor este incompletă.",
+          "1": "Ora ultimului mesaj nu este ora la care a fost ales squawk.",
+          "2": "Aeronavele fără poziție proaspătă apar doar în lista de detalii.",
+          "3": "Datele contradictorii și pierderea recepției devin necunoscute."
+        },
+        "related": {
+          "0": "Detalii despre aeronavă"
+        }
+      },
+      "ais": {
+        "category": "Maritim",
+        "purpose": "Arată densitatea navelor și semnalele de întrerupere AIS în jurul apelor strategice și al punctelor de strangulare.",
+        "source": "Instantanee ale releului AISStream, serviciul maritim WorldMonitor și clasificatoarele de întrerupere a punctelor de strangulare.",
+        "freshness": "Instantaneele releului AIS se reconstruiesc la fiecare 5 secunde în mod implicit. Serverul poate păstra în cache instantaneul de densitate de bază timp de 5 minute. Stratul este oprit sau învechit când lipsesc datele de acces ale releului sau conectivitatea.",
+        "confidence": "Util pentru trierea anomaliilor maritime. AIS este raportat de nave, iar navele pot dispărea de pe recepție.",
+        "limitations": {
+          "0": "Acoperirea AIS terestră este neuniformă. Vizibilitatea mai slabă în Orientul Mijlociu, Asia și oceanul deschis este documentată.",
+          "1": "Navigația întunecată se deduce din goluri și din tipare de congestionare. Nu este o dovadă directă a intenției."
+        },
+        "related": {
+          "0": "panou Lanțul de aprovizionare",
+          "1": "Status Punct Strâmt",
+          "2": "Nave militare",
+          "3": "Semnale AIS în rezumatul informativ"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Maritim",
+        "purpose": "Desenează rutele majore de containere, energie și vrac prin punctele de strangulare strategice, pentru a urmări căile de întrerupere.",
+        "source": "Registrul de rute comerciale WorldMonitor, plus starea punctelor de strangulare din lanțul de aprovizionare și rezumatele de tranzit.",
+        "freshness": "Geometria rutelor este statică. Starea punctelor de strangulare este menținută prin interogare la fiecare 6 minute. Rezumatele de tranzit se reîmprospătează la fiecare 10 minute prin cache-ul lanțului de aprovizionare și căile releului.",
+        "confidence": "Bun ca context de expunere la nivel de rută. Nu este un flux de rutare la nivel de navă.",
+        "limitations": {
+          "0": "Rutele sunt coridoare modelate și pot să nu coincidă cu un plan de voiaj anume.",
+          "1": "Suprapunerile de întrerupere depind de starea curentă a punctelor de strangulare și a AIS."
+        },
+        "related": {
+          "0": "panou Lanțul de aprovizionare",
+          "1": "Explorator de rute",
+          "2": "Motor de scenarii",
+          "3": "strat Căi navigabile strategice"
+        }
+      },
+      "flights": {
+        "category": "Aviație",
+        "purpose": "Evidențiază întreruperile aeroportuare și închiderile NOTAM. Include NOTAM-urile de spațiu aerian în vigoare acum sau care încep în 24 de ore, adică restricții temporare de zbor, zone restricționate, periculoase și interzise, zone de operare militară, rezervări de spațiu aerian și închideri. Arată și pozițiile live ale aeronavelor când urmărirea este disponibilă.",
+        "source": "FAA ASWS, AviationStack, FAA NOTAM Management Service (NMS-API) și NOTAM ICAO, adsb.lol (ODbL), Wingbits, recuperarea serviciului OpenSky mai vechi, completare opțională necomercială a golurilor din airplanes.live/adsb.fi și serviciul de aviație. NOTAM-urile de spațiu aerian se desenează ca poligoane unde le furnizează NMS, ca cercuri unde NOTAM dă o rază de până la 250 NM, și ca marcaje în rest.",
+        "freshness": "Alimentarea întreruperilor aeroportuare rulează într-un ciclu de 30 de minute. NOTAM-urile de spațiu aerian se alimentează la fiecare 5 minute din extragerile de modificări NMS, cu o resincronizare completă zilnică, față de un buget de actualitate de 20 de minute. Panoul de aviație reîmprospătează și vederile operaționale într-un ciclu de interogare de 5 minute.",
+        "confidence": "Cel mai bun pentru trierea întreruperilor. Acoperirea fiecărei aeronave live depinde de disponibilitatea ADS-B și de furnizorii configurați. Textul NOTAM este autoritativ așa cum îl distribuie FAA.",
+        "limitations": {
+          "0": "Date demo simulate, bazate pe AviationStack, pot apărea când lipsește o cheie API.",
+          "1": "Pozițiile live ale aeronavelor pot întârzia sau lipsi acolo unde acoperirea ADS-B este slabă sau blocată.",
+          "2": "Zonele NOTAM de spațiu aerian se desenează doar pe harta deck.gl. Hărțile SVG și globul arată marcaje de aeroport.",
+          "3": "Cele mai multe TFR din SUA își descriu forma doar în text, deci apar ca marcaj la poziția NOTAM, nu ca forma restricționată.",
+          "4": "Programele din fereastra de valabilitate a unui NOTAM, de exemplu orele zilnice, apar în balon, dar nu se aplică vizibilității."
+        },
+        "related": {
+          "0": "panou Informații privind liniile aeriene",
+          "1": "Bară de comenzi pentru aviație",
+          "2": "Semnale de aviație în rezumatul informativ",
+          "3": "Urgențe de aeronave",
+          "4": "Interferență navigație"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Conflict",
+        "purpose": "Plasează înregistrări de conflict armat la nivel de eveniment, cu țară, actori, dată și intervale de fatalități.",
+        "source": "GED API al programului Uppsala Conflict Data Program, prin serviciul de conflict și alimentarea de evenimente UCDP.",
+        "freshness": "Se alimentează la fiecare 6 ore când alimentarea UCDP este în regulă.",
+        "confidence": "Consistență editorială mai mare decât fluxurile brute de știri de ultimă oră. Întârzierea este intenționată. Nu este un flux live de pe câmpul de luptă.",
+        "limitations": {
+          "0": "Cadența anuală de publicare, de nivel de cercetare, poate rata evenimente foarte recente.",
+          "1": "Intervalele de fatalități sunt estimări. Se citesc ca intervale, nu ca numere exacte."
+        },
+        "related": {
+          "0": "panou UCDP Evenimente de conflict armat",
+          "1": "Componenta de conflict a Indicelui de instabilitate țării",
+          "2": "Cronologia țării"
+        }
+      },
+      "weather": {
+        "category": "Vreme",
+        "purpose": "Arată alerte oficiale active de vreme severă de la serviciile meteorologice naționale, reunite într-un flux weather:alerts:v1.",
+        "source": "National Weather Service al Statelor Unite (NWS), Environment and Climate Change Canada (ECCC) și agregarea CAP a WMO Severe Weather Information Centre (SWIC), alimentate prin releul WorldMonitor.",
+        "freshness": "Alertele NWS, ECCC și SWIC sunt alimentate la fiecare 15 minute de releu și urmărite față de un buget de actualitate de 45 de minute.",
+        "confidence": "Autoritativ pentru alertele emise de serviciile naționale participante, în funcție de momentul publicării la sursă. NWS și ECCC se desenează ca poligoane. Alertele SWIC geocodate se desenează la centroidul țării serviciului emitent, cu un marcaj explicit de precizie.",
+        "limitations": {
+          "0": "Cei mai mulți membri SWIC publică geocoduri, nu poligoane. Acele alerte apar ca puncte la nivel de țară, cu descrierea zonei cuvânt cu cuvânt, nu ca suprapunere a zonei avertizate.",
+          "1": "Acoperirea SWIC depinde de membrii WMO care publică acum în agregator. Densitatea diferă după regiune.",
+          "2": "Rândurile SWIC pentru SUA și Canada sunt sărite, pentru că NWS și ECCC oferă deja acoperire la nivel de poligon pentru acele țări."
+        },
+        "related": {
+          "0": "strat Evenimente naturale",
+          "1": "Ferestre pop-up pentru alertele meteo",
+          "2": "Starea de actualitate a datelor"
+        }
+      },
+      "canadaRoads": {
+        "category": "Transport",
+        "purpose": "Arată incidente rutiere oficiale, alerte, stări, închideri, lucrări și pericole în jurisdicțiile canadiene suportate.",
+        "source": "Fluxurile provinciale Ontario 511, Alberta 511 și Manitoba 511, City of Toronto Road Restrictions și DriveBC Open511, alimentate prin WorldMonitor.",
+        "freshness": "Ontario 511, Alberta 511 și Manitoba 511 se alimentează la fiecare 15 minute și sunt urmărite față de un buget de actualitate de 45 de minute. Restricțiile din Toronto se alimentează la fiecare 2 ore. DriveBC Open511 se alimentează la fiecare 30 de minute.",
+        "confidence": "Autoritativ pentru editorii provinciali și municipali suportați, în funcție de momentul publicării la sursă și de geometria cartografiată.",
+        "limitations": {
+          "0": "Sursa roadconditions din Alberta 511 nu este ingerată, pentru că punctul final al furnizorului răspunde cu 404. Desenul live pentru Alberta cuprinde doar evenimente și alerte.",
+          "1": "Alertele provinciale fără coordonate nu apar ca puncte pe hartă.",
+          "2": "Poliliniile de stare a drumului pot simplifica geometria complexă a autostrăzilor."
+        },
+        "related": {
+          "0": "Alerte de vreme severă (NWS, ECCC, WMO SWIC)",
+          "1": "Starea de actualitate a datelor"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Alerte de urgență",
+        "purpose": "Arată avertismentele active de siguranță publică din Alberta, Columbia Britanică și Saskatchewan ca puncte pe hartă, lângă vremea NWS pentru SUA.",
+        "source": "Atom Alberta Emergency Alert, stratul GeoJSON OGL-BC Evacuation Orders and Alerts și fluxul JSON public SaskAlert, plus detaliile CAP 1.2 de pe aceeași gazdă, sunt normalizate într-o uniune canadaAlerts. Poligoanele CAP/GeoRSS, poligoanele de evacuare din Columbia Britanică și poligoanele CAP SaskAlert devin centroizi. Înregistrările fără geometrie folosesc centroidul provinciei sursă.",
+        "freshness": "Sursele provinciale se alimentează la fiecare 15 minute, iar uniunea este urmărită față de un buget de actualitate de 45 de minute. Un flux gol, adică fără alerte active, este un succes valid cu zero înregistrări.",
+        "confidence": "Autoritativ pentru alertele publicate de Alberta Emergency Alert, B.C. Evacuation Orders and Alerts și SaskAlert, în funcție de momentul publicării la sursă și de geometria cartografiată a alertei.",
+        "limitations": {
+          "0": "Acoperirea se limitează la Alberta, Columbia Britanică și Saskatchewan. Ontario nu are un flux automat eligibil, operat de provincie, în afara NAAD exclus.",
+          "1": "Nu înlocuiește alertele meteo NWS pentru SUA și nici straturile rutiere Ontario și Toronto.",
+          "2": "Intrările fără o severitate care poate fi pusă pe hartă sunt eliminate, nu inventate. Este vorba de semantica CAP și de culoare din Alberta, de starea de evacuare din Columbia Britanică sau de severitatea CAP SaskAlert. Culoarea sau nivelul din rezumatul SaskAlert nu sunt tratate ca severitate CAP."
+        },
+        "related": {
+          "0": "Alerte de vreme severă (NWS, ECCC, WMO SWIC)",
+          "1": "strat Evenimente naturale",
+          "2": "Starea de actualitate a datelor"
+        }
+      },
+      "cyberThreats": {
+        "category": "Cibernetic",
+        "purpose": "Cartează indicatori de compromitere îmbogățiți geografic, cum sunt serverele C2, gazdele de malware, phishingul, URL-urile malițioase și infrastructura de ransomware.",
+        "source": "abuse.ch Feodo Tracker și URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, fluxul RSS și de știri ransomware.live și îmbogățirea prin geolocalizare IP.",
+        "freshness": "Alimentarea amenințărilor cibernetice rulează la fiecare 2 ore. IOC afișate folosesc o fereastră glisantă de 14 zile și sunt plafonate pentru performanța hărții.",
+        "confidence": "Bun pentru vizibilitatea infrastructurii. Atribuirea și geolocalizarea IP pot fi zgomotoase.",
+        "limitations": {
+          "0": "Geolocalizarea IP poate indica infrastructura de găzduire, nu un operator sau o victimă.",
+          "1": "Disponibilitatea fluxurilor, cheile API și rapoartele de abuz pe flux pot deforma acoperirea."
+        },
+        "related": {
+          "0": "Ferestre pop-up ale hărții Amenințări cibernetice",
+          "1": "Contribuția cibernetică la Indicele de instabilitate țării",
+          "2": "Starea de actualitate a datelor"
+        }
+      },
+      "natural": {
+        "category": "Dezastre naturale",
+        "purpose": "Arată cutremure, alerte severe de dezastru și evenimente active de observare a Pământului, pentru imaginea situației.",
+        "source": "Cutremure USGS, alerte GDACS și evenimente NASA EONET, reunite în serviciul de evenimente naturale.",
+        "freshness": "Evenimentele naturale se alimentează la fiecare 3 ore. Pentru cutremurele USGS, așteptarea documentată este o cadență a sursei de aproximativ 5 minute.",
+        "confidence": "Puternic pentru semnalele publice de dezastru detectate. Încrederea variază după tipul de hazard și latența raportării la sursă.",
+        "limitations": {
+          "0": "Alertele GDACS de severitate mică sunt filtrate, ca harta să rămână lizibilă.",
+          "1": "Incendiile EONET sunt filtrate după actualitate, deci evenimentele mai vechi încă deschise pot să nu apară ca puncte active pe hartă."
+        },
+        "related": {
+          "0": "Ferestre pop-up ale stratului Evenimente naturale",
+          "1": "Alerte de vreme severă (NWS, ECCC, WMO SWIC)",
+          "2": "Semnale naturale în rezumatul informativ"
+        }
+      },
+      "waterways": {
+        "category": "Maritim",
+        "purpose": "Marchează căile navigabile strategice și punctele de strangulare, ca semnalele de întrerupere să fie citite pe geografia maritimă fixă.",
+        "source": "Registrul de căi navigabile strategice WorldMonitor, cu suprapuneri de stare a punctelor de strangulare din lanțul de aprovizionare, din AIS, avertismente NGA și fluxuri derivate din PortWatch.",
+        "freshness": "Pozițiile căilor navigabile sunt statice. Starea live a punctelor de strangulare este menținută prin interogare la fiecare 6 minute. Rezumatele de tranzit se reîmprospătează la fiecare 10 minute când calea releului și PortWatch este în regulă.",
+        "confidence": "Ridicată pentru geografia fixă. Încrederea în întreruperea live depinde de fluxurile însoțitoare AIS, NGA și PortWatch.",
+        "limitations": {
+          "0": "Un marcaj vizibil de punct de strangulare nu înseamnă că există o întrerupere activă.",
+          "1": "Geofence-urile de zonă și rutele modelate pot simplifica tiparele complexe de trafic."
+        },
+        "related": {
+          "0": "panou Lanțul de aprovizionare",
+          "1": "strat Rute comerciale",
+          "2": "Explorator de rute",
+          "3": "Motor de scenarii"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Risc de țară",
+        "purpose": "Colorează țările după scorul curent al Indicelui de instabilitate țării, pentru o triere largă a riscului strategic.",
+        "source": "Serviciul de scor al Indicelui de instabilitate țării din WorldMonitor folosește semnale de conflict, tulburări, avertismente, cibernetică, urmărire de nave, aviație, evenimente naturale și știri.",
+        "freshness": "Cache-ul scorurilor de risc este menținut prin interogare la fiecare 8 minute. seed-meta și health.riskScores arată starea live, învechită, parțială sau degradată față de un buget de actualitate de 30 de minute.",
+        "confidence": "Semnal compus de model. Nu este un rating oficial de țară și nici o prognoză de probabilitate.",
+        "limitations": {
+          "0": "Familiile de surse rare sau degradate pot reduce încrederea chiar și când o țară are încă un scor.",
+          "1": "Culoarea la nivel de țară poate ascunde variația din interiorul țării. Înainte de citare, verificați-o în panouri."
+        },
+        "related": {
+          "0": "panou Instabilitate Națională",
+          "1": "panou Prezentare generală a riscurilor strategice",
+          "2": "Starea de actualitate a datelor",
+          "3": "Rezumat informativ"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Strat",
+      "purpose": "Acest strat poate fi pornit pe hartă, dar un card curatoriat de sursă și încredere nu a fost adăugat încă.",
+      "source": "Nu este în setul curatoriat v1 de explicare a straturilor.",
+      "freshness": "Nu este declarat aici un contract de actualitate la nivel de strat. Verificați insignele vizibile ale panourilor, ferestrele pop-up sau starea de actualitate a datelor, când sunt disponibile.",
+      "confidence": "Necunoscută până se adaugă metadate specifice sursei.",
+      "limitations": {
+        "0": "Lipsa unui card curatoriat nu înseamnă că stratul nu este suportat.",
+        "1": "Folosiți ferestrele pop-up ale stratului și panourile conexe pentru contextul specific sursei."
+      },
+      "related": {
+        "0": "Ghid de straturi"
+      }
+    }
   }
 }

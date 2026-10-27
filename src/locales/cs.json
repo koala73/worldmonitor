@@ -3917,5 +3917,271 @@
     "noEvents": "Pro toto datum nebyly zaznamenány vybrané titulky. To nedokazuje, že se nic nestalo.",
     "unlock90": "Odemkněte 90 dní s Pro",
     "unlock365": "Odemkněte 365 dní s tarifem API"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Zdroj",
+      "freshness": "Aktuálnost",
+      "confidence": "Jistota",
+      "limitations": "Omezení",
+      "related": "Související",
+      "groundedIn": "Podloženo v",
+      "curated": "Kurátorováno v1",
+      "fallback": "Záložní",
+      "layerGuide": "Průvodce vrstvami"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Zprávy / hotspoty",
+        "purpose": "Zvýrazňuje sledované geopolitické hotspoty a zvyšuje jejich stupeň, když se sejdou související zprávy a signály eskalace.",
+        "source": "Registr hotspotů WorldMonitor, zpravodajství RSS/GDELT, hodnocení eskalace hotspotů, vojenská aktivita a kontext nestability zemí.",
+        "freshness": "Polohy hotspotů jsou kurátorované a statické. Aktuálnost zpravodajských kanálů se sleduje zvlášť. Stupně hotspotů se přepočítají, když se obnoví zpravodajské kanály nástěnky, zhruba každých 10 minut. Zpravodajství GDELT má delší rozpočet naplňování a mezipaměti.",
+        "confidence": "Hodí se jako vodítko k prvnímu třídění. Bez otevření podkladových zpráv a kontextu země to není tvrzení vhodné k citaci.",
+        "limitations": {
+          "0": "Objem zpráv a shoda klíčových slov mohou příliš zastoupit hojně pokrývané regiony.",
+          "1": "Málo viditelné události mohou chybět, když je pokrytí RSS/GDELT řídké nebo zpožděné."
+        },
+        "related": {
+          "0": "panel Živé zprávy",
+          "1": "panel Přehled strategických rizik",
+          "2": "Zpravodajská svodka",
+          "3": "Vyskakovací okna hotspotů"
+        }
+      },
+      "conflicts": {
+        "category": "Konflikt",
+        "purpose": "Ukazuje kurátorované zóny konfliktu a překryvy geopolitických hranic, aby se živé signály daly zasadit do známých bojišť.",
+        "source": "Registr zón konfliktu WorldMonitor, kontext konfliktu UCDP/ACLED a doložená metadata hranic, například korejská DMZ.",
+        "freshness": "Základní zóny jsou kurátorované a statické. Dynamické konfliktní události se sledují zvlášť přes kanály ACLED/UCDP a signály stavu.",
+        "confidence": "Dobré pro geografickou orientaci. Samo o sobě nepotvrzuje incident v reálném čase.",
+        "limitations": {
+          "0": "Statické zóny mohou zaostávat za rychlými taktickými změnami.",
+          "1": "Část dokladů o konfliktu je ve konfliktních událostech, v nestabilitě zemí nebo v souvisejících panelech, a ne jako polygon zóny konfliktu."
+        },
+        "related": {
+          "0": "UCDP události",
+          "1": "panel Nestabilita zemí",
+          "2": "Přehled strategických rizik",
+          "3": "Zpravodajská svodka"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Letectví",
+        "purpose": "Ukazuje hlášené kódy odpovídače 7500, 7600 a 7700 bez ohledu na vojenskou klasifikaci.",
+        "source": "Přesné dotazy squawk na adsb.lol. Údaje o letadle berou pole poskytovatele. Uvedení zdroje je ODbL.",
+        "freshness": "Při zobrazení kontroluje každou minutu. Poslední zpráva smí být stará nejvýše 120 sekund. Polohy na mapě smí být staré nejvýše 90 sekund. Neznámá hlášení vyprší po 15 minutách.",
+        "confidence": "Hlášený signál odpovídače nepotvrzuje incident, příčinu, přistání ani vyřešení.",
+        "limitations": {
+          "0": "Pokrytí přijímačů je neúplné.",
+          "1": "Čas poslední zprávy není čas, kdy byl squawk zvolen.",
+          "2": "Letadla bez čerstvé polohy se objeví jen v seznamu podrobností.",
+          "3": "Rozporná data a ztráta příjmu se vedou jako neznámé."
+        },
+        "related": {
+          "0": "Údaje o letadle"
+        }
+      },
+      "ais": {
+        "category": "Námořní",
+        "purpose": "Ukazuje hustotu plavidel a signály narušení AIS kolem strategických vod a kritických průlivů.",
+        "source": "Snímky relé AISStream, námořní služba WorldMonitor a klasifikátory narušení průlivů.",
+        "freshness": "Snímky relé AIS se ve výchozím stavu skládají znovu každých 5 sekund. Server může základní snímek hustoty držet v mezipaměti 5 minut. Vrstva je vypnutá nebo zastaralá, když chybí přihlašovací údaje relé nebo spojení.",
+        "confidence": "Hodí se k vyhledávání námořních anomálií. AIS hlásí sama plavidla a lodě mohou zmizet z příjmu.",
+        "limitations": {
+          "0": "Pozemní pokrytí AIS je nerovnoměrné. Slabší viditelnost Blízkého východu, Asie a otevřeného oceánu je doložená.",
+          "1": "Temná plavba se odvozuje z mezer a vzorců zácpy. Není to přímý důkaz záměru."
+        },
+        "related": {
+          "0": "panel Dodavatelský řetězec",
+          "1": "Stav průlivů",
+          "2": "Vojenská plavidla",
+          "3": "Signály AIS ve zpravodajské svodce"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Námořní",
+        "purpose": "Kreslí hlavní kontejnerové, energetické a hromadné trasy přes strategické průlivy, aby šlo sledovat cesty narušení.",
+        "source": "Registr obchodních cest WorldMonitor, stav průlivů dodavatelského řetězce a souhrny tranzitu.",
+        "freshness": "Geometrie tras je statická. Stav průlivů se udržuje dotazem každých 6 minut. Souhrny tranzitu se obnovují každých 10 minut přes mezipaměť dodavatelského řetězce a cesty relé.",
+        "confidence": "Dobré jako kontext expozice na úrovni trasy. Není to směrovací kanál jednotlivých lodí.",
+        "limitations": {
+          "0": "Trasy jsou modelované koridory a nemusí odpovídat konkrétnímu plánu plavby.",
+          "1": "Překryvy narušení závisejí na aktuálním stavu průlivů a AIS."
+        },
+        "related": {
+          "0": "panel Dodavatelský řetězec",
+          "1": "Průzkumník tras",
+          "2": "Motor scénářů",
+          "3": "vrstva Strategické vodní cesty"
+        }
+      },
+      "flights": {
+        "category": "Letectví",
+        "purpose": "Zvýrazňuje narušení letišť a uzavírky NOTAM. Zahrnuje NOTAM vzdušného prostoru, které platí teď nebo začínají do 24 hodin, včetně dočasných letových omezení, omezených, nebezpečných a zakázaných prostorů, vojenských operačních prostorů, rezervací vzdušného prostoru a uzavírek. Ukazuje i živé polohy letadel, když je sledování k dispozici.",
+        "source": "FAA ASWS, AviationStack, FAA NOTAM Management Service (NMS-API) a NOTAM ICAO, adsb.lol (ODbL), Wingbits, obnova starší služby OpenSky, volitelné nekomerční doplnění mezer z airplanes.live/adsb.fi a letecká služba. NOTAM vzdušného prostoru se kreslí jako polygony tam, kde je dodá NMS, jako kruhy tam, kde NOTAM udává poloměr do 250 NM, a jinak jako značky.",
+        "freshness": "Naplňování narušení letišť běží v taktu 30 minut. NOTAM vzdušného prostoru se naplňují každých 5 minut ze stahování změn NMS, s denní plnou resynchronizací, při rozpočtu aktuálnosti 20 minut. Letecký panel navíc obnovuje provozní pohledy v cyklu dotazování každých 5 minut.",
+        "confidence": "Nejlepší k prvnímu třídění narušení. Pokrytí jednotlivých živých letadel závisí na dostupnosti ADS-B a nastavených poskytovatelích. Text NOTAM je závazný v podobě, v jaké ho šíří FAA.",
+        "limitations": {
+          "0": "Simulovaná ukázková data opřená o AviationStack se mohou objevit, když chybí klíč API.",
+          "1": "Živé polohy letadel mohou být zpožděné nebo chybět tam, kde je pokrytí ADS-B slabé nebo blokované.",
+          "2": "Oblasti NOTAM vzdušného prostoru se kreslí jen na mapě deck.gl. Mapy SVG a glóbu ukazují značky letišť.",
+          "3": "Většina amerických TFR popisuje tvar jen v textu, takže se objeví jako značka v poloze NOTAM, ne jako tvar omezeného prostoru.",
+          "4": "Rozvrhy uvnitř okna platnosti NOTAM, například denní hodiny, jsou v bublině, ale na viditelnost se neuplatňují."
+        },
+        "related": {
+          "0": "panel Letecké zpravodajství",
+          "1": "Příkazová lišta letectví",
+          "2": "Letecké signály ve zpravodajské svodce",
+          "3": "Letecké nouze",
+          "4": "Rušení navigace"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Konflikt",
+        "purpose": "Vynáší záznamy ozbrojeného konfliktu na úrovni události, se zemí, aktéry, datem a rozsahy obětí.",
+        "source": "GED API programu Uppsala Conflict Data Program přes službu konfliktu a naplňování událostí UCDP.",
+        "freshness": "Naplňuje se každých 6 hodin, když je naplňování UCDP v pořádku.",
+        "confidence": "Redakčně konzistentnější než surové kanály čerstvých zpráv. Zpoždění je záměrné. Není to živý kanál z bojiště.",
+        "limitations": {
+          "0": "Roční rytmus vydání výzkumné úrovně může minout velmi čerstvé události.",
+          "1": "Rozsahy obětí jsou odhady. Je třeba je číst jako rozsahy, ne jako přesné počty."
+        },
+        "related": {
+          "0": "panel UCDP Konflikty",
+          "1": "Konfliktní složka Country Instability Index",
+          "2": "Časová osa země"
+        }
+      },
+      "weather": {
+        "category": "Počasí",
+        "purpose": "Ukazuje aktivní úřední výstrahy před nebezpečným počasím od národních meteorologických služeb, sloučené do jednoho kanálu weather:alerts:v1.",
+        "source": "National Weather Service Spojených států (NWS), Environment and Climate Change Canada (ECCC) a agregace CAP střediska WMO Severe Weather Information Centre (SWIC), naplňované přes relé WorldMonitor.",
+        "freshness": "Výstrahy NWS, ECCC a SWIC naplňuje relé každých 15 minut a hlídá je vůči rozpočtu aktuálnosti 45 minut.",
+        "confidence": "Závazné pro výstrahy vydané zúčastněnými národními službami, s výhradou času publikace u zdroje. NWS a ECCC se kreslí jako polygony. Geokódované výstrahy SWIC se kreslí v centroidu země vydávající služby, s výslovnou značkou přesnosti.",
+        "limitations": {
+          "0": "Většina členů SWIC publikuje geokódy, ne polygony. Tyto výstrahy se objeví jako body na úrovni země, s doslovným popisem oblasti, ne jako překryv varované oblasti.",
+          "1": "Pokrytí SWIC závisí na tom, kteří členové WMO právě publikují do agregátoru. Hustota se liší podle regionu.",
+          "2": "Řádky SWIC pro USA a Kanadu se přeskakují, protože NWS a ECCC už těmto zemím dávají pokrytí na úrovni polygonů."
+        },
+        "related": {
+          "0": "vrstva Přírodní události",
+          "1": "Vyskakovací okna výstrah počasí",
+          "2": "Stav aktuálnosti dat"
+        }
+      },
+      "canadaRoads": {
+        "category": "Doprava",
+        "purpose": "Ukazuje úřední silniční události, výstrahy, stavy, uzavírky, stavby a nebezpečí v podporovaných kanadských jurisdikcích.",
+        "source": "Provinční kanály Ontario 511, Alberta 511 a Manitoba 511, City of Toronto Road Restrictions a DriveBC Open511, naplňované přes WorldMonitor.",
+        "freshness": "Ontario 511, Alberta 511 a Manitoba 511 se naplňují každých 15 minut a hlídají se vůči rozpočtu aktuálnosti 45 minut. Omezení v Torontu se naplňují každé 2 hodiny. DriveBC Open511 se naplňuje každých 30 minut.",
+        "confidence": "Závazné pro podporované provinční a městské vydavatele, s výhradou času publikace u zdroje a mapované geometrie.",
+        "limitations": {
+          "0": "Zdroj roadconditions z Alberta 511 se nepřebírá, protože koncový bod dodavatele vrací 404. Živé kreslení Alberty ukazuje jen události a výstrahy.",
+          "1": "Provinční výstrahy bez souřadnic se neobjeví jako body na mapě.",
+          "2": "Křivky stavu silnic mohou zjednodušit složitou geometrii dálnic."
+        },
+        "related": {
+          "0": "Varování před nebezpečným počasím (NWS, ECCC, WMO SWIC)",
+          "1": "Stav aktuálnosti dat"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Nouzové výstrahy",
+        "purpose": "Ukazuje aktivní varování veřejné bezpečnosti z Alberty, Britské Kolumbie a Saskatchewan jako body na mapě, vedle počasí NWS pro USA.",
+        "source": "Atom Alberta Emergency Alert, vrstva GeoJSON OGL-BC Evacuation Orders and Alerts a veřejný kanál JSON SaskAlert spolu s podrobnostmi CAP 1.2 ze stejného hostitele se sjednocují do jedné unie canadaAlerts. Polygony CAP/GeoRSS, evakuační polygony Britské Kolumbie a polygony CAP SaskAlert se stávají centroidy. Záznamy bez geometrie použijí centroid zdrojové provincie.",
+        "freshness": "Provinční zdroje se naplňují každých 15 minut a unie se hlídá vůči rozpočtu aktuálnosti 45 minut. Prázdný kanál, tedy žádné aktivní výstrahy, je platný úspěch s nulovým počtem záznamů.",
+        "confidence": "Závazné pro výstrahy, které publikují Alberta Emergency Alert, B.C. Evacuation Orders and Alerts a SaskAlert, s výhradou času publikace u zdroje a mapované geometrie výstrahy.",
+        "limitations": {
+          "0": "Pokrytí je omezené na Albertu, Britskou Kolumbii a Saskatchewan. Ontario nemá způsobilý strojový kanál provozovaný provincií mimo vyloučené NAAD.",
+          "1": "Nenahrazuje výstrahy počasí NWS pro USA ani silniční vrstvy Ontaria a Toronta.",
+          "2": "Položky bez mapovatelné závažnosti se zahazují a nevymýšlejí se. Jde o sémantiku CAP a barvy Alberty, stav evakuace Britské Kolumbie nebo závažnost CAP SaskAlert. Barva nebo stupeň v souhrnu SaskAlert se nebere jako závažnost CAP."
+        },
+        "related": {
+          "0": "Varování před nebezpečným počasím (NWS, ECCC, WMO SWIC)",
+          "1": "vrstva Přírodní události",
+          "2": "Stav aktuálnosti dat"
+        }
+      },
+      "cyberThreats": {
+        "category": "Kyber",
+        "purpose": "Mapuje geograficky obohacené indikátory kompromitace, jako jsou servery C2, hostitelé malwaru, phishing, škodlivé adresy URL a infrastruktura ransomwaru.",
+        "source": "abuse.ch Feodo Tracker a URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, kanál RSS a zpráv ransomware.live a obohacení geolokací IP.",
+        "freshness": "Naplňování kybernetických hrozeb běží každé 2 hodiny. Zobrazené IOC používají klouzavé okno 14 dní a mají strop kvůli výkonu mapy.",
+        "confidence": "Dobré pro viditelnost infrastruktury. Atribuce a geolokace IP mohou být zašuměné.",
+        "limitations": {
+          "0": "Geolokace IP může ukázat na hostingovou infrastrukturu, ne na provozovatele nebo oběť.",
+          "1": "Dostupnost kanálů, klíče API a hlášení zneužití u jednotlivých kanálů mohou zkreslit pokrytí."
+        },
+        "related": {
+          "0": "Vyskakovací okna mapy Kybernetické hrozby",
+          "1": "Kybernetický příspěvek k Country Instability Index",
+          "2": "Stav aktuálnosti dat"
+        }
+      },
+      "natural": {
+        "category": "Přírodní katastrofy",
+        "purpose": "Ukazuje zemětřesení, závažné výstrahy před katastrofami a aktivní události pozorování Země pro přehled o situaci.",
+        "source": "Zemětřesení USGS, výstrahy GDACS a události NASA EONET, sloučené ve službě přírodních událostí.",
+        "freshness": "Přírodní události se naplňují každé 3 hodiny. U zemětřesení USGS je popsané očekávání rytmus zdroje zhruba každých 5 minut.",
+        "confidence": "Silné u zachycených veřejných signálů katastrof. Jistota se liší podle typu nebezpečí a zpoždění hlášení u zdroje.",
+        "limitations": {
+          "0": "Výstrahy GDACS s nízkou závažností se odfiltrují, aby mapa zůstala čitelná.",
+          "1": "Požáry EONET se filtrují podle aktuálnosti, takže starší stále otevřené události se nemusí objevit jako aktivní body na mapě."
+        },
+        "related": {
+          "0": "Vyskakovací okna vrstvy Přírodní události",
+          "1": "Varování před nebezpečným počasím (NWS, ECCC, WMO SWIC)",
+          "2": "Přírodní signály ve zpravodajské svodce"
+        }
+      },
+      "waterways": {
+        "category": "Námořní",
+        "purpose": "Označuje strategické vodní cesty a průlivy, aby se signály narušení daly číst na pozadí pevné námořní geografie.",
+        "source": "Registr strategických vodních cest WorldMonitor s překryvy stavu průlivů dodavatelského řetězce z AIS, varování NGA a kanálů odvozených z PortWatch.",
+        "freshness": "Polohy vodních cest jsou statické. Živý stav průlivů se udržuje dotazem každých 6 minut. Souhrny tranzitu se obnovují každých 10 minut, když je cesta relé a PortWatch v pořádku.",
+        "confidence": "Vysoká u pevné geografie. Jistota živého narušení závisí na doprovodných kanálech AIS, NGA a PortWatch.",
+        "limitations": {
+          "0": "Viditelná značka průlivu neznamená, že narušení právě probíhá.",
+          "1": "Plošné geofence a modelované trasy mohou zjednodušit složité vzorce provozu."
+        },
+        "related": {
+          "0": "panel Dodavatelský řetězec",
+          "1": "vrstva Obchodní cesty",
+          "2": "Průzkumník tras",
+          "3": "Motor scénářů"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Riziko země",
+        "purpose": "Barví země podle aktuálního skóre Country Instability Index pro široké první třídění strategického rizika.",
+        "source": "Služba bodování Country Instability Index ve WorldMonitor používá signály konfliktu, nepokojů, upozornění, kyber, sledování lodí, letectví, přírodních událostí a zpráv.",
+        "freshness": "Mezipaměť skóre rizika se udržuje dotazem každých 8 minut. seed-meta a health.riskScores ukazují stav živý, zastaralý, částečný nebo zhoršený vůči rozpočtu aktuálnosti 30 minut.",
+        "confidence": "Jde o složený signál modelu. Není to úřední hodnocení země ani pravděpodobnostní předpověď.",
+        "limitations": {
+          "0": "Řídké nebo zhoršené rodiny zdrojů mohou snížit jistotu, i když země pořád má skóre.",
+          "1": "Barva na úrovni země může skrýt rozdíly uvnitř země. Před citací ji ověřte v panelech."
+        },
+        "related": {
+          "0": "panel Nestabilita zemí",
+          "1": "panel Přehled strategických rizik",
+          "2": "Stav aktuálnosti dat",
+          "3": "Zpravodajská svodka"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Vrstva",
+      "purpose": "Tuto vrstvu lze na mapě zapnout, ale kurátorovaná karta zdroje a jistoty k ní ještě není.",
+      "source": "Není v kurátorované sadě v1 vysvětlení vrstev.",
+      "freshness": "Není tu deklarovaná smlouva aktuálnosti na úrovni vrstvy. Zkontrolujte viditelné odznaky panelů, vyskakovací okna nebo stav aktuálnosti dat, jsou-li k dispozici.",
+      "confidence": "Neznámá, dokud nepřibudou metadata konkrétního zdroje.",
+      "limitations": {
+        "0": "Chybějící kurátorovaná karta neznamená, že vrstva není podporovaná.",
+        "1": "Použijte vyskakovací okna vrstvy a související panely pro kontext konkrétního zdroje."
+      },
+      "related": {
+        "0": "Průvodce vrstvami"
+      }
+    }
   }
 }

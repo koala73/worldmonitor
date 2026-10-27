@@ -3877,5 +3877,271 @@
     "noEvents": "Erre a napra nem rögzítettek kiválasztott hírcímeket. Ez nem bizonyítja az események hiányát.",
     "unlock90": "90 nap feloldása Pro csomaggal",
     "unlock365": "365 nap feloldása API-csomaggal"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Forrás",
+      "freshness": "Frissesség",
+      "confidence": "Megbízhatóság",
+      "limitations": "Korlátok",
+      "related": "Kapcsolódó",
+      "groundedIn": "Alapja",
+      "curated": "Gondozott v1",
+      "fallback": "Tartalék",
+      "layerGuide": "Réteg útmutató"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Hírek / gócpontok",
+        "purpose": "Kiemeli a figyelt geopolitikai gócpontokat, és emeli a szintjüket, amikor az érintett hírek és az eszkalációs jelek összetalálkoznak.",
+        "source": "A WorldMonitor gócpont-nyilvántartása, RSS/GDELT hírszerzés, a gócpontok eszkalációs értékelése, katonai tevékenység és az ország instabilitásának kontextusa.",
+        "freshness": "A gócpontok helye gondozott és statikus. A hírfolyamok frissességét külön követjük. A gócpontszintek újraszámolódnak, amikor az irányítópult hírfolyamai frissülnek, körülbelül 10 percenként. A GDELT hírszerzésnek hosszabb a feltöltési és gyorsítótár-kerete.",
+        "confidence": "Első szűréshez hasznos jel. A mögöttes hírek és az ország kontextusa nélkül nem hivatkozható állítás.",
+        "limitations": {
+          "0": "A hírek mennyisége és a kulcsszóegyezés túlreprezentálhatja a sokat tárgyalt régiókat.",
+          "1": "Az alacsony profilú események kimaradhatnak, ha az RSS/GDELT lefedettség ritka vagy késik."
+        },
+        "related": {
+          "0": "panel Élő Hírek",
+          "1": "panel Stratégiai Kockázat Áttekintés",
+          "2": "Hírszerzési összefoglaló",
+          "3": "Gócpontok felugró ablakai"
+        }
+      },
+      "conflicts": {
+        "category": "Konfliktus",
+        "purpose": "Gondozott konfliktuszónákat és geopolitikai határfedvényeket mutat, hogy az élő jelek ismert hadszínterekhez illeszkedjenek.",
+        "source": "A WorldMonitor konfliktuszóna-nyilvántartása, UCDP/ACLED konfliktuskontextus, valamint dokumentált határ-metaadatok, például a koreai DMZ.",
+        "freshness": "Az alapzónák gondozottak és statikusak. A dinamikus konfliktuseseményeket külön követik az ACLED/UCDP folyamok és az állapotjelek.",
+        "confidence": "Jó a földrajzi tájékozódáshoz. Önmagában nem erősíti meg az incidenst valós időben.",
+        "limitations": {
+          "0": "A statikus zónák lemaradhatnak a gyors taktikai változásoktól.",
+          "1": "A konfliktus bizonyítékának egy része konfliktuseseményként, az ország instabilitásában vagy a kapcsolódó paneleken jelenik meg, nem konfliktuszóna-poligonként."
+        },
+        "related": {
+          "0": "UCDP Fegyveres konfliktus események",
+          "1": "panel Ország Instabilitása",
+          "2": "Stratégiai Kockázat Áttekintés",
+          "3": "Hírszerzési összefoglaló"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Légiközlekedés",
+        "purpose": "A 7500, 7600 és 7700 jelentett transzponderkódokat mutatja, a katonai besorolástól függetlenül.",
+        "source": "Pontos squawk-lekérdezések az adsb.lol szolgáltatásban. A repülőgép adatai a szolgáltató mezőiből jönnek. A forrásmegjelölés ODbL.",
+        "freshness": "Amíg látható, percenként ellenőriz. Az utolsó üzenet legfeljebb 120 másodperc lehet. A térképi pozíció legfeljebb 90 másodperc lehet. Az ismeretlen jelentések 15 perc után lejárnak.",
+        "confidence": "A jelentett transzponderjel nem igazol incidenst, okot, leszállást vagy lezárást.",
+        "limitations": {
+          "0": "A vevőlefedettség hiányos.",
+          "1": "Az utolsó üzenet ideje nem a squawk kiválasztásának ideje.",
+          "2": "A friss pozíció nélküli repülőgépek csak a részletes listában látszanak.",
+          "3": "Az ellentmondó adatok és a vételkiesés ismeretlenként jelennek meg."
+        },
+        "related": {
+          "0": "Repülőgép adatai"
+        }
+      },
+      "ais": {
+        "category": "Tengeri",
+        "purpose": "Hajósűrűséget és AIS-zavarjeleket mutat a stratégiai vizek és a szűk átjárók körül.",
+        "source": "AISStream relé pillanatképek, a WorldMonitor tengeri szolgáltatása és a szűk átjárók zavarosztályozói.",
+        "freshness": "Az AIS relé pillanatképei alapértelmezés szerint 5 másodpercenként épülnek újra. A kiszolgáló az alapsűrűség pillanatképét 5 percig tarthatja gyorsítótárban. A réteg kikapcsol vagy elavul, ha a relé belépési adatai vagy a kapcsolat hiányzik.",
+        "confidence": "Hasznos a tengeri rendellenességek szűrésére. Az AIS-t a hajók maguk jelentik, és a hajók el is némulhatnak.",
+        "limitations": {
+          "0": "A szárazföldi AIS-lefedettség egyenetlen. A Közel-Kelet, Ázsia és a nyílt óceán gyengébb láthatósága dokumentált.",
+          "1": "A sötét hajózás a hiányokból és a torlódási mintákból következik. Nem közvetlen bizonyíték a szándékra."
+        },
+        "related": {
+          "0": "panel Ellátási Lánc",
+          "1": "Szűkület Állapota",
+          "2": "Katonai hajók",
+          "3": "AIS-jelek a hírszerzési összefoglalóban"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Tengeri",
+        "purpose": "A fő konténer-, energia- és ömlesztett útvonalakat rajzolja a stratégiai szűk átjárókon át, hogy a zavarok útja követhető legyen.",
+        "source": "A WorldMonitor kereskedelmiútvonal-nyilvántartása, valamint az ellátási lánc szűk átjáróinak állapota és a tranzitösszesítők.",
+        "freshness": "Az útvonal geometriája statikus. A szűk átjárók állapotát 6 percenként karbantartó lekérdezés tartja frissen. A tranzitösszesítők 10 percenként frissülnek az ellátási lánc gyorsítótárán és a relé útjain.",
+        "confidence": "Jó kontextus az útvonalszintű kitettséghez. Nem hajószintű útvonalcsatorna.",
+        "limitations": {
+          "0": "Az útvonalak modellezett folyosók, és nem feltétlenül egyeznek egy konkrét útitervvel.",
+          "1": "A zavarfedvények a szűk átjárók és az AIS aktuális állapotától függnek."
+        },
+        "related": {
+          "0": "panel Ellátási Lánc",
+          "1": "Útvonalböngésző",
+          "2": "Forgatókönyv-motor",
+          "3": "réteg Szűk átjárók"
+        }
+      },
+      "flights": {
+        "category": "Légiközlekedés",
+        "purpose": "Kiemeli a repülőtéri zavarokat és a NOTAM szerinti lezárásokat. Ide tartoznak a most érvényes vagy 24 órán belül kezdődő légtér-NOTAM-ok, köztük az ideiglenes repülési korlátozások, a korlátozott, veszélyes és tiltott területek, a katonai műveleti területek, a légtérfoglalások és a lezárások. Élő repülőgép-pozíciókat is mutat, ha van követés.",
+        "source": "FAA ASWS, AviationStack, FAA NOTAM Management Service (NMS-API) és ICAO NOTAM, adsb.lol (ODbL), Wingbits, a régi OpenSky szolgáltatás helyreállítása, opcionális nem kereskedelmi hiánykitöltés az airplanes.live/adsb.fi forrásból, valamint a légi szolgáltatás. A légtér-NOTAM-ok poligonként jelennek meg, ahol az NMS megadja őket, körként, ahol a NOTAM legfeljebb 250 NM sugarat ad, egyébként jelölőként.",
+        "freshness": "A repülőtéri zavarok feltöltése 30 perces ütemben fut. A légtér-NOTAM-ok 5 percenként töltődnek fel az NMS változáslehívásaiból, napi teljes újraszinkronnal, 20 perces frissességi kerettel. A légi panel a működési nézeteket is 5 perces lekérdezési ciklusban frissíti.",
+        "confidence": "Zavarok első szűrésére a legalkalmasabb. Az egyes élő repülőgépek lefedettsége az ADS-B elérhetőségétől és a beállított szolgáltatóktól függ. A NOTAM szövege úgy mérvadó, ahogyan az FAA terjeszti.",
+        "limitations": {
+          "0": "AviationStackre épülő szimulált demóadatok jelenhetnek meg, ha nincs API-kulcs.",
+          "1": "Az élő repülőgép-pozíciók késhetnek vagy hiányozhatnak, ahol az ADS-B lefedettség gyenge vagy blokkolt.",
+          "2": "A légtér-NOTAM területek csak a deck.gl térképen rajzolódnak ki. Az SVG és a glóbusz térképek repülőtéri jelölőket mutatnak.",
+          "3": "A legtöbb amerikai TFR a formáját csak szövegben írja le, ezért jelölőként látszik a NOTAM pozícióján, nem a korlátozott alakként.",
+          "4": "A NOTAM érvényességi ablakán belüli menetrendek, például a napi órák, az elemleírásban látszanak, de a láthatóságot nem vezérlik."
+        },
+        "related": {
+          "0": "panel Légitársasági intelligencia",
+          "1": "Légi parancssáv",
+          "2": "Légi jelek a hírszerzési összefoglalóban",
+          "3": "Légi vészhelyzetek",
+          "4": "Navigációs zavarok"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Konfliktus",
+        "purpose": "Eseményszintű fegyveres konfliktusrekordokat helyez el, országgal, szereplőkkel, dátummal és halálozási tartományokkal.",
+        "source": "Az Uppsala Conflict Data Program GED API-ja a konfliktusszolgáltatáson és az UCDP eseményfeltöltésen keresztül.",
+        "freshness": "6 óránként töltődik fel, ha az UCDP feltöltés rendben van.",
+        "confidence": "Szerkesztői szempontból egységesebb, mint a nyers friss hírfolyamok. A késés szándékos. Nem élő csatéri folyam.",
+        "limitations": {
+          "0": "Az éves, kutatási szintű közlési ritmus nagyon friss eseményeket hagyhat ki.",
+          "1": "A halálozási tartományok becslések. Tartományként kell olvasni őket, nem pontos létszámként."
+        },
+        "related": {
+          "0": "UCDP panel Fegyveres konfliktusok",
+          "1": "Az Ország instabilitási index konfliktusösszetevője",
+          "2": "Az ország idővonala"
+        }
+      },
+      "weather": {
+        "category": "Időjárás",
+        "purpose": "Aktív hivatalos súlyos időjárási riasztásokat mutat a nemzeti meteorológiai szolgálatoktól, egy weather:alerts:v1 folyamba összevonva.",
+        "source": "Az Egyesült Államok National Weather Service szolgálata (NWS), az Environment and Climate Change Canada (ECCC) és a WMO Severe Weather Information Centre (SWIC) CAP-összesítése, a WorldMonitor relén keresztül feltöltve.",
+        "freshness": "Az NWS, az ECCC és a SWIC riasztásait a relé 15 percenként tölti fel, és 45 perces frissességi kerethez méri.",
+        "confidence": "Mérvadó a részt vevő nemzeti szolgálatok riasztásaira, a forrás közlési idejének függvényében. Az NWS és az ECCC poligonként rajzolódik. A geokódolt SWIC-riasztások a kiadó szolgálat országsúlypontján jelennek meg, kifejezett pontossági jelölővel.",
+        "limitations": {
+          "0": "A SWIC tagjainak többsége geokódot közöl, nem poligont. Ezek a riasztások országszintű pontokként látszanak, a terület leírásával szó szerint, nem a figyelmeztetett terület fedvényeként.",
+          "1": "A SWIC lefedettsége attól függ, mely WMO-tagok közölnek éppen az aggregátor felé. A sűrűség régiónként eltér.",
+          "2": "Az USA és Kanada SWIC-sorai kimaradnak, mert az NWS és az ECCC ezekre az országokra már poligonszintű lefedettséget ad."
+        },
+        "related": {
+          "0": "réteg Természeti események",
+          "1": "Időjárási riasztások felugró ablakai",
+          "2": "Az adatfrissesség állapota"
+        }
+      },
+      "canadaRoads": {
+        "category": "Közlekedés",
+        "purpose": "Hivatalos közúti eseményeket, riasztásokat, állapotokat, lezárásokat, építkezéseket és veszélyeket mutat a támogatott kanadai illetékességi területeken.",
+        "source": "Ontario 511, Alberta 511 és Manitoba 511 tartományi folyamok, a City of Toronto Road Restrictions és a DriveBC Open511, a WorldMonitoron keresztül feltöltve.",
+        "freshness": "Az Ontario 511, az Alberta 511 és a Manitoba 511 15 percenként töltődik fel, és 45 perces frissességi kerethez mérik. A Toronto korlátozásai 2 óránként töltődnek fel. A DriveBC Open511 30 percenként töltődik fel.",
+        "confidence": "Mérvadó a támogatott tartományi és önkormányzati közlőkre, a forrás közlési idejének és a térképezett geometriának a függvényében.",
+        "limitations": {
+          "0": "Az Alberta 511 roadconditions forrása nem kerül be, mert a szállító végpontja 404-et ad. Alberta élő rajza csak eseményeket és riasztásokat mutat.",
+          "1": "A koordináta nélküli tartományi riasztások nem jelennek meg pontként a térképen.",
+          "2": "Az útállapot-vonalak egyszerűsíthetik a bonyolult autópálya-geometriát."
+        },
+        "related": {
+          "0": "Súlyos időjárási riasztások (NWS, ECCC, WMO SWIC)",
+          "1": "Az adatfrissesség állapota"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Vészriasztások",
+        "purpose": "Alberta, Brit Columbia és Saskatchewan aktív közbiztonsági figyelmeztetéseit mutatja pontokként a térképen, az USA NWS időjárása mellett.",
+        "source": "Az Alberta Emergency Alert Atom, az OGL-BC Evacuation Orders and Alerts GeoJSON réteg, valamint a SaskAlert nyilvános JSON-folyama és az azonos gazdán lévő CAP 1.2 részletek egy canadaAlerts unióba rendeződnek. A CAP/GeoRSS poligonok, Brit Columbia kitelepítési poligonjai és a SaskAlert CAP-poligonjai súlypontokká válnak. Geometria nélküli rekordok a forrástartomány súlypontját használják.",
+        "freshness": "A tartományi források 15 percenként töltődnek fel, az uniót pedig 45 perces frissességi kerethez mérik. Az üres folyam, vagyis ha nincs aktív riasztás, érvényes siker nulla rekorddal.",
+        "confidence": "Mérvadó az Alberta Emergency Alert, a B.C. Evacuation Orders and Alerts és a SaskAlert által közölt riasztásokra, a forrás közlési idejének és a térképezett riasztásgeometriának a függvényében.",
+        "limitations": {
+          "0": "A lefedettség Albertára, Brit Columbiára és Saskatchewanra korlátozódik. Ontariónak nincs alkalmas, a tartomány által üzemeltetett gépi folyama a kizárt NAAD-on kívül.",
+          "1": "Nem helyettesíti az USA NWS időjárási riasztásait, sem Ontario és Toronto útrétegeit.",
+          "2": "A térképezhető súlyosság nélküli bejegyzések kiesnek, nem pedig kitalálódnak. Ez Alberta CAP- és színszemantikája, Brit Columbia kitelepítési állapota vagy a SaskAlert CAP-súlyossága. A SaskAlert összefoglaló színe vagy szintje nem számít CAP-súlyosságnak."
+        },
+        "related": {
+          "0": "Súlyos időjárási riasztások (NWS, ECCC, WMO SWIC)",
+          "1": "réteg Természeti események",
+          "2": "Az adatfrissesség állapota"
+        }
+      },
+      "cyberThreats": {
+        "category": "Kiber",
+        "purpose": "Földrajzzal bővített kompromittálódási mutatókat térképez, például C2-kiszolgálókat, kártevőket futtató gépeket, adathalászatot, rosszindulatú URL-eket és zsarolóvírus-infrastruktúrát.",
+        "source": "abuse.ch Feodo Tracker és URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, a ransomware.live RSS- és hírfolyama, valamint IP-geolokációs bővítés.",
+        "freshness": "A kiberfenyegetés-feltöltés 2 óránként fut. A megjelenített IOC-k 14 napos gördülő ablakot használnak, és a térkép teljesítménye miatt felülről korlátozottak.",
+        "confidence": "Jó az infrastruktúra láthatóságához. Az attribúció és az IP-geolokáció zajos lehet.",
+        "limitations": {
+          "0": "Az IP-geolokáció a hosztinginfrastruktúrára mutathat, nem az üzemeltetőre vagy az áldozatra.",
+          "1": "A folyamok elérhetősége, az API-kulcsok és a folyamok szerinti visszaélés-bejelentések torzíthatják a lefedettséget."
+        },
+        "related": {
+          "0": "A Kiber fenyegetések térképének felugró ablakai",
+          "1": "Kiberhozzájárulás az Ország instabilitási indexhez",
+          "2": "Az adatfrissesség állapota"
+        }
+      },
+      "natural": {
+        "category": "Természeti katasztrófák",
+        "purpose": "Földrengéseket, súlyos katasztrófariasztásokat és aktív földmegfigyelési eseményeket mutat a helyzet áttekintéséhez.",
+        "source": "USGS-földrengések, GDACS-riasztások és NASA EONET események, a természeti események szolgáltatásában összevonva.",
+        "freshness": "A természeti események 3 óránként töltődnek fel. Az USGS-földrengéseknél a leírt várakozás nagyjából 5 perces forrásütem.",
+        "confidence": "Erős a kimutatott nyilvános katasztrófajeleknél. A megbízhatóság a veszély típusától és a forrás jelentési késésétől függ.",
+        "limitations": {
+          "0": "Az alacsony súlyosságú GDACS-riasztások kiszűrődnek, hogy a térkép olvasható maradjon.",
+          "1": "Az EONET-erdőtüzek frissesség szerint szűrődnek, ezért a régebbi, még nyitott események nem biztos, hogy aktív térképpontként megjelennek."
+        },
+        "related": {
+          "0": "A Természeti események rétegének felugró ablakai",
+          "1": "Súlyos időjárási riasztások (NWS, ECCC, WMO SWIC)",
+          "2": "Természeti jelek a hírszerzési összefoglalóban"
+        }
+      },
+      "waterways": {
+        "category": "Tengeri",
+        "purpose": "Stratégiai vízi utakat és szűk átjárókat jelöl, hogy a zavarjelek a rögzített tengeri földrajzhoz képest legyenek olvashatók.",
+        "source": "A WorldMonitor stratégiai víziút-nyilvántartása, az ellátási lánc szűk átjáróinak állapotfedvényeivel az AIS-ből, az NGA figyelmeztetéseiből és a PortWatchból származó folyamokból.",
+        "freshness": "A vízi utak helye statikus. Az élő szűkátjáró-állapotot 6 percenként karbantartó lekérdezés frissíti. A tranzitösszesítők 10 percenként frissülnek, ha a relé és a PortWatch útja rendben van.",
+        "confidence": "A rögzített földrajzra magas. Az élő zavar megbízhatósága a kísérő AIS, NGA és PortWatch folyamoktól függ.",
+        "limitations": {
+          "0": "A szűk átjáró jelölője a helyet mutatja akkor is, ha nincs folyamatban lévő zavar.",
+          "1": "A területi geokerítések és a modellezett útvonalak egyszerűsíthetik a bonyolult forgalmi mintákat."
+        },
+        "related": {
+          "0": "panel Ellátási Lánc",
+          "1": "réteg Kereskedelmi útvonalak",
+          "2": "Útvonalböngésző",
+          "3": "Forgatókönyv-motor"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Országkockázat",
+        "purpose": "Az országokat az Ország instabilitási index aktuális pontszáma szerint színezi, a stratégiai kockázat széles első szűréséhez.",
+        "source": "A WorldMonitor Ország instabilitási index pontozó szolgáltatása konfliktus, zavargás, figyelmeztetés, kiber, hajókövetés, légi, természeti esemény és hírjeleket használ.",
+        "freshness": "A kockázati pontszám gyorsítótárát 8 percenként karbantartó lekérdezés frissíti. A seed-meta és a health.riskScores élő, elavult, részleges vagy leromlott állapotot mutat egy 30 perces frissességi kerethez képest.",
+        "confidence": "Összetett modelljel. Nem hivatalos országminősítés és nem valószínűségi előrejelzés.",
+        "limitations": {
+          "0": "A ritka vagy leromlott forráscsaládok csökkenthetik a megbízhatóságot akkor is, ha az országnak van pontszáma.",
+          "1": "Az országszintű szín elrejtheti az országon belüli különbségeket. Idézés előtt ellenőrizze a paneleken."
+        },
+        "related": {
+          "0": "panel Ország Instabilitása",
+          "1": "panel Stratégiai Kockázat Áttekintés",
+          "2": "Az adatfrissesség állapota",
+          "3": "Hírszerzési összefoglaló"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Réteg",
+      "purpose": "Ez a réteg bekapcsolható a térképen, de gondozott forrás- és megbízhatósági kártya még nincs hozzá.",
+      "source": "Nincs benne a rétegmagyarázatok gondozott v1 készletében.",
+      "freshness": "Itt nincs rétegszintű frissességi szerződés. Ha elérhető, ellenőrizze a látható paneljelvényeket, a felugró ablakokat vagy az adatfrissesség állapotát.",
+      "confidence": "Ismeretlen, amíg a forrásra jellemző metaadat meg nem érkezik.",
+      "limitations": {
+        "0": "A gondozott kártya hiánya nem jelenti azt, hogy a réteg nem támogatott.",
+        "1": "A forrásspecifikus kontextushoz használja a réteg felugró ablakait és a kapcsolódó paneleket."
+      },
+      "related": {
+        "0": "Réteg útmutató"
+      }
+    }
   }
 }

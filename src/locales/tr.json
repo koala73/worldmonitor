@@ -3877,5 +3877,271 @@
     "noEvents": "Bu tarih için seçili başlık kaydedilmedi. Bu, hiç olay yaşanmadığını kanıtlamaz.",
     "unlock90": "Pro ile 90 günlük geçmişi açın",
     "unlock365": "API planıyla 365 günlük geçmişi açın"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Kaynak",
+      "freshness": "Güncellik",
+      "confidence": "Güvenilirlik",
+      "limitations": "Sınırlamalar",
+      "related": "İlgili",
+      "groundedIn": "Dayanak",
+      "curated": "Derlenmiş v1",
+      "fallback": "Yedek",
+      "layerGuide": "Katman Rehberi"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Haberler / Sıcak noktalar",
+        "purpose": "İzlenen jeopolitik sıcak noktaları öne çıkarır ve ilgili haberler ile tırmanma sinyalleri bir araya geldiğinde düzeylerini yükseltir.",
+        "source": "WorldMonitor sıcak nokta kaydı, RSS/GDELT haber istihbaratı, sıcak nokta tırmanma puanı, askeri faaliyet ve ülke istikrarsızlığı bağlamı.",
+        "freshness": "Sıcak nokta konumları küratör tarafından belirlenir ve değişmez. Haber akışlarının güncelliği ayrı izlenir. Sıcak nokta düzeyleri, pano haber akışları yenilendiğinde, yaklaşık 10 dakikada bir yeniden hesaplanır. GDELT istihbaratının yükleme ve önbellek bütçeleri daha uzundur.",
+        "confidence": "İlk eleme için bir işarettir. Alttaki haberler ve ülke bağlamı açılmadan alıntıya uygun bir iddia değildir.",
+        "limitations": {
+          "0": "Haber hacmi ve anahtar kelime eşleşmesi, yoğun yer alan bölgeleri olduğundan büyük gösterebilir.",
+          "1": "RSS/GDELT kapsamı seyrek veya gecikmeliyse düşük profilli olaylar kaçabilir."
+        },
+        "related": {
+          "0": "«Canli Haberler» paneli",
+          "1": "«Stratejik Risk Genel Gorunumu» paneli",
+          "2": "Ülke özeti",
+          "3": "Sıcak nokta açılır pencereleri"
+        }
+      },
+      "conflicts": {
+        "category": "Çatışma",
+        "purpose": "Canlı sinyallerin bilinen sahalarla karşılaştırılabilmesi için seçilmiş çatışma bölgelerini ve jeopolitik sınır katmanlarını gösterir.",
+        "source": "WorldMonitor çatışma bölgesi kaydı, UCDP/ACLED çatışma bağlamı ve Kore DMZ gibi belgelenmiş sınır verileri.",
+        "freshness": "Taban bölgeler küratör tarafından belirlenir ve değişmez. Dinamik çatışma olayı girdileri ACLED/UCDP akışları ve durum sinyalleri üzerinden ayrı izlenir.",
+        "confidence": "Coğrafi yön bulmak için iyidir. Tek başına gerçek zamanlı bir olay doğrulaması değildir.",
+        "limitations": {
+          "0": "Sabit bölgeler hızlı taktik değişimlerin gerisinde kalabilir.",
+          "1": "Çatışma kanıtının bir kısmı çatışma olaylarında, ülke istikrarsızlığında veya ilgili panellerde görünür, çatışma bölgesi poligonu olarak değil."
+        },
+        "related": {
+          "0": "UCDP Olaylari",
+          "1": "«Ulke Istikrarsizligi» paneli",
+          "2": "Stratejik Risk Genel Gorunumu",
+          "3": "Ülke özeti"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Havacılık",
+        "purpose": "Askeri sınıflamadan bağımsız olarak bildirilen 7500, 7600 ve 7700 transponder kodlarını gösterir.",
+        "source": "adsb.lol üzerinde kesin SQUAWK sorguları. Hava aracı ayrıntıları sağlayıcı alanlarından gelir. Atıf ODbL.",
+        "freshness": "Katman görünürken kontrol her dakika yapılır. Son ileti en fazla 120 saniye eski olmalıdır. Harita konumları en fazla 90 saniye eski olmalıdır. Bilinmeyen durumundaki bildirimler 15 dakika sonra düşer.",
+        "confidence": "Bildirilen bir transponder sinyali olayı, nedenini, inişi veya durumun çözüldüğünü doğrulamaz.",
+        "limitations": {
+          "0": "Alıcı kapsamı eksiktir.",
+          "1": "Son ileti zamanı, SQUAWK kodunun seçildiği zaman değildir.",
+          "2": "Taze konumu olmayan hava araçları yalnızca ayrıntı listesinde görünür.",
+          "3": "Çelişkiler ve alım kaybı bilinmeyen duruma döner."
+        },
+        "related": {
+          "0": "Hava aracı ayrıntıları"
+        }
+      },
+      "ais": {
+        "category": "Denizcilik",
+        "purpose": "Stratejik sular ve darboğazlar çevresinde gemi yoğunluğunu ve AIS kesinti sinyallerini gösterir.",
+        "source": "AISStream aktarım anlık görüntüleri, WorldMonitor denizcilik hizmeti ve darboğaz kesinti sınıflandırıcıları.",
+        "freshness": "AIS aktarım anlık görüntüleri varsayılan olarak her 5 saniyede bir yeniden kurulur. Sunucu taban yoğunluk anlık görüntüsünü 5 dakika önbellekte tutabilir. Aktarım kimlik bilgileri veya bağlantısı yoksa katman kapanır ya da eskir.",
+        "confidence": "Deniz anomalilerini elemek için yararlıdır. AIS'i gemi kendisi bildirir ve gemi yayını kesebilir.",
+        "limitations": {
+          "0": "Karasal AIS kapsamı eşit değildir. Orta Doğu, Asya ve açık okyanus için daha zayıf görüş belgelenmiştir.",
+          "1": "Karanlık denizcilik, boşluklardan ve yığılma örüntülerinden çıkarılır. Niyetin doğrudan kanıtı değildir."
+        },
+        "related": {
+          "0": "«Tedarik Zinciri» paneli",
+          "1": "Dar Boğaz Durumu",
+          "2": "Askeri gemiler",
+          "3": "Ülke özetindeki AIS sinyalleri"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Denizcilik",
+        "purpose": "Kesinti yolunu okumak için stratejik darboğazlardan geçen başlıca konteyner, enerji ve dökme yük rotalarını çizer.",
+        "source": "WorldMonitor ticaret rotası kaydı, tedarik zinciri darboğaz durumu ve geçiş özetleri.",
+        "freshness": "Rota geometrisi değişmez. Darboğaz durumu, önbellek sıcak kalsın diye her 6 dakikada bir sorgulanır. Geçiş özetleri tedarik zinciri önbellekleri ve aktarım yolları üzerinden her 10 dakikada bir yenilenir.",
+        "confidence": "Rota düzeyinde maruziyet için iyidir. Gemi düzeyinde bir rota akışı değildir.",
+        "limitations": {
+          "0": "Rotalar modellenmiş koridorlardır ve belirli bir sefer planıyla örtüşmeyebilir.",
+          "1": "Kesinti katmanları, darboğazların ve AIS'in güncel durumuna bağlıdır."
+        },
+        "related": {
+          "0": "«Tedarik Zinciri» paneli",
+          "1": "Rota Gezgini",
+          "2": "Senaryo motoru",
+          "3": "«Stratejik Suyollari» katmanı"
+        }
+      },
+      "flights": {
+        "category": "Havacılık",
+        "purpose": "Havalimanı kesintilerini ve NOTAM kapanışlarını, şu anda yürürlükte olan veya 24 saat içinde başlayan hava sahası NOTAM kayıtlarını (geçici uçuş kısıtları, tahditli, tehlike ve yasak sahalar, askeri harekat sahaları, hava sahası ayırmaları ve kapanışlar) ve izleme varsa canlı hava aracı konumlarını öne çıkarır.",
+        "source": "FAA ASWS, AviationStack, FAA NOTAM yönetim hizmeti (NMS-API) ve ICAO NOTAM kayıtları, adsb.lol (ODbL), Wingbits, eski OpenSky hizmetinin geri getirilmesi, isteğe bağlı ticari olmayan airplanes.live/adsb.fi boşluk doldurma ve havacılık hizmeti. Hava sahası NOTAM kayıtları, NMS poligon verdiğinde poligon, NOTAM 250 NM'ye kadar yarıçap verdiğinde daire, diğer durumlarda işaret olarak çizilir.",
+        "freshness": "Havalimanı kesintisi yüklemesi 30 dakikalık aralıkla çalışır. Hava sahası NOTAM kayıtları, NMS değişiklik çekimlerinden her 5 dakikada bir yüklenir, günde bir tam yeniden eşitleme yapılır ve 20 dakikalık güncellik bütçesine göre izlenir. Havacılık paneli operasyonel görünümleri de 5 dakikalık sorgulama döngüsüyle yeniler.",
+        "confidence": "Kesinti elemesi için en uygunudur. Tekil canlı hava aracı kapsamı ADS-B erişimine ve yapılandırılmış sağlayıcılara bağlıdır. NOTAM metni, FAA'nın dağıttığı biçimiyle yetkilidir.",
+        "limitations": {
+          "0": "API anahtarı yoksa AviationStack tabanlı benzetimli tanıtım verisi görünebilir.",
+          "1": "ADS-B kapsamı zayıf veya engelli yerlerde canlı hava aracı konumları gecikebilir ya da hiç gelmeyebilir.",
+          "2": "Hava sahası NOTAM alanları yalnızca deck.gl haritasında çizilir. SVG ve küre haritaları havalimanı işaretlerini gösterir.",
+          "3": "ABD TFR kayıtlarının çoğu biçimi yalnızca metinde anlatır, bu yüzden kısıtlı biçim olarak değil, NOTAM konumunda bir işaret olarak görünür.",
+          "4": "Bir NOTAM'ın geçerlik penceresindeki programlar (örneğin günlük saatler) ipucunda gösterilir, görünürlüğe uygulanmaz."
+        },
+        "related": {
+          "0": "«Havayolu İstihbaratı» paneli",
+          "1": "Havacılık komut çubuğu",
+          "2": "Ülke özetindeki havacılık sinyalleri",
+          "3": "Hava aracı acil durumları",
+          "4": "Navigasyon müdahalesi"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Çatışma",
+        "purpose": "Ülke, taraflar, tarih ve can kaybı aralıklarıyla olay düzeyinde silahlı çatışma kayıtlarını işler.",
+        "source": "Çatışma hizmeti ve UCDP olay yüklemesi üzerinden Uppsala Çatışma Verileri Programı GED API.",
+        "freshness": "UCDP yüklemesi sağlıklıysa her 6 saatte bir yüklenir.",
+        "confidence": "Ham son dakika akışlarından daha tutarlı bir yayındır, ama bilerek gecikir ve canlı bir cephe akışı değildir.",
+        "limitations": {
+          "0": "Araştırma düzeyindeki yıllık yayın temposu çok yeni olayları kaçırabilir.",
+          "1": "Can kaybı aralıkları tahmindir. Aralık olarak okunmalıdır, kesin sayı olarak değil."
+        },
+        "related": {
+          "0": "«UCDP Catisma Olaylari» paneli",
+          "1": "Ülke İstikrarsızlık Endeksi çatışma bileşeni",
+          "2": "Ülke zaman çizelgesi"
+        }
+      },
+      "weather": {
+        "category": "Hava",
+        "purpose": "Ulusal meteoroloji hizmetlerinin yürürlükteki resmî şiddetli hava uyarılarını, tek bir weather:alerts:v1 akışında birleşik olarak gösterir.",
+        "source": "ABD Ulusal Hava Servisi (NWS), Kanada Çevre ve İklim Değişikliği Bakanlığı (ECCC) ve WMO Şiddetli Hava Bilgi Merkezi (SWIC) CAP derlemesi, WorldMonitor aktarımı üzerinden yüklenir.",
+        "freshness": "NWS, ECCC ve SWIC uyarıları aktarım tarafından her 15 dakikada bir yüklenir ve 45 dakikalık güncellik bütçesine göre izlenir.",
+        "confidence": "Katılan ulusal hizmetlerin yayımladığı uyarılar için yetkilidir. Kaynağın yayımlama zamanı geçerlidir. NWS ve ECCC poligon olarak çizilir. SWIC'in coğrafi kodlu uyarıları, yayımlayan hizmetin ülke merkez noktasında, açık bir kesinlik işaretiyle durur.",
+        "limitations": {
+          "0": "SWIC üyelerinin çoğu poligon değil coğrafi kod yayımlar. Bu uyarılar, uyarılan alan katmanı olarak değil, alanın aynen yazılmış açıklamasıyla ülke düzeyinde nokta olarak görünür.",
+          "1": "SWIC kapsamı, hangi WMO üyelerinin o anda derleyiciye yayımladığına bağlıdır. Yoğunluk bölgeye göre değişir.",
+          "2": "ABD ve Kanada SWIC satırları atlanır, çünkü NWS ve ECCC bu ülkeler için zaten poligon düzeyinde kapsam sağlar."
+        },
+        "related": {
+          "0": "«Dogal Olaylar» katmanı",
+          "1": "Hava uyarısı açılır pencereleri",
+          "2": "Data Freshness durumu"
+        }
+      },
+      "canadaRoads": {
+        "category": "Ulaşım",
+        "purpose": "Desteklenen Kanada yetki alanlarındaki resmî yol olaylarını, uyarıları, koşulları, kapanışları, yapım işlerini ve tehlikeleri gösterir.",
+        "source": "Ontario 511, Alberta 511 ve Manitoba 511 il akışları, City of Toronto Road Restrictions ve DriveBC Open511, WorldMonitor üzerinden yüklenir.",
+        "freshness": "Ontario 511, Alberta 511 ve Manitoba 511 her 15 dakikada bir yüklenir ve 45 dakikalık güncellik bütçesine göre izlenir. Toronto kısıtları her 2 saatte bir yüklenir. DriveBC Open511 her 30 dakikada bir yüklenir.",
+        "confidence": "Desteklenen il ve belediye yayımcıları için yetkilidir. Kaynağın yayımlama zamanı ve haritaya işlenen geometri geçerlidir.",
+        "limitations": {
+          "0": "Alberta 511 roadconditions alınmaz (sağlayıcı adresi 404 döndürür). Alberta'nın canlı çizimi yalnızca olaylar ve uyarılardır.",
+          "1": "Koordinatı olmayan il uyarıları haritada nokta olarak görünmez.",
+          "2": "Yol durumu çoklu çizgileri karmaşık otoyol geometrisini sadeleştirebilir."
+        },
+        "related": {
+          "0": "Şiddetli hava uyarıları (NWS, ECCC, WMO SWIC)",
+          "1": "Data Freshness durumu"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Acil durum uyarıları",
+        "purpose": "Alberta, Britanya Kolumbiyası ve Saskatchewan kamu güvenliği uyarılarını, ABD NWS havasının yanında harita noktaları olarak gösterir.",
+        "source": "Alberta Emergency Alert Atom akışı, OGL-BC Evacuation Orders and Alerts GeoJSON katmanı ve SaskAlert genel JSON akışı ile aynı sunucudaki CAP 1.2 ayrıntıları tek bir canadaAlerts birleşiminde normalleştirilir. CAP/GeoRSS poligonları, B.C. tahliye poligonları ve SaskAlert CAP poligonları merkez noktaya indirilir. Geometrisi olmayan kayıtlar kaynak ilin merkez noktasını kullanır.",
+        "freshness": "İl kaynakları her 15 dakikada bir yüklenir ve birleşim 45 dakikalık güncellik bütçesine göre izlenir. Boş bir akış (yürürlükte uyarı yok) sıfır kayıtla geçerli bir başarıdır.",
+        "confidence": "Alberta Emergency Alert, B.C. Evacuation Orders and Alerts ve SaskAlert tarafından yayımlanan uyarılar için yetkilidir. Kaynağın yayımlama zamanı ve haritaya işlenen uyarı geometrisi geçerlidir.",
+        "limitations": {
+          "0": "Kapsam Alberta, Britanya Kolumbiyası ve Saskatchewan ile sınırlıdır. Ontario'nun, dışlanan NAAD dışında ilin işlettiği uygun bir makine akışı yoktur.",
+          "1": "ABD NWS hava uyarılarının ya da Ontario ve Toronto yol katmanlarının yerine geçmez.",
+          "2": "Haritaya işlenebilir şiddeti olmayan kayıtlar (Alberta CAP renk anlamı, B.C. tahliye durumu veya SaskAlert CAP şiddeti) uydurulmaz, bırakılır. SaskAlert özetindeki renk ve düzey CAP şiddeti sayılmaz."
+        },
+        "related": {
+          "0": "Şiddetli hava uyarıları (NWS, ECCC, WMO SWIC)",
+          "1": "«Dogal Olaylar» katmanı",
+          "2": "Data Freshness durumu"
+        }
+      },
+      "cyberThreats": {
+        "category": "Siber",
+        "purpose": "C2 sunucuları, kötü amaçlı yazılım barındırıcıları, oltalama, kötü amaçlı URL'ler ve fidye yazılımı altyapısı gibi coğrafi olarak zenginleştirilmiş ele geçirme göstergelerini (IOC) haritaya işler.",
+        "source": "abuse.ch Feodo Tracker ve URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, ransomware.live RSS ve haber akışı ile IP coğrafi konum zenginleştirmesi.",
+        "freshness": "Siber tehdit yüklemesi her 2 saatte bir çalışır. Gösterilen IOC kayıtları 14 günlük kayan pencere kullanır ve harita başarımı için sayıları sınırlanır.",
+        "confidence": "Altyapıyı görmek için iyidir, ama atıf ve IP coğrafi konumu gürültülü olabilir.",
+        "limitations": {
+          "0": "IP coğrafi konumu bir operatörü veya mağduru değil, barındırma altyapısını gösterebilir.",
+          "1": "Akışların açıklığı, API anahtarları ve akış başına kötüye kullanım bildirimleri kapsamı kaydırabilir."
+        },
+        "related": {
+          "0": "Haritadaki siber tehdit açılır pencereleri",
+          "1": "Ülke istikrarsızlığına siber katkı",
+          "2": "Data Freshness durumu"
+        }
+      },
+      "natural": {
+        "category": "Doğal afetler",
+        "purpose": "Durum farkındalığı için depremleri, ciddi afet uyarılarını ve etkin Yer gözlem olaylarını gösterir.",
+        "source": "USGS depremleri, GDACS uyarıları ve NASA EONET olayları doğal olay hizmetinde birleştirilir.",
+        "freshness": "Doğal olaylar her 3 saatte bir yüklenir. USGS depremleri için kaynak temposu yaklaşık 5 dakika olarak belgelenmiştir.",
+        "confidence": "Kamuya açıklanmış afet sinyalleri için güçlüdür. Güvenilirlik, tehlike türüne ve kaynağın bildirim gecikmesine göre değişir.",
+        "limitations": {
+          "0": "Düşük şiddetli GDACS uyarıları, harita okunaklı kalsın diye elenir.",
+          "1": "EONET orman yangınları güncelliğe göre süzülür, bu yüzden daha eski açık olaylar etkin harita noktası olarak görünmeyebilir."
+        },
+        "related": {
+          "0": "Doğal olay katmanı açılır pencereleri",
+          "1": "Şiddetli hava uyarıları (NWS, ECCC, WMO SWIC)",
+          "2": "Ülke özetindeki doğal sinyaller"
+        }
+      },
+      "waterways": {
+        "category": "Denizcilik",
+        "purpose": "Kesinti sinyallerinin sabit deniz coğrafyasına göre okunması için stratejik suyollarını ve darboğazları işaretler.",
+        "source": "WorldMonitor stratejik suyolu kaydı, AIS, NGA uyarıları ve PortWatch türevi akışlardan gelen tedarik zinciri darboğaz durumu katmanlarıyla.",
+        "freshness": "Suyolu konumları değişmez. Aktarım ve PortWatch yolu sağlıklıysa canlı darboğaz durumu her 6 dakikada bir sıcak tutacak biçimde sorgulanır ve geçiş özetleri her 10 dakikada bir yenilenir.",
+        "confidence": "Sabit coğrafya için yüksektir. Canlı kesintinin güvenilirliği, yanındaki AIS, NGA ve PortWatch akışlarına bağlıdır.",
+        "limitations": {
+          "0": "Görünen bir darboğaz işareti, etkin bir kesinti olduğu anlamına gelmez.",
+          "1": "Alan coğrafi çitleri ve modellenmiş rotalar karmaşık trafik örüntülerini sadeleştirebilir."
+        },
+        "related": {
+          "0": "«Tedarik Zinciri» paneli",
+          "1": "«Ticaret Rotaları» katmanı",
+          "2": "Rota Gezgini",
+          "3": "Senaryo motoru"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Ülke riski",
+        "purpose": "Geniş bir stratejik risk elemesi için ülkeleri güncel Ülke İstikrarsızlık Endeksi puanına göre boyar.",
+        "source": "WorldMonitor Ülke İstikrarsızlık Endeksi puanlama hizmeti, çatışma, huzursuzluk, uyarı, siber, gemi izleme, havacılık, doğal olay ve haber sinyallerini kullanır.",
+        "freshness": "Risk puanı önbelleği her 8 dakikada bir sıcak tutulur. seed-meta ve health.riskScores, 30 dakikalık güncellik bütçesine göre canlı, eskimiş, kısmi veya bozulmuş durumu gösterir.",
+        "confidence": "Bileşik bir model sinyalidir. Resmî bir ülke notu ya da olasılık tahmini değildir.",
+        "limitations": {
+          "0": "Seyrek veya bozulmuş kaynak aileleri, ülkenin hâlâ puanı olsa bile güvenilirliği düşürebilir.",
+          "1": "Ülke düzeyindeki renk, ülke içi farkları gizleyebilir. Alıntıdan önce panellerle karşılaştırın."
+        },
+        "related": {
+          "0": "«Ulke Istikrarsizligi» paneli",
+          "1": "«Stratejik Risk Genel Gorunumu» paneli",
+          "2": "Data Freshness durumu",
+          "3": "Ülke özeti"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Katman",
+      "purpose": "Bu katman haritada açılıp kapatılabilir, ama kaynak ve güvenilirlik için derlenmiş bir kart henüz eklenmedi.",
+      "source": "v1 katman açıklama kümesinde derlenmemiştir.",
+      "freshness": "Burada katman düzeyinde bir güncellik sözleşmesi yoktur. Görünür panel rozetlerini, açılır pencereleri veya Data Freshness durumunu, varsa kontrol edin.",
+      "confidence": "Kaynağa özel üstveri eklenene kadar bilinmiyor.",
+      "limitations": {
+        "0": "Derlenmiş kartın olmaması, katmanın desteklenmediği anlamına gelmez.",
+        "1": "Kaynağa özel bağlam için katman açılır pencerelerini ve ilgili panelleri kullanın."
+      },
+      "related": {
+        "0": "Katman Rehberi"
+      }
+    }
   }
 }

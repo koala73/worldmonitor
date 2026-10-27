@@ -22,7 +22,7 @@ import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/ge
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo-map';
 import { PIPELINES } from '@/config/pipelines';
-import { t } from '@/services/i18n';
+import { initI18n, t } from '@/services/i18n';
 import { SITE_VARIANT } from '@/config/variant';
 import { getGlobeRenderScale, resolveGlobePixelRatio, resolvePerformanceProfile, subscribeGlobeRenderScaleChange, getGlobeTexture, GLOBE_TEXTURE_URLS, subscribeGlobeTextureChange, getGlobeVisualPreset, subscribeGlobeVisualPresetChange, type GlobeRenderScale, type GlobePerformanceProfile, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import {
@@ -33,7 +33,7 @@ import {
   bindLayerSearch,
   type MapVariant,
 } from '@/config/map-layer-definitions';
-import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
+import { layerExplanationLookup, renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import { guardOrbitControlsPointerTracking } from '@/utils/orbit-controls-pointer-guard';
 import { getAuthState } from '@/services/auth-state';
 import { resolveTradeRouteSegments, type TradeRouteSegment } from '@/config/trade-routes';
@@ -2077,7 +2077,7 @@ export class GlobeMap {
         event.preventDefault();
         event.stopPropagation();
         const layer = (button as HTMLElement).getAttribute('data-layer') as keyof MapLayers | null;
-        if (layer) this.showLayerExplanation(layer);
+        if (layer) void this.showLayerExplanation(layer);
       });
     });
 
@@ -2162,7 +2162,15 @@ export class GlobeMap {
     }
   }
 
-  private showLayerExplanation(layer: keyof MapLayers): void {
+  private async showLayerExplanation(layer: keyof MapLayers): Promise<void> {
+    try {
+      await initI18n();
+    } catch (error) {
+      console.warn('[GlobeMap] Unable to load layer explanation text', error);
+      return;
+    }
+    if (this.destroyed) return;
+
     const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
     if (existing?.dataset.layer === layer) {
       existing.remove();
@@ -2178,7 +2186,7 @@ export class GlobeMap {
     popup.className = 'layer-explanation-popup';
     popup.dataset.layer = layer;
     setTrustedHtml(popup, trustedHtml(
-      renderLayerExplanationCard(layerLabel, getLayerExplanation(layer)),
+      renderLayerExplanationCard(layerLabel, getLayerExplanation(layer), layerExplanationLookup(t)),
       "static layer explanation metadata",
     ));
 
