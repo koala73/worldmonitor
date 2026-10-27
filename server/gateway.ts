@@ -2966,7 +2966,10 @@ export function createDomainGateway(
       }
       return gatewayHandler(new Request(url, { method: init?.method ?? 'GET', headers, signal: init?.signal }), ctx);
     }) as typeof fetch;
-    return buildMarkdownTwinResponse(caller, markdownPath, dispatchSibling, { corsHeaders });
+    return buildMarkdownTwinResponse(caller, markdownPath, dispatchSibling, {
+      corsHeaders,
+      inheritSiblingCacheControl: true,
+    });
   }
 
   const gatewayHandler = async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {

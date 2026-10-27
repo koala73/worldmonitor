@@ -168,6 +168,13 @@ export interface MarkdownTwinOptions {
    * path answers 404 without being fetched.
    */
   isAllowedSibling?: (pathname: string) => boolean;
+  /**
+   * API twins: a successful twin carries the sibling's own Cache-Control, or
+   * `no-store` when the sibling forbids shared caching, instead of the page
+   * default. Page twins leave it off; site pages answer the platform's
+   * `private, no-cache` and their twins stay `public, max-age=3600`.
+   */
+  inheritSiblingCacheControl?: boolean;
 }
 
 const HTML_ENTITIES: Record<string, string> = {
@@ -350,9 +357,15 @@ function markdownHeadersFor(
   };
 }
 
-/** A sibling that told caches not to keep it must not become a cacheable twin. */
-function siblingForbidsSharedCaching(response: Response): boolean {
-  return /\b(?:no-store|private|no-cache)\b/i.test(response.headers.get('cache-control') ?? '');
+/**
+ * The Cache-Control an API twin inherits from a successful sibling: `no-store`
+ * when the sibling forbids shared caching, its own value otherwise (so a 60 s
+ * tier is not stretched to an hour), or nothing to keep the twin default.
+ */
+function inheritedCacheControl(response: Response): Record<string, string> {
+  const value = response.headers.get('cache-control');
+  if (!value) return {};
+  return { 'Cache-Control': /\b(?:no-store|private|no-cache)\b/i.test(value) ? 'no-store' : value };
 }
 
 function headingFromPath(pathname: string): string {
@@ -574,9 +587,9 @@ export async function buildMarkdownTwinResponse(
   const servesCanonicalPage = !isFailure && !siblingUrl.pathname.startsWith('/api/');
   const responseHeaders: Record<string, string> = {
     ...(isFailure ? NOT_A_DOCUMENT : {}),
-    // The twin is a rendering of the sibling, so it may be cached no more
-    // widely than the sibling allows.
-    ...(!isFailure && siblingForbidsSharedCaching(siblingRes) ? { 'Cache-Control': 'no-store' } : {}),
+    // An API twin is a rendering of the sibling, so it may be cached no more
+    // widely or longer than the sibling allows.
+    ...(!isFailure && options.inheritSiblingCacheControl ? inheritedCacheControl(siblingRes) : {}),
     ...forwardedResponseHeaders(siblingRes),
   };
 

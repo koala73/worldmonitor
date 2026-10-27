@@ -301,10 +301,12 @@ describe('gateway markdown twins run every gate the direct route runs', () => {
     assert.equal(md.headers.get('cdn-cache-control'), null);
   });
 
-  it('keeps the twin cache for a publicly cacheable sibling', async () => {
+  it('keeps a publicly cacheable sibling lifetime instead of stretching it to an hour', async () => {
+    const direct = await call(`${FACT}?query=a`);
     const md = await call(`${FACT}.md?query=a`);
     assert.equal(md.status, 200);
-    assert.equal(md.headers.get('cache-control'), 'public, max-age=3600');
+    assert.match(direct.headers.get('cache-control') ?? '', /^public, /);
+    assert.equal(md.headers.get('cache-control'), direct.headers.get('cache-control'));
   });
 
   it('keeps a premium route 401 via .md and never forwards a credential', async () => {
@@ -497,6 +499,18 @@ describe('page twins (api/md-twin.ts) never hop into an API function', () => {
     const res = await mdTwinHandler(new Request('https://www.worldmonitor.app/api/md-twin?path=some-page.md'));
     assert.equal(res.status, 404);
     assert.deepEqual(siblingFetches, ['/some-page']);
+  });
+
+  it('keeps a page twin publicly cacheable when the page itself is private, no-cache', async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      siblingFetches.push(new URL(String(input instanceof Request ? input.url : input)).pathname);
+      return new Response('<html><head><title>x</title></head><body><main><h1>x</h1></main></body></html>', {
+        headers: { 'content-type': 'text/html', 'cache-control': 'private, no-cache, must-revalidate' },
+      });
+    }) as typeof fetch;
+    const res = await mdTwinHandler(new Request('https://www.worldmonitor.app/api/md-twin?path=dashboard.md'));
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('cache-control'), 'public, max-age=3600');
   });
 
   it('still serves an ordinary page twin', async () => {

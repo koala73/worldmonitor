@@ -60,6 +60,7 @@ async function legacyMarkdownTwin(req: Request, pathname: string): Promise<Respo
   return buildMarkdownTwinResponse(req, pathname, globalThis.fetch, {
     corsHeaders,
     isAllowedSibling: (sibling) => LEGACY_MARKDOWN_TWIN_SIBLINGS.has(sibling),
+    inheritSiblingCacheControl: true,
   });
 }
 
