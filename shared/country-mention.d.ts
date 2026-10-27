@@ -14,3 +14,5 @@ export function normalizeMentionText(text: string): string;
 export function countryDisplayName(code: string): string;
 export function countryMentionTerms(code: string): CountryMentionTerms;
 export function mentionsCountry(rawText: string, terms: CountryMentionTerms): boolean;
+export function localizedCountryNames(code: string, language: string): string[];
+export function mentionsLocalizedCountry(rawText: string, names: readonly string[], language: string): boolean;

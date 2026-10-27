@@ -10502,6 +10502,20 @@
       ]
     },
     {
+      "host": "unstats.un.org",
+      "provider": "unstats.un.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit unstats.un.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/build-un-m49-regions.mjs"
+        }
+      ]
+    },
+    {
       "host": "urlhaus-api.abuse.ch",
       "provider": "urlhaus-api.abuse.ch",
       "kind": "structured",
@@ -15290,6 +15304,9 @@
         },
         {
           "path": "scripts/build-sitemap.mjs"
+        },
+        {
+          "path": "scripts/build-un-m49-regions.mjs"
         },
         {
           "path": "scripts/build-use-cases.mjs"

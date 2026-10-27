@@ -52,6 +52,7 @@
   "get_maritime_activity",
   "get_market_data",
   "get_mcp_allowance",
+  "get_media_perspective",
   "get_military_posture",
   "get_military_surge",
   "get_mineral_production",
